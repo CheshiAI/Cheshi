@@ -170,6 +170,20 @@ command.
 
 ## Connecting Codex MCP
 
+Cheshi desktop configures its own `cheshi_codegraph` MCP server for every chat
+account. It uses the app's bundled CLI (or the current checkout's CLI during
+development), the selected Workspace, and the same data root as the Viewer.
+This includes custom `--user-data-dir` locations. The MCP connection opens the
+index read-only; indexing remains under the app's control.
+
+The desktop app reads the selected account's effective MCP configuration and
+disables an existing legacy `codegraph` server only for its own app-server
+process, avoiding duplicate connections. Other MCP servers and account
+configuration files remain unchanged. No global CodeGraph installation is
+required for desktop chats.
+
+For standalone Codex CLI use outside Cheshi, configure MCP as follows.
+
 After registering the `cheshi-cli` executable through a global link, install the
 MCP configuration in Codex. This command changes Codex configuration in the user's
 home directory, so run it only after an explicit user request.

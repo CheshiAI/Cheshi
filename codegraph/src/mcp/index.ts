@@ -55,6 +55,7 @@ import { HOST_PPID_ENV, supervisionLostReason, parsePpidPollMs, parseHostPpid } 
 import { installMainThreadWatchdog, WatchdogHandle } from './liveness-watchdog';
 import { armStartupHandshakeTimeout } from './startup-handshake';
 import { treatStdinFailureAsShutdown } from './stdin-teardown';
+import { mcpReadOnlyEnabled } from './runtime-options';
 
 /**
  * Env var that marks a process as the *detached daemon* itself (set by
@@ -273,6 +274,12 @@ export class MCPServer {
    * mode — a misbehaving daemon must never block a session from starting.
   */
   async start(): Promise<void> {
+    // App indexes belong to its indexing service; never attach to a writable
+    // standalone daemon, including one running a different engine version.
+    if (mcpReadOnlyEnabled()) {
+      return this.startDirect('CODEGRAPH_MCP_READ_ONLY set');
+    }
+
     // The detached daemon process itself. Checked before the opt-out so the
     // daemon honors the same env it was spawned with (it never sets NO_DAEMON).
     if (daemonInternalSet()) {

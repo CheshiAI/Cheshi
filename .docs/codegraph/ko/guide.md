@@ -164,6 +164,19 @@ cheshi-cli codegraph affected --path /absolute/path/to/workspace path/to/changed
 
 ## Codex MCP 연결
 
+Cheshi 데스크톱은 모든 채팅 계정에 앱 전용 `cheshi_codegraph` MCP 서버를
+자동으로 연결합니다. 배포 앱에 포함된 CLI(개발 중에는 현재 체크아웃의 CLI),
+선택한 Workspace, Viewer와 동일한 데이터 루트를 사용합니다.
+사용자 지정 `--user-data-dir` 경로도 적용됩니다. MCP는 인덱스를 읽기 전용으로
+열고, 인덱싱은 앱에서 관리합니다.
+
+선택한 계정의 실제 MCP 설정을 조회해 기존 `codegraph` 서버가 있으면 앱의
+app-server 프로세스에서만 비활성화하여 중복 연결을 막습니다. 다른 MCP 서버와
+계정 설정 파일은 변경하지 않습니다. 데스크톱 채팅에는 전역 CodeGraph MCP
+설치가 필요하지 않습니다.
+
+Cheshi 밖에서 독립적으로 Codex CLI를 사용할 때는 아래와 같이 설정합니다.
+
 전역 링크로 `cheshi-cli` 실행 파일을 등록한 뒤 Codex에 MCP 설정을 설치합니다.
 이 명령은 사용자 홈의 Codex 설정을 변경하므로 반드시 사용자의 명시적 요청을 받고
 실행합니다.

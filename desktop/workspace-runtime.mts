@@ -182,6 +182,7 @@ function codexChatAttachmentPreviewUrl(attachmentPath: unknown): string | null {
 
 const workspaceAccounts = createWorkspaceCodexAccounts({
   cwd: workspaceRoot, userDataDirectory, home: app.getPath('home'), openExternal: url => shell.openExternal(url),
+  codeGraph: { cli: codeGraphCommands.cli(), dataRoot: codeGraphDataRoot },
 });
 const createChatClient = workspaceAccounts.createClient;
 const codexAppServerClient = createChatClient();

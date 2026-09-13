@@ -104,7 +104,11 @@ export class ToolHandlerState {
   // direct/in-process mode (one client, no concurrency to parallelize).
   queryPool: QueryPool | null = null;
 
-  constructor(public cg: CodeGraph | null, readonly owner: Pick<ToolHandler, keyof ToolHandler> = this) { }
+  constructor(
+    public cg: CodeGraph | null,
+    readonly owner: Pick<ToolHandler, keyof ToolHandler> = this,
+    readonly readOnly = false,
+  ) { }
 
   /**
    * Annotate a successful read-tool result with per-file staleness — the

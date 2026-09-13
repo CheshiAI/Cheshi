@@ -1,7 +1,8 @@
-import { CodexAppServerClient } from './codex-app-server-client.mts';
+import { CodexAppServerClient, CodexAppServerStoppedError } from './codex-app-server-client.mts';
 import { recordValue } from './codex-service-utils.mts';
 
 type ClientOptions = ConstructorParameters<typeof CodexAppServerClient>[0];
+type PrepareCommand = (command: ClientOptions['command']) => Promise<string[]>;
 
 /** Owns the transports for one workspace, excluding account-only login workers. */
 export class CodexAccountClients {
@@ -11,10 +12,12 @@ export class CodexAccountClients {
   generation = 0;
   switching = false;
   private closed = false;
+  readonly prepareCommand: PrepareCommand | undefined;
 
-  constructor(environment: Record<string, string | undefined>) {
+  constructor(environment: Record<string, string | undefined>, prepareCommand?: PrepareCommand) {
     this.environment = environment;
     this.defaultHome = environment.CODEX_HOME;
+    this.prepareCommand = prepareCommand;
   }
 
   commandArgs(args: string[]): string[] {
@@ -64,6 +67,7 @@ export class AccountClient extends CodexAppServerClient {
   private generation: number;
   private calls = 0;
   private readonly turns = new Set<string>();
+  private preparationRevision = 0;
 
   constructor(pool: CodexAccountClients, options: ClientOptions) {
     super({ ...options, command: { ...options.command, args: pool.commandArgs(options.command.args), environment: { ...pool.environment } } });
@@ -101,7 +105,19 @@ export class AccountClient extends CodexAppServerClient {
     finally { this.calls -= 1; }
   }
 
+  override async startInternal(): Promise<Record<string, unknown>> {
+    if (this.pool.prepareCommand) {
+      const revision = this.preparationRevision;
+      const args = await this.pool.prepareCommand(this.command);
+      if (revision !== this.preparationRevision) throw new CodexAppServerStoppedError();
+      this.pool.assertAvailable();
+      this.command.args = this.pool.commandArgs([...this.originalArgs, ...args]);
+    }
+    return super.startInternal();
+  }
+
   override async stop(): Promise<void> {
+    this.preparationRevision += 1;
     await super.stop();
     this.turns.clear();
     this.pool.clients.delete(this);
