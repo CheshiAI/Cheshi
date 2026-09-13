@@ -25,6 +25,7 @@ function escapeHtml(value: string): string {
 
 export function aboutPage(metadata: AboutMetadata): string {
   const name = escapeHtml(metadata.name);
+  const buildNumber = /^\d+$/u.test(metadata.buildNumber) ? metadata.buildNumber.padStart(4, '0') : metadata.buildNumber;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -47,7 +48,7 @@ export function aboutPage(metadata: AboutMetadata): string {
     h1 { font-size: 28px; line-height: 1.2; font-weight: 700; margin: 24px 0 var(--space-default); }
     dl { display: grid; grid-template-columns: auto auto; gap: 8px var(--space-default); margin: 0; line-height: 1.5; }
     dt { text-align: right; font-weight: 600; }
-    dd { margin: 0; color: #a0a1a3; }
+    dd { margin: 0; color: #a0a1a3; font-variant-numeric: tabular-nums; }
     footer { margin-top: auto; padding-top: var(--space-default); color: #84868a; text-align: center; }
   </style>
 </head>
@@ -57,7 +58,7 @@ export function aboutPage(metadata: AboutMetadata): string {
     <h1>${name}</h1>
     <dl aria-label="Application information">
       <dt>Version</dt><dd>${escapeHtml(metadata.version)}</dd>
-      <dt>Build</dt><dd>${escapeHtml(metadata.buildNumber)}</dd>
+      <dt>Build</dt><dd>${escapeHtml(buildNumber)}</dd>
     </dl>
     <footer>© ${metadata.year ?? new Date().getFullYear()} ${escapeHtml(metadata.publisher)}</footer>
   </main>
