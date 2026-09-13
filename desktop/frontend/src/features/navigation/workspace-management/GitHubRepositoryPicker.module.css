@@ -1,0 +1,18 @@
+.picker {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-default);
+  padding: var(--space-default);
+}
+.heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-default); color: var(--sidebar-section-label-color); font-size: 11px; }
+.results { display: grid; gap: 4px; max-height: 200px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.repository { display: flex; align-items: center; gap: var(--space-default); min-height: 40px; width: 100%; padding: 8px; text-align: left; cursor: pointer; }
+.repository > svg { flex: 0 0 var(--icon-size-default); width: var(--icon-size-default); height: var(--icon-size-default); }
+.repository > span { display: grid; gap: 4px; min-width: 0; }
+.repository strong { color: var(--title); font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repository small { color: var(--sub-text); font-size: 10px; line-height: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repository:disabled { cursor: default; opacity: .55; }
+.hint, .error { margin: 0; font-size: 10px; line-height: 15px; overflow-wrap: anywhere; }
+.hint { color: var(--sub-text); }
+.error { color: var(--error, #e99b9b); }
+.loading { min-height: 180px; }

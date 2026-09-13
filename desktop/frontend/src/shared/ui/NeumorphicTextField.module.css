@@ -1,0 +1,74 @@
+.field {
+  --neumorphic-button-radius: var(--field-radius);
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: var(--field-height);
+  font-size: var(--field-font-size);
+  font-weight: var(--field-font-weight);
+  line-height: var(--field-line-height);
+}
+
+.field[data-multiline='true'] {
+  height: auto;
+}
+
+.field[data-disabled='true'] {
+  opacity: var(--field-disabled-opacity);
+  pointer-events: none;
+}
+
+.field[data-fit-placeholder='true'] {
+  width: max-content;
+}
+
+.sizingText {
+  display: block;
+  padding: 0 var(--field-padding-inline);
+  visibility: hidden;
+  white-space: pre;
+}
+
+.control {
+  appearance: none;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0 var(--field-padding-inline);
+  text-rendering: inherit;
+}
+
+.control[data-multiline='true'] {
+  min-height: var(--field-multiline-min-height);
+  height: auto;
+  padding: var(--field-multiline-padding-block) var(--field-padding-inline);
+  resize: none;
+}
+
+.field[data-fit-placeholder='true'] .control {
+  position: absolute;
+  inset: 0;
+}
+
+.field[data-trailing-action='true'] .control {
+  padding-right: var(--field-trailing-padding);
+}
+
+.control::placeholder {
+  color: currentColor;
+  opacity: var(--field-placeholder-opacity);
+}
+
+.control::-webkit-search-decoration,
+.control::-webkit-search-cancel-button {
+  appearance: none;
+  display: none;
+}

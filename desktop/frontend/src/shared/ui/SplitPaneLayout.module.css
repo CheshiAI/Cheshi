@@ -1,0 +1,75 @@
+.split,
+.region {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.region {
+  display: flex;
+}
+
+.split {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  background: transparent;
+}
+
+.region {
+  overflow: hidden;
+}
+
+.separator {
+  position: relative;
+  z-index: 3;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.separator::after {
+  position: absolute;
+  border-radius: 1px;
+  background: var(--split-pane-border, var(--divider));
+  content: "";
+  transition: background-color .14s ease;
+}
+
+.split[data-axis="columns"] > .separator {
+  width: 7px;
+  justify-self: center;
+  cursor: col-resize;
+}
+
+.split[data-axis="columns"] > .separator::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+.split[data-axis="rows"] > .separator {
+  height: 7px;
+  align-self: center;
+  cursor: row-resize;
+}
+
+.split[data-axis="rows"] > .separator::after {
+  right: 0;
+  top: 50%;
+  left: 0;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.separator:hover::after,
+.separator:focus-visible::after,
+.split[data-dragging="true"] > .separator::after {
+  background: var(--split-pane-accent, var(--accent));
+}

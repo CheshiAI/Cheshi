@@ -1,0 +1,233 @@
+.logBranches {
+  composes: neumorphic-surface-tokens from global;
+  min-height: 250px;
+  max-height: 250px;
+  flex: 0 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--divider);
+  background: transparent;
+  padding: 8px 0;
+}
+
+.logBranchGroupToggle,
+.logRemoteToggle,
+.logBranchRow {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  align-items: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.logBranchGroupToggle,
+.logRemoteToggle,
+.logBranchRow {
+  cursor: pointer;
+  text-align: left;
+}
+
+.logBranchGroup,
+.logRemoteGroup {
+  min-width: 0;
+}
+
+.logBranchChildren {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    grid-template-rows 180ms cubic-bezier(.22, 1, .36, 1),
+    opacity 140ms ease;
+}
+
+.logBranchChildren[data-expanded='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.logBranchChildren > div {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.logBranchChevron {
+  transform: rotate(0deg);
+  transition: transform 180ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.logBranchChevron[data-expanded='true'] {
+  transform: rotate(90deg);
+}
+
+.logBranchGroupToggle:hover,
+.logRemoteToggle:hover,
+.logBranchRow:hover,
+.logBranchRow[data-selected='true'],
+.logBranchRow[data-context-menu-open='true'] {
+  background: var(--dropdown-selection-bg);
+  color: var(--dropdown-selection-text);
+}
+
+.logBranchGroupToggle {
+  gap: 6px;
+  padding: 0 var(--space-default);
+}
+
+.logBranchGroupToggle svg,
+.logRemoteToggle svg,
+.logBranchRow svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  stroke-width: 1.7;
+}
+
+.logBranchGroupToggle span,
+.logRemoteToggle span,
+.logBranchName {
+  overflow: hidden;
+  min-width: 0;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logBranchGroupToggle span,
+.logRemoteToggle span {
+  flex: 1 1 auto;
+}
+
+.logBranchGroupToggle span {
+  font-weight: 600;
+}
+
+.logRemoteToggle {
+  gap: 6px;
+  padding: 0 var(--space-default) 0 34px;
+}
+
+.logRemoteToggle svg:nth-child(2) {
+  color: #8cb8c5;
+}
+
+.logBranchRow {
+  gap: 8px;
+  padding: 0 var(--space-default) 0 36px;
+}
+
+.logBranchRow[data-nested='true'] {
+  padding-left: 56px;
+}
+
+.logBranchRow > svg {
+  color: #8cb8c5;
+}
+
+.logBranchIdentity {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.logBranchName {
+  flex: 0 1 auto;
+}
+
+.logBranchTracking {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.logBranchTracking small {
+  gap: 2px;
+}
+
+.logBranchTracking small svg {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+}
+
+.logBranchTracking small[data-direction='behind'] {
+  color: #e08c84;
+}
+
+.logBranchTracking small[data-direction='ahead'] {
+  color: #8cb8c5;
+}
+
+.logBranchRow em,
+.logBranchRow code {
+  overflow: hidden;
+  max-width: 72px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logBranchRow[aria-current='true'] em {
+  text-transform: uppercase;
+}
+
+.logBranchEmpty {
+  display: flex;
+  height: 32px;
+  align-items: center;
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+  padding: 0 var(--space-default) 0 36px;
+}
+
+.logBranchCreator {
+  display: grid;
+  gap: 7px;
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
+  padding: 8px var(--space-default);
+}
+
+.logBranchCreator > span {
+  overflow: hidden;
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logBranchCreator > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 22px;
+  align-items: center;
+  gap: 6px;
+}
+
+.historyBranchName {
+  overflow: hidden;
+  max-width: 45%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.historyStatus {
+  margin: 0;
+  padding: var(--space-default);
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+}
+
+.historyStatus[role='alert'] {
+  color: #e59a91;
+}

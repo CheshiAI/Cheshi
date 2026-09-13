@@ -1,0 +1,19 @@
+.login {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-default);
+  min-height: 100%;
+  padding: var(--space-default);
+  color: var(--sub-text);
+  text-align: center;
+  font-size: 12px;
+}
+.login .mark { width: 48px; height: 48px; stroke-width: 1.5; }
+.login h2 { margin: 0; color: var(--title); font-size: 24px; font-weight: 600; }
+.login p { max-width: 340px; margin: 0; }
+.login > span { max-width: 420px; overflow-wrap: anywhere; }
+.login .continueButton { min-width: 220px; max-width: 100%; font-size: 12px; }
+.login .error { color: var(--error, #e99b9b); }

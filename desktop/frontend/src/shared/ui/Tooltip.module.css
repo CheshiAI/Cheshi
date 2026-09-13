@@ -1,0 +1,21 @@
+.anchor {
+  position: fixed;
+  z-index: 120;
+  width: max-content;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+}
+
+.content {
+  --liquid-glass-radius: 8px;
+  padding: 4px 8px;
+  border-color: var(--divider);
+  background: var(--divider);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

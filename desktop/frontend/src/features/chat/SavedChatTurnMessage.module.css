@@ -1,0 +1,36 @@
+.context {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-default);
+  min-width: 0;
+  font-size: 12px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--icon-default);
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: var(--icon-default);
+  color: var(--label-color);
+}
+
+.label svg {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex-shrink: 0;
+}
+
+.title {
+  overflow-wrap: anywhere;
+}
+
+.context h3 {
+  margin: 0 0 var(--icon-default);
+  color: var(--label-color);
+  font-size: 11px;
+}

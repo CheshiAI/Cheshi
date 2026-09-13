@@ -1,0 +1,54 @@
+{
+  "name": "@cheshi/codegraph",
+  "version": "1.5.0",
+  "private": true,
+  "description": "Local semantic code-intelligence engine for Cheshi.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/colbymchenry/codegraph.git"
+  },
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "bin": {
+    "codegraph": "./src/bin/cheshi-codegraph.ts"
+  },
+  "scripts": {
+    "build": "bun run typecheck",
+    "typecheck:src": "bun run --bun tsc -p tsconfig.json --noEmit",
+    "typecheck:tests": "bun run --bun tsc -p __tests__/tsconfig.json --noEmit",
+    "typecheck": "bun run typecheck:src && bun run typecheck:tests",
+    "check": "bun run typecheck && bun test",
+    "preuninstall": "bun src/bin/uninstall.ts",
+    "dev": "bun run --bun tsc --noEmit --watch",
+    "build:kernel": "bash scripts/build-kernel.sh",
+    "cli": "bun src/bin/cheshi-codegraph.ts",
+    "cli:project-local": "bun src/bin/codegraph.ts",
+    "dump:graph": "bun src/devtools/dump-graph.ts",
+    "extraction:verify": "bun src/devtools/add-lang/verify-extraction.ts",
+    "grammar:check": "bun src/devtools/add-lang/check-grammar.ts",
+    "grammar:dump-ast": "bun src/devtools/add-lang/dump-ast.ts",
+    "kernel:parity": "bun src/devtools/kernel-parity.ts",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage --coverage-reporter=text --coverage-reporter=lcov"
+  },
+  "keywords": [
+    "code-intelligence",
+    "knowledge-graph",
+    "static-analysis"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "^1.3.0",
+    "commander": "^14.0.2",
+    "ignore": "^7.0.5",
+    "jsonc-parser": "^3.3.1",
+    "picomatch": "^4.0.3",
+    "tree-sitter-wasms": "^0.1.11",
+    "web-tree-sitter": "^0.25.3"
+  },
+  "engines": {
+    "bun": ">=1.3.14"
+  }
+}

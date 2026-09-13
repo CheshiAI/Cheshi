@@ -1,0 +1,21 @@
+{
+  "name": "@cheshi/codegraph-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./server.ts",
+    "./workspace": "./workspace.ts",
+    "./workspace-diff": "./workspace-diff.ts"
+  },
+  "bin": {
+    "cheshi-codegraph-server": "./cli.ts"
+  },
+  "scripts": {
+    "cli": "bun cli.ts"
+  },
+  "dependencies": {
+    "@cheshi/codegraph": "workspace:*",
+    "commander": "^14.0.2"
+  }
+}

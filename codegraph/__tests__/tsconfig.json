@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noEmit": true,
+    "types": ["bun"]
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["./fixtures/**", "../node_modules"]
+}

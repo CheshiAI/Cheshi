@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "target": "ES2023",
+    "types": ["bun"]
+  },
+  "include": ["../backend/codegraph-server/cli.ts", "./*.ts"]
+}

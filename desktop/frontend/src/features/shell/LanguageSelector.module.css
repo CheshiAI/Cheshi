@@ -1,0 +1,23 @@
+.trigger { flex: 0 0 auto; white-space: nowrap; }
+.popover {
+  -webkit-app-region: no-drag;
+  position: fixed;
+  inset: auto var(--space-8) calc(var(--workspace-status-bar-height) + var(--space-8)) auto;
+  width: 140px;
+  max-width: calc(100vw - 2 * var(--space-default));
+  max-height: calc(100dvh - var(--workspace-status-bar-height) - 2 * var(--space-default));
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+}
+.menu .option { min-height: 28px; padding: 0 var(--space-8); }
+.option[aria-checked='true'] { background: var(--dropdown-selection-bg); color: var(--active-text); }
+.menu {
+  --panel-backdrop-blur: 24px;
+  --panel-backdrop-saturation: 88%;
+  background: transparent;
+  color: var(--text);
+}

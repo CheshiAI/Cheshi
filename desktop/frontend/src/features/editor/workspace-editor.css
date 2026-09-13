@@ -1,0 +1,74 @@
+@import './workspace-editor-layout.css';
+@import './workspace-editor-search.css';
+@import './workspace-editor-assist.css';
+@import './workspace-editor-problems.css';
+@import './workspace-editor-controls.css';
+
+.workspace-editor-preview {
+  display: grid;
+  min-height: 0;
+  flex: 1 1 auto;
+  place-items: center;
+  overflow: auto;
+  padding: calc(var(--space-default) * 2);
+}
+
+.workspace-editor-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-panel);
+  object-fit: contain;
+}
+
+.workspace-editor-empty {
+  display: flex;
+  width: min(100%, 620px);
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  color: var(--editor-muted);
+  text-align: center;
+}
+
+.workspace-editor-empty-mark {
+  display: inline-grid;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--editor-accent) 24%, transparent);
+  border-radius: 15px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--editor-accent) 28%, transparent), color-mix(in srgb, var(--editor-accent) 12%, transparent));
+  color: var(--editor-accent);
+  margin-bottom: 18px;
+}
+
+.workspace-editor-empty-mark svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1.5;
+}
+
+.workspace-editor-empty strong {
+  color: var(--editor-text);
+  font-size: 22px;
+  font-weight: 550;
+  letter-spacing: -.025em;
+  line-height: 28px;
+}
+
+.workspace-editor-empty p,
+.workspace-editor-preview p {
+  margin: var(--space-8) 0 0;
+  color: var(--editor-muted);
+  font-size: var(--font-size-default);
+  line-height: 18px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-editor-spinner { animation: none; }
+}

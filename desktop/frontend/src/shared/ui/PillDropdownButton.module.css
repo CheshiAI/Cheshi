@@ -1,0 +1,27 @@
+.trigger {
+  --neumorphic-button-radius: 14px;
+  display: flex;
+  width: auto;
+  height: 28px;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: #aeb5b2;
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 14px;
+  padding: 0 9px;
+}
+.trigger:disabled { cursor: not-allowed; opacity: .5; }
+.trigger[aria-pressed='true'] {
+  background: var(--dropdown-selection-bg);
+  color: var(--dropdown-selection-text);
+}
+.trigger > svg { width: 12px; height: 12px; flex: 0 0 auto; stroke-width: 1.75; }
+.trigger > span { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+.trigger > span:first-of-type { font-weight: 550; }
+.trigger > .chevron { margin-left: auto; color: #858c8d; transition: transform .16s ease; }
+.trigger[aria-expanded='true'] > .chevron { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .trigger > .chevron { transition: none; }
+}

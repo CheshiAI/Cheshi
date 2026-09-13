@@ -1,0 +1,12 @@
+{
+  "extends": "../frontend/tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "vite/client",
+      "bun"
+    ]
+  },
+  "include": [
+    "./*.tsx"
+  ]
+}

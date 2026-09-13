@@ -1,0 +1,3 @@
+[test]
+root = "./__tests__"
+timeout = 5000

@@ -1,0 +1,14 @@
+.item:disabled {
+  cursor: default;
+  opacity: .42;
+}
+
+.item:disabled:hover {
+  background: transparent;
+  color: inherit;
+}
+.menu > button { color: var(--text); }
+.menu > button:not(:disabled):is(:hover, :focus-visible, :active, [aria-selected='true'], [data-active='true']) {
+  color: var(--active-text);
+}
+.menu > button > svg { color: inherit; }

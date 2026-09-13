@@ -1,0 +1,39 @@
+version: "1.0"
+
+profile:
+  base:
+    name: "Project Default"
+  inspections:
+    - group: ALL
+      ignore:
+        - "**/*.md"
+        - "**/dist/**"
+        - "**/coverage/**"
+        - "**/release/**"
+        - "**/out/**"
+        - "desktop/runtime/**"
+        - ".build/**"
+        - ".data/**"
+        - "**/*.tsbuildinfo"
+
+        - ".codegraph/**"
+        - ".docs/**"
+        - ".idea/**"
+        - ".brains/**"
+        - "codegraph/__tests__/fixtures/kernel-parity/**"
+        - "codegraph/codegraph-kernel/grammars/**"
+        - "codegraph/codegraph-kernel/target/**"
+        - "codegraph/src/extraction/wasm/**"
+        - "desktop/lib/electron-libghostty/native/**"
+        - "desktop/native/electron-libghostty/build/**"
+        - "desktop/native/electron-libghostty/native-deps/**"
+        - "desktop/native/ghostty-bridge/.build/**"
+        - "node_modules/**"
+        - "vendor/**"
+
+include:
+  - name: InjectedReferences
+  - name: SqlResolve
+  - name: SqlShadowingAlias
+
+linter: jetbrains/qodana-js:2026.2

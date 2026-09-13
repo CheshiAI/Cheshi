@@ -1,0 +1,47 @@
+.input {
+  appearance: none;
+  box-sizing: border-box;
+  min-width: 0;
+  height: var(--neumorphic-input-height, 34px);
+  border: 1px solid var(--neumorphic-button-edge, rgba(255, 255, 255, .1));
+  border-radius: 8px;
+  outline: 0;
+  background: linear-gradient(
+    145deg,
+    var(--neumorphic-button-surface-strong, rgba(228, 235, 241, .82)),
+    var(--neumorphic-button-surface, rgba(228, 235, 241, .68))
+  );
+  background-clip: padding-box;
+  color: var(--neumorphic-input-color, inherit);
+  font-size: var(--neumorphic-input-font-size, 12px);
+  font-weight: 400;
+  line-height: 16px;
+  padding: 0 10px;
+}
+
+.input:hover {
+  color: var(--neumorphic-input-color, inherit);
+}
+
+.input::placeholder {
+  color: var(--neumorphic-input-placeholder-color, currentColor);
+  font-size: inherit;
+  opacity: .62;
+}
+
+.input:focus {
+  border-color: var(
+    --neumorphic-input-focus-border,
+    var(--neumorphic-button-edge, rgba(255, 255, 255, .1))
+  );
+}
+
+.input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--neumorphic-button-active-color, currentColor) 42%, transparent);
+  outline-offset: 1px;
+}
+
+.input:disabled {
+  cursor: default;
+  opacity: .48;
+}

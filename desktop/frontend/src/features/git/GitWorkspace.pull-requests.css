@@ -1,0 +1,773 @@
+.pullRequestRow {
+  --git-row-hover-background: var(--dropdown-selection-bg);
+  --git-row-selected-background: var(--dropdown-selection-bg);
+  box-sizing: border-box;
+  height: 54px;
+  gap: 10px;
+  padding: 7px var(--space-default);
+}
+
+.pullRequestRow > svg {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+  color: #9cc28f;
+}
+
+.pullRequestDraftBadge {
+  composes: badge from '../../shared/ui/Badge.module.css';
+  --badge-background: rgba(166, 117, 197, .18);
+  --badge-color: #c4a1dc;
+}
+
+.workspace .pullRequestDetail {
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow: hidden;
+  padding: 0;
+}
+
+.workspace .pullRequestBody {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  padding: 0;
+}
+
+.workspace .pullRequestDetail > .emptyState {
+  flex: 1 1 auto;
+}
+
+.pullRequestDetail > .pullRequestEmptyState {
+  --empty-text: var(--title);
+  --empty-muted: var(--sub-text);
+}
+
+.pullRequestSelectionEmpty {
+  flex-direction: column;
+  gap: var(--space-default);
+  font-size: 10px;
+}
+
+.pullRequestSelectionHeading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-default);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.pullRequestSelectionEmpty > span:last-child {
+  font-size: inherit;
+  line-height: normal;
+}
+
+.workspace .pullRequestSelectionMark {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 auto;
+  color: inherit;
+  stroke-width: 2;
+}
+
+.pullRequestBranchFlow,
+.pullRequestBranchRef,
+.pullRequestActionGroup,
+.pullRequestDetail dt {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.pullRequestState {
+  composes: badge from '../../shared/ui/Badge.module.css';
+  gap: 6px;
+}
+
+.pullRequestState[data-state='open'] {
+  --badge-background: var(--dropdown-selection-bg);
+  --badge-color: var(--dropdown-selection-text);
+}
+
+.pullRequestState[data-state='draft'] {
+  --badge-background: color-mix(in srgb, #b69bcf 16%, transparent);
+  --badge-color: #b69bcf;
+}
+
+.pullRequestState[data-state='merged'] {
+  --badge-background: color-mix(in srgb, #9a6ee8 16%, transparent);
+  --badge-color: #b99af0;
+}
+
+.pullRequestState svg {
+  width: 10px;
+  height: 10px;
+}
+
+.pullRequestMergedBody {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: clamp(var(--space-default), 5vw, 48px);
+}
+
+.pullRequestMergedCard {
+  display: grid;
+  width: min(100%, 600px);
+  gap: var(--space-default);
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  background: var(--dropdown-selection-bg);
+  box-sizing: border-box;
+  padding: var(--space-default);
+}
+
+.pullRequestMergedHeading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pullRequestMergedMark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border: 1px solid color-mix(in srgb, #8cb8c5 22%, var(--divider));
+  border-radius: 50%;
+  background: color-mix(in srgb, #8cb8c5 10%, transparent);
+  color: #8cb8c5;
+  place-items: center;
+}
+
+.pullRequestMergedMark svg {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  stroke-width: 1.6;
+}
+
+.pullRequestMergedCopy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.pullRequestMergedCopy h2,
+.pullRequestMergedCopy p {
+  margin: 0;
+}
+
+.pullRequestMergedCopy h2 {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.pullRequestMergedCopy p,
+.pullRequestMergedFooter small,
+.pullRequestMergedUnavailable {
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.pullRequestMergedCopy code {
+  border-radius: 5px;
+  background: color-mix(in srgb, #8cb8c5 12%, transparent);
+  color: var(--dropdown-selection-text);
+  font: 9px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  padding: 2px 5px;
+}
+
+.pullRequestMergedFooter {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--divider);
+  padding-top: var(--space-default);
+}
+
+.pullRequestMergedFooter small {
+  min-width: 0;
+}
+
+.pullRequestMergedCleanupCopy {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.pullRequestMergedCleanupCopy small {
+  flex: none;
+}
+
+.pullRequestMergedStatus,
+.pullRequestMergedBlocked {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  padding: 0 12px;
+}
+
+.pullRequestMergedFooter button,
+.pullRequestMergedBlocked {
+  align-self: flex-start;
+}
+
+.pullRequestMergedStatus svg,
+.pullRequestMergedBlocked svg {
+  width: 12px;
+  height: 12px;
+}
+
+.pullRequestMergedStatus {
+  width: 100%;
+  border-radius: 8px;
+  background: color-mix(in srgb, #83b99b 14%, transparent);
+  box-sizing: border-box;
+  color: #83b99b;
+  font-weight: 600;
+}
+
+.pullRequestMergedBlocked {
+  border-radius: 8px;
+  background: color-mix(in srgb, #d6aa69 12%, transparent);
+  color: #d6aa69;
+  font-weight: 600;
+}
+
+.pullRequestMergedUnavailable {
+  max-width: 280px;
+  text-align: right;
+}
+
+.pullRequestOverview {
+  composes: neumorphic-surface-tokens from global;
+  display: grid;
+  flex: 0 0 auto;
+  gap: 12px;
+  padding: var(--space-default);
+}
+
+.pullRequestOverviewHeading {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.pullRequestOverviewHeading > span {
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: .1em;
+  line-height: 12px;
+  text-transform: uppercase;
+}
+
+.pullRequestOverview h2 {
+  max-width: 720px;
+  overflow: hidden;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pullRequestBranchFlow {
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--sidebar-section-label-color);
+}
+
+.pullRequestBranchFlow > svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+}
+
+.pullRequestBranchRef {
+  max-width: min(100%, 240px);
+  height: 24px;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--dropdown-selection-bg);
+  color: var(--dropdown-selection-text);
+  box-sizing: border-box;
+  padding: 0 9px;
+}
+
+.pullRequestBranchRef svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+}
+
+.pullRequestBranchRef code {
+  overflow: hidden;
+  font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pullRequestDetail dl {
+  display: grid;
+  min-height: 46px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--divider);
+  border-radius: 10px;
+  background: var(--neumorphic-button-surface);
+  margin: 0;
+}
+
+.pullRequestDetail dl div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.pullRequestDetail dl div + div {
+  border-left: 1px solid var(--divider);
+}
+
+.pullRequestDetail dt {
+  gap: 6px;
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+}
+
+.pullRequestDetail dt svg {
+  width: 11px;
+  height: 11px;
+}
+
+.pullRequestDetail dd {
+  overflow: hidden;
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pullRequestReview {
+  color: var(--sidebar-section-label-color);
+}
+
+.pullRequestReview[data-state='approved'] {
+  color: #83b99b;
+}
+
+.pullRequestReview[data-state='changes_requested'] {
+  color: #e59a91;
+}
+
+.pullRequestActivityHeader {
+  display: flex;
+  min-height: var(--header-height);
+  flex: 0 0 var(--header-height);
+  align-items: center;
+  gap: var(--space-default);
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
+  padding: 0 var(--space-default);
+}
+
+.pullRequestActivityTitle {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.pullRequestActivityTitle strong {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pullRequestActivityMark {
+  --neumorphic-button-radius: 50%;
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+  color: #8cb8c5;
+}
+
+.pullRequestActivityMark svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 1.7;
+}
+
+.pullRequestDetailTabs {
+  composes: neumorphic-surface-tokens from global;
+  width: auto;
+  flex: 0 1 auto;
+}
+
+.pullRequestDetailTabs button {
+  justify-content: center;
+  color: var(--sidebar-section-label-color);
+}
+
+.pullRequestDetailTabs button:hover,
+.pullRequestDetailTabs button[data-active='true'] { color: var(--active-text); }
+.pullRequestActivityTitle > strong { color: var(--sidebar-section-label-color); }
+
+.pullRequestBranchRef[data-kind='base'] code { font: inherit; }
+
+.pullRequestActivity {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.pullRequestActivity[data-tab='changes'] {
+  overflow: hidden;
+}
+
+.workspace .pullRequestChangesViewer {
+  min-height: 0;
+  flex: 1 1 auto;
+  border: 0;
+  background: var(--app-bg);
+}
+
+.pullRequestChangesViewer > .panelHeader {
+  background: var(--git-row-selected-background);
+}
+
+.workspace .pullRequestCommentsEmpty {
+  --empty-text: var(--title);
+  --empty-muted: var(--sub-text);
+}
+
+.pullRequestActivityEmpty {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.pullRequestActivityState {
+  min-height: 180px;
+  flex: 1 1 auto;
+}
+
+.pullRequestActivityState > span:last-child {
+  max-width: 320px;
+}
+
+.pullRequestComments,
+.pullRequestCommits {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pullRequestCommits {
+  gap: 0;
+}
+
+.pullRequestComments {
+  gap: 0;
+  padding: 0;
+}
+
+.pullRequestComments > .pullRequestComment {
+  width: 100%;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.pullRequestComments > .pullRequestComment:hover {
+  background: var(--dropdown-selection-bg);
+}
+
+.pullRequestComments > .pullRequestComment:not(:last-child) {
+  border-bottom: 1px solid var(--divider);
+}
+
+.pullRequestComment {
+  overflow: hidden;
+  border: 1px solid var(--divider);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--dropdown-selection-text) 3%, transparent);
+}
+
+.pullRequestCommentHeader {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--divider);
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+  padding: 0 10px;
+}
+
+.pullRequestCommentHeader > span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.pullRequestCommentHeader strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pullRequestCommentBadge {
+  composes: badge from '../../shared/ui/Badge.module.css';
+  --badge-background: color-mix(in srgb, #8cb8c5 12%, transparent);
+  --badge-color: #8cb8c5;
+}
+
+.pullRequestCommentBadge[data-kind='pending'] {
+  --badge-color: #d8bc72;
+}
+
+.pullRequestCommentBadge[data-kind='resolved'] {
+  --badge-color: #83b99b;
+}
+
+.pullRequestCommentHeader svg {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+}
+
+.pullRequestCommentHeader time {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.pullRequestComment p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.pullRequestCommentForm {
+  display: grid;
+  gap: 8px;
+}
+
+.pullRequestCommentForm > label {
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.pullRequestCommentForm .pullRequestCommentInput[data-multiline='true'] {
+  height: 86px;
+}
+
+.pullRequestCommentInput textarea[data-multiline='true'] {
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+}
+
+.pullRequestCommentForm textarea:disabled {
+  cursor: wait;
+}
+
+.pullRequestCommentFooter {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pullRequestCommentFooter > span {
+  overflow: hidden;
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pullRequestCommit {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px var(--space-default);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pullRequestCommit:hover,
+.pullRequestCommit[aria-pressed='true'] {
+  background: var(--dropdown-selection-bg);
+}
+
+.pullRequestCommit:focus-visible {
+  outline: 1px solid var(--dropdown-selection-text);
+  outline-offset: -1px;
+}
+
+.pullRequestCommit:not(:last-child) {
+  border-bottom: 1px solid var(--divider);
+}
+
+.pullRequestCommitIcon {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border-radius: 50%;
+  background: color-mix(in srgb, #8cb8c5 12%, transparent);
+  color: #8cb8c5;
+  place-items: center;
+}
+
+.pullRequestCommitIcon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.pullRequestCommitCopy {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 3px;
+}
+
+.pullRequestCommitCopy strong,
+.pullRequestCommitCopy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pullRequestCommitCopy strong {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.pullRequestCommitCopy small,
+.pullRequestCommit > code {
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+}
+
+.pullRequestCommit > code {
+  flex: 0 0 auto;
+}
+
+.pullRequestActions {
+  min-height: 42px;
+  max-height: 42px;
+  flex: 0 0 42px;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 3.5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-top: 1px solid var(--divider);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 calc((42px - 34px - 1px) / 2);
+}
+
+.pullRequestActionGroup {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 3.5px;
+}
+
+.pullRequestActionGroup:last-child {
+  margin-left: auto;
+}
+
+.mergeConfirmation {
+  --liquid-glass-radius: 0;
+  display: grid;
+  width: 100%;
+  gap: 8px;
+  box-sizing: border-box;
+  border-width: 0 0 1px;
+  margin: 0;
+  padding: var(--space-default);
+}
+
+.mergeConfirmation > strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mergeConfirmation > span {
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.mergeConfirmationControls {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+  align-items: end;
+  gap: var(--space-default);
+  margin-top: 8px;
+}
+
+.mergeConfirmationActions {
+  display: flex;
+  min-width: 0;
+  justify-content: flex-end;
+  gap: 8px;
+}

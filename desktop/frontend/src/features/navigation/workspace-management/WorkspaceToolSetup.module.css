@@ -1,0 +1,28 @@
+.setup {
+  display: grid;
+  gap: var(--space-default);
+  padding: var(--space-default) 0;
+  color: var(--text);
+  font: 12px/1.5 var(--font-ui), sans-serif;
+  text-align: left;
+}
+.heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-default); }
+.setup h2,
+.setup h3 { margin: 0; color: var(--sidebar-section-label-color); font-size: 12px; font-weight: 600; }
+.setup p { margin: 0; }
+.steps { display: grid; gap: var(--space-default); margin: 0; padding: 0; list-style: none; }
+.steps > li { display: grid; min-width: 0; gap: var(--space-default); }
+.command {
+  composes: neumorphic-surface-tokens from global;
+  --liquid-glass-radius: var(--button-radius);
+  display: flex;
+  align-items: center;
+  gap: var(--space-default);
+  min-width: 0;
+  padding: var(--space-default);
+  background: var(--neumorphic-button-surface);
+}
+.prompt { color: var(--sidebar-section-label-color); }
+.command code { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); font-size: 12px; user-select: text; }
+.feedback { color: var(--sidebar-section-label-color); }
+.setup .error { color: var(--error, #e99b9b); overflow-wrap: anywhere; }

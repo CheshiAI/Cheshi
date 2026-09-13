@@ -1,0 +1,14 @@
+.notice {
+  --liquid-glass-radius: 10px;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--icon-default);
+  padding: var(--space-default);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.icon { width: var(--icon-size-default); height: var(--icon-size-default); flex: 0 0 auto; color: var(--sub-text); }
+.message { min-width: 0; flex: 1; overflow-wrap: anywhere; white-space: pre-wrap; }

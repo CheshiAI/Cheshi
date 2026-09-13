@@ -1,0 +1,23 @@
+.panel { --liquid-glass-radius: 12px; padding: var(--space-default); margin-bottom: 8px; background: transparent; color: var(--text); font-size: 12px; }
+.heading { display: flex; align-items: center; gap: var(--icon-default); margin: 0 0 var(--space-default); font-size: 12px; }
+.heading svg { width: var(--icon-size-default); height: var(--icon-size-default); flex: 0 0 auto; }
+.fields { display: flex; flex-direction: column; gap: var(--space-default); max-height: min(320px, 40vh); overflow: auto; min-width: 0; }
+.question { display: flex; flex-direction: column; gap: var(--icon-default); border: 0; margin: 0; padding: 0; min-width: 0; }
+.question legend { font-weight: 600; margin-bottom: var(--icon-default); }
+.question p, .message { margin: 0; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.option { display: flex; align-items: flex-start; gap: var(--icon-default); padding: 8px 12px; border: 1px solid var(--divider); border-radius: 8px; cursor: pointer; }
+.option:has(input:checked), .option:hover:has(input:enabled) { background: var(--dropdown-selection-bg); color: var(--dropdown-selection-text); }
+.option:has(input:disabled) { cursor: not-allowed; }
+.option input { flex: 0 0 auto; margin: 3px 0 0; accent-color: var(--text); cursor: inherit; }
+.option span, .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.option strong { font-weight: 500; }
+.option small, .field small { color: var(--sidebar-section-label-color); line-height: 1.5; }
+.field > input, .field > select { min-height: 30px; box-sizing: border-box; width: 100%; padding: 6px 8px; border: 1px solid var(--divider); border-radius: 6px; color: var(--text); background: var(--app-bg); font: inherit; }
+.field input { cursor: text; }
+.field select { cursor: pointer; }
+.actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--icon-default); margin-top: var(--space-default); }
+.externalLink { display: inline-flex; align-items: center; gap: var(--icon-default); color: var(--sub-text); overflow-wrap: anywhere; cursor: pointer; }
+.externalLink:is(:hover, :focus-visible) { color: var(--dropdown-selection-text); }
+.externalLink svg { width: var(--icon-size-default); height: var(--icon-size-default); flex: 0 0 auto; }
+.panel :disabled { cursor: not-allowed; opacity: .5; }
+.error { margin: var(--icon-default) 0 0; line-height: 1.5; color: var(--sub-text); }

@@ -1,0 +1,136 @@
+.list {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  padding: 0;
+  scrollbar-width: none;
+}
+
+.list::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  width: max-content;
+  height: auto;
+  min-width: var(--tab-min-width);
+  max-width: var(--tab-max-width);
+  flex: 0 0 auto;
+  align-items: center;
+  border: 0;
+  border-right: 1px solid var(--divider);
+  border-radius: 0;
+  background: transparent;
+  transition: background-color var(--tab-transition-duration) ease, color var(--tab-transition-duration) ease;
+}
+
+.tab:hover,
+.tab[data-active='true'] {
+  background: var(--dropdown-selection-bg);
+  color: var(--dropdown-selection-text);
+}
+
+.trigger {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.trigger {
+  display: flex;
+  min-width: 0;
+  align-self: stretch;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--icon-default);
+  color: var(--sidebar-section-label-color);
+  font-size: var(--tab-font-size);
+  font-weight: var(--tab-font-weight);
+  line-height: var(--tab-line-height);
+  padding: 0 var(--icon-default) 0 var(--space-default);
+  text-align: left;
+}
+
+.tab:hover .trigger,
+.tab[data-active='true'] .trigger {
+  color: var(--dropdown-selection-text);
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.close {
+  --neumorphic-button-radius: 50%;
+  visibility: hidden;
+  display: grid;
+  width: var(--compact-icon-button-size);
+  height: var(--compact-icon-button-size);
+  flex: 0 0 var(--compact-icon-button-size);
+  place-items: center;
+  margin-right: var(--icon-default);
+  padding: 0;
+  cursor: pointer;
+}
+
+.tab[data-active='true'] .close,
+.tab:hover .close {
+  visibility: visible;
+}
+
+.tab[data-active='true'] {
+  background: transparent;
+}
+
+.tab[data-active='true']::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: var(--tab-indicator-height);
+  background: var(--divider);
+  content: '';
+  pointer-events: none;
+}
+
+.trigger > svg {
+  color: var(--sidebar-section-label-color);
+  width: var(--tab-icon-size);
+  height: var(--tab-icon-size);
+  flex: 0 0 auto;
+  stroke-width: var(--tab-icon-stroke-width);
+}
+
+.tab:hover .trigger > svg,
+.tab[data-active='true'] .trigger > svg {
+  color: var(--active-text);
+}
+
+.close svg {
+  width: var(--compact-icon-size);
+  height: var(--compact-icon-size);
+  stroke-width: var(--compact-icon-stroke-width);
+}
+
+.trigger:focus-visible,
+.close:focus-visible {
+  outline: var(--focus-outline-width) solid var(--flat-tab-accent, var(--dropdown-selection-text));
+  outline-offset: var(--focus-outline-inset);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab {
+    transition: none;
+  }
+}

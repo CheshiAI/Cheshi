@@ -1,0 +1,10 @@
+/* Shared editor control geometry; consumers retain state and placement styles. */
+.workspace-editor-action,
+.workspace-editor-problems-icon {
+  --neumorphic-button-radius: 50%;
+  display: inline-grid;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  flex: 0 0 var(--icon-button-size);
+  place-items: center;
+}

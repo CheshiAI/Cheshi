@@ -1,0 +1,53 @@
+.list {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--icon-default);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.list::-webkit-scrollbar {
+  display: none;
+}
+
+.button {
+  display: inline-flex;
+  height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--editor-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 400;
+  padding: 0 10px;
+  transition: background-color .16s ease, color .16s ease;
+  white-space: nowrap;
+}
+
+.button:hover {
+  background: color-mix(in srgb, var(--dropdown-selection-bg) 60%, transparent);
+  color: var(--editor-text);
+}
+
+.button[data-active='true'] {
+  background: var(--dropdown-selection-bg);
+  color: var(--dropdown-selection-text);
+  font-weight: 600;
+}
+
+.badge {
+  composes: badge from './Badge.module.css';
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+}

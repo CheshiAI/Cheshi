@@ -1,0 +1,232 @@
+.panel {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  font-size: 10px;
+  gap: var(--space-default);
+}
+
+.heading {
+  -webkit-app-region: no-drag;
+  user-select: none;
+  display: flex;
+  height: var(--header-height);
+  min-height: var(--header-height);
+  flex: 0 0 var(--header-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-default);
+}
+
+.headingLabel {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: .08em;
+  line-height: 14px;
+}
+
+.refreshButton svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 1.7;
+}
+
+.refreshButton {
+  -webkit-app-region: no-drag;
+  --neumorphic-button-radius: 50%;
+  --neumorphic-button-active-color: #d8dcde;
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  cursor: pointer;
+  padding: 0;
+  place-items: center;
+}
+
+.refreshButton:disabled {
+  cursor: default;
+  filter: saturate(.4);
+}
+
+.metrics {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-default);
+}
+
+.headingActions,
+.profileActions {
+  display: flex;
+  align-items: center;
+  gap: var(--icon-default);
+}
+
+.profile {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-8);
+}
+
+.profile + .profile {
+  padding-top: var(--space-default);
+  border-top: 1px solid var(--divider);
+}
+
+.profileHeading {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-default);
+  color: var(--text);
+  font-size: 10px;
+}
+
+.profileHeading > strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--sidebar-section-label-color);
+  font-weight: 500;
+  letter-spacing: normal;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profilePlan {
+  flex-shrink: 0;
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.metricFooter {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-default);
+}
+
+.metricFooter time {
+  min-width: 0;
+}
+
+.footerActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--icon-default);
+}
+
+.footerActions > .compactActionButton[data-size='icon'] {
+  width: var(--compact-icon-button-size);
+  height: var(--compact-icon-button-size);
+  min-height: var(--compact-icon-button-size);
+}
+
+.footerActions > .compactActionButton[data-size='icon'] > svg {
+  width: var(--compact-icon-size);
+  height: var(--compact-icon-size);
+  flex-basis: var(--compact-icon-size);
+}
+
+.footerActions > .activeButton:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.profileActions:empty {
+  display: none;
+}
+
+.metric {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 12px;
+  background: transparent;
+  padding: 12px;
+}
+
+.flatMetric {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  padding: 0;
+}
+
+.metricHeading span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metricHeading span,
+.metric time {
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: normal;
+  line-height: 16px;
+}
+
+.metricHeading strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metricHeading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.track {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .32);
+}
+
+.track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #86d4d6 0%, #d8a7c5 52%, #c5b4ee 100%);
+  transition: width .28s ease;
+}
+
+.status {
+  margin: 0;
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.spinning {
+  animation: account-usage-spin .8s linear infinite;
+}
+
+@keyframes account-usage-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track > span { transition: none; }
+  .spinning { animation: none; }
+}

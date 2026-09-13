@@ -1,0 +1,526 @@
+{
+  "scope": "Vendored Tree-sitter WASM grammars and related provenance. Package-manager dependencies and future application release binaries require their own notices.",
+  "verification_note": "Documented revision means a source-code comment or linked upstream record identifies it; it does not imply this audit rebuilt the artifact. Artifact SHA-256 identifies the exact repository file inspected.",
+  "grammars": [
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-arkts.wasm",
+      "sha256": "db0812971109457d22b3fe9dcdb1cd8e614fba2a338e220670bd254485753623",
+      "upstream": "https://github.com/harmony-contrib/tree-sitter-arkts",
+      "revision": "npm 0.2.0",
+      "license": "MIT",
+      "license_file": "LICENSES/arkts.LICENSE",
+      "license_source": "https://registry.npmjs.org/tree-sitter-arkts/-/tree-sitter-arkts-0.2.0.tgz",
+      "license_sha256": "048e4dcb7a71fb725495ebb3e7052d0e76dcb6705b828af8b9b461df10bcd8ca",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "Byte-identical to package/tree-sitter-arkts.wasm in the npm 0.2.0 archive used for the license.",
+      "license_archive_member": "package/LICENSE"
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-c.wasm",
+      "sha256": "a271e584616c7c3c0ac663f01cd05dd5f1a6c2ce6d4cd23096548985a95d0ccb",
+      "upstream": "https://github.com/tree-sitter/tree-sitter-c",
+      "revision": "v0.24.2",
+      "license": "MIT",
+      "license_file": "LICENSES/c.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter-c/v0.24.2/LICENSE",
+      "license_sha256": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-c_sharp.wasm",
+      "sha256": "6f69e1cae44e1c32c1eccc170dc5a9778fb94ff716f71113fe1f8c4299aa2f40",
+      "upstream": "https://github.com/tree-sitter/tree-sitter-c-sharp",
+      "revision": "v0.23.5",
+      "license": "MIT",
+      "license_file": "LICENSES/csharp.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter-c-sharp/v0.23.5/LICENSE",
+      "license_sha256": "778fb7d63b8c1844da315648c02f325c4713a6f4a5d19644fd413421422776d3",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-cfml.wasm",
+      "sha256": "17aeb294c58dd47045b470fc082ccceac3100c8e548b13764d4f3987a062322f",
+      "upstream": "https://github.com/cfmleditor/tree-sitter-cfml",
+      "revision": "master near v0.26.29 (exact grammar commit not recorded)",
+      "license": "MIT",
+      "license_file": "LICENSES/cfml.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/cfmleditor/tree-sitter-cfml/v0.26.29/LICENSE",
+      "license_sha256": "7e17ba5e26b0438ca04ebf2d9e7931da3080509da6625e117f6feb943ecf767a",
+      "evidence": [
+        "https://github.com/colbymchenry/codegraph/pull/1153",
+        "https://github.com/colbymchenry/codegraph/commit/816bacb7f2dac66ddcddb03b064f894bf77442d6"
+      ],
+      "verification": "Byte-identical to the linked immutable CodeGraph artifact; source rebuild was not repeated during this audit. CodeGraph PR 1153 reports a bit-for-bit rebuild of all three grammars with tree-sitter CLI 0.26.9 from master near v0.26.29. Exact upstream grammar commit remains unspecified; the license is preserved from v0.26.29.",
+      "artifact_source": "https://raw.githubusercontent.com/colbymchenry/codegraph/816bacb7f2dac66ddcddb03b064f894bf77442d6/src/extraction/wasm/tree-sitter-cfml.wasm",
+      "license_revision": "v0.26.29"
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-cfquery.wasm",
+      "sha256": "9d4eaaec46eec7e6400d4b8d6c85fac7dfe33867ed5b4e5c218dfa7851c32558",
+      "upstream": "https://github.com/cfmleditor/tree-sitter-cfml",
+      "revision": "master near v0.26.29 (exact grammar commit not recorded)",
+      "license": "MIT",
+      "license_file": "LICENSES/cfml.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/cfmleditor/tree-sitter-cfml/v0.26.29/LICENSE",
+      "license_sha256": "7e17ba5e26b0438ca04ebf2d9e7931da3080509da6625e117f6feb943ecf767a",
+      "evidence": [
+        "https://github.com/colbymchenry/codegraph/pull/1153",
+        "https://github.com/colbymchenry/codegraph/commit/816bacb7f2dac66ddcddb03b064f894bf77442d6"
+      ],
+      "verification": "Byte-identical to the linked immutable CodeGraph artifact; source rebuild was not repeated during this audit. CodeGraph PR 1153 reports a bit-for-bit rebuild of all three grammars with tree-sitter CLI 0.26.9 from master near v0.26.29. Exact upstream grammar commit remains unspecified; the license is preserved from v0.26.29.",
+      "artifact_source": "https://raw.githubusercontent.com/colbymchenry/codegraph/816bacb7f2dac66ddcddb03b064f894bf77442d6/src/extraction/wasm/tree-sitter-cfquery.wasm",
+      "license_revision": "v0.26.29"
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-cfscript.wasm",
+      "sha256": "e381db5d2b8a7744fc7d8e51b0a14ff03f86c8ff497cdfe32d1da467f19d4096",
+      "upstream": "https://github.com/cfmleditor/tree-sitter-cfml",
+      "revision": "master near v0.26.29 (exact grammar commit not recorded)",
+      "license": "MIT",
+      "license_file": "LICENSES/cfml.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/cfmleditor/tree-sitter-cfml/v0.26.29/LICENSE",
+      "license_sha256": "7e17ba5e26b0438ca04ebf2d9e7931da3080509da6625e117f6feb943ecf767a",
+      "evidence": [
+        "https://github.com/colbymchenry/codegraph/pull/1153",
+        "https://github.com/colbymchenry/codegraph/commit/816bacb7f2dac66ddcddb03b064f894bf77442d6"
+      ],
+      "verification": "Byte-identical to the linked immutable CodeGraph artifact; source rebuild was not repeated during this audit. CodeGraph PR 1153 reports a bit-for-bit rebuild of all three grammars with tree-sitter CLI 0.26.9 from master near v0.26.29. Exact upstream grammar commit remains unspecified; the license is preserved from v0.26.29.",
+      "artifact_source": "https://raw.githubusercontent.com/colbymchenry/codegraph/816bacb7f2dac66ddcddb03b064f894bf77442d6/src/extraction/wasm/tree-sitter-cfscript.wasm",
+      "license_revision": "v0.26.29"
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-cobol.wasm",
+      "sha256": "65b98799f92e831d8b5ed8cd811464c71fac31c4beabf66990a545a4f65e02f1",
+      "upstream": "https://github.com/yutaro-sakamoto/tree-sitter-cobol",
+      "revision": "e99dbdc3d800d5fa2796476efd60af91f6b43d93",
+      "license": "MIT",
+      "license_file": "LICENSES/cobol.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/yutaro-sakamoto/tree-sitter-cobol/e99dbdc3d800d5fa2796476efd60af91f6b43d93/LICENSE",
+      "license_sha256": "d724405ce238a22c0d35769c5a36b386ad5958192efe8bbb304fb2896254575f",
+      "evidence": [
+        "https://github.com/colbymchenry/codegraph/blob/41620c60fa1764743ff6f588ead31428e613f72c/docs/grammars/tree-sitter-cobol.md",
+        "LICENSES/provenance/tree-sitter-cobol.md",
+        "LICENSES/provenance/tree-sitter-cobol.patch"
+      ],
+      "verification": "Byte-identical to the linked immutable CodeGraph artifact; source rebuild was not repeated during this audit.",
+      "artifact_source": "https://raw.githubusercontent.com/colbymchenry/codegraph/41620c60fa1764743ff6f588ead31428e613f72c/src/extraction/wasm/tree-sitter-cobol.wasm",
+      "modifications": "Includes the upstream CodeGraph patch recorded in the linked provenance files."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-cpp.wasm",
+      "sha256": "70f5e2b9976dad56bdcd1fafcb3af8c839c7a92e7beaa437162bcf45f390e83d",
+      "upstream": "https://github.com/tree-sitter/tree-sitter-cpp",
+      "revision": "v0.23.4",
+      "license": "MIT",
+      "license_file": "LICENSES/cpp.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter-cpp/v0.23.4/LICENSE",
+      "license_sha256": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-dart.wasm",
+      "sha256": "7f5364e4256cf7e55efd01dd52421ef2663caa8061b82659b7e4bf61064545ec",
+      "upstream": "https://github.com/UserNobody14/tree-sitter-dart",
+      "revision": "d4d8f3e337d8",
+      "license": "MIT",
+      "license_file": "LICENSES/dart.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/UserNobody14/tree-sitter-dart/d4d8f3e337d8/LICENSE",
+      "license_sha256": "d270cb3a4985d75033bd77d875ccebff1d66e32788a3f727891e28d76132dd46",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-erlang.wasm",
+      "sha256": "dbab33f03e07b89f4385fcdd48d87d86ba35c82a0a426788d55b8c25410bc491",
+      "upstream": "https://github.com/WhatsApp/tree-sitter-erlang",
+      "revision": "0.19",
+      "license": "Apache-2.0",
+      "license_file": "LICENSES/erlang.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/WhatsApp/tree-sitter-erlang/0.19/LICENSE",
+      "license_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "evidence": [
+        "https://github.com/colbymchenry/codegraph/pull/1165",
+        "codegraph/src/extraction/languages/erlang.ts"
+      ],
+      "verification": "Byte-identical to the linked immutable CodeGraph artifact; source rebuild was not repeated during this audit.",
+      "artifact_source": "https://raw.githubusercontent.com/colbymchenry/codegraph/6511722250546eac730f972378c006e046aa9193/src/extraction/wasm/tree-sitter-erlang.wasm",
+      "notice_check": {
+        "source": "https://api.github.com/repos/WhatsApp/tree-sitter-erlang/git/trees/0.19?recursive=1",
+        "result": "Complete recursive upstream tree at the stated revision contains no separate NOTICE-named file."
+      }
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-go.wasm",
+      "sha256": "4eda5d91c99ca981e88bc7d3d33f0db166b4bab0a84d0021a9abf39b364c78ef",
+      "upstream": "https://github.com/tree-sitter/tree-sitter-go",
+      "revision": "v0.23.4",
+      "license": "MIT",
+      "license_file": "LICENSES/go.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter-go/v0.23.4/LICENSE",
+      "license_sha256": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-java.wasm",
+      "sha256": "181a6fbc34d7864a551d91c13882fc33007e923b3c81a4bdbe7fa47492090077",
+      "upstream": "https://github.com/tree-sitter/tree-sitter-java",
+      "revision": "v0.23.5",
+      "license": "MIT",
+      "license_file": "LICENSES/java.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter-java/v0.23.5/LICENSE",
+      "license_sha256": "52ed137b039cd9c46409bc22e89938af911c95b157feae2d040b51e6084369a7",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-javascript.wasm",
+      "sha256": "7978e62bcc851ab1d1f6dcd4678f9eda79df2b3b3490e75f81dd819d9bccccfa",
+      "upstream": "https://github.com/tree-sitter/tree-sitter-javascript",
+      "revision": "v0.25.0",
+      "license": "MIT",
+      "license_file": "LICENSES/javascript.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter-javascript/v0.25.0/LICENSE",
+      "license_sha256": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-kotlin.wasm",
+      "sha256": "c80c88867a589a1a0959bcea89de84b7e9684b3693b2cdb2944812458e62ff48",
+      "upstream": "https://github.com/fwcd/tree-sitter-kotlin",
+      "revision": "0.3.8",
+      "license": "MIT",
+      "license_file": "LICENSES/kotlin.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/fwcd/tree-sitter-kotlin/0.3.8/LICENSE",
+      "license_sha256": "948495f61768f7de26bcc61113d8cd95f50bbc15adb678c28c941c6c8fcd5903",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-lua.wasm",
+      "sha256": "6d95607fc7d78964cfdf065ccb1ba76be5ed217c5ec0d0a3cace13c59fa1ae43",
+      "upstream": "https://github.com/tree-sitter-grammars/tree-sitter-lua",
+      "revision": "816840c592",
+      "license": "MIT",
+      "license_file": "LICENSES/lua.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter-grammars/tree-sitter-lua/816840c592/LICENSE.md",
+      "license_sha256": "9a32b02e4c917b1ce6b5e79d8ea81e25cefd7f27d89c7235f2afb262c06cf32e",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-luau.wasm",
+      "sha256": "f1647052518f2bdfae8e8c0b033ffdeca1193d69d11c78ba20f84c8374fd0fe3",
+      "upstream": "https://github.com/tree-sitter-grammars/tree-sitter-luau",
+      "revision": "v1.2.0",
+      "license": "MIT",
+      "license_file": "LICENSES/luau.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter-grammars/tree-sitter-luau/v1.2.0/LICENSE",
+      "license_sha256": "099c44248f8cf353123211318680e93465587c005a4b3730ce8cb5334de043d6",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-nix.wasm",
+      "sha256": "4acffa1c013df751193a21ce429777ca214c7d3a7e3665085b6df00dad8869f0",
+      "upstream": "https://github.com/nix-community/tree-sitter-nix",
+      "revision": "3d0173d",
+      "license": "MIT",
+      "license_file": "LICENSES/nix.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/nix-community/tree-sitter-nix/3d0173d/LICENSE",
+      "license_sha256": "c1b72e50266464ec5118d26200e17bf1f472d142e62ab637e1ffc23986657a78",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-pascal.wasm",
+      "sha256": "be3634fca99c19f5e1035a1a9c7d93d6ee82b35e6d5024f02be4883b71329c3e",
+      "upstream": "https://github.com/Isopod/tree-sitter-pascal",
+      "revision": "042119eca2e18a60e56317fb06ee3ba5c32cb447",
+      "license": "MIT",
+      "license_file": "LICENSES/pascal.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/Isopod/tree-sitter-pascal/042119eca2e18a60e56317fb06ee3ba5c32cb447/LICENSE",
+      "license_sha256": "2e2fcc500eacb15b76c11fd2229aebf0a5b4c8ed476f068447c6dce778a17ac9",
+      "evidence": [
+        "https://github.com/colbymchenry/codegraph/commit/77135445db0d5af66a0af57e176d73669a6b3767"
+      ],
+      "verification": "Byte-identical to the linked immutable CodeGraph artifact; source rebuild was not repeated during this audit. Grammar revision is the Isopod pin in the dependency diff of the original WASM migration commit; build toolchain was not recorded there.",
+      "artifact_source": "https://raw.githubusercontent.com/colbymchenry/codegraph/77135445db0d5af66a0af57e176d73669a6b3767/src/extraction/wasm/tree-sitter-pascal.wasm"
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-php.wasm",
+      "sha256": "6545a9a110bc878e26ed329950147e190c83da038bb17e999de646fe6c4d6c82",
+      "upstream": "https://github.com/tree-sitter/tree-sitter-php",
+      "revision": "v0.24.2",
+      "license": "MIT",
+      "license_file": "LICENSES/php.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter-php/v0.24.2/LICENSE",
+      "license_sha256": "664764fabf40c0b318e06324a5a12379092a2df25b8cbf2415f71bc0bb352346",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-python.wasm",
+      "sha256": "a7fdc587e77bd729b9f5b783c659be23c896e305a2c374472bed7114d9e01fac",
+      "upstream": "https://github.com/tree-sitter/tree-sitter-python",
+      "revision": "v0.23.6",
+      "license": "MIT",
+      "license_file": "LICENSES/python.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter-python/v0.23.6/LICENSE",
+      "license_sha256": "d724405ce238a22c0d35769c5a36b386ad5958192efe8bbb304fb2896254575f",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-r.wasm",
+      "sha256": "2a8f5acd1c53d91e0ec5c01a6830d8ac7f5a7f96f0ac4b3768c016c8e9d07711",
+      "upstream": "https://github.com/r-lib/tree-sitter-r",
+      "revision": "v1.2.0",
+      "license": "MIT",
+      "license_file": "LICENSES/r.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/r-lib/tree-sitter-r/v1.2.0/LICENSE",
+      "license_sha256": "de2e49529f03d573bc3fa229dc83acfe22c63a5ad1766b289563edfd45b72dea",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-ruby.wasm",
+      "sha256": "4cb5a4b12870876ca864c1e92fe1f5cd47036b2adc083e9306488af88867dbb4",
+      "upstream": "https://github.com/tree-sitter/tree-sitter-ruby",
+      "revision": "v0.23.1",
+      "license": "MIT",
+      "license_file": "LICENSES/ruby.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter-ruby/v0.23.1/LICENSE",
+      "license_sha256": "ee006f02a3d856df282e409be2a86e24a65bb573a98b9c28343771141351bb6b",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-rust.wasm",
+      "sha256": "206031e0f67fb41ecae505868ca3bb917df7375031aebafd2f97314a849713fe",
+      "upstream": "https://github.com/tree-sitter/tree-sitter-rust",
+      "revision": "v0.24.2",
+      "license": "MIT",
+      "license_file": "LICENSES/rust.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter-rust/v0.24.2/LICENSE",
+      "license_sha256": "31d5b6f4243d5c7c6e1c4ebbbb9f6407bd1457a08bcc4f706521710341acba36",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-scala.wasm",
+      "sha256": "7945b13e6f9b15b578c5e5e4e60253c049fec07c531518163f3415a76c0621aa",
+      "upstream": "https://github.com/tree-sitter/tree-sitter-scala",
+      "revision": "0aca5d0a6f",
+      "license": "MIT",
+      "license_file": "LICENSES/scala.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter-scala/0aca5d0a6f/LICENSE",
+      "license_sha256": "1f95ed26e1f4074074c9c7083e61c0a9e4c3b9f435745044995f3beb4ed28575",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-swift.wasm",
+      "sha256": "cc77a63b8487956270e2f385e29a03ba0773ba532a3c8a8844a26b4c98793843",
+      "upstream": "https://github.com/alex-pinkus/tree-sitter-swift",
+      "revision": "crate 0.7.3",
+      "license": "MIT",
+      "license_file": "LICENSES/swift.LICENSE",
+      "license_source": "https://static.crates.io/crates/tree-sitter-swift/tree-sitter-swift-0.7.3.crate",
+      "license_sha256": "3533cec129bb4bba015c0d61d86dd7c3b7e82110e4d2ff7837a01eff5bad5ccc",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM.",
+      "license_archive_member": "tree-sitter-swift-0.7.3/LICENSE"
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-terraform.wasm",
+      "sha256": "0d9ef3ae926acc0411bfecba9b34df4ea659061917b96455570a45a70824e890",
+      "upstream": "https://github.com/tree-sitter-grammars/tree-sitter-hcl",
+      "revision": "v1.2.0",
+      "license": "Apache-2.0",
+      "license_file": "LICENSES/terraform.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter-grammars/tree-sitter-hcl/v1.2.0/LICENSE",
+      "license_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM.",
+      "notice_check": {
+        "source": "https://api.github.com/repos/tree-sitter-grammars/tree-sitter-hcl/git/trees/v1.2.0?recursive=1",
+        "result": "Complete recursive upstream tree at the stated revision contains no separate NOTICE-named file."
+      }
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-tsx.wasm",
+      "sha256": "8f647a1b2cafe9ab00fb2056d79021d2a144ba17a72f45511072311c1b05d08e",
+      "upstream": "https://github.com/tree-sitter/tree-sitter-typescript",
+      "revision": "v0.23.2",
+      "license": "MIT",
+      "license_file": "LICENSES/typescript.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter-typescript/v0.23.2/LICENSE",
+      "license_sha256": "49bf33cf78ef5897e4e161ce1517df7de1ae5042a65b6bcfd44401e0fc606559",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-typescript.wasm",
+      "sha256": "3a44d634c9840dccec36f33b99592bd086a2f940e9cd80c64347c45b7dce662f",
+      "upstream": "https://github.com/tree-sitter/tree-sitter-typescript",
+      "revision": "v0.23.2",
+      "license": "MIT",
+      "license_file": "LICENSES/typescript.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter-typescript/v0.23.2/LICENSE",
+      "license_sha256": "49bf33cf78ef5897e4e161ce1517df7de1ae5042a65b6bcfd44401e0fc606559",
+      "evidence": [
+        "codegraph/src/extraction/grammars.ts",
+        "codegraph/codegraph-kernel/Cargo.toml",
+        "codegraph/codegraph-kernel/build.rs"
+      ],
+      "verification": "License retrieved from the documented upstream revision. This audit did not rebuild the WASM."
+    },
+    {
+      "artifact": "codegraph/src/extraction/wasm/tree-sitter-vbnet.wasm",
+      "sha256": "e38a09e1826c7ec06340c0531a98bbb5ee79bdd710bba3d3349b79a19721e844",
+      "upstream": "https://github.com/govindbanura/tree-sitter-vbnet",
+      "revision": "538b7087bf80e86004531b392fe1186379c0a2b5",
+      "license": "MIT",
+      "license_file": "LICENSES/vbnet.LICENSE",
+      "license_source": "https://raw.githubusercontent.com/govindbanura/tree-sitter-vbnet/538b7087bf80e86004531b392fe1186379c0a2b5/LICENSE",
+      "license_sha256": "fa7ab39bcf92c216d429e8aa8be8a5a40db85bfbe4ff14a7bb0ecbbcca937454",
+      "evidence": [
+        "https://github.com/colbymchenry/codegraph/blob/63e1b5a23afca054fbf9c602672c88ac47752e84/docs/grammars/tree-sitter-vbnet.md",
+        "LICENSES/provenance/tree-sitter-vbnet.md",
+        "LICENSES/provenance/tree-sitter-vbnet.patch"
+      ],
+      "verification": "Byte-identical to the linked immutable CodeGraph artifact; source rebuild was not repeated during this audit.",
+      "artifact_source": "https://raw.githubusercontent.com/colbymchenry/codegraph/63e1b5a23afca054fbf9c602672c88ac47752e84/src/extraction/wasm/tree-sitter-vbnet.wasm",
+      "modifications": "Includes the upstream CodeGraph patch recorded in the linked provenance files."
+    }
+  ],
+  "shared_headers": {
+    "artifact_directories": [
+      "codegraph/codegraph-kernel/grammars/kotlin/tree_sitter",
+      "codegraph/codegraph-kernel/grammars/lua/tree_sitter",
+      "codegraph/codegraph-kernel/grammars/scala/tree_sitter",
+      "codegraph/codegraph-kernel/grammars/dart/tree_sitter"
+    ],
+    "upstream": "https://github.com/tree-sitter/tree-sitter",
+    "license": "MIT",
+    "license_file": "LICENSES/tree-sitter.LICENSE",
+    "license_source": "https://raw.githubusercontent.com/tree-sitter/tree-sitter/v0.25.10/LICENSE",
+    "license_sha256": "5f9cf9fb6acb1972b35ae29119ce563bb60ec097656bc4b69b9bac2d04c7a147",
+    "verification": "Tree-sitter core license retained for its support headers. Individual generated-header revisions were not identified independently."
+  },
+  "provenance_files": [
+    {
+      "file": "LICENSES/provenance/tree-sitter-cobol.md",
+      "source": "https://raw.githubusercontent.com/colbymchenry/codegraph/41620c60fa1764743ff6f588ead31428e613f72c/docs/grammars/tree-sitter-cobol.md",
+      "license_file": "codegraph/LICENSE",
+      "sha256": "73cb50e7458e328def7ad8c67682c0198b4a719569bd7d012b267f44446902ca"
+    },
+    {
+      "file": "LICENSES/provenance/tree-sitter-cobol.patch",
+      "source": "https://raw.githubusercontent.com/colbymchenry/codegraph/41620c60fa1764743ff6f588ead31428e613f72c/docs/grammars/tree-sitter-cobol.patch",
+      "license_file": "codegraph/LICENSE",
+      "sha256": "04fe11a51243ddf7d31e0b6378068c725a51463534218c43c7021761c69701e5"
+    },
+    {
+      "file": "LICENSES/provenance/tree-sitter-vbnet.md",
+      "source": "https://raw.githubusercontent.com/colbymchenry/codegraph/63e1b5a23afca054fbf9c602672c88ac47752e84/docs/grammars/tree-sitter-vbnet.md",
+      "license_file": "codegraph/LICENSE",
+      "sha256": "b047ca5dfe2c3188d15271cb552ddd95f756e4135047081170fc67f72d2f46dc"
+    },
+    {
+      "file": "LICENSES/provenance/tree-sitter-vbnet.patch",
+      "source": "https://raw.githubusercontent.com/colbymchenry/codegraph/63e1b5a23afca054fbf9c602672c88ac47752e84/docs/grammars/tree-sitter-vbnet.patch",
+      "license_file": "codegraph/LICENSE",
+      "sha256": "33963ebe3ba60929fb58d90efd54f206f98a54ea13ae325d784732c828b7b93a"
+    }
+  ]
+}

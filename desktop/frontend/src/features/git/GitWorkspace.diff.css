@@ -1,0 +1,355 @@
+.diffHeaderMeta,
+.diffSummary,
+.diffLoadingIndicator {
+  display: flex;
+  align-items: center;
+}
+
+.diffHeaderMeta {
+  min-width: 0;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.diffLoadingIndicator {
+  color: var(--sidebar-section-label-color);
+}
+
+.diffLoadingIndicator svg {
+  width: 12px;
+  height: 12px;
+}
+
+.diffSummary {
+  flex: 0 0 auto;
+  gap: 8px;
+  font: 10px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.diffSummary span[data-kind='addition'] { color: #83b99b; }
+.diffSummary span[data-kind='deletion'] { color: #e08c84; }
+
+.diffFiles {
+  --git-row-hover-background: var(--dropdown-selection-bg);
+  --git-row-selected-background: var(--dropdown-selection-bg);
+  display: flex;
+  min-height: 0;
+  max-height: 160px;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: stretch;
+  border-bottom: 1px solid var(--divider);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.diffFileRow {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  flex: 0 0 32px;
+  align-items: center;
+}
+
+.diffFileRow:hover,
+.diffFileRow[data-selected='true'] {
+  background: var(--dropdown-selection-bg);
+  color: var(--dropdown-selection-text);
+}
+
+.diffFileSelect {
+  width: 100%;
+  height: 32px;
+  min-height: 32px;
+  max-width: none;
+  min-width: 0;
+  flex: 1 1 auto;
+  border-radius: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 0 var(--space-default);
+  font-size: 10px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diffFileOpen {
+  margin-right: var(--icon-default);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.diffFileRow:hover .diffFileOpen,
+.diffFileRow:focus-within .diffFileOpen {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.diffLines {
+  min-width: max-content;
+  padding: 8px 0;
+  font: 11px/18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.diffLineGroup {
+  min-width: 100%;
+}
+
+.diffLine {
+  position: relative;
+  display: grid;
+  min-height: 18px;
+  grid-template-columns: 46px 46px 20px minmax(max-content, 1fr);
+}
+
+.diffLine[data-reviewable='true'] {
+  grid-template-columns: 24px 46px 46px 20px minmax(max-content, 1fr);
+}
+
+.diffLine[data-kind='addition'] { background: rgba(74, 151, 96, .15); }
+.diffLine[data-kind='deletion'] { background: rgba(190, 70, 67, .15); }
+.diffLine[data-kind='meta'] { color: #7da0c4; }
+
+.lineNumber {
+  position: relative;
+  border-right: 1px solid rgba(127, 127, 127, .14);
+  color: var(--sidebar-section-label-color);
+  padding: 0 8px;
+  text-align: right;
+  user-select: none;
+}
+
+.diffCommentCell {
+  display: grid;
+  border-right: 1px solid rgba(127, 127, 127, .14);
+  place-items: center;
+}
+
+.diffCommentTrigger {
+  --neumorphic-button-radius: 50%;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  place-items: center;
+  cursor: pointer;
+  opacity: 0;
+  padding: 0;
+  transition: opacity 120ms ease, transform 180ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.diffLine:hover .diffCommentTrigger,
+.diffLine:focus-within .diffCommentTrigger {
+  opacity: 1;
+}
+
+.diffCommentTrigger svg {
+  width: 9px;
+  height: 9px;
+  stroke-width: 2;
+}
+
+.lineMarker {
+  color: var(--sidebar-section-label-color);
+  text-align: center;
+  user-select: none;
+}
+
+.diffLine[data-kind='addition'] .lineMarker { color: #83b99b; }
+.diffLine[data-kind='deletion'] .lineMarker { color: #e08c84; }
+
+.diffLine code {
+  white-space: pre;
+  padding-right: var(--space-default);
+}
+
+.pendingReviewBar {
+  display: flex;
+  min-height: 48px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-default);
+  border-bottom: 1px solid var(--divider);
+  background: var(--git-row-selected-background);
+  padding: 7px var(--space-default);
+}
+
+.pendingReviewBar > span,
+.pendingReviewBar > div,
+.pendingReviewBar > span > span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.pendingReviewBar > span {
+  gap: 8px;
+}
+
+.pendingReviewBar > span > svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: #8cb8c5;
+}
+
+.pendingReviewBar > span > span {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.pendingReviewBar strong {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.pendingReviewBar small {
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+}
+
+.pendingReviewBar > div {
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.pendingReviewSelect {
+  min-width: 132px;
+}
+
+.inlineReviewRow {
+  min-width: 720px;
+  background: var(--app-bg);
+}
+
+.inlineReviewRow > div {
+  box-sizing: border-box;
+  padding: 8px var(--space-default) 8px 136px;
+}
+
+.inlineReviewEditorRow {
+  position: sticky;
+  z-index: 1;
+  left: 0;
+  width: 100cqi;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.inlineReviewEditorRow > div {
+  padding: 8px var(--space-default);
+}
+
+.inlineReviewThread {
+  display: grid;
+  gap: 6px;
+}
+
+.inlineReviewComment {
+  width: min(100%, 760px);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--dropdown-selection-text) 4%, var(--app-bg));
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+}
+
+.inlineReviewComment .pullRequestCommentHeader {
+  min-height: 30px;
+}
+
+.inlineReviewComment p {
+  padding: 10px;
+}
+
+.inlineReviewEditor {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+  border: 1px solid var(--divider);
+  border-radius: 10px;
+  background: var(--git-panel-bar-background);
+  box-sizing: border-box;
+  color: var(--text);
+  cursor: default;
+  font-family: var(--font-ui), sans-serif;
+  padding: 12px;
+}
+
+.inlineReviewEditor > header,
+.inlineReviewEditor > footer,
+.inlineReviewEditor > footer > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.inlineReviewEditor > header {
+  gap: 7px;
+}
+
+.inlineReviewEditor > header svg {
+  width: 13px;
+  height: 13px;
+  color: #8cb8c5;
+}
+
+.inlineReviewEditor > header strong {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.inlineReviewEditor textarea {
+  --neumorphic-textarea-font-size: 10px;
+  --neumorphic-textarea-line-height: 16px;
+  width: 100%;
+  height: 92px;
+  min-height: 92px;
+  max-height: 92px;
+  resize: none;
+}
+
+.inlineReviewEditor > footer {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-default);
+}
+
+.inlineReviewEditor > footer > span {
+  overflow: hidden;
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inlineReviewEditor > footer > div {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.outdatedReviewThreads {
+  min-width: 720px;
+  border-top: 1px solid var(--divider);
+  background: var(--app-bg);
+  padding-top: 8px;
+}
+
+.outdatedReviewThreads > div:first-child {
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: 10px;
+  padding: 0 var(--space-default) 4px 112px;
+}
+
+.diffWarning {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--divider);
+  color: #d8bc72;
+  font-size: 10px;
+  padding: 8px var(--space-default);
+}

@@ -1,0 +1,111 @@
+.button {
+  composes: neumorphic-surface from global;
+  appearance: none;
+  position: relative;
+  border: 1px solid transparent;
+  border-radius: var(--neumorphic-button-radius, var(--button-radius));
+  background: transparent;
+  background-clip: padding-box;
+  color: inherit;
+  isolation: isolate;
+  overflow: clip;
+  transition:
+    background var(--button-transition-duration) ease,
+    border-color var(--button-transition-duration) ease,
+    color var(--button-transition-duration) ease,
+    transform var(--button-transition-duration) var(--button-transform-easing);
+}
+
+.button:not([data-inset='true']):hover,
+.button:not([data-inset='true'])[data-active='true'],
+.button[data-raised='true'] {
+  border-color: var(--divider);
+  border-radius: var(--neumorphic-button-radius, var(--button-radius));
+  background: var(--neumorphic-button-surface);
+  background-clip: padding-box;
+  color: var(--neumorphic-button-active-color, var(--button-active-color-fallback));
+}
+
+.button:not(:disabled):hover,
+.button[data-highlight-focus='true']:focus-within,
+.button:disabled[data-hover-when-disabled='true']:hover {
+  background: var(--neumorphic-button-hover-background, var(--dropdown-selection-bg));
+  transform: none;
+}
+
+.button[data-inset='true']:hover,
+.button[data-inset='true'][data-active='true'] {
+  border-color: var(--divider);
+  background: var(--neumorphic-button-surface);
+  color: var(--neumorphic-button-active-color, var(--button-active-color-fallback));
+}
+
+.button[data-raised='true']:not(:disabled):active,
+.button:not(:disabled):active {
+  border-color: var(--divider);
+  background: var(--neumorphic-button-surface);
+  transform: var(--button-active-transform);
+}
+
+/* Icon-only controls share the same colors across all feature toolbars. */
+.button:has(> svg:only-child) {
+  color: var(--text);
+}
+
+.button:has(> svg:only-child):not(:disabled):hover,
+.button:has(> svg:only-child)[data-active='true'],
+.button:has(> svg:only-child)[aria-pressed='true'],
+.button:has(> svg:only-child)[aria-expanded='true'] {
+  background: var(--dropdown-selection-bg);
+  color: var(--active-text);
+}
+
+.button > svg:only-child {
+  color: inherit;
+}
+
+/* Opt-in dimensions for shared text actions and circular icon controls. */
+.button[data-size] {
+  --neumorphic-button-active-color: var(--text);
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 16px;
+  cursor: pointer;
+}
+.button[data-size='standard'] {
+  --neumorphic-button-radius: var(--button-radius);
+  min-height: var(--field-height);
+  gap: var(--icon-default);
+  padding: var(--space-8) var(--space-default);
+}
+.button[data-size='icon'] {
+  --neumorphic-button-radius: 50%;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+}
+.button[data-size] > svg {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  stroke-width: 1.7;
+}
+.button[data-size]:not(:disabled):is(:hover, :active, :focus-visible),
+.button[data-size]:is([data-active='true'], [aria-pressed='true'], [aria-expanded='true']) {
+  --neumorphic-button-active-color: var(--active-text);
+  color: var(--active-text);
+}
+.button[data-size]:disabled { cursor: not-allowed; opacity: .5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+}

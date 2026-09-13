@@ -1,0 +1,5 @@
+.menu > button { color: var(--text); }
+.menu > button:not(:disabled):hover,
+.menu > button:not(:disabled):focus-visible,
+.menu > button:not(:disabled):active { color: var(--active-text); }
+.menu > button > svg { color: inherit; }

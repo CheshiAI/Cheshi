@@ -1,0 +1,39 @@
+.tray {
+  display: flex;
+  min-width: 0;
+  gap: var(--icon-default);
+  overflow-x: auto;
+  padding: var(--space-default) var(--space-default) 0;
+  scrollbar-width: thin;
+}
+
+.chip {
+  --neumorphic-button-radius: 14px;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text);
+}
+
+.chip > a {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--icon-default);
+  height: 28px;
+  padding: 0 9px;
+  color: inherit;
+  font-size: 11px;
+  line-height: 14px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.chip > a:focus-visible { outline: 1px solid var(--chat-accent); outline-offset: -2px; }
+.icon {
+  flex: 0 0 var(--icon-size-default);
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  margin-right: 0;
+}
+.label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

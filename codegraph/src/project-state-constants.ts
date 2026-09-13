@@ -1,0 +1,2 @@
+
+export const SEGMENT_RARITY_CEILING = 25;

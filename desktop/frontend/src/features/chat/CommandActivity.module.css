@@ -1,0 +1,44 @@
+.card {
+  --liquid-glass-radius: 10px;
+  width: 100%;
+  min-width: 0;
+  overflow: clip;
+  background: transparent;
+  color: var(--text);
+  font-size: 10.5px;
+}
+
+.card > details[open] > .summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+
+.summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-default);
+  padding: 10px var(--space-default);
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--liquid-glass-radius);
+}
+
+.summary::-webkit-details-marker { display: none; }
+.summary:focus-visible, .content pre:focus-visible { outline: 1px solid var(--chat-accent); outline-offset: -2px; }
+.summary > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex: 0 0 auto; color: var(--text); }
+.heading { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.heading strong { font-weight: 550; }
+.preview { overflow: hidden; color: var(--sidebar-section-label-color); font-family: "SFMono-Regular", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.status { flex: 0 0 auto; color: var(--sidebar-section-label-color); font-size: inherit; }
+.card[data-status='failed'] .status { color: var(--sub-text); }
+.card[data-status='declined'] .status { color: #c98181; }
+.chevron { transition: transform .18s ease; }
+.card details[open] .chevron { transform: rotate(90deg); }
+.content { display: grid; min-width: 0; gap: 8px; border-top: 1px solid var(--divider); padding: var(--space-default); }
+.metadata { display: flex; flex-wrap: wrap; gap: 8px var(--space-default); color: var(--sidebar-section-label-color); overflow-wrap: anywhere; }
+.metadata:empty { display: none; }
+.label { font-weight: 550; }
+.content pre { max-height: 360px; min-width: 0; overflow: auto; margin: 0 0 8px; padding: 12px; background: var(--divider); border-radius: 6px; font-family: "SFMono-Regular", Consolas, monospace; font-size: inherit; line-height: 1.6; white-space: pre; }
+.content code { font: inherit; }
+.empty { margin: 0; color: var(--sidebar-section-label-color); }
+@media (prefers-reduced-motion: reduce) {
+  .chevron { transition: none; }
+}

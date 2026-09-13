@@ -1,0 +1,37 @@
+/* Shared control defaults. Component overrides remain local to their consumers. */
+:root {
+  --field-height: 34px;
+  --field-radius: 9px;
+  --field-font-size: var(--font-size-small);
+  --field-font-weight: 400;
+  --field-line-height: 16px;
+  --field-padding-inline: 12px;
+  --field-multiline-min-height: 80px;
+  --field-multiline-padding-block: 10px;
+  --field-trailing-padding: 34px;
+  --field-disabled-opacity: .48;
+  --field-placeholder-opacity: .64;
+
+  --tab-min-width: 160px;
+  --tab-max-width: 240px;
+  --tab-font-size: var(--font-size-label);
+  --tab-font-weight: 500;
+  --tab-line-height: var(--icon-size-default);
+  --tab-icon-size: 11px;
+  --tab-icon-stroke-width: 1.7;
+  --tab-indicator-height: 3px;
+  --tab-transition-duration: .16s;
+
+  --panel-radius: 20px;
+  --panel-backdrop-blur: 24px;
+  --panel-backdrop-saturation: 88%;
+
+  --button-radius: 8px;
+  --button-transition-duration: 180ms;
+  --button-transform-easing: cubic-bezier(.22, 1, .36, 1);
+  --button-active-transform: translateY(1px) scale(.985);
+  --button-active-color-fallback: #46515a;
+
+  --focus-outline-width: 2px;
+  --focus-outline-inset: -3px;
+}

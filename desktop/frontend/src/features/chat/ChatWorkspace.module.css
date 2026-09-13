@@ -1,0 +1,100 @@
+.root {
+  --chat-accent: #85c9c0;
+  --split-pane-accent: var(--editor-accent);
+}
+.root, .body, .content, .split, .mount, .host, .pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+}
+.root, .content, .pane { flex-direction: column; }
+.root[hidden] { display: none; }
+.body { overflow: hidden; container-type: inline-size; }
+.split { overflow: hidden; }
+.pane { container-type: inline-size; }
+.paneHeader {
+  --liquid-glass-radius: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--header-height);
+  min-height: var(--header-height);
+  max-height: var(--header-height);
+  flex: 0 0 var(--header-height);
+  min-width: 0;
+  gap: var(--icon-default);
+  padding: 0 var(--space-default);
+  border: 0;
+  border-bottom: 1px solid var(--divider);
+}
+.pane[data-active='true'] .paneHeader::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: -1px;
+  height: 3px;
+  background: var(--divider);
+  pointer-events: none;
+}
+.pane[data-active='true'] .paneTitle { color: var(--active-text); }
+.paneTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--icon-default);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sidebar-section-label-color);
+  font: inherit;
+  cursor: pointer;
+}
+.paneTitle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.headerActions { display: flex; align-items: center; gap: var(--icon-default); }
+.actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0;
+  border-radius: 8px;
+  background: transparent;
+  opacity: 0;
+  transition: background-color .16s ease, opacity .16s ease;
+}
+.action {
+  appearance: none;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+  transition: background-color .16s ease, color .16s ease;
+}
+.pane:hover .actions,
+.pane[data-active='true'] .actions,
+.actions:focus-within {
+  background: var(--divider);
+  opacity: 1;
+}
+.action:not(:disabled):hover,
+.action[aria-pressed='true'],
+.action[data-active='true'] {
+  background: rgba(255, 255, 255, .08);
+  color: var(--active-text);
+}
+.action:disabled { cursor: default; opacity: .5; }
+.action svg { width: 12px; height: 12px; }
+
+@container (max-width: 240px) {
+  .paneHeader { padding-inline: 8px; }
+  .paneTitle { display: none; }
+}

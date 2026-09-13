@@ -1,0 +1,25 @@
+.button[data-raised='true'] {
+  --neumorphic-button-radius: 50%;
+  position: absolute;
+  top: 50%;
+  right: var(--icon-default);
+  display: grid;
+  width: var(--compact-icon-button-size);
+  height: var(--compact-icon-button-size);
+  place-items: center;
+  color: var(--search-clear-color, var(--neumorphic-button-active-color));
+  cursor: pointer;
+  padding: 0;
+  translate: 0 -50%;
+}
+
+.button:focus-visible {
+  outline: var(--focus-outline-width) solid var(--flat-tab-accent, var(--dropdown-selection-text));
+  outline-offset: var(--focus-outline-inset);
+}
+
+.button[data-raised='true'] svg {
+  width: var(--compact-icon-size);
+  height: var(--compact-icon-size);
+  stroke-width: var(--compact-icon-stroke-width);
+}

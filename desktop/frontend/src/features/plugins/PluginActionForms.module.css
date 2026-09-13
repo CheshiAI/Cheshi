@@ -1,0 +1,92 @@
+.form {
+  composes: neumorphic-surface-tokens from global;
+  display: grid;
+  gap: var(--space-default);
+  padding: 8px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  color: var(--plugin-label-color);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.fieldHeading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.hint,
+.message,
+.error {
+  margin: 0;
+  font-size: 11px;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+}
+
+.hint,
+.optional {
+  color: var(--plugin-caption-color);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 14px;
+}
+
+.message {
+  color: var(--neumorphic-button-active-color);
+}
+
+.error {
+  color: #e99b9b;
+}
+
+.footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-default);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.actions button {
+  min-height: 28px;
+  padding: 0 12px;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 14px;
+  white-space: nowrap;
+  --neumorphic-button-radius: 8px;
+}
+
+.actions button:not(:disabled) {
+  cursor: pointer;
+}
+
+.actions button:disabled {
+  cursor: default;
+  opacity: .48;
+}
+
+.preview {
+  width: 100%;
+  max-height: 200px;
+  border-radius: 8px;
+  background: var(--app-bg);
+}
+
+@media (max-width: 420px) {
+  .footer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,0 +1,11 @@
+.panel {
+  border: 1px solid var(--divider);
+  border-radius: var(--liquid-glass-radius, var(--panel-radius));
+}
+
+.panel[role='menu'],
+.panel[role='listbox'],
+.panel[data-liquid-glass-backdrop='true'] {
+  -webkit-backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
+  backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
+}

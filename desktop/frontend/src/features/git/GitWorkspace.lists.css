@@ -1,0 +1,155 @@
+.loadingState {
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: var(--space-default);
+}
+
+.emptyState,
+.unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sidebar-section-label-color);
+}
+
+.emptyState {
+  min-height: 100px;
+  gap: 8px;
+  font-size: 10px;
+  padding: var(--space-default);
+  text-align: center;
+}
+
+.pullRequestEmptyState {
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  font-size: 10px;
+  line-height: normal;
+}
+
+.pullRequestListEmpty {
+  display: flex;
+  flex-direction: column;
+}
+
+.pullRequestEmptyAction { min-width: 0; max-width: 100%; }
+
+.pullRequestEmptyAction > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unavailable {
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.unavailable svg {
+  width: 24px;
+  height: 24px;
+}
+
+.unavailable strong {
+  font-size: 13px;
+}
+
+.unavailable span {
+  max-width: 520px;
+  font-size: 11px;
+  text-align: center;
+}
+
+.spinner {
+  animation: git-workspace-spin .8s linear infinite;
+}
+
+.commitRow,
+.pullRequestRow {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.commitRow {
+  --git-row-hover-background: var(--dropdown-selection-bg);
+  --git-row-selected-background: var(--dropdown-selection-bg);
+  min-height: 54px;
+  gap: 10px;
+  padding: 7px 10px;
+}
+
+.commitRow:hover,
+.pullRequestRow:hover {
+  background: var(--git-row-hover-background);
+  color: var(--dropdown-selection-text);
+}
+
+.commitRow[aria-current='true'],
+.pullRequestRow[aria-current='true'] {
+  background: var(--git-row-selected-background);
+  color: var(--dropdown-selection-text);
+}
+
+.commitGraph {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  border: 2px solid #8cb8c5;
+  border-radius: 50%;
+}
+
+.commitGraph::after {
+  position: absolute;
+  top: 10px;
+  left: 3px;
+  width: 2px;
+  height: 42px;
+  background: rgba(140, 184, 197, .34);
+  content: '';
+}
+
+.commitText,
+.pullRequestRow > span {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 4px;
+}
+
+.commitText strong,
+.commitText span,
+.pullRequestRow strong,
+.pullRequestRow small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commitText strong,
+.pullRequestRow strong {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.commitText span,
+.pullRequestRow small,
+.commitRow code {
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+}
+
+.commitRow code {
+  flex: 0 0 auto;
+}

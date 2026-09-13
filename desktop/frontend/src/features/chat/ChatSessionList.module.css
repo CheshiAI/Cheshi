@@ -1,0 +1,87 @@
+.root {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  font-size: 10px;
+  gap: 12px;
+}
+
+.heading {
+  display: flex;
+  height: var(--header-height);
+  min-height: var(--header-height);
+  flex: 0 0 var(--header-height);
+  align-items: center;
+  justify-content: space-between;
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  letter-spacing: .08em;
+  line-height: 14px;
+}
+
+.list {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.group { display: grid; gap: 4px; }
+.group h2 { margin: 0 8px 2px; color: var(--sidebar-section-label-color); font-size: 10px; font-weight: 500; line-height: 16px; }
+.groupItems { display: grid; gap: 2px; }
+
+.session {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 7px 8px;
+  text-align: left;
+  transition: background-color .16s ease, color .16s ease;
+}
+
+.sessionRow:hover .session { background: var(--dropdown-selection-bg); color: var(--active-text); }
+.session:disabled { cursor: default; }
+.session svg { width: var(--icon-size-default); height: var(--icon-size-default); flex: 0 0 auto; color: inherit; stroke-width: 1.65; }
+.session span { overflow: hidden; min-width: 0; flex: 1 1 auto; text-overflow: ellipsis; white-space: nowrap; }
+.session i { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: #7cc8bd; }
+
+.loading { flex: 1 1 auto; padding: var(--space-default); }
+
+.empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #777;
+  font-size: 10px;
+  line-height: 16px;
+  padding: 8px;
+}
+
+.empty { flex: 1 1 auto; flex-direction: column; justify-content: center; gap: 12px; text-align: center; }
+.empty svg { width: 22px; height: 22px; color: #686f72; stroke-width: 1.35; }
+
+.sessionRow { display: flex; min-width: 0; align-items: center; gap: var(--icon-default); }
+.sessionRow .session { flex: 1 1 auto; width: 0; }
+.deleteButton { --neumorphic-button-radius: 50%; display: flex; flex: 0 0 22px; width: 22px; height: 22px; align-items: center; justify-content: center; padding: 0; cursor: pointer; opacity: 0; transition: opacity .16s ease; }
+.sessionRow:hover .deleteButton, .sessionRow:focus-within .deleteButton { opacity: 1; }
+.deleteButton:disabled { cursor: not-allowed; }
+.sessionRow:hover .deleteButton:disabled, .sessionRow:focus-within .deleteButton:disabled { opacity: .5; }
+@media (hover: none) { .deleteButton { opacity: 1; } .deleteButton:disabled { opacity: .5; } }

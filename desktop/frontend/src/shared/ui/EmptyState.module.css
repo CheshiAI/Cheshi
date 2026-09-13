@@ -1,0 +1,27 @@
+.root {
+  --empty-text: #e7e7e7;
+  --empty-muted: #929497;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-default);
+  padding: var(--space-default);
+  color: var(--empty-muted);
+  text-align: center;
+}
+
+.root > strong {
+  color: var(--empty-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.root > p {
+  margin: -8px 0 0;
+  color: var(--empty-muted);
+  font-size: 10px;
+  line-height: 16px;
+}

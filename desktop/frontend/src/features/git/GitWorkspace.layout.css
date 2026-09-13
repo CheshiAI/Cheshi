@@ -1,0 +1,214 @@
+.workspace {
+  --git-panel-bar-background: transparent;
+  --git-row-hover-background: var(--dropdown-selection-bg);
+  --git-row-selected-background: var(--dropdown-selection-bg);
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.header {
+  height: var(--header-height);
+  min-height: var(--header-height);
+  max-height: var(--header-height);
+  flex: 0 0 var(--header-height);
+}
+
+.title,
+.headerActions,
+.panelTitle,
+.diffSummary,
+.pullRequestActions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.title {
+  flex: 0 1 auto;
+  gap: 10px;
+}
+
+.titleMark,
+.panelTitleMark {
+  cursor: default;
+  pointer-events: none;
+}
+
+.titleMark .githubMark {
+  width: 11px;
+  height: 11px;
+  flex-basis: 11px;
+}
+
+.title h1 {
+  overflow: hidden;
+  margin: 0;
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.githubMark {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+  background: currentColor;
+  -webkit-mask: url('../../../../../resources/icons/GitHubMark.svg') center / contain no-repeat;
+  mask: url('../../../../../resources/icons/GitHubMark.svg') center / contain no-repeat;
+}
+
+.headerActions {
+  flex: 0 0 auto;
+  gap: var(--icon-default);
+}
+
+.headerStatus {
+  display: flex;
+  min-width: 0;
+  max-width: min(34vw, 320px);
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  color: #83b99b;
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.headerStatus[data-kind='error'] {
+  color: #e59a91;
+}
+
+.headerStatus > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headerStatus svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+}
+
+.panelTitle svg {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+}
+
+.tabs {
+  composes: neumorphic-surface-tokens from global;
+  width: auto;
+  flex: 1 1 auto;
+}
+
+.tabs > button { color: var(--sidebar-section-label-color); }
+.tabs > button:hover,
+.tabs > button[data-active='true'] { color: var(--active-text); }
+
+.diffFileSelect {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sidebar-section-label-color);
+  cursor: pointer;
+  font: inherit;
+}
+
+.diffFileSelect:hover {
+  background: var(--git-row-hover-background);
+  color: var(--dropdown-selection-text);
+}
+
+.diffFileSelect[aria-current='page'] {
+  background: var(--git-row-selected-background);
+  color: var(--dropdown-selection-text);
+}
+
+.splitLayout {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(260px, 34%) minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+  background: var(--app-bg);
+  padding: 0;
+}
+
+.workspace .listPanel,
+.workspace .diffPanel,
+.workspace .pullRequestDetail {
+  --liquid-glass-radius: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 0;
+}
+
+.splitLayout > :first-child {
+  border-right: 1px solid var(--divider);
+}
+
+.panelHeader {
+  display: flex;
+  min-height: var(--header-height);
+  flex: 0 0 var(--header-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-default);
+  border-bottom: 1px solid var(--divider);
+  padding: 0 var(--space-default);
+}
+
+.commitBar,
+.pullRequestDetailHeader,
+.pullRequestActions {
+  background: var(--git-panel-bar-background);
+}
+
+.panelHeader > span {
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+}
+
+.panelTitle {
+  flex: 1 1 auto;
+  gap: 8px;
+}
+
+.panelTitle strong {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.markedPanelTitle {
+  gap: 10px;
+}
+
+.markedPanelTitle strong {
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.panelTitleMark svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 1.7;
+}

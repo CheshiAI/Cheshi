@@ -1,0 +1,30 @@
+node_modules/
+# Local environment files; product metadata is intentionally public.
+.env
+.env.*
+!.env.product
+desktop/frontend/dist/
+out/
+.DS_Store
+.idea/
+.codegraph/
+desktop/runtime/
+desktop/lib/electron-libghostty/native/
+desktop/native/electron-libghostty/build/
+desktop/native/electron-libghostty/native-deps/
+desktop/native/ghostty-bridge/.build/
+
+# Local diagnostics and credentials
+*.log
+*.tsbuildinfo
+coverage/
+.qodana/
+*.p12
+*.pfx
+*.pem
+*.key
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm

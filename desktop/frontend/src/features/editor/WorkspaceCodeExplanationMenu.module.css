@@ -1,0 +1,11 @@
+.menu > button {
+  color: var(--text);
+}
+
+.menu > button:is(:hover, :focus-visible, :active, [aria-selected='true'], [data-active='true']) {
+  color: var(--active-text);
+}
+
+.menu > button > svg {
+  color: inherit;
+}

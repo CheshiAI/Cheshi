@@ -1,0 +1,81 @@
+.dialog {
+  --modal-width: 480px;
+  --modal-title-color: var(--title);
+  --modal-header-padding: 12px var(--space-default);
+  --modal-content-padding: 8px;
+}
+
+.form {
+  composes: neumorphic-surface-tokens from global;
+  display: grid;
+  font-family: var(--font-ui), sans-serif;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.form { gap: var(--space-default); padding: 8px; }
+.creationForm { display: grid; gap: var(--space-default); }
+.fields { display: grid; gap: var(--space-default); min-width: 0; padding: 0; margin: 0; border: 0; }
+.fields label { display: grid; gap: 8px; color: var(--text); font-size: 11px; font-weight: 600; line-height: 15px; }
+.fieldLabel { color: var(--sidebar-section-label-color); }
+.fields:disabled { opacity: .55; }
+.sourceChoices { display: flex; flex-wrap: wrap; gap: var(--icon-default); }
+.form .sourceChoices > button[aria-pressed='true'] { background: var(--dropdown-selection-bg); }
+.preparing { min-height: 180px; }
+.preparingPage { display: grid; align-items: center; }
+.cloneProgress { display: grid; justify-items: center; gap: var(--space-default); text-align: center; }
+.signIn { display: grid; gap: var(--space-default); }
+.signIn h2 { margin: 0; }
+.loginCode { display: flex; flex-wrap: wrap; align-items: center; gap: var(--icon-default); }
+.loginCode > :first-child { width: 140px; }
+
+.fields legend,
+.worktrees h3,
+.sectionLabel { color: var(--sidebar-section-label-color); font-size: 11px; font-weight: 500; line-height: 15px; }
+.fields legend,
+.worktrees h3 { margin: 0 0 var(--space-default); padding: 0; }
+
+.hint,
+.path { margin: 0; color: var(--sub-text); font-size: 10px; font-weight: 400; line-height: 14px; overflow-wrap: anywhere; }
+
+.repository,
+.worktree,
+.folderField,
+.footer { display: flex; align-items: center; gap: var(--space-default); }
+.folderField { gap: var(--icon-default); }
+.folderField > :first-child { flex: 1; }
+.folderField > button { padding-block: 0; }
+.columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-default); }
+.shallow { display: flex; flex-wrap: wrap; gap: var(--space-default); align-items: center; }
+.shallow > label { display: inline-flex; gap: 8px; align-items: center; font-weight: 400; }
+.depth > span { width: 84px; }
+
+.footer { flex-wrap: wrap; justify-content: flex-end; gap: var(--icon-default); margin-top: var(--space-default); }
+.splitFooter { display: flex; align-items: center; gap: var(--space-default); }
+.footerDetails { flex: 1; min-width: 0; }
+.splitFooter > .footer { flex: 0 0 auto; flex-wrap: nowrap; margin-top: 0; }
+.footer > button {
+  --neumorphic-button-radius: 8px;
+  min-height: 28px;
+  padding: 0 12px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.error { color: var(--error, #e99b9b); margin: 8px 0; font-size: 11px; line-height: 17px; overflow-wrap: anywhere; }
+.repository { justify-content: space-between; }
+.repository > div,
+.worktree > div { min-width: 0; flex: 1; }
+.repository .path { margin-top: 4px; }
+.worktrees { border-bottom: 1px solid var(--divider); padding-bottom: var(--space-default); max-height: 220px; overflow: auto; }
+.worktree { min-height: 44px; padding: 8px 0; }
+.worktree + .worktree { border-top: 1px solid var(--divider); }
+.worktree > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex: 0 0 auto; stroke-width: 1.7; }
+.worktree strong { color: var(--text); font-size: 11px; font-weight: 500; }
+.worktree .path { margin-top: 4px; }
+.badge { font-size: 10px; color: var(--sub-text); margin-left: 8px; }
+
+@media (max-width: 480px) {
+  .columns { grid-template-columns: minmax(0, 1fr); }
+  .repository { align-items: flex-start; flex-direction: column; }
+}

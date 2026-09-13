@@ -1,0 +1,23 @@
+.badge {
+  composes: neumorphic-surface-tokens from global;
+}
+
+.badge.badge {
+  display: inline-flex;
+  min-width: var(--editor-badge-min-width);
+  height: var(--badge-height, var(--editor-badge-height));
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-popover);
+  background: var(--badge-background, var(--neumorphic-button-surface));
+  color: var(--badge-color, var(--text));
+  font-family: inherit;
+  font-size: var(--editor-badge-font-size);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  line-height: var(--editor-badge-line-height);
+  padding: 0 var(--editor-badge-padding);
+}

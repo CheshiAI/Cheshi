@@ -1,0 +1,32 @@
+.usage {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--icon-default);
+  margin: var(--space-2) auto var(--space-2) 0;
+  padding: var(--space-4) var(--space-10);
+  color: inherit;
+  font: inherit;
+}
+
+.label {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--icon-default);
+}
+
+.label svg {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+  stroke-width: 1.7;
+}
+
+.value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}

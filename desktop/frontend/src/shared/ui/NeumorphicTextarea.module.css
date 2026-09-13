@@ -1,0 +1,40 @@
+.textarea {
+  appearance: none;
+  box-sizing: border-box;
+  min-width: 0;
+  border: 1px solid var(--neumorphic-button-edge, rgba(255, 255, 255, .1));
+  border-radius: var(--neumorphic-button-radius, 8px);
+  outline: 0;
+  background: var(--neumorphic-button-surface, rgba(228, 235, 241, .68));
+  background-clip: padding-box;
+  color: var(--neumorphic-input-color, inherit);
+  font-family: inherit;
+  font-size: var(--neumorphic-textarea-font-size, 12px);
+  font-weight: 400;
+  line-height: var(--neumorphic-textarea-line-height, 18px);
+  padding: var(--neumorphic-textarea-padding, 10px 12px);
+  resize: vertical;
+}
+
+.textarea::placeholder {
+  color: var(--neumorphic-input-placeholder-color, currentColor);
+  font-size: inherit;
+  opacity: .62;
+}
+
+.textarea:focus {
+  border-color: var(
+    --neumorphic-input-focus-border,
+    var(--neumorphic-button-edge, rgba(255, 255, 255, .1))
+  );
+}
+
+.textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--neumorphic-button-active-color, currentColor) 42%, transparent);
+  outline-offset: 1px;
+}
+
+.textarea:disabled {
+  cursor: default;
+  opacity: .48;
+}

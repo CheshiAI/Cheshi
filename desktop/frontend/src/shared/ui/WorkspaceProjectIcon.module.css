@@ -1,0 +1,12 @@
+.icon {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border-radius: 10px;
+  color: #fff;
+  font-size: var(--font-size-default);
+  font-weight: 700;
+  line-height: 1;
+}

@@ -1,0 +1,24 @@
+.form { display: flex; flex-direction: column; gap: var(--space-default); font-size: 12px; }
+.options { display: flex; flex-direction: column; gap: var(--icon-default); min-width: 0; margin: 0; padding: 0; border: 0; }
+.options legend { padding: 0; margin-bottom: var(--space-default); font-weight: 600; }
+.option { display: flex; align-items: center; gap: var(--icon-default); box-sizing: border-box; height: auto; min-height: var(--field-height); flex: 0 0 auto; padding: var(--space-8) var(--space-default); border: 1px solid var(--divider); border-radius: var(--button-radius); color: var(--text); font-size: 10px; font-weight: 400; line-height: 16px; cursor: pointer; }
+.option[data-selected='true'], .option:not(:has(input:disabled)):hover { background: var(--dropdown-selection-bg); }
+.option:has(input:disabled) { cursor: not-allowed; opacity: .5; }
+.option input { margin: 0; accent-color: var(--text); cursor: inherit; }
+.option svg { flex-shrink: 0; width: 11px; height: 11px; stroke-width: 1.7; }
+.option span { display: flex; min-width: 0; flex-direction: column; gap: 0; }
+.option strong { font-weight: 400; }
+.option small { overflow: hidden; color: inherit; font-size: 10px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.form p { margin: 0; line-height: 1.5; }
+.sessionTitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.buttons { display: flex; justify-content: flex-end; gap: var(--icon-default); }
+.deletionActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-default); }
+.deletionProgress { margin-right: auto; justify-content: flex-start; }
+.historyDialog,
+.splitDialog { --modal-title-color: var(--active-text); }
+.historyDialog .sessionTitle { color: var(--text); }
+.historyDialog .options legend { color: var(--sidebar-section-label-color); }
+.openingProgress { justify-content: flex-start; }
+
+.option:not(:has(input:disabled)):is(:hover, :focus-within),
+.option[data-selected='true'] { color: var(--active-text); }

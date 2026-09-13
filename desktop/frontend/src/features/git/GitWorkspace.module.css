@@ -1,0 +1,29 @@
+/* Keep these ordered imports in one CSS Module so shared selectors keep their scope. */
+@import './GitWorkspace.layout.css';
+@import './GitWorkspace.badges.css';
+@import './GitWorkspace.branches.css';
+@import './GitWorkspace.changes.css';
+@import './GitWorkspace.diff.css';
+@import './GitWorkspace.lists.css';
+@import './GitWorkspace.pull-requests.css';
+
+@keyframes git-workspace-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 980px) {
+  .splitLayout {
+    grid-template-columns: minmax(220px, 38%) minmax(0, 1fr);
+  }
+
+  .mergeConfirmationControls {
+    grid-template-columns: 1fr;
+  }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+  .logBranchChildren,
+  .logBranchChevron { transition: none; }
+}

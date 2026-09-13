@@ -1,0 +1,96 @@
+.root {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.trigger {
+  --neumorphic-button-radius: 8px;
+  display: flex;
+  width: 100%;
+  height: 32px;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--icon-default);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 16px;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.trigger:disabled {
+  cursor: default;
+  opacity: .5;
+}
+
+.trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trigger[data-appearance='flat'] {
+  border-color: transparent;
+  background: var(--neumorphic-button-surface);
+  color: var(--text);
+  font-weight: 600;
+  transform: none;
+}
+
+.trigger:not(:disabled):hover,
+.trigger:not(:disabled)[aria-expanded='true'] {
+  --neumorphic-button-active-color: var(--active-text);
+  background: var(--dropdown-selection-bg);
+  color: var(--active-text);
+}
+
+.chevron {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 auto;
+  transition: transform .18s ease;
+}
+
+.trigger[aria-expanded='true'] .chevron { transform: rotate(180deg); }
+
+.popoverAnchor {
+  position: fixed;
+  z-index: 110;
+}
+
+.popover {
+  composes: liquid-glass-context-menu from global;
+}
+
+.popoverAnchor .popover {
+  color: var(--text);
+  animation: liquid-glass-select-popover-in .16s cubic-bezier(.22, 1, .36, 1);
+}
+
+.popoverAnchor[data-placement='left'] .popover {
+  animation-name: liquid-glass-select-popover-left-in;
+}
+
+.option[aria-checked='true'] {
+  background: var(--dropdown-selection-bg);
+  color: var(--dropdown-selection-text);
+}
+
+.option:disabled { cursor: not-allowed; opacity: .5; }
+
+@keyframes liquid-glass-select-popover-in {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+}
+
+@keyframes liquid-glass-select-popover-left-in {
+  from { opacity: 0; transform: translateX(8px) scale(.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron { transition: none; }
+  .popoverAnchor[data-placement] .popover { animation: none; }
+}
