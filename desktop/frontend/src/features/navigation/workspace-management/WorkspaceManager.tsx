@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FolderOpen, FolderPlus, Folders, GitBranch, GitFork, Search, Trash2 } from 'lucide-react';
 import type { WorkspaceCatalogEntry, WorkspaceManagementApi } from '../../../../../shared/workspace-management';
-import { NeumorphicButton, NeumorphicTextField, SearchClearButton, WorkspaceProjectIcon } from '../../../shared/ui';
+import { LoadingState, NeumorphicButton, NeumorphicTextField, SearchClearButton, WorkspaceProjectIcon } from '../../../shared/ui';
 import { isLiteralTrue } from '../../../shared/isLiteralTrue';
 import { AppUpdateIndicator } from '../../updates/AppUpdateIndicator';
 import { PrepareCloneWorkspacePage } from './PrepareCloneWorkspacePage';
@@ -223,7 +223,8 @@ export function WorkspaceManager({ api, workspaceName, workspaceRoot, platform }
         </main>
       </div>
       <footer className={styles.status}>
-        <span role="status">{workspaceReady ? status ?? `${entries.length} ${entries.length === 1 ? 'project' : 'projects'}` : null}</span>
+        {workspaceReady && busy ? <LoadingState type="preparing" label={status ?? 'Opening workspace…'} />
+          : <span role="status">{workspaceReady ? status ?? `${entries.length} ${entries.length === 1 ? 'project' : 'projects'}` : null}</span>}
         <AppUpdateIndicator api={api} />
         {workspaceReady && <div className={styles.actions}>
           <NeumorphicButton raised size="standard" disabled={busy} onClick={(event) => showDialog('create', event.currentTarget)}>

@@ -114,7 +114,6 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try { runtime = createWorkspaceRuntime(options, snapshot => source?.update(snapshot)); }
   catch (error) { source?.dispose(); throw error; }
-  if (usageTray) backgroundUsage.start();
   return {
     async start() {
       try {
@@ -154,8 +153,8 @@ async function openStartupWindow(): Promise<void> {
         cwd: app.getPath('userData'), openExternal: (url) => shell.openExternal(url),
       }),
     });
-    // Keep the startup screen visible for development layout review.
-    if (!quitting && !app.isPackaged && startupScreen.isOpen) await delay(2_000);
+    const remainingDisplayMs = startupScreen.remainingMinimumDisplayMs;
+    if (!quitting && remainingDisplayMs > 0) await delay(remainingDisplayMs);
     if (quitting) return;
     if (root && restore) await workspaces.open(root);
     else await workspaces.openManager();
@@ -199,6 +198,7 @@ app.whenReady().then(async () => {
       onError: reportTrayError,
     }); } catch (error) { reportTrayError(error); }
   }
+  if (usageTray) backgroundUsage.start();
   const resumeWindows = await updateResume.load().catch(error => {
     process.stderr.write(`[cheshi] Could not load update recovery: ${String(error)}\n`);
     return [];

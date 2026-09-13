@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { ForgeConfig } from '@electron-forge/shared-types';
+import { macOSSigningOptions } from './config/macos-signing.mts';
 
 const rootDirectory = fileURLToPath(new URL('.', import.meta.url));
 
@@ -166,7 +167,11 @@ export default async function createForgeConfiguration(): Promise<ForgeConfig> {
   const { product } = await import('./config/product.mts');
 
   return {
+    hooks: {
+      readPackageJson: async (_forgeConfig, packageJson) => ({ ...packageJson, version: product.version }),
+    },
     packagerConfig: {
+      ...macOSSigningOptions(process.env, process.platform),
       name: product.displayName,
       icon: path.join(rootDirectory, 'resources', 'icons', 'app-icon.icns'),
       appBundleId: product.bundleId,

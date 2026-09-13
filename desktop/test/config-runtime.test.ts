@@ -4,8 +4,10 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import type { ResolvedForgeConfig } from '@electron-forge/shared-types';
 
 import { product } from '../../config/product.mts';
+import { macOSSigningOptions } from '../../config/macos-signing.mts';
 import {
   CODEGRAPH_DATA_ROOT_ENV,
   codeGraphStorageDirectory,
@@ -114,6 +116,48 @@ test('loads the typed configuration modules in the Node runtime', () => {
   );
 });
 
+test('uses product metadata for the distributable version without changing the source manifest', async () => {
+  const configuration = await createForgeConfiguration();
+  const hook = configuration.hooks?.readPackageJson;
+  assert.equal(typeof hook, 'function');
+  if (typeof hook !== 'function') throw new Error('Forge package metadata hook is unavailable.');
+  const source = { name: 'example-package', version: '0.0.0' };
+  const result = await hook(configuration as ResolvedForgeConfig, source);
+  assert.deepEqual(result, { ...source, version: product.version });
+  assert.equal(source.version, '0.0.0');
+});
+
+test('keeps signing and notarization opt in for local builds', () => {
+  for (const setting of [undefined, '', '0', 'false', 'true']) {
+    assert.deepEqual(macOSSigningOptions({ CHESHI_SIGN_RELEASE: setting }, 'darwin'), {});
+  }
+});
+
+test('reads signing identity and notarization profile from the build environment', () => {
+  const environment = {
+    CHESHI_SIGN_RELEASE: '1',
+    MACOS_SIGNING_IDENTITY: ' Developer ID Application: Example Company (EXAMPLE123) ',
+    MACOS_NOTARY_PROFILE: ' ExampleNotary ',
+  };
+  assert.deepEqual(macOSSigningOptions(environment, 'darwin'), {
+    osxSign: {
+      identity: 'Developer ID Application: Example Company (EXAMPLE123)',
+      type: 'distribution',
+      continueOnError: false,
+    },
+    osxNotarize: { keychainProfile: 'ExampleNotary' },
+  });
+  assert.throws(() => macOSSigningOptions(environment, 'linux'), /require macOS/);
+  assert.throws(() => macOSSigningOptions(environment, 'win32'), /require macOS/);
+});
+
+test('fails signed builds when a required signing environment value is missing', () => {
+  assert.throws(() => macOSSigningOptions({ CHESHI_SIGN_RELEASE: '1' }, 'darwin'), /MACOS_SIGNING_IDENTITY/);
+  assert.throws(() => macOSSigningOptions({
+    CHESHI_SIGN_RELEASE: '1', MACOS_SIGNING_IDENTITY: 'Example identity', MACOS_NOTARY_PROFILE: ' ',
+  }, 'darwin'), /MACOS_NOTARY_PROFILE/);
+});
+
 test('packages only the TypeScript configuration sources', async () => {
   const configuration = await createForgeConfiguration();
   const shouldIgnore = configuration.packagerConfig?.ignore;
@@ -121,6 +165,9 @@ test('packages only the TypeScript configuration sources', async () => {
 
   assert.equal(shouldIgnore('/config/product.mts'), false);
   assert.equal(shouldIgnore('/config/workspace-storage.mts'), false);
+  assert.equal(shouldIgnore('/.env.product'), false);
+  assert.equal(shouldIgnore('/.env.local'), true);
+  assert.equal(shouldIgnore('/.env.signing'), true);
   assert.equal(shouldIgnore('/config/product.mjs'), true);
   assert.equal(shouldIgnore('/config/product.d.mts'), true);
   assert.equal(shouldIgnore('/config/workspace-storage.mjs'), true);

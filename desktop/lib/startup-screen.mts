@@ -1,5 +1,7 @@
 import { startupPage } from './startup-page.mts';
 
+const MINIMUM_DISPLAY_MS = 2_000;
+
 export function shouldShowStartupScreen(environment: NodeJS.ProcessEnv = process.env): boolean {
   return environment.CHESHI_E2E_HEADLESS !== '1' && environment.CHESHI_WORKSPACE_WINDOW !== '1';
 }
@@ -22,9 +24,15 @@ interface StartupScreenOptions {
 export class StartupScreen {
   private view: StartupView | null = null;
   private settleReady: ((shown: boolean) => void) | null = null;
+  private shownAt: number | null = null;
 
   get isOpen(): boolean {
     return this.view !== null && !this.view.isDestroyed();
+  }
+
+  get remainingMinimumDisplayMs(): number {
+    if (!this.isOpen || this.shownAt === null) return 0;
+    return Math.max(0, MINIMUM_DISPLAY_MS - (performance.now() - this.shownAt));
   }
 
   async open(view: StartupView, options: StartupScreenOptions): Promise<boolean> {
@@ -34,6 +42,7 @@ export class StartupScreen {
     view.once('ready-to-show', () => {
       if (this.view !== view || view.isDestroyed()) return;
       view.show();
+      this.shownAt = performance.now();
       this.settleReady?.(true);
     });
     view.once('closed', () => {
@@ -67,6 +76,7 @@ export class StartupScreen {
   close(): void {
     const view = this.view;
     this.view = null;
+    this.shownAt = null;
     this.settleReady?.(false);
     this.settleReady = null;
     if (view && !view.isDestroyed()) view.destroy();
