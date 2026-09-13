@@ -1,4 +1,5 @@
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../shared/chat-user-input';
+import type { AppUpdateApi, AppUpdateResumeApi } from '../../shared/app-update';
 import type { LocalHistoryEntry, LocalHistorySnapshot, LocalHistoryRestoreRequest } from '../../shared/local-history';
 import type { WorkspaceManagementApi } from '../../shared/workspace-management';
 import type { GitDiscardPreview, GitDiscardRequest, GitDiscardSelection } from '../../shared/git-discard';
@@ -644,7 +645,7 @@ export interface CodexChatConfigurationRequest {
   fast?: boolean;
 }
 
-export interface CheshiDesktopApi {
+export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpdateResumeApi> {
   workspaceManagement?: WorkspaceManagementApi;
   showcase?: import('../../shared/showcase').ShowcaseApi;
   platform: string;
@@ -852,4 +853,4 @@ type CheshiDesktopWindow = Window & {
   readonly cheshiDesktop?: CheshiDesktopApi;
 };
 
-export const cheshiDesktop = (window as CheshiDesktopWindow).cheshiDesktop;
+export const cheshiDesktop = typeof window === 'undefined' ? undefined : (window as CheshiDesktopWindow).cheshiDesktop;

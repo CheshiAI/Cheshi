@@ -176,7 +176,9 @@ function scheduleForgeRestart(changedPath: string): void {
 }
 
 function handleMainSourceChange(changedPath: string): void {
-  if (![preloadSourcePath, rendererReadinessSourcePath].includes(changedPath)) {
+  if (![preloadSourcePath, rendererReadinessSourcePath,
+    path.join(rootDirectory, 'desktop', 'lib', 'app-update-preload.cts'),
+    path.join(rootDirectory, 'desktop', 'shared', 'app-update.ts')].includes(changedPath)) {
     scheduleForgeRestart(changedPath);
     return;
   }
@@ -200,6 +202,10 @@ function watchMainSources(): FSWatcher[] {
     path.join(rootDirectory, 'desktop', 'bootstrap.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'development-shutdown.mts'),
     path.join(rootDirectory, 'desktop', 'main.mts'),
+    ...['app-release-checker.mts', 'app-update-service.mts', 'app-update-preview.mts', 'app-update-resume.mts',
+      'app-update-download.mts', 'app-update-installer.mts', 'app-update-preload.cts']
+      .map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
+    path.join(rootDirectory, 'desktop', 'shared', 'app-update.ts'),
     path.join(rootDirectory, 'desktop', 'workspace-runtime.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'startup-page.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'startup-screen.mts'),

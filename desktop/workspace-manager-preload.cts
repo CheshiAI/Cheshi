@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { installRendererReadiness } from './lib/renderer-readiness.mts';
 import { createWorkspaceManagementApi } from './lib/workspace-management-preload.cts';
+import { createAppUpdateApi } from './lib/app-update-preload.cts';
 
 function argument(name: string): string {
   const flag = `--cheshi-manager-${name}`;
@@ -16,7 +17,7 @@ contextBridge.exposeInMainWorld('workspaceManager', {
   platform: process.platform,
   workspaceName: argument('name'),
   workspaceRoot: argument('root'),
-  api: createWorkspaceManagementApi(ipcRenderer),
+  api: { ...createWorkspaceManagementApi(ipcRenderer), ...createAppUpdateApi(ipcRenderer) },
 });
 
 installRendererReadiness(window, document, () => {

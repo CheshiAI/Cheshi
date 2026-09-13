@@ -6,6 +6,7 @@ import { LiquidGlassPanel } from '../../shared/ui';
 import { AccountUsagePanel } from '../account/AccountUsagePanel';
 import { AddAccountDialog } from '../account/AddAccountDialog';
 import { CodeGraphIndexPanel, type CodeGraphIndexIndicator } from '../graph/CodeGraphIndexPanel';
+import { AppUpdateIndicator } from '../updates/AppUpdateIndicator';
 import { accountStatusSummary, accountUsageTotals } from './statusBarModel';
 import { WorkspaceStorageUsage } from './WorkspaceStorageUsage';
 import styles from './WorkspaceStatusBar.module.css';
@@ -52,6 +53,7 @@ export function WorkspaceStatusBar({ onAccountInitialLoad, onIndexInitialLoad, .
   return (
     <footer className={styles.bar} aria-label="Workspace status">
       <WorkspaceStorageUsage />
+      <AppUpdateIndicator />
       <button type="button" className={`${styles.item} ${styles.index}`} popoverTarget={indexId}
         aria-haspopup="dialog" aria-expanded={indexOpen} aria-controls={indexId}
         data-index-state={index.busy ? 'pending' : index.attention ? 'disabled' : 'ready'}

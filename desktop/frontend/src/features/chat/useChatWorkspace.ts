@@ -14,6 +14,8 @@ import { isViewedSessionResponding } from './model';
 import { chatSessionDeletionReason } from './chatSessionDeletion';
 import { createChatSessionCache } from './chatSessionCache';
 import { chatAccountSwitchReason } from './chatAccountSwitch';
+import { updateResumeCoordinator } from '../shell/updateWorkspaceResume';
+import { parseChatUpdateSnapshot, reopenUpdateConversations, type ChatUpdateSnapshot } from './chatUpdateResume';
 
 export function useChatWorkspace() {
   const [sessionCache, setSessionCache] = useState(createChatSessionCache);
@@ -47,6 +49,16 @@ export function useChatWorkspace() {
     return () => { mountedRef.current = false; };
   }, []);
   const paneIds = useMemo(() => splitPaneIds(state.layout), [state.layout]);
+  const updateRecovery = useRef<{
+    snapshot: ChatUpdateSnapshot; started: boolean; resolve(): void; reject(reason: Error): void;
+  } | null>(null);
+  useEffect(() => {
+    const pending = updateRecovery.current;
+    if (!pending || pending.started || !splitPaneIds(pending.snapshot.layout).every((id) => controllers[id])) return;
+    pending.started = true;
+    void reopenUpdateConversations(pending.snapshot, controllers).then(pending.resolve, (reason: unknown) => pending.reject(reason instanceof Error ? reason : new Error(String(reason))));
+  }, [controllers, state.layout]);
+  useEffect(() => () => updateRecovery.current?.reject(new Error('Workspace recovery was interrupted.')), []);
   const getAccountSwitchReason = useCallback(() => {
     const current = latestRef.current;
     const ids = splitPaneIds(currentStateRef.current.layout);
@@ -59,6 +71,36 @@ export function useChatWorkspace() {
       composerReasons: ids.flatMap((id) => composerGuards.current.has(id) ? [composerGuards.current.get(id)!()] : []),
     });
   }, []);
+  useEffect(() => updateResumeCoordinator.register('chat', {
+    capture() {
+      const reason = getAccountSwitchReason();
+      if (reason) throw new Error(reason.replace('switching accounts', 'updating'));
+      const current = currentStateRef.current;
+      const sessionIds = Object.fromEntries(splitPaneIds(current.layout).flatMap((id) => {
+        const session = latestRef.current.controllers[id]?.state.activeSessionId;
+        return session ? [[id, session]] : [];
+      }));
+      return { ...current, sessionIds };
+    },
+    restore(value) {
+      const snapshot = parseChatUpdateSnapshot(value);
+      const restored = { layout: snapshot.layout, activePaneId: snapshot.activePaneId };
+      currentStateRef.current = restored;
+      // Reopen explicitly so failed thread restoration retains the durable checkpoint.
+      // initialSessionIds belongs to fork creation and opens threads without awaiting them.
+      setInitialSessionIds({});
+      return new Promise<void>((resolve, reject) => {
+        const finish = (error?: Error) => {
+          clearTimeout(timer);
+          updateRecovery.current = null;
+          if (error) reject(error); else resolve();
+        };
+        const timer = setTimeout(() => finish(new Error('Saved conversations could not be reopened in time.')), 15_000);
+        updateRecovery.current = { snapshot, started: false, resolve: () => finish(), reject: finish };
+        setState(restored);
+      });
+    },
+  }), [getAccountSwitchReason]);
   const accountSwitchReason = useMemo(() => getAccountSwitchReason(),
     [getAccountSwitchReason, controllers, paneIds, relay, splitPending, deletePending, accountSwitchPending, composerRevision]);
   const beginAccountSwitch = useCallback(() => {

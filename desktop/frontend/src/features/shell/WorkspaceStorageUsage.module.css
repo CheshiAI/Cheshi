@@ -3,7 +3,7 @@
   min-width: 0;
   align-items: center;
   gap: var(--icon-default);
-  margin: var(--space-2) auto var(--space-2) 0;
+  margin: var(--space-2) 0;
   padding: var(--space-4) var(--space-10);
   color: inherit;
   font: inherit;

@@ -33,6 +33,7 @@ import { ReviewSidebar } from './ReviewSidebar';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import { LocalHistoryPage } from '../editor/LocalHistoryPage';
 import styles from './AppShell.module.css';
+import { useAppUpdateResume } from './useAppUpdateResume';
 
 export function AppShell() {
   const [accountLoaded, setAccountLoaded] = useState(false);
@@ -67,7 +68,10 @@ export function AppShell() {
   const editorMutationRequestId = useRef(0);
   const workspace = useChatWorkspace();
   const historySearch = useChatHistorySearch(workspace.activePaneId);
-  const accountSwitchReason = temporaryChatOpen ? 'Close the temporary chat before switching accounts.'
+  const updateResume = useAppUpdateResume({ activeView, rightSidebarOpen, setActiveView, setRightSidebarOpen,
+    blockedReason: temporaryChatOpen ? 'Close the temporary chat before updating.'
+      : historyChoice || deleteChoice ? 'Close the conversation dialog before updating.' : null });
+  const accountSwitchReason = updateResume.busy ? 'Wait for update preparation or workspace recovery to finish.' : temporaryChatOpen ? 'Close the temporary chat before switching accounts.'
     : historyChoice || deleteChoice ? 'Close the conversation dialog before switching accounts.'
       : workspace.accountSwitchReason;
   const beforeAccountSelect = (): string | null => accountSwitchReason ?? workspace.beginAccountSwitch();
@@ -171,7 +175,9 @@ export function AppShell() {
 
   return (
     <div className={`app-shell ${styles.shell}`}>
+      {updateResume.error && <div role="alert">{updateResume.error}</div>}
       <div
+        inert={updateResume.busy}
         className={`app-layout ${styles.layout}`}
         data-active-view={activeView}
         data-file-review={reviewedItem ? 'true' : undefined}

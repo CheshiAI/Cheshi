@@ -17,25 +17,7 @@
 }
 
 .item {
-  -webkit-app-region: no-drag;
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--icon-default);
-  border: 0;
-  border-radius: 0;
-  padding: 0 var(--space-8);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-.item > svg {
-  width: var(--icon-size-default);
-  height: var(--icon-size-default);
-  flex: 0 0 var(--icon-size-default);
-  stroke-width: 1.7;
+  composes: button from '../../shared/ui/StatusBarButton.module.css';
 }
 
 .label {
@@ -45,27 +27,13 @@
   white-space: nowrap;
 }
 
-.item:hover,
-.item[aria-expanded='true'] {
-  background: var(--dropdown-selection-bg);
-  color: var(--text);
-}
-
-.item:focus-visible {
-  outline: 1px solid var(--active-text);
-  outline-offset: -2px;
-}
-
 .account[data-attention='true'] {
   color: var(--text);
   font-weight: 600;
 }
 
-.index,
-.account {
-  margin: var(--space-2) 0;
-  border-radius: 999px;
-  padding: var(--space-4) var(--space-10);
+.index {
+  margin-left: auto;
 }
 
 .index[data-index-state='ready'] > svg,

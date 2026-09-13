@@ -1,3 +1,5 @@
+import type { AppUpdateApi } from './app-update.ts';
+
 export interface WorkspaceCatalogEntry {
   id: string;
   name: string;
@@ -78,7 +80,7 @@ export interface WorkspaceCodexLoginState {
   error: string | null;
 }
 
-export interface WorkspaceManagementApi {
+export interface WorkspaceManagementApi extends Partial<AppUpdateApi> {
   getCodexLogin(): Promise<WorkspaceCodexLoginState>;
   startCodexLogin(): Promise<WorkspaceCodexLoginState>;
   cancelCodexLogin(): Promise<WorkspaceCodexLoginState>;

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, session, shell, Tray, WebContentsView } from 'electron';
+import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, session, shell, Tray, WebContentsView } from 'electron';
 import { product } from '../config/product.mts';
 import { startupScreen } from './lib/startup-screen.mts';
 import { WorkspaceApplication, WorkspaceWindowCloseCancelledError } from './lib/workspace-application.mts';
@@ -16,8 +16,48 @@ import { loadMenuBarLogo } from './lib/menu-bar-logo.mts';
 import { createAccountUsageBackground } from './lib/account-usage-background.mts';
 import { getCodexAccountProfiles } from './lib/codex-account-profiles.mts';
 import { createShowcaseBrowser } from './lib/showcase-browser.mts';
+import { findAppRelease } from './lib/app-release-checker.mts';
+import { createAppUpdateService } from './lib/app-update-service.mts';
+import { createAppUpdatePreview } from './lib/app-update-preview.mts';
+import { appUpdateUnavailableReason, stageAppUpdate } from './lib/app-update-installer.mts';
+import { createAppUpdateResume } from './lib/app-update-resume.mts';
+import { APP_UPDATE_CHANNEL } from './shared/app-update.ts';
+import type { WorkspaceRuntimeOptions } from './lib/workspace-application.mts';
 
 process.env.PATH = desktopToolPath(process.env.PATH);
+const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'updates'));
+const updatePreview = createAppUpdatePreview({ packaged: app.isPackaged, setting: process.env.CHESHI_UPDATE_PREVIEW });
+const updates = createAppUpdateService({
+  currentVersion: product.version,
+  unavailableReason: 'Checking update installation support…',
+  check: signal => findAppRelease({ currentVersion: product.version, platform: process.platform, arch: process.arch, signal }),
+  openExternal: url => shell.openExternal(url),
+  onCheckError: error => process.stderr.write(`[cheshi] Update check failed: ${String(error)}\n`),
+  async install(release, installing) {
+    const reason = await appUpdateUnavailableReason({ packaged: app.isPackaged, platform: process.platform, executable: process.execPath });
+    if (reason) throw new Error(reason);
+    if (quitting || workspaces.isTransitioning) throw new Error('Wait for the workspace operation to finish before updating.');
+    try {
+      await updateResume.prepare();
+      await stageAppUpdate(autoUpdater, release);
+      await updateResume.prepare();
+      await updateResume.activate();
+      installing();
+      quitting = true;
+      await workspaces.closeAll();
+      await backgroundUsage.dispose().catch(reportTrayError);
+      usageTray?.dispose();
+      cleanupComplete = true;
+      updates.dispose();
+      autoUpdater.quitAndInstall();
+    } catch (error) {
+      quitting = false;
+      await updateResume.cancel();
+      throw error;
+    }
+  },
+  ...updatePreview,
+});
 let usageTray: ReturnType<typeof createAccountUsageTray> | undefined;
 const backgroundUsage = createAccountUsageBackground({
   acquire: () => getCodexAccountProfiles({
@@ -31,16 +71,39 @@ const backgroundUsage = createAccountUsageBackground({
 
 const workspaces = new WorkspaceApplication({
   router: new WorkspaceIpcRouter(ipcMain),
-  createRuntime: (options) => options.managementOnly === true
+  createRuntime: createApplicationRuntime,
+  initialRoot: '',
+});
+
+function createApplicationRuntime(options: WorkspaceRuntimeOptions) {
+  const recovery = updateResume.register(options);
+  options.scope.ipc.handle(`${APP_UPDATE_CHANNEL}:get`, () => updates.snapshot());
+  options.scope.ipc.handle(`${APP_UPDATE_CHANNEL}:install`, () => updates.install());
+  options.scope.ipc.handle(`${APP_UPDATE_CHANNEL}:open`, () => updates.openRelease());
+  let runtime: ReturnType<typeof createWorkspaceRuntime> | ReturnType<typeof createWorkspaceManagerRuntime>;
+  try { runtime = options.managementOnly === true
     ? createWorkspaceManagerRuntime(options, {
       app, dialog, dataRoot: app.getPath('userData'),
       createWindow: (configuration) => new BrowserWindow(configuration),
       rendererUrl: process.env.CHESHI_RENDERER_URL?.trim(),
       trashItem: (root) => shell.trashItem(root), openExternal: (url) => shell.openExternal(url),
       onShown: () => startupScreen.close(),
-    }) : createTrackedWorkspace(options),
-  initialRoot: '',
-});
+    }) : createTrackedWorkspace(options); }
+  catch (error) { recovery.dispose(); throw error; }
+  let unsubscribe: (() => void) | undefined;
+  return {
+    async start() {
+      const window = await runtime.start();
+      recovery.attach(window);
+      unsubscribe = updates.subscribe(state => {
+        if (!window.isDestroyed()) window.webContents.send(`${APP_UPDATE_CHANNEL}:changed`, state);
+      });
+      return window;
+    },
+    show: () => runtime.show?.(),
+    async dispose() { unsubscribe?.(); recovery.dispose(); await runtime.dispose(); },
+  };
+}
 let quitting = false;
 let cleanupComplete = false;
 let openingStartupWindow = false;
@@ -110,6 +173,13 @@ function reportTrayError(error: unknown): void {
 }
 
 app.whenReady().then(async () => {
+  updates.start();
+  powerMonitor.on('resume', () => { void updates.resume(); });
+  autoUpdater.on('error', error => process.stderr.write(`[cheshi] Update installation failed: ${String(error)}\n`));
+  if (!updatePreview) {
+    void appUpdateUnavailableReason({ packaged: app.isPackaged, platform: process.platform, executable: process.execPath })
+      .then(reason => updates.setUnavailableReason(reason));
+  }
   app.setAboutPanelOptions({
     applicationName: product.displayName, applicationVersion: product.version,
     version: product.buildNumber, copyright: `© ${new Date().getFullYear()} ${product.publisher}`,
@@ -129,7 +199,16 @@ app.whenReady().then(async () => {
       onError: reportTrayError,
     }); } catch (error) { reportTrayError(error); }
   }
-  await openStartupWindow();
+  const resumeWindows = await updateResume.load().catch(error => {
+    process.stderr.write(`[cheshi] Could not load update recovery: ${String(error)}\n`);
+    return [];
+  });
+  if (resumeWindows.length) {
+    for (const saved of resumeWindows) {
+      if (saved.managementOnly) await workspaces.openManager();
+      else await workspaces.open(saved.root, saved.windowState);
+    }
+  } else await openStartupWindow();
 }).catch(reportStartupError);
 
 app.on('activate', () => {
@@ -145,6 +224,7 @@ app.on('before-quit', (event) => {
   void workspaces.closeAll().then(async () => {
     await backgroundUsage.dispose().catch(reportTrayError);
     usageTray?.dispose();
+    updates.dispose();
     cleanupComplete = true;
     app.quit();
   }).catch((error: unknown) => {

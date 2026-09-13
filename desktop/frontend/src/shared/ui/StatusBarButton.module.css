@@ -1,0 +1,36 @@
+.button {
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--icon-default);
+  margin: var(--space-2) 0;
+  border: 0;
+  border-radius: 999px;
+  padding: var(--space-4) var(--space-10);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.button > svg {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+  stroke-width: 1.7;
+}
+
+.button:hover {
+  background: var(--dropdown-selection-bg);
+}
+
+.button:hover,
+.button[aria-expanded='true'] {
+  color: var(--text);
+}
+
+.button:focus-visible {
+  outline: 1px solid var(--active-text);
+  outline-offset: -2px;
+}

@@ -14,6 +14,7 @@ import {
   useState,
 } from 'react';
 
+import { useEditorUpdateResume } from './useEditorUpdateResume';
 import { errorMessage as toErrorMessage } from '../../shared/errorMessage';
 import { isWorkspacePathAtOrBelow, renameWorkspacePathPrefix } from '../../shared/workspacePaths';
 import {
@@ -182,6 +183,12 @@ export function useWorkspaceEditorController({
       return next;
     });
   }, []);
+
+  const updateDraftsPreserved = useEditorUpdateResume({
+    tabsRef, selectedPathRef, nextTabGeneration, savingRef, loading,
+    applyingEdit: assistState?.kind === 'edit-preview' && assistState.applying,
+    problemsOpen, problemsRatio, replaceTabs, selectPath, setProblemsOpen, setProblemsRatio,
+  });
 
   const updateTab = useCallback((path: string, update: (tab: WorkspaceTab) => WorkspaceTab): void => {
     replaceTabs((current) => current.map((tab) => tab.path === path ? update(tab) : tab));
@@ -814,7 +821,7 @@ export function useWorkspaceEditorController({
 
   useEffect(() => {
     const handleBeforeUnload = (): string | undefined => (
-      tabsRef.current.some(isTabDirty) ? '' : undefined
+      tabsRef.current.some(isTabDirty) && !updateDraftsPreserved() ? '' : undefined
     );
     window.onbeforeunload = handleBeforeUnload;
     return () => {

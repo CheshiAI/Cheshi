@@ -64,6 +64,7 @@ function harness(props: ComponentProps<typeof WorkspaceStatusBar>) {
     '../account/AccountUsagePanel': { AccountUsagePanel: 'AccountUsagePanel' },
     '../account/AddAccountDialog': { AddAccountDialog: 'AddAccountDialog' },
     '../graph/CodeGraphIndexPanel': { CodeGraphIndexPanel: 'CodeGraphIndexPanel' },
+    '../updates/AppUpdateIndicator': { AppUpdateIndicator: 'AppUpdateIndicator' },
     './WorkspaceStorageUsage': { WorkspaceStorageUsage: 'WorkspaceStorageUsage' },
     './LanguageSelector': { LanguageSelector: 'LanguageSelector' },
     './statusBarModel': { accountStatusSummary, accountUsageTotals },

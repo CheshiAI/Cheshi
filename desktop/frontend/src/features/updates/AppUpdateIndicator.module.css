@@ -1,0 +1,103 @@
+.indicator {
+  composes: button from '../../shared/ui/StatusBarButton.module.css';
+  color: var(--codegraph-default);
+}
+
+.indicator:hover,
+.indicator[aria-expanded='true'] {
+  color: var(--codegraph-default);
+}
+
+.releaseLink > svg {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+  stroke-width: 1.7;
+}
+
+.indicator > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.releaseLink:focus-visible {
+  outline: 1px solid var(--active-text);
+  outline-offset: -2px;
+}
+
+.dialog {
+  --modal-title-color: var(--active-text);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-default);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.content p,
+.changelog h3 {
+  margin: 0;
+}
+
+.version {
+  color: var(--active-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.changelog {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-default);
+}
+
+.changelog h3 {
+  color: var(--sidebar-section-label-color);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.changelog p {
+  max-height: 240px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.releaseLink {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: var(--icon-default);
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--active-text);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.releaseLink:not(:disabled):hover {
+  color: var(--text);
+}
+
+.releaseLink:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.notice {
+  color: var(--sub-text);
+}
+
+.buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--icon-default);
+}
