@@ -81,6 +81,9 @@ test('uses typed Electron entrypoints and a generated sandboxed preload', async 
   assert.equal(shouldIgnore('/resources/icons/startup-logo.png.tmp'), true);
   assert.equal(shouldIgnore('/resources/icons/app-icon.png'), false);
   assert.equal(shouldIgnore('/resources/icons/app-icon.png.tmp'), true);
+  assert.equal(shouldIgnore('/resources/icons/about-logo.png'), false);
+  assert.equal(shouldIgnore('/resources/icons/about-logo.png.tmp'), true);
+  assert.equal(existsSync(path.join(rootDirectory, 'resources', 'icons', 'about-logo.png')), true);
   assert.equal(existsSync(path.join(rootDirectory, 'resources', 'icons', 'app-icon.png')), true);
   const appIcon = path.join(rootDirectory, 'resources', 'icons', 'app-icon.icns');
   assert.equal(configuration.packagerConfig?.icon, appIcon);
