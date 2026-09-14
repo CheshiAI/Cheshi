@@ -19,7 +19,6 @@ import { writeWorkspaceFileTransfer } from '../../shared/workspaceFileTransfer';
 import { NeumorphicTextField, SearchClearButton, Tooltip } from '../../shared/ui';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { WorkspaceFileTreeController } from './useWorkspaceFileTreeController';
-import { useWorkspaceGitChangedPaths } from './useWorkspaceGitChangedPaths';
 import { handleWorkspaceEntryEditKeyDown } from './workspaceEntryEditInteraction';
 
 type WorkspaceFileTreeNameStyle = CSSProperties & {
@@ -119,7 +118,6 @@ function WorkspaceFileTreeEditRow({
 }
 
 export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFileTreeRowsProps) {
-  const gitChangedPaths = useWorkspaceGitChangedPaths();
   const {
     activateEntry,
     announcement,
@@ -245,7 +243,6 @@ export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFil
                     type="button"
                     aria-expanded={isDirectory ? isExpanded : undefined}
                     aria-selected={isSelected}
-                    data-git-changed={!isDirectory && gitChangedPaths.has(entry.path) ? 'true' : undefined}
                     data-context-menu-open={contextMenu?.entry?.path === entry.path}
                     style={{ paddingLeft: `${4 + depth * 18}px` }}
                     onClick={() => activateEntry(entry)}

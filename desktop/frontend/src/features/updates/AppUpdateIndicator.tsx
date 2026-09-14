@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { AppUpdateApi, AppUpdateState } from '../../../../shared/app-update';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { LoadingIndicator, LoadingState, Modal, NeumorphicButton } from '../../shared/ui';
+import { Modal, NeumorphicButton } from '../../shared/ui';
 import styles from './AppUpdateIndicator.module.css';
 
 const CHANGELOG_EXCERPT_LENGTH = 1_200;
@@ -72,8 +72,8 @@ export function AppUpdateIndicator({ api = cheshiDesktop }: { api?: Partial<AppU
   return <>
     <button type="button" className={styles.indicator} aria-haspopup="dialog" aria-expanded={open}
       title={`v${state.currentVersion} → v${release.version}`} onClick={() => setOpen(true)}>
-      {busy ? <LoadingIndicator /> : <Bell aria-hidden="true" />}
-      <span className={styles.indicatorLabel} aria-live="polite">{busy ? progress : 'Update available'}</span>
+      <Bell aria-hidden="true" />
+      <span aria-live="polite">{busy ? progress : 'Update available'}</span>
     </button>
     {open && <Modal className={styles.dialog} title="App update"
       titleIcon={<Bell aria-hidden="true" />} closeDisabled={busy} onClose={close}>
@@ -94,7 +94,7 @@ export function AppUpdateIndicator({ api = cheshiDesktop }: { api?: Partial<AppU
         </> : <p>The app will restart and restore your workspace. Running terminal commands will stop and will not restart automatically.</p>}
         {unavailableReason && <p className={styles.notice}>{unavailableReason}</p>}
         {error && <p role="alert">{error}</p>}
-        {busy && <LoadingState className={styles.progress} type="processing" label={progress} />}
+        {busy && <p role="status">{progress}</p>}
         <div className={styles.buttons}>
           <NeumorphicButton size="standard" raised disabled={busy} onClick={close}>Cancel</NeumorphicButton>
           <NeumorphicButton size="standard" raised disabled={busy || unavailableReason !== null}

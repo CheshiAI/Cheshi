@@ -1,6 +1,5 @@
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../shared/chat-user-input';
 import type { AppUpdateApi, AppUpdateResumeApi } from '../../shared/app-update';
-import type { KeepAwakeApi } from '../../shared/keep-awake';
 import type { LocalHistoryEntry, LocalHistorySnapshot, LocalHistoryRestoreRequest } from '../../shared/local-history';
 import type { WorkspaceManagementApi } from '../../shared/workspace-management';
 import type { GitDiscardPreview, GitDiscardRequest, GitDiscardSelection } from '../../shared/git-discard';
@@ -647,7 +646,6 @@ export interface CodexChatConfigurationRequest {
 }
 
 export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpdateResumeApi> {
-  keepAwake?: KeepAwakeApi;
   workspaceManagement?: WorkspaceManagementApi;
   showcase?: import('../../shared/showcase').ShowcaseApi;
   platform: string;
@@ -656,11 +654,6 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   workspaceRoot: string;
   getWorkspaceDiskUsage?: () => Promise<import('../../shared/workspace-disk-usage').WorkspaceDiskUsage>;
   isCodeGraphIndexed: () => Promise<boolean>;
-  searchWorkspaceFiles: (query: string) => Promise<import('../../shared/workspace-file-search').WorkspaceFileSearchResult>;
-  editorSession?: {
-    read: () => Promise<import('../../shared/workspace-editor-session').WorkspaceEditorSession | null>;
-    write: (session: import('../../shared/workspace-editor-session').WorkspaceEditorSession) => Promise<void>;
-  };
   reindexCodeGraph: () => Promise<unknown>;
   listWorkspaceDirectory: (relativePath?: string) => Promise<{
     path: string;

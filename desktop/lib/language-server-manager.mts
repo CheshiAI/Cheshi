@@ -4,7 +4,6 @@ import {
   findExecutable,
   isExecutable,
   normalizeBundledCommand,
-  resolveNodeScriptCommand,
 } from "./language-server-command.mts";
 import {
   isInsideWorkspace,
@@ -528,7 +527,7 @@ export class LanguageServerManager {
       this.environment,
     );
     if (executable) {
-      return resolveNodeScriptCommand(executable, definition.args) ?? {
+      return {
         executable,
         args: [...definition.args],
         environment: {},

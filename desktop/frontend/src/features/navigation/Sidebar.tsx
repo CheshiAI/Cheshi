@@ -25,6 +25,7 @@ const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceVi
 ];
 
 interface SidebarProps {
+  search?: ReactNode;
   activeView: WorkspaceView;
   selectedFilePath: string | null;
   onNavigate: (view: WorkspaceView) => void;
@@ -34,6 +35,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({
+  search,
   activeView,
   selectedFilePath,
   onNavigate,
@@ -43,6 +45,7 @@ export function Sidebar({
 }: SidebarProps) {
   return (
     <aside className="sidebar">
+      {search}
       <div className="sidebar-panel-content">
         <div className="sidebar-content-primary">
           <WorkspaceFileTree

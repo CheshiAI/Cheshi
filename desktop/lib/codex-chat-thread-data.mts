@@ -1,7 +1,6 @@
 import type { ChatAgentThread, ChatGoal, JsonObject } from "./codex-chat-types.mts";
 import { finiteNumber, recordValue, stringValue } from "./codex-service-utils.mts";
 import { chatRelaySessionTitle } from '../shared/chat-relay.ts';
-import { normalizeChatAsyncQuestions } from '../shared/chat-async-question.ts';
 import {
   parseSavedChatTurnPrompt,
   savedChatTurnSessionTitle,
@@ -34,8 +33,8 @@ export function turnErrorMessage(value: unknown): string {
  * @param {unknown} value
  * @returns {string}
  */
-function threadStatus(value: unknown, fallback = "notLoaded"): string {
-  return stringValue(recordValue(value)?.type) ?? fallback;
+function threadStatus(value: unknown): string {
+  return stringValue(recordValue(value)?.type) ?? "notLoaded";
 }
 
 /**
@@ -345,14 +344,12 @@ export function timelineFromThread(value: unknown): JsonObject[] {
         continue;
       }
       if (type === "agentMessage") {
-        const text = stringValue(item.text)?.trim() ?? "";
-        const questions = normalizeChatAsyncQuestions(item.questions);
-        if (text || questions.length > 0)
+        const text = stringValue(item.text)?.trim();
+        if (text)
           timeline.push({
             id,
             kind: "assistant",
             text,
-            ...(questions.length > 0 ? { questions } : {}),
             createdAt: completedAt,
           });
         continue;
@@ -515,7 +512,7 @@ export function agentFromThread(
     kind: isRoot ? "main" : "subagent",
     role,
     depth,
-    status: threadStatus(thread.status, "unknown"),
+    status: threadStatus(thread.status),
     current: id === currentThreadId,
   };
 }

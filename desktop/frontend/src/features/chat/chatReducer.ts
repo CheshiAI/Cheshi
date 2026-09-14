@@ -256,15 +256,6 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       ),
     };
   }
-  if (event.type === 'assistant-questions') {
-    if (event.threadId !== state.activeSessionId) return state;
-    const items = upsertTextItem(state.items, event.itemId, 'assistant', '', event.createdAt);
-    return {
-      ...state,
-      items: items.map(item => item.id === event.itemId && item.kind === 'assistant'
-        ? { ...item, questions: event.questions } : item),
-    };
-  }
   if (event.type === 'command-output-delta') {
     if (event.threadId !== state.activeSessionId) return state;
     const existing = state.items.find((item) => item.kind === 'activity' && item.id === event.itemId);

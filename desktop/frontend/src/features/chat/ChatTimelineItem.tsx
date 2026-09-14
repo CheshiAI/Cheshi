@@ -23,7 +23,6 @@ import { SavedChatTurnMessage } from './SavedChatTurnMessage';
 import type { ChatActivityItem, ChatTimelineItem as ChatTimelineItemModel } from './model';
 import styles from './ChatView.module.css';
 import { ChatTurnActions } from './ChatTurnActions';
-import { ChatAsyncQuestions } from './ChatAsyncQuestions';
 import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
 import type { SavedChatTurnsController } from './useSavedChatTurns';
 
@@ -114,9 +113,7 @@ function TimelineItemContent({
   return (
     <article className={styles.assistantRow}>
       <ChatMessageLabel author="assistant" createdAt={item.createdAt} />
-      <div className={styles.assistantMessage}>{item.questions?.length
-        ? <ChatAsyncQuestions key={item.id} itemId={item.id} questions={item.questions} />
-        : <MessageContent text={relayAssistantDisplayText(item.text, streaming)} />}</div>
+      <div className={styles.assistantMessage}><MessageContent text={relayAssistantDisplayText(item.text, streaming)} /></div>
     </article>
   );
 }

@@ -34,8 +34,6 @@ import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import { LocalHistoryPage } from '../editor/LocalHistoryPage';
 import styles from './AppShell.module.css';
 import { useAppUpdateResume } from './useAppUpdateResume';
-import { WorkspaceFileSearch } from '../navigation/WorkspaceFileSearch';
-import { WorkspaceContentSplit } from './WorkspaceContentSplit';
 
 export function AppShell() {
   const [accountLoaded, setAccountLoaded] = useState(false);
@@ -63,8 +61,6 @@ export function AppShell() {
   const [editorTarget, setEditorTarget] = useState<WorkspaceEditorTarget | null>(null);
   const [editorMutation, setEditorMutation] = useState<WorkspaceEditorMutation | null>(null);
   const [editorSelectedPath, setEditorSelectedPath] = useState<string | null>(null);
-  const editorOpen = editorTarget !== null || editorSelectedPath !== null || activeView === 'editor';
-  const pageView = activeView === 'editor' ? 'chat' : activeView;
   const [localHistoryPath, setLocalHistoryPath] = useState<string | null>(null);
   const localHistoryReturnView = useRef<WorkspaceView>('chat');
   const [editorDirtyPaths, setEditorDirtyPaths] = useState<string[]>([]);
@@ -168,6 +164,8 @@ export function AppShell() {
     editorRequestId.current += 1;
     setFileReview(null);
     setEditorTarget({ path, line, requestId: editorRequestId.current });
+    setRightSidebarOpen(true);
+    setActiveView('editor');
   };
 
   const handleWorkspaceEntryMutation = (mutation: WorkspaceEntryMutation): void => {
@@ -181,14 +179,17 @@ export function AppShell() {
       <div
         inert={updateResume.busy}
         className={`app-layout ${styles.layout}`}
-        data-active-view={pageView}
+        data-active-view={activeView}
         data-file-review={reviewedItem ? 'true' : undefined}
         data-right-sidebar-open={rightSidebarOpen ? 'true' : 'false'}
       >
         <LiquidGlassPanel className="sidebar-column" inert={workspace.accountSwitchPending}>
           <WindowChrome />
           <Sidebar
-            activeView={pageView}
+            search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
+              onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
+              onFocus={() => { if (activeView !== 'search') navigate('search'); }} />}
+            activeView={activeView}
             selectedFilePath={activeView === 'local-history' ? localHistoryPath : editorSelectedPath}
             onNavigate={navigate}
             onWorkspaceEntryMutation={handleWorkspaceEntryMutation}
@@ -197,78 +198,73 @@ export function AppShell() {
           />
         </LiquidGlassPanel>
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
-          <WorkspaceContentSplit editorOpen={editorOpen} editor={
-            <WorkspaceEditor
-              active={editorOpen}
-              mutation={editorMutation}
-              target={editorTarget}
-              onAllTabsClosed={() => {
-                setEditorTarget(null);
-                setEditorSelectedPath(null);
-                if (activeView === 'editor') setActiveView('chat');
-              }}
-              onSelectedPathChange={setEditorSelectedPath}
-              onDirtyPathsChange={setEditorDirtyPaths}
-              onOpenLocalHistory={openLocalHistory}
-            />
-          }>
-            {pageView === 'search' && <ChatHistorySearchPage query={submittedSearchQuery}
-              result={historySearch.result} loading={historySearch.loading} error={historySearch.error}
-              selectionDisabled={chatSessionSelectionDisabled} onOpen={openHistorySearchHit}
-              onRefresh={() => submitHistorySearch(true)} onClose={() => navigate('chat')}
-              rightSidebarOpen={rightSidebarOpen}
-              onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />}
-            {pageView === 'blank' && <WindowTabs />}
-            <ChatWorkspace
-              workspace={workspace}
-              active={pageView === 'chat'}
-              sessionSyncEnabled={rightSidebarOpen && !fileReview}
-              onReviewFileChanges={openFileReview}
-              historyTarget={historyTarget}
-              onHistoryTargetHandled={handleHistoryTarget}
+          {activeView === 'search' && <ChatHistorySearchPage query={submittedSearchQuery}
+            result={historySearch.result} loading={historySearch.loading} error={historySearch.error}
+            selectionDisabled={chatSessionSelectionDisabled} onOpen={openHistorySearchHit}
+            onRefresh={() => submitHistorySearch(true)} onClose={() => navigate('chat')}
+            rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />}
+          {activeView === 'blank' && <WindowTabs />}
+          <ChatWorkspace
+            workspace={workspace}
+            active={activeView === 'chat'}
+            sessionSyncEnabled={rightSidebarOpen && !fileReview}
+            onReviewFileChanges={openFileReview}
+            historyTarget={historyTarget}
+            onHistoryTargetHandled={handleHistoryTarget}
+            rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
+          />
+          {activeView === 'codegraph' && (
+            <CodeGraphView
+              onOpenWorkspaceFile={openWorkspaceFile}
               rightSidebarOpen={rightSidebarOpen}
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
-            {pageView === 'codegraph' && (
-              <CodeGraphView
-                onOpenWorkspaceFile={openWorkspaceFile}
-                rightSidebarOpen={rightSidebarOpen}
-                onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
-              />
-            )}
-            {pageView === 'git' && (
-              <GitWorkspace
-                onOpenWorkspaceFile={openWorkspaceFile}
-                rightSidebarOpen={rightSidebarOpen}
-                onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
-              />
-            )}
-            {pageView === 'plugins' && (
-              <PluginsView
-                chatContextId={workspace.activePaneId}
-                onOpenChat={openWorkflowChat}
-                rightSidebarOpen={rightSidebarOpen}
-                onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
-              />
-            )}
-            {pageView === 'local-history' && localHistoryPath && (
-              <LocalHistoryPage key={localHistoryPath} path={localHistoryPath}
-                draftDirty={editorDirtyPaths.includes(localHistoryPath)}
-                rightSidebarOpen={rightSidebarOpen}
-                onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
-                onClose={() => navigate(localHistoryReturnView.current)} />
-            )}
-            <ShowcaseView active={pageView === 'showcase'}
-              blocked={temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
-              rightSidebarOpen={rightSidebarOpen}
-              onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
-            <TerminalWorkspace
-              active={pageView === 'terminal'}
+          )}
+          {activeView === 'git' && (
+            <GitWorkspace
+              onOpenWorkspaceFile={openWorkspaceFile}
               rightSidebarOpen={rightSidebarOpen}
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
-            {pageView === 'blank' && <BlankView />}
-          </WorkspaceContentSplit>
+          )}
+          {activeView === 'plugins' && (
+            <PluginsView
+              chatContextId={workspace.activePaneId}
+              onOpenChat={openWorkflowChat}
+              rightSidebarOpen={rightSidebarOpen}
+              onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
+            />
+          )}
+          {activeView === 'local-history' && localHistoryPath && (
+            <LocalHistoryPage key={localHistoryPath} path={localHistoryPath}
+              draftDirty={editorDirtyPaths.includes(localHistoryPath)}
+              rightSidebarOpen={rightSidebarOpen}
+              onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
+              onClose={() => navigate(localHistoryReturnView.current)} />
+          )}
+          <WorkspaceEditor
+            active={activeView === 'editor'}
+            mutation={editorMutation}
+            target={editorTarget}
+            rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
+            onAllTabsClosed={() => navigate('chat')}
+            onSelectedPathChange={setEditorSelectedPath}
+            onDirtyPathsChange={setEditorDirtyPaths}
+            onOpenLocalHistory={openLocalHistory}
+          />
+          <ShowcaseView active={activeView === 'showcase'}
+            blocked={temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
+            rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
+          <TerminalWorkspace
+            active={activeView === 'terminal'}
+            rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
+          />
+          {activeView === 'blank' && <BlankView />}
         </div>
         <ReviewSidebar
           open={rightSidebarOpen}
@@ -277,9 +273,6 @@ export function AppShell() {
           onCloseReview={() => setFileReview(null)}
         >
           <ChatSessionList
-            search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
-              onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
-              onFocus={() => { if (activeView !== 'search') navigate('search'); }} />}
             activeSessionId={chat?.state.activeSessionId ?? null}
             loading={workspace.sessionHistory.loading}
             newChatDisabled={chatSessionSelectionDisabled}
@@ -304,8 +297,6 @@ export function AppShell() {
         selectionDisabledReason={accountSwitchReason}
         onBeforeSelect={beforeAccountSelect} onSelectionFinished={accountSelectionFinished} />
       {temporaryChatOpen && <TemporaryChatPanel onClose={() => setTemporaryChatOpen(false)} />}
-      <WorkspaceFileSearch disabled={workspace.accountSwitchPending || updateResume.busy || temporaryChatOpen || !!historyChoice || !!deleteChoice}
-        onOpenFile={openWorkspaceFile} />
       {deleteChoice && <ChatDeleteSessionDialog sessionTitle={deleteChoice.title}
         reason={workspace.deletePending ? null : workspace.deleteSessionReason(deleteChoice.sessionId)}
         pending={workspace.deletePending} error={workspace.error ?? chat?.state.error ?? null}

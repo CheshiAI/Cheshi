@@ -19,7 +19,6 @@ import type {
 import { errorMessage, requiredString } from "./codex-chat-values.mts";
 import { recordValue, stringValue } from "./codex-service-utils.mts";
 import { chatRelaySessionTitle } from '../shared/chat-relay.ts';
-import { normalizeChatAsyncQuestions } from '../shared/chat-async-question.ts';
 
 interface CodexChatEventContext {
   client: CodexChatClient;
@@ -338,16 +337,6 @@ export function handleCodexNotification(context: CodexChatEventContext, value: J
           turnId: active.turnId,
           itemId,
           text,
-        });
-      }
-      const questions = normalizeChatAsyncQuestions(item.questions);
-      if (activeThreadIsViewed && questions.length > 0) {
-        context.emit({
-          type: "assistant-questions",
-          threadId: active.threadId,
-          turnId: active.turnId,
-          itemId,
-          questions,
         });
       }
       return;

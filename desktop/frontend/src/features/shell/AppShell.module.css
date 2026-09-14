@@ -6,8 +6,3 @@
 .layout {
   container-type: inline-size;
 }
-
-.layout > :global(.workspace-column) > [data-axis='columns'] {
-  --split-pane-border: var(--divider);
-  --split-pane-accent: var(--divider);
-}
