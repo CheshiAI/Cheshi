@@ -25,6 +25,8 @@ import { createAppUpdatePreview } from './lib/app-update-preview.mts';
 import { appUpdateUnavailableReason, stageAppUpdate } from './lib/app-update-installer.mts';
 import { createAppUpdateResume } from './lib/app-update-resume.mts';
 import { APP_UPDATE_CHANNEL } from './shared/app-update.ts';
+import { KEEP_AWAKE_CHANNEL } from './shared/keep-awake.ts';
+import { KeepAwakeService } from './lib/keep-awake-service.mts';
 import type { WorkspaceRuntimeOptions } from './lib/workspace-application.mts';
 
 process.env.PATH = desktopToolPath(process.env.PATH);
@@ -36,6 +38,7 @@ const aboutWindow = createAboutWindow({
   onError: error => process.stderr.write(`[cheshi] About window failed: ${String(error)}\n`),
 });
 const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'updates'));
+const keepAwake = new KeepAwakeService();
 const updatePreview = createAppUpdatePreview({ packaged: app.isPackaged, setting: process.env.CHESHI_UPDATE_PREVIEW });
 const updates = createAppUpdateService({
   currentVersion: product.version,
@@ -55,6 +58,7 @@ const updates = createAppUpdateService({
       installing();
       quitting = true;
       await workspaces.closeAll();
+      await keepAwake.dispose();
       await backgroundUsage.dispose().catch(reportTrayError);
       usageTray?.dispose();
       aboutWindow.close();
@@ -91,6 +95,10 @@ function createApplicationRuntime(options: WorkspaceRuntimeOptions) {
   options.scope.ipc.handle(`${APP_UPDATE_CHANNEL}:get`, () => updates.snapshot());
   options.scope.ipc.handle(`${APP_UPDATE_CHANNEL}:install`, () => updates.install());
   options.scope.ipc.handle(`${APP_UPDATE_CHANNEL}:open`, () => updates.openRelease());
+  if (options.managementOnly !== true) {
+    options.scope.ipc.handle(`${KEEP_AWAKE_CHANNEL}:get`, () => keepAwake.snapshot());
+    options.scope.ipc.handle(`${KEEP_AWAKE_CHANNEL}:set`, (_event, enabled: unknown) => keepAwake.setEnabled(enabled));
+  }
   let runtime: ReturnType<typeof createWorkspaceRuntime> | ReturnType<typeof createWorkspaceManagerRuntime>;
   try { runtime = options.managementOnly === true
     ? createWorkspaceManagerRuntime(options, {
@@ -102,6 +110,7 @@ function createApplicationRuntime(options: WorkspaceRuntimeOptions) {
     }) : createTrackedWorkspace(options); }
   catch (error) { recovery.dispose(); throw error; }
   let unsubscribe: (() => void) | undefined;
+  let unsubscribeKeepAwake: (() => void) | undefined;
   return {
     async start() {
       const window = await runtime.start();
@@ -109,10 +118,17 @@ function createApplicationRuntime(options: WorkspaceRuntimeOptions) {
       unsubscribe = updates.subscribe(state => {
         if (!window.isDestroyed()) window.webContents.send(`${APP_UPDATE_CHANNEL}:changed`, state);
       });
+      if (options.managementOnly !== true) {
+        const sendKeepAwake = (state: ReturnType<KeepAwakeService['snapshot']>) => {
+          if (!window.isDestroyed()) window.webContents.send(`${KEEP_AWAKE_CHANNEL}:changed`, state);
+        };
+        unsubscribeKeepAwake = keepAwake.subscribe(sendKeepAwake);
+        sendKeepAwake(keepAwake.snapshot());
+      }
       return window;
     },
     show: () => runtime.show?.(),
-    async dispose() { unsubscribe?.(); recovery.dispose(); await runtime.dispose(); },
+    async dispose() { unsubscribeKeepAwake?.(); unsubscribe?.(); recovery.dispose(); await runtime.dispose(); },
   };
 }
 let quitting = false;
@@ -231,6 +247,7 @@ app.on('before-quit', (event) => {
   if (quitting) return;
   quitting = true;
   void workspaces.closeAll().then(async () => {
+    await keepAwake.dispose();
     await backgroundUsage.dispose().catch(reportTrayError);
     usageTray?.dispose();
     aboutWindow.dispose();

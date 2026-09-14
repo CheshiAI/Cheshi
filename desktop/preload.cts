@@ -11,6 +11,7 @@ import { gitDiscardRequest, gitDiscardSelection } from './shared/git-discard.ts'
 import { createWorkspaceManagementApi } from './lib/workspace-management-preload.cts';
 import { createShowcaseApi } from './lib/showcase-preload.cts';
 import { createAppUpdateApi } from './lib/app-update-preload.cts';
+import { createKeepAwakeApi } from './lib/keep-awake-preload.cts';
 import { installRendererReadiness } from './lib/renderer-readiness.mts';
 import { workspaceDiskUsage } from './shared/workspace-disk-usage.ts';
 
@@ -575,6 +576,7 @@ function codexPluginReference(value: unknown) {
 
 const cheshiDesktopApi = {
   ...createAppUpdateApi(ipcRenderer),
+  ...createKeepAwakeApi(ipcRenderer),
   workspaceManagement: createWorkspaceManagementApi(ipcRenderer),
   showcase: createShowcaseApi(ipcRenderer),
   platform: process.platform,

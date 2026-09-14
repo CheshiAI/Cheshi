@@ -1,5 +1,6 @@
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../shared/chat-user-input';
 import type { AppUpdateApi, AppUpdateResumeApi } from '../../shared/app-update';
+import type { KeepAwakeApi } from '../../shared/keep-awake';
 import type { LocalHistoryEntry, LocalHistorySnapshot, LocalHistoryRestoreRequest } from '../../shared/local-history';
 import type { WorkspaceManagementApi } from '../../shared/workspace-management';
 import type { GitDiscardPreview, GitDiscardRequest, GitDiscardSelection } from '../../shared/git-discard';
@@ -645,7 +646,7 @@ export interface CodexChatConfigurationRequest {
   fast?: boolean;
 }
 
-export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpdateResumeApi> {
+export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpdateResumeApi>, Partial<KeepAwakeApi> {
   workspaceManagement?: WorkspaceManagementApi;
   showcase?: import('../../shared/showcase').ShowcaseApi;
   platform: string;
