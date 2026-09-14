@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.0.2-preview
+
+Build 0003 · Pending release
 
 - Added workspace conversation guidance to prefer CodeGraph for code structure,
   symbols, and call relationships, report query failures before falling back to
@@ -10,6 +12,8 @@
   contribution guidelines.
 - Documented Homebrew installation, updates, dependencies, and automatic CodeGraph
   configuration. Updated the README logo.
+- Added this changelog and separated local agent preferences from shared
+  repository instructions.
 
 ## 0.0.1-preview
 
