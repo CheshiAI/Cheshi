@@ -5,6 +5,7 @@ import { matchByExactName, matchByQualifiedName, matchFunctionRef } from './name
 import { matchByFilePath } from './name-match-files';
 import { matchMethodCall } from './name-match-methods';
 import { nmTimed } from './name-match-profile';
+import { resolveLocalStoreAction } from './store-action-calls';
 import { ResolutionContext, ResolvedRef, UnresolvedRef } from './types';
 
 export { matchByFilePath } from './name-match-files';
@@ -119,6 +120,9 @@ export function matchReference(
 
   // Try strategies in order of confidence
   let result: ResolvedRef | null;
+
+  result = resolveLocalStoreAction(ref, context);
+  if (result) return result;
 
   // 0. File path match (e.g., "snippets/drawer-menu.liquid" → file node)
   result = nmTimed('filePath', ref, () => matchByFilePath(ref, context));

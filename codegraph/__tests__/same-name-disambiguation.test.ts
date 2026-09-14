@@ -40,6 +40,7 @@ beforeAll(async () => {
   };
 
   for (const app of ['billing', 'admin']) {
+    mk(`apps/${app}/src/idle.ts`, 'export function unusedAction(): number { return 1; }\n');
     mk(
       `apps/${app}/src/users/user.service.ts`,
       [
@@ -123,6 +124,25 @@ describe('same-named symbols across apps (#764)', () => {
     expect(out).toContain('no definition of "findAll" matches file');
     expect(out).toContain('2 distinct definitions');
   });
+
+  for (const relation of ['callers', 'callees']) {
+    it(`${relation}: empty results honor the selected file without a stale aggregation note`, async () => {
+      const out = await text(`codegraph_${relation}`, {
+        symbol: 'unusedAction', file: 'apps/billing/src/idle.ts',
+      });
+      expect(out).toBe(`No ${relation} found for "unusedAction"`);
+    });
+
+    it(`${relation}: empty results preserve the fallback note for a non-matching file`, async () => {
+      const out = await text(`codegraph_${relation}`, {
+        symbol: 'unusedAction', file: 'apps/nonexistent/idle.ts',
+      });
+      expect(out).toContain('2 distinct definitions');
+      expect(out).toContain('apps/admin/src/idle.ts');
+      expect(out).toContain('apps/billing/src/idle.ts');
+      expect(out).toContain('no definition of "unusedAction" matches file');
+    });
+  }
 
   it('impact: separate blast radius per definition, never a merged one', async () => {
     const out = await text('codegraph_impact', { symbol: 'UserService' });

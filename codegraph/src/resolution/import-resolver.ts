@@ -20,6 +20,7 @@ import {
 import { resolveRustPathReference } from './import-rust';
 import { localReceiverTypePatterns, normalizeInferredTypeName, resolveMethodOnType } from './name-matcher';
 import { ResolutionContext, ResolvedRef, UnresolvedRef } from './types';
+import { clearStoreActionMemos, resolveImportedStoreAction } from './store-action-calls';
 import * as path from 'path';
 
 export { isNixPathImportRef } from './import-paths';
@@ -44,6 +45,7 @@ export { resolveJvmImport } from './import-paths';
 
 /** Drop the per-context memo tables (see ReferenceResolver.clearCaches). */
 export function clearImportResolverMemos(context: ResolutionContext): void {
+  clearStoreActionMemos(context);
   importPathMemos.delete(context);
   exportedSymbolMemos.delete(context);
   fileExportIndexes.delete(context);
@@ -250,6 +252,8 @@ export function resolveViaImport(
         );
 
         if (targetNode) {
+          const storeAction = resolveImportedStoreAction(targetNode, imp.localName, ref, context);
+          if (storeAction) return storeAction;
           // `Foo.bar()` / `Foo.CONST` — a NAMED (non-namespace) class import
           // accessed through a member. `findExportedSymbol` resolved `Foo` to
           // the class itself; descend into it so the reference links to the

@@ -125,12 +125,12 @@ export async function handleCallers(this: ToolHandlerState, args: Record<string,
   // Single definition (or same-file overloads): the familiar flat list.
   if (groups.length === 1) {
     const { callers, labels } = collect(groups[0]!);
-    if (callers.length === 0) {
-      return this.textResult(`No callers found for "${symbol}"${allMatches.note}${filterNote}`);
-    }
     // A successful `file` narrowing makes the multi-symbol aggregation note
     // stale — suppress it.
     const note = fileFilter && !filteredOut ? '' : allMatches.note;
+    if (callers.length === 0) {
+      return this.textResult(`No callers found for "${symbol}"${note}${filterNote}`);
+    }
     const formatted = this.formatNodeList(callers.slice(0, limit), `Callers of ${symbol}`, labels) + note + filterNote;
     return this.textResult(this.truncateOutput(formatted));
   }
@@ -197,12 +197,12 @@ export async function handleCallees(this: ToolHandlerState, args: Record<string,
 
   if (groups.length === 1) {
     const { callees, labels } = collect(groups[0]!);
-    if (callees.length === 0) {
-      return this.textResult(`No callees found for "${symbol}"${allMatches.note}${filterNote}`);
-    }
     // A successful `file` narrowing makes the multi-symbol aggregation note
     // stale — suppress it.
     const note = fileFilter && !filteredOut ? '' : allMatches.note;
+    if (callees.length === 0) {
+      return this.textResult(`No callees found for "${symbol}"${note}${filterNote}`);
+    }
     const formatted = this.formatNodeList(callees.slice(0, limit), `Callees of ${symbol}`, labels) + note + filterNote;
     return this.textResult(this.truncateOutput(formatted));
   }

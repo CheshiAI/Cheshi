@@ -78,6 +78,7 @@ function createHarness() {
     '../terminal': { TerminalWorkspace: 'TerminalWorkspace' },
     '../showcase/ShowcaseView': { ShowcaseView: 'ShowcaseView' },
     './ReviewSidebar': { ReviewSidebar: 'ReviewSidebar' },
+    './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
     './WorkspaceStatusBar': { WorkspaceStatusBar: 'WorkspaceStatusBar' },
     './AppShell.module.css': { default: {} },
   };
