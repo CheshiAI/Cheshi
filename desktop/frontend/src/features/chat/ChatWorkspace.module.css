@@ -39,6 +39,8 @@
   pointer-events: none;
 }
 .pane[data-active='true'] .paneTitle { color: var(--active-text); }
+.paneHeading { display: flex; align-items: center; min-width: 0; gap: var(--icon-default); }
+.navigationError { margin: var(--space-default); }
 .paneTitle {
   display: flex;
   align-items: center;

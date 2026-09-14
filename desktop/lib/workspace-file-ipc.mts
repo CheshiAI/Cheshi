@@ -1,5 +1,7 @@
 import type { Clipboard, IpcMain, Shell } from 'electron';
 import { getWorkspaceDiskUsage } from './workspace-disk-usage.mts';
+import { createWorkspaceFileSearch } from './workspace-file-search.mts';
+import { createWorkspaceEditorSessionStore } from './workspace-editor-session.mts';
 import type { LocalHistoryService } from './local-history-service.mts';
 import {
   createWorkspaceEntry,
@@ -17,6 +19,7 @@ import {
 interface WorkspaceFileIpcContext {
   ipcMain: Pick<IpcMain, 'handle'>;
   workspaceRoot: string;
+  editorSessionPath?: string;
   clipboard: Pick<Clipboard, 'writeText'>;
   shell: Pick<Shell, 'trashItem'>;
   localHistory?: Pick<LocalHistoryService, 'readFile' | 'writeFile' | 'writeFiles'>;
@@ -25,10 +28,18 @@ interface WorkspaceFileIpcContext {
 export function registerWorkspaceFileIpcHandlers({
   ipcMain,
   workspaceRoot,
+  editorSessionPath,
   clipboard,
   shell,
   localHistory,
 }: WorkspaceFileIpcContext) {
+  if (editorSessionPath) {
+    const editorSession = createWorkspaceEditorSessionStore(editorSessionPath);
+    ipcMain.handle('cheshi:read-editor-session', () => editorSession.read());
+    ipcMain.handle('cheshi:write-editor-session', (_event, session) => editorSession.write(session));
+  }
+  const searchWorkspaceFiles = createWorkspaceFileSearch(workspaceRoot);
+  ipcMain.handle('cheshi:search-workspace-files', (_event, query) => searchWorkspaceFiles(query));
   ipcMain.handle('cheshi:get-workspace-disk-usage', () => getWorkspaceDiskUsage(workspaceRoot));
   ipcMain.handle(
     'cheshi:list-workspace-directory',

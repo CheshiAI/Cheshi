@@ -15,7 +15,7 @@
   stroke-width: 1.7;
 }
 
-.indicator > span {
+.indicatorLabel {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -94,6 +94,10 @@
 
 .notice {
   color: var(--sub-text);
+}
+
+.progress {
+  justify-content: flex-start;
 }
 
 .buttons {

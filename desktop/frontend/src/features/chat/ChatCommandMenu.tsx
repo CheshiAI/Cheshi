@@ -12,6 +12,7 @@ import {
 
 import { LiquidGlassPanel, LoadingState, NeumorphicButton } from '../../shared/ui';
 import { ChatErrorNotice } from './ChatErrorNotice';
+import { ChatAgentStatus } from './ChatAgentStatus';
 import { formatGoalUsage, formatMcpAuthStatus, formatMcpConnectionStatus, formatMcpServerDetail } from './chatViewModel';
 import styles from './ChatView.module.css';
 import type { ChatViewController } from './useChatViewController';
@@ -85,6 +86,7 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
       </header>
       <div
         className={styles.commandOptions}
+        data-mode={commandMenuMode ?? undefined}
         ref={commandOptionsRef}
         role={commandMenuMode === 'status' || mcpStatusOpen || goalEditorOpen ? 'region' : 'listbox'}
       >
@@ -123,7 +125,9 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
                     <strong>{agent.title}</strong>
                     <span>{agent.description}</span>
                   </span>
-                  <span className={styles.commandMeta}>{agent.current ? 'current' : agent.status}</span>
+                  <span className={styles.commandMeta}>
+                    <ChatAgentStatus status={agent.status} current={agent.current} />
+                  </span>
                 </button>
               );
             })}

@@ -1,6 +1,33 @@
 import { recordValue } from "./codex-service-utils.mts";
-import { accessSync, constants, statSync } from "node:fs";
+import { accessSync, closeSync, constants, openSync, readSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
+import type { ResolvedCommand } from "./language-server-types.mts";
+
+/** Run detected Node scripts with the host runtime, including Electron's Node mode. */
+export function resolveNodeScriptCommand(
+  executable: string,
+  args: readonly string[],
+): ResolvedCommand | null {
+  let descriptor: number | undefined;
+  try {
+    const script = realpathSync(executable);
+    descriptor = openSync(script, "r");
+    const buffer = Buffer.alloc(256);
+    const bytes = readSync(descriptor, buffer, 0, buffer.length, 0);
+    const firstLine = buffer.subarray(0, bytes).toString("utf8").split(/\r?\n/, 1)[0];
+    if (!firstLine || !/^#!\s*(?:\/usr\/bin\/env\s+node|\/[^\s]+\/node)\s*$/.test(firstLine)) return null;
+    return {
+      executable: process.execPath,
+      args: [script, ...args],
+      environment: { ELECTRON_RUN_AS_NODE: "1" },
+      displayPath: executable,
+    };
+  } catch {
+    return null;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
 
 export function isExecutable(filePath: string) {
   try {

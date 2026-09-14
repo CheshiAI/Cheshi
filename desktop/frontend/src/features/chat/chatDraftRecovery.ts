@@ -50,6 +50,14 @@ export function createChatDraftRecovery(send: (input: ChatDraftSnapshot) => Prom
       update({ ...state.recovery.input, recovery: { ...state.recovery, status: 'restored' } });
       return true;
     },
+    queue(enqueue: (input: ChatDraftSnapshot) => boolean): boolean {
+      if (state.pending || !state.draft.trim()) return false;
+      const input = { draft: state.draft, selectedSkill: state.selectedSkill, attachments: [...state.attachments] };
+      if (!enqueue(input)) return false;
+      revision += 1;
+      update({ ...emptyDraft(), recovery: null });
+      return true;
+    },
     async submit(): Promise<boolean> {
       if (state.pending || !state.draft.trim()) return false;
       const input = { draft: state.draft, selectedSkill: state.selectedSkill, attachments: [...state.attachments] };

@@ -225,6 +225,18 @@ export const workspaceEditorTheme = EditorView.theme({
     font: 'var(--font-size-small)/1.55 var(--font-mono)',
     padding: 'var(--space-10) var(--space-12)',
   },
+  '.cm-tooltip.cm-tooltip-lint': {
+    background: 'var(--divider)',
+    border: '1px solid var(--divider)',
+    borderRadius: 'var(--radius-popover)',
+  },
+  '.cm-tooltip-lint .cm-diagnostic': {
+    padding: '4px 8px',
+    marginLeft: '0',
+  },
+  '.cm-tooltip-lint .cm-diagnostic-error': {
+    borderLeft: 'none',
+  },
   '.cm-tooltip.cm-tooltip-hover': {
     maxWidth: 'min(720px, calc(100vw - 48px))',
     overflow: 'visible',

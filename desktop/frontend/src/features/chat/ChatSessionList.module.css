@@ -36,7 +36,9 @@
 }
 
 .group { display: grid; gap: 4px; }
-.group h2 { margin: 0 8px 2px; color: var(--sidebar-section-label-color); font-size: 10px; font-weight: 500; line-height: 16px; }
+.search { flex: 0 0 auto; min-width: 0; }
+.search, .group h2 { margin: 0 8px 2px; }
+.group h2 { color: var(--sidebar-section-label-color); font-size: 10px; font-weight: 500; line-height: 16px; }
 .groupItems { display: grid; gap: 2px; }
 
 .session {

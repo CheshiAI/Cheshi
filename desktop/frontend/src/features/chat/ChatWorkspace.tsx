@@ -1,4 +1,4 @@
-import { Columns2, PanelRight, Plus, Rows2, X } from 'lucide-react';
+import { ArrowLeft, Columns2, PanelRight, Plus, Rows2, X } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { chatRelayContextIds } from '../../../../shared/chat-relay';
@@ -13,6 +13,7 @@ import { ChatRelayButton, ChatRelayStatus } from './ChatRelayControls';
 import { ChatRelayHistoryPanel } from './ChatRelayHistoryPanel';
 import { ChatSplitDialog } from './ChatSplitDialog';
 import { useChatController } from './useChatController';
+import { useChatAgentNavigation } from './useChatAgentNavigation';
 import type { ChatWorkspaceController } from './useChatWorkspace';
 import type { ChatHistorySearchNavigation } from './chatHistorySearchNavigation';
 import viewStyles from './ChatView.module.css';
@@ -45,7 +46,17 @@ function ChatPane({
   paneId, host, workspace, active, sessionSyncEnabled, onReviewFileChanges, historyTarget, onHistoryTargetHandled,
 }: Pick<ChatWorkspaceProps, 'workspace' | 'active' | 'sessionSyncEnabled' | 'onReviewFileChanges' | 'historyTarget' | 'onHistoryTargetHandled'>
   & { paneId: string; host: HTMLDivElement }) {
-  const controller = useChatController({ contextId: paneId, sessionSyncEnabled, sessionCache: workspace.sessionCache });
+  const interactionsLocked = workspace.accountSwitchPending || (workspace.relay.running && workspace.relay.state !== null
+    && chatRelayContextIds(workspace.relay.state).includes(paneId));
+  const controller = useChatController({ contextId: paneId, sessionSyncEnabled, sessionCache: workspace.sessionCache,
+    queuePaused: interactionsLocked });
+  const agentNavigation = useChatAgentNavigation({
+    activeSessionId: controller.state.activeSessionId,
+    isKnownMainSession: controller.state.sessions.some(session => session.id === controller.state.activeSessionId),
+    listAgents: controller.listAgents,
+    openAgent: controller.openAgent,
+    isOperationPending: controller.isOperationPending,
+  });
   const reviewFileChanges = useCallback((itemId: string, path?: string) => {
     onReviewFileChanges(paneId, itemId, path);
   }, [onReviewFileChanges, paneId]);
@@ -75,10 +86,23 @@ function ChatPane({
       onFocusCapture={() => selectPane(paneId)}
     >
       <LiquidGlassPanel as="header" className={styles.paneHeader} data-liquid-glass-backdrop={selected ? 'true' : undefined}>
-        <button className={styles.paneTitle} onClick={() => selectPane(paneId)} title={threadLabel} type="button">
-          <ChatPaneIcon />
-          <span>{threadLabel}</span>
-        </button>
+        <div className={styles.paneHeading}>
+          {agentNavigation.mainThreadId && <NeumorphicButton
+            raised
+            size="icon"
+            aria-label="Back to main agent"
+            title="Back to main agent"
+            aria-busy={agentNavigation.returning}
+            disabled={agentNavigation.returning || interactionsLocked || controller.configurationPending || controller.state.phase === 'loading'}
+            onClick={() => void agentNavigation.returnToMain()}
+          >
+            <ArrowLeft aria-hidden="true" />
+          </NeumorphicButton>}
+          <button className={styles.paneTitle} onClick={() => selectPane(paneId)} title={threadLabel} type="button">
+            {!agentNavigation.mainThreadId && <ChatPaneIcon />}
+            <span>{threadLabel}</span>
+          </button>
+        </div>
         <div className={styles.actions}>
           <button
             type="button"
@@ -113,12 +137,14 @@ function ChatPane({
           </button>
         </div>
       </LiquidGlassPanel>
+      {agentNavigation.error && <ChatErrorNotice className={styles.navigationError} onDismiss={agentNavigation.dismissError}>
+        {agentNavigation.error}
+      </ChatErrorNotice>}
       <ChatView
         controller={controller}
         onAccountSwitchGuard={updateAccountSwitchGuard}
         savedTurns={workspace.savedTurns}
-        interactionsLocked={workspace.accountSwitchPending || (workspace.relay.running && workspace.relay.state !== null
-          && chatRelayContextIds(workspace.relay.state).includes(paneId))}
+        interactionsLocked={interactionsLocked}
         active={active && selected}
         onNewSession={() => void controller.newSession()}
         onReviewFileChanges={reviewFileChanges}

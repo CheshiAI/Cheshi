@@ -1,4 +1,5 @@
 import { useId, useRef } from 'react';
+import { ChevronRight, PenLine } from 'lucide-react';
 import { NeumorphicTextField, SearchClearButton } from '../../shared/ui';
 import type { ChatInputField, ChatInputQuestion } from '../../../../shared/chat-user-input';
 import type { InputDraft } from './chatUserInputForm';
@@ -6,35 +7,42 @@ import styles from './ChatUserInputPrompt.module.css';
 
 type DraftProps = { draft: InputDraft; onChange: (name: string, value: string | string[]) => void };
 
-function QuestionAnswerField({ question, value, onChange }: {
-  question: ChatInputQuestion; value: string; onChange: DraftProps['onChange'];
+function QuestionAnswerField({ question, value, onChange, compact = false }: {
+  question: ChatInputQuestion; value: string; onChange: DraftProps['onChange']; compact?: boolean;
 }) {
   const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
-  return <div className={styles.field}>
-    <label htmlFor={id}>{question.options?.length ? 'Your own answer' : 'Your answer'}</label>
+  const collapsible = compact && Boolean(question.options?.length);
+  const field = <div className={styles.field}>
+    {!collapsible && <label htmlFor={id}>{question.options?.length ? 'Your own answer' : 'Your answer'}</label>}
     <NeumorphicTextField id={id} ref={inputRef} type={question.isSecret ? 'password' : 'text'} value={value}
+      aria-label={collapsible ? `Your own answer: ${question.question}` : undefined}
+      placeholder={compact ? 'Type your answer…' : undefined}
       autoComplete="off" required={!question.options?.length}
       onChange={(event) => onChange(question.id, event.target.value)}
       trailingAction={value.length > 0 && <SearchClearButton aria-label={`Clear ${question.header} answer`}
         onClick={() => { onChange(question.id, ''); inputRef.current?.focus(); }} />} />
   </div>;
+  return collapsible ? <details className={styles.customAnswer}>
+    <summary><PenLine aria-hidden="true" /><span>Your own answer</span><ChevronRight aria-hidden="true" /></summary>
+    {field}
+  </details> : field;
 }
 
-export function ChatQuestionFields({ questions, draft, onChange }: DraftProps & { questions: ChatInputQuestion[] }) {
+export function ChatQuestionFields({ questions, draft, onChange, compact = false }: DraftProps & { questions: ChatInputQuestion[]; compact?: boolean }) {
   const id = useId();
   return <>{questions.map((question, index) => {
     const value = typeof draft[question.id] === 'string' ? draft[question.id] as string : '';
     const selected = question.options?.some((option) => option.label === value);
     return <fieldset key={question.id} className={styles.question}>
-      <legend>{question.header}</legend>
+      {question.header && <legend>{question.header}</legend>}
       <p>{question.question}</p>
       {question.options?.map((option) => <label className={styles.option} key={option.label}>
         <input type="radio" name={`${id}-${index}`} checked={value === option.label} onChange={() => onChange(question.id, option.label)} />
         <span><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
       </label>)}
       {(!question.options?.length || question.isOther) && <QuestionAnswerField
-        question={question} value={selected ? '' : value} onChange={onChange} />}
+        question={question} value={selected ? '' : value} onChange={onChange} compact={compact} />}
     </fieldset>;
   })}</>;
 }

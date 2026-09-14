@@ -96,7 +96,10 @@ function harness(overrides: Partial<AppUpdateApi> = {}) {
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'lucide-react': { Bell: 'Bell', ExternalLink: 'ExternalLink' },
     '../../cheshiDesktop': { cheshiDesktop: api },
-    '../../shared/ui': { Modal: 'Modal', NeumorphicButton: 'NeumorphicButton' },
+    '../../shared/ui': {
+      Modal: 'Modal', NeumorphicButton: 'NeumorphicButton',
+      LoadingIndicator: 'LoadingIndicator', LoadingState: 'LoadingState',
+    },
     './AppUpdateIndicator.module.css': { default: {} },
   };
   const source = readFileSync(new URL('../frontend/src/features/updates/AppUpdateIndicator.tsx', import.meta.url), 'utf8');
@@ -189,10 +192,18 @@ test('duplicate installation is prevented and a failed installation remains retr
   click(update);
   click(update);
   expect(calls).toBe(1);
+  expect(find(app.render(), element => element.type === 'LoadingState').props.label).toBe('Preparing update…');
+  expect(elements(app.render()).some(element => element.type === 'LoadingIndicator')).toBe(true);
   expect(find(app.render(), element => element.type === 'Modal').props.closeDisabled).toBe(true);
+  app.publish({ ...available, phase: 'downloading' });
+  expect(find(app.render(), element => element.type === 'LoadingState').props.label).toBe('Downloading update…');
+  app.publish({ ...available, phase: 'installing' });
+  expect(find(app.render(), element => element.type === 'LoadingState').props.label).toBe('Installing the update and restarting…');
+  app.publish({ ...available, error: 'Download interrupted' });
   first.reject(new Error('Download interrupted'));
   await settle();
   const failed = app.render();
+  expect(elements(failed).some(element => element.type === 'LoadingState' || element.type === 'LoadingIndicator')).toBe(false);
   expect(content(find(failed, element => element.props.role === 'alert'))).toContain('Download interrupted');
   const retry = find(failed, element => element.type === 'NeumorphicButton' && content(element) === 'Update');
   expect(retry.props.disabled).toBe(false);
@@ -274,10 +285,10 @@ test('preview update can simulate download and installation and remains retryabl
   click(find(app.render(), element => element.type === 'NeumorphicButton' && content(element) === 'Update'));
   expect(calls).toBe(1);
   app.publish({ ...snapshot, phase: 'downloading' });
-  expect(content(find(app.render(), element => element.props.role === 'status'))).toBe('Preview: downloading update…');
+  expect(find(app.render(), element => element.type === 'LoadingState').props.label).toBe('Preview: downloading update…');
   app.publish({ ...snapshot, phase: 'installing' });
   const installing = app.render();
-  expect(content(find(installing, element => element.props.role === 'status'))).toBe('Preview: installing update…');
+  expect(find(installing, element => element.type === 'LoadingState').props.label).toBe('Preview: installing update…');
   expect(find(installing, element => element.type === 'Modal').props.closeDisabled).toBe(true);
   app.publish({ ...snapshot, error: 'Simulated update failure. No files were changed.' });
   update.reject(new Error('Simulated update failure. No files were changed.'));

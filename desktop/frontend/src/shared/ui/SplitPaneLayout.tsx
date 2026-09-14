@@ -25,6 +25,8 @@ export interface SplitPaneLayoutProps {
   renderPane: (paneId: string) => ReactNode;
   onResizeSplit: (splitId: string, ratio: number) => void;
   resizeLabel?: string;
+  /** Collapse only this split, preserving mounted descendants and the saved ratio. */
+  collapsedPane?: 'first' | 'second';
 }
 
 interface SplitProps extends Omit<SplitPaneLayoutProps, 'layout'> {
@@ -38,12 +40,16 @@ function clampSplitRatio(ratio: number, availableSize: number): number {
   return Math.min(1 - minimum, Math.max(minimum, ratio));
 }
 
-function splitGridStyle(axis: SplitLayout['axis'], ratio: number): CSSProperties {
-  const first = `minmax(0, ${ratio}fr)`;
-  const second = `minmax(0, ${1 - ratio}fr)`;
+function splitGridStyle(
+  axis: SplitLayout['axis'], ratio: number, collapsedPane: SplitPaneLayoutProps['collapsedPane'],
+): CSSProperties {
+  const visibleRatio = collapsedPane === 'first' ? 0 : collapsedPane === 'second' ? 1 : ratio;
+  const separatorSize = collapsedPane ? 0 : SPLIT_SEPARATOR_TRACK_SIZE;
+  const first = `minmax(0, ${visibleRatio}fr)`;
+  const second = `minmax(0, ${1 - visibleRatio}fr)`;
   return axis === 'columns'
-    ? { gridTemplateColumns: `${first} ${SPLIT_SEPARATOR_TRACK_SIZE}px ${second}` }
-    : { gridTemplateRows: `${first} ${SPLIT_SEPARATOR_TRACK_SIZE}px ${second}` };
+    ? { gridTemplateColumns: `${first} ${separatorSize}px ${second}` }
+    : { gridTemplateRows: `${first} ${separatorSize}px ${second}` };
 }
 
 function Split({
@@ -51,17 +57,35 @@ function Split({
   renderPane,
   onResizeSplit,
   resizeLabel = 'Resize panes',
+  collapsedPane,
 }: SplitProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const separatorRef = useRef<HTMLDivElement | null>(null);
+  const hasCollapsedRef = useRef(false);
+  if (collapsedPane) hasCollapsedRef.current = true;
   const pointerIdRef = useRef<number | null>(null);
   const ratioRef = useRef(layout.ratio);
   const [ratio, setRatio] = useState(layout.ratio);
   const [dragging, setDragging] = useState(false);
-  ratioRef.current = ratio;
+  const [containerSize, setContainerSize] = useState(0);
+  // Keep the saved preference intact when a smaller window temporarily limits the panes.
+  const visibleRatio = clampSplitRatio(ratio, containerSize);
+  ratioRef.current = visibleRatio;
 
   useEffect(() => {
     if (pointerIdRef.current === null) setRatio(layout.ratio);
   }, [layout.ratio]);
+
+  useEffect(() => {
+    if (!collapsedPane || pointerIdRef.current === null) return;
+    const pointerId = pointerIdRef.current;
+    pointerIdRef.current = null;
+    if (separatorRef.current?.hasPointerCapture(pointerId)) {
+      separatorRef.current.releasePointerCapture(pointerId);
+    }
+    setDragging(false);
+    setRatio(layout.ratio);
+  }, [collapsedPane, layout.ratio]);
 
   const availableSize = useCallback((): number => {
     const bounds = containerRef.current?.getBoundingClientRect();
@@ -69,6 +93,17 @@ function Split({
     const size = layout.axis === 'columns' ? bounds.width : bounds.height;
     return Math.max(0, size - SPLIT_SEPARATOR_TRACK_SIZE);
   }, [layout.axis]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const measure = () => setContainerSize(availableSize());
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [availableSize]);
 
   const ratioFromPointer = useCallback((clientX: number, clientY: number): number => {
     const bounds = containerRef.current?.getBoundingClientRect();
@@ -90,7 +125,7 @@ function Split({
   }, []);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (event.button !== 0) return;
+    if (collapsedPane || event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
     pointerIdRef.current = event.pointerId;
@@ -100,13 +135,13 @@ function Split({
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (pointerIdRef.current !== event.pointerId) return;
+    if (collapsedPane || pointerIdRef.current !== event.pointerId) return;
     event.preventDefault();
     applyRatio(ratioFromPointer(event.clientX, event.clientY));
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (pointerIdRef.current !== event.pointerId) return;
+    if (collapsedPane || pointerIdRef.current !== event.pointerId) return;
     event.preventDefault();
     applyRatio(ratioFromPointer(event.clientX, event.clientY));
     pointerIdRef.current = null;
@@ -118,14 +153,14 @@ function Split({
   };
 
   const handlePointerCancel = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (pointerIdRef.current !== event.pointerId) return;
+    if (collapsedPane || pointerIdRef.current !== event.pointerId) return;
     pointerIdRef.current = null;
     setDragging(false);
     setRatio(layout.ratio);
   };
 
   const handleLostPointerCapture = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (pointerIdRef.current !== event.pointerId) return;
+    if (collapsedPane || pointerIdRef.current !== event.pointerId) return;
     pointerIdRef.current = null;
     setDragging(false);
     setRatio(layout.ratio);
@@ -138,6 +173,7 @@ function Split({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (collapsedPane) return;
     let nextRatio: number | null = null;
     if (layout.axis === 'columns') {
       if (event.key === 'ArrowLeft') nextRatio = ratioRef.current - KEYBOARD_RATIO_STEP;
@@ -155,6 +191,7 @@ function Split({
   };
 
   const resetRatio = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    if (collapsedPane) return;
     event.preventDefault();
     event.stopPropagation();
     commitKeyboardRatio(0.5);
@@ -166,9 +203,11 @@ function Split({
       className={styles.split}
       data-axis={layout.axis}
       data-dragging={dragging ? 'true' : undefined}
-      style={splitGridStyle(layout.axis, ratio)}
+      data-collapsible={hasCollapsedRef.current ? 'true' : undefined}
+      data-collapsed-pane={collapsedPane}
+      style={splitGridStyle(layout.axis, visibleRatio, collapsedPane)}
     >
-      <div className={styles.region}>
+      <div className={styles.region} data-pane="first" aria-hidden={collapsedPane === 'first' || undefined} inert={collapsedPane === 'first'}>
         <SplitPaneLayout
           layout={layout.first}
           renderPane={renderPane}
@@ -177,15 +216,18 @@ function Split({
         />
       </div>
       <div
+        ref={separatorRef}
         className={styles.separator}
+        aria-hidden={collapsedPane ? true : undefined}
+        inert={!!collapsedPane}
         role="separator"
-        tabIndex={0}
+        tabIndex={collapsedPane ? -1 : 0}
         aria-label={resizeLabel}
         aria-orientation={layout.axis === 'columns' ? 'vertical' : 'horizontal'}
         aria-valuemin={MIN_SPLIT_RATIO * 100}
         aria-valuemax={MAX_SPLIT_RATIO * 100}
-        aria-valuenow={Math.round(ratio * 100)}
-        aria-valuetext={`${Math.round(ratio * 100)}% for the first pane`}
+        aria-valuenow={Math.round(visibleRatio * 100)}
+        aria-valuetext={`${Math.round(visibleRatio * 100)}% for the first pane`}
         title={`${resizeLabel}; double-click to reset`}
         onDoubleClick={resetRatio}
         onKeyDown={handleKeyDown}
@@ -195,7 +237,7 @@ function Split({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       />
-      <div className={styles.region}>
+      <div className={styles.region} data-pane="second" aria-hidden={collapsedPane === 'second' || undefined} inert={collapsedPane === 'second'}>
         <SplitPaneLayout
           layout={layout.second}
           renderPane={renderPane}

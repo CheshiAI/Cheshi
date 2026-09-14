@@ -22,6 +22,7 @@ import { ChatPermissionSelect } from './ChatPermissionSelect';
 import { ChatSubmitButton } from './ChatSubmitButton';
 import type { ChatController } from './useChatController';
 import { GithubLinkChips } from './GithubLinkChips';
+import { ChatQueueHint, ChatQueuedMessages } from './ChatQueuedMessages';
 
 export function ChatComposer({ controller, chatController, userInputContextId }: {
   controller: ChatViewController; chatController: ChatController; userInputContextId?: string;
@@ -135,6 +136,10 @@ export function ChatComposer({ controller, chatController, userInputContextId }:
       <ChatCommandMenu controller={controller} />
       <ChatConfigurationMenu controller={controller} />
 
+      <ChatQueuedMessages messages={chatController.queuedMessages ?? []}
+        onRemove={chatController.removeQueuedMessage} onRetry={chatController.retryQueuedMessage}
+        disabled={interactionsLocked} />
+
       <LiquidGlassPanel className={styles.composerSurface} data-liquid-glass-surface="side-panel" data-liquid-glass-backdrop="true">
         <form className={styles.composer} onSubmit={submit}>
           {attachments.length > 0 && (
@@ -203,6 +208,7 @@ export function ChatComposer({ controller, chatController, userInputContextId }:
             onPaste={controller.attachmentTransfer.onPaste}
             onKeyDown={handleKeyDown}
           />
+          {streaming && !commandMenuOpen && !configurationMenuOpen && !interactionsLocked && <ChatQueueHint />}
           <div className={styles.composerFooter} data-configuration-pending={chatController.configurationPending || undefined}>
             <div className={styles.composerMeta}>
               <NeumorphicButton
