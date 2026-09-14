@@ -1,4 +1,6 @@
 node_modules/
+# Personal repository instructions stay on the local machine.
+/AGENTS.local.md
 # Local environment files; product metadata is intentionally public.
 .env
 .env.*

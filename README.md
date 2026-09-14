@@ -8,6 +8,7 @@ A desktop workspace for AI-assisted development. Work with Codex, explore your
 codebase with CodeGraph, and manage code, terminals, and Git in one place.
 
 [Releases](https://github.com/CheshiAI/Cheshi/releases) ·
+[Changelog](CHANGELOG.md) ·
 [English help](.docs/help/en/) · [한국어 도움말](.docs/help/ko/) ·
 [CodeGraph guide](.docs/codegraph/guide.md)
 
