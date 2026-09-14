@@ -104,7 +104,18 @@
 .userRow { display: flex; justify-content: flex-end; padding-left: 14%; }
 .userRow[data-pending="true"] { opacity: .76; }
 .deliveryStatus { color: var(--sidebar-section-label-color); font-size: 10.5px; line-height: 1.5; }
-.sendRecovery { display: flex; align-items: center; gap: var(--space-default); font-size: 12px; line-height: 1.5; color: var(--sidebar-section-label-color); }
+.sendRecovery {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-default);
+  margin-bottom: var(--icon-default);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--sidebar-section-label-color);
+}
+.sendRecovery > span { min-width: 0; flex: 1 1 240px; overflow-wrap: anywhere; }
 .sendRecovery button { flex-shrink: 0; }
 .userMessageGroup { display: flex; min-width: 0; max-width: 100%; flex-direction: column; align-items: flex-start; gap: 8px; }
 .messageLabel { display: flex; align-items: center; gap: 6px; color: var(--text); }
@@ -172,7 +183,7 @@
 .messageImageAttachment img { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; }
 .messageImageAttachment > svg { width: 20px; height: 20px; stroke-width: 1.5; }
 .messageImageAttachment[data-loading="true"] > svg { opacity: .45; }
-.inlineCode { border: 1px solid rgba(255, 255, 255, .07); border-radius: 5px; background: rgba(0, 0, 0, .22); color: #d6dddd; font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; padding: 1px 4px; }
+.inlineCode { border: 1px solid rgba(255, 255, 255, .07); border-radius: 5px; background: rgba(0, 0, 0, .22); color: #d6dddd; font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; margin-inline: 4px; padding: 1px 4px; }
 .assistantMessage .inlineCode { background: var(--divider); color: var(--sidebar-section-label-color); }
 
 .codeBlock { --liquid-glass-radius: 11px; width: 100%; min-width: 0; max-width: 100%; overflow: hidden; margin: 10px 0; background: transparent; }
@@ -237,7 +248,7 @@
   left: 0;
   padding: var(--composer-overlay-top-padding) 40px 12px;
 }
-.commandMenu, .approvalPrompt, .composerSurface, .error { width: min(100%, 780px); margin-right: auto; margin-left: auto; }
+.commandMenu, .approvalPrompt, .composerSurface, .error, .sendRecovery { width: min(100%, 780px); margin-right: auto; margin-left: auto; }
 .approvalPrompt {
   --liquid-glass-radius: 14px;
   display: grid;
@@ -293,6 +304,9 @@
   overscroll-behavior: contain;
   padding: 6px;
   scrollbar-gutter: stable;
+}
+.commandOptions[data-mode="agents"] > .commandOption + .commandOption {
+  margin-block-start: 4px;
 }
 .mcpStatus { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .mcpStatus strong { color: var(--sidebar-section-label-color); font-size: 10px; font-weight: 500; }

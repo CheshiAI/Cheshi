@@ -1,4 +1,5 @@
 import { normalizeMcpRuntimeStatus, type ChatMcpRuntimeStatus } from '../../../../shared/chat-mcp-status';
+import { normalizeChatAsyncQuestions, type ChatAsyncQuestion } from '../../../../shared/chat-async-question';
 
 export interface ChatSession {
   id: string;
@@ -133,6 +134,7 @@ interface ChatTextItem {
   createdAt: number;
   pending?: boolean;
   delivery?: 'failed' | 'unknown';
+  questions?: ChatAsyncQuestion[];
 }
 
 export type ChatFileChangeKind = 'add' | 'delete' | 'update';
@@ -207,6 +209,7 @@ type ChatEvent =
   | { type: 'user-message'; threadId: string; clientMessageId: string; text: string; createdAt: number }
   | { type: 'user-message-identified'; threadId: string; clientMessageId: string; itemId: string }
   | { type: 'assistant-delta' | 'reasoning-delta' | 'plan-delta' | 'plan-completed'; threadId: string; itemId: string; text: string; createdAt: number }
+  | { type: 'assistant-questions'; threadId: string; itemId: string; questions: ChatAsyncQuestion[]; createdAt: number }
   | { type: 'activity'; threadId: string; item: ChatActivityItem }
   | { type: 'command-output-delta'; threadId: string; itemId: string; text: string }
   | { type: 'turn-completed'; threadId: string; status: string; message: string | null }
@@ -506,7 +509,11 @@ function normalizeTimelineItem(value: unknown): ChatTimelineItem | null {
   if (!record || !id || !kind) return null;
   if (kind === 'user' || kind === 'assistant' || kind === 'reasoning' || kind === 'plan') {
     const text = stringValue(record.text);
-    return text ? { id, kind, text, createdAt: finiteNumber(record.createdAt) ?? 0 } : null;
+    const questions = kind === 'assistant' ? normalizeChatAsyncQuestions(record.questions) : [];
+    return text || questions.length > 0
+      ? { id, kind, text: text ?? '', createdAt: finiteNumber(record.createdAt) ?? 0,
+          ...(questions.length > 0 ? { questions } : {}) }
+      : null;
   }
   if (kind !== 'activity') return null;
   const label = stringValue(record.label);
@@ -750,6 +757,14 @@ export function normalizeChatEvent(value: unknown): ChatEvent | null {
     const text = type === 'plan-completed' && typeof record.text === 'string' ? record.text : stringValue(record.text);
     return threadId && itemId && text !== null
       ? { type, threadId, itemId, text, createdAt: finiteNumber(record.createdAt) ?? Math.floor(Date.now() / 1000) }
+      : null;
+  }
+  if (type === 'assistant-questions') {
+    const threadId = stringValue(record.threadId);
+    const itemId = stringValue(record.itemId);
+    const questions = normalizeChatAsyncQuestions(record.questions);
+    return threadId && itemId && questions.length > 0
+      ? { type, threadId, itemId, questions, createdAt: finiteNumber(record.createdAt) ?? Math.floor(Date.now() / 1000) }
       : null;
   }
   if (type === 'activity') {

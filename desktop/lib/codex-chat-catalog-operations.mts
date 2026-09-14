@@ -18,6 +18,7 @@ import type {
 import { errorMessage, requiredString } from "./codex-chat-values.mts";
 import { recordValue } from "./codex-service-utils.mts";
 import { probeCodexMcpServers, type CodexMcpProbeClient } from './codex-mcp-probe.mts';
+import { codexMcpRecovery } from './codex-mcp-recovery.mts';
 
 interface CodexChatCatalogContext {
   client: CodexChatClient;
@@ -158,13 +159,8 @@ export async function listCodexMcpServers(context: CodexChatCatalogContext): Pro
   // Reading stored history does not load a thread into the App Server runtime.
   const threadId = viewedThreadId && context.subscribedThreadIds.has(viewedThreadId) ? viewedThreadId : null;
   if (!threadId) return probeCodexMcpServers(context);
-  const params = {
-    limit: 100,
-    detail: "toolsAndAuthOnly",
-    threadId,
-  };
   try {
-    return { servers: mcpServersFromListResponse(await context.client.request("mcpServerStatus/list", params)) };
+    return { servers: mcpServersFromListResponse(await codexMcpRecovery(context.client, context.log).read(threadId)) };
   } catch (error) {
     if (!threadId || !isMissingMcpThread(error, threadId)) throw error;
     // A previously loaded thread may have closed before the status request.

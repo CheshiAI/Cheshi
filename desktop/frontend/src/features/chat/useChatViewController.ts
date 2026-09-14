@@ -1,4 +1,5 @@
 import { createSkillCatalogCache } from './skillCatalogCache';
+import { handleChatComposerKeyDown } from './chatComposerKeyDown';
 import {
   useEffect,
   useId,
@@ -72,7 +73,7 @@ export function useChatViewController({ controller, onNewSession, active = true,
   } = controller;
   const captureTask = useChatTaskScope(`${sessionRevision}:${state.activeSessionId ?? ''}`);
   const { draft, setDraft, selectedSkill, setSelectedSkill, attachments, setAttachments,
-    pending: sendPending, recovery: sendRecovery, submitDraft, restoreFailedMessage, canRestoreFailedMessage } = useChatDraft(
+    pending: sendPending, recovery: sendRecovery, submitDraft, queueDraft, restoreFailedMessage, canRestoreFailedMessage } = useChatDraft(
     sessionRevision, (input) => sendMessage(input.draft, input.selectedSkill, input.attachments));
   const [commandMenuMode, setCommandMenuMode] = useState<CommandMenuMode | null>(null);
   const [agents, setAgents] = useState<ChatAgentThread[]>([]);
@@ -845,48 +846,17 @@ export function useChatViewController({ controller, onNewSession, active = true,
     void submitDraft();
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.nativeEvent.isComposing) return;
-    if (interactionsLocked && event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      return;
-    }
-    if (commandMenuOpen) {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeCommandMenu();
-        return;
-      }
-      if (goalEditorOpen && event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        void saveGoal();
-        return;
-      }
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault();
-        moveHighlightedOption(event.key === 'ArrowDown' ? 1 : -1);
-        return;
-      }
-      if (
-        ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab')
-        && (
-          slashMenuOpen
-          || agentPickerOpen
-          || skillPickerOpen
-          || modelPickerOpen
-          || reasoningPickerOpen
-          || permissionsPickerOpen
-        )
-      ) {
-        event.preventDefault();
-        activateHighlightedOption();
-        return;
-      }
-    }
-    if (event.key !== 'Enter' || event.shiftKey) return;
-    event.preventDefault();
-    submit();
-  };
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => handleChatComposerKeyDown(event, {
+    interactionsLocked, commandMenuOpen, goalEditorOpen,
+    optionPickerOpen: slashMenuOpen || agentPickerOpen || skillPickerOpen || modelPickerOpen
+      || reasoningPickerOpen || permissionsPickerOpen,
+    closeCommandMenu, saveGoal: () => { void saveGoal(); }, moveHighlightedOption, activateHighlightedOption, submit,
+    queueDraft: () => {
+      if (!active || !streaming || loading || sendPending || commandLoading || controller.configurationPending
+        || configurationMenuOpen || attachmentPickerOpen || attachmentPickerPending.current || attachmentTransfer.isTransferring()) return false;
+      return queueDraft(controller.queueMessage);
+    },
+  });
 
   return {
     activateSlashCommand,

@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { MessageCircleDashed, MessageSquareText, Plus, Trash2 } from 'lucide-react';
 
 import { LoadingState, NeumorphicButton } from '../../shared/ui';
@@ -6,6 +6,7 @@ import type { ChatSession } from './model';
 import styles from './ChatSessionList.module.css';
 
 interface ChatSessionListProps {
+  search?: ReactNode;
   sessions: ChatSession[];
   loading: boolean;
   activeSessionId: string | null;
@@ -45,6 +46,7 @@ const ChatSessionButton = memo(function ChatSessionButton({
 });
 
 export function ChatSessionList({
+  search,
   sessions,
   loading,
   activeSessionId,
@@ -99,6 +101,8 @@ export function ChatSessionList({
           </NeumorphicButton>
         </div>
       </header>
+
+      {sessions.length > 0 && search && <div className={styles.search}>{search}</div>}
 
       <fieldset className={styles.list} aria-label="Conversations" aria-busy={loading} disabled={selectionDisabled}>
         {loading && sessions.length === 0 && (

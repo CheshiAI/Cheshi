@@ -29,7 +29,9 @@ async function runningCommands(client: CodexChatClient, active: ActiveTurn) {
 }
 
 /** Terminate only commands observed in this turn; never use OS PIDs or thread-wide cleanup. */
-export async function stopCodexCommands(client: CodexChatClient, active: ActiveTurn): Promise<void> {
+export async function stopCodexCommands(
+  client: CodexChatClient, active: ActiveTurn, isTurnComplete: () => boolean = () => false,
+): Promise<void> {
   if (!active.commands.size) return;
   const terminated = new Set<string>();
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -54,8 +56,10 @@ export async function stopCodexCommands(client: CodexChatClient, active: ActiveT
     }
     const remaining = await runningCommands(client, active);
     const unconfirmed = [...active.commands].some(([itemId, command]) => !command.completed && !terminated.has(itemId));
-    if (remaining.size === 0 && !unconfirmed) return;
+    // Interrupt can finish the turn without a final item/completed notification.
+    // Only reconcile that stale item state when the turn AND process list agree.
+    if (remaining.size === 0 && (!unconfirmed || isTurnComplete() === true)) return;
     await delay(50);
   }
-  throw new Error('Some commands are still running. Press Stop again to retry.');
+  throw new Error('Could not confirm that all commands stopped. Press Stop again to retry.');
 }
