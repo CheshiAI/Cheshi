@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { ForgeConfig } from '@electron-forge/shared-types';
+import { macOSSigningOptions } from './config/macos-signing.mts';
 
 const rootDirectory = fileURLToPath(new URL('.', import.meta.url));
 
@@ -21,7 +22,7 @@ function shouldIgnore(packagePath: string): boolean {
   if (rootEntry === 'resources') {
     if (segments.length === 1) return false;
     if (childEntry !== 'icons') return true;
-    const packagedIcons = new Set(['startup-logo.png', 'app-icon.png']);
+    const packagedIcons = new Set(['startup-logo.png', 'app-icon.png', 'about-logo.png']);
     return segments.length > 2 && (!grandchildEntry || !packagedIcons.has(grandchildEntry) || segments.length > 3);
   }
   if (rootEntry !== 'desktop') return true;
@@ -40,6 +41,11 @@ function shouldIgnore(packagePath: string): boolean {
   if (segments.length === 2) return false;
   if (grandchildEntry === 'electron-libghostty') return false;
   const packagedLibraryFiles = new Set([
+    'about-page.mts',
+    'about-window.mts',
+    'about-menu.mts',
+    'workspace-codegraph-mcp.mts',
+    'workspace-chat-instructions.mts',
     'app-release-checker.mts',
     'app-update-service.mts',
     'app-update-preview.mts',
@@ -166,7 +172,11 @@ export default async function createForgeConfiguration(): Promise<ForgeConfig> {
   const { product } = await import('./config/product.mts');
 
   return {
+    hooks: {
+      readPackageJson: async (_forgeConfig, packageJson) => ({ ...packageJson, version: product.version }),
+    },
     packagerConfig: {
+      ...macOSSigningOptions(process.env, process.platform),
       name: product.displayName,
       icon: path.join(rootDirectory, 'resources', 'icons', 'app-icon.icns'),
       appBundleId: product.bundleId,

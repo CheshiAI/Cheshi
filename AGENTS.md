@@ -1,8 +1,16 @@
 # Repository Instructions
 
-These instructions apply to the entire repository. Reviewed for GPT-6 Astra on
-2026-09-06. Model selection and reasoning effort belong to the active runtime;
-this file defines the repository's working agreements.
+These instructions apply to the entire repository. Model selection and reasoning
+effort belong to the active runtime; this file defines the repository's working
+agreements.
+
+## Local preferences
+
+If `AGENTS.local.md` exists in the repository root, read it for local language
+preferences and machine-specific tooling instructions. It is optional and
+Git-ignored; contributors do not need to create it. Keep shared development
+rules in this file and personal settings in the local file. Local preferences
+do not override explicit user requests or shared repository requirements.
 
 ## Working agreements
 
@@ -42,7 +50,7 @@ this file defines the repository's working agreements.
   with clear file ownership, coordinate shared dependencies, and personally
   review the combined result and relevant validation. Delegation follows the
   same scope and approval requirements as work performed directly.
-- Communicate in Korean unless asked otherwise. Lead with the result, give brief
+- Use the user's requested language. Lead with the result, give brief
   progress updates during sustained work, and report concrete changes, checks,
   and unresolved issues without repeating the work log.
 
@@ -325,11 +333,10 @@ git commit -m "[init] set up project"
 - Direct pushes use Git's authentication. Do not run `gh auth status` as a
   prerequisite for an ordinary commit/push to an existing remote.
 - Use `gh auth status` only for GitHub CLI/API work or to diagnose its failure.
-  On this macOS machine, request approved escalation first so it can access the
-  keyring; sandboxed failures do not establish invalid or expired credentials.
-- If a sandboxed check ran accidentally, verify with approved escalation before
-  diagnosing authentication. Use `gh api user --jq .login` when stronger evidence
-  is needed. If verification is unavailable, report that limitation.
+- A sandbox or credential-store access failure does not establish invalid or
+  expired credentials. Verify with an authorized method before diagnosing
+  authentication. Use `gh api user --jq .login` when stronger evidence is needed.
+  If verification is unavailable, report that limitation.
 - Git and `gh` success or failure do not establish each other's authentication
   state. Never run `gh auth token` or print a plaintext credential.
 

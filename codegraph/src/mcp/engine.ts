@@ -16,6 +16,7 @@ import { findNearestCodeGraphRoot } from '../directory';
 import { watchDisabledReason } from '../sync';
 import { ToolHandler } from './tools';
 import { QueryPool, resolvePoolSize } from './query-pool';
+import { mcpReadOnlyEnabled } from './runtime-options';
 
 // Lazy-load the heavy CodeGraph chain (sqlite + query/graph/context layers) OFF
 // the MCP startup path. It's only needed once a tool actually opens a project —
@@ -27,6 +28,8 @@ const loadCodeGraph = (): typeof import('../index').default =>
   (require('../index') as typeof import('../index')).default;
 
 export interface MCPEngineOptions {
+  /** Open existing indexes without watching, syncing, or spawning query writers. */
+  readOnly?: boolean;
   /**
    * Whether to start the file watcher when initializing. Daemon and direct
    * modes both want this true; tests may set it false to keep the engine
@@ -67,8 +70,12 @@ export class MCPEngine {
   private queryPool: QueryPool | null = null;
 
   constructor(opts: MCPEngineOptions = {}) {
-    this.opts = { watch: opts.watch ?? true, queryPool: opts.queryPool ?? false };
-    this.toolHandler = new ToolHandler(null);
+    this.opts = {
+      watch: opts.watch ?? true,
+      queryPool: opts.queryPool ?? false,
+      readOnly: opts.readOnly === true || mcpReadOnlyEnabled(),
+    };
+    this.toolHandler = new ToolHandler(null, { readOnly: this.opts.readOnly });
   }
 
   /**
@@ -78,7 +85,7 @@ export class MCPEngine {
    * in-process, so the pool can only help, never break, tool calls.
    */
   private maybeStartPool(root: string): void {
-    if (!this.opts.queryPool || this.queryPool || this.closed) return;
+    if (this.opts.readOnly || !this.opts.queryPool || this.queryPool || this.closed) return;
     const size = resolvePoolSize(process.env.CODEGRAPH_QUERY_POOL_SIZE, os.cpus().length);
     if (size <= 0) {
       process.stderr.write('[CodeGraph MCP] Query pool disabled (CODEGRAPH_QUERY_POOL_SIZE=0); serving reads in-process.\n');
@@ -166,7 +173,7 @@ export class MCPEngine {
         try { this.cg.close(); } catch { /* ignore */ }
         this.cg = null;
       }
-      this.cg = loadCodeGraph().openSync(resolvedRoot);
+      this.cg = loadCodeGraph().openSync(resolvedRoot, { readOnly: this.opts.readOnly });
       this.projectPath = resolvedRoot;
       this.toolHandler.setDefaultCodeGraph(this.cg);
       this.startWatching();
@@ -210,7 +217,7 @@ export class MCPEngine {
 
     this.projectPath = resolvedRoot;
     try {
-      this.cg = await loadCodeGraph().open(resolvedRoot);
+      this.cg = await loadCodeGraph().open(resolvedRoot, { readOnly: this.opts.readOnly });
       this.toolHandler.setDefaultCodeGraph(this.cg);
       this.startWatching();
       this.catchUpSync();
@@ -229,7 +236,7 @@ export class MCPEngine {
    * keep working.
    */
   private startWatching(): void {
-    if (!this.cg || this.watcherStarted || !this.opts.watch) return;
+    if (this.opts.readOnly || !this.cg || this.watcherStarted || !this.opts.watch) return;
 
     const disabledReason = watchDisabledReason(this.projectPath ?? process.cwd());
     if (disabledReason) {
@@ -295,7 +302,7 @@ export class MCPEngine {
    */
   private catchUpSync(): void {
     const cg = this.cg;
-    if (!cg) return;
+    if (this.opts.readOnly || !cg) return;
     const p = cg
       .sync()
       .then((result) => {

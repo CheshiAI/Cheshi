@@ -2,6 +2,9 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, session, shell, Tray, WebContentsView } from 'electron';
 import { product } from '../config/product.mts';
+import { aboutBackgroundColor, aboutPage } from './lib/about-page.mts';
+import { createAboutWindow } from './lib/about-window.mts';
+import { aboutMenuTemplate } from './lib/about-menu.mts';
 import { startupScreen } from './lib/startup-screen.mts';
 import { WorkspaceApplication, WorkspaceWindowCloseCancelledError } from './lib/workspace-application.mts';
 import { WorkspaceIpcRouter } from './lib/workspace-ipc-router.mts';
@@ -25,6 +28,13 @@ import { APP_UPDATE_CHANNEL } from './shared/app-update.ts';
 import type { WorkspaceRuntimeOptions } from './lib/workspace-application.mts';
 
 process.env.PATH = desktopToolPath(process.env.PATH);
+const aboutWindow = createAboutWindow({
+  title: `About ${product.displayName}`,
+  backgroundColor: aboutBackgroundColor,
+  createWindow: options => new BrowserWindow(options),
+  page: () => aboutPage({ name: product.displayName, version: product.version, buildNumber: product.buildNumber, publisher: product.publisher }),
+  onError: error => process.stderr.write(`[cheshi] About window failed: ${String(error)}\n`),
+});
 const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'updates'));
 const updatePreview = createAppUpdatePreview({ packaged: app.isPackaged, setting: process.env.CHESHI_UPDATE_PREVIEW });
 const updates = createAppUpdateService({
@@ -47,6 +57,7 @@ const updates = createAppUpdateService({
       await workspaces.closeAll();
       await backgroundUsage.dispose().catch(reportTrayError);
       usageTray?.dispose();
+      aboutWindow.close();
       cleanupComplete = true;
       updates.dispose();
       autoUpdater.quitAndInstall();
@@ -114,7 +125,6 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try { runtime = createWorkspaceRuntime(options, snapshot => source?.update(snapshot)); }
   catch (error) { source?.dispose(); throw error; }
-  if (usageTray) backgroundUsage.start();
   return {
     async start() {
       try {
@@ -154,8 +164,8 @@ async function openStartupWindow(): Promise<void> {
         cwd: app.getPath('userData'), openExternal: (url) => shell.openExternal(url),
       }),
     });
-    // Keep the startup screen visible for development layout review.
-    if (!quitting && !app.isPackaged && startupScreen.isOpen) await delay(2_000);
+    const remainingDisplayMs = startupScreen.remainingMinimumDisplayMs;
+    if (!quitting && remainingDisplayMs > 0) await delay(remainingDisplayMs);
     if (quitting) return;
     if (root && restore) await workspaces.open(root);
     else await workspaces.openManager();
@@ -180,10 +190,8 @@ app.whenReady().then(async () => {
     void appUpdateUnavailableReason({ packaged: app.isPackaged, platform: process.platform, executable: process.execPath })
       .then(reason => updates.setUnavailableReason(reason));
   }
-  app.setAboutPanelOptions({
-    applicationName: product.displayName, applicationVersion: product.version,
-    version: product.buildNumber, copyright: `© ${new Date().getFullYear()} ${product.publisher}`,
-  });
+  const applicationMenu = Menu.getApplicationMenu();
+  if (applicationMenu) Menu.setApplicationMenu(Menu.buildFromTemplate(aboutMenuTemplate(applicationMenu.items, product.displayName, aboutWindow.open, template => Menu.buildFromTemplate(template))));
   if (process.platform === 'darwin') {
     try { usageTray = createAccountUsageTray({
       createTray: image => new Tray(image), createMenu: template => Menu.buildFromTemplate(template),
@@ -199,6 +207,7 @@ app.whenReady().then(async () => {
       onError: reportTrayError,
     }); } catch (error) { reportTrayError(error); }
   }
+  if (usageTray) backgroundUsage.start();
   const resumeWindows = await updateResume.load().catch(error => {
     process.stderr.write(`[cheshi] Could not load update recovery: ${String(error)}\n`);
     return [];
@@ -224,6 +233,7 @@ app.on('before-quit', (event) => {
   void workspaces.closeAll().then(async () => {
     await backgroundUsage.dispose().catch(reportTrayError);
     usageTray?.dispose();
+    aboutWindow.dispose();
     updates.dispose();
     cleanupComplete = true;
     app.quit();

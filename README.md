@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="resources/icons/app-icon.png" alt="Cheshi" width="96" />
+  <img src="resources/icons/about-logo.png" alt="Cheshi" width="96" />
 </p>
 
 # Cheshi
@@ -8,11 +8,64 @@ A desktop workspace for AI-assisted development. Work with Codex, explore your
 codebase with CodeGraph, and manage code, terminals, and Git in one place.
 
 [Releases](https://github.com/CheshiAI/Cheshi/releases) ·
+[Changelog](CHANGELOG.md) ·
 [English help](.docs/help/en/) · [한국어 도움말](.docs/help/ko/) ·
 [CodeGraph guide](.docs/codegraph/guide.md)
 
-Cheshi is in early development. Start with the source setup below; packaged
-builds will be listed on the Releases page when published.
+[Report an issue](https://github.com/CheshiAI/Cheshi/issues/new/choose) ·
+[Contribute](CONTRIBUTING.md)
+
+Cheshi is in preview. Install it through the
+[Cheshi Homebrew Tap](https://github.com/CheshiAI/homebrew-tap), or download the
+signed and notarized ZIP from [Releases](https://github.com/CheshiAI/Cheshi/releases).
+
+## Install with Homebrew
+
+The first packaged release requires **Apple Silicon and macOS Tahoe 26 or later**
+because its bundled CodeGraph executables require macOS 26. Install
+[Homebrew](https://brew.sh/) if it is not already available, then run:
+
+```sh
+brew install --cask cheshiai/tap/cheshi
+```
+
+This installs Cheshi into Applications. The Cask declares **GitHub CLI
+(`gh`)** and **Codex CLI (`codex`)** as dependencies, so Homebrew installs them
+when they are not already registered with Homebrew. If you installed either CLI
+through another package manager, check for an existing installation conflict.
+
+### First launch
+
+1. Open **Cheshi** from Applications.
+2. Follow the Codex sign-in prompt if needed. Installation does not sign you in.
+3. In **Workspaces**, open a local folder, create a project, or clone a repository.
+   Sign in to GitHub when prompted for GitHub features.
+4. Cheshi creates the workspace's initial CodeGraph index automatically. Once
+   indexing completes, explore the code graph or ask Codex about the project.
+
+**CodeGraph is included and configured by Cheshi.** You do not need a separate
+CodeGraph installation, environment variables, or manual MCP registration to use
+it inside the app. Cheshi connects its bundled CodeGraph runtime to the selected
+workspace and the same index used by the viewer.
+
+Workspace registrations and indexes are stored under
+`~/Library/Application Support/Cheshi/`, outside your project. There is no need
+to create `~/.codegraph` or a `.codegraph` folder in the repository.
+
+The [CodeGraph CLI](#codegraph-cli) instructions below are optional developer
+tools; they are not installation steps for the desktop app.
+
+### Update
+
+Use Cheshi's update notification when a newer release is available. To update
+through Homebrew instead, quit Cheshi and run:
+
+```sh
+brew update
+brew upgrade --cask --greedy cheshiai/tap/cheshi
+```
+
+`--greedy` includes casks marked as supporting in-app updates.
 
 ## Features
 
@@ -137,14 +190,10 @@ starts its initial indexing. Existing indexes are reused.
 
 ## Contributing
 
-Bug reports and focused pull requests are welcome through
-[GitHub Issues](https://github.com/CheshiAI/Cheshi/issues) and pull requests.
-Include reproduction steps and the relevant platform and app version when
-reporting a problem. Remove credentials and private project data from logs.
-
-Read [AGENTS.md](AGENTS.md) for repository conventions and validation commands,
-and [desktop/AGENTS.md](desktop/AGENTS.md) for desktop UI conventions.
-Keep changes focused and run the checks for the affected area.
+Bug reports, feature ideas, and focused pull requests are welcome in English or
+Korean. Use [GitHub Issues](https://github.com/CheshiAI/Cheshi/issues/new/choose)
+to report a problem or suggest an improvement. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for the fork and PR workflow, repository conventions, and relevant checks.
 
 ## License and acknowledgements
 

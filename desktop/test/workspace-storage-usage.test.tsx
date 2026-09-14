@@ -14,12 +14,12 @@ test('uses decimal MB below one GB and GB from one GB', () => {
   expect(formatWorkspaceStorage(1_000_000_000)).toBe('1 GB');
   expect(formatWorkspaceStorage(2_450_000_000)).toBe('2.45 GB');
   expect(formatWorkspaceStorage(0)).toBe('0 MB');
-  expect(formatWorkspaceStorage(512)).toBe('<0.01 MB');
+  expect(formatWorkspaceStorage(512)).toBe('0.01 MB');
 });
 
 test('percentage uses the whole drive, and small nonzero values never display zero', () => {
   expect(workspaceStorageLabels(usage).percent).toBe('0.12%');
-  expect(workspaceStorageLabels({ ...usage, workspaceBytes: 1_000_000 }).percent).toBe('<0.01%');
+  expect(workspaceStorageLabels({ ...usage, workspaceBytes: 1_000_000 }).percent).toBe('0.01%');
   expect(workspaceStorageLabels({ ...usage, workspaceBytes: 0 }).percent).toBe('0%');
   expect(workspaceStorageLabels(usage).title).toContain('2,000 GB');
 });

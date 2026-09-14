@@ -78,6 +78,51 @@ test('shows startup before allowing initialization to continue without a timer d
   screen.close();
 });
 
+test('minimum display counts from showing the splash and only waits for the remaining time', async (context) => {
+  let now = 100;
+  context.mock.method(performance, 'now', () => now);
+  const screen = new StartupScreen();
+  const view = new FakeStartupView();
+  assert.equal(screen.remainingMinimumDisplayMs, 0);
+  const opening = openScreen(screen, view);
+  now = 3_000;
+  assert.equal(screen.remainingMinimumDisplayMs, 0);
+  view.emit('ready-to-show');
+  view.load.resolve();
+  assert.equal(await opening, true);
+  assert.equal(screen.remainingMinimumDisplayMs, 2_000);
+  now += 500;
+  assert.equal(screen.remainingMinimumDisplayMs, 1_500);
+  now += 1_500;
+  assert.equal(screen.remainingMinimumDisplayMs, 0);
+  now += 2_000;
+  assert.equal(screen.remainingMinimumDisplayMs, 0);
+  screen.close();
+});
+
+test('closing and reopening the splash resets the minimum display period', async (context) => {
+  let now = 0;
+  context.mock.method(performance, 'now', () => now);
+  const screen = new StartupScreen();
+  const first = new FakeStartupView();
+  const opening = openScreen(screen, first);
+  first.emit('ready-to-show');
+  first.load.resolve();
+  assert.equal(await opening, true);
+  now += 500;
+  screen.close();
+  assert.equal(screen.remainingMinimumDisplayMs, 0);
+  const second = new FakeStartupView();
+  const reopening = openScreen(screen, second);
+  assert.equal(screen.remainingMinimumDisplayMs, 0);
+  second.emit('ready-to-show');
+  second.load.resolve();
+  assert.equal(await reopening, true);
+  assert.equal(screen.remainingMinimumDisplayMs, 2_000);
+  second.destroy();
+  assert.equal(screen.remainingMinimumDisplayMs, 0);
+});
+
 test('closing the startup window before readiness cancels initialization', async () => {
   const screen = new StartupScreen();
   const view = new FakeStartupView();

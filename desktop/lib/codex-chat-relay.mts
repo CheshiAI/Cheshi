@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { chatRelayRequest, formatChatRelayMessage } from '../shared/chat-relay.ts';
+import { CHAT_RELAY_MODERATOR_TITLE, chatRelayRequest, formatChatRelayMessage } from '../shared/chat-relay.ts';
 import type { NormalizedChatRelayRequest, ChatRelayState } from '../shared/chat-relay.ts';
 import type { CodexChatContexts } from './codex-chat-contexts.mts';
 import type { CodexChatService } from './codex-chat-service.mts';
@@ -173,6 +173,14 @@ export class CodexChatRelays {
     request.moderatorThreadId = threadId;
     run.state = { ...run.state, moderatorContextId: run.ownedModeratorContextId, moderatorThreadId: threadId };
     this.publish(ownerId, run);
+    run.abort.signal.throwIfAborted();
+    try {
+      await moderator.client.request('thread/name/set', { threadId, name: CHAT_RELAY_MODERATOR_TITLE }, 10_000);
+      moderator.emit({ type: 'session-title', threadId, title: CHAT_RELAY_MODERATOR_TITLE });
+    } catch (error) {
+      moderator.log('codex-chat-relay-moderator-title-failed', { threadId,
+        message: error instanceof Error ? error.message : String(error) });
+    }
     run.abort.signal.throwIfAborted();
     return moderator;
   }

@@ -1,5 +1,6 @@
 import type { ChatAgentThread, ChatGoal, JsonObject } from "./codex-chat-types.mts";
 import { finiteNumber, recordValue, stringValue } from "./codex-service-utils.mts";
+import { chatRelaySessionTitle } from '../shared/chat-relay.ts';
 import {
   parseSavedChatTurnPrompt,
   savedChatTurnSessionTitle,
@@ -405,6 +406,8 @@ export function chatSessionFromThread(value: unknown): JsonObject | null {
   const agentNickname = stringValue(thread.agentNickname)?.trim();
   const agentRole = stringValue(thread.agentRole)?.trim();
   const rawPreview = stringValue(thread.preview)?.trim() ?? "";
+  const relayTitle = chatRelaySessionTitle(rawPreview);
+  const relayName = chatRelaySessionTitle(rawName ?? "");
   const savedContext = parseSavedChatTurnPrompt(rawPreview);
   const savedTitle = savedChatTurnSessionTitle(rawPreview);
   const savedName = rawName ? savedChatTurnSessionTitle(rawName) : null;
@@ -415,10 +418,10 @@ export function chatSessionFromThread(value: unknown): JsonObject | null {
     && normalizedPreview.startsWith(namePrefix);
   const name = savedName || nameUsesSavedPreview
     ? (savedContext ? savedTitle : savedName)
-    : rawName;
+    : relayName ? relayTitle ?? relayName : rawName;
   const preview = savedContext
     ? savedContext.userText.trim() || savedTitle || ""
-    : savedTitle ?? rawPreview;
+    : savedTitle ?? relayTitle ?? rawPreview;
   return {
     id,
     title:

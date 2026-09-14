@@ -8,13 +8,13 @@ export function formatWorkspaceStorage(bytes: number): string {
   const unit = bytes >= GB ? GB : MB;
   const amount = bytes / unit;
   const label = unit === GB ? 'GB' : 'MB';
-  if (amount > 0 && amount < 0.01) return `<0.01 ${label}`;
+  if (amount > 0 && amount < 0.01) return `0.01 ${label}`;
   return `${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${label}`;
 }
 
 export function workspaceStorageLabels(usage: WorkspaceDiskUsage) {
   const percentage = usage.workspaceBytes / usage.totalBytes * 100;
-  const percent = percentage > 0 && percentage < 0.01 ? '<0.01%'
+  const percent = percentage > 0 && percentage < 0.01 ? '0.01%'
     : `${percentage.toLocaleString('en-US', { maximumFractionDigits: 2 })}%`;
   const size = formatWorkspaceStorage(usage.workspaceBytes);
   return { size, percent, title: `Workspace folder: ${size} of ${formatWorkspaceStorage(usage.totalBytes)} on this drive (${percent}).` };

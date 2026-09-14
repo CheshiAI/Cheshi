@@ -1,6 +1,7 @@
 import { ToolHandlerState } from './tool-handler-state';
 import type CodeGraph from '../index';
 import type { QueryPool } from './query-pool';
+import { mcpReadOnlyEnabled } from './runtime-options';
 import {
   type ReadToolResult,
   type ToolDefinition,
@@ -55,8 +56,8 @@ export { getStaticTools } from './tool-definitions';
 export class ToolHandler {
   private readonly state: ToolHandlerState;
 
-  constructor(cg: CodeGraph | null) {
-    this.state = new ToolHandlerState(cg, this);
+  constructor(cg: CodeGraph | null, options: { readOnly?: boolean } = {}) {
+    this.state = new ToolHandlerState(cg, this, options.readOnly === true || mcpReadOnlyEnabled());
   }
 
   setQueryPool(pool: QueryPool | null): void {

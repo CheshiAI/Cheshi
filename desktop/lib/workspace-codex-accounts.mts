@@ -13,12 +13,16 @@ import { chooseCodexAccount } from './codex-account-availability.mts';
 import type { CodexConversationAccess } from './codex-chat-account-continuity.mts';
 import type { CodexChatClient } from './codex-chat-types.mts';
 import { CodexConversationAgents } from './codex-conversation-agents.mts';
+import { createWorkspaceCodeGraphMcp } from './workspace-codegraph-mcp.mts';
 
 export function createWorkspaceCodexAccounts(options: {
   cwd: string; userDataDirectory: string; home: string; openExternal(url: string): Promise<unknown>;
+  codeGraph: { cli: { executable: string; args: string[] }; dataRoot: string };
 }) {
   const defaultHome = process.env.CODEX_HOME?.trim() || path.join(options.home, '.codex');
-  const clients = new CodexAccountClients({ CODEX_HOME: defaultHome });
+  const clients = new CodexAccountClients({ CODEX_HOME: defaultHome }, createWorkspaceCodeGraphMcp({
+    cli: options.codeGraph.cli, dataRoot: options.codeGraph.dataRoot, workspaceRoot: options.cwd,
+  }));
   const profiles = getCodexAccountProfiles({
     directory: path.join(options.userDataDirectory, 'codex-accounts'),
     defaultHome, cwd: options.home, openExternal: options.openExternal,

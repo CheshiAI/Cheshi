@@ -18,6 +18,7 @@ import type {
 } from "./codex-chat-types.mts";
 import { errorMessage, requiredString } from "./codex-chat-values.mts";
 import { recordValue, stringValue } from "./codex-service-utils.mts";
+import { chatRelaySessionTitle } from '../shared/chat-relay.ts';
 
 interface CodexChatEventContext {
   client: CodexChatClient;
@@ -173,11 +174,12 @@ export function handleCodexNotification(context: CodexChatEventContext, value: J
 
   if (method === "thread/name/updated") {
     const threadId = stringValue(params.threadId);
+    const name = stringValue(params.threadName)?.trim() ?? "";
     if (threadId) {
       context.emit({
         type: "session-title",
         threadId,
-        title: stringValue(params.threadName)?.trim() || "New chat",
+        title: chatRelaySessionTitle(name) ?? (name || "New chat"),
       });
     }
     return;

@@ -3,6 +3,7 @@ export type ChatRelayPhase = 'proposal' | 'review' | 'revision' | 'discussion' |
 export type ChatRelayOutcome = 'reviewed' | 'debated' | 'agreed' | 'limit';
 export const CHAT_RELAY_MAX_ROUNDS = 5;
 export const CHAT_RELAY_MAX_TRANSCRIPT = 650_000;
+export const CHAT_RELAY_MODERATOR_TITLE = 'Debate summary';
 
 export interface ChatRelayRequest {
   sourceContextId: string;
@@ -135,6 +136,24 @@ export function chatRelayContextIds(state: ChatRelayState | null | undefined): s
 
 export function formatChatRelayMessage(provenance: ChatRelayMessageProvenance, body: string): string {
   return `${RELAY_PREFIX}${JSON.stringify(provenance)}\n\n${body}`;
+}
+
+/** Provider previews and generated names may truncate or flatten the relay envelope. */
+export function chatRelaySessionTitle(text: string): string | null {
+  const normalized = text.trim().replace(/\r\n?/gu, '\n').replace(/(?:\.\.\.|…)$/u, '').trimEnd();
+  const header = [RELAY_PREFIX, LEGACY_RELAY_PREFIX].map(prefix => prefix.trimEnd())
+    .find(candidate => normalized === candidate || normalized.startsWith(`${candidate}\n`) || normalized.startsWith(`${candidate} `));
+  if (!header) return null;
+  const remainder = normalized.slice(header.length).trimStart();
+  if (remainder && !remainder.startsWith('{')) return null;
+  const message = parseChatRelayMessage(normalized);
+  if (message?.provenance.role === 'synthesis') return CHAT_RELAY_MODERATOR_TITLE;
+  switch (message?.provenance.mode) {
+    case 'review': return 'Review conversation';
+    case 'debate': return 'Debate conversation';
+    case 'consensus': return 'Consensus conversation';
+    default: return 'Connected conversation';
+  }
 }
 
 export function parseChatRelayMessage(text: string): { provenance: ChatRelayMessageProvenance; body: string } | null {

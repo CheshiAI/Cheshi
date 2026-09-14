@@ -37,6 +37,7 @@ import { ChatHistorySearch } from './lib/chat-history-search.mts';
 import { CodexChatContexts } from './lib/codex-chat-contexts.mts';
 import { CodexChatSessionDeletion } from './lib/codex-chat-session-deletion.mts';
 import { CodexChatService } from './lib/codex-chat-service.mts';
+import { workspaceChatInstructions } from './lib/workspace-chat-instructions.mts';
 import { GhosttySurfaceHost } from './lib/ghostty-surface-host.mts';
 import { GitService } from './lib/git-service.mts';
 import { LanguageServerManager } from './lib/language-server-manager.mts';
@@ -182,6 +183,7 @@ function codexChatAttachmentPreviewUrl(attachmentPath: unknown): string | null {
 
 const workspaceAccounts = createWorkspaceCodexAccounts({
   cwd: workspaceRoot, userDataDirectory, home: app.getPath('home'), openExternal: url => shell.openExternal(url),
+  codeGraph: { cli: codeGraphCommands.cli(), dataRoot: codeGraphDataRoot },
 });
 const createChatClient = workspaceAccounts.createClient;
 const codexAppServerClient = createChatClient();
@@ -209,10 +211,7 @@ const chatServiceOptions = {
   createMcpProbeClient: createChatClient,
   cwd: workspaceRoot,
   serviceName: product.internalName,
-  developerInstructions:
-    `You are the ${product.displayName} workspace assistant. Respect the active sandbox and approval settings. `
-    + 'Inspect the selected project when useful and explain your findings clearly. '
-    + 'Never bypass the selected permission boundary or request access that is unrelated to the user task.',
+  developerInstructions: workspaceChatInstructions(product.displayName),
   log: (event: string, details: Record<string, unknown>) => {
     process.stderr.write(`[cheshi] ${event} ${JSON.stringify(details)}\n`);
   },

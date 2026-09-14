@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FolderOpen, FolderPlus, Folders, GitBranch, GitFork, Search, Trash2 } from 'lucide-react';
 import type { WorkspaceCatalogEntry, WorkspaceManagementApi } from '../../../../../shared/workspace-management';
-import { NeumorphicButton, NeumorphicTextField, SearchClearButton, WorkspaceProjectIcon } from '../../../shared/ui';
+import { LoadingState, NeumorphicButton, NeumorphicTextField, SearchClearButton, WorkspaceProjectIcon } from '../../../shared/ui';
 import { isLiteralTrue } from '../../../shared/isLiteralTrue';
 import { AppUpdateIndicator } from '../../updates/AppUpdateIndicator';
 import { PrepareCloneWorkspacePage } from './PrepareCloneWorkspacePage';
@@ -129,7 +129,7 @@ export function WorkspaceManager({ api, workspaceName, workspaceRoot, platform }
     pending.current = true;
     setBusy(true);
     setActionError(null);
-    setStatus('Opening workspace…');
+    setStatus(null);
     try { await action(); }
     catch (cause) { setActionError(workspaceError(cause)); setStatus(null); }
     finally { pending.current = false; setBusy(false); }
@@ -145,6 +145,7 @@ export function WorkspaceManager({ api, workspaceName, workspaceRoot, platform }
     void run(async () => {
       const path = await api.chooseDirectory();
       if (!path) { setStatus(null); return; }
+      setStatus('Opening workspace…');
       const entry = await api.addFolder(path);
       setEntries((previous) => [entry, ...previous.filter((item) => item.id !== entry.id)]);
       setSelectedPath(entry.rootPath);
@@ -223,7 +224,8 @@ export function WorkspaceManager({ api, workspaceName, workspaceRoot, platform }
         </main>
       </div>
       <footer className={styles.status}>
-        <span role="status">{workspaceReady ? status ?? `${entries.length} ${entries.length === 1 ? 'project' : 'projects'}` : null}</span>
+        {workspaceReady && busy && status !== null ? <LoadingState type="preparing" label={status} />
+          : <span role="status">{workspaceReady ? status ?? `${entries.length} ${entries.length === 1 ? 'project' : 'projects'}` : null}</span>}
         <AppUpdateIndicator api={api} />
         {workspaceReady && <div className={styles.actions}>
           <NeumorphicButton raised size="standard" disabled={busy} onClick={(event) => showDialog('create', event.currentTarget)}>

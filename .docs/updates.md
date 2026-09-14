@@ -60,9 +60,45 @@ of these asset names, with the actual version and architecture substituted:
 - `Cheshi-darwin-arm64-0.0.2-alpha.zip`
 
 The version comes from `APP_VERSION` in `.env.product`; increase
-`APP_BUILD_NUMBER` for each distribution build as well. The existing Forge
-configuration does not yet provision signing credentials. Configure signing
-before producing an installer intended for automatic updates.
+`APP_BUILD_NUMBER` for each distribution build as well. Forge uses this same
+version for the app and the ZIP filename, independently of the root
+`package.json` development version.
+
+Build a signed and notarized macOS ZIP with `bun run desktop:make:signed`.
+This loads the Git-ignored `.env.signing` file and enables
+`CHESHI_SIGN_RELEASE=1` for Forge. Set these variables in that local file
+or provide them through the build environment:
+
+```dotenv
+MACOS_SIGNING_IDENTITY="Developer ID Application: Your Company (YOURTEAMID)"
+MACOS_NOTARY_PROFILE="YourNotaryProfile"
+```
+
+The identity includes the company name and Team ID. `.env.signing` is excluded
+from Git and the packaged app. Both values are required
+for signed builds; missing values fail configuration instead of falling back
+to another identity or profile. The build machine must have
+the certificate with its private key and a validated notarization profile.
+Credentials stay in the macOS keychain; do not add passwords or private keys
+to the repository. A signing or notarization failure fails the build.
+
+Signed macOS builds normalize freshly compiled Bun executables before Forge
+signs them. Some Bun versions leave bytes from the compiler template after
+the Mach-O code signature, which causes `main executable failed strict
+validation`. The build validates the declared binary ranges before removing
+that unused tail; it does not skip signature verification. Forge stops at the
+first signing error rather than attempting notarization of an unsigned app.
+See the [Bun signing defect analysis](https://github.com/oven-sh/bun/pull/32162)
+for the compiler's stale signature tail and final-page hash issues. Forge
+replaces the compiler's ad-hoc signature with a verified Developer ID signature.
+
+The ordinary `desktop:make` and `desktop:package` commands do not request
+signing or notarization unless `CHESHI_SIGN_RELEASE=1` is explicitly set.
+The signed build command uses the current machine's architecture and the
+configured app version. It does not change the version, publish a release,
+or upload to GitHub. Notarization uploads the packaged app to Apple.
+Before public distribution, verify the produced app's signature, notarization
+ticket, clean installation, and a real update between signed builds.
 
 For Intel macOS builds, use `x64` in place of `arm64`. The asset must belong to
 that exact release in CheshiAI/Cheshi and have a positive size and a GitHub asset

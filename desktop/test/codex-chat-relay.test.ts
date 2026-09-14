@@ -5,7 +5,7 @@ import { registerCodexChatIpc } from '../lib/codex-chat-ipc.mts';
 import { CodexChatRelays } from '../lib/codex-chat-relay.mts';
 import type { CodexConversationAccess } from '../lib/codex-chat-account-continuity.mts';
 import { codexThread, createFakeCodexClient, expectFailure } from './codex-chat-test-helpers.ts';
-import { formatChatRelayConsensusReply, parseChatRelayMessage, type ChatRelayState } from '../shared/chat-relay.ts';
+import { CHAT_RELAY_MODERATOR_TITLE, formatChatRelayConsensusReply, parseChatRelayMessage, type ChatRelayState } from '../shared/chat-relay.ts';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -15,12 +15,14 @@ function deferred<T>() {
 type FakeClient = ReturnType<typeof createFakeCodexClient>;
 type Started = { client: FakeClient; params: Record<string, unknown>; id: string; resolve: (value: unknown) => void };
 
-async function fixture(options: { interrupt?: () => Promise<unknown>; startThread?: () => Promise<unknown>; handoff?: boolean } = {}) {
+async function fixture(options: { interrupt?: () => Promise<unknown>; startThread?: () => Promise<unknown>;
+  nameThread?: () => Promise<unknown>; handoff?: boolean } = {}) {
   const clients: FakeClient[] = [];
   const turns: Started[] = [];
   const waiting: Array<(turn: Started) => void> = [];
   const stateWaiters: Array<{ status: ChatRelayState['status']; resolve: (state: ChatRelayState) => void }> = [];
   const events: Record<string, unknown>[] = [];
+  const logs: Array<{ event: string; details: Record<string, unknown> }> = [];
   const stoppedClients: FakeClient[] = [];
   let sequence = 0;
   const conversations: CodexConversationAccess | undefined = options.handoff ? {
@@ -30,13 +32,15 @@ async function fixture(options: { interrupt?: () => Promise<unknown>; startThrea
     async locations() { return []; }, async request() { throw new Error('Unused'); }, async forget() {},
   } : undefined;
   const contexts = new CodexChatContexts({
-    service: { cwd: '/workspace', serviceName: 'test', developerInstructions: 'Test instructions.', conversations },
+    service: { cwd: '/workspace', serviceName: 'test', developerInstructions: 'Test instructions.', conversations,
+      log(event, details) { logs.push({ event, details }); } },
     createClient() {
       const client = createFakeCodexClient({
         'thread/read': (params: Record<string, unknown>) => ({ thread: codexThread(String(params.threadId)) }),
         'thread/resume': (params: Record<string, unknown>) => ({ thread: codexThread(String(params.threadId)) }),
         'thread/unsubscribe': {},
         'thread/start': options.startThread ?? (() => ({ thread: codexThread('moderator-thread') })),
+        'thread/name/set': options.nameThread ?? {},
         'turn/interrupt': options.interrupt ?? {},
         'turn/start': (params: Record<string, unknown>) => {
           const gate = deferred<unknown>();
@@ -59,7 +63,7 @@ async function fixture(options: { interrupt?: () => Promise<unknown>; startThrea
   await contexts.get(1, 'source').openSession('source-thread');
   await contexts.get(1, 'target').openSession('target-thread');
   const request = { sourceContextId: 'source', sourceThreadId: 'source-thread', targetContextId: 'target', targetThreadId: 'target-thread', objective: 'Compare two implementation approaches.' };
-  return { contexts, relays, clients, events, stoppedClients, request,
+  return { contexts, relays, clients, events, logs, stoppedClients, request,
     nextTurn(): Promise<Started> { const turn = turns.shift(); return turn ? Promise.resolve(turn) : new Promise((resolve) => waiting.push(resolve)); },
     waitState(status: ChatRelayState['status']): Promise<ChatRelayState> {
       const current = relays.get(1); return current?.status === status ? Promise.resolve(current) : new Promise((resolve) => stateWaiters.push({ status, resolve }));
@@ -193,6 +197,7 @@ describe('bounded conversation relay', () => {
       expect(await f.waitState('completed')).toMatchObject({ moderatorContextId: 'moderator', summary: 'C synthesis' });
       expect(f.contexts.existing(1, 'moderator')).toBe(moderator);
       expect(f.clients.flatMap(({ requests }) => requests.filter(({ method }) => method === 'thread/start'))).toHaveLength(0);
+      expect(f.clients.flatMap(({ requests }) => requests.filter(({ method }) => method === 'thread/name/set'))).toHaveLength(0);
       await f.relays.mutation(1, 'moderator', () => moderator.newSession());
     } finally { await f.contexts.stop(); }
   });
@@ -210,6 +215,10 @@ describe('bounded conversation relay', () => {
       const synthesis = await f.nextTurn();
       const client = f.clients[2]!;
       expect(client.requests.find(({ method }) => method === 'thread/start')?.params).toMatchObject({ model: 'test-model', serviceTier: 'priority', ephemeral: false });
+      expect(client.requests.find(({ method }) => method === 'thread/name/set')?.params)
+        .toEqual({ threadId: 'moderator-thread', name: CHAT_RELAY_MODERATOR_TITLE });
+      expect(f.events.find((event) => event.type === 'session-title'))
+        .toMatchObject({ threadId: 'moderator-thread', title: CHAT_RELAY_MODERATOR_TITLE });
       expect(client.requests.filter(({ method }) => method === 'thread/resume')).toHaveLength(0);
       expect(synthesis.params).toMatchObject({ model: 'test-model', effort: 'high', serviceTier: 'priority' });
       complete(synthesis, 'C synthesis');
@@ -244,9 +253,43 @@ describe('bounded conversation relay', () => {
       gate.resolve({ thread: codexThread('moderator-thread') });
       const stopped = await f.waitState('stopped');
       expect(stopped).toMatchObject({ moderatorThreadId: 'moderator-thread', outcome: null });
+      expect(f.clients.flatMap(({ requests }) => requests.filter(({ method }) => method === 'thread/name/set'))).toHaveLength(0);
       expect(f.clients.flatMap(({ requests }) => requests.filter(({ method }) => method === 'turn/start'))).toHaveLength(0);
       expect(f.contexts.existing(1, stopped.moderatorContextId!)).toBeNull();
       await f.relays.mutation(1, 'source', () => f.contexts.get(1, 'source').newSession());
+    } finally { await f.contexts.stop(); }
+  });
+
+  test('cancellation during moderator naming waits for preparation without starting a participant', async () => {
+    const gate = deferred<unknown>();
+    const naming = deferred<void>();
+    const f = await fixture({ nameThread: () => { naming.resolve(); return gate.promise; } });
+    try {
+      f.relays.start(1, { ...f.request, mode: 'debate', maxRounds: 1 });
+      await naming.promise;
+      expect(f.relays.stop(1)?.status).toBe('stopping');
+      expect(f.stoppedClients).not.toContain(f.clients[2]!);
+      gate.resolve({});
+      const stopped = await f.waitState('stopped');
+      expect(stopped).toMatchObject({ moderatorThreadId: 'moderator-thread', outcome: null });
+      expect(f.clients.flatMap(({ requests }) => requests.filter(({ method }) => method === 'turn/start'))).toHaveLength(0);
+      expect(f.contexts.existing(1, stopped.moderatorContextId!)).toBeNull();
+      await f.relays.mutation(1, 'source', () => f.contexts.get(1, 'source').newSession());
+    } finally { gate.resolve({}); await f.contexts.stop(); }
+  });
+
+  test('moderator title persistence failure is logged without preventing the discussion', async () => {
+    const f = await fixture({ nameThread: async () => { throw new Error('Name persistence unavailable'); } });
+    try {
+      f.relays.start(1, { ...f.request, mode: 'debate', maxRounds: 1 });
+      complete(await f.nextTurn(), 'A position');
+      complete(await f.nextTurn(), 'B position');
+      complete(await f.nextTurn(), 'Independent synthesis');
+      expect(await f.waitState('completed')).toMatchObject({ outcome: 'debated', summary: 'Independent synthesis' });
+      expect(f.logs).toContainEqual({ event: 'codex-chat-relay-moderator-title-failed', details: {
+        threadId: 'moderator-thread', message: 'Name persistence unavailable',
+      } });
+      expect(f.events.filter((event) => event.type === 'session-title')).toHaveLength(0);
     } finally { await f.contexts.stop(); }
   });
 
