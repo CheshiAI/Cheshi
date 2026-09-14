@@ -500,10 +500,6 @@ h1, h2, h3, h4, h5, h6, p {
     color: var(--active-text);
 }
 
-.workspace-file-tree-entry[data-git-changed="true"] {
-    color: var(--codegraph-disabled);
-}
-
 .workspace-file-tree-chevron, .workspace-file-tree-chevron-placeholder {
     width: 13px;
     height: 13px;

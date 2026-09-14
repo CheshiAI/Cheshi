@@ -86,8 +86,6 @@ private final class SurfaceDelegate: NSObject,
 @MainActor
 private final class CheshiTerminalView: TerminalView {
   let surfaceID: Int32
-  private var copySelectionStart: NSPoint?
-  private var copySelectionDragged = false
 
   override var layer: CALayer? {
     didSet {
@@ -107,27 +105,8 @@ private final class CheshiTerminalView: TerminalView {
   }
 
   override func mouseDown(with event: NSEvent) {
-    copySelectionStart = event.locationInWindow
-    copySelectionDragged = false
     window?.makeFirstResponder(self)
     super.mouseDown(with: event)
-  }
-
-  override func mouseDragged(with event: NSEvent) {
-    if let start = copySelectionStart {
-      let point = event.locationInWindow
-      if hypot(point.x - start.x, point.y - start.y) >= 3 {
-        copySelectionDragged = true
-      }
-    }
-    super.mouseDragged(with: event)
-  }
-
-  override func mouseUp(with event: NSEvent) {
-    super.mouseUp(with: event)
-    if copySelectionDragged { copySelectedTextToPasteboard() }
-    copySelectionStart = nil
-    copySelectionDragged = false
   }
 
   override func layout() {

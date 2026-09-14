@@ -15,7 +15,6 @@ export function useChatDraft(sessionRevision: number, send: (input: ChatDraftSna
     setSelectedSkill: (value: ChatDraftSnapshot['selectedSkill']) => store.edit('selectedSkill', value),
     setAttachments: (value: ChatDraftSnapshot['attachments'] | ((current: ChatDraftSnapshot['attachments']) => ChatDraftSnapshot['attachments'])) => store.edit('attachments', value),
     submitDraft: store.submit,
-    queueDraft: store.queue,
     restoreFailedMessage: store.restore,
     canRestoreFailedMessage: state.recovery?.status === 'available' && !state.pending && !state.draft && !state.selectedSkill && state.attachments.length === 0,
   };

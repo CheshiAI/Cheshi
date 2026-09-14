@@ -11,11 +11,8 @@ import { gitDiscardRequest, gitDiscardSelection } from './shared/git-discard.ts'
 import { createWorkspaceManagementApi } from './lib/workspace-management-preload.cts';
 import { createShowcaseApi } from './lib/showcase-preload.cts';
 import { createAppUpdateApi } from './lib/app-update-preload.cts';
-import { createKeepAwakeApi } from './lib/keep-awake-preload.cts';
 import { installRendererReadiness } from './lib/renderer-readiness.mts';
 import { workspaceDiskUsage } from './shared/workspace-disk-usage.ts';
-import { workspaceFileSearchQuery } from './shared/workspace-file-search.ts';
-import { parseWorkspaceEditorSession } from './shared/workspace-editor-session.ts';
 
 import type { IpcRendererEvent } from 'electron';
 
@@ -578,7 +575,6 @@ function codexPluginReference(value: unknown) {
 
 const cheshiDesktopApi = {
   ...createAppUpdateApi(ipcRenderer),
-  keepAwake: createKeepAwakeApi(ipcRenderer),
   workspaceManagement: createWorkspaceManagementApi(ipcRenderer),
   showcase: createShowcaseApi(ipcRenderer),
   platform: process.platform,
@@ -589,14 +585,6 @@ const cheshiDesktopApi = {
   isCodeGraphIndexed: () => ipcRenderer.invoke('cheshi:is-codegraph-indexed'),
   reindexCodeGraph: () => ipcRenderer.invoke('cheshi:reindex-codegraph'),
   listWorkspaceDirectory: (relativePath = '.') => ipcRenderer.invoke('cheshi:list-workspace-directory', workspaceRelativePath(relativePath)),
-  searchWorkspaceFiles: (query) => ipcRenderer.invoke('cheshi:search-workspace-files', workspaceFileSearchQuery(query)),
-  editorSession: {
-    read: async () => {
-      const session: unknown = await ipcRenderer.invoke('cheshi:read-editor-session');
-      return session === null ? null : parseWorkspaceEditorSession(session);
-    },
-    write: (session) => ipcRenderer.invoke('cheshi:write-editor-session', parseWorkspaceEditorSession(session)),
-  },
   readWorkspaceFile: (relativePath) => ipcRenderer.invoke('cheshi:read-workspace-file', workspaceRelativePath(relativePath)),
   localHistory: {
     list: (relativePath) => ipcRenderer.invoke('cheshi:list-local-history', workspaceRelativePath(relativePath)),

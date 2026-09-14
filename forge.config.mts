@@ -34,7 +34,7 @@ function shouldIgnore(packagePath: string): boolean {
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
-    const packagedSharedFiles = new Set(['app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'showcase.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'local-history.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-editor-session.ts', 'workspace-file-search.ts', 'chat-async-question.ts', 'keep-awake.ts']);
+    const packagedSharedFiles = new Set(['app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'showcase.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'local-history.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts']);
     return grandchildEntry === undefined || !packagedSharedFiles.has(grandchildEntry) || segments.length > 3;
   }
   if (childEntry !== 'lib') return true;
@@ -86,7 +86,6 @@ function shouldIgnore(packagePath: string): boolean {
     'codex-app-server-client.mts',
     'codex-app-server-shutdown.mts',
     'codex-mcp-probe.mts',
-    'codex-mcp-recovery.mts',
     'codex-chat-catalog-operations.mts',
     'codex-chat-catalog.mts',
     'codex-chat-configuration.mts',
@@ -126,7 +125,6 @@ function shouldIgnore(packagePath: string): boolean {
     'github-pull-request-queries.mts',
     'github-pull-request-service.mts',
     'json-rpc-client-utils.mts',
-    'keep-awake.mts',
     'language-server-client.mts',
     'language-server-command.mts',
     'language-server-documents.mts',
@@ -145,8 +143,6 @@ function shouldIgnore(packagePath: string): boolean {
     'workspace-disk-usage.mts',
     'workspace-file-entries.mts',
     'workspace-file-ipc.mts',
-    'workspace-file-search.mts',
-    'workspace-editor-session.mts',
     'workspace-file-metadata.mts',
     'workspace-file-paths.mts',
     'workspace-file-reads.mts',

@@ -186,7 +186,7 @@ test('blocks subscribed writes after partial account deletion while preserving u
     const beforeCachedHistory = h.calls.length;
     expect(await sendAndComplete(initial, 'cached')).toEqual({ threadId: 'fork', turnId: 'turn-cached' });
     expect(initial.resolutions).toEqual(['fork']);
-    expect(initial.client.requests.slice(beforeCachedSend).map(call => call.method)).toEqual(['mcpServerStatus/list', 'turn/start']);
+    expect(initial.client.requests.slice(beforeCachedSend).map(call => call.method)).toEqual(['turn/start']);
     expect(h.calls).toHaveLength(beforeCachedHistory);
 
     expect((await failure(initial.deletion.deleteSession(initial.service, 'fork'))).message)

@@ -338,7 +338,6 @@ export function registerCodexchatserviceTests(): void {
           'thread/read',
           'model/list',
           'thread/resume',
-          'mcpServerStatus/list',
           'turn/start',
         ]);
         expect(client.requests[2]?.params).toMatchObject({

@@ -71,54 +71,5 @@
 .separator:hover::after,
 .separator:focus-visible::after,
 .split[data-dragging="true"] > .separator::after {
-  background: var(--divider);
-}
-
-.split[data-collapsible="true"] {
-  transition: grid-template-columns 200ms ease, grid-template-rows 200ms ease;
-}
-
-.split[data-collapsible="true"] > .region {
-  transform: translate(0, 0);
-  opacity: 1;
-  transition: transform 200ms ease, opacity 160ms ease;
-}
-
-.split[data-collapsed-pane="first"] > .region[data-pane="first"],
-.split[data-collapsed-pane="second"] > .region[data-pane="second"] {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.split[data-axis="columns"][data-collapsed-pane="first"] > .region[data-pane="first"] {
-  transform: translateX(-100%);
-}
-
-.split[data-axis="columns"][data-collapsed-pane="second"] > .region[data-pane="second"] {
-  transform: translateX(100%);
-}
-
-.split[data-axis="rows"][data-collapsed-pane="first"] > .region[data-pane="first"] {
-  transform: translateY(-100%);
-}
-
-.split[data-axis="rows"][data-collapsed-pane="second"] > .region[data-pane="second"] {
-  transform: translateY(100%);
-}
-
-.split[data-collapsed-pane] > .separator {
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.split[data-dragging="true"],
-.split[data-dragging="true"] > .region {
-  transition: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .split[data-collapsible="true"],
-  .split[data-collapsible="true"] > .region {
-    transition: none;
-  }
+  background: var(--split-pane-accent, var(--accent));
 }

@@ -1,13 +1,12 @@
 import { completeSkillCatalogWorkflowTurn } from '../../shared/skillCatalogChanges';
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 import { cheshiDesktop as desktopApi } from '../../cheshiDesktop';
 import type { CodexChatAttachment } from '../../cheshiDesktop';
 import type { ChatSavedTurn } from '../../../../shared/chat-saved-turns';
 import { continueSavedChatTurn } from './continueSavedChatTurn';
 import { observeChatSendAttempt, performChatSend, type ChatSendAttempt } from './chatSendAttempt';
-import type { ChatDraftSnapshot, ChatSendResult } from './chatDraftRecovery';
-import { createChatMessageQueue } from './chatMessageQueue';
+import type { ChatSendResult } from './chatDraftRecovery';
 import { CHAT_SESSION_CACHE_TTL_MS, createChatSessionCache, type ChatSessionCache } from './chatSessionCache';
 import {
   chatReducer,
@@ -43,7 +42,6 @@ interface UseChatControllerOptions {
   sessionSyncEnabled?: boolean;
   contextId?: string;
   sessionCache?: ChatSessionCache;
-  queuePaused?: boolean;
 }
 
 function operationMessage(error: unknown): string {
@@ -79,7 +77,7 @@ function messageWithAttachments(text: string, attachments: readonly CodexChatAtt
   return parts.join('\n\n');
 }
 
-export function useChatController({ sessionSyncEnabled = true, contextId, sessionCache: workspaceSessionCache, queuePaused = false }: UseChatControllerOptions = {}) {
+export function useChatController({ sessionSyncEnabled = true, contextId, sessionCache: workspaceSessionCache }: UseChatControllerOptions = {}) {
   const [localSessionCache] = useState(createChatSessionCache);
   const sessionCache = workspaceSessionCache ?? localSessionCache;
   const [state, dispatch] = useReducer(chatReducer, INITIAL_CHAT_STATE, initial => {
@@ -87,8 +85,6 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
     return { ...initial, sessions: cached.sessions, sessionsLoading: cached.loading };
   });
   const [sessionRevision, setSessionRevision] = useState(0);
-  const [messageQueue] = useState(createChatMessageQueue);
-  const queuedMessages = useSyncExternalStore(messageQueue.subscribe, messageQueue.getSnapshot, messageQueue.getSnapshot);
   const selectionPendingRef = useRef(false);
   const configurationPendingRef = useRef(false);
   const configurationVersionRef = useRef(0);
@@ -104,7 +100,6 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
   const mountedRef = useRef(false);
   const deletedSessionIdsRef = useRef(new Set(sessionCache.deletedIds));
   const applyDeletedSessions = useCallback((threadIds: string[]) => {
-    messageQueue.forget(threadIds);
     sessionCache.remove(threadIds);
     const newlyDeleted = threadIds.filter(id => !deletedSessionIdsRef.current.has(id));
     for (const id of threadIds) deletedSessionIdsRef.current.add(id);
@@ -115,7 +110,7 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
       setSessionRevision(revision => revision + 1);
     }
     dispatch({ type: 'event', event: { type: 'sessions-deleted', threadIds } });
-  }, [sessionCache, messageQueue]);
+  }, [sessionCache]);
 
   const refreshSessions = useCallback((force = true): Promise<void> => sessionCache.refresh(async () => {
     if (!desktopApi?.listCodexChatSessions) throw new Error('The Codex chat API is unavailable.');
@@ -160,7 +155,6 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
       observeChatSendAttempt(pendingSendRef.current, value);
       const event = normalizeChatEvent(value);
       if (!event) return;
-      messageQueue.observe(event);
       sessionCache.observe(event);
       if (event.type === 'turn-completed') completeSkillCatalogWorkflowTurn(event.threadId);
       if (event.type === 'sessions-deleted') {
@@ -455,7 +449,6 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
     text: string,
     selectedSkill: ChatSkill | null = null,
     attachments: readonly CodexChatAttachment[] = [],
-    queuedThreadId?: string,
   ): Promise<ChatSendResult> => {
     const api = desktopApi;
     if (!api?.sendCodexChatMessage) return { status: 'failed', message: 'The Codex chat API is unavailable.' };
@@ -465,9 +458,6 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
       return { status: 'blocked', message: 'Wait for the current operation to finish before sending.' };
     }
     const steering = isViewedSessionResponding(current);
-    if (queuedThreadId !== undefined && (queuedThreadId !== current.activeSessionId || steering)) {
-      return { status: 'blocked', message: 'Return to this chat and resume the queue after the current response.' };
-    }
     const submit = steering ? api.steerCodexChatMessage : api.sendCodexChatMessage;
     if (!submit) return { status: 'failed', message: 'The Codex steering API is unavailable.' };
     const value = text.trim();
@@ -492,31 +482,15 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
     }
   }, [contextId]);
 
-  const queueMessage = useCallback((input: ChatDraftSnapshot): boolean => {
-    const current = stateRef.current;
-    if (queuePaused || !mountedRef.current || selectionPendingRef.current || configurationPendingRef.current || pendingSendRef.current
-      || current.phase === 'loading' || !current.activeSessionId || !isViewedSessionResponding(current)) return false;
-    return messageQueue.enqueue(current.activeSessionId, input);
-  }, [messageQueue, queuePaused]);
-
-  useEffect(() => {
-    if (queuePaused || !state.activeSessionId || state.phase === 'loading' || state.pendingNewResponse || configurationPending
-      || isViewedSessionResponding(state) || state.approvals.some(item => item.threadId === state.activeSessionId)
-      || selectionPendingRef.current || pendingSendRef.current) return;
-    void messageQueue.drain(state.activeSessionId, (input, threadId) =>
-      sendMessage(input.draft, input.selectedSkill, input.attachments, threadId));
-  }, [state, configurationPending, queuedMessages, messageQueue, sendMessage, queuePaused]);
-
   const cancelResponse = useCallback(async (): Promise<void> => {
     if (!desktopApi?.cancelCodexChatResponse) return;
     const targetThreadId = state.activeSessionId;
-    if (targetThreadId) messageQueue.pause(targetThreadId, 'The response was stopped. Resume the queue when ready.');
     try {
       await desktopApi.cancelCodexChatResponse(targetThreadId, contextId);
     } catch (error) {
       dispatch({ type: 'operation-error', message: operationMessage(error) });
     }
-  }, [contextId, state.activeSessionId, messageQueue]);
+  }, [contextId, state.activeSessionId]);
 
   const isOperationPending = useCallback(() => selectionPendingRef.current
     || configurationPendingRef.current || pendingSendRef.current !== null, []);
@@ -551,11 +525,6 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
     isOperationPending,
     continueSavedTurn,
     sendMessage,
-    queueMessage,
-    queuedMessages: queuedMessages.filter(item => item.threadId === state.activeSessionId),
-    queuedMessageCount: queuedMessages.length,
-    removeQueuedMessage: messageQueue.remove,
-    retryQueuedMessage: (id: string) => { dispatch({ type: 'dismiss-error' }); messageQueue.retry(id); },
     listAgents,
     listSkills,
     listModels,
@@ -574,7 +543,7 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
     cancelResponse,
     dismissError,
     refreshSessions,
-  }), [state, contextId, sessionRevision, configurationPending, openSession, openAgent, newSession, deleteSession, isOperationPending, continueSavedTurn, sendMessage, queueMessage, queuedMessages, messageQueue, listAgents, listSkills,
+  }), [state, contextId, sessionRevision, configurationPending, openSession, openAgent, newSession, deleteSession, isOperationPending, continueSavedTurn, sendMessage, listAgents, listSkills,
     listModels, listMcpServers, listPermissionModes, setPermissionMode, setCollaborationMode, respondToApproval,
     configureChat, getChatStatus, getGoal, setGoal, forkSession, compactSession,
     reviewSession, cancelResponse, dismissError, refreshSessions]);

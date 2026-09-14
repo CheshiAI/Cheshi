@@ -2,8 +2,6 @@ import { ChevronDown, FileText } from 'lucide-react';
 
 import { draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
 import { HelpCenter } from '../help/HelpCenter';
-import { KeepAwakeToggle } from './KeepAwakeToggle';
-import styles from './KeepAwakeToggle.module.css';
 
 const tabs = [
   { name: 'AGENTS.md', active: true },
@@ -14,10 +12,7 @@ const tabs = [
 export function WindowChrome() {
   return (
     <header className="window-chrome" style={draggableWindowRegionStyle}>
-      <div className={styles.actions}>
-        <KeepAwakeToggle />
-        <HelpCenter />
-      </div>
+      <HelpCenter />
     </header>
   );
 }

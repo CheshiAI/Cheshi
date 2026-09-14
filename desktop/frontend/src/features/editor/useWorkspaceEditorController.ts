@@ -15,7 +15,6 @@ import {
 } from 'react';
 
 import { useEditorUpdateResume } from './useEditorUpdateResume';
-import { useWorkspaceEditorSession } from './useWorkspaceEditorSession';
 import { errorMessage as toErrorMessage } from '../../shared/errorMessage';
 import { isWorkspacePathAtOrBelow, renameWorkspacePathPrefix } from '../../shared/workspacePaths';
 import {
@@ -189,11 +188,6 @@ export function useWorkspaceEditorController({
     tabsRef, selectedPathRef, nextTabGeneration, savingRef, loading,
     applyingEdit: assistState?.kind === 'edit-preview' && assistState.applying,
     problemsOpen, problemsRatio, replaceTabs, selectPath, setProblemsOpen, setProblemsRatio,
-  });
-
-  useWorkspaceEditorSession({
-    tabs, selectedPath, tabsRef, selectedPathRef, nextTabGeneration,
-    replaceTabs, selectPath, onError: setErrorMessage,
   });
 
   const updateTab = useCallback((path: string, update: (tab: WorkspaceTab) => WorkspaceTab): void => {

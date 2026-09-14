@@ -155,7 +155,7 @@ test('manager prevents renderer navigation and additional renderer-created windo
   assert.equal(prevented, true);
 });
 
-test('built manager preload exposes only management and update methods and decodes workspace metadata', async () => {
+test('built manager preload exposes only management methods and decodes workspace metadata', async () => {
   const exposed = new Map<string, unknown>();
   const calls: { channel: string; value: unknown }[] = [];
   vm.runInNewContext(readFileSync(new URL('../runtime/workspace-manager-preload.cjs', import.meta.url), 'utf8'), {
@@ -186,12 +186,8 @@ test('built manager preload exposes only management and update methods and decod
   assert.equal(bridge.workspaceRoot, '/work/체시 project');
   assert.equal(bridge.workspaceName, '체시 project');
   assert.deepEqual(Object.keys(bridge.api).sort(), [
-    'acknowledgeAppUpdate', 'addFolder', 'cancelCodexLogin', 'cancelGitHubLogin', 'chooseDirectory',
-    'clearUpdateResume', 'clone', 'createProject', 'createWorktree', 'deleteWorkspace',
-    'getAppUpdate', 'getCodexLogin', 'getGitHubLogin', 'getToolStatus', 'getUpdateResume', 'installAppUpdate',
-    'list', 'listGitHubRepositories', 'listWorktrees', 'onAppUpdate', 'onAppUpdateCommitted',
-    'onAppUpdatePreparationCancelled', 'onPrepareAppUpdate', 'open', 'openAppRelease', 'openCurrent',
-    'openGitHubLoginBrowser', 'openManager', 'saveUpdateResume', 'startCodexLogin', 'startGitHubLogin',
+    'addFolder', 'cancelCodexLogin', 'cancelGitHubLogin', 'chooseDirectory', 'clone', 'createWorktree', 'deleteWorkspace', 'getCodexLogin', 'getGitHubLogin', 'getToolStatus',
+    'list', 'listGitHubRepositories', 'listWorktrees', 'open', 'openCurrent', 'openGitHubLoginBrowser', 'openManager', 'startCodexLogin', 'startGitHubLogin',
   ]);
   await bridge.api.list();
   await bridge.api.listGitHubRepositories(3);

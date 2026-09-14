@@ -3,7 +3,6 @@ import { CodexChatUserInputs } from './codex-chat-user-input.mts';
 import { preserveCodexConversation, type CodexConversationAccess } from './codex-chat-account-continuity.mts';
 import { stopCodexCommands } from './codex-chat-stop.mts';
 import { stopCodexMcpProbe, type CodexMcpProbeClient } from './codex-mcp-probe.mts';
-import { codexMcpRecovery } from './codex-mcp-recovery.mts';
 import { randomUUID } from "node:crypto";
 import {
   addCodexMarketplace,
@@ -642,7 +641,6 @@ export class CodexChatService {
       try {
         const collaborationOverride = await codexCollaborationOverride(this);
         threadId = await this.ensureWritableThread(requestedThreadId);
-        await codexMcpRecovery(this.client, this.log).prepare(threadId);
         signal?.throwIfAborted();
         if (this.pendingNewTurnClientMessageId === messageId)
           this.pendingNewTurnClientMessageId = null;
@@ -888,7 +886,6 @@ export class CodexChatService {
   }
 
   handleNotification(value: JsonObject) {
-    codexMcpRecovery(this.client, this.log).observe(value);
     const params = recordValue(value.params);
     if (value.method === "serverRequest/resolved" && params) {
       this.userInputs.serverResolved(params);
@@ -927,12 +924,7 @@ export class CodexChatService {
       if (!this.interruptedCompletions.has(active)) await this.client.request('turn/interrupt', {
         threadId: active.threadId, turnId: active.turnId,
       });
-      await stopCodexCommands(this.client, active, () => {
-        const params = recordValue(this.interruptedCompletions.get(active)?.params);
-        const turn = recordValue(params?.turn);
-        return turn?.id === active.turnId
-          && (turn?.status === 'completed' || turn?.status === 'interrupted' || turn?.status === 'failed');
-      });
+      await stopCodexCommands(this.client, active);
       this.stoppingTurns.delete(active);
       const completed = this.interruptedCompletions.get(active);
       this.interruptedCompletions.delete(active);

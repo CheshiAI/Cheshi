@@ -396,8 +396,7 @@ async function selectLanguageServerExecutable(
   return { canceled: false, statuses };
 }
 
-registerWorkspaceFileIpcHandlers({ ipcMain, workspaceRoot, clipboard, shell, localHistory,
-  editorSessionPath: path.join(path.dirname(codeGraphDirectory), 'editor-session.json') });
+registerWorkspaceFileIpcHandlers({ ipcMain, workspaceRoot, clipboard, shell, localHistory });
 registerLocalHistoryIpc({ ipcMain, service: localHistory, assertSender: assertCheshiSender, onChanged: sendWorkspaceFilesChanged });
 const management = registerWorkspaceManagementIpcHandlers({ ipcMain, app, dialog, trashItem: (root) => shell.trashItem(root), withWorkspaceDeletion: options.withWorkspaceDeletion, assertWorkspaceAvailable: options.assertWorkspaceAvailable, openExternal: (url) => shell.openExternal(url), getWindow: () => mainWindow, assertSender: assertCheshiSender, dataRoot: codeGraphDataRoot, onOpenWorkspace: options.onOpenWorkspace, onReplaceWorkspace: options.onReplaceWorkspace, manager: { createWindow: (configuration) => new BrowserWindow(configuration), rendererUrl, workspaceRoot, onWindowCreated: (window) => options.scope.addOwner(window.webContents, true) } });
 registerGitIpcHandlers({ ipcMain, gitService, assertCheshiSender, shell });
