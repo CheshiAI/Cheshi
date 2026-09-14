@@ -1,0 +1,31 @@
+name: Feature request / 기능 제안
+description: Suggest an improvement to Cheshi / 개선 아이디어를 제안해 주세요.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English and Korean suggestions are welcome. 한국어로 작성하셔도 됩니다.
+        Search existing issues before opening a new request. 새로 제안하기 전에 기존 이슈를 검색해 주세요.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow / 해결하려는 문제
+      description: Describe what you are trying to do and what gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed improvement / 제안하는 개선
+      description: Explain the expected behavior with a concrete example.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 고려한 대안
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context / 추가 정보
+      description: Optional examples or mockups. Remove private information before attaching files.

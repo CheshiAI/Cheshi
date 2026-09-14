@@ -45,6 +45,7 @@ function shouldIgnore(packagePath: string): boolean {
     'about-window.mts',
     'about-menu.mts',
     'workspace-codegraph-mcp.mts',
+    'workspace-chat-instructions.mts',
     'app-release-checker.mts',
     'app-update-service.mts',
     'app-update-preview.mts',

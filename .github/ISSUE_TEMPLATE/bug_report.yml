@@ -1,0 +1,68 @@
+name: Bug report / 버그 제보
+description: Report a reproducible problem in Cheshi / Cheshi에서 발생한 문제를 알려주세요.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English and Korean reports are welcome. 한국어로 작성하셔도 됩니다.
+        Search existing issues first. Remove tokens, passwords, private code, and personal information from screenshots and logs.
+        기존 이슈를 먼저 검색하고, 스크린샷과 로그에서 토큰·비밀번호·비공개 코드·개인 정보를 제거해 주세요.
+  - type: input
+    id: version
+    attributes:
+      label: Cheshi version and build / 앱 버전과 빌드
+      description: Copy Version and Build from About Cheshi. For source builds, include the commit hash.
+      placeholder: 0.0.1-preview, build 0002
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and chip / 운영체제와 칩
+      placeholder: macOS version, Apple M-series or Intel
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method / 설치 방법
+      options:
+        - GitHub Releases ZIP
+        - Homebrew
+        - From source / 소스 빌드
+        - Other / 기타
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce / 재현 방법
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior / 기대한 동작
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / 실제 동작
+      description: Include the exact error message if available. 오류 문구가 있다면 함께 적어주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots and relevant logs / 스크린샷과 관련 로그
+      description: Share only the relevant, redacted excerpt. Do not attach your user-data directory or credential files.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context / 추가 정보
+      description: For CLI-related problems, include the relevant codex or gh version. For indexing, include the project language and approximate size.
