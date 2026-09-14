@@ -1,0 +1,25 @@
+.branch {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 30%;
+  align-items: center;
+  gap: var(--icon-default);
+  margin: var(--space-2) 0;
+  padding: var(--space-4) var(--space-10);
+  color: inherit;
+  font: inherit;
+}
+
+.branch > svg {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+  stroke-width: 1.7;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
