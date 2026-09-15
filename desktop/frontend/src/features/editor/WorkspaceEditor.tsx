@@ -49,6 +49,8 @@ import './workspace-editor.css';
 export type { WorkspaceEditorMutation, WorkspaceEditorTarget } from './useWorkspaceEditorController';
 
 interface WorkspaceEditorProps {
+  sessionMode?: import('../../../../shared/editor-session').EditorSessionMode;
+  onSessionRestored?: () => void;
   active: boolean;
   mutation: WorkspaceEditorMutation | null;
   target: WorkspaceEditorTarget | null;
@@ -59,6 +61,8 @@ interface WorkspaceEditorProps {
 }
 
 export function WorkspaceEditor({
+  sessionMode,
+  onSessionRestored,
   active,
   mutation,
   target,
@@ -68,6 +72,8 @@ export function WorkspaceEditor({
   onOpenLocalHistory,
 }: WorkspaceEditorProps) {
   const controller = useWorkspaceEditorController({
+    sessionMode,
+    onSessionRestored,
     active,
     mutation,
     target,

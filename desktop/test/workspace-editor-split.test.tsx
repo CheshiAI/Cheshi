@@ -190,3 +190,14 @@ test('the shared separator updates the split continuously while dragging and com
   expect(committed).toEqual([0.7]);
   expect(captured).toBe(false);
 });
+
+
+test('restored file sessions reveal the editor split without an Explorer click', () => {
+  const app = shellHarness();
+  const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  props<ComponentProps<typeof WorkspaceEditor>>(split.editor, 'WorkspaceEditor').onSessionRestored?.();
+  const restored = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  expect(restored.mode).toBe('split');
+  expect(props<ComponentProps<typeof WorkspaceEditor>>(restored.editor, 'WorkspaceEditor').active).toBe(true);
+  expect(props<ComponentProps<typeof ChatWorkspace>>(restored.children, 'ChatWorkspace').active).toBe(true);
+});

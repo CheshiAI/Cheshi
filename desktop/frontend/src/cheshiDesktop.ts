@@ -837,6 +837,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   ) => Promise<unknown>;
   steerCodexChatMessage: CheshiDesktopApi['sendCodexChatMessage'];
   cancelCodexChatResponse: (threadId?: string | null, contextId?: string) => Promise<unknown>;
+  editorSession?: import('../../shared/editor-session').EditorSessionApi;
   chatQuestionDismissals: import('../../shared/chat-question-dismissals').ChatQuestionDismissalsApi;
   startCodexChatRelay: (request: import('../../shared/chat-relay').ChatRelayRequest) => Promise<import('../../shared/chat-relay').ChatRelayState>;
   stopCodexChatRelay: () => Promise<import('../../shared/chat-relay').ChatRelayState | null>;

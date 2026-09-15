@@ -208,6 +208,8 @@ export function AppShell() {
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
           <WorkspaceEditorSplit mode={editorSplitOpen ? 'split' : activeView === 'editor' ? 'editor' : 'primary'} editor={
             <WorkspaceEditor
+              sessionMode={updateResume.editorSessionMode}
+              onSessionRestored={() => { setEditorSplitOpen(true); if (activeView === 'editor') setActiveView('chat'); }}
               active={editorSplitOpen || activeView === 'editor'}
               mutation={editorMutation}
               target={editorTarget}

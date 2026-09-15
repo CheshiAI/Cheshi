@@ -14,6 +14,8 @@ import {
   useState,
 } from 'react';
 
+import { useEditorSession } from './useEditorSession';
+import type { EditorSessionMode } from '../../../../shared/editor-session';
 import { useEditorUpdateResume } from './useEditorUpdateResume';
 import { errorMessage as toErrorMessage } from '../../shared/errorMessage';
 import { isWorkspacePathAtOrBelow, renameWorkspacePathPrefix } from '../../shared/workspacePaths';
@@ -74,6 +76,8 @@ export interface WorkspaceEditorTarget {
 export type WorkspaceEditorMutation = WorkspaceEntryMutation & { requestId: number };
 
 interface UseWorkspaceEditorControllerOptions {
+  sessionMode?: EditorSessionMode;
+  onSessionRestored?: () => void;
   active: boolean;
   mutation: WorkspaceEditorMutation | null;
   target: WorkspaceEditorTarget | null;
@@ -82,6 +86,8 @@ interface UseWorkspaceEditorControllerOptions {
 }
 
 export function useWorkspaceEditorController({
+  sessionMode = 'restore',
+  onSessionRestored,
   active,
   mutation,
   target,
@@ -184,8 +190,11 @@ export function useWorkspaceEditorController({
     });
   }, []);
 
+  const sessionReady = useEditorSession({ mode: sessionMode, tabs, selectedPath, nextTabGeneration,
+    replaceTabs, selectPath, onSessionRestored: () => onSessionRestored?.(), onError: setErrorMessage });
+
   const updateDraftsPreserved = useEditorUpdateResume({
-    tabsRef, selectedPathRef, nextTabGeneration, savingRef, loading,
+    tabsRef, selectedPathRef, nextTabGeneration, savingRef, loading: loading || !sessionReady,
     applyingEdit: assistState?.kind === 'edit-preview' && assistState.applying,
     problemsOpen, problemsRatio, replaceTabs, selectPath, setProblemsOpen, setProblemsRatio,
   });
@@ -784,9 +793,9 @@ export function useWorkspaceEditorController({
       invalidatePendingFileLoad();
       return;
     }
-    if (!target) return;
+    if (!target || !sessionReady) return;
     void loadFile(target.path, target.line);
-  }, [active, invalidatePendingFileLoad, loadFile, target]);
+  }, [active, invalidatePendingFileLoad, loadFile, target, sessionReady]);
 
   useEffect(() => {
     const getWorkspaceFileVersion = workspace?.getWorkspaceFileVersion;

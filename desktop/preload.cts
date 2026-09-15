@@ -12,6 +12,7 @@ import { createWorkspaceManagementApi } from './lib/workspace-management-preload
 import { createShowcaseApi } from './lib/showcase-preload.cts';
 import { createAppUpdateApi } from './lib/app-update-preload.cts';
 import { createKeepAwakeApi } from './lib/keep-awake-preload.cts';
+import { createEditorSessionApi } from './lib/editor-session-preload.cts';
 import { createChatQuestionDismissalsApi } from './lib/chat-question-dismissals-preload.cts';
 import { installRendererReadiness } from './lib/renderer-readiness.mts';
 import { workspaceDiskUsage } from './shared/workspace-disk-usage.ts';
@@ -948,6 +949,7 @@ const cheshiDesktopApi = {
   },
   startCodexChatRelay: (request) => ipcRenderer.invoke('cheshi:start-codex-chat-relay', chatRelayRequest(request)),
   saveCodexTurn: async (input) => chatSavedTurn(await ipcRenderer.invoke('cheshi:save-codex-turn', chatSavedTurnInput(input))),
+  editorSession: createEditorSessionApi(ipcRenderer),
   chatQuestionDismissals: createChatQuestionDismissalsApi(ipcRenderer),
   deleteCodexSavedTurn: (id) => deleteStoredChatRecord('cheshi:delete-codex-saved-turn', id, /^[a-f0-9]{64}$/),
   deleteCodexChatRelayHistory: (id) => deleteStoredChatRecord('cheshi:delete-codex-chat-relay-history', id, /^[a-zA-Z0-9_-]{1,128}$/),
