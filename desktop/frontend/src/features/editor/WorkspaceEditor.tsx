@@ -8,6 +8,7 @@ import {
   History,
   Lightbulb,
   PanelBottom,
+  PanelRight,
   PencilLine,
   RotateCw,
   Save,
@@ -52,6 +53,8 @@ interface WorkspaceEditorProps {
   sessionMode?: import('../../../../shared/editor-session').EditorSessionMode;
   onSessionRestored?: () => void;
   active: boolean;
+  rightSidebarOpen?: boolean;
+  onToggleRightSidebar?: () => void;
   mutation: WorkspaceEditorMutation | null;
   target: WorkspaceEditorTarget | null;
   onAllTabsClosed: () => void;
@@ -64,6 +67,8 @@ export function WorkspaceEditor({
   sessionMode,
   onSessionRestored,
   active,
+  rightSidebarOpen = false,
+  onToggleRightSidebar,
   mutation,
   target,
   onAllTabsClosed,
@@ -220,6 +225,13 @@ export function WorkspaceEditor({
               >
                 <PanelBottom aria-hidden="true" />
               </NeumorphicButton>
+              {onToggleRightSidebar && <NeumorphicButton raised size="icon"
+                aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
+                title={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
+                aria-pressed={rightSidebarOpen} aria-expanded={rightSidebarOpen}
+                onClick={onToggleRightSidebar}>
+                <PanelRight aria-hidden="true" />
+              </NeumorphicButton>}
             </div>
           </>
         )}

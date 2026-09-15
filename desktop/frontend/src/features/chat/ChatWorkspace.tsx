@@ -24,6 +24,7 @@ interface ChatWorkspaceProps extends ChatHistorySearchNavigation {
   rightSidebarOpen: boolean;
   sessionSyncEnabled: boolean;
   onToggleRightSidebar: () => void;
+  onCloseWorkspace?: () => void;
   onReviewFileChanges: (paneId: string, itemId: string, path?: string) => void;
 }
 
@@ -192,6 +193,9 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
             >
               <PanelRight aria-hidden="true" />
             </NeumorphicButton>
+            {props.onCloseWorkspace && <NeumorphicButton raised size="icon"
+              aria-label="Close Codex workspace" title="Close Codex workspace"
+              onClick={props.onCloseWorkspace}><X aria-hidden="true" /></NeumorphicButton>}
           </div>
         </>}
       />

@@ -64,6 +64,7 @@ export function AppShell() {
   }, []);
   const [editorTarget, setEditorTarget] = useState<WorkspaceEditorTarget | null>(null);
   const [editorSplitOpen, setEditorSplitOpen] = useState(false);
+  const [primaryPaneClosed, setPrimaryPaneClosed] = useState(false);
   const [editorMutation, setEditorMutation] = useState<WorkspaceEditorMutation | null>(null);
   const [editorSelectedPath, setEditorSelectedPath] = useState<string | null>(null);
   const [localHistoryPath, setLocalHistoryPath] = useState<string | null>(null);
@@ -118,6 +119,7 @@ export function AppShell() {
     historyRequestId.current += 1;
     setFileReview(null);
     setActiveView('chat');
+    setPrimaryPaneClosed(false);
     void chat?.openSession(threadId);
   };
 
@@ -129,6 +131,7 @@ export function AppShell() {
     if (!opened || requestId !== historyRequestId.current) return false;
     setFileReview(null);
     setActiveView('chat');
+    setPrimaryPaneClosed(false);
     setHistoryTarget({ threadId: hit.threadId, itemId: hit.itemId, requestId });
     return true;
   };
@@ -138,6 +141,7 @@ export function AppShell() {
     historyRequestId.current += 1;
     setFileReview(null);
     setActiveView('chat');
+    setPrimaryPaneClosed(false);
     void chat?.newSession();
   };
 
@@ -145,6 +149,7 @@ export function AppShell() {
     historyRequestId.current += 1;
     setFileReview(null);
     setActiveView(view);
+    setPrimaryPaneClosed(false);
   };
 
   const openLocalHistory = (path: string): void => {
@@ -179,6 +184,7 @@ export function AppShell() {
 
   const closeEditorSplit = (): void => {
     setEditorSplitOpen(false);
+    setPrimaryPaneClosed(false);
     setEditorTarget(null);
     if (activeView === 'editor') navigate('chat');
   };
@@ -187,6 +193,8 @@ export function AppShell() {
     editorMutationRequestId.current += 1;
     setEditorMutation({ ...mutation, requestId: editorMutationRequestId.current });
   };
+  const editorLayoutMode = editorSplitOpen ? primaryPaneClosed ? 'editor' : 'split'
+    : activeView === 'editor' ? 'editor' : 'primary';
 
   return (
     <div className={`app-shell ${styles.shell}`}>
@@ -210,11 +218,14 @@ export function AppShell() {
           />
         </LiquidGlassPanel>
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
-          <WorkspaceEditorSplit mode={editorSplitOpen ? 'split' : activeView === 'editor' ? 'editor' : 'primary'} editor={
+          <WorkspaceEditorSplit mode={editorLayoutMode} editor={
             <WorkspaceEditor
               sessionMode={updateResume.editorSessionMode}
               onSessionRestored={() => { setEditorSplitOpen(true); if (activeView === 'editor') setActiveView('chat'); }}
               active={editorSplitOpen || activeView === 'editor'}
+              rightSidebarOpen={rightSidebarOpen}
+              onToggleRightSidebar={editorLayoutMode === 'editor'
+                ? () => setRightSidebarOpen((open) => !open) : undefined}
               mutation={editorMutation}
               target={editorTarget}
               onAllTabsClosed={closeEditorSplit}
@@ -232,7 +243,8 @@ export function AppShell() {
           {activeView === 'blank' && <WindowTabs />}
           <ChatWorkspace
             workspace={workspace}
-            active={activeView === 'chat'}
+            active={activeView === 'chat' && !primaryPaneClosed}
+            onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
             sessionSyncEnabled={rightSidebarOpen && !fileReview}
             onReviewFileChanges={openFileReview}
             historyTarget={historyTarget}
@@ -326,7 +338,7 @@ export function AppShell() {
       {historyChoice && <ChatHistoryOpenDialog workspace={workspace} sessionId={historyChoice.sessionId}
         sessionTitle={historyChoice.title} paneId={historyChoice.paneId}
         onResume={() => workspace.openSession(historyChoice.sessionId)}
-        onOpened={() => { setHistoryChoice(null); setFileReview(null); setActiveView('chat'); }}
+        onOpened={() => { setHistoryChoice(null); setFileReview(null); setActiveView('chat'); setPrimaryPaneClosed(false); }}
         onClose={() => setHistoryChoice(null)} />}
     </div>
   );

@@ -41,6 +41,7 @@ const aboutWindow = createAboutWindow({
     return window;
   },
   page: () => aboutPage({ name: product.displayName, version: product.version, buildNumber: product.buildNumber, publisher: product.publisher }),
+  openExternal: url => shell.openExternal(url),
   onError: error => process.stderr.write(`[cheshi] About window failed: ${String(error)}\n`),
 });
 const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'updates'));

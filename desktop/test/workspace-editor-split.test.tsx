@@ -171,6 +171,12 @@ test('page and editor portal hosts stay stable through split, resize, collapse a
   layout.onResizeSplit('workspace-editor', 0.7);
   layout = props<ComponentProps<typeof SplitPaneLayout>>(render('split'), 'SplitPaneLayout');
   expect(layout.layout).toMatchObject({ ratio: 0.7 });
+  const collapsed = props<ComponentProps<typeof SplitPaneLayout>>(render('editor'), 'SplitPaneLayout');
+  expect(collapsed.collapsedPane).toBe('second');
+  expect(collapsed.layout).toMatchObject({ type: 'split', ratio: 0.7 });
+  const reopened = props<ComponentProps<typeof SplitPaneLayout>>(render('split'), 'SplitPaneLayout');
+  expect(reopened.collapsedPane).toBeNull();
+  expect(reopened.layout).toMatchObject({ ratio: 0.7 });
   render('primary');
   expect(props<ComponentProps<typeof SplitPaneLayout>>(render('split'), 'SplitPaneLayout').layout).toMatchObject({ ratio: 0.5 });
   for (const portal of portals) {
@@ -225,4 +231,85 @@ test('restored file sessions reveal the editor split without an Explorer click',
   expect(restored.mode).toBe('split');
   expect(props<ComponentProps<typeof WorkspaceEditor>>(restored.editor, 'WorkspaceEditor').active).toBe(true);
   expect(props<ComponentProps<typeof ChatWorkspace>>(restored.children, 'ChatWorkspace').active).toBe(true);
+});
+
+test('closing Codex keeps file tabs and sidebar controls, and navigation restores the split', () => {
+  const app = shellHarness();
+  const initial = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  expect(props<ComponentProps<typeof ChatWorkspace>>(initial.children, 'ChatWorkspace').onCloseWorkspace).toBeUndefined();
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
+  const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  const chat = props<ComponentProps<typeof ChatWorkspace>>(split.children, 'ChatWorkspace');
+  chat.onCloseWorkspace!();
+  const closed = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  expect(closed.mode).toBe('editor');
+  expect(props<ComponentProps<typeof WorkspaceEditor>>(closed.editor, 'WorkspaceEditor')).toMatchObject({
+    active: true, target: { path: 'first.ts', requestId: 1 },
+  });
+  expect(props<ComponentProps<typeof ChatWorkspace>>(closed.children, 'ChatWorkspace').active).toBe(false);
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('second.ts');
+  expect(props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit').mode).toBe('editor');
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onNavigate('chat');
+  const reopened = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  expect(reopened.mode).toBe('split');
+  const resumed = props<ComponentProps<typeof ChatWorkspace>>(reopened.children, 'ChatWorkspace');
+  expect(resumed.active).toBe(true);
+  expect(resumed.rightSidebarOpen).toBe(true);
+  resumed.onToggleRightSidebar();
+  resumed.onCloseWorkspace!();
+  props<ComponentProps<typeof WorkspaceEditor>>(reopened.editor, 'WorkspaceEditor').onAllTabsClosed();
+  const empty = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  expect(empty.mode).toBe('primary');
+  expect(props<ComponentProps<typeof ChatWorkspace>>(empty.children, 'ChatWorkspace')).toMatchObject({
+    active: true, rightSidebarOpen: false, onCloseWorkspace: undefined,
+  });
+});
+
+test('collapsed split keeps both panes mounted while hiding the separator and disabling the closed region', () => {
+  const app = hooks();
+  const Layout = load<typeof SplitPaneLayout>('shared/ui/SplitPaneLayout.tsx', 'SplitPaneLayout', { react: app.react });
+  const options: ComponentProps<typeof SplitPaneLayout> = {
+    layout: { type: 'split', id: 'workspace-editor', axis: 'columns', ratio: 0.7,
+      first: { type: 'pane', paneId: 'editor' }, second: { type: 'pane', paneId: 'primary' } },
+    renderPane: id => <div>{id}</div>, onResizeSplit() {}, collapsedPane: 'second',
+  };
+  const element = Layout(options);
+  const Component = element.type as (props: typeof options) => ReactElement;
+  const tree = app.render(() => Component(options));
+  const attrs = elements(tree).map(node => node.props as HTMLAttributes<HTMLDivElement>);
+  expect(attrs[0]!.style?.gridTemplateColumns).toBe('minmax(0, 1fr) 0px minmax(0, 0fr)');
+  expect(attrs.find(node => node.role === 'separator')?.hidden).toBe(true);
+  expect(attrs.filter(node => node.inert)).toHaveLength(1);
+  expect(attrs.find(node => node.inert)?.['aria-hidden']).toBe(true);
+  expect(elements(tree).filter(node => node.type === Layout)).toHaveLength(2);
+  const reopened = app.render(() => Component({ ...options, collapsedPane: null }));
+  const reopenedAttrs = elements(reopened).map(node => node.props as HTMLAttributes<HTMLDivElement>);
+  expect(reopenedAttrs[0]!.style?.gridTemplateColumns).toContain('0.7fr');
+  expect(reopenedAttrs.some(node => node.inert)).toBe(false);
+  expect(reopenedAttrs.find(node => node.role === 'separator')?.hidden).toBe(false);
+});
+
+test('only the standalone editor controls the shared right sidebar and preserves its state on reopening Codex', () => {
+  const app = shellHarness();
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  const editor = () => props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
+  expect(editor().onToggleRightSidebar).toBeUndefined();
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
+  expect(editor().onToggleRightSidebar).toBeUndefined();
+  props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace').onCloseWorkspace!();
+  expect(split().mode).toBe('editor');
+  expect(editor().rightSidebarOpen).toBe(true);
+  editor().onToggleRightSidebar!();
+  expect(editor().rightSidebarOpen).toBe(false);
+  editor().onToggleRightSidebar!();
+  expect(editor().rightSidebarOpen).toBe(true);
+  editor().onToggleRightSidebar!();
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onNavigate('chat');
+  expect(split().mode).toBe('split');
+  expect(editor().onToggleRightSidebar).toBeUndefined();
+  const chat = props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace');
+  expect(chat.rightSidebarOpen).toBe(false);
+  chat.onToggleRightSidebar();
+  chat.onCloseWorkspace!();
+  expect(editor().rightSidebarOpen).toBe(true);
 });

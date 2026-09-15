@@ -73,3 +73,23 @@
 .split[data-dragging="true"] > .separator::after {
   background: var(--split-pane-accent, var(--accent));
 }
+
+.split[data-collapsible='true'] {
+  transition: grid-template-columns 200ms ease, grid-template-rows 200ms ease;
+}
+.split[data-collapsible='true'] > .region {
+  transform: translate(0, 0);
+  opacity: 1;
+  transition: transform 200ms ease, opacity 160ms ease;
+}
+.split[data-collapsible='true'][data-axis='columns'] > .region:last-child { grid-column: 3; }
+.split[data-collapsible='true'][data-axis='rows'] > .region:last-child { grid-row: 3; }
+.split > .region[data-collapsed='true'] { opacity: 0; pointer-events: none; }
+.split[data-axis='columns'] > .region:first-child[data-collapsed='true'] { transform: translateX(-100%); }
+.split[data-axis='columns'] > .region:last-child[data-collapsed='true'] { transform: translateX(100%); }
+.split[data-axis='rows'] > .region:first-child[data-collapsed='true'] { transform: translateY(-100%); }
+.split[data-axis='rows'] > .region:last-child[data-collapsed='true'] { transform: translateY(100%); }
+.split[data-dragging='true'] { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .split[data-collapsible='true'], .split[data-collapsible='true'] > .region { transition: none; }
+}

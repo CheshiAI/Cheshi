@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { ABOUT_CHANGELOG_URL } from './about-window.mts';
 
 const logo = `data:image/png;base64,${readFileSync(new URL('../../resources/icons/about-logo.png', import.meta.url)).toString('base64')}`;
 const themeTokens = readFileSync(new URL('../frontend/src/shared/styles/tokens.css', import.meta.url), 'utf8');
@@ -49,6 +50,9 @@ export function aboutPage(metadata: AboutMetadata): string {
     dl { display: grid; grid-template-columns: auto auto; gap: 8px var(--space-default); margin: 0; line-height: 1.5; }
     dt { text-align: right; font-weight: 600; }
     dd { margin: 0; color: #a0a1a3; font-variant-numeric: tabular-nums; }
+    .changelog { margin-top: var(--space-default); color: var(--active-text); -webkit-app-region: no-drag; cursor: pointer; text-underline-offset: 3px; }
+    .changelog:hover { text-decoration-thickness: 2px; }
+    .changelog:focus-visible { outline: 1px solid currentColor; outline-offset: 4px; }
     footer { margin-top: auto; padding-top: var(--space-default); color: #84868a; text-align: center; }
   </style>
 </head>
@@ -60,6 +64,7 @@ export function aboutPage(metadata: AboutMetadata): string {
       <dt>Version</dt><dd>${escapeHtml(metadata.version)}</dd>
       <dt>Build</dt><dd>${escapeHtml(buildNumber)}</dd>
     </dl>
+    <a class="changelog" href="${ABOUT_CHANGELOG_URL}" target="_blank" rel="noopener noreferrer">Changelog</a>
     <footer>© ${metadata.year ?? new Date().getFullYear()} ${escapeHtml(metadata.publisher)}</footer>
   </main>
 </body>

@@ -1,5 +1,7 @@
 import type { BrowserWindowConstructorOptions } from 'electron';
 
+export const ABOUT_CHANGELOG_URL = 'https://github.com/CheshiAI/Cheshi/blob/main/CHANGELOG.md';
+
 interface PreventableEvent { preventDefault(): void }
 interface KeyboardInput {
   type: string;
@@ -19,8 +21,8 @@ export interface AboutView {
   destroy(): void;
   loadURL(url: string): Promise<void>;
   webContents: {
-    setWindowOpenHandler(handler: () => { action: 'deny' }): void;
-    on(event: 'will-navigate', listener: (event: PreventableEvent) => void): unknown;
+    setWindowOpenHandler(handler: (details: { url: string }) => { action: 'deny' }): void;
+    on(event: 'will-navigate', listener: (event: PreventableEvent, url: string) => void): unknown;
     on(event: 'before-input-event', listener: (event: PreventableEvent, input: KeyboardInput) => void): unknown;
   };
 }
@@ -30,6 +32,7 @@ interface AboutWindowOptions {
   backgroundColor: string;
   createWindow(options: BrowserWindowConstructorOptions): AboutView;
   page(): string;
+  openExternal(url: string): Promise<void>;
   onError(error: unknown): void;
 }
 
@@ -37,6 +40,12 @@ export function createAboutWindow(options: AboutWindowOptions) {
   let view: AboutView | null = null;
   let ready = false;
   let disposed = false;
+
+  async function openChangelog(url: string): Promise<void> {
+    if (url !== ABOUT_CHANGELOG_URL) return;
+    try { await options.openExternal(ABOUT_CHANGELOG_URL); }
+    catch (error) { options.onError(error); }
+  }
 
   function destroy(window: AboutView): void {
     if (view === window) {
@@ -101,8 +110,14 @@ export function createAboutWindow(options: AboutWindowOptions) {
         ready = true;
         reveal(opened);
       });
-      opened.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-      opened.webContents.on('will-navigate', (event) => event.preventDefault());
+      opened.webContents.setWindowOpenHandler(({ url }) => {
+        void openChangelog(url);
+        return { action: 'deny' };
+      });
+      opened.webContents.on('will-navigate', (event, url) => {
+        event.preventDefault();
+        void openChangelog(url);
+      });
       opened.webContents.on('before-input-event', (event, input) => {
         if (input.type !== 'keyDown') return;
         if (input.key === 'Escape' || (input.key.toLowerCase() === 'w' && (input.meta || input.control))) {

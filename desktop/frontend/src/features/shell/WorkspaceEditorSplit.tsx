@@ -7,7 +7,7 @@ import styles from './WorkspaceEditorSplit.module.css';
 type LayoutMode = 'primary' | 'split' | 'editor';
 
 export function workspaceEditorLayout(mode: LayoutMode, ratio: number): SplitLayoutNode {
-  if (mode !== 'split') return { type: 'pane', paneId: mode };
+  if (mode === 'primary') return { type: 'pane', paneId: mode };
   return { type: 'split', id: 'workspace-editor', axis: 'columns', ratio,
     first: { type: 'pane', paneId: 'editor' }, second: { type: 'pane', paneId: 'primary' } };
 }
@@ -34,11 +34,12 @@ export function WorkspaceEditorSplit({ mode, children, editor }: {
     hosts.editor.className = styles.host ?? '';
   }, [hosts]);
   useEffect(() => {
-    if (mode !== 'split') setRatio(0.5);
+    if (mode === 'primary') setRatio(0.5);
   }, [mode]);
   return (
     <div className={styles.root}>
       <SplitPaneLayout layout={workspaceEditorLayout(mode, ratio)} resizeLabel="Resize page and editor"
+        collapsedPane={mode === 'editor' ? 'second' : null}
         onResizeSplit={(_id, nextRatio) => setRatio(nextRatio)}
         renderPane={id => <PaneHost host={id === 'editor' ? hosts.editor : hosts.primary} />} />
       {createPortal(children, hosts.primary, 'workspace-primary')}
