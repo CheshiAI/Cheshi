@@ -1,7 +1,10 @@
 import { GitBranch, History } from 'lucide-react';
+import { useMemo } from 'react';
 
 import { LiquidGlassPanel } from '../../shared/ui';
 import { GitBranchTree } from './GitBranchTree';
+import { GitCommitGraph } from './GitCommitGraph';
+import { buildCommitGraph } from './gitCommitGraphLayout';
 import { GitDiffViewer } from './GitDiffViewer';
 import { formatGitDate } from './gitWorkspaceModel';
 import { MarkedPanelTitle } from './GitPullRequestPanels';
@@ -20,6 +23,7 @@ export function GitHistoryWorkspace({ controller, onOpenWorkspaceFile }: {
     snapshot,
     updateBranch,
   } = controller;
+  const graph = useMemo(() => buildCommitGraph(branchHistory.commits), [branchHistory.commits]);
 
   return (
     <div className={styles.splitLayout}>
@@ -52,15 +56,17 @@ export function GitHistoryWorkspace({ controller, onOpenWorkspaceFile }: {
           {!branchHistory.commitsLoading && !branchHistory.error && branchHistory.commits.length === 0 && (
             <p className={styles.historyStatus} role="status">No commits.</p>
           )}
-          {branchHistory.commits.map((entry) => (
+          {branchHistory.commits.map((entry, index) => (
             <button
               aria-current={branchHistory.selectedCommit?.hash === entry.hash ? 'true' : undefined}
               className={styles.commitRow}
               key={entry.hash}
               type="button"
               onClick={() => branchHistory.selectCommit(entry.hash)}
+              style={{ minWidth: graph.laneCount * 16 + 180 }}
+              aria-label={`${entry.subject}${entry.parents?.length > 1 ? ', merge commit' : ''}`}
             >
-              <span className={styles.commitGraph} aria-hidden="true" />
+              <GitCommitGraph row={graph.rows[index]!} laneCount={graph.laneCount} />
               <span className={styles.commitText}>
                 <strong>{entry.subject}</strong>
                 <span>{entry.authorName} · {formatGitDate(entry.authoredAt)}</span>

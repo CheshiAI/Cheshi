@@ -131,6 +131,7 @@ export interface GitBranchSummary {
 
 export interface GitCommitSummary {
   hash: string;
+  parents: string[];
   shortHash: string;
   authorName: string;
   authorEmail: string;

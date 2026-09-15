@@ -107,3 +107,23 @@ test('rejects malformed, non-branch, missing, and deleted references without cha
   }
   assert.deepEqual(repositoryState(directory), before);
 });
+
+test('returns all merge parents in child-before-parent order for snapshots and branch history', async (t) => {
+  const { directory, mainHash, featureHash, service } = createRepository(t);
+  git(directory, 'switch', 'main');
+  writeFileSync(path.join(directory, 'main-only.txt'), 'main work\n');
+  git(directory, 'add', 'main-only.txt');
+  git(directory, 'commit', '-m', 'main work');
+  const mainTip = git(directory, 'rev-parse', 'HEAD').trim();
+  git(directory, 'merge', '--no-ff', 'feature/history', '-m', 'merge feature');
+  const snapshot = await service.getSnapshot();
+  assert.ok(snapshot.available);
+  const history = await service.getBranchCommits('refs/heads/main');
+  assert.deepEqual(history, snapshot.commits);
+  assert.deepEqual(history[0]?.parents, [mainTip, featureHash]);
+  assert.deepEqual(history.find(entry => entry.hash === mainHash)?.parents, []);
+  const positions = new Map(history.map((entry, index) => [entry.hash, index]));
+  for (const [index, entry] of history.entries()) {
+    for (const parent of entry.parents) assert.ok(positions.get(parent)! > index);
+  }
+});

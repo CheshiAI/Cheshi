@@ -31,8 +31,9 @@ const DEFAULT_WATCH_DEBOUNCE_MS = 150;
 const GIT_LOG_ARGS = [
   "log",
   "--max-count=100",
+  "--topo-order",
   "--date=iso-strict",
-  "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%D%x1f%s%x1e",
+  "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%D%x1f%s%x1f%P%x1e",
 ];
 
 function resolveGitDirectory(workspaceRoot: string, value: string) {
