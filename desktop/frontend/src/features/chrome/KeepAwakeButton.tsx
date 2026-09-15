@@ -1,4 +1,4 @@
-import { CirclePlay, CircleStop } from 'lucide-react';
+import { Play, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { KeepAwakeApi, KeepAwakeState } from '../../../../shared/keep-awake';
 import { cheshiDesktop } from '../../cheshiDesktop';
@@ -53,6 +53,6 @@ export function KeepAwakeButton({ api = cheshiDesktop }: { api?: Partial<KeepAwa
   return <NeumorphicButton raised size="icon" style={nonDraggableWindowRegionStyle}
     title={title} aria-label={title} aria-pressed={enabled} aria-busy={busy} disabled={busy}
     onClick={() => { void toggle(); }}>
-    {enabled ? <CircleStop aria-hidden="true" /> : <CirclePlay aria-hidden="true" />}
+    {enabled ? <Square aria-hidden="true" /> : <Play aria-hidden="true" />}
   </NeumorphicButton>;
 }

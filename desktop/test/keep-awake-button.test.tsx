@@ -48,7 +48,7 @@ function harness(overrides: Partial<KeepAwakeApi> & { platform?: string } = {}) 
       },
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    'lucide-react': { CirclePlay: 'CirclePlay', CircleStop: 'CircleStop' },
+    'lucide-react': { Play: 'Play', Square: 'Square' },
     '../../cheshiDesktop': { cheshiDesktop: api },
     '../../shared/ui': { NeumorphicButton: 'NeumorphicButton', nonDraggableWindowRegionStyle: { WebkitAppRegion: 'no-drag' } },
     '../../shared/useHelpLanguage': { useHelpLanguage: () => ['ko'] },
@@ -84,18 +84,18 @@ test('OFF plays, ON stops, and only a confirmed result changes the icon', async 
   expect(app.button().props.disabled).toBe(true);
   await settle();
   const button = app.button();
-  expect(icon(button)).toBe('CirclePlay');
+  expect(icon(button)).toBe('Play');
   expect(button.props['aria-pressed']).toBe(false);
   expect(button.props.title).toBe('절전 방지 실행');
   click(button);
-  expect(icon(app.button())).toBe('CirclePlay');
+  expect(icon(app.button())).toBe('Play');
   await settle();
-  expect(icon(app.button())).toBe('CircleStop');
+  expect(icon(app.button())).toBe('Square');
   expect(app.button().props['aria-pressed']).toBe(true);
   expect(app.button().props.title).toBe('절전 방지 종료');
   click(app.button());
   await settle();
-  expect(icon(app.button())).toBe('CirclePlay');
+  expect(icon(app.button())).toBe('Play');
   expect(app.calls).toEqual([true, false]);
   app.unmount();
   expect(app.unsubscribed).toBe(true);
@@ -113,7 +113,7 @@ test('duplicate clicks are ignored and execution failure is explained without sw
   command.reject(new Error('spawn EACCES'));
   await settle();
   expect(app.button().props.disabled).toBe(false);
-  expect(icon(app.button())).toBe('CirclePlay');
+  expect(icon(app.button())).toBe('Play');
   expect(app.button().props.title).toContain('EACCES');
 });
 
@@ -125,12 +125,12 @@ test('newer shared state wins over delayed initial and command responses', async
   app.publish({ ...off, enabled: true, revision: 3 });
   initial.resolve(off);
   await settle();
-  expect(icon(app.button())).toBe('CircleStop');
+  expect(icon(app.button())).toBe('Square');
   click(app.button());
   app.publish({ ...off, revision: 5, error: 'exited unexpectedly' });
   command.resolve({ ...off, enabled: true, revision: 4 });
   await settle();
-  expect(icon(app.button())).toBe('CirclePlay');
+  expect(icon(app.button())).toBe('Play');
   expect(app.button().props.title).toContain('exited unexpectedly');
 });
 

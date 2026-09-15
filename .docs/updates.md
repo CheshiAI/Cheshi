@@ -100,6 +100,71 @@ or upload to GitHub. Notarization uploads the packaged app to Apple.
 Before public distribution, verify the produced app's signature, notarization
 ticket, clean installation, and a real update between signed builds.
 
+## Publishing and updating Homebrew
+
+Merge the release changes into `main` before tagging. Build from the reviewed
+commit with `bun run desktop:make:signed`, using the matching `.env.product`
+version and build number. Create a draft GitHub release, upload the verified
+`Cheshi-darwin-arm64-<version>.zip`, then publish the release. Uploading the ZIP
+before publication ensures the Homebrew workflow can find it immediately.
+
+[Update Homebrew tap](../.github/workflows/update-homebrew.yml) runs on
+`release: published` for both stable and preview releases. Alpha releases are
+skipped. It reads the automation from `main` and runs
+[`scripts/update-homebrew-tap.mts`](../scripts/update-homebrew-tap.mts).
+The script downloads the exact release ZIP, checks its size and SHA256 against
+GitHub's asset metadata, then updates `CheshiAI/homebrew-tap` on `main`:
+
+- `Casks/cheshi.rb` version and SHA256 are updated in one commit.
+- The existing URL template resolves to the new tag and versioned ZIP name.
+- App dependencies and installation settings are preserved.
+- Repeating the same release creates no duplicate commit. Older releases cannot
+  downgrade the cask. A changed checksum for an existing version fails; publish
+  a new version instead of replacing a distributed asset.
+
+The workflow requires an Actions repository secret named `HOMEBREW_TAP_TOKEN`
+in `CheshiAI/Cheshi`. Use a fine-grained personal access token owned by an
+account with access to `CheshiAI/homebrew-tap`, limited to that repository with
+**Contents: read and write** permission. Complete any organization approval
+required for the token. Register the value in GitHub's Actions secrets UI;
+never place it in source, release notes, shell arguments, or chat. The workflow's
+ordinary `GITHUB_TOKEN` has read access only and cannot write another repository.
+Check the dedicated token's expiry when diagnosing permission failures.
+
+Publish using an authorized local GitHub CLI session or the GitHub UI.
+Publishing with a workflow's `GITHUB_TOKEN` does not trigger downstream release
+workflows. If publishing is later moved into Actions, use an appropriately
+scoped GitHub App/token or explicitly dispatch this workflow.
+
+To retry a failed Homebrew update after correcting its cause, use Actions →
+Update Homebrew tap → Run workflow on `main` with the existing published tag,
+or run:
+
+```sh
+gh workflow run update-homebrew.yml --repo CheshiAI/Cheshi --ref main -f tag=v0.0.3-preview
+```
+
+Do not republish the release just to retry the tap update. If a write response
+was interrupted, inspect the current cask and run result first. A conflicting
+tap edit fails the original blob-SHA check instead of overwriting someone else's
+change. Review that edit before retrying.
+
+A read-only rehearsal downloads and validates an existing public ZIP without
+requiring the tap token or writing a commit:
+
+```sh
+RELEASE_TAG=v0.0.2-preview bun run scripts/update-homebrew-tap.mts --dry-run
+```
+
+After publication, confirm the Actions run succeeded and the tap version, URL,
+and SHA256 match the published asset. The release is published even if the
+Homebrew update fails; report these stages separately and resume only the
+failed stage. Local tests and a dry run do not prove the remote write permission.
+Users can then run `brew update` followed by
+`brew upgrade --cask --greedy cheshiai/tap/cheshi`.
+
+## Installable asset requirements
+
 For Intel macOS builds, use `x64` in place of `arm64`. The asset must belong to
 that exact release in CheshiAI/Cheshi and have a positive size and a GitHub asset
 `digest` containing `sha256:` followed by the SHA-256 hash. The download is checked
