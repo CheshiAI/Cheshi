@@ -86,6 +86,7 @@ private final class SurfaceDelegate: NSObject,
 @MainActor
 private final class CheshiTerminalView: TerminalView {
   let surfaceID: Int32
+  private var selectionCopy = DragSelectionCopy()
 
   override var layer: CALayer? {
     didSet {
@@ -105,8 +106,28 @@ private final class CheshiTerminalView: TerminalView {
   }
 
   override func mouseDown(with event: NSEvent) {
+    selectionCopy.begin(at: event.locationInWindow)
     window?.makeFirstResponder(self)
     super.mouseDown(with: event)
+  }
+
+  override func mouseDragged(with event: NSEvent) {
+    selectionCopy.move(to: event.locationInWindow)
+    super.mouseDragged(with: event)
+  }
+
+  override func mouseUp(with event: NSEvent) {
+    super.mouseUp(with: event)
+    guard selectionCopy.finish(at: event.locationInWindow), window?.isKeyWindow == true else { return }
+    let localPoint = convert(event.locationInWindow, from: nil)
+    let terminalPoint = CGPoint(x: localPoint.x, y: bounds.height - localPoint.y)
+    guard selectionMenuPoint(at: terminalPoint) != nil else { return }
+    _ = copySelectedTextToPasteboard()
+  }
+
+  override func keyDown(with event: NSEvent) {
+    selectionCopy.cancel()
+    super.keyDown(with: event)
   }
 
   override func layout() {
@@ -210,10 +231,18 @@ private final class SurfaceStore {
       builder.withCursorStyleBlink(true)
       builder.withBackgroundOpacity(0)
       builder.withCustom("unfocused-split-opacity", "1")
+      builder.withCustom("copy-on-select", "false")
+      builder.withCustom("clipboard-trim-trailing-spaces", "false")
+      builder.withCustom("selection-clear-on-copy", "false")
+      builder.withCustom("keybind", "super+key_c=copy_to_clipboard")
+      builder.withCustom("keybind", "super+key_v=paste_from_clipboard")
       builder.withWindowPaddingX(10)
       builder.withWindowPaddingY(8)
     }
-    let controller = TerminalController(configuration: configuration)
+    var theme = TerminalTheme.default
+    theme.light = theme.light.selectionBackground("29414A").selectionForeground("D3E2DE")
+    theme.dark = theme.dark.selectionBackground("29414A").selectionForeground("D3E2DE")
+    let controller = TerminalController(configuration: configuration, theme: theme)
     controller.setColorScheme(dark ? .dark : .light)
 
     let view = CheshiTerminalView(frame: frame, surfaceID: surfaceID)

@@ -31,7 +31,7 @@ describe('relay session titles', () => {
         }] });
         const before = structuredClone(thread);
         expect(chatSessionFromThread(thread)).toMatchObject({ title: 'Debate summary', preview: 'Debate summary' });
-        expect(timelineFromThread(thread)).toEqual([{ id: 'message', kind: 'user', text: preview, createdAt: 130 }]);
+        expect(timelineFromThread(thread)).toEqual([{ id: 'message', turnId: 'turn', kind: 'user', text: preview, createdAt: 130 }]);
         expect(thread).toEqual(before);
       }
     }

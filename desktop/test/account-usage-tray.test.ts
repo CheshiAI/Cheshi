@@ -165,8 +165,8 @@ test('closing the last window retains its active account and background updates 
   app.tray.updateBackground(snapshot([100, 29], 'a'));
   expect(app.tooltip).toContain('129% remaining');
   expect(app.tooltip).toContain('b@example.com · Ring: 29% remaining');
-  expect(app.image.template).toBe(false);
-  expect(app.image.representations[1]?.buffer?.equals(renderAccountUsageTrayIcon(29, { template: false }))).toBe(true);
+  expect(app.image.template).toBe(true);
+  expect(app.image.representations[1]?.buffer?.equals(renderAccountUsageTrayIcon(29))).toBe(true);
   source.update(snapshot([0, 0], 'a'));
   expect(app.tooltip).toContain('b@example.com · Ring: 29% remaining');
 
@@ -195,30 +195,30 @@ test('background logout clears retained usage rather than displaying a stale num
   app.tray.dispose();
 });
 
-test('low usage disables templating and refreshes its colored icon after a theme change', () => {
+test('low usage retains macOS template coloring across theme changes', () => {
   const app = harness();
   const source = app.tray.register();
   source.update(snapshot([20]));
-  expect(app.image.template).toBe(false);
-  expect(app.image.representations[1]?.buffer?.equals(renderAccountUsageTrayIcon(20, { template: false }))).toBe(true);
+  expect(app.image.template).toBe(true);
+  expect(app.image.representations[1]?.buffer?.equals(renderAccountUsageTrayIcon(20))).toBe(true);
   const updateCount = app.updates.length;
   app.theme.shouldUseDarkColors = true;
   app.theme.emit('updated');
   expect(app.updates.length).toBe(updateCount + 1);
-  expect(app.image.representations[1]?.buffer?.equals(renderAccountUsageTrayIcon(20, { template: false, dark: true }))).toBe(true);
+  expect(app.image.representations[1]?.buffer?.equals(renderAccountUsageTrayIcon(20, { dark: true }))).toBe(true);
   source.update(snapshot([30]));
   expect(app.image.template).toBe(true);
   app.tray.dispose();
 });
 
-test('changing the active account updates the ring and its strict low threshold while keeping the total', () => {
+test('changing the active account updates the ring while keeping template coloring and the total', () => {
   const app = harness();
   const source = app.tray.register();
   source.update(snapshot([29.9, 100], 'a'));
-  expect(app.image.template).toBe(false);
+  expect(app.image.template).toBe(true);
   expect(app.tooltip).toContain('130% remaining');
   const lowImage = app.image.representations[1]?.buffer;
-  expect(lowImage?.equals(renderAccountUsageTrayIcon(29.9, { template: false }))).toBe(true);
+  expect(lowImage?.equals(renderAccountUsageTrayIcon(29.9))).toBe(true);
   source.update(snapshot([29.9, 100], 'b'));
   expect(app.image.template).toBe(true);
   expect(app.tooltip).toContain('130% remaining');

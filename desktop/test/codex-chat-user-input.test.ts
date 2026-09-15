@@ -37,6 +37,15 @@ test('validates form types, bounds and options without coercing false or zero', 
   await manager.respond(request.id, { action: 'accept', content: { enabled: false, count: 0, tags: ['one', 'two'] } });
   expect(client.responsesSent[0]).toEqual({ id: 2, result: { action: 'accept', content: { enabled: false, count: 0, tags: ['one', 'two'] } } });
 });
+test('question options remain suggestions while custom answers and additional details reach the server', async () => {
+  const { manager, client } = fixture();
+  manager.handle({ id: 3, method: 'item/tool/requestUserInput', params: { ...questions,
+    questions: questions.questions.map(question => ({ ...question, isOther: false })) } });
+  const request = manager.list()[0]!;
+  await expectFailure(() => manager.respond(request.id, { action: 'accept', answers: { choice: [' '] } }), 'Answer Choice.');
+  await manager.respond(request.id, { action: 'accept', answers: { choice: ['A', 'Additional details'] } });
+  expect(client.responsesSent).toEqual([{ id: 3, result: { answers: { choice: { answers: ['A', 'Additional details'] } } } }]);
+});
 test('URL requests are data only and allow accept, decline and cancel without opening a browser', async () => {
   for (const action of ['accept', 'decline', 'cancel'] as const) {
     const { manager, client } = fixture();

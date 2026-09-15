@@ -11,9 +11,9 @@
  *
  * Keyed purely on AST shape — no library names in the implementation — so any
  * same-shaped store is covered. Resolution then falls out of the existing
- * exact-name matcher: every call form (`const {foo}=useStore.getState(); foo()`,
- * `useStore.getState().foo()`, in-store `get().foo()`) reduces to a bare `foo`
- * call that resolves to the action node once it exists.
+ * matcher for destructured calls (`const {foo}=useStore.getState(); foo()`).
+ * Chained `useStore.getState().foo()` and in-store `get().foo()` retain their
+ * receiver and resolve only with evidence of the owning store.
  */
 import { describe, it, expect, beforeAll, afterEach } from 'bun:test';
 import * as fs from 'fs';
@@ -55,13 +55,14 @@ describe('object-literal method extraction', () => {
     // so an in-store calls edge will resolve once the pipeline runs.
     const fetchUser = result.nodes.find((n) => n.name === 'fetchUser')!;
     const fetchUserRefs = result.unresolvedReferences.filter((r) => r.fromNodeId === fetchUser.id);
-    expect(fetchUserRefs.map((r) => r.referenceName)).toContain('reset');
+    expect(fetchUserRefs.map((r) => r.referenceName)).toContain('get().reset');
 
     // The action's body wasn't mis-attributed to the file scope (the reason we
     // skip the generic body-visit for the store-factory call).
     const fileNode = result.nodes.find((n) => n.kind === 'file')!;
     const fileRefs = result.unresolvedReferences.filter((r) => r.fromNodeId === fileNode.id);
     expect(fileRefs.map((r) => r.referenceName)).not.toContain('reset');
+    expect(fileRefs.map((r) => r.referenceName)).not.toContain('get().reset');
   });
 
   it('extracts actions through a middleware wrapper (create(persist(...)))', () => {

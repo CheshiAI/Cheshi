@@ -55,6 +55,7 @@ export interface GitBranch {
 
 export interface GitCommit {
   hash: string;
+  parents: string[];
   shortHash: string;
   authorName: string;
   authorEmail: string;

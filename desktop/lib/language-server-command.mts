@@ -1,6 +1,7 @@
 import { recordValue } from "./codex-service-utils.mts";
-import { accessSync, constants, statSync } from "node:fs";
+import { accessSync, closeSync, constants, openSync, readSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
+import type { ResolvedCommand } from "./language-server-types.mts";
 
 export function isExecutable(filePath: string) {
   try {
@@ -57,6 +58,37 @@ export function normalizeBundledCommand(value: unknown) {
       typeof command.displayPath === "string" && command.displayPath
         ? path.resolve(command.displayPath)
         : path.resolve(command.availabilityPath),
+  };
+}
+
+function nodeScriptPath(executable: string): string | null {
+  let descriptor: number | undefined;
+  try {
+    const script = realpathSync(executable);
+    descriptor = openSync(script, "r");
+    const buffer = Buffer.alloc(512);
+    const length = readSync(descriptor, buffer, 0, buffer.length, 0);
+    const header = buffer.toString("utf8", 0, length).split("\n", 1)[0] ?? "";
+    // Only plain Node shebangs are interchangeable with the bundled runtime.
+    // Shell wrappers and interpreters with explicit flags retain their semantics.
+    return /^#![\t ]*(?:\/usr\/bin\/env[\t ]+node|\/[^\s]*\/node)[\t ]*\r?$/.test(header)
+      ? script : null;
+  } catch {
+    return null;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+export function withBundledNodeRuntime(command: ResolvedCommand, bundled: ResolvedCommand | null): ResolvedCommand {
+  if (!bundled) return command;
+  const script = nodeScriptPath(command.executable);
+  if (!script) return command;
+  return {
+    executable: bundled.executable,
+    args: [script, ...command.args],
+    environment: { ...command.environment, ...bundled.environment },
+    displayPath: command.displayPath,
   };
 }
 

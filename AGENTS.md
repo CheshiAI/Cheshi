@@ -4,24 +4,30 @@ These instructions apply to the entire repository. Model selection and reasoning
 effort belong to the active runtime; this file defines the repository's working
 agreements.
 
-## Local preferences
-
-If `AGENTS.local.md` exists in the repository root, read it for local language
-preferences and machine-specific tooling instructions. It is optional and
-Git-ignored; contributors do not need to create it. Keep shared development
-rules in this file and personal settings in the local file. Local preferences
-do not override explicit user requests or shared repository requirements.
-
 ## Working agreements
 
 - Complete the requested work, including relevant validation, within the agreed
   scope. Use conversation context to resolve routine implementation choices.
+- Obtain explicit user approval before creating, editing, deleting, or renaming
+  code, including tests, styles, scripts, and configuration that affects runtime
+  behavior. First investigate and describe the proposed files, changes, reasons,
+  and validation plan, then wait for approval before applying the changes.
+  Requests to inspect, diagnose, or verify do not authorize code changes.
+  If the user has already explicitly approved the same concrete change, proceed
+  within that scope without requesting the same approval again.
+- Read-only inspection, analysis, and relevant validation may proceed before
+  code-change approval, subject to the existing permission and UI-review rules.
+  Validation may produce normal generated build or test output, but must not
+  rewrite authored files through formatters, automatic fixes, or snapshot updates
+  without approval. Delegated code changes require the same approval.
 - Decide file organization, naming, internal design, work order, and validation
-  methods autonomously within the requested scope and repository conventions.
-  Ask about choices that materially change the intended result or scope.
-- Fix adjacent issues when necessary to complete or validate the requested work,
-  and report those changes. Propose independent features or large structural
-  changes separately before expanding the scope.
+  methods autonomously within the approved change scope and repository conventions.
+  Obtain approval for choices that materially change the intended result or scope.
+- Report adjacent issues discovered during implementation or validation and
+  propose any necessary fixes. Apply them only when covered by the user's
+  explicit approval; otherwise continue independent, approved work while waiting.
+  Propose independent features or large structural changes separately before
+  expanding the scope.
 - Respect current user directions over repository defaults and skill guidance,
   within the runtime's instruction hierarchy. Keep unrelated changes intact.
 - When actual work shows that a repository rule or user direction limits a
@@ -29,9 +35,9 @@ do not override explicit user requests or shared repository requirements.
   example, then propose an alternative and a focused adjustment with its
   benefits and tradeoffs. Continue authorized work where possible and follow
   the current instruction until the user approves changing it.
-- Ask a focused question only when missing information materially changes the
-  scope or blocks correct execution. Continue independent, authorized work while
-  waiting. Do not request the same authorization twice.
+- Ask a focused question when required approval is missing or missing information
+  materially changes the scope or blocks correct execution. Continue independent,
+  authorized work while waiting. Do not request the same authorization twice.
 - If a rule or tool approval blocks work, identify the exact instruction or
   rejection and its source. Prepare the reviewable result as far as authorized.
 - Treat corrections and status questions as part of the ongoing task. Preserve
@@ -45,11 +51,12 @@ do not override explicit user requests or shared repository requirements.
   findings into one proposal when practical to avoid unnecessary interruptions;
   this discretion does not authorize saving without the user's approval.
 - Use parallel tool calls for independent reads and checks. Keep dependent
-  operations and edits sequential. Autonomously delegate independent tasks to
-  subagents when this can save time or improve quality. Assign bounded tasks
-  with clear file ownership, coordinate shared dependencies, and personally
-  review the combined result and relevant validation. Delegation follows the
-  same scope and approval requirements as work performed directly.
+  operations and edits sequential. Create subagents or delegate tasks only when
+  the user explicitly requests it. Ordinary parallel tool calls remain allowed.
+  When delegation is requested, assign bounded tasks with clear file ownership,
+  coordinate shared dependencies, and personally review the combined result
+  and relevant validation. Delegation follows the same scope and approval
+  requirements as work performed directly.
 - Use the user's requested language. Lead with the result, give brief
   progress updates during sustained work, and report concrete changes, checks,
   and unresolved issues without repeating the work log.
@@ -93,6 +100,12 @@ when a documented command is unavailable.
 
 - If status reports `initialized: false`, use ordinary source inspection.
   Creating an index is the user's decision.
+- If status or queries fail, or CodeGraph is unavailable, briefly report the
+  limitation and continue with ordinary source inspection in the needed scope.
+  A failed status check does not establish that the index is uninitialized.
+  If results are stale or contradict current source, read the affected source
+  directly and use it as the authority. These fallbacks do not authorize index
+  creation, sync, rebuild, unlock, or removal.
 - Query specific symbols or files and use the returned source and call paths.
   Read only uncovered or explicitly stale ranges directly; avoid repeating
   complete source reads merely to verify the tool's output.
@@ -197,8 +210,19 @@ when a documented command is unavailable.
 - For documentation-only changes, verify referenced paths, commands, links, and
   `git diff --check`; application tests and builds are unnecessary.
 - After checks pass, repeat or expand them only for a new edit, failure, unresolved
-  concern, or explicit user request. Record sandbox limitations separately from
-  product failures and use authorized escalation when needed for a valid check.
+  concern, or explicit user request.
+- When a test or validation command fails with evidence of sandbox or permission
+  restrictions, first rerun the affected check in an approved environment with
+  the required permissions, using authorized escalation when needed. Examples
+  include denied loopback or Unix socket access, filesystem access, file watching,
+  and credential-store access. Do not change application code, weaken assertions,
+  or skip tests merely to make a restricted-environment failure pass.
+- Investigate a product or test defect only if the failure persists with the
+  required permissions or independent evidence establishes a defect. If an
+  authorized rerun is unavailable or rejected, report the original failure and
+  the verification limitation; do not claim a product failure or a passing check
+  without evidence. Report environment failures and authorized rerun results
+  separately from product failures.
 - A build or typecheck does not establish rendered UI correctness. State which
   checks actually ran; use Computer Use only as described below.
 
@@ -225,18 +249,22 @@ install an application event handler or a runtime Stop hook.
    counts. If this turn changed no files, omit the check. Do not scan the entire
    repository unless the user requests a repository-wide audit.
 6. Keep authored modules within 1,000 lines when implementing or refactoring
-   within the authorized scope. Recommend a focused split for remaining large
-   files; report exceptions without silently expanding the task. Preserve
-   behavior, imports, and tests. Do not compress formatting or remove useful
-   documentation just to reduce the count.
+   within the authorized scope. A small, focused change to a file already exceeding
+   1,000 lines does not require splitting the entire file. Complete and validate
+   that change, report the current line count, and recommend a focused split.
+   Perform the split only when it is within the authorized scope; do not expand
+   the task merely to meet the target. Preserve behavior, imports, and tests.
+   Do not compress formatting or remove useful documentation just to reduce
+   the count.
 
 The 1,000-line guideline is a maintainability target, not a CodeGraph indexing
 or response-size limit. Preserve the turn's path set through context compaction.
 
 ## UI design defaults
 
-For desktop UI work, also read [desktop/AGENTS.md](desktop/AGENTS.md) for the
-circular icon button sizing exception.
+For desktop UI work, also read [desktop/AGENTS.md](desktop/AGENTS.md) for detailed
+rules for shared controls, tabs, badges, and panels, including intentional
+exceptions to the defaults below.
 
 - Use `12px` as the default UI font size. Set larger or smaller sizes explicitly
   for titles, headers, and other intentional typography.
@@ -276,8 +304,14 @@ circular icon button sizing exception.
 ## Computer Use with Electron
 
 - The user owns rendered UI review. Do not launch, screenshot, or control the
-  app for visual verification unless the user explicitly delegates it. Supplied
-  screenshots may be inspected without opening the app.
+  app for visual verification unless the user explicitly delegates it. Requests
+  to launch the app and check its screen, verify rendered layout or interactions,
+  or use Computer Use for review count as delegation for the requested scope;
+  do not ask for the same authorization again. A general request to run tests
+  or "check everything" counts only when the conversation clearly includes
+  rendered UI review in that scope. Otherwise, run the applicable automated
+  checks and state that rendered UI was not reviewed. Supplied screenshots may
+  be inspected without opening the app.
 - When controlling Cheshi through Computer Use, never target the app with the
   generic name `Electron` or the shared bundle identifier
   `com.github.Electron`. Multiple project checkouts can use that identity, and
@@ -302,9 +336,11 @@ circular icon button sizing exception.
 - Editing, building, testing, or completing a task does not implicitly authorize a commit or push.
 - Use the requested/current branch and its configured remote; do not assume
   `main`. A completed commit/push request does not authorize future changes.
-- Commit messages must use a lowercase flag in square brackets followed by a concise imperative summary.
-- Except for the required square brackets and spaces, commit messages must contain only lowercase English letters (`a-z`).
-  Do not use uppercase letters, Korean, numbers, or other punctuation.
+- Commit messages must use a lowercase flag in square brackets followed by a
+  concise imperative summary in lowercase English.
+- Numbers and the punctuation `.`, `-`, `_`, `/`, `#`, and `:` are allowed in
+  the summary when needed for versions, issue references, and technical names
+  or paths. Do not use uppercase letters or Korean in commit messages.
 - Use the format: `[flag] summary`.
 - Appropriate flags include `[init]`, `[feature]`, `[fix]`, `[refactor]`, `[docs]`, `[test]`, `[build]`, and `[chore]`.
 
@@ -320,8 +356,13 @@ git commit -m "[init] set up project"
 - Use the path format `../<project>-<branch-slug>`.
 - Worktree branch names must use one of these prefixes:
   `worktree/feature/<name>`, `worktree/fix/<name>`, or `worktree/experiment/<name>`.
-- Create a new worktree from `main` with:
-  `git worktree add -b worktree/<type>/<name> ../<project>-<branch-slug> main`
+- Use the user's specified base branch or commit for a new worktree. For a
+  continuation of existing work, use the base established by the conversation.
+  Default to `main` for new independent work when no base has been specified.
+  Resolve and verify the chosen base before creating the worktree; ask only if
+  ambiguity would materially change which work is included.
+- Create the worktree with the chosen base substituted for `<base>`:
+  `git worktree add -b worktree/<type>/<name> ../<project>-<branch-slug> <base>`
 - Check existing worktrees with `git worktree list` before creating one.
 - Never remove a worktree with uncommitted changes without explicit approval.
 - Remove completed worktrees with:

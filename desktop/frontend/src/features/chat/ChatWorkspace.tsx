@@ -1,4 +1,4 @@
-import { Columns2, PanelRight, Plus, Rows2, X } from 'lucide-react';
+import { ArrowLeft, Columns2, PanelRight, Plus, Rows2, X } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { chatRelayContextIds } from '../../../../shared/chat-relay';
@@ -24,6 +24,7 @@ interface ChatWorkspaceProps extends ChatHistorySearchNavigation {
   rightSidebarOpen: boolean;
   sessionSyncEnabled: boolean;
   onToggleRightSidebar: () => void;
+  onCloseWorkspace?: () => void;
   onReviewFileChanges: (paneId: string, itemId: string, path?: string) => void;
 }
 
@@ -75,10 +76,20 @@ function ChatPane({
       onFocusCapture={() => selectPane(paneId)}
     >
       <LiquidGlassPanel as="header" className={styles.paneHeader} data-liquid-glass-backdrop={selected ? 'true' : undefined}>
-        <button className={styles.paneTitle} onClick={() => selectPane(paneId)} title={threadLabel} type="button">
-          <ChatPaneIcon />
-          <span>{threadLabel}</span>
-        </button>
+        <div className={styles.paneHeading}>
+          {controller.agentBackThreadId && (
+            <NeumorphicButton raised size="icon" aria-label="Back to previous conversation" title="Back to previous conversation"
+              disabled={controller.agentNavigationPending || controller.configurationPending || workspace.accountSwitchPending
+                || workspace.relay.running || controller.state.phase === 'loading'}
+              onClick={() => void controller.goBackFromAgent()}>
+              <ArrowLeft aria-hidden="true" />
+            </NeumorphicButton>
+          )}
+          <button className={styles.paneTitle} onClick={() => selectPane(paneId)} title={threadLabel} type="button">
+            {!controller.agentBackThreadId && <ChatPaneIcon />}
+            <span>{threadLabel}</span>
+          </button>
+        </div>
         <div className={styles.actions}>
           <button
             type="button"
@@ -115,6 +126,9 @@ function ChatPane({
       </LiquidGlassPanel>
       <ChatView
         controller={controller}
+        initialDraft={workspace.initialDrafts[paneId]}
+        onOpenSideChat={workspace.paneIds.length < 32 && !workspace.splitPending
+          ? (input) => workspace.openSideChat(paneId, input) : undefined}
         onAccountSwitchGuard={updateAccountSwitchGuard}
         savedTurns={workspace.savedTurns}
         interactionsLocked={workspace.accountSwitchPending || (workspace.relay.running && workspace.relay.state !== null
@@ -179,6 +193,9 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
             >
               <PanelRight aria-hidden="true" />
             </NeumorphicButton>
+            {props.onCloseWorkspace && <NeumorphicButton raised size="icon"
+              aria-label="Close Codex workspace" title="Close Codex workspace"
+              onClick={props.onCloseWorkspace}><X aria-hidden="true" /></NeumorphicButton>}
           </div>
         </>}
       />

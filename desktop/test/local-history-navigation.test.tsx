@@ -15,7 +15,9 @@ function isElement(value: unknown): value is TestElement {
 
 function elements(value: unknown): TestElement[] {
   if (Array.isArray(value)) return value.flatMap(elements);
-  return isElement(value) ? [value, ...elements(value.props.children)] : [];
+  if (!isElement(value)) return [];
+  return [value, ...elements(value.props.children),
+    ...(value.type === 'WorkspaceEditorSplit' ? elements(value.props.editor) : [])];
 }
 
 function element(tree: unknown, type: string): TestElement {
@@ -74,11 +76,15 @@ function createHarness() {
     '../graph': { CodeGraphView: 'CodeGraphView' },
     '../home/BlankView': { BlankView: 'BlankView' },
     '../navigation/Sidebar': { Sidebar: 'Sidebar' },
+    '../navigation/WorkspaceFileSearch': { WorkspaceFileSearch: 'WorkspaceFileSearch' },
+    '../navigation/fileSearchShortcut': { installFileSearchShortcut() { return () => {}; } },
     '../plugins': { PluginsView: 'PluginsView' },
     '../terminal': { TerminalWorkspace: 'TerminalWorkspace' },
     '../showcase/ShowcaseView': { ShowcaseView: 'ShowcaseView' },
     './ReviewSidebar': { ReviewSidebar: 'ReviewSidebar' },
+    './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
     './WorkspaceStatusBar': { WorkspaceStatusBar: 'WorkspaceStatusBar' },
+    './WorkspaceEditorSplit': { WorkspaceEditorSplit: 'WorkspaceEditorSplit' },
     './AppShell.module.css': { default: {} },
   };
   const source = readFileSync(new URL('../frontend/src/features/shell/AppShell.tsx', import.meta.url), 'utf8');
@@ -109,6 +115,7 @@ test('explorer history opens a workspace page with file selection and draft prot
   expect(history.props.path).toBe('src/dirty.ts');
   expect(history.props.draftDirty).toBe(true);
   expect(history.key).toBe('src/dirty.ts');
+  expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('primary');
   const footer = element(tree, 'WorkspaceStatusBar');
   expect(Object.keys(footer.props).filter((name) => /history/i.test(name))).toEqual([]);
   invoke(history, 'onClose');
@@ -117,18 +124,22 @@ test('explorer history opens a workspace page with file selection and draft prot
   expect(elements(tree).some((item) => item.type === 'LocalHistoryPage')).toBe(false);
 });
 
-test('switching history files preserves the editor mount and returns to the original editor', () => {
+test('switching history files retains the split editor and returns to the original page', () => {
   const harness = createHarness();
   let tree = harness.render();
+  invoke(element(tree, 'Sidebar'), 'onNavigate', 'terminal');
   invoke(element(tree, 'Sidebar'), 'onOpenWorkspaceFile', 'src/dirty.ts');
   invoke(element(tree, 'WorkspaceEditor'), 'onDirtyPathsChange', ['src/dirty.ts']);
   tree = harness.render();
   const editorBefore = element(tree, 'WorkspaceEditor');
-  const editorPosition = (workspaceColumn(tree).props.children as unknown[])
-    .findIndex((item) => isElement(item) && item.type === 'WorkspaceEditor');
+  const splitBefore = element(workspaceColumn(tree), 'WorkspaceEditorSplit');
+  expect(splitBefore.props.mode).toBe('split');
+  expect(splitBefore.props.editor).toBe(editorBefore);
+  expect(element(tree, 'Sidebar').props.activeView).toBe('terminal');
   invoke(editorBefore, 'onOpenLocalHistory', 'src/dirty.ts');
   tree = harness.render();
   expect(element(tree, 'LocalHistoryPage').props.draftDirty).toBe(true);
+  expect(element(tree, 'Sidebar').props.activeView).toBe('local-history');
   invoke(element(tree, 'Sidebar'), 'onOpenLocalHistory', 'src/clean.ts');
   tree = harness.render();
   const history = element(workspaceColumn(tree), 'LocalHistoryPage');
@@ -136,14 +147,19 @@ test('switching history files preserves the editor mount and returns to the orig
   expect(history.props.draftDirty).toBe(false);
   expect(history.key).toBe('src/clean.ts');
   const editorDuring = element(tree, 'WorkspaceEditor');
-  expect(editorDuring.props.active).toBe(false);
+  expect(editorDuring.props.active).toBe(true);
   expect(editorDuring.props.target).toBe(editorBefore.props.target);
   expect(editorDuring.key).toBe(editorBefore.key);
-  const retained = (workspaceColumn(tree).props.children as unknown[])[editorPosition];
-  expect(isElement(retained) ? retained.type : null).toBe('WorkspaceEditor');
+  const splitDuring = element(workspaceColumn(tree), 'WorkspaceEditorSplit');
+  expect(splitDuring.props.mode).toBe('split');
+  expect(splitDuring.key).toBe(splitBefore.key);
+  expect(splitDuring.props.editor).toBe(editorDuring);
   invoke(history, 'onClose');
   tree = harness.render();
-  expect(element(tree, 'Sidebar').props.activeView).toBe('editor');
+  expect(element(tree, 'Sidebar').props.activeView).toBe('terminal');
+  expect(element(tree, 'TerminalWorkspace')).toBeDefined();
+  expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('split');
+  expect(elements(tree).some((item) => item.type === 'LocalHistoryPage')).toBe(false);
   expect(element(tree, 'WorkspaceEditor').props.active).toBe(true);
   expect(element(tree, 'WorkspaceEditor').props.target).toBe(editorBefore.props.target);
   invoke(element(tree, 'Sidebar'), 'onOpenLocalHistory', 'src/dirty.ts');

@@ -83,9 +83,11 @@ export function parseCommits(output: string): GitCommit[] {
         authoredAt = "",
         decorations = "",
         subject = "",
+        parents = "",
       ] = record.split("\x1f");
       return {
         hash,
+        parents: parents.split(" ").filter(Boolean),
         shortHash,
         authorName,
         authorEmail,

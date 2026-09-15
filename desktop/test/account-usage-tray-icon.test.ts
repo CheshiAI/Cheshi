@@ -54,14 +54,16 @@ test('zero, full and unknown usage are distinct and clamp out-of-range values', 
   expect(gaugeAlpha(full)).toBeGreaterThan(gaugeAlpha(empty));
 });
 
-test('template images stay monochrome while low non-template gauges turn red', () => {
-  const template = pixels(renderAccountUsageTrayIcon(20, { template: true, dark: true }));
-  expect(template.rgba.every(pixel => pixel[0] === 0 && pixel[1] === 0 && pixel[2] === 0)).toBe(true);
-  const low = pixels(renderAccountUsageTrayIcon(29.9, { template: false, dark: true }));
-  expect(low.rgba.some(pixel => pixel[0] === 235 && pixel[1] === 89 && pixel[2] === 85 && pixel[3]! > 0)).toBe(true);
-  expect(low.rgba.some(pixel => pixel[0] === 255 && pixel[1] === 255 && pixel[2] === 255 && pixel[3] === 255)).toBe(true);
-  const normal = pixels(renderAccountUsageTrayIcon(30, { template: false }));
-  expect(normal.rgba.every(pixel => pixel[0] === 0 && pixel[1] === 0 && pixel[2] === 0)).toBe(true);
+test('gauges remain monochrome across the former low usage threshold in both themes', () => {
+  for (const percent of [0, 20, 29.9, 30, 100]) {
+    for (const template of [true, false]) for (const dark of [true, false]) {
+      const { rgba } = pixels(renderAccountUsageTrayIcon(percent, { template, dark }));
+      const channel = !template && dark ? 255 : 0;
+      const visible = rgba.filter(pixel => pixel[3]! > 0);
+      expect(visible.length).toBeGreaterThan(0);
+      expect(visible.every(pixel => pixel[0] === channel && pixel[1] === channel && pixel[2] === channel)).toBe(true);
+    }
+  }
 });
 
 test('rejects invalid output scales before allocating an image', () => {
@@ -98,13 +100,13 @@ test('places the active percentage below the logo area and keeps three digits ce
   expect(Math.max(...xs) - Math.min(...xs) + 1).toBeLessThanOrEqual(22);
 });
 
-test('tints the centered logo with the low usage ring color while preserving its transparent cutouts', () => {
+test('keeps the centered logo in the normal foreground color at low usage while preserving its transparent cutouts', () => {
   const alpha = new Uint8Array(100).fill(255);
   for (let y = 4; y < 6; y++) for (let x = 4; x < 6; x++) alpha[y * 10 + x] = 0;
   const { width, rgba } = pixels(renderAccountUsageTrayIcon(20, {
     dark: true, template: false, logo: { width: 10, height: 10, alpha },
   }));
   expect(rgba[19 * width + 22]).toEqual([0, 0, 0, 0]);
-  expect(rgba[15 * width + 22]).toEqual([235, 89, 85, 255]);
-  expect(rgba.some(pixel => pixel[0] === 235 && pixel[1] === 89 && pixel[2] === 85)).toBe(true);
+  expect(rgba[15 * width + 22]).toEqual([255, 255, 255, 255]);
+  expect(rgba.filter(pixel => pixel[3]! > 0).every(pixel => pixel[0] === 255 && pixel[1] === 255 && pixel[2] === 255)).toBe(true);
 });

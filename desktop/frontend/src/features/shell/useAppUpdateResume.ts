@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { EditorSessionMode } from '../../../../shared/editor-session';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { WorkspaceView } from '../navigation/Sidebar';
 import { resumeRecord, updateResumeCoordinator } from './updateWorkspaceResume';
@@ -15,12 +16,13 @@ export function useAppUpdateResume(options: {
 }) {
   const current = useRef(options);
   current.current = options;
+  const [editorSessionMode, setEditorSessionMode] = useState<EditorSessionMode>('waiting');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     const api = cheshiDesktop;
     if (!api?.getUpdateResume || !api.saveUpdateResume || !api.onPrepareAppUpdate
-      || !api.acknowledgeAppUpdate || !api.onAppUpdateCommitted || !api.onAppUpdatePreparationCancelled || !api.clearUpdateResume) return;
+      || !api.acknowledgeAppUpdate || !api.onAppUpdateCommitted || !api.onAppUpdatePreparationCancelled || !api.clearUpdateResume) { setEditorSessionMode('restore'); return; }
     let disposed = false;
     let restoring = true;
     let preparing = false;
@@ -46,8 +48,13 @@ export function useAppUpdateResume(options: {
       if (disposed) return;
       await updateResumeCoordinator.restore(snapshot, api.workspaceRoot);
       if (!disposed && snapshot !== null) await api.clearUpdateResume!();
+      if (!disposed) {
+        const sections = resumeRecord(resumeRecord(snapshot)?.sections);
+        setEditorSessionMode(sections && Object.hasOwn(sections, 'editor') ? 'preserve' : 'restore');
+      }
     }).catch((reason: unknown) => {
       recoveryFailed = true;
+      if (!disposed) setEditorSessionMode('blocked');
       if (!disposed) setError(`Workspace recovery: ${reason instanceof Error ? reason.message : String(reason)}`);
     }).finally(() => { restoring = false; if (!disposed) setBusy(false); });
     const cancel = () => {
@@ -93,5 +100,5 @@ export function useAppUpdateResume(options: {
     const unsubscribeCancelled = api.onAppUpdatePreparationCancelled(cancel);
     return () => { disposed = true; unregister(); unsubscribe(); unsubscribeCommitted(); unsubscribeCancelled(); updateResumeCoordinator.cancel(); };
   }, []);
-  return { busy, error };
+  return { busy, error, editorSessionMode };
 }

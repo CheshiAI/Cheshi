@@ -44,6 +44,20 @@ export function createChatDraftRecovery(send: (input: ChatDraftSnapshot) => Prom
       revision += 1;
       update({ ...emptyDraft(), pending: false, recovery: null });
     },
+    transfer(receive: (input: ChatDraftSnapshot) => boolean) {
+      if (state.pending || !state.draft.trim()) return false;
+      const input = { draft: state.draft, selectedSkill: state.selectedSkill, attachments: [...state.attachments] };
+      if (!receive(input)) return false;
+      revision += 1;
+      update({ ...emptyDraft(), recovery: null });
+      return true;
+    },
+    receive(input: ChatDraftSnapshot) {
+      if (state.pending || !empty() || (state.recovery && state.recovery.status !== 'restored')) return false;
+      revision += 1;
+      update({ ...input, attachments: [...input.attachments], recovery: null });
+      return true;
+    },
     restore() {
       if (state.pending || state.recovery?.status !== 'available' || !empty()) return false;
       revision += 1;

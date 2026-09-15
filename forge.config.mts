@@ -34,13 +34,14 @@ function shouldIgnore(packagePath: string): boolean {
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
-    const packagedSharedFiles = new Set(['app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'showcase.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'local-history.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts']);
+    const packagedSharedFiles = new Set(['keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'showcase.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'local-history.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
     return grandchildEntry === undefined || !packagedSharedFiles.has(grandchildEntry) || segments.length > 3;
   }
   if (childEntry !== 'lib') return true;
   if (segments.length === 2) return false;
   if (grandchildEntry === 'electron-libghostty') return false;
   const packagedLibraryFiles = new Set([
+    'selection-copy.mts',
     'about-page.mts',
     'about-window.mts',
     'about-menu.mts',
@@ -48,6 +49,7 @@ function shouldIgnore(packagePath: string): boolean {
     'workspace-chat-instructions.mts',
     'app-release-checker.mts',
     'app-update-service.mts',
+    'keep-awake-service.mts',
     'app-update-preview.mts',
     'app-update-resume.mts',
     'app-update-download.mts',
@@ -62,6 +64,11 @@ function shouldIgnore(packagePath: string): boolean {
     'chat-history-compiler.mts',
     'chat-history-index-store.mts',
     'chat-history-search.mts',
+    'editor-session.mts',
+    'editor-session-ipc.mts',
+    'workspace-session-stores.mts',
+    'chat-question-dismissals.mts',
+    'chat-question-dismissals-ipc.mts',
     'codex-chat-turn-controls.mts',
     'codegraph-service.mts',
     'codegraph-initial-index.mts',
@@ -119,6 +126,7 @@ function shouldIgnore(packagePath: string): boolean {
     'git-parsers.mts',
     'git-service.mts',
     'git-types.mts',
+    'github-issue-service.mts',
     'github-pull-request-data.mts',
     'github-pull-request-diff.mts',
     'github-pull-request-merge-state.mts',
@@ -147,6 +155,7 @@ function shouldIgnore(packagePath: string): boolean {
     'workspace-file-paths.mts',
     'workspace-file-reads.mts',
     'workspace-file-service.mts',
+    'workspace-file-search.mts',
     'workspace-file-types.mts',
     'workspace-file-watch.mts',
     'workspace-file-writes.mts',

@@ -50,11 +50,13 @@ import './workspace-editor.css';
 export type { WorkspaceEditorMutation, WorkspaceEditorTarget } from './useWorkspaceEditorController';
 
 interface WorkspaceEditorProps {
+  sessionMode?: import('../../../../shared/editor-session').EditorSessionMode;
+  onSessionRestored?: () => void;
   active: boolean;
+  rightSidebarOpen?: boolean;
+  onToggleRightSidebar?: () => void;
   mutation: WorkspaceEditorMutation | null;
   target: WorkspaceEditorTarget | null;
-  rightSidebarOpen: boolean;
-  onToggleRightSidebar: () => void;
   onAllTabsClosed: () => void;
   onSelectedPathChange: (path: string | null) => void;
   onDirtyPathsChange?: (paths: string[]) => void;
@@ -62,17 +64,21 @@ interface WorkspaceEditorProps {
 }
 
 export function WorkspaceEditor({
+  sessionMode,
+  onSessionRestored,
   active,
+  rightSidebarOpen = false,
+  onToggleRightSidebar,
   mutation,
   target,
-  rightSidebarOpen,
-  onToggleRightSidebar,
   onAllTabsClosed,
   onSelectedPathChange,
   onDirtyPathsChange,
   onOpenLocalHistory,
 }: WorkspaceEditorProps) {
   const controller = useWorkspaceEditorController({
+    sessionMode,
+    onSessionRestored,
     active,
     mutation,
     target,
@@ -109,7 +115,6 @@ export function WorkspaceEditor({
     isDirty,
     languageServerConfiguring,
     languageServers,
-    loading,
     navigateHistory,
     navigationAvailability,
     openReference,
@@ -185,7 +190,6 @@ export function WorkspaceEditor({
               className="workspace-editor-header-actions"
               style={nonDraggableWindowRegionStyle}
             >
-              {loading && <RotateCw className="workspace-editor-spinner" aria-label="Loading file" />}
               <NeumorphicButton
                 raised
                 aria-label="Navigate back"
@@ -221,17 +225,13 @@ export function WorkspaceEditor({
               >
                 <PanelBottom aria-hidden="true" />
               </NeumorphicButton>
-              <NeumorphicButton
-                raised
-                type="button"
+              {onToggleRightSidebar && <NeumorphicButton raised size="icon"
                 aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-                aria-pressed={rightSidebarOpen}
-                className="neumorphic-surface codegraph-inspector-toggle"
-                style={nonDraggableWindowRegionStyle}
-                onClick={onToggleRightSidebar}
-              >
+                title={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
+                aria-pressed={rightSidebarOpen} aria-expanded={rightSidebarOpen}
+                onClick={onToggleRightSidebar}>
                 <PanelRight aria-hidden="true" />
-              </NeumorphicButton>
+              </NeumorphicButton>}
             </div>
           </>
         )}

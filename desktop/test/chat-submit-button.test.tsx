@@ -15,11 +15,11 @@ test('uses one enabled non-submit stop button while a response is running withou
   expect(stopped).toBe(true);
 });
 
-test('uses form submission for additional instructions without cancelling the running response', () => {
+test('uses form submission to queue messages without cancelling the running response', () => {
   const button = ChatSubmitButton({ streaming: true, sendDisabled: false, goalEditorOpen: false, onStop: () => {} });
   const html = renderToStaticMarkup(button);
   expect(html.match(/<button\b/g)).toHaveLength(1);
-  expect(html).toContain('aria-label="Send additional instruction"');
+  expect(html).toContain('aria-label="Queue message"');
   expect(html).toContain('type="submit"');
   expect(button.props.onClick).toBeUndefined();
 });

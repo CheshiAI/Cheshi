@@ -137,7 +137,7 @@ test('streams Plan separately and uses completed Plan text as authoritative cont
       { type: 'plan-delta', ...identity, text: 'Draft plan' }, { type: 'plan-completed', ...identity, text: 'Revised final plan' },
     ]);
     expect(timelineFromThread({ thread: { turns: [{ id: 'turn', startedAt: 1, completedAt: 2, items: [{ id: 'plan-item', type: 'plan', text: 'Revised final plan' }] }] } })).toEqual([
-      { id: 'plan-item', kind: 'plan', text: 'Revised final plan', createdAt: 2 },
+      { id: 'plan-item', turnId: 'turn', kind: 'plan', text: 'Revised final plan', createdAt: 2 },
     ]);
     expect(service.activeTurns.size).toBe(1);
   } finally { service.stop(); }

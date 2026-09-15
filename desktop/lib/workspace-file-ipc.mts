@@ -1,5 +1,6 @@
 import type { Clipboard, IpcMain, Shell } from 'electron';
 import { getWorkspaceDiskUsage } from './workspace-disk-usage.mts';
+import { searchWorkspaceFiles } from './workspace-file-search.mts';
 import type { LocalHistoryService } from './local-history-service.mts';
 import {
   createWorkspaceEntry,
@@ -30,6 +31,7 @@ export function registerWorkspaceFileIpcHandlers({
   localHistory,
 }: WorkspaceFileIpcContext) {
   ipcMain.handle('cheshi:get-workspace-disk-usage', () => getWorkspaceDiskUsage(workspaceRoot));
+  ipcMain.handle('cheshi:search-workspace-files', (_event, query) => searchWorkspaceFiles(workspaceRoot, query));
   ipcMain.handle(
     'cheshi:list-workspace-directory',
     (_event, relativePath) => listWorkspaceDirectory(workspaceRoot, relativePath, true),

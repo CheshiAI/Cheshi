@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.0.3-preview
+
+Pending release
+
+- Added a resizable split view with files on the left and the current app on the
+  right. Closing the last file tab restores the app to full width.
+- Added workspace file session restoration after restarting the app, including
+  open tabs, tab order, and the selected file. Files are reopened from disk;
+  unsaved edits are not stored in the session.
+- Added workspace file search with Shift+F and keyboard navigation. The shortcut
+  preserves normal typing in inputs, editors, and terminals.
+- Added automatic clipboard copying when dragging to select text across the app,
+  including the embedded terminal. Improved terminal selection colors and fixed
+  Command+C and Command+V with Korean input enabled.
+- Added Git status colors to changed filenames in the Explorer and the current
+  Git branch to the workspace status bar.
+- Added a commit graph that shows actual parent relationships with colored
+  branch and merge lines.
+- Added a chat message queue with sequential sending after the current response,
+  pause controls, editing, deletion, steering, and opening messages in a side chat.
+- Added selectable chat question cards with free-text answers. Answered and
+  skipped cards stay dismissed after reopening a conversation or restarting the
+  app, while new turns can show their own questions. Improved card positioning
+  and made answer fields start at one line.
+- Added a back button in subagent conversations and fixed returning to the parent
+  conversation when the selected agent is no longer in the available agent list.
+- Moved conversation search above the chat session groups in the CHATS sidebar.
+  The search field is hidden when there are no sessions.
+- Added a keep-awake toggle and simplified account usage tray colors.
+- Removed the editor header loading spinner to prevent flickering during file
+  refreshes.
+- Fixed automatically detected Node-based language servers to use the bundled
+  runtime when an external Node executable is unavailable, while retaining the
+  detected language server installation.
+- Improved CodeGraph call resolution for local store actions and typed property
+  receivers, reduced incorrect matches between same-named methods, and corrected
+  caller/callee messages when narrowing results to a file.
+
 ## 0.0.2-preview
 
 Build 0003 · Pending release

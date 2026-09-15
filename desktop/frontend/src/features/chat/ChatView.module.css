@@ -129,6 +129,7 @@
   flex-direction: column;
   gap: 8px;
 }
+.timelineItem:focus { outline: none; }
 /* Keep the latest page fully laid out for streaming and scroll-to-bottom.
    Older rows retain their mounted state and remembered height offscreen. */
 .timelineItem:nth-last-child(n + 31) {
@@ -172,7 +173,7 @@
 .messageImageAttachment img { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; }
 .messageImageAttachment > svg { width: 20px; height: 20px; stroke-width: 1.5; }
 .messageImageAttachment[data-loading="true"] > svg { opacity: .45; }
-.inlineCode { border: 1px solid rgba(255, 255, 255, .07); border-radius: 5px; background: rgba(0, 0, 0, .22); color: #d6dddd; font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; padding: 1px 4px; }
+.inlineCode { border: 1px solid rgba(255, 255, 255, .07); border-radius: 5px; background: rgba(0, 0, 0, .22); color: #d6dddd; font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; padding: 1px 4px; margin-inline: 3px; }
 .assistantMessage .inlineCode { background: var(--divider); color: var(--sidebar-section-label-color); }
 
 .codeBlock { --liquid-glass-radius: 11px; width: 100%; min-width: 0; max-width: 100%; overflow: hidden; margin: 10px 0; background: transparent; }
@@ -294,6 +295,7 @@
   padding: 6px;
   scrollbar-gutter: stable;
 }
+.commandOptions[data-agent-picker="true"] > .commandOption + .commandOption { margin-top: 4px; }
 .mcpStatus { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .mcpStatus strong { color: var(--sidebar-section-label-color); font-size: 10px; font-weight: 500; }
 .mcpStatus[data-connected='true'] strong { color: var(--title); }
@@ -347,6 +349,15 @@
 .composerSurface {
   --liquid-glass-radius: 16px;
   overflow: hidden;
+  margin-top: 0;
+  transition: border-radius 200ms ease, margin-top 200ms ease;
+}
+.composerSurface[data-queue-open='true'] {
+  --liquid-glass-radius: 0 0 16px 16px;
+  margin-top: -1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .composerSurface { transition: none; }
 }
 .composer { width: 100%; background: transparent; }
 .composer textarea { display: block; width: 100%; min-height: 44px; max-height: 180px; resize: none; overflow-y: auto; border: 0; outline: 0; background: transparent; color: #eeeeee; font-size: 11px; line-height: 20px; padding: 13px 14px 4px; }

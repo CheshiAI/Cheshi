@@ -23,6 +23,7 @@
     "main.mts",
     "workspace-runtime.mts",
     "preload.cts",
-    "workspace-manager-preload.cts"
+    "workspace-manager-preload.cts",
+    "selection-copy-preload.cts"
   ]
 }

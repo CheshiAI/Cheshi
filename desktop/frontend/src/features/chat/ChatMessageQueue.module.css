@@ -1,0 +1,83 @@
+.collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  width: min(100%, 780px);
+  margin: 0 auto;
+  transition: grid-template-rows 200ms ease;
+}
+.collapse[data-open='true'] { grid-template-rows: 1fr; }
+.collapse[data-open='false'] { pointer-events: none; }
+.clip { min-height: 0; overflow: hidden; }
+.collapse[data-open='true'] .queue { opacity: 1; transform: translateY(0); }
+.queue {
+  --liquid-glass-radius: 16px 16px 0 0;
+  width: 100%;
+  opacity: 0;
+  transform: translateY(100%);
+  transition: transform 200ms ease, opacity 160ms ease;
+  color: var(--text);
+  font-size: 10px;
+}
+.status, .row, .hint, .hint > button, .steer {
+  display: flex;
+  align-items: center;
+  gap: var(--icon-default);
+}
+.status { justify-content: space-between; padding: 8px var(--space-default); color: var(--sub-text); }
+.status > span { min-width: 0; }
+.entries { max-height: 180px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.entry { padding: 10px var(--space-default); border-top: 1px solid var(--divider); }
+.entryIcon[data-size] { cursor: default; pointer-events: none; }
+.queue svg, .hint svg { width: 11px; height: 11px; flex-shrink: 0; stroke-width: 1.7; }
+.preview { flex: 1; min-width: 0; }
+.preview > span, .preview > small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview > small { color: var(--sub-text); font-size: 10px; }
+.steer { flex-shrink: 0; min-height: 22px; padding: 0 4px; font: inherit; cursor: pointer; }
+.steer:disabled, .hint > button:disabled { cursor: not-allowed; opacity: .5; }
+.notice { display: block; padding-top: 8px; overflow-wrap: anywhere; color: var(--sub-text); }
+.menu { --liquid-glass-menu-item-font-size: 10px; }
+.menu button { justify-content: flex-start; gap: var(--space-default); }
+.hint { justify-content: space-between; padding: 4px 14px 8px; font-size: 10px; color: var(--sub-text); }
+.hint > button { margin-left: auto; padding: 4px 8px; font: inherit; cursor: pointer; }
+.hint > .toggle[aria-pressed] {
+  --neumorphic-button-radius: 999px;
+  --neumorphic-button-hover-background: var(--neumorphic-button-surface);
+  border-color: transparent;
+  border-radius: var(--neumorphic-button-radius);
+  background: transparent;
+}
+.hint > .toggle[aria-pressed]:not(:disabled):hover {
+  border-color: var(--divider);
+  background: var(--neumorphic-button-surface);
+}
+.switchTrack {
+  position: relative;
+  width: 24px;
+  height: 14px;
+  flex: 0 0 24px;
+  border: 1px solid var(--divider);
+  border-radius: 7px;
+  background: var(--neumorphic-button-surface);
+}
+.toggle:not(:disabled):hover .switchTrack {
+  border-color: var(--sub-text);
+  background: var(--app-bg);
+}
+.switchTrack::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--sub-text);
+  transition: transform 200ms ease, background 160ms ease;
+}
+.toggle[aria-pressed='true'] .switchTrack::after { transform: translateX(10px); background: var(--active-text); }
+@media (prefers-reduced-motion: reduce) {
+  .collapse, .queue, .switchTrack::after { transition: none; }
+}
+@container (max-width: 440px) {
+  .steer > span, .hint > span { display: none; }
+}

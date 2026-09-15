@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import type { BrowserWindowConstructorOptions } from 'electron';
-import { createAboutWindow, type AboutView } from '../lib/about-window.mts';
+import { ABOUT_CHANGELOG_URL, createAboutWindow, type AboutView } from '../lib/about-window.mts';
 
 function createDeferred() {
   let resolve!: () => void;
@@ -12,8 +12,8 @@ function createDeferred() {
 }
 
 class FakeContents extends EventEmitter {
-  windowOpen: (() => { action: 'deny' }) | undefined;
-  setWindowOpenHandler(handler: () => { action: 'deny' }): void { this.windowOpen = handler; }
+  windowOpen: ((details: { url: string }) => { action: 'deny' }) | undefined;
+  setWindowOpenHandler(handler: (details: { url: string }) => { action: 'deny' }): void { this.windowOpen = handler; }
 }
 
 class FakeView extends EventEmitter implements AboutView {
@@ -39,10 +39,11 @@ class FakeView extends EventEmitter implements AboutView {
   loadURL(url: string): Promise<void> { this.url = url; return this.load.promise; }
 }
 
-function fixture() {
+function fixture(openExternal?: (url: string) => Promise<void>) {
   const windows: FakeView[] = [];
   const configurations: BrowserWindowConstructorOptions[] = [];
   const errors: unknown[] = [];
+  const externalUrls: string[] = [];
   const controller = createAboutWindow({
     title: 'About Cheshi',
     backgroundColor: '#1E2025',
@@ -53,9 +54,10 @@ function fixture() {
       return view;
     },
     page: () => '<html><body>Cheshi</body></html>',
+    openExternal: openExternal ?? (async url => { externalUrls.push(url); }),
     onError: (error) => errors.push(error),
   });
-  return { controller, windows, configurations, errors };
+  return { controller, windows, configurations, errors, externalUrls };
 }
 
 test('opens a sandboxed local page only when ready and reuses the single window', () => {
@@ -81,10 +83,34 @@ test('blocks window creation and renderer navigation', () => {
   const { controller, windows } = fixture();
   controller.open();
   const contents = windows[0]!.webContents;
-  assert.deepEqual(contents.windowOpen?.(), { action: 'deny' });
+  assert.deepEqual(contents.windowOpen?.({ url: 'https://example.com' }), { action: 'deny' });
   let prevented = false;
   contents.emit('will-navigate', { preventDefault: () => { prevented = true; } });
   assert.equal(prevented, true);
+});
+
+test('opens only the fixed Cheshi changelog externally and keeps the About page in place', () => {
+  const { controller, windows, externalUrls } = fixture();
+  controller.open();
+  const contents = windows[0]!.webContents;
+  for (const url of [ABOUT_CHANGELOG_URL, 'https://example.com', `${ABOUT_CHANGELOG_URL}?other=true`, 'file:///tmp/CHANGELOG.md']) {
+    assert.deepEqual(contents.windowOpen?.({ url }), { action: 'deny' });
+    let prevented = false;
+    contents.emit('will-navigate', { preventDefault() { prevented = true; } }, url);
+    assert.equal(prevented, true);
+  }
+  assert.deepEqual(externalUrls, [ABOUT_CHANGELOG_URL, ABOUT_CHANGELOG_URL]);
+  assert.equal(windows[0]!.destroyed, false);
+});
+
+test('reports external browser failures without closing the About window', async () => {
+  const failure = new Error('Browser unavailable');
+  const { controller, windows, errors } = fixture(async () => { throw failure; });
+  controller.open();
+  windows[0]!.webContents.windowOpen?.({ url: ABOUT_CHANGELOG_URL });
+  await Promise.resolve();
+  assert.deepEqual(errors, [failure]);
+  assert.equal(windows[0]!.destroyed, false);
 });
 
 test('Escape and command W close the window without accepting ordinary W typing', () => {
@@ -154,6 +180,7 @@ test('page creation failure cleans up a created window', () => {
     backgroundColor: '#1E2025',
     createWindow: () => window,
     page: () => { throw failure; },
+    openExternal: async () => {},
     onError: (error) => errors.push(error),
   });
   controller.open();

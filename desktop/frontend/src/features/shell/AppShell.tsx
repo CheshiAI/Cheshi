@@ -34,10 +34,16 @@ import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import { LocalHistoryPage } from '../editor/LocalHistoryPage';
 import styles from './AppShell.module.css';
 import { useAppUpdateResume } from './useAppUpdateResume';
+import { WorkspaceEditorSplit } from './WorkspaceEditorSplit';
+import { WorkspaceFileSearch } from '../navigation/WorkspaceFileSearch';
+import { installFileSearchShortcut } from '../navigation/fileSearchShortcut';
+
+const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase'];
 
 export function AppShell() {
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [temporaryChatOpen, setTemporaryChatOpen] = useState(false);
+  const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [submittedSearchQuery, setSubmittedSearchQuery] = useState('');
   const [historyTarget, setHistoryTarget] = useState<ChatHistorySearchTarget | null>(null);
@@ -59,6 +65,9 @@ export function AppShell() {
     setFileReview({ paneId, itemId, path: path ?? null });
   }, []);
   const [editorTarget, setEditorTarget] = useState<WorkspaceEditorTarget | null>(null);
+  const [editorSplitOpen, setEditorSplitOpen] = useState(false);
+  const [primaryPaneClosed, setPrimaryPaneClosed] = useState(false);
+  const editorReturnView = useRef<WorkspaceView>('chat');
   const [editorMutation, setEditorMutation] = useState<WorkspaceEditorMutation | null>(null);
   const [editorSelectedPath, setEditorSelectedPath] = useState<string | null>(null);
   const [localHistoryPath, setLocalHistoryPath] = useState<string | null>(null);
@@ -86,6 +95,10 @@ export function AppShell() {
   };
   const chat = workspace.activeController;
   useEffect(() => {
+    if (updateResume.busy || workspace.accountSwitchPending || temporaryChatOpen) return;
+    return installFileSearchShortcut(document, () => setFileSearchOpen(true));
+  }, [updateResume.busy, workspace.accountSwitchPending, temporaryChatOpen]);
+  useEffect(() => {
     if (startupReported.current || !accountLoaded || !indexLoaded || workspace.sessionHistory.loading) return;
     startupReported.current = true;
     window.dispatchEvent(new Event('cheshi:workspace-content-ready'));
@@ -109,6 +122,7 @@ export function AppShell() {
     historyRequestId.current += 1;
     setFileReview(null);
     setActiveView('chat');
+    setPrimaryPaneClosed(false);
     void chat?.openSession(threadId);
   };
 
@@ -120,6 +134,7 @@ export function AppShell() {
     if (!opened || requestId !== historyRequestId.current) return false;
     setFileReview(null);
     setActiveView('chat');
+    setPrimaryPaneClosed(false);
     setHistoryTarget({ threadId: hit.threadId, itemId: hit.itemId, requestId });
     return true;
   };
@@ -129,6 +144,7 @@ export function AppShell() {
     historyRequestId.current += 1;
     setFileReview(null);
     setActiveView('chat');
+    setPrimaryPaneClosed(false);
     void chat?.newSession();
   };
 
@@ -136,6 +152,7 @@ export function AppShell() {
     historyRequestId.current += 1;
     setFileReview(null);
     setActiveView(view);
+    setPrimaryPaneClosed(false);
   };
 
   const openLocalHistory = (path: string): void => {
@@ -164,14 +181,29 @@ export function AppShell() {
     editorRequestId.current += 1;
     setFileReview(null);
     setEditorTarget({ path, line, requestId: editorRequestId.current });
-    setRightSidebarOpen(true);
-    setActiveView('editor');
+    setEditorSplitOpen(true);
+    if (fullWidthViews.includes(activeView)) {
+      editorReturnView.current = activeView;
+      setPrimaryPaneClosed(false);
+      setActiveView('editor');
+    }
+  };
+
+  const closeEditorSplit = (): void => {
+    setEditorSplitOpen(false);
+    setPrimaryPaneClosed(false);
+    setEditorTarget(null);
+    if (activeView === 'editor') navigate(editorReturnView.current);
   };
 
   const handleWorkspaceEntryMutation = (mutation: WorkspaceEntryMutation): void => {
     editorMutationRequestId.current += 1;
     setEditorMutation({ ...mutation, requestId: editorMutationRequestId.current });
   };
+  const editorLayoutMode = activeView === 'editor' ? 'editor'
+    : !editorSplitOpen ? 'primary'
+      : fullWidthViews.includes(activeView) ? 'page'
+        : primaryPaneClosed ? 'editor' : 'split';
 
   return (
     <div className={`app-shell ${styles.shell}`}>
@@ -186,9 +218,6 @@ export function AppShell() {
         <LiquidGlassPanel className="sidebar-column" inert={workspace.accountSwitchPending}>
           <WindowChrome />
           <Sidebar
-            search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
-              onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
-              onFocus={() => { if (activeView !== 'search') navigate('search'); }} />}
             activeView={activeView}
             selectedFilePath={activeView === 'local-history' ? localHistoryPath : editorSelectedPath}
             onNavigate={navigate}
@@ -198,6 +227,22 @@ export function AppShell() {
           />
         </LiquidGlassPanel>
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
+          <WorkspaceEditorSplit mode={editorLayoutMode} editor={
+            <WorkspaceEditor
+              sessionMode={updateResume.editorSessionMode}
+              onSessionRestored={() => setEditorSplitOpen(true)}
+              active={editorLayoutMode === 'split' || editorLayoutMode === 'editor'}
+              rightSidebarOpen={rightSidebarOpen}
+              onToggleRightSidebar={editorLayoutMode === 'editor'
+                ? () => setRightSidebarOpen((open) => !open) : undefined}
+              mutation={editorMutation}
+              target={editorTarget}
+              onAllTabsClosed={closeEditorSplit}
+              onSelectedPathChange={setEditorSelectedPath}
+              onDirtyPathsChange={setEditorDirtyPaths}
+              onOpenLocalHistory={openLocalHistory}
+            />
+          }>
           {activeView === 'search' && <ChatHistorySearchPage query={submittedSearchQuery}
             result={historySearch.result} loading={historySearch.loading} error={historySearch.error}
             selectionDisabled={chatSessionSelectionDisabled} onOpen={openHistorySearchHit}
@@ -207,7 +252,8 @@ export function AppShell() {
           {activeView === 'blank' && <WindowTabs />}
           <ChatWorkspace
             workspace={workspace}
-            active={activeView === 'chat'}
+            active={activeView === 'chat' && !primaryPaneClosed}
+            onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
             sessionSyncEnabled={rightSidebarOpen && !fileReview}
             onReviewFileChanges={openFileReview}
             historyTarget={historyTarget}
@@ -217,6 +263,7 @@ export function AppShell() {
           />
           {activeView === 'codegraph' && (
             <CodeGraphView
+              onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
               onOpenWorkspaceFile={openWorkspaceFile}
               rightSidebarOpen={rightSidebarOpen}
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
@@ -244,27 +291,19 @@ export function AppShell() {
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
               onClose={() => navigate(localHistoryReturnView.current)} />
           )}
-          <WorkspaceEditor
-            active={activeView === 'editor'}
-            mutation={editorMutation}
-            target={editorTarget}
-            rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
-            onAllTabsClosed={() => navigate('chat')}
-            onSelectedPathChange={setEditorSelectedPath}
-            onDirtyPathsChange={setEditorDirtyPaths}
-            onOpenLocalHistory={openLocalHistory}
-          />
           <ShowcaseView active={activeView === 'showcase'}
-            blocked={temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
+            blocked={fileSearchOpen || temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
           <TerminalWorkspace
-            active={activeView === 'terminal'}
+            active={activeView === 'terminal' && !primaryPaneClosed}
+            onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
+            blocked={fileSearchOpen}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
           />
           {activeView === 'blank' && <BlankView />}
+          </WorkspaceEditorSplit>
         </div>
         <ReviewSidebar
           open={rightSidebarOpen}
@@ -273,6 +312,9 @@ export function AppShell() {
           onCloseReview={() => setFileReview(null)}
         >
           <ChatSessionList
+            search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
+              onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
+              onFocus={() => { if (activeView !== 'search') navigate('search'); }} />}
             activeSessionId={chat?.state.activeSessionId ?? null}
             loading={workspace.sessionHistory.loading}
             newChatDisabled={chatSessionSelectionDisabled}
@@ -297,6 +339,7 @@ export function AppShell() {
         selectionDisabledReason={accountSwitchReason}
         onBeforeSelect={beforeAccountSelect} onSelectionFinished={accountSelectionFinished} />
       {temporaryChatOpen && <TemporaryChatPanel onClose={() => setTemporaryChatOpen(false)} />}
+      {fileSearchOpen && <WorkspaceFileSearch onOpenFile={openWorkspaceFile} onClose={() => setFileSearchOpen(false)} />}
       {deleteChoice && <ChatDeleteSessionDialog sessionTitle={deleteChoice.title}
         reason={workspace.deletePending ? null : workspace.deleteSessionReason(deleteChoice.sessionId)}
         pending={workspace.deletePending} error={workspace.error ?? chat?.state.error ?? null}
@@ -306,7 +349,7 @@ export function AppShell() {
       {historyChoice && <ChatHistoryOpenDialog workspace={workspace} sessionId={historyChoice.sessionId}
         sessionTitle={historyChoice.title} paneId={historyChoice.paneId}
         onResume={() => workspace.openSession(historyChoice.sessionId)}
-        onOpened={() => { setHistoryChoice(null); setFileReview(null); setActiveView('chat'); }}
+        onOpened={() => { setHistoryChoice(null); setFileReview(null); setActiveView('chat'); setPrimaryPaneClosed(false); }}
         onClose={() => setHistoryChoice(null)} />}
     </div>
   );

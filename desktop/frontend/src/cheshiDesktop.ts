@@ -1,5 +1,8 @@
+import type { GitHubIssuesApi } from '../../shared/github-issues';
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../shared/chat-user-input';
 import type { AppUpdateApi, AppUpdateResumeApi } from '../../shared/app-update';
+import type { KeepAwakeApi } from '../../shared/keep-awake';
+import type { WorkspaceFileSearchResult } from '../../shared/workspace-file-search';
 import type { LocalHistoryEntry, LocalHistorySnapshot, LocalHistoryRestoreRequest } from '../../shared/local-history';
 import type { WorkspaceManagementApi } from '../../shared/workspace-management';
 import type { GitDiscardPreview, GitDiscardRequest, GitDiscardSelection } from '../../shared/git-discard';
@@ -129,6 +132,7 @@ export interface GitBranchSummary {
 
 export interface GitCommitSummary {
   hash: string;
+  parents: string[];
   shortHash: string;
   authorName: string;
   authorEmail: string;
@@ -645,7 +649,7 @@ export interface CodexChatConfigurationRequest {
   fast?: boolean;
 }
 
-export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpdateResumeApi> {
+export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpdateResumeApi>, Partial<KeepAwakeApi> {
   workspaceManagement?: WorkspaceManagementApi;
   showcase?: import('../../shared/showcase').ShowcaseApi;
   platform: string;
@@ -660,6 +664,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
     entries: CheshiWorkspaceEntry[];
   }>;
   readWorkspaceFile: (relativePath: string) => Promise<WorkspaceFileReadResult>;
+  searchWorkspaceFiles: (query: string) => Promise<WorkspaceFileSearchResult>;
   localHistory: {
     list: (path: string) => Promise<LocalHistoryEntry[]>;
     read: (path: string, id: string) => Promise<LocalHistorySnapshot>;
@@ -692,6 +697,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   updateGitBranch: (branchReference: string) => Promise<GitMutationResult>;
   fetchGitRepository: () => Promise<GitMutationResult>;
   pushGitCurrentBranch: () => Promise<GitMutationResult>;
+  githubIssues: GitHubIssuesApi;
   listGitHubPullRequests: () => Promise<GitHubPullRequestListResult>;
   getGitHubPullRequestDetails: (number: number) => Promise<GitHubPullRequestDetails>;
   getGitHubPullRequestDiff: (number: number, commitOid?: string) => Promise<GitHubPullRequestDiffResult>;
@@ -836,6 +842,8 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   ) => Promise<unknown>;
   steerCodexChatMessage: CheshiDesktopApi['sendCodexChatMessage'];
   cancelCodexChatResponse: (threadId?: string | null, contextId?: string) => Promise<unknown>;
+  editorSession?: import('../../shared/editor-session').EditorSessionApi;
+  chatQuestionDismissals: import('../../shared/chat-question-dismissals').ChatQuestionDismissalsApi;
   startCodexChatRelay: (request: import('../../shared/chat-relay').ChatRelayRequest) => Promise<import('../../shared/chat-relay').ChatRelayState>;
   stopCodexChatRelay: () => Promise<import('../../shared/chat-relay').ChatRelayState | null>;
   getCodexChatRelay: () => Promise<import('../../shared/chat-relay').ChatRelayState | null>;

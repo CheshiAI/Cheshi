@@ -127,6 +127,7 @@ export interface ChatApprovalRequest {
 
 interface ChatTextItem {
   id: string;
+  turnId?: string;
   providerItemId?: string;
   kind: 'user' | 'assistant' | 'reasoning' | 'plan';
   text: string;
@@ -146,6 +147,7 @@ export interface ChatFileChange {
 
 export interface ChatActivityItem {
   id: string;
+  turnId?: string;
   kind: 'activity';
   activity: string;
   label: string;
@@ -206,7 +208,7 @@ type ChatEvent =
   | { type: 'turn-started'; threadId: string }
   | { type: 'user-message'; threadId: string; clientMessageId: string; text: string; createdAt: number }
   | { type: 'user-message-identified'; threadId: string; clientMessageId: string; itemId: string }
-  | { type: 'assistant-delta' | 'reasoning-delta' | 'plan-delta' | 'plan-completed'; threadId: string; itemId: string; text: string; createdAt: number }
+  | { type: 'assistant-delta' | 'reasoning-delta' | 'plan-delta' | 'plan-completed'; threadId: string; turnId?: string; itemId: string; text: string; createdAt: number }
   | { type: 'activity'; threadId: string; item: ChatActivityItem }
   | { type: 'command-output-delta'; threadId: string; itemId: string; text: string }
   | { type: 'turn-completed'; threadId: string; status: string; message: string | null }
@@ -504,9 +506,11 @@ function normalizeTimelineItem(value: unknown): ChatTimelineItem | null {
   const id = stringValue(record?.id);
   const kind = stringValue(record?.kind);
   if (!record || !id || !kind) return null;
+  const turnId = stringValue(record.turnId);
+  const turn = turnId ? { turnId } : {};
   if (kind === 'user' || kind === 'assistant' || kind === 'reasoning' || kind === 'plan') {
     const text = stringValue(record.text);
-    return text ? { id, kind, text, createdAt: finiteNumber(record.createdAt) ?? 0 } : null;
+    return text ? { id, ...turn, kind, text, createdAt: finiteNumber(record.createdAt) ?? 0 } : null;
   }
   if (kind !== 'activity') return null;
   const label = stringValue(record.label);
@@ -516,6 +520,7 @@ function normalizeTimelineItem(value: unknown): ChatTimelineItem | null {
     id,
     kind,
     activity,
+    ...turn,
     label,
     detail: stringValue(record.detail) ?? '',
     status: stringValue(record.status) ?? 'completed',
@@ -746,16 +751,18 @@ export function normalizeChatEvent(value: unknown): ChatEvent | null {
   }
   if (type === 'assistant-delta' || type === 'reasoning-delta' || type === 'plan-delta' || type === 'plan-completed') {
     const threadId = stringValue(record.threadId);
+    const turnId = stringValue(record.turnId);
     const itemId = stringValue(record.itemId);
     const text = type === 'plan-completed' && typeof record.text === 'string' ? record.text : stringValue(record.text);
     return threadId && itemId && text !== null
-      ? { type, threadId, itemId, text, createdAt: finiteNumber(record.createdAt) ?? Math.floor(Date.now() / 1000) }
+      ? { type, threadId, ...(turnId ? { turnId } : {}), itemId, text, createdAt: finiteNumber(record.createdAt) ?? Math.floor(Date.now() / 1000) }
       : null;
   }
   if (type === 'activity') {
     const threadId = stringValue(record.threadId);
+    const turnId = stringValue(record.turnId);
     const item = normalizeTimelineItem(record.item);
-    return threadId && item?.kind === 'activity' ? { type, threadId, item } : null;
+    return threadId && item?.kind === 'activity' ? { type, threadId, item: { ...item, ...(turnId ? { turnId } : {}) } } : null;
   }
   if (type === 'turn-completed') {
     const threadId = stringValue(record.threadId);

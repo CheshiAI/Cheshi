@@ -1,3 +1,4 @@
+import { listGitHubIssues, readGitHubIssue, readGitHubIssueComments, gitHubIssueUrl } from './github-issue-service.mts';
 import type { IpcMain, IpcMainInvokeEvent, Shell } from 'electron';
 import type { GitService } from './git-service.mts';
 
@@ -14,6 +15,22 @@ export function registerGitIpcHandlers({
   assertCheshiSender,
   shell,
 }: GitIpcContext) {
+  ipcMain.handle('cheshi:list-github-issues', (event, query) => {
+    assertCheshiSender(event);
+    return listGitHubIssues(gitService, query);
+  });
+  ipcMain.handle('cheshi:read-github-issue', (event, number) => {
+    assertCheshiSender(event);
+    return readGitHubIssue(gitService, number);
+  });
+  ipcMain.handle('cheshi:read-github-issue-comments', (event, number, page) => {
+    assertCheshiSender(event);
+    return readGitHubIssueComments(gitService, number, page);
+  });
+  ipcMain.handle('cheshi:open-github-issue', async (event, number) => {
+    assertCheshiSender(event);
+    await shell.openExternal(await gitHubIssueUrl(gitService, number));
+  });
   ipcMain.handle('cheshi:get-git-snapshot', (event) => {
     assertCheshiSender(event);
     return gitService.getSnapshot();

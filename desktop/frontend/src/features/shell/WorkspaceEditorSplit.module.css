@@ -1,0 +1,11 @@
+.root,
+.mount,
+.host {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 0;
+}
+
+.root { overflow: hidden; --split-pane-accent: var(--editor-accent); }
+.host { flex-direction: column; overflow: hidden; }

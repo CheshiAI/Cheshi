@@ -12,7 +12,7 @@ interface ChatSubmitButtonProps {
 export function ChatSubmitButton({ streaming, sendDisabled, goalEditorOpen, onStop }: ChatSubmitButtonProps) {
   const stopping = streaming && sendDisabled;
   const label = stopping ? 'Stop response' : goalEditorOpen ? 'Set persistent goal'
-    : streaming ? 'Send additional instruction' : 'Send message';
+    : streaming ? 'Queue message' : 'Send message';
   return (
     <NeumorphicButton raised
       className={`sidebar-heading-action ${stopping ? styles.stopButton : styles.sendButton}`}

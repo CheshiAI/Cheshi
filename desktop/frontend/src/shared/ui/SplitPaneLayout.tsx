@@ -25,6 +25,7 @@ export interface SplitPaneLayoutProps {
   renderPane: (paneId: string) => ReactNode;
   onResizeSplit: (splitId: string, ratio: number) => void;
   resizeLabel?: string;
+  collapsedPane?: 'first' | 'second' | null;
 }
 
 interface SplitProps extends Omit<SplitPaneLayoutProps, 'layout'> {
@@ -51,6 +52,7 @@ function Split({
   renderPane,
   onResizeSplit,
   resizeLabel = 'Resize panes',
+  collapsedPane,
 }: SplitProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pointerIdRef = useRef<number | null>(null);
@@ -166,9 +168,14 @@ function Split({
       className={styles.split}
       data-axis={layout.axis}
       data-dragging={dragging ? 'true' : undefined}
-      style={splitGridStyle(layout.axis, ratio)}
+      data-collapsible={collapsedPane !== undefined ? 'true' : undefined}
+      style={collapsedPane ? {
+        [layout.axis === 'columns' ? 'gridTemplateColumns' : 'gridTemplateRows']:
+          collapsedPane === 'first' ? 'minmax(0, 0fr) 0px minmax(0, 1fr)' : 'minmax(0, 1fr) 0px minmax(0, 0fr)',
+      } : splitGridStyle(layout.axis, ratio)}
     >
-      <div className={styles.region}>
+      <div className={styles.region} data-collapsed={collapsedPane === 'first' ? 'true' : undefined}
+        aria-hidden={collapsedPane === 'first' || undefined} inert={collapsedPane === 'first'}>
         <SplitPaneLayout
           layout={layout.first}
           renderPane={renderPane}
@@ -179,6 +186,7 @@ function Split({
       <div
         className={styles.separator}
         role="separator"
+        hidden={!!collapsedPane}
         tabIndex={0}
         aria-label={resizeLabel}
         aria-orientation={layout.axis === 'columns' ? 'vertical' : 'horizontal'}
@@ -195,7 +203,8 @@ function Split({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       />
-      <div className={styles.region}>
+      <div className={styles.region} data-collapsed={collapsedPane === 'second' ? 'true' : undefined}
+        aria-hidden={collapsedPane === 'second' || undefined} inert={collapsedPane === 'second'}>
         <SplitPaneLayout
           layout={layout.second}
           renderPane={renderPane}

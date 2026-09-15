@@ -233,6 +233,19 @@ export const workspaceEditorTheme = EditorView.theme({
     background: 'var(--divider)',
     color: 'var(--editor-text)',
   },
+  '.cm-tooltip.cm-tooltip-lint': {
+    border: '1px solid var(--divider)',
+    background: 'var(--divider)',
+    color: 'var(--editor-text)',
+  },
+  '.cm-tooltip-lint .cm-diagnostic': {
+    paddingLeft: '12px',
+    paddingRight: '12px',
+    marginLeft: '0',
+  },
+  '.cm-tooltip-lint .cm-diagnostic-error': {
+    borderLeft: '0',
+  },
   '.cm-tooltip-hover .cm-tooltip-section': {
     border: '0',
   },

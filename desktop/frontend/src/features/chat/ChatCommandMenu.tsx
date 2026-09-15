@@ -85,6 +85,7 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
       </header>
       <div
         className={styles.commandOptions}
+        data-agent-picker={agentPickerOpen ? 'true' : undefined}
         ref={commandOptionsRef}
         role={commandMenuMode === 'status' || mcpStatusOpen || goalEditorOpen ? 'region' : 'listbox'}
       >

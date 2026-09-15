@@ -328,7 +328,9 @@ export function timelineFromThread(value: unknown): JsonObject[] {
   for (const [turnIndex, turnValue] of turns.entries()) {
     const turn = recordValue(turnValue);
     if (!turn) continue;
-    const turnId = stringValue(turn.id) ?? `turn-${turnIndex}`;
+    const sourceTurnId = stringValue(turn.id);
+    const turnId = sourceTurnId ?? `turn-${turnIndex}`;
+    const firstItem = timeline.length;
     const startedAt = finiteNumber(turn.startedAt) ?? 0;
     const completedAt = finiteNumber(turn.completedAt) ?? startedAt;
     const items = Array.isArray(turn.items) ? turn.items : [];
@@ -385,6 +387,9 @@ export function timelineFromThread(value: unknown): JsonObject[] {
         detail: message,
         status: "failed",
       });
+    }
+    if (sourceTurnId) {
+      for (let index = firstItem; index < timeline.length; index++) timeline[index]!.turnId = sourceTurnId;
     }
   }
   return timeline;

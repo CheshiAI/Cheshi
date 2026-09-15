@@ -7,6 +7,7 @@ import { nmTimedT } from './name-match-profile';
 import { inferLocalReceiverType } from './name-match-receivers';
 import { inferWebReceiverType } from './name-match-web-receivers';
 import { hasWebReceiverBinding } from './web-receiver-shadowing';
+import { resolveWebPropertyCall } from './web-property-receivers';
 import { ResolutionContext, ResolvedRef, UnresolvedRef } from './types';
 
 /**
@@ -82,6 +83,9 @@ export function matchMethodCall(
 
   const [, objectOrClass, methodName] = match;
   const webCall = isJavaScriptCall(ref);
+  if (webCall && objectOrClass!.startsWith('this.')) {
+    return resolveWebPropertyCall(objectOrClass!, methodName!, ref, context);
+  }
   // A simple `receiver.method` / `receiver:method` / `receiver$method` shape whose
   // receiver type we can try to infer from its local declaration.
   const inferableReceiver = dotMatch || luaColonMatch || rDollarMatch;

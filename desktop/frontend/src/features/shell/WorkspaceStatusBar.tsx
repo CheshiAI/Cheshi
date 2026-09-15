@@ -9,6 +9,7 @@ import { CodeGraphIndexPanel, type CodeGraphIndexIndicator } from '../graph/Code
 import { AppUpdateIndicator } from '../updates/AppUpdateIndicator';
 import { accountStatusSummary, accountUsageTotals } from './statusBarModel';
 import { WorkspaceStorageUsage } from './WorkspaceStorageUsage';
+import { WorkspaceGitBranch } from './WorkspaceGitBranch';
 import styles from './WorkspaceStatusBar.module.css';
 
 interface WorkspaceStatusBarProps extends Pick<NonNullable<ComponentProps<typeof AccountUsagePanel>>,
@@ -53,6 +54,7 @@ export function WorkspaceStatusBar({ onAccountInitialLoad, onIndexInitialLoad, .
   return (
     <footer className={styles.bar} aria-label="Workspace status">
       <WorkspaceStorageUsage />
+      <WorkspaceGitBranch />
       <AppUpdateIndicator />
       <button type="button" className={`${styles.item} ${styles.index}`} popoverTarget={indexId}
         aria-haspopup="dialog" aria-expanded={indexOpen} aria-controls={indexId}

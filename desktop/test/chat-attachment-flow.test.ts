@@ -117,12 +117,14 @@ describe('persistent chat attachment flow', () => {
       expect(restored.items).toEqual([
         {
           id: 'user-attachment',
+          turnId: 'attachment-turn',
           kind: 'user',
           text: `Review these attachments\n\nAttached files:\n- ${JSON.stringify(file.path)}\n\n[Image: ${image.path}]`,
           createdAt: 130,
         },
         {
           id: 'assistant-attachment',
+          turnId: 'attachment-turn',
           kind: 'assistant',
           text: 'Attachments reviewed.',
           createdAt: 140,

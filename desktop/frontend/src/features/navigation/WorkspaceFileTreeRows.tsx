@@ -48,14 +48,14 @@ interface WorkspaceFileTreeRowsProps {
   selectedPath: string | null;
 }
 
-function WorkspaceFileTreeName({ name }: { name: string }) {
+function WorkspaceFileTreeName({ name, changed }: { name: string; changed: boolean }) {
   const { overflow, ref } = useHorizontalOverflow<HTMLSpanElement>(name);
   const style: WorkspaceFileTreeNameStyle = {
     '--workspace-file-tree-name-shift': `${overflow + workspaceFileTreeNameEndGap}px`,
   };
 
   return (
-    <span className={`workspace-file-tree-name${overflow > 0 ? ' overflowing' : ''}`}>
+    <span className={`workspace-file-tree-name${overflow > 0 ? ' overflowing' : ''}`} data-git-changed={changed ? 'true' : undefined}>
       <span ref={ref} className="workspace-file-tree-name-track" style={style}>{name}</span>
     </span>
   );
@@ -128,6 +128,7 @@ export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFil
     entryEditValue,
     error,
     expandedDirectories,
+    gitChangedPaths,
     loadingDirectory,
     mutatingPath,
     openContextMenu,
@@ -256,7 +257,7 @@ export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFil
                     }}
                   >
                     {entryLeading}
-                    <WorkspaceFileTreeName name={entry.name} />
+                    <WorkspaceFileTreeName name={entry.name} changed={!isDirectory && gitChangedPaths.has(entry.path)} />
                     {mutatingPath === entry.path && (
                       <RotateCw className="workspace-file-tree-entry-spinner" aria-label="Updating" />
                     )}

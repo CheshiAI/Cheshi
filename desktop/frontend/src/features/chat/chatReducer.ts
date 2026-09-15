@@ -7,12 +7,14 @@ function upsertTextItem(
   delta: string,
   createdAt: number,
   replace = false,
+  turnId?: string,
 ): ChatTimelineItem[] {
+  const turn = turnId ? { turnId } : {};
   const index = items.findIndex((item) => item.id === id && item.kind === kind);
-  if (index < 0) return [...items, { id, kind, text: delta, createdAt }];
+  if (index < 0) return [...items, { id, ...turn, kind, text: delta, createdAt }];
   return items.map((item, itemIndex) => (
     itemIndex === index && item.kind !== 'activity'
-      ? { ...item, text: replace ? delta : `${item.text}${delta}` }
+      ? { ...item, ...turn, text: replace ? delta : `${item.text}${delta}` }
       : item
   ));
 }
@@ -253,6 +255,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         event.text,
         event.createdAt,
         event.type === 'plan-completed',
+        event.turnId,
       ),
     };
   }

@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { GitIssuesWorkspace } from './GitIssuesWorkspace';
 import { AlertTriangle } from 'lucide-react';
 
 import { LoadingState } from '../../shared/ui';
@@ -15,6 +17,7 @@ interface GitWorkspaceProps {
 }
 
 export function GitWorkspace({ rightSidebarOpen, onToggleRightSidebar, onOpenWorkspaceFile }: GitWorkspaceProps) {
+  const [issueRevision, setIssueRevision] = useState(0);
   const controller = useGitWorkspaceController();
   const { loading, snapshot, tab } = controller;
 
@@ -22,6 +25,7 @@ export function GitWorkspace({ rightSidebarOpen, onToggleRightSidebar, onOpenWor
     <main className={styles.workspace} aria-label="Git workspace">
       <GitWorkspaceHeader
         controller={controller}
+        onRefreshIssues={tab === 'issues' ? () => setIssueRevision(value => value + 1) : undefined}
         rightSidebarOpen={rightSidebarOpen}
         onToggleRightSidebar={onToggleRightSidebar}
       />
@@ -38,6 +42,8 @@ export function GitWorkspace({ rightSidebarOpen, onToggleRightSidebar, onOpenWor
         )
       ) : tab === 'changes' ? (
         <GitChangesWorkspace controller={controller} onOpenWorkspaceFile={onOpenWorkspaceFile} />
+      ) : tab === 'issues' ? (
+        <GitIssuesWorkspace revision={issueRevision} />
       ) : tab === 'log' ? (
         <GitHistoryWorkspace controller={controller} onOpenWorkspaceFile={onOpenWorkspaceFile} />
       ) : (

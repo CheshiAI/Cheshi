@@ -14,7 +14,7 @@ export function registerCommandOutputTests() {
       expect(timelineFromThread({ thread: codexThread('thread-1', {
         turns: [{ id: 'turn-1', items: [command] }],
       }) })).toEqual([{
-        id: 'command-1', kind: 'activity', activity: 'command', label: 'Command',
+        id: 'command-1', turnId: 'turn-1', kind: 'activity', activity: 'command', label: 'Command',
         detail: command.command, status: 'completed', cwd: command.cwd,
         output: 'hello\nworld\n', exitCode: 0, durationMs: 12.5,
       }]);

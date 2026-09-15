@@ -32,3 +32,25 @@ export async function performChatSend(attempt: ChatSendAttempt, send: () => Prom
     };
   }
 }
+
+/** Retry interruption after an already-starting send obtains its server thread. */
+export async function cancelChatSend(
+  threadId: string | null,
+  stop: (threadId: string | null) => Promise<unknown>,
+  pending?: { attempt: ChatSendAttempt; settled: Promise<void> },
+): Promise<void> {
+  let firstFailure: unknown;
+  let failed = false;
+  try { await stop(threadId); }
+  catch (error) { failed = true; firstFailure = error; }
+  if (pending) {
+    await pending.settled;
+    await stop(pending.attempt.threadId ?? threadId);
+  } else if (failed) throw firstFailure;
+}
+
+export function createChatSendCompletion() {
+  let finish!: () => void;
+  const settled = new Promise<void>((resolve) => { finish = resolve; });
+  return { settled, finish };
+}

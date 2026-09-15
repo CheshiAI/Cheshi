@@ -21,6 +21,7 @@ import {
   type WorkspaceEntryMutation,
 } from '../../cheshiDesktop';
 import type { WorkspaceFileContextMenuTarget } from './WorkspaceFileContextMenu';
+import { useWorkspaceGitChangedPaths } from './useWorkspaceGitChangedPaths';
 
 const workspaceFileTreeManualRefreshIndicatorMs = 600;
 
@@ -64,6 +65,7 @@ export function useWorkspaceFileTreeController({
   onOpenFile,
 }: WorkspaceFileTreeControllerOptions) {
   const listWorkspaceDirectory = workspace?.listWorkspaceDirectory;
+  const gitChangedPaths = useWorkspaceGitChangedPaths();
   const [entriesByDirectory, setEntriesByDirectory] = useState<Record<string, CheshiWorkspaceEntry[]>>({});
   const [expandedDirectories, setExpandedDirectories] = useState<Set<string>>(() => new Set(['.']));
   const [showHiddenFiles, setShowHiddenFiles] = useState(false);
@@ -529,6 +531,7 @@ export function useWorkspaceFileTreeController({
     entryEditValue,
     error,
     expandedDirectories,
+    gitChangedPaths,
     loadingDirectory,
     mutatingPath,
     openContextMenu,

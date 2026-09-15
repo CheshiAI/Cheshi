@@ -120,7 +120,7 @@ export function userInputResult(request: ChatUserInputRequest, response: ChatUse
     for (const question of request.questions) {
       const values = answers[question.id];
       if (!values?.length || values.some(value => !value.trim())) throw new TypeError(`Answer ${question.header || question.id}.`);
-      if (question.options?.length && !question.isOther && values.some(value => !question.options?.some(option => option.label === value))) throw new TypeError('Choose an available answer.');
+      // Choice labels are suggestions; the question card also accepts custom answers and additional details.
     }
     return { answers: Object.fromEntries(Object.entries(answers).map(([id, answers]) => [id, { answers }])) };
   }

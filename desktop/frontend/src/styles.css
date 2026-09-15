@@ -530,6 +530,10 @@ h1, h2, h3, h4, h5, h6, p {
     white-space: nowrap;
 }
 
+.workspace-file-tree-name[data-git-changed="true"] {
+    color: var(--codegraph-disabled);
+}
+
 .workspace-file-tree-name-track {
     --workspace-file-tree-name-shift: 0px;
     display: block;

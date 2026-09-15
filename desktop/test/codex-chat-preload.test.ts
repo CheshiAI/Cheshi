@@ -41,6 +41,33 @@ function createHarness(userName: unknown = 'Alex', invokeResult: unknown = undef
   };
 }
 
+test('question dismissal bridge validates requests, records, and save acknowledgements', async () => {
+  const record = { questionId: 'q', action: 'skip' };
+  const list = createHarness('Alex', [record]);
+  const listApi = list.read('chatQuestionDismissals') as CheshiDesktopApi['chatQuestionDismissals'];
+  assert.deepEqual(structuredClone(await listApi.list('thread')), [record]);
+  assert.deepEqual(list.calls, [['cheshi:list-chat-question-dismissals', 'thread']]);
+  const save = createHarness('Alex', record);
+  const saveApi = save.read('chatQuestionDismissals') as CheshiDesktopApi['chatQuestionDismissals'];
+  await saveApi.save('thread', { questionId: 'q', action: 'skip' });
+  assert.deepEqual(save.calls, [['cheshi:save-chat-question-dismissal', 'thread', record]]);
+  await assert.rejects(() => listApi.list(''), /Invalid question thread/);
+  const invalid = createHarness('Alex', {}).read('chatQuestionDismissals') as CheshiDesktopApi['chatQuestionDismissals'];
+  await assert.rejects(() => invalid.list('thread'), /Invalid question dismissals/);
+  const mismatch = createHarness('Alex', { ...record, questionId: 'other' }).read('chatQuestionDismissals') as CheshiDesktopApi['chatQuestionDismissals'];
+  await assert.rejects(() => mismatch.save('thread', { questionId: 'q', action: 'skip' }), /acknowledgement/);
+});
+
+test('question dismissal bridge preserves turn and message identity and rejects a different acknowledged turn', async () => {
+  const record = { questionId: 'q', action: 'skip' as const, turnId: 'turn', itemId: 'item' };
+  const api = createHarness('Alex', record).read('chatQuestionDismissals') as CheshiDesktopApi['chatQuestionDismissals'];
+  assert.deepEqual(structuredClone(await api.save('thread', record)), record);
+  const list = createHarness('Alex', [record]).read('chatQuestionDismissals') as CheshiDesktopApi['chatQuestionDismissals'];
+  assert.deepEqual(structuredClone(await list.list('thread')), [record]);
+  const mismatch = createHarness('Alex', { ...record, turnId: 'other' }).read('chatQuestionDismissals') as CheshiDesktopApi['chatQuestionDismissals'];
+  await assert.rejects(() => mismatch.save('thread', record), /acknowledgement/);
+});
+
 test('internal workspace file paths use the existing attachment import IPC', async () => {
   const attachments = [{ kind: 'image', name: '샘플 image.png', path: '/stored/image.png' }];
   const harness = createHarness('Alex', attachments);

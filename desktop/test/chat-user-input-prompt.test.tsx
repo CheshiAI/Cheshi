@@ -46,7 +46,10 @@ describe('chat input requests', () => {
     expect(html).toContain('Only this project.');
     expect(html).toContain('Your own answer');
     expect(html).toContain('type="password"');
-    expect(html).toContain('Submit answers');
+    expect(html).toContain('Send');
+    expect(html).toContain('Close question');
+    expect(html).toContain('<textarea');
+    expect(html).toContain('aria-pressed="false"');
     expect(html).toContain('Skip');
     expect(render(question, true)).toMatch(/<fieldset[^>]*disabled=""/);
   });
@@ -55,6 +58,23 @@ describe('chat input requests', () => {
     expect(inputResponse(question, { choice: 'Custom scope', text: 'Some details' })).toEqual({
       action: 'accept', answers: { choice: ['Custom scope'], text: ['Some details'] },
     });
+  });
+  test('combines selected choices and additional details, or sends a custom answer alone', () => {
+    expect(inputResponse(question, { choice: 'Local' }, { choice: '추가 설명', text: 'Other details' })).toEqual({
+      action: 'accept', answers: { choice: ['Local', '추가 설명'], text: ['Other details'] },
+    });
+    expect(inputResponse(question, {}, { choice: '다른 선택', text: 'Other details' }).answers?.choice).toEqual(['다른 선택']);
+    expect(inputResponse(question, { choice: 'Local' }, { choice: 'Local', text: 'Other details' }).answers?.choice).toEqual(['Local']);
+  });
+  test('always offers direct input and preserves additional details beside a selected numbered choice', () => {
+    if (question.kind !== 'questions') throw new Error('Expected question fixture.');
+    const html = renderToStaticMarkup(<ChatQuestionFields questions={[{ ...question.questions[0]!, isOther: false }]}
+      draft={{ choice: 'Local' }} notes={{ choice: '추가 설명' }} onChange={() => {}} onNotesChange={() => {}} />);
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('>1</span>');
+    expect(html).toContain('Your own answer');
+    expect(html).toContain('추가 설명</textarea>');
+    expect(html).not.toContain('required=""');
   });
   test('preserves zero, false and multiple choices as typed values, omitting empty optional inputs', () => {
     const draft = initialInputDraft(form);
