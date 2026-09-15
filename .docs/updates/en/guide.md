@@ -108,10 +108,10 @@ version and build number. Create a draft GitHub release, upload the verified
 `Cheshi-darwin-arm64-<version>.zip`, then publish the release. Uploading the ZIP
 before publication ensures the Homebrew workflow can find it immediately.
 
-[Update Homebrew tap](../.github/workflows/update-homebrew.yml) runs on
+[Update Homebrew tap](../../../.github/workflows/update-homebrew.yml) runs on
 `release: published` for both stable and preview releases. Alpha releases are
 skipped. It reads the automation from `main` and runs
-[`scripts/update-homebrew-tap.mts`](../scripts/update-homebrew-tap.mts).
+[`scripts/update-homebrew-tap.mts`](../../../scripts/update-homebrew-tap.mts).
 The script downloads the exact release ZIP, checks its size and SHA256 against
 GitHub's asset metadata, then updates `CheshiAI/homebrew-tap` on `main`:
 
