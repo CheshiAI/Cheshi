@@ -1,8 +1,9 @@
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, session, shell, Tray, WebContentsView } from 'electron';
+import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, session, shell, Tray, WebContentsView } from 'electron';
 import { product } from '../config/product.mts';
 import { aboutBackgroundColor, aboutPage } from './lib/about-page.mts';
+import { registerSelectionCopy } from './lib/selection-copy.mts';
 import { createAboutWindow } from './lib/about-window.mts';
 import { aboutMenuTemplate } from './lib/about-menu.mts';
 import { startupScreen } from './lib/startup-screen.mts';
@@ -30,10 +31,15 @@ import { KeepAwakeService } from './lib/keep-awake-service.mts';
 import type { WorkspaceRuntimeOptions } from './lib/workspace-application.mts';
 
 process.env.PATH = desktopToolPath(process.env.PATH);
+const selectionCopyPreload = path.join(import.meta.dirname, 'runtime', 'selection-copy-preload.cjs');
 const aboutWindow = createAboutWindow({
   title: `About ${product.displayName}`,
   backgroundColor: aboutBackgroundColor,
-  createWindow: options => new BrowserWindow(options),
+  createWindow: options => {
+    const window = new BrowserWindow({ ...options, webPreferences: { ...options.webPreferences, preload: selectionCopyPreload } });
+    registerSelectionCopy(window.webContents, clipboard);
+    return window;
+  },
   page: () => aboutPage({ name: product.displayName, version: product.version, buildNumber: product.buildNumber, publisher: product.publisher }),
   onError: error => process.stderr.write(`[cheshi] About window failed: ${String(error)}\n`),
 });
@@ -148,7 +154,12 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
         source?.attach(window);
         showcase ??= createShowcaseBrowser({
           window, ipc: options.scope.ipc,
-          createView: configuration => new WebContentsView(configuration),
+          createView: configuration => {
+            const view = new WebContentsView({ ...configuration,
+              webPreferences: { ...configuration.webPreferences, preload: selectionCopyPreload } });
+            registerSelectionCopy(view.webContents, clipboard);
+            return view;
+          },
           session: session.fromPartition(`cheshi-showcase-${window.webContents.id}`),
           openExternal: url => shell.openExternal(url),
         });

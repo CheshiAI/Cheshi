@@ -41,6 +41,7 @@ function shouldIgnore(packagePath: string): boolean {
   if (segments.length === 2) return false;
   if (grandchildEntry === 'electron-libghostty') return false;
   const packagedLibraryFiles = new Set([
+    'selection-copy.mts',
     'about-page.mts',
     'about-window.mts',
     'about-menu.mts',
