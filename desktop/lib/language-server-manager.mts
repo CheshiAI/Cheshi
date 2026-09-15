@@ -4,6 +4,7 @@ import {
   findExecutable,
   isExecutable,
   normalizeBundledCommand,
+  withBundledNodeRuntime,
 } from "./language-server-command.mts";
 import {
   isInsideWorkspace,
@@ -526,15 +527,16 @@ export class LanguageServerManager {
       this.homeDirectory,
       this.environment,
     );
+    const bundled = normalizeBundledCommand(this.bundledCommands[language]);
     if (executable) {
-      return {
+      return withBundledNodeRuntime({
         executable,
         args: [...definition.args],
         environment: {},
         displayPath: executable,
-      };
+      }, bundled);
     }
-    return normalizeBundledCommand(this.bundledCommands[language]);
+    return bundled;
   }
 
   statusFor(

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync as createSymbolicLink, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -179,6 +179,45 @@ test('uses a bundled command when an external Workspace has no server executable
       position: { line: 0, character: 2 },
     });
     assert.equal(result.items[0]?.label, 'fakeCompletion');
+  } finally {
+    await manager.stop();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('runs the detected workspace Node server with the bundled runtime and no Node on PATH', async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'cheshi-lsp-local-node-'));
+  const server = path.join(root, 'project-server.mjs');
+  const executable = path.join(root, 'node_modules', '.bin', 'project-language-server');
+  mkdirSync(path.dirname(executable), { recursive: true });
+  writeFileSync(server, '#!/usr/bin/env node\n' + readFileSync(fixturePath, 'utf8')
+    .replace('fakeCompletion', 'projectCompletion'), { mode: 0o755 });
+  createSymbolicLink(server, executable);
+  const manager = createManager(root, path.join(root, 'language-servers.json'), {
+    definitions: { typescript: {
+      ...definitions().typescript!, command: 'project-language-server', args: [],
+    } },
+    bundledCommands: { typescript: {
+      executable: process.execPath, args: [fixturePath], availabilityPath: fixturePath,
+      environment: { PATH: '', ELECTRON_RUN_AS_NODE: '1' },
+    } },
+  });
+  try {
+    const command = manager.resolveCommand('typescript', root);
+    assert.equal(command?.executable, process.execPath);
+    assert.equal(command?.displayPath, executable);
+    assert.equal(command?.environment?.PATH, '');
+    const result = await manager.getCompletions({
+      language: 'typescript', path: 'app.ts', content: 'fa\n', version: 1,
+      position: { line: 0, character: 2 },
+    });
+    assert.equal(result.items[0]?.label, 'projectCompletion');
+    assert.equal(manager.getStatuses()[0]?.state, 'running');
+
+    // An explicit Custom choice retains its executable and launch semantics.
+    await manager.configure({ language: 'typescript', mode: 'custom', executable });
+    assert.equal(manager.resolveCommand('typescript', root)?.executable, executable);
+    assert.deepEqual(manager.resolveCommand('typescript', root)?.args, []);
   } finally {
     await manager.stop();
     rmSync(root, { recursive: true, force: true });
