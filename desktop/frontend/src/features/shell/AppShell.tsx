@@ -34,6 +34,7 @@ import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import { LocalHistoryPage } from '../editor/LocalHistoryPage';
 import styles from './AppShell.module.css';
 import { useAppUpdateResume } from './useAppUpdateResume';
+import { WorkspaceEditorSplit } from './WorkspaceEditorSplit';
 
 export function AppShell() {
   const [accountLoaded, setAccountLoaded] = useState(false);
@@ -59,6 +60,7 @@ export function AppShell() {
     setFileReview({ paneId, itemId, path: path ?? null });
   }, []);
   const [editorTarget, setEditorTarget] = useState<WorkspaceEditorTarget | null>(null);
+  const [editorSplitOpen, setEditorSplitOpen] = useState(false);
   const [editorMutation, setEditorMutation] = useState<WorkspaceEditorMutation | null>(null);
   const [editorSelectedPath, setEditorSelectedPath] = useState<string | null>(null);
   const [localHistoryPath, setLocalHistoryPath] = useState<string | null>(null);
@@ -164,8 +166,14 @@ export function AppShell() {
     editorRequestId.current += 1;
     setFileReview(null);
     setEditorTarget({ path, line, requestId: editorRequestId.current });
-    setRightSidebarOpen(true);
-    setActiveView('editor');
+    setEditorSplitOpen(true);
+    if (activeView === 'editor') setActiveView('chat');
+  };
+
+  const closeEditorSplit = (): void => {
+    setEditorSplitOpen(false);
+    setEditorTarget(null);
+    if (activeView === 'editor') navigate('chat');
   };
 
   const handleWorkspaceEntryMutation = (mutation: WorkspaceEntryMutation): void => {
@@ -198,6 +206,17 @@ export function AppShell() {
           />
         </LiquidGlassPanel>
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
+          <WorkspaceEditorSplit mode={editorSplitOpen ? 'split' : activeView === 'editor' ? 'editor' : 'primary'} editor={
+            <WorkspaceEditor
+              active={editorSplitOpen || activeView === 'editor'}
+              mutation={editorMutation}
+              target={editorTarget}
+              onAllTabsClosed={closeEditorSplit}
+              onSelectedPathChange={setEditorSelectedPath}
+              onDirtyPathsChange={setEditorDirtyPaths}
+              onOpenLocalHistory={openLocalHistory}
+            />
+          }>
           {activeView === 'search' && <ChatHistorySearchPage query={submittedSearchQuery}
             result={historySearch.result} loading={historySearch.loading} error={historySearch.error}
             selectionDisabled={chatSessionSelectionDisabled} onOpen={openHistorySearchHit}
@@ -244,17 +263,6 @@ export function AppShell() {
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
               onClose={() => navigate(localHistoryReturnView.current)} />
           )}
-          <WorkspaceEditor
-            active={activeView === 'editor'}
-            mutation={editorMutation}
-            target={editorTarget}
-            rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
-            onAllTabsClosed={() => navigate('chat')}
-            onSelectedPathChange={setEditorSelectedPath}
-            onDirtyPathsChange={setEditorDirtyPaths}
-            onOpenLocalHistory={openLocalHistory}
-          />
           <ShowcaseView active={activeView === 'showcase'}
             blocked={temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
             rightSidebarOpen={rightSidebarOpen}
@@ -265,6 +273,7 @@ export function AppShell() {
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
           />
           {activeView === 'blank' && <BlankView />}
+          </WorkspaceEditorSplit>
         </div>
         <ReviewSidebar
           open={rightSidebarOpen}

@@ -8,7 +8,6 @@ import {
   History,
   Lightbulb,
   PanelBottom,
-  PanelRight,
   PencilLine,
   RotateCw,
   Save,
@@ -53,8 +52,6 @@ interface WorkspaceEditorProps {
   active: boolean;
   mutation: WorkspaceEditorMutation | null;
   target: WorkspaceEditorTarget | null;
-  rightSidebarOpen: boolean;
-  onToggleRightSidebar: () => void;
   onAllTabsClosed: () => void;
   onSelectedPathChange: (path: string | null) => void;
   onDirtyPathsChange?: (paths: string[]) => void;
@@ -65,8 +62,6 @@ export function WorkspaceEditor({
   active,
   mutation,
   target,
-  rightSidebarOpen,
-  onToggleRightSidebar,
   onAllTabsClosed,
   onSelectedPathChange,
   onDirtyPathsChange,
@@ -218,17 +213,6 @@ export function WorkspaceEditor({
                 onClick={() => setProblemsOpen((open) => !open)}
               >
                 <PanelBottom aria-hidden="true" />
-              </NeumorphicButton>
-              <NeumorphicButton
-                raised
-                type="button"
-                aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-                aria-pressed={rightSidebarOpen}
-                className="neumorphic-surface codegraph-inspector-toggle"
-                style={nonDraggableWindowRegionStyle}
-                onClick={onToggleRightSidebar}
-              >
-                <PanelRight aria-hidden="true" />
               </NeumorphicButton>
             </div>
           </>
