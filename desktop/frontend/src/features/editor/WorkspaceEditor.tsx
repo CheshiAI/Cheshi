@@ -109,7 +109,6 @@ export function WorkspaceEditor({
     isDirty,
     languageServerConfiguring,
     languageServers,
-    loading,
     navigateHistory,
     navigationAvailability,
     openReference,
@@ -185,7 +184,6 @@ export function WorkspaceEditor({
               className="workspace-editor-header-actions"
               style={nonDraggableWindowRegionStyle}
             >
-              {loading && <RotateCw className="workspace-editor-spinner" aria-label="Loading file" />}
               <NeumorphicButton
                 raised
                 aria-label="Navigate back"
