@@ -201,9 +201,6 @@ export function AppShell() {
         <LiquidGlassPanel className="sidebar-column" inert={workspace.accountSwitchPending}>
           <WindowChrome />
           <Sidebar
-            search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
-              onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
-              onFocus={() => { if (activeView !== 'search') navigate('search'); }} />}
             activeView={activeView}
             selectedFilePath={activeView === 'local-history' ? localHistoryPath : editorSelectedPath}
             onNavigate={navigate}
@@ -292,6 +289,9 @@ export function AppShell() {
           onCloseReview={() => setFileReview(null)}
         >
           <ChatSessionList
+            search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
+              onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
+              onFocus={() => { if (activeView !== 'search') navigate('search'); }} />}
             activeSessionId={chat?.state.activeSessionId ?? null}
             loading={workspace.sessionHistory.loading}
             newChatDisabled={chatSessionSelectionDisabled}

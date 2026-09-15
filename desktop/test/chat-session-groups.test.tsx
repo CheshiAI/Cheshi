@@ -3,11 +3,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ChatSessionList } from '../frontend/src/features/chat/ChatSessionList';
 import type { ChatSession } from '../frontend/src/features/chat/model';
 
-function renderSessions(timestamps: number[]) {
+function renderSessions(timestamps: number[], loading = false) {
   const sessions: ChatSession[] = timestamps.map((updatedAt, index) => ({
     id: `session-${index}`, title: `Chat ${index}`, preview: '', createdAt: updatedAt, updatedAt, status: 'idle',
   }));
-  return renderToStaticMarkup(<ChatSessionList sessions={sessions} loading={false}
+  return renderToStaticMarkup(<ChatSessionList sessions={sessions} loading={loading}
+    search={<input aria-label="Conversation search" />}
     activeSessionId={null} responseThreadIds={[]} newChatDisabled={false} selectionDisabled={false}
     onOpen={() => {}} onNew={() => {}} onDelete={() => {}} deleteReason={() => null} />);
 }
@@ -32,4 +33,21 @@ test('omits empty groups', () => {
   const html = renderSessions([0]);
   expect(html).toContain('<h2>Previous</h2>');
   expect(html).not.toContain('<h2>Today</h2>');
+});
+
+test('places conversation search below the header and above session groups', () => {
+  const html = renderSessions([Date.now() / 1_000]);
+  const search = html.indexOf('aria-label="Conversation search"');
+  expect(search).toBeGreaterThan(html.indexOf('</header>'));
+  expect(search).toBeLessThan(html.indexOf('<h2>Today</h2>'));
+});
+
+test('hides only the search when there are no sessions, including while loading', () => {
+  for (const loading of [false, true]) {
+    const html = renderSessions([], loading);
+    expect(html).not.toContain('aria-label="Conversation search"');
+    expect(html).toContain('CHATS');
+    expect(html).toContain('aria-label="New chat"');
+  }
+  expect(renderSessions([0], true)).toContain('aria-label="Conversation search"');
 });
