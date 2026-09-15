@@ -4,7 +4,7 @@ import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { AutoUpdater } from 'electron';
-import type { AppRelease } from '../shared/app-update.ts';
+import type { AppRelease, AppUpdateProgress } from '../shared/app-update.ts';
 import { downloadAppUpdate, serveAppUpdate } from './app-update-download.mts';
 
 const runFile = promisify(execFile);
@@ -28,11 +28,16 @@ export async function appUpdateUnavailableReason(options: { packaged: boolean; p
 }
 
 export async function stageAppUpdate(updater: Pick<AutoUpdater, 'on' | 'removeListener' | 'setFeedURL' | 'checkForUpdates'>, release: AppRelease,
-  options: { download?: typeof downloadAppUpdate; serve?: typeof serveAppUpdate; timeoutMs?: number } = {}) {
+  options: { download?: typeof downloadAppUpdate; serve?: typeof serveAppUpdate; timeoutMs?: number;
+    onProgress?: (progress: AppUpdateProgress) => void } = {}) {
   if (!release.asset) throw new Error('No update asset is available for this device.');
-  const download = await (options.download ?? downloadAppUpdate)(release.asset);
+  const download = await (options.download ?? downloadAppUpdate)(release.asset, {
+    onProgress: (receivedBytes, totalBytes) => options.onProgress?.({ phase: 'downloading', receivedBytes, totalBytes }),
+    onVerifying: () => options.onProgress?.({ phase: 'verifying' }),
+  });
   let feed: Awaited<ReturnType<typeof serveAppUpdate>> | undefined;
   try {
+    options.onProgress?.({ phase: 'installing' });
     feed = await (options.serve ?? serveAppUpdate)(release, download.filename);
     const url = feed.url;
     await new Promise<void>((resolve, reject) => {

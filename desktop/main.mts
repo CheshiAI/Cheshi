@@ -53,16 +53,16 @@ const updates = createAppUpdateService({
   check: signal => findAppRelease({ currentVersion: product.version, platform: process.platform, arch: process.arch, signal }),
   openExternal: url => shell.openExternal(url),
   onCheckError: error => process.stderr.write(`[cheshi] Update check failed: ${String(error)}\n`),
-  async install(release, installing) {
+  async install(release, report) {
     const reason = await appUpdateUnavailableReason({ packaged: app.isPackaged, platform: process.platform, executable: process.execPath });
     if (reason) throw new Error(reason);
     if (quitting || workspaces.isTransitioning) throw new Error('Wait for the workspace operation to finish before updating.');
     try {
       await updateResume.prepare();
-      await stageAppUpdate(autoUpdater, release);
+      await stageAppUpdate(autoUpdater, release, { onProgress: report });
       await updateResume.prepare();
       await updateResume.activate();
-      installing();
+      report({ phase: 'restarting' });
       quitting = true;
       await workspaces.closeAll();
       await keepAwake.dispose();

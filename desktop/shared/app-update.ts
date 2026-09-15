@@ -13,11 +13,16 @@ export interface AppRelease {
   asset: AppReleaseAsset | null;
 }
 
+export type AppUpdateProgress =
+  | { phase: 'downloading'; receivedBytes: number; totalBytes: number }
+  | { phase: 'verifying' | 'installing' | 'restarting' };
+
 export interface AppUpdateState {
   preview?: boolean;
   currentVersion: string;
   release: AppRelease | null;
-  phase: 'idle' | 'downloading' | 'installing';
+  phase: 'idle' | 'preparing' | AppUpdateProgress['phase'];
+  downloadProgress?: { receivedBytes: number; totalBytes: number };
   error: string | null;
   installUnavailableReason: string | null;
 }

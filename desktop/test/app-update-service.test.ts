@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { APP_UPDATE_INTERVAL_MS, createAppUpdateService } from '../lib/app-update-service.mts';
-import type { AppRelease } from '../shared/app-update.ts';
+import type { AppRelease, AppUpdateProgress } from '../shared/app-update.ts';
 
 const release: AppRelease = {
   version: '0.0.2-alpha', tag: 'v0.0.2-alpha', url: 'https://github.com/CheshiAI/Cheshi/releases/tag/v0.0.2-alpha', notes: 'Fix startup.',
@@ -82,7 +82,7 @@ describe('app update scheduling and installation', () => {
   it('runs one install, exposes failure, and allows a later retry', async () => {
     const gate = createDeferred<void>();
     let installs = 0;
-    const value = fixture({ install: async (_release, installing) => { installs++; installing(); if (installs === 1) await gate.promise; } });
+    const value = fixture({ install: async (_release, report) => { installs++; report({ phase: 'installing' }); if (installs === 1) await gate.promise; } });
     try {
       await value.service.resume();
       const first = value.service.install();
@@ -103,6 +103,55 @@ describe('app update scheduling and installation', () => {
       expect(installs).toBe(2);
       expect(value.service.snapshot().error).toBeNull();
     } finally { value.service.dispose(); }
+  });
+
+  it('publishes real download progress and clears it for verification, installation and restart', async () => {
+    const gate = createDeferred<void>();
+    let report!: (progress: AppUpdateProgress) => void;
+    const value = fixture({ install: async (_release, listener) => { report = listener; await gate.promise; } });
+    try {
+      await value.service.resume();
+      const pending = value.service.install();
+      expect(value.service.snapshot().phase).toBe('preparing');
+      report({ phase: 'downloading', receivedBytes: 25, totalBytes: 100 });
+      expect(value.service.snapshot().downloadProgress).toEqual({ receivedBytes: 25, totalBytes: 100 });
+      for (const receivedBytes of [24, -1, 101, NaN, 25.5]) report({ phase: 'downloading', receivedBytes, totalBytes: 100 });
+      expect(value.service.snapshot().downloadProgress?.receivedBytes).toBe(25);
+      report({ phase: 'downloading', receivedBytes: 100, totalBytes: 100 });
+      for (const phase of ['verifying', 'installing', 'restarting'] as const) {
+        report({ phase });
+        expect(value.service.snapshot().phase).toBe(phase);
+        expect(value.service.snapshot().downloadProgress).toBeUndefined();
+      }
+      gate.resolve();
+      await pending;
+      report({ phase: 'downloading', receivedBytes: 0, totalBytes: 100 });
+      expect(value.service.snapshot().phase).toBe('restarting');
+    } finally { gate.resolve(); value.service.dispose(); }
+  });
+
+  it('resets progress on failure and retry and ignores callbacks from a failed attempt', async () => {
+    const gates = [createDeferred<void>(), createDeferred<void>()];
+    const reports: ((progress: AppUpdateProgress) => void)[] = [];
+    const value = fixture({ install: async (_release, report) => {
+      const index = reports.push(report) - 1;
+      await gates[index]!.promise;
+    } });
+    try {
+      await value.service.resume();
+      const first = expectFailure(value.service.install(), 'offline');
+      reports[0]!({ phase: 'downloading', receivedBytes: 50, totalBytes: 100 });
+      gates[0]!.reject(new Error('offline'));
+      await first;
+      expect(value.service.snapshot().downloadProgress).toBeUndefined();
+      const retry = value.service.install();
+      reports[0]!({ phase: 'restarting' });
+      expect(value.service.snapshot().phase).toBe('preparing');
+      reports[1]!({ phase: 'downloading', receivedBytes: 0, totalBytes: 100 });
+      expect(value.service.snapshot().downloadProgress?.receivedBytes).toBe(0);
+      gates[1]!.resolve();
+      await retry;
+    } finally { for (const gate of gates) gate.resolve(); value.service.dispose(); }
   });
 
   it('retains release notes but refuses installation without a matching asset or runtime support', async () => {

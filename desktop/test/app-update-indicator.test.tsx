@@ -156,6 +156,47 @@ test('a late initial snapshot cannot replace a newer release or download event',
   expect(find(app.render(), element => element.type === 'Modal').props.closeDisabled).toBe(true);
 });
 
+test('separates download percentages from indeterminate stages and restart readiness', async () => {
+  const app = harness();
+  app.render();
+  await settle();
+  open(app);
+  expect(elements(app.render()).some(element => element.props.role === 'progressbar')).toBe(false);
+  for (const receivedBytes of [0, 10, 99, 100]) {
+    app.publish({ ...available, phase: 'downloading', downloadProgress: { receivedBytes, totalBytes: 100 } });
+    const bar = find(app.render(), element => element.props.role === 'progressbar');
+    expect(bar.props['aria-valuenow']).toBe(receivedBytes);
+    expect(content(bar)).toBe(`${receivedBytes}%`);
+  }
+  for (const phase of ['preparing', 'verifying', 'installing'] as const) {
+    app.publish({ ...available, phase });
+    const bar = find(app.render(), element => element.props.role === 'progressbar');
+    expect(bar.props['aria-valuenow']).toBeUndefined();
+    expect(content(bar)).not.toContain('%');
+    expect(elements(bar).some(element => element.props['data-indeterminate'] === 'true')).toBe(true);
+  }
+  app.publish({ ...available, phase: 'restarting' });
+  const ready = find(app.render(), element => element.props.role === 'progressbar');
+  expect(ready.props['aria-valuenow']).toBe(100);
+  expect(ready.props['aria-label']).toBe('Restarting…');
+  app.publish({ ...available, error: 'Download failed' });
+  expect(elements(app.render()).some(element => element.props.role === 'progressbar')).toBe(false);
+  app.unmount();
+});
+
+test('missing or invalid byte counts never fabricate a download percentage', async () => {
+  const app = harness();
+  app.render();
+  await settle();
+  open(app);
+  for (const downloadProgress of [undefined, { receivedBytes: 1, totalBytes: 0 },
+    { receivedBytes: 101, totalBytes: 100 }, { receivedBytes: NaN, totalBytes: 100 }]) {
+    app.publish({ ...available, phase: 'downloading', downloadProgress });
+    expect(find(app.render(), element => element.props.role === 'progressbar').props['aria-valuenow']).toBeUndefined();
+  }
+  app.unmount();
+});
+
 test('no release and startup request failures remain unobtrusive', async () => {
   const app = harness({ getAppUpdate: async () => { throw new Error('Offline'); } });
   app.render();
