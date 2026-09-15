@@ -10,6 +10,7 @@ import type { SplitPaneLayout } from '../frontend/src/shared/ui/SplitPaneLayout'
 import type { Sidebar } from '../frontend/src/features/navigation/Sidebar';
 import type { WorkspaceEditor } from '../frontend/src/features/editor/WorkspaceEditor';
 import type { ChatWorkspace } from '../frontend/src/features/chat/ChatWorkspace';
+import type { WorkspaceFileSearch } from '../frontend/src/features/navigation/WorkspaceFileSearch';
 
 function hooks() {
   const slots: unknown[] = [];
@@ -73,12 +74,16 @@ function props<T>(tree: ReactNode, name: string): T {
 
 function shellHarness() {
   const app = hooks();
+  let openSearch = () => {};
   const modules: Record<string, unknown> = {
     react: app.react,
     '../chat/useChatWorkspace': { useChatWorkspace: () => ({ activePaneId: 'chat-a', controllers: {},
       sessionHistory: { loading: false, sessions: [] }, responseThreadIds: [], accountSwitchPending: false }) },
     '../chat/useChatHistorySearch': { useChatHistorySearch: () => ({ clear() {} }) },
     './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
+    '../navigation/fileSearchShortcut': { installFileSearchShortcut: (_document: unknown, open: () => void) => {
+      openSearch = open; return () => {};
+    } },
   };
   for (const [path, names] of Object.entries({
     '../../shared/ui': ['LiquidGlassPanel'], '../chat': ['ChatSessionList'], '../chat/ChatWorkspace': ['ChatWorkspace'],
@@ -90,10 +95,30 @@ function shellHarness() {
     '../terminal': ['TerminalWorkspace'], '../showcase/ShowcaseView': ['ShowcaseView'],
     './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],
     '../editor/LocalHistoryPage': ['LocalHistoryPage'], './WorkspaceEditorSplit': ['WorkspaceEditorSplit'],
+    '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'],
   })) modules[path] = Object.fromEntries(names.map(name => [name, name]));
-  const Shell = load<typeof AppShell>('features/shell/AppShell.tsx', 'AppShell', modules);
-  return { render: () => app.render(() => Shell()) };
+  const Shell = load<typeof AppShell>('features/shell/AppShell.tsx', 'AppShell', modules, { document: {} });
+  return { render: () => app.render(() => Shell()), openSearch: () => openSearch() };
 }
+
+test('file search keeps the current page and opens results through the existing editor split', () => {
+  const app = shellHarness();
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onNavigate('git');
+  app.openSearch();
+  let tree = app.render();
+  const search = props<ComponentProps<typeof WorkspaceFileSearch>>(tree, 'WorkspaceFileSearch');
+  search.onClose();
+  tree = app.render();
+  expect(elements(tree).some(element => element.type === 'WorkspaceFileSearch')).toBe(false);
+  expect(elements(tree).some(element => element.type === 'GitWorkspace')).toBe(true);
+  app.openSearch();
+  const reopened = props<ComponentProps<typeof WorkspaceFileSearch>>(app.render(), 'WorkspaceFileSearch');
+  reopened.onOpenFile('src/found.ts'); reopened.onClose();
+  const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  expect(split.mode).toBe('split');
+  expect(props<ComponentProps<typeof WorkspaceEditor>>(split.editor, 'WorkspaceEditor').target?.path).toBe('src/found.ts');
+  expect(elements(split.children).some(element => element.type === 'GitWorkspace')).toBe(true);
+});
 
 test('Explorer file opening keeps the chat visible and reuses the same editor for subsequent files', () => {
   const app = shellHarness();

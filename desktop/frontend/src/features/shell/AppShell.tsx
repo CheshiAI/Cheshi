@@ -35,10 +35,13 @@ import { LocalHistoryPage } from '../editor/LocalHistoryPage';
 import styles from './AppShell.module.css';
 import { useAppUpdateResume } from './useAppUpdateResume';
 import { WorkspaceEditorSplit } from './WorkspaceEditorSplit';
+import { WorkspaceFileSearch } from '../navigation/WorkspaceFileSearch';
+import { installFileSearchShortcut } from '../navigation/fileSearchShortcut';
 
 export function AppShell() {
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [temporaryChatOpen, setTemporaryChatOpen] = useState(false);
+  const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [submittedSearchQuery, setSubmittedSearchQuery] = useState('');
   const [historyTarget, setHistoryTarget] = useState<ChatHistorySearchTarget | null>(null);
@@ -87,6 +90,10 @@ export function AppShell() {
     }
   };
   const chat = workspace.activeController;
+  useEffect(() => {
+    if (updateResume.busy || workspace.accountSwitchPending || temporaryChatOpen) return;
+    return installFileSearchShortcut(document, () => setFileSearchOpen(true));
+  }, [updateResume.busy, workspace.accountSwitchPending, temporaryChatOpen]);
   useEffect(() => {
     if (startupReported.current || !accountLoaded || !indexLoaded || workspace.sessionHistory.loading) return;
     startupReported.current = true;
@@ -266,11 +273,12 @@ export function AppShell() {
               onClose={() => navigate(localHistoryReturnView.current)} />
           )}
           <ShowcaseView active={activeView === 'showcase'}
-            blocked={temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
+            blocked={fileSearchOpen || temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
           <TerminalWorkspace
             active={activeView === 'terminal'}
+            blocked={fileSearchOpen}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
           />
@@ -308,6 +316,7 @@ export function AppShell() {
         selectionDisabledReason={accountSwitchReason}
         onBeforeSelect={beforeAccountSelect} onSelectionFinished={accountSelectionFinished} />
       {temporaryChatOpen && <TemporaryChatPanel onClose={() => setTemporaryChatOpen(false)} />}
+      {fileSearchOpen && <WorkspaceFileSearch onOpenFile={openWorkspaceFile} onClose={() => setFileSearchOpen(false)} />}
       {deleteChoice && <ChatDeleteSessionDialog sessionTitle={deleteChoice.title}
         reason={workspace.deletePending ? null : workspace.deleteSessionReason(deleteChoice.sessionId)}
         pending={workspace.deletePending} error={workspace.error ?? chat?.state.error ?? null}

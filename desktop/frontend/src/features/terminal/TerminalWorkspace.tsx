@@ -15,16 +15,18 @@ import './terminal.css';
 
 interface TerminalWorkspaceProps {
   active: boolean;
+  blocked?: boolean;
   rightSidebarOpen: boolean;
   onToggleRightSidebar: () => void;
 }
 
 export function TerminalWorkspace({
   active,
+  blocked = false,
   rightSidebarOpen,
   onToggleRightSidebar,
 }: TerminalWorkspaceProps) {
-  const terminal = useTerminalController(active);
+  const terminal = useTerminalController(active && !blocked);
   const { state } = terminal;
   const activeSession = state.sessions.find((session) => session.id === state.activeSessionId) ?? null;
 

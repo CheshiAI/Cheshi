@@ -13,6 +13,7 @@ import { createShowcaseApi } from './lib/showcase-preload.cts';
 import { createAppUpdateApi } from './lib/app-update-preload.cts';
 import { createKeepAwakeApi } from './lib/keep-awake-preload.cts';
 import { createEditorSessionApi } from './lib/editor-session-preload.cts';
+import { createWorkspaceFileSearchApi } from './lib/workspace-file-search-preload.cts';
 import { createChatQuestionDismissalsApi } from './lib/chat-question-dismissals-preload.cts';
 import { installRendererReadiness } from './lib/renderer-readiness.mts';
 import { workspaceDiskUsage } from './shared/workspace-disk-usage.ts';
@@ -579,6 +580,7 @@ function codexPluginReference(value: unknown) {
 const cheshiDesktopApi = {
   ...createAppUpdateApi(ipcRenderer),
   ...createKeepAwakeApi(ipcRenderer),
+  ...createWorkspaceFileSearchApi(ipcRenderer),
   workspaceManagement: createWorkspaceManagementApi(ipcRenderer),
   showcase: createShowcaseApi(ipcRenderer),
   platform: process.platform,
