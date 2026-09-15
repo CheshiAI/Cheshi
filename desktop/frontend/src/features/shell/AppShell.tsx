@@ -38,6 +38,8 @@ import { WorkspaceEditorSplit } from './WorkspaceEditorSplit';
 import { WorkspaceFileSearch } from '../navigation/WorkspaceFileSearch';
 import { installFileSearchShortcut } from '../navigation/fileSearchShortcut';
 
+const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase'];
+
 export function AppShell() {
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [temporaryChatOpen, setTemporaryChatOpen] = useState(false);
@@ -65,6 +67,7 @@ export function AppShell() {
   const [editorTarget, setEditorTarget] = useState<WorkspaceEditorTarget | null>(null);
   const [editorSplitOpen, setEditorSplitOpen] = useState(false);
   const [primaryPaneClosed, setPrimaryPaneClosed] = useState(false);
+  const editorReturnView = useRef<WorkspaceView>('chat');
   const [editorMutation, setEditorMutation] = useState<WorkspaceEditorMutation | null>(null);
   const [editorSelectedPath, setEditorSelectedPath] = useState<string | null>(null);
   const [localHistoryPath, setLocalHistoryPath] = useState<string | null>(null);
@@ -179,22 +182,28 @@ export function AppShell() {
     setFileReview(null);
     setEditorTarget({ path, line, requestId: editorRequestId.current });
     setEditorSplitOpen(true);
-    if (activeView === 'editor') setActiveView('chat');
+    if (fullWidthViews.includes(activeView)) {
+      editorReturnView.current = activeView;
+      setPrimaryPaneClosed(false);
+      setActiveView('editor');
+    }
   };
 
   const closeEditorSplit = (): void => {
     setEditorSplitOpen(false);
     setPrimaryPaneClosed(false);
     setEditorTarget(null);
-    if (activeView === 'editor') navigate('chat');
+    if (activeView === 'editor') navigate(editorReturnView.current);
   };
 
   const handleWorkspaceEntryMutation = (mutation: WorkspaceEntryMutation): void => {
     editorMutationRequestId.current += 1;
     setEditorMutation({ ...mutation, requestId: editorMutationRequestId.current });
   };
-  const editorLayoutMode = editorSplitOpen ? primaryPaneClosed ? 'editor' : 'split'
-    : activeView === 'editor' ? 'editor' : 'primary';
+  const editorLayoutMode = activeView === 'editor' ? 'editor'
+    : !editorSplitOpen ? 'primary'
+      : fullWidthViews.includes(activeView) ? 'page'
+        : primaryPaneClosed ? 'editor' : 'split';
 
   return (
     <div className={`app-shell ${styles.shell}`}>
@@ -221,8 +230,8 @@ export function AppShell() {
           <WorkspaceEditorSplit mode={editorLayoutMode} editor={
             <WorkspaceEditor
               sessionMode={updateResume.editorSessionMode}
-              onSessionRestored={() => { setEditorSplitOpen(true); if (activeView === 'editor') setActiveView('chat'); }}
-              active={editorSplitOpen || activeView === 'editor'}
+              onSessionRestored={() => setEditorSplitOpen(true)}
+              active={editorLayoutMode === 'split' || editorLayoutMode === 'editor'}
               rightSidebarOpen={rightSidebarOpen}
               onToggleRightSidebar={editorLayoutMode === 'editor'
                 ? () => setRightSidebarOpen((open) => !open) : undefined}
@@ -254,6 +263,7 @@ export function AppShell() {
           />
           {activeView === 'codegraph' && (
             <CodeGraphView
+              onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
               onOpenWorkspaceFile={openWorkspaceFile}
               rightSidebarOpen={rightSidebarOpen}
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
@@ -286,7 +296,8 @@ export function AppShell() {
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
           <TerminalWorkspace
-            active={activeView === 'terminal'}
+            active={activeView === 'terminal' && !primaryPaneClosed}
+            onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
             blocked={fileSearchOpen}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}

@@ -11,9 +11,10 @@ interface CodeGraphViewProps {
   onOpenWorkspaceFile: (path: string, line: number | null) => void;
   rightSidebarOpen: boolean;
   onToggleRightSidebar: () => void;
+  onCloseWorkspace?: () => void;
 }
 
-export function CodeGraphView({ onOpenWorkspaceFile, rightSidebarOpen, onToggleRightSidebar }: CodeGraphViewProps) {
+export function CodeGraphView({ onOpenWorkspaceFile, rightSidebarOpen, onToggleRightSidebar, onCloseWorkspace }: CodeGraphViewProps) {
   const [indexed, setIndexed] = useState<boolean | null>(null);
   const graph = useGraphController(indexed === true);
 
@@ -47,6 +48,7 @@ export function CodeGraphView({ onOpenWorkspaceFile, rightSidebarOpen, onToggleR
         graph={graph}
         rightSidebarOpen={rightSidebarOpen}
         onToggleRightSidebar={onToggleRightSidebar}
+        onCloseWorkspace={onCloseWorkspace}
         inspector={<GraphInspector graph={graph} openWorkspaceFile={onOpenWorkspaceFile} />}
       />
     </LiquidGlassPanel>

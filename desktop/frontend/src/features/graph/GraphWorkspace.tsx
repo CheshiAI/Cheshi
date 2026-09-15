@@ -11,9 +11,10 @@ interface GraphWorkspaceProps {
   inspector: ReactNode;
   rightSidebarOpen: boolean;
   onToggleRightSidebar: () => void;
+  onCloseWorkspace?: () => void;
 }
 
-export function GraphWorkspace({ graph, inspector, rightSidebarOpen, onToggleRightSidebar }: GraphWorkspaceProps) {
+export function GraphWorkspace({ graph, inspector, rightSidebarOpen, onToggleRightSidebar, onCloseWorkspace }: GraphWorkspaceProps) {
   return (
     <section className="codegraph-workspace" aria-label="CodeGraph relationship graph">
       <TieredHeader
@@ -65,6 +66,9 @@ export function GraphWorkspace({ graph, inspector, rightSidebarOpen, onToggleRig
               >
                 <PanelRight aria-hidden="true" />
               </NeumorphicButton>
+              {onCloseWorkspace && <NeumorphicButton raised size="icon"
+                aria-label="Close Relationship Graph workspace" title="Close Relationship Graph workspace"
+                onClick={onCloseWorkspace}><X aria-hidden="true" /></NeumorphicButton>}
             </div>
           </>
         )}

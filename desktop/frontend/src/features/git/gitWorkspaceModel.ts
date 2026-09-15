@@ -14,7 +14,7 @@ import type {
 } from '../../cheshiDesktop';
 import type { UnifiedDiffFile, UnifiedDiffLine } from './unifiedDiff';
 
-export type GitWorkspaceTab = 'changes' | 'log' | 'pull-requests';
+export type GitWorkspaceTab = 'changes' | 'log' | 'pull-requests' | 'issues';
 export type PullRequestDetailTab = 'conversation' | 'commits' | 'changes';
 export type GitMutationOutcome = GitRepositorySnapshot | GitMutationResult;
 export type GitMutationSuccessMessage = string | ((result: GitMutationOutcome) => string);
@@ -70,6 +70,7 @@ export const PULL_REQUEST_DETAIL_STYLE: CSSProperties = {
 
 export const gitWorkspaceTabs: Array<{ id: GitWorkspaceTab; label: string }> = [
   { id: 'changes', label: 'Changes' },
+  { id: 'issues', label: 'Issues' },
   { id: 'log', label: 'Branches & Log' },
   { id: 'pull-requests', label: 'Push & Pull requests' },
 ];

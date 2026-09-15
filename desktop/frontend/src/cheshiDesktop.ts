@@ -1,3 +1,4 @@
+import type { GitHubIssuesApi } from '../../shared/github-issues';
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../shared/chat-user-input';
 import type { AppUpdateApi, AppUpdateResumeApi } from '../../shared/app-update';
 import type { KeepAwakeApi } from '../../shared/keep-awake';
@@ -696,6 +697,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   updateGitBranch: (branchReference: string) => Promise<GitMutationResult>;
   fetchGitRepository: () => Promise<GitMutationResult>;
   pushGitCurrentBranch: () => Promise<GitMutationResult>;
+  githubIssues: GitHubIssuesApi;
   listGitHubPullRequests: () => Promise<GitHubPullRequestListResult>;
   getGitHubPullRequestDetails: (number: number) => Promise<GitHubPullRequestDetails>;
   getGitHubPullRequestDiff: (number: number, commitOid?: string) => Promise<GitHubPullRequestDiffResult>;

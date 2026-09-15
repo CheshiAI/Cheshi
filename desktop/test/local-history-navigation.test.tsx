@@ -127,7 +127,7 @@ test('explorer history opens a workspace page with file selection and draft prot
 test('switching history files retains the split editor and returns to the original page', () => {
   const harness = createHarness();
   let tree = harness.render();
-  invoke(element(tree, 'Sidebar'), 'onNavigate', 'git');
+  invoke(element(tree, 'Sidebar'), 'onNavigate', 'terminal');
   invoke(element(tree, 'Sidebar'), 'onOpenWorkspaceFile', 'src/dirty.ts');
   invoke(element(tree, 'WorkspaceEditor'), 'onDirtyPathsChange', ['src/dirty.ts']);
   tree = harness.render();
@@ -135,7 +135,7 @@ test('switching history files retains the split editor and returns to the origin
   const splitBefore = element(workspaceColumn(tree), 'WorkspaceEditorSplit');
   expect(splitBefore.props.mode).toBe('split');
   expect(splitBefore.props.editor).toBe(editorBefore);
-  expect(element(tree, 'Sidebar').props.activeView).toBe('git');
+  expect(element(tree, 'Sidebar').props.activeView).toBe('terminal');
   invoke(editorBefore, 'onOpenLocalHistory', 'src/dirty.ts');
   tree = harness.render();
   expect(element(tree, 'LocalHistoryPage').props.draftDirty).toBe(true);
@@ -156,8 +156,8 @@ test('switching history files retains the split editor and returns to the origin
   expect(splitDuring.props.editor).toBe(editorDuring);
   invoke(history, 'onClose');
   tree = harness.render();
-  expect(element(tree, 'Sidebar').props.activeView).toBe('git');
-  expect(element(tree, 'GitWorkspace')).toBeDefined();
+  expect(element(tree, 'Sidebar').props.activeView).toBe('terminal');
+  expect(element(tree, 'TerminalWorkspace')).toBeDefined();
   expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('split');
   expect(elements(tree).some((item) => item.type === 'LocalHistoryPage')).toBe(false);
   expect(element(tree, 'WorkspaceEditor').props.active).toBe(true);

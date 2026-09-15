@@ -11,6 +11,8 @@ import type { Sidebar } from '../frontend/src/features/navigation/Sidebar';
 import type { WorkspaceEditor } from '../frontend/src/features/editor/WorkspaceEditor';
 import type { ChatWorkspace } from '../frontend/src/features/chat/ChatWorkspace';
 import type { WorkspaceFileSearch } from '../frontend/src/features/navigation/WorkspaceFileSearch';
+import type { CodeGraphView } from '../frontend/src/features/graph/CodeGraphView';
+import type { TerminalWorkspace } from '../frontend/src/features/terminal/TerminalWorkspace';
 
 function hooks() {
   const slots: unknown[] = [];
@@ -101,7 +103,7 @@ function shellHarness() {
   return { render: () => app.render(() => Shell()), openSearch: () => openSearch() };
 }
 
-test('file search keeps the current page and opens results through the existing editor split', () => {
+test('file search keeps the current page until a result opens in the standalone editor', () => {
   const app = shellHarness();
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onNavigate('git');
   app.openSearch();
@@ -115,9 +117,9 @@ test('file search keeps the current page and opens results through the existing 
   const reopened = props<ComponentProps<typeof WorkspaceFileSearch>>(app.render(), 'WorkspaceFileSearch');
   reopened.onOpenFile('src/found.ts'); reopened.onClose();
   const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
-  expect(split.mode).toBe('split');
+  expect(split.mode).toBe('editor');
   expect(props<ComponentProps<typeof WorkspaceEditor>>(split.editor, 'WorkspaceEditor').target?.path).toBe('src/found.ts');
-  expect(elements(split.children).some(element => element.type === 'GitWorkspace')).toBe(true);
+  expect(elements(split.children).some(element => element.type === 'GitWorkspace')).toBe(false);
 });
 
 test('Explorer file opening keeps the chat visible and reuses the same editor for subsequent files', () => {
@@ -144,7 +146,7 @@ test('closing the final tab restores the current page and does not reopen the cl
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onNavigate('git');
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
   const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
-  expect(elements(split.children).some(element => element.type === 'GitWorkspace')).toBe(true);
+  expect(split.mode).toBe('editor');
   props<ComponentProps<typeof WorkspaceEditor>>(split.editor, 'WorkspaceEditor').onAllTabsClosed();
   const closed = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   expect(closed.mode).toBe('primary');
@@ -177,6 +179,10 @@ test('page and editor portal hosts stay stable through split, resize, collapse a
   const reopened = props<ComponentProps<typeof SplitPaneLayout>>(render('split'), 'SplitPaneLayout');
   expect(reopened.collapsedPane).toBeNull();
   expect(reopened.layout).toMatchObject({ ratio: 0.7 });
+  const fullPage = props<ComponentProps<typeof SplitPaneLayout>>(render('page'), 'SplitPaneLayout');
+  expect(fullPage.collapsedPane).toBe('first');
+  expect(fullPage.layout).toMatchObject({ type: 'split', ratio: 0.7 });
+  expect(props<ComponentProps<typeof SplitPaneLayout>>(render('split'), 'SplitPaneLayout').layout).toMatchObject({ ratio: 0.7 });
   render('primary');
   expect(props<ComponentProps<typeof SplitPaneLayout>>(render('split'), 'SplitPaneLayout').layout).toMatchObject({ ratio: 0.5 });
   for (const portal of portals) {
@@ -313,3 +319,70 @@ test('only the standalone editor controls the shared right sidebar and preserves
   chat.onCloseWorkspace!();
   expect(editor().rightSidebarOpen).toBe(true);
 });
+
+for (const [view, component] of [['codegraph', 'CodeGraphView'], ['terminal', 'TerminalWorkspace']] as const) {
+  test(`${view} workspace closes beside files and reopens through navigation`, () => {
+    const app = shellHarness();
+    const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+    const page = () => props<ComponentProps<typeof CodeGraphView> | ComponentProps<typeof TerminalWorkspace>>(split().children, component);
+    props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onNavigate(view);
+    expect(page().onCloseWorkspace).toBeUndefined();
+    props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
+    expect(split().mode).toBe('split');
+    page().onCloseWorkspace!();
+    expect(split().mode).toBe('editor');
+    const closedPage = page(); // The page component stays mounted; closing does not remove its controller.
+    if ('active' in closedPage) expect(closedPage.active).toBe(false);
+    const editor = props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
+    expect(editor.active).toBe(true);
+    expect(editor.target?.path).toBe('first.ts');
+    expect(editor.onToggleRightSidebar).toBeDefined();
+    props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onNavigate(view);
+    expect(split().mode).toBe('split');
+    const reopenedPage = page();
+    if ('active' in reopenedPage) expect(reopenedPage.active).toBe(true);
+    expect(reopenedPage.onCloseWorkspace).toBeDefined();
+    props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor').onAllTabsClosed();
+    expect(split().mode).toBe('primary');
+    expect(page().onCloseWorkspace).toBeUndefined();
+  });
+}
+
+for (const view of ['git', 'plugins', 'showcase'] as const) {
+  test(`${view} uses the full workspace while retaining file tabs for other pages`, () => {
+    const app = shellHarness();
+    const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+    const editor = () => props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
+    const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
+    sidebar().onOpenWorkspaceFile('draft.ts');
+    const target = editor().target;
+    editor().onDirtyPathsChange?.(['draft.ts']);
+    sidebar().onNavigate(view);
+    expect(split().mode).toBe('page');
+    expect(editor().active).toBe(false);
+    expect(editor().target).toBe(target);
+    expect(editor().onToggleRightSidebar).toBeUndefined();
+    editor().onSessionRestored?.();
+    expect(split().mode).toBe('page');
+    for (const splitView of ['chat', 'codegraph', 'terminal'] as const) {
+      sidebar().onNavigate(splitView);
+      expect(split().mode).toBe('split');
+      expect(editor().active).toBe(true);
+      expect(editor().target).toBe(target);
+      sidebar().onNavigate(view);
+      expect(split().mode).toBe('page');
+    }
+    sidebar().onOpenWorkspaceFile('next.ts');
+    expect(split().mode).toBe('editor');
+    expect(editor().target?.path).toBe('next.ts');
+    expect(editor().onToggleRightSidebar).toBeDefined();
+    sidebar().onOpenWorkspaceFile('another.ts');
+    expect(split().mode).toBe('editor');
+    expect(editor().target?.path).toBe('another.ts');
+    editor().onAllTabsClosed();
+    expect(split().mode).toBe('primary');
+    expect(sidebar().activeView).toBe(view);
+    expect(editor().target).toBeNull();
+    expect(editor().active).toBe(false);
+  });
+}

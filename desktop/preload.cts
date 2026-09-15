@@ -1,3 +1,4 @@
+import { createGitHubIssuesApi } from './lib/github-issue-preload.cts';
 import { chatUserInputRequest, chatUserInputResponse } from './shared/chat-user-input.ts';
 import { chatRelayHistoryRecord, chatRelayRequest, chatRelayState } from './shared/chat-relay.ts';
 import { chatSavedTurn, chatSavedTurnInput } from './shared/chat-saved-turns.ts';
@@ -951,6 +952,7 @@ const cheshiDesktopApi = {
   },
   startCodexChatRelay: (request) => ipcRenderer.invoke('cheshi:start-codex-chat-relay', chatRelayRequest(request)),
   saveCodexTurn: async (input) => chatSavedTurn(await ipcRenderer.invoke('cheshi:save-codex-turn', chatSavedTurnInput(input))),
+  githubIssues: createGitHubIssuesApi(ipcRenderer),
   editorSession: createEditorSessionApi(ipcRenderer),
   chatQuestionDismissals: createChatQuestionDismissalsApi(ipcRenderer),
   deleteCodexSavedTurn: (id) => deleteStoredChatRecord('cheshi:delete-codex-saved-turn', id, /^[a-f0-9]{64}$/),

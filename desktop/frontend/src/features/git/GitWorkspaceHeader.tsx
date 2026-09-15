@@ -19,11 +19,12 @@ import type { GitWorkspaceController } from './useGitWorkspaceController';
 
 interface GitWorkspaceHeaderProps {
   controller: GitWorkspaceController;
+  onRefreshIssues?: () => void;
   rightSidebarOpen: boolean;
   onToggleRightSidebar: () => void;
 }
 
-export function GitWorkspaceHeader({ controller, rightSidebarOpen, onToggleRightSidebar }: GitWorkspaceHeaderProps) {
+export function GitWorkspaceHeader({ controller, rightSidebarOpen, onToggleRightSidebar, onRefreshIssues }: GitWorkspaceHeaderProps) {
   const {
     busy,
     changes,
@@ -87,7 +88,7 @@ export function GitWorkspaceHeader({ controller, rightSidebarOpen, onToggleRight
               className="sidebar-heading-action"
               disabled={busy || refreshing}
               title={refreshing ? 'Refreshing…' : 'Refresh'}
-              onClick={() => void refreshRepository()}
+              onClick={() => onRefreshIssues ? onRefreshIssues() : void refreshRepository()}
             >
               <RefreshCw className={refreshing ? styles.spinner : undefined} aria-hidden="true" />
             </NeumorphicButton>

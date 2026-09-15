@@ -34,7 +34,7 @@ function shouldIgnore(packagePath: string): boolean {
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
-    const packagedSharedFiles = new Set(['keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'showcase.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'local-history.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
+    const packagedSharedFiles = new Set(['keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'showcase.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'local-history.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
     return grandchildEntry === undefined || !packagedSharedFiles.has(grandchildEntry) || segments.length > 3;
   }
   if (childEntry !== 'lib') return true;
@@ -126,6 +126,7 @@ function shouldIgnore(packagePath: string): boolean {
     'git-parsers.mts',
     'git-service.mts',
     'git-types.mts',
+    'github-issue-service.mts',
     'github-pull-request-data.mts',
     'github-pull-request-diff.mts',
     'github-pull-request-merge-state.mts',

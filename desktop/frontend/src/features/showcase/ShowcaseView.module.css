@@ -18,6 +18,8 @@
   flex: 0 0 calc(var(--header-height) * 2);
 }
 
+.primary { border-bottom: 1px solid var(--divider); }
+
 .title,
 .actions,
 .pages,
@@ -28,14 +30,23 @@
   align-items: center;
 }
 
-.title,
 .actions,
 .browserBar { gap: var(--space-default); }
 .pages,
 .navigation { gap: var(--icon-default); }
 .actions { margin-left: auto; }
-.title > svg { width: var(--icon-size-default); height: var(--icon-size-default); }
-.title h1 { margin: 0; font-size: 12px; font-weight: 600; }
+.title { flex: 0 0 auto; gap: 12px; }
+.titleMark svg { width: 11px; height: 11px; stroke-width: 1.7; }
+.title h1 {
+  overflow: hidden;
+  margin: 0;
+  color: var(--sidebar-section-label-color);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .pages > button { font-size: 12px; white-space: nowrap; }
 .browserBar { width: 100%; }
 

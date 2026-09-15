@@ -1,4 +1,4 @@
-import { AlertTriangle, PanelRight, Plus, SquareTerminal } from 'lucide-react';
+import { AlertTriangle, PanelRight, Plus, SquareTerminal, X } from 'lucide-react';
 
 import {
   draggableWindowRegionStyle,
@@ -18,6 +18,7 @@ interface TerminalWorkspaceProps {
   blocked?: boolean;
   rightSidebarOpen: boolean;
   onToggleRightSidebar: () => void;
+  onCloseWorkspace?: () => void;
 }
 
 export function TerminalWorkspace({
@@ -25,6 +26,7 @@ export function TerminalWorkspace({
   blocked = false,
   rightSidebarOpen,
   onToggleRightSidebar,
+  onCloseWorkspace,
 }: TerminalWorkspaceProps) {
   const terminal = useTerminalController(active && !blocked);
   const { state } = terminal;
@@ -92,6 +94,9 @@ export function TerminalWorkspace({
               >
                 <PanelRight aria-hidden="true" />
               </NeumorphicButton>
+              {onCloseWorkspace && <NeumorphicButton raised size="icon"
+                aria-label="Close Terminal workspace" title="Close Terminal workspace"
+                onClick={onCloseWorkspace}><X aria-hidden="true" /></NeumorphicButton>}
             </div>
           </>
         )}

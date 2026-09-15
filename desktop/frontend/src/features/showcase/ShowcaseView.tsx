@@ -67,9 +67,14 @@ export function ShowcaseView({ active, blocked, rightSidebarOpen, onToggleRightS
 
   return (
     <main className={styles.root} hidden={!active} inert={!active || blocked} aria-hidden={!active} aria-label="OpenAI Showcase">
-      <TieredHeader className={styles.header} style={draggableWindowRegionStyle}
+      <TieredHeader className={styles.header} primaryClassName={styles.primary} style={draggableWindowRegionStyle}
         primary={<>
-          <div className={styles.title}><PanelsTopLeft aria-hidden="true" /><h1>Showcase</h1></div>
+          <div className={styles.title}>
+            <NeumorphicButton raised aria-hidden="true" className={`theme-toggle ${styles.titleMark}`} disabled>
+              <PanelsTopLeft aria-hidden="true" />
+            </NeumorphicButton>
+            <h1>Showcase</h1>
+          </div>
           <div className={styles.actions} style={nonDraggableWindowRegionStyle}>
             <div className={styles.pages} aria-label="Showcase pages">
               <NeumorphicButton size="standard" active={page === 'gallery'} aria-pressed={page === 'gallery'}
