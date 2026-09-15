@@ -1,3 +1,4 @@
+import { useId, useState } from 'react';
 import {
   Bot,
   ClipboardList,
@@ -22,6 +23,7 @@ import { ChatPermissionSelect } from './ChatPermissionSelect';
 import { ChatSubmitButton } from './ChatSubmitButton';
 import type { ChatController } from './useChatController';
 import { GithubLinkChips } from './GithubLinkChips';
+import { ChatMessageQueue, ChatQueueToggle } from './ChatMessageQueue';
 
 export function ChatComposer({ controller, chatController, userInputContextId }: {
   controller: ChatViewController; chatController: ChatController; userInputContextId?: string;
@@ -68,6 +70,9 @@ export function ChatComposer({ controller, chatController, userInputContextId }:
     toggleConfigurationMenu,
   } = controller;
   const agentPickerOpen = controller.agentPickerOpen;
+  const queuePanelId = useId();
+  const [queueVisible, setQueueVisible] = useState(true);
+  const queueOpen = queueVisible && controller.messageQueue.entries.length > 0;
 
   return (
     <footer className={styles.composerArea} ref={composerAreaRef}>
@@ -135,7 +140,8 @@ export function ChatComposer({ controller, chatController, userInputContextId }:
       <ChatCommandMenu controller={controller} />
       <ChatConfigurationMenu controller={controller} />
 
-      <LiquidGlassPanel className={styles.composerSurface} data-liquid-glass-surface="side-panel" data-liquid-glass-backdrop="true">
+      <ChatMessageQueue controller={controller} open={queueOpen} panelId={queuePanelId} />
+      <LiquidGlassPanel className={styles.composerSurface} data-queue-open={queueOpen ? 'true' : 'false'} data-liquid-glass-surface="side-panel" data-liquid-glass-backdrop="true">
         <form className={styles.composer} onSubmit={submit}>
           {attachments.length > 0 && (
             <div className={styles.attachmentTray} aria-label="Attached files">
@@ -195,7 +201,7 @@ export function ChatComposer({ controller, chatController, userInputContextId }:
                             ? goal ? 'Replace the persistent goal' : 'Set a persistent goal for this chat'
                             : selectedSkill
                               ? `Ask with ${selectedSkill.displayName}`
-                              : streaming ? 'Add an instruction to the current task' : 'Ask Codex about this workspace'}
+                              : streaming ? 'Queue a message for after the current response' : 'Ask Codex about this workspace'}
             ref={textareaRef}
             rows={1}
             value={draft}
@@ -294,6 +300,8 @@ export function ChatComposer({ controller, chatController, userInputContextId }:
               />
             </div>
           </div>
+          <ChatQueueToggle controller={controller} open={queueOpen} panelId={queuePanelId}
+            onToggle={() => setQueueVisible((visible) => !visible)} />
         </form>
       </LiquidGlassPanel>
       <p className={styles.disclaimer}>Codex can make mistakes. Check important answers.</p>

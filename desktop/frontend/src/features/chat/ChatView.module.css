@@ -347,6 +347,15 @@
 .composerSurface {
   --liquid-glass-radius: 16px;
   overflow: hidden;
+  margin-top: 0;
+  transition: border-radius 200ms ease, margin-top 200ms ease;
+}
+.composerSurface[data-queue-open='true'] {
+  --liquid-glass-radius: 0 0 16px 16px;
+  margin-top: -1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .composerSurface { transition: none; }
 }
 .composer { width: 100%; background: transparent; }
 .composer textarea { display: block; width: 100%; min-height: 44px; max-height: 180px; resize: none; overflow-y: auto; border: 0; outline: 0; background: transparent; color: #eeeeee; font-size: 11px; line-height: 20px; padding: 13px 14px 4px; }

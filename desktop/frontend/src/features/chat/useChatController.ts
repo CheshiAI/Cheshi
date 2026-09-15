@@ -5,8 +5,9 @@ import { cheshiDesktop as desktopApi } from '../../cheshiDesktop';
 import type { CodexChatAttachment } from '../../cheshiDesktop';
 import type { ChatSavedTurn } from '../../../../shared/chat-saved-turns';
 import { continueSavedChatTurn } from './continueSavedChatTurn';
-import { observeChatSendAttempt, performChatSend, type ChatSendAttempt } from './chatSendAttempt';
+import { cancelChatSend, createChatSendCompletion, observeChatSendAttempt, performChatSend, type ChatSendAttempt } from './chatSendAttempt';
 import type { ChatSendResult } from './chatDraftRecovery';
+import type { ChatQueueDelivery } from './chatMessageQueueStore';
 import { CHAT_SESSION_CACHE_TTL_MS, createChatSessionCache, type ChatSessionCache } from './chatSessionCache';
 import {
   chatReducer,
@@ -91,6 +92,8 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
   const selectionVersionRef = useRef(0);
   const [configurationPending, setConfigurationPending] = useState(false);
   const pendingSendRef = useRef<ChatSendAttempt | null>(null);
+  const pendingSendSettledRef = useRef<Promise<void> | null>(null);
+  const cancellationPendingRef = useRef(false);
   const stateRef = useRef(state);
   stateRef.current = state;
   type NormalizedChatEvent = NonNullable<ReturnType<typeof normalizeChatEvent>>;
@@ -262,13 +265,15 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
   const continueSavedTurn = useCallback(async (record: ChatSavedTurn): Promise<boolean> => {
     const api = desktopApi;
     if (!api?.newCodexChatSession || !api.sendCodexChatMessage
-      || selectionPendingRef.current || configurationPendingRef.current || pendingSendRef.current || state.phase === 'loading' || isViewedSessionResponding(state)) return false;
+      || selectionPendingRef.current || configurationPendingRef.current || pendingSendRef.current || cancellationPendingRef.current || state.phase === 'loading' || isViewedSessionResponding(state)) return false;
     selectionPendingRef.current = true;
     selectionVersionRef.current += 1;
     dispatch({ type: 'opening-session' });
     let sessionReady = false;
     const attempt: ChatSendAttempt = { clientMessageId: createClientMessageId(), threadId: null, accepted: false };
     pendingSendRef.current = attempt;
+    const { settled, finish: finishSend } = createChatSendCompletion();
+    pendingSendSettledRef.current = settled;
     try {
       const result = await performChatSend(attempt, () => continueSavedChatTurn(api, record, contextId, attempt.clientMessageId, (text) => {
         if (!mountedRef.current) return false;
@@ -289,7 +294,11 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
         : { type: 'opening-session-failed', message });
       return false;
     } finally {
-      if (pendingSendRef.current === attempt) pendingSendRef.current = null;
+      if (pendingSendRef.current === attempt) {
+        pendingSendRef.current = null;
+        pendingSendSettledRef.current = null;
+      }
+      finishSend();
       selectionPendingRef.current = false;
     }
   }, [contextId, state]);
@@ -449,21 +458,27 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
     text: string,
     selectedSkill: ChatSkill | null = null,
     attachments: readonly CodexChatAttachment[] = [],
+    delivery?: ChatQueueDelivery,
   ): Promise<ChatSendResult> => {
     const api = desktopApi;
     if (!api?.sendCodexChatMessage) return { status: 'failed', message: 'The Codex chat API is unavailable.' };
     const current = stateRef.current;
-    if (!mountedRef.current || selectionPendingRef.current || configurationPendingRef.current || pendingSendRef.current
+    if (!mountedRef.current || selectionPendingRef.current || configurationPendingRef.current || pendingSendRef.current || cancellationPendingRef.current
       || current.phase === 'loading' || current.pendingNewResponse) {
       return { status: 'blocked', message: 'Wait for the current operation to finish before sending.' };
     }
     const steering = isViewedSessionResponding(current);
+    if (delivery && (delivery.threadId !== current.activeSessionId || (delivery.mode === 'steer') !== steering)) {
+      return { status: 'blocked', message: 'The conversation changed. Review the queued message before retrying.' };
+    }
     const submit = steering ? api.steerCodexChatMessage : api.sendCodexChatMessage;
     if (!submit) return { status: 'failed', message: 'The Codex steering API is unavailable.' };
     const value = text.trim();
     if (!value) return { status: 'blocked' };
     const attempt: ChatSendAttempt = { clientMessageId: createClientMessageId(), threadId: current.activeSessionId, accepted: false };
     pendingSendRef.current = attempt;
+    const { settled, finish: finishSend } = createChatSendCompletion();
+    pendingSendSettledRef.current = settled;
     dispatch({ type: 'optimistic-user', id: `client:${attempt.clientMessageId}`,
       text: [...(selectedSkill ? [`$${selectedSkill.name}`] : []), messageWithAttachments(value, attachments)].join('\n\n'),
       title: value, createdAt: Math.floor(Date.now() / 1000) });
@@ -478,22 +493,33 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
       if (result.status === 'accepted' && mountedRef.current) dispatch({ type: 'send-accepted', clientMessageId: attempt.clientMessageId });
       return result;
     } finally {
-      if (pendingSendRef.current === attempt) pendingSendRef.current = null;
+      if (pendingSendRef.current === attempt) {
+        pendingSendRef.current = null;
+        pendingSendSettledRef.current = null;
+      }
+      finishSend();
     }
   }, [contextId]);
 
   const cancelResponse = useCallback(async (): Promise<void> => {
-    if (!desktopApi?.cancelCodexChatResponse) return;
+    const stop = desktopApi?.cancelCodexChatResponse;
+    if (!stop || cancellationPendingRef.current) return;
     const targetThreadId = state.activeSessionId;
+    const attempt = pendingSendRef.current;
+    const settled = pendingSendSettledRef.current;
+    const pending = attempt && settled && (targetThreadId === null || attempt.threadId === targetThreadId) ? { attempt, settled } : undefined;
+    cancellationPendingRef.current = true;
     try {
-      await desktopApi.cancelCodexChatResponse(targetThreadId, contextId);
+      await cancelChatSend(targetThreadId, (threadId) => stop(threadId, contextId), pending);
     } catch (error) {
       dispatch({ type: 'operation-error', message: operationMessage(error) });
+    } finally {
+      cancellationPendingRef.current = false;
     }
   }, [contextId, state.activeSessionId]);
 
   const isOperationPending = useCallback(() => selectionPendingRef.current
-    || configurationPendingRef.current || pendingSendRef.current !== null, []);
+    || configurationPendingRef.current || pendingSendRef.current !== null || cancellationPendingRef.current, []);
   const deleteSession = useCallback(async (sessionId: string): Promise<boolean> => {
     if (isOperationPending()) return false;
     selectionPendingRef.current = true;

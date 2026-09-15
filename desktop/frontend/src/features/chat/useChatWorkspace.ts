@@ -4,6 +4,7 @@ import { cheshiDesktop } from '../../cheshiDesktop';
 import { splitPaneIds, type SplitPaneDirection } from '../../shared/ui/splitPaneModel';
 import { closeChatPane, createChatWorkspace, resizeChatPane, splitChatPane } from './chatWorkspaceModel';
 import type { ChatController } from './useChatController';
+import type { ChatDraftSnapshot } from './chatDraftRecovery';
 import { useChatRelay } from './useChatRelay';
 import { prepareChatFork } from './prepareChatSplit';
 import { chatForkUnavailableReason, chatHistoryForkUnavailableReason } from './chatWorkspaceModel';
@@ -35,6 +36,7 @@ export function useChatWorkspace() {
     setComposerRevision((revision) => revision + 1);
   }, []);
   const [initialSessionIds, setInitialSessionIds] = useState<Record<string, string>>({});
+  const [initialDrafts, setInitialDrafts] = useState<Record<string, ChatDraftSnapshot>>({});
   const [splitPending, setSplitPending] = useState(false);
   const splitPendingRef = useRef(false);
   const [deletePending, setDeletePending] = useState(false);
@@ -89,6 +91,7 @@ export function useChatWorkspace() {
       // Reopen explicitly so failed thread restoration retains the durable checkpoint.
       // initialSessionIds belongs to fork creation and opens threads without awaiting them.
       setInitialSessionIds({});
+      setInitialDrafts({});
       return new Promise<void>((resolve, reject) => {
         const finish = (error?: Error) => {
           clearTimeout(timer);
@@ -119,6 +122,7 @@ export function useChatWorkspace() {
       setState(next);
       setControllers({});
       setInitialSessionIds({});
+      setInitialDrafts({});
       setError(null);
       composerGuards.current.clear();
       for (const id of previousIds) void cheshiDesktop?.disposeCodexChatContext(id).catch((reason: unknown) => {
@@ -181,11 +185,27 @@ export function useChatWorkspace() {
       if (mountedRef.current) setSplitPending(false);
     }
   }, [controllers, relay.running, relay.state]);
+  const openSideChat = useCallback((targetId: string, input: ChatDraftSnapshot): boolean => {
+    const current = currentStateRef.current;
+    const ids = splitPaneIds(current.layout);
+    if (accountSwitchRef.current || splitPendingRef.current || deletePendingRef.current || !ids.includes(targetId) || ids.length >= 32) return false;
+    const paneId = crypto.randomUUID();
+    const next = splitChatPane(current, targetId, paneId, 'right', crypto.randomUUID());
+    currentStateRef.current = next;
+    setInitialDrafts((drafts) => ({ ...drafts, [paneId]: { ...input, attachments: [...input.attachments] } }));
+    setState(next);
+    return true;
+  }, []);
   const closePane = useCallback((paneId: string) => {
     if (deletePendingRef.current) return;
     const replacementId = crypto.randomUUID();
     setState((current) => closeChatPane(current, paneId, replacementId));
     setInitialSessionIds((current) => {
+      const next = { ...current };
+      delete next[paneId];
+      return next;
+    });
+    setInitialDrafts((current) => {
       const next = { ...current };
       delete next[paneId];
       return next;
@@ -295,7 +315,7 @@ export function useChatWorkspace() {
 
   return {
     ...state, paneIds, controllers, activeController, responseThreadIds, sessionCache, sessionHistory,
-    registerController, selectPane, splitPane, closePane, resizeSplit, openSession,
+    registerController, selectPane, splitPane, closePane, resizeSplit, openSession, openSideChat, initialDrafts,
     error, dismissError, relay, initialSessionIds, splitPending, historyForkReason, forkHistorySession, savedTurns,
     continueSavedTurn, savedTurnContinuationReason, deleteSession, deleteSessionReason, deletePending,
     registerAccountSwitchGuard, accountSwitchPending, accountSwitchReason, beginAccountSwitch, completeAccountSwitch,

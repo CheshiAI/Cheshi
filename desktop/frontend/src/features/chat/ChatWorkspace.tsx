@@ -115,6 +115,9 @@ function ChatPane({
       </LiquidGlassPanel>
       <ChatView
         controller={controller}
+        initialDraft={workspace.initialDrafts[paneId]}
+        onOpenSideChat={workspace.paneIds.length < 32 && !workspace.splitPending
+          ? (input) => workspace.openSideChat(paneId, input) : undefined}
         onAccountSwitchGuard={updateAccountSwitchGuard}
         savedTurns={workspace.savedTurns}
         interactionsLocked={workspace.accountSwitchPending || (workspace.relay.running && workspace.relay.state !== null

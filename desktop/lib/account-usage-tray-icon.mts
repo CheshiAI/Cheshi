@@ -142,10 +142,6 @@ function encodePng(width: number, rgba: Buffer): Buffer {
     chunk('IHDR', header), chunk('IDAT', deflateSync(rows)), chunk('IEND', Buffer.alloc(0))]);
 }
 
-export function isLowAccountUsage(percent: number | null): boolean {
-  return percent !== null && Number.isFinite(percent) && percent < 30;
-}
-
 /** Draw the ring, brand mask and percentage without a renderer process. */
 export function renderAccountUsageTrayIcon(percent: number | null, options: {
   dark?: boolean; scaleFactor?: number; template?: boolean; font?: MenuBarFont; logo?: MenuBarLogo;
@@ -157,12 +153,11 @@ export function renderAccountUsageTrayIcon(percent: number | null, options: {
   const value = percent === null || !Number.isFinite(percent) ? null : Math.max(0, Math.min(100, percent));
   const template = options.template !== false;
   const color: Color = !template && options.dark === true ? [255, 255, 255] : [0, 0, 0];
-  const gaugeColor: Color = !template && isLowAccountUsage(value) ? [235, 89, 85] : color;
   const fraction = value === null ? 0 : value / 100;
   const shapes: Shape[] = [
     arc(11, 11, 9, 135, 270, RING_WIDTH, color, 0.22),
-    arc(11, 11, 9, 135, 270 * fraction, RING_WIDTH, gaugeColor),
-    ...(options.logo ? [logoShape(options.logo, gaugeColor)] : []),
+    arc(11, 11, 9, 135, 270 * fraction, RING_WIDTH, color),
+    ...(options.logo ? [logoShape(options.logo, color)] : []),
     ...numberShapes(value === null ? '-' : String(Math.round(value)), color, options.font),
   ];
   const layers = [...shapes].reverse();

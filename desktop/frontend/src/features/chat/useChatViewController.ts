@@ -39,15 +39,20 @@ import { useChatTaskScope } from './useChatTaskScope';
 import { useChatDraft } from './useChatDraft';
 import { useChatAttachmentTransfer } from './useChatAttachmentTransfer';
 import { mergeChatAttachments } from './attachmentTransferModel';
+import { useChatMessageQueue } from './useChatMessageQueue';
+import { handleChatComposerKey, handleChatEscape, submitChatComposerDraft } from './chatComposerKeyboard';
+import type { ChatDraftSnapshot } from './chatDraftRecovery';
 
 interface UseChatViewControllerOptions {
   controller: ChatController;
   onNewSession: () => void;
+  initialDraft?: ChatDraftSnapshot;
+  onOpenSideChat?: (input: ChatDraftSnapshot) => boolean;
   active?: boolean;
   interactionsLocked?: boolean;
 }
 
-export function useChatViewController({ controller, onNewSession, active = true, interactionsLocked = false }: UseChatViewControllerOptions) {
+export function useChatViewController({ controller, onNewSession, initialDraft, onOpenSideChat, active = true, interactionsLocked = false }: UseChatViewControllerOptions) {
   const {
     state,
     sessionRevision,
@@ -72,8 +77,8 @@ export function useChatViewController({ controller, onNewSession, active = true,
   } = controller;
   const captureTask = useChatTaskScope(`${sessionRevision}:${state.activeSessionId ?? ''}`);
   const { draft, setDraft, selectedSkill, setSelectedSkill, attachments, setAttachments,
-    pending: sendPending, recovery: sendRecovery, submitDraft, restoreFailedMessage, canRestoreFailedMessage } = useChatDraft(
-    sessionRevision, (input) => sendMessage(input.draft, input.selectedSkill, input.attachments));
+    pending: sendPending, recovery: sendRecovery, submitDraft, transferDraft, receiveDraft, restoreFailedMessage, canRestoreFailedMessage } = useChatDraft(
+    sessionRevision, (input) => sendMessage(input.draft, input.selectedSkill, input.attachments), initialDraft);
   const [commandMenuMode, setCommandMenuMode] = useState<CommandMenuMode | null>(null);
   const [agents, setAgents] = useState<ChatAgentThread[]>([]);
   const skillCatalog = useMemo(() => createSkillCatalogCache(listSkills), [listSkills]);
@@ -133,6 +138,9 @@ export function useChatViewController({ controller, onNewSession, active = true,
     addAttachments: (selected) => setAttachments((current) => mergeChatAttachments(current, selected)),
     onComplete: focusComposer,
   });
+  const queueBlocked = interactionsLocked || sendPending || commandLoading || commandMenuOpen
+    || attachmentPickerOpen || attachmentTransfer.loading;
+  const messageQueue = useChatMessageQueue(controller, queueBlocked);
   const configurationControlsDisabled = interactionsLocked || loading || streaming || commandLoading || commandMenuOpen
     || sendPending || controller.configurationPending;
   const selectCollaborationMode = async (mode: 'default' | 'plan'): Promise<void> => {
@@ -842,51 +850,43 @@ export function useChatViewController({ controller, onNewSession, active = true,
     stickToBottomRef.current = true;
     scrollingToBottomRef.current = false;
     setShowScrollToBottom(false);
-    void submitDraft();
+    submitChatComposerDraft({ streaming, enqueue: enqueueDraft, send: () => { void submitDraft(); } });
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.nativeEvent.isComposing) return;
-    if (interactionsLocked && event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      return;
-    }
-    if (commandMenuOpen) {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeCommandMenu();
-        return;
-      }
-      if (goalEditorOpen && event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        void saveGoal();
-        return;
-      }
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault();
-        moveHighlightedOption(event.key === 'ArrowDown' ? 1 : -1);
-        return;
-      }
-      if (
-        ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab')
-        && (
-          slashMenuOpen
-          || agentPickerOpen
-          || skillPickerOpen
-          || modelPickerOpen
-          || reasoningPickerOpen
-          || permissionsPickerOpen
-        )
-      ) {
-        event.preventDefault();
-        activateHighlightedOption();
-        return;
-      }
-    }
-    if (event.key !== 'Enter' || event.shiftKey) return;
-    event.preventDefault();
-    submit();
+  const enqueueDraft = () => {
+    if (queueBlocked || !streaming || attachmentPickerPending.current || attachmentTransfer.isTransferring()) return false;
+    return transferDraft(messageQueue.enqueue);
   };
+  const editQueuedMessage = (id: string) => {
+    if (messageQueue.take(id, receiveDraft)) focusComposer();
+  };
+  const openQueuedSideChat = (id: string) => {
+    if (onOpenSideChat) messageQueue.take(id, onOpenSideChat);
+  };
+  const cancelAllPending = useRef(false);
+  const handleEscape = (event: KeyboardEvent<HTMLElement>) => handleChatEscape(event, {
+    active, locked: interactionsLocked,
+    overlayFocused: !(event.target instanceof Node) || !event.currentTarget.contains(event.target)
+      || (event.target instanceof Element && Boolean(event.target.closest('[role="menu"], [role="dialog"], [role="listbox"]'))),
+    menuOpen: commandMenuOpen, configurationOpen: configurationMenuOpen,
+    closeMenu: closeCommandMenu,
+    closeConfiguration: () => { setConfigurationMenuOpen(false); setConfigurationMenuView('root'); focusComposer(); },
+    cancelAll: () => {
+      if (cancelAllPending.current || (!streaming && !sendPending && messageQueue.entries.length === 0)) return false;
+      messageQueue.cancelCurrent();
+      if (streaming || sendPending || messageQueue.entries.some((entry) => entry.status === 'sending')) {
+        cancelAllPending.current = true;
+        void cancelResponse().finally(() => { cancelAllPending.current = false; });
+      }
+      return true;
+    },
+  });
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => handleChatComposerKey(event, {
+    locked: interactionsLocked, menuOpen: commandMenuOpen, goalOpen: goalEditorOpen,
+    pickerOpen: slashMenuOpen || agentPickerOpen || skillPickerOpen || modelPickerOpen || reasoningPickerOpen || permissionsPickerOpen,
+    closeMenu: closeCommandMenu, saveGoal: () => { void saveGoal(); }, moveOption: moveHighlightedOption,
+    activateOption: activateHighlightedOption, enqueue: enqueueDraft, submit,
+  });
 
   return {
     activateSlashCommand,
@@ -899,7 +899,13 @@ export function useChatViewController({ controller, onNewSession, active = true,
     selectCollaborationMode,
     attachmentPickerOpen,
     attachments,
-    cancelResponse,
+    cancelResponse: () => { messageQueue.pauseCurrent(); return cancelResponse(); },
+    messageQueue,
+    enqueueDraft,
+    editQueuedMessage,
+    openQueuedSideChat,
+    canOpenSideChat: Boolean(onOpenSideChat),
+    queueBlocked,
     chatConfiguration,
     closeCommandMenu,
     commandDisabledReason,
@@ -936,6 +942,7 @@ export function useChatViewController({ controller, onNewSession, active = true,
     goal,
     goalEditorOpen,
     handleDraftChange,
+    handleEscape,
     handleKeyDown,
     highlightedIndex,
     interactionsLocked,

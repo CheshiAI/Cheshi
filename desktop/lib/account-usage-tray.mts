@@ -1,7 +1,7 @@
 import type { BrowserWindow, Menu, MenuItemConstructorOptions, NativeImage, NativeTheme, Tray, nativeImage } from 'electron';
 import type { CodexAccountsSnapshot } from '../shared/codex-accounts.ts';
 import { accountUsageTotals } from '../shared/codex-account-usage.ts';
-import { isLowAccountUsage, renderAccountUsageTrayIcon } from './account-usage-tray-icon.mts';
+import { renderAccountUsageTrayIcon } from './account-usage-tray-icon.mts';
 import type { MenuBarFont } from './menu-bar-font.mts';
 import type { MenuBarLogo } from './menu-bar-logo.mts';
 
@@ -32,14 +32,13 @@ export function createAccountUsageTray(options: {
   let iconKey = '';
   let font: MenuBarFont | undefined;
   const icon = (percent: number | null) => {
-    const template = !isLowAccountUsage(percent);
     const image = options.images.createEmpty();
     for (const scaleFactor of [1, 2]) {
       image.addRepresentation({ scaleFactor, buffer: renderAccountUsageTrayIcon(percent, {
-        scaleFactor, template, dark: options.theme.shouldUseDarkColors, font, logo: options.logo,
+        scaleFactor, dark: options.theme.shouldUseDarkColors, font, logo: options.logo,
       }) });
     }
-    image.setTemplateImage(template);
+    image.setTemplateImage(true);
     return image;
   };
   const tray = options.createTray(icon(null));
