@@ -94,7 +94,7 @@ for (const [format, createPrompt] of [
     });
     const before = structuredClone(thread);
     expect(chatSessionFromThread(thread)?.title).toBe(savedContext.sessionTitle);
-    expect(timelineFromThread(thread)).toEqual([{ id: 'user', kind: 'user', text: prompt, createdAt: 130 }]);
+    expect(timelineFromThread(thread)).toEqual([{ id: 'user', turnId: 'turn', kind: 'user', text: prompt, createdAt: 130 }]);
     expect(thread).toEqual(before);
   });
 });
