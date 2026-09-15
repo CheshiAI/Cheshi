@@ -38,6 +38,7 @@
   background: var(--divider);
   pointer-events: none;
 }
+.paneHeading { display: flex; align-items: center; min-width: 0; gap: var(--icon-default); }
 .pane[data-active='true'] .paneTitle { color: var(--active-text); }
 .paneTitle {
   display: flex;

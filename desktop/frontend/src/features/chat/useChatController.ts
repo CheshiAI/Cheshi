@@ -1,4 +1,5 @@
 import { completeSkillCatalogWorkflowTurn } from '../../shared/skillCatalogChanges';
+import { previousAgentThread, recordAgentNavigation } from './chatAgentNavigation';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 import { cheshiDesktop as desktopApi } from '../../cheshiDesktop';
@@ -53,6 +54,12 @@ function assertSessionNotDeleted(sessionId: string, deletedIds: ReadonlySet<stri
   if (deletedIds.has(sessionId)) throw new Error('This chat has been deleted.');
 }
 
+function assertAgentAvailable(agents: readonly ChatAgentThread[], threadId: string): void {
+  if (!agents.some(agent => agent.id === threadId)) {
+    throw new Error('The previous conversation is no longer available in this agent tree.');
+  }
+}
+
 async function requestSessionDeletion(sessionId: string, contextId?: string): Promise<{ threadIds: string[]; warning: string | null }> {
   if (!desktopApi?.deleteCodexChatSession) throw new Error('Restart Cheshi to delete chats.');
   const response: unknown = await desktopApi.deleteCodexChatSession(sessionId, contextId);
@@ -86,6 +93,9 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
     return { ...initial, sessions: cached.sessions, sessionsLoading: cached.loading };
   });
   const [sessionRevision, setSessionRevision] = useState(0);
+  const [agentNavigation, setAgentNavigation] = useState<string[]>([]);
+  const [agentNavigationPending, setAgentNavigationPending] = useState(false);
+  const agentBackThreadId = previousAgentThread(agentNavigation, state.activeSessionId);
   const selectionPendingRef = useRef(false);
   const configurationPendingRef = useRef(false);
   const configurationVersionRef = useRef(0);
@@ -218,6 +228,7 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
       const opened = normalizeOpenSessionResponse(await desktopApi.openCodexChatSession(sessionId, contextId));
       if (!mountedRef.current) return false;
       assertSessionNotDeleted(opened.session.id, deletedSessionIdsRef.current);
+      setAgentNavigation([]);
       dispatch({ type: 'session-opened', ...opened });
       setSessionRevision((revision) => revision + 1);
       return true;
@@ -229,21 +240,42 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
     }
   }, [contextId]);
 
-  const openAgent = useCallback(async (agentThreadId: string): Promise<void> => {
+  const openAgent = useCallback(async (agentThreadId: string, refreshAgents = false): Promise<void> => {
     if (!desktopApi?.openCodexChatAgent) throw new Error('The Codex agent API is unavailable.');
     if (selectionPendingRef.current || configurationPendingRef.current || pendingSendRef.current) return;
+    const listAgentsApi = desktopApi.listCodexChatAgents;
+    if (refreshAgents && !listAgentsApi) throw new Error('The Codex agent API is unavailable.');
     selectionPendingRef.current = true;
+    setAgentNavigationPending(true);
+    const sourceThreadId = stateRef.current.activeSessionId;
     selectionVersionRef.current += 1;
     try {
+      if (refreshAgents && listAgentsApi) {
+        const agents = normalizeAgentsResponse(await listAgentsApi(contextId));
+        if (!mountedRef.current || stateRef.current.activeSessionId !== sourceThreadId) return;
+        assertAgentAvailable(agents, agentThreadId);
+      }
       const opened = normalizeOpenSessionResponse(await desktopApi.openCodexChatAgent(agentThreadId, contextId));
       if (!mountedRef.current) return;
       assertSessionNotDeleted(opened.session.id, deletedSessionIdsRef.current);
+      setAgentNavigation(path => recordAgentNavigation(path, sourceThreadId, opened.session.id));
       dispatch({ type: 'session-opened', ...opened });
       setSessionRevision((revision) => revision + 1);
     } finally {
       selectionPendingRef.current = false;
+      if (mountedRef.current) setAgentNavigationPending(false);
     }
   }, [contextId]);
+
+  const goBackFromAgent = useCallback(async (): Promise<void> => {
+    const targetId = previousAgentThread(agentNavigation, stateRef.current.activeSessionId);
+    if (!targetId) return;
+    try {
+      await openAgent(targetId, true);
+    } catch (error) {
+      if (mountedRef.current) dispatch({ type: 'operation-error', message: operationMessage(error) });
+    }
+  }, [agentNavigation, openAgent]);
 
   const newSession = useCallback(async (): Promise<void> => {
     if (!desktopApi?.newCodexChatSession || selectionPendingRef.current || configurationPendingRef.current || pendingSendRef.current) return;
@@ -253,6 +285,7 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
     try {
       await desktopApi.newCodexChatSession(contextId);
       if (!mountedRef.current) return;
+      setAgentNavigation([]);
       dispatch({ type: 'new-session' });
       setSessionRevision((revision) => revision + 1);
     } catch (error) {
@@ -546,6 +579,9 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
     permissionPending: configurationPending,
     openSession,
     openAgent,
+    agentBackThreadId,
+    agentNavigationPending,
+    goBackFromAgent,
     newSession,
     deleteSession,
     isOperationPending,
@@ -569,7 +605,7 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
     cancelResponse,
     dismissError,
     refreshSessions,
-  }), [state, contextId, sessionRevision, configurationPending, openSession, openAgent, newSession, deleteSession, isOperationPending, continueSavedTurn, sendMessage, listAgents, listSkills,
+  }), [state, contextId, sessionRevision, configurationPending, openSession, openAgent, agentBackThreadId, agentNavigationPending, goBackFromAgent, newSession, deleteSession, isOperationPending, continueSavedTurn, sendMessage, listAgents, listSkills,
     listModels, listMcpServers, listPermissionModes, setPermissionMode, setCollaborationMode, respondToApproval,
     configureChat, getChatStatus, getGoal, setGoal, forkSession, compactSession,
     reviewSession, cancelResponse, dismissError, refreshSessions]);

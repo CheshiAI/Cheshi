@@ -1,4 +1,4 @@
-import { Columns2, PanelRight, Plus, Rows2, X } from 'lucide-react';
+import { ArrowLeft, Columns2, PanelRight, Plus, Rows2, X } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { chatRelayContextIds } from '../../../../shared/chat-relay';
@@ -75,10 +75,20 @@ function ChatPane({
       onFocusCapture={() => selectPane(paneId)}
     >
       <LiquidGlassPanel as="header" className={styles.paneHeader} data-liquid-glass-backdrop={selected ? 'true' : undefined}>
-        <button className={styles.paneTitle} onClick={() => selectPane(paneId)} title={threadLabel} type="button">
-          <ChatPaneIcon />
-          <span>{threadLabel}</span>
-        </button>
+        <div className={styles.paneHeading}>
+          {controller.agentBackThreadId && (
+            <NeumorphicButton raised size="icon" aria-label="Back to previous conversation" title="Back to previous conversation"
+              disabled={controller.agentNavigationPending || controller.configurationPending || workspace.accountSwitchPending
+                || workspace.relay.running || controller.state.phase === 'loading'}
+              onClick={() => void controller.goBackFromAgent()}>
+              <ArrowLeft aria-hidden="true" />
+            </NeumorphicButton>
+          )}
+          <button className={styles.paneTitle} onClick={() => selectPane(paneId)} title={threadLabel} type="button">
+            {!controller.agentBackThreadId && <ChatPaneIcon />}
+            <span>{threadLabel}</span>
+          </button>
+        </div>
         <div className={styles.actions}>
           <button
             type="button"

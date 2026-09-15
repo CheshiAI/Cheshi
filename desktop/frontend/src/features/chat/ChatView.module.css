@@ -295,6 +295,7 @@
   padding: 6px;
   scrollbar-gutter: stable;
 }
+.commandOptions[data-agent-picker="true"] > .commandOption + .commandOption { margin-top: 4px; }
 .mcpStatus { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .mcpStatus strong { color: var(--sidebar-section-label-color); font-size: 10px; font-weight: 500; }
 .mcpStatus[data-connected='true'] strong { color: var(--title); }
