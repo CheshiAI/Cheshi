@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import {
   Bot,
   ClipboardList,
@@ -24,9 +24,11 @@ import { ChatSubmitButton } from './ChatSubmitButton';
 import type { ChatController } from './useChatController';
 import { GithubLinkChips } from './GithubLinkChips';
 import { ChatMessageQueue, ChatQueueToggle } from './ChatMessageQueue';
+import { ChatFallbackQuestion } from './ChatFallbackQuestion';
+import { fallbackQuestionRequest } from './chatQuestionChoices';
 
-export function ChatComposer({ controller, chatController, userInputContextId }: {
-  controller: ChatViewController; chatController: ChatController; userInputContextId?: string;
+export function ChatComposer({ controller, chatController, userInputContextId, active = true }: {
+  controller: ChatViewController; chatController: ChatController; userInputContextId?: string; active?: boolean;
 }) {
   const {
     answerApproval,
@@ -73,10 +75,13 @@ export function ChatComposer({ controller, chatController, userInputContextId }:
   const queuePanelId = useId();
   const [queueVisible, setQueueVisible] = useState(true);
   const queueOpen = queueVisible && controller.messageQueue.entries.length > 0;
+  const fallbackRequest = useMemo(() => fallbackQuestionRequest(state.items, state.activeSessionId), [state.items, state.activeSessionId]);
 
   return (
     <footer className={styles.composerArea} ref={composerAreaRef}>
-      <ChatUserInputRequests contextId={userInputContextId} activeThreadId={state.activeSessionId} />
+      <ChatUserInputRequests contextId={userInputContextId} activeThreadId={state.activeSessionId}
+        fallbackId={fallbackRequest?.id}
+        fallback={<ChatFallbackQuestion candidate={fallbackRequest} controller={controller} chatController={chatController} active={active} />} />
       {state.error && (
         <ChatErrorNotice className={styles.error} onDismiss={dismissError}>{state.error}</ChatErrorNotice>
       )}

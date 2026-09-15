@@ -42,6 +42,7 @@ import { mergeChatAttachments } from './attachmentTransferModel';
 import { useChatMessageQueue } from './useChatMessageQueue';
 import { handleChatComposerKey, handleChatEscape, submitChatComposerDraft } from './chatComposerKeyboard';
 import type { ChatDraftSnapshot } from './chatDraftRecovery';
+import { syncChatComposerOverlayHeight } from './chatComposerOverlay';
 
 interface UseChatViewControllerOptions {
   controller: ChatController;
@@ -245,7 +246,11 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
     if (!root || !composerArea) return;
 
     const syncComposerOverlayHeight = (): void => {
-      root.style.setProperty('--composer-overlay-height', `${Math.ceil(composerArea.getBoundingClientRect().height)}px`);
+      if (syncChatComposerOverlayHeight(root, composerArea.getBoundingClientRect().height,
+        timelineRef.current, stickToBottomRef.current)) {
+        scrollingToBottomRef.current = false;
+        setShowScrollToBottom(false);
+      }
     };
 
     syncComposerOverlayHeight();

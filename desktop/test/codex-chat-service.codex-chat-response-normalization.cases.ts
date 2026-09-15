@@ -83,10 +83,11 @@ export function registerCodexChatResponseNormalizationTests(): void {
       });
 
       expect(items).toEqual([
-        { id: 'user-1', kind: 'user', text: 'Hello', createdAt: 130 },
-        { id: 'reasoning-1', kind: 'reasoning', text: 'Checking files', createdAt: 130 },
+        { id: 'user-1', turnId: 'turn-1', kind: 'user', text: 'Hello', createdAt: 130 },
+        { id: 'reasoning-1', turnId: 'turn-1', kind: 'reasoning', text: 'Checking files', createdAt: 130 },
         {
           id: 'command-1',
+          turnId: 'turn-1',
           kind: 'activity',
           activity: 'command',
           label: 'Command',
@@ -95,6 +96,7 @@ export function registerCodexChatResponseNormalizationTests(): void {
         },
         {
           id: 'files-1',
+          turnId: 'turn-1',
           kind: 'activity',
           activity: 'files',
           label: 'File changes',
@@ -107,9 +109,10 @@ export function registerCodexChatResponseNormalizationTests(): void {
             movePath: null,
           }],
         },
-        { id: 'assistant-1', kind: 'assistant', text: 'Done.', createdAt: 140 },
+        { id: 'assistant-1', turnId: 'turn-1', kind: 'assistant', text: 'Done.', createdAt: 140 },
         {
           id: 'turn-1:error',
+          turnId: 'turn-1',
           kind: 'activity',
           activity: 'error',
           label: 'Response failed',

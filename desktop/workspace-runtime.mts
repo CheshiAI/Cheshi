@@ -33,6 +33,7 @@ import { registerCodexChatIpc } from './lib/codex-chat-ipc.mts';
 import { CodexChatRelays } from './lib/codex-chat-relay.mts';
 import { CodexChatRelayHistory } from './lib/codex-chat-relay-history.mts';
 import { CodexChatSavedTurns } from './lib/codex-chat-saved-turns.mts';
+import { createChatQuestionDismissalsIpc } from './lib/chat-question-dismissals-ipc.mts';
 import { ChatHistorySearch } from './lib/chat-history-search.mts';
 import { CodexChatContexts } from './lib/codex-chat-contexts.mts';
 import { CodexChatSessionDeletion } from './lib/codex-chat-session-deletion.mts';
@@ -518,6 +519,8 @@ ipcMain.handle(
   'cheshi:get-codex-chat-attachment-preview',
   (_event, attachmentPath) => codexChatAttachmentPreviewUrl(attachmentPath),
 );
+const chatQuestionDismissals = createChatQuestionDismissalsIpc(ipcMain,
+  path.join(path.dirname(codeGraphDirectory), 'chat-question-dismissals'), assertCheshiSender);
 registerCodexChatIpc({
   ipc: ipcMain, service: chatServiceFor, relays: codexChatRelays, assertSender: assertCheshiSender,
   savedTurns: codexChatSavedTurns,
@@ -980,7 +983,7 @@ function dispose(): Promise<void> {
       managementDisposal,
       codexAccountService.stop(), accountSwitch.stop(), workspaceAccounts.stop(),
       codeGraphService?.stop(), codeGraphIndexer?.stop(), ephemeralSessionClient.stop(),
-      codexChatRelays.shutdown(), codexChatContexts.stop(), codexChatSavedTurns.flush(), languageServerManager.stop(),
+      codexChatRelays.shutdown(), codexChatContexts.stop(), codexChatSavedTurns.flush(), chatQuestionDismissals.flush(), languageServerManager.stop(),
     ]);
     options.scope.dispose();
     for (const result of results) {

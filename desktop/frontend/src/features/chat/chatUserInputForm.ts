@@ -32,12 +32,13 @@ function fieldValue(field: ChatInputField, value: string | string[] | undefined)
   return value;
 }
 
-export function inputResponse(request: ChatUserInputRequest, draft: InputDraft): ChatUserInputResponse {
+export function inputResponse(request: ChatUserInputRequest, draft: InputDraft, notes: InputDraft = {}): ChatUserInputResponse {
   if (request.kind === 'questions') {
     const answers = Object.fromEntries(request.questions.map((question) => {
       const value = draft[question.id];
-      if (typeof value !== 'string' || !value.trim()) throw new Error(`Answer ${question.header || question.question}.`);
-      return [question.id, [value]];
+      const values = [...new Set([value, notes[question.id]].filter((text): text is string => typeof text === 'string' && Boolean(text.trim())))];
+      if (!values.length) throw new Error(`Answer ${question.header || question.question}.`);
+      return [question.id, values];
     }));
     return { action: 'accept', answers };
   }

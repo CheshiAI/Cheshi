@@ -60,7 +60,7 @@ export function ChatView({
       onDragOver={viewController.attachmentTransfer.onDragOver} onDrop={viewController.attachmentTransfer.onDrop}>
       <ChatTimeline controller={viewController} onReviewFileChanges={onReviewFileChanges} savedTurns={savedTurns}
         historyTarget={historyTarget} onHistoryTargetHandled={onHistoryTargetHandled} />
-      <ChatComposer chatController={controller} controller={viewController} userInputContextId={controller.contextId} />
+      <ChatComposer chatController={controller} controller={viewController} userInputContextId={controller.contextId} active={active} />
     </section>
   );
 }

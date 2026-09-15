@@ -1,9 +1,22 @@
-.panel { --liquid-glass-radius: 12px; padding: var(--space-default); margin-bottom: 8px; background: transparent; color: var(--text); font-size: 12px; }
-.heading { display: flex; align-items: center; gap: var(--icon-default); margin: 0 0 var(--space-default); font-size: 12px; }
-.heading svg { width: var(--icon-size-default); height: var(--icon-size-default); flex: 0 0 auto; }
+.panel { composes: neumorphic-surface-tokens from global; --liquid-glass-radius: 16px; box-sizing: border-box; width: min(100%, 780px); padding: var(--space-default); margin: 0 auto 8px; background: transparent; color: var(--text); font-size: 10px; line-height: 16px; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-default); margin-bottom: var(--icon-default); }
+.heading { display: flex; align-items: center; gap: var(--icon-default); margin: 0; font-size: 10px; font-weight: 500; color: var(--sub-text); }
+.close[data-size='icon'] { width: var(--compact-icon-button-size); height: var(--compact-icon-button-size); min-height: var(--compact-icon-button-size); }
+.close[data-size='icon'] > svg { width: var(--compact-icon-size); height: var(--compact-icon-size); flex-basis: var(--compact-icon-size); stroke-width: var(--compact-icon-stroke-width); }
+.choices { display: flex; flex-direction: column; gap: 4px; }
+.choice[data-size='standard'] { justify-content: flex-start; width: 100%; text-align: left; padding: 4px var(--icon-default); }
+.choice[aria-pressed='true'], .choice:focus-visible { background: var(--dropdown-selection-bg); }
+.number { display: inline-flex; box-sizing: border-box; flex: 0 0 var(--compact-icon-button-size); width: var(--compact-icon-button-size); height: var(--compact-icon-button-size); align-items: center; justify-content: center; border: 1px solid var(--divider); border-radius: 50%; background: var(--neumorphic-button-surface); }
+.choice[aria-pressed='true'] .number { border-color: var(--active-text); color: var(--active-text); }
+.choiceText { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.choiceText strong { font-weight: 400; }
+.choiceText small { color: var(--sub-text); font-size: inherit; line-height: 1.5; }
+.answerInput { --field-multiline-min-height: calc(var(--field-height) - 2px); --field-multiline-padding-block: 8px; }
+.answerInput textarea { resize: vertical; }
+.heading svg { width: 11px; height: 11px; flex: 0 0 11px; stroke-width: 1.7; }
 .fields { display: flex; flex-direction: column; gap: var(--space-default); max-height: min(320px, 40vh); overflow: auto; min-width: 0; }
 .question { display: flex; flex-direction: column; gap: var(--icon-default); border: 0; margin: 0; padding: 0; min-width: 0; }
-.question legend { font-weight: 600; margin-bottom: var(--icon-default); }
+.question legend { padding: 0; font-weight: 500; margin-bottom: var(--icon-default); }
 .question p, .message { margin: 0; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .option { display: flex; align-items: flex-start; gap: var(--icon-default); padding: 8px 12px; border: 1px solid var(--divider); border-radius: 8px; cursor: pointer; }
 .option:has(input:checked), .option:hover:has(input:enabled) { background: var(--dropdown-selection-bg); color: var(--dropdown-selection-text); }
@@ -15,7 +28,7 @@
 .field > input, .field > select { min-height: 30px; box-sizing: border-box; width: 100%; padding: 6px 8px; border: 1px solid var(--divider); border-radius: 6px; color: var(--text); background: var(--app-bg); font: inherit; }
 .field input { cursor: text; }
 .field select { cursor: pointer; }
-.actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--icon-default); margin-top: var(--space-default); }
+.actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--icon-default); }
 .externalLink { display: inline-flex; align-items: center; gap: var(--icon-default); color: var(--sub-text); overflow-wrap: anywhere; cursor: pointer; }
 .externalLink:is(:hover, :focus-visible) { color: var(--dropdown-selection-text); }
 .externalLink svg { width: var(--icon-size-default); height: var(--icon-size-default); flex: 0 0 auto; }
