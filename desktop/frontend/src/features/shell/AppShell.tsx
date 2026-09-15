@@ -37,8 +37,12 @@ import { useAppUpdateResume } from './useAppUpdateResume';
 import { WorkspaceEditorSplit } from './WorkspaceEditorSplit';
 import { WorkspaceFileSearch } from '../navigation/WorkspaceFileSearch';
 import { installFileSearchShortcut } from '../navigation/fileSearchShortcut';
+import { ChatDraftAttachmentsContext, createChatDraftAttachments } from '../chat/chatDraftAttachments';
+import { NotesView } from '../notes/NotesView';
+import { appleNoteAttachment } from '../notes/appleNotesModel';
+import type { AppleNote } from '../../../../shared/apple-notes';
 
-const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase'];
+const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase', 'notes'];
 
 export function AppShell() {
   const [accountLoaded, setAccountLoaded] = useState(false);
@@ -76,6 +80,9 @@ export function AppShell() {
   const editorRequestId = useRef(0);
   const editorMutationRequestId = useRef(0);
   const workspace = useChatWorkspace();
+  const [draftAttachments] = useState(createChatDraftAttachments);
+  const attachmentDestination = useRef({ activeView, paneId: workspace.activePaneId });
+  attachmentDestination.current = { activeView, paneId: workspace.activePaneId };
   const historySearch = useChatHistorySearch(workspace.activePaneId);
   const updateResume = useAppUpdateResume({ activeView, rightSidebarOpen, setActiveView, setRightSidebarOpen,
     blockedReason: temporaryChatOpen ? 'Close the temporary chat before updating.'
@@ -155,6 +162,16 @@ export function AppShell() {
     setPrimaryPaneClosed(false);
   };
 
+  const attachNote = async (note: AppleNote): Promise<boolean> => {
+    if (chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running) return false;
+    const destination = attachmentDestination.current;
+    const requestId = historyRequestId.current;
+    const attached = await draftAttachments.attach(destination.paneId, [appleNoteAttachment(note)]);
+    if (attached && historyRequestId.current === requestId && attachmentDestination.current.activeView === 'notes'
+      && attachmentDestination.current.paneId === destination.paneId) navigate('chat');
+    return attached;
+  };
+
   const openLocalHistory = (path: string): void => {
     if (activeView !== 'local-history') localHistoryReturnView.current = activeView;
     setLocalHistoryPath(path);
@@ -206,6 +223,7 @@ export function AppShell() {
         : primaryPaneClosed ? 'editor' : 'split';
 
   return (
+    <ChatDraftAttachmentsContext.Provider value={draftAttachments}>
     <div className={`app-shell ${styles.shell}`}>
       {updateResume.error && <div role="alert">{updateResume.error}</div>}
       <div
@@ -250,6 +268,10 @@ export function AppShell() {
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />}
           {activeView === 'blank' && <WindowTabs />}
+          {activeView === 'notes' && <NotesView onAttach={attachNote}
+            attachmentDisabled={chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running}
+            rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
           <ChatWorkspace
             workspace={workspace}
             active={activeView === 'chat' && !primaryPaneClosed}
@@ -352,5 +374,6 @@ export function AppShell() {
         onOpened={() => { setHistoryChoice(null); setFileReview(null); setActiveView('chat'); setPrimaryPaneClosed(false); }}
         onClose={() => setHistoryChoice(null)} />}
     </div>
+    </ChatDraftAttachmentsContext.Provider>
   );
 }

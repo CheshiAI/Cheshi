@@ -831,6 +831,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   compactCodexChatSession: (contextId?: string) => Promise<unknown>;
   reviewCodexChatSession: (contextId?: string) => Promise<unknown>;
   selectCodexChatAttachments: () => Promise<CodexChatAttachment[]>;
+  appleNotes?: import('../../shared/apple-notes').AppleNotesApi;
   importCodexChatAttachments: (files: (File | string)[]) => Promise<CodexChatAttachment[]>;
   getCodexChatAttachmentPreview: (attachmentPath: string) => Promise<string | null>;
   sendCodexChatMessage: (

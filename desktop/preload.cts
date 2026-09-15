@@ -5,6 +5,7 @@ import { chatSavedTurn, chatSavedTurnInput } from './shared/chat-saved-turns.ts'
 import { chatHistorySearchRequest, chatHistorySearchResponse } from './shared/chat-history-search.ts';
 import { codeExplanationRequest, codeExplanationRequestId } from './shared/workspace-code-explanation.ts';
 import { createTemporaryChatApi } from './lib/temporary-chat-preload.cts';
+import { createAppleNotesApi } from './lib/apple-notes-preload.cts';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { prepareChatAttachmentTransfers } from './shared/chat-attachment-import.ts';
 import { marketplaceAddRequest, pluginWorkflowRequest } from './shared/plugin-actions.ts';
@@ -826,6 +827,7 @@ const cheshiDesktopApi = {
   explainCode: (request) => ipcRenderer.invoke('cheshi:explain-code', codeExplanationRequest(request)),
   cancelCodeExplanation: (requestId) => ipcRenderer.invoke('cheshi:cancel-code-explanation', codeExplanationRequestId(requestId)),
   temporaryChat: createTemporaryChatApi(ipcRenderer, file => webUtils.getPathForFile(file)),
+  appleNotes: createAppleNotesApi(ipcRenderer, process.platform),
   startPluginWorkflow: (request, contextId) => ipcRenderer.invoke('cheshi:start-plugin-workflow', pluginWorkflowRequest(request), contextId),
   saveSkillRecording: (recording) => ipcRenderer.invoke('cheshi:save-skill-recording', recording),
   getCodexPluginLogo: (pluginId) => {

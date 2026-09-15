@@ -6,6 +6,7 @@ import { chatDroppedFiles, chatTransferFiles, hasChatTransferFiles, importChatTr
 interface ChatAttachmentTransferOptions {
   scopeKey: string;
   disabled: boolean;
+  inactive?: boolean;
   attachments: readonly CodexChatAttachment[];
   captureTask: () => () => boolean;
   importFiles: (files: (File | string)[]) => Promise<CodexChatAttachment[]>;
@@ -26,13 +27,13 @@ export function useChatAttachmentTransfer(options: ChatAttachmentTransferOptions
     return () => { mounted.current = false; pending.current = null; };
   }, []);
 
-  const transferFiles = useCallback(async (files: (File | string)[]): Promise<boolean> => {
+  const attachFilesToDraft = useCallback(async (files: (File | string)[]): Promise<boolean> => {
     const context = latest.current;
     if (context.disabled || pending.current || files.length === 0) return false;
     const token = { scopeKey: context.scopeKey, id: Symbol() };
     pending.current = token;
     const activeTask = context.captureTask();
-    const isCurrent = () => mounted.current && pending.current === token && latest.current.scopeKey === token.scopeKey && activeTask();
+    const isCurrent = () => mounted.current && pending.current === token && latest.current.scopeKey === token.scopeKey && !latest.current.disabled && activeTask();
     setStatus({ scopeKey: token.scopeKey, loading: true, error: null });
     try {
       return await importChatTransferFiles(files, {
@@ -52,11 +53,17 @@ export function useChatAttachmentTransfer(options: ChatAttachmentTransferOptions
         pending.current = null;
         if (mounted.current && latest.current.scopeKey === token.scopeKey) {
           setStatus((current) => ({ ...current, loading: false }));
-          latest.current.onComplete?.();
+          if (!latest.current.inactive) latest.current.onComplete?.();
         }
       }
     }
   }, []);
+
+  // Explicit workspace actions can attach to a hidden draft. DOM events cannot.
+  const transferFiles = useCallback((files: (File | string)[]): Promise<boolean> => {
+    if (latest.current.inactive) return Promise.resolve(false);
+    return attachFilesToDraft(files);
+  }, [attachFilesToDraft]);
 
   const onPaste = useCallback((event: ClipboardEvent<HTMLTextAreaElement>) => {
     const files = chatTransferFiles(event.clipboardData, true);
@@ -68,7 +75,7 @@ export function useChatAttachmentTransfer(options: ChatAttachmentTransferOptions
   const onDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     if (!hasChatTransferFiles(event.dataTransfer)) return;
     event.preventDefault();
-    event.dataTransfer.dropEffect = latest.current.disabled || pending.current ? 'none' : 'copy';
+    event.dataTransfer.dropEffect = latest.current.disabled || latest.current.inactive || pending.current ? 'none' : 'copy';
   }, []);
 
   const onDrop = useCallback((event: DragEvent<HTMLElement>) => {
@@ -81,7 +88,7 @@ export function useChatAttachmentTransfer(options: ChatAttachmentTransferOptions
   const dismissError = useCallback(() => setStatus((current) => ({ ...current, error: null })), []);
 
   return {
-    onPaste, onDragOver, onDrop, transferFiles, isTransferring, dismissError,
+    onPaste, onDragOver, onDrop, transferFiles, attachFilesToDraft, isTransferring, dismissError,
     loading: status.scopeKey === options.scopeKey && status.loading,
     error: status.scopeKey === options.scopeKey ? status.error : null,
   };

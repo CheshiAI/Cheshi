@@ -129,7 +129,8 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
   const commandMenuOpen = commandMenuMode !== null;
   const attachmentTransfer = useChatAttachmentTransfer({
     scopeKey: `${sessionRevision}:${state.activeSessionId ?? ''}`,
-    disabled: interactionsLocked || !active || loading || sendPending || commandLoading || commandMenuOpen || attachmentPickerOpen,
+    inactive: !active,
+    disabled: interactionsLocked || loading || sendPending || configurationLoading || commandLoading || commandMenuOpen || attachmentPickerOpen,
     attachments, captureTask,
     importFiles: async (files) => {
       if (attachmentPickerPending.current) throw new Error('Wait for the attachment picker to close.');

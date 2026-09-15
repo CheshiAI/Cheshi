@@ -7,6 +7,8 @@ import { chatRelayContextIds } from '../shared/chat-relay.ts';
 import type { CodexChatSessionDeletion } from './codex-chat-session-deletion.mts';
 import { CodexAppServerStoppedError } from './codex-app-server-client.mts';
 import type { ChatHistorySearch } from './chat-history-search.mts';
+import { AppleNotesService } from './apple-notes-service.mts';
+import { registerAppleNotesIpc } from './apple-notes-ipc.mts';
 
 type ChatIpcOptions = {
   ipc: Pick<IpcMain, 'handle'>;
@@ -21,6 +23,7 @@ type ChatIpcOptions = {
 };
 
 export function registerCodexChatIpc({ ipc, service, relays, deletion, savedTurns, historySearch, assertSender, prepareMessage, beforeMessage }: ChatIpcOptions) {
+  registerAppleNotesIpc({ ipcMain: ipc, service: new AppleNotesService(), assertSender });
   const mutation = <T,>(event: IpcMainInvokeEvent, contextId: unknown, operation: () => Promise<T> | T) => {
     assertSender(event);
     const run = () => relays.mutation(event.sender.id, contextId, operation);

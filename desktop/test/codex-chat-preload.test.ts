@@ -44,6 +44,21 @@ function createHarness(userName: unknown = 'Alex', invokeResult: unknown = undef
   };
 }
 
+test('Apple Notes uses the built preload and carries save outcomes as plain data', async () => {
+  const input = { folderId: 'folder', title: 'Title', body: 'Answer' };
+  const success = { ok: true, value: { id: 'created', title: 'Title' } };
+  const bridge = createHarness('Alex', success);
+  const api = bridge.read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  assert.equal(api.available, process.platform === 'darwin');
+  assert.deepEqual(structuredClone(await api.create(input)), success);
+  assert.deepEqual(bridge.calls, [['cheshi:apple-notes-create', input]]);
+  const failure = { ok: false, error: { code: 'save-unknown', message: 'Check Notes before saving again.' } };
+  const uncertain = createHarness('Alex', failure).read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  assert.deepEqual(structuredClone(await uncertain.create(input)), failure);
+  await assert.rejects(() => api.read(''), /identifier/);
+  assert.equal(bridge.calls.length, 1);
+});
+
 test('question dismissal bridge validates requests, records, and save acknowledgements', async () => {
   const record = { questionId: 'q', action: 'skip' };
   const list = createHarness('Alex', [record]);

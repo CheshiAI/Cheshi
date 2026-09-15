@@ -8,6 +8,7 @@ import type { SavedChatTurnsController } from './useSavedChatTurns';
 import { chatComposerAccountSwitchReason } from './chatAccountSwitch';
 import type { ChatHistorySearchNavigation } from './chatHistorySearchNavigation';
 import type { ChatDraftSnapshot } from './chatDraftRecovery';
+import { useChatDraftAttachmentTarget } from './chatDraftAttachments';
 
 interface ChatViewProps extends ChatHistorySearchNavigation {
   controller: ChatController;
@@ -35,6 +36,7 @@ export function ChatView({
   onHistoryTargetHandled,
 }: ChatViewProps) {
   const viewController = useChatViewController({ controller, onNewSession, initialDraft, onOpenSideChat, active, interactionsLocked });
+  useChatDraftAttachmentTarget(controller.contextId, viewController.attachmentTransfer.attachFilesToDraft);
   const latest = useRef(viewController);
   latest.current = viewController;
   const hasDraft = Boolean(viewController.messageQueue.total || viewController.draft || viewController.selectedSkill || viewController.attachments.length
