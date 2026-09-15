@@ -7,6 +7,7 @@ import type { CheshiDesktopApi } from '../frontend/src/cheshiDesktop.ts';
 function createHarness(userName: unknown = 'Alex', invokeResult: unknown = undefined) {
   let api: Record<string, (...args: unknown[]) => unknown> = {};
   const calls: unknown[][] = [];
+  const filePathLookups: unknown[] = [];
   const listeners = new Map<string, Set<(event: unknown, value: unknown) => void>>();
   vm.runInNewContext(readFileSync(new URL('../runtime/preload.cjs', import.meta.url), 'utf8'), {
     process: { platform: process.platform },
@@ -15,6 +16,7 @@ function createHarness(userName: unknown = 'Alex', invokeResult: unknown = undef
     require(name: string) {
       assert.equal(name, 'electron');
       return {
+        webUtils: { getPathForFile(file: unknown) { filePathLookups.push(file); return '/native/dropped.txt'; } },
         contextBridge: { exposeInMainWorld(_key: string, value: typeof api) { api = value; } },
         ipcRenderer: {
           sendSync() { return { workspaceName: 'test', workspaceRoot: '/tmp/test', userName }; },
@@ -31,6 +33,7 @@ function createHarness(userName: unknown = 'Alex', invokeResult: unknown = undef
   });
   return {
     calls,
+    filePathLookups,
     read(name: string): unknown { return api[name]; },
     call(name: string, ...args: unknown[]) {
       const operation = api[name];
@@ -100,9 +103,22 @@ test('temporary chat cancellation is unwrapped in the renderer instead of reject
     () => temporary.models('session'),
     () => temporary.send('session', { model: 'test', effort: 'low', text: 'Hi', attachments: [] }),
     () => temporary.selectAttachments('session'),
+    () => temporary.importAttachments('session', ['/workspace/notes.txt']),
   ]) {
     await assert.rejects(operation, { name: 'TemporaryChatClosedError', message: 'Temporary chat is closed.' });
   }
+});
+
+test('temporary drops send workspace and native file paths through their session-specific IPC', async () => {
+  const harness = createHarness('Alex', { status: 'ok', value: [] });
+  const temporary = harness.read('temporaryChat') as CheshiDesktopApi['temporaryChat'];
+  const nativeFile = { name: 'dropped.txt' } as File;
+  await temporary.importAttachments('session', ['/workspace/작업 notes.txt', nativeFile]);
+  assert.deepEqual(harness.calls, [['cheshi:temporary-chat-import-attachments', 'session',
+    ['/workspace/작업 notes.txt', '/native/dropped.txt']]]);
+  assert.deepEqual(harness.filePathLookups, [nativeFile]);
+  assert.throws(() => temporary.importAttachments('session', Array(21).fill('/workspace/file')), /20 files/);
+  assert.equal(harness.calls.length, 1);
 });
 
 test('temporary chat unwraps successful replies and rejects malformed replies', async () => {

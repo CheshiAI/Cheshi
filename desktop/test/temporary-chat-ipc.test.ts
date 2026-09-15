@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import type { IpcMainInvokeEvent } from 'electron';
 import { registerTemporaryChatIpc } from '../lib/temporary-chat-ipc.mts';
 import { TemporaryChatClosedError } from '../shared/temporary-chat.ts';
@@ -155,4 +158,42 @@ test('closing an old mount does not close the replacement session', async () => 
   expect(await setup.invoke(owner, 'send', 'second', {})).toEqual({ status: 'ok', value: { text: 'Reply', model: 'test' } });
   expect(setup.instances[1]?.closes).toBe(0);
   await setup.registry.stop();
+});
+
+test('dropped attachments validate regular files and keep their original paths without copying', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'temporary-chat-drop-'));
+  const setup = fixture();
+  try {
+    const filename = path.join(root, '작업 notes.txt');
+    await writeFile(filename, 'notes');
+    const owner = setup.owner();
+    setup.models.resolve([]);
+    await setup.invoke(owner, 'models', 'session');
+    expect(await setup.invoke(owner, 'import-attachments', 'session', [filename, filename])).toEqual({ status: 'ok',
+      value: [{ kind: 'file', name: '작업 notes.txt', path: filename }] });
+    for (const invalid of [null, ['relative.txt'], [''], ['/bad\0path'], [42], Array(21).fill(filename)]) {
+      await expectFailure(setup.invoke(owner, 'import-attachments', 'session', invalid), 'file');
+    }
+    await expectFailure(setup.invoke(owner, 'import-attachments', 'session', [root]), 'regular file');
+    await expectFailure(setup.invoke(owner, 'import-attachments', 'session', [path.join(root, 'missing')]), 'ENOENT');
+    await expectFailure(setup.invoke(setup.owner(), 'import-attachments', 'session', [filename]), 'closed');
+    setup.deny();
+    await expectFailure(setup.invoke(owner, 'import-attachments', 'session', [filename]), 'Unauthorized');
+  } finally { await setup.registry.stop(); await rm(root, { recursive: true, force: true }); }
+});
+
+test('dropping files cannot return attachments to a closed or replacement session', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'temporary-chat-close-drop-'));
+  const setup = fixture();
+  try {
+    const filename = path.join(root, 'notes.txt');
+    await writeFile(filename, 'notes');
+    const owner = setup.owner();
+    setup.models.resolve([]);
+    await setup.invoke(owner, 'models', 'first');
+    const importing = setup.invoke(owner, 'import-attachments', 'first', [filename]);
+    await setup.invoke(owner, 'close', 'first');
+    await setup.invoke(owner, 'models', 'second');
+    expect(await importing).toEqual({ status: 'closed' });
+  } finally { await setup.registry.stop(); await rm(root, { recursive: true, force: true }); }
 });

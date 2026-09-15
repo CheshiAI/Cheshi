@@ -23,6 +23,7 @@
   backdrop-filter: blur(24px) saturate(88%);
 }
 .controls { display: flex; align-items: center; gap: var(--icon-default); }
+.controls .circle[data-size='icon'] { width: 28px; height: 28px; min-height: 28px; }
 .circle:focus-visible { outline: 2px solid var(--dropdown-selection-text); outline-offset: -3px; }
 .configurationAnchor { min-width: 0; margin-left: auto; }
 .modelTrigger { max-width: 100%; }

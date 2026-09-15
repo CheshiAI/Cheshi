@@ -35,6 +35,21 @@ function sessionId(value: unknown): string {
   return value;
 }
 
+async function fileAttachments(value: unknown) {
+  if (!Array.isArray(value) || value.length > 20) throw new TypeError('Attach up to 20 files per message.');
+  const paths = value.map((filePath: unknown) => {
+    if (typeof filePath !== 'string' || !filePath.trim() || filePath.length > 4096
+      || filePath.includes('\0') || !path.isAbsolute(filePath)) {
+      throw new TypeError('Temporary chat attachments require valid absolute file paths.');
+    }
+    return path.normalize(filePath);
+  });
+  return Promise.all([...new Set(paths)].map(async filePath => {
+    if (!(await stat(filePath)).isFile()) throw new TypeError('Select a regular file to attach.');
+    return { kind: chatAttachmentKind(filePath), name: path.basename(filePath), path: filePath };
+  }));
+}
+
 /** Each renderer owns at most one disposable conversation and its process. */
 export function registerTemporaryChatIpc(options: TemporaryChatIpcOptions) {
   const sessions = new Map<WebContents, Session>();
@@ -99,12 +114,15 @@ export function registerTemporaryChatIpc(options: TemporaryChatIpcOptions) {
     const session = selected(event, id);
     return temporaryReply(async () => {
       const paths = [...new Set(await options.selectFiles(event))].slice(0, 20);
-      const attachments = await Promise.all(paths.map(async (filePath) => {
-        if (!path.isAbsolute(filePath) || !(await stat(filePath)).isFile()) {
-          throw new TypeError('Select a regular file to attach.');
-        }
-        return { kind: chatAttachmentKind(filePath), name: path.basename(filePath), path: filePath };
-      }));
+      const attachments = await fileAttachments(paths);
+      if (sessions.get(event.sender) !== session) throw new TemporaryChatClosedError();
+      return attachments;
+    });
+  });
+  options.ipc.handle('cheshi:temporary-chat-import-attachments', (event, id, paths) => {
+    const session = selected(event, id);
+    return temporaryReply(async () => {
+      const attachments = await fileAttachments(paths);
       if (sessions.get(event.sender) !== session) throw new TemporaryChatClosedError();
       return attachments;
     });
