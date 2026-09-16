@@ -37,7 +37,7 @@ describe('local update preview', () => {
       expect(state.installUnavailableReason).toBeNull();
       await service.openRelease();
       const phases: string[] = [];
-      service.subscribe(next => phases.push(next.phase));
+      service.subscribe(next => { if (phases.at(-1) !== next.phase) phases.push(next.phase); });
       for (let attempt = 0; attempt < 2; attempt++) {
         let rejection: unknown;
         try { await service.install(); } catch (error) { rejection = error; }
@@ -45,8 +45,9 @@ describe('local update preview', () => {
         expect((rejection as Error).message).toContain('Simulated update failure.');
         expect(service.snapshot().phase).toBe('idle');
       }
-      expect(phases).toEqual(['downloading', 'installing', 'idle', 'downloading', 'installing', 'idle']);
-      expect(waits).toEqual([1_200, 1_200, 1_200, 1_200]);
+      expect(phases).toEqual(['preparing', 'downloading', 'verifying', 'installing', 'idle',
+        'preparing', 'downloading', 'verifying', 'installing', 'idle']);
+      expect(waits).toEqual([240, 240, 240, 240, 240, 600, 1_200, 240, 240, 240, 240, 240, 600, 1_200]);
       expect(effects).toEqual([]);
     } finally { service.dispose(); }
   });

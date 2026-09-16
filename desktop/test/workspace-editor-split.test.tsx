@@ -12,6 +12,10 @@ import type { WorkspaceEditor } from '../frontend/src/features/editor/WorkspaceE
 import type { ChatWorkspace } from '../frontend/src/features/chat/ChatWorkspace';
 import type { WorkspaceFileSearch } from '../frontend/src/features/navigation/WorkspaceFileSearch';
 import type { CodeGraphView } from '../frontend/src/features/graph/CodeGraphView';
+import * as draftAttachmentModule from '../frontend/src/features/chat/chatDraftAttachments';
+import { appleNoteAttachment } from '../frontend/src/features/notes/appleNotesModel';
+import type { NotesView } from '../frontend/src/features/notes/NotesView';
+import type { AppleNote } from '../shared/apple-notes';
 import type { TerminalWorkspace } from '../frontend/src/features/terminal/TerminalWorkspace';
 
 function hooks() {
@@ -77,9 +81,12 @@ function props<T>(tree: ReactNode, name: string): T {
 function shellHarness() {
   const app = hooks();
   let openSearch = () => {};
+  const attachments = draftAttachmentModule.createChatDraftAttachments();
   const modules: Record<string, unknown> = {
     react: app.react,
-    '../chat/useChatWorkspace': { useChatWorkspace: () => ({ activePaneId: 'chat-a', controllers: {},
+    '../chat/chatDraftAttachments': { ...draftAttachmentModule, createChatDraftAttachments: () => attachments },
+    '../notes/appleNotesModel': { appleNoteAttachment },
+    '../chat/useChatWorkspace': { useChatWorkspace: () => ({ activePaneId: 'chat-a', controllers: {}, activeController: { state: { phase: 'ready' } }, relay: { running: false },
       sessionHistory: { loading: false, sessions: [] }, responseThreadIds: [], accountSwitchPending: false }) },
     '../chat/useChatHistorySearch': { useChatHistorySearch: () => ({ clear() {} }) },
     './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
@@ -97,10 +104,10 @@ function shellHarness() {
     '../terminal': ['TerminalWorkspace'], '../showcase/ShowcaseView': ['ShowcaseView'],
     './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],
     '../editor/LocalHistoryPage': ['LocalHistoryPage'], './WorkspaceEditorSplit': ['WorkspaceEditorSplit'],
-    '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'],
+    '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'], '../notes/NotesView': ['NotesView'],
   })) modules[path] = Object.fromEntries(names.map(name => [name, name]));
   const Shell = load<typeof AppShell>('features/shell/AppShell.tsx', 'AppShell', modules, { document: {} });
-  return { render: () => app.render(() => Shell()), openSearch: () => openSearch() };
+  return { attachments, render: () => app.render(() => Shell()), openSearch: () => openSearch() };
 }
 
 test('file search keeps the current page until a result opens in the standalone editor', () => {
@@ -386,3 +393,36 @@ for (const view of ['git', 'plugins', 'showcase'] as const) {
     expect(editor().active).toBe(false);
   });
 }
+
+const appleNote: AppleNote = { id: 'note', title: 'Meeting', plaintext: 'Agenda', locked: false, modifiedAt: '2026-09-16T00:00:00Z' };
+
+test('Notes uses a full page while preserving the mounted chat and attaches to its selected draft', async () => {
+  const app = shellHarness();
+  const imports: (File | string)[][] = [];
+  app.attachments.register('chat-a', async files => { imports.push(files); return true; });
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('draft.ts');
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onNavigate('notes');
+  const tree = app.render();
+  expect(props<ComponentProps<typeof WorkspaceEditorSplit>>(tree, 'WorkspaceEditorSplit').mode).toBe('page');
+  expect(props<ComponentProps<typeof ChatWorkspace>>(tree, 'ChatWorkspace').active).toBe(false);
+  expect(await props<ComponentProps<typeof NotesView>>(tree, 'NotesView').onAttach(appleNote)).toBe(true);
+  const file = imports[0]?.[0];
+  expect(file).toBeInstanceOf(File);
+  expect(await (file as File).text()).toBe('Agenda');
+  expect(props<ComponentProps<typeof ChatWorkspace>>(app.render(), 'ChatWorkspace').active).toBe(true);
+});
+
+test('failed Notes attachment keeps the Notes page and late success does not override navigation', async () => {
+  const app = shellHarness();
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onNavigate('notes');
+  expect(await props<ComponentProps<typeof NotesView>>(app.render(), 'NotesView').onAttach(appleNote)).toBe(false);
+  expect(props<ComponentProps<typeof NotesView>>(app.render(), 'NotesView')).toBeDefined();
+  let complete!: (value: boolean) => void;
+  app.attachments.register('chat-a', () => new Promise<boolean>(resolve => { complete = resolve; }));
+  const attaching = props<ComponentProps<typeof NotesView>>(app.render(), 'NotesView').onAttach(appleNote);
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onNavigate('git');
+  app.render();
+  complete(true);
+  expect(await attaching).toBe(true);
+  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activeView).toBe('git');
+});

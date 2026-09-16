@@ -1,4 +1,5 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
+import { fileURLToPath } from 'node:url';
 
 type PackagerConfig = NonNullable<ForgeConfig['packagerConfig']>;
 type SigningOptions = Pick<PackagerConfig, 'osxNotarize'> & {
@@ -18,6 +19,9 @@ export function macOSSigningOptions(environment: NodeJS.ProcessEnv, platform: No
       identity,
       type: 'distribution',
       continueOnError: false,
+      optionsForFile: (filePath) => filePath.endsWith('.app') && !filePath.includes('.app/')
+        ? { entitlements: fileURLToPath(new URL('./macos-entitlements.plist', import.meta.url)) }
+        : {},
     },
     osxNotarize: {
       keychainProfile,

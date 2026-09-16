@@ -11,6 +11,7 @@ import { formatReasoningEffort } from './chatViewModel';
 import { initialTemporaryChatState, TemporaryChatSession } from './temporaryChatSession';
 import styles from './TemporaryChatPanel.module.css';
 import { TemporaryChatConfigurationMenu } from './TemporaryChatConfigurationMenu';
+import { chatDroppedFiles, hasChatTransferFiles } from './attachmentTransferModel';
 
 export function TemporaryChatPanel({ onClose }: { onClose: () => void }) {
   const titleId = useId();
@@ -117,7 +118,21 @@ export function TemporaryChatPanel({ onClose }: { onClose: () => void }) {
           {state.busy && <LoadingState type="thinking" className={styles.loading} />}
           <div ref={endRef} />
         </div>
-        <form className={`${toastStyles.footer} ${styles.composer}`} onSubmit={event => {
+        <form className={`${toastStyles.footer} ${styles.composer}`}
+          onDragOver={event => {
+            if (!hasChatTransferFiles(event.dataTransfer)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = locked || state.picking ? 'none' : 'copy';
+          }}
+          onDrop={event => {
+            if (!hasChatTransferFiles(event.dataTransfer)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (locked || state.picking) return;
+            setConfigurationOpen(false);
+            void session.current?.importAttachments(chatDroppedFiles(event.dataTransfer));
+          }} onSubmit={event => {
           event.preventDefault();
           setConfigurationOpen(false);
           void session.current?.send();

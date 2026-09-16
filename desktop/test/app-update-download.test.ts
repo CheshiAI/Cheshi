@@ -19,6 +19,31 @@ async function expectFailure(operation: Promise<unknown>, message: string) {
 }
 
 describe('verified update downloads', () => {
+  test('reports written byte counts through completion before verification', async () => {
+    const progress: (number | string)[] = [];
+    const response = new Response(new ReadableStream<Uint8Array>({ start(controller) {
+      controller.enqueue(bytes.slice(0, 5));
+      controller.enqueue(bytes.slice(5));
+      controller.close();
+    } }));
+    const result = await downloadAppUpdate(asset, {
+      fetch: createFetch(async () => response),
+      onProgress(received, total) { expect(total).toBe(bytes.length); progress.push(received); },
+      onVerifying() { progress.push('verifying'); },
+    });
+    try { expect(progress).toEqual([0, 5, bytes.length, 'verifying']); }
+    finally { await result.dispose(); }
+  });
+
+  test('never reports progress beyond the expected asset size', async () => {
+    const received: number[] = [];
+    await expectFailure(downloadAppUpdate(asset, {
+      fetch: createFetch(async () => new Response(new Uint8Array(bytes.length + 1))),
+      onProgress: size => { received.push(size); },
+    }), 'size does not match');
+    expect(received).toEqual([0]);
+  });
+
   test('follows only approved redirects and writes private verified bytes', async () => {
     const requested: string[] = [];
     const result = await downloadAppUpdate(asset, { fetch: createFetch(async (url, init) => {

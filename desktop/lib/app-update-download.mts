@@ -48,18 +48,25 @@ export async function writeUpdateChunk(value: Uint8Array,
   }
 }
 
-export async function downloadAppUpdate(asset: AppReleaseAsset, options: { fetch?: typeof fetch; signal?: AbortSignal } = {}) {
+export async function downloadAppUpdate(asset: AppReleaseAsset, options: {
+  fetch?: typeof fetch;
+  signal?: AbortSignal;
+  onProgress?: (receivedBytes: number, totalBytes: number) => void;
+  onVerifying?: () => void;
+} = {}) {
   assertAsset(asset);
   const directory = await mkdtemp(path.join(tmpdir(), 'cheshi-update-'));
   const filename = path.join(directory, 'update.zip');
   const signal = AbortSignal.any([AbortSignal.timeout(15 * 60_000), ...(options.signal ? [options.signal] : [])]);
   try {
+    options.onProgress?.(0, asset.size);
     const response = await fetchAsset(asset.url, signal, options.fetch ?? fetch);
     if (!response.body) throw new Error('The update asset has no response body.');
     const file = await open(filename, 'wx', 0o600);
     const reader = response.body.getReader();
     const hash = createHash('sha256');
     let size = 0;
+    let reportedPercent = 0;
     try {
       while (true) {
         const { value, done } = await reader.read();
@@ -69,7 +76,13 @@ export async function downloadAppUpdate(asset: AppReleaseAsset, options: { fetch
         if (size > asset.size) throw new Error('The update asset size does not match.');
         hash.update(value);
         await writeUpdateChunk(value, (buffer, offset, length) => file.write(buffer, offset, length));
+        const percent = Math.floor(size / asset.size * 100);
+        if (percent > reportedPercent) {
+          reportedPercent = percent;
+          options.onProgress?.(size, asset.size);
+        }
       }
+      options.onVerifying?.();
       if (size !== asset.size || hash.digest('hex') !== asset.sha256.toLowerCase()) {
         throw new Error('The update asset failed verification. Please try again.');
       }

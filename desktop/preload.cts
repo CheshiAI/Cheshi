@@ -4,7 +4,8 @@ import { chatRelayHistoryRecord, chatRelayRequest, chatRelayState } from './shar
 import { chatSavedTurn, chatSavedTurnInput } from './shared/chat-saved-turns.ts';
 import { chatHistorySearchRequest, chatHistorySearchResponse } from './shared/chat-history-search.ts';
 import { codeExplanationRequest, codeExplanationRequestId } from './shared/workspace-code-explanation.ts';
-import { readTemporaryChatReply } from './shared/temporary-chat.ts';
+import { createTemporaryChatApi } from './lib/temporary-chat-preload.cts';
+import { createAppleNotesApi } from './lib/apple-notes-preload.cts';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { prepareChatAttachmentTransfers } from './shared/chat-attachment-import.ts';
 import { marketplaceAddRequest, pluginWorkflowRequest } from './shared/plugin-actions.ts';
@@ -32,10 +33,6 @@ async function deleteStoredChatRecord(channel: string, id: string, pattern: RegE
   assertRecord(value, 'Invalid saved record deletion response.');
   if (value.id !== id) throw new TypeError('Invalid saved record deletion response.');
   return { id };
-}
-
-async function temporaryChatInvoke<T>(channel: string, ...args: unknown[]): Promise<T> {
-  return readTemporaryChatReply<T>(await ipcRenderer.invoke(channel, ...args));
 }
 
 function assertRecord(
@@ -829,12 +826,8 @@ const cheshiDesktopApi = {
   addCodexMarketplace: (request) => ipcRenderer.invoke('cheshi:add-codex-marketplace', marketplaceAddRequest(request)),
   explainCode: (request) => ipcRenderer.invoke('cheshi:explain-code', codeExplanationRequest(request)),
   cancelCodeExplanation: (requestId) => ipcRenderer.invoke('cheshi:cancel-code-explanation', codeExplanationRequestId(requestId)),
-  temporaryChat: {
-    models: (sessionId) => temporaryChatInvoke('cheshi:temporary-chat-models', sessionId),
-    send: (sessionId, request) => temporaryChatInvoke('cheshi:temporary-chat-send', sessionId, request),
-    selectAttachments: (sessionId) => temporaryChatInvoke('cheshi:temporary-chat-attachments', sessionId),
-    close: (sessionId) => ipcRenderer.invoke('cheshi:temporary-chat-close', sessionId),
-  },
+  temporaryChat: createTemporaryChatApi(ipcRenderer, file => webUtils.getPathForFile(file)),
+  appleNotes: createAppleNotesApi(ipcRenderer, process.platform),
   startPluginWorkflow: (request, contextId) => ipcRenderer.invoke('cheshi:start-plugin-workflow', pluginWorkflowRequest(request), contextId),
   saveSkillRecording: (recording) => ipcRenderer.invoke('cheshi:save-skill-recording', recording),
   getCodexPluginLogo: (pluginId) => {

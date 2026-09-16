@@ -20,6 +20,7 @@ function fixture(overrides: Partial<TemporaryChatApi> = {}) {
     async models(id) { calls.push(`models:${id}`); return models; },
     async send(id, request) { calls.push(`send:${id}:${request.text}`); return { text: `Reply to ${request.text}`, model: request.model }; },
     async selectAttachments() { return []; },
+    async importAttachments() { return []; },
     async close(id) { calls.push(`close:${id}`); },
     ...overrides,
   };
@@ -28,6 +29,67 @@ function fixture(overrides: Partial<TemporaryChatApi> = {}) {
 }
 
 describe('temporary chat panel session', () => {
+  test('merges dropped files with picker attachments and sends their original paths', async () => {
+    const file = { kind: 'file' as const, name: 'notes.txt', path: '/workspace/notes.txt' };
+    const other = { kind: 'image' as const, name: 'image.png', path: '/workspace/image.png' };
+    const imports: unknown[] = [];
+    let sent: unknown;
+    const f = fixture({ selectAttachments: async () => [file],
+      importAttachments: async (id, files) => { imports.push({ id, files }); return [file, other]; },
+      send: async (_id, request) => { sent = request.attachments; return { model: request.model, text: 'Read' }; } });
+    await f.session.start();
+    await f.session.selectAttachments();
+    await f.session.importAttachments([file.path, other.path]);
+    expect(f.latest().attachments).toEqual([file, other]);
+    expect(imports).toEqual([{ id: 'session', files: [file.path, other.path] }]);
+    await f.session.send();
+    expect(sent).toEqual([file, other]);
+    await f.session.close();
+  });
+
+  test('does not exceed 20 total attachments or discard existing selections after a failed drop', async () => {
+    const selected = Array.from({ length: 20 }, (_, index) => ({ kind: 'file' as const, name: `${index}.txt`, path: `/workspace/${index}.txt` }));
+    let calls = 0;
+    const f = fixture({ selectAttachments: async () => selected, importAttachments: async () => {
+      if (++calls === 1) return [{ kind: 'file', name: 'extra.txt', path: '/workspace/extra.txt' }];
+      throw new Error('Not a regular file');
+    } });
+    await f.session.start();
+    await f.session.selectAttachments();
+    await f.session.importAttachments(['/workspace/extra.txt']);
+    expect(f.latest().attachments).toEqual(selected);
+    expect(f.latest().error).toContain('20 files');
+    await f.session.importAttachments(['/workspace/folder']);
+    expect(f.latest().attachments).toEqual(selected);
+    expect(f.latest().error).toContain('Not a regular file');
+    expect(f.latest().picking).toBe(false);
+    await f.session.close();
+  });
+
+  test('blocks overlapping drop, picker and send operations and ignores a drop result after close', async () => {
+    const pending = createDeferred<Awaited<ReturnType<TemporaryChatApi['importAttachments']>>>();
+    let imports = 0;
+    let picks = 0;
+    const f = fixture({ importAttachments: () => { imports++; return pending.promise; },
+      selectAttachments: async () => { picks++; return []; } });
+    await f.session.importAttachments(['/workspace/early.txt']);
+    expect(imports).toBe(0);
+    await f.session.start();
+    f.session.setDraft('Read this');
+    const dropping = f.session.importAttachments(['/workspace/notes.txt']);
+    await f.session.importAttachments(['/workspace/again.txt']);
+    await f.session.selectAttachments();
+    await f.session.send();
+    expect(imports).toBe(1);
+    expect(picks).toBe(0);
+    expect(f.calls.some(call => call.startsWith('send:'))).toBe(false);
+    await f.session.close();
+    const count = f.changes.length;
+    pending.resolve([{ kind: 'file', name: 'notes.txt', path: '/workspace/notes.txt' }]);
+    await dropping;
+    expect(f.changes).toHaveLength(count);
+  });
+
   test('keeps multiple turns in one session and clears the lifetime on close', async () => {
     const { session, calls, latest } = fixture();
     await session.start();

@@ -805,6 +805,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
     models: (sessionId: string) => Promise<import('./features/chat/model').ChatModel[]>;
     send: (sessionId: string, request: import('../../shared/temporary-chat').TemporaryChatRequest) => Promise<import('../../shared/temporary-chat').TemporaryChatResult>;
     selectAttachments: (sessionId: string) => Promise<CodexChatAttachment[]>;
+    importAttachments: (sessionId: string, files: (File | string)[]) => Promise<CodexChatAttachment[]>;
     close: (sessionId: string) => Promise<void>;
   };
   listCodexMcpServers: (contextId?: string) => Promise<unknown>;
@@ -830,6 +831,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   compactCodexChatSession: (contextId?: string) => Promise<unknown>;
   reviewCodexChatSession: (contextId?: string) => Promise<unknown>;
   selectCodexChatAttachments: () => Promise<CodexChatAttachment[]>;
+  appleNotes?: import('../../shared/apple-notes').AppleNotesApi;
   importCodexChatAttachments: (files: (File | string)[]) => Promise<CodexChatAttachment[]>;
   getCodexChatAttachmentPreview: (attachmentPath: string) => Promise<string | null>;
   sendCodexChatMessage: (

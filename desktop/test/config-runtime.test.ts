@@ -142,7 +142,9 @@ test('reads signing identity and notarization profile from the build environment
     MACOS_SIGNING_IDENTITY: ' Developer ID Application: Example Company (EXAMPLE123) ',
     MACOS_NOTARY_PROFILE: ' ExampleNotary ',
   };
-  assert.deepEqual(macOSSigningOptions(environment, 'darwin'), {
+  const configuration = macOSSigningOptions(environment, 'darwin');
+  const { optionsForFile, ...signing } = configuration.osxSign!;
+  assert.deepEqual({ ...configuration, osxSign: signing }, {
     osxSign: {
       identity: 'Developer ID Application: Example Company (EXAMPLE123)',
       type: 'distribution',
@@ -150,6 +152,12 @@ test('reads signing identity and notarization profile from the build environment
     },
     osxNotarize: { keychainProfile: 'ExampleNotary' },
   });
+  assert.equal(typeof optionsForFile, 'function');
+  const appEntitlements = optionsForFile?.('/output/Cheshi.app').entitlements;
+  assert.equal(appEntitlements, path.join(rootDirectory, 'config', 'macos-entitlements.plist'));
+  assert.deepEqual(optionsForFile?.('/output/Cheshi.app/Contents/Frameworks/Cheshi Helper (Renderer).app'), {});
+  assert.deepEqual(optionsForFile?.('/output/Cheshi.app/Contents/MacOS/Cheshi'), {});
+  assert.match(readFileSync(String(appEntitlements), 'utf8'), /<key>com.apple.security.automation.apple-events<\/key>\s*<true\/>/);
   assert.throws(() => macOSSigningOptions(environment, 'linux'), /require macOS/);
   assert.throws(() => macOSSigningOptions(environment, 'win32'), /require macOS/);
 });
@@ -242,6 +250,10 @@ test('packages every relative runtime import reachable from the Electron entrypo
   }
   assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'shared', 'plugin-actions.ts')));
   assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', 'skill-recording-store.mts')));
+  for (const name of ['service', 'script', 'process', 'ipc']) {
+    assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', `apple-notes-${name}.mts`)));
+  }
+  assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'shared', 'apple-notes.ts')));
   assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'main.mts')));
   assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', 'startup-page.mts')));
   assert.equal(shouldIgnore('/desktop/shared/plugin-actions.ts.tmp'), true);

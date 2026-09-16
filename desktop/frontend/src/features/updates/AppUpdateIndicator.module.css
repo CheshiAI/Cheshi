@@ -101,3 +101,60 @@
   justify-content: flex-end;
   gap: var(--icon-default);
 }
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progressBar {
+  display: flex;
+  align-items: center;
+  gap: var(--icon-default);
+}
+
+.progressTrack {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .32);
+}
+
+.progressFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #86d4d6 0%, #d8a7c5 52%, #c5b4ee 100%);
+  transition: width 200ms ease;
+}
+
+.progressFill[data-indeterminate='true'] {
+  width: 28%;
+  animation: update-progress 1.2s ease-in-out infinite alternate;
+}
+
+.progressValue {
+  min-width: 34px;
+  color: var(--text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+@keyframes update-progress {
+  from { left: 0; }
+  to { left: 72%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressFill {
+    transition: none;
+  }
+
+  .progressFill[data-indeterminate='true'] {
+    animation: none;
+  }
+}

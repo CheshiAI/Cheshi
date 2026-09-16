@@ -6,6 +6,7 @@ export interface TemporaryChatApi {
   models(sessionId: string): Promise<ChatModel[]>;
   send(sessionId: string, request: TemporaryChatRequest): Promise<TemporaryChatResult>;
   selectAttachments(sessionId: string): Promise<CodexChatAttachment[]>;
+  importAttachments(sessionId: string, files: (File | string)[]): Promise<CodexChatAttachment[]>;
   close(sessionId: string): Promise<void>;
 }
 
@@ -96,10 +97,19 @@ export class TemporaryChatSession {
   }
 
   async selectAttachments(): Promise<void> {
-    if (this.closed || this.state.busy || this.state.picking || this.state.failed) return;
+    await this.receiveAttachments(() => this.api.selectAttachments(this.id));
+  }
+
+  async importAttachments(files: (File | string)[]): Promise<void> {
+    if (files.length === 0) return;
+    await this.receiveAttachments(() => this.api.importAttachments(this.id, files));
+  }
+
+  private async receiveAttachments(select: () => Promise<CodexChatAttachment[]>): Promise<void> {
+    if (this.closed || this.state.loading || this.state.busy || this.state.picking || this.state.failed) return;
     this.update({ picking: true, error: null });
     try {
-      const selected = await this.api.selectAttachments(this.id);
+      const selected = await select();
       if (this.closed) return;
       const attachments = [...new Map([...this.state.attachments, ...selected]
         .map(attachment => [attachment.path, attachment])).values()];

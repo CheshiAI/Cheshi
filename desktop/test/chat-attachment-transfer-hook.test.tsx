@@ -145,3 +145,52 @@ describe('chat attachment drop callbacks', () => {
     expect(harness.render().loading).toBe(false);
   });
 });
+
+describe('attachments from another workspace page', () => {
+  test('accepts an explicit attachment into a hidden draft while refusing hidden DOM transfers', async () => {
+    const harness = createHarness();
+    let focused = 0;
+    let attachments: CodexChatAttachment[] = [{ kind: 'file', path: '/saved/existing.txt', name: 'existing.txt' }];
+    const transfer = harness.render({ inactive: true, attachments,
+      addAttachments: incoming => { attachments = attachmentModel.mergeChatAttachments(attachments, incoming); },
+      onComplete: () => { focused += 1; } });
+    const files = ['/workspace/note.txt'];
+    expect(await transfer.transferFiles(files)).toBe(false);
+    const incoming = drag([WORKSPACE_FILE_TRANSFER_TYPE], JSON.stringify(files));
+    transfer.onDragOver(incoming.event);
+    transfer.onDrop(incoming.event);
+    expect(incoming.dataTransfer.dropEffect).toBe('none');
+    expect(harness.imports).toEqual([]);
+    expect(await transfer.attachFilesToDraft(files)).toBe(true);
+    expect(attachments.map(value => value.path)).toEqual(['/saved/existing.txt', attachment.path]);
+    expect(focused).toBe(0);
+  });
+
+  test('hidden draft attachments retain the capacity and disabled guards', async () => {
+    const harness = createHarness();
+    let transfer = harness.render({ inactive: true, disabled: true });
+    expect(await transfer.attachFilesToDraft(['/note.txt'])).toBe(false);
+    expect(harness.imports).toEqual([]);
+    transfer = harness.render({ disabled: false, attachments: Array.from({ length: 20 }, (_, index) => ({
+      kind: 'file', path: `/saved/${index}.txt`, name: `${index}.txt`,
+    })) });
+    expect(await transfer.attachFilesToDraft(['/note.txt'])).toBe(false);
+    expect(harness.accepted).toEqual([]);
+    expect(harness.render().error).toContain('20 attachments');
+  });
+
+  test('hidden imports reject duplicates and cannot attach after the session changes or becomes locked', async () => {
+    for (const change of [{ scopeKey: 'next-session' }, { disabled: true }]) {
+      const pending = createDeferred<CodexChatAttachment[]>();
+      const harness = createHarness(async () => pending.promise);
+      const transfer = harness.render({ inactive: true });
+      const attaching = transfer.attachFilesToDraft(['/note.txt']);
+      expect(await transfer.attachFilesToDraft(['/duplicate.txt'])).toBe(false);
+      harness.render(change);
+      pending.resolve([attachment]);
+      expect(await attaching).toBe(false);
+      expect(harness.accepted).toEqual([]);
+      expect(harness.imports).toHaveLength(1);
+    }
+  });
+});

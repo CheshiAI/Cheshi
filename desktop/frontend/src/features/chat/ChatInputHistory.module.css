@@ -1,0 +1,14 @@
+.panel { font-size: 11px; }
+.panel .header strong, .panel .header span, .panel .help { font-size: 11px; line-height: 16px; }
+.panel .header svg, .panel .icon svg { width: 11px; height: 11px; stroke-width: 1.7; }
+.panel .option { grid-template-columns: 30px minmax(0, 1fr); font-size: 11px; }
+.text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 16px;
+}

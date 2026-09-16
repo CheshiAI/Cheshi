@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import type { AutoUpdater } from 'electron';
 import { appUpdateUnavailableReason, stageAppUpdate } from '../lib/app-update-installer.mts';
-import type { AppRelease } from '../shared/app-update';
+import type { AppRelease, AppUpdateProgress } from '../shared/app-update';
 
 const release: AppRelease = { version: '0.0.2-alpha', tag: 'v0.0.2-alpha', notes: 'Changes',
   url: 'https://github.com/CheshiAI/Cheshi/releases/tag/v0.0.2-alpha',
@@ -38,6 +38,26 @@ function fixture(outcome: 'downloaded' | 'unavailable' | 'error' | 'throw' | 'ti
 }
 
 describe('update installation staging', () => {
+  test('forwards download and verification progress, then stages installation without claiming restart', async () => {
+    const f = fixture();
+    const progress: AppUpdateProgress[] = [];
+    await stageAppUpdate(f.updater, release, {
+      ...f.options,
+      download: async (_asset, options) => {
+        options?.onProgress?.(0, 1);
+        options?.onProgress?.(1, 1);
+        options?.onVerifying?.();
+        return f.options.download();
+      },
+      onProgress: update => { progress.push(update); },
+    });
+    expect(progress).toEqual([
+      { phase: 'downloading', receivedBytes: 0, totalBytes: 1 },
+      { phase: 'downloading', receivedBytes: 1, totalBytes: 1 },
+      { phase: 'verifying' }, { phase: 'installing' },
+    ]);
+  });
+
   test('stages verified feed and removes listeners and temporary assets after success', async () => {
     const f = fixture();
     await stageAppUpdate(f.updater, release, f.options);

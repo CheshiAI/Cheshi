@@ -2,7 +2,7 @@
   --plugin-label-color: #fff;
   --plugin-description-color: #a8afb1;
   --plugin-caption-color: #80898c;
-  --modal-title-color: var(--plugin-label-color);
+  --modal-title-color: var(--active-text);
   --modal-width: 400px;
   --modal-header-padding: 12px var(--space-default);
   --modal-content-padding: 8px;

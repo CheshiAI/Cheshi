@@ -44,8 +44,18 @@ export function AppUpdateIndicator({ api = cheshiDesktop }: { api?: Partial<AppU
     ? `${notes.slice(0, CHANGELOG_EXCERPT_LENGTH).trimEnd()}…`
     : notes;
   const error = actionError ?? state.error;
-  const progress = state.phase === 'installing' ? (preview ? 'Preview: installing update…' : 'Installing the update and restarting…')
-    : state.phase === 'downloading' ? (preview ? 'Preview: downloading update…' : 'Downloading update…') : 'Preparing update…';
+  const stageLabels = {
+    idle: 'Preparing update…', preparing: 'Preparing update…', downloading: 'Downloading update…',
+    verifying: 'Verifying update…', installing: 'Installing update…', restarting: 'Restarting…',
+  };
+  const stageLabel = stageLabels[state.phase];
+  const progress = preview ? `Preview: ${stageLabel.charAt(0).toLowerCase()}${stageLabel.slice(1)}` : stageLabel;
+  const download = state.downloadProgress;
+  const percentage = state.phase === 'restarting' ? 100
+    : state.phase === 'downloading' && download && Number.isSafeInteger(download.receivedBytes)
+      && Number.isSafeInteger(download.totalBytes) && download.totalBytes > 0
+      && download.receivedBytes >= 0 && download.receivedBytes <= download.totalBytes
+      ? Math.floor(download.receivedBytes / download.totalBytes * 100) : undefined;
   const close = () => { if (!busy && !installPending.current) setOpen(false); };
   const install = async () => {
     if (busy || unavailableReason || installPending.current || !api?.installAppUpdate) return;
@@ -94,7 +104,19 @@ export function AppUpdateIndicator({ api = cheshiDesktop }: { api?: Partial<AppU
         </> : <p>The app will restart and restore your workspace. Running terminal commands will stop and will not restart automatically.</p>}
         {unavailableReason && <p className={styles.notice}>{unavailableReason}</p>}
         {error && <p role="alert">{error}</p>}
-        {busy && <p role="status">{progress}</p>}
+        {busy && <div className={styles.progress}>
+          <p role="status">{progress}</p>
+          <div className={styles.progressBar} role="progressbar" aria-label={progress}
+            aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}
+            aria-valuetext={percentage === undefined ? progress : `${progress} ${percentage}%`}>
+            <span className={styles.progressTrack} aria-hidden="true">
+              <span className={styles.progressFill} data-indeterminate={percentage === undefined ? 'true' : undefined}
+                data-empty={percentage === 0 ? 'true' : undefined}
+                style={percentage === undefined ? undefined : { width: `${percentage}%` }} />
+            </span>
+            {percentage !== undefined && <span className={styles.progressValue} aria-hidden="true">{percentage}%</span>}
+          </div>
+        </div>}
         <div className={styles.buttons}>
           <NeumorphicButton size="standard" raised disabled={busy} onClick={close}>Cancel</NeumorphicButton>
           <NeumorphicButton size="standard" raised disabled={busy || unavailableReason !== null}

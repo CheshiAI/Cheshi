@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import type { AppRelease } from '../shared/app-update.ts';
+import type { AppRelease, AppUpdateProgress } from '../shared/app-update.ts';
 
 /** Opt-in visual preview. This adapter has no network, filesystem, or installer dependencies. */
 export function createAppUpdatePreview(options: {
@@ -27,9 +27,14 @@ export function createAppUpdatePreview(options: {
     unavailableReason: null,
     check: async () => structuredClone(release),
     openExternal: async () => {},
-    async install(_release: AppRelease, installing: () => void) {
-      await wait(1_200);
-      installing();
+    async install(_release: AppRelease, report: (progress: AppUpdateProgress) => void) {
+      for (const receivedBytes of [0, 25, 50, 75, 100]) {
+        report({ phase: 'downloading', receivedBytes, totalBytes: 100 });
+        await wait(240);
+      }
+      report({ phase: 'verifying' });
+      await wait(600);
+      report({ phase: 'installing' });
       await wait(1_200);
       throw new Error('Simulated update failure. Preview only; your app and files were not changed. You can retry.');
     },

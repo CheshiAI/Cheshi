@@ -43,7 +43,7 @@
   align-items: center;
   gap: var(--space-default);
   margin: 0;
-  color: var(--modal-title-color, #fff);
+  color: var(--modal-title-color, var(--active-text));
   font-size: 11px;
   font-weight: 600;
   line-height: 15px;

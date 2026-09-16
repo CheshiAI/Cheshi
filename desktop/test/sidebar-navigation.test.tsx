@@ -13,7 +13,7 @@ function elements(node: ReactNode): ReactElement<ElementProps>[] {
 }
 
 test('Codex uses page navigation when returning from another view or selecting it again', () => {
-  for (const activeView of ['terminal', 'git', 'plugins', 'editor', 'codegraph', 'chat', 'search', 'showcase'] as const) {
+  for (const activeView of ['notes', 'terminal', 'git', 'plugins', 'editor', 'codegraph', 'chat', 'search', 'showcase'] as const) {
     const destinations: WorkspaceView[] = [];
     const sidebar = Sidebar({ activeView, selectedFilePath: null, onNavigate: view => destinations.push(view),
       onWorkspaceEntryMutation() {}, onOpenWorkspaceFile() {} });
@@ -32,5 +32,5 @@ test('other management entries retain their destinations', () => {
   for (const element of elements(sidebar)) {
     if (element.type === 'button' && element.key !== 'Codex') element.props.onClick?.();
   }
-  expect(destinations).toEqual(['codegraph', 'terminal', 'git', 'plugins', 'showcase']);
+  expect(destinations).toEqual(['codegraph', 'notes', 'terminal', 'git', 'plugins', 'showcase']);
 });

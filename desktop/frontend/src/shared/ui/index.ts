@@ -1,6 +1,7 @@
 export { IconButton } from './IconButton';
 export { EmptyState } from './EmptyState';
 export { DismissibleToast, type DismissibleToastProps } from './DismissibleToast';
+export { StatusToast, type StatusToastMessage, type StatusToastProps } from './StatusToast';
 export { focusAdjacentMenuItem, useContextMenuInteractions } from './contextMenuInteractions';
 export { FlatTab, FlatTabList } from './FlatTab';
 export { FilterTab, FilterTabList } from './FilterTab';

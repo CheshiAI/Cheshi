@@ -16,6 +16,8 @@ import { ChatErrorNotice } from './ChatErrorNotice';
 import { attachmentTypeLabel, formatReasoningEffort } from './chatViewModel';
 import { ChatCommandMenu } from './ChatCommandMenu';
 import { ChatConfigurationMenu } from './ChatConfigurationMenu';
+import { ChatInputHistoryPanel } from './ChatInputHistoryPanel';
+import { useChatInputHistory } from './useChatInputHistory';
 import styles from './ChatView.module.css';
 import type { ChatViewController } from './useChatViewController';
 import { ChatUserInputRequests } from './ChatUserInputPrompt';
@@ -76,9 +78,12 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
   const [queueVisible, setQueueVisible] = useState(true);
   const queueOpen = queueVisible && controller.messageQueue.entries.length > 0;
   const fallbackRequest = useMemo(() => fallbackQuestionRequest(state.items, state.activeSessionId), [state.items, state.activeSessionId]);
+  const history = useChatInputHistory({ scope: `${chatController.sessionRevision}:${state.activeSessionId ?? ''}`,
+    items: state.items, draft, textareaRef, setDraft: controller.setDraft, onKeyDown: handleKeyDown,
+    disabled: !active || interactionsLocked || loading || commandMenuOpen || configurationMenuOpen || controller.sendPending || commandLoading });
 
   return (
-    <footer className={styles.composerArea} ref={composerAreaRef}>
+    <footer className={styles.composerArea} ref={composerAreaRef} onKeyUp={history.onKeyUp}>
       <ChatUserInputRequests contextId={userInputContextId} activeThreadId={state.activeSessionId}
         fallbackId={fallbackRequest?.id}
         fallback={<ChatFallbackQuestion candidate={fallbackRequest} controller={controller} chatController={chatController} active={active} />} />
@@ -146,6 +151,7 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
       <ChatConfigurationMenu controller={controller} />
 
       <ChatMessageQueue controller={controller} open={queueOpen} panelId={queuePanelId} />
+      <ChatInputHistoryPanel history={history} />
       <LiquidGlassPanel className={styles.composerSurface} data-queue-open={queueOpen ? 'true' : 'false'} data-liquid-glass-surface="side-panel" data-liquid-glass-backdrop="true">
         <form className={styles.composer} onSubmit={submit}>
           {attachments.length > 0 && (
@@ -186,8 +192,9 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
           <textarea
             aria-label={goalEditorOpen ? 'Persistent goal objective' : 'Message Codex'}
             disabled={loading}
-            aria-controls={commandMenuOpen ? controller.commandMenuId : undefined}
-            aria-expanded={commandMenuOpen}
+            aria-controls={history.open ? history.listId : commandMenuOpen ? controller.commandMenuId : undefined}
+            aria-expanded={history.open || commandMenuOpen}
+            aria-activedescendant={history.open ? `${history.listId}-${history.state.selected}` : undefined}
             placeholder={skillPickerOpen
               ? 'Search installed skills'
               : agentPickerOpen
@@ -210,9 +217,9 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
             ref={textareaRef}
             rows={1}
             value={draft}
-            onChange={(event) => handleDraftChange(event.target.value)}
+            onChange={(event) => { history.close(); handleDraftChange(event.target.value); }}
             onPaste={controller.attachmentTransfer.onPaste}
-            onKeyDown={handleKeyDown}
+            onKeyDown={history.onKeyDown}
           />
           <div className={styles.composerFooter} data-configuration-pending={chatController.configurationPending || undefined}>
             <div className={styles.composerMeta}>

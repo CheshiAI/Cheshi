@@ -7,6 +7,7 @@ import type { CheshiDesktopApi } from '../frontend/src/cheshiDesktop.ts';
 function createHarness(userName: unknown = 'Alex', invokeResult: unknown = undefined) {
   let api: Record<string, (...args: unknown[]) => unknown> = {};
   const calls: unknown[][] = [];
+  const filePathLookups: unknown[] = [];
   const listeners = new Map<string, Set<(event: unknown, value: unknown) => void>>();
   vm.runInNewContext(readFileSync(new URL('../runtime/preload.cjs', import.meta.url), 'utf8'), {
     process: { platform: process.platform },
@@ -15,6 +16,7 @@ function createHarness(userName: unknown = 'Alex', invokeResult: unknown = undef
     require(name: string) {
       assert.equal(name, 'electron');
       return {
+        webUtils: { getPathForFile(file: unknown) { filePathLookups.push(file); return '/native/dropped.txt'; } },
         contextBridge: { exposeInMainWorld(_key: string, value: typeof api) { api = value; } },
         ipcRenderer: {
           sendSync() { return { workspaceName: 'test', workspaceRoot: '/tmp/test', userName }; },
@@ -31,6 +33,7 @@ function createHarness(userName: unknown = 'Alex', invokeResult: unknown = undef
   });
   return {
     calls,
+    filePathLookups,
     read(name: string): unknown { return api[name]; },
     call(name: string, ...args: unknown[]) {
       const operation = api[name];
@@ -40,6 +43,62 @@ function createHarness(userName: unknown = 'Alex', invokeResult: unknown = undef
     emit(value: unknown, channel = 'cheshi:codex-chat-event') { for (const listener of listeners.get(channel) ?? []) listener({}, value); },
   };
 }
+
+test('Apple Notes uses the built preload and carries save outcomes as plain data', async () => {
+  const input = { folderId: 'folder', title: 'Title', body: 'Answer' };
+  const success = { ok: true, value: { id: 'created', title: 'Title' } };
+  const bridge = createHarness('Alex', success);
+  const api = bridge.read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  assert.equal(api.available, process.platform === 'darwin');
+  assert.deepEqual(structuredClone(await api.create(input)), success);
+  assert.deepEqual(bridge.calls, [['cheshi:apple-notes-create', input]]);
+  const failure = { ok: false, error: { code: 'save-unknown', message: 'Check Notes before saving again.' } };
+  const uncertain = createHarness('Alex', failure).read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  assert.deepEqual(structuredClone(await uncertain.create(input)), failure);
+  await assert.rejects(() => api.read(''), /identifier/);
+  assert.equal(bridge.calls.length, 1);
+});
+
+test('Apple Notes deletion crosses the built preload with the exact target and acknowledgement', async () => {
+  const success = { ok: true, value: { id: 'selected-note' } };
+  const bridge = createHarness('Alex', success);
+  const api = bridge.read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  assert.deepEqual(structuredClone(await api.delete('selected-note')), success);
+  assert.deepEqual(bridge.calls, [['cheshi:apple-notes-delete', 'selected-note']]);
+  await assert.rejects(() => api.delete(''), /identifier/);
+  assert.equal(bridge.calls.length, 1);
+  const mismatch = createHarness('Alex', { ok: true, value: { id: 'different-note' } }).read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  const result = await mismatch.delete('selected-note');
+  assert.equal(result.ok, false);
+  if (result.ok === false) assert.equal(result.error.code, 'delete-unknown');
+});
+
+test('Apple Notes refresh bypasses caching only for the literal true through the built preload', async () => {
+  const bridge = createHarness('Alex', { ok: true, value: [] });
+  const api = bridge.read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  await api.folders();
+  await api.folders(false);
+  await api.folders(true);
+  assert.deepEqual(bridge.calls, [['cheshi:apple-notes-folders'], ['cheshi:apple-notes-folders'], ['cheshi:apple-notes-folders', true]]);
+  await assert.rejects(() => api.folders('true' as unknown as boolean), /refresh flag/);
+  assert.equal(bridge.calls.length, 3);
+});
+
+test('Apple Notes document updates cross the built preload with the original version intact', async () => {
+  const document = { id: 'chosen', title: 'Title', html: '<h1>Title</h1><p>New</p>', plaintext: 'Title\nNew',
+    modifiedAt: '2026-09-16T00:00:00.000Z', locked: false, attachmentCount: 0 };
+  const bridge = createHarness('Alex', { ok: true, value: document });
+  const api = bridge.read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  assert.deepEqual(structuredClone(await api.document('chosen')), document);
+  const input = { noteId: 'chosen', title: 'Title', html: '<p>New</p>', expectedHtml: '<h1>Title</h1><p>Old</p>',
+    expectedModifiedAt: document.modifiedAt, expectedTitle: 'Title' };
+  assert.deepEqual(structuredClone(await api.update(input)), { ok: true, value: document });
+  assert.deepEqual(bridge.calls, [['cheshi:apple-notes-document', 'chosen'], ['cheshi:apple-notes-update', input]]);
+  const mismatch = createHarness('Alex', { ok: true, value: { ...document, id: 'wrong' } }).read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  const result = await mismatch.update(input);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, 'update-unknown');
+});
 
 test('question dismissal bridge validates requests, records, and save acknowledgements', async () => {
   const record = { questionId: 'q', action: 'skip' };
@@ -100,9 +159,22 @@ test('temporary chat cancellation is unwrapped in the renderer instead of reject
     () => temporary.models('session'),
     () => temporary.send('session', { model: 'test', effort: 'low', text: 'Hi', attachments: [] }),
     () => temporary.selectAttachments('session'),
+    () => temporary.importAttachments('session', ['/workspace/notes.txt']),
   ]) {
     await assert.rejects(operation, { name: 'TemporaryChatClosedError', message: 'Temporary chat is closed.' });
   }
+});
+
+test('temporary drops send workspace and native file paths through their session-specific IPC', async () => {
+  const harness = createHarness('Alex', { status: 'ok', value: [] });
+  const temporary = harness.read('temporaryChat') as CheshiDesktopApi['temporaryChat'];
+  const nativeFile = { name: 'dropped.txt' } as File;
+  await temporary.importAttachments('session', ['/workspace/작업 notes.txt', nativeFile]);
+  assert.deepEqual(harness.calls, [['cheshi:temporary-chat-import-attachments', 'session',
+    ['/workspace/작업 notes.txt', '/native/dropped.txt']]]);
+  assert.deepEqual(harness.filePathLookups, [nativeFile]);
+  assert.throws(() => temporary.importAttachments('session', Array(21).fill('/workspace/file')), /20 files/);
+  assert.equal(harness.calls.length, 1);
 });
 
 test('temporary chat unwraps successful replies and rejects malformed replies', async () => {

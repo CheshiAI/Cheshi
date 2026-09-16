@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.0.4-preview
+
+Pending release
+
+- Added an Apple Notes workspace for browsing accounts and folders, searching
+  loaded notes by title, and creating, editing, and deleting notes.
+- Added a unified memo editor that uses the first line as the title, with
+  formatting controls, Markdown paste support, and saving to Apple Notes.
+- Added folder selection before opening a new memo in the editor.
+- Added note attachments to Codex conversations and saving chat responses
+  to Apple Notes. Attachments use the saved note's text.
+- Added folder and note-list caching to retain loaded content during navigation
+  and reduce repeated loading.
+- Improved memo line breaks, heading layout, timestamps, and header actions.
+  Added draft protection and conflict handling when the original note changes.
+- Added a chat input history panel above the composer. Press Arrow Up in an
+  empty input to browse previous prompts, then select one with Enter or a click
+  to edit it before sending.
+- Added shared status toasts and English keep-awake notifications that
+  automatically dismiss after 10 seconds.
+- Added update download progress and animated indicators for verification,
+  installation, and restart stages.
+- Fixed file drag-and-drop attachments in temporary chats.
+- Unified shared modal title styling and moved Relationship Graph to the top
+  of the app navigation.
+
 ## 0.0.3-preview
 
 Pending release

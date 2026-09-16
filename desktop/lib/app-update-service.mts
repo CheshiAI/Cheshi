@@ -1,4 +1,4 @@
-import type { AppRelease, AppUpdateState } from '../shared/app-update.ts';
+import type { AppRelease, AppUpdateProgress, AppUpdateState } from '../shared/app-update.ts';
 
 export const APP_UPDATE_INTERVAL_MS = 60 * 60_000;
 
@@ -6,7 +6,7 @@ export function createAppUpdateService(options: {
   currentVersion: string;
   preview?: boolean;
   check(signal: AbortSignal): Promise<AppRelease | null>;
-  install(release: AppRelease, installing: () => void): Promise<void>;
+  install(release: AppRelease, report: (progress: AppUpdateProgress) => void): Promise<void>;
   openExternal(url: string): Promise<void>;
   unavailableReason: string | null;
   now?: () => number;
@@ -72,18 +72,28 @@ export function createAppUpdateService(options: {
       const release = state.release;
       if (!release) throw new Error('No update is available.');
       if (state.installUnavailableReason) throw new Error(state.installUnavailableReason);
-      state = { ...state, phase: 'downloading', error: null };
+      state = { ...state, phase: 'preparing', downloadProgress: undefined, error: null };
       emit();
+      let active = true;
       try {
-        await options.install(release, () => {
-          state = { ...state, phase: 'installing' };
+        await options.install(release, progress => {
+          if (!active || disposed) return;
+          if (progress.phase === 'downloading') {
+            const { receivedBytes, totalBytes } = progress;
+            if (!Number.isSafeInteger(receivedBytes) || !Number.isSafeInteger(totalBytes)
+              || totalBytes <= 0 || receivedBytes < 0 || receivedBytes > totalBytes
+              || receivedBytes < (state.downloadProgress?.receivedBytes ?? 0)) return;
+          }
+          state = { ...state, phase: progress.phase, downloadProgress: progress.phase === 'downloading'
+            ? { receivedBytes: progress.receivedBytes, totalBytes: progress.totalBytes } : undefined };
           emit();
         });
       } catch (error) {
-        state = { ...state, phase: 'idle', error: error instanceof Error ? error.message : 'Update failed. Please try again.' };
+        state = { ...state, phase: 'idle', downloadProgress: undefined,
+          error: error instanceof Error ? error.message : 'Update failed. Please try again.' };
         emit();
         throw error;
-      }
+      } finally { active = false; }
     },
     async openRelease() { if (state.release) await options.openExternal(state.release.url); },
     dispose() {
