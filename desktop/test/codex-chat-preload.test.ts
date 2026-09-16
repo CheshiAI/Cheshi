@@ -44,6 +44,16 @@ function createHarness(userName: unknown = 'Alex', invokeResult: unknown = undef
   };
 }
 
+test('agent detail reads carry the parent, target ids and pane without invoking navigation', async () => {
+  const bridge = createHarness('Alex', { agents: [] });
+  await bridge.call('readCodexAgentDetails', 'root', ['child'], 'pane-b');
+  assert.deepEqual(bridge.calls, [['cheshi:read-codex-agent-details', 'root', ['child'], 'pane-b']]);
+  for (const ids of [[], [''], [42], Array(33).fill('child')]) {
+    assert.throws(() => bridge.call('readCodexAgentDetails', 'root', ids), /valid agent/);
+  }
+  assert.equal(bridge.calls.length, 1);
+});
+
 test('Apple Notes uses the built preload and carries save outcomes as plain data', async () => {
   const input = { folderId: 'folder', title: 'Title', body: 'Answer' };
   const success = { ok: true, value: { id: 'created', title: 'Title' } };

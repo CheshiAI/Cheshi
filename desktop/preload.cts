@@ -818,6 +818,14 @@ const cheshiDesktopApi = {
     await ipcRenderer.invoke('cheshi:search-codex-chat-history', chatHistorySearchRequest(request), contextId),
   ),
   listCodexChatAgents: (contextId) => ipcRenderer.invoke('cheshi:list-codex-chat-agents', contextId),
+  readCodexAgentDetails: (threadId, agentThreadIds, contextId) => {
+    if (typeof threadId !== 'string' || !threadId.trim() || !Array.isArray(agentThreadIds)
+      || agentThreadIds.length === 0 || agentThreadIds.length > 32
+      || agentThreadIds.some(id => typeof id !== 'string' || !id.trim())) {
+      throw new TypeError('A conversation and valid agent thread ids are required.');
+    }
+    return ipcRenderer.invoke('cheshi:read-codex-agent-details', threadId, agentThreadIds, contextId);
+  },
   listCodexSkills: (contextId) => ipcRenderer.invoke('cheshi:list-codex-skills', contextId),
   listCodexPlugins: (forceRefetch: unknown = false) => ipcRenderer.invoke(
     'cheshi:list-codex-plugins',

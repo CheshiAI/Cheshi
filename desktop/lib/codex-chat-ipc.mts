@@ -56,6 +56,10 @@ export function registerCodexChatIpc({ ipc, service, relays, deletion, savedTurn
     }
   });
   ipc.handle('cheshi:list-codex-chat-agents', (event, contextId) => service(event, contextId).listAgents());
+  ipc.handle('cheshi:read-codex-agent-details', (event, threadId, agentThreadIds, contextId) => {
+    assertSender(event);
+    return service(event, contextId).readAgentDetails(threadId, agentThreadIds);
+  });
   ipc.handle('cheshi:list-codex-skills', (event, contextId) => service(event, contextId).listSkills());
   ipc.handle('cheshi:list-codex-models', (event, contextId) => service(event, contextId).listModels());
   ipc.handle('cheshi:list-codex-mcp-servers', (event, contextId) => service(event, contextId).listMcpServers());

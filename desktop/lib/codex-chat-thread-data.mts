@@ -2,6 +2,7 @@ import type { ChatAgentThread, ChatGoal, JsonObject } from "./codex-chat-types.m
 import { finiteNumber, recordValue, stringValue } from "./codex-service-utils.mts";
 import { chatRelaySessionTitle } from '../shared/chat-relay.ts';
 import { asyncQuestionsFromMessage } from '../shared/chat-async-questions.ts';
+import { agentActivityFromItem } from '../shared/chat-agent-details.ts';
 import {
   parseSavedChatTurnPrompt,
   savedChatTurnSessionTitle,
@@ -289,11 +290,12 @@ export function activityFromItem(
       status: itemStatus(item.status ?? fallbackStatus),
     };
   }
-  if (type === "collabAgentToolCall" || type === "subAgentActivity") {
+  if (type === "collabAgentToolCall" || type === "collabToolCall" || type === "subAgentActivity") {
     return {
       id,
       kind: "activity",
       activity: "agent",
+      agent: agentActivityFromItem(item),
       label: type === "subAgentActivity" ? "Agent activity" : "Collaboration",
       detail:
         stringValue(item.prompt) ??

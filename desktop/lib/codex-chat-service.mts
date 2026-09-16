@@ -1,5 +1,7 @@
 import { chatMessageFailure, codexCollaborationOverride, setCodexCollaborationMode, steerCodexMessage } from './codex-chat-turn-controls.mts';
 import { CodexChatUserInputs } from './codex-chat-user-input.mts';
+import { CodexAgentTokenUsage } from './codex-agent-token-usage.mts';
+import { readCodexAgentDetails } from './codex-chat-agent-details.mts';
 import { preserveCodexConversation, type CodexConversationAccess } from './codex-chat-account-continuity.mts';
 import { stopCodexCommands } from './codex-chat-stop.mts';
 import { stopCodexMcpProbe, type CodexMcpProbeClient } from './codex-mcp-probe.mts';
@@ -99,6 +101,7 @@ export {
 export { permissionModesFromListResponse } from "./codex-chat-permissions.mts";
 
 export class CodexChatService {
+  readonly agentTokenUsage = new CodexAgentTokenUsage();
   readonly conversations: CodexConversationAccess | undefined;
   createMcpProbeClient: (() => CodexMcpProbeClient) | undefined;
   selectedCollaborationMode: ChatCollaborationMode = 'default';
@@ -243,6 +246,10 @@ export class CodexChatService {
 
   async listAgents() {
     return listCodexAgents(this);
+  }
+
+  async readAgentDetails(threadId: unknown, agentThreadIds: unknown) {
+    return readCodexAgentDetails(this, threadId, agentThreadIds);
   }
 
   async readThread(threadId: string) {
@@ -855,6 +862,7 @@ export class CodexChatService {
     this.subscribedThreadIds.clear();
     this.availableSkills.clear();
     this.availableAgentThreadIds.clear();
+    this.agentTokenUsage.clear();
     this.availableModels.clear();
     this.permissionModes.clear();
     this.pendingApprovals.clear();
@@ -886,6 +894,7 @@ export class CodexChatService {
   }
 
   handleNotification(value: JsonObject) {
+    this.agentTokenUsage.capture(value);
     const params = recordValue(value.params);
     if (value.method === "serverRequest/resolved" && params) {
       this.userInputs.serverResolved(params);

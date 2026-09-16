@@ -1,5 +1,6 @@
 import { normalizeMcpRuntimeStatus, type ChatMcpRuntimeStatus } from '../../../../shared/chat-mcp-status';
 import { normalizeAsyncQuestions, type ChatAsyncQuestion } from '../../../../shared/chat-async-questions';
+import { normalizeAgentActivity, type ChatAgentActivity } from '../../../../shared/chat-agent-details';
 
 export interface ChatSession {
   id: string;
@@ -148,6 +149,7 @@ export interface ChatFileChange {
 }
 
 export interface ChatActivityItem {
+  agent?: ChatAgentActivity;
   id: string;
   turnId?: string;
   kind: 'activity';
@@ -504,7 +506,7 @@ function normalizeFileChange(value: unknown): ChatFileChange | null {
   };
 }
 
-function normalizeTimelineItem(value: unknown): ChatTimelineItem | null {
+export function normalizeTimelineItem(value: unknown): ChatTimelineItem | null {
   const record = recordValue(value);
   const id = stringValue(record?.id);
   const kind = stringValue(record?.kind);
@@ -529,6 +531,7 @@ function normalizeTimelineItem(value: unknown): ChatTimelineItem | null {
     label,
     detail: stringValue(record.detail) ?? '',
     status: stringValue(record.status) ?? 'completed',
+    ...(activity === 'agent' && record.agent ? { agent: normalizeAgentActivity(record.agent) ?? undefined } : {}),
     ...(activity === 'command' ? {
       ...(typeof record.output === 'string' ? { output: record.output } : {}),
       ...(stringValue(record.cwd) ? { cwd: record.cwd as string } : {}),

@@ -10,6 +10,7 @@ import type { ChatHistorySearchNavigation } from './chatHistorySearchNavigation'
 import type { ChatDraftSnapshot } from './chatDraftRecovery';
 import { useChatDraftAttachmentTarget } from './chatDraftAttachments';
 import { ChatQuestionProvider } from './ChatInlineQuestion';
+import { AgentActivityProvider } from './AgentActivity';
 
 interface ChatViewProps extends ChatHistorySearchNavigation {
   controller: ChatController;
@@ -62,8 +63,11 @@ export function ChatView({
     <section className={styles.root} ref={viewController.rootRef} onKeyDown={viewController.handleEscape}
       onDragOver={viewController.attachmentTransfer.onDragOver} onDrop={viewController.attachmentTransfer.onDrop}>
       <ChatQuestionProvider controller={viewController} chatController={controller} active={active}>
+        <AgentActivityProvider key={`${controller.contextId}:${controller.state.activeSessionId}`} contextId={controller.contextId}
+          threadId={controller.state.activeSessionId} active={active} streaming={viewController.streaming}>
         <ChatTimeline controller={viewController} onReviewFileChanges={onReviewFileChanges} savedTurns={savedTurns}
           historyTarget={historyTarget} onHistoryTargetHandled={onHistoryTargetHandled} />
+        </AgentActivityProvider>
       </ChatQuestionProvider>
       <ChatComposer chatController={controller} controller={viewController} userInputContextId={controller.contextId} active={active} />
     </section>
