@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
-import { Bold, Code, Heading2, Italic, List, ListOrdered, Quote, RotateCcw, Save, Undo2, Redo2 } from 'lucide-react';
+import { Bold, Code, Heading2, Italic, List, ListOrdered, Quote, RotateCcw, Save, StickyNote, Undo2, Redo2 } from 'lucide-react';
 import type { AppleNote, AppleNotesApi } from '../../../../shared/apple-notes';
 import { APPLE_NOTES_MAX_BODY_LENGTH } from '../../../../shared/apple-notes';
 import { noteDocumentReadOnlyReason, type AppleNoteDocument } from '../../../../shared/apple-notes-document';
@@ -158,7 +158,7 @@ function LoadedNoteEditor({ api, document, children, disabled, onSaved, onBusyCh
         {reason ? <pre>{state.original.plaintext}</pre> : <EditorContent editor={editor} />}
       </article>
     </div>
-    {latest && <Modal title="최신 Apple 메모 원본" onClose={() => setLatest(null)}>
+    {latest && <Modal title="최신 Apple 메모 원본" titleIcon={<StickyNote aria-hidden="true" />} onClose={() => setLatest(null)}>
       <p>아래 원본을 확인하세요. 초안을 유지해 다시 저장하면 이 원본의 본문을 바꿉니다.</p>
       <pre className={styles.latest}>{latest.plaintext}</pre>
       {noteDocumentReadOnlyReason(latest) && <p>{noteDocumentReadOnlyReason(latest)}</p>}

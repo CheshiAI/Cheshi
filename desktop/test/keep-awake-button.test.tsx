@@ -6,6 +6,12 @@ import ts from 'typescript';
 import type { KeepAwakeApi, KeepAwakeState } from '../shared/keep-awake';
 
 interface Element { type: unknown; props: Record<string, unknown> }
+function elements(value: unknown): Element[] {
+  if (Array.isArray(value)) return value.flatMap(elements);
+  if (!value || typeof value !== 'object' || !('props' in value)) return [];
+  const element = value as Element;
+  return [element, ...elements(element.props.children)];
+}
 const off: KeepAwakeState = { supported: true, enabled: false, busy: false, error: null, revision: 0 };
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -50,7 +56,7 @@ function harness(overrides: Partial<KeepAwakeApi> & { platform?: string } = {}) 
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'lucide-react': { Play: 'Play', Square: 'Square' },
     '../../cheshiDesktop': { cheshiDesktop: api },
-    '../../shared/ui': { NeumorphicButton: 'NeumorphicButton', nonDraggableWindowRegionStyle: { WebkitAppRegion: 'no-drag' } },
+    '../../shared/ui': { NeumorphicButton: 'NeumorphicButton', StatusToast: 'StatusToast', nonDraggableWindowRegionStyle: { WebkitAppRegion: 'no-drag' } },
     '../../shared/useHelpLanguage': { useHelpLanguage: () => ['ko'] },
   };
   const source = readFileSync(new URL('../frontend/src/features/chrome/KeepAwakeButton.tsx', import.meta.url), 'utf8');
@@ -69,7 +75,8 @@ function harness(overrides: Partial<KeepAwakeApi> & { platform?: string } = {}) 
     const tree = component({ api }); mounted = true; return tree;
   };
   return { render, calls,
-    button() { const tree = render(); assert.ok(tree); return tree; },
+    button() { const button = elements(render()).find(element => element.type === 'NeumorphicButton'); assert.ok(button); return button; },
+    toast() { return elements(render()).find(element => element.type === 'StatusToast'); },
     publish(state: KeepAwakeState) { assert.ok(listener); listener(state); },
     unmount() { cleanups.forEach(cleanup => cleanup()); },
     get unsubscribed() { return unsubscribed; },
@@ -83,20 +90,28 @@ test('OFF plays, ON stops, and only a confirmed result changes the icon', async 
   const app = harness();
   expect(app.button().props.disabled).toBe(true);
   await settle();
+  expect(app.toast()).toBeUndefined();
   const button = app.button();
   expect(icon(button)).toBe('Play');
   expect(button.props['aria-pressed']).toBe(false);
   expect(button.props.title).toBe('절전 방지 실행');
   click(button);
   expect(icon(app.button())).toBe('Play');
+  expect(app.toast()).toBeUndefined();
   await settle();
   expect(icon(app.button())).toBe('Square');
   expect(app.button().props['aria-pressed']).toBe(true);
   expect(app.button().props.title).toBe('절전 방지 종료');
+  expect(app.toast()?.props.message).toMatchObject({ variant: 'success', title: 'Keep awake enabled', description: 'Your Mac will stay awake.' });
   click(app.button());
   await settle();
   expect(icon(app.button())).toBe('Play');
   expect(app.calls).toEqual([true, false]);
+  const toast = app.toast();
+  expect(toast?.props.message).toMatchObject({ variant: 'success', title: 'Keep awake disabled', description: 'Your Mac can sleep normally.' });
+  assert.ok(typeof toast?.props.onDismiss === 'function');
+  toast.props.onDismiss();
+  expect(app.toast()).toBeUndefined();
   app.unmount();
   expect(app.unsubscribed).toBe(true);
 });
@@ -115,6 +130,7 @@ test('duplicate clicks are ignored and execution failure is explained without sw
   expect(app.button().props.disabled).toBe(false);
   expect(icon(app.button())).toBe('Play');
   expect(app.button().props.title).toContain('EACCES');
+  expect(app.toast()?.props.message).toMatchObject({ variant: 'error', title: 'Could not enable keep awake', description: 'Please try again.' });
 });
 
 test('newer shared state wins over delayed initial and command responses', async () => {
@@ -132,6 +148,7 @@ test('newer shared state wins over delayed initial and command responses', async
   await settle();
   expect(icon(app.button())).toBe('Play');
   expect(app.button().props.title).toContain('exited unexpectedly');
+  expect(app.toast()).toBeUndefined();
 });
 
 test('failed status loading can be retried without starting a process blindly', async () => {
@@ -143,6 +160,37 @@ test('failed status loading can be retried without starting a process blindly', 
   click(app.button()); await settle();
   expect(app.button().props.title).toBe('절전 방지 실행');
   expect(app.calls).toEqual([]);
+  expect(app.toast()).toBeUndefined();
+});
+
+test('a failed stop reports failure and a dismissed notification can be shown again', async () => {
+  let calls = 0;
+  const app = harness({ getKeepAwake: async () => ({ ...off, enabled: true }),
+    setKeepAwake: async () => { calls++; throw new Error('stop failed'); } });
+  app.render(); await settle();
+  click(app.button()); await settle();
+  const first = app.toast();
+  expect(first?.props.message).toMatchObject({ title: 'Could not disable keep awake', variant: 'error' });
+  assert.ok(typeof first?.props.onDismiss === 'function');
+  first.props.onDismiss();
+  expect(app.toast()).toBeUndefined();
+  click(app.button()); await settle();
+  expect(app.toast()?.props.message).not.toEqual(first.props.message);
+  expect(calls).toBe(2);
+  expect(icon(app.button())).toBe('Square');
+});
+
+test('a response containing an error cannot show success and unmounted requests do not notify', async () => {
+  const app = harness({ setKeepAwake: async () => ({ ...off, error: 'failed', revision: 1 }) });
+  app.render(); await settle();
+  click(app.button()); await settle();
+  expect(app.toast()?.props.message).toMatchObject({ variant: 'error' });
+  const command = createDeferred<KeepAwakeState>();
+  const removed = harness({ setKeepAwake: () => command.promise });
+  removed.render(); await settle();
+  click(removed.button()); removed.unmount();
+  command.resolve({ ...off, enabled: true, revision: 1 }); await settle();
+  expect(removed.toast()).toBeUndefined();
 });
 
 test('unsupported platforms hide the control and shared busy states disable it', async () => {
