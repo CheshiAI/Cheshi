@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { ComponentProps } from 'react';
 import type { ChatSessionList } from '../frontend/src/features/chat/ChatSessionList';
-import { createSessionListHarness, type SessionListElement } from './chat-session-list-test-harness';
+import { createSessionListHarness, sessionListElements, type SessionListElement } from './chat-session-list-test-harness';
 
 type Props = ComponentProps<typeof ChatSessionList>;
 function props(): Props {
@@ -65,4 +65,29 @@ test('ref-backed deletion restrictions stay fresh without rerendering session co
   const idle = harness.render(initial);
   expect(idle.find((node) => node.props['aria-label'] === 'Delete chat: one')?.props.disabled).toBe(false);
   expect(harness.rowRenders).toBe(2);
+});
+
+test('active sessions and live responses replace the leading icon and restore it when finished', () => {
+  const initial = props();
+  const runningStates: Props[] = [
+    { ...initial, sessions: initial.sessions.map(session =>
+      session.id === 'two' ? { ...session, status: 'active' } : session) },
+    { ...initial, responseThreadIds: ['two'] },
+  ];
+  for (const running of runningStates) {
+    const harness = createSessionListHarness();
+    const idle = harness.render(initial);
+    const responding = harness.render(running);
+    const children = sessionListElements(row(responding, 'two').props.children);
+    expect(children.map(child => child.type)).toEqual(['loading-indicator', 'span']);
+    expect(children[0]?.props['aria-label']).toBe('Active response');
+    expect(children[1]?.props.children).toBe('two');
+    expect(row(responding, 'one')).toBe(row(idle, 'one'));
+
+    const completed = harness.render(initial);
+    const restored = sessionListElements(row(completed, 'two').props.children);
+    expect(restored.map(child => child.type)).toEqual(['MessageSquareText', 'span']);
+    expect(restored[1]?.props.children).toBe('two');
+    expect(harness.rowRenders).toBe(4);
+  }
 });

@@ -60,8 +60,7 @@
 .sessionRow:hover .session { background: var(--dropdown-selection-bg); color: var(--active-text); }
 .session:disabled { cursor: default; }
 .session svg { width: var(--icon-size-default); height: var(--icon-size-default); flex: 0 0 auto; color: inherit; stroke-width: 1.65; }
-.session span { overflow: hidden; min-width: 0; flex: 1 1 auto; text-overflow: ellipsis; white-space: nowrap; }
-.session i { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: #7cc8bd; }
+.sessionTitle { overflow: hidden; min-width: 0; flex: 1 1 auto; text-overflow: ellipsis; white-space: nowrap; }
 
 .loading { flex: 1 1 auto; padding: var(--space-default); }
 
