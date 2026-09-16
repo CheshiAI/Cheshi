@@ -121,6 +121,7 @@
   color: var(--text);
   padding: 10px 14px;
 }
+.userMessage p { white-space: pre-wrap; }
 
 .timelineItem {
   display: flex;
