@@ -50,7 +50,7 @@ export function ChatTurnActions({ turn, savedTurns }: { turn: ChatSavedTurnInput
             <ClipboardClock aria-hidden="true" />
           </NeumorphicButton>
         )}</Tooltip>
-        <AppleNotesSaveAction key={`${turn.threadId}:${turn.itemId}`} title={turn.sessionTitle} body={turn.assistantText} />
+        <AppleNotesSaveAction key={`${turn.threadId}:${turn.itemId}`} className={styles.button} title={turn.sessionTitle} body={turn.assistantText} />
         <span className={styles.feedback} role="status">{copied ? 'Copied' : saved ? 'Saved' : saving ? 'Saving…' : ''}</span>
       </div>
       {(copyError || saveError) && <p className={styles.error} role="alert">{copyError || 'Could not save this turn. Please try again.'}</p>}
