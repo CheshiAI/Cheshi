@@ -1,6 +1,7 @@
 import type { ChatAgentThread, ChatGoal, JsonObject } from "./codex-chat-types.mts";
 import { finiteNumber, recordValue, stringValue } from "./codex-service-utils.mts";
 import { chatRelaySessionTitle } from '../shared/chat-relay.ts';
+import { asyncQuestionsFromMessage } from '../shared/chat-async-questions.ts';
 import {
   parseSavedChatTurnPrompt,
   savedChatTurnSessionTitle,
@@ -347,11 +348,13 @@ export function timelineFromThread(value: unknown): JsonObject[] {
       }
       if (type === "agentMessage") {
         const text = stringValue(item.text)?.trim();
-        if (text)
+        const asyncQuestions = asyncQuestionsFromMessage(item);
+        if (text || asyncQuestions)
           timeline.push({
             id,
             kind: "assistant",
-            text,
+            text: text ?? '',
+            ...(asyncQuestions ? { asyncQuestions } : {}),
             createdAt: completedAt,
           });
         continue;

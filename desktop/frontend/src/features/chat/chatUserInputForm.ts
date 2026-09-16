@@ -2,6 +2,17 @@ import type { ChatInputField, ChatInputValue, ChatUserInputRequest, ChatUserInpu
 
 export type InputDraft = Record<string, string | string[]>;
 
+export function resolvedQuestionDraft(request: ChatUserInputRequest, answers: Record<string, string[]> = {}): { draft: InputDraft; notes: InputDraft } {
+  if (request.kind !== 'questions') return { draft: {}, notes: {} };
+  const entries = request.questions.map(question => {
+    const values = answers[question.id] ?? [];
+    const selected = question.options?.find(option => values.includes(option.label))?.label ?? '';
+    return { id: question.id, selected, notes: values.filter(value => value !== selected).join('\n\n') };
+  });
+  return { draft: Object.fromEntries(entries.map(entry => [entry.id, entry.selected])),
+    notes: Object.fromEntries(entries.map(entry => [entry.id, entry.notes])) };
+}
+
 export function initialInputDraft(request: ChatUserInputRequest): InputDraft {
   if (request.kind !== 'form') return {};
   return Object.fromEntries(request.fields.filter((field) => field.default !== undefined)

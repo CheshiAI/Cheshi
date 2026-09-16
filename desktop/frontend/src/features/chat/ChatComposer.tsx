@@ -27,7 +27,7 @@ import type { ChatController } from './useChatController';
 import { GithubLinkChips } from './GithubLinkChips';
 import { ChatMessageQueue, ChatQueueToggle } from './ChatMessageQueue';
 import { ChatFallbackQuestion } from './ChatFallbackQuestion';
-import { fallbackQuestionRequest } from './chatQuestionChoices';
+import { composerQuestionRequest } from './chatQuestionChoices';
 
 export function ChatComposer({ controller, chatController, userInputContextId, active = true }: {
   controller: ChatViewController; chatController: ChatController; userInputContextId?: string; active?: boolean;
@@ -77,7 +77,7 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
   const queuePanelId = useId();
   const [queueVisible, setQueueVisible] = useState(true);
   const queueOpen = queueVisible && controller.messageQueue.entries.length > 0;
-  const fallbackRequest = useMemo(() => fallbackQuestionRequest(state.items, state.activeSessionId), [state.items, state.activeSessionId]);
+  const fallbackRequest = useMemo(() => composerQuestionRequest(state.items, state.activeSessionId), [state.items, state.activeSessionId]);
   const history = useChatInputHistory({ scope: `${chatController.sessionRevision}:${state.activeSessionId ?? ''}`,
     items: state.items, draft, textareaRef, setDraft: controller.setDraft, onKeyDown: handleKeyDown,
     disabled: !active || interactionsLocked || loading || commandMenuOpen || configurationMenuOpen || controller.sendPending || commandLoading });

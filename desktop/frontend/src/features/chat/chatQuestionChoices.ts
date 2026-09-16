@@ -3,7 +3,22 @@ import type { ChatTimelineItem } from './model';
 
 const CHOICE_QUESTION = /(?:고르|골라|선택|어느.+(?:좋|원|할)|어떤.+(?:좋|원|할)|\b(?:choose|select|pick|prefer)\b|\bwhich\b|\bwould you like\b)/i;
 
-export type FallbackQuestionRequest = ChatUserInputRequest & { sourceItemId?: string; legacyQuestionId?: string };
+export type FallbackQuestionRequest = ChatUserInputRequest & { sourceItemId?: string; legacyQuestionId?: string; delivery?: 'async' };
+
+function questionIdentity(item: ChatTimelineItem, threadId: string) {
+  const turnId = item.turnId ?? null;
+  const legacyQuestionId = `question:${threadId}:${item.id}`;
+  return { id: turnId ? `question:${JSON.stringify([threadId, turnId, item.id])}` : legacyQuestionId,
+    threadId, turnId, sourceItemId: item.id, legacyQuestionId };
+}
+
+/** A structured question belongs to its message, regardless of later conversation turns. */
+export function asyncQuestionRequest(item: ChatTimelineItem, threadId: string | null): FallbackQuestionRequest | null {
+  if (!threadId || item.kind !== 'assistant' || !item.asyncQuestions?.length) return null;
+  return { ...questionIdentity(item, threadId), kind: 'questions', isBlocking: false, delivery: 'async',
+    questions: item.asyncQuestions.map((question, index) => ({ id: `answer-${index + 1}`, header: '', question: question.title,
+      isOther: true, isSecret: false, options: question.options?.map(label => ({ label, description: '' })) ?? null })) };
+}
 
 /** Recognize a choice question with a flat numbered or bulleted list. */
 export function plainTextQuestion(text: string): { question: string; options: string[] } | null {
@@ -48,14 +63,18 @@ export function fallbackQuestionRequest(items: ChatTimelineItem[], threadId: str
       latestTurnId = item.turnId;
     }
     if (item.kind !== 'assistant') continue;
+    const structured = asyncQuestionRequest(item, threadId);
+    if (structured) return structured;
     const choice = plainTextQuestion(item.text);
     if (!choice) continue;
-    const turnId = item.turnId ?? null;
-    const legacyQuestionId = `question:${threadId}:${item.id}`;
-    return { id: turnId ? `question:${JSON.stringify([threadId, turnId, item.id])}` : legacyQuestionId,
-      threadId, turnId, sourceItemId: item.id, legacyQuestionId, kind: 'questions', isBlocking: false,
+    return { ...questionIdentity(item, threadId), kind: 'questions', isBlocking: false,
       questions: [{ id: 'answer', header: '', question: choice.question, isOther: true, isSecret: false,
         options: choice.options.map(label => ({ label, description: '' })) }] };
   }
   return null;
+}
+
+export function composerQuestionRequest(items: ChatTimelineItem[], threadId: string | null): FallbackQuestionRequest | null {
+  const request = fallbackQuestionRequest(items, threadId);
+  return request?.delivery === 'async' ? null : request;
 }
