@@ -31,6 +31,7 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const notes = state.notes.filter(note => note.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const selectedFolder = state.folders.find(folder => folder.id === state.folderId);
+  const editorNote = state.loadingNote ? state.notes.find(note => note.id === state.selectedId) : state.note;
   const toggleFolder = (folderId: string) => {
     if (navigationDisabled || state.loadingFolders) return;
     if (folderId === state.folderId) {
@@ -154,14 +155,14 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
               setNewDraft(null);
               setEditing(false);
               setCreated(true);
-            }} /> : state.note && !state.loadingNote ? <AppleNotesEditor key={state.note.id} api={api} note={state.note}
+            }} /> : editorNote ? <AppleNotesEditor key={editorNote.id} api={api} note={editorNote} loadingNote={state.loadingNote}
             disabled={attaching} onSaved={browser.applyUpdated} onBusyChange={setEditing}>{noteActions}</AppleNotesEditor> : <>
             <div className={styles.emptyEditorHeader}><span>{selectedFolder?.path ?? 'Memo'}</span><div className={styles.headerActions}>{noteActions}</div></div>
-            <section className={styles.documentScroll} aria-label="Note preview" aria-busy={state.loadingNote}>
+            <section className={styles.documentScroll} aria-label="Note preview">
               <article className={styles.document}>
-                {state.loadingNote ? <p role="status">Reading note…</p> : <div className={styles.emptyDocument}>
+                <div className={styles.emptyDocument}>
                   <StickyNote aria-hidden="true" /><h2>Memo</h2><p>Select a note to read its text.</p>
-                </div>}
+                </div>
               </article>
             </section>
           </>}
