@@ -31,7 +31,7 @@ function harness() {
     importAttachments: async (id, files) => {
       imports.push({ id, files });
       return files.map(file => {
-        assert.equal(typeof file, 'string');
+        assert.ok(typeof file === 'string', 'Explorer drops must supply file paths.');
         return { kind: 'file' as const, name: file.split('/').at(-1)!, path: file };
       });
     },
