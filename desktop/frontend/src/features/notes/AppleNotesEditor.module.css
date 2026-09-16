@@ -8,28 +8,6 @@
 .toolbar { display: flex; flex-wrap: wrap; gap: var(--icon-default); padding: var(--icon-default) var(--space-default); border-bottom: 1px solid var(--divider); }
 .scroll { flex: 1; min-height: 0; overflow: auto; }
 .page { max-width: 800px; margin: 0 auto; padding: 32px clamp(16px, 4vw, 64px); }
-.page h2 { font-size: 28px; margin: 0 0 24px; overflow-wrap: anywhere; }
-.title {
-  appearance: none;
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  height: var(--field-height);
-  margin: 0 0 var(--space-default);
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  outline: none;
-  background: transparent;
-  color: var(--text);
-  font-family: inherit;
-  font-size: 22px;
-  font-weight: 650;
-  line-height: 1.4;
-  cursor: text;
-}
-.title:disabled { opacity: var(--field-disabled-opacity); }
 .body { outline: none; min-height: 240px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
 .body p { margin: 0; }
 .body h1, .body h2, .body h3 { margin: 0; line-height: 1.4; }

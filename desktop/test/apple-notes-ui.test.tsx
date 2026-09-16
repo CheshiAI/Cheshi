@@ -9,6 +9,8 @@ import * as contract from '../shared/apple-notes';
 import type { AppleNotesBrowserState } from '../frontend/src/features/notes/appleNotesModel';
 import type { AppleNotesDeleteDialog } from '../frontend/src/features/notes/AppleNotesDeleteDialog';
 import type { AppleNotesSaveDialog } from '../frontend/src/features/notes/AppleNotesSaveDialog';
+import type { AppleNotesNewDialog } from '../frontend/src/features/notes/AppleNotesNewDialog';
+import { createNewNoteDraft } from '../frontend/src/features/notes/appleNotesNewDraft';
 import type { AppleNotesBrowser } from '../frontend/src/features/notes/AppleNotesBrowser';
 
 function createDeferred<T>() {
@@ -30,6 +32,8 @@ function api(create: contract.AppleNotesApi['create']): contract.AppleNotesApi {
 
 function harness<T>(file: string, symbol: string, browserState = state()) {
   const selectedFolders: string[] = [];
+  const createdNotes: { folderId: string; note: contract.AppleNote }[] = [];
+  let pendingDraft: ReturnType<typeof createNewNoteDraft> | null = null;
   const reloadedFolders: string[] = [];
   const selectedNotes: string[] = [];
   const removedNotes: { folderId: string; noteId: string }[] = [];
@@ -57,13 +61,19 @@ function harness<T>(file: string, symbol: string, browserState = state()) {
     '../../../../shared/apple-notes': contract,
     '../../cheshiDesktop': { cheshiDesktop: undefined },
     '../../shared/ui': { LiquidGlassPanel: 'section', Modal: 'modal', NeumorphicButton: 'button', NeumorphicTextField: 'input', Tooltip: 'tooltip', SearchClearButton: 'clear-button' },
-    './AppleNotesEditor': { AppleNotesEditor: 'note-editor' },
+    './AppleNotesEditor': { AppleNotesEditor: 'note-editor', AppleNotesNewEditor: 'new-editor' },
     './AppleNotesDeleteDialog': { AppleNotesDeleteDialog: 'delete-dialog' },
+    './AppleNotesNewDialog': { AppleNotesNewDialog: 'new-dialog' },
+    './appleNotesNewDraft': { getNewNoteDraft: () => pendingDraft,
+      startNewNoteDraft: (folder: contract.AppleNotesFolder) => pendingDraft ??= createNewNoteDraft(folder),
+      releaseNewNoteDraft: () => { pendingDraft = null; } },
     './AppleNotesSaveDialog': { AppleNotesSaveDialog: 'save-dialog' },
     './AppleNotesFolderField': { AppleNotesFolderField: 'folder-field' },
     './AppleNotes.module.css': { default: {} },
+    './AppleNotesNewDialog.module.css': { default: {} },
     './useAppleNotesBrowser': { useAppleNotesBrowser: () => ({ state: browserState, browser: {
       applyUpdated: () => {},
+      applyCreated: (folderId: string, note: contract.AppleNote) => { createdNotes.push({ folderId, note }); },
       removeDeleted: (folderId: string, noteId: string) => { removedNotes.push({ folderId, noteId }); },
       refresh: async (forceRefresh = true) => { refreshes.push(forceRefresh); },
       selectFolder: async (id: string, options?: { forceRefresh?: boolean }) => {
@@ -84,6 +94,7 @@ function harness<T>(file: string, symbol: string, browserState = state()) {
   } });
   return {
     selectedFolders,
+    createdNotes,
     reloadedFolders,
     selectedNotes,
     removedNotes,
@@ -123,8 +134,6 @@ function click(node: ReactNode, predicate: (element: ReactElement<Record<string,
   button.props.onClick();
 }
 
-const titleField = (element: ReactElement<Record<string, unknown>>) => element.type === 'input' && element.props.maxLength === contract.APPLE_NOTES_MAX_TITLE_LENGTH;
-const bodyField = (element: ReactElement<Record<string, unknown>>) => element.type === 'input' && element.props.multiline === true;
 const folderField = (element: ReactElement<Record<string, unknown>>) => element.type === 'folder-field';
 
 test('background revalidation keeps cached rows and empty-folder messages visible without a loading placeholder', () => {
@@ -322,78 +331,103 @@ test('notes page removes the acknowledged delete target without reloading or cle
   expect(find(render(), element => element.props.role === 'status').props.children).toBe('Deleted from Apple Notes.');
 });
 
-test('composing preserves input after a failed save and sends one request when retried', async () => {
+test('new memo changes the selected folder and opens it only after confirmation, exactly once', () => {
+  let creates = 0;
+  const selected: contract.AppleNotesFolder[] = [];
   const browserState = state();
-  browserState.folders.push({ id: 'other', name: 'Work', account: 'iCloud', path: 'Work', isDefault: false });
-  const pending = createDeferred<contract.AppleNotesReply<contract.AppleNoteCreated>>();
-  const calls: contract.AppleNoteCreateInput[] = [];
-  const savedFolders: string[] = [];
-  const app = harness<typeof AppleNotesSaveDialog>('AppleNotesSaveDialog.tsx', 'AppleNotesSaveDialog', browserState);
-  const notesApi = api(async input => {
-    calls.push(input);
-    return calls.length === 1 ? { ok: false, error: { code: 'permission', message: 'Allow Notes automation.' } } : pending.promise;
-  });
-  const render = () => app.render(component => component({ api: notesApi, mode: 'compose', initialTitle: '', body: '',
-    initialFolderId: 'other', onClose() {}, onSaved: folderId => { savedFolders.push(folderId); } }));
-  expect(find(render(), folderField).props.value).toBe('other');
-  expect(find(render(), element => element.props.type === 'submit').props.disabled).toBe(true);
-  submit(render());
-  expect(calls).toHaveLength(0);
-  change(render(), titleField, '  새 메모 제목  ');
-  submit(render());
-  expect(calls).toHaveLength(0);
-  change(render(), bodyField, '첫째 줄\n\n둘째 줄');
-  change(render(), folderField, 'folder');
-  submit(render());
-  await flush();
-  expect(find(render(), element => element.props.role === 'alert').props.children).toBe('Allow Notes automation.');
-  expect(find(render(), titleField).props.value).toBe('  새 메모 제목  ');
-  expect(find(render(), bodyField).props.value).toBe('첫째 줄\n\n둘째 줄');
-  expect(find(render(), folderField).props.value).toBe('folder');
-  expect(savedFolders).toEqual([]);
-  const retry = render();
-  submit(retry); submit(retry);
-  expect(calls).toEqual(Array.from({ length: 2 }, () => ({ folderId: 'folder', title: '새 메모 제목', body: '첫째 줄\n\n둘째 줄' })));
-  expect(find(render(), bodyField).props.disabled).toBe(true);
-  expect(find(render(), element => element.type === 'modal').props.closeDisabled).toBe(true);
-  pending.resolve({ ok: true, value: { id: 'new', title: '새 메모 제목' } });
-  await flush();
-  expect(savedFolders).toEqual(['folder']);
+  browserState.folders.push({ id: 'other', name: 'Notes', account: 'On My Mac', path: 'Notes', isDefault: false });
+  const app = harness<typeof AppleNotesNewDialog>('AppleNotesNewDialog.tsx', 'AppleNotesNewDialog', browserState);
+  const notesApi = api(async () => { creates += 1; return { ok: true, value: { id: 'new', title: 'New' } }; });
+  const render = () => app.render(component => component({ api: notesApi, initialFolderId: 'other',
+    onClose() {}, onContinue(folder) { selected.push(folder); } }));
+  const folderButton = (title: string) => (element: ReactElement<Record<string, unknown>>) => element.type === 'button' && element.props.title === title;
+  expect(find(render(), folderButton('On My Mac / Notes')).props['aria-pressed']).toBe(true);
+  expect(find(render(), folderButton('iCloud / Notes')).props.type).toBe('button');
+  expect(elements(render()).filter(element => element.type === 'li')).toHaveLength(2);
+  expect(elements(render()).some(element => element.type === 'input' || element.type === 'folder-field')).toBe(false);
+  expect(selected).toEqual([]);
+  expect(find(render(), element => element.props.children === 'Confirm').props.disabled).toBe(false);
+  click(render(), folderButton('iCloud / Notes'));
+  expect(find(render(), folderButton('iCloud / Notes')).props['aria-pressed']).toBe(true);
+  expect(find(render(), folderButton('On My Mac / Notes')).props['aria-pressed']).toBe(false);
+  expect(selected).toEqual([]);
+  click(render(), folderButton('On My Mac / Notes'));
+  expect(selected).toEqual([]);
+  const tree = render();
+  submit(tree);
+  submit(tree);
+  expect(selected.map(folder => folder.id)).toEqual(['other']);
+  expect(creates).toBe(0);
 });
 
-test('an uncertain new-note save retains the draft and cannot be retried immediately', async () => {
-  let calls = 0;
-  const app = harness<typeof AppleNotesSaveDialog>('AppleNotesSaveDialog.tsx', 'AppleNotesSaveDialog');
-  const notesApi = api(async () => { calls += 1; throw new Error('IPC disconnected'); });
-  const render = () => app.render(component => component({ api: notesApi, mode: 'compose', initialTitle: '', body: '',
-    onClose() {}, onSaved() { throw new Error('Unexpected success'); } }));
-  change(render(), titleField, 'Title');
-  change(render(), bodyField, 'Draft');
+test('folder picker closes without selection and handles loading, errors and an empty folder list', () => {
+  let closed = 0;
+  const selected: contract.AppleNotesFolder[] = [];
+  const browserState = state();
+  const app = harness<typeof AppleNotesNewDialog>('AppleNotesNewDialog.tsx', 'AppleNotesNewDialog', browserState);
+  const render = () => app.render(component => component({ api: api(async () => { throw new Error('Unexpected create'); }),
+    initialFolderId: 'missing', onClose() { closed += 1; }, onContinue(folder) { selected.push(folder); } }));
+  const button = (element: ReactElement<Record<string, unknown>>) => element.props.title === 'iCloud / Notes';
+  expect(find(render(), button).props['aria-pressed']).toBe(true);
+  const modal = find(render(), element => element.type === 'modal');
+  if (typeof modal.props.onClose !== 'function') throw new Error('Missing close callback');
+  modal.props.onClose();
+  expect(closed).toBe(1);
+  expect(selected).toEqual([]);
+  browserState.loadingFolders = true;
+  expect(find(render(), button).props.disabled).toBe(true);
+  expect(find(render(), element => element.props.children === 'Confirm').props.disabled).toBe(true);
   submit(render());
-  await flush();
-  expect(find(render(), bodyField).props.value).toBe('Draft');
-  expect(find(render(), element => element.props.role === 'alert').props.children).toBe(contract.APPLE_NOTES_SAVE_UNKNOWN_MESSAGE);
-  expect(find(render(), element => element.props.type === 'submit').props.disabled).toBe(true);
+  click(render(), button);
+  expect(selected).toEqual([]);
+  browserState.loadingFolders = false;
+  browserState.error = 'Allow Notes automation.';
+  expect(find(render(), element => element.props.role === 'alert').props.children).toBe(browserState.error);
   submit(render());
-  expect(calls).toBe(1);
+  click(render(), button);
+  expect(selected).toEqual([]);
+  click(render(), element => element.props.children === 'Retry loading folders');
+  expect(app.refreshes).toEqual([true]);
+  browserState.error = null;
+  browserState.folders = [];
+  expect(find(render(), element => element.type === 'p').props.children).toBe('No folders available. Add a folder in Apple Notes.');
+  expect(find(render(), element => element.props.children === 'Confirm').props.disabled).toBe(true);
+  submit(render());
+  expect(selected).toEqual([]);
 });
 
-test('new note closes only on acknowledgement and reloads the saved folder with search cleared', () => {
+test('folder selection opens a blank right-hand editor; discard closes it and save selects the created note', () => {
+  let creates = 0;
   const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser');
-  const render = () => app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'Title' } })),
+  const render = () => app.render(component => component({ api: api(async () => { creates += 1; return { ok: true, value: { id: 'new', title: 'Title' } }; }),
     onAttach: async () => true, renderHeader: (refresh, create, search) => <header>{search}{refresh}{create}</header> }));
+  const begin = () => {
+    click(render(), element => element.props['aria-label'] === '새 메모');
+    const dialog = find(render(), element => element.type === 'new-dialog');
+    expect(dialog.props.initialFolderId).toBe('folder');
+    if (typeof dialog.props.onContinue !== 'function') throw new Error('Missing folder callback');
+    dialog.props.onContinue(state().folders[0]);
+    return find(render(), element => element.type === 'new-editor');
+  };
   change(render(), element => element.props.type === 'search', 'old search');
-  click(find(render(), element => element.type === 'header'), element => element.props['aria-label'] === '새 메모');
-  const dialog = find(render(), element => element.type === 'save-dialog');
-  expect(dialog.props.initialFolderId).toBe('folder');
-  expect(dialog.props.mode).toBe('compose');
-  expect(app.selectedFolders).toEqual([]);
-  if (typeof dialog.props.onSaved !== 'function') throw new Error('Missing saved callback.');
-  dialog.props.onSaved('other');
-  expect(app.selectedFolders).toEqual(['other']);
-  expect(app.reloadedFolders).toEqual(['other']);
-  expect(elements(render()).some(element => element.type === 'save-dialog')).toBe(false);
+  let editor = begin();
+  const draft = editor.props.draft as ReturnType<typeof createNewNoteDraft>;
+  expect(draft.getSnapshot()).toMatchObject({ title: '', html: '<p></p>', dirty: false });
+  expect(elements(render()).some(element => element.type === 'new-dialog' || element.type === 'note-editor')).toBe(false);
   expect(find(render(), element => element.props.type === 'search').props.value).toBe('');
+  expect(find(render(), element => element.props['aria-label'] === 'Refresh Apple Notes').props.disabled).toBe(true);
+  expect(app.createdNotes).toEqual([]);
+  expect(creates).toBe(0);
+  if (typeof editor.props.onDiscard !== 'function') throw new Error('Missing discard callback');
+  editor.props.onDiscard();
+  expect(elements(render()).some(element => element.type === 'new-editor')).toBe(false);
+  expect(creates).toBe(0);
+  editor = begin();
+  if (typeof editor.props.onSaved !== 'function') throw new Error('Missing saved callback');
+  const created = { ...note, id: 'created' };
+  editor.props.onSaved(created);
+  expect(app.createdNotes).toEqual([{ folderId: 'folder', note: created }]);
+  expect(elements(render()).some(element => element.type === 'new-editor')).toBe(false);
   expect(find(render(), element => element.props.role === 'status').props.children).toBe('Saved to Apple Notes.');
 });
 

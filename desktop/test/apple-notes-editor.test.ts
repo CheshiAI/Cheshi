@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { Editor } from '@tiptap/core';
 import { noteEditorExtensions } from '../frontend/src/features/notes/appleNotesEditorExtensions';
-import { noteEditorHtml } from '../frontend/src/features/notes/appleNotesEditorContent';
+import { noteEditorHtml, noteEditorTitle } from '../frontend/src/features/notes/appleNotesEditorContent';
 import { noteTimestamp } from '../frontend/src/features/notes/appleNotesTimestamp';
 import { appleNoteUpdateInput, isEditableNoteHtml, noteDocumentReadOnlyReason, type AppleNoteDocument } from '../shared/apple-notes-document';
 
@@ -23,7 +23,7 @@ test('header timestamp prefers modification time and falls back to creation time
 function withDom(run: () => void) {
   const window = new Window();
   const globals: Record<string, unknown> = { window, document: window.document, navigator: window.navigator,
-    DOMParser: window.DOMParser, Node: window.Node, HTMLElement: window.HTMLElement, Element: window.Element,
+    KeyboardEvent: window.KeyboardEvent, DOMParser: window.DOMParser, Node: window.Node, HTMLElement: window.HTMLElement, Element: window.Element,
     MutationObserver: window.MutationObserver, getComputedStyle: window.getComputedStyle.bind(window),
     requestAnimationFrame: window.requestAnimationFrame.bind(window), cancelAnimationFrame: window.cancelAnimationFrame.bind(window) };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -38,13 +38,14 @@ function withDom(run: () => void) {
   }
 }
 
-test('imports Apple Notes paragraph boundaries and separates the title without duplicating it', () => withDom(() => {
+test('imports the first line and paragraphs as one document without duplicating the title', () => withDom(() => {
   const html = noteEditorHtml(note);
-  expect(html).toBe('<p>First line</p><p>Second line</p>');
+  expect(html).toBe('<h1>Title</h1><p>First line</p><p>Second line</p>');
   const editor = new Editor({ extensions: noteEditorExtensions(), content: html, parseOptions: { preserveWhitespace: 'full' } });
   try {
-    expect(editor.getText()).toBe('First line\n\nSecond line');
-    const saved = { ...note, html: '<h1>Title</h1>' + editor.getHTML() };
+    expect(editor.getText()).toBe('Title\n\nFirst line\n\nSecond line');
+    expect(noteEditorTitle(editor.state.doc)).toBe('Title');
+    const saved = { ...note, html: editor.getHTML() };
     expect(noteEditorHtml(saved)).toBe(html);
   } finally { editor.destroy(); }
 }));
@@ -55,10 +56,10 @@ test('Apple Notes font-size spans remain editable and keep body sizes when saved
     + '<div><span style="font-size: 13.5px;">Small text</span><br></div><div>Plain text<br></div>' };
   expect(noteDocumentReadOnlyReason(original)).toBeNull();
   const imported = noteEditorHtml(original);
-  expect(imported).not.toContain('Title');
+  expect(imported).toContain('Title');
   const editor = new Editor({ extensions: noteEditorExtensions(), content: imported, parseOptions: { preserveWhitespace: 'full' } });
   try {
-    const blocks = editor.getJSON().content!;
+    const blocks = editor.getJSON().content!.slice(1);
     expect<unknown>(blocks[0]).toEqual({ type: 'paragraph' });
     expect(blocks[1]?.content?.[0]?.marks).toContainEqual({ type: 'noteFontSize', attrs: { fontSize: '24px' } });
     expect(blocks[1]?.content?.[0]?.marks).toContainEqual({ type: 'bold' });
@@ -71,7 +72,7 @@ test('Apple Notes font-size spans remain editable and keep body sizes when saved
     expect(editor.getMarkdown()).toContain('Large text');
     expect(appleNoteUpdateInput({ noteId: note.id, title: note.title, html,
       expectedHtml: original.html, expectedModifiedAt: note.modifiedAt, expectedTitle: note.title }).html).toBe(html);
-    const saved = { ...original, html: '<div><b><span style="font-size: 24px">Title</span></b><br></div>' + html };
+    const saved = { ...original, html };
     expect(noteDocumentReadOnlyReason(saved)).toBeNull();
     const before = editor.getJSON();
     editor.commands.setContent(noteEditorHtml(saved), { parseOptions: { preserveWhitespace: 'full' } });
@@ -85,10 +86,11 @@ test('imports a fragmented Apple Notes title as one title and preserves explicit
     + '<div><br></div>\n<div>First paragraph</div>\n<div><br></div>\n'
     + '<div>Second paragraph</div>\n<div><br>Line one<br>Line two<br></div>\n' };
   const html = noteEditorHtml(original);
-  expect(html).not.toContain('<h1>');
+  expect(html).toContain('<h1>Alpha Beta Gamma</h1>');
   const editor = new Editor({ extensions: noteEditorExtensions(), content: html, parseOptions: { preserveWhitespace: 'full' } });
   try {
     expect<unknown>(editor.getJSON().content).toEqual([
+      { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Alpha Beta Gamma' }] },
       { type: 'paragraph' },
       { type: 'paragraph', content: [{ type: 'text', text: 'First paragraph' }] },
       { type: 'paragraph' },
@@ -97,7 +99,7 @@ test('imports a fragmented Apple Notes title as one title and preserves explicit
         { type: 'hardBreak' }, { type: 'text', text: 'Line two' }] },
     ]);
     const before = editor.getJSON();
-    editor.commands.setContent(noteEditorHtml({ ...original, html: '<h1>Alpha Beta Gamma</h1>' + editor.getHTML() }),
+    editor.commands.setContent(noteEditorHtml({ ...original, html: editor.getHTML() }),
       { parseOptions: { preserveWhitespace: 'full' } });
     expect(editor.getJSON()).toEqual(before);
   } finally { editor.destroy(); }
@@ -110,7 +112,7 @@ test('keeps distinct headings, repeated blank lines and inline spacing in the bo
   const html = noteEditorHtml(original);
   const editor = new Editor({ extensions: noteEditorExtensions(), content: html, parseOptions: { preserveWhitespace: 'full' } });
   try {
-    const blocks = editor.getJSON().content!;
+    const blocks = editor.getJSON().content!.slice(1);
     expect<unknown>(blocks[0]?.content).toEqual([{ type: 'text', text: 'Body stays' }]);
     expect(blocks.filter(block => block.type === 'heading')).toHaveLength(2);
     expect(blocks.filter(block => block.type === 'paragraph' && !block.content)).toHaveLength(2);
@@ -126,10 +128,10 @@ test('native body heading fragments form one heading per original line through e
     + '<div><b><h1>Apple</h1></b><b><h1> </h1></b><b><h1>Notes</h1></b>'
     + '<b><h1> </h1></b><b><h1>integration</h1></b></div>\n' };
   const html = noteEditorHtml(original);
-  expect(html.match(/<h1>/g)).toHaveLength(2);
+  expect(html.match(/<h1>/g)).toHaveLength(3);
   const editor = new Editor({ extensions: noteEditorExtensions(), content: html, parseOptions: { preserveWhitespace: 'full' } });
   try {
-    const blocks = editor.getJSON().content!;
+    const blocks = editor.getJSON().content!.slice(1);
     expect<unknown>(blocks).toEqual([
       { type: 'paragraph' },
       { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'First screen message', marks: [{ type: 'bold' }] }] },
@@ -140,7 +142,7 @@ test('native body heading fragments form one heading per original line through e
     expect(appleNoteUpdateInput({ noteId: note.id, title: note.title, html: savedHtml,
       expectedHtml: original.html, expectedModifiedAt: note.modifiedAt, expectedTitle: note.title }).html).toBe(savedHtml);
     const before = editor.getJSON();
-    const saved = { ...note, html: '<div><b><h1>Title</h1></b></div>' + savedHtml };
+    const saved = { ...note, html: savedHtml };
     expect(noteDocumentReadOnlyReason(saved)).toBeNull();
     editor.commands.setContent(noteEditorHtml(saved), { parseOptions: { preserveWhitespace: 'full' } });
     expect(editor.getJSON()).toEqual(before);
@@ -154,7 +156,7 @@ test('heading normalization preserves nested line boundaries, hard breaks, mixed
     + '<div><h1>Separate title</h1><h2>Separate subheading</h2></div><div><p>Paragraph</p><h2>Heading</h2></div>' };
   const editor = new Editor({ extensions: noteEditorExtensions(), content: noteEditorHtml(original), parseOptions: { preserveWhitespace: 'full' } });
   try {
-    const blocks = editor.getJSON().content!;
+    const blocks = editor.getJSON().content!.slice(1);
     expect(blocks.map(block => block.type)).toEqual(['heading', 'heading', 'heading', 'heading', 'paragraph', 'heading']);
     expect(blocks.map(block => block.attrs?.level)).toEqual([2, 2, 1, 2, undefined, 2]);
     expect(blocks[0]?.content?.[0]?.marks).toContainEqual({ type: 'italic' });
@@ -195,4 +197,49 @@ test('unsupported original HTML stays read-only and never enters the rich editor
     expect(noteEditorHtml(protectedNote)).toBe('');
   }
   expect(noteDocumentReadOnlyReason({ ...note, attachmentCount: 1 })).not.toBeNull();
+}));
+
+test('Enter and Backspace cross the first line in the same document', () => withDom(() => {
+  const editor = new Editor({ extensions: noteEditorExtensions(), content: '<h1>First line</h1>' });
+  try {
+    editor.commands.setTextSelection(11);
+    expect(editor.commands.keyboardShortcut('Enter')).toBe(true);
+    editor.commands.insertContent('Body line');
+    expect(editor.getHTML()).toBe('<h1>First line</h1><p>Body line</p>');
+    expect(noteEditorTitle(editor.state.doc)).toBe('First line');
+    editor.commands.setTextSelection(13);
+    expect(editor.commands.keyboardShortcut('Backspace')).toBe(true);
+    expect(editor.state.doc.childCount).toBe(1);
+    expect(noteEditorTitle(editor.state.doc)).toBe('First lineBody line');
+  } finally { editor.destroy(); }
+}));
+
+test('title metadata uses the first logical line without truncating or deleting document content', () => withDom(() => {
+  const editor = new Editor({ extensions: noteEditorExtensions(), content: '<p>One &amp; <strong>two</strong><br>Next line</p><p>Body</p>' });
+  try {
+    expect(noteEditorTitle(editor.state.doc)).toBe('One & two');
+    const longTitle = '긴 제목'.repeat(100);
+    editor.commands.setContent(`<p>${longTitle}</p><p>Body</p>`);
+    expect(noteEditorTitle(editor.state.doc)).toBe(longTitle.slice(0, 200));
+    expect(editor.state.doc.firstChild?.textContent).toBe(longTitle);
+    editor.commands.setContent('<p></p><p>Body remains</p>');
+    expect(noteEditorTitle(editor.state.doc)).toBe('Untitled note');
+    expect(editor.getHTML()).toBe('<p></p><p>Body remains</p>');
+    editor.commands.setContent('<p></p>');
+    expect(noteEditorTitle(editor.state.doc)).toBe('');
+  } finally { editor.destroy(); }
+}));
+
+test('editing and undoing the first line updates title metadata together with the document', () => withDom(() => {
+  const editor = new Editor({ extensions: noteEditorExtensions(), content: '<p>New title</p><p>Body</p>' });
+  try {
+    expect(noteEditorTitle(editor.state.doc)).toBe('New title');
+    editor.commands.setTextSelection({ from: 1, to: 10 });
+    editor.commands.insertContent('Changed');
+    expect(noteEditorTitle(editor.state.doc)).toBe('Changed');
+    expect(editor.commands.undo()).toBe(true);
+    expect(noteEditorTitle(editor.state.doc)).toBe('New title');
+    expect(editor.commands.redo()).toBe(true);
+    expect(noteEditorTitle(editor.state.doc)).toBe('Changed');
+  } finally { editor.destroy(); }
 }));

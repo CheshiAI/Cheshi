@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import vm from 'node:vm';
 import { AppleNotesService } from '../lib/apple-notes-service.mts';
+import { createAppleNotesApi } from '../lib/apple-notes-preload.cts';
 import { AppleNotesProcessError } from '../lib/apple-notes-process.mts';
 import { appleNoteCreateInput, APPLE_NOTES_MAX_BODY_LENGTH } from '../shared/apple-notes.ts';
 
@@ -269,4 +270,48 @@ describe('Apple Notes automation contract', () => {
     expect(calls).toBe(0);
     expect(appleNoteCreateInput({ folderId: 'root', title: ' title ', body: '  spaces\n' }).body).toBe('  spaces\n');
   });
+});
+
+test('rich creation crosses preload and native automation without escaping formatting or paragraph breaks', async () => {
+  const { service, creations, child } = fixture();
+  const api = createAppleNotesApi({ invoke: async (channel, input) => {
+    expect(channel).toBe('cheshi:apple-notes-create');
+    return service.create(input);
+  } }, 'darwin');
+  const html = '<h2>Heading</h2><p>First<br>Second</p><p></p><ul><li><p><strong>Item</strong></p></li></ul>';
+  expect(await api.create({ folderId: 'child', title: 'New & <title>', body: '', html }))
+    .toMatchObject({ ok: true, value: { id: 'created' } });
+  expect(creations[0]?.at).toBe(child);
+  expect(creations[0]?.withProperties.body).toBe('<h1>New &amp; &lt;title&gt;</h1>' + html);
+  expect(await service.create({ folderId: 'child', title: 'Title only', body: '', html: '<p></p>' })).toMatchObject({ ok: true });
+});
+
+test('rich create rejects unsafe HTML and malformed or oversized payloads before native writes', async () => {
+  const data = fixture();
+  for (const html of [null, 4, '<script>bad()</script>', '<p onclick="bad()">Text</p>', '<img src="x">', '<p>Open', 'x'.repeat(APPLE_NOTES_MAX_BODY_LENGTH)]) {
+    expect(await data.service.create({ folderId: 'child', title: 'Title', body: '', html }))
+      .toMatchObject({ ok: false, error: { code: 'invalid' } });
+  }
+  expect(await data.service.create({ folderId: 'child', title: 'Title', body: '' })).toMatchObject({ ok: false });
+  expect(data.executions).toBe(0);
+  expect(data.creations).toHaveLength(0);
+});
+
+test('full-document creation preserves the first line once and never promotes body lines to separate titles', async () => {
+  const { service, creations } = fixture();
+  const api = createAppleNotesApi({ invoke: async (channel, request) => {
+    expect(channel).toBe('cheshi:apple-notes-create');
+    return service.create(request);
+  } }, 'darwin');
+  const html = '<p>First line</p><p>Second line<br>Soft break</p><p></p><h2>Section</h2>';
+  expect(await api.create({ folderId: 'child', title: 'First line', body: '', html, htmlIncludesTitle: true })).toMatchObject({ ok: true });
+  expect(creations[0]?.withProperties.body).toBe(html);
+  expect(creations[0]?.withProperties.body.match(/First line/g)).toHaveLength(1);
+  for (const value of [null, 'true', 1, {}, []]) {
+    expect(await service.create({ folderId: 'child', title: 'First line', body: '', html, htmlIncludesTitle: value }))
+      .toMatchObject({ ok: false, error: { code: 'invalid' } });
+  }
+  expect(await service.create({ folderId: 'child', title: 'First line', body: 'Text', htmlIncludesTitle: true }))
+    .toMatchObject({ ok: false, error: { code: 'invalid' } });
+  expect(creations).toHaveLength(1);
 });

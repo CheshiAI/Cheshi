@@ -339,3 +339,38 @@ test('attaches the preview snapshot through the existing byte transfer and priva
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('created notes become selected immediately and invalidate late folder loads', async () => {
+  const pending = createDeferred<AppleNotesPage>();
+  let calls = 0;
+  const created = { ...first, id: 'created', title: 'Created', createdAt: first.modifiedAt };
+  const browser = createAppleNotesBrowser(api({ list: async () => { calls += 1; return calls === 1
+    ? { notes: [first], nextOffset: 100 } : pending.promise; } }), true);
+  await browser.selectFolder('folder');
+  const loading = browser.loadMore();
+  browser.applyCreated('folder', created);
+  expect(browser.getSnapshot()).toMatchObject({ folderId: 'folder', selectedId: 'created', note: created,
+    nextOffset: 101, loadingNotes: false });
+  browser.applyCreated('folder', created);
+  expect(browser.getSnapshot().nextOffset).toBe(101);
+  pending.resolve({ notes: [second], nextOffset: null });
+  await loading;
+  expect(browser.getSnapshot().notes.map(note => note.id)).toEqual(['created', 'first']);
+  browser.dispose();
+  browser.applyCreated('other', second);
+  expect(browser.getSnapshot().selectedId).toBe('created');
+});
+
+test('a completed creation during remount keeps its selection while folder metadata finishes loading', async () => {
+  const pending = createDeferred<Awaited<ReturnType<AppleNotesApi['folders']>>>();
+  const notesApi = api({ folders: async () => pending.promise });
+  const browser = createAppleNotesBrowser(notesApi, true);
+  const refreshing = browser.refresh(false);
+  browser.applyCreated('folder', first);
+  expect(browser.getSnapshot()).toMatchObject({ selectedId: first.id, note: first, loadingFolders: true });
+  const folders = await api().folders();
+  pending.resolve(folders);
+  await refreshing;
+  await Promise.resolve();
+  expect(browser.getSnapshot()).toMatchObject({ folders, selectedId: first.id, note: first, loadingFolders: false });
+});

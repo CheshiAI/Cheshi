@@ -68,7 +68,7 @@ const SCRIPT = String.raw`(function (request) {
           if (original !== request.expectedHtml || result.modifiedAt !== request.expectedModifiedAt
             || result.title !== request.expectedTitle) fail('conflict');
           updating = true;
-          note.body = '<h1>' + escapeHtml(request.title) + '</h1>' + request.html;
+          note.body = request.htmlIncludesTitle === true ? request.html : '<h1>' + escapeHtml(request.title) + '</h1>' + request.html;
           result = summary(note);
           original = note.body();
           attachmentCount = note.attachments().length;
@@ -85,7 +85,8 @@ const SCRIPT = String.raw`(function (request) {
         var end = Math.min(notes.length, request.offset + PAGE_SIZE);
         result = { notes: notes.slice(request.offset, end).map(summary), nextOffset: end < notes.length ? end : null };
       } else if (request.action === 'create') {
-        var body = '<h1>' + escapeHtml(request.title) + '</h1><pre>' + escapeHtml(request.body) + '</pre>';
+        var body = request.htmlIncludesTitle === true ? request.html : '<h1>' + escapeHtml(request.title) + '</h1>'
+          + (typeof request.html === 'string' ? request.html : '<pre>' + escapeHtml(request.body) + '</pre>');
         creating = true;
         var created = app.make({ new: 'note', at: folder, withProperties: { body: body } });
         result = { id: created.id(), title: created.name() };

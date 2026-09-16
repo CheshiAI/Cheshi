@@ -6,6 +6,11 @@ export function appleNoteAttachment(note: AppleNote): File {
   return new File([note.plaintext], `${name}.txt`, { type: 'text/plain' });
 }
 
+function summarizeNote(note: AppleNote): AppleNoteSummary {
+  return { id: note.id, title: note.title, modifiedAt: note.modifiedAt,
+    ...(note.createdAt ? { createdAt: note.createdAt } : {}), locked: note.locked };
+}
+
 export interface AppleNotesBrowserState {
   folders: AppleNotesFolder[];
   folderId: string;
@@ -112,11 +117,33 @@ export function createAppleNotesBrowser(api: AppleNotesApi, browse: boolean, now
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     refresh,
     selectFolder,
+    applyCreated: (folderId: string, note: AppleNote) => {
+      if (!active) return;
+      const request = ++folderRequest;
+      const needsFolders = state.loadingFolders || state.folders.length === 0;
+      ++listRequest;
+      ++noteRequest;
+      const cached = folderCache.get(folderId);
+      // Invalidate pagination after insertion; a later folder visit reloads it.
+      folderCache.delete(folderId);
+      const previousNotes = cached?.notes ?? (state.folderId === folderId ? state.notes : []);
+      const inserted = !previousNotes.some(item => item.id === note.id);
+      const notes = [summarizeNote(note), ...previousNotes.filter(item => item.id !== note.id)];
+      const nextOffset = cached?.nextOffset ?? (state.folderId === folderId ? state.nextOffset : null);
+      update({ folderId, notes, nextOffset: nextOffset === null ? null : nextOffset + (inserted ? 1 : 0),
+        selectedId: note.id, note, loadingFolders: needsFolders, loadingNotes: false, refreshingNotes: false, loadingNote: false, error: null });
+      // A save may complete while Memo is remounting. Finish metadata loading
+      // without letting the initial refresh clear the newly selected document.
+      if (needsFolders) void api.folders().then(folders => {
+        if (active && request === folderRequest) update({ folders, loadingFolders: false });
+      }).catch(error => {
+        if (active && request === folderRequest) update({ error: report(error), loadingFolders: false });
+      });
+    },
     applyUpdated: (note: AppleNote) => {
       if (!active) return;
       ++listRequest;
-      const summary: AppleNoteSummary = { id: note.id, title: note.title, modifiedAt: note.modifiedAt,
-        ...(note.createdAt ? { createdAt: note.createdAt } : {}), locked: note.locked };
+      const summary = summarizeNote(note);
       const patchNotes = (notes: AppleNoteSummary[]) => notes.map(item => item.id === note.id ? summary : item);
       for (const [id, cached] of folderCache) folderCache.set(id, { ...cached, notes: patchNotes(cached.notes) });
       update({ notes: patchNotes(state.notes), loadingNotes: false, refreshingNotes: false,

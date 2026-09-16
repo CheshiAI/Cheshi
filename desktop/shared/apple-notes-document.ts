@@ -12,6 +12,7 @@ export interface AppleNoteUpdateInput {
   expectedHtml: string;
   expectedModifiedAt: string;
   expectedTitle: string;
+  htmlIncludesTitle?: boolean;
 }
 
 export const APPLE_NOTES_UPDATE_UNKNOWN_MESSAGE = '저장 결과를 확인할 수 없습니다. 초안은 유지됩니다. Apple 메모를 확인하고 원본을 다시 불러오세요.';
@@ -30,6 +31,12 @@ export function appleNoteDocument(value: unknown): AppleNoteDocument {
   return { ...note, html: htmlText(record.html), attachmentCount: Number(record.attachmentCount) };
 }
 
+export function appleNoteHtmlIncludesTitle(value: unknown): boolean {
+  if (value === undefined || value === false) return false;
+  if (value === true) return true;
+  throw new TypeError('Invalid note HTML title flag.');
+}
+
 export function appleNoteUpdateInput(value: unknown): AppleNoteUpdateInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Invalid note update.');
   const input = value as Record<string, unknown>;
@@ -37,9 +44,11 @@ export function appleNoteUpdateInput(value: unknown): AppleNoteUpdateInput {
     || /[\r\n\0]/.test(input.title) || typeof input.expectedTitle !== 'string' || input.expectedTitle.length > 10_000) throw new TypeError('Invalid note update.');
   const expectedModifiedAt = appleNotesDate(input.expectedModifiedAt);
   const html = htmlText(input.html);
+  const htmlIncludesTitle = appleNoteHtmlIncludesTitle(input.htmlIncludesTitle);
   if (!isEditableNoteHtml(html)) throw new TypeError('Unsupported note HTML.');
   return { noteId: appleNotesId(input.noteId), title: input.title.trim(), html,
-    expectedHtml: htmlText(input.expectedHtml), expectedModifiedAt, expectedTitle: input.expectedTitle };
+    expectedHtml: htmlText(input.expectedHtml), expectedModifiedAt, expectedTitle: input.expectedTitle,
+    ...(htmlIncludesTitle ? { htmlIncludesTitle: true } : {}) };
 }
 
 export function appleNoteFontSize(style: string): string | null {

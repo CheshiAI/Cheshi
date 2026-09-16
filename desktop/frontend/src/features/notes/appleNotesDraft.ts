@@ -1,3 +1,4 @@
+import { getNewNoteDraft } from './appleNotesNewDraft';
 import type { AppleNotesApi } from '../../../../shared/apple-notes';
 import { APPLE_NOTES_UPDATE_UNKNOWN_MESSAGE, noteDocumentReadOnlyReason, type AppleNoteDocument } from '../../../../shared/apple-notes-document';
 
@@ -11,6 +12,16 @@ export interface NoteDraftState {
   error: string | null;
   blocked: boolean;
   saved: boolean;
+  createdId?: string;
+}
+
+export interface NoteEditorDraft {
+  getSnapshot: () => NoteDraftState;
+  subscribe: (listener: () => void) => () => void;
+  edit: (title: string, html: string) => void;
+  save: (api: AppleNotesApi) => Promise<AppleNoteDocument | null>;
+  discard?: () => void;
+  rebase?: (original: AppleNoteDocument, initialHtml: string) => void;
 }
 
 export function createNoteDraft(original: AppleNoteDocument, html: string) {
@@ -23,7 +34,7 @@ export function createNoteDraft(original: AppleNoteDocument, html: string) {
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     edit(title: string, html: string) {
       if (state.saving || noteDocumentReadOnlyReason(state.original)) return;
-      patch({ title, html, dirty: title !== state.original.title || html !== state.initialHtml, saved: false });
+      patch({ title, html, dirty: html !== state.initialHtml, saved: false });
     },
     discard() {
       if (state.saving) return;
@@ -38,7 +49,7 @@ export function createNoteDraft(original: AppleNoteDocument, html: string) {
       if (!state.dirty || state.saving || state.blocked || !state.title.trim() || noteDocumentReadOnlyReason(state.original)) return null;
       patch({ saving: true, error: null, saved: false });
       try {
-        const result = await api.update({ noteId: state.original.id, title: state.title, html: state.html,
+        const result = await api.update({ noteId: state.original.id, title: state.title, html: state.html, htmlIncludesTitle: true,
           expectedHtml: state.original.html, expectedModifiedAt: state.original.modifiedAt, expectedTitle: state.original.title });
         if (result.ok && result.value.id === state.original.id) {
           patch({ original: result.value, title: result.value.title, initialHtml: state.html, dirty: false, saved: true });
@@ -75,7 +86,8 @@ export function protectNoteDraftsOnClose() {
   unloadGuardInstalled = true;
   // Application-lifetime listener: a draft can outlive the mounted Memo view.
   window.addEventListener('beforeunload', event => {
-    if (![...drafts.values()].some(draft => draft.getSnapshot().dirty || draft.getSnapshot().saving)) return;
+    const pending = getNewNoteDraft()?.getSnapshot();
+    if (!pending?.dirty && !pending?.saving && ![...drafts.values()].some(draft => draft.getSnapshot().dirty || draft.getSnapshot().saving)) return;
     event.preventDefault();
     event.returnValue = '';
   });

@@ -2,9 +2,10 @@ import { ChevronRight, Folder, FolderOpen, LockKeyhole, Paperclip, Plus, Refresh
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { AppleNote, AppleNotesApi } from '../../../../shared/apple-notes';
 import { LiquidGlassPanel, NeumorphicButton, NeumorphicTextField, SearchClearButton } from '../../shared/ui';
-import { AppleNotesSaveDialog } from './AppleNotesSaveDialog';
+import { AppleNotesNewDialog } from './AppleNotesNewDialog';
+import { getNewNoteDraft, startNewNoteDraft, releaseNewNoteDraft } from './appleNotesNewDraft';
 import { AppleNotesDeleteDialog } from './AppleNotesDeleteDialog';
-import { AppleNotesEditor } from './AppleNotesEditor';
+import { AppleNotesEditor, AppleNotesNewEditor } from './AppleNotesEditor';
 import { useAppleNotesBrowser } from './useAppleNotesBrowser';
 import styles from './AppleNotes.module.css';
 
@@ -16,7 +17,8 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
   const [query, setQuery] = useState('');
   const [attaching, setAttaching] = useState(false);
   const [editing, setEditing] = useState(false);
-  const navigationDisabled = attaching || editing;
+  const [newDraft, setNewDraft] = useState(getNewNoteDraft);
+  const navigationDisabled = attaching || editing || !!newDraft;
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState(false);
@@ -43,7 +45,7 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
     void browser.selectFolder(folderId);
   };
   const attach = async () => {
-    if (!state.note || state.loadingNote || attachmentDisabled || editing || pending.current) return;
+    if (!state.note || state.loadingNote || attachmentDisabled || navigationDisabled || pending.current) return;
     pending.current = true;
     setAttaching(true);
     setAttachmentError(null);
@@ -69,7 +71,7 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
   const noteActions = <>
     <NeumorphicButton raised size="icon" aria-label="Delete note" title="Delete note"
       disabled={!state.note || state.loadingNote || navigationDisabled} onClick={() => {
-        if (!state.note || state.loadingNote || editing || pending.current) return;
+        if (!state.note || state.loadingNote || navigationDisabled || pending.current) return;
         setCreated(false);
         setDeleted(false);
         setDeleteTarget({ note: state.note, folderId: state.folderId });
@@ -84,7 +86,7 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
       <NeumorphicButton raised size="icon" aria-label="Refresh Apple Notes" title="Refresh Apple Notes"
         disabled={state.loadingFolders || navigationDisabled} onClick={() => { if (!navigationDisabled) void browser.refresh(); }}><RefreshCw aria-hidden="true" /></NeumorphicButton>,
       <NeumorphicButton raised size="icon" aria-label="새 메모" title="새 메모" disabled={navigationDisabled}
-        onClick={() => { setCreated(false); setDeleted(false); setCreating(true); }}><Plus aria-hidden="true" /></NeumorphicButton>,
+        onClick={() => { if (!navigationDisabled) { setCreated(false); setDeleted(false); setCreating(true); } }}><Plus aria-hidden="true" /></NeumorphicButton>,
       search,
     )}
     <div className={styles.workspaceContent}>
@@ -95,13 +97,14 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
           setAttachmentError(null);
           browser.removeDeleted(deleteTarget.folderId, deleteTarget.note.id);
         }} />}
-      {creating && <AppleNotesSaveDialog api={api} initialTitle="" body="" mode="compose" initialFolderId={state.folderId}
-        onClose={() => setCreating(false)} onSaved={folderId => {
+      {creating && <AppleNotesNewDialog api={api} initialFolderId={state.folderId}
+        onClose={() => setCreating(false)} onContinue={folder => {
           setCreating(false);
-          setCreated(true);
           setQuery('');
           setCollapsedFolderId(null);
-          void browser.selectFolder(folderId, { forceRefresh: true });
+          setAttachmentError(null);
+          setNewDraft(startNewNoteDraft(folder));
+          void browser.selectFolder(folder.id);
         }} />}
 
       {!renderHeader && search}
@@ -123,7 +126,7 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
                   </button>
                   {expanded && <div id={folderContentId} className={styles.folderNotes} role="region" aria-label="Notes">
                     {notes.map(note => <button type="button" key={note.id} className={styles.noteRow}
-                      aria-pressed={state.selectedId === note.id} disabled={navigationDisabled} title={note.title}
+                      aria-pressed={!newDraft && state.selectedId === note.id} disabled={navigationDisabled} title={note.title}
                       onClick={() => { if (!navigationDisabled) void browser.selectNote(note.id); }}>
                       {note.locked ? <LockKeyhole aria-hidden="true" /> : <StickyNote aria-hidden="true" />}
                       <span>{note.title || 'Untitled note'}{note.locked && <small>Password protected</small>}</span>
@@ -143,7 +146,15 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
           </nav>
         </LiquidGlassPanel>
         <div className={styles.documentPane}>
-          {state.note && !state.loadingNote ? <AppleNotesEditor key={state.note.id} api={api} note={state.note}
+          {newDraft ? <AppleNotesNewEditor api={api} draft={newDraft} onBusyChange={setEditing}
+            onDiscard={() => { releaseNewNoteDraft(newDraft); setNewDraft(null); setEditing(false); }}
+            onSaved={note => {
+              browser.applyCreated(newDraft.folder.id, note);
+              releaseNewNoteDraft(newDraft);
+              setNewDraft(null);
+              setEditing(false);
+              setCreated(true);
+            }} /> : state.note && !state.loadingNote ? <AppleNotesEditor key={state.note.id} api={api} note={state.note}
             disabled={attaching} onSaved={browser.applyUpdated} onBusyChange={setEditing}>{noteActions}</AppleNotesEditor> : <>
             <div className={styles.emptyEditorHeader}><span>{selectedFolder?.path ?? 'Memo'}</span><div className={styles.headerActions}>{noteActions}</div></div>
             <section className={styles.documentScroll} aria-label="Note preview" aria-busy={state.loadingNote}>

@@ -1,4 +1,4 @@
-import type { AppleNoteDocument, AppleNoteUpdateInput } from './apple-notes-document.ts';
+import { appleNoteHtmlIncludesTitle, isEditableNoteHtml, type AppleNoteDocument, type AppleNoteUpdateInput } from './apple-notes-document.ts';
 
 export const APPLE_NOTES_MAX_BODY_LENGTH = 500_000;
 export const APPLE_NOTES_MAX_TITLE_LENGTH = 200;
@@ -35,6 +35,8 @@ export interface AppleNoteCreateInput {
   folderId: string;
   title: string;
   body: string;
+  html?: string;
+  htmlIncludesTitle?: boolean;
 }
 
 export interface AppleNoteCreated { id: string; title: string }
@@ -91,9 +93,17 @@ export function appleNotesOffset(value: unknown): number {
 
 export function appleNoteCreateInput(value: unknown): AppleNoteCreateInput {
   const input = record(value);
-  return { folderId: appleNotesId(input.folderId),
-    title: text(input.title, 'Note title', APPLE_NOTES_MAX_TITLE_LENGTH).trim(),
-    body: text(input.body, 'Note body', APPLE_NOTES_MAX_BODY_LENGTH) };
+  const title = text(input.title, 'Note title', APPLE_NOTES_MAX_TITLE_LENGTH).trim();
+  if (/[\r\n]/.test(title)) throw new TypeError('Invalid note title.');
+  const html = input.html === undefined ? undefined : text(input.html, 'Note HTML', APPLE_NOTES_MAX_BODY_LENGTH, true);
+  const htmlIncludesTitle = appleNoteHtmlIncludesTitle(input.htmlIncludesTitle);
+  if (htmlIncludesTitle && html === undefined) throw new TypeError('Full note HTML is required.');
+  if (html !== undefined && (!isEditableNoteHtml(html) || html.length + (htmlIncludesTitle ? 0 : title.length * 6 + 10) > APPLE_NOTES_MAX_BODY_LENGTH)) {
+    throw new TypeError('Unsupported or oversized note HTML.');
+  }
+  return { folderId: appleNotesId(input.folderId), title,
+    body: text(input.body, 'Note body', APPLE_NOTES_MAX_BODY_LENGTH, html !== undefined),
+    ...(html === undefined ? {} : { html }), ...(htmlIncludesTitle ? { htmlIncludesTitle: true } : {}) };
 }
 
 export function appleNoteSummary(value: unknown): AppleNoteSummary {

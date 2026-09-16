@@ -3,8 +3,9 @@ import vm from 'node:vm';
 import { AppleNotesService } from '../lib/apple-notes-service.mts';
 import { createAppleNotesApi } from '../lib/apple-notes-preload.cts';
 import { appleNoteUpdateInput, isEditableNoteHtml, type AppleNoteDocument, type AppleNoteUpdateInput } from '../shared/apple-notes-document.ts';
+import { createNewNoteDraft, getNewNoteDraft, startNewNoteDraft, releaseNewNoteDraft } from '../frontend/src/features/notes/appleNotesNewDraft';
 import { createNoteDraft } from '../frontend/src/features/notes/appleNotesDraft';
-import { appleNoteSummary, type AppleNotesReply } from '../shared/apple-notes.ts';
+import { appleNoteSummary, APPLE_NOTES_SAVE_UNKNOWN_MESSAGE, type AppleNoteCreateInput, type AppleNotesApi, type AppleNotesReply } from '../shared/apple-notes.ts';
 
 const original: AppleNoteDocument = { id: 'chosen', title: 'Title', html: '<h1>Title</h1><div>Original</div>',
   plaintext: 'Title\nOriginal', modifiedAt: '2026-09-16T00:00:00.000Z', locked: false, attachmentCount: 0 };
@@ -187,4 +188,127 @@ test('draft deduplicates saves, preserves edits on lost replies, and refuses mal
   resolve({ ok: true, value: { ...original, id: 'wrong' } });
   expect(await operation).toBeNull();
   expect(draft.getSnapshot()).toMatchObject({ dirty: true, blocked: true, html: '<p>Draft</p>', saving: false });
+});
+
+const newFolder = { id: 'folder', name: 'Notes', path: 'Notes', account: 'iCloud', isDefault: true };
+const newDocument = { ...original, id: 'created', title: 'New', createdAt: original.modifiedAt };
+
+test('new drafts send one rich create request, preserve failed input and retry only after known failures', async () => {
+  const calls: AppleNoteCreateInput[] = [];
+  let resolve!: (reply: AppleNotesReply<{ id: string; title: string }>) => void;
+  const pending = new Promise<AppleNotesReply<{ id: string; title: string }>>(complete => { resolve = complete; });
+  const api: Pick<AppleNotesApi, 'create' | 'document'> = {
+    create: async request => { calls.push(request); return calls.length === 1
+      ? { ok: false, error: { code: 'permission', message: 'Allow Notes automation.' } } : pending; },
+    document: async id => { expect(id).toBe('created'); return newDocument; },
+  };
+  const draft = createNewNoteDraft(newFolder);
+  expect(await draft.save(api)).toBeNull();
+  expect(calls).toHaveLength(0);
+  const html = '<p>New</p><h2>Heading</h2><p><strong>Bold</strong><br>Next line</p><p></p>';
+  draft.edit('  New  ', html);
+  expect(await draft.save(api)).toBeNull();
+  expect(draft.getSnapshot()).toMatchObject({ title: '  New  ', html, dirty: true, blocked: false, error: 'Allow Notes automation.' });
+  const saved = draft.save(api);
+  expect(await draft.save(api)).toBeNull();
+  draft.edit('Ignored while saving', '<p></p>');
+  expect(calls).toEqual(Array.from({ length: 2 }, () => ({ folderId: 'folder', title: 'New', body: '', html, htmlIncludesTitle: true })));
+  resolve({ ok: true, value: { id: 'created', title: 'New' } });
+  expect(await saved).toBe(newDocument);
+  expect(await draft.save(api)).toBe(newDocument);
+  expect(calls).toHaveLength(2);
+  expect(draft.getSnapshot()).toMatchObject({ saved: true, dirty: false, saving: false });
+});
+
+test('lost create responses block retry while acknowledged creates retry only document loading', async () => {
+  for (const lost of [true, false]) {
+    let creates = 0;
+    let reads = 0;
+    const draft = createNewNoteDraft(newFolder);
+    draft.edit('New', '<p>Text</p>');
+    const api: Pick<AppleNotesApi, 'create' | 'document'> = {
+      create: async () => { creates += 1; if (lost) throw new Error('IPC disconnected'); return { ok: true, value: { id: 'created', title: 'New' } }; },
+      document: async () => { reads += 1; if (reads === 1) throw new Error('Read unavailable'); return newDocument; },
+    };
+    expect(await draft.save(api)).toBeNull();
+    expect(draft.getSnapshot().dirty).toBe(true);
+    if (lost) {
+      expect(draft.getSnapshot()).toMatchObject({ blocked: true, error: APPLE_NOTES_SAVE_UNKNOWN_MESSAGE });
+      expect(await draft.save(api)).toBeNull();
+      expect(reads).toBe(0);
+    } else {
+      expect(draft.getSnapshot()).toMatchObject({ createdId: 'created', blocked: false });
+      draft.edit('Must not diverge from created note', '<p>Changed</p>');
+      expect(draft.getSnapshot().title).toBe('New');
+      expect(await draft.save(api)).toBe(newDocument);
+      expect(reads).toBe(2);
+    }
+    expect(creates).toBe(1);
+  }
+});
+
+test('new drafts survive remounts in memory and are released only when idle', async () => {
+  const draft = startNewNoteDraft(newFolder);
+  draft.edit('New', '<p>Text</p>');
+  expect(getNewNoteDraft()).toBe(draft);
+  expect(startNewNoteDraft({ ...newFolder, id: 'other' })).toBe(draft);
+  let resolve!: (document: AppleNoteDocument) => void;
+  const pending = new Promise<AppleNoteDocument>(complete => { resolve = complete; });
+  const saving = draft.save({ create: async () => ({ ok: true, value: { id: 'created', title: 'New' } }), document: async () => pending });
+  releaseNewNoteDraft(draft);
+  expect(getNewNoteDraft()).toBe(draft);
+  resolve(newDocument);
+  expect(await saving).toBe(newDocument);
+  expect(getNewNoteDraft()?.getSnapshot().saved).toBe(true);
+  releaseNewNoteDraft(draft);
+  expect(getNewNoteDraft()).toBeNull();
+  const cancelled = startNewNoteDraft(newFolder);
+  releaseNewNoteDraft(cancelled);
+  expect(getNewNoteDraft()).toBeNull();
+});
+
+test('invalid local rich drafts remain editable and never reach native creation', async () => {
+  let creates = 0;
+  const draft = createNewNoteDraft(newFolder);
+  draft.edit('New', '<p onclick="bad()">Text</p>');
+  const api: Pick<AppleNotesApi, 'create' | 'document'> = {
+    create: async () => { creates += 1; return { ok: true, value: { id: 'created', title: 'New' } }; },
+    document: async () => newDocument,
+  };
+  expect(await draft.save(api)).toBeNull();
+  expect(creates).toBe(0);
+  expect(draft.getSnapshot().blocked).toBe(false);
+  draft.edit('New', '<p>Fixed</p>');
+  expect(await draft.save(api)).toBe(newDocument);
+  expect(creates).toBe(1);
+});
+
+test('unified drafts send the complete document through preload and update without prepending the title', async () => {
+  const f = fixture();
+  const api = createAppleNotesApi({ invoke: async (channel, request) => {
+    expect(channel).toBe('cheshi:apple-notes-update');
+    expect(request.htmlIncludesTitle).toBe(true);
+    return f.service.update(request);
+  } }, 'darwin');
+  const draft = createNoteDraft(original, original.html);
+  const html = '<p>Changed</p><p>Second line<br>Soft break</p><p></p><p>Last line</p>';
+  draft.edit('Changed', html);
+  const saved = await draft.save(api);
+  expect(saved?.html).toBe(html);
+  expect(f.html).toBe(html);
+  expect(f.writes).toBe(1);
+  draft.edit('Changed', html + '<p>Another line</p>');
+  expect((await draft.save(api))?.html).toBe(html + '<p>Another line</p>');
+  expect(f.html.match(/Changed/g)).toHaveLength(1);
+  draft.edit('Changed', '<p>Unsaved</p>');
+  draft.discard();
+  expect(draft.getSnapshot().html).toBe(html + '<p>Another line</p>');
+});
+
+test('full-document update mode requires the literal true and preserves the legacy contract otherwise', () => {
+  expect(appleNoteUpdateInput({ ...input(), htmlIncludesTitle: true }).htmlIncludesTitle).toBe(true);
+  expect(appleNoteUpdateInput({ ...input(), htmlIncludesTitle: false }).htmlIncludesTitle).toBeUndefined();
+  for (const value of [null, 'true', 1, {}, []]) {
+    expect(() => appleNoteUpdateInput({ ...input(), htmlIncludesTitle: value })).toThrow();
+  }
 });

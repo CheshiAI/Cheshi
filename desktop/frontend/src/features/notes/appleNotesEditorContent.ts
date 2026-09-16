@@ -1,3 +1,5 @@
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { APPLE_NOTES_MAX_TITLE_LENGTH } from '../../../../shared/apple-notes';
 import type { AppleNoteDocument } from '../../../../shared/apple-notes-document';
 import { isEditableNoteHtml } from '../../../../shared/apple-notes-document';
 
@@ -41,23 +43,7 @@ function mergeHeadingLine(div: Element): Element | null {
 export function noteEditorHtml(note: AppleNoteDocument): string {
   if (!isEditableNoteHtml(note.html)) return '';
   const document = new DOMParser().parseFromString(note.html, 'text/html');
-  // Apple Notes includes its title as the first body line. Edit that line through
-  // the separate title field so saving does not prepend it repeatedly.
-  let first = document.body.firstElementChild;
-  // Notes can export one title line as several adjacent h1 fragments, including
-  // whitespace-only fragments. Match the whole line before descending into it.
-  while (first?.tagName === 'DIV' && first.textContent?.trim() !== note.title.trim() && first.firstElementChild) {
-    first = first.firstElementChild;
-  }
-  if (first && first.textContent?.trim() === note.title.trim()) {
-    let parent = first.parentElement;
-    first.remove();
-    while (parent && parent !== document.body && !parent.textContent?.trim() && !parent.children.length) {
-      const next = parent.parentElement;
-      parent.remove();
-      parent = next;
-    }
-  }
+  // Keep the first line in the document: it is editable content, not a separate field.
   // Notes uses divs for paragraphs. Normalize leaf divs explicitly; ProseMirror
   // otherwise flattens them and loses line boundaries when importing HTML.
   const lines = [...document.body.querySelectorAll('div')].map(div => ({ div, container: !!div.querySelector('div') }));
@@ -76,4 +62,18 @@ export function noteEditorHtml(note: AppleNoteDocument): string {
     }
   }
   return document.body.innerHTML || '<p></p>';
+}
+
+// The first logical line supplies list metadata; its complete text and formatting
+// remain in the editor HTML, including titles longer than the metadata limit.
+export function noteEditorTitle(document: ProseMirrorNode): string {
+  let firstLine: string | undefined;
+  document.descendants(node => {
+    if (firstLine !== undefined) return false;
+    if (!node.isTextblock) return true;
+    firstLine = node.textBetween(0, node.content.size, '\n', '\n').split(/[\r\n]/, 1)[0] ?? '';
+    return false;
+  });
+  return firstLine?.trim().slice(0, APPLE_NOTES_MAX_TITLE_LENGTH)
+    || (document.textContent.trim() ? 'Untitled note' : '');
 }

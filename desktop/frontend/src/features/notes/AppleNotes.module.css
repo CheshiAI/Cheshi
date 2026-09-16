@@ -107,7 +107,7 @@
 .emptyDocument p { margin: 0; line-height: 1.6; }
 .documentFooter { display: flex; flex-direction: column; gap: var(--icon-default); padding: var(--space-default); }
 .documentFooter p { margin: 0; }
-.documentFooter > .hint { font-size: 10px; }
+.documentFooter > .hint, .documentFooter > p[role='status'] { font-size: 10px; }
 .preview { min-width: 0; max-height: 340px; overflow: auto; padding: var(--space-default); }
 .preview pre { margin: 0; font: inherit; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .hint { color: var(--sidebar-section-label-color); line-height: 1.5; }
