@@ -1,7 +1,6 @@
 .dialog { --modal-width: 720px; }
 .content { display: flex; flex-direction: column; gap: var(--space-default); min-width: 0; font-size: 12px; }
 .content p { margin: 0; }
-.toolbar { display: flex; align-items: end; gap: var(--space-default); }
 .field { display: flex; flex: 1; flex-direction: column; gap: var(--icon-default); min-width: 0; }
 .selectSurface {
   --neumorphic-button-radius: var(--field-radius);
@@ -26,31 +25,132 @@
   cursor: pointer;
 }
 .selectSurface select:disabled { opacity: var(--field-disabled-opacity); cursor: not-allowed; }
-.browser { display: grid; grid-template-columns: minmax(160px, 2fr) minmax(0, 3fr); gap: var(--space-default); min-height: 240px; }
-.list { display: flex; flex-direction: column; gap: var(--icon-default); min-width: 0; max-height: 340px; overflow: auto; }
-.list > button.noteRow { justify-content: flex-start; text-align: left; width: 100%; }
+.browser { display: grid; flex: 1; grid-template-columns: 250px minmax(0, 1fr); min-height: 0; }
+.folderPanel {
+  --liquid-glass-radius: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-width: 0 1px 0 0;
+}
+.folderHeading {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--header-height);
+  flex: 0 0 var(--header-height);
+  margin: 0;
+  padding: 0 var(--space-default);
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 1px;
+}
+.folderTree { flex: 1; min-height: 0; overflow: auto; padding: 0 0 var(--space-default); }
+.folderList { margin: 0; padding: 0; list-style: none; }
+.folderRow, .noteRow, .loadMore {
+  display: flex;
+  align-items: center;
+  gap: var(--icon-default);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 6px var(--icon-default);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+.folderRow:not(:disabled):hover, .noteRow:not(:disabled):hover, .loadMore:not(:disabled):hover,
+.noteRow[aria-pressed='true'] { background: var(--dropdown-selection-bg); color: var(--active-text); }
+.folderRow:disabled, .noteRow:disabled, .loadMore:disabled { opacity: var(--field-disabled-opacity); cursor: not-allowed; }
+.folderRow, .noteRow {
+  display: grid;
+  align-items: start;
+  align-content: center;
+  height: 42px;
+  padding: 0 var(--space-default);
+  font-size: 11px;
+}
+.folderRow { grid-template-columns: 11px 11px minmax(0, 1fr); }
+.noteRow { grid-template-columns: 11px minmax(0, 1fr); padding-left: calc(var(--space-default) + 11px + var(--icon-default)); }
+.folderRow > svg, .noteRow > svg { width: 11px; height: 11px; margin-top: 3.5px; flex: 0 0 auto; stroke-width: 1.7; }
+.folderRow > .folderChevron { transition: transform 160ms ease; }
+.folderRow[aria-expanded='true'] > .folderChevron { transform: rotate(90deg); }
+.folderLabel { display: flex; flex-direction: column; min-width: 0; }
+.folderLabel > span, .folderLabel > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folderLabel small { color: var(--sidebar-section-label-color); font-size: 9px; line-height: 14px; }
+.folderNotes > .treeMessage, .folderNotes > .loadMore { padding-left: calc(var(--space-default) + 11px + var(--icon-default)); }
 .noteRow > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.noteRow small { display: block; color: var(--sidebar-section-label-color); font: inherit; }
+.noteRow small { display: block; color: var(--sidebar-section-label-color); font-size: 9px; line-height: 14px; }
+.treeMessage { margin: 0; padding: var(--icon-default); color: var(--sidebar-section-label-color); line-height: 1.5; }
+.loadMore { color: var(--sidebar-section-label-color); }
+.documentPane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.emptyEditorHeader { justify-content: space-between; gap: var(--space-default); }
+.emptyEditorHeader > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.emptyEditorHeader { display: flex; align-items: center; box-sizing: border-box; height: var(--header-height); flex: 0 0 var(--header-height); padding: 0 var(--space-default); border-bottom: 1px solid var(--divider); font-size: 10px; color: var(--sidebar-section-label-color); }
+.documentScroll { flex: 1; min-height: 0; overflow: auto; }
+.documentScroll:focus:not(:focus-visible) { outline: none; }
+.documentScroll:focus-visible { outline-offset: -3px; }
+.document { box-sizing: border-box; width: 100%; max-width: 800px; margin: 0 auto; padding: 40px clamp(16px, 4vw, 64px); }
+.document h2 { margin: 0 0 24px; font-size: 28px; line-height: 1.3; font-weight: 650; overflow-wrap: anywhere; }
+.document pre { margin: 0; font: inherit; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.emptyDocument { color: var(--sidebar-section-label-color); padding-top: 24px; }
+.emptyDocument > svg { width: 32px; height: 32px; margin-bottom: var(--space-default); stroke-width: 1.3; }
+.emptyDocument p { margin: 0; line-height: 1.6; }
+.documentFooter { display: flex; flex-direction: column; gap: var(--icon-default); padding: var(--space-default); }
+.documentFooter p { margin: 0; }
+.documentFooter > .hint { font-size: 10px; }
 .preview { min-width: 0; max-height: 340px; overflow: auto; padding: var(--space-default); }
-.preview h3 { margin: 0 0 var(--space-default); font-size: 12px; }
 .preview pre { margin: 0; font: inherit; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .hint { color: var(--sidebar-section-label-color); line-height: 1.5; }
 .error { color: var(--text); line-height: 1.5; overflow-wrap: anywhere; }
 .actions { display: flex; justify-content: flex-end; gap: var(--space-default); }
-@media (max-width: 560px) {
-  .browser { grid-template-columns: minmax(0, 1fr); }
-  .list, .preview { max-height: 220px; }
-}
 
 .workspace { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; font-size: 12px; }
-.heading { display: flex; align-items: center; gap: var(--space-default); }
-.heading h1 { margin: 0; font-size: 12px; }
-.heading > svg { width: var(--icon-size-default); height: var(--icon-size-default); }
-.workspaceContent { flex: 1; min-height: 0; overflow: auto; padding: var(--space-default); }
-.workspaceContent .browser { flex: 1; grid-template-columns: minmax(160px, var(--sidebar-width)) minmax(0, 1fr); }
-.workspaceContent .list, .workspaceContent .preview { max-height: none; min-height: 0; }
+.header {
+  box-sizing: border-box;
+  height: var(--header-height);
+  min-height: var(--header-height);
+  flex: 0 0 var(--header-height);
+}
+.heading { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.heading h1 {
+  overflow: hidden;
+  margin: 0;
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.titleMark { cursor: default; pointer-events: none; }
+.titleMark svg { width: 11px; height: 11px; stroke-width: 1.7; }
+.headerActions > .headerSearch { width: 200px; flex: 0 0 200px; }
+.headerSearch { position: relative; display: block; min-width: 0; }
+.headerSearch input { padding-left: calc(var(--field-padding-inline) + var(--icon-size-default) + var(--icon-default)); }
+.searchIcon {
+  position: absolute;
+  left: var(--field-padding-inline);
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  color: var(--sidebar-section-label-color);
+  pointer-events: none;
+}
+.searchIcon[data-disabled='true'] { opacity: var(--field-disabled-opacity); }
+.headerActions { display: flex; flex: 0 0 auto; align-items: center; gap: var(--icon-default); }
+.workspaceContent { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .unavailable { padding: var(--space-default); margin: 0; }
-@media (max-width: 760px) {
-  .workspaceContent .browser { grid-template-columns: minmax(0, 1fr); }
-  .workspaceContent .list { max-height: 220px; }
+@media (prefers-reduced-motion: reduce) {
+  .folderRow > .folderChevron { transition: none; }
 }

@@ -59,6 +59,47 @@ test('Apple Notes uses the built preload and carries save outcomes as plain data
   assert.equal(bridge.calls.length, 1);
 });
 
+test('Apple Notes deletion crosses the built preload with the exact target and acknowledgement', async () => {
+  const success = { ok: true, value: { id: 'selected-note' } };
+  const bridge = createHarness('Alex', success);
+  const api = bridge.read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  assert.deepEqual(structuredClone(await api.delete('selected-note')), success);
+  assert.deepEqual(bridge.calls, [['cheshi:apple-notes-delete', 'selected-note']]);
+  await assert.rejects(() => api.delete(''), /identifier/);
+  assert.equal(bridge.calls.length, 1);
+  const mismatch = createHarness('Alex', { ok: true, value: { id: 'different-note' } }).read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  const result = await mismatch.delete('selected-note');
+  assert.equal(result.ok, false);
+  if (result.ok === false) assert.equal(result.error.code, 'delete-unknown');
+});
+
+test('Apple Notes refresh bypasses caching only for the literal true through the built preload', async () => {
+  const bridge = createHarness('Alex', { ok: true, value: [] });
+  const api = bridge.read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  await api.folders();
+  await api.folders(false);
+  await api.folders(true);
+  assert.deepEqual(bridge.calls, [['cheshi:apple-notes-folders'], ['cheshi:apple-notes-folders'], ['cheshi:apple-notes-folders', true]]);
+  await assert.rejects(() => api.folders('true' as unknown as boolean), /refresh flag/);
+  assert.equal(bridge.calls.length, 3);
+});
+
+test('Apple Notes document updates cross the built preload with the original version intact', async () => {
+  const document = { id: 'chosen', title: 'Title', html: '<h1>Title</h1><p>New</p>', plaintext: 'Title\nNew',
+    modifiedAt: '2026-09-16T00:00:00.000Z', locked: false, attachmentCount: 0 };
+  const bridge = createHarness('Alex', { ok: true, value: document });
+  const api = bridge.read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  assert.deepEqual(structuredClone(await api.document('chosen')), document);
+  const input = { noteId: 'chosen', title: 'Title', html: '<p>New</p>', expectedHtml: '<h1>Title</h1><p>Old</p>',
+    expectedModifiedAt: document.modifiedAt, expectedTitle: 'Title' };
+  assert.deepEqual(structuredClone(await api.update(input)), { ok: true, value: document });
+  assert.deepEqual(bridge.calls, [['cheshi:apple-notes-document', 'chosen'], ['cheshi:apple-notes-update', input]]);
+  const mismatch = createHarness('Alex', { ok: true, value: { ...document, id: 'wrong' } }).read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+  const result = await mismatch.update(input);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, 'update-unknown');
+});
+
 test('question dismissal bridge validates requests, records, and save acknowledgements', async () => {
   const record = { questionId: 'q', action: 'skip' };
   const list = createHarness('Alex', [record]);

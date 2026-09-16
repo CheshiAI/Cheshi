@@ -32,5 +32,5 @@ test('other management entries retain their destinations', () => {
   for (const element of elements(sidebar)) {
     if (element.type === 'button' && element.key !== 'Codex') element.props.onClick?.();
   }
-  expect(destinations).toEqual(['notes', 'codegraph', 'terminal', 'git', 'plugins', 'showcase']);
+  expect(destinations).toEqual(['codegraph', 'notes', 'terminal', 'git', 'plugins', 'showcase']);
 });

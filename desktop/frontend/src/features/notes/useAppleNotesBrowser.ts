@@ -6,7 +6,7 @@ export function useAppleNotesBrowser(api: AppleNotesApi, browse = true) {
   const [browser] = useState(() => createAppleNotesBrowser(api, browse));
   const state = useSyncExternalStore(browser.subscribe, browser.getSnapshot, browser.getSnapshot);
   useEffect(() => {
-    void browser.refresh();
+    void browser.refresh(false);
     return browser.dispose;
   }, [browser]);
   return { state, browser };

@@ -1,7 +1,10 @@
+import type { AppleNoteDocument, AppleNoteUpdateInput } from './apple-notes-document.ts';
+
 export const APPLE_NOTES_MAX_BODY_LENGTH = 500_000;
 export const APPLE_NOTES_MAX_TITLE_LENGTH = 200;
 export const APPLE_NOTES_PAGE_SIZE = 100;
 export const APPLE_NOTES_SAVE_UNKNOWN_MESSAGE = 'The save could not be confirmed. Check Apple Notes before saving again to avoid a duplicate.';
+export const APPLE_NOTES_DELETE_UNKNOWN_MESSAGE = '삭제 결과를 확인할 수 없습니다. Apple 메모에서 상태를 확인한 뒤 목록을 새로고침하세요.';
 
 export interface AppleNotesFolder {
   id: string;
@@ -15,6 +18,7 @@ export interface AppleNoteSummary {
   id: string;
   title: string;
   modifiedAt: string;
+  createdAt?: string;
   locked: boolean;
 }
 
@@ -34,19 +38,23 @@ export interface AppleNoteCreateInput {
 }
 
 export interface AppleNoteCreated { id: string; title: string }
+export interface AppleNoteDeleted { id: string }
 
 export type AppleNotesErrorCode = 'unsupported' | 'permission' | 'locked' | 'not-found'
-  | 'timeout' | 'save-unknown' | 'invalid' | 'unavailable';
+  | 'timeout' | 'save-unknown' | 'delete-unknown' | 'update-unknown' | 'conflict' | 'read-only' | 'invalid' | 'unavailable';
 
 export type AppleNotesReply<T> = { ok: true; value: T }
   | { ok: false; error: { code: AppleNotesErrorCode; message: string } };
 
 export interface AppleNotesApi {
   available: boolean;
-  folders(): Promise<AppleNotesFolder[]>;
+  folders(forceRefresh?: boolean): Promise<AppleNotesFolder[]>;
   list(folderId: string, offset?: number): Promise<AppleNotesPage>;
   read(noteId: string): Promise<AppleNote>;
+  document(noteId: string): Promise<AppleNoteDocument>;
+  update(input: AppleNoteUpdateInput): Promise<AppleNotesReply<AppleNoteDocument>>;
   create(input: AppleNoteCreateInput): Promise<AppleNotesReply<AppleNoteCreated>>;
+  delete(noteId: string): Promise<AppleNotesReply<AppleNoteDeleted>>;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -70,6 +78,12 @@ export function appleNotesId(value: unknown): string {
   return text(value, 'Apple Notes identifier', 2_048);
 }
 
+export function appleNotesForceRefresh(value: unknown): boolean {
+  if (value === undefined || value === false) return false;
+  if (value === true) return true;
+  throw new TypeError('Invalid Apple Notes refresh flag.');
+}
+
 export function appleNotesOffset(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new TypeError('Invalid Apple Notes page.');
   return value;
@@ -84,10 +98,17 @@ export function appleNoteCreateInput(value: unknown): AppleNoteCreateInput {
 
 export function appleNoteSummary(value: unknown): AppleNoteSummary {
   const item = record(value);
-  const modifiedAt = text(item.modifiedAt, 'Note date', 64);
-  if (!Number.isFinite(Date.parse(modifiedAt))) throw new TypeError('Invalid note date.');
+  const modifiedAt = appleNotesDate(item.modifiedAt);
+  const createdAt = item.createdAt === undefined ? '' : appleNotesDate(item.createdAt);
   return { id: appleNotesId(item.id), title: text(item.title, 'Note title', 10_000, true),
-    modifiedAt, locked: literalBoolean(item.locked) };
+    modifiedAt, ...(createdAt ? { createdAt } : {}), locked: literalBoolean(item.locked) };
+}
+
+// An empty string represents an unavailable native timestamp.
+export function appleNotesDate(value: unknown): string {
+  const date = text(value, 'Note date', 64, true);
+  if (date !== '' && !Number.isFinite(Date.parse(date))) throw new TypeError('Invalid note date.');
+  return date;
 }
 
 export function appleNote(value: unknown): AppleNote {
@@ -116,7 +137,13 @@ export function appleNoteCreated(value: unknown): AppleNoteCreated {
   return { id: appleNotesId(item.id), title: text(item.title, 'Note title', 10_000, true) };
 }
 
-const ERROR_CODES: readonly string[] = ['unsupported', 'permission', 'locked', 'not-found', 'timeout', 'save-unknown', 'invalid', 'unavailable'];
+export function appleNoteDeleted(value: unknown, expectedId: string): AppleNoteDeleted {
+  const id = appleNotesId(record(value).id);
+  if (id !== expectedId) throw new TypeError('Unexpected deleted note identifier.');
+  return { id };
+}
+
+const ERROR_CODES: readonly string[] = ['unsupported', 'permission', 'locked', 'not-found', 'timeout', 'save-unknown', 'delete-unknown', 'update-unknown', 'conflict', 'read-only', 'invalid', 'unavailable'];
 
 export function appleNotesReply<T>(value: unknown, parse: (value: unknown) => T): AppleNotesReply<T> {
   const reply = record(value);

@@ -4,6 +4,12 @@ import { AppleNotesService } from '../lib/apple-notes-service.mts';
 import { AppleNotesProcessError } from '../lib/apple-notes-process.mts';
 import { appleNoteCreateInput, APPLE_NOTES_MAX_BODY_LENGTH } from '../shared/apple-notes.ts';
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(complete => { resolve = complete; });
+  return { promise, resolve };
+}
+
 function note(id: string, title = '메모', locked: unknown = false) {
   let reads = 0;
   return { id: () => id, name: () => title, modificationDate: () => new Date('2026-09-16T00:00:00Z'),
@@ -12,6 +18,8 @@ function note(id: string, title = '메모', locked: unknown = false) {
 }
 
 function fixture() {
+  let now = 0;
+  let executions = 0;
   const first = note('first');
   const locked = note('locked', '비공개', true);
   const notes = [first, locked];
@@ -20,6 +28,7 @@ function fixture() {
   const folders = [root, child];
   const account = { name: () => 'iCloud', folders: () => folders, defaultFolder: () => root };
   const creations: { new: string; at: typeof root | typeof child; withProperties: { body: string } }[] = [];
+  const deletions: string[] = [];
   const app = {
     accounts: () => [account], defaultAccount: () => account,
     folders: Object.assign(() => folders, { byId: (id: string) => folders.find(folder => folder.id() === id)
@@ -27,17 +36,140 @@ function fixture() {
     notes: Object.assign(() => notes, { byId: (id: string) => notes.find(item => item.id() === id)
       ?? { ...first, exists: () => false } }),
     make: (input: (typeof creations)[number]) => { creations.push(input); return note('created', 'Saved'); },
+    delete: (target: ReturnType<typeof note>) => { deletions.push(target.id()); notes.splice(notes.indexOf(target), 1); },
   };
-  const service = new AppleNotesService({ platform: 'darwin', execute: async source => {
+  const service = new AppleNotesService({ platform: 'darwin', cache: { now: () => now }, execute: async source => {
+    executions += 1;
     return vm.runInNewContext(source, { Application: (id: string) => {
       expect(id).toBe('com.apple.Notes');
       return app;
     } }) as string;
   } });
-  return { service, app, first, locked, notes, creations, child };
+  return { service, app, first, locked, notes, creations, deletions, child,
+    advance: (ms: number) => { now += ms; }, get executions() { return executions; } };
 }
 
 describe('Apple Notes automation contract', () => {
+  test('deletion retains cached folder metadata and unrelated bodies without reading lists automatically', async () => {
+    const data = fixture();
+    const { service, notes } = data;
+    notes.push(note('other'));
+    await service.folders();
+    await service.list('root');
+    await service.read('first');
+    await service.read('other');
+    expect(data.executions).toBe(4);
+    expect(await service.delete('first')).toEqual({ ok: true, value: { id: 'first' } });
+    expect(data.executions).toBe(5);
+    await service.folders();
+    await service.read('other');
+    expect(data.executions).toBe(5);
+    expect(await service.read('first')).toMatchObject({ ok: false, error: { code: 'not-found' } });
+    const refreshed = await service.list('root');
+    expect(refreshed.ok && refreshed.value.notes.map(entry => entry.id)).toEqual(['locked', 'other']);
+    expect(data.executions).toBe(7);
+  });
+  test('reads started before and during a mutation cannot restore stale cached pages', async () => {
+    for (const action of ['create', 'delete'] as const) {
+      const before = createDeferred<string>();
+      const mutation = createDeferred<string>();
+      const during = createDeferred<string>();
+      const page = (id: string) => JSON.stringify({ ok: true, value: { notes: [{ id, title: id, modifiedAt: '2026-09-16', locked: false }], nextOffset: null } });
+      const results = [before.promise, mutation.promise, during.promise, Promise.resolve(page('fresh'))];
+      let calls = 0;
+      const service = new AppleNotesService({ platform: 'darwin', execute: async () => {
+        const result = results[calls++];
+        if (!result) throw new Error('Unexpected request');
+        return result;
+      } });
+      const oldRead = service.list('root');
+      await Promise.resolve();
+      const write = action === 'create' ? service.create({ folderId: 'root', title: 'New', body: 'Text' }) : service.delete('first');
+      const overlappingRead = service.list('root');
+      await Promise.resolve();
+      mutation.resolve(JSON.stringify({ ok: true, value: { id: 'first', title: 'New' } }));
+      expect((await write).ok).toBe(true);
+      before.resolve(page('old'));
+      during.resolve(page('old'));
+      await Promise.all([oldRead, overlappingRead]);
+      const refreshed = await service.list('root');
+      expect(refreshed.ok && refreshed.value.notes[0]?.id).toBe('fresh');
+      expect(calls).toBe(4);
+    }
+  });
+  test('caches folders, pages and bodies across readers until expiry or explicit refresh', async () => {
+    const data = fixture();
+    const { service } = data;
+    await Promise.all([service.folders(), service.folders()]);
+    await Promise.all([service.list('root'), service.list('root')]);
+    await Promise.all([service.read('first'), service.read('first')]);
+    expect(data.executions).toBe(3);
+    await service.folders(); await service.list('root'); await service.read('first');
+    expect(data.executions).toBe(3);
+    await service.list('child'); await service.list('root', 100);
+    expect(data.executions).toBe(5);
+    data.advance(30_000);
+    expect(data.executions).toBe(5);
+    await service.read('first');
+    expect(data.executions).toBe(6);
+    await service.folders(true);
+    await service.read('first');
+    expect(data.executions).toBe(8);
+    for (const invalid of ['true', 1, {}, null]) {
+      expect(await service.folders(invalid)).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    }
+    expect(data.executions).toBe(8);
+  });
+
+  test('creation and deletion invalidate reads, including uncertain mutation outcomes', async () => {
+    const { service, app, notes } = fixture();
+    await service.list('root');
+    await service.read('first');
+    await service.delete('first');
+    const afterDelete = await service.list('root');
+    expect(afterDelete.ok && afterDelete.value.notes.map(entry => entry.id)).toEqual(['locked']);
+    expect(await service.read('first')).toMatchObject({ ok: false, error: { code: 'not-found' } });
+    app.make = () => { notes.push(note('created')); return note('created'); };
+    await service.create({ folderId: 'root', title: 'New', body: 'Text' });
+    const afterCreate = await service.list('root');
+    expect(afterCreate.ok && afterCreate.value.notes.map(entry => entry.id)).toEqual(['locked', 'created']);
+    app.delete = target => { notes.splice(notes.indexOf(target), 1); throw new Error('Lost acknowledgement'); };
+    expect(await service.delete('created')).toMatchObject({ ok: false, error: { code: 'delete-unknown' } });
+    const afterUnknown = await service.list('root');
+    expect(afterUnknown.ok && afterUnknown.value.notes.map(entry => entry.id)).toEqual(['locked']);
+  });
+  test('deletes only the requested note without reading its body and rejects missing or locked targets', async () => {
+    const { service, first, locked, notes, deletions } = fixture();
+    expect(await service.delete('locked')).toMatchObject({ ok: false, error: { code: 'locked' } });
+    expect(await service.delete('missing')).toMatchObject({ ok: false, error: { code: 'not-found' } });
+    notes.push(note('invalid', 'Invalid', 'false'));
+    expect(await service.delete('invalid')).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    expect(deletions).toEqual([]);
+    expect(await service.delete('first')).toEqual({ ok: true, value: { id: 'first' } });
+    expect(deletions).toEqual(['first']);
+    expect(notes.map(entry => entry.id())).toEqual(['locked', 'invalid']);
+    expect(first.reads + locked.reads).toBe(0);
+  });
+
+  test('deletion permission failures and uncertain native outcomes remain distinct', async () => {
+    const { service, app } = fixture();
+    app.delete = () => { throw Object.assign(new Error('private diagnostic'), { errorNumber: -1743 }); };
+    expect(await service.delete('first')).toMatchObject({ ok: false, error: { code: 'permission' } });
+    app.delete = () => { throw new Error('private diagnostic'); };
+    const result = await service.delete('first');
+    expect(result).toMatchObject({ ok: false, error: { code: 'delete-unknown' } });
+    expect(JSON.stringify(result)).not.toContain('private diagnostic');
+  });
+
+  test('never retries deletion after timeout or a malformed acknowledgement', async () => {
+    for (const execute of [async () => { throw new AppleNotesProcessError('timeout'); },
+      async () => '{}', async () => '{"ok":true,"value":{"id":"another-note"}}']) {
+      let calls = 0;
+      const service = new AppleNotesService({ platform: 'darwin', execute: async () => { calls += 1; return execute(); } });
+      expect(await service.delete('first')).toMatchObject({ ok: false, error: { code: 'delete-unknown' } });
+      expect(calls).toBe(1);
+    }
+  });
   test('lists nested folders once and reads only metadata until a note is chosen', async () => {
     const { service, first, locked } = fixture();
     expect(await service.folders()).toEqual({ ok: true, value: [
@@ -132,6 +264,7 @@ describe('Apple Notes automation contract', () => {
     }
     expect(await service.list('root', -1)).toMatchObject({ ok: false, error: { code: 'invalid' } });
     expect(await service.read('')).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    expect(await service.delete('')).toMatchObject({ ok: false, error: { code: 'invalid' } });
     expect(await new AppleNotesService({ platform: 'linux', execute }).folders()).toMatchObject({ ok: false, error: { code: 'unsupported' } });
     expect(calls).toBe(0);
     expect(appleNoteCreateInput({ folderId: 'root', title: ' title ', body: '  spaces\n' }).body).toBe('  spaces\n');

@@ -17,9 +17,9 @@ import { WorkspaceSelector } from './WorkspaceSelector';
 export type WorkspaceView = 'chat' | 'notes' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'showcase' | 'local-history';
 
 const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceView }> = [
-  { label: 'Codex', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
-  { label: '메모', icon: <StickyNote aria-hidden="true" />, view: 'notes' },
   { label: 'Relationship Graph', icon: <Crosshair aria-hidden="true" />, view: 'codegraph' },
+  { label: 'Codex', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
+  { label: 'Memo', icon: <StickyNote aria-hidden="true" />, view: 'notes' },
   { label: 'Terminal', icon: <SquareTerminal aria-hidden="true" />, view: 'terminal' },
   { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
   { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },
