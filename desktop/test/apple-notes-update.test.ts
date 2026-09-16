@@ -12,8 +12,8 @@ const original: AppleNoteDocument = { id: 'chosen', title: 'Title', html: '<h1>T
 const input = (): AppleNoteUpdateInput => ({ noteId: original.id, title: 'Changed', html: '<p><strong>New</strong> content</p>',
   expectedTitle: original.title, expectedHtml: original.html, expectedModifiedAt: original.modifiedAt });
 
-function fixture(modifiedAt = original.modifiedAt) {
-  let html = original.html;
+function fixture(modifiedAt = original.modifiedAt, initialHtml = original.html) {
+  let html = initialHtml;
   let title = original.title;
   let time = modifiedAt;
   let attachments = 0;
@@ -91,6 +91,21 @@ test('saves font-size spans and permits another edit of the returned Apple Notes
   const again = await f.service.update({ ...input(), html: html + '<p>Second edit</p>',
     expectedHtml: saved.value.html, expectedTitle: saved.value.title, expectedModifiedAt: saved.value.modifiedAt });
   expect(again.ok).toBe(true);
+  expect(f.writes).toBe(2);
+});
+
+test('updates native monospace notes and accepts a subsequent edit without bypassing conflicts', async () => {
+  const nativeHtml = '<div>Title</div><div><tt>one</tt></div><div><tt>two</tt></div>';
+  const f = fixture(original.modifiedAt, nativeHtml);
+  const html = '<p>Title</p><pre><code>one\ntwo edited</code></pre>';
+  const saved = await f.service.update({ ...input(), expectedHtml: nativeHtml, html, htmlIncludesTitle: true });
+  if (!saved.ok) throw new Error('Expected native monospace update to succeed.');
+  expect(saved.value.html).toBe(html);
+  const again = await f.service.update({ ...input(), html: html + '<p>More</p>', htmlIncludesTitle: true,
+    expectedHtml: saved.value.html, expectedTitle: saved.value.title, expectedModifiedAt: saved.value.modifiedAt });
+  expect(again.ok).toBe(true);
+  expect(f.writes).toBe(2);
+  expect(await f.service.update({ ...input(), expectedHtml: nativeHtml, html })).toMatchObject({ ok: false, error: { code: 'conflict' } });
   expect(f.writes).toBe(2);
 });
 

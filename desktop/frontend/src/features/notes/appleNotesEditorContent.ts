@@ -40,9 +40,48 @@ function mergeHeadingLine(div: Element): Element | null {
   return line;
 }
 
+function normalizeMonospaceLines(document: Document) {
+  const isCodeLine = (line: Element): boolean => ['DIV', 'P'].includes(line.tagName)
+    && !!line.querySelector('tt')
+    && [...line.childNodes].every(node => node instanceof Element
+      ? (node.tagName === 'BR' || (node.tagName === 'TT' && !node.querySelector(':not(br)')))
+      : !node.textContent?.trim());
+  for (const line of [...document.body.querySelectorAll('div,p')]) {
+    if (!line.parentNode || !isCodeLine(line)) continue;
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    pre.append(code);
+    line.before(pre);
+    let current: Element | null = line;
+    const lines: string[] = [];
+    while (current && isCodeLine(current)) {
+      const next: Element | null = current.nextElementSibling;
+      // Do not merge across text outside a paragraph or an explicit blank line.
+      let sibling: ChildNode | null = current.nextSibling;
+      let separated = false;
+      while (sibling && sibling !== next) {
+        if (sibling.textContent?.trim()) separated = true;
+        sibling = sibling.nextSibling;
+      }
+      if (!separated && next && isCodeLine(next)) {
+        // These newlines separate native HTML tags, not document lines. Leaving
+        // them behind after merging creates a whitespace-only editor paragraph.
+        while (current.nextSibling && current.nextSibling !== next) current.nextSibling.remove();
+      }
+      removeLineTerminator(current);
+      for (const br of current.querySelectorAll('br')) br.replaceWith('\n');
+      lines.push(current.textContent ?? '');
+      current.remove();
+      current = separated ? null : next;
+    }
+    code.textContent = lines.join('\n');
+  }
+}
+
 export function noteEditorHtml(note: AppleNoteDocument): string {
   if (!isEditableNoteHtml(note.html)) return '';
   const document = new DOMParser().parseFromString(note.html, 'text/html');
+  normalizeMonospaceLines(document);
   // Keep the first line in the document: it is editable content, not a separate field.
   // Notes uses divs for paragraphs. Normalize leaf divs explicitly; ProseMirror
   // otherwise flattens them and loses line boundaries when importing HTML.

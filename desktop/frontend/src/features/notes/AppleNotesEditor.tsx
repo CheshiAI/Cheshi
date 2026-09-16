@@ -149,7 +149,8 @@ function LoadedNoteEditor({ api, document, children, disabled, onSaved, onBusyCh
       {toolbar.map(({ label, icon: Icon, run }) => <NeumorphicButton key={label} size="icon" aria-label={label} title={label}
         disabled={contentDisabled || !editor} onMouseDown={event => event.preventDefault()} onClick={run}><Icon aria-hidden="true" /></NeumorphicButton>)}
     </div>}
-    {(reason || state.error || checkError || tooLarge) && <div className={styles.notice}>
+    {(reason || state.error || checkError || tooLarge) && <div className={styles.notice}
+      data-read-only={!!reason && !state.error && !checkError && !tooLarge && !state.blocked}>
       <p role={state.error || checkError || tooLarge ? 'alert' : undefined}>{checkError || state.error || (tooLarge ? '메모가 너무 큽니다. 내용을 줄여 주세요.' : reason)}</p>
       {state.blocked && !composeDraft && <NeumorphicButton disabled={checking || state.saving} onClick={() => void checkOriginal()}>{checking ? '확인 중…' : '최신 원본 확인'}</NeumorphicButton>}
     </div>}

@@ -190,6 +190,60 @@ test('markdown headings, lists, quotes, links and code round-trip into supported
   } finally { editor.destroy(); }
 }));
 
+test('native monospace lines remain editable as one code block through editing and reopening', () => withDom(() => {
+  const original = { ...note, html: '<div>Title</div><div><br></div>\n'
+    + '<div><tt>backdrop-filter: blur(24px)\u00a0saturate(88%);</tt></div>\n'
+    + '<div><tt>↓↑←↓↑→↓↑·</tt></div>\n<div><br></div>\n<div>Body<br>Next line<br></div>\n' };
+  expect(noteDocumentReadOnlyReason(original)).toBeNull();
+  const editor = new Editor({ extensions: noteEditorExtensions(), content: noteEditorHtml(original),
+    parseOptions: { preserveWhitespace: 'full' } });
+  try {
+    const blocks = editor.getJSON().content!;
+    expect(blocks.map(block => block.type)).toEqual(['paragraph', 'paragraph', 'codeBlock', 'paragraph', 'paragraph']);
+    expect(blocks[2]?.content?.[0]).toMatchObject({ type: 'text', text: 'backdrop-filter: blur(24px)\u00a0saturate(88%);\n↓↑←↓↑→↓↑·' });
+    expect(editor.getText()).toContain('Body\nNext line');
+    editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' edited');
+    const html = editor.getHTML();
+    expect(appleNoteUpdateInput({ noteId: note.id, title: note.title, html, htmlIncludesTitle: true,
+      expectedHtml: original.html, expectedModifiedAt: note.modifiedAt, expectedTitle: note.title }).html).toBe(html);
+    expect(noteDocumentReadOnlyReason({ ...note, html })).toBeNull();
+    const before = editor.getJSON();
+    editor.commands.setContent(noteEditorHtml({ ...note, html }), { parseOptions: { preserveWhitespace: 'full' } });
+    expect(editor.getJSON()).toEqual(before);
+    expect(editor.getText()).toContain('Next line edited');
+  } finally { editor.destroy(); }
+}));
+
+test('monospace import preserves inline marks, blank lines, hard breaks and code characters', () => withDom(() => {
+  const original = { ...note, html: '<div>Title</div><div><tt>  a &lt; b<br><br></tt></div>'
+    + '<div><tt>c</tt><br></div><div><br></div><div><tt>d</tt></div>'
+    + '<div>Run <tt><b>x</b></tt> now</div><div><tt><i>Styled</i></tt></div>' };
+  const editor = new Editor({ extensions: noteEditorExtensions(), content: noteEditorHtml(original),
+    parseOptions: { preserveWhitespace: 'full' } });
+  try {
+    const blocks = editor.getJSON().content!;
+    expect(blocks[1]?.content?.[0]).toMatchObject({ type: 'text', text: '  a < b\n\nc' });
+    expect(blocks[2]?.type).toBe('paragraph');
+    expect(blocks[2]?.content).toBeUndefined();
+    expect(blocks[3]?.type).toBe('codeBlock');
+    expect(blocks[4]?.content?.[1]?.marks).toContainEqual({ type: 'noteMonospace' });
+    expect(blocks[4]?.content?.[1]?.marks).toContainEqual({ type: 'bold' });
+    expect(blocks[5]?.content?.[0]?.marks).toContainEqual({ type: 'italic' });
+    const before = editor.getJSON();
+    const html = editor.getHTML();
+    expect(isEditableNoteHtml(html)).toBe(true);
+    editor.commands.setContent(noteEditorHtml({ ...note, html }), { parseOptions: { preserveWhitespace: 'full' } });
+    expect(editor.getJSON()).toEqual(before);
+  } finally { editor.destroy(); }
+}));
+
+test('native monospace support still rejects unsupported attributes and nested unsafe content', () => {
+  for (const html of ['<tt style="color:red">Text</tt>', '<tt onclick="alert(1)">Text</tt>',
+    '<tt><img src="x"></tt>', '<tt><script>alert(1)</script></tt>']) {
+    expect(isEditableNoteHtml(html)).toBe(false);
+  }
+});
+
 test('unsupported original HTML stays read-only and never enters the rich editor', () => withDom(() => {
   for (const html of ['<img src="https://example.com/private.png">', '<table><tr><td>Cell</td></tr></table>', '<div style="color:red">Red</div>', '<script>alert(1)</script>']) {
     const protectedNote = { ...note, html };

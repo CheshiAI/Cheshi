@@ -21,6 +21,14 @@ const NoteFontSize = Mark.create({
   },
 });
 
+// Keep mixed inline native monospace text and its other marks intact. Entire
+// unstyled monospace lines are normalized into code blocks before parsing.
+const NoteMonospace = Mark.create({
+  name: 'noteMonospace',
+  parseHTML() { return [{ tag: 'tt' }]; },
+  renderHTML() { return ['tt', 0]; },
+});
+
 export function noteEditorExtensions() {
-  return [StarterKit.configure({ link: { openOnClick: false, autolink: false }, trailingNode: false }), NoteFontSize, Markdown];
+  return [StarterKit.configure({ link: { openOnClick: false, autolink: false }, trailingNode: false }), NoteFontSize, NoteMonospace, Markdown];
 }

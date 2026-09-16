@@ -63,7 +63,7 @@ export function appleNoteFontSize(style: string): string | null {
 // of silently dropping Apple Notes content when round-tripping through the editor.
 // This is not a general-purpose HTML sanitizer; unsupported documents stay read-only.
 export function isEditableNoteHtml(html: string): boolean {
-  const tags = new Set(['div', 'p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'b', 'strong', 'i', 'em', 'u', 's', 'strike', 'del', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'hr', 'a', 'span']);
+  const tags = new Set(['div', 'p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'b', 'strong', 'i', 'em', 'u', 's', 'strike', 'del', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'tt', 'hr', 'a', 'span']);
   const stack: string[] = [];
   const tokens = html.match(/<[^>]*>|[^<]+/g) ?? [];
   if (tokens.join('') !== html) return false;
