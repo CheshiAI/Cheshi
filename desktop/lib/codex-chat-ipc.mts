@@ -9,6 +9,7 @@ import { CodexAppServerStoppedError } from './codex-app-server-client.mts';
 import type { ChatHistorySearch } from './chat-history-search.mts';
 import { AppleNotesService } from './apple-notes-service.mts';
 import { registerAppleNotesIpc } from './apple-notes-ipc.mts';
+import { readCodexTurnMetrics } from './codex-chat-turn-metrics.mts';
 
 type ChatIpcOptions = {
   ipc: Pick<IpcMain, 'handle'>;
@@ -56,6 +57,10 @@ export function registerCodexChatIpc({ ipc, service, relays, deletion, savedTurn
     }
   });
   ipc.handle('cheshi:list-codex-chat-agents', (event, contextId) => service(event, contextId).listAgents());
+  ipc.handle('cheshi:read-codex-turn-metrics', (event, threadId, contextId) => {
+    assertSender(event);
+    return readCodexTurnMetrics(service(event, contextId), threadId);
+  });
   ipc.handle('cheshi:read-codex-agent-details', (event, threadId, agentThreadIds, contextId) => {
     assertSender(event);
     return service(event, contextId).readAgentDetails(threadId, agentThreadIds);

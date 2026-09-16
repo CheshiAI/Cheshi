@@ -818,6 +818,7 @@ const cheshiDesktopApi = {
     await ipcRenderer.invoke('cheshi:search-codex-chat-history', chatHistorySearchRequest(request), contextId),
   ),
   listCodexChatAgents: (contextId) => ipcRenderer.invoke('cheshi:list-codex-chat-agents', contextId),
+  readCodexTurnMetrics: (threadId, contextId) => ipcRenderer.invoke('cheshi:read-codex-turn-metrics', threadId, contextId),
   readCodexAgentDetails: (threadId, agentThreadIds, contextId) => {
     if (typeof threadId !== 'string' || !threadId.trim() || !Array.isArray(agentThreadIds)
       || agentThreadIds.length === 0 || agentThreadIds.length > 32

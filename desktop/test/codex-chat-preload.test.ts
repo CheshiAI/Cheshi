@@ -44,6 +44,12 @@ function createHarness(userName: unknown = 'Alex', invokeResult: unknown = undef
   };
 }
 
+test('response statistics reads carry the conversation and pane without navigation', async () => {
+  const bridge = createHarness('Alex', { threadId: 'root', turns: [] });
+  await bridge.call('readCodexTurnMetrics', 'root', 'pane-b');
+  assert.deepEqual(bridge.calls, [['cheshi:read-codex-turn-metrics', 'root', 'pane-b']]);
+});
+
 test('agent detail reads carry the parent, target ids and pane without invoking navigation', async () => {
   const bridge = createHarness('Alex', { agents: [] });
   await bridge.call('readCodexAgentDetails', 'root', ['child'], 'pane-b');

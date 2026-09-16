@@ -1,0 +1,4 @@
+.root { display: flex; flex-direction: column; gap: var(--icon-default); font-size: 10px; font-weight: 400; line-height: 1.5; color: var(--sidebar-section-label-color); }
+.row { display: flex; align-items: center; flex-wrap: wrap; column-gap: var(--space-default); row-gap: var(--icon-default); }
+.row > span { overflow-wrap: anywhere; }
+.row > [tabindex]:focus-visible { outline: 1px solid currentColor; outline-offset: 2px; }
