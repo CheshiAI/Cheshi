@@ -1,3 +1,6 @@
+import { parseResearchInvestigation } from './autopilot-investigation.ts';
+import type { ResearchInvestigation } from './autopilot-investigation.ts';
+
 export const AUTOPILOT_CHANNELS = {
   get: 'cheshi:autopilot:get',
   start: 'cheshi:autopilot:start',
@@ -8,9 +11,10 @@ export const AUTOPILOT_CHANNELS = {
 } as const;
 
 export const AUTOPILOT_MAX_STEPS = 20;
-export type AutopilotPhase = 'idle' | 'loading' | 'thinking' | 'acting' | 'completed' | 'partial' | 'stopped' | 'limit' | 'error';
-export interface AutopilotRequest { url: string; goal: string; searchText?: string; mode?: 'research'; targetSources?: number }
-export interface AutopilotSource { url: string; title: string; accessedAt: string; evidence: string; confidence: number }
+export const AUTOPILOT_MAX_READS = 40;
+export type AutopilotPhase = 'idle' | 'planning' | 'synthesizing' | 'reading' | 'loading' | 'thinking' | 'acting' | 'completed' | 'partial' | 'stopped' | 'limit' | 'error';
+export interface AutopilotRequest { url: string; goal: string; searchText?: string; mode?: 'research'; targetSources?: number; contextId?: string }
+export interface AutopilotSource { url: string; title: string; accessedAt: string; evidence: string; confidence: number; id?: string; publisher?: string; section?: string; sectionId?: string }
 export interface AutopilotIssue { url: string; message: string }
 export type AutopilotReportFormat = 'markdown' | 'csv';
 export interface AutopilotBounds { x: number; y: number; width: number; height: number }
@@ -22,6 +26,11 @@ export interface AutopilotStep {
   decisionMs: number;
   confidence: number | null;
   action?: string;
+  kind?: 'navigation' | 'reading';
+}
+export function autopilotUsage(steps: AutopilotStep[]) {
+  const readings = steps.filter(step => step.kind === 'reading').length;
+  return { navigation: Math.max(0, steps.length - readings - 1), readings };
 }
 export interface AutopilotState {
   configured: boolean;
@@ -37,6 +46,7 @@ export interface AutopilotState {
   targetSources?: number;
   sources?: AutopilotSource[];
   issues?: AutopilotIssue[];
+  investigation?: ResearchInvestigation;
 }
 export interface AutopilotApi {
   getState(): Promise<AutopilotState>;
@@ -48,7 +58,7 @@ export interface AutopilotApi {
 }
 
 export function autopilotRunning(state: Pick<AutopilotState, 'phase'>): boolean {
-  return state.phase === 'loading' || state.phase === 'thinking' || state.phase === 'acting';
+  return state.phase === 'planning' || state.phase === 'synthesizing' || state.phase === 'reading' || state.phase === 'loading' || state.phase === 'thinking' || state.phase === 'acting';
 }
 
 export function autopilotRecord(value: unknown): Record<string, unknown> {
@@ -89,7 +99,9 @@ export function parseAutopilotRequest(value: unknown): AutopilotRequest {
   const goal = text(input.goal, 2000).trim();
   if (!url || !goal) throw new TypeError('Enter a valid HTTP(S) start URL and a goal.');
   const searchText = input.searchText === undefined ? '' : text(input.searchText, 500).trim();
-  return { url, goal, ...(searchText ? { searchText } : {}), ...researchMode(input) };
+  const contextId = input.contextId === undefined ? undefined : text(input.contextId, 128);
+  if (contextId !== undefined && !/^[a-zA-Z0-9_-]{1,128}$/.test(contextId)) throw new TypeError('Invalid chat context.');
+  return { url, goal, ...(contextId === undefined ? {} : { contextId }), ...(searchText ? { searchText } : {}), ...researchMode(input) };
 }
 
 function researchMode(input: Record<string, unknown>): { mode?: 'research'; targetSources?: number } {
@@ -108,7 +120,7 @@ export function parseAutopilotReportFormat(value: unknown): AutopilotReportForma
 function researchResults(input: Record<string, unknown>) {
   const mode = researchMode(input);
   if (!mode.mode) {
-    if (input.sources !== undefined || input.issues !== undefined) throw new TypeError('Unexpected research results.');
+    if (input.sources !== undefined || input.issues !== undefined || input.investigation !== undefined) throw new TypeError('Unexpected research results.');
     return {};
   }
   if (!Array.isArray(input.sources) || input.sources.length > 10 || !Array.isArray(input.issues) || input.issues.length > 24) {
@@ -120,9 +132,15 @@ function researchResults(input: Record<string, unknown>) {
     const url = safeAutopilotUrl(source.url);
     const accessedAt = text(source.accessedAt, 40);
     const evidence = text(source.evidence, 1200);
-    if (!url || seen.has(url) || !evidence.trim() || !Number.isFinite(Date.parse(accessedAt))) throw new TypeError('Invalid research source.');
-    seen.add(url);
-    return { url, title: text(source.title, 500), accessedAt, evidence, confidence: number(source.confidence, 0, 1) };
+    const identity = input.investigation === undefined ? url : JSON.stringify([url, evidence]);
+    if (!url || seen.has(identity!) || !evidence.trim() || !Number.isFinite(Date.parse(accessedAt))) throw new TypeError('Invalid research source.');
+    seen.add(identity!);
+    const id = source.id === undefined ? undefined : text(source.id, 10);
+    if (id !== undefined && !/^s[1-9]\d?$/.test(id)) throw new TypeError('Invalid source ID.');
+    return { url, title: text(source.title, 500), accessedAt, evidence, confidence: number(source.confidence, 0, 1),
+      ...(id === undefined ? {} : { id }), ...(source.publisher === undefined ? {} : { publisher: text(source.publisher, 253) }),
+      ...(source.section === undefined ? {} : { section: text(source.section, 300) }),
+      ...(source.sectionId === undefined ? {} : { sectionId: text(source.sectionId, 20) }) };
   });
   const issues = input.issues.map(value => {
     const issue = autopilotRecord(value);
@@ -130,7 +148,11 @@ function researchResults(input: Record<string, unknown>) {
     if (!url) throw new TypeError('Invalid research issue URL.');
     return { url, message: text(issue.message, 2000) };
   });
-  return { ...mode, sources, issues };
+  const ids = sources.flatMap(source => source.id ? [source.id] : []);
+  if (input.investigation !== undefined && (ids.length !== sources.length || new Set(ids).size !== ids.length)) throw new TypeError('Invalid research source IDs.');
+  return { ...mode, sources, issues, ...(input.investigation === undefined ? {} : {
+    investigation: parseResearchInvestigation(input.investigation, ids),
+  }) };
 }
 
 export function parseAutopilotView(value: unknown): AutopilotViewRequest {
@@ -144,20 +166,29 @@ export function parseAutopilotView(value: unknown): AutopilotViewRequest {
 
 export function parseAutopilotState(value: unknown): AutopilotState {
   const input = autopilotRecord(value);
-  const phases: AutopilotPhase[] = ['idle', 'loading', 'thinking', 'acting', 'completed', 'partial', 'stopped', 'limit', 'error'];
+  const phases: AutopilotPhase[] = ['idle', 'planning', 'synthesizing', 'reading', 'loading', 'thinking', 'acting', 'completed', 'partial', 'stopped', 'limit', 'error'];
   const phase = phases.find(candidate => candidate === input.phase);
   const url = input.url === '' ? '' : safeAutopilotUrl(input.url);
-  if (!phase || url === null || !Array.isArray(input.steps) || input.steps.length > AUTOPILOT_MAX_STEPS + 1) {
+  const extended = input.mode === 'research' && input.investigation !== undefined;
+  if (!phase || url === null || !Array.isArray(input.steps)
+    || input.steps.length > AUTOPILOT_MAX_STEPS + 1 + (extended ? AUTOPILOT_MAX_READS : 0)) {
     throw new TypeError('Invalid Autopilot state.');
   }
-  const steps = input.steps.map(value => {
+  const steps = input.steps.map((value): AutopilotStep => {
     const step = autopilotRecord(value);
     const stepUrl = safeAutopilotUrl(step.url);
     if (!stepUrl) throw new TypeError('Invalid Autopilot step URL.');
+    const kind = step.kind;
+    if (kind !== undefined && kind !== 'navigation' && kind !== 'reading') throw new TypeError('Invalid Autopilot step kind.');
+    if (kind === 'reading' && !extended) throw new TypeError('Unexpected document reading.');
     return { url: stepUrl, title: text(step.title, 500), loadMs: number(step.loadMs),
       decisionMs: number(step.decisionMs), confidence: step.confidence === null ? null : number(step.confidence, 0, 1),
-      ...(step.action === undefined ? {} : { action: text(step.action, 600) }) };
+      ...(step.action === undefined ? {} : { action: text(step.action, 600) }),
+      ...(kind === undefined ? {} : { kind }) };
   });
+  const usage = autopilotUsage(steps);
+  if (usage.navigation > AUTOPILOT_MAX_STEPS || usage.readings > AUTOPILOT_MAX_READS
+    || steps[0]?.kind === 'reading') throw new TypeError('Invalid Autopilot usage.');
   return { configured: flag(input.configured), phase, url, title: text(input.title, 500), goal: text(input.goal, 2000),
     error: input.error === null ? null : text(input.error, 2000), modelMs: number(input.modelMs), steps,
     ...(input.searchText === undefined ? {} : { searchText: text(input.searchText, 500) }), ...researchResults(input) };

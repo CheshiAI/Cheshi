@@ -5,10 +5,12 @@ import type { AutopilotDecision, AutopilotLink, AutopilotPage } from './autopilo
 import { researchPagePassages } from './autopilot-evidence.mts';
 import { AutopilotPageChangedError } from './autopilot-runner.mts';
 import type { AutopilotRunnerOptions } from './autopilot-runner.mts';
+import { runAutopilotInvestigation } from './autopilot-investigation.mts';
 
 /** Keep discovered links across pages, so research can leave a dead end for another source. */
 export async function runAutopilotResearch(options: AutopilotRunnerOptions, request: AutopilotRequest,
   signal: AbortSignal, update: (value: Partial<AutopilotState>) => void): Promise<void> {
+  if (options.research) return runAutopilotInvestigation(options, request, signal, update);
   const sources: AutopilotSource[] = [];
   const issues: AutopilotIssue[] = [];
   const steps: AutopilotStep[] = [];
@@ -141,7 +143,7 @@ export async function runAutopilotResearch(options: AutopilotRunnerOptions, requ
   }
 }
 
-function assertEvidence(decision: AutopilotDecision, page: AutopilotPage): void {
+export function assertEvidence(decision: AutopilotDecision, page: AutopilotPage): void {
   const evidence = decision.evidence;
   if (evidence && (!Object.values(researchPagePassages(page)).includes(evidence.text)
     || !Number.isFinite(evidence.confidence) || evidence.confidence < 0 || evidence.confidence > 1)) {
@@ -149,7 +151,7 @@ function assertEvidence(decision: AutopilotDecision, page: AutopilotPage): void 
   }
 }
 
-function assertAction(decision: AutopilotDecision, page: AutopilotPage, candidates: AutopilotLink[],
+export function assertAction(decision: AutopilotDecision, page: AutopilotPage, candidates: AutopilotLink[],
   searchText: string | undefined, supported: boolean, completedInteractions: string[]): void {
   if (decision.interaction) {
     if (supported && autopilotActions(page, [], searchText, completedInteractions).some(action => action.kind !== 'navigate'

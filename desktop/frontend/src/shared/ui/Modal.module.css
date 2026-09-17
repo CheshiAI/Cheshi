@@ -24,6 +24,7 @@
 
 .header {
   display: flex;
+  height: var(--modal-header-height, auto);
   align-items: center;
   justify-content: space-between;
   gap: var(--space-default);
@@ -44,14 +45,15 @@
   gap: var(--space-default);
   margin: 0;
   color: var(--modal-title-color, var(--active-text));
-  font-size: 11px;
+  font-size: var(--modal-title-size, 11px);
   font-weight: 600;
   line-height: 15px;
 }
 
 .header h2 svg {
-  width: var(--icon-size-default);
-  height: var(--icon-size-default);
+  width: var(--modal-title-icon-size, var(--icon-size-default));
+  height: var(--modal-title-icon-size, var(--icon-size-default));
+  stroke-width: var(--modal-title-icon-stroke-width, 2);
   flex: 0 0 auto;
 }
 

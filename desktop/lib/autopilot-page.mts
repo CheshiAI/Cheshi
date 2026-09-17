@@ -1,3 +1,5 @@
+import { AUTOPILOT_DOCUMENT_HELPERS, parseAutopilotSections } from './autopilot-document.mts';
+import type { AutopilotSection } from './autopilot-document.mts';
 import { autopilotRecord, safeAutopilotUrl } from '../shared/autopilot.ts';
 import type { AutopilotPage } from './autopilot-model.mts';
 import type { AutopilotControl, AutopilotInteraction } from './autopilot-actions.mts';
@@ -28,7 +30,8 @@ const CONTROL_HELPERS = String.raw`
   };
 `;
 
-export const AUTOPILOT_PAGE_SCRIPT = `(() => {
+function pageScript(selection?: { url: string; version: string; id: string }): string {
+  return `(() => {
   ${CONTROL_HELPERS}
   const links = [];
   const seen = new Set();
@@ -54,9 +57,21 @@ export const AUTOPILOT_PAGE_SCRIPT = `(() => {
     controls.push(control);
     if (controls.length >= 256) break;
   }
-  return { url: location.href, title: document.title.slice(0, 500),
-    text: (document.querySelector('main, [role="main"], article') || document.body)?.innerText.slice(0, 12000) || '', links, controls };
+  ${AUTOPILOT_DOCUMENT_HELPERS}
+  const selection = ${JSON.stringify(selection ?? null)};
+  const currentUrl = new URL(location.href); currentUrl.hash = '';
+  const selected = selection && selection.url === currentUrl.href && selection.version === documentVersion
+    ? sectionBodies.find(section => section.id === selection.id) : null;
+  if (selected?.element?.scrollIntoView) selected.element.scrollIntoView({ block: 'start', inline: 'nearest' });
+  return { url: location.href, title: document.title.slice(0, 500), sections, documentVersion, documentTruncated,
+    ...(selected ? { section: sections.find(section => section.id === selected.id) } : {}),
+    text: selected ? selected.text : (document.querySelector('main, [role="main"], article') || document.body)?.innerText.slice(0, 12000) || '', links, controls };
 })()`;
+}
+export const AUTOPILOT_PAGE_SCRIPT = pageScript();
+export function autopilotSectionScript(page: AutopilotPage, section: AutopilotSection): string {
+  return pageScript({ url: page.url, version: page.documentVersion ?? '', id: section.id });
+}
 
 /** Revalidate the exact DOM node immediately before a synchronous interaction. */
 export function autopilotInteractionScript(url: string, action: AutopilotInteraction): string {
@@ -101,7 +116,15 @@ export function parseAutopilotPage(value: unknown): AutopilotPage {
     return [{ id: `link_${index}`, url: destination, label: link.label }];
   });
   const controls = parseControls(input.controls);
-  return { url, title: input.title, text: input.text, links, controls };
+  const sections = input.sections === undefined ? undefined : parseAutopilotSections(input.sections);
+  if (sections && (typeof input.documentVersion !== 'string' || !/^[0-9a-f]{1,8}$/.test(input.documentVersion)
+    || (input.documentTruncated !== true && input.documentTruncated !== false))) throw new TypeError('Invalid document version.');
+  const section = input.section === undefined ? undefined : parseAutopilotSections([input.section])[0];
+  if (section && !sections?.some(entry => JSON.stringify(entry) === JSON.stringify(section))) throw new TypeError('Unknown document section.');
+  return { url, title: input.title, text: input.text, links, controls,
+    ...(sections ? { sections, documentVersion: input.documentVersion as string, documentTruncated: input.documentTruncated === true } : {}),
+    ...(section ? { section } : {}) };
+
 }
 
 function parseControls(value: unknown): AutopilotControl[] {

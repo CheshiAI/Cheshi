@@ -70,11 +70,11 @@ test('refreshes open results, handles errors and empty results, and ignores resp
   expect(state).toBe(before);
 });
 
-test('uses physical Shift+F and protects modifiers, repeat and IME composition', () => {
-  const event = { code: 'KeyF', shiftKey: true, metaKey: false, ctrlKey: false, altKey: false,
+test('uses physical Command+Shift+F and protects modifiers, repeat and IME composition', () => {
+  const event = { code: 'KeyF', shiftKey: true, metaKey: true, ctrlKey: false, altKey: false,
     repeat: false, isComposing: false, keyCode: 70, defaultPrevented: false };
   expect(isFileSearchShortcut(event)).toBe(true);
-  for (const change of [{ shiftKey: false }, { code: 'KeyG' }, { metaKey: true }, { ctrlKey: true },
+  for (const change of [{ shiftKey: false }, { code: 'KeyG' }, { metaKey: false }, { ctrlKey: true },
     { altKey: true }, { repeat: true }, { isComposing: true }, { keyCode: 229 }, { defaultPrevented: true }]) {
     expect(isFileSearchShortcut({ ...event, ...change })).toBe(false);
   }
@@ -95,8 +95,9 @@ test('shortcut leaves editable targets and open dialogs alone and cleans up its 
   const exports: { installFileSearchShortcut?: (doc: unknown, open: () => void) => () => void } = {};
   vm.runInNewContext(output.outputText, { exports, Element, HTMLElement: Element });
   const close = exports.installFileSearchShortcut!(document, () => { opened++; });
-  const send = (target: Element) => listener?.({ code: 'KeyF', shiftKey: true, keyCode: 70,
+  const send = (target: Element, metaKey = true) => listener?.({ code: 'KeyF', shiftKey: true, metaKey, keyCode: 70,
     composedPath: () => [target], preventDefault() { prevented++; }, stopPropagation() {} });
+  send(new Element(), false); expect(opened).toBe(0); expect(prevented).toBe(0);
   send(new Element()); expect(opened).toBe(1);
   send(new Element(true)); send(new Element(false, true)); expect(opened).toBe(1);
   document.activeElement = new Element(true); send(new Element()); expect(opened).toBe(1);

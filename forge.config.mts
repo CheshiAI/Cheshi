@@ -34,7 +34,7 @@ function shouldIgnore(packagePath: string): boolean {
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
-    const packagedSharedFiles = new Set(['account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-notes.ts', 'apple-notes-document.ts', 'keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'showcase.ts', 'autopilot.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'local-history.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
+    const packagedSharedFiles = new Set(['account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-notes.ts', 'apple-notes-document.ts', 'keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'showcase.ts', 'autopilot.ts', 'settings.ts', 'autopilot-investigation.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'local-history.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
     return grandchildEntry === undefined || !packagedSharedFiles.has(grandchildEntry) || segments.length > 3;
   }
   if (childEntry !== 'lib') return true;
@@ -45,11 +45,17 @@ function shouldIgnore(packagePath: string): boolean {
     'autopilot-actions.mts',
     'autopilot-interaction.mts',
     'autopilot-key.mts',
+    'settings-service.mts',
+    'settings-ipc.mts',
     'autopilot-model.mts',
     'autopilot-page.mts',
     'autopilot-runner.mts',
     'autopilot-research.mts',
+    'autopilot-investigation.mts',
+    'autopilot-codex.mts',
+    'autopilot-workspace.mts',
     'autopilot-evidence.mts',
+    'autopilot-document.mts',
     'autopilot-report.mts',
     'codex-chat-turn-metrics.mts',
     'codex-turn-metrics-reader.mts',

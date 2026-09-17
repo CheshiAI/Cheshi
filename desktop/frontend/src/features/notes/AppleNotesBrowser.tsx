@@ -1,7 +1,7 @@
 import { ChevronRight, Folder, FolderOpen, LockKeyhole, Paperclip, Plus, RefreshCw, Search, StickyNote, Trash2 } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { AppleNote, AppleNotesApi } from '../../../../shared/apple-notes';
-import { LiquidGlassPanel, NeumorphicButton, NeumorphicTextField, SearchClearButton } from '../../shared/ui';
+import { EmptyState, LiquidGlassPanel, NeumorphicButton, NeumorphicTextField, SearchClearButton } from '../../shared/ui';
 import { AppleNotesNewDialog } from './AppleNotesNewDialog';
 import { getNewNoteDraft, startNewNoteDraft, releaseNewNoteDraft } from './appleNotesNewDraft';
 import { AppleNotesDeleteDialog } from './AppleNotesDeleteDialog';
@@ -159,11 +159,7 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
             disabled={attaching} onSaved={browser.applyUpdated} onBusyChange={setEditing}>{noteActions}</AppleNotesEditor> : <>
             <div className={styles.emptyEditorHeader}><span>{selectedFolder?.path ?? 'Memo'}</span><div className={styles.headerActions}>{noteActions}</div></div>
             <section className={styles.documentScroll} aria-label="Note preview">
-              <article className={styles.document}>
-                <div className={styles.emptyDocument}>
-                  <StickyNote aria-hidden="true" /><h2>Memo</h2><p>Select a note to read its text.</p>
-                </div>
-              </article>
+              <EmptyState className={styles.emptyDocument} title="Memo" description="Select a note to read its text." />
             </section>
           </>}
           <footer className={styles.documentFooter}>

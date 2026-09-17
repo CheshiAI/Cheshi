@@ -96,15 +96,10 @@
 .emptyEditorHeader { justify-content: space-between; gap: var(--space-default); }
 .emptyEditorHeader > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .emptyEditorHeader { display: flex; align-items: center; box-sizing: border-box; height: var(--header-height); flex: 0 0 var(--header-height); padding: 0 var(--space-default); border-bottom: 1px solid var(--divider); font-size: 10px; color: var(--sidebar-section-label-color); }
-.documentScroll { flex: 1; min-height: 0; overflow: auto; }
+.documentScroll { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; }
 .documentScroll:focus:not(:focus-visible) { outline: none; }
 .documentScroll:focus-visible { outline-offset: -3px; }
-.document { box-sizing: border-box; width: 100%; max-width: 800px; margin: 0 auto; padding: 40px clamp(16px, 4vw, 64px); }
-.document h2 { margin: 0 0 24px; font-size: 28px; line-height: 1.3; font-weight: 650; overflow-wrap: anywhere; }
-.document pre { margin: 0; font: inherit; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
-.emptyDocument { color: var(--sidebar-section-label-color); padding-top: 24px; }
-.emptyDocument > svg { width: 32px; height: 32px; margin-bottom: var(--space-default); stroke-width: 1.3; }
-.emptyDocument p { margin: 0; line-height: 1.6; }
+.documentScroll > .emptyDocument { --empty-text: var(--title); --empty-muted: var(--sub-text); }
 .documentFooter { display: flex; flex-direction: column; gap: var(--icon-default); padding: var(--space-default); }
 .documentFooter p { margin: 0; }
 .documentFooter > .hint, .documentFooter > p[role='status'] { font-size: 10px; }

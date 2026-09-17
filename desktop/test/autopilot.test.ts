@@ -172,7 +172,7 @@ test('stop followed by restart ignores a late model reply from the previous run'
 test('missing keys and invalid model destinations never navigate', async () => {
   const h = runnerHarness(async () => ({ completed: false, link: { id: 'invented', url: 'https://elsewhere.org/', label: 'bad' }, confidence: 1 }));
   h.setConfigured(false);
-  expect(() => h.runner.start({ url: 'https://example.org/start', goal: 'target' })).toThrow('TYPE_SAFE_AI');
+  expect(() => h.runner.start({ url: 'https://example.org/start', goal: 'target' })).toThrow('Settings');
   expect(h.loads).toEqual([]);
   h.setConfigured(true);
   h.runner.start({ url: 'https://example.org/start', goal: 'target' });

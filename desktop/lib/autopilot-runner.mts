@@ -4,6 +4,8 @@ import type { AutopilotDecision, AutopilotDecisionInput, AutopilotLink, Autopilo
 import { autopilotActionLabel, autopilotActions, autopilotInteractionKey, sameAutopilotInteraction } from './autopilot-actions.mts';
 import type { AutopilotInteraction } from './autopilot-actions.mts';
 import { runAutopilotResearch } from './autopilot-research.mts';
+import type { ResearchCoordinator } from './autopilot-codex.mts';
+import type { AutopilotSection } from './autopilot-document.mts';
 
 const MAX_PAGE_CHANGE_RETRIES = 2;
 
@@ -18,10 +20,12 @@ export class AutopilotPageChangedError extends Error {
 }
 
 export interface AutopilotRunnerOptions {
+  research?: ResearchCoordinator;
   configured(): boolean;
   decide(input: AutopilotDecisionInput): Promise<AutopilotDecision>;
   load(url: string, signal: AbortSignal): Promise<AutopilotPage>;
-  read?(signal: AbortSignal): Promise<AutopilotPage>;
+  read?(signal: AbortSignal, page?: AutopilotPage): Promise<AutopilotPage>;
+  readSection?(page: AutopilotPage, section: AutopilotSection, signal: AbortSignal): Promise<AutopilotPage>;
   follow(page: AutopilotPage, link: AutopilotLink, signal: AbortSignal): Promise<AutopilotPage>;
   interact?(page: AutopilotPage, action: AutopilotInteraction, signal: AbortSignal): Promise<AutopilotPage>;
   cancelLoad(): void;
@@ -34,6 +38,7 @@ export function createAutopilotRunner(options: AutopilotRunnerOptions) {
   let run: AbortController | null = null;
   let disposed = false;
   const snapshot = (): AutopilotState => ({ ...state, configured: options.configured(), steps: state.steps.map(step => ({ ...step })),
+    ...(state.investigation ? { investigation: structuredClone(state.investigation) } : {}),
     ...(state.sources ? { sources: state.sources.map(source => ({ ...source })) } : {}),
     ...(state.issues ? { issues: state.issues.map(issue => ({ ...issue })) } : {}) });
   const emit = () => { if (!disposed) options.onState(snapshot()); };
@@ -138,7 +143,7 @@ export function createAutopilotRunner(options: AutopilotRunnerOptions) {
       if (disposed) throw new Error('Autopilot is closed.');
       if (autopilotRunning(state)) throw new Error('Stop the current run before starting another.');
       const request = parseAutopilotRequest(value);
-      if (!options.configured()) throw new Error('Set TYPE_SAFE_AI in the app environment to use Autopilot.');
+      if (!options.configured()) throw new Error('Register your TypeSafe API key in Settings to use Autopilot.');
       run = new AbortController();
       state = { configured: options.configured(), ...request, title: '', phase: 'loading', error: null, modelMs: 0, steps: [],
         ...(request.mode === 'research' ? { sources: [], issues: [] } : {}) };

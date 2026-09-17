@@ -5,6 +5,7 @@ import {
   Navigation,
   PanelsTopLeft,
   Search,
+  Settings,
   SquareTerminal,
   StickyNote,
 } from 'lucide-react';
@@ -16,7 +17,7 @@ import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import { WorkspaceFileTree } from './WorkspaceFileTree';
 import { WorkspaceSelector } from './WorkspaceSelector';
 
-export type WorkspaceView = 'chat' | 'notes' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'showcase' | 'local-history' | 'autopilot';
+export type WorkspaceView = 'chat' | 'notes' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'showcase' | 'local-history' | 'autopilot' | 'settings';
 
 const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceView; beta?: boolean }> = [
   { label: 'Relationship Graph', icon: <Crosshair aria-hidden="true" />, view: 'codegraph' },
@@ -27,9 +28,11 @@ const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceVi
   { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },
   { label: 'Showcase', icon: <PanelsTopLeft aria-hidden="true" />, view: 'showcase' },
   { label: 'Autopilot', icon: <Navigation aria-hidden="true" />, view: 'autopilot', beta: true },
+  { label: 'Settings', icon: <Settings aria-hidden="true" />, view: 'settings' },
 ];
 
 interface SidebarProps {
+  autopilotMenuVisible?: boolean;
   activeView: WorkspaceView;
   selectedFilePath: string | null;
   onNavigate: (view: WorkspaceView) => void;
@@ -39,6 +42,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({
+  autopilotMenuVisible = false,
   activeView,
   selectedFilePath,
   onNavigate,
@@ -68,7 +72,7 @@ export function Sidebar({
           </div>
 
           <nav className="primary-navigation" aria-label="Primary navigation">
-            {navigationItems.map((item) => (
+            {navigationItems.filter(item => item.view !== 'autopilot' || autopilotMenuVisible).map((item) => (
               <button
                 className="navigation-item"
                 data-active={item.view === activeView ? 'true' : undefined}

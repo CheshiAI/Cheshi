@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, session, shell, Tray, WebContentsView } from 'electron';
+import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, safeStorage, session, shell, Tray, WebContentsView } from 'electron';
 import { product } from '../config/product.mts';
 import { aboutBackgroundColor, aboutPage } from './lib/about-page.mts';
 import { registerSelectionCopy } from './lib/selection-copy.mts';
@@ -23,6 +23,9 @@ import { createAccountUsageBackground } from './lib/account-usage-background.mts
 import { getCodexAccountProfiles } from './lib/codex-account-profiles.mts';
 import { createShowcaseBrowser } from './lib/showcase-browser.mts';
 import { createAutopilotBrowser } from './lib/autopilot-browser.mts';
+import { createSettingsService } from './lib/settings-service.mts';
+import { registerSettingsIpc } from './lib/settings-ipc.mts';
+import { createAutopilotModel } from './lib/autopilot-model.mts';
 import { readAutopilotKey } from './lib/autopilot-key.mts';
 import { findAppRelease } from './lib/app-release-checker.mts';
 import { createAppUpdateService } from './lib/app-update-service.mts';
@@ -50,6 +53,22 @@ const aboutWindow = createAboutWindow({
   onError: error => process.stderr.write(`[cheshi] About window failed: ${String(error)}\n`),
 });
 const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'updates'));
+const apiSettings = createSettingsService({
+  directory: path.join(app.getPath('userData'), 'api-keys'),
+  encryption: {
+    isEncryptionAvailable: () => safeStorage.isEncryptionAvailable()
+      && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
+    encryptString: value => safeStorage.encryptString(value),
+    decryptString: value => safeStorage.decryptString(value),
+  },
+  fallback: () => readAutopilotKey({
+    developmentFile: app.isPackaged ? undefined : path.resolve(import.meta.dirname, '..', '.env.signing'),
+  }),
+  checkKey: async key => {
+    await createAutopilotModel(key)({ page: { url: 'https://typesafe.ai/', title: 'Connection check', text: 'Connection check', links: [] },
+      goal: 'Confirm the connection check page is reached.', visited: [], signal: AbortSignal.timeout(30_000) });
+  },
+});
 const keepAwake = new KeepAwakeService();
 const updatePreview = createAppUpdatePreview({ packaged: app.isPackaged, setting: process.env.CHESHI_UPDATE_PREVIEW });
 const updates = createAppUpdateService({
@@ -151,6 +170,7 @@ let openingStartupWindow = false;
 function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntime>[0]) {
   const source = usageTray?.register();
   let showcase: ReturnType<typeof createShowcaseBrowser> | undefined;
+  let settingsIpc: ReturnType<typeof registerSettingsIpc> | undefined;
   let autopilot: ReturnType<typeof createAutopilotBrowser> | undefined;
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try { runtime = createWorkspaceRuntime(options, snapshot => source?.update(snapshot)); }
@@ -160,6 +180,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       try {
         const window = await runtime.start();
         source?.attach(window);
+        settingsIpc ??= registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
         showcase ??= createShowcaseBrowser({
           window, ipc: options.scope.ipc,
           createView: configuration => {
@@ -172,13 +193,12 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
           openExternal: url => shell.openExternal(url),
         });
         autopilot ??= createAutopilotBrowser({
+          research: runtime.research,
           window, ipc: options.scope.ipc,
           createView: configuration => new WebContentsView(configuration),
           session: session.fromPartition(`cheshi-autopilot-${window.webContents.id}`),
           reportDirectory: path.join(app.getPath('downloads'), 'Cheshi Research'),
-          getKey: () => readAutopilotKey({
-            developmentFile: app.isPackaged ? undefined : path.resolve(import.meta.dirname, '..', '.env.signing'),
-          }),
+          getKey: apiSettings.getKey,
         });
         return window;
       }
@@ -186,7 +206,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
     },
     show: () => runtime.show(),
     async dispose() {
-      try { autopilot?.dispose(); showcase?.dispose(); }
+      try { settingsIpc?.dispose(); autopilot?.dispose(); showcase?.dispose(); }
       finally { try { await runtime.dispose(); } finally { source?.dispose(); } }
     },
   };

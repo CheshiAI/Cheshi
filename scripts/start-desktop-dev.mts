@@ -178,8 +178,12 @@ function scheduleForgeRestart(changedPath: string): void {
 function handleMainSourceChange(changedPath: string): void {
   if (![preloadSourcePath, rendererReadinessSourcePath,
     path.join(rootDirectory, 'desktop', 'lib', 'autopilot-preload.cts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'settings-preload.cts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'workspace-feature-preload.cts'),
     path.join(rootDirectory, 'desktop', 'lib', 'browser-preload.cts'),
     path.join(rootDirectory, 'desktop', 'shared', 'autopilot.ts'),
+    path.join(rootDirectory, 'desktop', 'shared', 'settings.ts'),
+    path.join(rootDirectory, 'desktop', 'shared', 'autopilot-investigation.ts'),
     path.join(rootDirectory, 'desktop', 'lib', 'app-update-preload.cts'),
     path.join(rootDirectory, 'desktop', 'shared', 'app-update.ts')].includes(changedPath)) {
     scheduleForgeRestart(changedPath);
@@ -206,9 +210,10 @@ function watchMainSources(): FSWatcher[] {
     path.join(rootDirectory, 'desktop', 'lib', 'development-shutdown.mts'),
     path.join(rootDirectory, 'desktop', 'main.mts'),
     ...['autopilot-browser.mts', 'autopilot-actions.mts', 'autopilot-interaction.mts', 'autopilot-key.mts', 'autopilot-model.mts', 'autopilot-page.mts',
-      'autopilot-runner.mts', 'autopilot-research.mts', 'autopilot-evidence.mts', 'autopilot-report.mts',
-      'autopilot-preload.cts', 'browser-preload.cts'].map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
+      'autopilot-runner.mts', 'autopilot-research.mts', 'autopilot-investigation.mts', 'autopilot-codex.mts', 'autopilot-workspace.mts', 'autopilot-evidence.mts', 'autopilot-document.mts', 'autopilot-report.mts',
+      'autopilot-preload.cts', 'browser-preload.cts', 'settings-service.mts', 'settings-ipc.mts', 'settings-preload.cts', 'workspace-feature-preload.cts'].map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
     path.join(rootDirectory, 'desktop', 'shared', 'autopilot.ts'),
+    path.join(rootDirectory, 'desktop', 'shared', 'settings.ts'),
     ...['app-release-checker.mts', 'app-update-service.mts', 'app-update-preview.mts', 'app-update-resume.mts',
       'app-update-download.mts', 'app-update-installer.mts', 'app-update-preload.cts']
       .map(name => path.join(rootDirectory, 'desktop', 'lib', name)),

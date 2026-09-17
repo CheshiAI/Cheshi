@@ -12,6 +12,7 @@ import type { AppleNotesSaveDialog } from '../frontend/src/features/notes/AppleN
 import type { AppleNotesNewDialog } from '../frontend/src/features/notes/AppleNotesNewDialog';
 import { createNewNoteDraft } from '../frontend/src/features/notes/appleNotesNewDraft';
 import type { AppleNotesBrowser } from '../frontend/src/features/notes/AppleNotesBrowser';
+import { EmptyState } from '../frontend/src/shared/ui/EmptyState';
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -60,7 +61,7 @@ function harness<T>(file: string, symbol: string, browserState = state()) {
       Search: 'search-icon', ChevronRight: 'chevron-icon', Folder: 'folder-icon', FolderOpen: 'open-folder-icon' },
     '../../../../shared/apple-notes': contract,
     '../../cheshiDesktop': { cheshiDesktop: undefined },
-    '../../shared/ui': { LiquidGlassPanel: 'section', Modal: 'modal', NeumorphicButton: 'button', NeumorphicTextField: 'input', Tooltip: 'tooltip', SearchClearButton: 'clear-button' },
+    '../../shared/ui': { EmptyState, LiquidGlassPanel: 'section', Modal: 'modal', NeumorphicButton: 'button', NeumorphicTextField: 'input', Tooltip: 'tooltip', SearchClearButton: 'clear-button' },
     './AppleNotesEditor': { AppleNotesEditor: 'note-editor', AppleNotesNewEditor: 'new-editor' },
     './AppleNotesDeleteDialog': { AppleNotesDeleteDialog: 'delete-dialog' },
     './AppleNotesNewDialog': { AppleNotesNewDialog: 'new-dialog' },

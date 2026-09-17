@@ -4,10 +4,13 @@ import { AUTOPILOT_CHANNELS, parseAutopilotView, safeAutopilotUrl, parseAutopilo
 import type { AutopilotViewRequest } from '../shared/autopilot.ts';
 import { createAutopilotModel } from './autopilot-model.mts';
 import type { AutopilotFetch } from './autopilot-model.mts';
-import { AUTOPILOT_PAGE_SCRIPT, autopilotOperation, parseAutopilotPage } from './autopilot-page.mts';
+import { AUTOPILOT_PAGE_SCRIPT, autopilotSectionScript, autopilotOperation, parseAutopilotPage } from './autopilot-page.mts';
+import type { AutopilotPage } from './autopilot-model.mts';
+import type { AutopilotSection } from './autopilot-document.mts';
 import { AutopilotPageChangedError, createAutopilotRunner } from './autopilot-runner.mts';
 import { performAutopilotInteraction } from './autopilot-interaction.mts';
 import { autopilotReport, saveAutopilotReportAutomatically } from './autopilot-report.mts';
+import type { ResearchCoordinator } from './autopilot-codex.mts';
 
 interface Options {
   window: BrowserWindow;
@@ -18,6 +21,7 @@ interface Options {
   request?: AutopilotFetch;
   navigationTimeoutMs?: number;
   reportDirectory?: string;
+  research?: ResearchCoordinator;
 }
 
 export function createAutopilotBrowser(options: Options) {
@@ -39,6 +43,7 @@ export function createAutopilotBrowser(options: Options) {
   let activeLoad: { signal: AbortSignal; fail(error: Error): void } | null = null;
   const cancelLoad = () => { if (view && !view.webContents.isDestroyed()) view.webContents.stop(); };
   const runner = createAutopilotRunner({
+    research: options.research,
     configured: () => !!options.getKey(), cancelLoad,
     decide: async input => {
       const key = options.getKey();
@@ -48,7 +53,8 @@ export function createAutopilotBrowser(options: Options) {
       diagnostic('model:done', { completed: result.completed, interaction: result.interaction?.kind ?? 'none' });
       return result;
     },
-    load, read: readPage,
+    load, readSection,
+    read: (signal, page) => page?.section ? readSection(page, page.section, signal) : readPage(signal),
     async interact(page, action, signal) {
       diagnostic('interaction:start', { kind: action.kind });
       interactionSignal = signal;
@@ -130,17 +136,25 @@ export function createAutopilotBrowser(options: Options) {
     return view;
   }
 
-  async function readPage(signal: AbortSignal) {
+  async function readPage(signal: AbortSignal, code = AUTOPILOT_PAGE_SCRIPT) {
     signal.throwIfAborted();
     const contents = ensureView().webContents;
     diagnostic('read:evaluate:start');
     const result: unknown = await autopilotOperation(contents.executeJavaScriptInIsolatedWorld(1002,
-      [{ code: AUTOPILOT_PAGE_SCRIPT }]), signal);
+      [{ code }]), signal);
     diagnostic('read:evaluate:done');
     signal.throwIfAborted();
     const page = parseAutopilotPage(result);
     diagnostic('read:parsed', { links: page.links.length, controls: page.controls?.length ?? 0 });
     return page;
+  }
+
+  async function readSection(page: AutopilotPage, section: AutopilotSection, signal: AbortSignal) {
+    const current = await readPage(signal, autopilotSectionScript(page, section));
+    if (current.url !== page.url || current.documentVersion !== page.documentVersion || current.section?.id !== section.id) {
+      throw new AutopilotPageChangedError(current);
+    }
+    return current;
   }
 
   async function load(url: string, signal: AbortSignal) {
