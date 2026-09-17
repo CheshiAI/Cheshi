@@ -9,6 +9,8 @@ Pending release
   reset time, and active account indicator. Usage updates automatically;
   click outside or press Escape to close. Show Cheshi and Quit Cheshi remain
   available.
+- Added a live total usage summary to the menu-bar account popover, showing
+  combined remaining usage, total capacity, and account count below the account list.
 - Added expandable agent activity cards with agent details, work history,
   cumulative token usage, and cache reuse information.
 - Added response statistics above the response actions, including the agent,
@@ -19,6 +21,9 @@ Pending release
 - Fixed line breaks in sent user messages to match the chat input.
 - Fixed conversations failing to open when App Server responses contain Unicode
   line or paragraph separators.
+- Fixed Stop incorrectly reporting that commands are still running when command
+  completion notifications are missing. Cleanup now confirms turn completion and
+  an empty running-command list, while retaining retries for commands still running.
 - Replaced active chat indicators with shared loading icons.
 - Improved Apple Notes loading to show a single centered indicator while
   opening a note.

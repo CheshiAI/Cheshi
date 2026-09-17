@@ -1,6 +1,7 @@
 import { Check } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { UsagePopoverApi, UsagePopoverState } from '../../../../shared/account-usage-popover';
+import { accountUsageTotals } from '../../../../shared/codex-account-usage';
 import { LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
 import { AccountUsageDetails } from './AccountUsageDetails';
 import accountStyles from './AccountUsagePanel.module.css';
@@ -39,6 +40,7 @@ export function UsageTrayPopover({ api }: { api: UsagePopoverApi }) {
   const perform = (action: 'show' | 'quit') => {
     void api.action(action).catch(cause => setError(String(cause)));
   };
+  const totals = accountUsageTotals(state?.snapshot ?? null);
   return <div ref={panel} className={styles.container}>
     <LiquidGlassPanel className={styles.panel} aria-label="Account and usage">
       <header className={accountStyles.heading}><span className={accountStyles.headingLabel}>ACCOUNT &amp; USAGE</span></header>
@@ -46,8 +48,11 @@ export function UsageTrayPopover({ api }: { api: UsagePopoverApi }) {
         active={profile.id === state.snapshot?.activeId} actions={profile.id === state.snapshot?.activeId
           ? <span className={styles.active} title="Currently in use"><Check aria-hidden="true" />Active</span> : undefined} />)}
       {!state && !error && <p className={accountStyles.status}>Loading accounts…</p>}
-      {state && !state.snapshot?.profiles.length && <p className={accountStyles.status}>Usage unavailable</p>}
       {error && <p className={accountStyles.status} role="alert">{error}</p>}
+      {state && <p className={styles.summary}>
+        {totals ? `${totals.remaining}% remaining · ${totals.capacity}% total capacity · ${totals.accountCount} accounts`
+          : 'Usage unavailable'}
+      </p>}
       <footer className={styles.actions}>
         <NeumorphicButton size="standard" onClick={() => perform('show')}>Show Cheshi</NeumorphicButton>
         <NeumorphicButton size="standard" onClick={() => perform('quit')}>Quit Cheshi</NeumorphicButton>

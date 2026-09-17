@@ -41,6 +41,7 @@ test('shares account details, updates usage and theme, ignores stale reads and e
     await act(async () => receive(state(2)));
     await act(async () => resolve(state(1, 10)));
     expect(container.textContent).toContain('91% remaining');
+    expect(container.textContent).toContain('91% remaining · 200% total capacity · 2 accounts');
     expect(container.textContent).toContain('0% remaining');
     expect(container.textContent).toContain('Pro plan');
     expect(container.textContent).toContain('Resets');
@@ -50,11 +51,21 @@ test('shares account details, updates usage and theme, ignores stale reads and e
     const next = state(3, 80); next.dark = false;
     await act(async () => receive(next));
     expect(container.textContent).toContain('80% remaining');
+    expect(container.textContent).toContain('80% remaining · 200% total capacity · 2 accounts');
     expect(window.document.documentElement.dataset.theme).toBe('light');
     await act(async () => { for (const button of container.querySelectorAll('button')) button.click(); });
     expect(actions).toEqual(['show', 'quit']);
     await act(async () => measure?.()); expect(sizes.length).toBeGreaterThan(0);
-    await act(async () => receive({ revision: 4, dark: true, snapshot: null }));
+    const added = state(4, 80);
+    added.snapshot!.profiles.push({ ...added.snapshot!.profiles[1]!, id: 'c', email: 'c@example.com' });
+    await act(async () => receive(added));
+    expect(container.textContent).toContain('160% remaining · 300% total capacity · 3 accounts');
+    const unavailable = state(5);
+    unavailable.snapshot!.profiles[1]!.usage.rateLimits = [];
+    await act(async () => receive(unavailable));
+    expect(container.textContent).toContain('Usage unavailable');
+    expect(container.textContent).not.toContain('total capacity');
+    await act(async () => receive({ revision: 6, dark: true, snapshot: null }));
     expect(container.textContent).toContain('Usage unavailable');
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
   } finally {

@@ -933,7 +933,7 @@ export class CodexChatService {
       if (!this.interruptedCompletions.has(active)) await this.client.request('turn/interrupt', {
         threadId: active.threadId, turnId: active.turnId,
       });
-      await stopCodexCommands(this.client, active);
+      await stopCodexCommands(this.client, active, () => this.interruptedCompletions.has(active));
       this.stoppingTurns.delete(active);
       const completed = this.interruptedCompletions.get(active);
       this.interruptedCompletions.delete(active);

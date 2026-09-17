@@ -137,6 +137,54 @@ async function runningService(responses: Record<string, unknown> = {}) {
   return { service, client, events };
 }
 
+for (const processId of [null, 'opaque-live']) {
+  test(`accepts interrupted turn completion without an item completion (process ${processId})`, async () => {
+    let lists = 0;
+    const { service, client, events } = await runningService({
+      [listMethod]: () => {
+        // Completion arrives during a list request: require a subsequent empty list.
+        if (++lists === 2) client.emit('turn/completed', {
+          threadId: 'thread', turn: { id: 'turn', status: 'interrupted', items: [] },
+        });
+        return emptyPage;
+      },
+      [terminateMethod]: { terminated: false },
+    });
+    try {
+      service.activeTurns.get('thread')!.commands.get('command')!.processId = processId;
+      expect(await service.cancelResponse()).toEqual({ requested: true });
+      expect(lists).toBeGreaterThan(2);
+      expect(service.activeTurns.has('thread')).toBe(false);
+      expect(events.filter(event => event.type === 'turn-completed')).toHaveLength(1);
+    } finally { service.stop(); }
+  });
+}
+
+test('keeps Stop retryable when a completed turn still has a running background command', async () => {
+  let running = true;
+  const { service, client, events } = await runningService({
+    'turn/interrupt': () => {
+      client.emit('turn/completed', {
+        threadId: 'thread', turn: { id: 'turn', status: 'interrupted', items: [] },
+      });
+      return {};
+    },
+    [listMethod]: () => running ? {
+      data: [{ itemId: 'command', processId: 'opaque-live' }], nextCursor: null,
+    } : emptyPage,
+    [terminateMethod]: { terminated: false },
+  });
+  try {
+    expect((await failure(service.cancelResponse())).message).toContain('Press Stop again');
+    expect(service.activeTurns.has('thread')).toBe(true);
+    expect(events.some(event => event.type === 'turn-completed')).toBe(false);
+    running = false;
+    expect(await service.cancelResponse()).toEqual({ requested: true });
+    expect(service.activeTurns.has('thread')).toBe(false);
+    expect(client.requests.filter(request => request.method === 'turn/interrupt')).toHaveLength(1);
+  } finally { service.stop(); }
+});
+
 test('holds turn completion and deduplicates Stop while process termination is pending', async () => {
   const entered = createDeferred<void>();
   const terminated = createDeferred<unknown>();
