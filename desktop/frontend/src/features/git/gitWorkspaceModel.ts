@@ -21,6 +21,10 @@ export type GitMutationSuccessMessage = string | ((result: GitMutationOutcome) =
 export type GitRefreshMode = 'foreground' | 'background';
 export type PullRequestOperation = 'push' | 'create' | 'merge' | 'delete-branch' | 'cleanup-branch' | null;
 
+export function pullRequestMatchesBranch(pullRequest: GitHubPullRequestSummary | null, branch: GitRepositorySnapshot['head']): boolean {
+  return !!branch && pullRequest !== null && pullRequest.crossRepository !== true && pullRequest.headRefName === branch;
+}
+
 export interface MergedPullRequestState {
   pullRequest: GitHubPullRequestSummary;
   branchDeletionAvailable: boolean;

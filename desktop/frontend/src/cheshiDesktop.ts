@@ -184,6 +184,7 @@ export interface GitHubPullRequestSummary {
   title: string;
   url: string;
   headRefName: string;
+  crossRepository?: boolean;
   baseRefName: string;
   author: string | null;
   updatedAt: string;
