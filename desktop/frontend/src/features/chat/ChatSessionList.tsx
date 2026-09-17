@@ -1,7 +1,7 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { MessageCircleDashed, MessageSquareText, Plus, Trash2 } from 'lucide-react';
 
-import { LoadingState, NeumorphicButton } from '../../shared/ui';
+import { LoadingIndicator, LoadingState, NeumorphicButton } from '../../shared/ui';
 import type { ChatSession } from './model';
 import styles from './ChatSessionList.module.css';
 
@@ -38,9 +38,8 @@ const ChatSessionButton = memo(function ChatSessionButton({
   return (
     <button className={styles.session} aria-current={active ? 'page' : undefined}
       title={title} type="button" aria-haspopup="dialog" onClick={() => onOpen(id)}>
-      <MessageSquareText aria-hidden="true" />
-      <span>{title}</span>
-      {responding && <i aria-label="Active response" />}
+      {responding ? <LoadingIndicator label="Active response" /> : <MessageSquareText aria-hidden="true" />}
+      <span className={styles.sessionTitle}>{title}</span>
     </button>
   );
 });

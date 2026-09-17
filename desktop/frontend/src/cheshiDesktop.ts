@@ -789,6 +789,8 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
     contextId?: string,
   ) => Promise<import('../../shared/chat-history-search').ChatHistorySearchResponse>;
   listCodexChatAgents: (contextId?: string) => Promise<unknown>;
+  readCodexTurnMetrics: (threadId: string, contextId?: string) => Promise<unknown>;
+  readCodexAgentDetails: (threadId: string, agentThreadIds: string[], contextId?: string) => Promise<unknown>;
   listCodexSkills: (contextId?: string) => Promise<unknown>;
   listCodexPlugins: (forceRefetch?: boolean) => Promise<CodexPluginCatalog>;
   addCodexMarketplace: (request: import('../../shared/plugin-actions').MarketplaceAddRequest) => Promise<import('../../shared/plugin-actions').MarketplaceAddResult>;

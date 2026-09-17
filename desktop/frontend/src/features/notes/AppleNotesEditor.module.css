@@ -23,6 +23,8 @@
 .body hr { border: 0; border-top: 1px solid var(--divider); margin: 24px 0; }
 .body :global(.ProseMirror-selectednode) { outline: 1px solid var(--active-text); }
 .notice, .loading { padding: var(--space-default); }
+.loading { display: flex; flex: 1; min-height: 0; align-items: center; justify-content: center; flex-direction: column; gap: var(--space-default); }
+.loading p { margin: 0; }
 .notice { border-bottom: 1px solid var(--divider); }
 .notice p { margin: 0 0 var(--icon-default); }
 .notice[data-read-only='true'] { box-sizing: border-box; height: 42px; flex: 0 0 42px; display: flex; align-items: center; padding: 0 var(--space-default); font-size: 11px; color: var(--sidebar-section-label-color); }

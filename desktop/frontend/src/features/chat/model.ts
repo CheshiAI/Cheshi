@@ -1,4 +1,6 @@
 import { normalizeMcpRuntimeStatus, type ChatMcpRuntimeStatus } from '../../../../shared/chat-mcp-status';
+import { normalizeAsyncQuestions, type ChatAsyncQuestion } from '../../../../shared/chat-async-questions';
+import { normalizeAgentActivity, type ChatAgentActivity } from '../../../../shared/chat-agent-details';
 
 export interface ChatSession {
   id: string;
@@ -134,6 +136,7 @@ interface ChatTextItem {
   createdAt: number;
   pending?: boolean;
   delivery?: 'failed' | 'unknown';
+  asyncQuestions?: ChatAsyncQuestion[];
 }
 
 export type ChatFileChangeKind = 'add' | 'delete' | 'update';
@@ -146,6 +149,7 @@ export interface ChatFileChange {
 }
 
 export interface ChatActivityItem {
+  agent?: ChatAgentActivity;
   id: string;
   turnId?: string;
   kind: 'activity';
@@ -209,6 +213,7 @@ type ChatEvent =
   | { type: 'user-message'; threadId: string; clientMessageId: string; text: string; createdAt: number }
   | { type: 'user-message-identified'; threadId: string; clientMessageId: string; itemId: string }
   | { type: 'assistant-delta' | 'reasoning-delta' | 'plan-delta' | 'plan-completed'; threadId: string; turnId?: string; itemId: string; text: string; createdAt: number }
+  | { type: 'assistant-question'; threadId: string; turnId?: string; itemId: string; text: string; questions: ChatAsyncQuestion[]; createdAt: number }
   | { type: 'activity'; threadId: string; item: ChatActivityItem }
   | { type: 'command-output-delta'; threadId: string; itemId: string; text: string }
   | { type: 'turn-completed'; threadId: string; status: string; message: string | null }
@@ -501,7 +506,7 @@ function normalizeFileChange(value: unknown): ChatFileChange | null {
   };
 }
 
-function normalizeTimelineItem(value: unknown): ChatTimelineItem | null {
+export function normalizeTimelineItem(value: unknown): ChatTimelineItem | null {
   const record = recordValue(value);
   const id = stringValue(record?.id);
   const kind = stringValue(record?.kind);
@@ -510,7 +515,9 @@ function normalizeTimelineItem(value: unknown): ChatTimelineItem | null {
   const turn = turnId ? { turnId } : {};
   if (kind === 'user' || kind === 'assistant' || kind === 'reasoning' || kind === 'plan') {
     const text = stringValue(record.text);
-    return text ? { id, ...turn, kind, text, createdAt: finiteNumber(record.createdAt) ?? 0 } : null;
+    const asyncQuestions = kind === 'assistant' ? normalizeAsyncQuestions(record.asyncQuestions) : null;
+    return text || asyncQuestions ? { id, ...turn, kind, text: text ?? '',
+      ...(asyncQuestions ? { asyncQuestions } : {}), createdAt: finiteNumber(record.createdAt) ?? 0 } : null;
   }
   if (kind !== 'activity') return null;
   const label = stringValue(record.label);
@@ -524,6 +531,7 @@ function normalizeTimelineItem(value: unknown): ChatTimelineItem | null {
     label,
     detail: stringValue(record.detail) ?? '',
     status: stringValue(record.status) ?? 'completed',
+    ...(activity === 'agent' && record.agent ? { agent: normalizeAgentActivity(record.agent) ?? undefined } : {}),
     ...(activity === 'command' ? {
       ...(typeof record.output === 'string' ? { output: record.output } : {}),
       ...(stringValue(record.cwd) ? { cwd: record.cwd as string } : {}),
@@ -748,6 +756,16 @@ export function normalizeChatEvent(value: unknown): ChatEvent | null {
     const itemId = stringValue(record.itemId);
     const text = stringValue(record.text);
     return threadId && itemId && text ? { type, threadId, itemId, text } : null;
+  }
+  if (type === 'assistant-question') {
+    const threadId = stringValue(record.threadId);
+    const turnId = stringValue(record.turnId);
+    const itemId = stringValue(record.itemId);
+    const questions = normalizeAsyncQuestions(record.questions);
+    return threadId && itemId && questions && typeof record.text === 'string'
+      ? { type, threadId, ...(turnId ? { turnId } : {}), itemId, text: record.text, questions,
+        createdAt: finiteNumber(record.createdAt) ?? Math.floor(Date.now() / 1000) }
+      : null;
   }
   if (type === 'assistant-delta' || type === 'reasoning-delta' || type === 'plan-delta' || type === 'plan-completed') {
     const threadId = stringValue(record.threadId);

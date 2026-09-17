@@ -11,7 +11,7 @@
 
 .cardHeader {
   display: grid;
-  min-height: 58px;
+  min-height: 45px;
   grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
@@ -48,8 +48,8 @@
 .cardTitle strong {
   overflow: hidden;
   color: var(--text);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 10.5px;
+  font-weight: 550;
   line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -3,19 +3,21 @@ import { useRef, useState, type ReactNode } from 'react';
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../../../shared/chat-user-input';
 import { LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
 import { ChatMcpFields, ChatQuestionFields } from './ChatUserInputFields';
-import { initialInputDraft, inputResponse, userInputLink, type InputDraft } from './chatUserInputForm';
+import { initialInputDraft, inputResponse, resolvedQuestionDraft, userInputLink, type InputDraft } from './chatUserInputForm';
 import { useHelpLanguage } from '../../shared/useHelpLanguage';
 import { useChatUserInputs } from './useChatUserInputs';
 import styles from './ChatUserInputPrompt.module.css';
 import { ChatErrorNotice } from './ChatErrorNotice';
+import type { ChatQuestionDismissal } from '../../../../shared/chat-question-dismissals';
 
-export function ChatUserInputPrompt({ request, respond, pending, error, otherThread = false, answerDisabled = false }: {
+export function ChatUserInputPrompt({ request, respond, pending, error, otherThread = false, answerDisabled = false, resolution }: {
   request: ChatUserInputRequest;
   respond: (id: string, response: ChatUserInputResponse) => Promise<boolean>;
   pending: boolean;
   error: string | null;
   otherThread?: boolean;
   answerDisabled?: boolean;
+  resolution?: ChatQuestionDismissal;
 }) {
   const [language] = useHelpLanguage();
   const korean = language === 'ko';
@@ -25,10 +27,11 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
   const [submitting, setSubmitting] = useState(false);
   const inFlight = useRef(false);
   const busy = pending || submitting;
+  const completed = resolution ? resolvedQuestionDraft(request, resolution.answers) : null;
   const link = request.kind === 'url' ? userInputLink(request.url) : null;
   const unsupported = request.kind === 'form' ? request.unsupportedReason : undefined;
   const send = async (response: ChatUserInputResponse) => {
-    if (pending || inFlight.current) return;
+    if (resolution || pending || inFlight.current) return;
     inFlight.current = true;
     setSubmitting(true);
     try { await respond(request.id, response); }
@@ -36,7 +39,7 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
     finally { inFlight.current = false; setSubmitting(false); }
   };
   const submit = () => {
-    if (answerDisabled || busy) return;
+    if (resolution || answerDisabled || busy) return;
     setValidationError(null);
     try { void send(inputResponse(request, draft, notes)); }
     catch (reason) { setValidationError(reason instanceof Error ? reason.message : String(reason)); }
@@ -50,15 +53,17 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
       <h3 className={styles.heading}><MessageCircleQuestion aria-hidden="true" />
         {request.kind === 'questions' ? korean ? '질문' : 'Question' : `${request.serverName} needs your input`}
       </h3>
-      <NeumorphicButton raised size="icon" className={styles.close} disabled={busy}
-        aria-label={korean ? '질문 닫기' : 'Close question'} onClick={() => void send({ action: 'cancel' })}><X aria-hidden="true" /></NeumorphicButton>
+      {!resolution && <NeumorphicButton raised size="icon" className={styles.close} disabled={busy}
+        aria-label={korean ? '질문 닫기' : 'Close question'} onClick={() => void send({ action: 'cancel' })}><X aria-hidden="true" /></NeumorphicButton>}
     </header>
+    {resolution && <p className={styles.message} role="status">{resolution.action === 'answered'
+      ? korean ? '답변 완료' : 'Answered' : resolution.action === 'skip' ? korean ? '건너뜀' : 'Skipped' : korean ? '닫힘' : 'Closed'}</p>}
     {otherThread && <p className={styles.message} title={request.threadId}>From another conversation · {request.threadId.slice(0, 8)}…{request.threadId.slice(-4)}</p>}
     <form onSubmit={(event) => { event.preventDefault(); submit(); }}>
-      <fieldset className={styles.question} disabled={busy}>
+      <fieldset className={styles.question} disabled={busy || Boolean(resolution)}>
         <div className={styles.fields}>
-          {request.kind === 'questions' && <ChatQuestionFields questions={request.questions} draft={draft} onChange={onChange}
-            notes={notes} onNotesChange={onNotesChange} />}
+          {request.kind === 'questions' && <ChatQuestionFields questions={request.questions} draft={completed?.draft ?? draft} onChange={onChange}
+            notes={completed?.notes ?? notes} onNotesChange={onNotesChange} />}
           {request.kind !== 'questions' && <p className={styles.message}>{request.message}</p>}
           {request.kind === 'form' && !unsupported && <ChatMcpFields fields={request.fields} draft={draft} onChange={onChange} />}
           {unsupported && <p className={styles.message}>{unsupported}</p>}
@@ -67,7 +72,7 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
             : <p className={styles.message}>This request does not contain a supported web link.</p>)}
         </div>
         {(validationError || error) && <p className={styles.error} role="alert">{validationError || error}</p>}
-        <div className={styles.actions}>
+        {!resolution && <div className={styles.actions}>
           {request.kind !== 'questions' && <NeumorphicButton raised size="standard" type="button" disabled={busy}
             onClick={() => void send({ action: 'cancel' })}>Cancel request</NeumorphicButton>}
           <NeumorphicButton raised size="standard" type="button" disabled={busy} onClick={() => void send({ action: 'decline' })}>
@@ -76,7 +81,7 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
           <NeumorphicButton raised size="standard" type="submit" disabled={busy || answerDisabled || unanswered || Boolean(unsupported) || (request.kind === 'url' && !link)}>
             {busy ? korean ? '전송 중…' : 'Sending…' : request.kind === 'questions' ? korean ? '보내기' : 'Send' : request.kind === 'url' ? 'Done' : 'Submit'}
           </NeumorphicButton>
-        </div>
+        </div>}
       </fieldset>
     </form>
   </LiquidGlassPanel>;

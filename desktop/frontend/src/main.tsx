@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import App from './App';
+import { UsageTrayPopover } from './features/account/UsageTrayPopover';
 import { installSelectionCopy } from './shared/selectionCopy';
 import './styles.css';
 
@@ -10,9 +11,11 @@ if (import.meta.hot) import.meta.hot.dispose(disposeSelectionCopy);
 
 const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('Missing application root.');
+const usagePopover = window.cheshiUsagePopover;
+if (usagePopover) document.documentElement.dataset.usagePopover = '';
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    {usagePopover ? <UsageTrayPopover api={usagePopover} /> : <App />}
   </StrictMode>,
 );

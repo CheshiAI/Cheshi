@@ -19,6 +19,7 @@ import type {
 import { errorMessage, requiredString } from "./codex-chat-values.mts";
 import { recordValue, stringValue } from "./codex-service-utils.mts";
 import { chatRelaySessionTitle } from '../shared/chat-relay.ts';
+import { asyncQuestionsFromMessage } from '../shared/chat-async-questions.ts';
 
 interface CodexChatEventContext {
   client: CodexChatClient;
@@ -330,6 +331,12 @@ export function handleCodexNotification(context: CodexChatEventContext, value: J
     }
     if (method === "item/completed" && item.type === "agentMessage") {
       const text = stringValue(item.text);
+      const questions = asyncQuestionsFromMessage(item);
+      if (activeThreadIsViewed && questions && typeof item.text === 'string') {
+        context.emit({ type: 'assistant-question', threadId: active.threadId, turnId: active.turnId,
+          itemId, text: item.text, questions });
+        return;
+      }
       if (activeThreadIsViewed && text && !active.deltaItemIds.has(itemId)) {
         context.emit({
           type: "assistant-delta",

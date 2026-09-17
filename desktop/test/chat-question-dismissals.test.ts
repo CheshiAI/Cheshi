@@ -41,6 +41,18 @@ test('independent service instances save different questions without losing reco
   expect((await readdir(join(directory, folder!))).every(name => name.endsWith('.json'))).toBe(true);
 });
 
+test('answered questions restore selected answers and custom details; malformed answers are rejected', async () => {
+  const { store, directory } = await fixture();
+  const record = { questionId: 'q', action: 'answered' as const, answers: { 'answer-1': ['선택지', '추가 설명'] } };
+  expect(await store.save('thread', record)).toEqual(record);
+  expect(await new ChatQuestionDismissals(directory).list('thread')).toEqual([record]);
+  for (const answers of [null, [], {}, { answer: [] }, { answer: [1] }, { answer: [' '] }, { '': ['value'] }]) {
+    await rejects(() => store.save('thread', { ...record, answers }));
+  }
+  await rejects(() => store.save('thread', { ...record, action: 'close' }));
+  expect(await store.list('thread')).toEqual([record]);
+});
+
 test('unrelated corrupt conversations are not read, and a corrupt current record fails visibly', async () => {
   const { store, directory } = await fixture();
   await store.save('broken', { questionId: 'q', action: 'skip' });

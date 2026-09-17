@@ -21,6 +21,8 @@ const savedTurns = (saved = false, saving = false): SavedChatTurnsController => 
 test('shows copy and save actions and distinguishes saved and in-progress saves', () => {
   const render = (saved: boolean, saving: boolean) => renderToStaticMarkup(<ChatTurnActions turn={turn} savedTurns={savedTurns(saved, saving)} />);
   const html = render(false, false);
+  expect(html.indexOf('aria-label="Response statistics"')).toBeGreaterThanOrEqual(0);
+  expect(html.indexOf('aria-label="Response statistics"')).toBeLessThan(html.indexOf('aria-label="Response actions"'));
   expect(html).toContain('aria-label="Copy response"');
   expect(html).toContain('aria-label="Save turn"');
   expect(html).toContain('aria-pressed="false"');
@@ -56,6 +58,7 @@ test('renders one action row after trailing tools and before the next question',
     expect(actions).toBeGreaterThan(html.indexOf('</details>'));
     expect(actions).toBeLessThan(html.indexOf('Next question'));
     expect(html.match(/aria-label="Response actions"/g)).toHaveLength(1);
+    expect(html.match(/aria-label="Response statistics"/g)).toHaveLength(1);
     expect(turns.get('command')?.itemId).toBe('answer');
   }
 });

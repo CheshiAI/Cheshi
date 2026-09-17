@@ -4,8 +4,12 @@ import { accountUsageTotals } from '../shared/codex-account-usage.ts';
 import { renderAccountUsageTrayIcon } from './account-usage-tray-icon.mts';
 import type { MenuBarFont } from './menu-bar-font.mts';
 import type { MenuBarLogo } from './menu-bar-logo.mts';
+import type { UsagePopover } from './account-usage-popover.mts';
 
-type TrayHandle = Pick<Tray, 'setImage' | 'setToolTip' | 'setContextMenu' | 'destroy'>;
+type TrayHandle = Pick<Tray, 'setImage' | 'setToolTip' | 'setContextMenu' | 'destroy' | 'getBounds'> & {
+  on(event: 'click' | 'right-click', listener: () => void): unknown;
+  off(event: 'click' | 'right-click', listener: () => void): unknown;
+};
 type UsageWindow = Pick<BrowserWindow, 'isDestroyed' | 'isFocused' | 'isMinimized' | 'restore' | 'show' | 'focus' | 'on' | 'off'>;
 interface UsageSource {
   snapshot: CodexAccountsSnapshot | null;
@@ -17,6 +21,7 @@ interface UsageSource {
 export function createAccountUsageTray(options: {
   createTray(image: NativeImage): TrayHandle;
   createMenu(template: MenuItemConstructorOptions[]): Menu;
+  createPopover?(tray: TrayHandle, showApp: () => void): UsagePopover;
   images: Pick<typeof nativeImage, 'createEmpty'>;
   theme: Pick<NativeTheme, 'shouldUseDarkColors' | 'on' | 'off'>;
   openApp(): void;
@@ -50,6 +55,9 @@ export function createAccountUsageTray(options: {
     window.show();
     window.focus();
   };
+  const popover = options.createPopover?.(tray, reveal);
+  const toggle = () => { try { popover?.toggle(); } catch (error) { options.onError(error); } };
+  if (popover) { tray.on('click', toggle); tray.on('right-click', toggle); }
   const renderCurrent = () => {
     if (disposed) return;
     const snapshot = selected?.snapshot ?? lastSnapshot;
@@ -65,6 +73,7 @@ export function createAccountUsageTray(options: {
       : 'Usage unavailable';
     const activeSummary = active ? `\n${active.email ?? active.label} · Ring: ${activeUsage ? `${activeUsage.remaining}% remaining` : 'Unavailable'}` : '';
     tray.setToolTip(`Cheshi · ${summary}${activeSummary}`);
+    if (popover) { popover.update(snapshot, options.theme.shouldUseDarkColors); return; }
     const menu: MenuItemConstructorOptions[] = [{ label: 'Cheshi · Weekly usage', enabled: false },
       { label: summary, enabled: false }, { type: 'separator' }];
     for (const profile of snapshot?.profiles ?? []) {
@@ -134,6 +143,7 @@ export function createAccountUsageTray(options: {
       if (disposed) return;
       disposed = true;
       options.theme.off('updated', render);
+      if (popover) { tray.off('click', toggle); tray.off('right-click', toggle); popover.dispose(); }
       for (const source of sources) source.detach();
       sources.clear();
       selected = null;

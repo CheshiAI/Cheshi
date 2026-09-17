@@ -9,6 +9,9 @@ import { chatComposerAccountSwitchReason } from './chatAccountSwitch';
 import type { ChatHistorySearchNavigation } from './chatHistorySearchNavigation';
 import type { ChatDraftSnapshot } from './chatDraftRecovery';
 import { useChatDraftAttachmentTarget } from './chatDraftAttachments';
+import { ChatQuestionProvider } from './ChatInlineQuestion';
+import { AgentActivityProvider } from './AgentActivity';
+import { ChatTurnMetricsProvider, latestResponseItemId } from './ChatTurnMetrics';
 
 interface ChatViewProps extends ChatHistorySearchNavigation {
   controller: ChatController;
@@ -60,8 +63,17 @@ export function ChatView({
   return (
     <section className={styles.root} ref={viewController.rootRef} onKeyDown={viewController.handleEscape}
       onDragOver={viewController.attachmentTransfer.onDragOver} onDrop={viewController.attachmentTransfer.onDrop}>
-      <ChatTimeline controller={viewController} onReviewFileChanges={onReviewFileChanges} savedTurns={savedTurns}
-        historyTarget={historyTarget} onHistoryTargetHandled={onHistoryTargetHandled} />
+      <ChatQuestionProvider controller={viewController} chatController={controller} active={active}>
+        <AgentActivityProvider key={`${controller.contextId}:${controller.state.activeSessionId}`} contextId={controller.contextId}
+          threadId={controller.state.activeSessionId} active={active} streaming={viewController.streaming}>
+          <ChatTurnMetricsProvider key={`${controller.contextId}:${controller.state.activeSessionId}`} contextId={controller.contextId}
+            threadId={controller.state.activeSessionId} active={active} streaming={viewController.streaming}
+            expectedItemId={latestResponseItemId(controller.state.items)}>
+            <ChatTimeline controller={viewController} onReviewFileChanges={onReviewFileChanges} savedTurns={savedTurns}
+              historyTarget={historyTarget} onHistoryTargetHandled={onHistoryTargetHandled} />
+          </ChatTurnMetricsProvider>
+        </AgentActivityProvider>
+      </ChatQuestionProvider>
       <ChatComposer chatController={controller} controller={viewController} userInputContextId={controller.contextId} active={active} />
     </section>
   );

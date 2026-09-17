@@ -244,6 +244,12 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     const items = upsertUserMessage(state.items, event);
     return items === state.items ? state : { ...state, items };
   }
+  if (event.type === 'assistant-question') {
+    if (event.threadId !== state.activeSessionId) return state;
+    const items = upsertTextItem(state.items, event.itemId, 'assistant', event.text, event.createdAt, true, event.turnId);
+    return { ...state, items: items.map(item => item.id === event.itemId && item.kind === 'assistant'
+      ? { ...item, asyncQuestions: event.questions } : item) };
+  }
   if (event.type === 'assistant-delta' || event.type === 'reasoning-delta' || event.type === 'plan-delta' || event.type === 'plan-completed') {
     if (event.threadId !== state.activeSessionId) return state;
     return {

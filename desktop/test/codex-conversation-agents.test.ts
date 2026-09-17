@@ -75,6 +75,19 @@ test('foreign subagents cannot accidentally execute in the currently selected ac
   } finally { await h.service.stop(); }
 });
 
+test('inline agent details read the original account without navigating away from the parent', async () => {
+  const h = fixture();
+  try {
+    await h.service.openSession('root');
+    const result = await h.service.readAgentDetails('root', ['child', 'nested']);
+    expect(result.agents.map(agent => agent.id)).toEqual(['child', 'nested']);
+    expect(result.agents.every(agent => agent.usage === null)).toBe(true);
+    expect(h.service.viewedThreadId).toBe('root');
+    expect(h.calls.every(call => call.account === 'a')).toBe(true);
+    expect(h.client.requests).toHaveLength(0);
+  } finally { await h.service.stop(); }
+});
+
 test('a known historical agent tree retains its physical owner when the main conversation is handed off', async () => {
   const h = fixture();
   await h.agents.descendants('root');

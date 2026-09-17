@@ -162,6 +162,44 @@ test('note actions are provided to the editor header and are disabled without a 
   expect(find(render(), element => element.props['aria-label'] === 'Attach to conversation').props.disabled).toBe(true);
 });
 
+test('keeps the same editor mounted from the initial note read through document preparation', () => {
+  const browserState = state();
+  browserState.note = null;
+  browserState.loadingNote = true;
+  const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser', browserState);
+  const notesApi = api(async () => ({ ok: true, value: { id: 'new', title: 'New' } }));
+  const render = () => app.render(component => component({ api: notesApi, onAttach: async () => true }));
+  const reading = render();
+  const pendingEditor = find(reading, element => element.type === 'note-editor');
+  expect(pendingEditor.props.note).toBe(browserState.notes[0]);
+  expect(pendingEditor.props.loadingNote).toBe(true);
+  expect(elements(reading).some(element => element.props.children === 'Reading note…')).toBe(false);
+  expect(find(reading, element => element.props['aria-label'] === 'Attach to conversation').props.disabled).toBe(true);
+
+  browserState.note = { ...note };
+  browserState.loadingNote = false;
+  const preparing = find(render(), element => element.type === 'note-editor');
+  expect(preparing.key).toBe(pendingEditor.key);
+  expect(preparing.type).toBe(pendingEditor.type);
+  expect(preparing.props.note).toBe(browserState.note);
+  expect(preparing.props.loadingNote).toBe(false);
+});
+
+test('a failed note read removes the loading editor and exposes the read error', () => {
+  const browserState = state();
+  browserState.note = null;
+  browserState.loadingNote = true;
+  const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser', browserState);
+  const notesApi = api(async () => ({ ok: true, value: { id: 'new', title: 'New' } }));
+  const render = () => app.render(component => component({ api: notesApi, onAttach: async () => true }));
+  expect(find(render(), element => element.type === 'note-editor').props.loadingNote).toBe(true);
+  browserState.loadingNote = false;
+  browserState.error = 'Allow Notes automation.';
+  const failed = render();
+  expect(elements(failed).some(element => element.type === 'note-editor')).toBe(false);
+  expect(find(failed, element => element.props.role === 'alert').props.children).toBe(browserState.error);
+});
+
 test('unsaved editor changes disable folder navigation, refresh, deletion and attachment', () => {
   const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser');
   const render = () => app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })),

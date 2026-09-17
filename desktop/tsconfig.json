@@ -24,6 +24,7 @@
     "workspace-runtime.mts",
     "preload.cts",
     "workspace-manager-preload.cts",
-    "selection-copy-preload.cts"
+    "selection-copy-preload.cts",
+    "account-usage-preload.cts"
   ]
 }

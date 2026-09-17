@@ -25,6 +25,8 @@ import styles from './ChatView.module.css';
 import { ChatTurnActions } from './ChatTurnActions';
 import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
 import type { SavedChatTurnsController } from './useSavedChatTurns';
+import { ChatInlineQuestion } from './ChatInlineQuestion';
+import { AgentActivity } from './AgentActivity';
 
 function ActivityIcon({ item }: { item: ChatActivityItem }) {
   if (item.activity === 'command') return <Terminal aria-hidden="true" />;
@@ -97,6 +99,7 @@ function TimelineItemContent({
   if (item.kind === 'activity' && item.activity === 'command') {
     return <CommandActivity item={item} />;
   }
+  if (item.kind === 'activity' && item.activity === 'agent') return <AgentActivity item={item} />;
   if (item.kind === 'activity') {
     return (
       <LiquidGlassPanel as="article" className={styles.activity} data-activity={item.activity} data-status={item.status}
@@ -113,7 +116,9 @@ function TimelineItemContent({
   return (
     <article className={styles.assistantRow}>
       <ChatMessageLabel author="assistant" createdAt={item.createdAt} />
-      <div className={styles.assistantMessage}><MessageContent text={relayAssistantDisplayText(item.text, streaming)} /></div>
+      <div className={styles.assistantMessage}>{item.asyncQuestions?.length
+        ? <ChatInlineQuestion item={item} />
+        : <MessageContent text={relayAssistantDisplayText(item.text, streaming)} />}</div>
     </article>
   );
 }

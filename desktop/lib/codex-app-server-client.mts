@@ -1,5 +1,4 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import readline from "node:readline";
 import { DEFAULT_CODEX_SHUTDOWN_TIMEOUTS, shutdownCodexAppServer, type CodexShutdownTimeouts } from './codex-app-server-shutdown.mts';
 
 import { recordValue } from "./codex-service-utils.mts";
@@ -66,7 +65,7 @@ export class CodexAppServerClient {
   failureListeners: Set<(error: Error) => void>;
   requestListeners: Set<(value: JsonObject) => void>;
   notificationListeners: Set<(value: JsonObject) => void>;
-  output: readline.Interface | null;
+  output: { close(): void } | null;
   child: ChildProcessWithoutNullStreams | null;
   requestTimeoutMs: number;
   capabilities: JsonObject | undefined;
@@ -229,10 +228,7 @@ export class CodexAppServerClient {
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child = child;
-    this.output = readline.createInterface({ input: child.stdout });
-    this.output.on("line", (line: string) => {
-      if (this.child === child) this.handleLine(line);
-    });
+    this.output = this.readOutput(child);
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk) => {
       this.stderr = `${this.stderr}${chunk}`.slice(-MAX_STDERR_LENGTH);
@@ -288,6 +284,33 @@ export class CodexAppServerClient {
 
   async send(value: unknown) {
     await this.writer.write(`${JSON.stringify(value)}\n`);
+  }
+
+  private readOutput(child: ChildProcessWithoutNullStreams): { close(): void } {
+    let pending = "";
+    // Decode across byte chunks, then split only on the JSON-RPC transport's LF.
+    // readline also treats legal JSON string characters U+2028/U+2029 as endings.
+    child.stdout.setEncoding("utf8");
+    const onData = (chunk: string) => {
+      if (this.child !== child) return;
+      pending += chunk;
+      let start = 0;
+      let end = pending.indexOf("\n", start);
+      while (end !== -1) {
+        this.handleLine(pending.slice(start, end));
+        if (this.child !== child) return;
+        start = end + 1;
+        end = pending.indexOf("\n", start);
+      }
+      pending = pending.slice(start);
+    };
+    child.stdout.on("data", onData);
+    return {
+      close() {
+        child.stdout.off("data", onData);
+        pending = "";
+      },
+    };
   }
 
   handleLine(line: string) {

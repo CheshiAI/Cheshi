@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.0.5-preview
+
+Pending release
+
+- Added a macOS menu-bar account usage popover matching the in-app account panel,
+  with each account's plan, remaining weekly usage, gradient progress bar,
+  reset time, and active account indicator. Usage updates automatically;
+  click outside or press Escape to close. Show Cheshi and Quit Cheshi remain
+  available.
+- Added a live total usage summary to the menu-bar account popover, showing
+  combined remaining usage, total capacity, and account count below the account list.
+- Added expandable agent activity cards with agent details, work history,
+  cumulative token usage, and cache reuse information.
+- Added response statistics above the response actions, including the agent,
+  model, reasoning effort, token usage, duration, and average output TPS.
+- Fixed structured asynchronous questions to appear as inline question cards.
+  Answered and skipped states persist after reopening conversations and
+  restarting the app.
+- Fixed line breaks in sent user messages to match the chat input.
+- Fixed conversations failing to open when App Server responses contain Unicode
+  line or paragraph separators.
+- Fixed Stop incorrectly reporting that commands are still running when command
+  completion notifications are missing. Cleanup now confirms turn completion and
+  an empty running-command list, while retaining retries for commands still running.
+- Replaced active chat indicators with shared loading icons.
+- Improved Apple Notes loading to show a single centered indicator while
+  opening a note.
+- Unified agent and file-change card typography, spacing, and header heights
+  with command cards.
+- Matched the note-saving icon style to the other response actions.
+- Fixed type errors in temporary-chat drag-and-drop tests.
+
 ## 0.0.4-preview
 
 Pending release

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import { Bold, Code, Heading2, Italic, List, ListOrdered, Quote, RotateCcw, Save, StickyNote, Undo2, Redo2 } from 'lucide-react';
-import type { AppleNote, AppleNotesApi } from '../../../../shared/apple-notes';
+import type { AppleNote, AppleNoteSummary, AppleNotesApi } from '../../../../shared/apple-notes';
 import { APPLE_NOTES_MAX_BODY_LENGTH } from '../../../../shared/apple-notes';
 import { noteDocumentReadOnlyReason, type AppleNoteDocument } from '../../../../shared/apple-notes-document';
-import { Modal, NeumorphicButton, TwoTierHeader } from '../../shared/ui';
+import { LoadingState, Modal, NeumorphicButton, TwoTierHeader } from '../../shared/ui';
 import { retainedNoteDraft, protectNoteDraftsOnClose, type NoteEditorDraft } from './appleNotesDraft';
 import type { createNewNoteDraft } from './appleNotesNewDraft';
 import { noteEditorHtml, noteEditorTitle } from './appleNotesEditorContent';
@@ -14,7 +14,8 @@ import styles from './AppleNotesEditor.module.css';
 
 interface Props {
   api: AppleNotesApi;
-  note: AppleNote;
+  note: AppleNoteSummary;
+  loadingNote?: boolean;
   children?: ReactNode;
   disabled: boolean;
   onSaved: (note: AppleNote) => void;
@@ -26,18 +27,25 @@ export function AppleNotesEditor(props: Props) {
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   useEffect(() => {
+    if (props.loadingNote) {
+      setDocument(null);
+      setError('');
+      return;
+    }
     let active = true;
     props.api.document(props.note.id).then(value => {
       if (value.id !== props.note.id) throw new Error('Unexpected note');
       if (active) setDocument(value);
     }).catch(() => { if (active) setError('편집할 메모를 불러오지 못했습니다.'); });
     return () => { active = false; };
-  }, [props.api, props.note.id, retry]);
-  if (!document) return <div className={styles.editor}>
+  }, [props.api, props.note.id, props.loadingNote, retry]);
+  if (props.loadingNote || !document) return <div className={styles.editor}>
     <NoteEditorHeader note={props.note}>{props.children}</NoteEditorHeader>
     <div className={styles.loading}>
-      <p role={error ? 'alert' : 'status'}>{error || '편집할 메모를 불러오는 중…'}</p>
-      {error && <NeumorphicButton onClick={() => { setError(''); setRetry(value => value + 1); }}>다시 시도</NeumorphicButton>}
+      {!props.loadingNote && error ? <>
+        <p role="alert">{error}</p>
+        <NeumorphicButton onClick={() => { setError(''); setRetry(value => value + 1); }}>다시 시도</NeumorphicButton>
+      </> : <LoadingState />}
     </div>
   </div>;
   return <LoadedNoteEditor {...props} document={document} />;
@@ -53,7 +61,7 @@ export function AppleNotesNewEditor({ draft, api, onSaved, onDiscard, onBusyChan
     composeDraft={draft} onDiscard={onDiscard} onSaved={onSaved} onBusyChange={onBusyChange} />;
 }
 
-function NoteEditorHeader({ note, label, children }: { note: AppleNote; label?: string; children: ReactNode }) {
+function NoteEditorHeader({ note, label, children }: { note: AppleNoteSummary; label?: string; children: ReactNode }) {
   const timestamp = noteTimestamp(note);
   return <TwoTierHeader className={styles.header} primary={<>
     {label ? <span className={styles.timestamp}>{label}</span> : timestamp ? <time className={styles.timestamp} dateTime={timestamp.dateTime} title={timestamp.label}>{timestamp.label}</time>
