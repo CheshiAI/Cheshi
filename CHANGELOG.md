@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.6-preview
+
+Pending release
+
+- Fixed startup account selection to switch from an exhausted default account
+  to an account with confirmed available usage before opening the workspace.
+  Menu-bar usage now reflects the selected account without waiting for a chat message.
+- Fixed conversation titles changing after switching accounts. Continuations
+  without a title retain the previous conversation title, including existing
+  account handoffs, while explicitly renamed conversations keep their new title.
+
 ## 0.0.5-preview
 
 Pending release
