@@ -2,6 +2,8 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { createChatDraftAttachments } from '../frontend/src/features/chat/chatDraftAttachments';
+import { appleNoteAttachment } from '../frontend/src/features/notes/appleNotesModel';
 
 interface TestElement {
   type: string;
@@ -47,7 +49,7 @@ function createHarness() {
       useRef(current: unknown) { return slots[cursor++] ??= { current }; },
       useState(initial: unknown) {
         const index = cursor++;
-        if (!(index in slots)) slots[index] = initial;
+        if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial;
         return [slots[index], (value: unknown) => {
           slots[index] = typeof value === 'function' ? value(slots[index]) : value;
         }];
@@ -59,6 +61,9 @@ function createHarness() {
     '../../shared/ui': { LiquidGlassPanel: 'LiquidGlassPanel' },
     '../chat': { ChatSessionList: 'ChatSessionList' },
     '../chat/ChatWorkspace': { ChatWorkspace: 'ChatWorkspace' },
+    '../chat/chatDraftAttachments': {
+      ChatDraftAttachmentsContext: { Provider: 'ChatDraftAttachmentsProvider' }, createChatDraftAttachments,
+    },
     '../chat/TemporaryChatPanel': { TemporaryChatPanel: 'TemporaryChatPanel' },
     '../chat/ChatDeleteSessionDialog': { ChatDeleteSessionDialog: 'ChatDeleteSessionDialog' },
     '../chat/ChatHistoryOpenDialog': { ChatHistoryOpenDialog: 'ChatHistoryOpenDialog' },
@@ -78,6 +83,8 @@ function createHarness() {
     '../navigation/Sidebar': { Sidebar: 'Sidebar' },
     '../navigation/WorkspaceFileSearch': { WorkspaceFileSearch: 'WorkspaceFileSearch' },
     '../navigation/fileSearchShortcut': { installFileSearchShortcut() { return () => {}; } },
+    '../notes/NotesView': { NotesView: 'NotesView' },
+    '../notes/appleNotesModel': { appleNoteAttachment },
     '../plugins': { PluginsView: 'PluginsView' },
     '../terminal': { TerminalWorkspace: 'TerminalWorkspace' },
     '../showcase/ShowcaseView': { ShowcaseView: 'ShowcaseView' },
