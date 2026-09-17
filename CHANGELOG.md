@@ -4,6 +4,11 @@
 
 Pending release
 
+- Added a macOS menu-bar account usage popover matching the in-app account panel,
+  with each account's plan, remaining weekly usage, gradient progress bar,
+  reset time, and active account indicator. Usage updates automatically;
+  click outside or press Escape to close. Show Cheshi and Quit Cheshi remain
+  available.
 - Added expandable agent activity cards with agent details, work history,
   cumulative token usage, and cache reuse information.
 - Added response statistics above the response actions, including the agent,
