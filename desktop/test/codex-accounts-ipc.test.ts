@@ -4,6 +4,7 @@ import type { CodexAccountsSnapshot, CodexAccountProfile } from '../shared/codex
 import type { CodexAccountProfiles } from '../lib/codex-account-profiles.mts';
 import { CodexAccountClients } from '../lib/codex-account-clients.mts';
 import { registerCodexAccountsIpc } from '../lib/codex-accounts-ipc.mts';
+import { accountUsageTotals } from '../shared/codex-account-usage.ts';
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -86,6 +87,98 @@ test('manual selection updates workspace selection and overlays later shared pro
   expect((await harness.invoke('select', 'default')).activeId).toBe('default');
   expect(harness.pool.environment.CODEX_HOME).toBe('/default');
   await harness.registration.stop();
+});
+
+function setWeeklyUsage(profile: CodexAccountProfile, usedPercent: number): void {
+  profile.usage.rateLimits = [{ limitId: 'codex', limitName: null, plan: 'pro', primary: null,
+    secondary: { usedPercent, windowDurationMins: 10_080, resetsAt: null } }];
+}
+
+function failInitialization(error: unknown): never { throw error; }
+
+test('startup selects available usage and publishes the active percentage without a chat request', async () => {
+  const harness = setup();
+  setWeeklyUsage(harness.snapshot.profiles[0]!, 100);
+  setWeeklyUsage(harness.snapshot.profiles[1]!, 23);
+  try {
+    const result = await harness.registration.initialize(failInitialization);
+    expect(result?.activeId).toBe('second');
+    expect(harness.pool.environment.CODEX_HOME).toBe('/second');
+    expect(harness.resets).toBe(1);
+    const published = harness.emitted.at(-1)!;
+    expect(result).toEqual(published);
+    expect(accountUsageTotals({ ...published,
+      profiles: published.profiles.filter(profile => profile.id === published.activeId) })?.percent).toBe(77);
+    for (const listener of harness.listeners) listener(harness.snapshot);
+    expect(harness.emitted.at(-1)?.activeId).toBe('second');
+    expect((await harness.invoke('list')).activeId).toBe('second');
+  } finally { await harness.registration.stop(); }
+});
+
+test('startup publishes an available default account without changing transports', async () => {
+  const harness = setup();
+  setWeeklyUsage(harness.snapshot.profiles[0]!, 15);
+  setWeeklyUsage(harness.snapshot.profiles[1]!, 0);
+  try {
+    expect((await harness.registration.initialize(failInitialization))?.activeId).toBe('default');
+    expect(harness.emitted).toEqual([harness.snapshot]);
+    expect(harness.pool.environment.CODEX_HOME).toBe('/default');
+    expect(harness.resets).toBe(0);
+  } finally { await harness.registration.stop(); }
+});
+
+test('startup keeps genuine zero usage when every account is exhausted', async () => {
+  const harness = setup();
+  for (const profile of harness.snapshot.profiles) setWeeklyUsage(profile, 100);
+  try {
+    expect((await harness.registration.initialize(failInitialization))?.activeId).toBe('default');
+    expect(accountUsageTotals(harness.emitted.at(-1)!)?.remaining).toBe(0);
+    expect(harness.resets).toBe(0);
+  } finally { await harness.registration.stop(); }
+});
+
+test('startup never switches on unknown usage or to an account whose usage failed to load', async () => {
+  for (const failedIndex of [0, 1]) {
+    const harness = setup();
+    setWeeklyUsage(harness.snapshot.profiles[0]!, 100);
+    setWeeklyUsage(harness.snapshot.profiles[1]!, 0);
+    harness.snapshot.profiles[failedIndex]!.usage.state = 'error';
+    try {
+      expect((await harness.registration.initialize(failInitialization))?.activeId).toBe('default');
+      expect(harness.emitted).toEqual([harness.snapshot]);
+      expect(harness.resets).toBe(0);
+    } finally { await harness.registration.stop(); }
+  }
+});
+
+test('startup lookup failure is reported without rejecting workspace startup and allows a later refresh', async () => {
+  const harness = setup();
+  const failure = new Error('Usage lookup failed');
+  const errors: unknown[] = [];
+  harness.profiles.list = async () => { throw failure; };
+  try {
+    expect(await harness.registration.initialize(error => errors.push(error))).toBeNull();
+    expect(errors).toEqual([failure]);
+    expect(harness.emitted).toEqual([]);
+    expect(harness.registration.activeId).toBe('default');
+    expect(harness.resets).toBe(0);
+    harness.profiles.list = async () => harness.snapshot;
+    expect((await harness.invoke('list')).activeId).toBe('default');
+  } finally { await harness.registration.stop(); }
+});
+
+test('closing during startup lookup prevents a late account switch or publication', async () => {
+  const harness = setup();
+  const pending = createDeferred<CodexAccountsSnapshot>();
+  harness.profiles.list = () => pending.promise;
+  setWeeklyUsage(harness.snapshot.profiles[0]!, 100);
+  setWeeklyUsage(harness.snapshot.profiles[1]!, 0);
+  const initialization = harness.registration.initialize(failInitialization);
+  await harness.registration.stop();
+  pending.resolve(harness.snapshot);
+  await expectFailure(initialization, 'workspace has closed');
+  expect(harness.emitted).toEqual([]);
+  expect(harness.resets).toBe(0);
 });
 
 test('registration cancellation validates the target and protects the active account', async () => {

@@ -945,6 +945,7 @@ async function initialize(): Promise<BrowserWindow> {
   logStartup('git watcher ready');
   if (options.initial) await startupScreen.setStatus('Loading workspace information…');
   pendingIndexWarning = index.error ? String(index.error) : null;
+  await accountSwitch.initialize(error => chatServiceOptions.log('codex-account-initialization-failed', { message: String(error) }));
   const window = await createMainWindow(codeGraphUrl);
   return window;
 }

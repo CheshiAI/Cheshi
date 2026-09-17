@@ -2,6 +2,7 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type { CodexAccountsSnapshot } from '../shared/codex-accounts.ts';
 import type { CodexAccountProfiles } from './codex-account-profiles.mts';
 import type { AccountClient, CodexAccountClients } from './codex-account-clients.mts';
+import { chooseCodexAccount } from './codex-account-availability.mts';
 
 interface Options {
   ipc: Pick<IpcMain, 'handle'>;
@@ -151,6 +152,22 @@ export function registerCodexAccountsIpc(options: Options) {
   handle('cheshi:codex-accounts-select', select);
   return {
     select,
+    /** Resolve selection before renderer requests start; usage failures must not prevent opening the workspace. */
+    async initialize(onError: (error: unknown) => void): Promise<CodexAccountsSnapshot | null> {
+      try {
+        assertOpen();
+        const snapshot = selected(await options.profiles.list());
+        assertOpen();
+        const choice = chooseCodexAccount(snapshot);
+        if (choice.accountId !== null && choice.accountId !== activeId) return await select(choice.accountId);
+        // Publish even when no switch is possible, before the renderer starts requesting accounts.
+        options.emit(snapshot);
+        return snapshot;
+      } catch (error) {
+        onError(error);
+        return null;
+      }
+    },
     get activeId(): string { return activeId; },
     async stop(): Promise<void> {
       closed = true;
