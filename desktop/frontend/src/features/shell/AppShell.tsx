@@ -36,7 +36,8 @@ import styles from './AppShell.module.css';
 import { useAppUpdateResume } from './useAppUpdateResume';
 import { WorkspaceEditorSplit } from './WorkspaceEditorSplit';
 import { WorkspaceFileSearch } from '../navigation/WorkspaceFileSearch';
-import { installFileSearchShortcut } from '../navigation/fileSearchShortcut';
+import { WorkspaceTextSearch } from '../navigation/WorkspaceTextSearch';
+import { installFileSearchShortcut, installTextSearchShortcut } from '../navigation/fileSearchShortcut';
 import { ChatDraftAttachmentsContext, createChatDraftAttachments } from '../chat/chatDraftAttachments';
 import { NotesView } from '../notes/NotesView';
 import { appleNoteAttachment } from '../notes/appleNotesModel';
@@ -48,6 +49,7 @@ export function AppShell() {
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [temporaryChatOpen, setTemporaryChatOpen] = useState(false);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
+  const [textSearchOpen, setTextSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [submittedSearchQuery, setSubmittedSearchQuery] = useState('');
   const [historyTarget, setHistoryTarget] = useState<ChatHistorySearchTarget | null>(null);
@@ -103,7 +105,9 @@ export function AppShell() {
   const chat = workspace.activeController;
   useEffect(() => {
     if (updateResume.busy || workspace.accountSwitchPending || temporaryChatOpen) return;
-    return installFileSearchShortcut(document, () => setFileSearchOpen(true));
+    const removeFileSearch = installFileSearchShortcut(document, () => setFileSearchOpen(true));
+    const removeTextSearch = installTextSearchShortcut(document, () => setTextSearchOpen(true));
+    return () => { removeFileSearch(); removeTextSearch(); };
   }, [updateResume.busy, workspace.accountSwitchPending, temporaryChatOpen]);
   useEffect(() => {
     if (startupReported.current || !accountLoaded || !indexLoaded || workspace.sessionHistory.loading) return;
@@ -314,13 +318,13 @@ export function AppShell() {
               onClose={() => navigate(localHistoryReturnView.current)} />
           )}
           <ShowcaseView active={activeView === 'showcase'}
-            blocked={fileSearchOpen || temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
+            blocked={fileSearchOpen || textSearchOpen || temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
           <TerminalWorkspace
             active={activeView === 'terminal' && !primaryPaneClosed}
             onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
-            blocked={fileSearchOpen}
+            blocked={fileSearchOpen || textSearchOpen}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
           />
@@ -362,6 +366,7 @@ export function AppShell() {
         onBeforeSelect={beforeAccountSelect} onSelectionFinished={accountSelectionFinished} />
       {temporaryChatOpen && <TemporaryChatPanel onClose={() => setTemporaryChatOpen(false)} />}
       {fileSearchOpen && <WorkspaceFileSearch onOpenFile={openWorkspaceFile} onClose={() => setFileSearchOpen(false)} />}
+      {textSearchOpen && <WorkspaceTextSearch onOpenFile={openWorkspaceFile} onClose={() => setTextSearchOpen(false)} />}
       {deleteChoice && <ChatDeleteSessionDialog sessionTitle={deleteChoice.title}
         reason={workspace.deletePending ? null : workspace.deleteSessionReason(deleteChoice.sessionId)}
         pending={workspace.deletePending} error={workspace.error ?? chat?.state.error ?? null}

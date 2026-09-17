@@ -3,6 +3,7 @@ import type { ChatUserInputRequest, ChatUserInputResponse } from '../../shared/c
 import type { AppUpdateApi, AppUpdateResumeApi } from '../../shared/app-update';
 import type { KeepAwakeApi } from '../../shared/keep-awake';
 import type { WorkspaceFileSearchResult } from '../../shared/workspace-file-search';
+import type { WorkspaceTextSearchRequest, WorkspaceTextSearchResult } from '../../shared/workspace-text-search';
 import type { LocalHistoryEntry, LocalHistorySnapshot, LocalHistoryRestoreRequest } from '../../shared/local-history';
 import type { WorkspaceManagementApi } from '../../shared/workspace-management';
 import type { GitDiscardPreview, GitDiscardRequest, GitDiscardSelection } from '../../shared/git-discard';
@@ -665,6 +666,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   }>;
   readWorkspaceFile: (relativePath: string) => Promise<WorkspaceFileReadResult>;
   searchWorkspaceFiles: (query: string) => Promise<WorkspaceFileSearchResult>;
+  searchWorkspaceText: (request: WorkspaceTextSearchRequest) => Promise<WorkspaceTextSearchResult>;
   localHistory: {
     list: (path: string) => Promise<LocalHistoryEntry[]>;
     read: (path: string, id: string) => Promise<LocalHistorySnapshot>;

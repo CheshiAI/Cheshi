@@ -14,6 +14,11 @@ Use the editor to change documents or code yourself, or to review changes made b
 4. Click the **Save** icon, or press **⌘S** on macOS or **Ctrl+S** on Windows and Linux.
 5. If an error appears, read the message. If another program changed the same file, review its current contents before trying to save again.
 
+## Find text in files
+
+- Press **⌘⇧F** on macOS or **Ctrl+Shift+F** on Windows and Linux to open **Find in Files**. Type the text to find, turn on **Match case** or **Regex** as needed, and press **Enter** or click a result to open the file at that line.
+- Use the arrow keys to move between results and press **Esc** to close. Files ignored by Git and folders such as `node_modules` and build output are not searched.
+
 ## What happens next
 
 When saving succeeds, your changes are written to the file. Supported text files are also recorded in Local history so you can compare previous contents.

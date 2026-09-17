@@ -11,6 +11,7 @@ import type { Sidebar } from '../frontend/src/features/navigation/Sidebar';
 import type { WorkspaceEditor } from '../frontend/src/features/editor/WorkspaceEditor';
 import type { ChatWorkspace } from '../frontend/src/features/chat/ChatWorkspace';
 import type { WorkspaceFileSearch } from '../frontend/src/features/navigation/WorkspaceFileSearch';
+import type { WorkspaceTextSearch } from '../frontend/src/features/navigation/WorkspaceTextSearch';
 import type { CodeGraphView } from '../frontend/src/features/graph/CodeGraphView';
 import * as draftAttachmentModule from '../frontend/src/features/chat/chatDraftAttachments';
 import { appleNoteAttachment } from '../frontend/src/features/notes/appleNotesModel';
@@ -81,6 +82,7 @@ function props<T>(tree: ReactNode, name: string): T {
 function shellHarness() {
   const app = hooks();
   let openSearch = () => {};
+  let openTextSearch = () => {};
   const attachments = draftAttachmentModule.createChatDraftAttachments();
   const modules: Record<string, unknown> = {
     react: app.react,
@@ -90,9 +92,10 @@ function shellHarness() {
       sessionHistory: { loading: false, sessions: [] }, responseThreadIds: [], accountSwitchPending: false }) },
     '../chat/useChatHistorySearch': { useChatHistorySearch: () => ({ clear() {} }) },
     './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
-    '../navigation/fileSearchShortcut': { installFileSearchShortcut: (_document: unknown, open: () => void) => {
-      openSearch = open; return () => {};
-    } },
+    '../navigation/fileSearchShortcut': {
+      installFileSearchShortcut: (_document: unknown, open: () => void) => { openSearch = open; return () => {}; },
+      installTextSearchShortcut: (_document: unknown, open: () => void) => { openTextSearch = open; return () => {}; },
+    },
   };
   for (const [path, names] of Object.entries({
     '../../shared/ui': ['LiquidGlassPanel'], '../chat': ['ChatSessionList'], '../chat/ChatWorkspace': ['ChatWorkspace'],
@@ -104,10 +107,11 @@ function shellHarness() {
     '../terminal': ['TerminalWorkspace'], '../showcase/ShowcaseView': ['ShowcaseView'],
     './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],
     '../editor/LocalHistoryPage': ['LocalHistoryPage'], './WorkspaceEditorSplit': ['WorkspaceEditorSplit'],
-    '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'], '../notes/NotesView': ['NotesView'],
+    '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'], '../navigation/WorkspaceTextSearch': ['WorkspaceTextSearch'],
+    '../notes/NotesView': ['NotesView'],
   })) modules[path] = Object.fromEntries(names.map(name => [name, name]));
   const Shell = load<typeof AppShell>('features/shell/AppShell.tsx', 'AppShell', modules, { document: {} });
-  return { attachments, render: () => app.render(() => Shell()), openSearch: () => openSearch() };
+  return { attachments, render: () => app.render(() => Shell()), openSearch: () => openSearch(), openTextSearch: () => openTextSearch() };
 }
 
 test('file search keeps the current page until a result opens in the standalone editor', () => {
@@ -127,6 +131,22 @@ test('file search keeps the current page until a result opens in the standalone 
   expect(split.mode).toBe('editor');
   expect(props<ComponentProps<typeof WorkspaceEditor>>(split.editor, 'WorkspaceEditor').target?.path).toBe('src/found.ts');
   expect(elements(split.children).some(element => element.type === 'GitWorkspace')).toBe(false);
+});
+
+test('text search opens the matched file at its line beside the current page', () => {
+  const app = shellHarness();
+  expect(elements(app.render()).some(element => element.type === 'WorkspaceTextSearch')).toBe(false);
+  app.openTextSearch();
+  let tree = app.render();
+  expect(props<ComponentProps<typeof TerminalWorkspace>>(tree, 'TerminalWorkspace').blocked).toBe(true);
+  const search = props<ComponentProps<typeof WorkspaceTextSearch>>(tree, 'WorkspaceTextSearch');
+  search.onOpenFile('src/found.ts', 42); search.onClose();
+  tree = app.render();
+  expect(elements(tree).some(element => element.type === 'WorkspaceTextSearch')).toBe(false);
+  expect(props<ComponentProps<typeof TerminalWorkspace>>(tree, 'TerminalWorkspace').blocked).toBe(false);
+  const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(tree, 'WorkspaceEditorSplit');
+  expect(split.mode).toBe('split');
+  expect(props<ComponentProps<typeof WorkspaceEditor>>(split.editor, 'WorkspaceEditor').target).toMatchObject({ path: 'src/found.ts', line: 42 });
 });
 
 test('Explorer file opening keeps the chat visible and reuses the same editor for subsequent files', () => {

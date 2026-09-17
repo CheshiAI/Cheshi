@@ -10,7 +10,7 @@ import { isSearchableWorkspacePath, workspaceFileSearchLimit, workspaceFileSearc
 const execute = promisify(execFile);
 const scanLimit = 50_000;
 
-async function listPaths(root: WorkspaceRoot): Promise<{ paths: string[]; truncated: boolean }> {
+export async function listWorkspacePaths(root: WorkspaceRoot): Promise<{ paths: string[]; truncated: boolean }> {
   try {
     const { stdout } = await execute('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', '.'],
       { cwd: root.resolved, encoding: 'utf8', timeout: 5_000, maxBuffer: 8 * 1024 * 1024,
@@ -52,7 +52,7 @@ export async function searchWorkspaceFiles(projectRoot: string, value: unknown):
   const query = workspaceFileSearchQuery(value).toLowerCase();
   if (!query) return { files: [], truncated: false };
   const root = await openWorkspaceRoot(projectRoot);
-  const listing = await listPaths(root);
+  const listing = await listWorkspacePaths(root);
   const matches = listing.paths.map(filePath => ({ path: filePath, rank: matchRank(filePath, query) }))
     .filter(entry => entry.rank >= 0)
     .sort((a, b) => a.rank - b.rank || a.path.localeCompare(b.path));

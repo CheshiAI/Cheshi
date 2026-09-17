@@ -1,0 +1,24 @@
+.dialog { --modal-width: 720px; --modal-title-color: var(--active-text); }
+.content { display: flex; flex-direction: column; gap: var(--space-default); }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-default); font-size: 11px; }
+.field { flex: 1 1 240px; min-width: 0; }
+.results { list-style: none; margin: 0; padding: 0; max-height: min(420px, 50dvh); overflow: auto; overscroll-behavior: contain; }
+.group {
+  display: flex; align-items: baseline; gap: var(--space-default);
+  padding: 8px var(--space-default) 2px; color: var(--sub-text); font-size: 11px; overflow-wrap: anywhere;
+}
+.group strong { color: var(--text); font-weight: 500; }
+.result {
+  display: flex; align-items: baseline; gap: var(--space-default);
+  padding: 4px var(--space-default); border-radius: 8px; cursor: pointer;
+}
+.result:hover, .result[aria-selected='true'] { background: var(--dropdown-selection-bg); color: var(--active-text); }
+.line { flex: 0 0 auto; min-width: 4ch; color: var(--sub-text); font-variant-numeric: tabular-nums; text-align: right; }
+.result[aria-selected='true'] .line { color: inherit; }
+.text {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 11px;
+}
+.text mark { border-radius: 2px; background: var(--dropdown-selection-bg); color: inherit; font-weight: 600; }
+.status, .hint { margin: 0; color: var(--sub-text); font-size: 12px; }
+.hint { font-size: 11px; }
