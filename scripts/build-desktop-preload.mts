@@ -10,7 +10,7 @@ export const preloadOutputPath = path.join(preloadOutputDirectory, 'preload.cjs'
 export async function buildDesktopPreload(): Promise<void> {
   mkdirSync(preloadOutputDirectory, { recursive: true });
   const result = await Bun.build({
-    entrypoints: ['preload.cts', 'workspace-manager-preload.cts', 'selection-copy-preload.cts'].map((name) => path.join(rootDirectory, 'desktop', name)),
+    entrypoints: ['preload.cts', 'workspace-manager-preload.cts', 'selection-copy-preload.cts', 'account-usage-preload.cts'].map((name) => path.join(rootDirectory, 'desktop', name)),
     outdir: preloadOutputDirectory,
     naming: '[name].cjs',
     target: 'node',

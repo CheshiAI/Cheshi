@@ -26,7 +26,7 @@ class FakeWindow extends EventEmitter {
 
 interface ImageState { template: boolean; representations: Array<{ scaleFactor?: number; buffer?: Buffer }> }
 
-function harness(loadFont?: Options['loadFont']) {
+function harness(loadFont?: Options['loadFont'], createPopover?: Options['createPopover']) {
   const imageStates = new Map<NativeImage, ImageState>();
   const theme = Object.assign(new EventEmitter(), { shouldUseDarkColors: false });
   let creations = 0;
@@ -39,8 +39,9 @@ function harness(loadFont?: Options['loadFont']) {
   const updates: NativeImage[] = [];
   const errors: unknown[] = [];
   let menuFailure: Error | null = null;
+  const trayEvents = new EventEmitter();
   const tray = createAccountUsageTray({
-    loadFont,
+    loadFont, createPopover,
     createTray(image) {
       creations++;
       currentImage = image;
@@ -51,6 +52,9 @@ function harness(loadFont?: Options['loadFont']) {
         },
         setToolTip(value) { tooltip = value; },
         setContextMenu() {},
+        getBounds() { return { x: 10, y: 0, width: 24, height: 24 }; },
+        on: trayEvents.on.bind(trayEvents),
+        off: trayEvents.off.bind(trayEvents),
         destroy() { destroyed++; },
       };
     },
@@ -70,7 +74,7 @@ function harness(loadFont?: Options['loadFont']) {
     onError(error) { errors.push(error); },
   });
   return {
-    tray, theme, updates, errors,
+    tray, theme, updates, errors, trayEvents,
     failMenu(error: Error) { menuFailure = error; },
     get creations() { return creations; }, get destroyed() { return destroyed; },
     get tooltip() { return tooltip; }, get menu() { return menu; },
@@ -314,4 +318,33 @@ test('loads the native font without blocking initial usage and ignores completio
   late.resolve(font);
   await late.promise;
   expect(closed.updates.length).toBe(count);
+});
+
+
+test('popover replaces the text menu and follows focused workspace data without changing accounts', () => {
+  const states: Array<{ snapshot: CodexAccountsSnapshot | null; dark: boolean }> = [];
+  let toggles = 0;
+  let disposed = false;
+  let showApp = () => {};
+  const app = harness(undefined, (_tray, reveal) => {
+    showApp = reveal;
+    return { update(snapshot, dark) { states.push({ snapshot, dark }); }, toggle() { toggles++; }, dispose() { disposed = true; } };
+  });
+  const source = app.tray.register();
+  const window = new FakeWindow(); window.attach(source);
+  source.update(snapshot([0, 91], 'b'));
+  expect(states.at(-1)?.snapshot?.activeId).toBe('b');
+  expect(app.menu).toEqual([]);
+  app.trayEvents.emit('click'); app.trayEvents.emit('right-click');
+  expect(toggles).toBe(2);
+  showApp(); expect(window.calls).toEqual(['show', 'focus']);
+  app.theme.shouldUseDarkColors = true; app.theme.emit('updated');
+  expect(states.at(-1)?.dark).toBe(true);
+  window.emit('closed');
+  app.tray.updateBackground(snapshot([0, 80], 'a'));
+  expect(states.at(-1)?.snapshot?.activeId).toBe('b');
+  expect(states.at(-1)?.snapshot?.profiles[1]?.usage.rateLimits[0]?.secondary?.usedPercent).toBe(20);
+  app.tray.dispose(); expect(disposed).toBe(true);
+  expect(app.trayEvents.listenerCount('click')).toBe(0);
+  expect(app.trayEvents.listenerCount('right-click')).toBe(0);
 });

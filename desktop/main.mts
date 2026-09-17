@@ -1,6 +1,7 @@
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, session, shell, Tray, WebContentsView } from 'electron';
+import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, session, shell, Tray, WebContentsView } from 'electron';
 import { product } from '../config/product.mts';
 import { aboutBackgroundColor, aboutPage } from './lib/about-page.mts';
 import { registerSelectionCopy } from './lib/selection-copy.mts';
@@ -15,6 +16,7 @@ import { canRestoreStartupWorkspace, resolveStartupWorkspace } from './lib/works
 import { createWorkspaceCodexLoginService } from './lib/workspace-codex-login.mts';
 import { desktopToolPath, getWorkspaceToolStatus } from './lib/workspace-tool-status.mts';
 import { createAccountUsageTray } from './lib/account-usage-tray.mts';
+import { createAccountUsagePopover } from './lib/account-usage-popover.mts';
 import { loadMenuBarFont } from './lib/menu-bar-font.mts';
 import { loadMenuBarLogo } from './lib/menu-bar-logo.mts';
 import { createAccountUsageBackground } from './lib/account-usage-background.mts';
@@ -32,6 +34,7 @@ import type { WorkspaceRuntimeOptions } from './lib/workspace-application.mts';
 
 process.env.PATH = desktopToolPath(process.env.PATH);
 const selectionCopyPreload = path.join(import.meta.dirname, 'runtime', 'selection-copy-preload.cjs');
+const usagePopoverPreload = path.join(app.isPackaged ? process.resourcesPath : import.meta.dirname, 'runtime', 'account-usage-preload.cjs');
 const aboutWindow = createAboutWindow({
   title: `About ${product.displayName}`,
   backgroundColor: aboutBackgroundColor,
@@ -81,6 +84,7 @@ const updates = createAppUpdateService({
   ...updatePreview,
 });
 let usageTray: ReturnType<typeof createAccountUsageTray> | undefined;
+let usagePopoverWindow: BrowserWindow | null = null;
 const backgroundUsage = createAccountUsageBackground({
   acquire: () => getCodexAccountProfiles({
     directory: path.join(app.getPath('userData'), 'codex-accounts'),
@@ -223,11 +227,26 @@ app.whenReady().then(async () => {
   if (process.platform === 'darwin') {
     try { usageTray = createAccountUsageTray({
       createTray: image => new Tray(image), createMenu: template => Menu.buildFromTemplate(template),
+      createPopover: (tray, showApp) => createAccountUsagePopover({
+        createWindow: configuration => {
+          const window = new BrowserWindow(configuration);
+          usagePopoverWindow = window;
+          window.once('closed', () => { if (usagePopoverWindow === window) usagePopoverWindow = null; });
+          return window;
+        }, ipc: ipcMain,
+        getAnchor: () => tray.getBounds(), getWorkArea: anchor => screen.getDisplayMatching(anchor).workArea,
+        rendererUrl: process.env.CHESHI_RENDERER_URL?.trim() || pathToFileURL(app.isPackaged
+          ? path.join(process.resourcesPath, 'dist', 'index.html')
+          : path.join(import.meta.dirname, 'frontend', 'dist', 'index.html')).href,
+        preload: usagePopoverPreload,
+        showApp, quit: () => app.quit(), onError: reportTrayError,
+      }),
       images: nativeImage, theme: nativeTheme,
       loadFont: loadMenuBarFont,
       logo: loadMenuBarLogo(nativeImage),
       openApp: () => {
-        const window = BrowserWindow.getAllWindows().find(candidate => !candidate.isDestroyed());
+        const window = BrowserWindow.getAllWindows().find(candidate => !candidate.isDestroyed()
+          && candidate !== usagePopoverWindow);
         if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); }
         else void openStartupWindow().catch(reportStartupError);
       },
