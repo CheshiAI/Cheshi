@@ -42,6 +42,8 @@ function shouldIgnore(packagePath: string): boolean {
   if (grandchildEntry === 'electron-libghostty') return false;
   const packagedLibraryFiles = new Set([
     'autopilot-browser.mts',
+    'autopilot-actions.mts',
+    'autopilot-interaction.mts',
     'autopilot-key.mts',
     'autopilot-model.mts',
     'autopilot-page.mts',

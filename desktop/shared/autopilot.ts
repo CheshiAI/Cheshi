@@ -7,8 +7,8 @@ export const AUTOPILOT_CHANNELS = {
 } as const;
 
 export const AUTOPILOT_MAX_STEPS = 20;
-export type AutopilotPhase = 'idle' | 'loading' | 'thinking' | 'completed' | 'stopped' | 'limit' | 'error';
-export interface AutopilotRequest { url: string; goal: string }
+export type AutopilotPhase = 'idle' | 'loading' | 'thinking' | 'acting' | 'completed' | 'stopped' | 'limit' | 'error';
+export interface AutopilotRequest { url: string; goal: string; searchText?: string }
 export interface AutopilotBounds { x: number; y: number; width: number; height: number }
 export interface AutopilotViewRequest { visible: boolean; bounds: AutopilotBounds }
 export interface AutopilotStep {
@@ -17,6 +17,7 @@ export interface AutopilotStep {
   loadMs: number;
   decisionMs: number;
   confidence: number | null;
+  action?: string;
 }
 export interface AutopilotState {
   configured: boolean;
@@ -24,6 +25,7 @@ export interface AutopilotState {
   url: string;
   title: string;
   goal: string;
+  searchText?: string;
   error: string | null;
   modelMs: number;
   steps: AutopilotStep[];
@@ -37,7 +39,7 @@ export interface AutopilotApi {
 }
 
 export function autopilotRunning(state: Pick<AutopilotState, 'phase'>): boolean {
-  return state.phase === 'loading' || state.phase === 'thinking';
+  return state.phase === 'loading' || state.phase === 'thinking' || state.phase === 'acting';
 }
 
 export function autopilotRecord(value: unknown): Record<string, unknown> {
@@ -77,7 +79,8 @@ export function parseAutopilotRequest(value: unknown): AutopilotRequest {
   const url = safeAutopilotUrl(input.url);
   const goal = text(input.goal, 2000).trim();
   if (!url || !goal) throw new TypeError('Enter a valid HTTP(S) start URL and a goal.');
-  return { url, goal };
+  const searchText = input.searchText === undefined ? '' : text(input.searchText, 500).trim();
+  return { url, goal, ...(searchText ? { searchText } : {}) };
 }
 
 export function parseAutopilotView(value: unknown): AutopilotViewRequest {
@@ -91,7 +94,7 @@ export function parseAutopilotView(value: unknown): AutopilotViewRequest {
 
 export function parseAutopilotState(value: unknown): AutopilotState {
   const input = autopilotRecord(value);
-  const phases: AutopilotPhase[] = ['idle', 'loading', 'thinking', 'completed', 'stopped', 'limit', 'error'];
+  const phases: AutopilotPhase[] = ['idle', 'loading', 'thinking', 'acting', 'completed', 'stopped', 'limit', 'error'];
   const phase = phases.find(candidate => candidate === input.phase);
   const url = input.url === '' ? '' : safeAutopilotUrl(input.url);
   if (!phase || url === null || !Array.isArray(input.steps) || input.steps.length > AUTOPILOT_MAX_STEPS + 1) {
@@ -102,8 +105,10 @@ export function parseAutopilotState(value: unknown): AutopilotState {
     const stepUrl = safeAutopilotUrl(step.url);
     if (!stepUrl) throw new TypeError('Invalid Autopilot step URL.');
     return { url: stepUrl, title: text(step.title, 500), loadMs: number(step.loadMs),
-      decisionMs: number(step.decisionMs), confidence: step.confidence === null ? null : number(step.confidence, 0, 1) };
+      decisionMs: number(step.decisionMs), confidence: step.confidence === null ? null : number(step.confidence, 0, 1),
+      ...(step.action === undefined ? {} : { action: text(step.action, 600) }) };
   });
   return { configured: flag(input.configured), phase, url, title: text(input.title, 500), goal: text(input.goal, 2000),
-    error: input.error === null ? null : text(input.error, 2000), modelMs: number(input.modelMs), steps };
+    error: input.error === null ? null : text(input.error, 2000), modelMs: number(input.modelMs), steps,
+    ...(input.searchText === undefined ? {} : { searchText: text(input.searchText, 500) }) };
 }

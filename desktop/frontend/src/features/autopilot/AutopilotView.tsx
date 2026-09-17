@@ -16,7 +16,7 @@ interface Props {
   rightSidebarOpen: boolean;
   onToggleRightSidebar(): void;
 }
-const phaseLabels = { idle: 'Ready', loading: 'Loading page…', thinking: 'Choosing the next link…',
+const phaseLabels = { idle: 'Ready', loading: 'Loading page…', thinking: 'Choosing the next action…', acting: 'Acting and checking the result…',
   completed: 'Goal reached', stopped: 'Stopped', limit: 'Step limit reached', error: 'Could not continue' } as const;
 const seconds = (ms: number) => `${(ms / 1000).toFixed(2)}s`;
 
@@ -24,6 +24,7 @@ export function AutopilotView({ active, blocked, rightSidebarOpen, onToggleRight
   const api = cheshiDesktop?.autopilot;
   const [url, setUrl] = useState('https://en.wikipedia.org/wiki/DNA');
   const [goal, setGoal] = useState('Reach the Wikipedia page for Manipuri pony.');
+  const [searchText, setSearchText] = useState('');
   const [state, setState] = useState<AutopilotState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewportError, setViewportError] = useState<string | null>(null);
@@ -67,7 +68,7 @@ export function AutopilotView({ active, blocked, rightSidebarOpen, onToggleRight
     setError(null);
     const id = revision.current;
     try {
-      const value = action === 'start' ? await api.start({ url, goal }) : await api.stop();
+      const value = action === 'start' ? await api.start({ url, goal, ...(searchText.trim() ? { searchText: searchText.trim() } : {}) }) : await api.stop();
       if (mounted.current && id === revision.current) setState(value);
     } catch (cause) {
       if (mounted.current) setError(errorMessage(cause, 'Could not update Autopilot.'));
@@ -88,13 +89,16 @@ export function AutopilotView({ active, blocked, rightSidebarOpen, onToggleRight
             aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
             aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></NeumorphicButton>
         </>}
-        secondary={<span className={styles.description}>Follow links to your destination. Up to {AUTOPILOT_MAX_STEPS} steps per run.</span>} />
+        secondary={<span className={styles.description}>Follow links, or add search text to use inputs and buttons. Up to {AUTOPILOT_MAX_STEPS} actions per run.</span>} />
       <form className={styles.controls} onSubmit={event => { event.preventDefault(); if (!running) void execute('start'); }}>
         <label>Start URL<NeumorphicTextField aria-label="Start URL" value={url} type="url" required
           maxLength={8192} disabled={running || pending} onChange={event => setUrl(event.target.value)} /></label>
         <label className={styles.goal}>Goal<NeumorphicTextField aria-label="Goal" value={goal} required
           maxLength={2000} disabled={running || pending} placeholder="Where would you like to go?"
           onChange={event => setGoal(event.target.value)} /></label>
+        <label>Search text (optional)<NeumorphicTextField aria-label="Search text" value={searchText}
+          maxLength={500} disabled={running || pending} placeholder="Exact text to enter on the page"
+          onChange={event => setSearchText(event.target.value)} /></label>
         {running ? <NeumorphicButton size="standard" disabled={pending} onClick={() => void execute('stop')}>
           <Square aria-hidden="true" />Stop</NeumorphicButton>
           : <NeumorphicButton size="standard" type="submit"
@@ -106,9 +110,9 @@ export function AutopilotView({ active, blocked, rightSidebarOpen, onToggleRight
       {currentError && <p className={styles.notice} role="alert">{currentError}</p>}
       <div className={styles.status} role="status">
         <span>{state ? phaseLabels[state.phase] : api ? 'Connecting…' : 'Not connected'}</span>
-        <span>{Math.max(0, steps.length - 1)} / {AUTOPILOT_MAX_STEPS} steps</span>
+        <span>{Math.max(0, steps.length - 1)} / {AUTOPILOT_MAX_STEPS} actions</span>
         <span>Model {seconds(state?.modelMs ?? 0)}</span>
-        <span>Pages {seconds(steps.reduce((sum, step) => sum + step.loadMs, 0))}</span>
+        <span>Browser {seconds(steps.reduce((sum, step) => sum + step.loadMs, 0))}</span>
       </div>
       <div className={styles.content}>
         <div className={styles.browser}>
@@ -116,7 +120,7 @@ export function AutopilotView({ active, blocked, rightSidebarOpen, onToggleRight
           <div className={styles.viewport} ref={viewport} aria-label="Autopilot browser">
             {!state?.url && <div className={styles.empty}><Navigation aria-hidden="true" />
               <p>Choose a starting page and tell Autopilot where to go.</p>
-              <p>Page text and link choices are sent to TypeSafe while a run is active.</p>
+              <p>Page text, controls and search text are sent to TypeSafe while a run is active.</p>
             </div>}
           </div>
         </div>
@@ -126,7 +130,8 @@ export function AutopilotView({ active, blocked, rightSidebarOpen, onToggleRight
           <ol>{steps.map((step, index) => <li key={`${index}:${step.url}`}>
             <span className={styles.stepNumber}>{index === 0 ? 'Start' : index}</span>
             <div><strong>{step.title || step.url}</strong><span className={styles.stepUrl} title={step.url}>{step.url}</span>
-              <small>Page {seconds(step.loadMs)}{index > 0 && ` · Model ${seconds(step.decisionMs)}`}</small>
+              {step.action && <small>{step.action}</small>}
+              <small>Browser {seconds(step.loadMs)}{index > 0 && ` · Model ${seconds(step.decisionMs)}`}</small>
             </div>
           </li>)}</ol>
         </LiquidGlassPanel>

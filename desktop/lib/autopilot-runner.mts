@@ -1,6 +1,8 @@
 import { AUTOPILOT_MAX_STEPS, autopilotRunning, parseAutopilotRequest, safeAutopilotUrl } from '../shared/autopilot.ts';
 import type { AutopilotState } from '../shared/autopilot.ts';
 import type { AutopilotDecision, AutopilotDecisionInput, AutopilotLink, AutopilotPage } from './autopilot-model.mts';
+import { autopilotActionLabel, autopilotActions, sameAutopilotInteraction } from './autopilot-actions.mts';
+import type { AutopilotInteraction } from './autopilot-actions.mts';
 
 const MAX_PAGE_CHANGE_RETRIES = 2;
 
@@ -19,6 +21,7 @@ interface Options {
   decide(input: AutopilotDecisionInput): Promise<AutopilotDecision>;
   load(url: string, signal: AbortSignal): Promise<AutopilotPage>;
   follow(page: AutopilotPage, link: AutopilotLink, signal: AbortSignal): Promise<AutopilotPage>;
+  interact?(page: AutopilotPage, action: AutopilotInteraction, signal: AbortSignal): Promise<AutopilotPage>;
   cancelLoad(): void;
   onState(state: AutopilotState): void;
 }
@@ -45,14 +48,17 @@ export function createAutopilotRunner(options: Options) {
       let step = 0;
       let retries = 0;
       let recordPage = true;
+      let action: string | undefined;
+      let samePageInteraction = false;
       while (step <= AUTOPILOT_MAX_STEPS) {
         signal.throwIfAborted();
         if (recordPage) {
           const url = safeAutopilotUrl(page.url);
-          assertDestination(url, visited);
-          visited.push(url!);
+          assertDestination(url, samePageInteraction && url === visited.at(-1) ? [] : visited);
+          if (url !== visited.at(-1)) visited.push(url!);
           update({ url: url!, title: page.title, phase: 'thinking',
-            steps: [...state.steps, { url: url!, title: page.title, loadMs, decisionMs, confidence }] });
+            steps: [...state.steps, { url: url!, title: page.title, loadMs, decisionMs, confidence,
+              ...(action ? { action } : {}) }] });
           decisionMs = 0;
           loadMs = 0;
         } else {
@@ -60,7 +66,8 @@ export function createAutopilotRunner(options: Options) {
             index === state.steps.length - 1 ? { ...entry, title: page.title } : entry) });
         }
         started = performance.now();
-        const decision = await options.decide({ page, goal: state.goal, visited, signal });
+        const decision = await options.decide({ page, goal: state.goal, visited, signal, searchText: state.searchText,
+          history: state.steps.flatMap(step => step.action ? [step.action] : []) });
         signal.throwIfAborted();
         const elapsed = performance.now() - started;
         decisionMs += elapsed;
@@ -68,12 +75,17 @@ export function createAutopilotRunner(options: Options) {
         update({ modelMs: state.modelMs + elapsed });
         if (decision.completed) { update({ phase: 'completed' }); return; }
         if (step === AUTOPILOT_MAX_STEPS) { update({ phase: 'limit' }); return; }
-        assertLink(decision.link, page, visited);
-        update({ phase: 'loading' });
+        const interaction = decision.interaction;
+        if (interaction) assertInteraction(interaction, page, state.searchText, !!options.interact);
+        else assertLink(decision.link, page, visited);
+        update({ phase: interaction ? 'acting' : 'loading' });
         started = performance.now();
         try {
-          page = await options.follow(page, decision.link!, signal);
+          page = interaction ? await options.interact!(page, interaction, signal)
+            : await options.follow(page, decision.link!, signal);
           signal.throwIfAborted();
+          action = autopilotActionLabel(interaction ?? { kind: 'navigate', link: decision.link! }).slice(0, 600);
+          samePageInteraction = !!interaction;
           retries = 0;
           recordPage = true;
           step += 1;
@@ -83,6 +95,8 @@ export function createAutopilotRunner(options: Options) {
           assertPageChangeRetry(++retries);
           // A changed URL is a real page transition; a refreshed DOM is not.
           recordPage = error.page.url !== page.url;
+          samePageInteraction = false;
+          if (recordPage) action = 'Page changed; refreshed controls';
           if (recordPage) step += 1;
           page = error.page;
         }
@@ -113,7 +127,7 @@ export function createAutopilotRunner(options: Options) {
       const request = parseAutopilotRequest(value);
       if (!options.configured()) throw new Error('Set TYPE_SAFE_AI in the app environment to use Autopilot.');
       run = new AbortController();
-      update({ ...request, title: '', phase: 'loading', error: null, modelMs: 0, steps: [] });
+      update({ ...request, searchText: request.searchText, title: '', phase: 'loading', error: null, modelMs: 0, steps: [] });
       void execute(run);
       return snapshot();
     },
@@ -138,5 +152,12 @@ function assertLink(link: AutopilotLink | null, page: AutopilotPage, visited: st
   if (!page.links.some(candidate => candidate.id === link.id && candidate.url === link.url)
     || !safeAutopilotUrl(link.url) || visited.includes(link.url)) {
     throw new Error('The selected link is not an available destination.');
+  }
+}
+
+function assertInteraction(action: AutopilotInteraction, page: AutopilotPage, searchText: string | undefined, supported: boolean): void {
+  if (!supported || !autopilotActions(page, [], searchText).some(candidate =>
+    candidate.kind !== 'navigate' && sameAutopilotInteraction(candidate, action))) {
+    throw new Error('The selected control is not available for this search.');
   }
 }

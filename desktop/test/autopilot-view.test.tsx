@@ -11,7 +11,8 @@ import type { AutopilotView } from '../frontend/src/features/autopilot/Autopilot
 
 interface Slot { value?: unknown; dependencies?: readonly unknown[]; cleanup?: () => void }
 interface Props { children?: ReactNode; primary?: ReactNode; secondary?: ReactNode; disabled?: boolean;
-  ref?: { current: unknown }; onClick?: () => void; onSubmit?: (event: { preventDefault(): void }) => void }
+  ref?: { current: unknown }; onClick?: () => void; onSubmit?: (event: { preventDefault(): void }) => void;
+  'aria-label'?: string; onChange?: (event: { target: { value: string } }) => void }
 function Button({ children, disabled, onClick }: Props) {
   return <button disabled={disabled} onClick={onClick}>{children}</button>;
 }
@@ -112,11 +113,32 @@ test('Autopilot starts a goal, exposes Stop while running, and preserves a newer
     start.resolve({ ...idle, phase: 'loading' });
     await flush();
     tree = h.render();
-    expect(renderToStaticMarkup(tree)).toContain('Choosing the next link');
+    expect(renderToStaticMarkup(tree)).toContain('Choosing the next action');
     button(tree, 'Stop').props.onClick?.();
     await flush();
     expect(h.stops()).toBe(1);
     expect(renderToStaticMarkup(h.render())).toContain('Stopped');
+  } finally { h.close(); }
+});
+
+test('search text reaches the runner and action progress keeps Stop available with the input disabled', async () => {
+  const h = harness();
+  try {
+    h.render(); await flush();
+    const input = elements(h.render()).find(node => node.props['aria-label'] === 'Search text')!;
+    input.props.onChange?.({ target: { value: '  Manipuri pony  ' } });
+    elements(h.render()).find(node => node.type === 'form')!.props.onSubmit?.({ preventDefault() {} });
+    await flush();
+    expect(h.requests[0]).toEqual({ url: 'https://en.wikipedia.org/wiki/DNA',
+      goal: 'Reach the Wikipedia page for Manipuri pony.', searchText: 'Manipuri pony' });
+    h.emit({ ...idle, phase: 'acting', steps: [{ url: 'https://example.org/', title: 'Search',
+      decisionMs: 10, loadMs: 20, confidence: 1, action: 'Type: Manipuri pony' }] });
+    const tree = h.render();
+    expect(elements(tree).find(node => node.props['aria-label'] === 'Search text')!.props.disabled).toBe(true);
+    expect(renderToStaticMarkup(tree)).toContain('Type: Manipuri pony');
+    button(tree, 'Stop').props.onClick?.();
+    await flush();
+    expect(h.stops()).toBe(1);
   } finally { h.close(); }
 });
 
