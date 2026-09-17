@@ -58,3 +58,13 @@
 .stepNumber { flex: 0 0 25px; color: var(--sub-text); font-size: 10px; }
 .stepUrl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stepUrl, .history small { color: var(--sub-text); font-size: 9px; }
+.modes { display: flex; gap: var(--icon-default); padding: var(--space-default) var(--space-default) 0; }
+.modes [aria-pressed='true'] { background: var(--dropdown-selection-bg); color: var(--active-text); }
+.research { display: grid; gap: var(--space-default); margin-bottom: var(--space-default); }
+.research h2, .research p { margin: 0; }
+.exports { display: flex; flex-wrap: wrap; gap: var(--icon-default); }
+.source { display: grid; gap: var(--space-default); border-bottom: 1px solid var(--divider); padding-bottom: var(--space-default); }
+.sourceUrl { display: block; overflow-wrap: anywhere; font-size: 11px; user-select: text; }
+.source time, .source small { color: var(--sub-text); font-size: 10px; overflow-wrap: anywhere; }
+.source blockquote { margin: 0; padding-left: var(--space-default); border-left: 2px solid var(--divider); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.research ul { margin: 0; padding-left: var(--space-default); }

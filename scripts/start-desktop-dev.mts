@@ -206,7 +206,8 @@ function watchMainSources(): FSWatcher[] {
     path.join(rootDirectory, 'desktop', 'lib', 'development-shutdown.mts'),
     path.join(rootDirectory, 'desktop', 'main.mts'),
     ...['autopilot-browser.mts', 'autopilot-actions.mts', 'autopilot-interaction.mts', 'autopilot-key.mts', 'autopilot-model.mts', 'autopilot-page.mts',
-      'autopilot-runner.mts', 'autopilot-preload.cts', 'browser-preload.cts'].map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
+      'autopilot-runner.mts', 'autopilot-research.mts', 'autopilot-evidence.mts', 'autopilot-report.mts',
+      'autopilot-preload.cts', 'browser-preload.cts'].map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
     path.join(rootDirectory, 'desktop', 'shared', 'autopilot.ts'),
     ...['app-release-checker.mts', 'app-update-service.mts', 'app-update-preview.mts', 'app-update-resume.mts',
       'app-update-download.mts', 'app-update-installer.mts', 'app-update-preload.cts']

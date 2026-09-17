@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent, Session, WebContentsView, WebContentsViewConstructorOptions } from 'electron';
 import { createAutopilotBrowser } from '../lib/autopilot-browser.mts';
@@ -55,6 +58,7 @@ class Window extends EventEmitter {
 
 function harness(beforeResponse?: () => void, options: {
   load?: Contents['loadOperation']; navigationTimeoutMs?: number;
+  reportDirectory?: string;
 } = {}) {
   const window = new Window();
   const views: View[] = [];
@@ -72,13 +76,16 @@ function harness(beforeResponse?: () => void, options: {
       views.push(view); return view as unknown as WebContentsView;
     },
     navigationTimeoutMs: options.navigationTimeoutMs,
+    reportDirectory: options.reportDirectory,
     getKey: () => 'fixture-key',
     request: (async (_url: string | URL | Request, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       modelPages.push(body.state.currentPage);
       const answers = Object.fromEntries(Object.entries(body.questions as Record<string, { criteria: Record<string, string> }>).map(([id, question]) =>
         [id, { type: 'choice', confidence: 1, choice: id === 'completion'
-          ? body.state.currentPage.title === 'Target' ? 'reached' : 'continue' : Object.keys(question.criteria)[0] }]));
+          ? body.state.currentPage.title === 'Target' ? 'reached' : 'continue'
+          : id === 'evidence' && body.state.currentPage.title === 'Target'
+            ? Object.keys(question.criteria).find(key => key !== 'none') ?? 'none' : Object.keys(question.criteria)[0] }]));
       beforeResponse?.();
       return Response.json({ answers });
     }),
@@ -331,4 +338,37 @@ test('stop during recovery releases listeners and permits a fresh run without re
     expect(parseAutopilotState(h.invoke(AUTOPILOT_CHANNELS.get)).phase).toBe('completed');
     expectLoadListenersRemoved(contents);
   } finally { h.service.dispose(); }
+});
+
+
+async function expectRejected(operation: Promise<unknown>, message: string) {
+  let failure: unknown;
+  try { await operation; } catch (error) { failure = error; }
+  expect(failure).toBeInstanceOf(Error);
+  expect((failure as Error).message).toContain(message);
+}
+
+test('research export saves directly and rejects dialog requests and foreign frames', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'cheshi-research-ipc-'));
+  const h = harness(undefined, {
+    reportDirectory: directory,
+    load: async contents => { contents.pageText = 'A primary source describing the TypeSafe AI Jev model with original evidence.'; contents.loading = false; },
+  });
+  try {
+    h.invoke(AUTOPILOT_CHANNELS.start, { url: 'https://example.org/start', goal: 'Find original Jev evidence', mode: 'research', targetSources: 1 });
+    await flush();
+    expect(parseAutopilotState(h.invoke(AUTOPILOT_CHANNELS.get)).sources).toHaveLength(1);
+    for (const format of ['markdown', 'csv']) expect(await h.invoke(AUTOPILOT_CHANNELS.export, format)).toBe(true);
+    const files = await readdir(directory);
+    expect(files).toHaveLength(2);
+    for (const filename of files) {
+      const saved = await readFile(join(directory, filename), 'utf8');
+      expect(saved).toContain('https://example.org/target');
+      expect(saved).toContain('A primary source describing');
+      expect(saved).not.toContain('fixture-key');
+    }
+    await expectRejected(h.invoke(AUTOPILOT_CHANNELS.export, { format: 'csv', saveAs: true }), 'format');
+    await expectRejected(h.invoke(AUTOPILOT_CHANNELS.export, 'csv', { ...h.event, senderFrame: {} } as IpcMainInvokeEvent), 'workspace window');
+    await expectRejected(h.invoke(AUTOPILOT_CHANNELS.export, 'exe'), 'format');
+  } finally { h.service.dispose(); await rm(directory, { recursive: true, force: true }); }
 });

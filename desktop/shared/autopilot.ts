@@ -4,11 +4,15 @@ export const AUTOPILOT_CHANNELS = {
   stop: 'cheshi:autopilot:stop',
   view: 'cheshi:autopilot:view',
   state: 'cheshi:autopilot:state',
+  export: 'cheshi:autopilot:export',
 } as const;
 
 export const AUTOPILOT_MAX_STEPS = 20;
-export type AutopilotPhase = 'idle' | 'loading' | 'thinking' | 'acting' | 'completed' | 'stopped' | 'limit' | 'error';
-export interface AutopilotRequest { url: string; goal: string; searchText?: string }
+export type AutopilotPhase = 'idle' | 'loading' | 'thinking' | 'acting' | 'completed' | 'partial' | 'stopped' | 'limit' | 'error';
+export interface AutopilotRequest { url: string; goal: string; searchText?: string; mode?: 'research'; targetSources?: number }
+export interface AutopilotSource { url: string; title: string; accessedAt: string; evidence: string; confidence: number }
+export interface AutopilotIssue { url: string; message: string }
+export type AutopilotReportFormat = 'markdown' | 'csv';
 export interface AutopilotBounds { x: number; y: number; width: number; height: number }
 export interface AutopilotViewRequest { visible: boolean; bounds: AutopilotBounds }
 export interface AutopilotStep {
@@ -29,11 +33,16 @@ export interface AutopilotState {
   error: string | null;
   modelMs: number;
   steps: AutopilotStep[];
+  mode?: 'research';
+  targetSources?: number;
+  sources?: AutopilotSource[];
+  issues?: AutopilotIssue[];
 }
 export interface AutopilotApi {
   getState(): Promise<AutopilotState>;
   start(request: AutopilotRequest): Promise<AutopilotState>;
   stop(): Promise<AutopilotState>;
+  exportReport(format: AutopilotReportFormat): Promise<boolean>;
   setView(request: AutopilotViewRequest): Promise<void>;
   onState(handler: (state: AutopilotState) => void): () => void;
 }
@@ -80,7 +89,48 @@ export function parseAutopilotRequest(value: unknown): AutopilotRequest {
   const goal = text(input.goal, 2000).trim();
   if (!url || !goal) throw new TypeError('Enter a valid HTTP(S) start URL and a goal.');
   const searchText = input.searchText === undefined ? '' : text(input.searchText, 500).trim();
-  return { url, goal, ...(searchText ? { searchText } : {}) };
+  return { url, goal, ...(searchText ? { searchText } : {}), ...researchMode(input) };
+}
+
+function researchMode(input: Record<string, unknown>): { mode?: 'research'; targetSources?: number } {
+  if (input.mode === undefined && input.targetSources === undefined) return {};
+  if (input.mode !== 'research') throw new TypeError('Invalid Autopilot mode.');
+  const targetSources = input.targetSources === undefined ? 5 : number(input.targetSources, 1, 10);
+  if (!Number.isInteger(targetSources)) throw new TypeError('Source count must be a whole number.');
+  return { mode: 'research', targetSources };
+}
+
+export function parseAutopilotReportFormat(value: unknown): AutopilotReportFormat {
+  if (value !== 'markdown' && value !== 'csv') throw new TypeError('Invalid report format.');
+  return value;
+}
+
+function researchResults(input: Record<string, unknown>) {
+  const mode = researchMode(input);
+  if (!mode.mode) {
+    if (input.sources !== undefined || input.issues !== undefined) throw new TypeError('Unexpected research results.');
+    return {};
+  }
+  if (!Array.isArray(input.sources) || input.sources.length > 10 || !Array.isArray(input.issues) || input.issues.length > 24) {
+    throw new TypeError('Invalid research results.');
+  }
+  const seen = new Set<string>();
+  const sources = input.sources.map(value => {
+    const source = autopilotRecord(value);
+    const url = safeAutopilotUrl(source.url);
+    const accessedAt = text(source.accessedAt, 40);
+    const evidence = text(source.evidence, 1200);
+    if (!url || seen.has(url) || !evidence.trim() || !Number.isFinite(Date.parse(accessedAt))) throw new TypeError('Invalid research source.');
+    seen.add(url);
+    return { url, title: text(source.title, 500), accessedAt, evidence, confidence: number(source.confidence, 0, 1) };
+  });
+  const issues = input.issues.map(value => {
+    const issue = autopilotRecord(value);
+    const url = safeAutopilotUrl(issue.url);
+    if (!url) throw new TypeError('Invalid research issue URL.');
+    return { url, message: text(issue.message, 2000) };
+  });
+  return { ...mode, sources, issues };
 }
 
 export function parseAutopilotView(value: unknown): AutopilotViewRequest {
@@ -94,7 +144,7 @@ export function parseAutopilotView(value: unknown): AutopilotViewRequest {
 
 export function parseAutopilotState(value: unknown): AutopilotState {
   const input = autopilotRecord(value);
-  const phases: AutopilotPhase[] = ['idle', 'loading', 'thinking', 'acting', 'completed', 'stopped', 'limit', 'error'];
+  const phases: AutopilotPhase[] = ['idle', 'loading', 'thinking', 'acting', 'completed', 'partial', 'stopped', 'limit', 'error'];
   const phase = phases.find(candidate => candidate === input.phase);
   const url = input.url === '' ? '' : safeAutopilotUrl(input.url);
   if (!phase || url === null || !Array.isArray(input.steps) || input.steps.length > AUTOPILOT_MAX_STEPS + 1) {
@@ -110,5 +160,5 @@ export function parseAutopilotState(value: unknown): AutopilotState {
   });
   return { configured: flag(input.configured), phase, url, title: text(input.title, 500), goal: text(input.goal, 2000),
     error: input.error === null ? null : text(input.error, 2000), modelMs: number(input.modelMs), steps,
-    ...(input.searchText === undefined ? {} : { searchText: text(input.searchText, 500) }) };
+    ...(input.searchText === undefined ? {} : { searchText: text(input.searchText, 500) }), ...researchResults(input) };
 }

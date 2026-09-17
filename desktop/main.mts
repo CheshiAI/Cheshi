@@ -175,6 +175,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
           window, ipc: options.scope.ipc,
           createView: configuration => new WebContentsView(configuration),
           session: session.fromPartition(`cheshi-autopilot-${window.webContents.id}`),
+          reportDirectory: path.join(app.getPath('downloads'), 'Cheshi Research'),
           getKey: () => readAutopilotKey({
             developmentFile: app.isPackaged ? undefined : path.resolve(import.meta.dirname, '..', '.env.signing'),
           }),

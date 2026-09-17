@@ -1,8 +1,9 @@
 import { AUTOPILOT_MAX_STEPS, autopilotRunning, parseAutopilotRequest, safeAutopilotUrl } from '../shared/autopilot.ts';
 import type { AutopilotState } from '../shared/autopilot.ts';
 import type { AutopilotDecision, AutopilotDecisionInput, AutopilotLink, AutopilotPage } from './autopilot-model.mts';
-import { autopilotActionLabel, autopilotActions, sameAutopilotInteraction } from './autopilot-actions.mts';
+import { autopilotActionLabel, autopilotActions, autopilotInteractionKey, sameAutopilotInteraction } from './autopilot-actions.mts';
 import type { AutopilotInteraction } from './autopilot-actions.mts';
+import { runAutopilotResearch } from './autopilot-research.mts';
 
 const MAX_PAGE_CHANGE_RETRIES = 2;
 
@@ -16,22 +17,25 @@ export class AutopilotPageChangedError extends Error {
   }
 }
 
-interface Options {
+export interface AutopilotRunnerOptions {
   configured(): boolean;
   decide(input: AutopilotDecisionInput): Promise<AutopilotDecision>;
   load(url: string, signal: AbortSignal): Promise<AutopilotPage>;
+  read?(signal: AbortSignal): Promise<AutopilotPage>;
   follow(page: AutopilotPage, link: AutopilotLink, signal: AbortSignal): Promise<AutopilotPage>;
   interact?(page: AutopilotPage, action: AutopilotInteraction, signal: AbortSignal): Promise<AutopilotPage>;
   cancelLoad(): void;
   onState(state: AutopilotState): void;
 }
 
-export function createAutopilotRunner(options: Options) {
+export function createAutopilotRunner(options: AutopilotRunnerOptions) {
   let state: AutopilotState = { configured: options.configured(), phase: 'idle', url: '', title: '', goal: '',
     error: null, modelMs: 0, steps: [] };
   let run: AbortController | null = null;
   let disposed = false;
-  const snapshot = (): AutopilotState => ({ ...state, configured: options.configured(), steps: state.steps.map(step => ({ ...step })) });
+  const snapshot = (): AutopilotState => ({ ...state, configured: options.configured(), steps: state.steps.map(step => ({ ...step })),
+    ...(state.sources ? { sources: state.sources.map(source => ({ ...source })) } : {}),
+    ...(state.issues ? { issues: state.issues.map(issue => ({ ...issue })) } : {}) });
   const emit = () => { if (!disposed) options.onState(snapshot()); };
   const update = (value: Partial<AutopilotState>) => { state = { ...state, ...value }; emit(); };
 
@@ -39,12 +43,19 @@ export function createAutopilotRunner(options: Options) {
     const { signal } = controller;
     let started = performance.now();
     try {
+      if (state.mode === 'research') {
+        await runAutopilotResearch(options, { ...state }, signal, value => {
+          if (run === controller && !signal.aborted && !disposed) update(value);
+        });
+        return;
+      }
       let page = await options.load(state.url, signal);
       signal.throwIfAborted();
       let loadMs = performance.now() - started;
       let decisionMs = 0;
       let confidence: number | null = null;
       const visited: string[] = [];
+      const completedInteractions: string[] = [];
       let step = 0;
       let retries = 0;
       let recordPage = true;
@@ -67,7 +78,7 @@ export function createAutopilotRunner(options: Options) {
         }
         started = performance.now();
         const decision = await options.decide({ page, goal: state.goal, visited, signal, searchText: state.searchText,
-          history: state.steps.flatMap(step => step.action ? [step.action] : []) });
+          completedInteractions, history: state.steps.flatMap(step => step.action ? [step.action] : []) });
         signal.throwIfAborted();
         const elapsed = performance.now() - started;
         decisionMs += elapsed;
@@ -76,14 +87,16 @@ export function createAutopilotRunner(options: Options) {
         if (decision.completed) { update({ phase: 'completed' }); return; }
         if (step === AUTOPILOT_MAX_STEPS) { update({ phase: 'limit' }); return; }
         const interaction = decision.interaction;
-        if (interaction) assertInteraction(interaction, page, state.searchText, !!options.interact);
+        if (interaction) assertInteraction(interaction, page, state.searchText, !!options.interact, completedInteractions);
         else assertLink(decision.link, page, visited);
         update({ phase: interaction ? 'acting' : 'loading' });
         started = performance.now();
+        const interactionKey = interaction ? autopilotInteractionKey(page.url, interaction) : null;
         try {
           page = interaction ? await options.interact!(page, interaction, signal)
             : await options.follow(page, decision.link!, signal);
           signal.throwIfAborted();
+          if (interactionKey) completedInteractions.push(interactionKey);
           action = autopilotActionLabel(interaction ?? { kind: 'navigate', link: decision.link! }).slice(0, 600);
           samePageInteraction = !!interaction;
           retries = 0;
@@ -127,7 +140,9 @@ export function createAutopilotRunner(options: Options) {
       const request = parseAutopilotRequest(value);
       if (!options.configured()) throw new Error('Set TYPE_SAFE_AI in the app environment to use Autopilot.');
       run = new AbortController();
-      update({ ...request, searchText: request.searchText, title: '', phase: 'loading', error: null, modelMs: 0, steps: [] });
+      state = { configured: options.configured(), ...request, title: '', phase: 'loading', error: null, modelMs: 0, steps: [],
+        ...(request.mode === 'research' ? { sources: [], issues: [] } : {}) };
+      emit();
       void execute(run);
       return snapshot();
     },
@@ -155,8 +170,8 @@ function assertLink(link: AutopilotLink | null, page: AutopilotPage, visited: st
   }
 }
 
-function assertInteraction(action: AutopilotInteraction, page: AutopilotPage, searchText: string | undefined, supported: boolean): void {
-  if (!supported || !autopilotActions(page, [], searchText).some(candidate =>
+function assertInteraction(action: AutopilotInteraction, page: AutopilotPage, searchText: string | undefined, supported: boolean, completedInteractions: string[]): void {
+  if (!supported || !autopilotActions(page, [], searchText, completedInteractions).some(candidate =>
     candidate.kind !== 'navigate' && sameAutopilotInteraction(candidate, action))) {
     throw new Error('The selected control is not available for this search.');
   }

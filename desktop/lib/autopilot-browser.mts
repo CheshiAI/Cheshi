@@ -1,12 +1,13 @@
 import { writeSync } from 'node:fs';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent, Session, WebContentsView, WebContentsViewConstructorOptions } from 'electron';
-import { AUTOPILOT_CHANNELS, parseAutopilotView, safeAutopilotUrl } from '../shared/autopilot.ts';
+import { AUTOPILOT_CHANNELS, parseAutopilotView, safeAutopilotUrl, parseAutopilotReportFormat } from '../shared/autopilot.ts';
 import type { AutopilotViewRequest } from '../shared/autopilot.ts';
 import { createAutopilotModel } from './autopilot-model.mts';
 import type { AutopilotFetch } from './autopilot-model.mts';
 import { AUTOPILOT_PAGE_SCRIPT, autopilotOperation, parseAutopilotPage } from './autopilot-page.mts';
 import { AutopilotPageChangedError, createAutopilotRunner } from './autopilot-runner.mts';
 import { performAutopilotInteraction } from './autopilot-interaction.mts';
+import { autopilotReport, saveAutopilotReportAutomatically } from './autopilot-report.mts';
 
 interface Options {
   window: BrowserWindow;
@@ -16,6 +17,7 @@ interface Options {
   getKey(): string | null;
   request?: AutopilotFetch;
   navigationTimeoutMs?: number;
+  reportDirectory?: string;
 }
 
 export function createAutopilotBrowser(options: Options) {
@@ -32,6 +34,7 @@ export function createAutopilotBrowser(options: Options) {
   let viewport: AutopilotViewRequest | null = null;
   let disposed = false;
   const channels: string[] = [];
+  let exporting = false;
   let interactionSignal: AbortSignal | null = null;
   let activeLoad: { signal: AbortSignal; fail(error: Error): void } | null = null;
   const cancelLoad = () => { if (view && !view.webContents.isDestroyed()) view.webContents.stop(); };
@@ -45,7 +48,7 @@ export function createAutopilotBrowser(options: Options) {
       diagnostic('model:done', { completed: result.completed, interaction: result.interaction?.kind ?? 'none' });
       return result;
     },
-    load,
+    load, read: readPage,
     async interact(page, action, signal) {
       diagnostic('interaction:start', { kind: action.kind });
       interactionSignal = signal;
@@ -240,6 +243,18 @@ export function createAutopilotBrowser(options: Options) {
   handle(AUTOPILOT_CHANNELS.get, event => { assertOwner(event); return runner.snapshot(); });
   handle(AUTOPILOT_CHANNELS.start, (event, value: unknown) => { assertOwner(event); return runner.start(value); });
   handle(AUTOPILOT_CHANNELS.stop, event => { assertOwner(event); return runner.stop(); });
+  handle(AUTOPILOT_CHANNELS.export, async (event, value: unknown) => {
+    assertOwner(event);
+    if (exporting) throw new Error('A report save is already in progress.');
+    const format = parseAutopilotReportFormat(value);
+    if (!options.reportDirectory) throw new Error('Automatic report saving is unavailable.');
+    const content = autopilotReport(runner.snapshot(), format);
+    exporting = true;
+    try {
+      await saveAutopilotReportAutomatically(content, format, options.reportDirectory);
+      return true;
+    } finally { exporting = false; }
+  });
   handle(AUTOPILOT_CHANNELS.view, (event, value: unknown) => {
     assertOwner(event);
     viewport = parseAutopilotView(value);

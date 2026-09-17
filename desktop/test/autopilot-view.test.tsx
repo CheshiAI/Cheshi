@@ -34,10 +34,11 @@ function createDeferred<T>() {
 const flush = () => new Promise<void>(resolve => setImmediate(resolve));
 const idle: AutopilotState = { configured: true, phase: 'idle', url: '', title: '', goal: '', error: null, modelMs: 0, steps: [] };
 
-function harness(options: { get?: Promise<AutopilotState>; start?: Promise<AutopilotState>; configured?: boolean; available?: boolean } = {}) {
+function harness(options: { get?: Promise<AutopilotState>; start?: Promise<AutopilotState>; configured?: boolean; available?: boolean; saved?: boolean } = {}) {
   const slots: Slot[] = [];
   const effects: Array<() => void> = [];
   const requests: unknown[] = [];
+  const exportsRequested: string[] = [];
   let cursor = 0;
   let handler: ((state: AutopilotState) => void) | undefined;
   let observed = 0;
@@ -54,6 +55,7 @@ function harness(options: { get?: Promise<AutopilotState>; start?: Promise<Autop
     getState: async () => options.get ?? { ...idle, configured: options.configured ?? true },
     start: async request => { requests.push(request); return options.start ?? { ...idle, ...request, phase: 'loading' }; },
     stop: async () => { stops += 1; return { ...idle, phase: 'stopped' }; },
+    exportReport: async format => { exportsRequested.push(format); return options.saved ?? true; },
     setView: async () => {}, onState(callback) { handler = callback; return () => { handler = undefined; }; },
   };
   const modules: Record<string, unknown> = {
@@ -75,6 +77,12 @@ function harness(options: { get?: Promise<AutopilotState>; start?: Promise<Autop
     '../../shared/ui/BetaBadge': { BetaBadge: () => <span>beta</span> },
     './AutopilotView.module.css': { default: {} },
   };
+  const resultSource = readFileSync(new URL('../frontend/src/features/autopilot/AutopilotResearchResults.tsx', import.meta.url), 'utf8');
+  const resultExports: Record<string, unknown> = {};
+  vm.runInNewContext(ts.transpileModule(resultSource, { compilerOptions: {
+    module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023, jsx: ts.JsxEmit.ReactJSX,
+  } }).outputText, { exports: resultExports, require: (name: string) => modules[name] });
+  modules['./AutopilotResearchResults'] = resultExports;
   const source = readFileSync(new URL('../frontend/src/features/autopilot/AutopilotView.tsx', import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023, jsx: ts.JsxEmit.ReactJSX,
@@ -85,7 +93,7 @@ function harness(options: { get?: Promise<AutopilotState>; start?: Promise<Autop
     return modules[name];
   } });
   const component = exports.AutopilotView as typeof AutopilotView;
-  return { requests,
+  return { requests, exportsRequested, resultsComponent: resultExports.AutopilotResearchResults,
     render(active = true, blocked = false) {
       cursor = 0;
       const props: ComponentProps<typeof AutopilotView> = { active, blocked, rightSidebarOpen: false, onToggleRightSidebar() {} };
@@ -174,4 +182,67 @@ test('a late initial state cannot erase completed history and the standalone vie
   const standalone = harness({ available: false });
   try { expect(button(standalone.render(), 'Start').props.disabled).toBe(true); }
   finally { standalone.close(); }
+});
+
+
+test('Research starts with a bounded source target and disables mode changes while collecting', async () => {
+  const h = harness();
+  try {
+    h.render(); await flush();
+    button(h.render(), 'Research').props.onClick?.();
+    elements(h.render()).find(node => node.props['aria-label'] === 'Source target')!.props.onChange?.({ target: { value: '11' } });
+    expect(button(h.render(), 'Start').props.disabled).toBe(true);
+    elements(h.render()).find(node => node.props['aria-label'] === 'Source target')!.props.onChange?.({ target: { value: '3' } });
+    elements(h.render()).find(node => node.type === 'form')!.props.onSubmit?.({ preventDefault() {} });
+    await flush();
+    expect(h.requests).toEqual([{ url: 'https://www.google.com/', goal: 'Find primary sources about TypeSafe AI and the Jev model.',
+      searchText: 'TypeSafe AI Jev', mode: 'research', targetSources: 3 }]);
+    expect(button(h.render(), 'Navigate').props.disabled).toBe(true);
+  } finally { h.close(); }
+});
+
+test('stopped research keeps its evidence visible and reports a failed export', async () => {
+  const h = harness({ saved: false });
+  try {
+    h.render(); await flush();
+    h.emit({ ...idle, mode: 'research', targetSources: 5, phase: 'stopped', sources: [{
+      url: 'https://example.org/source', title: 'Primary source', accessedAt: '2026-09-17T00:00:00.000Z',
+      evidence: 'The original source passage is preserved in this report.', confidence: 0.9,
+    }], issues: [] });
+    const tree = h.render();
+    const markup = renderToStaticMarkup(tree);
+    expect(markup).toContain('Primary source');
+    expect(markup).toContain('Collection is incomplete');
+    expect(markup).toContain('The original source passage');
+    const result = elements(tree).find(node => node.type === h.resultsComponent)!;
+    const props = result.props as ComponentProps<typeof import('../frontend/src/features/autopilot/AutopilotResearchResults').AutopilotResearchResults>;
+    props.onExport('csv');
+    await flush();
+    expect(h.exportsRequested).toEqual(['csv']);
+    expect(renderToStaticMarkup(h.render())).toContain('Could not save the research report.');
+  } finally { h.close(); }
+});
+
+
+test('exports save directly without presenting Save as controls', async () => {
+  const h = harness();
+  try {
+    h.render(); await flush();
+    h.emit({ ...idle, mode: 'research', phase: 'completed', targetSources: 1, issues: [], sources: [{
+      url: 'https://example.org/source', title: 'Evidence', accessedAt: '2026-09-17T00:00:00.000Z',
+      evidence: 'Original evidence passage from a primary source.', confidence: 1,
+    }] });
+    const exportFrom = () => {
+      const result = elements(h.render()).find(node => node.type === h.resultsComponent)!;
+      return result.props as ComponentProps<typeof import('../frontend/src/features/autopilot/AutopilotResearchResults').AutopilotResearchResults>;
+    };
+    exportFrom().onExport('csv'); await flush();
+    expect(renderToStaticMarkup(h.render())).toContain('Saved to Downloads/Cheshi Research.');
+    exportFrom().onExport('markdown'); await flush();
+    expect(h.exportsRequested).toEqual(['csv', 'markdown']);
+    const markup = renderToStaticMarkup(h.render());
+    expect(markup).toContain('Saved to Downloads/Cheshi Research.');
+    expect(markup).not.toContain('Save CSV as');
+    expect(markup).not.toContain('Save Markdown as');
+  } finally { h.close(); }
 });

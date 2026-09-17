@@ -19,7 +19,7 @@ export function autopilotActionLabel(action: AutopilotAction): string {
   return `Click: ${action.control.label}`;
 }
 
-export function autopilotActions(page: AutopilotPage, visited: string[], searchText = ''): AutopilotAction[] {
+export function autopilotActions(page: AutopilotPage, visited: string[], searchText = '', completedInteractions: string[] = []): AutopilotAction[] {
   const links: AutopilotAction[] = page.links.filter(link => safeAutopilotUrl(link.url) && !visited.includes(link.url))
     .map(link => ({ kind: 'navigate', link }));
   // Leaving Search text empty preserves the original link-only mode.
@@ -28,7 +28,8 @@ export function autopilotActions(page: AutopilotPage, visited: string[], searchT
     if (control.kind === 'button') return [{ kind: 'click', control }];
     return control.value === searchText ? [] : [{ kind: 'fill', control, text: searchText }];
   });
-  return [...controls, ...links];
+  return [...controls.filter(action => action.kind === 'navigate'
+    || !completedInteractions.includes(autopilotInteractionKey(page.url, action))), ...links];
 }
 
 export function autopilotActionId(action: AutopilotAction): string {
@@ -44,4 +45,9 @@ export function sameAutopilotInteraction(left: AutopilotInteraction, right: Auto
 export function autopilotPageFingerprint(page: AutopilotPage): string {
   return JSON.stringify([page.url, page.title, page.text, page.links.map(link => [link.url, link.label]),
     (page.controls ?? []).map(control => [control.kind, control.signature, control.value])]);
+}
+
+/** Ignore ephemeral DOM IDs and toggle state so a recreated button cannot restart a loop. */
+export function autopilotInteractionKey(url: string, action: AutopilotInteraction): string {
+  return JSON.stringify([url, action.kind, action.control.label, action.kind === 'fill' ? action.text : '']);
 }

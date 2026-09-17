@@ -8,7 +8,7 @@ const CONTROL_HELPERS = String.raw`
     && element.getClientRects().length && !['hidden', 'collapse'].includes(getComputedStyle(element).visibility);
   const describe = element => {
     if (!visible(element) || element.matches(':disabled') || element.getAttribute('aria-disabled') === 'true') return null;
-    const input = element.tagName === 'INPUT' && ['text', 'search'].includes(element.type);
+    const input = (element.tagName === 'INPUT' && ['text', 'search'].includes(element.type)) || element.tagName === 'TEXTAREA';
     const button = element.tagName === 'BUTTON' || (element.tagName === 'INPUT' && ['button', 'submit'].includes(element.type))
       || element.getAttribute('role') === 'button';
     if ((!input && !button) || (input && element.readOnly)) return null;
@@ -47,7 +47,7 @@ export const AUTOPILOT_PAGE_SCRIPT = `(() => {
   }
   const controls = [];
   registry.elements.clear();
-  for (const element of document.querySelectorAll('input, button, [role="button"]')) {
+  for (const element of document.querySelectorAll('input, textarea, button, [role="button"]')) {
     const control = describe(element);
     if (!control) continue;
     registry.elements.set(control.id, element);
@@ -72,7 +72,8 @@ export function autopilotInteractionScript(url: string, action: AutopilotInterac
     element.focus();
     if (expected.action.kind === 'fill') {
       if (current.kind !== 'input') return 'stale';
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(element, expected.action.text);
+      const prototype = element.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(prototype, 'value').set.call(element, expected.action.text);
       element.dispatchEvent(new Event('input', { bubbles: true }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
       return element.value === expected.action.text ? 'applied' : 'rejected';

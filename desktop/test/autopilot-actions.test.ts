@@ -1,14 +1,14 @@
 import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { createContext, runInContext } from 'node:vm';
-import { autopilotActions } from '../lib/autopilot-actions.mts';
+import { autopilotActions, autopilotInteractionKey } from '../lib/autopilot-actions.mts';
 import type { AutopilotControl, AutopilotInteraction } from '../lib/autopilot-actions.mts';
 import { createAutopilotModel } from '../lib/autopilot-model.mts';
 import type { AutopilotDecision, AutopilotPage } from '../lib/autopilot-model.mts';
 import { AUTOPILOT_PAGE_SCRIPT, autopilotInteractionScript, parseAutopilotPage } from '../lib/autopilot-page.mts';
 import { performAutopilotInteraction } from '../lib/autopilot-interaction.mts';
 import { AutopilotPageChangedError, createAutopilotRunner } from '../lib/autopilot-runner.mts';
-import { AUTOPILOT_MAX_STEPS, parseAutopilotRequest, parseAutopilotState } from '../shared/autopilot.ts';
+import { parseAutopilotRequest, parseAutopilotState } from '../shared/autopilot.ts';
 
 const flush = () => new Promise<void>(resolve => setImmediate(resolve));
 const input: AutopilotControl = { id: 'control_1', kind: 'input', label: 'Search', signature: 'search', value: '' };
@@ -24,7 +24,7 @@ function dom(markup: string) {
   } as typeof window.HTMLElement.prototype.getClientRects;
   window.HTMLElement.prototype.scrollIntoView = () => {};
   const context = createContext({ document: window.document, location: window.location, URL,
-    getComputedStyle: window.getComputedStyle.bind(window), HTMLInputElement: window.HTMLInputElement, Event: window.Event });
+    getComputedStyle: window.getComputedStyle.bind(window), HTMLInputElement: window.HTMLInputElement, HTMLTextAreaElement: window.HTMLTextAreaElement, Event: window.Event });
   const evaluate = (code: string): unknown => runInContext(code, context);
   const read = () => parseAutopilotPage(evaluate(AUTOPILOT_PAGE_SCRIPT));
   return { window, read, evaluate, close: () => window.happyDOM.close() };
@@ -140,7 +140,7 @@ test('a stale control triggers refresh before execution and stop aborts result o
   await failure(pending, 'abort');
 });
 
-test('runner records fill and click on the same URL, checks results, and honors action limits', async () => {
+test('runner records fill and click on the same URL, checks results, and rejects repeated clicks', async () => {
   let interactions = 0;
   const runner = createAutopilotRunner({ configured: () => true, onState() {}, cancelLoad() {}, load: async () => start,
     follow: async () => { throw new Error('Unexpected navigation'); },
@@ -167,8 +167,8 @@ test('runner records fill and click on the same URL, checks results, and honors 
   });
   endless.start({ url: start.url, goal: 'Never complete', searchText: fill.text });
   await flush();
-  expect(endless.snapshot().phase).toBe('limit');
-  expect(endless.snapshot().steps).toHaveLength(AUTOPILOT_MAX_STEPS + 1);
+  expect(endless.snapshot().phase).toBe('error');
+  expect(endless.snapshot().steps).toHaveLength(2);
   endless.dispose();
 });
 
@@ -216,4 +216,39 @@ test('runner reselects refreshed controls without duplicating a same-page histor
   expect(runner.snapshot().phase).toBe('completed');
   expect(runner.snapshot().steps).toHaveLength(1);
   runner.dispose();
+});
+
+
+test('textarea search controls retain native input events and reject stale replacements', async () => {
+  const h = dom('<form method="get"><textarea aria-label="Search" role="combobox"></textarea><button>Search</button></form>'
+    + '<textarea readonly aria-label="Readonly"></textarea><textarea disabled aria-label="Disabled"></textarea>'
+    + '<form method="post"><textarea aria-label="Message"></textarea></form>');
+  try {
+    const before = h.read();
+    expect(before.controls?.map(control => control.label)).toEqual(['Search', 'Search']);
+    const field = h.window.document.querySelector('textarea')!;
+    const events: string[] = [];
+    for (const name of ['input', 'change']) field.addEventListener(name, () => events.push(name));
+    const action: AutopilotInteraction = { kind: 'fill', control: before.controls![0]!, text: 'TypeSafe AI Jev' };
+    const after = await performAutopilotInteraction({ read: async () => h.read(), evaluate: async code => h.evaluate(code),
+      loading: () => false, timeoutMs: 100, pollMs: 1, settleMs: 2 }, before, action, new AbortController().signal);
+    expect(after.controls![0]!.value).toBe(action.text);
+    expect(events).toEqual(['input', 'change']);
+    field.outerHTML = '<textarea aria-label="Search" role="combobox"></textarea>';
+    expect(h.evaluate(autopilotInteractionScript(before.url, action))).toBe('stale');
+  } finally { await h.close(); }
+});
+
+test('model excludes completed interactions even after a button is recreated or toggled', async () => {
+  const key = autopilotInteractionKey(start.url, { kind: 'click', control: button });
+  const changed = { ...start, controls: [input, { ...button, id: 'control_9', signature: 'expanded' }] };
+  const model = createAutopilotModel('fixture', async (_url, init) => {
+    const body = JSON.parse(String(init.body));
+    expect(Object.keys(body.questions.links_0.criteria)).toEqual(['fill_control_1']);
+    return Response.json({ answers: { completion: { type: 'choice', choice: 'continue', confidence: 1 },
+      links_0: { type: 'choice', choice: 'fill_control_1', confidence: 1 } } });
+  });
+  expect((await model({ page: changed, goal: 'Find it', searchText: fill.text, visited: [],
+    completedInteractions: [key], signal: new AbortController().signal })).interaction).toEqual(fill);
+  expect(autopilotActions({ ...changed, url: 'https://example.org/other' }, [], fill.text, [key])).toHaveLength(2);
 });
