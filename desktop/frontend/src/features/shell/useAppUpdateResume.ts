@@ -4,7 +4,7 @@ import { cheshiDesktop } from '../../cheshiDesktop';
 import type { WorkspaceView } from '../navigation/Sidebar';
 import { resumeRecord, updateResumeCoordinator } from './updateWorkspaceResume';
 
-const restorableViews: readonly WorkspaceView[] = ['chat', 'notes', 'blank', 'codegraph', 'editor', 'git', 'plugins', 'terminal', 'showcase'];
+const restorableViews: readonly WorkspaceView[] = ['chat', 'notes', 'blank', 'codegraph', 'editor', 'git', 'plugins', 'terminal', 'showcase', 'autopilot'];
 let initialSnapshot: Promise<unknown> | undefined;
 
 export function useAppUpdateResume(options: {

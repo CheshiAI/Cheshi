@@ -11,7 +11,7 @@ import { prepareChatAttachmentTransfers } from './shared/chat-attachment-import.
 import { marketplaceAddRequest, pluginWorkflowRequest } from './shared/plugin-actions.ts';
 import { gitDiscardRequest, gitDiscardSelection } from './shared/git-discard.ts';
 import { createWorkspaceManagementApi } from './lib/workspace-management-preload.cts';
-import { createShowcaseApi } from './lib/showcase-preload.cts';
+import { createBrowserApis } from './lib/browser-preload.cts';
 import { createAppUpdateApi } from './lib/app-update-preload.cts';
 import { createKeepAwakeApi } from './lib/keep-awake-preload.cts';
 import { createEditorSessionApi } from './lib/editor-session-preload.cts';
@@ -580,7 +580,7 @@ const cheshiDesktopApi = {
   ...createKeepAwakeApi(ipcRenderer),
   ...createWorkspaceFileSearchApi(ipcRenderer),
   workspaceManagement: createWorkspaceManagementApi(ipcRenderer),
-  showcase: createShowcaseApi(ipcRenderer),
+  ...createBrowserApis(ipcRenderer),
   platform: process.platform,
   workspaceName: workspace.workspaceName,
   userName: typeof workspace.userName === 'string' ? workspace.userName : '',

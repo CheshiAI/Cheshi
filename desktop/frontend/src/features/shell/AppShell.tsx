@@ -29,6 +29,7 @@ import { Sidebar, type WorkspaceView } from '../navigation/Sidebar';
 import { PluginsView } from '../plugins';
 import { TerminalWorkspace } from '../terminal';
 import { ShowcaseView } from '../showcase/ShowcaseView';
+import { AutopilotView } from '../autopilot/AutopilotView';
 import { ReviewSidebar } from './ReviewSidebar';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import { LocalHistoryPage } from '../editor/LocalHistoryPage';
@@ -42,7 +43,7 @@ import { NotesView } from '../notes/NotesView';
 import { appleNoteAttachment } from '../notes/appleNotesModel';
 import type { AppleNote } from '../../../../shared/apple-notes';
 
-const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase', 'notes'];
+const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase', 'notes', 'autopilot'];
 
 export function AppShell() {
   const [accountLoaded, setAccountLoaded] = useState(false);
@@ -315,6 +316,10 @@ export function AppShell() {
           )}
           <ShowcaseView active={activeView === 'showcase'}
             blocked={fileSearchOpen || temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
+            rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
+          <AutopilotView active={activeView === 'autopilot'}
+            blocked={fileSearchOpen || temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending || updateResume.busy}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
           <TerminalWorkspace

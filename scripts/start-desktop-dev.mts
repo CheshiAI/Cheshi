@@ -177,6 +177,9 @@ function scheduleForgeRestart(changedPath: string): void {
 
 function handleMainSourceChange(changedPath: string): void {
   if (![preloadSourcePath, rendererReadinessSourcePath,
+    path.join(rootDirectory, 'desktop', 'lib', 'autopilot-preload.cts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'browser-preload.cts'),
+    path.join(rootDirectory, 'desktop', 'shared', 'autopilot.ts'),
     path.join(rootDirectory, 'desktop', 'lib', 'app-update-preload.cts'),
     path.join(rootDirectory, 'desktop', 'shared', 'app-update.ts')].includes(changedPath)) {
     scheduleForgeRestart(changedPath);
@@ -202,6 +205,9 @@ function watchMainSources(): FSWatcher[] {
     path.join(rootDirectory, 'desktop', 'bootstrap.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'development-shutdown.mts'),
     path.join(rootDirectory, 'desktop', 'main.mts'),
+    ...['autopilot-browser.mts', 'autopilot-key.mts', 'autopilot-model.mts', 'autopilot-page.mts',
+      'autopilot-runner.mts', 'autopilot-preload.cts', 'browser-preload.cts'].map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
+    path.join(rootDirectory, 'desktop', 'shared', 'autopilot.ts'),
     ...['app-release-checker.mts', 'app-update-service.mts', 'app-update-preview.mts', 'app-update-resume.mts',
       'app-update-download.mts', 'app-update-installer.mts', 'app-update-preload.cts']
       .map(name => path.join(rootDirectory, 'desktop', 'lib', name)),

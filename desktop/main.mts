@@ -22,6 +22,8 @@ import { loadMenuBarLogo } from './lib/menu-bar-logo.mts';
 import { createAccountUsageBackground } from './lib/account-usage-background.mts';
 import { getCodexAccountProfiles } from './lib/codex-account-profiles.mts';
 import { createShowcaseBrowser } from './lib/showcase-browser.mts';
+import { createAutopilotBrowser } from './lib/autopilot-browser.mts';
+import { readAutopilotKey } from './lib/autopilot-key.mts';
 import { findAppRelease } from './lib/app-release-checker.mts';
 import { createAppUpdateService } from './lib/app-update-service.mts';
 import { createAppUpdatePreview } from './lib/app-update-preview.mts';
@@ -149,6 +151,7 @@ let openingStartupWindow = false;
 function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntime>[0]) {
   const source = usageTray?.register();
   let showcase: ReturnType<typeof createShowcaseBrowser> | undefined;
+  let autopilot: ReturnType<typeof createAutopilotBrowser> | undefined;
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try { runtime = createWorkspaceRuntime(options, snapshot => source?.update(snapshot)); }
   catch (error) { source?.dispose(); throw error; }
@@ -168,13 +171,21 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
           session: session.fromPartition(`cheshi-showcase-${window.webContents.id}`),
           openExternal: url => shell.openExternal(url),
         });
+        autopilot ??= createAutopilotBrowser({
+          window, ipc: options.scope.ipc,
+          createView: configuration => new WebContentsView(configuration),
+          session: session.fromPartition(`cheshi-autopilot-${window.webContents.id}`),
+          getKey: () => readAutopilotKey({
+            developmentFile: app.isPackaged ? undefined : path.resolve(import.meta.dirname, '..', '.env.signing'),
+          }),
+        });
         return window;
       }
       catch (error) { source?.dispose(); throw error; }
     },
     show: () => runtime.show(),
     async dispose() {
-      try { showcase?.dispose(); }
+      try { autopilot?.dispose(); showcase?.dispose(); }
       finally { try { await runtime.dispose(); } finally { source?.dispose(); } }
     },
   };

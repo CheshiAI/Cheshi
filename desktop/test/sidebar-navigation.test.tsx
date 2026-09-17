@@ -1,5 +1,6 @@
 import { expect, mock, test } from 'bun:test';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import type { WorkspaceView } from '../frontend/src/features/navigation/Sidebar';
 
 mock.module('../frontend/src/cheshiDesktop', () => ({ cheshiDesktop: undefined }));
@@ -13,7 +14,7 @@ function elements(node: ReactNode): ReactElement<ElementProps>[] {
 }
 
 test('Codex uses page navigation when returning from another view or selecting it again', () => {
-  for (const activeView of ['notes', 'terminal', 'git', 'plugins', 'editor', 'codegraph', 'chat', 'search', 'showcase'] as const) {
+  for (const activeView of ['notes', 'terminal', 'git', 'plugins', 'editor', 'codegraph', 'chat', 'search', 'showcase', 'autopilot'] as const) {
     const destinations: WorkspaceView[] = [];
     const sidebar = Sidebar({ activeView, selectedFilePath: null, onNavigate: view => destinations.push(view),
       onWorkspaceEntryMutation() {}, onOpenWorkspaceFile() {} });
@@ -32,5 +33,17 @@ test('other management entries retain their destinations', () => {
   for (const element of elements(sidebar)) {
     if (element.type === 'button' && element.key !== 'Codex') element.props.onClick?.();
   }
-  expect(destinations).toEqual(['codegraph', 'notes', 'terminal', 'git', 'plugins', 'showcase']);
+  expect(destinations).toEqual(['codegraph', 'notes', 'terminal', 'git', 'plugins', 'showcase', 'autopilot']);
+});
+
+test('Autopilot is the last menu destination and carries its beta label', () => {
+  const destinations: WorkspaceView[] = [];
+  const sidebar = Sidebar({ activeView: 'autopilot', selectedFilePath: null, onNavigate: view => destinations.push(view),
+    onWorkspaceEntryMutation() {}, onOpenWorkspaceFile() {} });
+  const last = elements(sidebar).filter(element => element.props.onClick).at(-1)!;
+  expect(last.key).toBe('Autopilot');
+  expect(last.props['data-active']).toBe('true');
+  expect(renderToStaticMarkup(last)).toContain('beta');
+  last.props.onClick?.();
+  expect(destinations).toEqual(['autopilot']);
 });
