@@ -1,6 +1,6 @@
 export function isFileSearchShortcut(event: Pick<KeyboardEvent,
   'code' | 'shiftKey' | 'ctrlKey' | 'metaKey' | 'altKey' | 'repeat' | 'isComposing' | 'keyCode' | 'defaultPrevented'>): boolean {
-  return event.code === 'KeyF' && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey
+  return event.code === 'KeyF' && event.shiftKey && !event.ctrlKey && event.metaKey && !event.altKey
     && !event.repeat && !event.isComposing && event.keyCode !== 229 && !event.defaultPrevented;
 }
 

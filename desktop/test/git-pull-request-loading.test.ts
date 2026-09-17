@@ -9,10 +9,11 @@ import type {
   GitHubPullRequestListResult, GitHubPullRequestSummary,
 } from '../frontend/src/cheshiDesktop.ts';
 import {
-  pullRequestReviewLocation, pullRequestReviewLocationKey,
+  pullRequestMatchesBranch, pullRequestReviewLocation, pullRequestReviewLocationKey,
 } from '../frontend/src/features/git/gitWorkspaceModel.ts';
 import { parseUnifiedDiff } from '../frontend/src/features/git/unifiedDiff.ts';
 import { createGitWorkspaceControllerHarness } from './git-workspace-controller-test-harness.ts';
+import { normalizePullRequest } from '../lib/github-pull-request-data.mts';
 
 interface TestElement {
   type: unknown;
@@ -86,7 +87,7 @@ function loadComponent(filename: string): Record<string, unknown> {
       GITHUB_COMMENT_BODY_LIMIT: 65536, PULL_REQUEST_DETAIL_STYLE: {}, pullRequestMergeMethods: [],
       formatGitDate: (value: string) => value,
       reviewDecisionLabel: (value: string | null) => value ?? 'Pending',
-      pullRequestReviewLocation, pullRequestReviewLocationKey,
+      pullRequestMatchesBranch, pullRequestReviewLocation, pullRequestReviewLocationKey,
     },
   };
   vm.runInNewContext(compiled.outputText, {
@@ -121,6 +122,101 @@ function visibleText(value: unknown): string {
   if (Array.isArray(value)) return value.map(visibleText).join(' ');
   return isElement(value) ? visibleText(value.props.children) : '';
 }
+
+function renderBranchActions(options: {
+  requests?: GitHubPullRequestSummary[]; needsPush?: boolean; busy?: boolean; loading?: boolean;
+  branch?: string | null; detached?: boolean; noCommits?: boolean; available?: boolean; merged?: boolean;
+  operation?: 'push' | 'create' | null;
+} = {}) {
+  const calls: string[] = [];
+  const component = loadComponent('GitPullRequestListPanel.tsx').GitPullRequestListPanel;
+  assert.ok(typeof component === 'function');
+  const tree = component({ controller: {
+    busy: options.busy ?? false, pullRequestsLoading: options.loading ?? false,
+    pullRequestOperation: options.operation ?? null,
+    mergedPullRequest: options.merged ? { pullRequest: selectedPullRequest } : null,
+    pullRequests: { available: options.available ?? true, message: '', pullRequests: options.requests ?? [selectedPullRequest] },
+    selectedPullRequest,
+    snapshot: { head: options.branch === undefined ? 'feature/local' : options.branch, detached: options.detached ?? false },
+    pullRequestHasNoCommits: options.noCommits ?? false,
+    pullRequestNeedsPush: options.needsPush ?? false,
+    pullRequestEmptyMessage: 'Current branch status',
+    pushCurrentBranch: async () => { calls.push('push'); return true; },
+    createPullRequest: async () => { calls.push('create'); },
+    selectPullRequest: (request: GitHubPullRequestSummary) => { calls.push(`select:${request.number}`); },
+    refreshPullRequests: async () => {},
+  } });
+  const area = elements(tree).find(element => element.props['aria-label'] === 'Current branch');
+  const action = elements(area).find(element => element.type === 'button');
+  const click = () => {
+    assert.ok(action && typeof action.props.onClick === 'function');
+    action.props.onClick();
+  };
+  return { tree, area, action, calls, click };
+}
+
+test('an unrelated selected PR leaves current-branch push and creation available', () => {
+  for (const needsPush of [true, false]) {
+    const view = renderBranchActions({ needsPush });
+    assert.ok(view.area);
+    assert.equal(visibleText(view.action).trim(), needsPush ? 'Push feature/local' : 'Create pull request');
+    view.click();
+    assert.deepEqual(view.calls, [needsPush ? 'push' : 'create']);
+    const externalRow = elements(view.tree).find(element => element.props['aria-current'] === 'true');
+    assert.ok(externalRow && visibleText(externalRow).includes(selectedPullRequest.title));
+  }
+});
+
+test('an existing current-branch PR is selected instead of creating a duplicate', () => {
+  const current = { ...selectedPullRequest, number: 16, headRefName: 'feature/local' };
+  const view = renderBranchActions({ requests: [selectedPullRequest, current] });
+  assert.equal(visibleText(view.action).trim(), 'View pull request #16');
+  view.click();
+  assert.deepEqual(view.calls, ['select:16']);
+  const ahead = renderBranchActions({ requests: [selectedPullRequest, current], needsPush: true });
+  ahead.click();
+  assert.deepEqual(ahead.calls, ['push']);
+});
+
+test('a same-named branch from an external fork does not hide local PR creation', () => {
+  const view = renderBranchActions({ requests: [{ ...selectedPullRequest, headRefName: 'feature/local', crossRepository: true }] });
+  assert.equal(visibleText(view.action).trim(), 'Create pull request');
+  view.click();
+  assert.deepEqual(view.calls, ['create']);
+});
+
+test('the current-branch actions remain available with an empty PR list', () => {
+  for (const needsPush of [false, true]) {
+    const view = renderBranchActions({ requests: [], needsPush });
+    assert.ok(visibleText(view.tree).includes('No open pull requests.'));
+    view.click();
+    assert.deepEqual(view.calls, [needsPush ? 'push' : 'create']);
+  }
+});
+
+test('branch actions retain loading, operation, detached and post-merge guards', () => {
+  for (const options of [{ busy: true }, { loading: true }, { operation: 'push' as const }, { operation: 'create' as const }]) {
+    const view = renderBranchActions(options);
+    assert.equal(view.action?.props.disabled, true);
+    view.click();
+    assert.deepEqual(view.calls, []);
+  }
+  for (const options of [{ detached: true }, { branch: null }, { noCommits: true }, { merged: true }, { available: false }]) {
+    assert.equal(renderBranchActions(options).action, undefined);
+  }
+});
+
+test('PR summaries preserve literal cross-repository metadata', () => {
+  const raw = { ...selectedPullRequest, url: 'https://github.com/example/project/pull/12', author: { login: 'contributor' } };
+  for (const value of [true, false, 'true', 1]) {
+    assert.equal(normalizePullRequest({ ...raw, isCrossRepository: value }).crossRepository, value === true);
+  }
+  assert.equal(normalizePullRequest(raw).crossRepository, undefined);
+  assert.equal(pullRequestMatchesBranch({ ...selectedPullRequest, crossRepository: true }, selectedPullRequest.headRefName), false);
+  assert.equal(pullRequestMatchesBranch({ ...selectedPullRequest, crossRepository: false }, selectedPullRequest.headRefName), true);
+  assert.equal(pullRequestMatchesBranch(null, null), false);
+  assert.equal(pullRequestMatchesBranch(selectedPullRequest, undefined), false);
+});
 
 function renderPanel(options: ActivityOptions = {}): unknown {
   const component = loadComponent('GitPullRequestDetailPanel.tsx').GitPullRequestDetailPanel;

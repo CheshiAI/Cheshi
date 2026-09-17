@@ -29,6 +29,9 @@ import { Sidebar, type WorkspaceView } from '../navigation/Sidebar';
 import { PluginsView } from '../plugins';
 import { TerminalWorkspace } from '../terminal';
 import { ShowcaseView } from '../showcase/ShowcaseView';
+import { SettingsView } from '../settings/SettingsView';
+import { useAutopilotMenu } from '../settings/useAutopilotMenu';
+import { AutopilotView } from '../autopilot/AutopilotView';
 import { ReviewSidebar } from './ReviewSidebar';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import { LocalHistoryPage } from '../editor/LocalHistoryPage';
@@ -42,9 +45,10 @@ import { NotesView } from '../notes/NotesView';
 import { appleNoteAttachment } from '../notes/appleNotesModel';
 import type { AppleNote } from '../../../../shared/apple-notes';
 
-const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase', 'notes'];
+const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase', 'notes', 'autopilot', 'settings'];
 
 export function AppShell() {
+  const [autopilotMenuVisible] = useAutopilotMenu();
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [temporaryChatOpen, setTemporaryChatOpen] = useState(false);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
@@ -236,6 +240,7 @@ export function AppShell() {
         <LiquidGlassPanel className="sidebar-column" inert={workspace.accountSwitchPending}>
           <WindowChrome />
           <Sidebar
+            autopilotMenuVisible={autopilotMenuVisible}
             activeView={activeView}
             selectedFilePath={activeView === 'local-history' ? localHistoryPath : editorSelectedPath}
             onNavigate={navigate}
@@ -315,6 +320,13 @@ export function AppShell() {
           )}
           <ShowcaseView active={activeView === 'showcase'}
             blocked={fileSearchOpen || temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
+            rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
+          {activeView === 'settings' && <SettingsView rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={() => setRightSidebarOpen(currentOpen => !currentOpen)} />}
+          <AutopilotView active={activeView === 'autopilot'}
+            chatContextId={workspace.activePaneId}
+            blocked={fileSearchOpen || temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending || updateResume.busy}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
           <TerminalWorkspace

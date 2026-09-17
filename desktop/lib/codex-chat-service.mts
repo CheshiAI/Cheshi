@@ -5,6 +5,7 @@ import { readCodexAgentDetails } from './codex-chat-agent-details.mts';
 import { preserveCodexConversation, type CodexConversationAccess } from './codex-chat-account-continuity.mts';
 import { stopCodexCommands } from './codex-chat-stop.mts';
 import { stopCodexMcpProbe, type CodexMcpProbeClient } from './codex-mcp-probe.mts';
+import { acquireCodexMcpTurnStart, withCodexMcpTurnStartLock } from './codex-mcp-recovery.mts';
 import { randomUUID } from "node:crypto";
 import {
   addCodexMarketplace,
@@ -107,6 +108,7 @@ export class CodexChatService {
   selectedCollaborationMode: ChatCollaborationMode = 'default';
   private readonly pendingSteers = new Set<string>();
   readonly pendingTurnStarts = new Set<string | null>();
+  private turnStartLifetime = new AbortController();
   readonly userInputs: CodexChatUserInputs;
   private readonly turnInterrupts = new WeakMap<ActiveTurn, Promise<void>>();
   private readonly stoppingTurns = new WeakSet<ActiveTurn>();
@@ -608,6 +610,7 @@ export class CodexChatService {
     let submitted = false;
     let accepted = false;
     try {
+      signal = signal ? AbortSignal.any([signal, this.turnStartLifetime.signal]) : this.turnStartLifetime.signal;
       signal?.throwIfAborted();
       const message = requiredString(text, "Chat message");
       const messageId = requiredString(clientMessageId, "Client message id");
@@ -645,9 +648,11 @@ export class CodexChatService {
       if (requestedThreadId === null)
         this.pendingNewTurnClientMessageId = messageId;
       this.pendingTurnStarts.add(requestedThreadId);
+      let releaseTurnStart = () => {};
       try {
         const collaborationOverride = await codexCollaborationOverride(this);
         threadId = await this.ensureWritableThread(requestedThreadId);
+        releaseTurnStart = await acquireCodexMcpTurnStart(this, threadId, signal);
         signal?.throwIfAborted();
         if (this.pendingNewTurnClientMessageId === messageId)
           this.pendingNewTurnClientMessageId = null;
@@ -694,6 +699,7 @@ export class CodexChatService {
         if (!interruptingAcceptedTurn) this.failCommand(threadId, messageId, error);
         throw error;
       } finally {
+        releaseTurnStart();
         this.pendingTurnStarts.delete(requestedThreadId);
       }
     } catch (error) {
@@ -749,24 +755,27 @@ export class CodexChatService {
     if (this.isThreadActive(targetThreadId))
       throw new Error("A response is already in progress for this chat.");
     const clientMessageId = this.nextCommandMessageId("compact");
-    try {
-      const threadId = await this.ensureWritableThread(targetThreadId);
-      const active = this.beginActiveTurn(threadId, clientMessageId);
-      await this.client.request("thread/compact/start", { threadId });
-      if (!active.startedEmitted) {
-        active.startedEmitted = true;
-        this.emit({
-          type: "turn-started",
-          threadId,
-          turnId: null,
-          clientMessageId,
-        });
+    return withCodexMcpTurnStartLock(this, this.turnStartLifetime.signal, async (signal) => {
+      try {
+        const threadId = await this.ensureWritableThread(targetThreadId);
+        signal.throwIfAborted();
+        const active = this.beginActiveTurn(threadId, clientMessageId);
+        await this.client.request("thread/compact/start", { threadId });
+        if (!active.startedEmitted) {
+          active.startedEmitted = true;
+          this.emit({
+            type: "turn-started",
+            threadId,
+            turnId: null,
+            clientMessageId,
+          });
+        }
+        return { threadId, turnId: active.turnId };
+      } catch (error) {
+        this.failCommand(targetThreadId, clientMessageId, error);
+        throw error;
       }
-      return { threadId, turnId: active.turnId };
-    } catch (error) {
-      this.failCommand(targetThreadId, clientMessageId, error);
-      throw error;
-    }
+    });
   }
 
   /** @returns {Promise<{ threadId: string, turnId: string | null }>} */
@@ -775,24 +784,27 @@ export class CodexChatService {
     if (this.isThreadActive(targetThreadId))
       throw new Error("A response is already in progress for this chat.");
     const clientMessageId = this.nextCommandMessageId("review");
-    try {
-      const threadId = await this.ensureWritableThread(targetThreadId);
-      const active = this.beginActiveTurn(threadId, clientMessageId);
-      const raw = await this.client.request("review/start", {
-        threadId,
-        target: { type: "uncommittedChanges" },
-        delivery: "inline",
-      });
-      const turnId = stringValue(recordValue(recordValue(raw)?.turn)?.id);
-      if (turnId) this.acceptTurnId(active, turnId);
-      if (active.interruptRequested && active.turnId) {
-        await this.interrupt(active);
+    return withCodexMcpTurnStartLock(this, this.turnStartLifetime.signal, async (signal) => {
+      try {
+        const threadId = await this.ensureWritableThread(targetThreadId);
+        signal.throwIfAborted();
+        const active = this.beginActiveTurn(threadId, clientMessageId);
+        const raw = await this.client.request("review/start", {
+          threadId,
+          target: { type: "uncommittedChanges" },
+          delivery: "inline",
+        });
+        const turnId = stringValue(recordValue(recordValue(raw)?.turn)?.id);
+        if (turnId) this.acceptTurnId(active, turnId);
+        if (active.interruptRequested && active.turnId) {
+          await this.interrupt(active);
+        }
+        return { threadId, turnId: active.turnId };
+      } catch (error) {
+        this.failCommand(targetThreadId, clientMessageId, error);
+        throw error;
       }
-      return { threadId, turnId: active.turnId };
-    } catch (error) {
-      this.failCommand(targetThreadId, clientMessageId, error);
-      throw error;
-    }
+    });
   }
 
   /**
@@ -845,6 +857,7 @@ export class CodexChatService {
   }
 
   stop(): Promise<void> {
+    this.turnStartLifetime.abort(new Error('This chat pane has been closed.'));
     this.pendingSteers.clear();
     this.pendingTurnStarts.clear();
     this.selectedCollaborationMode = 'default';
@@ -877,6 +890,7 @@ export class CodexChatService {
     const restore = preserveConversation ? preserveCodexConversation(this) : null;
     const listeners = [...this.listeners];
     await this.stop();
+    this.turnStartLifetime = new AbortController();
     for (const listener of listeners) this.listeners.add(listener);
     this.availablePluginLogos.clear();
     this.selectedReasoningEffort = DEFAULT_REASONING_EFFORT;
@@ -916,6 +930,8 @@ export class CodexChatService {
   }
 
   handleFailure(error: Error) {
+    this.turnStartLifetime.abort();
+    this.turnStartLifetime = new AbortController();
     this.subscribedThreadIds.clear();
     this.pendingTurnNotifications.clear();
     return handleCodexFailure(this, error);

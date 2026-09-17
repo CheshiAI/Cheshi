@@ -14,10 +14,20 @@
 .buttons { display: flex; justify-content: flex-end; gap: var(--icon-default); }
 .deletionActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-default); }
 .deletionProgress { margin-right: auto; justify-content: flex-start; }
-.historyDialog,
 .splitDialog { --modal-title-color: var(--active-text); }
+.historyDialog {
+  --modal-header-height: var(--header-height);
+  --modal-header-padding: 0 var(--space-default);
+  --modal-title-color: var(--sidebar-section-label-color);
+  --modal-title-size: 10px;
+  --modal-title-icon-size: 11px;
+  --modal-title-icon-stroke-width: 1.7;
+}
+.historyDialog .form { font-size: 11px; font-weight: 400; }
 .historyDialog .sessionTitle { color: var(--text); }
-.historyDialog .options legend { color: var(--sidebar-section-label-color); }
+.historyDialog .options legend { color: var(--sidebar-section-label-color); font-weight: 400; }
+.historyDialog .option strong { font-size: 11px; font-weight: 500; }
+.historyDialog .option small { color: var(--sub-text); white-space: normal; overflow-wrap: anywhere; }
 .openingProgress { justify-content: flex-start; }
 
 .option:not(:has(input:disabled)):is(:hover, :focus-within),

@@ -149,6 +149,71 @@ test('new catalog instance resolves saved aliases without another fork', async (
   expect(f.forkCount()).toBe(1);
 });
 
+test('an existing handoff inherits the original name without rewriting history or the ledger', async () => {
+  const f = await fixture();
+  f.source.name = 'Aside처럼 구현하기';
+  await f.catalog.resolve('source', 'b', f.client('b'));
+  // Imported rollouts and forks can omit the name stored in the source account database.
+  for (const thread of f.threads.get('b')!) thread.name = null;
+  const fork = f.threads.get('b')!.find(thread => thread.id === 'fork-1')!;
+  fork.preview = '초기 실행시 0 으로 잡힙니다.';
+  fork.updatedAt = 10;
+  const ledger = await readFile(join(f.options.directory, 'conversations.json'), 'utf8');
+  f.calls.splice(0);
+  const restarted = new CodexConversationCatalog(f.options);
+  const result = await restarted.list();
+  expect(result.sessions).toHaveLength(1);
+  expect(result.sessions[0]).toMatchObject({ id: 'fork-1', profileId: 'b', title: 'Aside처럼 구현하기',
+    preview: '초기 실행시 0 으로 잡힙니다.', updatedAt: 10 });
+  expect(fork.name).toBeNull();
+  expect(f.calls.every(call => call.method === 'thread/list')).toBe(true);
+  expect(await readFile(join(f.options.directory, 'conversations.json'), 'utf8')).toBe(ledger);
+  expect(await readFile(join(f.a, f.rollout), 'utf8')).toBe(f.bytes);
+});
+
+test('an unnamed handoff retains the original preview title when neither account has a name', async () => {
+  const f = await fixture();
+  await f.catalog.resolve('source', 'b', f.client('b'));
+  const fork = f.threads.get('b')!.find(thread => thread.id === 'fork-1')!;
+  fork.name = '  ';
+  fork.preview = 'The next question';
+  expect((await f.catalog.list()).sessions[0]).toMatchObject({
+    id: 'fork-1', title: 'A completed conversation', preview: 'The next question',
+  });
+});
+
+test('an explicit name on the current continuation takes priority over the original name', async () => {
+  const f = await fixture();
+  f.source.name = 'Original title';
+  await f.catalog.resolve('source', 'b', f.client('b'));
+  f.threads.get('b')!.find(thread => thread.id === 'fork-1')!.name = 'Renamed conversation';
+  expect((await f.catalog.list()).sessions[0]?.title).toBe('Renamed conversation');
+});
+
+test('successive handoffs inherit the most recent explicit name using the account and thread together', async () => {
+  const f = await fixture();
+  f.source.name = 'Original title';
+  await f.catalog.resolve('source', 'b', f.client('b'));
+  f.threads.get('b')!.find(thread => thread.id === 'fork-1')!.name = 'Renamed before switching back';
+  await f.catalog.resolve('fork-1', 'a', f.client('a'));
+  f.threads.get('a')!.find(thread => thread.id === 'fork-2')!.name = null;
+  expect((await f.catalog.list()).sessions).toMatchObject([
+    { id: 'fork-2', profileId: 'a', title: 'Renamed before switching back' },
+  ]);
+});
+
+test('missing predecessor metadata keeps the current preview instead of borrowing an unrelated name', async () => {
+  const f = await fixture();
+  f.source.name = 'Original title';
+  await f.catalog.resolve('source', 'b', f.client('b'));
+  const fork = f.threads.get('b')!.find(thread => thread.id === 'fork-1')!;
+  fork.name = null;
+  fork.preview = 'Current preview';
+  f.threads.set('a', [{ ...f.source, id: 'unrelated', name: 'Unrelated title' }]);
+  f.threads.set('b', [fork]);
+  expect((await f.catalog.list()).sessions.find(session => session.id === 'fork-1')?.title).toBe('Current preview');
+});
+
 test('read-only requests follow the latest alias owner without starting or resuming a turn', async () => {
   const f = await fixture();
   await f.catalog.resolve('source', 'b', f.client('b'));

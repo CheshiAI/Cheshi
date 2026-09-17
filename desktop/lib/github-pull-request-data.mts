@@ -112,6 +112,7 @@ export function normalizePullRequest(value: unknown) {
       pullRequest.headRefName,
       "head branch",
     ),
+    ...(pullRequest.isCrossRepository === undefined ? {} : { crossRepository: isLiteralTrue(pullRequest.isCrossRepository) }),
     baseRefName: requiredPullRequestString(
       pullRequest.baseRefName,
       "base branch",

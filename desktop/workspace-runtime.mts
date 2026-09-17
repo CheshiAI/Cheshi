@@ -1,6 +1,6 @@
 import { createWorkspaceWindowReadiness } from './lib/workspace-window-readiness.mts';
 import { createWorkspaceRendererEvents } from './lib/workspace-renderer-events.mts';
-import { EphemeralSessionService } from './lib/ephemeral-session-service.mts';
+import { createWorkspaceResearch } from './lib/autopilot-workspace.mts';
 import { TemporaryChatService } from './lib/temporary-chat-service.mts';
 import { registerTemporaryChatIpc } from './lib/temporary-chat-ipc.mts';
 import { explainWorkspaceCode } from './lib/workspace-code-explanation.mts';
@@ -189,7 +189,9 @@ const workspaceAccounts = createWorkspaceCodexAccounts({
 const createChatClient = workspaceAccounts.createClient;
 const codexAppServerClient = createChatClient();
 const ephemeralSessionClient = createChatClient();
-let ephemeralSessionService = new EphemeralSessionService(ephemeralSessionClient, workspaceRoot);
+const researchSessions = createWorkspaceResearch({ client: ephemeralSessionClient, cwd: workspaceRoot,
+  service: contextId => contextId && mainWindow ? codexChatContexts.existing(mainWindow.webContents.id, contextId) : codexChatService,
+});
 const temporaryChats = registerTemporaryChatIpc({
   ipc: ipcMain, assertSender: assertCheshiSender,
   createService: () => new TemporaryChatService({ createClient: createChatClient, cwd: workspaceRoot }),
@@ -246,11 +248,8 @@ const accountSwitch = workspaceAccounts.register({
   retained: [codexAppServerClient, ephemeralSessionClient],
   service: codexChatService, contexts: codexChatContexts, deletion: codexChatSessionDeletion,
   relays: codexChatRelays, accountUsage: codexAccountService,
-  temporaryBusy: () => temporaryChats.hasSessions || ephemeralSessionService.busy,
-  resetTemporary: () => {
-    ephemeralSessionService.stop();
-    ephemeralSessionService = new EphemeralSessionService(ephemeralSessionClient, workspaceRoot);
-  },
+  temporaryBusy: () => temporaryChats.hasSessions || researchSessions.session.busy || researchSessions.research.busy,
+  resetTemporary: () => researchSessions.reset(),
   emit: snapshot => {
     onAccountsChanged?.(snapshot);
     for (const window of workspaceWindows()) rendererEvents.send(window, 'cheshi:codex-accounts-changed', snapshot);
@@ -501,11 +500,11 @@ ipcMain.handle('cheshi:install-codex-plugin', (_event, reference) => codexChatSe
 ipcMain.handle('cheshi:uninstall-codex-plugin', (_event, pluginId) => codexChatService.uninstallPlugin(pluginId));
 ipcMain.handle('cheshi:explain-code', (event, request) => {
   assertCheshiSender(event);
-  return explainWorkspaceCode(ephemeralSessionService, request);
+  return explainWorkspaceCode(researchSessions.session, request);
 });
 ipcMain.handle('cheshi:cancel-code-explanation', (event, requestId) => {
   assertCheshiSender(event);
-  ephemeralSessionService.cancel(codeExplanationRequestId(requestId));
+  researchSessions.session.cancel(codeExplanationRequestId(requestId));
 });
 ipcMain.handle('cheshi:select-codex-chat-attachments', (event) => selectCodexChatAttachments(event));
 ipcMain.handle('cheshi:import-codex-chat-attachments', async (_event, payload: unknown) => {
@@ -945,6 +944,7 @@ async function initialize(): Promise<BrowserWindow> {
   logStartup('git watcher ready');
   if (options.initial) await startupScreen.setStatus('Loading workspace information…');
   pendingIndexWarning = index.error ? String(index.error) : null;
+  await accountSwitch.initialize(error => chatServiceOptions.log('codex-account-initialization-failed', { message: String(error) }));
   const window = await createMainWindow(codeGraphUrl);
   return window;
 }
@@ -973,7 +973,7 @@ function dispose(): Promise<void> {
     disposeGitRepositoryWatcher();
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
     disposeTerminal();
-    ephemeralSessionService.stop();
+    researchSessions.session.stop();
     const results = await Promise.allSettled([
       codexChatService.stop(),
       chatHistorySearch.stop(),
@@ -995,5 +995,5 @@ function show() {
   if (!revealPreparedWindow) throw new Error('The workspace window is not ready.');
   revealPreparedWindow();
 }
-return { start, show, dispose };
+return { start, show, dispose, research: researchSessions.research };
 }

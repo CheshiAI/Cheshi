@@ -31,6 +31,8 @@ import {
   GITHUB_SUBMIT_PULL_REQUEST_REVIEW_MUTATION,
 } from "./github-pull-request-queries.mts";
 
+const PULL_REQUEST_SUMMARY_FIELDS = "number,title,url,headRefName,baseRefName,isCrossRepository,author,updatedAt,isDraft,reviewDecision,changedFiles";
+
 interface GitHubPullRequestContext {
   runGit(args: string[], options?: GitCommandOptions): Promise<CommandResult>;
   runGitHub(args: string[], options?: Omit<CommandOptions, "cwd">): Promise<CommandResult>;
@@ -56,7 +58,7 @@ export async function listGitHubPullRequests(context: GitHubPullRequestContext) 
       "--limit",
       "100",
       "--json",
-      "number,title,url,headRefName,baseRefName,author,updatedAt,isDraft,reviewDecision,changedFiles",
+      PULL_REQUEST_SUMMARY_FIELDS,
     ]);
     const parsed = assertPullRequestList(JSON.parse(result.stdout || "[]"));
     return {
@@ -252,7 +254,7 @@ export async function createGitHubPullRequest(context: GitHubPullRequestContext)
     "pr",
     "view",
     "--json",
-    "number,title,url,headRefName,baseRefName,author,updatedAt,isDraft,reviewDecision,changedFiles",
+    PULL_REQUEST_SUMMARY_FIELDS,
   ]);
   return normalizePullRequest(JSON.parse(result.stdout || "{}"));
 }

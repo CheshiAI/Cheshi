@@ -68,10 +68,13 @@ function viewportHarness(setView?: ShowcaseApi['setView']) {
     getClientRects: () => [{}], getBoundingClientRect: () => rect } as unknown as HTMLElement;
   const api: ShowcaseApi = { setView: async request => { requests.push(request); await setView?.(request); },
     navigate: async () => {}, onState: () => () => {} };
-  const module = compile('showcaseViewport.ts', { window, document, performance: { now: () => now },
+  const globals = { window, document, performance: { now: () => now },
     ResizeObserver: class { constructor(callback: () => void) { resize = callback; } observe() {} disconnect() { disconnected += 1; } },
     MutationObserver: class { constructor(callback: () => void) { mutate = callback; } observe() {} disconnect() { disconnected += 1; } },
-  }, { '../../../../shared/showcase': { safeShowcaseBackgroundColor } });
+  };
+  const nativeViewport = compile('../../shared/nativeBrowserViewport.ts', globals);
+  const module = compile('showcaseViewport.ts', globals, { '../../../../shared/showcase': { safeShowcaseBackgroundColor },
+    '../../shared/nativeBrowserViewport': nativeViewport });
   return { requests, errors, overlays, window, document,
     measure: () => (module.showcaseViewportRequest as typeof showcaseViewportRequest)(element, 'submission'),
     observe: () => (module.observeShowcaseViewport as typeof observeShowcaseViewport)(element, api, 'submission', error => errors.push(error)),

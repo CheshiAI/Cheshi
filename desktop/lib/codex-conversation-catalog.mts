@@ -70,6 +70,23 @@ function sameLocation(left: ConversationLocation, right: ConversationLocation): 
   return left.profileId === right.profileId && left.threadId === right.threadId;
 }
 
+/** Recover display metadata from existing handoff aliases without changing physical histories. */
+function conversationSession(entry: LocatedThread, chain: Chain | undefined, entries: LocatedThread[]): JsonObject | null {
+  const session = sessionFromThread(entry.thread);
+  if (!session || !chain) return session;
+  const predecessors = chain.locations.filter(location => !sameLocation(location, chain.current))
+    .flatMap(location => {
+      const previous = entries.find(candidate => sameLocation(candidate.location, location));
+      return previous ? [previous] : [];
+    });
+  const named = [entry, ...predecessors.reverse()].find(candidate => stringValue(candidate.thread.name)?.trim());
+  // Prefer the latest explicit name, then the original preview title if no name was ever assigned.
+  const inherited = named ?? predecessors.at(-1);
+  if (!inherited || inherited === entry) return session;
+  const previous = sessionFromThread(inherited.thread);
+  return previous ? { ...session, title: previous.title } : session;
+}
+
 function chainFor(ledger: Ledger, threadId: string): Chain | undefined {
   return ledger.chains.find(chain => chain.locations.some(item => item.threadId === threadId));
 }
@@ -359,7 +376,7 @@ export class CodexConversationCatalog {
       for (const entry of entries) {
         const chain = chainFor(ledger, entry.location.threadId);
         if (chain?.deleted || chain?.confirmedDeletions?.length || (chain && !sameLocation(chain.current, entry.location))) continue;
-        const session = sessionFromThread(entry.thread);
+        const session = conversationSession(entry, chain, entries);
         if (session) sessions.set(entry.location.threadId, { ...session, profileId: entry.location.profileId });
       }
       for (const chain of ledger.chains) {

@@ -184,6 +184,7 @@ export interface GitHubPullRequestSummary {
   title: string;
   url: string;
   headRefName: string;
+  crossRepository?: boolean;
   baseRefName: string;
   author: string | null;
   updatedAt: string;
@@ -652,6 +653,8 @@ export interface CodexChatConfigurationRequest {
 export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpdateResumeApi>, Partial<KeepAwakeApi> {
   workspaceManagement?: WorkspaceManagementApi;
   showcase?: import('../../shared/showcase').ShowcaseApi;
+  settings?: import('../../shared/settings').SettingsApi;
+  autopilot?: import('../../shared/autopilot').AutopilotApi;
   platform: string;
   workspaceName: string;
   userName: string;

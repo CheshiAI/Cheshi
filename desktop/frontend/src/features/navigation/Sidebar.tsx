@@ -2,21 +2,24 @@ import {
   Bell,
   Blocks,
   Crosshair,
+  Navigation,
   PanelsTopLeft,
   Search,
+  Settings,
   SquareTerminal,
   StickyNote,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { NeumorphicButton } from '../../shared/ui';
+import { BetaBadge } from '../../shared/ui/BetaBadge';
 import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import { WorkspaceFileTree } from './WorkspaceFileTree';
 import { WorkspaceSelector } from './WorkspaceSelector';
 
-export type WorkspaceView = 'chat' | 'notes' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'showcase' | 'local-history';
+export type WorkspaceView = 'chat' | 'notes' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'showcase' | 'local-history' | 'autopilot' | 'settings';
 
-const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceView }> = [
+const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceView; beta?: boolean }> = [
   { label: 'Relationship Graph', icon: <Crosshair aria-hidden="true" />, view: 'codegraph' },
   { label: 'Codex', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
   { label: 'Memo', icon: <StickyNote aria-hidden="true" />, view: 'notes' },
@@ -24,9 +27,12 @@ const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceVi
   { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
   { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },
   { label: 'Showcase', icon: <PanelsTopLeft aria-hidden="true" />, view: 'showcase' },
+  { label: 'Autopilot', icon: <Navigation aria-hidden="true" />, view: 'autopilot', beta: true },
+  { label: 'Settings', icon: <Settings aria-hidden="true" />, view: 'settings' },
 ];
 
 interface SidebarProps {
+  autopilotMenuVisible?: boolean;
   activeView: WorkspaceView;
   selectedFilePath: string | null;
   onNavigate: (view: WorkspaceView) => void;
@@ -36,6 +42,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({
+  autopilotMenuVisible = false,
   activeView,
   selectedFilePath,
   onNavigate,
@@ -65,7 +72,7 @@ export function Sidebar({
           </div>
 
           <nav className="primary-navigation" aria-label="Primary navigation">
-            {navigationItems.map((item) => (
+            {navigationItems.filter(item => item.view !== 'autopilot' || autopilotMenuVisible).map((item) => (
               <button
                 className="navigation-item"
                 data-active={item.view === activeView ? 'true' : undefined}
@@ -75,6 +82,7 @@ export function Sidebar({
               >
                 {item.icon}
                 <span>{item.label}</span>
+                {item.beta && <BetaBadge />}
               </button>
             ))}
           </nav>

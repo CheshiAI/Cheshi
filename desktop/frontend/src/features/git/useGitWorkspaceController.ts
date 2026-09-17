@@ -25,6 +25,7 @@ import {
   EMPTY_PULL_REQUESTS,
   EMPTY_SNAPSHOT,
   GIT_REMOTE_SYNC_INTERVAL_MS,
+  pullRequestMatchesBranch,
   sameGitDiffRequest,
   snapshotFingerprint,
   waitForMinimumLoadingFeedback,
@@ -440,7 +441,7 @@ export function useGitWorkspaceController() {
   } else if (pullRequestNeedsPush) {
     pullRequestEmptyMessage = `Push ${snapshot.head} before creating a pull request.`;
   }
-  const selectedPullRequestIsCurrentBranch = selectedPullRequest?.headRefName === snapshot.head;
+  const selectedPullRequestIsCurrentBranch = pullRequestMatchesBranch(selectedPullRequest, snapshot.head);
   const selectedPullRequestNeedsPush = selectedPullRequestIsCurrentBranch && pullRequestNeedsPush;
   const runMutation = useCallback(async (
     operation: () => Promise<GitMutationOutcome>,

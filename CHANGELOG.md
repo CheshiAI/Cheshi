@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.0.6-preview
+
+Pending release
+
+- Changed the Find file shortcut from Shift+F to Command+Shift+F.
+- Added Autopilot beta, powered by TypeSafe AI's Jev model, for following links,
+  entering search text, and clicking page controls in an embedded browser.
+  Runs show visited pages, action progress, and model and browser timings.
+- Added question-based Research using the selected Codex model to plan questions
+  and write reports, with Jev handling browsing and evidence assessment.
+  Research follows up on missing evidence, compares publisher claims and external
+  sources, and reports conflicting findings and unanswered questions with citations.
+- Added deeper reading of long documents through sections, tables, and code
+  examples. Navigation and document reads have separate limits and progress
+  counters; incomplete research retains collected evidence and reports its limits.
+- Added Markdown and CSV research exports saved directly to Downloads/Cheshi Research
+  without a save dialog.
+- Improved browser action recovery by refreshing stale page controls before retrying,
+  supporting textarea search fields, and avoiding repeated actions without progress.
+  Search-result pages are excluded from collected research sources.
+- Added a Settings page for saving, replacing, checking, and deleting TypeSafe API
+  keys. Saved keys are encrypted on this computer, shown only in masked form,
+  and take priority over environment keys.
+- Added a persistent Autopilot menu toggle, off by default and disabled without
+  an available API key. Removing the last available key turns the toggle off.
+  Settings now remains at the bottom of the navigation menu.
+- Redesigned Autopilot with a compact header, three full-width input rows with
+  icons and clear buttons, and mode and run controls below the inputs.
+  Inputs start empty with descriptive placeholders, and switching modes preserves
+  user input. Unified the initial Memo and Autopilot screens with the graph's
+  centered empty-state style.
+- Added recovery attempts for failed CodeGraph MCP connections before starting
+  a chat turn, without interrupting active turns or blocking ordinary chat when
+  recovery is unavailable.
+- Fixed startup account selection to switch from an exhausted default account
+  to an account with confirmed available usage before opening the workspace.
+  Menu-bar usage now reflects the selected account without waiting for a chat message.
+- Fixed conversation titles changing after switching accounts. Continuations
+  without a title retain the previous conversation title, including existing
+  account handoffs, while explicitly renamed conversations keep their new title.
+
 ## 0.0.5-preview
 
 Pending release
