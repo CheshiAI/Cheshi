@@ -104,7 +104,17 @@
 .userRow { display: flex; justify-content: flex-end; padding-left: 14%; }
 .userRow[data-pending="true"] { opacity: .76; }
 .deliveryStatus { color: var(--sidebar-section-label-color); font-size: 10.5px; line-height: 1.5; }
-.sendRecovery { display: flex; align-items: center; gap: var(--space-default); font-size: 12px; line-height: 1.5; color: var(--sidebar-section-label-color); }
+.sendRecovery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-default);
+  margin-bottom: var(--space-default);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--sidebar-section-label-color);
+}
+.sendRecovery > span { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
 .sendRecovery button { flex-shrink: 0; }
 .userMessageGroup { display: flex; min-width: 0; max-width: 100%; flex-direction: column; align-items: flex-start; gap: 8px; }
 .messageLabel { display: flex; align-items: center; gap: 6px; color: var(--text); }
@@ -239,7 +249,7 @@
   left: 0;
   padding: var(--composer-overlay-top-padding) 40px 12px;
 }
-.commandMenu, .approvalPrompt, .composerSurface, .error { width: min(100%, 780px); margin-right: auto; margin-left: auto; }
+.commandMenu, .approvalPrompt, .composerSurface, .error, .sendRecovery { width: min(100%, 780px); margin-right: auto; margin-left: auto; }
 .approvalPrompt {
   --liquid-glass-radius: 14px;
   display: grid;
