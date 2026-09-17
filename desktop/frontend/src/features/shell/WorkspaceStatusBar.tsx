@@ -2,6 +2,7 @@ import { Activity, Gauge } from 'lucide-react';
 import { useCallback, useId, useRef, useState, type ComponentProps } from 'react';
 
 import type { CodexAccountsSnapshot } from '../../../../shared/codex-accounts';
+import { presentationMode } from '../../shared/presentation';
 import { LiquidGlassPanel } from '../../shared/ui';
 import { AccountUsagePanel } from '../account/AccountUsagePanel';
 import { AddAccountDialog } from '../account/AddAccountDialog';
@@ -40,7 +41,7 @@ export function WorkspaceStatusBar({ onAccountInitialLoad, onIndexInitialLoad, .
     setAccounts(snapshot);
     setAccountError(error);
   }, []);
-  const account = accountStatusSummary(accounts);
+  const account = accountStatusSummary(accounts, presentationMode);
   const activeProfile = accounts?.profiles.find((profile) => profile.id === accounts.activeId);
   const accountReady = accountError === null && activeProfile?.usage.authenticated === true
     && activeProfile.usage.state === 'ready' && activeProfile.login.state === 'signed_in'

@@ -1,8 +1,9 @@
 import type { CodexAccountsSnapshot } from '../../../../shared/codex-accounts';
 import { weeklyGeneralWindow, remainingPercent } from '../../../../shared/codex-account-usage';
+import { presentationAccountName } from '../../shared/presentation';
 export { accountUsageTotals } from '../../../../shared/codex-account-usage';
 
-export function accountStatusSummary(snapshot: CodexAccountsSnapshot | null): {
+export function accountStatusSummary(snapshot: CodexAccountsSnapshot | null, hideIdentity = false): {
   label: string; title: string; attention: boolean;
 } {
   if (!snapshot) {
@@ -12,7 +13,7 @@ export function accountStatusSummary(snapshot: CodexAccountsSnapshot | null): {
   if (!profile) {
     return { label: 'Account · Sign in', title: 'Sign in to view account usage', attention: false };
   }
-  const name = profile.email ?? profile.label;
+  const name = presentationAccountName(profile.email ?? profile.label, hideIdentity);
   const { usage, login } = profile;
   if (usage.state === 'error' || login.state === 'error' || login.error !== null) {
     return {

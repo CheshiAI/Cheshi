@@ -60,6 +60,7 @@ function harness(props: ComponentProps<typeof WorkspaceStatusBar>) {
     },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'lucide-react': { Activity: 'Activity', Gauge: 'Gauge' },
+    '../../shared/presentation': { presentationMode: false },
     '../../shared/ui': { LiquidGlassPanel: 'LiquidGlassPanel' },
     '../account/AccountUsagePanel': { AccountUsagePanel: 'AccountUsagePanel' },
     '../account/AddAccountDialog': { AddAccountDialog: 'AddAccountDialog' },

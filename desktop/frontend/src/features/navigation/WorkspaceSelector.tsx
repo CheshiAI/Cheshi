@@ -2,11 +2,14 @@ import { useRef, useState } from 'react';
 
 import { NeumorphicButton, WorkspaceProjectIcon } from '../../shared/ui';
 import { cheshiDesktop as workspace } from '../../cheshiDesktop';
+import { presentationWorkspaceRoot } from '../../shared/presentation';
 import { workspaceError } from './workspace-management/workspace-paths';
 import styles from './workspace-management/workspace-management.module.css';
 
 const workspaceName = workspace?.workspaceName ?? 'Workspace';
-const workspaceRoot = workspace?.workspaceRoot ?? 'Workspace root unavailable';
+const workspaceRoot = workspace
+  ? presentationWorkspaceRoot(workspace.workspaceRoot, workspaceName)
+  : 'Workspace root unavailable';
 
 export function WorkspaceSelector() {
   const [busy, setBusy] = useState(false);

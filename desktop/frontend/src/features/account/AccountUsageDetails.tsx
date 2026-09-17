@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { presentationAccountName } from '../../shared/presentation';
 import { weeklyGeneralWindow, type CodexRateLimitWindow } from './model';
 import type { CodexAccountProfile } from '../../../../shared/codex-accounts';
 import styles from './AccountUsagePanel.module.css';
@@ -87,10 +88,11 @@ export function AccountUsageDetails({ profile, active, actions, children }: {
   const loading = usage.state === 'starting' || login.state === 'checking';
   const message = login.state === 'signing_in' ? 'Finish signing in in your browser.'
     : login.error ?? usage.error ?? (usage.state === 'login_required' ? 'Sign in to view plan and usage.' : null);
+  const profileName = presentationAccountName(profile.email ?? profile.label);
   return (
-    <section className={styles.profile} aria-label={profile.email ?? profile.label} data-active={active}>
+    <section className={styles.profile} aria-label={profileName} data-active={active}>
       <header className={styles.profileHeading}>
-        <strong title={profile.email ?? profile.label}>{profile.email ?? profile.label}</strong>
+        <strong title={profileName}>{profileName}</strong>
         <span className={styles.profilePlan}>{planLabel(usage.plan)}</span>
       </header>
       <div className={styles.metrics} aria-busy={loading}>

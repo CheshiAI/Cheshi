@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
+import { presentationUserName } from '../../shared/presentation';
 import { chatGreeting } from './chatGreeting';
 import styles from './ChatView.module.css';
 
@@ -37,7 +38,7 @@ export function ChatWelcome({ workspaceName }: { workspaceName: string }) {
         </div>
         <figcaption className={styles.welcomeQuoteAuthor}>— Lewis Carroll —</figcaption>
       </figure>
-      <h2>{chatGreeting(now, cheshiDesktop?.userName ?? '')}</h2>
+      <h2>{chatGreeting(now, presentationUserName(cheshiDesktop?.userName ?? ''))}</h2>
       <p>How can I help with {workspaceName}?</p>
     </div>
   );

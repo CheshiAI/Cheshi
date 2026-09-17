@@ -549,6 +549,7 @@ ipcMain.on('cheshi:get-workspace-metadata', (event) => {
     userName: currentUserName(),
     workspaceName: path.basename(workspaceRoot) || 'Workspace',
     workspaceRoot,
+    presentationMode: process.env.CHESHI_PRESENTATION === '1',
   };
 });
 

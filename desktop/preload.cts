@@ -584,6 +584,7 @@ const cheshiDesktopApi = {
   platform: process.platform,
   workspaceName: workspace.workspaceName,
   userName: typeof workspace.userName === 'string' ? workspace.userName : '',
+  presentationMode: workspace.presentationMode === true,
   workspaceRoot: workspace.workspaceRoot,
   getWorkspaceDiskUsage: async () => workspaceDiskUsage(await ipcRenderer.invoke('cheshi:get-workspace-disk-usage')),
   isCodeGraphIndexed: () => ipcRenderer.invoke('cheshi:is-codegraph-indexed'),

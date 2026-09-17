@@ -19,6 +19,14 @@ function weeklyProfile(usedPercent: number): CodexAccountProfile {
     secondary: { usedPercent, windowDurationMins: 10_080, resetsAt: null } }] });
 }
 
+test('hides the account email in presentation mode', () => {
+  const account = weeklyProfile(6);
+  expect(accountStatusSummary({ activeId: account.id, profiles: [account] }, true)).toEqual({
+    label: 'Codex account', title: 'Codex account: 94% weekly usage remaining', attention: false,
+  });
+  expect(summary(account).label).toBe('person@example.com');
+});
+
 test('distinguishes the initial check from missing active accounts', () => {
   expect(accountStatusSummary(null)).toMatchObject({ label: 'Account · Checking…', attention: false });
   expect(accountStatusSummary({ activeId: 'missing', profiles: [] })).toMatchObject({ label: 'Account · Sign in' });

@@ -655,6 +655,8 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   platform: string;
   workspaceName: string;
   userName: string;
+  /** Hides personal identity such as the user name, home path, and account email while recording. */
+  presentationMode: boolean;
   workspaceRoot: string;
   getWorkspaceDiskUsage?: () => Promise<import('../../shared/workspace-disk-usage').WorkspaceDiskUsage>;
   isCodeGraphIndexed: () => Promise<boolean>;
