@@ -110,6 +110,7 @@ function shouldIgnore(packagePath: string): boolean {
     'codex-app-server-client.mts',
     'codex-app-server-shutdown.mts',
     'codex-mcp-probe.mts',
+    'codex-mcp-recovery.mts',
     'codex-chat-catalog-operations.mts',
     'codex-chat-catalog.mts',
     'codex-chat-configuration.mts',

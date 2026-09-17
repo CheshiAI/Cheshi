@@ -228,6 +228,7 @@ function watchMainSources(): FSWatcher[] {
     path.join(rootDirectory, 'desktop', 'lib', 'codex-account-service.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'codex-app-server-client.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'codex-chat-service.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'codex-mcp-recovery.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'codex-service-utils.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'ghostty-surface-host.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'git-service.mts'),
