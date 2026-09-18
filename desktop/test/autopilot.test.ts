@@ -7,6 +7,8 @@ import { runInNewContext } from 'node:vm';
 import { createBrowserApis } from '../lib/browser-preload.cts';
 import { readAutopilotKey } from '../lib/autopilot-key.mts';
 import { createAutopilotModel } from '../lib/autopilot-model.mts';
+import { AUTOPILOT_REQUEST_BYTES, evaluateAutopilotQuestions } from '../lib/autopilot-model-request.mts';
+import type { ChoiceQuestion } from '../lib/autopilot-model-request.mts';
 import type { AutopilotDecision, AutopilotPage } from '../lib/autopilot-model.mts';
 import { AUTOPILOT_PAGE_SCRIPT, autopilotOperation, parseAutopilotPage } from '../lib/autopilot-page.mts';
 import { AutopilotPageChangedError, createAutopilotRunner } from '../lib/autopilot-runner.mts';
@@ -93,6 +95,7 @@ test('model uses candidate IDs, honors the 255-option limit and chooses among gr
     expect(url).toBe('https://api.typesafe.ai/v1/systemone');
     expect(init?.redirect).toBe('error');
     const body = JSON.parse(String(init?.body));
+    expect(Buffer.byteLength(String(init?.body))).toBeLessThanOrEqual(AUTOPILOT_REQUEST_BYTES);
     expect(body.model).toBe('jev-latest');
     calls.push(body.questions);
     const answers = Object.fromEntries(Object.entries(body.questions as Record<string, { criteria: Record<string, string> }>).map(([id, question]) => {
@@ -104,9 +107,145 @@ test('model uses candidate IDs, honors the 255-option limit and chooses among gr
   });
   const result = await createAutopilotModel('fixture-key', request)({ page: current, goal: 'Find 599',
     visited: [current.url], signal: new AbortController().signal });
-  expect(calls).toHaveLength(2);
-  expect(Object.keys(calls[1]!.next!.criteria)).toEqual(['link_254', 'link_509', 'link_599']);
+  expect(calls.length).toBeGreaterThan(1);
+  expect(Object.keys(calls.at(-1)!.next!.criteria)).toEqual(['none', 'link_253', 'link_507', 'link_599']);
   expect(result.link?.url).toBe('https://example.org/599');
+});
+
+test('model reports structured provider errors without echoing credentials or request payloads', async () => {
+  const input = { page: page('start'), goal: 'Target', visited: [], signal: new AbortController().signal };
+  const key = 'fixture-private-key';
+  for (const [body, expected] of [
+    [{ detail: { error_type: 'max_tokens_exceeded' } }, 'max_tokens_exceeded'],
+    [{ error: { code: 'invalid_request', message: `Invalid request ${key} Bearer other-credential` },
+      input: 'private page content', headers: { Authorization: 'Bearer hidden-header' } }, 'invalid_request'],
+    [{ detail: [{ msg: 'Too many choices', input: { api_key: 'hidden-input' } }] }, 'Too many choices'],
+  ] as const) {
+    let message = '';
+    try { await createAutopilotModel(key, async () => Response.json(body, { status: 400 }))(input); }
+    catch (error) { message = (error as Error).message; }
+    expect(message).toContain('TypeSafe request failed (400).');
+    expect(message).toContain(expected);
+    for (const secret of [key, 'other-credential', 'hidden-header', 'hidden-input', 'private page content']) {
+      expect(message).not.toContain(secret);
+    }
+  }
+});
+
+test('provider diagnostics handle plain text, HTML, large bodies, stream failures and stop', async () => {
+  const input = { page: page('start'), goal: 'Target', visited: [], signal: new AbortController().signal };
+  await rejection(createAutopilotModel('fixture-key', async () => new Response('upstream temporarily unavailable', { status: 502 }))(input),
+    'upstream temporarily unavailable');
+  for (const response of [new Response('<html>private proxy details</html>', { status: 502 }),
+    new Response('x'.repeat(20_000), { status: 400 }),
+    new Response(new ReadableStream({ start(controller) { controller.error(new Error('private stream failure')); } }), { status: 400 })]) {
+    let message = '';
+    try { await createAutopilotModel('fixture-key', async () => response)(input); }
+    catch (error) { message = (error as Error).message; }
+    expect(message).toBe(`TypeSafe request failed (${response.status}).`);
+  }
+  const controller = new AbortController();
+  const model = createAutopilotModel('fixture-key', async () => new Response(new ReadableStream({
+    pull() { controller.abort(new Error('Stopped while reading diagnostics')); },
+  }), { status: 400 }));
+  await rejection(model({ ...input, signal: controller.signal }), 'Stopped while reading diagnostics');
+});
+
+test('large multilingual controls and links stay within request budget without losing late candidates', async () => {
+  const current: AutopilotPage = { ...page('large'), text: '공개 페이지 '.repeat(1000),
+    controls: Array.from({ length: 256 }, (_, i) => ({ id: `control_${i}`, kind: 'button', label: `언어 메뉴 ${i}`, value: '',
+      signature: `private-local-signature-${i}`, identity: `private-dom-path-${i}`, context: '반복된 주변 텍스트 '.repeat(150) })),
+    links: Array.from({ length: 600 }, (_, i) => ({ id: `link_${i}`, label: `문서 ${i} ` + '설명'.repeat(120), url: `https://example.org/${i}` })) };
+  const seen = new Set<string>();
+  let calls = 0;
+  const model = createAutopilotModel('fixture-key', async (_url, init) => {
+    calls++;
+    const raw = String(init.body);
+    expect(Buffer.byteLength(raw)).toBeLessThanOrEqual(AUTOPILOT_REQUEST_BYTES);
+    expect(raw).not.toContain('private-local-signature');
+    expect(raw).not.toContain('private-dom-path');
+    expect(raw).not.toContain('private-outcome-key');
+    const body = JSON.parse(raw) as { state: { goal: string; searchText: string }; questions: Record<string, ChoiceQuestion> };
+    expect(body.state.goal).toBe('문서 599로 이동');
+    expect(body.state.searchText).toBe('정확한 검색어');
+    return Response.json({ answers: Object.fromEntries(Object.entries(body.questions).map(([id, question]) => {
+      const candidates = Object.keys(question.criteria);
+      expect(candidates.length).toBeLessThanOrEqual(255);
+      for (const candidate of candidates) if (candidate.startsWith('link_')) seen.add(candidate);
+      return [id, { type: 'choice', confidence: 0.9,
+        choice: id === 'completion' ? 'continue' : candidates.at(-1) }];
+    })) });
+  });
+  const result = await model({ page: current, goal: '문서 599로 이동', searchText: '정확한 검색어', visited: [],
+    outcomes: [{ url: current.url, action: 'Click: old', key: 'private-outcome-key', status: 'verified' }],
+    signal: new AbortController().signal });
+  expect(calls).toBeGreaterThan(2);
+  expect(seen.size).toBe(600);
+  expect(result.link).toEqual(current.links.at(-1)!);
+  expect(current.controls).toHaveLength(256);
+  expect(current.controls![0]!.signature).toBe('private-local-signature-0');
+});
+
+test('oversized research choices preserve verbatim evidence and reject invented group winners', async () => {
+  const criteria = { none: 'No suitable evidence.', ...Object.fromEntries(Array.from({ length: 60 }, (_, i) =>
+    [`passage_${i}`, `${i}: ${'근거 문장입니다. '.repeat(80)}`])) };
+  const questions = { evidence: { type: 'choice' as const, instructions: 'Select evidence or none.', criteria } };
+  const input = { page: page('research'), goal: 'Research', visited: [], signal: new AbortController().signal };
+  const seen = new Set<string>();
+  const answers = await evaluateAutopilotQuestions('fixture-key', input, questions, async (_url, init) => {
+    expect(Buffer.byteLength(String(init.body))).toBeLessThanOrEqual(AUTOPILOT_REQUEST_BYTES);
+    const body = JSON.parse(String(init.body)) as { questions: Record<string, ChoiceQuestion> };
+    return Response.json({ answers: Object.fromEntries(Object.entries(body.questions).map(([id, question]) => {
+      const options = Object.keys(question.criteria);
+      for (const [key, text] of Object.entries(question.criteria)) {
+        seen.add(key);
+        expect(text).toBe(criteria[key as keyof typeof criteria]);
+      }
+      return [id, { type: 'choice', choice: options.at(-1), confidence: 0.9 }];
+    })) });
+  });
+  expect(seen.size).toBe(61);
+  expect(answers.evidence).toEqual({ type: 'choice', choice: 'passage_59', confidence: 0.9 });
+  await rejection(evaluateAutopilotQuestions('fixture-key', input, questions, async (_url, init) => {
+    const body = JSON.parse(String(init.body)) as { questions: Record<string, ChoiceQuestion> };
+    return Response.json({ answers: Object.fromEntries(Object.keys(body.questions).map(id =>
+      [id, { type: 'choice', choice: 'invented', confidence: 1 }])) });
+  }), 'invalid choice');
+});
+
+test('stopping a split request prevents later batches and an unsplittable choice fails before sending', async () => {
+  const controller = new AbortController();
+  const input = { page: page('large'), goal: 'Target', visited: [], signal: controller.signal };
+  const criteria = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`option_${i}`, 'details '.repeat(500)]));
+  const question = { type: 'choice' as const, instructions: 'Choose a target.', criteria };
+  let calls = 0;
+  await rejection(evaluateAutopilotQuestions('fixture-key', input, { target: question }, async () => {
+    calls++; controller.abort(new Error('Stopped between batches'));
+    return Response.json({ answers: {} });
+  }), 'Stopped between batches');
+  expect(calls).toBe(1);
+  await rejection(evaluateAutopilotQuestions('fixture-key', { ...input, signal: new AbortController().signal },
+    { target: { ...question, criteria: { huge: 'x'.repeat(AUTOPILOT_REQUEST_BYTES) } } }, async () => {
+      calls++; return Response.json({ answers: {} });
+    }), 'choice is too large');
+  expect(calls).toBe(1);
+});
+
+test('each split choice retains none so an irrelevant batch never forces a menu selection', async () => {
+  const criteria = { none: 'No useful target.', ...Object.fromEntries(Array.from({ length: 300 }, (_, i) =>
+    [`menu_${i}`, 'Unrelated menu '.repeat(40)])) };
+  const seen = new Set<string>();
+  const answer = await evaluateAutopilotQuestions('fixture', { page: page('start'), goal: 'Find repository', visited: [],
+    signal: new AbortController().signal }, { target: { type: 'choice', instructions: 'Choose a useful action or none.', criteria } }, async (_url, init) => {
+    const body = JSON.parse(String(init.body)) as { questions: Record<string, ChoiceQuestion> };
+    return Response.json({ answers: Object.fromEntries(Object.entries(body.questions).map(([id, question]) => {
+      expect(question.criteria.none).toBe('No useful target.');
+      for (const key of Object.keys(question.criteria)) if (key !== 'none') seen.add(key);
+      return [id, { type: 'choice', choice: 'none', confidence: 1 }];
+    })) });
+  });
+  expect(seen.size).toBe(300);
+  expect(answer.target).toEqual({ type: 'choice', choice: 'none', confidence: 1 });
 });
 
 test('model recognizes arrival without links and rejects choices outside the supplied candidates', async () => {

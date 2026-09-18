@@ -1,11 +1,12 @@
 import { AUTOPILOT_MAX_STEPS, safeAutopilotUrl } from '../shared/autopilot.ts';
 import type { AutopilotIssue, AutopilotRequest, AutopilotSource, AutopilotState, AutopilotStep } from '../shared/autopilot.ts';
-import { autopilotActionLabel, autopilotActions, autopilotInteractionKey, sameAutopilotInteraction } from './autopilot-actions.mts';
+import { autopilotActionLabel, availableAutopilotInteraction } from './autopilot-actions.mts';
 import type { AutopilotDecision, AutopilotLink, AutopilotPage } from './autopilot-model.mts';
 import { researchPagePassages } from './autopilot-evidence.mts';
 import { AutopilotPageChangedError } from './autopilot-runner.mts';
 import type { AutopilotRunnerOptions } from './autopilot-runner.mts';
 import { runAutopilotInvestigation } from './autopilot-investigation.mts';
+import { AutopilotProgress } from './autopilot-progress.mts';
 
 /** Keep discovered links across pages, so research can leave a dead end for another source. */
 export async function runAutopilotResearch(options: AutopilotRunnerOptions, request: AutopilotRequest,
@@ -14,7 +15,7 @@ export async function runAutopilotResearch(options: AutopilotRunnerOptions, requ
   const sources: AutopilotSource[] = [];
   const issues: AutopilotIssue[] = [];
   const steps: AutopilotStep[] = [];
-  const completedInteractions: string[] = [];
+  const progress = new AutopilotProgress();
   const attempted = new Set<string>([request.url]);
   const frontier = new Map<string, { link: AutopilotLink; origin: string }>();
   let sequence = 0;
@@ -64,9 +65,10 @@ export async function runAutopilotResearch(options: AutopilotRunnerOptions, requ
     if (!page.text && !frontier.size && !(page.controls?.length)) { partial('No readable sources remain.'); return; }
     const candidates = [...frontier.values()].map(entry => entry.link);
     started = performance.now();
+    const completedInteractions = progress.excludedInteractions(page);
     const decision = await options.decide({ page: { ...page, links: candidates }, goal: request.goal,
       searchText: request.searchText, visited: [...attempted], signal, research: true,
-      completedInteractions, history: steps.flatMap(step => step.action ? [step.action] : []) });
+      completedInteractions, outcomes: progress.outcomes, history: [...steps.flatMap(step => step.action ? [step.action] : []), ...progress.history] });
     signal.throwIfAborted();
     const decisionMs = performance.now() - started;
     modelMs += decisionMs;
@@ -108,7 +110,7 @@ export async function runAutopilotResearch(options: AutopilotRunnerOptions, requ
     started = performance.now();
     actionCount++;
     try {
-      if (interaction) page = await options.interact!(current, interaction, signal);
+      if (interaction) page = await progress.interact(current, interaction, signal, dispatched => options.interact!(current, interaction, signal, dispatched));
       else {
         attempted.add(selected!.url);
         frontier.delete(selected!.url);
@@ -117,7 +119,6 @@ export async function runAutopilotResearch(options: AutopilotRunnerOptions, requ
         page = local ? await options.follow(current, local, signal) : await options.load(selected!.url, signal);
       }
       signal.throwIfAborted();
-      if (interaction) completedInteractions.push(autopilotInteractionKey(current.url, interaction));
       staleRetries = 0;
     } catch (error) {
       signal.throwIfAborted();
@@ -152,10 +153,9 @@ export function assertEvidence(decision: AutopilotDecision, page: AutopilotPage)
 }
 
 export function assertAction(decision: AutopilotDecision, page: AutopilotPage, candidates: AutopilotLink[],
-  searchText: string | undefined, supported: boolean, completedInteractions: string[]): void {
+  searchText: string | undefined, supported: boolean, completedInteractions: string[], fieldTextAvailable = false): void {
   if (decision.interaction) {
-    if (supported && autopilotActions(page, [], searchText, completedInteractions).some(action => action.kind !== 'navigate'
-      && sameAutopilotInteraction(action, decision.interaction!))) return;
+    if (supported && availableAutopilotInteraction(decision.interaction, page, searchText, completedInteractions, fieldTextAvailable)) return;
   } else if (decision.link && candidates.some(link => link.id === decision.link!.id && link.url === decision.link!.url)) return;
   throw new Error('The research action was not observed in the browser.');
 }

@@ -1,3 +1,4 @@
 [test]
 root = "./__tests__"
 timeout = 5000
+preload = ["../scripts/test-storage-preload.mts"]

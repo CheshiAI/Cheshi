@@ -9,6 +9,7 @@ import type { AutopilotPage } from './autopilot-model.mts';
 import type { AutopilotSection } from './autopilot-document.mts';
 import { AutopilotPageChangedError, createAutopilotRunner } from './autopilot-runner.mts';
 import { performAutopilotInteraction } from './autopilot-interaction.mts';
+import { executeAutopilotInput } from './autopilot-input.mts';
 import { autopilotReport, saveAutopilotReportAutomatically } from './autopilot-report.mts';
 import type { ResearchCoordinator } from './autopilot-codex.mts';
 
@@ -55,20 +56,23 @@ export function createAutopilotBrowser(options: Options) {
     },
     load, readSection,
     read: (signal, page) => page?.section ? readSection(page, page.section, signal) : readPage(signal),
-    async interact(page, action, signal) {
+    async interact(page, action, signal, onDispatched) {
       diagnostic('interaction:start', { kind: action.kind });
       interactionSignal = signal;
       try {
-        const result = await performAutopilotInteraction({ read: readPage,
-          evaluate: async (code, signal) => {
-            diagnostic('interaction:evaluate:start');
-            const result = await autopilotOperation(ensureView().webContents.executeJavaScriptInIsolatedWorld(1002,
-              [{ code }], true), signal);
-            diagnostic('interaction:evaluate:done');
-            return result;
-          },
+        const evaluate = async (code: string, signal: AbortSignal) => {
+          diagnostic('interaction:evaluate:start');
+          const result = await autopilotOperation(ensureView().webContents.executeJavaScriptInIsolatedWorld(1002,
+            [{ code }], true), signal);
+          diagnostic('interaction:evaluate:done');
+          return result;
+        };
+        const result = await performAutopilotInteraction({ read: readPage, evaluate,
+          execute: (page, action, signal, dispatched) => executeAutopilotInput({
+            debugger: ensureView().webContents.debugger, evaluate,
+          }, page, action, signal, dispatched),
           loading: () => ensureView().webContents.isLoadingMainFrame(),
-        }, page, action, signal);
+        }, page, action, signal, onDispatched);
         diagnostic('interaction:done');
         return result;
       } finally { if (interactionSignal === signal) interactionSignal = null; }

@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, readdir, rename, unlink } from 'node:fs/promises';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { open, readFile, readdir, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
+import { withLocalHistoryLock } from './local-history-lock.mts';
 import {
   LOCAL_HISTORY_MAX_BYTES,
   LOCAL_HISTORY_RETENTION_DAYS,
@@ -86,7 +88,7 @@ async function atomicWrite(target: string, content: string): Promise<void> {
   }
 }
 
-/** A single service owns each store; its operation queue serializes all mutations. */
+/** All reads, writes, and pruning share a lock across stores and app processes. */
 export class LocalHistoryStore {
   private readonly directory: string;
   private readonly now: () => number;
@@ -94,7 +96,7 @@ export class LocalHistoryStore {
   private readonly maxBytes: number;
   private readonly maxEntries: number;
   private entries: StoredEntry[] = [];
-  private loaded = false;
+  private readonly transactionScope = new AsyncLocalStorage<{ active: boolean }>();
 
   constructor(options: LocalHistoryStoreOptions) {
     this.directory = options.directory;
@@ -112,9 +114,22 @@ export class LocalHistoryStore {
   private manifestPath(): string { return path.join(this.directory, 'history.json'); }
   private blobPath(hash: string): string { return path.join(this.directory, `${hash}.txt`); }
 
+  /** Keep multi-step restores protected until their recovery record is committed. */
+  transaction<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.transactionScope.getStore()?.active === true) return operation();
+    return withLocalHistoryLock(this.directory, async () => {
+      // Another app may have committed since our previous operation.
+      await this.load();
+      const scope = { active: true };
+      try {
+        return await this.transactionScope.run(scope, operation);
+      } finally {
+        scope.active = false;
+      }
+    });
+  }
+
   private async load(): Promise<void> {
-    if (this.loaded) return;
-    await mkdir(this.directory, { recursive: true, mode: 0o700 });
     let manifest: unknown;
     try {
       manifest = JSON.parse(await readFile(this.manifestPath(), 'utf8'));
@@ -124,9 +139,9 @@ export class LocalHistoryStore {
     }
     assertManifest(manifest);
     this.entries = manifest.entries;
-    // Only committed manifest entries retain blobs. An interrupted capture may leave an orphan.
+    // Under the writer lock, recognized temporary files can only be interrupted
+    // writes. No cooperating process can still be writing or renaming them.
     await this.removeUnusedBlobs();
-    this.loaded = true;
   }
 
   private retained(entries: StoredEntry[]): StoredEntry[] {
@@ -161,11 +176,11 @@ export class LocalHistoryStore {
     const retainedHashes = new Set(this.entries.map((entry) => entry.hash));
     for (const name of await readdir(this.directory)) {
       const hash = name.endsWith('.txt') ? name.slice(0, -4) : '';
-      if (HASH_PATTERN.test(hash) && !retainedHashes.has(hash)) {
-        await unlink(path.join(this.directory, name));
-      }
-      if (/^(?:history\.json|[a-f0-9]{64}\.txt)\.[a-f0-9-]{36}\.tmp$/.test(name)) {
-        await unlink(path.join(this.directory, name));
+      if ((HASH_PATTERN.test(hash) && !retainedHashes.has(hash))
+        || /^(?:history\.json|[a-f0-9]{64}\.txt)\.[a-f0-9-]{36}\.tmp$/.test(name)) {
+        await unlink(path.join(this.directory, name)).catch((error: unknown) => {
+          if (!isMissing(error)) throw error;
+        });
       }
     }
   }
@@ -191,14 +206,18 @@ export class LocalHistoryStore {
   }
 
   async ensureCaptureFits(value: LocalHistoryCapture, protectedIds: readonly string[]): Promise<void> {
-    await this.load();
-    const entry = this.newEntry(value);
-    this.assertRetained(this.retained([...this.entries, entry]), [...protectedIds, entry.id]);
+    return this.transaction(async () => {
+      const entry = this.newEntry(value);
+      this.assertRetained(this.retained([...this.entries, entry]), [...protectedIds, entry.id]);
+    });
   }
 
   async capture(value: LocalHistoryCapture, protectedIds: readonly string[] = []): Promise<LocalHistoryEntry> {
+    return this.transaction(() => this.captureLocked(value, protectedIds));
+  }
+
+  private async captureLocked(value: LocalHistoryCapture, protectedIds: readonly string[]): Promise<LocalHistoryEntry> {
     const relativePath = localHistoryPath(value.path);
-    await this.load();
     const bytes = value.hasBom ? `\uFEFF${value.content}` : value.content;
     const hash = createHash('sha256').update(bytes, 'utf8').digest('hex');
     const previous = [...this.entries].reverse().find((entry) => entry.path === relativePath);
@@ -233,23 +252,28 @@ export class LocalHistoryStore {
 
   async list(filePath: string): Promise<LocalHistoryEntry[]> {
     const normalized = localHistoryPath(filePath);
-    await this.load();
-    await this.prune();
-    return this.entries.filter((entry) => entry.path === normalized).reverse().map(publicEntry);
+    return this.transaction(async () => {
+      await this.prune();
+      return this.entries.filter((entry) => entry.path === normalized).reverse().map(publicEntry);
+    });
   }
 
   async trackedPaths(): Promise<string[]> {
-    await this.load();
-    await this.prune();
-    return [...new Set(this.entries.map((entry) => entry.path))];
+    return this.transaction(async () => {
+      await this.prune();
+      return [...new Set(this.entries.map((entry) => entry.path))];
+    });
   }
 
   async read(filePath: string, id: string): Promise<LocalHistorySnapshot> {
+    return this.transaction(() => this.readLocked(filePath, id));
+  }
+
+  private async readLocked(filePath: string, id: string): Promise<LocalHistorySnapshot> {
     const normalized = localHistoryPath(filePath);
     if (typeof id !== 'string' || !ID_PATTERN.test(id)) {
       throw new WorkspaceRequestError('Local history entry ID is invalid.', 400);
     }
-    await this.load();
     await this.prune();
     const entry = this.entries.find((candidate) => candidate.path === normalized && candidate.id === id);
     if (!entry) throw new WorkspaceRequestError('The local history entry is no longer available.', 404);

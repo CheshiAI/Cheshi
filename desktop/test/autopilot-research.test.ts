@@ -222,7 +222,7 @@ test('research contracts validate source targets and untrusted result fields', (
 
 test('research blocks repeat clicks despite changed DOM identity and resets the guard on a fresh run', async () => {
   let count = 0;
-  const control = { id: 'control_1', kind: 'button' as const, label: 'Input tools', value: '', signature: 'closed' };
+  const control = { id: 'control_1', kind: 'button' as const, label: 'Input tools', value: '', signature: 'closed', identity: 'input-tools' };
   const initial = { ...page('search'), controls: [control] };
   const runner = createAutopilotRunner({ configured: () => true, onState() {}, cancelLoad() {}, load: async () => initial,
     follow: async () => initial,

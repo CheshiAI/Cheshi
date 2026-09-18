@@ -11,6 +11,7 @@ import * as os from 'os';
 import { CodeGraph, loadGrammarsForLanguages } from '../src';
 import { getCodeGraphDir, validateDirectory, codeGraphDirName, isCodeGraphDataDir } from '../src/directory';
 import { DatabaseConnection, getDatabasePath, removeDatabaseFiles } from '../src/db';
+import { readWorkspaceRegistry, registerWorkspace } from '../../config/workspace-storage.mts';
 
 // Create a temporary directory for each test
 function createTempDir(): string {
@@ -596,7 +597,7 @@ describe('central CodeGraph storage', () => {
     fs.rmSync(dataRoot, { recursive: true, force: true });
   });
 
-  it('stores the database and workspace registry outside the source checkout', () => {
+  it('stores the database outside the source checkout without registering a desktop project', () => {
     const cg = CodeGraph.initSync(projectRoot);
     try {
       const indexDirectory = getCodeGraphDir(projectRoot);
@@ -606,14 +607,22 @@ describe('central CodeGraph storage', () => {
       expect(fs.existsSync(path.join(indexDirectory, '.gitignore'))).toBe(false);
       expect(fs.existsSync(path.join(projectRoot, '.codegraph'))).toBe(false);
 
-      const registry = JSON.parse(fs.readFileSync(path.join(dataRoot, 'workspaces.json'), 'utf8')) as {
-        version: number;
-        workspaces: Array<{ rootPath: string; codeGraphPath: string }>;
-      };
-      expect(registry.version).toBe(1);
-      expect(registry.workspaces).toHaveLength(1);
-      expect(registry.workspaces[0]?.rootPath).toBe(fs.realpathSync(projectRoot));
-      expect(registry.workspaces[0]?.codeGraphPath).toBe(indexDirectory);
+      expect(readWorkspaceRegistry(dataRoot).workspaces).toEqual([]);
+      expect(fs.existsSync(path.join(dataRoot, 'workspaces.json'))).toBe(false);
+      expect(fs.existsSync(path.join(indexDirectory, '..', 'workspace.json'))).toBe(false);
+    } finally {
+      cg.close();
+    }
+  });
+
+  it('preserves an explicitly registered temporary project while creating its index', () => {
+    const registered = registerWorkspace(dataRoot, projectRoot, { setCurrent: true, timestamp: '2026-01-01T00:00:00Z' });
+    const before = fs.readFileSync(path.join(dataRoot, 'workspaces.json'), 'utf8');
+    const cg = CodeGraph.initSync(projectRoot);
+    try {
+      expect(fs.readFileSync(path.join(dataRoot, 'workspaces.json'), 'utf8')).toBe(before);
+      expect(readWorkspaceRegistry(dataRoot).currentWorkspaceId).toBe(registered.id);
+      expect(fs.existsSync(path.join(registered.codeGraphPath, 'codegraph.db'))).toBe(true);
     } finally {
       cg.close();
     }
