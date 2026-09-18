@@ -88,6 +88,9 @@ function createHarness() {
     '../plugins': { PluginsView: 'PluginsView' },
     '../terminal': { TerminalWorkspace: 'TerminalWorkspace' },
     '../showcase/ShowcaseView': { ShowcaseView: 'ShowcaseView' },
+    '../settings/SettingsView': { SettingsView: 'SettingsView' },
+    '../settings/useAutopilotMenu': { useAutopilotMenu: () => [true] },
+    '../autopilot/AutopilotView': { AutopilotView: 'AutopilotView' },
     './ReviewSidebar': { ReviewSidebar: 'ReviewSidebar' },
     './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
     './WorkspaceStatusBar': { WorkspaceStatusBar: 'WorkspaceStatusBar' },
@@ -127,16 +130,19 @@ test('explorer history opens a workspace page with file selection and draft prot
   expect(Object.keys(footer.props).filter((name) => /history/i.test(name))).toEqual([]);
   invoke(history, 'onClose');
   tree = harness.render();
-  expect(element(tree, 'Sidebar').props.activeView).toBe('git');
+  expect(element(tree, 'Sidebar').props.activeView).toBe('blank');
+  expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('primary');
+  expect(elements(tree).some((item) => item.type === 'GitWorkspace')).toBe(false);
   expect(elements(tree).some((item) => item.type === 'LocalHistoryPage')).toBe(false);
 });
 
-test('switching history files retains the split editor and returns to the original page', () => {
+test('closing history after switching files leaves the editor open and preserves its draft state', () => {
   const harness = createHarness();
   let tree = harness.render();
   invoke(element(tree, 'Sidebar'), 'onNavigate', 'terminal');
   invoke(element(tree, 'Sidebar'), 'onOpenWorkspaceFile', 'src/dirty.ts');
   invoke(element(tree, 'WorkspaceEditor'), 'onDirtyPathsChange', ['src/dirty.ts']);
+  invoke(element(tree, 'WorkspaceEditor'), 'onSelectedPathChange', 'src/dirty.ts');
   tree = harness.render();
   const editorBefore = element(tree, 'WorkspaceEditor');
   const splitBefore = element(workspaceColumn(tree), 'WorkspaceEditorSplit');
@@ -163,13 +169,33 @@ test('switching history files retains the split editor and returns to the origin
   expect(splitDuring.props.editor).toBe(editorDuring);
   invoke(history, 'onClose');
   tree = harness.render();
-  expect(element(tree, 'Sidebar').props.activeView).toBe('terminal');
-  expect(element(tree, 'TerminalWorkspace')).toBeDefined();
-  expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('split');
+  expect(element(tree, 'Sidebar').props.activeView).toBe('editor');
+  expect(element(tree, 'Sidebar').props.selectedFilePath).toBe('src/dirty.ts');
+  expect(element(tree, 'TerminalWorkspace').props.active).toBe(false);
+  expect(element(tree, 'ChatWorkspace').props.active).toBe(false);
+  expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('editor');
   expect(elements(tree).some((item) => item.type === 'LocalHistoryPage')).toBe(false);
   expect(element(tree, 'WorkspaceEditor').props.active).toBe(true);
   expect(element(tree, 'WorkspaceEditor').props.target).toBe(editorBefore.props.target);
   invoke(element(tree, 'Sidebar'), 'onOpenLocalHistory', 'src/dirty.ts');
   tree = harness.render();
   expect(element(tree, 'LocalHistoryPage').props.draftDirty).toBe(true);
+});
+
+test('closing history after all editor tabs close leaves an empty workspace', () => {
+  const harness = createHarness();
+  let tree = harness.render();
+  invoke(element(tree, 'Sidebar'), 'onOpenWorkspaceFile', 'src/file.ts');
+  tree = harness.render();
+  invoke(element(tree, 'WorkspaceEditor'), 'onOpenLocalHistory', 'src/file.ts');
+  tree = harness.render();
+  invoke(element(tree, 'WorkspaceEditor'), 'onAllTabsClosed');
+  tree = harness.render();
+  invoke(element(tree, 'LocalHistoryPage'), 'onClose');
+  tree = harness.render();
+  expect(element(tree, 'Sidebar').props.activeView).toBe('blank');
+  expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('primary');
+  expect(element(tree, 'WorkspaceEditor').props.target).toBeNull();
+  expect(element(tree, 'ChatWorkspace').props.active).toBe(false);
+  expect(elements(tree).some((item) => item.type === 'LocalHistoryPage')).toBe(false);
 });

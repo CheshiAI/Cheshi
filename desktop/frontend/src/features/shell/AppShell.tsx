@@ -79,7 +79,6 @@ export function AppShell() {
   const [editorMutation, setEditorMutation] = useState<WorkspaceEditorMutation | null>(null);
   const [editorSelectedPath, setEditorSelectedPath] = useState<string | null>(null);
   const [localHistoryPath, setLocalHistoryPath] = useState<string | null>(null);
-  const localHistoryReturnView = useRef<WorkspaceView>('chat');
   const [editorDirtyPaths, setEditorDirtyPaths] = useState<string[]>([]);
   const editorRequestId = useRef(0);
   const editorMutationRequestId = useRef(0);
@@ -177,9 +176,13 @@ export function AppShell() {
   };
 
   const openLocalHistory = (path: string): void => {
-    if (activeView !== 'local-history') localHistoryReturnView.current = activeView;
     setLocalHistoryPath(path);
     navigate('local-history');
+  };
+
+  const closeLocalHistory = (): void => {
+    setLocalHistoryPath(null);
+    navigate(editorSplitOpen ? 'editor' : 'blank');
   };
 
   const changeSearchQuery = (value: string): void => {
@@ -316,7 +319,7 @@ export function AppShell() {
               draftDirty={editorDirtyPaths.includes(localHistoryPath)}
               rightSidebarOpen={rightSidebarOpen}
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
-              onClose={() => navigate(localHistoryReturnView.current)} />
+              onClose={closeLocalHistory} />
           )}
           <ShowcaseView active={activeView === 'showcase'}
             blocked={fileSearchOpen || temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
