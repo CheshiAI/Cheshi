@@ -10,7 +10,7 @@ import { useAutopilotMenu } from './useAutopilotMenu';
 export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = cheshiDesktop?.settings }: {
   rightSidebarOpen: boolean; onToggleRightSidebar(): void; api?: SettingsApi;
 }) {
-  const [autopilotMenuVisible, setAutopilotMenuVisible, autopilotKeyAvailable] = useAutopilotMenu(api);
+  const [autopilotMenuVisible, autopilotKeyAvailable] = useAutopilotMenu(api);
   const [state, setState] = useState<TypeSafeSettings | null>(null);
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
@@ -29,7 +29,7 @@ export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = che
       .catch(() => { if (!disposed) setError('Could not load TypeSafe API settings.'); });
     return () => { disposed = true; mounted.current = false; unsubscribe(); };
   }, [api]);
-  const execute = async (action: 'save' | 'remove' | 'check') => {
+  const execute = async (action: 'save' | 'remove' | 'check' | 'menu') => {
     if (!api || pending.current) return;
     pending.current = true; setBusy(true); setError(null); setNotice(null);
     const current = revision.current;
@@ -37,6 +37,9 @@ export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = che
       if (action === 'check') {
         const connected = await api.checkTypeSafe();
         if (mounted.current && current === revision.current) setNotice(connected ? 'Connection verified.' : 'Could not verify the connection.');
+      } else if (action === 'menu') {
+        const result = await api.setAutopilotMenuVisible(!autopilotMenuVisible);
+        if (mounted.current && current === revision.current) setState(result);
       } else {
         const result = action === 'save' ? await api.saveTypeSafe(key) : await api.removeTypeSafe();
         if (mounted.current) {
@@ -77,7 +80,7 @@ export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = che
                 disabled={busy || !autopilotKeyAvailable}
                 aria-label="Show Autopilot menu" aria-checked={autopilotMenuVisible}
                 title={!autopilotKeyAvailable ? 'Register or unlock a TypeSafe API key first' : autopilotMenuVisible ? 'Hide Autopilot menu' : 'Show Autopilot menu'}
-                onClick={() => setAutopilotMenuVisible(!autopilotMenuVisible)}><span aria-hidden="true" /></NeumorphicButton>
+                onClick={() => { void execute('menu'); }}><span aria-hidden="true" /></NeumorphicButton>
             </div>
             <div className={styles.summary}>
               <p>Connect your TypeSafe account to use Jev in Autopilot.</p>

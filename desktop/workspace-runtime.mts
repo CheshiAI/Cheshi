@@ -52,7 +52,8 @@ import { pluginWorkflowRequest } from './shared/plugin-actions.ts';
 import type { WorkspaceFilesChangedEvent } from './lib/workspace-file-service.mts';
 import type { CodexAccountsSnapshot } from './shared/codex-accounts.ts';
 
-export function createWorkspaceRuntime(options: WorkspaceRuntimeOptions, onAccountsChanged?: (snapshot: CodexAccountsSnapshot) => void) {
+export function createWorkspaceRuntime(options: WorkspaceRuntimeOptions,
+  onAccountsChanged?: (snapshot: CodexAccountsSnapshot) => void, onWindowCreated?: (window: BrowserWindow) => void) {
 const ipcMain = options.scope.ipc;
 const rendererEvents = createWorkspaceRendererEvents();
 function workspaceWindows(): BrowserWindow[] { return mainWindow && !mainWindow.isDestroyed() ? [mainWindow] : []; }
@@ -898,6 +899,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
   });
 
   mainWindow = window;
+  onWindowCreated?.(window);
   initializeTerminal(window);
   logStartup('terminal bridge ready');
   window.on('show', () => terminalSurfaces?.setWindowVisible(true));
@@ -945,8 +947,7 @@ async function initialize(): Promise<BrowserWindow> {
   if (options.initial) await startupScreen.setStatus('Loading workspace information…');
   pendingIndexWarning = index.error ? String(index.error) : null;
   await accountSwitch.initialize(error => chatServiceOptions.log('codex-account-initialization-failed', { message: String(error) }));
-  const window = await createMainWindow(codeGraphUrl);
-  return window;
+  return await createMainWindow(codeGraphUrl);
 }
 
 let initialization: Promise<BrowserWindow> | null = null;
