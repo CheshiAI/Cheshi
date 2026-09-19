@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type R
 import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
 import { NeumorphicButton } from '../../shared/ui';
 import { ChatTimelineItem } from './ChatTimelineItem';
+import { HistoryRecallTotals } from './HistoryRecallActivity';
 import { captureChatHistoryAnchor, previousChatHistoryStart } from './chatHistoryWindow';
 import type { ChatTimelineItem as TimelineItem } from './model';
 import type { SavedChatTurnsController } from './useSavedChatTurns';
@@ -91,18 +92,24 @@ export const ChatTimelineHistory = memo(function ChatTimelineHistory({
     return () => timeline.removeEventListener('scroll', onScroll);
   }, [loading, revealEarlier, start, timelineRef]);
 
+  const visibleItems = items.slice(start);
+  const latestCompletedItemId = savedTurns ? [...completedTurns.keys()].at(-1) : undefined;
+  const totalsItemId = visibleItems.some(item => item.id === latestCompletedItemId) ? latestCompletedItemId : undefined;
+
   return <>
     {start > 0 && <NeumorphicButton size="standard" disabled={loading} onClick={revealEarlier}>
       Show earlier messages
     </NeumorphicButton>}
-    {items.slice(start).map((item, index, visibleItems) => <ChatTimelineItem
+    {visibleItems.map((item, index) => <ChatTimelineItem
       key={item.id}
       item={item}
       searchMatch={searchMatch !== null && chatHistoryItemMatches(item, searchMatch.itemId)}
       streaming={streaming && index === visibleItems.length - 1}
       turn={completedTurns.get(item.id)}
       savedTurns={savedTurns}
+      usageDetails={item.id === totalsItemId ? <HistoryRecallTotals items={items} /> : undefined}
       onReviewFileChanges={onReviewFileChanges}
     />)}
+    {!totalsItemId && <HistoryRecallTotals items={items} />}
   </>;
 });

@@ -9,7 +9,7 @@ import {
   Users,
   Wrench,
 } from 'lucide-react';
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 
 import { parseChatRelayMessage } from '../../../../shared/chat-relay';
 import { parseSavedChatTurnPrompt } from '../../../../shared/chat-saved-turn-continuation';
@@ -47,13 +47,14 @@ interface ChatTimelineItemProps {
   turn?: ChatSavedTurnInput;
   savedTurns?: SavedChatTurnsController;
   searchMatch?: boolean;
+  usageDetails?: ReactNode;
 }
 
-export const ChatTimelineItem = memo(function ChatTimelineItem({ turn, savedTurns, searchMatch, ...props }: ChatTimelineItemProps) {
+export const ChatTimelineItem = memo(function ChatTimelineItem({ turn, savedTurns, searchMatch, usageDetails, ...props }: ChatTimelineItemProps) {
   return <div className={styles.timelineItem} data-chat-item-id={props.item.id} tabIndex={-1}
     data-history-search-match={searchMatch ? 'true' : undefined}>
     <TimelineItemContent {...props} />
-    {turn && savedTurns && <ChatTurnActions turn={turn} savedTurns={savedTurns} />}
+    {turn && savedTurns && <ChatTurnActions turn={turn} savedTurns={savedTurns} usageDetails={usageDetails} />}
   </div>;
 });
 

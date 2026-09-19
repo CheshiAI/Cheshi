@@ -1,8 +1,9 @@
 import { createContext, useContext, useState } from 'react';
-import { Search, ExternalLink } from 'lucide-react';
+import { Search, ExternalLink, ChevronDown } from 'lucide-react';
 import type { RecallMetrics, RecallSource } from '../../../../shared/history-recall';
 import { LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
 import type { ChatActivityItem, ChatTimelineItem } from './model';
+import { MessageContent } from './MessageContent';
 import styles from './HistoryRecallActivity.module.css';
 
 export const HistoryRecallNavigation = createContext<{
@@ -50,15 +51,18 @@ export function HistoryRecallActivity({ item }: { item: ChatActivityItem }) {
     {recall.metrics && <RecallMetricsView metrics={recall.metrics} />}
     {recall.error && <p role="status">{recall.error}</p>}
     {recall.sources.length > 0 && <details>
-      <summary>{recall.sources.length} {recall.operation === 'search' ? 'candidate sources' : 'source'}</summary>
+      <summary className={styles.disclosureSummary}><ChevronDown className={styles.chevron} aria-hidden="true" />
+        <span>{recall.sources.length} {recall.operation === 'search' ? 'candidate sources' : 'source'}</span>
+      </summary>
       <div className={styles.sources}>{recall.sources.map(source => <div className={styles.source}
         key={`${source.threadId}:${source.turnId}:${source.itemId}`}>
         <strong>{source.title || 'Conversation'}</strong>
-        <p>{source.text}</p>
+        <div className={styles.preview}><MessageContent text={source.text} /></div>
         <NeumorphicButton size="standard" disabled={!navigation || navigation.disabled || pending} onClick={() => void open(source)}>
           <ExternalLink aria-hidden="true" />Open original message
         </NeumorphicButton>
-        <details><summary>Source IDs</summary><small>Session: {source.threadId}<br />Turn: {source.turnId}<br />Message: {source.itemId}</small></details>
+        <details className={styles.sourceIds}><summary className={styles.disclosureSummary}><ChevronDown className={styles.chevron} aria-hidden="true" />
+          <span>Source IDs</span></summary><small>Session: {source.threadId}<br />Turn: {source.turnId}<br />Message: {source.itemId}</small></details>
       </div>)}</div>
     </details>}
     {error && <p role="status">{error}</p>}
@@ -83,7 +87,9 @@ export function HistoryRecallTotals({ items }: { items: ChatTimelineItem[] }) {
   const metrics = recallConversationMetrics(items);
   if (!metrics) return null;
   return <details className={styles.totals}>
-    <summary>Jev history search · estimated {formatRecallCost(metrics)} USD · {metrics.requests} requests</summary>
+    <summary className={styles.disclosureSummary}><ChevronDown className={styles.chevron} aria-hidden="true" />
+      <span>Jev history search · estimated {formatRecallCost(metrics)} USD · {metrics.requests} requests</span>
+    </summary>
     <RecallMetricsView metrics={metrics} />
     <p>Recorded calls in this conversation only. Excludes Codex usage and unrecorded or cancelled calls.
       {' '}Durations are summed per call, not wall-clock time.</p>

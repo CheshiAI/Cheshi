@@ -23,6 +23,25 @@ test('cards show small USD costs, input usage, timing, partial scope and safely 
   expect(html).not.toContain('<script>');
 });
 
+test('source previews render Markdown while keeping raw HTML and unsafe links inert', () => {
+  const text = [
+    '## Implementation', '', '**Autopilot** supports `research`.', '',
+    '- First source', '- Second source', '',
+    '| Feature | Status |', '| --- | --- |', '| Research | Complete |', '',
+    '```ts', 'const ready = true;', '```', '',
+    '[Original](https://example.com/source)', '[Unsafe](javascript:alert(1))',
+    '<script>alert(1)</script>', '![Preview](https://example.com/image.png)',
+  ].join('\n');
+  const html = renderToStaticMarkup(<HistoryRecallActivity item={{ ...item,
+    recall: { ...item.recall!, sources: [{ ...source, text }] } }} />);
+  for (const expected of ['<h2>Implementation</h2>', '<strong>Autopilot</strong>', 'research</code>',
+    '<ul>', '<li>First source</li>', '<table>', '<td>Complete</td>', 'const ready = true;',
+    'href="https://example.com/source"', '&lt;script&gt;']) expect(html).toContain(expected);
+  expect(html).not.toContain('<script>');
+  expect(html).not.toContain('href="javascript:');
+  expect(html).not.toContain('<img');
+});
+
 test('conversation totals do not double count completion updates or turn unknown spending into zero', () => {
   expect(recallConversationMetrics([item, item])?.requests).toBe(2);
   const unknown: ChatActivityItem = { ...item, id: 'unknown', recall: { ...item.recall!, metrics: {
