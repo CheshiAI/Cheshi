@@ -2,18 +2,24 @@ import { AUTOPILOT_MAX_STEPS, AUTOPILOT_MAX_READS, autopilotUsage, safeAutopilot
 import type { AutopilotRequest, AutopilotState, AutopilotSource, AutopilotIssue, AutopilotStep } from '../shared/autopilot.ts';
 import { questionStatus, researchPublisher } from '../shared/autopilot-investigation.ts';
 import type { ResearchInvestigation } from '../shared/autopilot-investigation.ts';
-import { autopilotActionLabel, autopilotInteractionKey } from './autopilot-actions.mts';
-import type { AutopilotPage, AutopilotLink } from './autopilot-model.mts';
+import { autopilotActionLabel } from './autopilot-actions.mts';
+import type { AutopilotPage, AutopilotLink, AutopilotDecisionInput } from './autopilot-model.mts';
 import { AutopilotPageChangedError } from './autopilot-runner.mts';
 import type { AutopilotRunnerOptions } from './autopilot-runner.mts';
 import { assertAction, assertEvidence } from './autopilot-research.mts';
 import { isResearchSearchPage, researchPagePassages } from './autopilot-evidence.mts';
+import { AutopilotProgress } from './autopilot-progress.mts';
+import { createAutopilotTextResolver } from './autopilot-field-text.mts';
 
 /** Planning and synthesis are Codex turns. Only the browser and Jev collect evidence. */
 export async function runAutopilotInvestigation(options: AutopilotRunnerOptions, request: AutopilotRequest,
   signal: AbortSignal, update: (state: Partial<AutopilotState>) => void): Promise<void> {
   update({ phase: 'planning' });
   const session = await options.research!.open(request.contextId, signal);
+  const progress = new AutopilotProgress();
+  const text = createAutopilotTextResolver(options.research, request.contextId, session);
+  const questionVisits = new Map<string, Set<string>>();
+  let cachedPage = false;
   const sources: AutopilotSource[] = [], issues: AutopilotIssue[] = [], steps: AutopilotStep[] = [];
   let investigation: ResearchInvestigation | undefined;
   let modelMs = 0;
@@ -33,10 +39,22 @@ export async function runAutopilotInvestigation(options: AutopilotRunnerOptions,
   };
   const load = async (url: string, action: string): Promise<AutopilotPage | null> => {
     if (exhausted()) return null;
+    const cached = progress.pages.get(url);
+    if (cached) {
+      if (readingExhausted()) return null;
+      cachedPage = true;
+      const page = { ...cached.page, controls: [] };
+      record(page, performance.now(), 0, `Reuse observed page: ${page.title}`, 'reading');
+      return page;
+    }
+    if (progress.attempted.has(url)) return null;
+    cachedPage = false;
+    progress.attempted.add(url);
     publish({ phase: 'loading' });
     const started = performance.now();
     try {
       const page = await options.load(url, signal);
+      progress.remember(page, url);
       record(page, started, 0, action);
       return page;
     } catch {
@@ -77,9 +95,9 @@ export async function runAutopilotInvestigation(options: AutopilotRunnerOptions,
         const search = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
         const isSearchHome = /^https?:\/\/(?:www\.)?google\.[^/]+\/?$/.test(request.url);
         let page = await load(!steps.length && !isSearchHome ? request.url : search, `Search: ${query}`);
-        const visited = new Set<string>();
+        const visited = questionVisits.get(question.id) ?? new Set<string>();
+        questionVisits.set(question.id, visited);
         const frontier = new Map<string, AutopilotLink>();
-        const completedInteractions: string[] = [];
         let serial = 0, stale = 0;
         // Reading has its own budget; a query still has a bounded decision allowance.
         for (let decisionCount = 0; page && decisionCount < 16; decisionCount++) {
@@ -108,29 +126,35 @@ export async function runAutopilotInvestigation(options: AutopilotRunnerOptions,
           frontier.delete(page.url);
           for (const link of page.links) {
             const url = safeAutopilotUrl(link.url);
-            if (url && !visited.has(url) && !frontier.has(url) && frontier.size < 512) {
+            if (url && !visited.has(url) && (!progress.attempted.has(url) || progress.pages.has(url)) && !frontier.has(url) && frontier.size < 512) {
               frontier.set(url, { ...link, url, id: `question_link_${++serial}` });
             }
           }
           const candidates = [...frontier.values()];
           started = performance.now();
-          const decision = await options.decide({ page: { ...page, links: candidates,
+          const completedInteractions = progress.excludedInteractions(page);
+          const input: AutopilotDecisionInput = { page: { ...page, links: candidates,
             ...(!options.readSection || readAttempts >= 4 || readingExhausted() || isResearchSearchPage(page.url) ? { sections: [] } : {}) }, question, officialDomains: plan.officialDomains,
             goal: `${request.goal}\nCurrent question: ${question.question}${attempt ? needsOfficial ? '\nFind the official detailed specification.' : '\nFind independent analysis and check contrary evidence.' : ''}`,
             research: true, searchText: query, visited: [...visited], completedInteractions, signal,
-            readSections: [...readSections], collectedEvidence });
+            readSections: [...readSections], collectedEvidence, fieldTextAvailable: !cachedPage && text.available,
+            outcomes: progress.outcomes, history: [...steps.flatMap(step => step.action ? [step.action] : []), ...progress.history] };
+          const decision = await text.resolve(await options.decide(input), input);
           signal.throwIfAborted();
           const decisionMs = performance.now() - started;
           modelMs += decisionMs;
-          if (decision.evidence && options.read) {
+          if (decision.evidence && options.read && !cachedPage) {
             let observed: AutopilotPage;
             try { observed = await options.read(signal, page); }
             catch (error) {
+              progress.invalidate(page.url);
               if (!(error instanceof AutopilotPageChangedError)) throw error;
               observed = error.page;
             }
             signal.throwIfAborted();
             if (observed.url !== page.url || observed.text !== page.text || observed.documentVersion !== page.documentVersion) {
+              progress.invalidate(page.url);
+              progress.remember(observed);
               if (++stale > 2) { issue(page.url, 'Evidence changed repeatedly; this question remains unconfirmed.'); break; }
               frontier.clear();
               if (observed.url !== page.url) {
@@ -148,7 +172,7 @@ export async function runAutopilotInvestigation(options: AutopilotRunnerOptions,
             let source = sources.find(source => source.url === page!.url && source.evidence === decision.evidence!.text);
             if (!source) {
               source = { id: `s${sources.length + 1}`, url: page.url, title: page.title, evidence: decision.evidence.text,
-                confidence: decision.evidence.confidence, accessedAt: new Date().toISOString(), publisher: researchPublisher(page.url, plan.officialDomains),
+                confidence: decision.evidence.confidence, accessedAt: progress.pages.get(page.url)?.accessedAt ?? new Date().toISOString(), publisher: researchPublisher(page.url, plan.officialDomains),
                 ...(page.section ? { section: page.section.title, sectionId: page.section.id } : {}) };
               sources.push(source);
             }
@@ -162,6 +186,18 @@ export async function runAutopilotInvestigation(options: AutopilotRunnerOptions,
           }
           if (sources.length >= budget) break;
           if (decision.section) {
+            if (cachedPage) {
+              if (exhausted() || decisionCount === 15) break;
+              // A cached preview can be assessed without revisiting. Only an unread section justifies reopening.
+              assertSection(page, decision.section, readSections, readAttempts, !!options.readSection && !readingExhausted());
+              const reopened = await options.load(page.url, signal);
+              signal.throwIfAborted();
+              progress.remember(reopened);
+              cachedPage = false;
+              page = reopened;
+              record(page, performance.now(), decisionMs, 'Reopen source to read an uninspected section');
+              continue;
+            }
             assertSection(page, decision.section, readSections, readAttempts, !!options.readSection && !readingExhausted());
             if (decisionCount === 15) break;
             documentAttempts.set(documentKey, readAttempts + 1);
@@ -171,6 +207,7 @@ export async function runAutopilotInvestigation(options: AutopilotRunnerOptions,
               page = await options.readSection!(page, decision.section, signal);
               signal.throwIfAborted();
               readSections.add(decision.section.id);
+              progress.remember(page);
               record(page, started, decisionMs, `Read section: ${decision.section.title}`, 'reading');
             } catch (error) {
               signal.throwIfAborted();
@@ -198,7 +235,7 @@ export async function runAutopilotInvestigation(options: AutopilotRunnerOptions,
           if (exhausted() || (!decision.interaction && !decision.link)) break;
           // Do not perform a navigation when this query's last decision cannot inspect it.
           if (decisionCount === 15) break;
-          assertAction(decision, page, candidates, query, !!options.interact, completedInteractions);
+          assertAction(decision, page, candidates, query, !!options.interact && !cachedPage, completedInteractions, text.available);
           const current = page;
           const interaction = decision.interaction;
           const selected = decision.link;
@@ -206,18 +243,30 @@ export async function runAutopilotInvestigation(options: AutopilotRunnerOptions,
           publish({ phase: interaction ? 'acting' : 'loading' });
           started = performance.now();
           try {
-            if (interaction) page = await options.interact!(current, interaction, signal);
+            if (interaction) page = await progress.interact(current, interaction, signal, dispatched => options.interact!(current, interaction, signal, dispatched));
             else {
-              const local = current.links.find(link => link.url === selected!.url);
-              page = local ? await options.follow(current, local, signal) : await options.load(selected!.url, signal);
+              const cached = progress.pages.get(selected!.url);
+              visited.add(selected!.url);
+              if (cached) {
+                if (readingExhausted()) break;
+                cachedPage = true;
+                page = { ...cached.page, controls: [] };
+              } else {
+                const local = !cachedPage && current.links.find(link => link.url === selected!.url);
+                progress.attempted.add(selected!.url);
+                page = local ? await options.follow(current, local, signal) : await options.load(selected!.url, signal);
+                cachedPage = false;
+                progress.remember(page, selected!.url);
+              }
             }
             signal.throwIfAborted();
-            if (interaction) completedInteractions.push(autopilotInteractionKey(current.url, interaction));
-            record(page, started, decisionMs, label);
+            record(page, started, decisionMs, cachedPage ? `Reuse observed page: ${page.title}` : label, cachedPage ? 'reading' : 'navigation');
             stale = 0;
           } catch (error) {
             signal.throwIfAborted();
             if (error instanceof AutopilotPageChangedError && ++stale <= 2) {
+              if (selected) { visited.delete(selected.url); progress.attempted.delete(selected.url); }
+              cachedPage = false;
               page = error.page;
               frontier.clear();
               record(page, started, decisionMs, 'Page changed; refreshed actions');
@@ -249,7 +298,7 @@ export async function runAutopilotInvestigation(options: AutopilotRunnerOptions,
       error: failure ?? (complete ? null : exhausted()
         ? 'Navigation limit reached (20 actions). Some questions remain unconfirmed.'
         : 'Some questions remain unconfirmed or conflicting. See the report limitations.') });
-  } finally { session.close(); }
+  } finally { text.close(); session.close(); }
 }
 
 function assertSection(page: AutopilotPage, section: import('./autopilot-document.mts').AutopilotSection,

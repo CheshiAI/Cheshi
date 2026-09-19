@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { captureChatHistoryAnchor, previousChatHistoryStart } from '../frontend/src/features/chat/chatHistoryWindow';
 import { completedChatTurnInputs } from '../frontend/src/features/chat/chatTurnSnapshots';
 import type { ChatTimelineItem as TimelineItem } from '../frontend/src/features/chat/model';
+import type { SavedChatTurnsController } from '../frontend/src/features/chat/useSavedChatTurns';
 
 mock.module('../frontend/src/cheshiDesktop', () => ({ cheshiDesktop: undefined }));
 const { ChatTimelineHistory } = await import('../frontend/src/features/chat/ChatTimelineHistory');
@@ -100,5 +101,48 @@ describe('history scroll anchoring', () => {
     anchor.isConnected = false;
     restore();
     expect(timeline.scrollTop).toBe(100);
+  });
+});
+
+describe('conversation recall usage placement', () => {
+  const savedTurns: SavedChatTurnsController = {
+    records: [], loading: false, error: null, deleting: false,
+    refresh: async () => {}, save: async () => true, remove: async () => true,
+    isSaved: () => false, isSaving: () => false, dismissError() {},
+  };
+  const recall: TimelineItem = {
+    id: 'recall', kind: 'activity', activity: 'tool', label: 'History search', detail: '', status: 'completed',
+    recall: { operation: 'search', status: 'candidates', partial: false, query: 'Previous decision', sources: [], error: null,
+      metrics: { requests: 2, inputTokens: 1000, outputTokens: 50, estimatedCostUsd: 0.000042,
+        knownEstimatedCostUsd: 0.000042, unknownRequests: 0, modelMs: 100, totalMs: 200, cacheHits: 0 } },
+  };
+  function render(items: TimelineItem[], streaming = false, actions = true) {
+    return renderToStaticMarkup(<ChatTimelineHistory items={items} timelineRef={{ current: null }} loading={false}
+      streaming={streaming} completedTurns={completedChatTurnInputs(items, 'thread', 'History', streaming)}
+      savedTurns={actions ? savedTurns : undefined} onReviewFileChanges={() => {}} />);
+  }
+
+  test('places the conversation total once between the latest Codex metrics and response actions, including offscreen calls', () => {
+    const html = render([recall, ...history(100)]);
+    const summary = html.indexOf('Jev history search');
+    expect(html.match(/Jev history search/g)).toHaveLength(1);
+    expect(summary).toBeGreaterThan(html.indexOf('data-chat-item-id="item-99"'));
+    expect(summary).toBeGreaterThan(html.lastIndexOf('aria-label="Response statistics"'));
+    expect(summary).toBeLessThan(html.lastIndexOf('aria-label="Response actions"'));
+    expect(html).toContain('estimated $0.00004200 USD · 2 requests');
+    expect(html).toContain('Recorded calls in this conversation only.');
+  });
+
+  test('keeps totals available before completion, without response controls, or when the completed row is outside the mounted window', () => {
+    for (const html of [render([recall, ...history(2)], true), render([recall, ...history(2)], false, false),
+      render([...history(2), recall, { id: 'next-question', kind: 'user', text: 'Continue', createdAt: 2 },
+        ...Array.from({ length: 35 }, (_, i): TimelineItem => ({ id: `thinking-${i}`, kind: 'reasoning', text: 'Thinking', createdAt: 3 }))], true)]) {
+      expect(html.match(/Jev history search/g)).toHaveLength(1);
+      expect(html).toContain('estimated $0.00004200 USD · 2 requests');
+    }
+  });
+
+  test('does not add a Jev summary when the conversation has no recorded usage', () => {
+    expect(render(history(2))).not.toContain('Jev history search');
   });
 });

@@ -4,7 +4,7 @@ import test from 'node:test';
 import { isPromise } from 'node:util/types';
 import vm from 'node:vm';
 
-type GitMethod = 'prepareGitDiscard' | 'discardGitChanges' | 'getGitBranchCommits' | 'getGitHubPullRequestDiff';
+type GitMethod = 'prepareGitDiscard' | 'discardGitChanges' | 'getGitBranchCommits' | 'getGitHubPullRequestDiff' | 'getGitLineBlame' | 'getGitLineCommit';
 
 function createPreloadHarness(invoke: (channel: string, request: unknown, ...additionalArgs: unknown[]) => Promise<unknown>) {
   const exposed = new Map<string, Record<string, unknown>>();
@@ -57,6 +57,32 @@ function callPreload(
   assert.ok(isPromise(operation));
   return operation;
 }
+
+test('validates line history requests and responses through the built preload', async () => {
+  const preload = createPreloadHarness(async () => ({ status: 'uncommitted' }));
+  const request = { path: 'source.ts', line: 2, content: 'one\ntwo' };
+  assert.deepEqual(structuredClone(await callPreload(preload, 'getGitLineBlame', request)), { status: 'uncommitted' });
+  assert.deepEqual(preload.calls, [{ channel: 'cheshi:get-git-line-blame', request }]);
+  for (const invalid of [{ ...request, line: 3 }, { ...request, path: '../outside' }, { ...request, content: null }]) {
+    await assert.rejects(callPreload(preload, 'getGitLineBlame', invalid), /Invalid Git line history request/u);
+  }
+  assert.equal(preload.calls.length, 1);
+  const malformed = createPreloadHarness(async () => ({ status: 'committed', hash: 'HEAD' }));
+  await assert.rejects(callPreload(malformed, 'getGitLineBlame', request), /Invalid Git line history response/u);
+});
+
+test('routes line commit details through the built preload with validated input and output', async () => {
+  const request = { path: 'source.ts', line: 1, content: 'one' };
+  const result = { status: 'committed', blame: { status: 'committed', hash: 'a'.repeat(40), author: 'A',
+    authoredAt: '2026-09-19T00:00:00Z', summary: 'subject', originalPath: 'source.ts', originalLine: 1 },
+  message: 'subject\n\nbody', patch: 'patch', truncated: false, messageTruncated: false };
+  const preload = createPreloadHarness(async () => result);
+  assert.deepEqual(structuredClone(await callPreload(preload, 'getGitLineCommit', request)), result);
+  assert.deepEqual(preload.calls, [{ channel: 'cheshi:get-git-line-commit', request }]);
+  await assert.rejects(callPreload(preload, 'getGitLineCommit', { ...request, path: '../outside' }), /Invalid/u);
+  const malformed = createPreloadHarness(async () => ({ ...result, truncated: 'false' }));
+  await assert.rejects(callPreload(malformed, 'getGitLineCommit', request), /Invalid/u);
+});
 
 test('prepares selected files through the built preload without invoking discard', async () => {
   const preview = { files: [], revision: 'a'.repeat(64) };

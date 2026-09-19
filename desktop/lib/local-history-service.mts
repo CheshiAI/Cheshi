@@ -178,7 +178,7 @@ export class LocalHistoryService {
   }
 
   restore(request: LocalHistoryRestoreRequest): Promise<WorkspaceFileWriteResult> {
-    return this.enqueue(async () => {
+    return this.enqueue(() => this.store.transaction(async () => {
       assertRestoreRequest(request);
       const snapshot = await this.store.read(localHistoryPath(request.path), request.id);
       const current = await this.stableRead(request.path);
@@ -198,7 +198,7 @@ export class LocalHistoryService {
         await this.capture(restoredCapture, false, [protectedEntry.id]);
       }
       return result;
-    });
+    }));
   }
 
   captureChanged(event: WorkspaceFilesChangedEvent): Promise<void> {

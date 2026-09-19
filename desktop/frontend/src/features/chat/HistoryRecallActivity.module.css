@@ -1,0 +1,28 @@
+.card { display: grid; gap: var(--space-default); padding: var(--space-default); font-size: 11px; min-width: 0; }
+.heading { display: flex; align-items: center; gap: var(--icon-default); flex-wrap: wrap; }
+.heading > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; }
+.heading > span, .metrics, .totals { color: var(--sidebar-section-label-color); }
+.metrics { display: flex; flex-wrap: wrap; gap: var(--space-default); font-variant-numeric: tabular-nums; font-size: inherit; }
+.card > p, .totals p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.card summary, .totals summary { cursor: pointer; }
+.sources { display: grid; gap: var(--space-default); padding-top: var(--space-default); }
+.source { display: grid; gap: var(--space-default); min-width: 0; }
+.source > strong, .source small { overflow-wrap: anywhere; }
+.source button { justify-self: start; }
+.card .source button { font-size: 11px; }
+.source small { font-size: inherit; }
+.sourceIds { font-size: 10px; color: var(--sidebar-section-label-color); }
+.preview { min-width: 0; }
+.source .preview :is(h1, h2, h3, h4, h5, h6, header > span) { font-size: 11px; }
+.totals { display: grid; gap: var(--icon-default); font-size: 10px; font-weight: 400; line-height: 1.5; }
+.totals .metrics { font-size: inherit; }
+.totals[open] > * + * { margin-top: var(--icon-default); }
+.totals a { color: inherit; }
+.disclosureSummary { display: flex; align-items: center; gap: var(--icon-default); list-style: none; }
+.disclosureSummary::-webkit-details-marker { display: none; }
+.disclosureSummary::marker { content: ''; }
+.chevron { width: 12px; height: 12px; flex: 0 0 auto; stroke-width: 1.75; color: #858c8d; transition: transform .16s ease; }
+details[open] > .disclosureSummary > .chevron { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .chevron { transition: none; }
+}

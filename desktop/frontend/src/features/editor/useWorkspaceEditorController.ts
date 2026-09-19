@@ -150,6 +150,7 @@ export function useWorkspaceEditorController({
     active,
     path: selectedPath,
     firstLine: activeTab?.sourceExcerpt?.startLine ?? 1,
+    lineEnding: activeTab?.sourceExcerpt ? null : currentFile?.lineEnding,
     editorViewRef,
   });
   const activeLanguageServerLanguage = currentFile ? languageServerLanguageForPath(currentFile.path) : null;

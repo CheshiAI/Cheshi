@@ -14,6 +14,11 @@ Viewer and Electron app open this database in read-only mode.
   indexing. Merely registering a Workspace in the list does not create an index,
   and existing indexes are reused. Incremental synchronization and full rebuilds
   require separate `sync` and `index` requests.
+- Creating an index through the CLI or engine does not register a project in
+  Workspaces. The list contains projects explicitly opened, added, or created in
+  the app.
+- Bun tests do not inherit the real app's storage directory. Engine tests use
+  their temporary projects, and CLI tests use disposable app data for each run.
 - Prefer `sync` over a full rebuild. `uninit` deletes the index; use it only when
   deletion is explicitly needed.
 

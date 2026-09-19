@@ -40,7 +40,7 @@ test('shares file history across windows and serializes reopening after the last
 test('packages local history modules and loads their transitive imports in native strip-only Node', async () => {
   const ignore = (await createForgeConfiguration()).packagerConfig?.ignore;
   if (typeof ignore !== 'function') throw new Error('Expected the packaging allowlist.');
-  for (const name of ['store', 'service', 'ipc', 'runtime']) {
+  for (const name of ['store', 'service', 'ipc', 'runtime', 'lock']) {
     expect(ignore(`/desktop/lib/local-history-${name}.mts`)).toBe(false);
   }
   expect(ignore('/desktop/shared/local-history.ts')).toBe(false);

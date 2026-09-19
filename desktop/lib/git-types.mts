@@ -1,4 +1,5 @@
 export interface CommandOptions {
+  input?: string;
   cwd: string;
   acceptedExitCodes?: number[];
   maxBytes?: number;
@@ -11,6 +12,7 @@ export interface GitRepositoryWatchOptions {
 }
 
 export interface GitCommandOptions {
+  input?: string;
   acceptedExitCodes?: number[];
   maxBytes?: number;
   timeout?: number;

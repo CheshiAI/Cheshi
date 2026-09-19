@@ -3,6 +3,7 @@ import { finiteNumber, recordValue, stringValue } from "./codex-service-utils.mt
 import { chatRelaySessionTitle } from '../shared/chat-relay.ts';
 import { asyncQuestionsFromMessage } from '../shared/chat-async-questions.ts';
 import { agentActivityFromItem } from '../shared/chat-agent-details.ts';
+import { historyRecallFromMcp } from '../shared/history-recall.ts';
 import {
   parseSavedChatTurnPrompt,
   savedChatTurnSessionTitle,
@@ -249,12 +250,14 @@ export function activityFromItem(
   if (type === "mcpToolCall") {
     const server = stringValue(item.server);
     const tool = stringValue(item.tool);
+    const recall = historyRecallFromMcp(server, tool, item.result);
     return {
       id,
       kind: "activity",
       activity: "tool",
       label: tool ?? "Tool call",
       detail: server ?? "MCP",
+      ...(recall ? { recall } : {}),
       status: itemStatus(item.status ?? fallbackStatus),
     };
   }

@@ -9,7 +9,6 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   codeGraphStorageDirectory,
-  registerWorkspace,
   resolveCodeGraphDataRoot,
 } from '../../config/workspace-storage.mts';
 
@@ -668,9 +667,9 @@ export function createDirectory(projectRoot: string): void {
   }
 
   const dataRoot = resolveCodeGraphDataRoot();
-  if (dataRoot) registerWorkspace(dataRoot, projectRoot);
 
-  // Create main directory (if it doesn't exist)
+  // Index storage is independent of the desktop project catalog. Only an
+  // explicit workspace open/add/create action should register a project.
   fs.mkdirSync(codegraphDir, { recursive: true });
 
   if (!dataRoot) {

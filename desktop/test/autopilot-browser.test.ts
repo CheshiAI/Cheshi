@@ -84,8 +84,8 @@ function harness(beforeResponse?: () => void, options: {
       const answers = Object.fromEntries(Object.entries(body.questions as Record<string, { criteria: Record<string, string> }>).map(([id, question]) =>
         [id, { type: 'choice', confidence: 1, choice: id === 'completion'
           ? body.state.currentPage.title === 'Target' ? 'reached' : 'continue'
-          : id === 'evidence' && body.state.currentPage.title === 'Target'
-            ? Object.keys(question.criteria).find(key => key !== 'none') ?? 'none' : Object.keys(question.criteria)[0] }]));
+          : id === 'evidence' && body.state.currentPage.title !== 'Target' ? 'none'
+            : Object.keys(question.criteria).find(key => key !== 'none') ?? 'none' }]));
       beforeResponse?.();
       return Response.json({ answers });
     }),
@@ -149,7 +149,7 @@ test('a link removed while the model is deciding cannot be followed', async () =
     expect(h.views[0]!.webContents.loads).toEqual(['https://example.org/start']);
     const state = parseAutopilotState(h.invoke(AUTOPILOT_CHANNELS.get));
     expect(state.phase).toBe('error');
-    expect(state.error).toContain('No unvisited links');
+    expect(state.error).toContain('No useful next action');
     expect(h.modelPages).toHaveLength(2);
   } finally { h.service.dispose(); }
 });

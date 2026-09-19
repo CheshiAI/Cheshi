@@ -13,6 +13,52 @@
   flex-basis: var(--review-width);
 }
 
+.reviewSlot[data-resizable='true'] {
+  --review-width: calc((100cqw - var(--sidebar-width)) * var(--review-ratio, 0.5));
+}
+
+.reviewSlot[data-resizing='true'],
+.reviewSlot[data-resizing='true'] .reviewContent {
+  transition: none;
+  user-select: none;
+}
+
+.resizer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resizer:hover,
+.resizer:focus-visible,
+.reviewSlot[data-resizing='true'] .resizer {
+  background: var(--divider);
+  outline: none;
+}
+
+.resizer::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 24px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.resizer:hover::after,
+.resizer:focus-visible::after,
+.reviewSlot[data-resizing='true'] .resizer::after {
+  opacity: 1;
+}
+
 /* The content keeps its full width while only the allocated space collapses. */
 .reviewContent {
   position: absolute;

@@ -1,13 +1,11 @@
-import { ArrowLeft, History, PanelRight, RotateCcw, RotateCw } from 'lucide-react';
+import { History, RotateCcw, RotateCw, X } from 'lucide-react';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 
 import {
   LOCAL_HISTORY_MAX_BYTES, LOCAL_HISTORY_RETENTION_DAYS, type LocalHistoryReason,
 } from '../../../../shared/local-history';
 import { cheshiDesktop, type WorkspaceFileWriteResult } from '../../cheshiDesktop';
-import {
-  NeumorphicButton, TieredHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle,
-} from '../../shared/ui';
+import { LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
 import { localHistoryDiff } from './localHistoryDiff';
 import { LocalHistoryModel } from './localHistoryModel';
 import styles from './LocalHistoryPage.module.css';
@@ -17,8 +15,6 @@ interface LocalHistoryPageProps {
   draftDirty?: boolean;
   onClose(): void;
   onRestored?(result: WorkspaceFileWriteResult): void;
-  rightSidebarOpen: boolean;
-  onToggleRightSidebar(): void;
 }
 
 const reasonLabels: Record<LocalHistoryReason, string> = {
@@ -34,7 +30,7 @@ const formatDate = (timestamp: number): string => new Date(timestamp).toLocaleSt
 });
 
 export function LocalHistoryPage({
-  path, draftDirty = false, onClose, onRestored, rightSidebarOpen, onToggleRightSidebar,
+  path, draftDirty = false, onClose, onRestored,
 }: LocalHistoryPageProps) {
   const model = useMemo(() => new LocalHistoryModel(
     path, cheshiDesktop?.localHistory ? cheshiDesktop : undefined,
@@ -69,33 +65,27 @@ export function LocalHistoryPage({
   };
 
   return (
-    <main className={styles.workspace} aria-label="Local history workspace">
-      <TieredHeader className={styles.header} style={draggableWindowRegionStyle} primary={(
-        <>
-          <div className={styles.title}>
-            <NeumorphicButton raised className={`theme-toggle ${styles.titleMark}`} disabled aria-hidden="true">
-              <History size={11} strokeWidth={1.7} aria-hidden="true" />
-            </NeumorphicButton>
-            <h1>Local history</h1>
-          </div>
-          <span className={styles.path} title={path}>{path}</span>
-          <div className={styles.headerActions} style={nonDraggableWindowRegionStyle}>
-            <NeumorphicButton raised size="icon" aria-label="Back from local history"
-              title="Back" disabled={restoring} onClick={onClose}>
-              <ArrowLeft aria-hidden="true" />
-            </NeumorphicButton>
-            <NeumorphicButton raised size="icon" aria-label="Refresh local history" aria-busy={loading}
-              title="Refresh local history" disabled={loading || restoring} onClick={() => void model.refresh()}>
-              <RotateCw aria-hidden="true" />
-            </NeumorphicButton>
-            <NeumorphicButton raised size="icon" onClick={onToggleRightSidebar}
-              aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-              aria-expanded={rightSidebarOpen}>
-              <PanelRight aria-hidden="true" />
-            </NeumorphicButton>
-          </div>
-        </>
-      )} />
+    <LiquidGlassPanel as="section" className={styles.workspace} aria-label="Local history"
+      onKeyDown={event => { if (event.key === 'Escape' && !restoring) { event.stopPropagation(); onClose(); } }}>
+      <header className={styles.header}>
+        <div className={styles.title}>
+          <NeumorphicButton raised className={`theme-toggle ${styles.titleMark}`} disabled aria-hidden="true">
+            <History aria-hidden="true" />
+          </NeumorphicButton>
+          <h2>Local history</h2>
+        </div>
+        <span className={styles.path} title={path}>{path}</span>
+        <div className={styles.headerActions}>
+          <NeumorphicButton raised size="icon" aria-label="Refresh local history" aria-busy={loading}
+            title="Refresh local history" disabled={loading || restoring} onClick={() => void model.refresh()}>
+            <RotateCw aria-hidden="true" />
+          </NeumorphicButton>
+          <NeumorphicButton raised size="icon" onClick={onClose} disabled={restoring}
+            aria-label="Close local history" title="Close local history">
+            <X aria-hidden="true" />
+          </NeumorphicButton>
+        </div>
+      </header>
       <div className={styles.layout}>
         {error && <p className={styles.error} role="alert">{error}</p>}
         {notice && <p className={styles.notice} role="status">{notice}</p>}
@@ -116,7 +106,7 @@ export function LocalHistoryPage({
           </nav>
           <section className={styles.comparison} aria-label="Version comparison">
             {loadingSnapshot ? <p className={styles.empty} role="status">Loading version…</p>
-              : comparison && snapshot && current ? <>
+              : comparison && snapshot && current ? <div className={styles.comparisonContent}>
                 <div className={styles.columns}>
                   <div>Selected snapshot · {formatDate(snapshot.entry.createdAt)}
                     <small>{snapshot.lineEnding.toUpperCase()}{snapshot.hasBom ? ' · UTF-8 BOM' : ' · UTF-8'}</small>
@@ -147,7 +137,7 @@ export function LocalHistoryPage({
                   {comparison.rows.length === 0 && <p className={styles.empty}>Both versions are empty.</p>}
                   {comparison.truncated && <p className={styles.notice}>Showing the first 10,000 lines of the comparison.</p>}
                 </div>
-              </> : <div className={styles.empty}>
+              </div> : <div className={styles.empty}>
                 <History aria-hidden="true" />
                 <p>{entries.length ? 'Select a version to compare.' : 'Your file history starts here.'}</p>
                 <p>Text files are recorded when opened or saved. Later detected external changes are recorded too.</p>
@@ -164,6 +154,6 @@ export function LocalHistoryPage({
           </NeumorphicButton>
         </footer>
       </div>
-    </main>
+    </LiquidGlassPanel>
   );
 }

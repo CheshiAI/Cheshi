@@ -52,6 +52,7 @@ export function runCommand(
 ): Promise<CommandResult> {
   const {
     cwd,
+    input,
     acceptedExitCodes = [0],
     maxBytes = DEFAULT_OUTPUT_LIMIT,
     timeout = DEFAULT_TIMEOUT,
@@ -66,7 +67,7 @@ export function runCommand(
         GH_PAGER: "cat",
         NO_COLOR: "1",
       },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
@@ -81,10 +82,13 @@ export function runCommand(
       );
     }, timeout);
 
-    child.stdout.on("data", (chunk: Buffer) =>
+    // A command can exit before consuming stdin (for example, an untracked blame path).
+    // Consume EPIPE; the process exit status remains the authoritative error.
+    if (child.stdin) { child.stdin.on('error', () => {}); child.stdin.end(input); }
+    child.stdout!.on("data", (chunk: Buffer) =>
       appendOutput(stdoutChunks, chunk, stdoutState, maxBytes),
     );
-    child.stderr.on("data", (chunk: Buffer) =>
+    child.stderr!.on("data", (chunk: Buffer) =>
       appendOutput(stderrChunks, chunk, stderrState, maxBytes),
     );
     child.once("error", (error) => {

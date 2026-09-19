@@ -12,7 +12,7 @@ import { parseAutopilotRequest, parseAutopilotState } from '../shared/autopilot.
 
 const flush = () => new Promise<void>(resolve => setImmediate(resolve));
 const input: AutopilotControl = { id: 'control_1', kind: 'input', label: 'Search', signature: 'search', value: '' };
-const button: AutopilotControl = { id: 'control_2', kind: 'button', label: 'Search', signature: 'submit', value: '' };
+const button: AutopilotControl = { id: 'control_2', kind: 'button', label: 'Search', signature: 'submit', identity: 'search-button', value: '' };
 const start: AutopilotPage = { url: 'https://example.org/', title: 'Search', text: 'Search site', links: [], controls: [input, button] };
 const fill: AutopilotInteraction = { kind: 'fill', control: input, text: 'Manipuri pony' };
 
@@ -88,9 +88,12 @@ test('Jev chooses only supplied actions and receives exact search text and prior
     expect(body.model).toBe('jev-latest');
     expect(body.state.searchText).toBe(fill.text);
     expect(body.state.history).toEqual(['Open: Search']);
-    expect(Object.keys(body.questions.links_0.criteria)).toEqual(['fill_control_1', 'click_control_2']);
+    expect(body.questions.operation).toBeUndefined();
+    expect(Object.keys(body.questions.links_0.criteria)).toEqual(['none', 'fill_control_1']);
+    expect(Object.keys(body.questions.links_1.criteria)).toEqual(['none', 'click_control_2']);
     return Response.json({ answers: { completion: { type: 'choice', choice: 'continue', confidence: 1 },
-      links_0: { type: 'choice', choice: selected, confidence: 1 } } });
+      links_0: { type: 'choice', choice: selected.startsWith('click') ? 'none' : selected, confidence: 1 },
+      links_1: { type: 'choice', choice: selected.startsWith('click') ? selected : 'none', confidence: 1 } } });
   });
   const args = { page: start, goal: 'Find pony', visited: [start.url], searchText: fill.text,
     history: ['Open: Search'], signal: new AbortController().signal };
@@ -115,6 +118,54 @@ test('interaction waits for retained input and for results that update without n
       { kind: 'click', control: after.controls![1]! }, new AbortController().signal);
     expect(results.url).toBe(before.url);
     expect(results.text).toContain('Results: Manipuri pony');
+  } finally { await h.close(); }
+});
+
+test('model compares actual links with button candidates instead of committing to a generic operation', async () => {
+  const destination = { id: 'link_1', url: 'https://example.org/target', label: 'Requested repository' };
+  const current = { ...start, controls: [button], links: [destination] };
+  let compared = false;
+  const model = createAutopilotModel('fixture', async (_url, init) => {
+    const body = JSON.parse(String(init.body));
+    expect(body.questions.operation).toBeUndefined();
+    if (body.questions.next) {
+      compared = true;
+      expect(Object.keys(body.questions.next.criteria)).toEqual(['none', 'click_control_2', 'link_1']);
+      expect(body.questions.next.criteria.link_1).toContain(destination.url);
+      return Response.json({ answers: { next: { type: 'choice', choice: 'link_1', confidence: 0.95 } } });
+    }
+    return Response.json({ answers: { completion: { type: 'choice', choice: 'continue', confidence: 1 },
+      links_0: { type: 'choice', choice: 'click_control_2', confidence: 0.99 },
+      links_1: { type: 'choice', choice: 'link_1', confidence: 0.8 } } });
+  });
+  const result = await model({ page: current, goal: 'Open requested repository', searchText: 'query', visited: [], signal: new AbortController().signal });
+  expect(compared).toBe(true);
+  expect(result.link).toEqual(destination);
+  expect(result.interaction).toBeUndefined();
+});
+
+test('irrelevant menus can all be rejected without pretending the destination was reached', async () => {
+  const model = createAutopilotModel('fixture', async (_url, init) => {
+    const body = JSON.parse(String(init.body)) as { questions: Record<string, { criteria: Record<string, string> }> };
+    return Response.json({ answers: Object.fromEntries(Object.keys(body.questions).map(id =>
+      [id, { type: 'choice', choice: id === 'completion' ? 'continue' : 'none', confidence: 1 }])) });
+  });
+  const result = await model({ page: { ...start, controls: [{ ...button, label: 'Appearance' }] },
+    goal: 'Find article', searchText: 'pony', visited: [], signal: new AbortController().signal });
+  expect(result.completed).toBe(false);
+  expect(result.link).toBeNull();
+  expect(result.interaction).toBeUndefined();
+});
+
+test('a named single-field site search accepts the query while a destination combobox still needs its own value', async () => {
+  const h = dom('<form><input type="search" name="search" aria-label="Search Wikipedia"><button>Search</button></form>'
+    + '<form><input type="search" name="q" role="combobox" aria-label="Search destination"><button>Find trips</button></form>');
+  try {
+    const current = h.read();
+    expect(current.controls!.filter(control => control.kind === 'input').map(control => control.search)).toEqual([true, false]);
+    const actions = autopilotActions(current, [], 'Manipuri pony').filter(action => action.kind === 'fill');
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({ kind: 'fill', text: 'Manipuri pony', control: { label: 'Search Wikipedia' } });
   } finally { await h.close(); }
 });
 
@@ -244,11 +295,79 @@ test('model excludes completed interactions even after a button is recreated or 
   const changed = { ...start, controls: [input, { ...button, id: 'control_9', signature: 'expanded' }] };
   const model = createAutopilotModel('fixture', async (_url, init) => {
     const body = JSON.parse(String(init.body));
-    expect(Object.keys(body.questions.links_0.criteria)).toEqual(['fill_control_1']);
+    expect(Object.keys(body.questions.links_0.criteria)).toEqual(['none', 'fill_control_1']);
     return Response.json({ answers: { completion: { type: 'choice', choice: 'continue', confidence: 1 },
       links_0: { type: 'choice', choice: 'fill_control_1', confidence: 1 } } });
   });
   expect((await model({ page: changed, goal: 'Find it', searchText: fill.text, visited: [],
     completedInteractions: [key], signal: new AbortController().signal })).interaction).toEqual(fill);
   expect(autopilotActions({ ...changed, url: 'https://example.org/other' }, [], fill.text, [key])).toHaveLength(2);
+});
+
+test('equal labels in different forms have distinct identities and search text is not offered to ordinary fields', async () => {
+  const h = dom('<form id="one"><input aria-label="Name"><button>Search</button></form>'
+    + '<form id="two"><input type="search" aria-label="Search"><button>Search</button></form>');
+  try {
+    const page = h.read();
+    const buttons = page.controls!.filter(control => control.kind === 'button');
+    expect(autopilotInteractionKey(page.url, { kind: 'click', control: buttons[0]! }))
+      .not.toBe(autopilotInteractionKey(page.url, { kind: 'click', control: buttons[1]! }));
+    expect(autopilotActions(page, [], '서울').filter(action => action.kind === 'fill').map(action => action.control.label))
+      .toEqual(['Search']);
+    const before = autopilotInteractionKey(page.url, { kind: 'click', control: buttons[1]! });
+    h.window.document.querySelector('#two')!.querySelector('input')!.value = '부산';
+    const after = h.read().controls!.filter(control => control.kind === 'button')[1]!;
+    expect(autopilotInteractionKey(page.url, { kind: 'click', control: after })).not.toBe(before);
+  } finally { await h.close(); }
+});
+
+test('a URL change without retained text cannot pass input verification', async () => {
+  let reads = 0;
+  await failure(performAutopilotInteraction({
+    read: async () => ++reads === 1 ? start : { ...start, url: 'https://example.org/other', controls: [] },
+    evaluate: async () => 'applied', loading: () => false, timeoutMs: 12, pollMs: 1, settleMs: 0,
+  }, start, fill, new AbortController().signal), 'did not retain');
+});
+
+test('input verification accepts a replacement node only when its semantic identity and retained value match', async () => {
+  const field = { ...input, identity: 'form/search' };
+  let reads = 0;
+  const before = { ...start, controls: [field] };
+  const after = await performAutopilotInteraction({
+    read: async () => ++reads === 1 ? before : { ...before, controls: [{ ...field, id: 'control_9', value: '서울' }] },
+    evaluate: async () => 'applied', loading: () => false, timeoutMs: 30, pollMs: 1, settleMs: 0,
+  }, before, { kind: 'fill', control: field, text: '서울' }, new AbortController().signal);
+  expect(after.controls![0]!.id).toBe('control_9');
+});
+
+test('combobox verification waits for the matching suggestion list before the next decision', async () => {
+  const field = { ...input, label: 'Destination', search: false, autocomplete: true };
+  let reads = 0;
+  const before = { ...start, controls: [field] };
+  const after = await performAutopilotInteraction({
+    read: async () => {
+      reads++;
+      if (reads === 1) return before;
+      return { ...before, controls: [{ ...field, value: '서울' }, ...(reads >= 4
+        ? [{ ...button, role: 'option', owner: field.id, label: '서울, 대한민국' }] : [])] };
+    },
+    evaluate: async () => 'applied', loading: () => false, timeoutMs: 50, pollMs: 1, settleMs: 0,
+  }, before, { kind: 'fill', control: field, text: '서울' }, new AbortController().signal);
+  expect(reads).toBe(4);
+  expect(after.controls!.at(-1)!.role).toBe('option');
+});
+
+test('destination search fields require their own value and autocomplete selection precedes submission', async () => {
+  const h = dom('<form><input type="search" role="combobox" aria-label="Search destination" value="서울" aria-controls="cities">'
+    + '<div role="listbox" id="cities"><div role="option" tabindex="0">서울, 대한민국</div></div><button>Search</button></form>');
+  try {
+    const page = h.read();
+    expect(page.controls![0]!.search).toBe(false);
+    const actions = autopilotActions(page, [], '부산에서 서울로');
+    expect(actions).toHaveLength(1);
+    expect(actions[0]!.kind).toBe('click');
+    expect(actions[0]!.kind !== 'navigate' && actions[0]!.control.role).toBe('option');
+    const withHelper = autopilotActions(page, [], '부산에서 서울로', [], true);
+    expect(withHelper.find(action => action.kind === 'fill')).toMatchObject({ text: '' });
+  } finally { await h.close(); }
 });

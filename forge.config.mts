@@ -34,7 +34,7 @@ function shouldIgnore(packagePath: string): boolean {
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
-    const packagedSharedFiles = new Set(['account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-notes.ts', 'apple-notes-document.ts', 'keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'showcase.ts', 'autopilot.ts', 'settings.ts', 'autopilot-investigation.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'local-history.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
+    const packagedSharedFiles = new Set(['account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-notes.ts', 'apple-notes-document.ts', 'keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'showcase.ts', 'autopilot.ts', 'settings.ts', 'autopilot-investigation.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'history-recall.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'git-line-blame.ts', 'local-history.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
     return grandchildEntry === undefined || !packagedSharedFiles.has(grandchildEntry) || segments.length > 3;
   }
   if (childEntry !== 'lib') return true;
@@ -44,10 +44,14 @@ function shouldIgnore(packagePath: string): boolean {
     'autopilot-browser.mts',
     'autopilot-actions.mts',
     'autopilot-interaction.mts',
+    'autopilot-input.mts',
+    'autopilot-progress.mts',
+    'autopilot-field-text.mts',
     'autopilot-key.mts',
     'settings-service.mts',
     'settings-ipc.mts',
     'autopilot-model.mts',
+    'autopilot-model-request.mts',
     'autopilot-page.mts',
     'autopilot-runner.mts',
     'autopilot-research.mts',
@@ -80,6 +84,7 @@ function shouldIgnore(packagePath: string): boolean {
     'app-update-download.mts',
     'app-update-installer.mts',
     'local-history-store.mts',
+    'local-history-lock.mts',
     'local-history-service.mts',
     'local-history-ipc.mts',
     'local-history-runtime.mts',
@@ -89,6 +94,12 @@ function shouldIgnore(packagePath: string): boolean {
     'chat-history-compiler.mts',
     'chat-history-index-store.mts',
     'chat-history-search.mts',
+    'chat-history-recall.mts',
+    'chat-history-recall-model.mts',
+    'chat-history-recall-usage.mts',
+    'codex-chat-history-tools.mts',
+    'workspace-history-mcp.mts',
+    'workspace-chat-history.mts',
     'editor-session.mts',
     'editor-session-ipc.mts',
     'workspace-session-stores.mts',
@@ -148,6 +159,8 @@ function shouldIgnore(packagePath: string): boolean {
     'temporary-chat-ipc.mts',
     'ghostty-surface-host.mts',
     'git-command.mts',
+    'git-line-blame.mts',
+    'git-line-blame-preload.cts',
     'git-discard.mts',
     'git-ipc.mts',
     'git-parsers.mts',

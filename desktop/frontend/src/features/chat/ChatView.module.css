@@ -395,11 +395,18 @@
 .attachmentFileContent small { color: #7f8789; font-size: 8px; line-height: 11px; }
 .attachmentCard > .attachmentRemove {
   position: absolute;
-  top: 5px;
-  right: 5px;
+  top: 1px;
+  right: 1px;
+  width: calc(var(--icon-button-size) * .9);
+  height: calc(var(--icon-button-size) * .9);
+  flex-basis: calc(var(--icon-button-size) * .9);
   z-index: 1;
 }
-.attachmentRemove svg { width: 10px; height: 10px; stroke-width: 1.7; }
+.attachmentCard > .attachmentRemove svg {
+  width: calc(var(--icon-button-icon-size) * .9);
+  height: calc(var(--icon-button-icon-size) * .9);
+  stroke-width: var(--icon-button-stroke-width);
+}
 .composerFooter { display: flex; flex-wrap: wrap; min-height: 42px; align-items: center; justify-content: space-between; gap: 16px; padding: 5px 8px 8px 14px; }
 .composerMeta { display: flex; flex-wrap: wrap; min-width: 0; align-items: center; gap: 8px; }
 .composerActions { display: flex; min-width: 0; flex: 0 1 auto; align-items: center; justify-content: flex-end; gap: 8px; }

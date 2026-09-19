@@ -70,6 +70,7 @@ function loadComponent(filename: string): Record<string, unknown> {
       memo: (component: unknown) => component,
       useState: (initial: unknown) => [initial, () => {}],
       useMemo: (calculate: () => unknown) => calculate(),
+      useRef: (current: unknown) => ({ current }),
       useEffect() {},
     },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },

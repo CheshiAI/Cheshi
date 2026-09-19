@@ -55,6 +55,7 @@ const aboutWindow = createAboutWindow({
 const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'updates'));
 const apiSettings = createSettingsService({
   directory: path.join(app.getPath('userData'), 'api-keys'),
+  settingsPath: path.join(app.getPath('userData'), 'settings.json'),
   encryption: {
     isEncryptionAvailable: () => safeStorage.isEncryptionAvailable()
       && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
@@ -173,14 +174,17 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   let settingsIpc: ReturnType<typeof registerSettingsIpc> | undefined;
   let autopilot: ReturnType<typeof createAutopilotBrowser> | undefined;
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
-  try { runtime = createWorkspaceRuntime(options, snapshot => source?.update(snapshot)); }
+  try {
+    runtime = createWorkspaceRuntime({ ...options, getTypeSafeKey: apiSettings.getKey }, snapshot => source?.update(snapshot), window => {
+      settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
+    });
+  }
   catch (error) { source?.dispose(); throw error; }
   return {
     async start() {
       try {
         const window = await runtime.start();
         source?.attach(window);
-        settingsIpc ??= registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
         showcase ??= createShowcaseBrowser({
           window, ipc: options.scope.ipc,
           createView: configuration => {

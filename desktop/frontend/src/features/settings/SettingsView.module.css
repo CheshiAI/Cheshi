@@ -5,14 +5,14 @@
 .titleMark { cursor: default; pointer-events: none; }
 .titleMark > svg { width: 11px; height: 11px; stroke-width: 1.7; }
 .item > svg { width: 11px; height: 11px; flex: 0 0 auto; }
-.body { display: grid; flex: 1; min-height: 0; grid-template-columns: 250px minmax(0, 1fr); }
+.body { display: grid; flex: 1; min-height: 0; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); }
 .sidebar { --liquid-glass-radius: 0; min-width: 0; overflow: auto; border-width: 0 1px 0 0; }
 .item { display: flex; align-items: center; gap: var(--icon-default); width: 100%; min-height: 42px; padding: 0 var(--space-default); border: 0; border-radius: 0; background: var(--dropdown-selection-bg); color: var(--active-text); font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
 .item:hover { background: var(--dropdown-selection-bg); }
 .item:focus-visible { outline: 1px solid var(--active-text); outline-offset: -2px; }
 .detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .scroll { flex: 1; min-height: 0; overflow: auto; padding: var(--space-default); }
-.form { display: flex; flex-direction: column; gap: var(--space-default); width: 100%; max-width: 640px; margin: 0; }
+.form { display: flex; flex-direction: column; gap: var(--space-default); width: 100%; margin: 0; }
 .form h2 { margin: 0; font-size: 11px; font-weight: 400; letter-spacing: .08em; line-height: 14px; color: var(--sidebar-section-label-color); }
 .titleRow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-default); }
 .menuToggle { --neumorphic-button-radius: 9px; display: flex; align-items: center; flex: 0 0 auto; width: 32px; height: 18px; padding: 2px; cursor: pointer; }

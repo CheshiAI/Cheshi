@@ -3,12 +3,15 @@ import type { EphemeralSessionService } from './ephemeral-session-service.mts';
 import { parseResearchPlan, parseResearchReport } from '../shared/autopilot-investigation.ts';
 import type { ResearchPlan, ResearchAssessment, ResearchReport } from '../shared/autopilot-investigation.ts';
 import type { AutopilotSource } from '../shared/autopilot.ts';
+import { parseAutopilotFieldText } from './autopilot-field-text.mts';
+import type { AutopilotFieldContext } from './autopilot-field-text.mts';
 
 export interface ResearchSession {
   model: string;
   plan(goal: string, signal: AbortSignal): Promise<ResearchPlan>;
   report(goal: string, plan: ResearchPlan, sources: AutopilotSource[], assessments: ResearchAssessment[], signal: AbortSignal): Promise<ResearchReport>;
   close(): void;
+  fieldText?(context: AutopilotFieldContext, signal: AbortSignal): Promise<string>;
 }
 export interface ResearchCoordinator { open(contextId: string | undefined, signal: AbortSignal): Promise<ResearchSession> }
 interface Options {
@@ -53,6 +56,12 @@ export function createAutopilotCodex(options: Options): ResearchCoordinator & { 
         };
         return {
           model: configuration.model, close,
+          async fieldText(context, signal) {
+            return parseAutopilotFieldText(await generate(context,
+              'Return exactly {"text":"value for this field"}, or {"text":null} when the goal does not supply enough information. '
+              + 'Use the field meaning, its current value, the original goal and recent actions. Never copy the whole search query into unrelated fields. '
+              + 'Do not invent personal information. Do not return selectors, commands or browser actions.', signal));
+          },
           async plan(goal, signal) {
             return parseResearchPlan(await generate({ goal },
               'Return {"questions":[{"question":"specific question","query":"search query","externalQuery":"follow-up search query","requireIndependent":true,"requireOfficial":true}],"officialDomains":["example.com"]}. '

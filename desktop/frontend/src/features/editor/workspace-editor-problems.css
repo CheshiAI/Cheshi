@@ -82,6 +82,8 @@
   z-index: 3;
   min-width: 0;
   min-height: 0;
+  height: 5px;
+  align-self: center;
   border: 0;
   background: transparent;
   cursor: row-resize;
@@ -92,26 +94,41 @@
 
 .workspace-editor-problems-resizer::before {
   position: absolute;
-  inset: -3px 0;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: 24px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
   content: "";
 }
 
 .workspace-editor-problems-resizer::after {
   position: absolute;
   right: 0;
-  bottom: 0;
+  top: 50%;
   left: 0;
   height: 1px;
   border-radius: 1px;
   background: var(--divider);
+  transform: translateY(-50%);
   content: "";
-  transition: background-color .14s ease;
 }
 
-.workspace-editor-problems-resizer:hover::after,
-.workspace-editor-problems-resizer:focus-visible::after,
-.workspace-editor-problems-resizer[data-dragging='true']::after {
-  background: var(--editor-accent);
+.workspace-editor-problems-resizer:hover,
+.workspace-editor-problems-resizer:focus-visible,
+.workspace-editor-problems-resizer[data-dragging='true'] {
+  background: var(--divider);
+}
+
+.workspace-editor-problems-resizer:hover::before,
+.workspace-editor-problems-resizer:focus-visible::before,
+.workspace-editor-problems-resizer[data-dragging='true']::before {
+  opacity: 1;
 }
 
 .workspace-editor-problems-header[data-liquid-glass-surface='side-panel'] {

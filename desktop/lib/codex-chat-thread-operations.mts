@@ -18,6 +18,18 @@ import type { CodexConversationAccess } from './codex-chat-account-continuity.mt
 
 const SESSION_LIST_LIMIT = 100;
 
+/** Read the owner's full saved history without resuming the conversation. */
+export function readCodexHistory(context: { client: CodexChatClient; conversations?: CodexConversationAccess },
+  threadId: string, allowSubagent: boolean): Promise<unknown> {
+  if (allowSubagent && context.conversations?.agents) {
+    return context.conversations.agents.read(threadId, 'thread/read', { includeTurns: true });
+  }
+  if (!allowSubagent && context.conversations?.read) {
+    return context.conversations.read(threadId, 'thread/read', { includeTurns: true });
+  }
+  return context.client.request('thread/read', { threadId, includeTurns: true });
+}
+
 interface CodexChatThreadContext {
   conversations?: CodexConversationAccess;
   viewedThreadIsSubagent?: boolean;

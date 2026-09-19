@@ -110,6 +110,7 @@
 .diffLine[data-kind='addition'] { background: rgba(74, 151, 96, .15); }
 .diffLine[data-kind='deletion'] { background: rgba(190, 70, 67, .15); }
 .diffLine[data-kind='meta'] { color: #7da0c4; }
+.diffLine[data-line-target='true'] { box-shadow: inset 3px 0 var(--editor-accent); outline: 1px solid var(--editor-accent); outline-offset: -1px; }
 
 .lineNumber {
   position: relative;

@@ -3,7 +3,7 @@
   --terminal-muted: #929497;
   --terminal-accent: #85c9c0;
   --split-pane-border: var(--divider);
-  --split-pane-accent: var(--editor-accent);
+  --split-pane-accent: var(--divider);
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -139,6 +139,35 @@
 
 .terminal-session {
   width: 100%;
+}
+
+.terminal-workspace .terminal-session [data-axis='columns'] > [role='separator'] { width: 5px; }
+.terminal-workspace .terminal-session [data-axis='rows'] > [role='separator'] { height: 5px; }
+.terminal-session [data-axis] > [role='separator']::after { background: var(--divider); }
+.terminal-session [data-axis] > [role='separator']::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: 2px;
+  height: 24px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+}
+.terminal-session [data-axis='rows'] > [role='separator']::before { width: 24px; height: 2px; }
+.terminal-session [data-axis] > [role='separator']:hover,
+.terminal-session [data-axis] > [role='separator']:focus-visible,
+.terminal-session [data-axis][data-dragging='true'] > [role='separator'] {
+  background: var(--divider);
+}
+.terminal-session [data-axis] > [role='separator']:hover::before,
+.terminal-session [data-axis] > [role='separator']:focus-visible::before,
+.terminal-session [data-axis][data-dragging='true'] > [role='separator']::before {
+  opacity: 1;
 }
 
 .terminal-pane {

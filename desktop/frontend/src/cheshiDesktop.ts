@@ -1,3 +1,4 @@
+import type { GitLineBlameRequest, GitLineBlame, GitLineCommit } from '../../shared/git-line-blame';
 import type { GitHubIssuesApi } from '../../shared/github-issues';
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../shared/chat-user-input';
 import type { AppUpdateApi, AppUpdateResumeApi } from '../../shared/app-update';
@@ -689,6 +690,8 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   onWorkspaceFilesChanged: (handler: (event: WorkspaceFilesChangedEvent) => void) => () => void;
   getGitSnapshot: () => Promise<GitRepositorySnapshot>;
   getGitBranchCommits: (branchReference: string) => Promise<GitCommitSummary[]>;
+  getGitLineBlame: (request: GitLineBlameRequest) => Promise<GitLineBlame>;
+  getGitLineCommit: (request: GitLineBlameRequest) => Promise<GitLineCommit>;
   getGitDiff: (request: GitDiffRequest) => Promise<GitDiffResult>;
   stageGitPaths: (paths: string[]) => Promise<GitRepositorySnapshot>;
   unstageGitPaths: (paths: string[]) => Promise<GitRepositorySnapshot>;

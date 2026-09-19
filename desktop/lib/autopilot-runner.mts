@@ -1,21 +1,25 @@
 import { AUTOPILOT_MAX_STEPS, autopilotRunning, parseAutopilotRequest, safeAutopilotUrl } from '../shared/autopilot.ts';
-import type { AutopilotState } from '../shared/autopilot.ts';
+import type { AutopilotState, AutopilotRequest } from '../shared/autopilot.ts';
 import type { AutopilotDecision, AutopilotDecisionInput, AutopilotLink, AutopilotPage } from './autopilot-model.mts';
-import { autopilotActionLabel, autopilotActions, autopilotInteractionKey, sameAutopilotInteraction } from './autopilot-actions.mts';
+import { autopilotActionLabel, availableAutopilotInteraction } from './autopilot-actions.mts';
 import type { AutopilotInteraction } from './autopilot-actions.mts';
 import { runAutopilotResearch } from './autopilot-research.mts';
 import type { ResearchCoordinator } from './autopilot-codex.mts';
 import type { AutopilotSection } from './autopilot-document.mts';
+import { AutopilotProgress } from './autopilot-progress.mts';
+import { createAutopilotTextResolver } from './autopilot-field-text.mts';
 
 const MAX_PAGE_CHANGE_RETRIES = 2;
 
 export class AutopilotPageChangedError extends Error {
   readonly page: AutopilotPage;
+  readonly reason: 'changed' | 'unavailable';
 
-  constructor(page: AutopilotPage) {
-    super('The page changed while choosing a link.');
+  constructor(page: AutopilotPage, reason: 'changed' | 'unavailable' = 'changed') {
+    super(reason === 'unavailable' ? 'The selected control is covered or unavailable.' : 'The page changed while choosing a link.');
     this.name = 'AutopilotPageChangedError';
     this.page = page;
+    this.reason = reason;
   }
 }
 
@@ -27,7 +31,7 @@ export interface AutopilotRunnerOptions {
   read?(signal: AbortSignal, page?: AutopilotPage): Promise<AutopilotPage>;
   readSection?(page: AutopilotPage, section: AutopilotSection, signal: AbortSignal): Promise<AutopilotPage>;
   follow(page: AutopilotPage, link: AutopilotLink, signal: AbortSignal): Promise<AutopilotPage>;
-  interact?(page: AutopilotPage, action: AutopilotInteraction, signal: AbortSignal): Promise<AutopilotPage>;
+  interact?(page: AutopilotPage, action: AutopilotInteraction, signal: AbortSignal, onDispatched?: () => void): Promise<AutopilotPage>;
   cancelLoad(): void;
   onState(state: AutopilotState): void;
 }
@@ -44,12 +48,14 @@ export function createAutopilotRunner(options: AutopilotRunnerOptions) {
   const emit = () => { if (!disposed) options.onState(snapshot()); };
   const update = (value: Partial<AutopilotState>) => { state = { ...state, ...value }; emit(); };
 
-  async function execute(controller: AbortController) {
+  async function execute(controller: AbortController, request: AutopilotRequest) {
     const { signal } = controller;
+    const progress = new AutopilotProgress();
+    const text = createAutopilotTextResolver(options.research, request.contextId);
     let started = performance.now();
     try {
       if (state.mode === 'research') {
-        await runAutopilotResearch(options, { ...state }, signal, value => {
+        await runAutopilotResearch(options, request, signal, value => {
           if (run === controller && !signal.aborted && !disposed) update(value);
         });
         return;
@@ -60,7 +66,6 @@ export function createAutopilotRunner(options: AutopilotRunnerOptions) {
       let decisionMs = 0;
       let confidence: number | null = null;
       const visited: string[] = [];
-      const completedInteractions: string[] = [];
       let step = 0;
       let retries = 0;
       let recordPage = true;
@@ -82,8 +87,11 @@ export function createAutopilotRunner(options: AutopilotRunnerOptions) {
             index === state.steps.length - 1 ? { ...entry, title: page.title } : entry) });
         }
         started = performance.now();
-        const decision = await options.decide({ page, goal: state.goal, visited, signal, searchText: state.searchText,
-          completedInteractions, history: state.steps.flatMap(step => step.action ? [step.action] : []) });
+        const completedInteractions = progress.excludedInteractions(page);
+        const input: AutopilotDecisionInput = { page, goal: state.goal, visited, signal, searchText: state.searchText,
+          completedInteractions, fieldTextAvailable: text.available, outcomes: progress.outcomes,
+          history: [...state.steps.flatMap(step => step.action ? [step.action] : []), ...progress.history] };
+        const decision = await text.resolve(await options.decide(input), input);
         signal.throwIfAborted();
         const elapsed = performance.now() - started;
         decisionMs += elapsed;
@@ -92,16 +100,15 @@ export function createAutopilotRunner(options: AutopilotRunnerOptions) {
         if (decision.completed) { update({ phase: 'completed' }); return; }
         if (step === AUTOPILOT_MAX_STEPS) { update({ phase: 'limit' }); return; }
         const interaction = decision.interaction;
-        if (interaction) assertInteraction(interaction, page, state.searchText, !!options.interact, completedInteractions);
+        if (interaction) assertInteraction(interaction, page, state.searchText, !!options.interact, completedInteractions, text.available);
         else assertLink(decision.link, page, visited);
         update({ phase: interaction ? 'acting' : 'loading' });
         started = performance.now();
-        const interactionKey = interaction ? autopilotInteractionKey(page.url, interaction) : null;
+        const current = page;
         try {
-          page = interaction ? await options.interact!(page, interaction, signal)
+          page = interaction ? await progress.interact(current, interaction, signal, dispatched => options.interact!(current, interaction, signal, dispatched))
             : await options.follow(page, decision.link!, signal);
           signal.throwIfAborted();
-          if (interactionKey) completedInteractions.push(interactionKey);
           action = autopilotActionLabel(interaction ?? { kind: 'navigate', link: decision.link! }).slice(0, 600);
           samePageInteraction = !!interaction;
           retries = 0;
@@ -110,7 +117,7 @@ export function createAutopilotRunner(options: AutopilotRunnerOptions) {
         } catch (error) {
           signal.throwIfAborted();
           if (!(error instanceof AutopilotPageChangedError)) throw error;
-          assertPageChangeRetry(++retries);
+          assertPageChangeRetry(++retries, error.reason);
           // A changed URL is a real page transition; a refreshed DOM is not.
           recordPage = error.page.url !== page.url;
           samePageInteraction = false;
@@ -125,6 +132,7 @@ export function createAutopilotRunner(options: AutopilotRunnerOptions) {
         update({ phase: 'error', error: error instanceof Error ? error.message.slice(0, 2000) : 'Autopilot could not continue.' });
       }
     } finally {
+      text.close();
       if (run === controller) run = null;
     }
   }
@@ -148,7 +156,7 @@ export function createAutopilotRunner(options: AutopilotRunnerOptions) {
       state = { configured: options.configured(), ...request, title: '', phase: 'loading', error: null, modelMs: 0, steps: [],
         ...(request.mode === 'research' ? { sources: [], issues: [] } : {}) };
       emit();
-      void execute(run);
+      void execute(run, request);
       return snapshot();
     },
     stop,
@@ -156,8 +164,9 @@ export function createAutopilotRunner(options: AutopilotRunnerOptions) {
   };
 }
 
-function assertPageChangeRetry(retries: number): void {
+function assertPageChangeRetry(retries: number, reason: 'changed' | 'unavailable'): void {
   if (retries > MAX_PAGE_CHANGE_RETRIES) {
+    if (reason === 'unavailable') throw new Error('The selected controls are covered or unavailable. Close the overlay and try again.');
     throw new Error('The page kept changing after 2 retries. Try again once it has settled.');
   }
 }
@@ -168,16 +177,15 @@ function assertDestination(url: string | null, visited: string[]): void {
 }
 
 function assertLink(link: AutopilotLink | null, page: AutopilotPage, visited: string[]): void {
-  if (!link) throw new Error('No unvisited links remain on this page.');
+  if (!link) throw new Error('No useful next action was found on this page. Try a more specific goal or start page.');
   if (!page.links.some(candidate => candidate.id === link.id && candidate.url === link.url)
     || !safeAutopilotUrl(link.url) || visited.includes(link.url)) {
     throw new Error('The selected link is not an available destination.');
   }
 }
 
-function assertInteraction(action: AutopilotInteraction, page: AutopilotPage, searchText: string | undefined, supported: boolean, completedInteractions: string[]): void {
-  if (!supported || !autopilotActions(page, [], searchText, completedInteractions).some(candidate =>
-    candidate.kind !== 'navigate' && sameAutopilotInteraction(candidate, action))) {
+function assertInteraction(action: AutopilotInteraction, page: AutopilotPage, searchText: string | undefined, supported: boolean, completedInteractions: string[], fieldTextAvailable: boolean): void {
+  if (!supported || !availableAutopilotInteraction(action, page, searchText, completedInteractions, fieldTextAvailable)) {
     throw new Error('The selected control is not available for this search.');
   }
 }

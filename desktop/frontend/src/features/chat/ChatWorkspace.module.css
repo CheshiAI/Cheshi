@@ -1,6 +1,6 @@
 .root {
   --chat-accent: #85c9c0;
-  --split-pane-accent: var(--editor-accent);
+  --split-pane-accent: var(--divider);
 }
 .root, .body, .content, .split, .mount, .host, .pane {
   display: flex;
@@ -12,6 +12,34 @@
 .root[hidden] { display: none; }
 .body { overflow: hidden; container-type: inline-size; }
 .split { overflow: hidden; }
+.root .split [data-axis='columns'] > [role='separator'] { width: 5px; }
+.root .split [data-axis='rows'] > [role='separator'] { height: 5px; }
+.split [data-axis] > [role='separator']::after { background: var(--divider); }
+.split [data-axis] > [role='separator']::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: 2px;
+  height: 24px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+}
+.split [data-axis='rows'] > [role='separator']::before { width: 24px; height: 2px; }
+.split [data-axis] > [role='separator']:hover,
+.split [data-axis] > [role='separator']:focus-visible,
+.split [data-axis][data-dragging='true'] > [role='separator'] {
+  background: var(--divider);
+}
+.split [data-axis] > [role='separator']:hover::before,
+.split [data-axis] > [role='separator']:focus-visible::before,
+.split [data-axis][data-dragging='true'] > [role='separator']::before {
+  opacity: 1;
+}
 .pane { container-type: inline-size; }
 .paneHeader {
   --liquid-glass-radius: 0;

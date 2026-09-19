@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { parseTypeSafeKey } from '../shared/settings.ts';
+import { parseAutopilotMenuVisible, parseTypeSafeKey } from '../shared/settings.ts';
 import type { TypeSafeSettings } from '../shared/settings.ts';
 
 interface Encryption {
@@ -11,6 +11,7 @@ interface Encryption {
 }
 interface Options {
   directory: string;
+  settingsPath: string;
   encryption: Encryption;
   fallback(): string | null;
   checkKey(key: string): Promise<void>;
@@ -20,6 +21,24 @@ export function createSettingsService(options: Options) {
   const filename = path.join(options.directory, 'typesafe-api-key.enc');
   let cached: string | undefined;
   const listeners = new Set<(state: TypeSafeSettings) => void>();
+  const readPreferences = (): Record<string, unknown> => {
+    try {
+      return assertPreferences(JSON.parse(readFileSync(options.settingsPath, 'utf8')));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+      throw new Error('Could not read app settings.');
+    }
+  };
+  const writeMenuPreference = (visible: boolean) => {
+    const temporary = `${options.settingsPath}.${randomUUID()}.tmp`;
+    try {
+      const preferences = { ...readPreferences(), autopilotMenuVisible: visible };
+      mkdirSync(path.dirname(options.settingsPath), { recursive: true, mode: 0o700 });
+      writeFileSync(temporary, `${JSON.stringify(preferences, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+      renameSync(temporary, options.settingsPath);
+    } catch { throw new Error('Could not save the Autopilot menu setting. Try again.'); }
+    finally { try { rmSync(temporary, { force: true }); } catch { /* A failed write does not replace the saved preference. */ } }
+  };
   const available = () => { try { return options.encryption.isEncryptionAvailable() === true; } catch { return false; } };
   const saved = () => existsSync(filename);
   const readSaved = () => {
@@ -39,9 +58,13 @@ export function createSettingsService(options: Options) {
   const snapshot = (): TypeSafeSettings => {
     const source = saved() ? 'saved' : options.fallback() ? 'environment' : 'none';
     let key: string | null = null, error: string | null = null;
+    let autopilotMenuVisible = false;
     try { key = source === 'saved' ? readSaved() : options.fallback(); }
     catch (cause) { error = (cause as Error).message; }
-    return { source, maskedKey: key ? `••••${key.length > 8 ? key.slice(-4) : ''}` : null, canSave: available(), error };
+    try { autopilotMenuVisible = readPreferences().autopilotMenuVisible === true; }
+    catch (cause) { error ??= (cause as Error).message; }
+    return { source, maskedKey: key ? `••••${key.length > 8 ? key.slice(-4) : ''}` : null, canSave: available(), error,
+      autopilotMenuVisible };
   };
   const publish = () => {
     const state = snapshot();
@@ -51,6 +74,12 @@ export function createSettingsService(options: Options) {
   return {
     getKey, snapshot,
     subscribe(listener: (state: TypeSafeSettings) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    setAutopilotMenuVisible(value: unknown) {
+      const visible = parseAutopilotMenuVisible(value);
+      if (visible && !getKey()) throw new Error('Register or unlock a TypeSafe API key first.');
+      writeMenuPreference(visible);
+      return publish();
+    },
     save(value: unknown) {
       const key = parseTypeSafeKey(value);
       if (!available()) throw new Error('Secure storage is unavailable. The API key was not saved.');
@@ -66,6 +95,7 @@ export function createSettingsService(options: Options) {
       return publish();
     },
     remove() {
+      if (!options.fallback()) writeMenuPreference(false);
       try { rmSync(filename, { force: true }); }
       catch { throw new Error('Could not remove the saved API key.'); }
       cached = undefined;
@@ -91,4 +121,9 @@ export function createSettingsService(options: Options) {
 
 function assertEncryptedSize(value: Buffer): void {
   if (!value.length || value.length > 32_768) throw new Error('Invalid encrypted data.');
+}
+
+function assertPreferences(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid app settings.');
+  return value as Record<string, unknown>;
 }

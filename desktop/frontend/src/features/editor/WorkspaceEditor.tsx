@@ -25,6 +25,7 @@ import {
   TieredHeader,
 } from '../../shared/ui';
 import { WorkspaceCodeExplanationMenu } from './WorkspaceCodeExplanationMenu';
+import type { GitLineBlameRequest } from '../../../../shared/git-line-blame';
 import { WorkspaceCodeExplanationToast } from './WorkspaceCodeExplanationToast';
 import { WorkspaceEditorAssistPanel } from './WorkspaceEditorAssistPanel';
 import { WorkspaceEditorSearchPanel } from './WorkspaceEditorSearchPanel';
@@ -61,6 +62,7 @@ interface WorkspaceEditorProps {
   onSelectedPathChange: (path: string | null) => void;
   onDirtyPathsChange?: (paths: string[]) => void;
   onOpenLocalHistory?: (path: string) => void;
+  onShowLineCommit: (request: GitLineBlameRequest) => void;
 }
 
 export function WorkspaceEditor({
@@ -75,6 +77,7 @@ export function WorkspaceEditor({
   onSelectedPathChange,
   onDirtyPathsChange,
   onOpenLocalHistory,
+  onShowLineCommit,
 }: WorkspaceEditorProps) {
   const controller = useWorkspaceEditorController({
     sessionMode,
@@ -434,6 +437,7 @@ export function WorkspaceEditor({
           target={codeExplanation.menu}
           onClose={codeExplanation.closeMenu}
           onExplain={codeExplanation.explainSelection}
+          onShowLineCommit={() => codeExplanation.showLineCommit(onShowLineCommit)}
         />
       )}
       {explanationToast}

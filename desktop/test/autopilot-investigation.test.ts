@@ -145,6 +145,46 @@ test('empty searches exhaust attempts and still produce an exportable report wit
   } finally { f.runner.dispose(); }
 });
 
+test('questions share observed source snapshots and do not revisit an unhelpful source on each query attempt', async () => {
+  let visits = 0, decisionsWithHistory = 0;
+  const f = fixture({
+    follow: async (_current, link) => { visits++; return { url: link.url, title: 'Source', text: 'Not relevant', links: [] }; },
+    decide: async input => {
+      if (input.history?.length) decisionsWithHistory++;
+      return { link: input.page.links[0] ?? null, completed: false, confidence: 1 };
+    },
+    load: async url => ({ url, title: 'Search', text: '', links: [{ id: 'a', url: 'https://example.org/same', label: 'Source' }] }),
+  });
+  try {
+    f.start(); await flush();
+    expect(visits).toBe(1);
+    expect(decisionsWithHistory).toBeGreaterThan(0);
+    expect(f.runner.snapshot().steps.some(step => step.action?.startsWith('Reuse observed page'))).toBe(true);
+    expect(f.runner.snapshot().phase).toBe('partial');
+  } finally { f.runner.dispose(); }
+});
+
+test('a dispatched but unconfirmed click is blocked across research questions and attempts', async () => {
+  let clicks = 0;
+  const button = { id: 'control_1', kind: 'button' as const, label: 'Search', value: '', signature: 'search', identity: 'search' };
+  const f = fixture({
+    load: async () => ({ url: 'https://example.org/search', title: 'Search', text: '', links: [], controls: [button] }),
+    interact: async (_page, _action, _signal, dispatched) => { dispatched?.(); clicks++; throw new Error('Lost response'); },
+    decide: async ({ completedInteractions, outcomes }) => {
+      if (completedInteractions?.length) {
+        expect(outcomes?.[0]?.status).toBe('unconfirmed');
+        return { link: null, completed: false, confidence: 1 };
+      }
+      return { link: null, interaction: { kind: 'click', control: button }, completed: false, confidence: 1 };
+    },
+  });
+  try {
+    f.start(); await flush();
+    expect(clicks).toBe(1);
+    expect(f.runner.snapshot().phase).toBe('partial');
+  } finally { f.runner.dispose(); }
+});
+
 test('synthesis failure preserves evidence and source mappings for export', async () => {
   const f = fixture({}, { report: async () => { throw new Error('Invalid citation'); } });
   try {

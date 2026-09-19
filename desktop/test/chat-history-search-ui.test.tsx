@@ -313,6 +313,7 @@ function historyHarness() {
     'react/jsx-runtime': jsxRuntime,
     '../../shared/ui': { NeumorphicButton: 'button' },
     './ChatTimelineItem': { ChatTimelineItem: 'timeline-item' },
+    './HistoryRecallActivity': { HistoryRecallTotals: 'history-recall-totals' },
     './chatHistoryWindow': { captureChatHistoryAnchor, previousChatHistoryStart },
     './chatHistorySearchNavigation': { chatHistoryItemMatches, findChatHistoryTarget },
   });

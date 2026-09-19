@@ -42,7 +42,7 @@ describe('local history storage', () => {
     await expectFailure(reopened.read('draft.txt', oldest.id), /no longer available/);
     now = 1151;
     expect(await reopened.list('draft.txt')).toEqual([]);
-    expect(await readdir(directory)).toEqual(['history.json']);
+    expect((await readdir(directory)).filter((name) => !name.startsWith('.writer-lock.sqlite'))).toEqual(['history.json']);
   });
 
   test('bounds metadata and unique content bytes and prunes the oldest versions first', async () => {
@@ -127,7 +127,7 @@ describe('local history storage', () => {
     const reopened = new LocalHistoryStore({ directory });
     expect((await reopened.list('draft.txt')).length).toBe(1);
     const files = await readdir(directory);
-    expect(files.length).toBe(3);
+    expect(files.filter((name) => !name.startsWith('.writer-lock.sqlite')).length).toBe(3);
     expect(files.includes('unrelated.txt')).toBe(true);
   });
 

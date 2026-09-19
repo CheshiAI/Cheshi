@@ -2,15 +2,15 @@ import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { act } from 'react';
 import type { SettingsApi, TypeSafeSettings } from '../shared/settings';
-import { autopilotMenuStorageKey, createAutopilotMenuStore, useAutopilotMenu } from '../frontend/src/features/settings/useAutopilotMenu';
+import { useAutopilotMenu } from '../frontend/src/features/settings/useAutopilotMenu';
 
 function MenuVisibilityObserver({ api }: { api: SettingsApi }) {
   const [visible] = useAutopilotMenu(api);
   return <output data-menu-visible={String(visible)} />;
 }
 
-const none: TypeSafeSettings = { source: 'none', maskedKey: null, canSave: true, error: null };
-const saved: TypeSafeSettings = { source: 'saved', maskedKey: '••••2345', canSave: true, error: null };
+const none: TypeSafeSettings = { source: 'none', maskedKey: null, canSave: true, error: null, autopilotMenuVisible: false };
+const saved: TypeSafeSettings = { source: 'saved', maskedKey: '••••2345', canSave: true, error: null, autopilotMenuVisible: false };
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(done => { resolve = done; });
@@ -19,24 +19,32 @@ function createDeferred<T>() {
 async function withSettings(run: (view: {
   container: HTMLElement; window: Window; savedKeys: string[]; checks: () => number;
   emit(state: TypeSafeSettings): Promise<void>; initial: ReturnType<typeof createDeferred<TypeSafeSettings>>;
-}) => Promise<void>, savedMenuPreference?: string) {
+}) => Promise<void>, options: { failMenuSave?: boolean; menuSave?: Promise<void> } = {}) {
   const window = new Window();
-  if (savedMenuPreference !== undefined) window.localStorage.setItem(autopilotMenuStorageKey, savedMenuPreference);
+  Object.defineProperty(window, 'localStorage', { get() { throw new Error('Browser storage is unavailable'); } });
   const globals = { window, document: window.document, navigator: window.navigator, Event: window.Event,
     HTMLElement: window.HTMLElement, HTMLInputElement: window.HTMLInputElement, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   let unmount: (() => Promise<void>) | undefined;
   const listeners = new Set<(state: TypeSafeSettings) => void>();
-  const publish = (state: TypeSafeSettings) => { for (const listener of listeners) listener(state); };
+  let current = none;
+  const publish = (state: TypeSafeSettings) => { current = state; for (const listener of listeners) listener(state); };
   const initial = createDeferred<TypeSafeSettings>();
   const savedKeys: string[] = [];
   let checks = 0;
   const api: SettingsApi = {
-    getTypeSafe: async () => initial.promise,
+    getTypeSafe: async () => { const state = await initial.promise; current = state; return state; },
     saveTypeSafe: async key => { savedKeys.push(key); publish(saved); return saved; },
     removeTypeSafe: async () => { publish(none); return none; },
     checkTypeSafe: async () => { checks++; return true; },
+    setAutopilotMenuVisible: async visible => {
+      await options.menuSave;
+      if (options.failMenuSave) throw new Error('Could not save the Autopilot menu setting. Try again.');
+      const state = { ...current, autopilotMenuVisible: visible };
+      publish(state);
+      return state;
+    },
     onTypeSafeChanged(handler) { listeners.add(handler); return () => { listeners.delete(handler); }; },
   };
   try {
@@ -95,7 +103,6 @@ test('settings saves a password, clears it, verifies the connection and deletes 
     expect(toggle.disabled).toBe(true);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
     expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('false');
-    expect(window.localStorage.getItem(autopilotMenuStorageKey)).toBe('false');
   });
 });
 
@@ -114,7 +121,7 @@ test('a stale initial load cannot replace updated settings and unavailable stora
 });
 
 test('Autopilot toggle updates subscribers, persists selection and responds to another window', async () => {
-  await withSettings(async ({ container, window, savedKeys, checks, initial }) => {
+  await withSettings(async ({ container, savedKeys, checks, initial, emit }) => {
     await act(async () => initial.resolve(saved));
     const toggle = button(container, 'Show Autopilot menu');
     expect(toggle.getAttribute('role')).toBe('switch');
@@ -123,11 +130,7 @@ test('Autopilot toggle updates subscribers, persists selection and responds to a
     await act(async () => toggle.click());
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('true');
-    expect(window.localStorage.getItem(autopilotMenuStorageKey)).toBe('true');
-    await act(async () => {
-      window.localStorage.setItem(autopilotMenuStorageKey, 'false');
-      window.dispatchEvent(new window.StorageEvent('storage', { key: autopilotMenuStorageKey, newValue: 'false' }));
-    });
+    await emit({ ...saved, autopilotMenuVisible: false });
     expect(toggle.getAttribute('aria-checked')).toBe('false');
     expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('false');
     expect(savedKeys).toEqual([]);
@@ -135,34 +138,8 @@ test('Autopilot toggle updates subscribers, persists selection and responds to a
   });
 });
 
-test('Autopilot menu preference restores across sessions and accepts only a saved true value', () => {
-  let saved: string | null = null;
-  const storage = { read: () => saved, write: (visible: boolean) => { saved = String(visible); } };
-  const store = createAutopilotMenuStore(storage);
-  expect(store.getSnapshot()).toBe(false);
-  store.setVisible(false);
-  expect(createAutopilotMenuStore(storage).getSnapshot()).toBe(false);
-  store.setVisible(true);
-  expect(createAutopilotMenuStore(storage).getSnapshot()).toBe(true);
-  for (const invalid of ['', '1', 'TRUE', 'invalid']) {
-    saved = invalid;
-    expect(createAutopilotMenuStore(storage).getSnapshot()).toBe(false);
-  }
-});
-
-test('Autopilot menu toggle remains usable when storage is unavailable', () => {
-  const store = createAutopilotMenuStore({
-    read: () => { throw new Error('Storage unavailable'); },
-    write: () => { throw new Error('Storage unavailable'); },
-  });
-  expect(store.getSnapshot()).toBe(false);
-  store.setVisible(true);
-  store.refresh();
-  expect(store.getSnapshot()).toBe(true);
-});
-
-test('missing or loading API keys disable the toggle and hide a previously enabled menu', async () => {
-  await withSettings(async ({ container, initial, window }) => {
+test('missing or loading API keys disable the toggle and hide the menu', async () => {
+  await withSettings(async ({ container, initial }) => {
     const toggle = button(container, 'Show Autopilot menu');
     expect(toggle.disabled).toBe(true);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
@@ -171,15 +148,14 @@ test('missing or loading API keys disable the toggle and hide a previously enabl
     await act(async () => toggle.click());
     expect(toggle.disabled).toBe(true);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
-    expect(window.localStorage.getItem(autopilotMenuStorageKey)).toBe('false');
-  }, 'true');
+  });
 });
 
 test('an environment key enables the toggle and preserves an explicit saved ON preference', async () => {
   await withSettings(async ({ container, initial, emit }) => {
     const toggle = button(container, 'Show Autopilot menu');
     expect(toggle.disabled).toBe(true);
-    await act(async () => initial.resolve({ ...saved, source: 'environment', canSave: false }));
+    await act(async () => initial.resolve({ ...saved, source: 'environment', canSave: false, autopilotMenuVisible: true }));
     expect(toggle.disabled).toBe(false);
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('true');
@@ -188,5 +164,45 @@ test('an environment key enables the toggle and preserves an explicit saved ON p
     await emit(saved);
     expect(toggle.disabled).toBe(false);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
-  }, 'true');
+  });
+});
+
+test('a failed menu save shows an error and leaves the toggle and menu off', async () => {
+  await withSettings(async ({ container, initial }) => {
+    await act(async () => initial.resolve(saved));
+    const toggle = button(container, 'Show Autopilot menu');
+    await act(async () => toggle.click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Could not save');
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(toggle.disabled).toBe(false);
+    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('false');
+  }, { failMenuSave: true });
+});
+
+test('the toggle waits for persistence and ignores repeated clicks during saving', async () => {
+  const saving = createDeferred<void>();
+  await withSettings(async ({ container, initial }) => {
+    await act(async () => initial.resolve(saved));
+    const toggle = button(container, 'Show Autopilot menu');
+    await act(async () => { toggle.click(); toggle.click(); });
+    expect(toggle.disabled).toBe(true);
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    await act(async () => saving.resolve());
+    expect(toggle.disabled).toBe(false);
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('true');
+  }, { menuSave: saving.promise });
+});
+
+test('a saved ON preference survives a temporary key lock and a stale initial reply', async () => {
+  await withSettings(async ({ container, initial, emit }) => {
+    await emit({ ...saved, autopilotMenuVisible: true });
+    await act(async () => initial.resolve(none));
+    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('true');
+    await emit({ ...saved, autopilotMenuVisible: true, maskedKey: null, error: 'Unlock the saved key.' });
+    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('false');
+    await emit({ ...saved, autopilotMenuVisible: true });
+    expect(button(container, 'Show Autopilot menu').getAttribute('aria-checked')).toBe('true');
+    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('true');
+  });
 });

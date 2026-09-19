@@ -7,6 +7,19 @@ const bootstrapSource = readFileSync(new URL('../bootstrap.mts', import.meta.url
 const runtimeSource = readFileSync(new URL('../workspace-runtime.mts', import.meta.url), 'utf8');
 const rendererHtml = readFileSync(new URL('../frontend/index.html', import.meta.url), 'utf8');
 
+test('registers settings IPC before the renderer can request its initial menu state', () => {
+  const createWindow = runtimeSource.indexOf('function createMainWindow(');
+  const owner = runtimeSource.indexOf('options.scope.addOwner(window.webContents)', createWindow);
+  const settingsReady = runtimeSource.indexOf('onWindowCreated?.(window)', owner);
+  const loadRenderer = runtimeSource.indexOf('window.loadURL(rendererUrl)', createWindow);
+  assert.ok(owner > createWindow);
+  assert.ok(settingsReady > owner && settingsReady < loadRenderer);
+  const mainSource = readFileSync(new URL('../main.mts', import.meta.url), 'utf8');
+  assert.match(mainSource, /createWorkspaceRuntime\(\{\s*\.\.\.options,\s*getTypeSafeKey: apiSettings\.getKey\s*\},[\s\S]*?window => \{\s*settingsIpc = registerSettingsIpc\(/u);
+  const start = mainSource.indexOf('const window = await runtime.start();', mainSource.indexOf('function createTrackedWorkspace('));
+  assert.equal(mainSource.indexOf('registerSettingsIpc(', start), -1);
+});
+
 test('keeps the desktop window hidden until Electron and the painted renderer are ready', () => {
   const createWindow = runtimeSource.indexOf('function createMainWindow(');
   const hiddenWindow = runtimeSource.indexOf('show: false', createWindow);
