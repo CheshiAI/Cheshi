@@ -25,7 +25,7 @@
   cursor: pointer;
 }
 .selectSurface select:disabled { opacity: var(--field-disabled-opacity); cursor: not-allowed; }
-.browser { display: grid; flex: 1; grid-template-columns: 250px minmax(0, 1fr); min-height: 0; }
+.browser { display: grid; flex: 1; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: 0; }
 .folderPanel {
   --liquid-glass-radius: 0;
   display: flex;
