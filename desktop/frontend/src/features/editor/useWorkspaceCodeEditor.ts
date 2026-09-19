@@ -24,6 +24,7 @@ import {
 
 import { cheshiDesktop as workspace } from '../../cheshiDesktop';
 import { bracketPairGuides } from './bracketPairGuides';
+import { gitLineBlame } from './gitLineBlame';
 import { createEditorSearchBridgePanel } from './codeEditorSearch';
 import { languageServerLanguageForPath } from './languageServerDiagnostics';
 import type { WorkspaceEditorAssistState } from './WorkspaceEditorAssistPanel';
@@ -157,8 +158,13 @@ export function useWorkspaceCodeEditor({
     const editorPath = tab.path;
     const language = languageSupport(tab.file.path);
     const diagnosticsMode = diagnosticMode(tab.file.path, language);
+    const readGitLineBlame = workspace?.getGitLineBlame;
     const extensions: Extension[] = [
       workspaceEditorTheme,
+      ...(readGitLineBlame ? [gitLineBlame({
+        path: editorPath, lineEnding: tab.file.lineEnding,
+        read: readGitLineBlame,
+      })] : []),
       lineNumbers(),
       lintGutter(),
       highlightSpecialChars(),

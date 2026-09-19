@@ -1,3 +1,4 @@
+import { readGitLineBlame, readGitLineCommit } from './git-line-blame.mts';
 import { listGitHubIssues, readGitHubIssue, readGitHubIssueComments, gitHubIssueUrl } from './github-issue-service.mts';
 import type { IpcMain, IpcMainInvokeEvent, Shell } from 'electron';
 import type { GitService } from './git-service.mts';
@@ -38,6 +39,14 @@ export function registerGitIpcHandlers({
   ipcMain.handle('cheshi:get-git-branch-commits', (event, branchReference) => {
     assertCheshiSender(event);
     return gitService.getBranchCommits(branchReference);
+  });
+  ipcMain.handle('cheshi:get-git-line-blame', (event, request) => {
+    assertCheshiSender(event);
+    return readGitLineBlame(gitService, request);
+  });
+  ipcMain.handle('cheshi:get-git-line-commit', (event, request) => {
+    assertCheshiSender(event);
+    return readGitLineCommit(gitService, request);
   });
   ipcMain.handle('cheshi:get-git-diff', (event, request) => {
     assertCheshiSender(event);
