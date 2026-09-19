@@ -54,7 +54,7 @@ export const ChatTimelineItem = memo(function ChatTimelineItem({ turn, savedTurn
   return <div className={styles.timelineItem} data-chat-item-id={props.item.id} tabIndex={-1}
     data-history-search-match={searchMatch ? 'true' : undefined}>
     <TimelineItemContent {...props} />
-    {turn && savedTurns && <ChatTurnActions turn={turn} savedTurns={savedTurns} usageDetails={usageDetails} />}
+    {turn && savedTurns ? <ChatTurnActions turn={turn} savedTurns={savedTurns} usageDetails={usageDetails} /> : usageDetails}
   </div>;
 });
 

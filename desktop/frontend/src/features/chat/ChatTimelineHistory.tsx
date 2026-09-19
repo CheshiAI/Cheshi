@@ -1,8 +1,8 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
 import { NeumorphicButton } from '../../shared/ui';
 import { ChatTimelineItem } from './ChatTimelineItem';
-import { HistoryRecallTotals } from './HistoryRecallActivity';
+import { HistoryRecallTotals, recallTurnMetrics } from './HistoryRecallActivity';
 import { captureChatHistoryAnchor, previousChatHistoryStart } from './chatHistoryWindow';
 import type { ChatTimelineItem as TimelineItem } from './model';
 import type { SavedChatTurnsController } from './useSavedChatTurns';
@@ -31,6 +31,7 @@ export const ChatTimelineHistory = memo(function ChatTimelineHistory({
   const [searchMatch, setSearchMatch] = useState<ChatHistorySearchTarget | null>(null);
   const restoreAnchorRef = useRef<(() => void) | null>(null);
   const previousScrollTopRef = useRef(0);
+  const usageByItem = useMemo(() => recallTurnMetrics(items), [items]);
 
   useLayoutEffect(() => {
     if (loading || !historyTarget) return;
@@ -93,8 +94,6 @@ export const ChatTimelineHistory = memo(function ChatTimelineHistory({
   }, [loading, revealEarlier, start, timelineRef]);
 
   const visibleItems = items.slice(start);
-  const latestCompletedItemId = savedTurns ? [...completedTurns.keys()].at(-1) : undefined;
-  const totalsItemId = visibleItems.some(item => item.id === latestCompletedItemId) ? latestCompletedItemId : undefined;
 
   return <>
     {start > 0 && <NeumorphicButton size="standard" disabled={loading} onClick={revealEarlier}>
@@ -107,9 +106,8 @@ export const ChatTimelineHistory = memo(function ChatTimelineHistory({
       streaming={streaming && index === visibleItems.length - 1}
       turn={completedTurns.get(item.id)}
       savedTurns={savedTurns}
-      usageDetails={item.id === totalsItemId ? <HistoryRecallTotals items={items} /> : undefined}
+      usageDetails={usageByItem.has(item.id) ? <HistoryRecallTotals metrics={usageByItem.get(item.id)} /> : undefined}
       onReviewFileChanges={onReviewFileChanges}
     />)}
-    {!totalsItemId && <HistoryRecallTotals items={items} />}
   </>;
 });

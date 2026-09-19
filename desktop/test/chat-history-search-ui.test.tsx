@@ -58,6 +58,11 @@ function createHarness<Args extends unknown[], Result>(filename: string, exportN
       return [slot.value, (value: unknown) => { slot.value = typeof value === 'function' ? value(slot.value) : value; }];
     },
     useRef(initial: unknown) { const slot = nextSlot(); return slot.value ??= { current: initial }; },
+    useMemo(factory: () => unknown, values: readonly unknown[]) {
+      const slot = nextSlot();
+      if (!same(slot.dependencies, values)) { slot.dependencies = values; slot.value = factory(); }
+      return slot.value;
+    },
     useCallback(value: unknown, values: readonly unknown[]) {
       const slot = nextSlot();
       if (!same(slot.dependencies, values)) { slot.dependencies = values; slot.value = value; }
@@ -313,7 +318,7 @@ function historyHarness() {
     'react/jsx-runtime': jsxRuntime,
     '../../shared/ui': { NeumorphicButton: 'button' },
     './ChatTimelineItem': { ChatTimelineItem: 'timeline-item' },
-    './HistoryRecallActivity': { HistoryRecallTotals: 'history-recall-totals' },
+    './HistoryRecallActivity': { HistoryRecallTotals: 'history-recall-totals', recallTurnMetrics: () => new Map() },
     './chatHistoryWindow': { captureChatHistoryAnchor, previousChatHistoryStart },
     './chatHistorySearchNavigation': { chatHistoryItemMatches, findChatHistoryTarget },
   });

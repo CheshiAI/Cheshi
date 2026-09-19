@@ -70,7 +70,7 @@ export function HistoryRecallActivity({ item }: { item: ChatActivityItem }) {
 }
 
 /** Sum each tool item once; saved history may contain repeated completion updates. */
-export function recallConversationMetrics(items: ChatTimelineItem[]): RecallMetrics | null {
+export function sumRecallMetrics(items: ChatTimelineItem[]): RecallMetrics | null {
   const unique = new Map(items.filter((item): item is ChatActivityItem => item.kind === 'activity')
     .map(item => [item.id, item]));
   const values = [...unique.values()].flatMap(item => item.recall?.metrics ? [item.recall.metrics] : []);
@@ -83,15 +83,44 @@ export function recallConversationMetrics(items: ChatTimelineItem[]): RecallMetr
     unknownRequests: sum('unknownRequests'), modelMs: sum('modelMs'), totalMs: sum('totalMs'), cacheHits: sum('cacheHits') };
 }
 
-export function HistoryRecallTotals({ items }: { items: ChatTimelineItem[] }) {
-  const metrics = recallConversationMetrics(items);
+/** Keep usage attached to its own turn, including history without provider turn IDs. */
+export function recallTurnMetrics(items: ChatTimelineItem[]): Map<string, RecallMetrics> {
+  interface Turn { turnId?: string; items: ChatTimelineItem[]; lastItemId?: string }
+  const turns = new Set<Turn>();
+  const byId = new Map<string, Turn>();
+  let current: Turn | undefined;
+  for (const item of items) {
+    if (item.kind === 'user' && (!item.turnId || !byId.has(item.turnId))) current = undefined;
+    if (item.turnId) {
+      const known = byId.get(item.turnId);
+      if (known) current = known;
+      else {
+        if (!current || current.turnId) current = { items: [] };
+        current.turnId = item.turnId;
+        byId.set(item.turnId, current);
+      }
+    }
+    current ??= { items: [] };
+    turns.add(current);
+    current.items.push(item);
+    if (item.kind !== 'user') current.lastItemId = item.id;
+  }
+  const result = new Map<string, RecallMetrics>();
+  for (const turn of turns) {
+    const metrics = sumRecallMetrics(turn.items);
+    if (metrics && turn.lastItemId) result.set(turn.lastItemId, metrics);
+  }
+  return result;
+}
+
+export function HistoryRecallTotals({ metrics }: { metrics: RecallMetrics | null | undefined }) {
   if (!metrics) return null;
   return <details className={styles.totals}>
     <summary className={styles.disclosureSummary}><ChevronDown className={styles.chevron} aria-hidden="true" />
       <span>Jev history search · estimated {formatRecallCost(metrics)} USD · {metrics.requests} requests</span>
     </summary>
     <RecallMetricsView metrics={metrics} />
-    <p>Recorded calls in this conversation only. Excludes Codex usage and unrecorded or cancelled calls.
+    <p>Recorded calls in this turn only. Excludes Codex usage and unrecorded or cancelled calls.
       {' '}Durations are summed per call, not wall-clock time.</p>
     <a href="https://docs.typesafe.ai/models" target="_blank" rel="noreferrer">Pricing verified 2026-09-19: $0.042 / 1M input tokens; output free.</a>
   </details>;
