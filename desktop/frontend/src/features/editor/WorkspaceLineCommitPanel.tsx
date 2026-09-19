@@ -37,8 +37,12 @@ export function WorkspaceLineCommitPanel({ request, onClose, read = readLineComm
     <LiquidGlassPanel as="section" aria-label="Line commit" className={styles.panel}
       onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } }}>
       <header className={styles.header}>
-        <GitCommitHorizontal aria-hidden="true" />
-        <h2>Line commit</h2>
+        <div className={styles.title}>
+          <NeumorphicButton raised className={`theme-toggle ${styles.titleMark}`} disabled aria-hidden="true">
+            <GitCommitHorizontal aria-hidden="true" />
+          </NeumorphicButton>
+          <h2>Line commit</h2>
+        </div>
         <NeumorphicButton raised size="icon" aria-label="Close line commit" onClick={onClose}><X aria-hidden="true" /></NeumorphicButton>
       </header>
       <div className={styles.body}>
