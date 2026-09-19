@@ -17,12 +17,17 @@ import { createWorkspaceCodeGraphMcp } from './workspace-codegraph-mcp.mts';
 
 export function createWorkspaceCodexAccounts(options: {
   cwd: string; userDataDirectory: string; home: string; openExternal(url: string): Promise<unknown>;
+  historyMcp?: (command: { environment?: NodeJS.ProcessEnv }) => Promise<string[]>;
   codeGraph: { cli: { executable: string; args: string[] }; dataRoot: string };
 }) {
   const defaultHome = process.env.CODEX_HOME?.trim() || path.join(options.home, '.codex');
-  const clients = new CodexAccountClients({ CODEX_HOME: defaultHome }, createWorkspaceCodeGraphMcp({
+  const codeGraphMcp = createWorkspaceCodeGraphMcp({
     cli: options.codeGraph.cli, dataRoot: options.codeGraph.dataRoot, workspaceRoot: options.cwd,
-  }));
+  });
+  const clients = new CodexAccountClients({ CODEX_HOME: defaultHome }, async command => {
+    const graphArgs = await codeGraphMcp(command);
+    return [...graphArgs, ...(await options.historyMcp?.(command) ?? [])];
+  });
   const profiles = getCodexAccountProfiles({
     directory: path.join(options.userDataDirectory, 'codex-accounts'),
     defaultHome, cwd: options.home, openExternal: options.openExternal,

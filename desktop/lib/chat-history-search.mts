@@ -108,42 +108,57 @@ export class ChatHistorySearch {
     const filePath = request.filePath ? normalizeChatHistoryFilePath(request.filePath, this.cwd) : '';
     if (request.filePath && !filePath) throw new TypeError('Choose a file within the current workspace.');
     return this.enqueue(async () => {
-      if (this.stopped) throw new Error('Session search is closed.');
-      const sessions = sessionsFromSource(await this.options.source.list()).filter(session => !this.deletedIds.has(session.id));
-      await this.store.retain(sessions.map(session => session.sourceKey));
-      const records: ChatHistoryIndexRecord[] = [];
-      const unavailableSessions: string[] = [];
-      const now = this.options.now?.() ?? Date.now();
-      for (const session of sessions) {
-        if (this.stopped) throw new Error('Session search is closed.');
-        if (this.deletedIds.has(session.id)) continue;
-        let record = await this.store.load(session.sourceKey, this.cwd);
-        if (!record || request.refresh || session.active || record.revision !== session.revision
-          || now < record.checkedAt || now - record.checkedAt >= REVALIDATE_AFTER_MS) {
-          try {
-            const raw = await this.options.source.read(session.id, session.profileId);
-            assertSearchThread(raw, this.cwd);
-            record = {
-              version: CHAT_HISTORY_INDEX_VERSION, cwd: this.cwd, sourceKey: session.sourceKey, revision: session.revision,
-              checkedAt: now, title: session.title, updatedAt: session.updatedAt,
-              thread: compileChatHistoryThread(raw, this.cwd),
-            };
-            assertExpectedThread(record, session.id);
-          } catch {
-            // Never return stale matches after an inaccessible or malformed history read.
-            unavailableSessions.push(session.id);
-            await this.store.remove(session.sourceKey);
-            continue;
-          }
-          if (this.deletedIds.has(session.id)) continue;
-          await this.store.save(record);
-        }
-        if (!this.deletedIds.has(session.id)) records.push(record);
-      }
-      const available = records.filter(record => !this.deletedIds.has(record.thread.threadId));
-      return { ...findHits(available, request.query, filePath || '', request.limit),
-        indexedSessions: available.length, unavailableSessions: unavailableSessions.filter(id => !this.deletedIds.has(id)) };
+      const { records, unavailableSessions } = await this.loadRecords(request.refresh);
+      return { ...findHits(records, request.query, filePath || '', request.limit),
+        indexedSessions: records.length, unavailableSessions };
     });
+  }
+
+  /** Always revalidate recall sources; never serve evidence from an inaccessible cached conversation. */
+  readRecords(threadIds?: readonly string[], signal?: AbortSignal) {
+    return this.enqueue(() => this.loadRecords(true, threadIds, signal));
+  }
+
+  private async loadRecords(refresh: boolean, threadIds?: readonly string[], signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    if (this.stopped) throw new Error('Session search is closed.');
+    const sessions = sessionsFromSource(await this.options.source.list()).filter(session => !this.deletedIds.has(session.id));
+    await this.store.retain(sessions.map(session => session.sourceKey));
+    const records: ChatHistoryIndexRecord[] = [];
+    const unavailableSessions = threadIds?.filter(id => !sessions.some(session => session.id === id)) ?? [];
+    const now = this.options.now?.() ?? Date.now();
+    for (const session of sessions) {
+      signal?.throwIfAborted();
+      if (threadIds && !threadIds.includes(session.id)) continue;
+      if (this.stopped) throw new Error('Session search is closed.');
+      if (this.deletedIds.has(session.id)) continue;
+      let record = await this.store.load(session.sourceKey, this.cwd);
+      if (!record || refresh || session.active || record.revision !== session.revision
+        || now < record.checkedAt || now - record.checkedAt >= REVALIDATE_AFTER_MS) {
+        try {
+          const raw = await this.options.source.read(session.id, session.profileId);
+          assertSearchThread(raw, this.cwd);
+          record = {
+            version: CHAT_HISTORY_INDEX_VERSION, cwd: this.cwd, sourceKey: session.sourceKey, revision: session.revision,
+            checkedAt: now, title: session.title, updatedAt: session.updatedAt,
+            thread: compileChatHistoryThread(raw, this.cwd),
+          };
+          assertExpectedThread(record, session.id);
+        } catch {
+          // Never return stale matches after an inaccessible or malformed history read.
+          unavailableSessions.push(session.id);
+          await this.store.remove(session.sourceKey);
+          continue;
+        }
+        if (this.deletedIds.has(session.id)) continue;
+        await this.store.save(record);
+      }
+      if (!this.deletedIds.has(session.id)) records.push(record);
+    }
+    signal?.throwIfAborted();
+    if (this.stopped) throw new Error('Session search is closed.');
+    const available = records.filter(record => !this.deletedIds.has(record.thread.threadId));
+    return { records: available, unavailableSessions: unavailableSessions.filter(id => !this.deletedIds.has(id)) };
   }
 
   /** Mark immediately so an in-flight refresh cannot resurrect a deleted session. */

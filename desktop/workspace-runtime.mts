@@ -28,13 +28,12 @@ import { chatAttachmentKind, ChatAttachmentStore } from './lib/chat-attachment-s
 import { CodeGraphIndexer, CodeGraphService, createCodeGraphCommands } from './lib/codegraph-service.mts';
 import { hasReadyCodeGraphIndex, prepareInitialCodeGraph } from './lib/codegraph-initial-index.mts';
 import { CodexAccountService } from './lib/codex-account-service.mts';
-import { createWorkspaceCodexAccounts } from './lib/workspace-codex-accounts.mts';
+import { createWorkspaceChatHistory } from './lib/workspace-chat-history.mts';
 import { registerCodexChatIpc } from './lib/codex-chat-ipc.mts';
 import { CodexChatRelays } from './lib/codex-chat-relay.mts';
 import { CodexChatRelayHistory } from './lib/codex-chat-relay-history.mts';
 import { CodexChatSavedTurns } from './lib/codex-chat-saved-turns.mts';
 import { createWorkspaceSessionStores } from './lib/workspace-session-stores.mts';
-import { ChatHistorySearch } from './lib/chat-history-search.mts';
 import { CodexChatContexts } from './lib/codex-chat-contexts.mts';
 import { CodexChatSessionDeletion } from './lib/codex-chat-session-deletion.mts';
 import { CodexChatService } from './lib/codex-chat-service.mts';
@@ -183,9 +182,11 @@ function codexChatAttachmentPreviewUrl(attachmentPath: unknown): string | null {
   return attachmentPreviewUrl(attachmentPath);
 }
 
-const workspaceAccounts = createWorkspaceCodexAccounts({
+const { accounts: workspaceAccounts, search: chatHistorySearch, mcp: historyMcp } = createWorkspaceChatHistory({
   cwd: workspaceRoot, userDataDirectory, home: app.getPath('home'), openExternal: url => shell.openExternal(url),
   codeGraph: { cli: codeGraphCommands.cli(), dataRoot: codeGraphDataRoot },
+  historyDirectory: path.join(path.dirname(codeGraphDirectory), 'chat-history-index'),
+  getKey: options.getTypeSafeKey,
 });
 const createChatClient = workspaceAccounts.createClient;
 const codexAppServerClient = createChatClient();
@@ -215,6 +216,7 @@ const chatServiceOptions = {
   createMcpProbeClient: createChatClient,
   cwd: workspaceRoot,
   serviceName: product.internalName,
+  historyToolsEnabled: true,
   developerInstructions: workspaceChatInstructions(product.displayName),
   log: (event: string, details: Record<string, unknown>) => {
     process.stderr.write(`[cheshi] ${event} ${JSON.stringify(details)}\n`);
@@ -239,10 +241,6 @@ const codexChatRelays = new CodexChatRelays({
   },
 });
 const codexChatSavedTurns = new CodexChatSavedTurns(path.join(path.dirname(codeGraphDirectory), 'saved-chat-turns'));
-const chatHistorySearch = new ChatHistorySearch({ directory: path.join(path.dirname(codeGraphDirectory), 'chat-history-index'), cwd: workspaceRoot,
-  source: { list: () => workspaceAccounts.conversations.list(), read: (id, profileId) => profileId
-    ? workspaceAccounts.conversations.request(profileId, 'thread/read', { threadId: id, includeTurns: true })
-    : workspaceAccounts.conversations.read!(id, 'thread/read', { includeTurns: true }) } });
 const codexChatSessionDeletion = new CodexChatSessionDeletion({ contexts: codexChatContexts, service: codexChatService, relays: codexChatRelays });
 const accountSwitch = workspaceAccounts.register({
   ipc: ipcMain, assertSender: assertCheshiSender,
@@ -977,7 +975,7 @@ function dispose(): Promise<void> {
     researchSessions.session.stop();
     const results = await Promise.allSettled([
       codexChatService.stop(),
-      chatHistorySearch.stop(),
+      historyMcp.stop(), chatHistorySearch.stop(),
       temporaryChats.stop(),
       localHistory.dispose(),
       managementDisposal,

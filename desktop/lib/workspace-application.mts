@@ -6,6 +6,7 @@ import type { WorkspaceIpcRouter } from './workspace-ipc-router.mts';
 export interface WorkspaceWindowState { bounds: Rectangle; maximized: boolean; fullscreen: boolean; }
 export interface WorkspaceRuntimeOptions {
   workspaceRoot: string;
+  getTypeSafeKey?(): string | null;
   managementOnly?: boolean;
   initial: boolean;
   deferShow?: boolean;
