@@ -15,7 +15,7 @@ test('registers settings IPC before the renderer can request its initial menu st
   assert.ok(owner > createWindow);
   assert.ok(settingsReady > owner && settingsReady < loadRenderer);
   const mainSource = readFileSync(new URL('../main.mts', import.meta.url), 'utf8');
-  assert.match(mainSource, /createWorkspaceRuntime\(options,[\s\S]*?window => \{\s*settingsIpc = registerSettingsIpc\(/u);
+  assert.match(mainSource, /createWorkspaceRuntime\(\{\s*\.\.\.options,\s*getTypeSafeKey: apiSettings\.getKey\s*\},[\s\S]*?window => \{\s*settingsIpc = registerSettingsIpc\(/u);
   const start = mainSource.indexOf('const window = await runtime.start();', mainSource.indexOf('function createTrackedWorkspace('));
   assert.equal(mainSource.indexOf('registerSettingsIpc(', start), -1);
 });

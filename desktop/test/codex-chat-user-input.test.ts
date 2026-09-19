@@ -106,7 +106,7 @@ test('transport failure clears subscriptions and inputs, then resumes before sen
   expect(service.subscribedThreadIds.size).toBe(0);
   const start = client.requests.length;
   await service.sendMessage('retry', 'retry');
-  expect(client.requests.slice(start).map(request => request.method)).toEqual(['thread/resume', 'turn/start']);
+  expect(client.requests.slice(start).map(request => request.method)).toEqual(['thread/resume', 'mcpServerStatus/list', 'turn/start']);
   expect(events.some(event => event.type === 'user-input-resolved')).toBe(true);
   service.stop();
 });
