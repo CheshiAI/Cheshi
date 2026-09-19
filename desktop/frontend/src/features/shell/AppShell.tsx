@@ -14,6 +14,7 @@ import { ChatHistorySearchBar } from '../chat/ChatHistorySearchBar';
 import { ChatHistorySearchPage } from '../chat/ChatHistorySearchPage';
 import { useChatHistorySearch } from '../chat/useChatHistorySearch';
 import type { ChatHistorySearchHit } from '../../../../shared/chat-history-search';
+import type { GitLineBlameRequest } from '../../../../shared/git-line-blame';
 import type { ChatHistorySearchTarget } from '../chat/chatHistorySearchNavigation';
 import { HistoryRecallNavigation } from '../chat/HistoryRecallActivity';
 import { useChatWorkspace } from '../chat/useChatWorkspace';
@@ -35,7 +36,6 @@ import { useAutopilotMenu } from '../settings/useAutopilotMenu';
 import { AutopilotView } from '../autopilot/AutopilotView';
 import { ReviewSidebar } from './ReviewSidebar';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
-import { LocalHistoryPage } from '../editor/LocalHistoryPage';
 import styles from './AppShell.module.css';
 import { useAppUpdateResume } from './useAppUpdateResume';
 import { WorkspaceEditorSplit } from './WorkspaceEditorSplit';
@@ -68,10 +68,21 @@ export function AppShell() {
   const [historyChoice, setHistoryChoice] = useState<{ sessionId: string; title: string; paneId: string } | null>(null);
   const [deleteChoice, setDeleteChoice] = useState<{ sessionId: string; title: string } | null>(null);
   const [fileReview, setFileReview] = useState<{ paneId: string; itemId: string; path: string | null } | null>(null);
+  const [lineCommitTarget, setLineCommitTarget] = useState<GitLineBlameRequest | null>(null);
+  const [localHistoryPath, setLocalHistoryPath] = useState<string | null>(null);
+  const closeReview = useCallback(() => { setFileReview(null); setLineCommitTarget(null); setLocalHistoryPath(null); }, []);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const openFileReview = useCallback((paneId: string, itemId: string, path?: string) => {
+    setLineCommitTarget(null);
+    setLocalHistoryPath(null);
     setRightSidebarOpen(true);
     setFileReview({ paneId, itemId, path: path ?? null });
+  }, []);
+  const openLineCommit = useCallback((request: GitLineBlameRequest) => {
+    setFileReview(null);
+    setLocalHistoryPath(null);
+    setLineCommitTarget(request);
+    setRightSidebarOpen(true);
   }, []);
   const [editorTarget, setEditorTarget] = useState<WorkspaceEditorTarget | null>(null);
   const [editorSplitOpen, setEditorSplitOpen] = useState(false);
@@ -79,7 +90,6 @@ export function AppShell() {
   const editorReturnView = useRef<WorkspaceView>('chat');
   const [editorMutation, setEditorMutation] = useState<WorkspaceEditorMutation | null>(null);
   const [editorSelectedPath, setEditorSelectedPath] = useState<string | null>(null);
-  const [localHistoryPath, setLocalHistoryPath] = useState<string | null>(null);
   const [editorDirtyPaths, setEditorDirtyPaths] = useState<string[]>([]);
   const editorRequestId = useRef(0);
   const editorMutationRequestId = useRef(0);
@@ -101,7 +111,7 @@ export function AppShell() {
       historyRequestId.current += 1;
       historySearch.clear();
       setSubmittedSearchQuery('');
-      setFileReview(null); setHistoryChoice(null); setDeleteChoice(null); setHistoryTarget(null);
+      closeReview(); setHistoryChoice(null); setDeleteChoice(null); setHistoryTarget(null);
     }
   };
   const chat = workspace.activeController;
@@ -131,7 +141,7 @@ export function AppShell() {
   const openWorkflowChat = (threadId: string): void => {
     if (workspace.deletePending) return;
     historyRequestId.current += 1;
-    setFileReview(null);
+    closeReview();
     setActiveView('chat');
     setPrimaryPaneClosed(false);
     void chat?.openSession(threadId);
@@ -143,7 +153,7 @@ export function AppShell() {
     workspace.dismissError();
     const opened = await workspace.openSession(hit.threadId);
     if (!opened || requestId !== historyRequestId.current) return false;
-    setFileReview(null);
+    closeReview();
     setActiveView('chat');
     setPrimaryPaneClosed(false);
     setHistoryTarget({ threadId: hit.threadId, itemId: hit.itemId, requestId });
@@ -153,7 +163,7 @@ export function AppShell() {
   const newChat = (): void => {
     if (workspace.deletePending) return;
     historyRequestId.current += 1;
-    setFileReview(null);
+    closeReview();
     setActiveView('chat');
     setPrimaryPaneClosed(false);
     void chat?.newSession();
@@ -161,7 +171,7 @@ export function AppShell() {
 
   const navigate = (view: WorkspaceView): void => {
     historyRequestId.current += 1;
-    setFileReview(null);
+    closeReview();
     setActiveView(view);
     setPrimaryPaneClosed(false);
   };
@@ -177,13 +187,10 @@ export function AppShell() {
   };
 
   const openLocalHistory = (path: string): void => {
+    setFileReview(null);
+    setLineCommitTarget(null);
     setLocalHistoryPath(path);
-    navigate('local-history');
-  };
-
-  const closeLocalHistory = (): void => {
-    setLocalHistoryPath(null);
-    navigate(editorSplitOpen ? 'editor' : 'blank');
+    setRightSidebarOpen(true);
   };
 
   const changeSearchQuery = (value: string): void => {
@@ -204,7 +211,7 @@ export function AppShell() {
   const openWorkspaceFile = (path: string, line: number | null = null): void => {
     historyRequestId.current += 1;
     editorRequestId.current += 1;
-    setFileReview(null);
+    closeReview();
     setEditorTarget({ path, line, requestId: editorRequestId.current });
     setEditorSplitOpen(true);
     if (fullWidthViews.includes(activeView)) {
@@ -215,6 +222,7 @@ export function AppShell() {
   };
 
   const closeEditorSplit = (): void => {
+    setLineCommitTarget(null);
     setEditorSplitOpen(false);
     setPrimaryPaneClosed(false);
     setEditorTarget(null);
@@ -238,7 +246,7 @@ export function AppShell() {
         inert={updateResume.busy}
         className={`app-layout ${styles.layout}`}
         data-active-view={activeView}
-        data-file-review={reviewedItem ? 'true' : undefined}
+        data-file-review={reviewedItem || lineCommitTarget || localHistoryPath !== null ? 'true' : undefined}
         data-right-sidebar-open={rightSidebarOpen ? 'true' : 'false'}
       >
         <LiquidGlassPanel className="sidebar-column" inert={workspace.accountSwitchPending}>
@@ -246,7 +254,7 @@ export function AppShell() {
           <Sidebar
             autopilotMenuVisible={autopilotMenuVisible}
             activeView={activeView}
-            selectedFilePath={activeView === 'local-history' ? localHistoryPath : editorSelectedPath}
+            selectedFilePath={localHistoryPath ?? editorSelectedPath}
             onNavigate={navigate}
             onWorkspaceEntryMutation={handleWorkspaceEntryMutation}
             onOpenWorkspaceFile={openWorkspaceFile}
@@ -268,6 +276,7 @@ export function AppShell() {
               onSelectedPathChange={setEditorSelectedPath}
               onDirtyPathsChange={setEditorDirtyPaths}
               onOpenLocalHistory={openLocalHistory}
+              onShowLineCommit={openLineCommit}
             />
           }>
           {activeView === 'search' && <ChatHistorySearchPage query={submittedSearchQuery}
@@ -287,7 +296,7 @@ export function AppShell() {
               workspace={workspace}
               active={activeView === 'chat' && !primaryPaneClosed}
               onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
-              sessionSyncEnabled={rightSidebarOpen && !fileReview}
+              sessionSyncEnabled={rightSidebarOpen && !fileReview && !lineCommitTarget && localHistoryPath === null}
               onReviewFileChanges={openFileReview}
               historyTarget={historyTarget}
               onHistoryTargetHandled={handleHistoryTarget}
@@ -318,13 +327,6 @@ export function AppShell() {
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
           )}
-          {activeView === 'local-history' && localHistoryPath && (
-            <LocalHistoryPage key={localHistoryPath} path={localHistoryPath}
-              draftDirty={editorDirtyPaths.includes(localHistoryPath)}
-              rightSidebarOpen={rightSidebarOpen}
-              onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
-              onClose={closeLocalHistory} />
-          )}
           <ShowcaseView active={activeView === 'showcase'}
             blocked={fileSearchOpen || temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
             rightSidebarOpen={rightSidebarOpen}
@@ -350,7 +352,10 @@ export function AppShell() {
           open={rightSidebarOpen}
           item={reviewedItem}
           initialPath={fileReview?.path ?? null}
-          onCloseReview={() => setFileReview(null)}
+          onCloseReview={closeReview}
+          lineCommit={lineCommitTarget}
+          localHistoryPath={localHistoryPath}
+          localHistoryDirty={localHistoryPath !== null && editorDirtyPaths.includes(localHistoryPath)}
         >
           <ChatSessionList
             search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
@@ -385,12 +390,12 @@ export function AppShell() {
         reason={workspace.deletePending ? null : workspace.deleteSessionReason(deleteChoice.sessionId)}
         pending={workspace.deletePending} error={workspace.error ?? chat?.state.error ?? null}
         onDelete={() => workspace.deleteSession(deleteChoice.sessionId)}
-        onDeleted={() => { setDeleteChoice(null); setFileReview(null); }}
+        onDeleted={() => { setDeleteChoice(null); closeReview(); }}
         onClose={() => setDeleteChoice(null)} />}
       {historyChoice && <ChatHistoryOpenDialog workspace={workspace} sessionId={historyChoice.sessionId}
         sessionTitle={historyChoice.title} paneId={historyChoice.paneId}
         onResume={() => workspace.openSession(historyChoice.sessionId)}
-        onOpened={() => { setHistoryChoice(null); setFileReview(null); setActiveView('chat'); setPrimaryPaneClosed(false); }}
+        onOpened={() => { setHistoryChoice(null); closeReview(); setActiveView('chat'); setPrimaryPaneClosed(false); }}
         onClose={() => setHistoryChoice(null)} />}
     </div>
     </ChatDraftAttachmentsContext.Provider>

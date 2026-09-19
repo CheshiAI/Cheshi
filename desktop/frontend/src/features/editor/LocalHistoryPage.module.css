@@ -1,4 +1,6 @@
 .workspace {
+  --liquid-glass-radius: 0;
+  border-width: 0 0 0 1px;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -10,10 +12,14 @@
 }
 
 .header {
-  height: var(--header-height);
-  min-height: var(--header-height);
-  max-height: var(--header-height);
-  flex: 0 0 var(--header-height);
+  box-sizing: border-box;
+  display: flex;
+  height: 42px;
+  flex: 0 0 42px;
+  align-items: center;
+  gap: var(--space-default);
+  padding: 0 var(--space-default);
+  border-bottom: 1px solid var(--divider);
 }
 
 .title,
@@ -23,9 +29,10 @@
   align-items: center;
 }
 
-.title { flex: 0 0 auto; gap: var(--icon-default); }
+.title { flex: 0 0 auto; gap: 10px; }
 .titleMark { cursor: default; pointer-events: none; }
-.title h1 {
+.titleMark svg { width: 11px; height: 11px; stroke-width: 1.7; }
+.title h2 {
   margin: 0;
   color: var(--sidebar-section-label-color);
   font-size: 10px;
@@ -65,11 +72,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.path { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sub-text); }
+.path { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sub-text); font-size: 11px; }
 
 .body {
   display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  grid-template-columns: clamp(120px, 30%, 240px) minmax(0, 1fr);
   min-height: 0;
   flex: 1;
 }
@@ -104,14 +111,23 @@
 .entry:disabled { cursor: default; opacity: .6; }
 .entry time { font-size: 10px; color: var(--sub-text); }
 
-.comparison { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.comparison { overflow: auto; min-width: 0; }
+.comparisonContent {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  width: max-content;
+  min-width: 100%;
+}
 .columns,
-.diffRow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.diff,
+.diffRow { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
 .columns { border-bottom: 1px solid var(--divider); flex: 0 0 auto; }
 .columns > div { padding: var(--space-default); }
 .columns > div + div { border-left: 1px solid var(--divider); }
 .columns small { display: block; margin-top: var(--icon-default); color: var(--sub-text); font-size: 10px; }
-.diff { overflow: auto; flex: 1; min-height: 0; }
+.diff { min-height: 0; }
+.comparisonContent > p,
+.diff > p { grid-column: 1 / -1; }
 .diffRow { min-height: 20px; }
 
 .cell {
@@ -124,7 +140,7 @@
 }
 
 .cell + .cell { border-left: 1px solid var(--divider); }
-.cell code { font-family: var(--font-mono, monospace); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+.cell code { font-family: var(--font-mono, monospace); font-size: 12px; white-space: pre; tab-size: 2; }
 .lineNumber { text-align: right; padding-right: var(--icon-default); color: var(--sub-text); font-variant-numeric: tabular-nums; user-select: none; }
 .marker { text-align: center; user-select: none; }
 .cell[data-kind='removed'] { background: color-mix(in srgb, #e08080 14%, transparent); }
@@ -137,9 +153,3 @@
 .error { margin: 0; padding: var(--space-default); line-height: 1.5; }
 .notice { color: var(--sub-text); }
 .error { color: #e08080; }
-
-@media (max-width: 700px) {
-  .body { grid-template-columns: 160px minmax(0, 1fr); }
-  .history { padding: 0; }
-  .cell { grid-template-columns: 28px 12px minmax(0, 1fr); padding-right: 0; }
-}

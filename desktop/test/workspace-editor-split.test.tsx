@@ -17,6 +17,7 @@ import { appleNoteAttachment } from '../frontend/src/features/notes/appleNotesMo
 import type { NotesView } from '../frontend/src/features/notes/NotesView';
 import type { AppleNote } from '../shared/apple-notes';
 import type { TerminalWorkspace } from '../frontend/src/features/terminal/TerminalWorkspace';
+import type { ReviewSidebar } from '../frontend/src/features/shell/ReviewSidebar';
 
 function hooks() {
   const slots: unknown[] = [];
@@ -84,6 +85,7 @@ function shellHarness() {
   const attachments = draftAttachmentModule.createChatDraftAttachments();
   const modules: Record<string, unknown> = {
     react: app.react,
+    '../chat/HistoryRecallActivity': { HistoryRecallNavigation: { Provider: 'HistoryRecallNavigation' } },
     '../chat/chatDraftAttachments': { ...draftAttachmentModule, createChatDraftAttachments: () => attachments },
     '../notes/appleNotesModel': { appleNoteAttachment },
     '../settings/useAutopilotMenu': { useAutopilotMenu: () => [true] },
@@ -328,6 +330,39 @@ test('only the standalone editor controls the shared right sidebar and preserves
   chat.onToggleRightSidebar();
   chat.onCloseWorkspace!();
   expect(editor().rightSidebarOpen).toBe(true);
+});
+
+test('line commits open in the shared sidebar, replace the requested line, and restore chats on close', () => {
+  const app = shellHarness();
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  const editor = () => props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
+  const review = () => props<ComponentProps<typeof ReviewSidebar>>(app.render(), 'ReviewSidebar');
+  const chat = () => props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace');
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
+  chat().onToggleRightSidebar();
+  expect(review().open).toBe(false);
+  const request = { path: 'first.ts', line: 1, content: 'draft\nsecond' };
+  const editorTarget = editor().target;
+  editor().onShowLineCommit(request);
+  expect(review().lineCommit).toBe(request);
+  expect(review().open).toBe(true);
+  expect(editor().target).toBe(editorTarget);
+  expect(split().mode).toBe('split');
+  expect(chat().sessionSyncEnabled).toBe(false);
+  const next = { ...request, line: 2 };
+  editor().onShowLineCommit(next);
+  expect(review().lineCommit).toBe(next);
+  chat().onToggleRightSidebar();
+  expect(review().open).toBe(false);
+  expect(review().lineCommit).toBe(next);
+  chat().onToggleRightSidebar();
+  expect(review().open).toBe(true);
+  review().onCloseReview();
+  expect(review().lineCommit).toBeNull();
+  expect(chat().sessionSyncEnabled).toBe(true);
+  editor().onShowLineCommit(request);
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onNavigate('git');
+  expect(review().lineCommit).toBeNull();
 });
 
 for (const [view, component] of [['codegraph', 'CodeGraphView'], ['terminal', 'TerminalWorkspace']] as const) {

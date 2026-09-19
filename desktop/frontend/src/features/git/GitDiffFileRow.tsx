@@ -7,7 +7,7 @@ interface GitDiffFileRowProps {
   path: string;
   selected: boolean;
   onSelectPath: (path: string) => void;
-  onOpenWorkspaceFile: (path: string) => void;
+  onOpenWorkspaceFile?: (path: string) => void;
 }
 
 export function GitDiffFileRow({ path, selected, onSelectPath, onOpenWorkspaceFile }: GitDiffFileRowProps) {
@@ -22,7 +22,7 @@ export function GitDiffFileRow({ path, selected, onSelectPath, onOpenWorkspaceFi
       >
         {path}
       </button>
-      <NeumorphicButton
+      {onOpenWorkspaceFile && <NeumorphicButton
         raised
         className={`sidebar-heading-action ${styles.diffFileOpen}`}
         aria-label={`Open file in editor: ${path}`}
@@ -30,7 +30,7 @@ export function GitDiffFileRow({ path, selected, onSelectPath, onOpenWorkspaceFi
         onClick={() => onOpenWorkspaceFile(path)}
       >
         <FileInput aria-hidden="true" />
-      </NeumorphicButton>
+      </NeumorphicButton>}
     </div>
   );
 }

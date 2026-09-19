@@ -1,4 +1,5 @@
 import type { EditorView } from '@codemirror/view';
+import { MAX_BLAME_CONTENT_LENGTH, type GitLineBlameRequest } from '../../../../shared/git-line-blame';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
 
 import { errorMessage } from '../../shared/errorMessage';
@@ -15,16 +16,18 @@ export interface CodeExplanationMenuTarget {
   y: number;
   selection: CodeExplanationSelection | null;
   error: string | null;
+  lineRequest: GitLineBlameRequest | null;
 }
 
 interface UseWorkspaceCodeExplanationOptions {
   active: boolean;
   path: string | null;
   firstLine: number;
+  lineEnding?: 'lf' | 'crlf' | 'cr' | null;
   editorViewRef: RefObject<EditorView | null>;
 }
 
-export function useWorkspaceCodeExplanation({ active, path, firstLine, editorViewRef }: UseWorkspaceCodeExplanationOptions) {
+export function useWorkspaceCodeExplanation({ active, path, firstLine, lineEnding, editorViewRef }: UseWorkspaceCodeExplanationOptions) {
   const [menu, setMenu] = useState<CodeExplanationMenuTarget | null>(null);
   const [state, setState] = useState<CodeExplanationState | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
@@ -57,14 +60,23 @@ export function useWorkspaceCodeExplanation({ active, path, firstLine, editorVie
     return Boolean(view && target instanceof Node && view.contentDOM.contains(target) && !view.state.selection.main.empty);
   };
 
-  const openMenu = (x: number, y: number) => {
+  const canInspectLine = (target: EventTarget | null) => {
     const view = editorViewRef.current;
-    if (!view || !path || view.state.selection.main.empty) return;
+    return Boolean(view && lineEnding && target instanceof Node && view.contentDOM.contains(target));
+  };
+
+  const openMenu = (x: number, y: number, position: number | null) => {
+    const view = editorViewRef.current;
+    if (!view || !path) return;
+    const lineRequest = lineEnding && lineEnding !== 'cr' && position !== null && view.state.doc.length <= MAX_BLAME_CONTENT_LENGTH
+      ? { path, line: view.state.doc.lineAt(position).number,
+        content: view.state.doc.sliceString(0, undefined, lineEnding === 'crlf' ? '\r\n' : '\n') } : null;
     returnFocusRef.current = view;
     try {
-      setMenu({ x, y, selection: captureCodeExplanationSelection(view.state, path, firstLine), error: null });
+      const selection = view.state.selection.main.empty ? null : captureCodeExplanationSelection(view.state, path, firstLine);
+      setMenu({ x, y, selection, error: null, lineRequest });
     } catch (error) {
-      setMenu({ x, y, selection: null, error: errorMessage(error) });
+      setMenu({ x, y, selection: null, error: errorMessage(error), lineRequest });
     }
   };
 
@@ -84,6 +96,11 @@ export function useWorkspaceCodeExplanation({ active, path, firstLine, editorVie
     dismiss,
     closeMenu,
     explainSelection,
+    showLineCommit: (open: (request: GitLineBlameRequest) => void) => {
+      const request = menu?.lineRequest;
+      closeMenu();
+      if (request) open(request);
+    },
     hostHandlers: {
       onMouseDownCapture(event: MouseEvent<HTMLDivElement>) {
         if ((event.button === 2 || (event.button === 0 && event.ctrlKey)) && hasSelectedCode(event.target)) {
@@ -92,20 +109,21 @@ export function useWorkspaceCodeExplanation({ active, path, firstLine, editorVie
         }
       },
       onContextMenuCapture(event: MouseEvent<HTMLDivElement>) {
-        if (!hasSelectedCode(event.target)) return;
+        if (!hasSelectedCode(event.target) && !canInspectLine(event.target)) return;
         event.preventDefault();
         event.stopPropagation();
-        openMenu(event.clientX, event.clientY);
+        openMenu(event.clientX, event.clientY, editorViewRef.current?.posAtCoords({ x: event.clientX, y: event.clientY }) ?? null);
       },
       onKeyDownCapture(event: KeyboardEvent<HTMLDivElement>) {
-        if (!(event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) || !hasSelectedCode(event.target)) return;
+        if (!(event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))
+          || (!hasSelectedCode(event.target) && !canInspectLine(event.target))) return;
         const view = editorViewRef.current;
         if (!view) return;
         event.preventDefault();
         event.stopPropagation();
         const caret = view.coordsAtPos(view.state.selection.main.head);
         const bounds = view.contentDOM.getBoundingClientRect();
-        openMenu(caret?.left ?? bounds.left, caret?.bottom ?? bounds.top);
+        openMenu(caret?.left ?? bounds.left, caret?.bottom ?? bounds.top, view.state.selection.main.head);
       },
     },
   };

@@ -60,6 +60,7 @@ function createHarness() {
     'react/jsx-runtime': { jsx, jsxs: jsx },
     '../../shared/ui': { LiquidGlassPanel: 'LiquidGlassPanel' },
     '../chat': { ChatSessionList: 'ChatSessionList' },
+    '../chat/HistoryRecallActivity': { HistoryRecallNavigation: { Provider: 'HistoryRecallNavigation' } },
     '../chat/ChatWorkspace': { ChatWorkspace: 'ChatWorkspace' },
     '../chat/chatDraftAttachments': {
       ChatDraftAttachmentsContext: { Provider: 'ChatDraftAttachmentsProvider' }, createChatDraftAttachments,
@@ -111,7 +112,7 @@ function createHarness() {
   return { render(): unknown { cursor = 0; return component(); } };
 }
 
-test('explorer history opens a workspace page with file selection and draft protection', () => {
+test('explorer history opens the right panel with draft protection while preserving the active page', () => {
   const harness = createHarness();
   let tree = harness.render();
   invoke(element(tree, 'Sidebar'), 'onNavigate', 'git');
@@ -119,21 +120,22 @@ test('explorer history opens a workspace page with file selection and draft prot
   tree = harness.render();
   invoke(element(tree, 'Sidebar'), 'onOpenLocalHistory', 'src/dirty.ts');
   tree = harness.render();
-  expect(element(tree, 'Sidebar').props.activeView).toBe('local-history');
+  expect(element(tree, 'Sidebar').props.activeView).toBe('git');
   expect(element(tree, 'Sidebar').props.selectedFilePath).toBe('src/dirty.ts');
-  const history = element(workspaceColumn(tree), 'LocalHistoryPage');
-  expect(history.props.path).toBe('src/dirty.ts');
-  expect(history.props.draftDirty).toBe(true);
-  expect(history.key).toBe('src/dirty.ts');
+  const history = element(tree, 'ReviewSidebar');
+  expect(history.props.localHistoryPath).toBe('src/dirty.ts');
+  expect(history.props.localHistoryDirty).toBe(true);
+  expect(history.props.open).toBe(true);
+  expect(elements(workspaceColumn(tree)).some(item => item.type === 'LocalHistoryPage')).toBe(false);
   expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('primary');
   const footer = element(tree, 'WorkspaceStatusBar');
   expect(Object.keys(footer.props).filter((name) => /history/i.test(name))).toEqual([]);
-  invoke(history, 'onClose');
+  invoke(history, 'onCloseReview');
   tree = harness.render();
-  expect(element(tree, 'Sidebar').props.activeView).toBe('blank');
+  expect(element(tree, 'Sidebar').props.activeView).toBe('git');
   expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('primary');
-  expect(elements(tree).some((item) => item.type === 'GitWorkspace')).toBe(false);
-  expect(elements(tree).some((item) => item.type === 'LocalHistoryPage')).toBe(false);
+  expect(elements(tree).some((item) => item.type === 'GitWorkspace')).toBe(true);
+  expect(element(tree, 'ReviewSidebar').props.localHistoryPath).toBeNull();
 });
 
 test('closing history after switching files leaves the editor open and preserves its draft state', () => {
@@ -151,14 +153,13 @@ test('closing history after switching files leaves the editor open and preserves
   expect(element(tree, 'Sidebar').props.activeView).toBe('terminal');
   invoke(editorBefore, 'onOpenLocalHistory', 'src/dirty.ts');
   tree = harness.render();
-  expect(element(tree, 'LocalHistoryPage').props.draftDirty).toBe(true);
-  expect(element(tree, 'Sidebar').props.activeView).toBe('local-history');
+  expect(element(tree, 'ReviewSidebar').props.localHistoryDirty).toBe(true);
+  expect(element(tree, 'Sidebar').props.activeView).toBe('terminal');
   invoke(element(tree, 'Sidebar'), 'onOpenLocalHistory', 'src/clean.ts');
   tree = harness.render();
-  const history = element(workspaceColumn(tree), 'LocalHistoryPage');
-  expect(history.props.path).toBe('src/clean.ts');
-  expect(history.props.draftDirty).toBe(false);
-  expect(history.key).toBe('src/clean.ts');
+  const history = element(tree, 'ReviewSidebar');
+  expect(history.props.localHistoryPath).toBe('src/clean.ts');
+  expect(history.props.localHistoryDirty).toBe(false);
   const editorDuring = element(tree, 'WorkspaceEditor');
   expect(editorDuring.props.active).toBe(true);
   expect(editorDuring.props.target).toBe(editorBefore.props.target);
@@ -167,22 +168,22 @@ test('closing history after switching files leaves the editor open and preserves
   expect(splitDuring.props.mode).toBe('split');
   expect(splitDuring.key).toBe(splitBefore.key);
   expect(splitDuring.props.editor).toBe(editorDuring);
-  invoke(history, 'onClose');
+  invoke(history, 'onCloseReview');
   tree = harness.render();
-  expect(element(tree, 'Sidebar').props.activeView).toBe('editor');
+  expect(element(tree, 'Sidebar').props.activeView).toBe('terminal');
   expect(element(tree, 'Sidebar').props.selectedFilePath).toBe('src/dirty.ts');
-  expect(element(tree, 'TerminalWorkspace').props.active).toBe(false);
+  expect(element(tree, 'TerminalWorkspace').props.active).toBe(true);
   expect(element(tree, 'ChatWorkspace').props.active).toBe(false);
-  expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('editor');
-  expect(elements(tree).some((item) => item.type === 'LocalHistoryPage')).toBe(false);
+  expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('split');
+  expect(element(tree, 'ReviewSidebar').props.localHistoryPath).toBeNull();
   expect(element(tree, 'WorkspaceEditor').props.active).toBe(true);
   expect(element(tree, 'WorkspaceEditor').props.target).toBe(editorBefore.props.target);
   invoke(element(tree, 'Sidebar'), 'onOpenLocalHistory', 'src/dirty.ts');
   tree = harness.render();
-  expect(element(tree, 'LocalHistoryPage').props.draftDirty).toBe(true);
+  expect(element(tree, 'ReviewSidebar').props.localHistoryDirty).toBe(true);
 });
 
-test('closing history after all editor tabs close leaves an empty workspace', () => {
+test('closing history after all editor tabs close preserves the previous chat workspace', () => {
   const harness = createHarness();
   let tree = harness.render();
   invoke(element(tree, 'Sidebar'), 'onOpenWorkspaceFile', 'src/file.ts');
@@ -191,11 +192,26 @@ test('closing history after all editor tabs close leaves an empty workspace', ()
   tree = harness.render();
   invoke(element(tree, 'WorkspaceEditor'), 'onAllTabsClosed');
   tree = harness.render();
-  invoke(element(tree, 'LocalHistoryPage'), 'onClose');
+  invoke(element(tree, 'ReviewSidebar'), 'onCloseReview');
   tree = harness.render();
-  expect(element(tree, 'Sidebar').props.activeView).toBe('blank');
+  expect(element(tree, 'Sidebar').props.activeView).toBe('chat');
   expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('primary');
   expect(element(tree, 'WorkspaceEditor').props.target).toBeNull();
-  expect(element(tree, 'ChatWorkspace').props.active).toBe(false);
-  expect(elements(tree).some((item) => item.type === 'LocalHistoryPage')).toBe(false);
+  expect(element(tree, 'ChatWorkspace').props.active).toBe(true);
+  expect(element(tree, 'ReviewSidebar').props.localHistoryPath).toBeNull();
+});
+
+test('local history and line commits replace each other in the same right panel', () => {
+  const harness = createHarness();
+  let tree = harness.render();
+  invoke(element(tree, 'Sidebar'), 'onOpenLocalHistory', 'first.ts');
+  tree = harness.render();
+  invoke(element(tree, 'WorkspaceEditor'), 'onShowLineCommit', { path: 'first.ts', line: 2, content: 'one\ntwo' });
+  tree = harness.render();
+  expect(element(tree, 'ReviewSidebar').props.localHistoryPath).toBeNull();
+  expect(element(tree, 'ReviewSidebar').props.lineCommit).toEqual({ path: 'first.ts', line: 2, content: 'one\ntwo' });
+  invoke(element(tree, 'Sidebar'), 'onOpenLocalHistory', 'second.ts');
+  tree = harness.render();
+  expect(element(tree, 'ReviewSidebar').props.localHistoryPath).toBe('second.ts');
+  expect(element(tree, 'ReviewSidebar').props.lineCommit).toBeNull();
 });

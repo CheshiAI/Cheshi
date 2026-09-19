@@ -1,5 +1,5 @@
 import { FileText, LoaderCircle, MessageSquareText, Plus } from 'lucide-react';
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   EmptyState,
@@ -38,8 +38,9 @@ interface DiffViewerProps {
   files: UnifiedDiffFile[];
   loading: boolean;
   selectedPath: string | null;
-  onSelectPath: (path: string) => void;
-  onOpenWorkspaceFile: (path: string) => void;
+  onSelectPath?: (path: string) => void;
+  onOpenWorkspaceFile?: (path: string) => void;
+  targetLine?: { path: string; line: number };
   embedded?: boolean;
   emptyMessage?: string;
   filesLabel?: string;
@@ -69,12 +70,17 @@ export const GitDiffViewer = memo(function GitDiffViewer({
   selectedPath,
   onSelectPath,
   onOpenWorkspaceFile,
+  targetLine,
   embedded = false,
   emptyMessage = 'Select a changed file or commit to inspect its diff.',
   filesLabel = 'Files in diff',
   review,
 }: DiffViewerProps) {
   const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0] ?? null;
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    contentRef.current?.querySelector<HTMLElement>('[data-line-target="true"]')?.scrollIntoView?.({ block: 'center' });
+  }, [selectedFile, targetLine?.path, targetLine?.line]);
   const [editorLocation, setEditorLocation] = useState<PullRequestReviewLocation | null>(null);
   const [reviewBody, setReviewBody] = useState('');
   const [reviewEvent, setReviewEvent] = useState<GitHubPullRequestReviewEvent>('COMMENT');
@@ -185,7 +191,7 @@ export const GitDiffViewer = memo(function GitDiffViewer({
           </div>
         </aside>
       )}
-      {files.length > 1 && (
+      {files.length > 1 && onSelectPath && (
         <nav className={styles.diffFiles} aria-label={filesLabel}>
           {files.map((file) => (
             <GitDiffFileRow
@@ -198,7 +204,7 @@ export const GitDiffViewer = memo(function GitDiffViewer({
           ))}
         </nav>
       )}
-      <div aria-busy={loading} className={styles.diffContent}>
+      <div ref={contentRef} aria-busy={loading} className={styles.diffContent}>
         {diff?.binary && !selectedFile ? (
           <div className={styles.emptyState}>Binary file changes cannot be rendered as text.</div>
         ) : !selectedFile ? (
@@ -222,6 +228,7 @@ export const GitDiffViewer = memo(function GitDiffViewer({
                     className={styles.diffLine}
                     data-commentable={review && location ? 'true' : undefined}
                     data-kind={line.kind}
+                    data-line-target={selectedFile.path === targetLine?.path && line.newLine === targetLine?.line ? 'true' : undefined}
                     data-reviewable={review ? 'true' : undefined}
                     role="row"
                   >
