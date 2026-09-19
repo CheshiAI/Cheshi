@@ -27,6 +27,7 @@ import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
 import type { SavedChatTurnsController } from './useSavedChatTurns';
 import { ChatInlineQuestion } from './ChatInlineQuestion';
 import { AgentActivity } from './AgentActivity';
+import { HistoryRecallActivity } from './HistoryRecallActivity';
 
 function ActivityIcon({ item }: { item: ChatActivityItem }) {
   if (item.activity === 'command') return <Terminal aria-hidden="true" />;
@@ -100,6 +101,7 @@ function TimelineItemContent({
     return <CommandActivity item={item} />;
   }
   if (item.kind === 'activity' && item.activity === 'agent') return <AgentActivity item={item} />;
+  if (item.kind === 'activity' && item.recall) return <HistoryRecallActivity item={item} />;
   if (item.kind === 'activity') {
     return (
       <LiquidGlassPanel as="article" className={styles.activity} data-activity={item.activity} data-status={item.status}

@@ -1,0 +1,15 @@
+.card { display: grid; gap: var(--space-default); padding: var(--space-default); font-size: 12px; min-width: 0; }
+.heading { display: flex; align-items: center; gap: var(--icon-default); flex-wrap: wrap; }
+.heading > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; }
+.heading > span, .metrics, .totals { color: var(--sidebar-section-label-color); }
+.metrics { display: flex; flex-wrap: wrap; gap: var(--space-default); font-variant-numeric: tabular-nums; font-size: 12px; }
+.card p, .totals p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.card summary, .totals summary { cursor: pointer; }
+.sources { display: grid; gap: var(--space-default); padding-top: var(--space-default); }
+.source { display: grid; gap: var(--space-default); min-width: 0; }
+.source > strong, .source small { overflow-wrap: anywhere; }
+.source button { justify-self: start; }
+.source small { font-size: 12px; }
+.totals { display: grid; gap: var(--space-default); padding: var(--space-default) 0; font-size: 12px; }
+.totals[open] > * + * { margin-top: var(--space-default); }
+.totals a { color: inherit; }

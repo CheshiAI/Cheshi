@@ -10,6 +10,7 @@ import type { ChatViewController } from './useChatViewController';
 import { completedChatTurnInputs } from './chatTurnSnapshots';
 import type { SavedChatTurnsController } from './useSavedChatTurns';
 import type { ChatHistorySearchNavigation } from './chatHistorySearchNavigation';
+import { HistoryRecallTotals } from './HistoryRecallActivity';
 
 interface ChatTimelineProps extends ChatHistorySearchNavigation {
   controller: Pick<ChatViewController, 'loading' | 'pauseAutoScroll' | 'scrollToBottom' | 'showScrollToBottom'
@@ -70,6 +71,7 @@ export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, hist
             onHistoryTargetHandled={handleHistoryTarget}
             onRevealHistoryItem={controller.scrollToHistoryItem}
           />
+          <HistoryRecallTotals items={state.items} />
           {streaming && !loading && <LoadingState type="thinking" className={styles.thinking} />}
         </div>
       </section>

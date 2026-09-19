@@ -15,6 +15,7 @@ import { ChatHistorySearchPage } from '../chat/ChatHistorySearchPage';
 import { useChatHistorySearch } from '../chat/useChatHistorySearch';
 import type { ChatHistorySearchHit } from '../../../../shared/chat-history-search';
 import type { ChatHistorySearchTarget } from '../chat/chatHistorySearchNavigation';
+import { HistoryRecallNavigation } from '../chat/HistoryRecallActivity';
 import { useChatWorkspace } from '../chat/useChatWorkspace';
 import { WindowChrome, WindowTabs } from '../chrome/WindowChrome';
 import {
@@ -136,8 +137,8 @@ export function AppShell() {
     void chat?.openSession(threadId);
   };
 
-  const openHistorySearchHit = async (hit: ChatHistorySearchHit): Promise<boolean> => {
-    if (chatSessionSelectionDisabled) return false;
+  const openHistorySearchHit = async (hit: Pick<ChatHistorySearchHit, 'threadId' | 'itemId'>): Promise<boolean> => {
+    if (chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running) return false;
     const requestId = ++historyRequestId.current;
     workspace.dismissError();
     const opened = await workspace.openSession(hit.threadId);
@@ -280,17 +281,20 @@ export function AppShell() {
             attachmentDisabled={chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
-          <ChatWorkspace
-            workspace={workspace}
-            active={activeView === 'chat' && !primaryPaneClosed}
-            onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
-            sessionSyncEnabled={rightSidebarOpen && !fileReview}
-            onReviewFileChanges={openFileReview}
-            historyTarget={historyTarget}
-            onHistoryTargetHandled={handleHistoryTarget}
-            rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
-          />
+          <HistoryRecallNavigation.Provider value={{ open: openHistorySearchHit,
+            disabled: chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running || workspace.responseThreadIds.length > 0 }}>
+            <ChatWorkspace
+              workspace={workspace}
+              active={activeView === 'chat' && !primaryPaneClosed}
+              onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
+              sessionSyncEnabled={rightSidebarOpen && !fileReview}
+              onReviewFileChanges={openFileReview}
+              historyTarget={historyTarget}
+              onHistoryTargetHandled={handleHistoryTarget}
+              rightSidebarOpen={rightSidebarOpen}
+              onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
+            />
+          </HistoryRecallNavigation.Provider>
           {activeView === 'codegraph' && (
             <CodeGraphView
               onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
