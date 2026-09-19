@@ -313,10 +313,11 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
       setShowScrollToBottom(!nearBottom);
     };
 
+    // ChatView's keyed providers replace the timeline when this identity changes.
     syncScrollPosition();
     timeline.addEventListener('scroll', syncScrollPosition, { passive: true });
     return () => timeline.removeEventListener('scroll', syncScrollPosition);
-  }, []);
+  }, [controller.contextId, state.activeSessionId]);
 
   useEffect(() => {
     stickToBottomRef.current = true;
