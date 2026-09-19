@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
@@ -38,6 +38,65 @@ async function rejected(operation: Promise<unknown>, expected: string) {
   expect((failure as Error).message).toContain(expected);
   expect((failure as Error).message).not.toContain(key);
 }
+
+test('workspace account selections survive restart and preserve other windows and settings', async () => {
+  const f = fixture();
+  try {
+    writeFileSync(f.options.settingsPath, JSON.stringify({ otherSetting: { keep: true } }));
+    const first = f.service.workspaceAccountSelection('/projects/first');
+    const second = f.service.workspaceAccountSelection('/projects/second');
+    expect(first.read()).toBeNull();
+    await Promise.all([
+      Promise.resolve().then(() => first.write('first-account')),
+      Promise.resolve().then(() => second.write('second-account')),
+      Promise.resolve().then(() => f.service.setAutopilotMenuVisible(true)),
+    ]);
+    first.write('replacement-account');
+    const restarted = createSettingsService(f.options);
+    expect(restarted.workspaceAccountSelection('/projects/first').read()).toBe('replacement-account');
+    expect(restarted.workspaceAccountSelection('/projects/second').read()).toBe('second-account');
+    expect(JSON.parse(readFileSync(f.options.settingsPath, 'utf8'))).toEqual({
+      otherSetting: { keep: true }, autopilotMenuVisible: true,
+      workspaceAccountSelections: {
+        '/projects/first': 'replacement-account', '/projects/second': 'second-account',
+      },
+    });
+    expect(statSync(f.options.settingsPath).mode & 0o777).toBe(0o600);
+    expect(readdirSync(f.options.directory).filter(name => name.endsWith('.tmp'))).toEqual([]);
+  } finally { f.close(); }
+});
+
+test('invalid saved account IDs are ignored and invalid writes preserve settings', () => {
+  const f = fixture();
+  try {
+    const selection = f.service.workspaceAccountSelection('/projects/first');
+    for (const value of [null, [], 42, '', '../account', 'a'.repeat(129)]) {
+      const previous = JSON.stringify({ workspaceAccountSelections: { '/projects/first': value } });
+      writeFileSync(f.options.settingsPath, previous);
+      expect(selection.read()).toBeNull();
+      expect(() => selection.write('../account')).toThrow('Invalid account');
+      expect(readFileSync(f.options.settingsPath, 'utf8')).toBe(previous);
+    }
+    writeFileSync(f.options.settingsPath, '{damaged');
+    expect(() => selection.read()).toThrow('Could not read');
+    expect(() => selection.write('second')).toThrow('Could not save');
+    expect(readFileSync(f.options.settingsPath, 'utf8')).toBe('{damaged');
+  } finally { f.close(); }
+});
+
+test('failure to create the temporary settings file retains the previous selection', () => {
+  const f = fixture();
+  try {
+    // The settings filename fits the filesystem limit; the UUID suffix cannot.
+    const settingsPath = path.join(f.options.directory, 's'.repeat(240));
+    const previous = JSON.stringify({ workspaceAccountSelections: { '/projects/first': 'previous' } });
+    writeFileSync(settingsPath, previous);
+    const selection = createSettingsService({ ...f.options, settingsPath }).workspaceAccountSelection('/projects/first');
+    expect(() => selection.write('replacement')).toThrow('Could not save');
+    expect(selection.read()).toBe('previous');
+    expect(readFileSync(settingsPath, 'utf8')).toBe(previous);
+  } finally { f.close(); }
+});
 
 test('keys persist encrypted, survive restart and only expose masked metadata', () => {
   const f = fixture();

@@ -14,9 +14,11 @@ import type { CodexConversationAccess } from './codex-chat-account-continuity.mt
 import type { CodexChatClient } from './codex-chat-types.mts';
 import { CodexConversationAgents } from './codex-conversation-agents.mts';
 import { createWorkspaceCodeGraphMcp } from './workspace-codegraph-mcp.mts';
+import type { WorkspaceAccountSelection } from './settings-service.mts';
 
 export function createWorkspaceCodexAccounts(options: {
   cwd: string; userDataDirectory: string; home: string; openExternal(url: string): Promise<unknown>;
+  accountSelection?: WorkspaceAccountSelection;
   historyMcp?: (command: { environment?: NodeJS.ProcessEnv }) => Promise<string[]>;
   codeGraph: { cli: { executable: string; args: string[] }; dataRoot: string };
 }) {
@@ -72,7 +74,7 @@ export function createWorkspaceCodexAccounts(options: {
     temporaryBusy(): boolean;
     resetTemporary(): void;
   }) => selection = registerCodexAccountsIpc({
-    ...configuration, clients, profiles,
+    ...configuration, clients, profiles, accountSelection: options.accountSelection,
     exclusive: operation => configuration.deletion.exclusive(operation),
     assertCanLogin: () => {
       const services = [configuration.service, ...configuration.contexts.allServices().map(entry => entry.service)];

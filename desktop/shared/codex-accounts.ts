@@ -48,3 +48,7 @@ export interface CodexAccountsApi {
 
 export const DEFAULT_CODEX_ACCOUNT_ID = 'default';
 export const MAX_CODEX_ACCOUNT_PROFILES = 10;
+
+export function isCodexAccountId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value);
+}

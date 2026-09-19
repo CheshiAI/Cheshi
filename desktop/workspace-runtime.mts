@@ -187,6 +187,7 @@ const { accounts: workspaceAccounts, search: chatHistorySearch, mcp: historyMcp 
   codeGraph: { cli: codeGraphCommands.cli(), dataRoot: codeGraphDataRoot },
   historyDirectory: path.join(path.dirname(codeGraphDirectory), 'chat-history-index'),
   getKey: options.getTypeSafeKey,
+  accountSelection: options.accountSelection,
 });
 const createChatClient = workspaceAccounts.createClient;
 const codexAppServerClient = createChatClient();

@@ -175,7 +175,8 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   let autopilot: ReturnType<typeof createAutopilotBrowser> | undefined;
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try {
-    runtime = createWorkspaceRuntime({ ...options, getTypeSafeKey: apiSettings.getKey }, snapshot => source?.update(snapshot), window => {
+    runtime = createWorkspaceRuntime({ ...options, getTypeSafeKey: apiSettings.getKey,
+      accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
     });
   }
