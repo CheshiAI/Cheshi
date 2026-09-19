@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.0.7-preview
+
+Pending release
+
+- Added Jev-powered conversation history recall through the workspace MCP server.
+  Search results include candidate sources and navigation to the original messages.
+- Added history recall request counts, token usage, timings, and estimated Jev
+  costs. Conversation totals appear below the latest completed response's Codex
+  statistics, with Jev usage accounted for separately.
+- Added Markdown rendering for history source previews, including tables, lists,
+  links, and code. Unified card text at 11px and source IDs at 10px using the
+  shared section-label color, with animated chevrons for expandable details.
+- Added inline Git line history and a Line commit panel for inspecting the
+  selected line's commit information and diff.
+- Added resizable right-side panels for Line commit and Local history.
+  Unified their headers, sizing, typography, and borders.
+- Unified resize handles across the editor and app split, Problems panel,
+  chat panes, and terminal panes with the shared divider color and centered grips.
+- Standardized Local history, Apple Notes, and Settings sidebar widths using
+  the shared sidebar-width token. Expanded the Settings form so controls remain
+  aligned with the available content width.
+- Fixed closing Local history restoring another workspace.
+- Reduced and repositioned the attachment remove button.
+- Fixed Autopilot menu visibility persistence and initialized settings before
+  rendering the workspace.
+- Improved Autopilot stability and isolated workspace storage.
+
 ## 0.0.6-preview
 
 Pending release
