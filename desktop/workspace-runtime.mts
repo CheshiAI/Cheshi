@@ -10,7 +10,7 @@ import { userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { registerGitIpcHandlers } from './lib/git-ipc.mts';
 import { registerLanguageServerIpcHandlers } from './lib/language-server-ipc.mts';
-import { registerWorkspaceFileIpcHandlers } from './lib/workspace-file-ipc.mts';
+import { registerLocalFileLinkIpc, registerWorkspaceFileIpcHandlers } from './lib/workspace-file-ipc.mts';
 import { acquireLocalHistory } from './lib/local-history-runtime.mts';
 import { registerLocalHistoryIpc } from './lib/local-history-ipc.mts';
 import { registerWorkspaceManagementIpcHandlers } from './lib/workspace-management-ipc.mts';
@@ -397,6 +397,7 @@ async function selectLanguageServerExecutable(
 }
 
 registerWorkspaceFileIpcHandlers({ ipcMain, workspaceRoot, clipboard, shell, localHistory });
+registerLocalFileLinkIpc({ ipcMain, workspaceRoot, shell, assertSender: assertCheshiSender });
 registerLocalHistoryIpc({ ipcMain, service: localHistory, assertSender: assertCheshiSender, onChanged: sendWorkspaceFilesChanged });
 const management = registerWorkspaceManagementIpcHandlers({ ipcMain, app, dialog, trashItem: (root) => shell.trashItem(root), withWorkspaceDeletion: options.withWorkspaceDeletion, assertWorkspaceAvailable: options.assertWorkspaceAvailable, openExternal: (url) => shell.openExternal(url), getWindow: () => mainWindow, assertSender: assertCheshiSender, dataRoot: codeGraphDataRoot, onOpenWorkspace: options.onOpenWorkspace, onReplaceWorkspace: options.onReplaceWorkspace, manager: { createWindow: (configuration) => new BrowserWindow(configuration), rendererUrl, workspaceRoot, onWindowCreated: (window) => options.scope.addOwner(window.webContents, true) } });
 registerGitIpcHandlers({ ipcMain, gitService, assertCheshiSender, shell });

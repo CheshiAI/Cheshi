@@ -668,6 +668,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
     entries: CheshiWorkspaceEntry[];
   }>;
   readWorkspaceFile: (relativePath: string) => Promise<WorkspaceFileReadResult>;
+  openLocalFileLink?: (href: string) => Promise<void>;
   searchWorkspaceFiles: (query: string) => Promise<WorkspaceFileSearchResult>;
   localHistory: {
     list: (path: string) => Promise<LocalHistoryEntry[]>;

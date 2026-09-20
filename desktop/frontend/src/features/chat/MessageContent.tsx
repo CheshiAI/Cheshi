@@ -1,9 +1,10 @@
 import { Check, Copy, Image as ImageIcon } from 'lucide-react';
 import { Children, useEffect, useState, type ReactNode } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { cheshiDesktop } from '../../cheshiDesktop';
+import { localFileLinkPath } from '../../../../shared/local-file-link';
 import { LiquidGlassPanel } from '../../shared/ui';
 import styles from './ChatView.module.css';
 import markdownStyles from './MessageContent.module.css';
@@ -37,8 +38,30 @@ function isGitHubUrl(href: string): boolean {
   return /^https?:\/\/(?:www\.)?github\.com(?:[/:?#]|$)/i.test(href);
 }
 
-function ExternalAnchor({ href, children }: { href: string; children: ReactNode }) {
-  if (!/^https?:\/\//i.test(href)) return <>{children}</>;
+function LocalFileAnchor({ href, children }: { href: string; children: ReactNode }) {
+  const [error, setError] = useState<string | null>(null);
+  const openFile = async () => {
+    setError(null);
+    if (!cheshiDesktop?.openLocalFileLink) {
+      setError('File links are available in the desktop app.');
+      return;
+    }
+    try { await cheshiDesktop.openLocalFileLink(href); }
+    catch { setError('Could not open this file. It may have been moved or deleted.'); }
+  };
+  return <>
+    <a href={href} title={localFileLinkPath(href) ?? href} onClick={event => {
+      event.preventDefault();
+      void openFile();
+    }} onAuxClick={event => event.preventDefault()}>{children}</a>
+    {error && <span role="alert"> {error}</span>}
+  </>;
+}
+
+function MessageAnchor({ href, children }: { href: string; children: ReactNode }) {
+  if (!/^https?:\/\//i.test(href)) {
+    return localFileLinkPath(href) ? <LocalFileAnchor href={href}>{children}</LocalFileAnchor> : <>{children}</>;
+  }
   const github = isGitHubUrl(href);
   return (
     <a href={href} rel="noreferrer" target="_blank">
@@ -131,7 +154,7 @@ function LocalImageParagraph({ children }: { children?: ReactNode }) {
 }
 
 const markdownComponents: Components = {
-  a: ({ href, children }) => <ExternalAnchor href={href ?? ''}>{children}</ExternalAnchor>,
+  a: ({ href, children }) => <MessageAnchor href={href ?? ''}>{children}</MessageAnchor>,
   // Markdown images do not initiate network or filesystem access. Local previews
   // are available only through the explicit attachment marker and desktop bridge.
   img: ({ alt }) => <span>{alt || 'Image'}</span>,
@@ -189,6 +212,7 @@ export function MessageContent({ renderLocalImages = false, text }: MessageConte
       <ReactMarkdown
         components={renderLocalImages ? localImageComponents : markdownComponents}
         remarkPlugins={[remarkGfm]}
+        urlTransform={(url, key) => key === 'href' && localFileLinkPath(url) ? url : defaultUrlTransform(url)}
       >
         {text}
       </ReactMarkdown>
