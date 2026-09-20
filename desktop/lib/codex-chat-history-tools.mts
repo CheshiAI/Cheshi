@@ -5,13 +5,13 @@ const offset = { type: 'integer', minimum: 0 };
 export const HISTORY_MCP_NAME = 'cheshi_history';
 export const HISTORY_TOOLS = [
   { name: 'history_search', description: 'Recover past decisions and reasons omitted from the current context. '
-      + 'Search original saved dialogue using TypeSafe (candidate text is sent to TypeSafe). '
+      + 'Search original saved dialogue using TypeSafe, with Luna low on the active Codex subscription when TypeSafe is unavailable (candidate text is sent to the evaluating provider). '
       + 'Use the current conversation id from application context. Default to workspace; use thread or focusThreadId when the user restricts the search to a conversation. '
       + 'Use the original short user question, without invented synonyms. Scores are judgments, not verified answers. '
       + 'Results include originals for up to three distinct messages with bounded source text and neighbors. Inspect them without rereading provided text. '
       + 'For past reasons, answer once original evidence suffices. Check later decisions with focusThreadId/afterOrdinal only for current-status questions or evidence of a relevant correction or conflict. '
       + 'Stop broad searches when evidence suffices. Paginate fully only to claim complete coverage or absence. '
-      + 'metrics reports incremental Jev usage and estimated USD cost for this call; null cost means unknown.',
+      + 'metrics reports incremental Jev usage and estimated USD cost; metrics.luna reports separate Luna fallback tokens with unknown subscription cost. Null means unknown.',
     inputSchema: { type: 'object', additionalProperties: false, required: ['query', 'threadId'], properties: {
       query: { type: 'string', minLength: 1, maxLength: 500 }, threadId: id,
       scope: { type: 'string', enum: ['thread', 'workspace'], default: 'workspace',

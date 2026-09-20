@@ -52,7 +52,7 @@ test('turn totals do not double count completion updates or turn unknown spendin
   expect(result).toMatchObject({ requests: 3, estimatedCostUsd: null, inputTokens: null, unknownRequests: 1 });
   const html = renderToStaticMarkup(<HistoryRecallTotals metrics={result} />);
   expect(html).toContain('known + unknown');
-  expect(html).toContain('Excludes Codex');
+  expect(html).toContain('Jev cost excludes Codex');
   expect(html).toContain('Recorded calls in this turn only.');
   expect(renderToStaticMarkup(<HistoryRecallTotals metrics={sumRecallMetrics([])} />)).toBe('');
 });
@@ -113,4 +113,20 @@ test('source navigation passes exact ids, respects disabled state and reports mi
       else Reflect.deleteProperty(globalThis, key);
     }
   }
+});
+
+test('Luna fallback totals stay separate, deduplicated and unknown rather than free', () => {
+  const fallback: ChatActivityItem = { ...item, recall: { ...item.recall!, metrics: { ...item.recall!.metrics!,
+    luna: { requests: 1, inputTokens: 100, outputTokens: 20, reasoningOutputTokens: 10, cachedInputTokens: 0, modelMs: 500 },
+  } } };
+  const unknown: ChatActivityItem = { ...fallback, id: 'fallback-unknown', recall: { ...fallback.recall!, metrics: {
+    ...fallback.recall!.metrics!, luna: { ...fallback.recall!.metrics!.luna!, inputTokens: null },
+  } } };
+  const totals = sumRecallMetrics([fallback, fallback, unknown]);
+  expect(totals).toMatchObject({ requests: 4, inputTokens: 6000,
+    luna: { requests: 2, inputTokens: null, outputTokens: 40, reasoningOutputTokens: 20, modelMs: 1000 } });
+  const html = renderToStaticMarkup(<HistoryRecallTotals metrics={totals} />);
+  expect(html).toContain('Luna low fallback');
+  expect(html).toContain('subscription usage cost: Unknown');
+  expect(html).toContain('Luna input: Unknown');
 });

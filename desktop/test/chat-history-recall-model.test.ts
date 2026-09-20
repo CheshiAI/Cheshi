@@ -99,3 +99,69 @@ test('HTTP and connection failures report an attempted request with unknown cost
     expect(usage).toMatchObject({ requests: 1, estimatedCostUsd: null, unknownRequests: 1 });
   }
 });
+
+test.each([0, 0.2, 0.5])('valid no-match and low/uncertain scores never invoke Luna: %s', async score => {
+  let fallbacks = 0;
+  const evaluate = createHistoryRecallEvaluator({ getKey: () => 'test-only',
+    request: async (_url, init) => {
+      const body = JSON.parse(String(init.body));
+      return Response.json({ answers: Object.fromEntries(Object.keys(body.questions).map(key => [key, { type: 'noul', noul: score }])) });
+    }, fallback: async () => { fallbacks++; return []; } });
+  expect(await evaluate('query', candidates(1), new AbortController().signal)).toEqual([{ answer: score, related: score, direct: score }]);
+  expect(fallbacks).toBe(0);
+});
+
+test.each([401, 402, 403, 429, 500, 503])('provider HTTP %s invokes fallback once', async status => {
+  let fallbacks = 0;
+  const expected = [{ answer: 1, related: 1, direct: 1 }];
+  const evaluate = createHistoryRecallEvaluator({ getKey: () => 'test-only',
+    request: async () => new Response('', { status }), fallback: async () => { fallbacks++; return expected; } });
+  expect(await evaluate('query', candidates(1), new AbortController().signal)).toEqual(expected);
+  expect(fallbacks).toBe(1);
+});
+
+test('missing key falls back, but an empty page makes no provider calls', async () => {
+  let fallbacks = 0;
+  const evaluate = createHistoryRecallEvaluator({ getKey: () => null, fallback: async () => { fallbacks++; return []; } });
+  expect(await evaluate('query', [], new AbortController().signal)).toEqual([]);
+  expect(fallbacks).toBe(0);
+  await evaluate('query', candidates(1), new AbortController().signal);
+  expect(fallbacks).toBe(1);
+});
+
+test.each(['network', 'json', 'assessment'])('unusable %s response invokes fallback once', async mode => {
+  let fallbacks = 0;
+  const evaluate = createHistoryRecallEvaluator({ getKey: () => 'test-only', request: async () => {
+    if (mode === 'network') throw new Error('network private details');
+    return mode === 'json' ? new Response('invalid json') : Response.json({ answers: {} });
+  }, fallback: async () => { fallbacks++; return [{ answer: 0, related: 0, direct: 0 }]; } });
+  expect(await evaluate('query', candidates(1), new AbortController().signal)).toEqual([{ answer: 0, related: 0, direct: 0 }]);
+  expect(fallbacks).toBe(1);
+});
+
+test('caller cancellation never triggers fallback even when Jev fails', async () => {
+  let fallbacks = 0;
+  const controller = new AbortController();
+  const evaluate = createHistoryRecallEvaluator({ getKey: () => 'test-only', request: async () => {
+    controller.abort(new Error('caller canceled')); throw new Error('connection closed');
+  }, fallback: async () => { fallbacks++; return []; } });
+  await failure(evaluate('query', candidates(1), controller.signal), /caller canceled/);
+  expect(fallbacks).toBe(0);
+});
+
+test('partial batch failure evaluates the entire page once and retains earlier Jev spending', async () => {
+  let calls = 0;
+  const input = candidates(24), usage = emptyRecallUsage();
+  const expected = input.map(() => ({ answer: 0, related: 0.5, direct: 0 }));
+  const evaluate = createHistoryRecallEvaluator({ getKey: () => 'test-only', request: async (_url, init) => {
+    if (++calls === 2) return new Response('', { status: 429 });
+    const body = JSON.parse(String(init.body));
+    return Response.json({ model: 'jev-1.13.0', usage: { input_tokens: 100, output_tokens: 10 },
+      answers: Object.fromEntries(Object.keys(body.questions).map(key => [key, { type: 'noul', noul: 1 }])) });
+  }, fallback: async (_query, actual) => { expect(actual).toEqual(input); return expected; } });
+  expect(await evaluate('query', input, new AbortController().signal, value => addRecallUsage(usage, value))).toEqual(expected);
+  expect(calls).toBe(2);
+  expect(usage.requests).toBe(2);
+  expect(usage.knownEstimatedCostUsd).toBeGreaterThan(0);
+  expect(usage.estimatedCostUsd).toBeNull();
+});

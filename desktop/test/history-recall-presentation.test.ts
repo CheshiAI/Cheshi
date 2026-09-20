@@ -65,3 +65,11 @@ test('linked originals remain first and navigable after live and saved result no
   if (restored?.kind !== 'activity') throw new Error('Expected saved history activity');
   expect(restored.recall).toEqual(live);
 });
+
+test('fallback usage survives normalization separately from Jev with invalid counts kept unknown', () => {
+  const metrics = normalizeRecallMetrics({ ...payload.metrics, luna: { requests: 1, inputTokens: 100,
+    outputTokens: 20, reasoningOutputTokens: '10', cachedInputTokens: null, modelMs: 200 } });
+  expect(metrics).toMatchObject({ requests: 0, estimatedCostUsd: 0,
+    luna: { requests: 1, inputTokens: 100, outputTokens: 20, reasoningOutputTokens: null, cachedInputTokens: null, modelMs: 200 } });
+  expect(normalizeRecallMetrics({ ...payload.metrics, luna: { requests: -1, modelMs: 1 } })?.luna).toBeUndefined();
+});

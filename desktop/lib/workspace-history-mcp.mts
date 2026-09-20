@@ -94,7 +94,7 @@ export function createWorkspaceHistoryMcp(recall: Pick<ChatHistoryRecall, 'searc
     session.requests.set(id, controller);
     runningCalls++;
     try {
-      const signal = AbortSignal.any([lifetime.signal, controller.signal, AbortSignal.timeout(55_000)]);
+      const signal = AbortSignal.any([lifetime.signal, controller.signal, AbortSignal.timeout(125_000)]);
       const value = await callHistoryTool(recall, params?.name, params?.arguments, signal);
       signal.throwIfAborted();
       result({ ...(recordValue(value)?.status === 'error' ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify(value) }] });
@@ -125,7 +125,7 @@ export function createWorkspaceHistoryMcp(recall: Pick<ChatHistoryRecall, 'searc
       lifetime.signal.throwIfAborted();
       command.environment = { ...command.environment, [TOKEN_ENV]: token };
       return Object.entries({ url: JSON.stringify(url), bearer_token_env_var: JSON.stringify(TOKEN_ENV),
-        enabled: 'true', tool_timeout_sec: '60' }).flatMap(([key, value]) => ['-c', `mcp_servers.${HISTORY_MCP_NAME}.${key}=${value}`]);
+        enabled: 'true', tool_timeout_sec: '130' }).flatMap(([key, value]) => ['-c', `mcp_servers.${HISTORY_MCP_NAME}.${key}=${value}`]);
     },
     async stop() {
       lifetime.abort();

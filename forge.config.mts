@@ -97,6 +97,8 @@ function shouldIgnore(packagePath: string): boolean {
     'chat-history-search.mts',
     'chat-history-recall.mts',
     'chat-history-recall-model.mts',
+    'chat-history-recall-rules.mts',
+    'chat-history-recall-luna.mts',
     'chat-history-recall-usage.mts',
     'codex-chat-history-tools.mts',
     'workspace-history-mcp.mts',

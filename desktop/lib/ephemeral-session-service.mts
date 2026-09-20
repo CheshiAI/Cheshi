@@ -3,6 +3,16 @@ import { modelsFromListResponse } from './codex-chat-catalog.mts';
 import type { CodexChatClient, JsonObject } from './codex-chat-types.mts';
 import { recordValue, stringValue } from './codex-service-utils.mts';
 
+export interface EphemeralRunOptions {
+  signal?: AbortSignal;
+  outputSchema?: unknown;
+  serviceTier?: 'default';
+  disableTools?: boolean;
+  requireSubscription?: boolean;
+  onTurnRequested?: () => void;
+  onUsage?: (value: unknown) => void;
+}
+
 interface ActiveSession {
   abort: AbortController;
   threadId: string | null;
@@ -69,13 +79,16 @@ export class EphemeralSessionService {
     }).catch(() => undefined);
   }
 
-  async run(value: unknown): Promise<EphemeralSessionResult> {
+  async run(value: unknown, options: EphemeralRunOptions = {}): Promise<EphemeralSessionResult> {
     const request = ephemeralSessionRequest(value);
     assertAvailable(!this.stopped, 'Temporary session service has stopped.');
     assertAvailable(!this.active.has(request.requestId), 'A temporary session with this request id is already running.');
     const active: ActiveSession = { abort: new AbortController(), threadId: null, turnId: null };
     this.active.set(request.requestId, active);
     const signal = active.abort.signal;
+    const externalAbort = () => active.abort.abort(options.signal?.reason);
+    options.signal?.addEventListener('abort', externalAbort, { once: true });
+    if (options.signal?.aborted) externalAbort();
     const messages = new Map<string, { text: string; phase: unknown }>();
     let turnCompleted = false;
     type Outcome = { text: string } | { error: Error };
@@ -97,6 +110,11 @@ export class EphemeralSessionService {
       const turnId = stringValue(params.turnId) ?? stringValue(turn?.id);
       if (turnId && active.turnId && turnId !== active.turnId) return;
       if (turnId) active.turnId = turnId;
+      if (event.method === 'thread/tokenUsage/updated') options.onUsage?.(params.tokenUsage);
+      if (options.disableTools && event.method === 'item/started'
+        && ['commandExecution', 'mcpToolCall', 'dynamicToolCall', 'webSearch', 'fileChange'].includes(String(recordValue(params.item)?.type))) {
+        active.abort.abort(new Error('History classification cannot use tools.'));
+      }
       if (event.method === 'item/completed') remember(params.item);
       if (event.method === 'error' && params.willRetry !== true) {
         finish({ error: new Error(stringValue(recordValue(params.error)?.message) ?? 'Temporary session failed.') });
@@ -118,6 +136,21 @@ export class EphemeralSessionService {
     });
 
     try {
+      signal.throwIfAborted();
+      if (options.requireSubscription) {
+        const account = recordValue(await abortable(this.client.request('account/read', {}), signal));
+        assertAvailable(recordValue(account?.account)?.type === 'chatgpt', 'Sign in with a ChatGPT subscription to use Luna history fallback.');
+      }
+      let config: Record<string, unknown> | undefined;
+      if (options.disableTools) {
+        const response = recordValue(await abortable(this.client.request('config/read', { includeLayers: false, cwd: this.cwd }), signal));
+        const effective = recordValue(response?.config);
+        assertAvailable(effective, 'Could not read configuration for isolated history classification.');
+        const servers = recordValue(effective.mcp_servers) ?? {};
+        config = { mcp_servers: Object.fromEntries(Object.entries(servers).map(([name, value]) =>
+          [name, { ...recordValue(value), enabled: false }])),
+          'features.shell_tool': false, 'features.multi_agent': false, 'web_search': 'disabled' };
+      }
       const models = modelsFromListResponse(await abortable(this.client.request('model/list', { limit: 100, includeHidden: false }), signal));
       signal.throwIfAborted();
       const model = models.find((entry) => entry.model === request.model);
@@ -125,6 +158,9 @@ export class EphemeralSessionService {
       assertAvailable(model.supportedReasoningEfforts.some(({ effort }) => effort === request.effort), `${request.model} ${request.effort} is not available on the connected Codex account.`);
       const started = recordValue(await abortable(this.client.request('thread/start', {
         model: model.model, allowProviderModelFallback: false,
+        ...(options.requireSubscription ? { modelProvider: 'openai' } : {}),
+        ...(config ? { config } : {}),
+        ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
         cwd: this.cwd, ephemeral: true, approvalPolicy: 'never', sandbox: 'read-only',
         baseInstructions: request.instructions, developerInstructions: request.instructions,
         environments: [], selectedCapabilityRoots: [], dynamicTools: [],
@@ -134,8 +170,14 @@ export class EphemeralSessionService {
       assertAvailable(active.threadId, 'Codex did not create a temporary session.');
       assertAvailable(recordValue(started?.thread)?.ephemeral === true, 'Codex did not confirm an in-memory session.');
       assertAvailable(started?.model === model.model, 'Codex returned a different model than requested.');
+      assertAvailable(!options.requireSubscription || started?.modelProvider === 'openai', 'Codex returned a different provider than requested.');
+      assertAvailable(!options.serviceTier || started?.serviceTier == null || started.serviceTier === options.serviceTier,
+        'Codex returned a different service tier than requested.');
+      options.onTurnRequested?.();
       const turn = recordValue(await abortable(this.client.request('turn/start', {
         threadId: active.threadId, model: model.model, effort: request.effort,
+        ...(options.serviceTier ? { serviceTier: options.serviceTier, serviceTierForTurn: options.serviceTier } : {}),
+        ...(options.outputSchema ? { outputSchema: options.outputSchema } : {}),
         approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly', networkAccess: false },
         environments: [],
         input: [{ type: 'text', text: request.input, text_elements: [] }],
@@ -148,6 +190,7 @@ export class EphemeralSessionService {
       return { text: outcome.text, model: model.model };
     } finally {
       clearTimeout(timer);
+      options.signal?.removeEventListener('abort', externalAbort);
       signal.removeEventListener('abort', onAbort);
       removeNotification();
       removeFailure();
