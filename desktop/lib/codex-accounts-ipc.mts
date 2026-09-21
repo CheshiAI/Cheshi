@@ -1,14 +1,16 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
-import type { CodexAccountsSnapshot } from '../shared/codex-accounts.ts';
+import { isCodexAccountId, type CodexAccountsSnapshot } from '../shared/codex-accounts.ts';
 import type { CodexAccountProfiles } from './codex-account-profiles.mts';
 import type { AccountClient, CodexAccountClients } from './codex-account-clients.mts';
 import { chooseCodexAccount } from './codex-account-availability.mts';
+import type { WorkspaceAccountSelection } from './settings-service.mts';
 
 interface Options {
   ipc: Pick<IpcMain, 'handle'>;
   profiles: CodexAccountProfiles;
   clients: CodexAccountClients;
   retained: AccountClient[];
+  accountSelection?: WorkspaceAccountSelection;
   assertSender(event: IpcMainInvokeEvent): void;
   assertIdle(): void;
   assertCanLogin?(): void;
@@ -56,7 +58,7 @@ export function registerCodexAccountsIpc(options: Options) {
     });
   };
   const idValue = (value: unknown): string => {
-    if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(value)) throw new TypeError('Invalid account profile id.');
+    if (!isCodexAccountId(value)) throw new TypeError('Invalid account profile id.');
     return value;
   };
   const assertNotLoggingOut = (id: string) => {
@@ -116,7 +118,7 @@ export function registerCodexAccountsIpc(options: Options) {
       selecting = false;
     }
   });
-  const select = async (value: unknown): Promise<CodexAccountsSnapshot> => {
+  const select = async (value: unknown, persist = true): Promise<CodexAccountsSnapshot> => {
     assertOpen();
     if (selecting) throw new Error('An account switch is already in progress.');
     const id = idValue(value);
@@ -130,14 +132,23 @@ export function registerCodexAccountsIpc(options: Options) {
       const target = snapshot.profiles.find(profile => profile.id === id);
       if (!target) throw new Error('Account profile not found.');
       if (!target.usage.authenticated || target.usage.state !== 'ready') throw new Error('Sign in to this account before selecting it.');
-      if (id === activeId) return selected(snapshot);
+      if (id === activeId) {
+        if (persist) options.accountSelection?.write(id);
+        return selected(snapshot);
+      }
       const environment = await options.profiles.environment(id);
       assertOpen();
       await options.exclusive(async () => {
         assertOpen();
         options.assertIdle();
         const retained = [...new Set([...options.retained, ...options.clients.clients])];
-        await options.clients.change(environment, retained, () => options.reset(true));
+        await options.clients.change(environment, retained, async () => {
+          await options.reset(true);
+          assertOpen();
+          // Finish persistence before committing the new transport environment.
+          // A failed write leaves the previous account selected.
+          if (persist) options.accountSelection?.write(id);
+        });
         assertOpen();
         activeId = id;
       });
@@ -156,10 +167,18 @@ export function registerCodexAccountsIpc(options: Options) {
     async initialize(onError: (error: unknown) => void): Promise<CodexAccountsSnapshot | null> {
       try {
         assertOpen();
+        let savedId: string | null = null;
+        try { savedId = options.accountSelection?.read() ?? null; }
+        catch (error) { onError(error); }
         const snapshot = selected(await options.profiles.list());
         assertOpen();
-        const choice = chooseCodexAccount(snapshot);
-        if (choice.accountId !== null && choice.accountId !== activeId) return await select(choice.accountId);
+        const saved = snapshot.profiles.find(profile => profile.id === savedId
+          && profile.usage.authenticated === true && profile.usage.state === 'ready');
+        const choice = chooseCodexAccount(saved ? { ...snapshot, activeId: saved.id } : snapshot);
+        const targetId = choice.accountId ?? saved?.id ?? activeId;
+        if (targetId !== activeId) {
+          return await select(targetId, targetId !== savedId);
+        }
         // Publish even when no switch is possible, before the renderer starts requesting accounts.
         options.emit(snapshot);
         return snapshot;

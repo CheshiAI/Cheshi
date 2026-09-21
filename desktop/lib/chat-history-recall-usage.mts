@@ -1,4 +1,4 @@
-import type { RecallUsage } from '../shared/history-recall.ts';
+import { sumRecallLunaUsage, type RecallUsage } from '../shared/history-recall.ts';
 import { recordValue } from './codex-service-utils.mts';
 
 // https://docs.typesafe.ai/models — verified 2026-09-19. Unknown versions are not priced.
@@ -22,6 +22,8 @@ export function recallResponseUsage(value: unknown, modelMs: number): RecallUsag
     knownEstimatedCostUsd: estimatedCostUsd ?? 0, unknownRequests: estimatedCostUsd === null ? 1 : 0, modelMs };
 }
 export function addRecallUsage(target: RecallUsage, value: RecallUsage): void {
+  const luna = sumRecallLunaUsage([target.luna, value.luna]);
+  if (luna) target.luna = luna;
   target.requests += value.requests;
   target.inputTokens = target.inputTokens === null || value.inputTokens === null ? null : target.inputTokens + value.inputTokens;
   target.outputTokens = target.outputTokens === null || value.outputTokens === null ? null : target.outputTokens + value.outputTokens;

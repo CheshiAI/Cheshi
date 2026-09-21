@@ -1,11 +1,14 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { act } from 'react';
+import { Window } from 'happy-dom';
 import type { ChatWorkspaceController } from '../frontend/src/features/chat/useChatWorkspace';
 import type { ChatRelayState } from '../shared/chat-relay';
 import { timelineFromThread } from '../lib/codex-chat-thread-data.mts';
 import { normalizeOpenSessionResponse } from '../frontend/src/features/chat/model';
 
-mock.module('../frontend/src/cheshiDesktop', () => ({ cheshiDesktop: undefined }));
+const desktop: { openLocalFileLink?: (href: string) => Promise<void> } = {};
+mock.module('../frontend/src/cheshiDesktop', () => ({ cheshiDesktop: desktop }));
 const { MessageContent } = await import('../frontend/src/features/chat/MessageContent');
 const { ChatRelayStatus } = await import('../frontend/src/features/chat/ChatRelayControls');
 
@@ -62,6 +65,56 @@ describe('chat Markdown rendering', () => {
     expect(html).not.toContain('<img');
     expect(html).toContain('href="https://github.com/example/repo"');
     expect(html).toContain('target="_blank"');
+  });
+
+  test('preserves report links, encoded spaces and source locations without enabling other protocols', () => {
+    const html = render('[보고서](/private/tmp/report/REPORT.md)\n\n[공백](</tmp/한글 report.md>)\n\n[source](app.ts:12)\n\n[unsafe](file:///tmp/a.md)\n\n[network](//example.com/a)');
+    expect(html).toContain('href="/private/tmp/report/REPORT.md"');
+    expect(html).toContain('href="/tmp/%ED%95%9C%EA%B8%80%20report.md"');
+    expect(html).toContain('href="app.ts:12"');
+    expect(html).not.toContain('href="file:');
+    expect(html).not.toContain('href="//');
+    expect(html).not.toContain('target="_blank"');
+  });
+
+  test('opens a local report only after a click, prevents navigation and displays open failures', async () => {
+    const window = new Window();
+    const globals = { window, document: window.document, navigator: window.navigator, IS_REACT_ACT_ENVIRONMENT: true };
+    const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+    for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+    let unmount = async () => {};
+    try {
+      const { createRoot } = await import('react-dom/client');
+      const container = globalThis.document.createElement('div');
+      globalThis.document.body.append(container);
+      const root = createRoot(container);
+      unmount = async () => { await act(async () => root.unmount()); };
+      const opened: string[] = [];
+      let fail = false;
+      desktop.openLocalFileLink = async href => { opened.push(href); if (fail) throw new Error('Missing file.'); };
+      await act(async () => root.render(<MessageContent text="[Report](/private/tmp/report/REPORT.md)" />));
+      expect(opened).toEqual([]);
+      const anchor = container.querySelector('a');
+      if (!anchor) throw new Error('Expected a local report link.');
+      const click = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+      await act(async () => { anchor.dispatchEvent(click as unknown as MouseEvent); });
+      expect(click.defaultPrevented).toBe(true);
+      expect(opened).toEqual(['/private/tmp/report/REPORT.md']);
+      fail = true;
+      await act(async () => anchor.click());
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('Could not open this file');
+      fail = false;
+      await act(async () => anchor.click());
+      expect(container.querySelector('[role="alert"]')).toBeNull();
+    } finally {
+      await unmount();
+      delete desktop.openLocalFileLink;
+      for (const [key, descriptor] of previous) {
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else Reflect.deleteProperty(globalThis, key);
+      }
+      await window.happyDOM.close();
+    }
   });
 
   test('preserves local attachment placeholders only when explicitly enabled', () => {

@@ -5,10 +5,19 @@ import { HISTORY_MCP_NAME, HISTORY_TOOLS, callHistoryTool } from './codex-chat-h
 import type { ChatHistoryRecall } from './chat-history-recall.mts';
 import { recordValue } from './codex-service-utils.mts';
 
+export interface HistoryRecallAccess {
+  enabled(): boolean;
+  subscribe(listener: () => void): () => void;
+}
+
 type Command = { environment?: NodeJS.ProcessEnv };
 const TOKEN_ENV = 'CHESHI_HISTORY_MCP_TOKEN';
 const PROTOCOL = '2025-11-25';
 type Session = { requests: Map<string | number, AbortController> };
+
+function assertRecallEnabled(enabled: boolean): void {
+  if (enabled !== true) throw new Error('History recall is disabled in Settings.');
+}
 
 function respond(response: ServerResponse, status: number, body?: unknown) {
   response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -28,7 +37,7 @@ async function body(request: IncomingMessage): Promise<unknown> {
 }
 
 /** Workspace-local, authenticated MCP bridge. No authored configuration or user credential is persisted. */
-export function createWorkspaceHistoryMcp(recall: Pick<ChatHistoryRecall, 'search' | 'read'>) {
+export function createWorkspaceHistoryMcp(recall: Pick<ChatHistoryRecall, 'search' | 'read'>, access?: HistoryRecallAccess) {
   const token = randomBytes(32).toString('hex');
   const authorization = Buffer.from(`Bearer ${token}`);
   const lifetime = new AbortController();
@@ -37,6 +46,15 @@ export function createWorkspaceHistoryMcp(recall: Pick<ChatHistoryRecall, 'searc
   let endpoint: URL | undefined;
   let runningCalls = 0;
   const cancel = (session: Session) => { for (const request of session.requests.values()) request.abort(); };
+  const enabled = () => {
+    try { return access?.enabled() === true; } catch { return false; }
+  };
+  const unsubscribe = access?.subscribe(() => {
+    if (!enabled()) for (const session of sessions.values()) cancel(session);
+  });
+  // Codex validates transport even for disabled servers. Replace any inherited
+  // entry with a valid, disabled loopback transport; no listener or token is needed.
+  const disabledArgs = ['-c', `mcp_servers.${HISTORY_MCP_NAME}={ enabled = false, url = "http://127.0.0.1:9/mcp" }`];
   const server = createServer((request, response) => {
     void handle(request, response).catch(() => {
       if (!response.headersSent) respond(response, 400, { error: 'Invalid history MCP request.' });
@@ -85,21 +103,27 @@ export function createWorkspaceHistoryMcp(recall: Pick<ChatHistoryRecall, 'searc
     }
     if (!session) { respond(response, 404); return; }
     if (message.method === 'ping') { result({}); return; }
-    if (message.method === 'tools/list') { result({ tools: HISTORY_TOOLS }); return; }
+    if (message.method === 'tools/list') { result({ tools: enabled() ? HISTORY_TOOLS : [] }); return; }
     if (message.method !== 'tools/call') {
       respond(response, 200, { jsonrpc: '2.0', id, error: { code: -32601, message: 'Method not found.' } }); return;
+    }
+    if (!enabled()) {
+      result({ isError: true, content: [{ type: 'text', text: 'History recall is disabled in Settings.' }] }); return;
     }
     if (runningCalls >= 4 || session.requests.has(id)) { respond(response, 429); return; }
     const controller = new AbortController();
     session.requests.set(id, controller);
     runningCalls++;
     try {
-      const signal = AbortSignal.any([lifetime.signal, controller.signal, AbortSignal.timeout(55_000)]);
+      const signal = AbortSignal.any([lifetime.signal, controller.signal, AbortSignal.timeout(125_000)]);
       const value = await callHistoryTool(recall, params?.name, params?.arguments, signal);
       signal.throwIfAborted();
+      assertRecallEnabled(enabled());
       result({ ...(recordValue(value)?.status === 'error' ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify(value) }] });
     } catch (error) {
-      result({ isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : 'History search failed.' }] });
+      const message = controller.signal.aborted || !enabled() ? 'History recall was canceled or disabled.'
+        : error instanceof Error ? error.message : 'History search failed.';
+      result({ isError: true, content: [{ type: 'text', text: message }] });
     } finally { session.requests.delete(id); runningCalls--; }
   }
 
@@ -121,13 +145,16 @@ export function createWorkspaceHistoryMcp(recall: Pick<ChatHistoryRecall, 'searc
 
   return {
     async prepareCommand(command: Command): Promise<string[]> {
+      if (!enabled()) return [...disabledArgs];
       const url = await start();
+      if (!enabled()) return [...disabledArgs];
       lifetime.signal.throwIfAborted();
       command.environment = { ...command.environment, [TOKEN_ENV]: token };
       return Object.entries({ url: JSON.stringify(url), bearer_token_env_var: JSON.stringify(TOKEN_ENV),
-        enabled: 'true', tool_timeout_sec: '60' }).flatMap(([key, value]) => ['-c', `mcp_servers.${HISTORY_MCP_NAME}.${key}=${value}`]);
+        enabled: 'true', tool_timeout_sec: '130' }).flatMap(([key, value]) => ['-c', `mcp_servers.${HISTORY_MCP_NAME}.${key}=${value}`]);
     },
     async stop() {
+      unsubscribe?.();
       lifetime.abort();
       for (const session of sessions.values()) cancel(session);
       sessions.clear();

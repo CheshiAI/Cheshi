@@ -22,11 +22,10 @@ import { loadMenuBarLogo } from './lib/menu-bar-logo.mts';
 import { createAccountUsageBackground } from './lib/account-usage-background.mts';
 import { getCodexAccountProfiles } from './lib/codex-account-profiles.mts';
 import { createShowcaseBrowser } from './lib/showcase-browser.mts';
-import { createAutopilotBrowser } from './lib/autopilot-browser.mts';
 import { createSettingsService } from './lib/settings-service.mts';
 import { registerSettingsIpc } from './lib/settings-ipc.mts';
-import { createAutopilotModel } from './lib/autopilot-model.mts';
-import { readAutopilotKey } from './lib/autopilot-key.mts';
+import { checkTypeSafeConnection } from './lib/typesafe-connection.mts';
+import { readTypeSafeKey } from './lib/typesafe-key.mts';
 import { findAppRelease } from './lib/app-release-checker.mts';
 import { createAppUpdateService } from './lib/app-update-service.mts';
 import { createAppUpdatePreview } from './lib/app-update-preview.mts';
@@ -62,13 +61,10 @@ const apiSettings = createSettingsService({
     encryptString: value => safeStorage.encryptString(value),
     decryptString: value => safeStorage.decryptString(value),
   },
-  fallback: () => readAutopilotKey({
+  fallback: () => readTypeSafeKey({
     developmentFile: app.isPackaged ? undefined : path.resolve(import.meta.dirname, '..', '.env.signing'),
   }),
-  checkKey: async key => {
-    await createAutopilotModel(key)({ page: { url: 'https://typesafe.ai/', title: 'Connection check', text: 'Connection check', links: [] },
-      goal: 'Confirm the connection check page is reached.', visited: [], signal: AbortSignal.timeout(30_000) });
-  },
+  checkKey: checkTypeSafeConnection,
 });
 const keepAwake = new KeepAwakeService();
 const updatePreview = createAppUpdatePreview({ packaged: app.isPackaged, setting: process.env.CHESHI_UPDATE_PREVIEW });
@@ -172,10 +168,11 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   const source = usageTray?.register();
   let showcase: ReturnType<typeof createShowcaseBrowser> | undefined;
   let settingsIpc: ReturnType<typeof registerSettingsIpc> | undefined;
-  let autopilot: ReturnType<typeof createAutopilotBrowser> | undefined;
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try {
-    runtime = createWorkspaceRuntime({ ...options, getTypeSafeKey: apiSettings.getKey }, snapshot => source?.update(snapshot), window => {
+    runtime = createWorkspaceRuntime({ ...options, getTypeSafeKey: apiSettings.getKey,
+      historyRecall: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) },
+      accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
     });
   }
@@ -196,21 +193,13 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
           session: session.fromPartition(`cheshi-showcase-${window.webContents.id}`),
           openExternal: url => shell.openExternal(url),
         });
-        autopilot ??= createAutopilotBrowser({
-          research: runtime.research,
-          window, ipc: options.scope.ipc,
-          createView: configuration => new WebContentsView(configuration),
-          session: session.fromPartition(`cheshi-autopilot-${window.webContents.id}`),
-          reportDirectory: path.join(app.getPath('downloads'), 'Cheshi Research'),
-          getKey: apiSettings.getKey,
-        });
         return window;
       }
       catch (error) { source?.dispose(); throw error; }
     },
     show: () => runtime.show(),
     async dispose() {
-      try { settingsIpc?.dispose(); autopilot?.dispose(); showcase?.dispose(); }
+      try { settingsIpc?.dispose(); showcase?.dispose(); }
       finally { try { await runtime.dispose(); } finally { source?.dispose(); } }
     },
   };

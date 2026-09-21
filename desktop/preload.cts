@@ -590,6 +590,7 @@ const cheshiDesktopApi = {
   reindexCodeGraph: () => ipcRenderer.invoke('cheshi:reindex-codegraph'),
   listWorkspaceDirectory: (relativePath = '.') => ipcRenderer.invoke('cheshi:list-workspace-directory', workspaceRelativePath(relativePath)),
   readWorkspaceFile: (relativePath) => ipcRenderer.invoke('cheshi:read-workspace-file', workspaceRelativePath(relativePath)),
+  openLocalFileLink: (href) => ipcRenderer.invoke('cheshi:open-local-file-link', href),
   localHistory: {
     list: (relativePath) => ipcRenderer.invoke('cheshi:list-local-history', workspaceRelativePath(relativePath)),
     read: (relativePath, id) => ipcRenderer.invoke('cheshi:read-local-history', workspaceRelativePath(relativePath), id),

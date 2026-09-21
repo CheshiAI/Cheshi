@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
@@ -39,11 +39,70 @@ async function rejected(operation: Promise<unknown>, expected: string) {
   expect((failure as Error).message).not.toContain(key);
 }
 
+test('workspace account selections survive restart and preserve other windows and settings', async () => {
+  const f = fixture();
+  try {
+    writeFileSync(f.options.settingsPath, JSON.stringify({ otherSetting: { keep: true } }));
+    const first = f.service.workspaceAccountSelection('/projects/first');
+    const second = f.service.workspaceAccountSelection('/projects/second');
+    expect(first.read()).toBeNull();
+    await Promise.all([
+      Promise.resolve().then(() => first.write('first-account')),
+      Promise.resolve().then(() => second.write('second-account')),
+      Promise.resolve().then(() => f.service.setHistoryRecallEnabled(true)),
+    ]);
+    first.write('replacement-account');
+    const restarted = createSettingsService(f.options);
+    expect(restarted.workspaceAccountSelection('/projects/first').read()).toBe('replacement-account');
+    expect(restarted.workspaceAccountSelection('/projects/second').read()).toBe('second-account');
+    expect(JSON.parse(readFileSync(f.options.settingsPath, 'utf8'))).toEqual({
+      otherSetting: { keep: true }, historyRecallEnabled: true,
+      workspaceAccountSelections: {
+        '/projects/first': 'replacement-account', '/projects/second': 'second-account',
+      },
+    });
+    expect(statSync(f.options.settingsPath).mode & 0o777).toBe(0o600);
+    expect(readdirSync(f.options.directory).filter(name => name.endsWith('.tmp'))).toEqual([]);
+  } finally { f.close(); }
+});
+
+test('invalid saved account IDs are ignored and invalid writes preserve settings', () => {
+  const f = fixture();
+  try {
+    const selection = f.service.workspaceAccountSelection('/projects/first');
+    for (const value of [null, [], 42, '', '../account', 'a'.repeat(129)]) {
+      const previous = JSON.stringify({ workspaceAccountSelections: { '/projects/first': value } });
+      writeFileSync(f.options.settingsPath, previous);
+      expect(selection.read()).toBeNull();
+      expect(() => selection.write('../account')).toThrow('Invalid account');
+      expect(readFileSync(f.options.settingsPath, 'utf8')).toBe(previous);
+    }
+    writeFileSync(f.options.settingsPath, '{damaged');
+    expect(() => selection.read()).toThrow('Could not read');
+    expect(() => selection.write('second')).toThrow('Could not save');
+    expect(readFileSync(f.options.settingsPath, 'utf8')).toBe('{damaged');
+  } finally { f.close(); }
+});
+
+test('failure to create the temporary settings file retains the previous selection', () => {
+  const f = fixture();
+  try {
+    // The settings filename fits the filesystem limit; the UUID suffix cannot.
+    const settingsPath = path.join(f.options.directory, 's'.repeat(240));
+    const previous = JSON.stringify({ workspaceAccountSelections: { '/projects/first': 'previous' } });
+    writeFileSync(settingsPath, previous);
+    const selection = createSettingsService({ ...f.options, settingsPath }).workspaceAccountSelection('/projects/first');
+    expect(() => selection.write('replacement')).toThrow('Could not save');
+    expect(selection.read()).toBe('previous');
+    expect(readFileSync(settingsPath, 'utf8')).toBe(previous);
+  } finally { f.close(); }
+});
+
 test('keys persist encrypted, survive restart and only expose masked metadata', () => {
   const f = fixture();
   try {
     const saved = f.service.save(key);
-    expect(saved).toEqual({ source: 'saved', maskedKey: '••••2345', canSave: true, error: null, autopilotMenuVisible: false });
+    expect(saved).toEqual({ source: 'saved', maskedKey: '••••2345', canSave: true, error: null, historyRecallEnabled: false });
     expect(readFileSync(f.filename).includes(Buffer.from(key))).toBe(false);
     expect(statSync(f.filename).mode & 0o777).toBe(0o600);
     expect(createSettingsService(f.options).getKey()).toBe(key);
@@ -110,10 +169,10 @@ test('settings IPC rejects foreign renderers and subframes and cleans up handler
     expect(() => invoke(SETTINGS_CHANNELS.save, key, {})).toThrow('workspace window');
     expect(() => invoke(SETTINGS_CHANNELS.save, key, owner, {})).toThrow('workspace window');
     expect(invoke(SETTINGS_CHANNELS.save, key).source).toBe('saved');
-    expect(() => invoke(SETTINGS_CHANNELS.setMenuVisible, true, {})).toThrow('workspace window');
-    expect(() => invoke(SETTINGS_CHANNELS.setMenuVisible, true, owner, {})).toThrow('workspace window');
-    expect(() => invoke(SETTINGS_CHANNELS.setMenuVisible, 'true')).toThrow('Invalid');
-    expect(invoke(SETTINGS_CHANNELS.setMenuVisible, true).autopilotMenuVisible).toBe(true);
+    expect(() => invoke(SETTINGS_CHANNELS.setHistoryRecallEnabled, true, {})).toThrow('workspace window');
+    expect(() => invoke(SETTINGS_CHANNELS.setHistoryRecallEnabled, true, owner, {})).toThrow('workspace window');
+    expect(() => invoke(SETTINGS_CHANNELS.setHistoryRecallEnabled, 'true')).toThrow('Invalid');
+    expect(invoke(SETTINGS_CHANNELS.setHistoryRecallEnabled, true).historyRecallEnabled).toBe(true);
     expect(await invoke(SETTINGS_CHANNELS.check)).toBe(true);
     expect(JSON.stringify(sent)).not.toContain(key);
     registration.dispose();
@@ -126,39 +185,39 @@ test('settings IPC rejects foreign renderers and subframes and cleans up handler
 
 test('preload validates both requests and status replies without exposing full keys', async () => {
   const calls: unknown[][] = [];
-  let response: unknown = { source: 'saved', maskedKey: '••••2345', canSave: true, error: null, autopilotMenuVisible: false };
+  let response: unknown = { source: 'saved', maskedKey: '••••2345', canSave: true, error: null, historyRecallEnabled: false };
   const ipc = { invoke: async (...values: unknown[]) => { calls.push(values); return response; },
     on() {}, removeListener() {} } as unknown as Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>;
   const api = createSettingsApi(ipc);
   expect((await api.saveTypeSafe(key)).maskedKey).toBe('••••2345');
   expect(calls[0]).toEqual([SETTINGS_CHANNELS.save, key]);
-  expect((await api.setAutopilotMenuVisible(false)).autopilotMenuVisible).toBe(false);
-  expect(calls[1]).toEqual([SETTINGS_CHANNELS.setMenuVisible, false]);
-  await rejected(api.setAutopilotMenuVisible('true' as unknown as boolean), 'Invalid');
+  expect((await api.setHistoryRecallEnabled(false)).historyRecallEnabled).toBe(false);
+  expect(calls[1]).toEqual([SETTINGS_CHANNELS.setHistoryRecallEnabled, false]);
+  await rejected(api.setHistoryRecallEnabled('true' as unknown as boolean), 'Invalid');
   await rejected(api.saveTypeSafe('invalid key'), 'valid');
-  response = { source: 'saved', maskedKey: key, canSave: true, error: null, autopilotMenuVisible: false };
+  response = { source: 'saved', maskedKey: key, canSave: true, error: null, historyRecallEnabled: false };
   await rejected(api.getTypeSafe(), 'Invalid');
   response = 'true';
   await rejected(api.checkTypeSafe(), 'Invalid');
 });
 
-test('menu preferences survive service restart and retain unrelated app settings', () => {
+test('recall preferences survive service restart and retain unrelated app settings', () => {
   const f = fixture();
   try {
-    expect(f.service.snapshot().autopilotMenuVisible).toBe(false);
+    expect(f.service.snapshot().historyRecallEnabled).toBe(false);
     writeFileSync(f.options.settingsPath, JSON.stringify({ otherSetting: 'retained' }));
     f.service.save(key);
     const states: TypeSafeSettings[] = [];
     const unsubscribe = f.service.subscribe(state => states.push(state));
-    expect(f.service.setAutopilotMenuVisible(true).autopilotMenuVisible).toBe(true);
-    expect(states.at(-1)?.autopilotMenuVisible).toBe(true);
-    expect(JSON.parse(readFileSync(f.options.settingsPath, 'utf8'))).toEqual({ otherSetting: 'retained', autopilotMenuVisible: true });
+    expect(f.service.setHistoryRecallEnabled(true).historyRecallEnabled).toBe(true);
+    expect(states.at(-1)?.historyRecallEnabled).toBe(true);
+    expect(JSON.parse(readFileSync(f.options.settingsPath, 'utf8'))).toEqual({ otherSetting: 'retained', historyRecallEnabled: true });
     expect(readFileSync(f.options.settingsPath, 'utf8')).not.toContain(key);
     expect(statSync(f.options.settingsPath).mode & 0o777).toBe(0o600);
     const restarted = createSettingsService(f.options);
-    expect(restarted.snapshot().autopilotMenuVisible).toBe(true);
-    restarted.setAutopilotMenuVisible(false);
-    expect(createSettingsService(f.options).snapshot().autopilotMenuVisible).toBe(false);
+    expect(restarted.snapshot().historyRecallEnabled).toBe(true);
+    restarted.setHistoryRecallEnabled(false);
+    expect(createSettingsService(f.options).snapshot().historyRecallEnabled).toBe(false);
     unsubscribe();
   } finally { f.close(); }
 });
@@ -167,40 +226,40 @@ test('only literal true enables the saved preference and invalid requests never 
   const f = fixture();
   try {
     for (const invalid of ['true', 1, null, [], {}]) {
-      writeFileSync(f.options.settingsPath, JSON.stringify({ autopilotMenuVisible: invalid }));
-      expect(createSettingsService(f.options).snapshot().autopilotMenuVisible).toBe(false);
-      expect(() => f.service.setAutopilotMenuVisible(invalid)).toThrow('Invalid');
-      expect(() => parseTypeSafeSettings({ ...f.service.snapshot(), autopilotMenuVisible: invalid })).toThrow('Invalid');
+      writeFileSync(f.options.settingsPath, JSON.stringify({ historyRecallEnabled: invalid }));
+      expect(createSettingsService(f.options).snapshot().historyRecallEnabled).toBe(false);
+      expect(() => f.service.setHistoryRecallEnabled(invalid)).toThrow('Invalid');
+      expect(() => parseTypeSafeSettings({ ...f.service.snapshot(), historyRecallEnabled: invalid })).toThrow('Invalid');
     }
-    f.service.setAutopilotMenuVisible(true);
-    expect(() => f.service.setAutopilotMenuVisible('false')).toThrow('Invalid');
-    expect(createSettingsService(f.options).snapshot().autopilotMenuVisible).toBe(true);
+    f.service.setHistoryRecallEnabled(true);
+    expect(() => f.service.setHistoryRecallEnabled('false')).toThrow('Invalid');
+    expect(createSettingsService(f.options).snapshot().historyRecallEnabled).toBe(true);
   } finally { f.close(); }
 });
 
-test('unavailable keys cannot enable the menu and a temporary lock retains the preference', () => {
+test('recall consent is independent of missing, locked or deleted keys', () => {
   const f = fixture();
   try {
     const service = createSettingsService({ ...f.options, fallback: () => null });
-    expect(() => service.setAutopilotMenuVisible(true)).toThrow('Register or unlock');
+    expect(service.setHistoryRecallEnabled(true).historyRecallEnabled).toBe(true);
     service.save(key);
-    service.setAutopilotMenuVisible(true);
+    service.setHistoryRecallEnabled(true);
     f.lock();
-    expect(service.snapshot().autopilotMenuVisible).toBe(true);
+    expect(service.snapshot().historyRecallEnabled).toBe(true);
     expect(service.snapshot().maskedKey).toBeNull();
-    expect(() => service.setAutopilotMenuVisible(true)).toThrow('Register or unlock');
+    expect(service.setHistoryRecallEnabled(true).historyRecallEnabled).toBe(true);
     service.remove();
-    expect(createSettingsService(f.options).snapshot().autopilotMenuVisible).toBe(false);
+    expect(createSettingsService(f.options).snapshot().historyRecallEnabled).toBe(true);
   } finally { f.close(); }
 });
 
-test('removing a saved key preserves the menu preference when an environment key remains', () => {
+test('removing a saved key preserves the recall preference when an environment key remains', () => {
   const f = fixture();
   try {
     f.service.save(key);
-    f.service.setAutopilotMenuVisible(true);
-    expect(f.service.remove()).toMatchObject({ source: 'environment', autopilotMenuVisible: true });
-    expect(createSettingsService(f.options).snapshot().autopilotMenuVisible).toBe(true);
+    f.service.setHistoryRecallEnabled(true);
+    expect(f.service.remove()).toMatchObject({ source: 'environment', historyRecallEnabled: true });
+    expect(createSettingsService(f.options).snapshot().historyRecallEnabled).toBe(true);
   } finally { f.close(); }
 });
 
@@ -211,17 +270,17 @@ test('failed preference writes do not publish success or damage the existing set
     const states: TypeSafeSettings[] = [];
     f.service.subscribe(state => states.push(state));
     expect(f.service.snapshot().error).toContain('Could not read');
-    expect(() => f.service.setAutopilotMenuVisible(true)).toThrow('Could not save');
+    expect(() => f.service.setHistoryRecallEnabled(true)).toThrow('Could not save');
     expect(readFileSync(f.options.settingsPath, 'utf8')).toBe('{damaged');
     expect(states).toHaveLength(0);
     rmSync(f.options.settingsPath);
     mkdirSync(f.options.settingsPath);
-    expect(() => f.service.setAutopilotMenuVisible(true)).toThrow('Could not save');
+    expect(() => f.service.setHistoryRecallEnabled(true)).toThrow('Could not save');
     expect(states).toHaveLength(0);
   } finally { f.close(); }
 });
 
-test('separate workspace IPC clients share menu changes and a fresh client restores them', async () => {
+test('separate workspace IPC clients share recall changes and a fresh client restores them', async () => {
   const f = fixture();
   const registrations: Array<ReturnType<typeof registerSettingsIpc>> = [];
   const client = (service = f.service) => {
@@ -241,10 +300,26 @@ test('separate workspace IPC clients share menu changes and a fresh client resto
     const first = client(), second = client();
     const seen: TypeSafeSettings[] = [];
     const unsubscribe = second.onTypeSafeChanged(state => seen.push(state));
-    await first.setAutopilotMenuVisible(true);
-    expect(seen.at(-1)?.autopilotMenuVisible).toBe(true);
-    expect((await second.getTypeSafe()).autopilotMenuVisible).toBe(true);
-    expect((await client(createSettingsService(f.options)).getTypeSafe()).autopilotMenuVisible).toBe(true);
+    await first.setHistoryRecallEnabled(true);
+    expect(seen.at(-1)?.historyRecallEnabled).toBe(true);
+    expect((await second.getTypeSafe()).historyRecallEnabled).toBe(true);
+    expect((await client(createSettingsService(f.options)).getTypeSafe()).historyRecallEnabled).toBe(true);
     unsubscribe();
   } finally { for (const registration of registrations) registration.dispose(); f.close(); }
+});
+
+
+test('existing Autopilot preferences and saved keys never opt users into recall', () => {
+  const f = fixture();
+  try {
+    writeFileSync(f.options.settingsPath, JSON.stringify({ autopilotMenuVisible: true }));
+    f.service.save(key);
+    expect(f.service.snapshot().historyRecallEnabled).toBe(false);
+    expect(f.service.isHistoryRecallEnabled()).toBe(false);
+    expect(createSettingsService(f.options).isHistoryRecallEnabled()).toBe(false);
+    f.service.setHistoryRecallEnabled(true);
+    expect(f.service.isHistoryRecallEnabled()).toBe(true);
+    writeFileSync(f.options.settingsPath, '{damaged');
+    expect(f.service.isHistoryRecallEnabled()).toBe(false);
+  } finally { f.close(); }
 });

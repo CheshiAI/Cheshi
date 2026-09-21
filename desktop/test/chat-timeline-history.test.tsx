@@ -104,7 +104,9 @@ describe('history scroll anchoring', () => {
   });
 });
 
-describe('conversation recall usage placement', () => {
+describe('turn recall usage placement', () => {
+  const usageSummaryLabel = 'History search · Jev estimated';
+  const countUsageSummaries = (html: string) => html.split(usageSummaryLabel).length - 1;
   const savedTurns: SavedChatTurnsController = {
     records: [], loading: false, error: null, deleting: false,
     refresh: async () => {}, save: async () => true, remove: async () => true,
@@ -122,27 +124,56 @@ describe('conversation recall usage placement', () => {
       savedTurns={actions ? savedTurns : undefined} onReviewFileChanges={() => {}} />);
   }
 
-  test('places the conversation total once between the latest Codex metrics and response actions, including offscreen calls', () => {
-    const html = render([recall, ...history(100)]);
-    const summary = html.indexOf('Jev history search');
-    expect(html.match(/Jev history search/g)).toHaveLength(1);
-    expect(summary).toBeGreaterThan(html.indexOf('data-chat-item-id="item-99"'));
-    expect(summary).toBeGreaterThan(html.lastIndexOf('aria-label="Response statistics"'));
-    expect(summary).toBeLessThan(html.lastIndexOf('aria-label="Response actions"'));
-    expect(html).toContain('estimated $0.00004200 USD · 2 requests');
-    expect(html).toContain('Recorded calls in this conversation only.');
+  function row(html: string, id: string): string {
+    return html.split('data-chat-item-id="').find(part => part.startsWith(`${id}"`)) ?? '';
+  }
+
+  test('keeps usage beneath the answer that searched when later turns have no search', () => {
+    const messages = history(4);
+    const html = render([messages[0]!, recall, ...messages.slice(1)]);
+    const answer = row(html, 'item-1');
+    expect(countUsageSummaries(html)).toBe(1);
+    expect(answer).toContain('estimated $0.00004200 USD · 2 requests');
+    expect(answer.indexOf(usageSummaryLabel)).toBeGreaterThan(answer.indexOf('aria-label="Response statistics"'));
+    expect(answer.indexOf(usageSummaryLabel)).toBeLessThan(answer.indexOf('aria-label="Response actions"'));
+    expect(answer).toContain('Recorded calls in this turn only.');
+    expect(row(html, 'item-3')).not.toContain(usageSummaryLabel);
   });
 
-  test('keeps totals available before completion, without response controls, or when the completed row is outside the mounted window', () => {
-    for (const html of [render([recall, ...history(2)], true), render([recall, ...history(2)], false, false),
-      render([...history(2), recall, { id: 'next-question', kind: 'user', text: 'Continue', createdAt: 2 },
-        ...Array.from({ length: 35 }, (_, i): TimelineItem => ({ id: `thinking-${i}`, kind: 'reasoning', text: 'Thinking', createdAt: 3 }))], true)]) {
-      expect(html.match(/Jev history search/g)).toHaveLength(1);
-      expect(html).toContain('estimated $0.00004200 USD · 2 requests');
+  test('sums multiple searches within each turn without carrying usage into the next turn', () => {
+    const messages = history(6);
+    const html = render([messages[0]!, recall, { ...recall, id: 'call-two' }, messages[1]!,
+      messages[2]!, { ...recall, id: 'call-three' }, ...messages.slice(3)]);
+    expect(countUsageSummaries(html)).toBe(2);
+    expect(row(html, 'item-1')).toContain('estimated $0.00008400 USD · 4 requests');
+    expect(row(html, 'item-3')).toContain('estimated $0.00004200 USD · 2 requests');
+    expect(row(html, 'item-5')).not.toContain(usageSummaryLabel);
+  });
+
+  test('keeps usage in its own turn while streaming or without response controls', () => {
+    const messages = history(4);
+    const firstTurn = [messages[0]!, recall, messages[1]!];
+    for (const html of [render(firstTurn, true), render(firstTurn, false, false),
+      render([...firstTurn, ...messages.slice(2)], true)]) {
+      expect(countUsageSummaries(html)).toBe(1);
+      expect(row(html, 'item-1')).toContain('estimated $0.00004200 USD · 2 requests');
+      expect(row(html, 'item-3')).not.toContain(usageSummaryLabel);
     }
   });
 
+  test('includes offscreen calls in the same long turn but does not move offscreen turn totals to a later answer', () => {
+    const messages = history(2);
+    const longTurn: TimelineItem[] = [messages[0]!, recall,
+      ...Array.from({ length: 35 }, (_, i): TimelineItem => ({ id: `thinking-${i}`, kind: 'reasoning', text: 'Thinking', createdAt: 3 })),
+      messages[1]!];
+    const html = render(longTurn);
+    expect(html).not.toContain('data-chat-item-id="recall"');
+    expect(row(html, 'item-1')).toContain('estimated $0.00004200 USD · 2 requests');
+    const later = history(100).map(item => ({ ...item, id: `later-${item.id}` }));
+    expect(render([messages[0]!, recall, ...messages.slice(1), ...later])).not.toContain(usageSummaryLabel);
+  });
+
   test('does not add a Jev summary when the conversation has no recorded usage', () => {
-    expect(render(history(2))).not.toContain('Jev history search');
+    expect(render(history(2))).not.toContain(usageSummaryLabel);
   });
 });

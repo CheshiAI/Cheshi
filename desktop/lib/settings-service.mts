@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { parseAutopilotMenuVisible, parseTypeSafeKey } from '../shared/settings.ts';
+import { parseHistoryRecallEnabled, parseTypeSafeKey } from '../shared/settings.ts';
 import type { TypeSafeSettings } from '../shared/settings.ts';
+import { isCodexAccountId } from '../shared/codex-accounts.ts';
 
 interface Encryption {
   isEncryptionAvailable(): boolean;
@@ -16,6 +17,16 @@ interface Options {
   fallback(): string | null;
   checkKey(key: string): Promise<void>;
 }
+export interface WorkspaceAccountSelection {
+  read(): string | null;
+  write(id: string): void;
+}
+
+function accountSelections(preferences: Record<string, unknown>): Record<string, unknown> {
+  const value = preferences.workspaceAccountSelections;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
 /** The ciphertext is stored in app data; the encryption key belongs to the OS credential store. */
 export function createSettingsService(options: Options) {
   const filename = path.join(options.directory, 'typesafe-api-key.enc');
@@ -29,16 +40,21 @@ export function createSettingsService(options: Options) {
       throw new Error('Could not read app settings.');
     }
   };
-  const writeMenuPreference = (visible: boolean) => {
+  // Synchronous read/modify/replace keeps all windows' writes ordered on the main thread.
+  const updatePreferences = (update: (preferences: Record<string, unknown>) => Record<string, unknown>, message: string) => {
     const temporary = `${options.settingsPath}.${randomUUID()}.tmp`;
     try {
-      const preferences = { ...readPreferences(), autopilotMenuVisible: visible };
+      const preferences = update(readPreferences());
       mkdirSync(path.dirname(options.settingsPath), { recursive: true, mode: 0o700 });
       writeFileSync(temporary, `${JSON.stringify(preferences, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
       renameSync(temporary, options.settingsPath);
-    } catch { throw new Error('Could not save the Autopilot menu setting. Try again.'); }
+    } catch { throw new Error(message); }
     finally { try { rmSync(temporary, { force: true }); } catch { /* A failed write does not replace the saved preference. */ } }
   };
+  const writeRecallPreference = (visible: boolean) => updatePreferences(
+    preferences => ({ ...preferences, historyRecallEnabled: visible }),
+    'Could not save the history recall setting. Try again.',
+  );
   const available = () => { try { return options.encryption.isEncryptionAvailable() === true; } catch { return false; } };
   const saved = () => existsSync(filename);
   const readSaved = () => {
@@ -58,13 +74,13 @@ export function createSettingsService(options: Options) {
   const snapshot = (): TypeSafeSettings => {
     const source = saved() ? 'saved' : options.fallback() ? 'environment' : 'none';
     let key: string | null = null, error: string | null = null;
-    let autopilotMenuVisible = false;
+    let historyRecallEnabled = false;
     try { key = source === 'saved' ? readSaved() : options.fallback(); }
     catch (cause) { error = (cause as Error).message; }
-    try { autopilotMenuVisible = readPreferences().autopilotMenuVisible === true; }
+    try { historyRecallEnabled = readPreferences().historyRecallEnabled === true; }
     catch (cause) { error ??= (cause as Error).message; }
     return { source, maskedKey: key ? `••••${key.length > 8 ? key.slice(-4) : ''}` : null, canSave: available(), error,
-      autopilotMenuVisible };
+      historyRecallEnabled };
   };
   const publish = () => {
     const state = snapshot();
@@ -73,11 +89,29 @@ export function createSettingsService(options: Options) {
   };
   return {
     getKey, snapshot,
+    isHistoryRecallEnabled() {
+      try { return readPreferences().historyRecallEnabled === true; } catch { return false; }
+    },
+    workspaceAccountSelection(workspaceRoot: string): WorkspaceAccountSelection {
+      const workspace = path.resolve(workspaceRoot);
+      return {
+        read() {
+          const value = accountSelections(readPreferences())[workspace];
+          return isCodexAccountId(value) ? value : null;
+        },
+        write(id) {
+          if (!isCodexAccountId(id)) throw new TypeError('Invalid account profile id.');
+          updatePreferences(preferences => ({
+            ...preferences,
+            workspaceAccountSelections: { ...accountSelections(preferences), [workspace]: id },
+          }), 'Could not save the workspace account selection. Try again.');
+        },
+      };
+    },
     subscribe(listener: (state: TypeSafeSettings) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    setAutopilotMenuVisible(value: unknown) {
-      const visible = parseAutopilotMenuVisible(value);
-      if (visible && !getKey()) throw new Error('Register or unlock a TypeSafe API key first.');
-      writeMenuPreference(visible);
+    setHistoryRecallEnabled(value: unknown) {
+      const visible = parseHistoryRecallEnabled(value);
+      writeRecallPreference(visible);
       return publish();
     },
     save(value: unknown) {
@@ -95,7 +129,6 @@ export function createSettingsService(options: Options) {
       return publish();
     },
     remove() {
-      if (!options.fallback()) writeMenuPreference(false);
       try { rmSync(filename, { force: true }); }
       catch { throw new Error('Could not remove the saved API key.'); }
       cached = undefined;

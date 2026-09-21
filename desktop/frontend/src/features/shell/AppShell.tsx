@@ -32,8 +32,6 @@ import { PluginsView } from '../plugins';
 import { TerminalWorkspace } from '../terminal';
 import { ShowcaseView } from '../showcase/ShowcaseView';
 import { SettingsView } from '../settings/SettingsView';
-import { useAutopilotMenu } from '../settings/useAutopilotMenu';
-import { AutopilotView } from '../autopilot/AutopilotView';
 import { ReviewSidebar } from './ReviewSidebar';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import styles from './AppShell.module.css';
@@ -45,11 +43,11 @@ import { ChatDraftAttachmentsContext, createChatDraftAttachments } from '../chat
 import { NotesView } from '../notes/NotesView';
 import { appleNoteAttachment } from '../notes/appleNotesModel';
 import type { AppleNote } from '../../../../shared/apple-notes';
+import { useSidebarResize } from './useSidebarResize';
 
-const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase', 'notes', 'autopilot', 'settings'];
+const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase', 'notes', 'settings'];
 
 export function AppShell() {
-  const [autopilotMenuVisible] = useAutopilotMenu();
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [temporaryChatOpen, setTemporaryChatOpen] = useState(false);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
@@ -130,6 +128,9 @@ export function AppShell() {
     ?.find((item): item is ChatActivityItem => (
       item.kind === 'activity' && item.activity === 'files' && item.id === fileReview?.itemId
     )) ?? null;
+  const reviewing = Boolean(reviewedItem || lineCommitTarget || localHistoryPath !== null);
+  const sidebarResize = useSidebarResize({ rightOpen: rightSidebarOpen && !reviewing,
+    reviewing: rightSidebarOpen && reviewing, disabled: updateResume.busy || workspace.accountSwitchPending });
 
   const openChat = (sessionId: string): void => {
     if (chatSessionSelectionDisabled) return;
@@ -245,6 +246,9 @@ export function AppShell() {
       <div
         inert={updateResume.busy}
         className={`app-layout ${styles.layout}`}
+        ref={sidebarResize.layoutRef}
+        style={sidebarResize.style}
+        data-sidebar-resizing={sidebarResize.resizing ?? undefined}
         data-active-view={activeView}
         data-file-review={reviewedItem || lineCommitTarget || localHistoryPath !== null ? 'true' : undefined}
         data-right-sidebar-open={rightSidebarOpen ? 'true' : 'false'}
@@ -252,7 +256,6 @@ export function AppShell() {
         <LiquidGlassPanel className="sidebar-column" inert={workspace.accountSwitchPending}>
           <WindowChrome />
           <Sidebar
-            autopilotMenuVisible={autopilotMenuVisible}
             activeView={activeView}
             selectedFilePath={localHistoryPath ?? editorSelectedPath}
             onNavigate={navigate}
@@ -261,6 +264,7 @@ export function AppShell() {
             onOpenLocalHistory={openLocalHistory}
           />
         </LiquidGlassPanel>
+        <div className={`${styles.sidebarResizer} ${styles.leftResizer}`} {...sidebarResize.separatorProps('left')} />
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
           <WorkspaceEditorSplit mode={editorLayoutMode} editor={
             <WorkspaceEditor
@@ -333,11 +337,6 @@ export function AppShell() {
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
           {activeView === 'settings' && <SettingsView rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen(currentOpen => !currentOpen)} />}
-          <AutopilotView active={activeView === 'autopilot'}
-            chatContextId={workspace.activePaneId}
-            blocked={fileSearchOpen || temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending || updateResume.busy}
-            rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
           <TerminalWorkspace
             active={activeView === 'terminal' && !primaryPaneClosed}
             onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
@@ -380,6 +379,8 @@ export function AppShell() {
             }}
           />
         </ReviewSidebar>
+        {rightSidebarOpen && !reviewing && <div className={`${styles.sidebarResizer} ${styles.rightResizer}`}
+          {...sidebarResize.separatorProps('right')} />}
       </div>
       <WorkspaceStatusBar onAccountInitialLoad={accountReady} onIndexInitialLoad={indexReady}
         selectionDisabledReason={accountSwitchReason}

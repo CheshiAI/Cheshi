@@ -1,16 +1,14 @@
 import { createWorkspaceWindowReadiness } from './lib/workspace-window-readiness.mts';
 import { createWorkspaceRendererEvents } from './lib/workspace-renderer-events.mts';
-import { createWorkspaceResearch } from './lib/autopilot-workspace.mts';
 import { TemporaryChatService } from './lib/temporary-chat-service.mts';
 import { registerTemporaryChatIpc } from './lib/temporary-chat-ipc.mts';
-import { explainWorkspaceCode } from './lib/workspace-code-explanation.mts';
-import { codeExplanationRequestId } from './shared/workspace-code-explanation.ts';
+import { createWorkspaceCodeExplanation } from './lib/workspace-code-explanation.mts';
 import path from 'node:path';
 import { userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { registerGitIpcHandlers } from './lib/git-ipc.mts';
 import { registerLanguageServerIpcHandlers } from './lib/language-server-ipc.mts';
-import { registerWorkspaceFileIpcHandlers } from './lib/workspace-file-ipc.mts';
+import { registerLocalFileLinkIpc, registerWorkspaceFileIpcHandlers } from './lib/workspace-file-ipc.mts';
 import { acquireLocalHistory } from './lib/local-history-runtime.mts';
 import { registerLocalHistoryIpc } from './lib/local-history-ipc.mts';
 import { registerWorkspaceManagementIpcHandlers } from './lib/workspace-management-ipc.mts';
@@ -186,14 +184,13 @@ const { accounts: workspaceAccounts, search: chatHistorySearch, mcp: historyMcp 
   cwd: workspaceRoot, userDataDirectory, home: app.getPath('home'), openExternal: url => shell.openExternal(url),
   codeGraph: { cli: codeGraphCommands.cli(), dataRoot: codeGraphDataRoot },
   historyDirectory: path.join(path.dirname(codeGraphDirectory), 'chat-history-index'),
-  getKey: options.getTypeSafeKey,
+  getKey: options.getTypeSafeKey, access: options.historyRecall,
+  accountSelection: options.accountSelection,
 });
 const createChatClient = workspaceAccounts.createClient;
 const codexAppServerClient = createChatClient();
 const ephemeralSessionClient = createChatClient();
-const researchSessions = createWorkspaceResearch({ client: ephemeralSessionClient, cwd: workspaceRoot,
-  service: contextId => contextId && mainWindow ? codexChatContexts.existing(mainWindow.webContents.id, contextId) : codexChatService,
-});
+const codeExplanation = createWorkspaceCodeExplanation(ephemeralSessionClient, workspaceRoot);
 const temporaryChats = registerTemporaryChatIpc({
   ipc: ipcMain, assertSender: assertCheshiSender,
   createService: () => new TemporaryChatService({ createClient: createChatClient, cwd: workspaceRoot }),
@@ -247,8 +244,8 @@ const accountSwitch = workspaceAccounts.register({
   retained: [codexAppServerClient, ephemeralSessionClient],
   service: codexChatService, contexts: codexChatContexts, deletion: codexChatSessionDeletion,
   relays: codexChatRelays, accountUsage: codexAccountService,
-  temporaryBusy: () => temporaryChats.hasSessions || researchSessions.session.busy || researchSessions.research.busy,
-  resetTemporary: () => researchSessions.reset(),
+  temporaryBusy: () => temporaryChats.hasSessions || codeExplanation.busy,
+  resetTemporary: () => codeExplanation.reset(),
   emit: snapshot => {
     onAccountsChanged?.(snapshot);
     for (const window of workspaceWindows()) rendererEvents.send(window, 'cheshi:codex-accounts-changed', snapshot);
@@ -396,6 +393,7 @@ async function selectLanguageServerExecutable(
 }
 
 registerWorkspaceFileIpcHandlers({ ipcMain, workspaceRoot, clipboard, shell, localHistory });
+registerLocalFileLinkIpc({ ipcMain, workspaceRoot, shell, assertSender: assertCheshiSender });
 registerLocalHistoryIpc({ ipcMain, service: localHistory, assertSender: assertCheshiSender, onChanged: sendWorkspaceFilesChanged });
 const management = registerWorkspaceManagementIpcHandlers({ ipcMain, app, dialog, trashItem: (root) => shell.trashItem(root), withWorkspaceDeletion: options.withWorkspaceDeletion, assertWorkspaceAvailable: options.assertWorkspaceAvailable, openExternal: (url) => shell.openExternal(url), getWindow: () => mainWindow, assertSender: assertCheshiSender, dataRoot: codeGraphDataRoot, onOpenWorkspace: options.onOpenWorkspace, onReplaceWorkspace: options.onReplaceWorkspace, manager: { createWindow: (configuration) => new BrowserWindow(configuration), rendererUrl, workspaceRoot, onWindowCreated: (window) => options.scope.addOwner(window.webContents, true) } });
 registerGitIpcHandlers({ ipcMain, gitService, assertCheshiSender, shell });
@@ -499,11 +497,11 @@ ipcMain.handle('cheshi:install-codex-plugin', (_event, reference) => codexChatSe
 ipcMain.handle('cheshi:uninstall-codex-plugin', (_event, pluginId) => codexChatService.uninstallPlugin(pluginId));
 ipcMain.handle('cheshi:explain-code', (event, request) => {
   assertCheshiSender(event);
-  return explainWorkspaceCode(researchSessions.session, request);
+  return codeExplanation.explain(request);
 });
 ipcMain.handle('cheshi:cancel-code-explanation', (event, requestId) => {
   assertCheshiSender(event);
-  researchSessions.session.cancel(codeExplanationRequestId(requestId));
+  codeExplanation.cancel(requestId);
 });
 ipcMain.handle('cheshi:select-codex-chat-attachments', (event) => selectCodexChatAttachments(event));
 ipcMain.handle('cheshi:import-codex-chat-attachments', async (_event, payload: unknown) => {
@@ -972,7 +970,7 @@ function dispose(): Promise<void> {
     disposeGitRepositoryWatcher();
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
     disposeTerminal();
-    researchSessions.session.stop();
+    codeExplanation.stop();
     const results = await Promise.allSettled([
       codexChatService.stop(),
       historyMcp.stop(), chatHistorySearch.stop(),
@@ -994,5 +992,5 @@ function show() {
   if (!revealPreparedWindow) throw new Error('The workspace window is not ready.');
   revealPreparedWindow();
 }
-return { start, show, dispose, research: researchSessions.research };
+return { start, show, dispose };
 }

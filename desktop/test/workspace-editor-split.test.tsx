@@ -88,11 +88,12 @@ function shellHarness() {
     '../chat/HistoryRecallActivity': { HistoryRecallNavigation: { Provider: 'HistoryRecallNavigation' } },
     '../chat/chatDraftAttachments': { ...draftAttachmentModule, createChatDraftAttachments: () => attachments },
     '../notes/appleNotesModel': { appleNoteAttachment },
-    '../settings/useAutopilotMenu': { useAutopilotMenu: () => [true] },
     '../chat/useChatWorkspace': { useChatWorkspace: () => ({ activePaneId: 'chat-a', controllers: {}, activeController: { state: { phase: 'ready' } }, relay: { running: false },
       sessionHistory: { loading: false, sessions: [] }, responseThreadIds: [], accountSwitchPending: false }) },
     '../chat/useChatHistorySearch': { useChatHistorySearch: () => ({ clear() {} }) },
     './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
+    './useSidebarResize': { useSidebarResize: () => ({ layoutRef: { current: null }, style: {}, resizing: null,
+      separatorProps: (side: string) => ({ role: 'separator', 'aria-label': `Resize ${side} sidebar` }) }) },
     '../navigation/fileSearchShortcut': { installFileSearchShortcut: (_document: unknown, open: () => void) => {
       openSearch = open; return () => {};
     } },
@@ -105,7 +106,6 @@ function shellHarness() {
     '../editor': ['WorkspaceEditor'], '../git': ['GitWorkspace'], '../graph': ['CodeGraphView'],
     '../home/BlankView': ['BlankView'], '../navigation/Sidebar': ['Sidebar'], '../plugins': ['PluginsView'],
     '../terminal': ['TerminalWorkspace'], '../showcase/ShowcaseView': ['ShowcaseView'],
-    '../autopilot/AutopilotView': ['AutopilotView'],
     '../settings/SettingsView': ['SettingsView'],
     './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],
     '../editor/LocalHistoryPage': ['LocalHistoryPage'], './WorkspaceEditorSplit': ['WorkspaceEditorSplit'],
@@ -332,6 +332,26 @@ test('only the standalone editor controls the shared right sidebar and preserves
   expect(editor().rightSidebarOpen).toBe(true);
 });
 
+test('sidebar handles follow chat sidebar visibility and leave review resizing to the review panel', () => {
+  const app = shellHarness();
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  const handles = () => elements(app.render()).flatMap(element => {
+    const attributes = element.props as HTMLAttributes<HTMLElement>;
+    return attributes.role === 'separator' ? [attributes['aria-label']] : [];
+  });
+  const toggle = () => props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace').onToggleRightSidebar();
+  expect(handles()).toEqual(['Resize left sidebar', 'Resize right sidebar']);
+  toggle();
+  expect(handles()).toEqual(['Resize left sidebar']);
+  toggle();
+  expect(handles()).toEqual(['Resize left sidebar', 'Resize right sidebar']);
+  props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor')
+    .onShowLineCommit({ path: 'sample.ts', line: 1, content: 'sample' });
+  expect(handles()).toEqual(['Resize left sidebar']);
+  props<ComponentProps<typeof ReviewSidebar>>(app.render(), 'ReviewSidebar').onCloseReview();
+  expect(handles()).toEqual(['Resize left sidebar', 'Resize right sidebar']);
+});
+
 test('line commits open in the shared sidebar, replace the requested line, and restore chats on close', () => {
   const app = shellHarness();
   const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
@@ -393,7 +413,7 @@ for (const [view, component] of [['codegraph', 'CodeGraphView'], ['terminal', 'T
   });
 }
 
-for (const view of ['git', 'plugins', 'showcase', 'autopilot'] as const) {
+for (const view of ['git', 'plugins', 'showcase'] as const) {
   test(`${view} uses the full workspace while retaining file tabs for other pages`, () => {
     const app = shellHarness();
     const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');

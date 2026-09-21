@@ -5,6 +5,7 @@ import type { CodexAccountProfiles } from '../lib/codex-account-profiles.mts';
 import { CodexAccountClients } from '../lib/codex-account-clients.mts';
 import { registerCodexAccountsIpc } from '../lib/codex-accounts-ipc.mts';
 import { accountUsageTotals } from '../shared/codex-account-usage.ts';
+import type { WorkspaceAccountSelection } from '../lib/settings-service.mts';
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -27,7 +28,7 @@ function profile(id: string): CodexAccountProfile {
   };
 }
 
-function setup() {
+function setup(accountSelection?: WorkspaceAccountSelection) {
   type Handler = Parameters<IpcMain['handle']>[1];
   const handlers = new Map<string, Handler>();
   const listeners = new Set<(snapshot: CodexAccountsSnapshot) => void>();
@@ -53,7 +54,7 @@ function setup() {
     ipc: { handle(channel: string, handler: Handler) { handlers.set(channel, handler); } },
     // The injected service boundary supplies account snapshots without login or provider calls.
     profiles: profiles as unknown as CodexAccountProfiles,
-    clients: pool, retained: [],
+    clients: pool, retained: [], accountSelection,
     assertSender(_event: IpcMainInvokeEvent) { if (!trusted) throw new Error('Untrusted sender'); },
     assertIdle() { if (idleFailure) throw idleFailure; },
     async exclusive<T>(operation: () => Promise<T>): Promise<T> { return await operation(); },
@@ -95,6 +96,89 @@ function setWeeklyUsage(profile: CodexAccountProfile, usedPercent: number): void
 }
 
 function failInitialization(error: unknown): never { throw error; }
+
+test('a successful selection is restored into transports by a new workspace registration', async () => {
+  let saved: string | null = null;
+  const writes: string[] = [];
+  const selection = { read: () => saved, write(id: string) { saved = id; writes.push(id); } };
+  const first = setup(selection);
+  try {
+    await first.invoke('select', 'second');
+    expect(selection.read()).toBe('second');
+  } finally { await first.registration.stop(); }
+  const reopened = setup(selection);
+  try {
+    expect((await reopened.registration.initialize(failInitialization))?.activeId).toBe('second');
+    expect(reopened.pool.environment.CODEX_HOME).toBe('/second');
+    expect(reopened.emitted.at(-1)?.activeId).toBe('second');
+    expect(writes).toEqual(['second']);
+  } finally { await reopened.registration.stop(); }
+});
+
+test('failed account changes do not overwrite selection and failed saves do not commit transports', async () => {
+  let saved = 'default';
+  let failSave = false;
+  const harness = setup({ read: () => saved, write(id) {
+    if (failSave) throw new Error('Could not save selection');
+    saved = id;
+  } });
+  try {
+    harness.setBusy(new Error('Busy'));
+    await expectFailure(harness.invoke('select', 'second'), 'Busy');
+    expect(saved).toBe('default');
+    harness.setBusy(null);
+    harness.options.reset = async () => { throw new Error('Reset failed'); };
+    await expectFailure(harness.invoke('select', 'second'), 'Reset failed');
+    expect(saved).toBe('default');
+    harness.options.reset = async () => {};
+    failSave = true;
+    await expectFailure(harness.invoke('select', 'second'), 'Could not save');
+    expect(harness.registration.activeId).toBe('default');
+    expect(harness.pool.environment.CODEX_HOME).toBe('/default');
+    expect(harness.emitted).toEqual([]);
+    expect(saved).toBe('default');
+    failSave = false;
+    expect((await harness.invoke('select', 'second')).activeId).toBe('second');
+    expect(saved).toBe('second');
+  } finally { await harness.registration.stop(); }
+});
+
+test('startup falls back for missing or signed-out saved accounts without overwriting the preference', async () => {
+  for (const saved of ['deleted', 'second']) {
+    const writes: string[] = [];
+    const harness = setup({ read: () => saved, write: id => { writes.push(id); } });
+    harness.snapshot.profiles[1]!.usage.authenticated = false;
+    try {
+      expect((await harness.registration.initialize(failInitialization))?.activeId).toBe('default');
+      expect(harness.pool.environment.CODEX_HOME).toBe('/default');
+      expect(writes).toEqual([]);
+    } finally { await harness.registration.stop(); }
+  }
+});
+
+test('startup reports settings read failures and still opens with the default account', async () => {
+  const failure = new Error('Could not read app settings');
+  const errors: unknown[] = [];
+  const harness = setup({ read() { throw failure; }, write() { throw new Error('Unexpected write'); } });
+  try {
+    expect((await harness.registration.initialize(error => errors.push(error)))?.activeId).toBe('default');
+    expect(errors).toEqual([failure]);
+    expect(harness.pool.environment.CODEX_HOME).toBe('/default');
+  } finally { await harness.registration.stop(); }
+});
+
+test('restored account still follows quota fallback and stays selected when all accounts are exhausted', async () => {
+  for (const defaultUsage of [20, 100]) {
+    const harness = setup({ read: () => 'second', write() {} });
+    setWeeklyUsage(harness.snapshot.profiles[0]!, defaultUsage);
+    setWeeklyUsage(harness.snapshot.profiles[1]!, 100);
+    try {
+      const expected = defaultUsage === 100 ? 'second' : 'default';
+      expect((await harness.registration.initialize(failInitialization))?.activeId).toBe(expected);
+      expect(harness.pool.environment.CODEX_HOME).toBe(`/${expected}`);
+    } finally { await harness.registration.stop(); }
+  }
+});
 
 test('startup selects available usage and publishes the active percentage without a chat request', async () => {
   const harness = setup();

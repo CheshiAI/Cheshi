@@ -1,5 +1,16 @@
+export interface RecallLunaUsage {
+  requests: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  reasoningOutputTokens: number | null;
+  cachedInputTokens: number | null;
+  modelMs: number;
+}
+
 /** Only validated recall metadata crosses the MCP / renderer boundary. */
 export interface RecallUsage {
+  /** Separate from the existing Jev token and cost fields. */
+  luna?: RecallLunaUsage;
   requests: number;
   inputTokens: number | null;
   outputTokens: number | null;
@@ -41,6 +52,26 @@ function count(value: unknown): number | null {
 function text(value: unknown, limit: number): string {
   return typeof value === 'string' ? value.slice(0, limit) : '';
 }
+export function normalizeRecallLunaUsage(value: unknown): RecallLunaUsage | undefined {
+  const raw = record(value);
+  if (!raw) return undefined;
+  const requests = count(raw.requests), modelMs = number(raw.modelMs);
+  if (requests === null || modelMs === null) return undefined;
+  return { requests, modelMs, inputTokens: count(raw.inputTokens), outputTokens: count(raw.outputTokens),
+    reasoningOutputTokens: count(raw.reasoningOutputTokens), cachedInputTokens: count(raw.cachedInputTokens) };
+}
+
+export function sumRecallLunaUsage(values: (RecallLunaUsage | undefined)[]): RecallLunaUsage | undefined {
+  const present = values.filter((value): value is RecallLunaUsage => value !== undefined);
+  if (!present.length) return undefined;
+  const sum = (field: keyof RecallLunaUsage) => present.reduce((total, value) => total + (value[field] ?? 0), 0);
+  const nullable = (field: 'inputTokens' | 'outputTokens' | 'reasoningOutputTokens' | 'cachedInputTokens') =>
+    present.some(value => value[field] === null) ? null : sum(field);
+  return { requests: sum('requests'), modelMs: sum('modelMs'), inputTokens: nullable('inputTokens'),
+    outputTokens: nullable('outputTokens'), reasoningOutputTokens: nullable('reasoningOutputTokens'),
+    cachedInputTokens: nullable('cachedInputTokens') };
+}
+
 export function normalizeRecallMetrics(value: unknown): RecallMetrics | null {
   const raw = record(value);
   if (!raw) return null;
@@ -48,7 +79,8 @@ export function normalizeRecallMetrics(value: unknown): RecallMetrics | null {
   const totalMs = number(raw.totalMs), modelMs = number(raw.modelMs), knownEstimatedCostUsd = number(raw.knownEstimatedCostUsd);
   if (requests === null || cacheHits === null || unknownRequests === null || unknownRequests > requests
     || totalMs === null || modelMs === null || knownEstimatedCostUsd === null) return null;
-  return { requests, cacheHits, unknownRequests, totalMs, modelMs, knownEstimatedCostUsd,
+  const luna = normalizeRecallLunaUsage(raw.luna);
+  return { requests, cacheHits, unknownRequests, totalMs, modelMs, knownEstimatedCostUsd, ...(luna ? { luna } : {}),
     inputTokens: count(raw.inputTokens), outputTokens: count(raw.outputTokens),
     estimatedCostUsd: unknownRequests ? null : number(raw.estimatedCostUsd) };
 }

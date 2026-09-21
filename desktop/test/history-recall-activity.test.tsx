@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Window } from 'happy-dom';
-import { HistoryRecallActivity, HistoryRecallNavigation, HistoryRecallTotals, recallConversationMetrics } from '../frontend/src/features/chat/HistoryRecallActivity';
+import { HistoryRecallActivity, HistoryRecallNavigation, HistoryRecallTotals, recallTurnMetrics, sumRecallMetrics } from '../frontend/src/features/chat/HistoryRecallActivity';
 import type { ChatActivityItem } from '../frontend/src/features/chat/model';
 import type { RecallSource } from '../shared/history-recall';
 
@@ -42,18 +42,45 @@ test('source previews render Markdown while keeping raw HTML and unsafe links in
   expect(html).not.toContain('<img');
 });
 
-test('conversation totals do not double count completion updates or turn unknown spending into zero', () => {
-  expect(recallConversationMetrics([item, item])?.requests).toBe(2);
+test('turn totals do not double count completion updates or turn unknown spending into zero', () => {
+  expect(sumRecallMetrics([item, item])?.requests).toBe(2);
   const unknown: ChatActivityItem = { ...item, id: 'unknown', recall: { ...item.recall!, metrics: {
     ...item.recall!.metrics!, requests: 1, inputTokens: null, outputTokens: null, estimatedCostUsd: null,
     knownEstimatedCostUsd: 0, unknownRequests: 1,
   } } };
-  const result = recallConversationMetrics([item, unknown]);
+  const result = sumRecallMetrics([item, unknown]);
   expect(result).toMatchObject({ requests: 3, estimatedCostUsd: null, inputTokens: null, unknownRequests: 1 });
-  const html = renderToStaticMarkup(<HistoryRecallTotals items={[item, unknown]} />);
+  const html = renderToStaticMarkup(<HistoryRecallTotals metrics={result} />);
   expect(html).toContain('known + unknown');
-  expect(html).toContain('Excludes Codex');
-  expect(renderToStaticMarkup(<HistoryRecallTotals items={[]} />)).toBe('');
+  expect(html).toContain('Jev cost excludes Codex');
+  expect(html).toContain('Recorded calls in this turn only.');
+  expect(renderToStaticMarkup(<HistoryRecallTotals metrics={sumRecallMetrics([])} />)).toBe('');
+});
+
+test('turn IDs keep interleaved calls and steering in their originating turns', () => {
+  const totals = recallTurnMetrics([
+    { ...item, turnId: 'first' },
+    { ...item, id: 'second-call', turnId: 'second' },
+    { id: 'steer', kind: 'user', turnId: 'first', text: 'Also check this', createdAt: 1 },
+    { ...item, id: 'another-call', turnId: 'first' },
+    { id: 'first-answer', kind: 'assistant', turnId: 'first', text: 'Found it', createdAt: 2 },
+    { id: 'second-answer', kind: 'assistant', turnId: 'second', text: 'Other result', createdAt: 3 },
+    { id: 'no-search', kind: 'assistant', turnId: 'third', text: 'No search needed', createdAt: 4 },
+  ]);
+  expect([...totals.keys()]).toEqual(['first-answer', 'second-answer']);
+  expect(totals.get('first-answer')).toMatchObject({ requests: 4, inputTokens: 6000 });
+  expect(totals.get('second-answer')).toMatchObject({ requests: 2, inputTokens: 3000 });
+});
+
+test('untagged calls join the provider turn when its ID arrives later', () => {
+  const totals = recallTurnMetrics([
+    { id: 'prompt', kind: 'user', text: 'Find this', createdAt: 1 }, item,
+    { id: 'answer', turnId: 'turn', kind: 'assistant', text: 'Found', createdAt: 2 },
+    { id: 'next', kind: 'user', text: 'Thanks', createdAt: 3 },
+    { id: 'next-answer', turnId: 'next-turn', kind: 'assistant', text: 'Done', createdAt: 4 },
+  ]);
+  expect([...totals.keys()]).toEqual(['answer']);
+  expect(totals.get('answer')?.requests).toBe(2);
 });
 
 test('source navigation passes exact ids, respects disabled state and reports missing sources', async () => {
@@ -86,4 +113,20 @@ test('source navigation passes exact ids, respects disabled state and reports mi
       else Reflect.deleteProperty(globalThis, key);
     }
   }
+});
+
+test('Luna fallback totals stay separate, deduplicated and unknown rather than free', () => {
+  const fallback: ChatActivityItem = { ...item, recall: { ...item.recall!, metrics: { ...item.recall!.metrics!,
+    luna: { requests: 1, inputTokens: 100, outputTokens: 20, reasoningOutputTokens: 10, cachedInputTokens: 0, modelMs: 500 },
+  } } };
+  const unknown: ChatActivityItem = { ...fallback, id: 'fallback-unknown', recall: { ...fallback.recall!, metrics: {
+    ...fallback.recall!.metrics!, luna: { ...fallback.recall!.metrics!.luna!, inputTokens: null },
+  } } };
+  const totals = sumRecallMetrics([fallback, fallback, unknown]);
+  expect(totals).toMatchObject({ requests: 4, inputTokens: 6000,
+    luna: { requests: 2, inputTokens: null, outputTokens: 40, reasoningOutputTokens: 20, modelMs: 1000 } });
+  const html = renderToStaticMarkup(<HistoryRecallTotals metrics={totals} />);
+  expect(html).toContain('Luna low fallback');
+  expect(html).toContain('subscription usage cost: Unknown');
+  expect(html).toContain('Luna input: Unknown');
 });
