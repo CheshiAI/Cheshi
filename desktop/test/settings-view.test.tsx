@@ -2,24 +2,22 @@ import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { act } from 'react';
 import type { SettingsApi, TypeSafeSettings } from '../shared/settings';
-import { useAutopilotMenu } from '../frontend/src/features/settings/useAutopilotMenu';
 
-function MenuVisibilityObserver({ api }: { api: SettingsApi }) {
-  const [visible] = useAutopilotMenu(api);
-  return <output data-menu-visible={String(visible)} />;
-}
-
-const none: TypeSafeSettings = { source: 'none', maskedKey: null, canSave: true, error: null, autopilotMenuVisible: false };
-const saved: TypeSafeSettings = { source: 'saved', maskedKey: '••••2345', canSave: true, error: null, autopilotMenuVisible: false };
+const none: TypeSafeSettings = { source: 'none', maskedKey: null, canSave: true, error: null, historyRecallEnabled: false };
+const saved: TypeSafeSettings = { source: 'saved', maskedKey: '••••2345', canSave: true, error: null, historyRecallEnabled: false };
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>(done => { resolve = done; });
-  return { promise, resolve };
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 async function withSettings(run: (view: {
-  container: HTMLElement; window: Window; savedKeys: string[]; checks: () => number;
+  container: HTMLElement; window: Window; savedKeys: string[]; checks: () => number; recallWrites: boolean[];
   emit(state: TypeSafeSettings): Promise<void>; initial: ReturnType<typeof createDeferred<TypeSafeSettings>>;
-}) => Promise<void>, options: { failMenuSave?: boolean; menuSave?: Promise<void> } = {}) {
+}) => Promise<void>, options: {
+  failRecallSave?: boolean; recallSave?: Promise<void>; check?: () => Promise<boolean>;
+  removeReply?: () => Promise<TypeSafeSettings>; broadcast?: boolean;
+} = {}) {
   const window = new Window();
   Object.defineProperty(window, 'localStorage', { get() { throw new Error('Browser storage is unavailable'); } });
   const globals = { window, document: window.document, navigator: window.navigator, Event: window.Event,
@@ -29,19 +27,27 @@ async function withSettings(run: (view: {
   let unmount: (() => Promise<void>) | undefined;
   const listeners = new Set<(state: TypeSafeSettings) => void>();
   let current = none;
-  const publish = (state: TypeSafeSettings) => { current = state; for (const listener of listeners) listener(state); };
+  const publish = (state: TypeSafeSettings, broadcast = options.broadcast !== false) => {
+    current = state;
+    if (broadcast) for (const listener of listeners) listener(state);
+  };
   const initial = createDeferred<TypeSafeSettings>();
   const savedKeys: string[] = [];
+  const recallWrites: boolean[] = [];
   let checks = 0;
   const api: SettingsApi = {
     getTypeSafe: async () => { const state = await initial.promise; current = state; return state; },
     saveTypeSafe: async key => { savedKeys.push(key); publish(saved); return saved; },
-    removeTypeSafe: async () => { publish(none); return none; },
-    checkTypeSafe: async () => { checks++; return true; },
-    setAutopilotMenuVisible: async visible => {
-      await options.menuSave;
-      if (options.failMenuSave) throw new Error('Could not save the Autopilot menu setting. Try again.');
-      const state = { ...current, autopilotMenuVisible: visible };
+    removeTypeSafe: async () => {
+      if (options.removeReply) return options.removeReply();
+      const state = { ...none, historyRecallEnabled: current.historyRecallEnabled }; publish(state); return state;
+    },
+    checkTypeSafe: async () => { checks++; return options.check ? options.check() : true; },
+    setHistoryRecallEnabled: async visible => {
+      recallWrites.push(visible);
+      await options.recallSave;
+      if (options.failRecallSave) throw new Error('Could not save the history recall setting. Try again.');
+      const state = { ...current, historyRecallEnabled: visible };
       publish(state);
       return state;
     },
@@ -56,10 +62,9 @@ async function withSettings(run: (view: {
     unmount = async () => { await act(async () => root.unmount()); };
     await act(async () => root.render(<>
       <SettingsView api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />
-      <MenuVisibilityObserver api={api} />
     </>));
-    await run({ container, window, savedKeys, checks: () => checks, initial,
-      emit: async state => { await act(async () => publish(state)); } });
+    await run({ container, window, savedKeys, checks: () => checks, recallWrites, initial,
+      emit: async state => { await act(async () => publish(state, true)); } });
   } finally {
     await unmount?.(); await window.happyDOM.abort();
     for (const [key, value] of previous) {
@@ -89,7 +94,7 @@ test('settings saves a password, clears it, verifies the connection and deletes 
     expect(input.value).toBe('');
     expect(container.textContent).toContain('••••2345');
     expect(container.textContent).not.toContain('fixture-key-12345');
-    const toggle = button(container, 'Show Autopilot menu');
+    const toggle = button(container, 'Allow history recall');
     expect(toggle.disabled).toBe(false);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
     await act(async () => toggle.click());
@@ -100,10 +105,89 @@ test('settings saves a password, clears it, verifies the connection and deletes 
     await act(async () => button(container, 'Delete saved key').click());
     expect(container.textContent).toContain('No API key registered');
     expect(button(container, 'Check connection').disabled).toBe(true);
-    expect(toggle.disabled).toBe(true);
-    expect(toggle.getAttribute('aria-checked')).toBe('false');
-    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('false');
+    expect(toggle.disabled).toBe(false);
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
   });
+});
+
+for (const outcome of ['success', 'failure'] as const) {
+  test(`recall can be disabled during a pending connection check and stays off after its ${outcome}`, async () => {
+    const check = createDeferred<boolean>();
+    await withSettings(async ({ container, initial, recallWrites, checks }) => {
+      await act(async () => initial.resolve({ ...saved, historyRecallEnabled: true }));
+      const toggle = button(container, 'Allow history recall');
+      const connection = button(container, 'Check connection');
+      await act(async () => { connection.click(); connection.click(); });
+      expect(checks()).toBe(1);
+      expect(connection.disabled).toBe(true);
+      expect(toggle.disabled).toBe(false);
+      await act(async () => { toggle.click(); toggle.click(); });
+      expect(recallWrites).toEqual([false]);
+      expect(toggle.getAttribute('aria-checked')).toBe('false');
+      expect(connection.disabled).toBe(true);
+      await act(async () => {
+        if (outcome === 'success') check.resolve(true);
+        else check.reject(new Error('Could not reach TypeSafe.'));
+      });
+      expect(toggle.getAttribute('aria-checked')).toBe('false');
+      expect(toggle.disabled).toBe(false);
+      expect(connection.disabled).toBe(false);
+      expect(recallWrites).toEqual([false]);
+    }, { check: () => check.promise });
+  });
+}
+
+test('finishing a connection check cannot unlock a pending recall save or hide its failure', async () => {
+  const check = createDeferred<boolean>();
+  const saving = createDeferred<void>();
+  await withSettings(async ({ container, initial, recallWrites }) => {
+    await act(async () => initial.resolve({ ...saved, historyRecallEnabled: true }));
+    const toggle = button(container, 'Allow history recall');
+    await act(async () => button(container, 'Check connection').click());
+    await act(async () => toggle.click());
+    expect(toggle.disabled).toBe(true);
+    await act(async () => check.resolve(true));
+    expect(toggle.disabled).toBe(true);
+    await act(async () => toggle.click());
+    expect(recallWrites).toEqual([false]);
+    await act(async () => saving.resolve());
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(toggle.disabled).toBe(false);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Could not save');
+  }, { check: () => check.promise, recallSave: saving.promise, failRecallSave: true });
+});
+
+test('a late key error cannot replace a recall save error', async () => {
+  const check = createDeferred<boolean>();
+  await withSettings(async ({ container, initial }) => {
+    await act(async () => initial.resolve({ ...saved, historyRecallEnabled: true }));
+    await act(async () => button(container, 'Check connection').click());
+    await act(async () => button(container, 'Allow history recall').click());
+    expect(container.textContent).toContain('Could not save the history recall setting.');
+    await act(async () => check.reject(new Error('Could not reach TypeSafe.')));
+    expect(container.textContent).toContain('Could not save the history recall setting.');
+    expect(container.textContent).toContain('Could not reach TypeSafe.');
+    expect(button(container, 'Allow history recall').getAttribute('aria-checked')).toBe('true');
+  }, { check: () => check.promise, failRecallSave: true });
+});
+
+test('an older key reply cannot restore recall after a newer OFF reply without a broadcast', async () => {
+  const removal = createDeferred<TypeSafeSettings>();
+  await withSettings(async ({ container, initial, recallWrites, emit }) => {
+    await act(async () => initial.resolve({ ...saved, historyRecallEnabled: true }));
+    await act(async () => button(container, 'Delete saved key').click());
+    const toggle = button(container, 'Allow history recall');
+    expect(toggle.disabled).toBe(false);
+    await act(async () => toggle.click());
+    expect(recallWrites).toEqual([false]);
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    await act(async () => removal.resolve({ ...none, historyRecallEnabled: true }));
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    // Deliver the final authoritative snapshot after the delayed IPC reply.
+    await emit(none);
+    expect(container.textContent).toContain('No API key registered');
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+  }, { removeReply: () => removal.promise, broadcast: false });
 });
 
 test('a stale initial load cannot replace updated settings and unavailable storage disables saving', async () => {
@@ -111,98 +195,106 @@ test('a stale initial load cannot replace updated settings and unavailable stora
     await emit(saved);
     await act(async () => initial.resolve(none));
     expect(container.textContent).toContain('Saved on this computer');
-    expect(button(container, 'Show Autopilot menu').disabled).toBe(false);
+    expect(button(container, 'Allow history recall').disabled).toBe(false);
     await emit({ ...saved, canSave: false, maskedKey: null, error: 'Unlock the saved key.' });
     expect(container.querySelector('input')!.disabled).toBe(true);
     expect(button(container, 'Update key').disabled).toBe(true);
     expect(container.textContent).toContain('Unlock the saved key.');
-    expect(button(container, 'Show Autopilot menu').disabled).toBe(true);
+    expect(button(container, 'Allow history recall').disabled).toBe(false);
   });
 });
 
-test('Autopilot toggle updates subscribers, persists selection and responds to another window', async () => {
+test('History recall toggle updates subscribers, persists selection and responds to another window', async () => {
   await withSettings(async ({ container, savedKeys, checks, initial, emit }) => {
     await act(async () => initial.resolve(saved));
-    const toggle = button(container, 'Show Autopilot menu');
+    const toggle = button(container, 'Allow history recall');
     expect(toggle.getAttribute('role')).toBe('switch');
     expect(toggle.getAttribute('aria-checked')).toBe('false');
-    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('false');
     await act(async () => toggle.click());
     expect(toggle.getAttribute('aria-checked')).toBe('true');
-    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('true');
-    await emit({ ...saved, autopilotMenuVisible: false });
+    await emit({ ...saved, historyRecallEnabled: false });
     expect(toggle.getAttribute('aria-checked')).toBe('false');
-    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('false');
     expect(savedKeys).toEqual([]);
     expect(checks()).toBe(0);
   });
 });
 
-test('missing or loading API keys disable the toggle and hide the menu', async () => {
+test('loading settings disables recall but missing keys allow explicit Luna consent', async () => {
   await withSettings(async ({ container, initial }) => {
-    const toggle = button(container, 'Show Autopilot menu');
+    const toggle = button(container, 'Allow history recall');
     expect(toggle.disabled).toBe(true);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
-    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('false');
     await act(async () => initial.resolve(none));
+    expect(toggle.disabled).toBe(false);
     await act(async () => toggle.click());
-    expect(toggle.disabled).toBe(true);
-    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
   });
 });
 
 test('an environment key enables the toggle and preserves an explicit saved ON preference', async () => {
   await withSettings(async ({ container, initial, emit }) => {
-    const toggle = button(container, 'Show Autopilot menu');
+    const toggle = button(container, 'Allow history recall');
     expect(toggle.disabled).toBe(true);
-    await act(async () => initial.resolve({ ...saved, source: 'environment', canSave: false, autopilotMenuVisible: true }));
+    await act(async () => initial.resolve({ ...saved, source: 'environment', canSave: false, historyRecallEnabled: true }));
     expect(toggle.disabled).toBe(false);
     expect(toggle.getAttribute('aria-checked')).toBe('true');
-    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('true');
     await emit(none);
-    expect(toggle.disabled).toBe(true);
+    expect(toggle.disabled).toBe(false);
     await emit(saved);
     expect(toggle.disabled).toBe(false);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
   });
 });
 
-test('a failed menu save shows an error and leaves the toggle and menu off', async () => {
+test('a failed recall save shows an error and leaves the toggle and recall off', async () => {
   await withSettings(async ({ container, initial }) => {
     await act(async () => initial.resolve(saved));
-    const toggle = button(container, 'Show Autopilot menu');
+    const toggle = button(container, 'Allow history recall');
     await act(async () => toggle.click());
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('Could not save');
     expect(toggle.getAttribute('aria-checked')).toBe('false');
     expect(toggle.disabled).toBe(false);
-    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('false');
-  }, { failMenuSave: true });
+  }, { failRecallSave: true });
 });
 
 test('the toggle waits for persistence and ignores repeated clicks during saving', async () => {
   const saving = createDeferred<void>();
   await withSettings(async ({ container, initial }) => {
     await act(async () => initial.resolve(saved));
-    const toggle = button(container, 'Show Autopilot menu');
+    const toggle = button(container, 'Allow history recall');
     await act(async () => { toggle.click(); toggle.click(); });
     expect(toggle.disabled).toBe(true);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
     await act(async () => saving.resolve());
     expect(toggle.disabled).toBe(false);
     expect(toggle.getAttribute('aria-checked')).toBe('true');
-    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('true');
-  }, { menuSave: saving.promise });
+  }, { recallSave: saving.promise });
 });
 
 test('a saved ON preference survives a temporary key lock and a stale initial reply', async () => {
   await withSettings(async ({ container, initial, emit }) => {
-    await emit({ ...saved, autopilotMenuVisible: true });
+    await emit({ ...saved, historyRecallEnabled: true });
     await act(async () => initial.resolve(none));
-    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('true');
-    await emit({ ...saved, autopilotMenuVisible: true, maskedKey: null, error: 'Unlock the saved key.' });
-    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('false');
-    await emit({ ...saved, autopilotMenuVisible: true });
-    expect(button(container, 'Show Autopilot menu').getAttribute('aria-checked')).toBe('true');
-    expect(container.querySelector('output')?.getAttribute('data-menu-visible')).toBe('true');
+    await emit({ ...saved, historyRecallEnabled: true, maskedKey: null, error: 'Unlock the saved key.' });
+    await emit({ ...saved, historyRecallEnabled: true });
+    expect(button(container, 'Allow history recall').getAttribute('aria-checked')).toBe('true');
+  });
+});
+
+
+test('settings disclose recall providers, data scope and separate CLI skill execution before consent', async () => {
+  await withSettings(async ({ container, initial }) => {
+    await act(async () => initial.resolve(none));
+    const disclosure = container.querySelector('#history-recall-disclosure')!.textContent!;
+    for (const text of ['TypeSafe', 'OpenAI', 'Luna low', 'candidate conversation passages', 'nearby messages', 'Reopen the workspace',
+      'applies to all workspaces, including ones opened later', 'Each search stays within the workspace where it is requested',
+      'cancels pending recall in all workspaces']) {
+      expect(disclosure).toContain(text);
+    }
+    expect(button(container, 'Allow history recall').getAttribute('aria-describedby')).toBe('history-recall-disclosure');
+    expect(button(container, 'Allow history recall').getAttribute('aria-checked')).toBe('false');
+    expect(container.textContent).toContain('Saving a key does not enable history recall');
+    expect(container.textContent).toContain('source checkout CLI');
+    expect(container.textContent).not.toContain('Autopilot');
   });
 });

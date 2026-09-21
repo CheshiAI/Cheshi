@@ -90,8 +90,6 @@ function createHarness() {
     '../terminal': { TerminalWorkspace: 'TerminalWorkspace' },
     '../showcase/ShowcaseView': { ShowcaseView: 'ShowcaseView' },
     '../settings/SettingsView': { SettingsView: 'SettingsView' },
-    '../settings/useAutopilotMenu': { useAutopilotMenu: () => [true] },
-    '../autopilot/AutopilotView': { AutopilotView: 'AutopilotView' },
     './ReviewSidebar': { ReviewSidebar: 'ReviewSidebar' },
     './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
     './useSidebarResize': { useSidebarResize: () => ({ layoutRef: { current: null }, style: {}, resizing: null,

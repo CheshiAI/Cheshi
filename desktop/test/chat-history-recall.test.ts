@@ -200,7 +200,7 @@ test('workspace ranking reaches an exact subject before unrelated current-thread
   f.threads.set('Aside처럼 구현하기', thread('Aside처럼 구현하기', ['Aside 같은 Autopilot을 구현했습니다.']));
   const result = await f.recall.search({ query: 'aside 형태의 기능', threadId: 'current', scope: 'workspace' }, signal());
   expect(result.matches[0]?.threadId).toBe('Aside처럼 구현하기');
-  expect(result.nextOffset).toBe(24);
+  expect(result.nextOffset).toBe(1);
   expect(result.partial).toBe(true);
 });
 
@@ -216,7 +216,9 @@ test('title-only relevance is evaluated early without excluding semantic candida
   const first = await f.recall.search(args, signal());
   expect(seen[0]).toBe('Aside처럼 구현하기');
   const next = await f.recall.search({ ...args, offset: first.nextOffset, snapshot: first.snapshot }, signal());
-  expect(next.nextOffset).toBeNull();
+  expect(next.nextOffset).toBe(25);
+  const last = await f.recall.search({ ...args, offset: next.nextOffset, snapshot: next.snapshot }, signal());
+  expect(last.nextOffset).toBeNull();
   expect(seen).toHaveLength(31);
 });
 
@@ -436,4 +438,24 @@ test('a concurrent search expiring cached assessments cannot corrupt an in-fligh
     release.resolve();
     expect((await pending).matches).toHaveLength(2);
   } finally { release.resolve(); time.mockRestore(); }
+});
+
+
+test('lexical pages do not include zero-overlap conversations but subsequent pages retain semantic recall', async () => {
+  const evaluated: string[][] = [];
+  const f = await fixture(async (_query, candidates) => {
+    evaluated.push(candidates.map(candidate => candidate.title ?? ''));
+    return candidates.map(() => ({ answer: 0.9, related: 0.9, direct: 0.9 }));
+  });
+  f.threads.set('match', thread('match', ['needle original decision']));
+  for (let i = 0; i < 6; i++) f.threads.set(`other-${i}`, thread(`other-${i}`, ['different subject']));
+  const args = { query: 'needle', threadId: 'current', scope: 'workspace' };
+  const first = await f.recall.search(args, signal());
+  expect(evaluated).toEqual([['match']]);
+  expect(first.nextOffset).toBe(1);
+  expect(first.partial).toBe(true);
+  const second = await f.recall.search({ ...args, offset: first.nextOffset, snapshot: first.snapshot }, signal());
+  expect(evaluated[1]).toHaveLength(6);
+  expect(evaluated[1]).not.toContain('match');
+  expect(second.nextOffset).toBeNull();
 });

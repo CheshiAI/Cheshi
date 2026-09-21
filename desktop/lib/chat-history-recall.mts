@@ -233,7 +233,11 @@ export class ChatHistoryRecall {
     const fingerprint = createHash('sha256').update(JSON.stringify([query, scope, threadId, focusThreadId, afterOrdinal,
       candidates.map(candidate => [candidate.id, candidate.title, candidate.ordinal, candidate.before, candidate.after])])).digest('hex');
     if (offset && args?.snapshot !== fingerprint) throw new Error('History changed during pagination. Restart with offset 0.');
-    const page = candidates.slice(offset, offset + PAGE_SIZE);
+    // Do not pad a lexical page with unrelated conversations. Semantic-only
+    // candidates remain available through an explicit subsequent page request.
+    const lexicalEnd = candidates.findIndex(candidate => scores.get(candidate.id) === 0);
+    const pageEnd = lexicalEnd > offset ? Math.min(offset + PAGE_SIZE, lexicalEnd) : offset + PAGE_SIZE;
+    const page = candidates.slice(offset, pageEnd);
     for (const [key, entry] of this.judgments) if (entry.expires < Date.now()) this.judgments.delete(key);
     const keyFor = (p: Passage) => createHash('sha256').update(JSON.stringify([query, p.id, p.title, p.before, p.after])).digest('hex');
     // Keep this request's cache snapshot stable while other searches evaluate or evict entries.

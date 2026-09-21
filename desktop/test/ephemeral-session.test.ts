@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { EphemeralSessionService } from '../lib/ephemeral-session-service.mts';
-import { explainWorkspaceCode } from '../lib/workspace-code-explanation.mts';
+import { createWorkspaceCodeExplanation, explainWorkspaceCode } from '../lib/workspace-code-explanation.mts';
 import type { CodexChatClient, JsonObject } from '../lib/codex-chat-types.mts';
 import { ephemeralSessionRequest } from '../shared/ephemeral-session.ts';
 import { codeExplanationRequest, codeExplanationRequestId } from '../shared/workspace-code-explanation.ts';
@@ -367,4 +367,27 @@ describe('temporary session input boundaries', () => {
       expect(() => codeExplanationRequest({ ...SELECTION, ...override })).toThrow(TypeError);
     }
   });
+});
+
+
+test('code explanation owns cancellation, account reset and shutdown independently of Autopilot', async () => {
+  const fixture = createClient();
+  const service = createWorkspaceCodeExplanation(fixture.client, '/workspace');
+  const first = service.explain(SELECTION);
+  const canceled = rejected(first, /canceled/);
+  await fixture.started();
+  expect(service.busy).toBe(true);
+  service.reset();
+  await canceled;
+  expect(service.busy).toBe(false);
+  expect(fixture.notifications.size).toBe(0);
+  fixture.calls.length = 0;
+  const second = service.explain({ ...SELECTION, requestId: 'selection-b' });
+  await fixture.started();
+  fixture.complete();
+  expect(await second).toEqual({ text: '설명입니다.', model: MODEL });
+  expect(service.busy).toBe(false);
+  expect(() => service.cancel('')).toThrow();
+  service.stop();
+  await rejected(service.explain(SELECTION), /stopped/);
 });

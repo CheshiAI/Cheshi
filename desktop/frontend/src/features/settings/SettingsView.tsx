@@ -5,18 +5,18 @@ import type { SettingsApi, TypeSafeSettings } from '../../../../shared/settings'
 import { LiquidGlassPanel, NeumorphicButton, NeumorphicTextField, TwoTierHeader,
   draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
 import styles from './SettingsView.module.css';
-import { useAutopilotMenu } from './useAutopilotMenu';
 
 export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = cheshiDesktop?.settings }: {
   rightSidebarOpen: boolean; onToggleRightSidebar(): void; api?: SettingsApi;
 }) {
-  const [autopilotMenuVisible, autopilotKeyAvailable] = useAutopilotMenu(api);
   const [state, setState] = useState<TypeSafeSettings | null>(null);
   const [key, setKey] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [recallBusy, setRecallBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const pending = useRef(false);
+  const [recallError, setRecallError] = useState<string | null>(null);
+  const pending = useRef({ key: false, recall: false });
   const revision = useRef(0);
   const mounted = useRef(true);
   useEffect(() => {
@@ -29,21 +29,32 @@ export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = che
       .catch(() => { if (!disposed) setError('Could not load TypeSafe API settings.'); });
     return () => { disposed = true; mounted.current = false; unsubscribe(); };
   }, [api]);
-  const execute = async (action: 'save' | 'remove' | 'check' | 'menu') => {
-    if (!api || pending.current) return;
-    pending.current = true; setBusy(true); setError(null); setNotice(null);
+  const receiveReply = (value: TypeSafeSettings, current: number) => {
+    if (mounted.current && current === revision.current) {
+      revision.current++;
+      setState(value);
+    }
+  };
+  const execute = async (action: 'save' | 'remove' | 'check' | 'recall') => {
+    const operation = action === 'recall' ? 'recall' : 'key';
+    if (!api || pending.current[operation] || (operation === 'recall' && !state)) return;
+    pending.current[operation] = true;
+    const setBusy = operation === 'recall' ? setRecallBusy : setKeyBusy;
+    const setOperationError = operation === 'recall' ? setRecallError : setError;
+    setBusy(true); setOperationError(null);
+    if (operation === 'key') setNotice(null);
     const current = revision.current;
     try {
       if (action === 'check') {
         const connected = await api.checkTypeSafe();
         if (mounted.current && current === revision.current) setNotice(connected ? 'Connection verified.' : 'Could not verify the connection.');
-      } else if (action === 'menu') {
-        const result = await api.setAutopilotMenuVisible(!autopilotMenuVisible);
-        if (mounted.current && current === revision.current) setState(result);
+      } else if (action === 'recall') {
+        const result = await api.setHistoryRecallEnabled(state?.historyRecallEnabled !== true);
+        receiveReply(result, current);
       } else {
         const result = action === 'save' ? await api.saveTypeSafe(key) : await api.removeTypeSafe();
         if (mounted.current) {
-          if (current === revision.current) setState(result);
+          receiveReply(result, current);
           setKey('');
           setNotice(action === 'save' ? 'API key saved on this computer.'
             : result.source === 'environment' ? 'Saved key removed. The environment key is now active.' : 'Saved API key removed.');
@@ -51,9 +62,9 @@ export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = che
       }
     } catch (cause) {
       // Main-process errors are controlled messages. Never repeat the submitted key in a notice.
-      if (mounted.current) setError(cause instanceof Error && !cause.message.includes(key || '\0')
+      if (mounted.current) setOperationError(cause instanceof Error && !cause.message.includes(key || '\0')
         ? cause.message : 'Could not update TypeSafe API settings.');
-    } finally { pending.current = false; if (mounted.current) setBusy(false); }
+    } finally { pending.current[operation] = false; if (mounted.current) setBusy(false); }
   };
   return <main className={styles.workspace} aria-label="Settings">
     <TwoTierHeader className={styles.header} style={draggableWindowRegionStyle} primary={<>
@@ -76,14 +87,9 @@ export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = che
           <form className={styles.form} onSubmit={event => { event.preventDefault(); void execute('save'); }}>
             <div className={styles.titleRow}>
               <h2 id="typesafe-heading">TypeSafe API Key</h2>
-              <NeumorphicButton raised className={styles.menuToggle} role="switch"
-                disabled={busy || !autopilotKeyAvailable}
-                aria-label="Show Autopilot menu" aria-checked={autopilotMenuVisible}
-                title={!autopilotKeyAvailable ? 'Register or unlock a TypeSafe API key first' : autopilotMenuVisible ? 'Hide Autopilot menu' : 'Show Autopilot menu'}
-                onClick={() => { void execute('menu'); }}><span aria-hidden="true" /></NeumorphicButton>
             </div>
             <div className={styles.summary}>
-              <p>Connect your TypeSafe account to use Jev in Autopilot.</p>
+              <p>Use Jev to find previous conversations and make yes/no decisions in executable skills. Saving a key does not enable history recall.</p>
               {!api && <p role="status">API settings are available in the Cheshi desktop app.</p>}
               {api && !state && !error && <p role="status">Loading settings…</p>}
               {state && <div className={styles.status}>
@@ -93,25 +99,50 @@ export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = che
             </div>
             <div className={styles.keyRow}>
               <NeumorphicTextField aria-label="TypeSafe API key" type="password" autoComplete="new-password" spellCheck={false}
-                value={key} maxLength={4096} disabled={busy || !state?.canSave} placeholder={state?.source === 'saved' ? 'Enter a replacement key' : 'Enter your TypeSafe API key'}
+                value={key} maxLength={4096} disabled={keyBusy || !state?.canSave} placeholder={state?.source === 'saved' ? 'Enter a replacement key' : 'Enter your TypeSafe API key'}
                 onChange={event => { setKey(event.target.value); setNotice(null); setError(null); }} />
               <div className={styles.actions}>
-                <NeumorphicButton raised type="submit" size="icon" disabled={busy || !state?.canSave || !key.trim()}
+                <NeumorphicButton raised type="submit" size="icon" disabled={keyBusy || !state?.canSave || !key.trim()}
                   aria-label={state?.source === 'saved' ? 'Update key' : 'Save key'} title={state?.source === 'saved' ? 'Update key' : 'Save key'}><Save aria-hidden="true" /></NeumorphicButton>
-                <NeumorphicButton raised type="button" size="icon" disabled={busy || !state?.maskedKey || !!key.trim()}
+                <NeumorphicButton raised type="button" size="icon" disabled={keyBusy || !state?.maskedKey || !!key.trim()}
                   aria-label="Check connection" title="Check connection" onClick={() => void execute('check')}><Link aria-hidden="true" /></NeumorphicButton>
-                <NeumorphicButton raised type="button" size="icon" disabled={busy || state?.source !== 'saved'}
+                <NeumorphicButton raised type="button" size="icon" disabled={keyBusy || state?.source !== 'saved'}
                   aria-label="Delete saved key" title="Delete saved key" onClick={() => void execute('remove')}><Trash2 aria-hidden="true" /></NeumorphicButton>
               </div>
             </div>
-            {busy && <p role="status">Working…</p>}
+            {keyBusy && <p role="status">Working…</p>}
             {(error || state?.error) && <p role="alert">{error || state?.error}</p>}
             {state && !state.canSave && <p role="alert">Secure storage is unavailable. Unlock your system credential store to save a key.</p>}
             {notice && <p role="status">{notice}</p>}
             <p className={styles.help}>
               Your key is encrypted on this computer. A saved key takes priority over an environment key.<br />
-              Autopilot usage and connection checks are billed to your TypeSafe account.<br />
-              Research also uses your existing Codex login.
+              Jev requests and connection checks use your TypeSafe account allowance.<br />
+              Connection checks send only fixed sample text.
+            </p>
+            <div className={styles.titleRow}>
+              <h3 id="history-recall-heading">Previous conversation recall</h3>
+              <NeumorphicButton raised className={styles.recallToggle} role="switch" type="button"
+                disabled={recallBusy || !api || !state} aria-label="Allow history recall"
+                aria-describedby="history-recall-disclosure" aria-checked={state?.historyRecallEnabled === true}
+                onClick={() => { void execute('recall'); }}><span aria-hidden="true" /></NeumorphicButton>
+            </div>
+            {recallBusy && <p role="status">Saving history recall setting…</p>}
+            {recallError && <p role="alert">{recallError}</p>}
+            <p id="history-recall-disclosure" className={styles.help}>
+              Off by default. This setting applies to all workspaces, including ones opened later.
+              Each search stays within the workspace where it is requested.
+              Your search question, candidate conversation passages, titles and nearby messages are sent to TypeSafe (Jev).
+              If Jev is unavailable or no key is configured, the same search material is sent to OpenAI using Luna low
+              with your Codex login. Retrieved originals are also returned to the assistant.<br />
+              Turning this off cancels pending recall in all workspaces and blocks further recall calls through both providers.
+              Text already sent cannot be recalled. Reopen the workspace after enabling to make the tools available.
+              Local history browsing is unaffected.
+            </p>
+            <h3>Executable skills</h3>
+            <p className={styles.help}>
+              Skills send their supplied judgment inputs to Jev and use Luna low with your Codex login if Jev is unavailable.
+              They run only when invoked and are separate from the history recall switch.
+              The executable skill runner is currently available through the source checkout CLI.
             </p>
           </form>
         </div>

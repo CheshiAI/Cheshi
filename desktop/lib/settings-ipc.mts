@@ -30,7 +30,7 @@ export function registerSettingsIpc(options: {
     handle(SETTINGS_CHANNELS.get, () => options.service.snapshot());
     handle(SETTINGS_CHANNELS.save, (_event, key: unknown) => options.service.save(key));
     handle(SETTINGS_CHANNELS.remove, () => options.service.remove());
-    handle(SETTINGS_CHANNELS.setMenuVisible, (_event, visible: unknown) => options.service.setAutopilotMenuVisible(visible));
+    handle(SETTINGS_CHANNELS.setHistoryRecallEnabled, (_event, visible: unknown) => options.service.setHistoryRecallEnabled(visible));
     handle(SETTINGS_CHANNELS.check, async () => {
       if (checking) throw new Error('A connection check is already running.');
       checking = true;

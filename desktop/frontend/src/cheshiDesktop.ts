@@ -655,7 +655,6 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   workspaceManagement?: WorkspaceManagementApi;
   showcase?: import('../../shared/showcase').ShowcaseApi;
   settings?: import('../../shared/settings').SettingsApi;
-  autopilot?: import('../../shared/autopilot').AutopilotApi;
   platform: string;
   workspaceName: string;
   userName: string;

@@ -2,12 +2,14 @@ import type { BrowserWindow, Dialog, Event, Rectangle } from 'electron';
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import type { WorkspaceIpcRouter } from './workspace-ipc-router.mts';
+import type { HistoryRecallAccess } from './workspace-history-mcp.mts';
 import type { WorkspaceAccountSelection } from './settings-service.mts';
 
 export interface WorkspaceWindowState { bounds: Rectangle; maximized: boolean; fullscreen: boolean; }
 export interface WorkspaceRuntimeOptions {
   workspaceRoot: string;
   getTypeSafeKey?(): string | null;
+  historyRecall?: HistoryRecallAccess;
   accountSelection?: WorkspaceAccountSelection;
   managementOnly?: boolean;
   initial: boolean;

@@ -83,6 +83,23 @@ CodeGraph indexes are stored locally, outside your source repositories.
 AI conversations use the configured provider and its authentication; local
 indexing does not mean AI requests run offline.
 
+Previous conversation recall is **off by default**, including for existing TypeSafe
+key holders. Enable **Settings → TypeSafe API → Allow history recall** and reopen
+the workspace to expose the tools. Saving a key alone does not enable recall.
+This setting applies to all workspaces, including ones opened later. Each search
+stays within the workspace where it is requested.
+When enabled, the assistant can send the search question, candidate passages,
+titles and neighboring messages from this workspace's conversations to **TypeSafe
+(Jev)**. If Jev is unavailable or no key is configured, **OpenAI (Luna low)** evaluates
+the same search material using your Codex login. Retrieved originals return to the
+assistant. Turning recall off cancels pending recall in all workspaces and blocks both providers;
+it cannot undo transmissions already made. Local history browsing remains available.
+
+Jev also supports yes/no decisions in explicitly invoked [executable skills](.docs/skill-flow.md),
+with Luna low fallback. That runner is currently a source-checkout CLI feature,
+separate from the history recall switch. Jev usage and fixed-sample connection
+checks use your TypeSafe account allowance; Luna uses your Codex account.
+
 ## Run from source
 
 The current native terminal integration targets macOS. Development requires:

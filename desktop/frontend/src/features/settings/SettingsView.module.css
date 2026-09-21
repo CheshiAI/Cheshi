@@ -13,15 +13,15 @@
 .detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .scroll { flex: 1; min-height: 0; overflow: auto; padding: var(--space-default); }
 .form { display: flex; flex-direction: column; gap: var(--space-default); width: 100%; margin: 0; }
-.form h2 { margin: 0; font-size: 11px; font-weight: 400; letter-spacing: .08em; line-height: 14px; color: var(--sidebar-section-label-color); }
+.form h2, .form h3 { margin: 0; font-size: 11px; font-weight: 400; letter-spacing: .08em; line-height: 14px; color: var(--sidebar-section-label-color); }
 .titleRow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-default); }
-.menuToggle { --neumorphic-button-radius: 9px; display: flex; align-items: center; flex: 0 0 auto; width: 32px; height: 18px; padding: 2px; cursor: pointer; }
-.menuToggle > span { width: 12px; height: 12px; border-radius: 50%; background: var(--sidebar-section-label-color); transition: transform 160ms ease, background 160ms ease; }
-.menuToggle[aria-checked='true'] { background: var(--dropdown-selection-bg); }
-.menuToggle[aria-checked='true'] > span { transform: translateX(14px); background: var(--active-text); }
-.menuToggle:focus-visible { outline: 1px solid var(--active-text); outline-offset: 2px; }
-.menuToggle:disabled { cursor: not-allowed; opacity: .5; }
-@media (prefers-reduced-motion: reduce) { .menuToggle > span { transition: none; } }
+.recallToggle { --neumorphic-button-radius: 9px; display: flex; align-items: center; flex: 0 0 auto; width: 32px; height: 18px; padding: 2px; cursor: pointer; }
+.recallToggle > span { width: 12px; height: 12px; border-radius: 50%; background: var(--sidebar-section-label-color); transition: transform 160ms ease, background 160ms ease; }
+.recallToggle[aria-checked='true'] { background: var(--dropdown-selection-bg); }
+.recallToggle[aria-checked='true'] > span { transform: translateX(14px); background: var(--active-text); }
+.recallToggle:focus-visible { outline: 1px solid var(--active-text); outline-offset: 2px; }
+.recallToggle:disabled { cursor: not-allowed; opacity: .5; }
+@media (prefers-reduced-motion: reduce) { .recallToggle > span { transition: none; } }
 .form p { margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
 .form > p[role='status'] { font-size: 11px; }
 .summary { font-size: 11px; letter-spacing: -.02em; line-height: 1.6; color: var(--sidebar-section-label-color); }
