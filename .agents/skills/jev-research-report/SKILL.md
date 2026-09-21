@@ -85,4 +85,4 @@ and exhausted judgment budgets stop waiting and prevent further judgments.
 The CLI forcibly stops its execution process after a five-second grace period
 if it remains stuck; in that case a result report may be unavailable. In-process
 execution does not roll back side effects or forcibly stop arbitrary skill code.
-See [the executable skill guide](../../../.docs/skill-flow.md) for the full contract.
+See [the executable skill guide](../../../.docs/skill-flow/guide.md) for the full contract.

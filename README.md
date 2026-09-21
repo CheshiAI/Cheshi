@@ -95,7 +95,7 @@ the same search material using your Codex login. Retrieved originals return to t
 assistant. Turning recall off cancels pending recall in all workspaces and blocks both providers;
 it cannot undo transmissions already made. Local history browsing remains available.
 
-Jev also supports yes/no decisions in explicitly invoked [executable skills](.docs/skill-flow.md),
+Jev also supports yes/no decisions in explicitly invoked [executable skills](.docs/skill-flow/guide.md),
 with Luna low fallback. That runner is currently a source-checkout CLI feature,
 separate from the history recall switch. Jev usage and fixed-sample connection
 checks use your TypeSafe account allowance; Luna uses your Codex account.
