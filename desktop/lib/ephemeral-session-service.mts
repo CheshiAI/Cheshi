@@ -8,6 +8,8 @@ export interface EphemeralRunOptions {
   outputSchema?: unknown;
   serviceTier?: 'default';
   disableTools?: boolean;
+  webSearchOnly?: boolean;
+  onWebSearch?: () => void;
   requireSubscription?: boolean;
   onTurnRequested?: () => void;
   onUsage?: (value: unknown) => void;
@@ -111,10 +113,13 @@ export class EphemeralSessionService {
       if (turnId && active.turnId && turnId !== active.turnId) return;
       if (turnId) active.turnId = turnId;
       if (event.method === 'thread/tokenUsage/updated') options.onUsage?.(params.tokenUsage);
-      if (options.disableTools && event.method === 'item/started'
-        && ['commandExecution', 'mcpToolCall', 'dynamicToolCall', 'webSearch', 'fileChange'].includes(String(recordValue(params.item)?.type))) {
-        active.abort.abort(new Error('History classification cannot use tools.'));
+      const itemType = recordValue(params.item)?.type;
+      if ((options.disableTools || options.webSearchOnly) && event.method === 'item/started'
+        && ['commandExecution', 'mcpToolCall', 'dynamicToolCall', 'fileChange',
+          ...(options.disableTools ? ['webSearch'] : [])].includes(String(itemType))) {
+        active.abort.abort(new Error('This temporary session cannot use that tool.'));
       }
+      if (event.method === 'item/completed' && itemType === 'webSearch') options.onWebSearch?.();
       if (event.method === 'item/completed') remember(params.item);
       if (event.method === 'error' && params.willRetry !== true) {
         finish({ error: new Error(stringValue(recordValue(params.error)?.message) ?? 'Temporary session failed.') });
@@ -142,14 +147,15 @@ export class EphemeralSessionService {
         assertAvailable(recordValue(account?.account)?.type === 'chatgpt', 'Sign in with a ChatGPT subscription to use Luna history fallback.');
       }
       let config: Record<string, unknown> | undefined;
-      if (options.disableTools) {
+      if (options.disableTools || options.webSearchOnly) {
         const response = recordValue(await abortable(this.client.request('config/read', { includeLayers: false, cwd: this.cwd }), signal));
         const effective = recordValue(response?.config);
         assertAvailable(effective, 'Could not read configuration for isolated history classification.');
         const servers = recordValue(effective.mcp_servers) ?? {};
         config = { mcp_servers: Object.fromEntries(Object.entries(servers).map(([name, value]) =>
           [name, { ...recordValue(value), enabled: false }])),
-          'features.shell_tool': false, 'features.multi_agent': false, 'web_search': 'disabled' };
+          'features.shell_tool': false, 'features.multi_agent': false,
+          'web_search': options.disableTools ? 'disabled' : 'live' };
       }
       const models = modelsFromListResponse(await abortable(this.client.request('model/list', { limit: 100, includeHidden: false }), signal));
       signal.throwIfAborted();
