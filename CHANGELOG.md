@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.0.8-preview
+
+Pending release
+
+- Fixed the conversation history consent issue reported in
+  [#18](https://github.com/CheshiAI/Cheshi/issues/18). History recall now requires
+  a separate opt-in, disabled by default even when a TypeSafe key is already saved.
+  Saving or checking a key does not enable recall. Thanks to @MrJev for reporting
+  the issue and suggesting clearer controls and disclosure.
+- Explained in Settings, the README, and help documentation that history search
+  sends candidate conversation passages to TypeSafe, or to OpenAI when Luna
+  fallback is used. The setting applies across workspaces, while each search
+  stays within its current workspace. Disabling recall cancels pending searches.
+- Reduced unnecessary history sharing by keeping passages with no lexical match
+  out of pages containing matching candidates, while preserving semantic search
+  through separate candidate pages.
+- Removed Autopilot from this preview because it needs further development and
+  redesign. Jev remains available for conversation history recall and judgments
+  in executable skills.
+- Added Luna low fallback through the existing Codex login when Jev is
+  unavailable. Valid Jev results, including no relevant conversations, do not
+  trigger a second evaluation. Luna usage is reported separately from Jev costs.
+- Added a generic executable skill runner for the source-checkout CLI, with Jev
+  yes/no branching, Luna fallback, and a Markdown research report example.
+- Fixed local file links in chat messages opening in the editor, and attributed
+  history search usage to the originating turn.
+- Added draggable workspace sidebars, preserved workspace account selection,
+  and fixed the scroll-to-latest control after switching conversations.
+
 ## 0.0.7-preview
 
 Pending release
