@@ -41,11 +41,13 @@ import { WorkspaceFileSearch } from '../navigation/WorkspaceFileSearch';
 import { installFileSearchShortcut } from '../navigation/fileSearchShortcut';
 import { ChatDraftAttachmentsContext, createChatDraftAttachments } from '../chat/chatDraftAttachments';
 import { NotesView } from '../notes/NotesView';
+import { MailView } from '../mail/MailView';
+import { CalendarView } from '../calendar/CalendarView';
 import { appleNoteAttachment } from '../notes/appleNotesModel';
 import type { AppleNote } from '../../../../shared/apple-notes';
 import { useSidebarResize } from './useSidebarResize';
 
-const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase', 'notes', 'settings'];
+const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase', 'notes', 'calendar', 'mail', 'settings'];
 
 export function AppShell() {
   const [accountLoaded, setAccountLoaded] = useState(false);
@@ -290,6 +292,10 @@ export function AppShell() {
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />}
           {activeView === 'blank' && <WindowTabs />}
+          {activeView === 'mail' && <MailView rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
+          {activeView === 'calendar' && <CalendarView rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
           {activeView === 'notes' && <NotesView onAttach={attachNote}
             attachmentDisabled={chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running}
             rightSidebarOpen={rightSidebarOpen}

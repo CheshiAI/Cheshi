@@ -840,6 +840,8 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   reviewCodexChatSession: (contextId?: string) => Promise<unknown>;
   selectCodexChatAttachments: () => Promise<CodexChatAttachment[]>;
   appleNotes?: import('../../shared/apple-notes').AppleNotesApi;
+  appleMail?: import('../../shared/apple-mail').AppleMailApi;
+  appleCalendar?: import('../../shared/apple-calendar').AppleCalendarApi;
   importCodexChatAttachments: (files: (File | string)[]) => Promise<CodexChatAttachment[]>;
   getCodexChatAttachmentPreview: (attachmentPath: string) => Promise<string | null>;
   sendCodexChatMessage: (

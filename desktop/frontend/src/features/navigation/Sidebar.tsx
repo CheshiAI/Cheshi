@@ -1,5 +1,7 @@
 import {
   Bell,
+  CalendarDays,
+  Mail,
   Blocks,
   Crosshair,
   PanelsTopLeft,
@@ -15,12 +17,14 @@ import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import { WorkspaceFileTree } from './WorkspaceFileTree';
 import { WorkspaceSelector } from './WorkspaceSelector';
 
-export type WorkspaceView = 'chat' | 'notes' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'showcase' | 'local-history' | 'settings';
+export type WorkspaceView = 'chat' | 'notes' | 'calendar' | 'mail' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'showcase' | 'local-history' | 'settings';
 
 const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceView }> = [
   { label: 'Relationship Graph', icon: <Crosshair aria-hidden="true" />, view: 'codegraph' },
   { label: 'Codex', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
   { label: 'Memo', icon: <StickyNote aria-hidden="true" />, view: 'notes' },
+  { label: 'Calendar', icon: <CalendarDays aria-hidden="true" />, view: 'calendar' },
+  { label: 'Mail', icon: <Mail aria-hidden="true" />, view: 'mail' },
   { label: 'Terminal', icon: <SquareTerminal aria-hidden="true" />, view: 'terminal' },
   { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
   { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },

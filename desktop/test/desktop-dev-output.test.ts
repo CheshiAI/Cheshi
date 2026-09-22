@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
-import { once } from 'node:events';
+import { once, EventEmitter } from 'node:events';
+import type { ChildProcess, spawn } from 'node:child_process';
+import { appendFileSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import test from 'node:test';
 
 import { forwardDesktopDevOutput } from '../../scripts/forward-desktop-dev-output.mts';
+import { launchDevelopmentApp } from '../../scripts/launch-development-app.mts';
 
 async function forwardedOutput(chunks: string[]) {
   const source = new PassThrough();
@@ -70,4 +75,35 @@ test('preserves a final error without a newline after a filtered diagnostic', as
   ]);
 
   assert.equal(output, 'Error: keyboard input failed\n');
+});
+
+test('Launch Services inherits private environment and drains app logs before completing', async (context) => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'cheshi-launch-test-'));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+  let output = '';
+  let errors = '';
+  const stdout = new Writable({ write(chunk, _encoding, done) { output += chunk.toString(); done(); } });
+  const stderr = new Writable({ write(chunk, _encoding, done) { errors += chunk.toString(); done(); } });
+  const fakeSpawn = ((executable: string, args: readonly string[], options: { env: NodeJS.ProcessEnv; detached: boolean }) => {
+    assert.equal(executable, '/usr/bin/open');
+    assert.deepEqual(args.slice(0, 4), ['-n', '-W', '-a', '/checkout/Cheshi Development.app']);
+    assert.deepEqual(args.slice(-2), ['--args', '/checkout']);
+    assert.equal(args.includes('test-private-value'), false);
+    assert.equal(options.env.TEST_TOKEN, 'test-private-value');
+    assert.equal(options.env.ELECTRON_RUN_AS_NODE, undefined);
+    assert.equal(options.env.CHESHI_DEV_LAUNCH_SERVICES, '1');
+    assert.equal(options.detached, true);
+    return child as unknown as ChildProcess;
+  }) as typeof spawn;
+  const launched = launchDevelopmentApp({ bundle: '/checkout/Cheshi Development.app', root: '/checkout',
+    directory, env: { TEST_TOKEN: 'test-private-value', ELECTRON_RUN_AS_NODE: '1' }, stdout, stderr }, fakeSpawn);
+  assert.equal(statSync(path.join(directory, 'stdout.log')).mode & 0o777, 0o600);
+  appendFileSync(path.join(directory, 'stdout.log'), '앱 로그\n');
+  appendFileSync(path.join(directory, 'stderr.log'), '\u001b[31mfinal error without newline\u001b[0m');
+  child.emit('close', 0, null);
+  assert.deepEqual(await launched.completion, { code: 0, signal: null });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(output, '앱 로그\n');
+  assert.equal(errors, 'final error without newline\n');
 });

@@ -34,13 +34,20 @@ function shouldIgnore(packagePath: string): boolean {
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
-    const packagedSharedFiles = new Set(['account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-notes.ts', 'apple-notes-document.ts', 'keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'showcase.ts', 'settings.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'history-recall.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'git-line-blame.ts', 'local-history.ts', 'local-file-link.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
+    const packagedSharedFiles = new Set(['account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-notes.ts', 'apple-notes-document.ts', 'apple-calendar.ts', 'apple-mail.ts', 'keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'showcase.ts', 'settings.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'history-recall.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'git-line-blame.ts', 'local-history.ts', 'local-file-link.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
     return grandchildEntry === undefined || !packagedSharedFiles.has(grandchildEntry) || segments.length > 3;
   }
   if (childEntry !== 'lib') return true;
   if (segments.length === 2) return false;
   if (grandchildEntry === 'electron-libghostty') return false;
   const packagedLibraryFiles = new Set([
+    'apple-mail-service.mts',
+    'apple-mail-script.mts',
+    'apple-mail-process.mts',
+    'apple-mail-ipc.mts',
+    'apple-calendar-service.mts',
+    'apple-calendar-process.mts',
+    'apple-calendar-ipc.mts',
     'typesafe-key.mts',
     'typesafe-connection.mts',
     'settings-service.mts',
@@ -220,7 +227,9 @@ export default async function createForgeConfiguration(): Promise<ForgeConfig> {
       buildVersion: product.buildNumber,
       extendInfo: {
         NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
-        NSAppleEventsUsageDescription: 'Cheshi reads the Apple Notes you select and saves responses as new notes when you ask.',
+        NSAppleEventsUsageDescription: 'Cheshi reads and manages your Mail messages, sends mail you confirm, and reads or saves Apple Notes when you ask.',
+        NSCalendarsFullAccessUsageDescription: 'Cheshi displays your calendars and creates, edits, or deletes the events you choose.',
+        NSCalendarsUsageDescription: 'Cheshi displays your calendars and creates, edits, or deletes the events you choose.',
       },
       asar: {
         unpack: '**/desktop/lib/electron-libghostty/native/**',

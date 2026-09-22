@@ -9,6 +9,10 @@ import { CodexAppServerStoppedError } from './codex-app-server-client.mts';
 import type { ChatHistorySearch } from './chat-history-search.mts';
 import { AppleNotesService } from './apple-notes-service.mts';
 import { registerAppleNotesIpc } from './apple-notes-ipc.mts';
+import { AppleMailService } from './apple-mail-service.mts';
+import { registerAppleMailIpc } from './apple-mail-ipc.mts';
+import { AppleCalendarService } from './apple-calendar-service.mts';
+import { registerAppleCalendarIpc } from './apple-calendar-ipc.mts';
 import { readCodexTurnMetrics } from './codex-chat-turn-metrics.mts';
 
 type ChatIpcOptions = {
@@ -25,6 +29,8 @@ type ChatIpcOptions = {
 
 export function registerCodexChatIpc({ ipc, service, relays, deletion, savedTurns, historySearch, assertSender, prepareMessage, beforeMessage }: ChatIpcOptions) {
   registerAppleNotesIpc({ ipcMain: ipc, service: new AppleNotesService(), assertSender });
+  registerAppleMailIpc({ ipcMain: ipc, service: new AppleMailService(), assertSender });
+  registerAppleCalendarIpc({ ipcMain: ipc, service: new AppleCalendarService(), assertSender });
   const mutation = <T,>(event: IpcMainInvokeEvent, contextId: unknown, operation: () => Promise<T> | T) => {
     assertSender(event);
     const run = () => relays.mutation(event.sender.id, contextId, operation);

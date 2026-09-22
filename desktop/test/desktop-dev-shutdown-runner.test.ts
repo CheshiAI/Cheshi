@@ -65,8 +65,9 @@ class FakeChild extends EventEmitter {
   kill(signal: NodeJS.Signals) { this.close(signal); return true; }
 }
 
-function createRunner(options: { holdPreload?: boolean; holdReadiness?: boolean; holdQuit?: boolean } = {}) {
+function createRunner(options: { holdPreload?: boolean; holdCalendar?: boolean; holdReadiness?: boolean; holdQuit?: boolean; macApp?: boolean } = {}) {
   const preload = createDeferred<void>();
+  const calendar = createDeferred<void>();
   const readiness = createDeferred<{ ok: boolean }>();
   const children: FakeChild[] = [];
   const events: string[] = [];
@@ -111,6 +112,26 @@ function createRunner(options: { holdPreload?: boolean; holdReadiness?: boolean;
     },
     './forward-desktop-dev-output.mts': { forwardDesktopDevOutput: () => {} },
     './build-desktop-preload.mts': { buildDesktopPreload: () => options.holdPreload ? preload.promise : Promise.resolve() },
+    './build-apple-calendar.mts': { buildAppleCalendar: () => {
+      events.push('calendar:build');
+      return options.holdCalendar ? calendar.promise : Promise.resolve();
+    } },
+    './prepare-calendar-development.mts': { prepareCalendarDevelopment: () => {
+      events.push('calendar:permissions');
+      return options.macApp ? '/test/Cheshi Development.app' : undefined;
+    } },
+    './launch-development-app.mts': { launchDevelopmentApp: (configuration: { bundle: string; directory: string }) => {
+      assert.equal(configuration.bundle, '/test/Cheshi Development.app');
+      const child = new FakeChild(1_000 + children.length, 'forge');
+      children.push(child);
+      directories.set(configuration.directory, child);
+      events.push('launch:mac-app');
+      return {
+        child,
+        completion: new Promise(resolve => child.once('close', (code, signal) => resolve({ code, signal }))),
+        signal: (signal: NodeJS.Signals) => { events.push(`signal:mac-app:${signal}`); child.close(signal); },
+      };
+    } },
     './watch-file-contents.mts': {
       watchFileContents: (_paths: string[], onChange: (file: string) => void) => {
         changed = onChange;
@@ -147,11 +168,13 @@ function createRunner(options: { holdPreload?: boolean; holdReadiness?: boolean;
     get errors() { return errors; },
     interrupt: () => signals.emit('SIGINT'),
     releasePreload: () => preload.resolve(),
+    releaseCalendar: () => calendar.resolve(),
     releaseReadiness: () => readiness.resolve({ ok: true }),
     changeSource: () => { assert.ok(changed); changed(new URL('../../desktop/main.mts', import.meta.url).pathname); },
     async cleanup() {
       signals.emit('SIGTERM');
       preload.resolve();
+      calendar.resolve();
       readiness.resolve({ ok: true });
       for (const child of children) child.close();
       await completion;
@@ -179,6 +202,19 @@ test('Ctrl+C while preload builds prevents subsequent process launches', async (
   runner.releasePreload();
   await runner.completion;
   assert.equal(runner.children.length, 0);
+  assert.equal(runner.events.includes('calendar:build'), false);
+  assert.equal(runner.errors, '');
+});
+
+test('Ctrl+C while Calendar builds prevents permission metadata changes and app launches', async (t) => {
+  const runner = createRunner({ holdCalendar: true });
+  t.after(() => runner.cleanup());
+  await waitUntil(() => runner.events.includes('calendar:build'));
+  runner.interrupt();
+  runner.releaseCalendar();
+  await runner.completion;
+  assert.equal(runner.children.length, 0);
+  assert.equal(runner.events.includes('calendar:permissions'), false);
   assert.equal(runner.errors, '');
 });
 
@@ -194,7 +230,7 @@ test('Ctrl+C while renderer readiness is pending never launches Electron', async
 });
 
 test('source restart waits for the previous launch and cannot restart after Ctrl+C', async (t) => {
-  const runner = createRunner({ holdQuit: true });
+  const runner = createRunner({ holdQuit: true, macApp: true });
   t.after(() => runner.cleanup());
   await waitUntil(() => runner.children.length === 2);
   runner.changeSource();
@@ -210,5 +246,16 @@ test('source restart waits for the previous launch and cannot restart after Ctrl
   assert.equal(runner.children.length, 3);
   assert.equal(runner.requests, 2, 'shutdown shares an in-flight graceful restart');
   assert.equal(runner.events.some((event) => event.startsWith('signal:forge:')), false);
+  assert.equal(runner.errors, '');
+});
+
+test('macOS shutdown uses the launched app signal instead of killing the open waiter', async (t) => {
+  const runner = createRunner({ holdQuit: true, macApp: true });
+  t.after(() => runner.cleanup());
+  await waitUntil(() => runner.children.length === 2);
+  runner.interrupt();
+  await runner.completion;
+  assert.ok(runner.events.includes('signal:mac-app:SIGTERM'));
+  assert.equal(runner.events.includes('signal:forge:SIGTERM'), false);
   assert.equal(runner.errors, '');
 });

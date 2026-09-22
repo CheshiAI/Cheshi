@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import {
   createDevelopmentShutdownRequest,
   stopDevelopmentProcess,
   watchDevelopmentShutdown,
+  signalDevelopmentApp,
 } from '../lib/development-shutdown.mts';
 
 function createDeferred() {
@@ -150,4 +152,23 @@ test('an absent or relative control directory leaves the listener disabled', () 
     const stopWatching = watchDevelopmentShutdown(directory, () => assert.fail('unexpected quit'));
     stopWatching();
   }
+});
+
+test('forced macOS shutdown requires this bundle and the original process birth time', (context) => {
+  const request = createDevelopmentShutdownRequest();
+  context.after(() => request.dispose());
+  const executable = '/checkout/Cheshi Development.app/Contents/MacOS/Electron';
+  const identity = `Tue Sep 22 10:00:00 2026 ${executable}`;
+  const calls: Array<[number, string | number | undefined]> = [];
+  const kill: typeof process.kill = (pid, signal) => { calls.push([pid, signal]); return true; };
+  const receipt = (pid: number, value: string) => writeFileSync(path.join(request.directory, 'process.json'), JSON.stringify({ pid, identity: value }));
+  receipt(123, identity);
+  signalDevelopmentApp(request.directory, executable, 'SIGTERM', () => identity, kill);
+  assert.deepEqual(calls, [[123, 'SIGTERM']]);
+  assert.throws(() => signalDevelopmentApp(request.directory, executable, 'SIGKILL', () => identity.replace('10:00', '11:00'), kill), /identity has changed/);
+  receipt(123, 'another app');
+  assert.throws(() => signalDevelopmentApp(request.directory, executable, 'SIGKILL', () => identity, kill), /Cannot identify/);
+  receipt(-123, identity);
+  assert.throws(() => signalDevelopmentApp(request.directory, executable, 'SIGKILL', () => identity, kill), /Cannot identify/);
+  assert.equal(calls.length, 1);
 });

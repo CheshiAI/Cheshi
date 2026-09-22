@@ -254,6 +254,10 @@ test('packages every relative runtime import reachable from the Electron entrypo
     assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', `apple-notes-${name}.mts`)));
   }
   assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'shared', 'apple-notes.ts')));
+  for (const name of ['service', 'process', 'ipc']) {
+    assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', `apple-calendar-${name}.mts`)));
+  }
+  assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'shared', 'apple-calendar.ts')));
   assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'main.mts')));
   assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', 'startup-page.mts')));
   assert.equal(shouldIgnore('/desktop/shared/plugin-actions.ts.tmp'), true);

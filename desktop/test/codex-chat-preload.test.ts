@@ -60,6 +60,16 @@ test('agent detail reads carry the parent, target ids and pane without invoking 
   assert.equal(bridge.calls.length, 1);
 });
 
+test('Apple Mail exposes explicit message operations without startup automation', async () => {
+  const bridge = createHarness('Alex', { ok: true, value: [] });
+  const api = bridge.read('appleMail') as NonNullable<CheshiDesktopApi['appleMail']>;
+  assert.equal(api.available, process.platform === 'darwin');
+  assert.deepEqual(Object.keys(api).sort(), ['accounts', 'available', 'change', 'list', 'mailboxes', 'read', 'send']);
+  assert.deepEqual(bridge.calls, []);
+  assert.deepEqual(structuredClone(await api.mailboxes()), { ok: true, value: [] });
+  assert.deepEqual(bridge.calls, [['cheshi:mail-mailboxes']]);
+});
+
 test('Apple Notes uses the built preload and carries save outcomes as plain data', async () => {
   const input = { folderId: 'folder', title: 'Title', body: 'Answer' };
   const success = { ok: true, value: { id: 'created', title: 'Title' } };
@@ -73,6 +83,20 @@ test('Apple Notes uses the built preload and carries save outcomes as plain data
   assert.deepEqual(structuredClone(await uncertain.create(input)), failure);
   await assert.rejects(() => api.read(''), /identifier/);
   assert.equal(bridge.calls.length, 1);
+});
+
+test('Apple Calendar is exposed by the built workspace bridge without requesting access on startup', async () => {
+  const bridge = createHarness('Alex', { ok: true, value: 'not-determined' });
+  const api = bridge.read('appleCalendar') as NonNullable<CheshiDesktopApi['appleCalendar']>;
+  assert.equal(api.available, process.platform === 'darwin');
+  assert.deepEqual(bridge.calls, []);
+  assert.deepEqual(structuredClone(await api.status()), { ok: true, value: 'not-determined' });
+  assert.deepEqual(bridge.calls, [['cheshi:calendar-status', undefined]]);
+  const target = { id: 'event-1', revision: 'revision-1' };
+  const deletion = createHarness('Alex', { ok: true, value: target });
+  const deleting = deletion.read('appleCalendar') as NonNullable<CheshiDesktopApi['appleCalendar']>;
+  assert.deepEqual(structuredClone(await deleting.delete(target)), { ok: true, value: target });
+  assert.deepEqual(deletion.calls, [['cheshi:calendar-delete', target]]);
 });
 
 test('Apple Notes deletion crosses the built preload with the exact target and acknowledgement', async () => {
