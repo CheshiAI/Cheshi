@@ -197,7 +197,7 @@ function searchElement(node: ReactNode, label: string): ReactElement<SearchEleme
 const searchUiDependencies = {
   'react/jsx-runtime': jsxRuntime,
   'lucide-react': { Search: 'svg', ArrowLeft: 'svg', PanelRight: 'svg', RefreshCw: 'svg' },
-  '../../shared/ui': { NeumorphicButton: 'button', NeumorphicTextField: 'input', SearchClearButton: 'button',
+  '../../shared/ui': { NeumorphicButton: 'button', SidebarToggle: 'button', NeumorphicTextField: 'input', SearchClearButton: 'button',
     TieredHeader: 'header', LoadingState: 'progress' },
   '../../shared/errorMessage': { errorMessage: (reason: unknown) => reason instanceof Error ? reason.message : String(reason) },
   './ChatHistorySearch.module.css': { default: {} },

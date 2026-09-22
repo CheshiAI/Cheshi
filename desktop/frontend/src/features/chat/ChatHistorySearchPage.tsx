@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { ChatHistorySearchHit, ChatHistorySearchResponse } from '../../../../shared/chat-history-search';
 import { errorMessage } from '../../shared/errorMessage';
-import { LoadingState, NeumorphicButton, TieredHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
+import { SidebarToggle, LoadingState, NeumorphicButton, TieredHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
 import styles from './ChatHistorySearch.module.css';
 
 const kindLabels = { user: 'You', assistant: 'Assistant', activity: 'Tool activity', plan: 'Plan' };
@@ -109,10 +109,10 @@ export function ChatHistorySearchPage({ query, result, loading, error, selection
           disabled={opening} onClick={() => { if (!pending.current) onClose(); }}>
           <ArrowLeft aria-hidden="true" />
         </NeumorphicButton>
-        <NeumorphicButton raised size="icon" aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
+        <SidebarToggle raised size="icon" aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
           aria-expanded={rightSidebarOpen} onClick={onToggleRightSidebar}>
           <PanelRight aria-hidden="true" />
-        </NeumorphicButton>
+        </SidebarToggle>
       </div>
     </>} />
     <div className={styles.content} aria-busy={loading || opening}>

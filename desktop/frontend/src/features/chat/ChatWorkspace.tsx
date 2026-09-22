@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom';
 import { chatRelayContextIds } from '../../../../shared/chat-relay';
 import {
+  SidebarToggle,
   LiquidGlassPanel, NeumorphicButton, TwoTierHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle,
 } from '../../shared/ui';
 import { SplitPaneLayout } from '../../shared/ui/SplitPaneLayout';
@@ -184,7 +185,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
             >
               <Plus aria-hidden="true" />
             </NeumorphicButton>
-            <NeumorphicButton
+            <SidebarToggle
               raised
               aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
               aria-pressed={rightSidebarOpen}
@@ -192,7 +193,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
               onClick={onToggleRightSidebar}
             >
               <PanelRight aria-hidden="true" />
-            </NeumorphicButton>
+            </SidebarToggle>
             {props.onCloseWorkspace && <NeumorphicButton raised size="icon"
               aria-label="Close Codex workspace" title="Close Codex workspace"
               onClick={props.onCloseWorkspace}><X aria-hidden="true" /></NeumorphicButton>}

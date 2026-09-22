@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { AppleCalendarApi, CalendarEvent } from '../../../../shared/apple-calendar';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import {
+  SidebarToggle,
   LiquidGlassPanel, NeumorphicButton, NeumorphicSurface, TwoTierHeader,
   draggableWindowRegionStyle, nonDraggableWindowRegionStyle,
 } from '../../shared/ui';
@@ -26,8 +27,8 @@ function CalendarHeader({ rightSidebarOpen, onToggleRightSidebar }: ViewProps) {
       <h1>Calendar</h1>
     </div>
     <div style={nonDraggableWindowRegionStyle}>
-      <NeumorphicButton raised size="icon" aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-        aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></NeumorphicButton>
+      <SidebarToggle raised size="icon" aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
+        aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></SidebarToggle>
     </div>
   </>} />;
 }

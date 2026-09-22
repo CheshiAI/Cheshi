@@ -1,7 +1,7 @@
 import { Crosshair, FileCode2, Minus, PanelRight, Plus, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { EmptyState, NeumorphicButton, TieredHeader } from '../../shared/ui';
+import { SidebarToggle, EmptyState, NeumorphicButton, TieredHeader } from '../../shared/ui';
 import badgeStyles from '../../shared/ui/Badge.module.css';
 import { GraphScene } from './GraphScene';
 import type { GraphController } from './useGraphController';
@@ -57,7 +57,7 @@ export function GraphWorkspace({ graph, inspector, rightSidebarOpen, onToggleRig
                   </NeumorphicButton>
                 </div>
               )}
-              <NeumorphicButton
+              <SidebarToggle
                 raised
                 className="theme-toggle codegraph-sidebar-toggle"
                 aria-label={rightSidebarOpen ? 'Hide right sidebar' : 'Show right sidebar'}
@@ -65,7 +65,7 @@ export function GraphWorkspace({ graph, inspector, rightSidebarOpen, onToggleRig
                 onClick={onToggleRightSidebar}
               >
                 <PanelRight aria-hidden="true" />
-              </NeumorphicButton>
+              </SidebarToggle>
               {onCloseWorkspace && <NeumorphicButton raised size="icon"
                 aria-label="Close Relationship Graph workspace" title="Close Relationship Graph workspace"
                 onClick={onCloseWorkspace}><X aria-hidden="true" /></NeumorphicButton>}

@@ -2,7 +2,7 @@ import { PanelRight, StickyNote } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { AppleNote } from '../../../../shared/apple-notes';
-import { NeumorphicButton, TwoTierHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
+import { SidebarToggle, NeumorphicButton, TwoTierHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
 import { AppleNotesBrowser } from './AppleNotesBrowser';
 import styles from './AppleNotes.module.css';
 
@@ -24,9 +24,9 @@ export function NotesView({ onAttach, attachmentDisabled, rightSidebarOpen, onTo
         {search}
         {refresh}
         {create}
-        <NeumorphicButton raised size="icon"
+        <SidebarToggle raised size="icon"
           aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-          aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></NeumorphicButton>
+          aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></SidebarToggle>
       </div>
     </>} />;
   return <main className={styles.workspace} aria-label="Memo">

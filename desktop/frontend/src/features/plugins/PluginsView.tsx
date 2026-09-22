@@ -2,6 +2,7 @@ import { Blocks, PanelRight, RefreshCw, ToyBrick } from 'lucide-react';
 import { useState } from 'react';
 
 import {
+  SidebarToggle,
   LiquidGlassPanel,
   NeumorphicButton,
   NeumorphicTextField,
@@ -114,7 +115,7 @@ export function PluginsView({ chatContextId, rightSidebarOpen, onToggleRightSide
               >
                 <ToyBrick aria-hidden="true" />
               </NeumorphicButton>
-              <NeumorphicButton
+              <SidebarToggle
                 raised
                 className={`codegraph-inspector-toggle ${styles.headerAction}`}
                 aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
@@ -122,7 +123,7 @@ export function PluginsView({ chatContextId, rightSidebarOpen, onToggleRightSide
                 onClick={onToggleRightSidebar}
               >
                 <PanelRight aria-hidden="true" />
-              </NeumorphicButton>
+              </SidebarToggle>
             </div>
           </>
         )}

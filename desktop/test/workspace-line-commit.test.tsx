@@ -140,16 +140,21 @@ test('the side panel leaves the editor interactive and closes only through its o
 
 test('closing and reopening retains the side panel for transitions without blocking the chat list', async () => {
   await withDOM(async (_window, _container, root) => {
-    const render = (lineCommit: GitLineBlameRequest | null) => <ReviewSidebar open item={null} initialPath={null}
-      lineCommit={lineCommit} onCloseReview={() => {}}><button>Chat list</button></ReviewSidebar>;
+    const render = (lineCommit: GitLineBlameRequest | null) => <>
+      <aside aria-label="Left chats"><button>Chat list</button></aside>
+      <ReviewSidebar open item={null} initialPath={null} lineCommit={lineCommit} onCloseReview={() => {}} />
+    </>;
     await act(async () => root.render(render(request)));
     const panel = document.querySelector('[aria-label="Line commit"]');
     expect(panel).not.toBeNull();
-    expect(document.querySelector('[aria-label="Right sidebar"]')?.getAttribute('aria-hidden')).toBe('true');
+    expect(document.querySelector('[aria-label="Right sidebar"]')).toBeNull();
+    const chats = document.querySelector('[aria-label="Left chats"]');
+    expect(chats?.hasAttribute('inert')).toBe(false);
     await act(async () => root.render(render(null)));
     expect(document.querySelector('[aria-label="Line commit"]')).toBe(panel);
     expect(document.querySelector('[aria-label="Review sidebar"]')?.hasAttribute('inert')).toBe(true);
-    expect(document.querySelector('[aria-label="Right sidebar"]')?.hasAttribute('inert')).toBe(false);
+    expect(document.querySelector('[aria-label="Left chats"]')).toBe(chats);
+    expect(chats?.hasAttribute('inert')).toBe(false);
     await act(async () => root.render(render(request)));
     expect(document.querySelector('[aria-label="Line commit"]')).toBe(panel);
     expect(document.querySelector('[aria-label="Review sidebar"]')?.hasAttribute('inert')).toBe(false);
@@ -196,9 +201,7 @@ test(`${panelName} resizing clamps both panes, cancels safely, and retains the p
       <ReviewSidebar open={open} item={null} initialPath={null}
         lineCommit={panelName === 'line commit' ? lineCommit : null}
         localHistoryPath={panelName === 'local history' && lineCommit ? lineCommit.path : null}
-        onCloseReview={() => {}}>
-        <button>Chat list</button>
-      </ReviewSidebar>
+        onCloseReview={() => {}} />
     </div>;
     try {
       await act(async () => root.render(render()));

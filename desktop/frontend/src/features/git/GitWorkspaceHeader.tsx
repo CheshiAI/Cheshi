@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 
 import {
+  SidebarToggle,
   FilterTab,
   FilterTabList,
   NeumorphicButton,
@@ -92,7 +93,7 @@ export function GitWorkspaceHeader({ controller, rightSidebarOpen, onToggleRight
             >
               <RefreshCw className={refreshing ? styles.spinner : undefined} aria-hidden="true" />
             </NeumorphicButton>
-            <NeumorphicButton
+            <SidebarToggle
               raised
               className="sidebar-heading-action"
               aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
@@ -100,7 +101,7 @@ export function GitWorkspaceHeader({ controller, rightSidebarOpen, onToggleRight
               onClick={onToggleRightSidebar}
             >
               <PanelRight aria-hidden="true" />
-            </NeumorphicButton>
+            </SidebarToggle>
           </div>
         </>
       )}

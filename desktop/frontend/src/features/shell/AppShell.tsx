@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { LiquidGlassPanel } from '../../shared/ui';
+import { LiquidGlassPanel, SidebarToggleVisibility } from '../../shared/ui';
 import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import {
   ChatSessionList,
@@ -72,6 +72,7 @@ export function AppShell() {
   const [localHistoryPath, setLocalHistoryPath] = useState<string | null>(null);
   const closeReview = useCallback(() => { setFileReview(null); setLineCommitTarget(null); setLocalHistoryPath(null); }, []);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
+  const [sidebarPanel, setSidebarPanel] = useState<'files' | 'chats'>('files');
   const openFileReview = useCallback((paneId: string, itemId: string, path?: string) => {
     setLineCommitTarget(null);
     setLocalHistoryPath(null);
@@ -98,7 +99,7 @@ export function AppShell() {
   const attachmentDestination = useRef({ activeView, paneId: workspace.activePaneId });
   attachmentDestination.current = { activeView, paneId: workspace.activePaneId };
   const historySearch = useChatHistorySearch(workspace.activePaneId);
-  const updateResume = useAppUpdateResume({ activeView, rightSidebarOpen, setActiveView, setRightSidebarOpen,
+  const updateResume = useAppUpdateResume({ activeView, rightSidebarOpen, setActiveView, setRightSidebarOpen, sidebarPanel, setSidebarPanel,
     blockedReason: temporaryChatOpen ? 'Close the temporary chat before updating.'
       : historyChoice || deleteChoice ? 'Close the conversation dialog before updating.' : null });
   const accountSwitchReason = updateResume.busy ? 'Wait for update preparation or workspace recovery to finish.' : temporaryChatOpen ? 'Close the temporary chat before switching accounts.'
@@ -131,7 +132,7 @@ export function AppShell() {
       item.kind === 'activity' && item.activity === 'files' && item.id === fileReview?.itemId
     )) ?? null;
   const reviewing = Boolean(reviewedItem || lineCommitTarget || localHistoryPath !== null);
-  const sidebarResize = useSidebarResize({ rightOpen: rightSidebarOpen && !reviewing,
+  const sidebarResize = useSidebarResize({ rightOpen: false,
     reviewing: rightSidebarOpen && reviewing, disabled: updateResume.busy || workspace.accountSwitchPending });
 
   const openChat = (sessionId: string): void => {
@@ -243,6 +244,7 @@ export function AppShell() {
 
   return (
     <ChatDraftAttachmentsContext.Provider value={draftAttachments}>
+    <SidebarToggleVisibility.Provider value={reviewing}>
     <div className={`app-shell ${styles.shell}`}>
       {updateResume.error && <div role="alert">{updateResume.error}</div>}
       <div
@@ -253,11 +255,35 @@ export function AppShell() {
         data-sidebar-resizing={sidebarResize.resizing ?? undefined}
         data-active-view={activeView}
         data-file-review={reviewedItem || lineCommitTarget || localHistoryPath !== null ? 'true' : undefined}
-        data-right-sidebar-open={rightSidebarOpen ? 'true' : 'false'}
+        data-right-sidebar-open={rightSidebarOpen && reviewing ? 'true' : 'false'}
       >
         <LiquidGlassPanel className="sidebar-column" inert={workspace.accountSwitchPending}>
           <WindowChrome />
           <Sidebar
+            activePanel={sidebarPanel}
+            onPanelChange={setSidebarPanel}
+            chatPanel={<ChatSessionList
+              search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
+                onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
+                onFocus={() => { if (activeView !== 'search') navigate('search'); }} />}
+              activeSessionId={chat?.state.activeSessionId ?? null}
+              loading={workspace.sessionHistory.loading}
+              newChatDisabled={chatSessionSelectionDisabled}
+              responseThreadIds={workspace.responseThreadIds}
+              selectionDisabled={chatSessionSelectionDisabled}
+              sessions={workspace.sessionHistory.sessions}
+              onNew={newChat}
+              onTemporaryChat={() => { if (!workspace.accountSwitchPending) setTemporaryChatOpen(true); }}
+              temporaryChatOpen={temporaryChatOpen}
+              onOpen={openChat}
+              deleteReason={workspace.deleteSessionReason}
+              onDelete={(sessionId) => {
+                if (workspace.deleteSessionReason(sessionId)) return;
+                workspace.dismissError();
+                chat?.dismissError();
+                setDeleteChoice({ sessionId, title: chat?.state.sessions.find((session) => session.id === sessionId)?.title ?? sessionId });
+              }}
+            />}
             activeView={activeView}
             selectedFilePath={localHistoryPath ?? editorSelectedPath}
             onNavigate={navigate}
@@ -306,7 +332,7 @@ export function AppShell() {
               workspace={workspace}
               active={activeView === 'chat' && !primaryPaneClosed}
               onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
-              sessionSyncEnabled={rightSidebarOpen && !fileReview && !lineCommitTarget && localHistoryPath === null}
+              sessionSyncEnabled={workspace.sessionHistory.loading || sidebarPanel === 'chats'}
               onReviewFileChanges={openFileReview}
               historyTarget={historyTarget}
               onHistoryTargetHandled={handleHistoryTarget}
@@ -361,32 +387,7 @@ export function AppShell() {
           lineCommit={lineCommitTarget}
           localHistoryPath={localHistoryPath}
           localHistoryDirty={localHistoryPath !== null && editorDirtyPaths.includes(localHistoryPath)}
-        >
-          <ChatSessionList
-            search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
-              onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
-              onFocus={() => { if (activeView !== 'search') navigate('search'); }} />}
-            activeSessionId={chat?.state.activeSessionId ?? null}
-            loading={workspace.sessionHistory.loading}
-            newChatDisabled={chatSessionSelectionDisabled}
-            responseThreadIds={workspace.responseThreadIds}
-            selectionDisabled={chatSessionSelectionDisabled}
-            sessions={workspace.sessionHistory.sessions}
-            onNew={newChat}
-            onTemporaryChat={() => { if (!workspace.accountSwitchPending) setTemporaryChatOpen(true); }}
-            temporaryChatOpen={temporaryChatOpen}
-            onOpen={openChat}
-            deleteReason={workspace.deleteSessionReason}
-            onDelete={(sessionId) => {
-              if (workspace.deleteSessionReason(sessionId)) return;
-              workspace.dismissError();
-              chat?.dismissError();
-              setDeleteChoice({ sessionId, title: chat?.state.sessions.find((session) => session.id === sessionId)?.title ?? sessionId });
-            }}
-          />
-        </ReviewSidebar>
-        {rightSidebarOpen && !reviewing && <div className={`${styles.sidebarResizer} ${styles.rightResizer}`}
-          {...sidebarResize.separatorProps('right')} />}
+        />
       </div>
       <WorkspaceStatusBar onAccountInitialLoad={accountReady} onIndexInitialLoad={indexReady}
         selectionDisabledReason={accountSwitchReason}
@@ -405,6 +406,7 @@ export function AppShell() {
         onOpened={() => { setHistoryChoice(null); closeReview(); setActiveView('chat'); setPrimaryPaneClosed(false); }}
         onClose={() => setHistoryChoice(null)} />}
     </div>
+    </SidebarToggleVisibility.Provider>
     </ChatDraftAttachmentsContext.Provider>
   );
 }

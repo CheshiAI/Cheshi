@@ -1,6 +1,7 @@
 import { AlertTriangle, PanelRight, Plus, SquareTerminal, X } from 'lucide-react';
 
 import {
+  SidebarToggle,
   draggableWindowRegionStyle,
   FlatTab,
   FlatTabList,
@@ -84,7 +85,7 @@ export function TerminalWorkspace({
               >
                 <Plus aria-hidden="true" />
               </NeumorphicButton>
-              <NeumorphicButton
+              <SidebarToggle
                 raised
                 type="button"
                 aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
@@ -93,7 +94,7 @@ export function TerminalWorkspace({
                 onClick={onToggleRightSidebar}
               >
                 <PanelRight aria-hidden="true" />
-              </NeumorphicButton>
+              </SidebarToggle>
               {onCloseWorkspace && <NeumorphicButton raised size="icon"
                 aria-label="Close Terminal workspace" title="Close Terminal workspace"
                 onClick={onCloseWorkspace}><X aria-hidden="true" /></NeumorphicButton>}

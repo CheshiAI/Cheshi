@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { NeumorphicButton } from '../../shared/ui';
+import { NeumorphicButton, SidebarCarousel } from '../../shared/ui';
 import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import { WorkspaceFileTree } from './WorkspaceFileTree';
 import { WorkspaceSelector } from './WorkspaceSelector';
@@ -33,6 +33,9 @@ const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceVi
 ];
 
 interface SidebarProps {
+  chatPanel?: ReactNode;
+  activePanel?: 'files' | 'chats';
+  onPanelChange?: (panel: 'files' | 'chats') => void;
   activeView: WorkspaceView;
   selectedFilePath: string | null;
   onNavigate: (view: WorkspaceView) => void;
@@ -42,6 +45,9 @@ interface SidebarProps {
 }
 
 export function Sidebar({
+  chatPanel,
+  activePanel = 'files',
+  onPanelChange,
   activeView,
   selectedFilePath,
   onNavigate,
@@ -49,16 +55,15 @@ export function Sidebar({
   onOpenWorkspaceFile,
   onOpenLocalHistory,
 }: SidebarProps) {
+  const files = <WorkspaceFileTree selectedPath={selectedFilePath}
+    onEntryMutation={onWorkspaceEntryMutation} onOpenFile={onOpenWorkspaceFile} onOpenLocalHistory={onOpenLocalHistory} />;
   return (
     <aside className="sidebar">
       <div className="sidebar-panel-content">
         <div className="sidebar-content-primary">
-          <WorkspaceFileTree
-            selectedPath={selectedFilePath}
-            onEntryMutation={onWorkspaceEntryMutation}
-            onOpenFile={onOpenWorkspaceFile}
-            onOpenLocalHistory={onOpenLocalHistory}
-          />
+          {chatPanel && onPanelChange ? <SidebarCarousel activeId={activePanel}
+            onSelect={panel => { if (panel === 'files' || panel === 'chats') onPanelChange(panel); }}
+            slides={[{ id: 'files', label: 'Files', content: files }, { id: 'chats', label: 'Chats', content: chatPanel }]} /> : files}
         </div>
 
         <div className="sidebar-content-secondary">

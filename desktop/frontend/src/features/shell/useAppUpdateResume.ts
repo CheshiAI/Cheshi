@@ -10,9 +10,11 @@ let initialSnapshot: Promise<unknown> | undefined;
 export function useAppUpdateResume(options: {
   activeView: WorkspaceView;
   rightSidebarOpen: boolean;
+  sidebarPanel: 'files' | 'chats';
   blockedReason: string | null;
   setActiveView(view: WorkspaceView): void;
   setRightSidebarOpen(open: boolean): void;
+  setSidebarPanel(panel: 'files' | 'chats'): void;
 }) {
   const current = useRef(options);
   current.current = options;
@@ -30,7 +32,8 @@ export function useAppUpdateResume(options: {
     const unregister = updateResumeCoordinator.register('shell', {
       capture() {
         if (current.current.blockedReason) throw new Error(current.current.blockedReason);
-        return { activeView: current.current.activeView, rightSidebarOpen: current.current.rightSidebarOpen };
+        return { activeView: current.current.activeView, rightSidebarOpen: current.current.rightSidebarOpen,
+          sidebarPanel: current.current.sidebarPanel };
       },
       restore(value) {
         const record = resumeRecord(value);
@@ -40,6 +43,7 @@ export function useAppUpdateResume(options: {
         const view = restorableViews.find((entry) => entry === record.activeView) ?? 'chat';
         current.current.setActiveView(view);
         current.current.setRightSidebarOpen(record.rightSidebarOpen);
+        current.current.setSidebarPanel(record.sidebarPanel === 'chats' ? 'chats' : 'files');
       },
     });
     setBusy(true);

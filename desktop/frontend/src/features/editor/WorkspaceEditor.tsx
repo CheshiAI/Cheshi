@@ -17,6 +17,7 @@ import {
 import { useEffect } from 'react';
 
 import {
+  SidebarToggle,
   draggableWindowRegionStyle,
   FlatTab,
   FlatTabList,
@@ -228,13 +229,13 @@ export function WorkspaceEditor({
               >
                 <PanelBottom aria-hidden="true" />
               </NeumorphicButton>
-              {onToggleRightSidebar && <NeumorphicButton raised size="icon"
+              {onToggleRightSidebar && <SidebarToggle raised size="icon"
                 aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
                 title={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
                 aria-pressed={rightSidebarOpen} aria-expanded={rightSidebarOpen}
                 onClick={onToggleRightSidebar}>
                 <PanelRight aria-hidden="true" />
-              </NeumorphicButton>}
+              </SidebarToggle>}
             </div>
           </>
         )}

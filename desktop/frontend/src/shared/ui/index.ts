@@ -10,6 +10,8 @@ export { LiquidGlassSelect, type LiquidGlassSelectOption } from './LiquidGlassSe
 export { LoadingIndicator, LoadingState, type LoadingStateType } from './LoadingState';
 export { Modal } from './Modal';
 export { NeumorphicButton } from './NeumorphicButton';
+export { SidebarCarousel, type SidebarSlide } from './SidebarCarousel';
+export { SidebarToggle, SidebarToggleVisibility } from './SidebarToggle';
 export { PillDropdownButton } from './PillDropdownButton';
 export { PillButton } from './PillButton';
 export { NeumorphicCheckbox } from './NeumorphicCheckbox';

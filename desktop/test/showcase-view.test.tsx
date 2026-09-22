@@ -226,6 +226,7 @@ function viewHarness(available = true, navigate?: ShowcaseApi['navigate']) {
     '../../cheshiDesktop': { cheshiDesktop: available ? { showcase: api } : undefined },
     '../../shared/errorMessage': { errorMessage: (value: Error) => value.message },
     '../../shared/ui': { NeumorphicButton: ({ children }: ElementProps) => <button>{children}</button>,
+      SidebarToggle: ({ children }: ElementProps) => <button>{children}</button>,
       LoadingState: ({ label }: { label: string }) => <div role="status" aria-label={label}>{label}</div>,
       TieredHeader: ({ primary, secondary }: ElementProps) => <header>{primary}{secondary}</header> },
     './showcaseViewport': { observeShowcaseViewport(_element: unknown, _api: ShowcaseApi, page: ShowcasePage, onError: (error: unknown) => void) {

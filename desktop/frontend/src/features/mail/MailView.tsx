@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { ChevronLeft, ChevronRight, Folder, Mail, PanelRight, RefreshCw, SquarePen, Flag } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { LiquidGlassPanel, NeumorphicButton, TwoTierHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
+import { SidebarToggle, LiquidGlassPanel, NeumorphicButton, TwoTierHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
 import { mailboxKey } from '../../../../shared/apple-mail';
 import type { AppleMailApi, Mailbox } from '../../../../shared/apple-mail';
 import { MailModel } from './mailModel';
@@ -40,8 +40,8 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar }: Mai
           onClick={() => void composer.start()}><SquarePen aria-hidden="true" /></NeumorphicButton>
         <NeumorphicButton raised size="icon" aria-label="메일 새로고침" disabled={!state.connected || busy}
           onClick={() => void model.connect()}><RefreshCw aria-hidden="true" /></NeumorphicButton>
-        <NeumorphicButton raised size="icon" aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-          aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></NeumorphicButton>
+        <SidebarToggle raised size="icon" aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
+          aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></SidebarToggle>
       </div>
     </>} />
     {composition.notice && <p className={styles.notice} role="status">{composition.notice}</p>}

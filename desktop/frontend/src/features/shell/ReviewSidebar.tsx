@@ -1,5 +1,4 @@
-import { useState, type ReactNode } from 'react';
-import { LiquidGlassPanel } from '../../shared/ui';
+import { useState } from 'react';
 import { FileChangesReviewPanel, type ChatActivityItem } from '../chat';
 import { WorkspaceLineCommitPanel } from '../editor/WorkspaceLineCommitPanel';
 import type { GitLineBlameRequest } from '../../../../shared/git-line-blame';
@@ -15,11 +14,10 @@ interface ReviewSidebarProps {
   lineCommit?: GitLineBlameRequest | null;
   localHistoryPath?: string | null;
   localHistoryDirty?: boolean;
-  children: ReactNode;
 }
 
 export function ReviewSidebar({ open, item, initialPath, lineCommit = null, localHistoryPath = null,
-  localHistoryDirty = false, onCloseReview, children }: ReviewSidebarProps) {
+  localHistoryDirty = false, onCloseReview }: ReviewSidebarProps) {
   const reviewing = item !== null || lineCommit !== null || localHistoryPath !== null;
   const resizableOpen = open && (lineCommit !== null || localHistoryPath !== null);
   const resize = useReviewSidebarResize(resizableOpen, localHistoryPath !== null ? 'local history' : 'line commit');
@@ -39,18 +37,7 @@ export function ReviewSidebar({ open, item, initialPath, lineCommit = null, loca
     });
   }
 
-  return <>
-    <LiquidGlassPanel
-      as="aside"
-      className="right-sidebar-column"
-      data-open={open && !reviewing ? 'true' : 'false'}
-      aria-hidden={!open || reviewing}
-      aria-label="Right sidebar"
-      inert={!open || reviewing}
-    >
-      {children}
-    </LiquidGlassPanel>
-    <aside ref={resize.slotRef} className={styles.reviewSlot} data-open={open && reviewing ? 'true' : 'false'}
+  return <aside ref={resize.slotRef} className={styles.reviewSlot} data-open={open && reviewing ? 'true' : 'false'}
       data-resizable={retainedReview.lineCommit || retainedReview.localHistoryPath !== null ? 'true' : undefined}
       data-resizing={resize.resizing ? 'true' : undefined} style={resize.style}
       aria-label="Review sidebar"
@@ -68,6 +55,5 @@ export function ReviewSidebar({ open, item, initialPath, lineCommit = null, loca
           onClose={onCloseReview}
         />}
       </div>
-    </aside>
-  </>;
+    </aside>;
 }

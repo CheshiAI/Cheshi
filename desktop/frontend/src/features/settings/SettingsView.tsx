@@ -2,7 +2,7 @@ import { Info, Palette, KeyRound, Link, PanelRight, Save, Settings, Trash2 } fro
 import { useEffect, useRef, useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { SettingsApi, TypeSafeSettings } from '../../../../shared/settings';
-import { LiquidGlassPanel, NeumorphicButton, NeumorphicTextField, TwoTierHeader,
+import { SidebarToggle, LiquidGlassPanel, NeumorphicButton, NeumorphicTextField, TwoTierHeader,
   draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
 import styles from './SettingsView.module.css';
 import { AppearanceSettings } from './AppearanceSettings';
@@ -77,9 +77,9 @@ export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = che
         </NeumorphicButton>
         <h1>Settings</h1>
       </div>
-      <NeumorphicButton raised size="icon" style={nonDraggableWindowRegionStyle}
+      <SidebarToggle raised size="icon" style={nonDraggableWindowRegionStyle}
         aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-        aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></NeumorphicButton>
+        aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></SidebarToggle>
     </>} />
     <div className={styles.body}>
       <LiquidGlassPanel as="aside" className={styles.sidebar} aria-label="Settings categories">

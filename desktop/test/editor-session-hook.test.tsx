@@ -134,11 +134,15 @@ test('a failed update recovery allows file use without overwriting saved metadat
 });
 
 test('app update recovery selects normal restore or update preservation only after restoration completes', async () => {
-  for (const update of [false, true]) {
+  for (const mode of ['normal', 'update', 'legacy'] as const) {
+    const update = mode !== 'normal';
     const coordinator = createUpdateResumeCoordinator();
     const restored = createDeferred<void>();
     coordinator.register('editor', { capture() {}, restore: () => restored.promise });
-    const snapshot = update ? { schemaVersion: 1, workspaceRoot: '/workspace', createdAt: Date.now(), sections: { editor: {} } } : null;
+    const snapshot = update ? { schemaVersion: 1, workspaceRoot: '/workspace', createdAt: Date.now(), sections: {
+      editor: {}, shell: { activeView: 'chat', rightSidebarOpen: true, ...(mode === 'update' ? { sidebarPanel: 'chats' } : {}) },
+    } } : null;
+    let restoredPanel: string | undefined;
     const hook = harness<typeof useAppUpdateResume>('shell/useAppUpdateResume.ts', 'useAppUpdateResume', {
       '../../cheshiDesktop': { cheshiDesktop: {
         workspaceRoot: '/workspace', async getUpdateResume() { return snapshot; }, async saveUpdateResume() {},
@@ -147,13 +151,14 @@ test('app update recovery selects normal restore or update preservation only aft
       } },
       './updateWorkspaceResume': { updateResumeCoordinator: coordinator, resumeRecord },
     });
-    const render = () => hook.render(use => use({ activeView: 'chat', rightSidebarOpen: true, blockedReason: null,
-      setActiveView() {}, setRightSidebarOpen() {} }));
+    const render = () => hook.render(use => use({ activeView: 'chat', rightSidebarOpen: true, sidebarPanel: 'files', blockedReason: null,
+      setActiveView() {}, setRightSidebarOpen() {}, setSidebarPanel(panel) { restoredPanel = panel; } }));
     expect(render().editorSessionMode).toBe('waiting');
     await tick();
     if (update) expect(render().editorSessionMode).toBe('waiting');
     restored.resolve();
     await tick();
     expect(render().editorSessionMode).toBe(update ? 'preserve' : 'restore');
+    expect(restoredPanel).toBe(mode === 'update' ? 'chats' : mode === 'legacy' ? 'files' : undefined);
   }
 });

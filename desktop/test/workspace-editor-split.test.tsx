@@ -79,8 +79,9 @@ function props<T>(tree: ReactNode, name: string): T {
   return node.props as T;
 }
 
-function shellHarness() {
+function shellHarness(initialHistoryLoading = false) {
   const app = hooks();
+  let historyLoading = initialHistoryLoading;
   let openSearch = () => {};
   const attachments = draftAttachmentModule.createChatDraftAttachments();
   const modules: Record<string, unknown> = {
@@ -89,7 +90,7 @@ function shellHarness() {
     '../chat/chatDraftAttachments': { ...draftAttachmentModule, createChatDraftAttachments: () => attachments },
     '../notes/appleNotesModel': { appleNoteAttachment },
     '../chat/useChatWorkspace': { useChatWorkspace: () => ({ activePaneId: 'chat-a', controllers: {}, activeController: { state: { phase: 'ready' } }, relay: { running: false },
-      sessionHistory: { loading: false, sessions: [] }, responseThreadIds: [], accountSwitchPending: false }) },
+      sessionHistory: { loading: historyLoading, sessions: [] }, responseThreadIds: [], accountSwitchPending: false }) },
     '../chat/useChatHistorySearch': { useChatHistorySearch: () => ({ clear() {} }) },
     './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
     './useSidebarResize': { useSidebarResize: () => ({ layoutRef: { current: null }, style: {}, resizing: null,
@@ -107,13 +108,36 @@ function shellHarness() {
     '../home/BlankView': ['BlankView'], '../navigation/Sidebar': ['Sidebar'], '../plugins': ['PluginsView'],
     '../terminal': ['TerminalWorkspace'], '../showcase/ShowcaseView': ['ShowcaseView'],
     '../settings/SettingsView': ['SettingsView'],
+    '../mail/MailView': ['MailView'], '../calendar/CalendarView': ['CalendarView'],
     './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],
     '../editor/LocalHistoryPage': ['LocalHistoryPage'], './WorkspaceEditorSplit': ['WorkspaceEditorSplit'],
     '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'], '../notes/NotesView': ['NotesView'],
   })) modules[path] = Object.fromEntries(names.map(name => [name, name]));
+  modules['../../shared/ui'] = { LiquidGlassPanel: 'LiquidGlassPanel', SidebarToggleVisibility: { Provider: 'SidebarToggleVisibility' } };
   const Shell = load<typeof AppShell>('features/shell/AppShell.tsx', 'AppShell', modules, { document: {} });
-  return { attachments, render: () => app.render(() => Shell()), openSearch: () => openSearch() };
+  return { attachments, render: () => app.render(() => Shell()), openSearch: () => openSearch(),
+    finishInitialHistory: () => { historyLoading = false; } };
 }
+
+test('left carousel retains navigation and loads initial chats before limiting refresh to its visible panel', () => {
+  const app = shellHarness(true);
+  const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
+  const chat = () => props<ComponentProps<typeof ChatWorkspace>>(app.render(), 'ChatWorkspace');
+  expect(sidebar().activePanel).toBe('files');
+  expect(chat().sessionSyncEnabled).toBe(true);
+  expect(sidebar().chatPanel).toBeDefined();
+  expect(props<{ value: boolean }>(app.render(), 'SidebarToggleVisibility').value).toBe(false);
+  app.finishInitialHistory();
+  expect(chat().sessionSyncEnabled).toBe(false);
+  sidebar().onPanelChange!('chats');
+  expect(sidebar().activePanel).toBe('chats');
+  expect(chat().sessionSyncEnabled).toBe(true);
+  sidebar().onNavigate('settings');
+  expect(sidebar().activePanel).toBe('chats');
+  expect(elements(app.render()).some(element => element.type === 'SettingsView')).toBe(true);
+  sidebar().onPanelChange!('files');
+  expect(chat().sessionSyncEnabled).toBe(false);
+});
 
 test('file search keeps the current page until a result opens in the standalone editor', () => {
   const app = shellHarness();
@@ -332,27 +356,27 @@ test('only the standalone editor controls the shared right sidebar and preserves
   expect(editor().rightSidebarOpen).toBe(true);
 });
 
-test('sidebar handles follow chat sidebar visibility and leave review resizing to the review panel', () => {
+test('files and chats share only the left resize handle and review resizing stays in its panel', () => {
   const app = shellHarness();
   const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   const handles = () => elements(app.render()).flatMap(element => {
     const attributes = element.props as HTMLAttributes<HTMLElement>;
     return attributes.role === 'separator' ? [attributes['aria-label']] : [];
   });
-  const toggle = () => props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace').onToggleRightSidebar();
-  expect(handles()).toEqual(['Resize left sidebar', 'Resize right sidebar']);
-  toggle();
+  const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
   expect(handles()).toEqual(['Resize left sidebar']);
-  toggle();
-  expect(handles()).toEqual(['Resize left sidebar', 'Resize right sidebar']);
+  sidebar().onPanelChange!('chats');
+  expect(handles()).toEqual(['Resize left sidebar']);
+  sidebar().onPanelChange!('files');
+  expect(handles()).toEqual(['Resize left sidebar']);
   props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor')
     .onShowLineCommit({ path: 'sample.ts', line: 1, content: 'sample' });
   expect(handles()).toEqual(['Resize left sidebar']);
   props<ComponentProps<typeof ReviewSidebar>>(app.render(), 'ReviewSidebar').onCloseReview();
-  expect(handles()).toEqual(['Resize left sidebar', 'Resize right sidebar']);
+  expect(handles()).toEqual(['Resize left sidebar']);
 });
 
-test('line commits open in the shared sidebar, replace the requested line, and restore chats on close', () => {
+test('line commits remain independent of the selected left panel and keep chats available on close', () => {
   const app = shellHarness();
   const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   const editor = () => props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
@@ -369,6 +393,9 @@ test('line commits open in the shared sidebar, replace the requested line, and r
   expect(editor().target).toBe(editorTarget);
   expect(split().mode).toBe('split');
   expect(chat().sessionSyncEnabled).toBe(false);
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onPanelChange!('chats');
+  expect(chat().sessionSyncEnabled).toBe(true);
+  expect(props<{ value: boolean }>(app.render(), 'SidebarToggleVisibility').value).toBe(true);
   const next = { ...request, line: 2 };
   editor().onShowLineCommit(next);
   expect(review().lineCommit).toBe(next);
@@ -380,6 +407,8 @@ test('line commits open in the shared sidebar, replace the requested line, and r
   review().onCloseReview();
   expect(review().lineCommit).toBeNull();
   expect(chat().sessionSyncEnabled).toBe(true);
+  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('chats');
+  expect(props<{ value: boolean }>(app.render(), 'SidebarToggleVisibility').value).toBe(false);
   editor().onShowLineCommit(request);
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onNavigate('git');
   expect(review().lineCommit).toBeNull();

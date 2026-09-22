@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { SHOWCASE_URLS, type ShowcaseAction, type ShowcasePage, type ShowcaseState } from '../../../../shared/showcase';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { errorMessage } from '../../shared/errorMessage';
-import { LoadingState, NeumorphicButton, TieredHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
+import { SidebarToggle, LoadingState, NeumorphicButton, TieredHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
 import { observeShowcaseViewport } from './showcaseViewport';
 import styles from './ShowcaseView.module.css';
 
@@ -82,8 +82,8 @@ export function ShowcaseView({ active, blocked, rightSidebarOpen, onToggleRightS
               <NeumorphicButton size="standard" active={page === 'submission'} aria-pressed={page === 'submission'}
                 onClick={() => setPage('submission')}>Submit project</NeumorphicButton>
             </div>
-            <NeumorphicButton raised size="icon" aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-              aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></NeumorphicButton>
+            <SidebarToggle raised size="icon" aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
+              aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></SidebarToggle>
           </div>
         </>}
         secondary={<div className={styles.browserBar} style={nonDraggableWindowRegionStyle}>
