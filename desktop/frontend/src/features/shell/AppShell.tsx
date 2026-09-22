@@ -31,7 +31,6 @@ import { Sidebar, type WorkspaceView } from '../navigation/Sidebar';
 import { SidebarRail } from '../navigation/SidebarRail';
 import { PluginsView } from '../plugins';
 import { TerminalWorkspace } from '../terminal';
-import { ShowcaseView } from '../showcase/ShowcaseView';
 import { SettingsView } from '../settings/SettingsView';
 import { ReviewSidebar } from './ReviewSidebar';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
@@ -48,7 +47,7 @@ import { appleNoteAttachment } from '../notes/appleNotesModel';
 import type { AppleNote } from '../../../../shared/apple-notes';
 import { useSidebarResize } from './useSidebarResize';
 
-const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase', 'notes', 'calendar', 'mail', 'settings'];
+const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'notes', 'calendar', 'mail', 'settings'];
 
 export function AppShell() {
   const [accountLoaded, setAccountLoaded] = useState(false);
@@ -371,10 +370,6 @@ export function AppShell() {
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
           )}
-          <ShowcaseView active={activeView === 'showcase'}
-            blocked={fileSearchOpen || temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
-            rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
           {activeView === 'settings' && <SettingsView rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen(currentOpen => !currentOpen)} />}
           <TerminalWorkspace

@@ -5,7 +5,6 @@ import {
   Mail,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelsTopLeft,
   Settings,
   SquareTerminal,
   StickyNote,
@@ -28,7 +27,6 @@ const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceVi
   { label: 'Terminal', icon: <SquareTerminal aria-hidden="true" />, view: 'terminal' },
   { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
   { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },
-  { label: 'Showcase', icon: <PanelsTopLeft aria-hidden="true" />, view: 'showcase' },
   { label: 'Settings', icon: <Settings aria-hidden="true" />, view: 'settings' },
 ];
 

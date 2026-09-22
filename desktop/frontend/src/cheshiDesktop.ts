@@ -653,7 +653,6 @@ export interface CodexChatConfigurationRequest {
 
 export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpdateResumeApi>, Partial<KeepAwakeApi> {
   workspaceManagement?: WorkspaceManagementApi;
-  showcase?: import('../../shared/showcase').ShowcaseApi;
   settings?: import('../../shared/settings').SettingsApi;
   appearance?: import('../../shared/window-appearance').WindowAppearanceApi;
   platform: string;

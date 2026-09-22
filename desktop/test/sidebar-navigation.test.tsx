@@ -25,7 +25,7 @@ function elements(node: ReactNode): ReactElement<ElementProps>[] {
 }
 
 test('Codex rail item uses page navigation when returning from another view or selecting it again', () => {
-  for (const activeView of ['notes', 'calendar', 'mail', 'terminal', 'git', 'plugins', 'editor', 'codegraph', 'chat', 'search', 'showcase'] as const) {
+  for (const activeView of ['notes', 'calendar', 'mail', 'terminal', 'git', 'plugins', 'editor', 'codegraph', 'chat', 'search'] as const) {
     const destinations: WorkspaceView[] = [];
     const rail = SidebarRail({ activeView, sidebarOpen: true, onNavigate: view => destinations.push(view), onToggleSidebar() {} });
     const codex = elements(rail).find(element => element.type === SidebarRailButton && element.props.label === 'Codex');
@@ -42,13 +42,13 @@ test('rail management items retain their order and destinations', () => {
   const destinations: WorkspaceView[] = [];
   const rail = SidebarRail({ activeView: 'chat', sidebarOpen: true,
     onNavigate: view => destinations.push(view), onToggleSidebar() {} });
-  const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 10);
+  const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 9);
   expect(navigation.map(element => element.props.label)).toEqual([
       'Relationship Graph', 'Codex', 'Memo', 'Calendar', 'Mail',
-      'Terminal', 'Github', 'Plugins', 'Showcase', 'Settings',
+      'Terminal', 'Github', 'Plugins', 'Settings',
     ]);
   for (const element of navigation) if (element.props.label !== 'Codex') element.props.onClick?.();
-  expect(destinations).toEqual(['codegraph', 'notes', 'calendar', 'mail', 'terminal', 'git', 'plugins', 'showcase', 'settings']);
+  expect(destinations).toEqual(['codegraph', 'notes', 'calendar', 'mail', 'terminal', 'git', 'plugins', 'settings']);
 });
 
 test('rail bottom controls expose caffeine, help, sidebar and project actions', () => {

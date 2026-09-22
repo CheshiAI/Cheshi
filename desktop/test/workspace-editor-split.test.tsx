@@ -109,7 +109,7 @@ function shellHarness(initialHistoryLoading = false) {
     '../editor': ['WorkspaceEditor'], '../git': ['GitWorkspace'], '../graph': ['CodeGraphView'],
     '../home/BlankView': ['BlankView'], '../navigation/Sidebar': ['Sidebar'], '../navigation/SidebarRail': ['SidebarRail'],
     '../plugins': ['PluginsView'],
-    '../terminal': ['TerminalWorkspace'], '../showcase/ShowcaseView': ['ShowcaseView'],
+    '../terminal': ['TerminalWorkspace'],
     '../settings/SettingsView': ['SettingsView'],
     '../mail/MailView': ['MailView'], '../calendar/CalendarView': ['CalendarView'],
     './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],
@@ -481,7 +481,7 @@ for (const [view, component] of [['codegraph', 'CodeGraphView'], ['terminal', 'T
   });
 }
 
-for (const view of ['git', 'plugins', 'showcase'] as const) {
+for (const view of ['git', 'plugins'] as const) {
   test(`${view} uses the full workspace while retaining file tabs for other pages`, () => {
     const app = shellHarness();
     const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');

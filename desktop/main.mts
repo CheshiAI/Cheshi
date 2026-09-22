@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, safeStorage, session, shell, Tray, WebContentsView } from 'electron';
+import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, safeStorage, shell, Tray } from 'electron';
 import { product } from '../config/product.mts';
 import { aboutBackgroundColor, aboutPage } from './lib/about-page.mts';
 import { registerSelectionCopy } from './lib/selection-copy.mts';
@@ -21,7 +21,6 @@ import { loadMenuBarFont } from './lib/menu-bar-font.mts';
 import { loadMenuBarLogo } from './lib/menu-bar-logo.mts';
 import { createAccountUsageBackground } from './lib/account-usage-background.mts';
 import { getCodexAccountProfiles } from './lib/codex-account-profiles.mts';
-import { createShowcaseBrowser } from './lib/showcase-browser.mts';
 import { createSettingsService } from './lib/settings-service.mts';
 import { registerSettingsIpc } from './lib/settings-ipc.mts';
 import { checkTypeSafeConnection } from './lib/typesafe-connection.mts';
@@ -166,7 +165,6 @@ let openingStartupWindow = false;
 
 function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntime>[0]) {
   const source = usageTray?.register();
-  let showcase: ReturnType<typeof createShowcaseBrowser> | undefined;
   let settingsIpc: ReturnType<typeof registerSettingsIpc> | undefined;
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try {
@@ -182,24 +180,13 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       try {
         const window = await runtime.start();
         source?.attach(window);
-        showcase ??= createShowcaseBrowser({
-          window, ipc: options.scope.ipc,
-          createView: configuration => {
-            const view = new WebContentsView({ ...configuration,
-              webPreferences: { ...configuration.webPreferences, preload: selectionCopyPreload } });
-            registerSelectionCopy(view.webContents, clipboard);
-            return view;
-          },
-          session: session.fromPartition(`cheshi-showcase-${window.webContents.id}`),
-          openExternal: url => shell.openExternal(url),
-        });
         return window;
       }
       catch (error) { source?.dispose(); throw error; }
     },
     show: () => runtime.show(),
     async dispose() {
-      try { settingsIpc?.dispose(); showcase?.dispose(); }
+      try { settingsIpc?.dispose(); }
       finally { try { await runtime.dispose(); } finally { source?.dispose(); } }
     },
   };

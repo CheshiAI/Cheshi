@@ -94,7 +94,6 @@ function createHarness() {
     '../calendar/CalendarView': { CalendarView: 'CalendarView' },
     '../plugins': { PluginsView: 'PluginsView' },
     '../terminal': { TerminalWorkspace: 'TerminalWorkspace' },
-    '../showcase/ShowcaseView': { ShowcaseView: 'ShowcaseView' },
     '../settings/SettingsView': { SettingsView: 'SettingsView' },
     './ReviewSidebar': { ReviewSidebar: 'ReviewSidebar' },
     './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },

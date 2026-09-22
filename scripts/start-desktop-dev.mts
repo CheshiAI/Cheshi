@@ -190,7 +190,6 @@ function handleMainSourceChange(changedPath: string): void {
     path.join(rootDirectory, 'desktop', 'shared', 'apple-calendar.ts'),
     path.join(rootDirectory, 'desktop', 'lib', 'settings-preload.cts'),
     path.join(rootDirectory, 'desktop', 'lib', 'workspace-feature-preload.cts'),
-    path.join(rootDirectory, 'desktop', 'lib', 'browser-preload.cts'),
     path.join(rootDirectory, 'desktop', 'shared', 'settings.ts'),
     path.join(rootDirectory, 'desktop', 'lib', 'app-update-preload.cts'),
     path.join(rootDirectory, 'desktop', 'shared', 'app-update.ts')].includes(changedPath)) {
@@ -226,7 +225,7 @@ function watchMainSources(): FSWatcher[] {
     path.join(rootDirectory, 'desktop', 'bootstrap.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'development-shutdown.mts'),
     path.join(rootDirectory, 'desktop', 'main.mts'),
-    ...['typesafe-key.mts', 'typesafe-connection.mts', 'browser-preload.cts', 'settings-service.mts', 'settings-ipc.mts', 'settings-preload.cts', 'workspace-feature-preload.cts'].map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
+    ...['typesafe-key.mts', 'typesafe-connection.mts', 'settings-service.mts', 'settings-ipc.mts', 'settings-preload.cts', 'workspace-feature-preload.cts'].map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
     path.join(rootDirectory, 'desktop', 'shared', 'settings.ts'),
     ...['app-release-checker.mts', 'app-update-service.mts', 'app-update-preview.mts', 'app-update-resume.mts',
       'app-update-download.mts', 'app-update-installer.mts', 'app-update-preload.cts']
