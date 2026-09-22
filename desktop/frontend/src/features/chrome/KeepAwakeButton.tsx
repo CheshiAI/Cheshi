@@ -1,11 +1,14 @@
-import { Play, Square } from 'lucide-react';
+import { Coffee, Play, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { KeepAwakeApi, KeepAwakeState } from '../../../../shared/keep-awake';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { NeumorphicButton, StatusToast, nonDraggableWindowRegionStyle, type StatusToastMessage } from '../../shared/ui';
+import { NeumorphicButton, SidebarRailButton, StatusToast, nonDraggableWindowRegionStyle, type StatusToastMessage } from '../../shared/ui';
 import { useHelpLanguage } from '../../shared/useHelpLanguage';
 
-export function KeepAwakeButton({ api = cheshiDesktop }: { api?: Partial<KeepAwakeApi> & { platform: string } }) {
+export function KeepAwakeButton({ api = cheshiDesktop, variant = 'chrome' }: {
+  api?: Partial<KeepAwakeApi> & { platform: string };
+  variant?: 'chrome' | 'rail';
+}) {
   const [language] = useHelpLanguage();
   const [state, setState] = useState<KeepAwakeState | null>(null);
   const [pending, setPending] = useState(false);
@@ -68,11 +71,16 @@ export function KeepAwakeButton({ api = cheshiDesktop }: { api?: Partial<KeepAwa
       if (alive.current) setPending(false);
     }
   };
-  return <><NeumorphicButton raised size="icon" style={nonDraggableWindowRegionStyle}
-    title={title} aria-label={title} aria-pressed={enabled} aria-busy={busy} disabled={busy}
-    onClick={() => { void toggle(); }}>
-    {enabled ? <Square aria-hidden="true" /> : <Play aria-hidden="true" />}
-  </NeumorphicButton>
+  const control = variant === 'rail'
+    ? <SidebarRailButton active={enabled} icon={<Coffee aria-hidden="true" />} label="Caffeine mode"
+      aria-label={title} aria-pressed={enabled} aria-busy={busy} disabled={busy}
+      onClick={() => { void toggle(); }} />
+    : <NeumorphicButton raised size="icon" style={nonDraggableWindowRegionStyle}
+      title={title} aria-label={title} aria-pressed={enabled} aria-busy={busy} disabled={busy}
+      onClick={() => { void toggle(); }}>
+      {enabled ? <Square aria-hidden="true" /> : <Play aria-hidden="true" />}
+    </NeumorphicButton>;
+  return <>{control}
     {notification && <StatusToast message={notification} onDismiss={() => setNotification(null)} />}
   </>;
 }

@@ -1,0 +1,27 @@
+.chrome {
+  width: 100%;
+  height: var(--header-height);
+  flex: 0 0 var(--header-height);
+  -webkit-app-region: drag;
+}
+
+.navigation {
+  display: grid;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-content: start;
+  justify-items: center;
+  gap: 4px;
+  overflow: visible;
+  padding: var(--space-default) 0;
+}
+
+.bottomControls {
+  display: grid;
+  flex: 0 0 auto;
+  justify-items: center;
+  gap: 4px;
+  overflow: visible;
+  padding: 0 0 var(--space-default);
+}

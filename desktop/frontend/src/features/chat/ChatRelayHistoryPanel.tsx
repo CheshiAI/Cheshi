@@ -1,7 +1,7 @@
 import { ClipboardClock, History, RefreshCw, Trash2, X } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import type { ChatRelayHistoryRecord, ChatRelayState } from '../../../../shared/chat-relay';
-import { LiquidGlassPanel, NeumorphicButton, Tooltip } from '../../shared/ui';
+import { NeumorphicButton, SlidingSidePanel, Tooltip } from '../../shared/ui';
 import type { ChatRelayController } from './useChatRelay';
 import styles from './ChatRelayHistoryPanel.module.css';
 import { ChatDeleteRecordDialog } from './ChatDeleteRecordDialog';
@@ -43,13 +43,12 @@ export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, 
   };
   return (
     <aside className={styles.inspector} data-open={open} aria-label="Conversation tools">
-      <div className={styles.stage}>
-        <LiquidGlassPanel className={styles.panel} aria-hidden={!open} inert={!open}
-          onKeyDown={(event) => {
-            if (event.key !== 'Escape' || event.defaultPrevented) return;
-            event.preventDefault();
-            close();
-          }}>
+      <SlidingSidePanel open={open} className={styles.panel}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || event.defaultPrevented) return;
+          event.preventDefault();
+          close();
+        }}>
           <section className={styles.content} id={id} aria-labelledby={`${id}-button`} hidden={activePanel === 'saved'}>
             <header className={styles.heading}>
               <span>Conversation history</span>
@@ -99,8 +98,7 @@ export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, 
             <SavedChatTurnsPanel savedTurns={savedTurns} onClose={close}
               onContinue={onContinueSavedTurn} continuationDisabledReason={continuationDisabledReason} />
           </section>}
-        </LiquidGlassPanel>
-      </div>
+      </SlidingSidePanel>
       <div ref={railRef} className={styles.rail} role="group" aria-label="Conversation panels">
         <Tooltip content="Conversation history">{(triggerProps) => (
           <NeumorphicButton {...triggerProps} raised active={activePanel === 'history'} className={styles.button}

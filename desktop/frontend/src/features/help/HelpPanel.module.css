@@ -47,4 +47,5 @@
 .document pre { overflow: auto; }
 .footer { flex: 0 0 auto; padding: var(--space-default); border-top: 1px solid var(--divider); color: var(--sub-text); font-size: 10px; }
 .launcher { margin-left: auto; margin-right: var(--space-default); align-self: center; }
+.railLauncher { display: contents; }
 @media (prefers-reduced-motion: reduce) { .panel { transition: none; } }

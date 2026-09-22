@@ -15,12 +15,12 @@ test('sidebar widths reserve central space and review panes while adapting to sm
   expect(sidebarWidths(1280, 280, { left: null, right: null }, true, false)).toMatchObject({ left: 280, right: 280, minimum: 175 });
 });
 
-function Fixture({ open = true, reviewing = false, disabled = false, base = 320 }: {
-  open?: boolean; reviewing?: boolean; disabled?: boolean; base?: number;
+function Fixture({ open = true, reviewing = false, disabled = false, base = 320, rail = 90 }: {
+  open?: boolean; reviewing?: boolean; disabled?: boolean; base?: number; rail?: number;
 }) {
   const resize = useSidebarResize({ rightOpen: open && !reviewing, reviewing: open && reviewing, disabled });
   return <div ref={resize.layoutRef} data-layout data-resizing={resize.resizing ?? ''}
-    style={{ '--sidebar-width': `${base}px`, ...resize.style } as CSSProperties}>
+    style={{ '--sidebar-width': `${base}px`, '--sidebar-rail-width': `${rail}px`, ...resize.style } as CSSProperties}>
     <div {...resize.separatorProps('left')} />
     {open && !reviewing && <div {...resize.separatorProps('right')} />}
   </div>;
@@ -49,7 +49,7 @@ async function withSidebar(run: (h: {
     getComputedStyle: window.getComputedStyle.bind(window), ResizeObserver: ResizeObserverMock, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
-  let available = 1600;
+  let available = 1690;
   const captures = new Set<number>();
   Object.assign(window.HTMLElement.prototype, {
     getBoundingClientRect: () => new window.DOMRect(0, 0, available, 900),
@@ -128,6 +128,19 @@ test('left and right boundaries resize in opposite directions, clamp, and reset 
   });
 });
 
+test('the fixed rail is deducted before sidebar and central workspace widths are allocated', async () => {
+  await withSidebar(async h => {
+    await h.render({ open: false });
+    expect(h.width('left')).toBe(320);
+    await h.key('left', 'End');
+    expect(h.width('left')).toBe(640);
+    await h.resizeWindow(1000);
+    expect(h.width('left')).toBe(590);
+    await h.render({ reviewing: true });
+    expect(h.width('left')).toBe(270);
+  });
+});
+
 test('keyboard resize preserves widths across closing and review mode, and viewport changes preserve preferences', async () => {
   await withSidebar(async h => {
     await h.render();
@@ -139,14 +152,14 @@ test('keyboard resize preserves widths across closing and review mode, and viewp
     await h.key('right', 'End');
     expect(h.width('left')).toBe(640);
     expect(h.width('right')).toBe(640);
-    await h.resizeWindow(1000);
+    await h.resizeWindow(1090);
     expect(h.width('left') + h.width('right')).toBe(680);
     await h.render({ reviewing: true });
     expect(h.separator('right') === null).toBe(true);
     expect(h.width('left')).toBe(360);
     await h.render({ open: false });
     expect(h.width('left')).toBe(640);
-    await h.resizeWindow(1600);
+    await h.resizeWindow(1690);
     await h.render();
     expect(h.width('left')).toBe(640);
     expect(h.width('right')).toBe(640);

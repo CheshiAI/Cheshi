@@ -1,0 +1,95 @@
+.slot {
+  position: relative;
+  width: 42px;
+  height: 42px;
+}
+
+.button {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  width: max-content;
+  min-width: 42px;
+  max-width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(41, 52, 61, .05);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0 13px;
+  white-space: nowrap;
+  transition: max-width .2s cubic-bezier(.2, .8, .2, 1), background-color .16s ease, color .16s ease;
+}
+
+.button[data-icon-size='project'] { padding-inline: 5px; }
+.button[data-active='true'] { background: rgba(41, 52, 61, .4); }
+
+.button:hover,
+.button:active,
+.button:focus-visible {
+  z-index: 2;
+  max-width: 220px;
+  background: rgba(41, 52, 61, .8);
+  color: var(--text);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.button:disabled:hover { max-width: 42px; background: rgba(41, 52, 61, .05); }
+
+.icon {
+  display: grid;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+  place-items: center;
+}
+
+.button[data-icon-size='project'] .icon {
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+}
+
+.icon svg,
+.icon :global(.navigation-openai-mark),
+.icon :global(.navigation-github-mark) {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+}
+
+.icon svg { stroke-width: 1.65; }
+
+.label {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 15px;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity .12s ease, transform .16s ease;
+}
+
+.button:is(:hover, :active, :focus-visible) .label {
+  opacity: 1;
+  transform: translateX(0);
+  transition-delay: .04s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .label {
+    transition: none;
+  }
+}

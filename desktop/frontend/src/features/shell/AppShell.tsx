@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { LiquidGlassPanel, SidebarToggleVisibility } from '../../shared/ui';
+import { LiquidGlassPanel, SidebarToggleVisibility, SlidingSidePanel } from '../../shared/ui';
 import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import {
   ChatSessionList,
@@ -28,6 +28,7 @@ import { GitWorkspace } from '../git';
 import { CodeGraphView } from '../graph';
 import { BlankView } from '../home/BlankView';
 import { Sidebar, type WorkspaceView } from '../navigation/Sidebar';
+import { SidebarRail } from '../navigation/SidebarRail';
 import { PluginsView } from '../plugins';
 import { TerminalWorkspace } from '../terminal';
 import { ShowcaseView } from '../showcase/ShowcaseView';
@@ -72,6 +73,7 @@ export function AppShell() {
   const [localHistoryPath, setLocalHistoryPath] = useState<string | null>(null);
   const closeReview = useCallback(() => { setFileReview(null); setLineCommitTarget(null); setLocalHistoryPath(null); }, []);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [sidebarPanel, setSidebarPanel] = useState<'files' | 'chats'>('files');
   const openFileReview = useCallback((paneId: string, itemId: string, path?: string) => {
     setLineCommitTarget(null);
@@ -254,45 +256,51 @@ export function AppShell() {
         style={sidebarResize.style}
         data-sidebar-resizing={sidebarResize.resizing ?? undefined}
         data-active-view={activeView}
+        data-left-sidebar-open={leftSidebarOpen ? 'true' : 'false'}
         data-file-review={reviewedItem || lineCommitTarget || localHistoryPath !== null ? 'true' : undefined}
         data-right-sidebar-open={rightSidebarOpen && reviewing ? 'true' : 'false'}
       >
-        <LiquidGlassPanel className="sidebar-column" inert={workspace.accountSwitchPending}>
-          <WindowChrome />
-          <Sidebar
-            activePanel={sidebarPanel}
-            onPanelChange={setSidebarPanel}
-            chatPanel={<ChatSessionList
-              search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
-                onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
-                onFocus={() => { if (activeView !== 'search') navigate('search'); }} />}
-              activeSessionId={chat?.state.activeSessionId ?? null}
-              loading={workspace.sessionHistory.loading}
-              newChatDisabled={chatSessionSelectionDisabled}
-              responseThreadIds={workspace.responseThreadIds}
-              selectionDisabled={chatSessionSelectionDisabled}
-              sessions={workspace.sessionHistory.sessions}
-              onNew={newChat}
-              onTemporaryChat={() => { if (!workspace.accountSwitchPending) setTemporaryChatOpen(true); }}
-              temporaryChatOpen={temporaryChatOpen}
-              onOpen={openChat}
-              deleteReason={workspace.deleteSessionReason}
-              onDelete={(sessionId) => {
-                if (workspace.deleteSessionReason(sessionId)) return;
-                workspace.dismissError();
-                chat?.dismissError();
-                setDeleteChoice({ sessionId, title: chat?.state.sessions.find((session) => session.id === sessionId)?.title ?? sessionId });
-              }}
-            />}
-            activeView={activeView}
-            selectedFilePath={localHistoryPath ?? editorSelectedPath}
-            onNavigate={navigate}
-            onWorkspaceEntryMutation={handleWorkspaceEntryMutation}
-            onOpenWorkspaceFile={openWorkspaceFile}
-            onOpenLocalHistory={openLocalHistory}
-          />
+        <LiquidGlassPanel as="aside" className={styles.sidebarRail} aria-label="Application navigation">
+          <SidebarRail activeView={activeView} sidebarOpen={leftSidebarOpen} onNavigate={navigate}
+            onToggleSidebar={() => setLeftSidebarOpen(open => !open)} />
         </LiquidGlassPanel>
-        <div className={`${styles.sidebarResizer} ${styles.leftResizer}`} {...sidebarResize.separatorProps('left')} />
+        <SlidingSidePanel open={leftSidebarOpen} anchor="end" stageClassName={styles.sidebarPanelStage}
+          id="workspace-sidebar" className={`sidebar-column ${styles.sidebarPanel}`}
+          inert={workspace.accountSwitchPending}>
+            <WindowChrome />
+            <Sidebar
+              activePanel={sidebarPanel}
+              onPanelChange={setSidebarPanel}
+              chatPanel={<ChatSessionList
+                search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
+                  onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
+                  onFocus={() => { if (activeView !== 'search') navigate('search'); }} />}
+                activeSessionId={chat?.state.activeSessionId ?? null}
+                loading={workspace.sessionHistory.loading}
+                newChatDisabled={chatSessionSelectionDisabled}
+                responseThreadIds={workspace.responseThreadIds}
+                selectionDisabled={chatSessionSelectionDisabled}
+                sessions={workspace.sessionHistory.sessions}
+                onNew={newChat}
+                onTemporaryChat={() => { if (!workspace.accountSwitchPending) setTemporaryChatOpen(true); }}
+                temporaryChatOpen={temporaryChatOpen}
+                onOpen={openChat}
+                deleteReason={workspace.deleteSessionReason}
+                onDelete={(sessionId) => {
+                  if (workspace.deleteSessionReason(sessionId)) return;
+                  workspace.dismissError();
+                  chat?.dismissError();
+                  setDeleteChoice({ sessionId, title: chat?.state.sessions.find((session) => session.id === sessionId)?.title ?? sessionId });
+                }}
+              />}
+              selectedFilePath={localHistoryPath ?? editorSelectedPath}
+              onWorkspaceEntryMutation={handleWorkspaceEntryMutation}
+              onOpenWorkspaceFile={openWorkspaceFile}
+              onOpenLocalHistory={openLocalHistory}
+            />
+        </SlidingSidePanel>
+        <div hidden={!leftSidebarOpen} className={`${styles.sidebarResizer} ${styles.leftResizer}`}
+          {...sidebarResize.separatorProps('left')} />
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
           <WorkspaceEditorSplit mode={editorLayoutMode} editor={
             <WorkspaceEditor

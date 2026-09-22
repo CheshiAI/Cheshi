@@ -39,8 +39,9 @@ export function useSidebarResize({ rightOpen, reviewing, disabled }: {
     if (!layout) return;
     const measure = () => {
       const base = Number.parseFloat(getComputedStyle(layout).getPropertyValue('--sidebar-width'));
+      const rail = Number.parseFloat(getComputedStyle(layout).getPropertyValue('--sidebar-rail-width'));
       if (!Number.isFinite(base) || base <= 0) return;
-      const available = layout.getBoundingClientRect().width;
+      const available = Math.max(0, layout.getBoundingClientRect().width - (Number.isFinite(rail) ? rail : 0));
       setSize(previous => previous.base === base && previous.available === available ? previous : { base, available });
     };
     measure();
