@@ -16,6 +16,10 @@
   font-size: var(--font-size-small);
 }
 
+:global(html[data-window-glass]) .bar {
+  background: transparent;
+}
+
 .item {
   composes: button from '../../shared/ui/StatusBarButton.module.css';
 }

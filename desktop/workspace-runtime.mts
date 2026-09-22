@@ -1,3 +1,4 @@
+import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
 import { createWorkspaceWindowReadiness } from './lib/workspace-window-readiness.mts';
 import { createWorkspaceRendererEvents } from './lib/workspace-renderer-events.mts';
 import { TemporaryChatService } from './lib/temporary-chat-service.mts';
@@ -121,10 +122,6 @@ const LANGUAGE_SERVER_DIAGNOSTICS_CHANNEL = 'cheshi:language-server-diagnostics'
 const RENDERER_READY_CHANNEL = 'cheshi:renderer-ready';
 const TERMINAL_STATE_CHANNEL = 'cheshi:terminal-state-changed';
 const WORKSPACE_FILES_CHANGED_CHANNEL = 'cheshi:workspace-files-changed';
-const INITIAL_WINDOW_BACKGROUND_COLORS = Object.freeze({
-  dark: '#171717',
-  light: '#d7e6ed',
-});
 const TERMINAL_SPLIT_DIRECTIONS = new Set<TerminalSplitDirection>(['right', 'left', 'down', 'up']);
 const MAX_CHAT_ATTACHMENTS = 20;
 const ATTACHMENT_PREVIEW_MAX_SIZE = 160;
@@ -411,7 +408,7 @@ ipcMain.handle('cheshi:set-terminal-view-visible', (event, visible) => {
 ipcMain.handle('cheshi:set-terminal-theme', (event, theme) => {
   assertTerminalSender(event);
   assertWindowTheme(theme);
-  mainWindow?.setBackgroundColor(INITIAL_WINDOW_BACKGROUND_COLORS[theme]);
+  windowAppearance?.setTheme(theme);
   terminalDark = theme === 'dark';
   terminalSurfaces?.setDark(terminalDark);
   return terminalSnapshot();
@@ -549,6 +546,7 @@ ipcMain.on('cheshi:get-workspace-metadata', (event) => {
 });
 
 let mainWindow: BrowserWindow | null = null;
+let windowAppearance: ReturnType<typeof createWindowAppearance> | null = null;
 let codeGraphService: CodeGraphService | null = null;
 const initialIndexAbort = new AbortController();
 let codeGraphIndexer: CodeGraphIndexer | null = null;
@@ -811,6 +809,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
     minHeight: 680,
     title: product.displayName,
     backgroundColor: INITIAL_WINDOW_BACKGROUND_COLORS.dark,
+    transparent: process.platform === 'darwin',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 14 },
     webPreferences: {
@@ -824,6 +823,10 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
   });
   logStartup('window created');
   registerWorkspaceWindowCloseConfirmation(window, dialog);
+  windowAppearance = createWindowAppearance({
+    window, ipc: ipcMain, filename: path.join(userDataDirectory, 'appearance.json'),
+    backgrounds: INITIAL_WINDOW_BACKGROUND_COLORS,
+  });
   options.scope.addOwner(window.webContents);
   if (options.windowState) window.setBounds(options.windowState.bounds);
 
@@ -832,7 +835,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
   const revealWindow = () => {
     const theme = readiness.assertReady();
     if (appQuitting || window.isDestroyed()) throw new Error('Workspace startup was canceled.');
-    window.setBackgroundColor(INITIAL_WINDOW_BACKGROUND_COLORS[theme]);
+    windowAppearance?.ready(theme);
     if (initialRevealComplete) return;
     initialRevealComplete = true;
     if (shouldShowWindow) {
@@ -909,6 +912,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
     if (mainWindow !== window) return;
     disposeTerminal();
     void languageServerManager.stop();
+    windowAppearance = null;
     mainWindow = null;
     options.onClosed();
   });

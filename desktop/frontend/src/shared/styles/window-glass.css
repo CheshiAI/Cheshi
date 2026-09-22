@@ -1,0 +1,28 @@
+/* One tint over the native WindowServer blur; nested panels do not blur again. */
+html[data-window-glass],
+html[data-window-glass] body,
+html[data-window-glass] #app {
+  background: transparent;
+}
+
+html[data-window-glass] .app-shell {
+  background: color-mix(in srgb, var(--app-bg) calc(var(--window-glass-opacity, .75) * 100%), transparent);
+}
+
+html[data-window-glass] .workspace-column {
+  background: var(--app-bg);
+}
+
+html[data-window-glass][data-main-pane-glass] .workspace-column,
+html[data-window-glass][data-main-pane-glass] .workspace-editor,
+html[data-window-glass][data-main-pane-glass] .terminal-workspace,
+html[data-window-glass][data-main-pane-glass] .terminal-pane {
+  background: transparent;
+}
+
+/* Switching effects must not animate a full-window surface for many frames. */
+html[data-window-glass] body,
+html[data-window-glass] .app-shell,
+html[data-window-glass] .workspace-column {
+  transition: none;
+}

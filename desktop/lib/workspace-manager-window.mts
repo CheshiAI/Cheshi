@@ -62,7 +62,7 @@ export class WorkspaceManagerWindow {
     const runtimeRoot = options.isPackaged ? options.resourcesPath : path.join(options.appPath, 'desktop');
     const window = options.createWindow({
       show: false, width: 800, height: 650, minWidth: 600, maxWidth: 800, minHeight: 650, maxHeight: 650,
-      title: 'Cheshi Workspaces', backgroundColor: '#1E2025',
+      title: 'Cheshi Workspaces', backgroundColor: '#000000',
       frame: false,
       webPreferences: {
         sandbox: true, contextIsolation: true, nodeIntegration: false,

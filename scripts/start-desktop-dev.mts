@@ -182,6 +182,8 @@ function scheduleForgeRestart(changedPath: string): void {
 
 function handleMainSourceChange(changedPath: string): void {
   if (![preloadSourcePath, rendererReadinessSourcePath,
+    path.join(rootDirectory, 'desktop', 'lib', 'window-appearance-preload.cts'),
+    path.join(rootDirectory, 'desktop', 'shared', 'window-appearance.ts'),
     path.join(rootDirectory, 'desktop', 'lib', 'apple-mail-preload.cts'),
     path.join(rootDirectory, 'desktop', 'shared', 'apple-mail.ts'),
     path.join(rootDirectory, 'desktop', 'lib', 'apple-calendar-preload.cts'),
@@ -212,6 +214,9 @@ function handleMainSourceChange(changedPath: string): void {
 
 function watchMainSources(): FSWatcher[] {
   const sourcePaths = [
+    ...['window-appearance.mts', 'window-appearance-store.mts', 'window-appearance-preload.cts']
+      .map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
+    path.join(rootDirectory, 'desktop', 'shared', 'window-appearance.ts'),
     ...['apple-mail-service.mts', 'apple-mail-script.mts', 'apple-mail-process.mts', 'apple-mail-ipc.mts', 'apple-mail-preload.cts']
       .map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
     path.join(rootDirectory, 'desktop', 'shared', 'apple-mail.ts'),

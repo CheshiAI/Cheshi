@@ -6,6 +6,8 @@
 
 #include "cheshi_ghostty_bridge.h"
 
+void RegisterWindowGlass(Napi::Env env, Napi::Object exports);
+
 namespace {
 
 struct EventPayload {
@@ -192,6 +194,7 @@ Napi::Value SetEventHandler(const Napi::CallbackInfo &info) {
 
 Napi::Object InitializeModule(Napi::Env env, Napi::Object exports) {
   cheshi_ghostty_set_event_callback(&BridgeEvent);
+  RegisterWindowGlass(env, exports);
   exports.Set("initialize", Napi::Function::New(env, Initialize));
   exports.Set("createSurface", Napi::Function::New(env, CreateSurface));
   exports.Set("resizeSurface", Napi::Function::New(env, ResizeSurface));

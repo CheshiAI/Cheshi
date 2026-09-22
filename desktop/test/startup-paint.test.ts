@@ -41,7 +41,8 @@ test('keeps the desktop window hidden until Electron and the painted renderer ar
   assert.ok(runtimeSource.indexOf('await readiness.ready;', loadRenderer) > loadRenderer);
   assert.ok(runtimeSource.indexOf('if (!options.deferShow) revealWindow();', loadRenderer) > loadRenderer);
   assert.match(runtimeSource, /const shouldShowWindow = process\.env\.CHESHI_E2E_HEADLESS !== '1';/u);
-  assert.match(runtimeSource, /window\.setBackgroundColor\(INITIAL_WINDOW_BACKGROUND_COLORS\[theme\]\);/u);
+  assert.ok(runtimeSource.indexOf('windowAppearance?.ready(theme)', createWindow) > hiddenWindow);
+  assert.ok(runtimeSource.indexOf('windowAppearance?.ready(theme)', createWindow) < runtimeSource.indexOf('window.show()', createWindow));
   assert.match(
     runtimeSource,
     /window\.loadFile\(path\.join\(frontendAssetsDirectory\(\), 'index\.html'\)\)/u,

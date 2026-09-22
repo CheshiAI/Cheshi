@@ -1,6 +1,7 @@
 @import './shared/styles/tokens.css';
 @import './shared/styles/controls.tokens.css';
 @import './shared/styles/editor.tokens.css';
+@import './shared/styles/window-glass.css';
 
 :root {
     color-scheme: dark;
@@ -37,8 +38,9 @@ button {
     color: inherit;
 }
 
-button:focus, button:focus-visible {
-    outline: none;
+/* Keep focus outlines consistent across native controls and feature CSS modules. */
+:is(:focus, :focus-visible, :focus-within), input:focus-visible + * {
+    outline: none !important;
 }
 
 h1, h2, h3, h4, h5, h6, p {

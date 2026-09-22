@@ -1,14 +1,16 @@
-import { KeyRound, Link, PanelRight, Save, Settings, Trash2 } from 'lucide-react';
+import { Palette, KeyRound, Link, PanelRight, Save, Settings, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { SettingsApi, TypeSafeSettings } from '../../../../shared/settings';
 import { LiquidGlassPanel, NeumorphicButton, NeumorphicTextField, TwoTierHeader,
   draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
 import styles from './SettingsView.module.css';
+import { AppearanceSettings } from './AppearanceSettings';
 
 export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = cheshiDesktop?.settings }: {
   rightSidebarOpen: boolean; onToggleRightSidebar(): void; api?: SettingsApi;
 }) {
+  const [category, setCategory] = useState<'typesafe' | 'appearance'>('typesafe');
   const [state, setState] = useState<TypeSafeSettings | null>(null);
   const [key, setKey] = useState('');
   const [keyBusy, setKeyBusy] = useState(false);
@@ -80,55 +82,56 @@ export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = che
     </>} />
     <div className={styles.body}>
       <LiquidGlassPanel as="aside" className={styles.sidebar} aria-label="Settings categories">
-        <button type="button" className={styles.item} aria-current="page"><KeyRound aria-hidden="true" />TypeSafe API</button>
+        <button type="button" className={styles.item} aria-current={category === 'typesafe' ? 'page' : undefined} onClick={() => setCategory('typesafe')}><KeyRound aria-hidden="true" />TypeSafe API</button>
+        <button type="button" className={styles.item} aria-current={category === 'appearance' ? 'page' : undefined} onClick={() => setCategory('appearance')}><Palette aria-hidden="true" />Appearance</button>
       </LiquidGlassPanel>
-      <section className={styles.detail} aria-labelledby="typesafe-heading">
+      {category === 'appearance' ? <AppearanceSettings /> : <section className={styles.detail} aria-labelledby="typesafe-heading">
         <div className={styles.scroll}>
           <form className={styles.form} onSubmit={event => { event.preventDefault(); void execute('save'); }}>
             <div className={styles.titleRow}>
-              <h2 id="typesafe-heading">TypeSafe API Key</h2>
+              <h2 id="typesafe-heading" className={styles.sectionTitle}>TypeSafe API Key</h2>
             </div>
-            <div className={styles.summary}>
+            <div className={styles.description}>
               <p>Use Jev to find previous conversations and make yes/no decisions in executable skills. Saving a key does not enable history recall.</p>
-              {!api && <p role="status">API settings are available in the Cheshi desktop app.</p>}
-              {api && !state && !error && <p role="status">Loading settings…</p>}
+              {!api && <p role="status" className={styles.description}>API settings are available in the Cheshi desktop app.</p>}
+              {api && !state && !error && <p role="status" className={styles.description}>Loading settings…</p>}
               {state && <div className={styles.status}>
                 <span>{state.source === 'saved' ? 'Saved on this computer' : state.source === 'environment' ? 'Using environment key' : 'No API key registered'}</span>
                 {state.maskedKey && <code>{state.maskedKey}</code>}
               </div>}
             </div>
             <div className={styles.keyRow}>
-              <NeumorphicTextField aria-label="TypeSafe API key" type="password" autoComplete="new-password" spellCheck={false}
+              <NeumorphicTextField className={styles.keyField} aria-label="TypeSafe API key" type="password" autoComplete="new-password" spellCheck={false}
                 value={key} maxLength={4096} disabled={keyBusy || !state?.canSave} placeholder={state?.source === 'saved' ? 'Enter a replacement key' : 'Enter your TypeSafe API key'}
                 onChange={event => { setKey(event.target.value); setNotice(null); setError(null); }} />
               <div className={styles.actions}>
-                <NeumorphicButton raised type="submit" size="icon" disabled={keyBusy || !state?.canSave || !key.trim()}
+                <NeumorphicButton className={styles.circleButton} raised type="submit" size="icon" disabled={keyBusy || !state?.canSave || !key.trim()}
                   aria-label={state?.source === 'saved' ? 'Update key' : 'Save key'} title={state?.source === 'saved' ? 'Update key' : 'Save key'}><Save aria-hidden="true" /></NeumorphicButton>
-                <NeumorphicButton raised type="button" size="icon" disabled={keyBusy || !state?.maskedKey || !!key.trim()}
+                <NeumorphicButton className={styles.circleButton} raised type="button" size="icon" disabled={keyBusy || !state?.maskedKey || !!key.trim()}
                   aria-label="Check connection" title="Check connection" onClick={() => void execute('check')}><Link aria-hidden="true" /></NeumorphicButton>
-                <NeumorphicButton raised type="button" size="icon" disabled={keyBusy || state?.source !== 'saved'}
+                <NeumorphicButton className={styles.circleButton} raised type="button" size="icon" disabled={keyBusy || state?.source !== 'saved'}
                   aria-label="Delete saved key" title="Delete saved key" onClick={() => void execute('remove')}><Trash2 aria-hidden="true" /></NeumorphicButton>
               </div>
             </div>
-            {keyBusy && <p role="status">Working…</p>}
-            {(error || state?.error) && <p role="alert">{error || state?.error}</p>}
-            {state && !state.canSave && <p role="alert">Secure storage is unavailable. Unlock your system credential store to save a key.</p>}
-            {notice && <p role="status">{notice}</p>}
-            <p className={styles.help}>
+            {keyBusy && <p role="status" className={styles.description}>Working…</p>}
+            {(error || state?.error) && <p role="alert" className={styles.description}>{error || state?.error}</p>}
+            {state && !state.canSave && <p role="alert" className={styles.description}>Secure storage is unavailable. Unlock your system credential store to save a key.</p>}
+            {notice && <p role="status" className={styles.description}>{notice}</p>}
+            <p className={styles.description}>
               Your key is encrypted on this computer. A saved key takes priority over an environment key.<br />
               Jev requests and connection checks use your TypeSafe account allowance.<br />
               Connection checks send only fixed sample text.
             </p>
             <div className={styles.titleRow}>
-              <h3 id="history-recall-heading">Previous conversation recall</h3>
-              <NeumorphicButton raised className={styles.recallToggle} role="switch" type="button"
+              <h3 id="history-recall-heading" className={styles.settingLabel}>Previous conversation recall</h3>
+              <NeumorphicButton className={styles.toggle} role="switch" type="button"
                 disabled={recallBusy || !api || !state} aria-label="Allow history recall"
                 aria-describedby="history-recall-disclosure" aria-checked={state?.historyRecallEnabled === true}
                 onClick={() => { void execute('recall'); }}><span aria-hidden="true" /></NeumorphicButton>
             </div>
-            {recallBusy && <p role="status">Saving history recall setting…</p>}
-            {recallError && <p role="alert">{recallError}</p>}
-            <p id="history-recall-disclosure" className={styles.help}>
+            {recallBusy && <p role="status" className={styles.description}>Saving history recall setting…</p>}
+            {recallError && <p role="alert" className={styles.description}>{recallError}</p>}
+            <p id="history-recall-disclosure" className={styles.description}>
               Off by default. This setting applies to all workspaces, including ones opened later.
               Each search stays within the workspace where it is requested.
               Your search question, candidate conversation passages, titles and nearby messages are sent to TypeSafe (Jev).
@@ -138,15 +141,15 @@ export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = che
               Text already sent cannot be recalled. Reopen the workspace after enabling to make the tools available.
               Local history browsing is unaffected.
             </p>
-            <h3>Executable skills</h3>
-            <p className={styles.help}>
+            <h3 className={styles.sectionTitle}>Executable skills</h3>
+            <p className={styles.description}>
               Skills send their supplied judgment inputs to Jev and use Luna low with your Codex login if Jev is unavailable.
               They run only when invoked and are separate from the history recall switch.
               The executable skill runner is currently available through the source checkout CLI.
             </p>
           </form>
         </div>
-      </section>
+      </section>}
     </div>
   </main>;
 }

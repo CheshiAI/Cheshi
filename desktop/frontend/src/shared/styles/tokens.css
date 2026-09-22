@@ -1,7 +1,7 @@
 /* App-wide defaults. Keep feature-specific palettes in their own token module. */
 :root {
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Noto Sans KR";
-  --app-bg: #1E2025;
+  --app-bg: #000000;
   --divider: #29343D;
   --sidebar-section-label-color: #7D7585;
   --title: #83ADC1;
