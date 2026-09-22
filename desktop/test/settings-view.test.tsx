@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { act } from 'react';
 import type { SettingsApi, TypeSafeSettings } from '../shared/settings';
+import { product } from '../../config/product.mts';
 
 const none: TypeSafeSettings = { source: 'none', maskedKey: null, canSave: true, error: null, historyRecallEnabled: false };
 const saved: TypeSafeSettings = { source: 'saved', maskedKey: '••••2345', canSave: true, error: null, historyRecallEnabled: false };
@@ -21,7 +22,8 @@ async function withSettings(run: (view: {
   const window = new Window();
   Object.defineProperty(window, 'localStorage', { get() { throw new Error('Browser storage is unavailable'); } });
   const globals = { window, document: window.document, navigator: window.navigator, Event: window.Event,
-    HTMLElement: window.HTMLElement, HTMLInputElement: window.HTMLInputElement, IS_REACT_ACT_ENVIRONMENT: true };
+    HTMLElement: window.HTMLElement, HTMLInputElement: window.HTMLInputElement, IS_REACT_ACT_ENVIRONMENT: true,
+    __CHESHI_PRODUCT__: product };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   let unmount: (() => Promise<void>) | undefined;
@@ -77,6 +79,34 @@ function button(container: HTMLElement, label: string) {
   if (!control) throw new Error(`Missing button ${label}`);
   return control;
 }
+
+function category(container: HTMLElement, label: string) {
+  const control = [...container.querySelectorAll<HTMLButtonElement>('aside button')].find(item => item.textContent === label);
+  if (!control) throw new Error(`Missing category ${label}`);
+  return control;
+}
+
+test('about displays product metadata and switches back to existing settings', async () => {
+  await withSettings(async ({ container, initial }) => {
+    await act(async () => initial.resolve(none));
+    await act(async () => category(container, 'About').click());
+    expect(category(container, 'About').getAttribute('aria-current')).toBe('page');
+    expect(category(container, 'TypeSafe API').hasAttribute('aria-current')).toBe(false);
+    expect(container.querySelector('#about-heading')?.textContent).toBe(product.displayName.toUpperCase());
+    const version = `version v${product.version} · build ${product.buildNumber.padStart(4, '0')}`.toLowerCase();
+    expect(container.textContent).toContain(version);
+    expect(container.textContent).toContain(`© ${new Date().getFullYear()} ${product.publisher}`);
+    const changelog = container.querySelector<HTMLAnchorElement>('a')!;
+    expect(changelog.href).toBe('https://github.com/CheshiAI/Cheshi/blob/main/CHANGELOG.md');
+    expect(changelog.target).toBe('_blank');
+    await act(async () => category(container, 'Appearance').click());
+    expect(container.querySelector('#appearance-heading')).not.toBeNull();
+    expect(container.querySelector('#about-heading')).toBeNull();
+    await act(async () => category(container, 'TypeSafe API').click());
+    expect(container.querySelector('input')?.type).toBe('password');
+    expect(category(container, 'TypeSafe API').getAttribute('aria-current')).toBe('page');
+  });
+});
 
 test('settings saves a password, clears it, verifies the connection and deletes the saved key', async () => {
   await withSettings(async ({ container, window, initial, savedKeys, checks }) => {
