@@ -3,124 +3,250 @@
 These instructions apply to `desktop/` and its descendants, together with the
 repository root instructions.
 
-## Circular icon buttons
+## Button styles
 
-- Match the theme toggle for standard circular icon-only controls:
-  **22px × 22px button, 11px × 11px SVG, stroke width 1.7**.
-- Tab close and input clear X controls use the compact exception:
-  **18px × 18px button, 9px × 9px SVG, stroke width 1.7**. Reuse
-  `--compact-icon-button-size`, `--compact-icon-size`, and
-  `--compact-icon-stroke-width` from `frontend/src/styles.css`.
-- Use a circular shape through `--neumorphic-button-radius: 50%`, center the
-  icon, and use zero padding. Enabled controls use a pointer cursor.
-- Reuse `NeumorphicButton` with `raised` from `frontend/src/shared/ui` and its
-  existing theme-aware background, hover, and pressed styles.
-- Use the corresponding Lucide icon. The reference is the theme toggle in
-  `frontend/src/features/chrome/ThemeToggle.tsx` and the `.theme-toggle` and
-  `.theme-toggle-icon svg` rules in `frontend/src/styles.css`.
-- These 11px and 9px sizes override the root's general 15px icon default for
-  their respective circular controls. File icons, inline icons, and decorative artwork keep
-  their applicable sizing rules.
-- Apply this standard when adding or changing a circular icon button; update
-  other existing controls only when they are within the requested scope.
+Text buttons use the following two styles.
 
-## Shared input fields
+### Shared specifications
 
-- Use `NeumorphicTextField` from `frontend/src/shared/ui` for standard text
-  and search inputs. The reference is the Plugins header search field; the
-  editor's Find and Replace fields use the same component.
-- Single-line fields use **34px height, 9px corner radius, 10px system UI
-  font, weight 400, 16px line height, and 12px horizontal inner padding**.
-  Set width in the consumer's layout. Multiline fields retain the component's
-  existing multiline sizing.
-- Reuse `NeumorphicTextField.module.css` and its `NeumorphicSurface` wrapper
-  with `raised` and `highlightFocus`. Normal background uses
-  `--neumorphic-button-surface`, with a 1px `--divider` border; hover and focus
-  use the shared selection background (`--dropdown-selection-bg`, **#33464d
-  in the dark theme**). Preserve theme tokens and the shared disabled state.
-- Use the component's background highlight for input focus; do not add the
-  legacy input's gradient or thick outer focus ring. Placeholder text inherits
-  the control color at the component's existing 0.64 opacity.
-- For an input clear X, pass `SearchClearButton` through `trailingAction`.
-  Match the tab close button's color, background, hover, and keyboard-focus
-  treatment using the compact standard above: **18px circular button, 9px
-  icon, stroke width 1.7**. Keep it vertically centered at the right, with
-  `--icon-default` inset and the component's 34px trailing text padding.
-- Apply this standard to new or modified inputs within the requested scope;
-  keep input behavior, refs, keyboard shortcuts, and intentional layout widths.
+- Use a total height of `32px` with `box-sizing: border-box`.
+- Use no border.
+- Use `var(--font-size-label)` (`11px`) for the font size.
+- Use `var(--text)` (`#D3E2DE`) for the text color.
+- Preserve the height, border, font size, and text color in the default, hover,
+  and pressed states.
+- Enabled buttons use `cursor: pointer`.
 
-## Shared tabs
+### Standard button
 
-- Use `FlatTabList` and `FlatTab` from `frontend/src/shared/ui` for closable
-  workspace tabs, including editor files and terminal sessions. Keep their
-  common appearance in `frontend/src/shared/ui/FlatTab.module.css`.
-- Tabs are adjoining rectangles with no gaps or rounded corners, a right-hand
-  divider, and a 160px minimum / 240px maximum width. Truncate long labels with
-  an ellipsis while retaining the full title.
-- Leading file and terminal icons stay **11px × 11px with stroke width 1.7**.
-  Do not apply scale or enlargement effects on activation or hover. Labels are
-  **11px, weight 500 (Medium), system UI font, 15px line height**.
-- While a tab is active, continuously blink only the icon's internal lines
-  (the terminal underline or the file's text lines) on a **0.8s linear cycle**,
-  with opacity **1 → 0 → 1**. Keep the icon outline and tab indicator static.
-- Inactive tabs stop the icon animation and show all lines at full opacity;
-  hovering an inactive tab must not start it. Disable the animation under
-  `prefers-reduced-motion: reduce`.
-- Active tabs have a transparent background, including on hover, and a **2px
-  bottom indicator**. Inactive tabs use the selection background on hover.
-- Use `--dropdown-selection-bg` for both the indicator and hover background,
-  matching the Explorer selection background (**#33464d in the dark theme**).
-  Reuse the token so the colors stay consistent across themes.
-- Show the circular close X on active or hovered tabs. Otherwise hide it while
-  reserving its space so tab widths remain stable. Use the compact close-button
-  standard above: **18px button, 9px icon, stroke width 1.7**.
+- Default background: `var(--control-surface)`
+  (`rgba(41, 52, 61, 0.4)`).
+- Hover and pressed background: `var(--control-surface-interactive)`
+  (`rgba(41, 52, 61, 0.8)`).
 
-## Shared count badges
+### Ghost button
 
-- Use the Problems and Git Local changes count badges as the common badge
-  style. References: `.workspace-editor-problems-title > span` in
-  [workspace-editor-problems.css](frontend/src/features/editor/workspace-editor-problems.css)
-  and `.changeCountBadge` in
-  [GitWorkspace.changes.css](frontend/src/features/git/GitWorkspace.changes.css)
-  and [GitWorkspace.layout.css](frontend/src/features/git/GitWorkspace.layout.css).
-- Show a count badge only when **`count > 0`**. Hide the entire badge at zero,
-  including its border, background, and reserved space.
-- Use **14px height, 18px minimum width, 10px corner radius, and 5px horizontal
-  padding**. Center the number with `inline-flex`, `align-items: center`,
-  `justify-content: center`, and `flex: 0 0 auto`.
-- Use the inherited UI font family with **8px size, weight 400, normal font
-  style, 12px line height, and tabular numerals**.
-- Use **1px `var(--divider)` border**, `var(--neumorphic-button-surface)`
-  background, and **`#929b9e` text**. Apply `neumorphic-surface-tokens` directly
-  or compose it from global in a CSS Module so the background follows the theme.
-- Keep the same neutral appearance for positive counts. Apply this standard
-  to new or modified count badges within the requested scope.
+Use the Ghost style for secondary actions that do not need a prominent
+background.
 
-## Collapsible workspace panels
+- Default background: `var(--control-surface-ghost)`
+  (`rgba(41, 52, 61, 0.05)`).
+- Hover and pressed background: `var(--control-surface-interactive)`
+  (`rgba(41, 52, 61, 0.8)`).
 
-- Match the right sidebar and Problems panel when adding or changing a
-  collapsible workspace panel. References: `.right-sidebar-column` in
-  [styles.css](frontend/src/styles.css) and the stage/panel rules in
-  [workspace-editor-problems.css](frontend/src/features/editor/workspace-editor-problems.css).
-- Animate layout size and `transform` with **200ms `ease`**, and `opacity`
-  with **160ms `ease`**, for both opening and closing. Slide toward the panel's
-  outer edge: `translateX(100%)` for the right sidebar and `translateY(100%)`
-  for the bottom panel; open panels use zero translation and opacity 1.
-- Keep the panel mounted across open/close toggles so the closing transition
-  can finish. Drive CSS with an explicit open-state attribute. Collapse its
-  allocated layout space to zero while closing, using compatible flex sizes
-  or grid tracks, and clip overflow. Restore the saved size when reopening.
-- The Problems split keeps three grid rows: editor, separator, panel. Its
-  closed state is `minmax(0, 1fr) 0px minmax(0, 0fr)`. Keep the track structure
-  consistent so `grid-template-rows` can transition smoothly.
-- Closed panels use **`aria-hidden`, `inert`, and `pointer-events: none`**.
-  Their resize handles must also be hidden and unavailable to pointer and
-  keyboard interaction. Keep the toggle's `aria-expanded` synchronized.
-- Disable layout transitions during pointer resizing so the panel follows
-  the pointer immediately. Preserve resize limits and the user's chosen size.
-- Under **`prefers-reduced-motion: reduce`**, disable panel and layout
-  transitions. Use CSS transitions rather than delayed unmount timers.
-- Reuse `LiquidGlassPanel` for reusable panel wrappers and its shared border,
-  radius, and backdrop rules. Flush wrappers use `--liquid-glass-radius: 0`.
-  Let the common application background show through unless the panel has an
-  intentional surface treatment; do not add a redundant background tint.
+Provide both styles through shared button components and reuse those components.
+Icon-only buttons and switches follow their separately defined specifications.
+
+## Circle button styles
+
+Classify circular action buttons that display only an icon as `circle-button`.
+
+### Shared specifications
+
+- Use `var(--icon-button-size)` (`22px`) for both width and height, with
+  `box-sizing: border-box`.
+- Use no border.
+- Use a `50%` border radius.
+- Use zero inner padding.
+- Use `var(--icon-button-icon-size)` (`11px`) for both icon dimensions and
+  `var(--icon-button-stroke-width)` (`1.7`) for the stroke width.
+- Use `var(--text)` (`#D3E2DE`) for the icon color.
+- Center the icon horizontally and vertically.
+- Preserve the size, shape, and icon color in the default, hover, and pressed
+  states.
+- Do not translate or scale the button when it is clicked.
+- Do not show a focus outline.
+- Enabled buttons use `cursor: pointer`.
+
+### Standard circle button
+
+- Default background: `var(--control-surface)`
+  (`rgba(41, 52, 61, 0.4)`).
+- Hover and pressed background: `var(--control-surface-interactive)`
+  (`rgba(41, 52, 61, 0.8)`).
+
+### Ghost circle button
+
+Use the Ghost style for secondary actions that do not need a prominent
+background.
+
+- Default background: `var(--control-surface-ghost)`
+  (`rgba(41, 52, 61, 0.05)`).
+- Hover and pressed background: `var(--control-surface-interactive)`
+  (`rgba(41, 52, 61, 0.8)`).
+
+### Disabled state and accessibility
+
+- Disabled buttons use `disabled`, `opacity: 0.5`, and
+  `cursor: not-allowed`.
+- Do not apply hover or pressed effects to disabled buttons.
+- Use Lucide icons.
+- Provide an `aria-label` and a tooltip that describe the action.
+- Apply `aria-hidden="true"` to decorative icons.
+- Preserve native button keyboard interaction.
+
+Provide the Standard and Ghost styles through shared circle-button components
+and reuse those components. Controls with separate specifications, including
+switches and tab-close buttons, follow their own standards.
+
+## Text styles
+
+Text uses one of the following three styles according to its role.
+
+| Style | Size | Weight | Color |
+| --- | --- | --- | --- |
+| `section-title` | `var(--font-size-label)` (`11px`) | `600` | `var(--sidebar-section-label-color)` |
+| `description` | `var(--font-size-small)` (`10px`) | `400` | `var(--sidebar-section-label-color)` |
+| `setting-label` | `var(--font-size-label)` (`11px`) | `400` | `var(--text)` |
+
+- Use `section-title` for setting groups and section titles.
+- Use `description` for descriptions below titles, help text, and status
+  guidance.
+- Use `setting-label` for the names of settings such as switches and sliders.
+  A current value displayed with a setting uses the same style.
+- Use `var(--font-ui), sans-serif` as the shared UI font.
+- Keep letter spacing at `normal`.
+- Use the specified tokens instead of fixed hexadecimal values for colors.
+
+## Settings detail layout
+
+Keep settings detail pages on the shared spacing rhythm used by the Appearance
+and TypeSafe views in `frontend/src/features/settings/`.
+
+- Apply `var(--space-default)` as the detail scroll area's inner padding and as
+  the gap between direct form sections. Do not replace this rhythm with
+  feature-specific margins.
+- Use a flex title row with a `32px` minimum height, centered items,
+  `justify-content: space-between`, and a `var(--space-default)` gap. Wrap a
+  `section-title` in this row even when it has no trailing action so its text
+  aligns with titles that include a button.
+- Use a `36px` minimum height for setting and input rows and center their labels
+  and controls vertically.
+- When a description, loading message, or status belongs to one logical block,
+  stack those messages vertically with a `var(--space-default)` gap instead of
+  letting consecutive text lines collapse together.
+- Reuse the `section-title`, `description`, and `setting-label` styles defined
+  above for all text in these rows.
+
+## Sidebar navigation items
+
+Classify items that switch views, such as settings categories, as
+`sidebar-nav-item`. Reuse the shared button style with the following
+specifications.
+
+### Shared specifications
+
+- Use `100%` width.
+- Use a total height of `42px` with `box-sizing: border-box`.
+- Use no border.
+- Use zero border radius.
+- Use `var(--icon-button-icon-size)` (`11px`) for both icon dimensions.
+- Use `var(--font-size-label)` (`11px`) for the font size, with a weight of
+  `400`.
+- Use `var(--text)` for both text and icon colors.
+- Preserve the dimensions and text and icon colors in every state.
+- Clickable items use `cursor: pointer`.
+
+### State backgrounds
+
+- Default: `var(--control-surface-ghost)` (`rgba(41, 52, 61, 0.05)`).
+- Selected: `var(--control-surface)` (`rgba(41, 52, 61, 0.4)`).
+- Hover and pressed: `var(--control-surface-interactive)`
+  (`rgba(41, 52, 61, 0.8)`).
+
+Mark the currently selected item with `aria-current="page"`. Distinguish the
+selected state from the momentary `:active` pressed state. The hover and
+pressed backgrounds take precedence on selected items; restore the selected
+background when the interaction ends.
+
+## Toggle switches
+
+Use `toggle-switch` for on/off settings.
+
+### Appearance
+
+- Use a `36px × 20px` size.
+- Use no border.
+- Use a `10px` border radius.
+- Use a circular `20px × 20px` thumb in `var(--control-thumb-color)`
+  (`#FFFFFF`).
+- Use `var(--control-track-color)` (`#A6A6A6`) for the off-state background.
+- Use `var(--toggle-track-on-color)` (`#18A9CF`) for the on-state background.
+- Preserve the current shape and colors on hover.
+- Do not show a focus outline.
+
+### Behavior
+
+- Position the thumb on the left in the off state.
+- Move the thumb `16px` to the right in the on state.
+- Animate thumb movement with `transform 160ms ease`.
+- Disable the animation under `prefers-reduced-motion: reduce`.
+- Expose the state with `role="switch"` and `aria-checked`.
+- Support an associated label and native keyboard interaction.
+- Disabled switches use `opacity: 0.5` and `cursor: not-allowed`.
+- Enabled switches use `cursor: pointer`.
+
+## Sliders
+
+Use `slider` for settings that adjust a continuous numeric value.
+
+### Appearance
+
+- Use a `200px` width and `20px` height for the control.
+- Apply `max-width: 100%` in narrow layouts.
+- Use a transparent control background.
+- Use no border.
+- Use a `4px` track height with a `2px` border radius.
+- Use `var(--control-track-color)` (`#A6A6A6`) for the default track.
+- Use `var(--control-track-hover-color)` (`#B8B8B8`) for the hovered track.
+- Use a circular `20px × 20px` thumb in `var(--control-thumb-color)`
+  (`#FFFFFF`).
+- Center the thumb vertically on the track.
+- Use one color across the full track. Do not add a separate filled color for
+  the completed portion.
+- Do not show a focus outline.
+
+### Behavior
+
+- Use a native `input[type="range"]` to preserve keyboard interaction.
+- Define the minimum, maximum, and unit for each setting.
+- During dragging, move the thumb immediately with the input position and do
+  not add a movement animation.
+- Display the current value with the associated setting label.
+- Disabled sliders use `opacity: 0.5` and `cursor: not-allowed`.
+- Enabled sliders use `cursor: pointer`.
+
+Labels for toggle switches and sliders follow the `setting-label`
+specification. All dimensions use CSS pixels rather than physical pixels from a
+screenshot.
+
+## Input field styles
+
+Reuse the shared input component for single-line input fields and apply the
+following specifications.
+
+### Shared specifications
+
+- Use a total height of `32px` with `box-sizing: border-box`.
+- Use no border.
+- Use a pill shape with `border-radius: 999px`.
+- Use `var(--font-ui), sans-serif` as the font.
+- Use `var(--font-size-label)` (`11px`) for the font size, with a weight of
+  `400`.
+- Use `var(--text)` (`#D3E2DE`) for the text color.
+- Use the same color for placeholder text with `opacity: 0.4`.
+- Use the `text` cursor in the editable input area.
+- Do not show a focus outline.
+
+### State backgrounds
+
+- Default: `var(--control-surface)` (`rgba(41, 52, 61, 0.4)`).
+- Hover, focus, and pressed: `var(--control-surface-interactive)`
+  (`rgba(41, 52, 61, 0.8)`).
+
+Preserve the height, border, corner shape, font size, and text color in every
+state. Do not translate or scale an input when it is clicked. Apply
+transparency only to the background; do not reduce the opacity of the entire
+input. Preserve the shared component's disabled treatment and do not apply
+interaction effects while disabled. Multiline inputs use separate height and
+corner specifications.

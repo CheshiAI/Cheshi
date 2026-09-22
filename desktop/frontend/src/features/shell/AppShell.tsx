@@ -370,8 +370,7 @@ export function AppShell() {
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
           )}
-          {activeView === 'settings' && <SettingsView rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen(currentOpen => !currentOpen)} />}
+          {activeView === 'settings' && <SettingsView />}
           <TerminalWorkspace
             active={activeView === 'terminal' && !primaryPaneClosed}
             onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}

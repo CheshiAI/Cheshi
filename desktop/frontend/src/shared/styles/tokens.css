@@ -8,6 +8,13 @@
   --text: #D3E2DE;
   --sub-text: #6D8784;
   --active-text: var(--title);
+  --control-surface-ghost: rgba(41, 52, 61, 0.05);
+  --control-surface: rgba(41, 52, 61, 0.4);
+  --control-surface-interactive: rgba(41, 52, 61, 0.8);
+  --control-thumb-color: #FFFFFF;
+  --control-track-color: #A6A6A6;
+  --control-track-hover-color: #B8B8B8;
+  --toggle-track-on-color: #18A9CF;
   --codegraph-default: #73C991;
   --codegraph-disabled: #E08080;
   --space-default: 14px;

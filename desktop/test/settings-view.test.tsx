@@ -63,7 +63,7 @@ async function withSettings(run: (view: {
     const root = createRoot(container);
     unmount = async () => { await act(async () => root.unmount()); };
     await act(async () => root.render(<>
-      <SettingsView api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />
+      <SettingsView api={api} />
     </>));
     await run({ container, window, savedKeys, checks: () => checks, recallWrites, initial,
       emit: async state => { await act(async () => publish(state, true)); } });

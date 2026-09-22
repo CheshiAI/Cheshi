@@ -1,16 +1,14 @@
-import { Info, Palette, KeyRound, Link, PanelRight, Save, Settings, Trash2 } from 'lucide-react';
+import { Info, Palette, KeyRound, Link, Save, Settings, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { SettingsApi, TypeSafeSettings } from '../../../../shared/settings';
-import { SidebarToggle, LiquidGlassPanel, NeumorphicButton, NeumorphicTextField, TwoTierHeader,
-  draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
+import { LiquidGlassPanel, NeumorphicButton, NeumorphicTextField, TwoTierHeader,
+  draggableWindowRegionStyle } from '../../shared/ui';
 import styles from './SettingsView.module.css';
 import { AppearanceSettings } from './AppearanceSettings';
 import { AboutSettings } from './AboutSettings';
 
-export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = cheshiDesktop?.settings }: {
-  rightSidebarOpen: boolean; onToggleRightSidebar(): void; api?: SettingsApi;
-}) {
+export function SettingsView({ api = cheshiDesktop?.settings }: { api?: SettingsApi }) {
   const [category, setCategory] = useState<'typesafe' | 'appearance' | 'about'>('typesafe');
   const [state, setState] = useState<TypeSafeSettings | null>(null);
   const [key, setKey] = useState('');
@@ -72,14 +70,11 @@ export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = che
   return <main className={styles.workspace} aria-label="Settings">
     <TwoTierHeader className={styles.header} style={draggableWindowRegionStyle} primary={<>
       <div className={styles.heading}>
-        <NeumorphicButton raised aria-hidden="true" className={`theme-toggle ${styles.titleMark}`} disabled>
+        <NeumorphicButton raised size="icon" aria-hidden="true" className={styles.titleMark} disabled>
           <Settings aria-hidden="true" />
         </NeumorphicButton>
-        <h1>Settings</h1>
+        <h1 className={styles.sectionTitle}>Settings</h1>
       </div>
-      <SidebarToggle raised size="icon" style={nonDraggableWindowRegionStyle}
-        aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-        aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></SidebarToggle>
     </>} />
     <div className={styles.body}>
       <LiquidGlassPanel as="aside" className={styles.sidebar} aria-label="Settings categories">
@@ -93,7 +88,7 @@ export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = che
             <div className={styles.titleRow}>
               <h2 id="typesafe-heading" className={styles.sectionTitle}>TypeSafe API Key</h2>
             </div>
-            <div className={styles.description}>
+            <div className={`${styles.description} ${styles.descriptionGroup}`}>
               <p>Use Jev to find previous conversations and make yes/no decisions in executable skills. Saving a key does not enable history recall.</p>
               {!api && <p role="status" className={styles.description}>API settings are available in the Cheshi desktop app.</p>}
               {api && !state && !error && <p role="status" className={styles.description}>Loading settings…</p>}
@@ -143,7 +138,9 @@ export function SettingsView({ rightSidebarOpen, onToggleRightSidebar, api = che
               Text already sent cannot be recalled. Reopen the workspace after enabling to make the tools available.
               Local history browsing is unaffected.
             </p>
-            <h3 className={styles.sectionTitle}>Executable skills</h3>
+            <div className={styles.titleRow}>
+              <h3 className={styles.sectionTitle}>Executable skills</h3>
+            </div>
             <p className={styles.description}>
               Skills send their supplied judgment inputs to Jev and use Luna low with your Codex login if Jev is unavailable.
               They run only when invoked and are separate from the history recall switch.
