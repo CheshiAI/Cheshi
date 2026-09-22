@@ -8,7 +8,7 @@ import {
   RotateCw,
 } from 'lucide-react';
 
-import { NeumorphicButton } from '../../shared/ui';
+import { NeumorphicButton, SidebarPanelHeader } from '../../shared/ui';
 import {
   cheshiDesktop as workspace,
   type WorkspaceEntryMutation,
@@ -49,68 +49,68 @@ export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, o
   return (
     <>
       <section className="workspace-file-tree" aria-label="File explorer">
-        <div className="workspace-file-tree-heading">
-          <span>EXPLORER</span>
-          <div className="workspace-file-tree-heading-actions">
-            <NeumorphicButton
-              raised
-              className="sidebar-heading-action"
-              aria-label={showHiddenFiles ? 'Hide hidden files' : 'Show hidden files'}
-              aria-pressed={showHiddenFiles}
-              onClick={() => setShowHiddenFiles((currentValue) => !currentValue)}
-            >
-              {showHiddenFiles ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
-            </NeumorphicButton>
-            <NeumorphicButton
-              raised
-              className="sidebar-heading-action"
-              aria-busy={refreshing || loadingDirectory !== null}
-              aria-label={refreshing ? 'Refreshing project explorer' : 'Refresh project explorer'}
-              disabled={refreshing}
-              title="Refresh project explorer"
-              onClick={() => void refreshWorkspaceFiles()}
-            >
-              <RotateCw
-                className={refreshing || loadingDirectory !== null ? 'workspace-file-tree-spinner' : undefined}
-                aria-hidden="true"
-              />
-            </NeumorphicButton>
-            <NeumorphicButton
-              raised
-              className="sidebar-heading-action"
-              aria-label="New file in Workspace root"
-              title="New file"
-              onClick={() => beginCreate('.', 'file')}
-            >
-              <FilePlus2 aria-hidden="true" />
-            </NeumorphicButton>
-            <NeumorphicButton
-              raised
-              className="sidebar-heading-action"
-              aria-label="New folder in Workspace root"
-              title="New folder"
-              onClick={() => beginCreate('.', 'directory')}
-            >
-              <FolderPlus aria-hidden="true" />
-            </NeumorphicButton>
-          </div>
+        <SidebarPanelHeader title="EXPLORER" icon={<Folder aria-hidden="true" />} actions={<>
+          <NeumorphicButton
+            raised
+            size="icon"
+            aria-label={showHiddenFiles ? 'Hide hidden files' : 'Show hidden files'}
+            aria-pressed={showHiddenFiles}
+            title={showHiddenFiles ? 'Hide hidden files' : 'Show hidden files'}
+            onClick={() => setShowHiddenFiles((currentValue) => !currentValue)}
+          >
+            {showHiddenFiles ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
+          </NeumorphicButton>
+          <NeumorphicButton
+            raised
+            size="icon"
+            aria-busy={refreshing || loadingDirectory !== null}
+            aria-label={refreshing ? 'Refreshing project explorer' : 'Refresh project explorer'}
+            disabled={refreshing}
+            title="Refresh project explorer"
+            onClick={() => void refreshWorkspaceFiles()}
+          >
+            <RotateCw
+              className={refreshing || loadingDirectory !== null ? 'workspace-file-tree-spinner' : undefined}
+              aria-hidden="true"
+            />
+          </NeumorphicButton>
+          <NeumorphicButton
+            raised
+            size="icon"
+            aria-label="New file in Workspace root"
+            title="New file"
+            onClick={() => beginCreate('.', 'file')}
+          >
+            <FilePlus2 aria-hidden="true" />
+          </NeumorphicButton>
+          <NeumorphicButton
+            raised
+            size="icon"
+            aria-label="New folder in Workspace root"
+            title="New folder"
+            onClick={() => beginCreate('.', 'directory')}
+          >
+            <FolderPlus aria-hidden="true" />
+          </NeumorphicButton>
+        </>} />
+
+        <div className="workspace-file-tree-body">
+          <button
+            className="workspace-file-tree-root"
+            type="button"
+            aria-expanded={rootExpanded}
+            data-context-menu-open={contextMenu?.entry === null ? 'true' : undefined}
+            onClick={() => toggleDirectory('.')}
+            onContextMenu={(event) => openContextMenu(event, null)}
+          >
+            {rootExpanded
+              ? <FolderOpen className="workspace-file-tree-icon" aria-hidden="true" />
+              : <Folder className="workspace-file-tree-icon" aria-hidden="true" />}
+            <strong>{workspaceName}</strong>
+          </button>
+
+          <WorkspaceFileTreeRows controller={controller} selectedPath={selectedPath} />
         </div>
-
-        <button
-          className="workspace-file-tree-root"
-          type="button"
-          aria-expanded={rootExpanded}
-          data-context-menu-open={contextMenu?.entry === null ? 'true' : undefined}
-          onClick={() => toggleDirectory('.')}
-          onContextMenu={(event) => openContextMenu(event, null)}
-        >
-          {rootExpanded
-            ? <FolderOpen className="workspace-file-tree-icon" aria-hidden="true" />
-            : <Folder className="workspace-file-tree-icon" aria-hidden="true" />}
-          <strong>{workspaceName}</strong>
-        </button>
-
-        <WorkspaceFileTreeRows controller={controller} selectedPath={selectedPath} />
       </section>
 
       {contextMenu && (

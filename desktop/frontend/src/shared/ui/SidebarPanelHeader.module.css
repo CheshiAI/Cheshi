@@ -1,0 +1,30 @@
+.header {
+  height: var(--header-height);
+  min-height: var(--header-height);
+  max-height: var(--header-height);
+  flex: 0 0 var(--header-height);
+}
+
+.title,
+.actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.title { gap: 10px; }
+.actions { gap: var(--icon-default); }
+
+.title > span {
+  overflow: hidden;
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-label);
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titleMark { cursor: default; pointer-events: none; }

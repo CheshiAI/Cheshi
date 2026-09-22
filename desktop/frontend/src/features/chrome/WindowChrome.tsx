@@ -8,10 +8,6 @@ const tabs = [
   { name: 'More…', active: false },
 ];
 
-export function WindowChrome() {
-  return <header className="window-chrome" style={draggableWindowRegionStyle} />;
-}
-
 export function WindowTabs() {
   return (
     <nav className="window-tabs" aria-label="Open files" style={draggableWindowRegionStyle}>

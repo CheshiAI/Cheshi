@@ -177,15 +177,6 @@ h1, h2, h3, h4, h5, h6, p {
     flex-direction: column;
 }
 
-.window-chrome {
-    display: flex;
-    width: 100%;
-    min-height: var(--header-height);
-    flex: 0 0 var(--header-height);
-    align-items: stretch;
-    user-select: none;
-}
-
 .neumorphic-surface-tokens,
 .neumorphic-surface, .theme-toggle, .sidebar-heading-action, .codegraph-inspector-toggle, .codegraph-search-button, .codegraph-edge-toggle, .neumorphic-checkbox, .codegraph-open-file, .codegraph-graph-control, .codegraph-source summary, .codegraph-search input, .codegraph-inspector-tab {
     --neumorphic-button-surface: var(--divider);
@@ -307,8 +298,8 @@ h1, h2, h3, h4, h5, h6, p {
     min-height: 0;
     flex: 1 1 auto;
     flex-direction: column;
-    gap: var(--space-default);
-    padding: var(--space-default) var(--space-default) 0;
+    gap: 0;
+    padding: 0;
 }
 
 .sidebar-panel-content {
@@ -323,29 +314,8 @@ h1, h2, h3, h4, h5, h6, p {
     min-height: 0;
     flex: 1 1 0;
     grid-template-rows: minmax(0, 1fr);
-    gap: var(--space-default);
+    gap: 0;
     overflow: visible;
-    padding-bottom: var(--space-default);
-}
-
-.sidebar-section-heading, .workspace-file-tree-heading {
-    color: var(--sidebar-section-label-color);
-    letter-spacing: .08em;
-    line-height: 14px;
-}
-
-.sidebar-section-heading, .workspace-file-tree-heading {
-    font-size: 10px;
-}
-
-.sidebar-heading-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--icon-default);
-}
-
-.sidebar-heading-actions[hidden] {
-    display: none;
 }
 
 .navigation-openai-mark {
@@ -371,19 +341,16 @@ h1, h2, h3, h4, h5, h6, p {
     min-height: 0;
     flex: 1 1 auto;
     flex-direction: column;
-    gap: 6px;
+    gap: 0;
 }
 
-.workspace-file-tree-heading {
+.workspace-file-tree-body {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.workspace-file-tree-heading-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--icon-default);
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 0;
+    padding: var(--space-default) 0 0;
 }
 
 .workspace-file-tree-spinner {
@@ -396,22 +363,31 @@ h1, h2, h3, h4, h5, h6, p {
     display: flex;
     width: 100%;
     min-width: 0;
+    min-height: 24px;
     align-items: center;
     gap: 8px;
     border: 0;
     background: transparent;
     color: var(--text);
     cursor: pointer;
-    padding-top: 4px;
-    padding-right: 0;
-    padding-bottom: 4px;
+    padding-top: 0;
+    padding-right: 8px;
+    padding-bottom: 0;
     text-align: left;
 }
 
 .workspace-file-tree-root {
-    border-radius: 8px;
+    position: relative;
+    min-height: 28px;
+    padding-left: var(--space-default);
+    border-radius: 0;
     color: var(--text);
     transition: background-color .16s ease, color .16s ease;
+}
+
+.workspace-file-tree-root > * {
+    position: relative;
+    z-index: 1;
 }
 
 .workspace-file-tree-root:hover, .workspace-file-tree-root[data-context-menu-open="true"] {
@@ -438,14 +414,20 @@ h1, h2, h3, h4, h5, h6, p {
 .workspace-file-tree-list-content {
     display: grid;
     min-width: 0;
-    gap: 4px;
-    padding: 0 8px 8px;
+    gap: 0;
+    padding: 0 0 8px;
 }
 
 .workspace-file-tree-entry {
-    border-radius: 8px;
+    position: relative;
+    border-radius: 0;
     color: var(--text);
     transition: background-color .16s ease, color .16s ease;
+}
+
+.workspace-file-tree-entry > :not(.workspace-file-tree-guides) {
+    position: relative;
+    z-index: 1;
 }
 
 .workspace-file-tree-entry:hover, .workspace-file-tree-entry[aria-selected="true"], .workspace-file-tree-entry[data-context-menu-open="true"] {
@@ -453,15 +435,26 @@ h1, h2, h3, h4, h5, h6, p {
     color: var(--active-text);
 }
 
-.workspace-file-tree-chevron, .workspace-file-tree-chevron-placeholder {
+.workspace-file-tree-chevron-placeholder {
     width: 13px;
     height: 13px;
     flex: 0 0 13px;
     color: inherit;
 }
 
-.workspace-file-tree-chevron {
-    transition: transform .16s ease;
+.workspace-file-tree-guides {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.workspace-file-tree-guide {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--workspace-file-tree-guide-offset);
+    width: 1px;
+    background: var(--divider);
 }
 
 .workspace-file-tree-icon {
@@ -654,12 +647,8 @@ h1, h2, h3, h4, h5, h6, p {
         --chrome-leading-space: 110px;
     }
 
-    .sidebar {
-        padding-right: var(--space-default);
-        padding-left: var(--space-default);
-    }
 }
 
-body, .app-shell, .sidebar-column, .workspace-column, .window-chrome, .window-tabs, .sidebar, .main-content {
+body, .app-shell, .sidebar-column, .workspace-column, .window-tabs, .sidebar, .main-content {
     transition: background-color .28s ease, border-color .28s ease, color .28s ease;
 }

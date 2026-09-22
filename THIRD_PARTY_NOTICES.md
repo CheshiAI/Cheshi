@@ -13,6 +13,7 @@ and redistributions of that material.
 | electron-libghostty | Native terminal integration derived from electron-libghostty | [MIT notice](desktop/native/electron-libghostty/LICENSE.electron-libghostty) |
 | libghostty-spm | Swift integration for libghostty | [MIT notice](desktop/native/ghostty-bridge/LICENSE.libghostty-spm) |
 | MSDisplayLink | Display-link integration used by the terminal bridge | [MIT notice](desktop/native/ghostty-bridge/LICENSE.msdisplaylink) |
+| [Atom Material Icons](https://github.com/AtomMaterialUI/a-file-icon-idea) / [iconGenerator](https://github.com/AtomMaterialUI/iconGenerator) | SVG file icons and filename associations under `desktop/frontend/src/shared/file-icons/` | [MIT notice](LICENSES/atom-material-icons.LICENSE); original notices retained in SVG assets |
 
 CodeGraph contains modifications for Cheshi. Its original MIT notice remains
 in place. Native bridge dependency revisions and repository addresses are

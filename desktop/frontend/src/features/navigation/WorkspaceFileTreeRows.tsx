@@ -1,5 +1,4 @@
 import {
-  ChevronRight,
   FileText,
   Folder,
   FolderInput,
@@ -16,6 +15,7 @@ import {
 
 import { useHorizontalOverflow } from '../../shared/useHorizontalOverflow';
 import { writeWorkspaceFileTransfer } from '../../shared/workspaceFileTransfer';
+import { FileTypeIcon } from '../../shared/file-icons/FileTypeIcon';
 import { NeumorphicTextField, SearchClearButton, Tooltip } from '../../shared/ui';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { WorkspaceFileTreeController } from './useWorkspaceFileTreeController';
@@ -25,7 +25,14 @@ type WorkspaceFileTreeNameStyle = CSSProperties & {
   '--workspace-file-tree-name-shift': string;
 };
 
+type WorkspaceFileTreeGuideStyle = CSSProperties & {
+  '--workspace-file-tree-guide-offset': string;
+};
+
 const workspaceFileTreeNameEndGap = 8;
+const workspaceFileTreeBaseIndent = 16;
+const workspaceFileTreeDepthIndent = 18;
+const workspaceFileTreeGuideBaseOffset = 23;
 
 interface WorkspaceFileTreeEditRowProps {
   ariaExpanded?: boolean;
@@ -61,6 +68,22 @@ function WorkspaceFileTreeName({ name, changed }: { name: string; changed: boole
   );
 }
 
+function WorkspaceFileTreeGuides({ depth }: { depth: number }) {
+  return (
+    <span className="workspace-file-tree-guides" aria-hidden="true">
+      {Array.from({ length: depth + 1 }, (_, index) => (
+        <span
+          key={index}
+          className="workspace-file-tree-guide"
+          style={{
+            '--workspace-file-tree-guide-offset': `${workspaceFileTreeGuideBaseOffset + index * workspaceFileTreeDepthIndent}px`,
+          } as WorkspaceFileTreeGuideStyle}
+        />
+      ))}
+    </span>
+  );
+}
+
 function WorkspaceFileTreeEditRow({
   ariaExpanded,
   ariaLabel,
@@ -82,13 +105,14 @@ function WorkspaceFileTreeEditRow({
       role="treeitem"
       aria-expanded={ariaExpanded}
       aria-selected={ariaSelected}
-      style={{ paddingLeft: `${4 + depth * 18}px` }}
+      style={{ paddingLeft: `${workspaceFileTreeBaseIndent + depth * workspaceFileTreeDepthIndent}px` }}
       onSubmit={onSubmit}
       onKeyDown={(event) => handleWorkspaceEntryEditKeyDown(event, busy, onCancel)}
       onBlur={(event) => {
         if (!busy && !event.currentTarget.contains(event.relatedTarget)) onCancel();
       }}
     >
+      <WorkspaceFileTreeGuides depth={depth} />
       {leading}
       <NeumorphicTextField
         className="workspace-file-tree-edit-field"
@@ -176,14 +200,12 @@ export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFil
           const isSelected = selectedPath === entry.path;
           const entryLeading = (
             <>
-              {isDirectory
-                ? <ChevronRight className="workspace-file-tree-chevron" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none' }} aria-hidden="true" />
-                : <span className="workspace-file-tree-chevron-placeholder" aria-hidden="true" />}
+              <span className="workspace-file-tree-chevron-placeholder" aria-hidden="true" />
               {isDirectory && isExpanded
                 ? <FolderOpen className="workspace-file-tree-icon" aria-hidden="true" />
                 : isDirectory
                   ? <Folder className="workspace-file-tree-icon" aria-hidden="true" />
-                  : <FileText className="workspace-file-tree-icon" aria-hidden="true" />}
+                  : <FileTypeIcon className="workspace-file-tree-icon" name={entry.name} path={entry.path} />}
             </>
           );
 
@@ -245,7 +267,7 @@ export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFil
                     aria-expanded={isDirectory ? isExpanded : undefined}
                     aria-selected={isSelected}
                     data-context-menu-open={contextMenu?.entry?.path === entry.path}
-                    style={{ paddingLeft: `${4 + depth * 18}px` }}
+                    style={{ paddingLeft: `${workspaceFileTreeBaseIndent + depth * workspaceFileTreeDepthIndent}px` }}
                     onClick={() => activateEntry(entry)}
                     onContextMenu={(event) => openContextMenu(event, entry)}
                     onDragStart={(event) => {
@@ -256,6 +278,7 @@ export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFil
                       writeWorkspaceFileTransfer(event.dataTransfer, fullPath);
                     }}
                   >
+                    <WorkspaceFileTreeGuides depth={depth} />
                     {entryLeading}
                     <WorkspaceFileTreeName name={entry.name} changed={!isDirectory && gitChangedPaths.has(entry.path)} />
                     {mutatingPath === entry.path && (

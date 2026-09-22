@@ -103,6 +103,9 @@ test('Explorer marks only changed file names and removes marks when the status c
     expect(markup).toContain('class="workspace-file-tree-name" data-git-changed="true"><span');
     expect(markup).not.toMatch(/<(button|svg)[^>]*data-git-changed/);
     expect(markup.match(/role="treeitem"/g)).toHaveLength(3);
+    expect(markup.match(/class="workspace-file-tree-guide"/g)).toHaveLength(5);
+    expect(markup.match(/class="workspace-file-tree-icon workspace-file-type-icon"/g)).toHaveLength(2);
+    expect(markup.match(/<img[^>]+src="[^"]*typeScript\.svg/g)).toHaveLength(2);
     expect(markup.includes('aria-selected="true"')).toBe(selectedPath !== null);
   }
   controller.gitChangedPaths = new Set();

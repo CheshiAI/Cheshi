@@ -5,7 +5,7 @@
 .carousel[data-swiping] .panel { pointer-events: none; }
 .panel { display: flex; flex-direction: column; flex: 0 0 100%; width: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 .panel[aria-hidden='true'] { pointer-events: none; }
-.pagination { display: flex; flex: 0 0 22px; justify-content: center; align-items: center; margin-top: 8px; }
+.pagination { display: flex; height: 32px; min-height: 32px; flex: 0 0 32px; align-items: center; justify-content: center; }
 .pagination .dot { display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 22px; height: 22px; padding: 0; border: none; background: transparent; color: var(--text); cursor: pointer; transform: none; }
 .dot > span { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .35; }
 .dot[data-highlighted='true'] > span, .dot:hover > span, .dot:focus-visible > span { opacity: 1; }

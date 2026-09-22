@@ -4,20 +4,17 @@
   flex: 1 1 auto;
   flex-direction: column;
   font-size: 10px;
-  gap: 12px;
+  gap: 0;
 }
 
-.heading {
+.body {
   display: flex;
-  height: var(--header-height);
-  min-height: var(--header-height);
-  flex: 0 0 var(--header-height);
-  align-items: center;
-  justify-content: space-between;
-  color: var(--sidebar-section-label-color);
-  font-size: 10px;
-  letter-spacing: .08em;
-  line-height: 14px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-default);
+  padding: var(--space-default) var(--space-default) 0;
 }
 
 .list {

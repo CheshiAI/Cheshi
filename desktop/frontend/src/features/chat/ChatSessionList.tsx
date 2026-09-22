@@ -1,7 +1,7 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { MessageCircleDashed, MessageSquareText, Plus, Trash2 } from 'lucide-react';
 
-import { LoadingIndicator, LoadingState, NeumorphicButton } from '../../shared/ui';
+import { LoadingIndicator, LoadingState, NeumorphicButton, SidebarPanelHeader } from '../../shared/ui';
 import type { ChatSession } from './model';
 import styles from './ChatSessionList.module.css';
 
@@ -75,70 +75,70 @@ export function ChatSessionList({
 
   return (
     <section className={styles.root} aria-label="Chat history">
-      <header className={styles.heading}>
-        <span>CHATS</span>
-        <div className="sidebar-heading-actions">
-          {onTemporaryChat && <NeumorphicButton
-            raised
-            className="sidebar-heading-action"
-            aria-label="Open temporary chat"
-            title="Temporary chat · Not saved to chat history"
-            aria-haspopup="dialog"
-            aria-expanded={temporaryChatOpen}
-            onClick={onTemporaryChat}
-          >
-            <MessageCircleDashed aria-hidden="true" />
-          </NeumorphicButton>}
-          <NeumorphicButton
-            raised
-            className="sidebar-heading-action"
-            aria-label="New chat"
-            disabled={newChatDisabled}
-            onClick={onNew}
-          >
-            <Plus aria-hidden="true" />
-          </NeumorphicButton>
-        </div>
-      </header>
+      <SidebarPanelHeader title="CHATS" icon={<MessageSquareText aria-hidden="true" />} actions={<>
+        {onTemporaryChat && <NeumorphicButton
+          raised
+          size="icon"
+          aria-label="Open temporary chat"
+          title="Temporary chat · Not saved to chat history"
+          aria-haspopup="dialog"
+          aria-expanded={temporaryChatOpen}
+          onClick={onTemporaryChat}
+        >
+          <MessageCircleDashed aria-hidden="true" />
+        </NeumorphicButton>}
+        <NeumorphicButton
+          raised
+          size="icon"
+          aria-label="New chat"
+          title="New chat"
+          disabled={newChatDisabled}
+          onClick={onNew}
+        >
+          <Plus aria-hidden="true" />
+        </NeumorphicButton>
+      </>} />
 
-      {sessions.length > 0 && search}
+      <div className={styles.body}>
+        {sessions.length > 0 && search}
 
-      <fieldset className={styles.list} aria-label="Conversations" aria-busy={loading} disabled={selectionDisabled}>
-        {loading && sessions.length === 0 && (
-          <LoadingState className={styles.loading} />
-        )}
-        {!loading && sessions.length === 0 && (
-          <div className={styles.empty}>
-            <MessageSquareText aria-hidden="true" />
-            <span>Your workspace chats will appear here.</span>
-          </div>
-        )}
-        {groups.map(([label, entries]) => entries.length > 0 && (
-          <section className={styles.group} key={label}>
-            <h2>{label}</h2>
-            <div className={styles.groupItems}>
-              {entries.map((session) => {
-                const reason = deleteReason(session.id);
-                return (
-                <div className={styles.sessionRow} key={session.id}>
-                  <ChatSessionButton id={session.id} title={session.title}
-                    active={session.id === activeSessionId}
-                    responding={session.status === 'active' || respondingSessions.has(session.id)}
-                    onOpen={openSession} />
-                  <NeumorphicButton raised className={styles.deleteButton}
-                    type="button" aria-label={`Delete chat: ${session.title}`} aria-haspopup="dialog"
-                    title={reason ?? 'Delete chat'}
-                    disabled={reason !== null}
-                    onClick={() => onDelete(session.id)}>
-                    <Trash2 size={11} strokeWidth={1.7} aria-hidden="true" />
-                  </NeumorphicButton>
-                </div>
-                );
-              })}
+        <fieldset className={styles.list} aria-label="Conversations" aria-busy={loading} disabled={selectionDisabled}>
+          {loading && sessions.length === 0 && (
+            <LoadingState className={styles.loading} />
+          )}
+          {!loading && sessions.length === 0 && (
+            <div className={styles.empty}>
+              <MessageSquareText aria-hidden="true" />
+              <span>Your workspace chats will appear here.</span>
             </div>
-          </section>
-        ))}
-      </fieldset>
+          )}
+          {groups.map(([label, entries]) => entries.length > 0 && (
+            <section className={styles.group} key={label}>
+              <h2>{label}</h2>
+              <div className={styles.groupItems}>
+                {entries.map((session) => {
+                  const reason = deleteReason(session.id);
+                  return (
+                  <div className={styles.sessionRow} key={session.id}>
+                    <ChatSessionButton id={session.id} title={session.title}
+                      active={session.id === activeSessionId}
+                      responding={session.status === 'active' || respondingSessions.has(session.id)}
+                      onOpen={openSession} />
+                    <NeumorphicButton raised className={styles.deleteButton}
+                      type="button" aria-label={`Delete chat: ${session.title}`} aria-haspopup="dialog"
+                      title={reason ?? 'Delete chat'}
+                      disabled={reason !== null}
+                      onClick={() => onDelete(session.id)}>
+                      <Trash2 size={11} strokeWidth={1.7} aria-hidden="true" />
+                    </NeumorphicButton>
+                  </div>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </fieldset>
+      </div>
     </section>
   );
 }

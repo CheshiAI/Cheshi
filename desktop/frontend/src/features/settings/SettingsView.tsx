@@ -73,7 +73,7 @@ export function SettingsView({ api = cheshiDesktop?.settings }: { api?: Settings
         <NeumorphicButton raised size="icon" aria-hidden="true" className={styles.titleMark} disabled>
           <Settings aria-hidden="true" />
         </NeumorphicButton>
-        <h1 className={styles.sectionTitle}>Settings</h1>
+        <h1 className={styles.sectionTitle}>SETTINGS</h1>
       </div>
     </>} />
     <div className={styles.body}>

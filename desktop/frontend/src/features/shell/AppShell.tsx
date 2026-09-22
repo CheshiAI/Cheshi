@@ -18,7 +18,7 @@ import type { GitLineBlameRequest } from '../../../../shared/git-line-blame';
 import type { ChatHistorySearchTarget } from '../chat/chatHistorySearchNavigation';
 import { HistoryRecallNavigation } from '../chat/HistoryRecallActivity';
 import { useChatWorkspace } from '../chat/useChatWorkspace';
-import { WindowChrome, WindowTabs } from '../chrome/WindowChrome';
+import { WindowTabs } from '../chrome/WindowChrome';
 import {
   WorkspaceEditor,
   type WorkspaceEditorMutation,
@@ -266,7 +266,6 @@ export function AppShell() {
         <SlidingSidePanel open={leftSidebarOpen} anchor="end" stageClassName={styles.sidebarPanelStage}
           id="workspace-sidebar" className={`sidebar-column ${styles.sidebarPanel}`}
           inert={workspace.accountSwitchPending}>
-            <WindowChrome />
             <Sidebar
               activePanel={sidebarPanel}
               onPanelChange={setSidebarPanel}

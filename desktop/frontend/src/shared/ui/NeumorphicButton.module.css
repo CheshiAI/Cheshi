@@ -48,14 +48,14 @@
 }
 
 /* Icon-only controls share the same colors across all feature toolbars. */
-.button:has(> svg:only-child) {
+.button:has(> svg:only-child):not([data-size]) {
   color: var(--text);
 }
 
-.button:has(> svg:only-child):not(:disabled):hover,
-.button:has(> svg:only-child)[data-active='true'],
-.button:has(> svg:only-child)[aria-pressed='true'],
-.button:has(> svg:only-child)[aria-expanded='true'] {
+.button:has(> svg:only-child):not([data-size]):not(:disabled):hover,
+.button:has(> svg:only-child):not([data-size])[data-active='true'],
+.button:has(> svg:only-child):not([data-size])[aria-pressed='true'],
+.button:has(> svg:only-child):not([data-size])[aria-expanded='true'] {
   background: var(--dropdown-selection-bg);
   color: var(--active-text);
 }

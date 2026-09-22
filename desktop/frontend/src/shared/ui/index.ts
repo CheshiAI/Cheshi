@@ -11,6 +11,7 @@ export { LoadingIndicator, LoadingState, type LoadingStateType } from './Loading
 export { Modal } from './Modal';
 export { NeumorphicButton } from './NeumorphicButton';
 export { SidebarCarousel, type SidebarSlide } from './SidebarCarousel';
+export { SidebarPanelHeader } from './SidebarPanelHeader';
 export { SidebarRailButton } from './SidebarRailButton';
 export { SlidingSidePanel } from './SlidingSidePanel';
 export { SidebarToggle, SidebarToggleVisibility } from './SidebarToggle';
