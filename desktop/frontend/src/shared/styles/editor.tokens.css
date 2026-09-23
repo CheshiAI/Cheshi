@@ -4,7 +4,7 @@
   --editor-muted: #929497;
   --editor-accent: #3d5569;
   --editor-border: var(--divider);
-  --editor-gutter-surface: rgba(255, 255, 255, .018);
+  --editor-gutter-surface: transparent;
   --editor-active-line: rgba(133, 201, 192, .07);
   --editor-active-line-gutter: rgba(133, 201, 192, .1);
   --editor-selection: rgba(91, 156, 148, .32);
