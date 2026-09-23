@@ -3,6 +3,7 @@
   min-height: var(--header-height);
   max-height: var(--header-height);
   flex: 0 0 var(--header-height);
+  -webkit-app-region: drag;
 }
 
 .title,
@@ -13,7 +14,10 @@
 }
 
 .title { gap: 10px; }
-.actions { gap: var(--icon-default); }
+.actions {
+  gap: var(--icon-default);
+  -webkit-app-region: no-drag;
+}
 
 .title > span {
   overflow: hidden;

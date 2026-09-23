@@ -1,8 +1,14 @@
+.chrome,
+.navigation,
+.bottomControls {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
 .chrome {
   width: 100%;
   height: var(--header-height);
   flex: 0 0 var(--header-height);
-  -webkit-app-region: drag;
 }
 
 .navigation {

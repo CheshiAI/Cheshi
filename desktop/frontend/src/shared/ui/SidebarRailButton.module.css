@@ -5,6 +5,7 @@
 }
 
 .button {
+  -webkit-app-region: no-drag;
   position: absolute;
   top: 0;
   left: 0;
