@@ -87,7 +87,7 @@ export function WorkspaceStatusBar({ onAccountInitialLoad, onIndexInitialLoad, .
         <CodeGraphIndexPanel onInitialLoad={onIndexInitialLoad} onStatusChange={setIndex} />
       </LiquidGlassPanel>
       <LiquidGlassPanel id={accountId} popover="auto" role="dialog" aria-label="Account and usage details"
-        tabIndex={-1} className={styles.popover} data-liquid-glass-backdrop="true"
+        tabIndex={-1} className={`${styles.popover} ${styles.accountPopover}`} data-liquid-glass-backdrop="true"
         onToggle={(event) => setAccountOpen(event.newState === 'open')}>
         <AccountUsagePanel {...accountProps} onInitialLoad={onAccountInitialLoad} onStatusChange={receiveAccountStatus}
           onAddAccount={openAddAccount} />

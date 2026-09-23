@@ -98,6 +98,11 @@
   overscroll-behavior: contain;
 }
 
+.accountPopover {
+  --panel-backdrop-blur: 16px;
+  background: rgba(0, 0, 0, 0.75);
+}
+
 .busy {
   width: 6px;
   height: 6px;
