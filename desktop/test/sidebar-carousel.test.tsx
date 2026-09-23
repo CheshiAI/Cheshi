@@ -15,7 +15,7 @@ function Fixture({ count }: { count: number }) {
 
 async function withCarousel(run: (h: {
   container: HTMLElement; window: Window; render(count: number): Promise<void>;
-  settle(): Promise<void>; frame(): Promise<void>;
+  settle(): Promise<void>; frame(): Promise<void>; wait(ms: number): Promise<void>;
   click(label: string): Promise<void>; key(label: string, key: string): Promise<void>;
   wheel(x: number, y: number, time: number, options?: Pick<WheelEventInit, 'deltaMode' | 'ctrlKey' | 'metaKey' | 'altKey'> & { input?: boolean; target?: 'surface' | 'viewport' | 'item' }): Promise<boolean>;
 }) => Promise<void>) {
@@ -35,6 +35,7 @@ async function withCarousel(run: (h: {
         Object.defineProperty(container.querySelector('[aria-roledescription="slide"]')!.parentElement!, 'clientWidth', { configurable: true, value: 320 });
       },
       settle: async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 170)); }); },
+      wait: async ms => { await act(async () => { await new Promise(resolve => setTimeout(resolve, ms)); }); },
       frame: async () => { await act(async () => { await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve())); }); },
       click: async label => { await act(async () => button(label).click()); },
       key: async (label, key) => {
@@ -194,7 +195,7 @@ test('vertical scrolling, diagonal drift, zoom and input editing do not switch p
   await withCarousel(async ({ container, render, wheel, settle }) => {
     await render(2);
     expect(await wheel(3, 60, 0)).toBe(false);
-    expect(await wheel(90, 0, 20)).toBe(false);
+    expect(await wheel(3, 50, 20)).toBe(false);
     expect(await wheel(50, 45, 300)).toBe(false);
     expect(await wheel(60, 0, 600, { ctrlKey: true })).toBe(false);
     expect(await wheel(60, 0, 900, { metaKey: true })).toBe(false);
@@ -205,12 +206,145 @@ test('vertical scrolling, diagonal drift, zoom and input editing do not switch p
   });
 });
 
-test('edge resistance stays bounded and line/page wheel units are normalized', async () => {
+test('small reverse events accumulate without cursor movement after settling', async () => {
+  await withCarousel(async ({ container, render, wheel, frame, settle }) => {
+    await render(2);
+    await wheel(200, 0, 0);
+    await settle();
+    expect(selectedPanel(container)).toBe('Show chats');
+    for (let i = 0; i < 12; i++) await wheel(-4, 0, 180 + i * 16);
+    await frame();
+    expect(container.querySelector('[data-swiping]')).not.toBeNull();
+    expect(swipeOffset(container)).toBe('48px');
+    await settle();
+    expect(selectedPanel(container)).toBe('Show chats');
+  });
+});
+
+test('a slight reversal before committing does not block reversing the completed transition', async () => {
+  await withCarousel(async ({ container, render, wheel, frame, settle }) => {
+    await render(2);
+    await wheel(200, 0, 0);
+    await wheel(-4, 0, 16);
+    await settle();
+    expect(selectedPanel(container)).toBe('Show chats');
+    await wheel(-4, 0, 180);
+    await wheel(-4, 0, 196);
+    await frame();
+    expect(swipeOffset(container)).toBe('8px');
+  });
+});
+
+test('a slow swipe can resume during its return without waiting for the momentum guard', async () => {
+  await withCarousel(async ({ container, render, wheel, wait, frame }) => {
+    await render(2);
+    await wheel(40, 0, 0);
+    await wait(90);
+    expect(container.querySelector('[data-swiping]')).toBeNull();
+    expect(selectedPanel(container)).toBe('Show files');
+    await wheel(4, 0, 90);
+    await wheel(4, 0, 106);
+    await frame();
+    expect(container.querySelector('[data-swiping]')).not.toBeNull();
+    expect(swipeOffset(container)).toBe('-8px');
+  });
+});
+
+test('clear horizontal input takes over vertical scrolling without a pause or cursor movement', async () => {
+  await withCarousel(async ({ container, render, wheel, frame, settle }) => {
+    await render(2);
+    expect(await wheel(3, 60, 0)).toBe(false);
+    expect(await wheel(3, 40, 16)).toBe(false);
+    expect(await wheel(6, 0, 32)).toBe(false);
+    expect(await wheel(6, 0, 48)).toBe(false);
+    expect(await wheel(6, 0, 64)).toBe(true);
+    await frame();
+    // Vertical drift is not added to the new horizontal movement.
+    expect(swipeOffset(container)).toBe('-18px');
+    await wheel(160, 0, 80);
+    await settle();
+    expect(selectedPanel(container)).toBe('Show chats');
+  });
+});
+
+test('intermittent diagonal drift cannot accumulate into a horizontal takeover', async () => {
+  await withCarousel(async ({ container, render, wheel, settle }) => {
+    await render(2);
+    await wheel(0, 60, 0);
+    for (let time = 16; time < 240; time += 32) {
+      expect(await wheel(6, 0, time)).toBe(false);
+      expect(await wheel(3, 30, time + 16)).toBe(false);
+    }
+    await settle();
+    expect(selectedPanel(container)).toBe('Show files');
+    expect(swipeOffset(container)).toBe('');
+  });
+});
+
+test('short fast flicks switch panels in either direction while the same slow distance returns', async () => {
+  await withCarousel(async ({ container, render, wheel, settle }) => {
+    await render(2);
+    for (const time of [0, 70, 140]) await wheel(32, 0, time);
+    await settle();
+    expect(selectedPanel(container)).toBe('Show files');
+    for (const time of [500, 516, 532]) await wheel(32, 0, time);
+    await settle();
+    expect(selectedPanel(container)).toBe('Show chats');
+    for (const time of [900, 916, 932]) await wheel(-32, 0, time);
+    await settle();
+    expect(selectedPanel(container)).toBe('Show files');
+  });
+});
+
+test('recent reversal cancels an earlier fast flick instead of committing stale velocity', async () => {
+  await withCarousel(async ({ container, render, wheel, settle }) => {
+    await render(2);
+    await wheel(120, 0, 0);
+    await wheel(105, 0, 16);
+    await wheel(-32, 0, 32);
+    await wheel(-32, 0, 48);
+    await settle();
+    expect(selectedPanel(container)).toBe('Show files');
+  });
+});
+
+test('a fast start that slows below the midpoint returns without retaining the initial flick', async () => {
+  await withCarousel(async ({ container, render, wheel, settle }) => {
+    await render(2);
+    await wheel(32, 0, 0);
+    await wheel(32, 0, 16);
+    for (let time = 32; time <= 144; time += 16) await wheel(1, 0, time);
+    await settle();
+    expect(selectedPanel(container)).toBe('Show files');
+  });
+});
+
+test('settlement starts within 100ms and short remaining travel uses a shorter duration', async () => {
+  await withCarousel(async ({ container, render, wheel, wait }) => {
+    await render(2);
+    const track = container.querySelector<HTMLElement>('[aria-roledescription="slide"]')!.parentElement!;
+    await wheel(140, 0, 0);
+    await wait(100);
+    expect(container.querySelector('[data-swiping]')).toBeNull();
+    expect(selectedPanel(container)).toBe('Show files');
+    const longer = Number.parseFloat(track.style.getPropertyValue('--sidebar-swipe-duration'));
+    await wheel(40, 0, 400);
+    await wait(100);
+    const shorter = Number.parseFloat(track.style.getPropertyValue('--sidebar-swipe-duration'));
+    expect(shorter).toBeGreaterThan(0);
+    expect(shorter).toBeLessThan(longer);
+    await wheel(200, 0, 800);
+    await wait(100);
+    expect(selectedPanel(container)).toBe('Show chats');
+  });
+});
+
+test('outer edges stay fixed and line/page wheel units are normalized', async () => {
   await withCarousel(async ({ container, render, wheel, frame, settle, click }) => {
     await render(4);
     await wheel(-300, 0, 0);
     await frame();
-    expect(swipeOffset(container)).toBe('24px');
+    expect(swipeOffset(container)).toBe('0px');
     await settle();
     expect(selectedPanel(container)).toBe('Show files');
     await wheel(12, 0, 300, { deltaMode: 1 });
@@ -222,12 +356,55 @@ test('edge resistance stays bounded and line/page wheel units are normalized', a
     await click('fourth');
     await wheel(300, 0, 900);
     await frame();
-    expect(swipeOffset(container)).toBe('-24px');
+    expect(swipeOffset(container)).toBe('0px');
     await settle();
     expect(selectedPanel(container)).toBe('Show fourth');
     await render(1);
     expect(await wheel(60, 0, 1200)).toBe(false);
     expect(container.querySelectorAll('[aria-roledescription="slide"]')).toHaveLength(1);
+  });
+});
+
+test.each([
+  { name: 'first', panel: 'files', neighbor: 'chats', outward: -1 },
+  { name: 'last', panel: 'chats', neighbor: 'files', outward: 1 },
+])('the $name panel discards outward travel and responds immediately to reversal', async ({ panel, neighbor, outward }) => {
+  await withCarousel(async ({ container, render, wheel, frame, settle, click }) => {
+    await render(2);
+    await click(panel);
+    for (let time = 0; time <= 80; time += 20) {
+      expect(await wheel(outward * 100, 0, time)).toBe(true);
+      await frame();
+      expect(swipeOffset(container)).toBe('0px');
+    }
+    expect(selectedPanel(container)).toBe(`Show ${panel}`);
+    expect(highlightedPanel(container)).toBe(`Show ${panel}`);
+
+    // Reversing within the same gesture must not consume accumulated overscroll.
+    await wheel(-outward * 20, 0, 100);
+    await frame();
+    expect(swipeOffset(container)).toBe(`${outward * 20}px`);
+    await settle();
+    expect(selectedPanel(container)).toBe(`Show ${panel}`);
+
+    await wheel(outward * 300, 0, 400);
+    await frame();
+    expect(swipeOffset(container)).toBe('0px');
+    await settle();
+    // Keep ignoring the outgoing momentum after settling, even with no displacement.
+    expect(await wheel(outward * 12, 0, 580)).toBe(true);
+    await frame();
+    expect(container.querySelector('[data-swiping]')).toBeNull();
+    expect(swipeOffset(container)).toBe('');
+    expect(selectedPanel(container)).toBe(`Show ${panel}`);
+
+    await wheel(-outward * 180, 0, 600);
+    await frame();
+    expect(swipeOffset(container)).toBe(`${outward * 180}px`);
+    expect(highlightedPanel(container)).toBe(`Show ${neighbor}`);
+    await settle();
+    expect(selectedPanel(container)).toBe(`Show ${neighbor}`);
+    expect(swipeOffset(container)).toBe('');
   });
 });
 
@@ -254,7 +431,10 @@ test('a reverse gesture continues from the visible position during a settling tr
     // Happy DOM does not animate transforms; supply the browser's intermediate position.
     window.getComputedStyle = element => new Proxy(getComputedStyle(element), {
       get(style, key) {
-        return key === 'transform' ? 'matrix(1, 0, 0, 1, -240, 0)' : Reflect.get(style, key);
+        // Clearing the duration before reading would lose the animated position.
+        const hasTransition = element.getAttribute('style')?.includes('--sidebar-swipe-duration');
+        return key === 'transform'
+          ? `matrix(1, 0, 0, 1, ${hasTransition ? -240 : -320}, 0)` : Reflect.get(style, key);
       },
     });
     try {
