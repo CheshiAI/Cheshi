@@ -159,6 +159,34 @@ selected state from the momentary `:active` pressed state. The hover and
 pressed backgrounds take precedence on selected items; restore the selected
 background when the interaction ends.
 
+## Scrollbars
+
+Apply the same rules to both horizontal and vertical scrollbars in sidebars
+and editors, including read-only editor views.
+
+- Keep the thickness fixed at `6px` through `--auto-hide-scrollbar-size`:
+  width for vertical scrollbars and height for horizontal scrollbars.
+- Show the scrollbar immediately on scroll. Each new scroll restarts the
+  `700ms` idle delay and cancels any fade in progress.
+- After `700ms` without scrolling, fade the thumb to transparent over `240ms`
+  with `ease-out`. Keep the track transparent.
+- Control visibility and fading in the application instead of relying on
+  Chromium or macOS automatic scrollbar behavior.
+- Preserve scrollbar dimensions and content spacing while hiding. Do not
+  remove the scrollbar or change its thickness to hide it.
+- Under `prefers-reduced-motion: reduce`, keep the idle delay and immediate
+  redisplay, but disable the fade animation.
+- Reuse [the shared scrollbar styles](frontend/src/shared/styles/scrollbars.css)
+  and [the activity lifecycle](frontend/src/shared/useAutoHideScrollbars.ts).
+  React panels use `useAutoHideScrollbars`; editor views use
+  `installAutoHideScrollbars` through
+  [the CodeMirror extension](frontend/src/features/editor/workspaceEditorScrollbars.ts).
+  Avoid separate feature-specific timers or fade implementations.
+- Fixed-size scroll containers set
+  `--scrollbar-size: var(--auto-hide-scrollbar-size)`, `scrollbar-width: auto`,
+  and `scrollbar-color: auto` so native styling does not override the shared
+  thickness and thumb colors.
+
 ## Toggle switches
 
 Use `toggle-switch` for on/off settings.

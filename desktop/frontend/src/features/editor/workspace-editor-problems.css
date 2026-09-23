@@ -20,6 +20,9 @@
 }
 
 .workspace-editor-host .cm-editor .cm-scroller {
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
+  scrollbar-width: auto;
+  scrollbar-color: auto;
   padding: 1px 0;
 }
 

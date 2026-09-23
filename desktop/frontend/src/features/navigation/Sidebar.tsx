@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { SidebarCarousel } from '../../shared/ui';
+import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import { WorkspaceFileTree } from './WorkspaceFileTree';
 
@@ -25,10 +26,11 @@ export function Sidebar({
   onOpenWorkspaceFile,
   onOpenLocalHistory,
 }: SidebarProps) {
+  const scrollbarSurface = useAutoHideScrollbars<HTMLElement>();
   const files = <WorkspaceFileTree selectedPath={selectedFilePath}
     onEntryMutation={onWorkspaceEntryMutation} onOpenFile={onOpenWorkspaceFile} onOpenLocalHistory={onOpenLocalHistory} />;
   return (
-    <aside className="sidebar">
+    <aside ref={scrollbarSurface} className="sidebar">
       <div className="sidebar-panel-content">
         <div className="sidebar-content-primary">
           {chatPanel && onPanelChange ? <SidebarCarousel activeId={activePanel}

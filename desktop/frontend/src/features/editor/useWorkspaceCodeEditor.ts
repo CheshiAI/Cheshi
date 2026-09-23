@@ -43,6 +43,7 @@ import {
 } from './workspaceEditorModel';
 import { workspaceEditorHighlightStyle, workspaceEditorTheme } from './workspaceEditorTheme';
 import { workspaceEditorContentClip } from './workspaceEditorContentClip';
+import { workspaceEditorScrollbars } from './workspaceEditorScrollbars';
 import type { WorkspaceLanguageServerController } from './useWorkspaceLanguageServer';
 
 interface UseWorkspaceCodeEditorOptions {
@@ -169,6 +170,7 @@ export function useWorkspaceCodeEditor({
       lineNumbers(),
       lintGutter(),
       workspaceEditorContentClip,
+      workspaceEditorScrollbars,
       highlightSpecialChars(),
       history(),
       drawSelection(),
@@ -436,6 +438,7 @@ export function useWorkspaceCodeEditor({
         formatNumber: (line) => String(excerpt.startLine + line - 1),
       }),
       workspaceEditorContentClip,
+      workspaceEditorScrollbars,
       highlightSpecialChars(),
       drawSelection(),
       syntaxHighlighting(workspaceEditorHighlightStyle),

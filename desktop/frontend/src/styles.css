@@ -2,6 +2,7 @@
 @import './shared/styles/controls.tokens.css';
 @import './shared/styles/editor.tokens.css';
 @import './shared/styles/window-glass.css';
+@import './shared/styles/scrollbars.css';
 
 :root {
     color-scheme: dark;
@@ -405,10 +406,13 @@ h1, h2, h3, h4, h5, h6, p {
 }
 
 .workspace-file-tree-list {
+    --scrollbar-size: var(--auto-hide-scrollbar-size);
     min-height: 0;
     flex: 1 1 auto;
     overflow-x: hidden;
     overflow-y: auto;
+    scrollbar-width: auto;
+    scrollbar-color: auto;
 }
 
 .workspace-file-tree-list-content {

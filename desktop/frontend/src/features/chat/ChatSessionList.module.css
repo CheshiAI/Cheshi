@@ -18,18 +18,22 @@
 }
 
 .list {
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
   display: flex;
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
   gap: 16px;
   min-width: 0;
-  margin: 0;
+  /* Extend the scrollbar to the sidebar edge while preserving content spacing. */
+  margin: 0 calc(-1 * var(--space-default)) 0 0;
   border: 0;
   padding: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding-right: 2px;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+  padding-right: calc(var(--space-default) + 2px);
 }
 
 .group { display: grid; gap: 4px; }
