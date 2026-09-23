@@ -385,8 +385,8 @@ h1, h2, h3, h4, h5, h6, p {
     z-index: 1;
 }
 
-.workspace-file-tree-root:hover, .workspace-file-tree-root[data-context-menu-open="true"] {
-    background: var(--dropdown-selection-bg);
+.workspace-file-tree-root[data-context-menu-open="true"] {
+    background: var(--control-surface);
     color: var(--active-text);
 }
 
@@ -428,8 +428,16 @@ h1, h2, h3, h4, h5, h6, p {
     z-index: 1;
 }
 
-.workspace-file-tree-entry:hover, .workspace-file-tree-entry[aria-selected="true"], .workspace-file-tree-entry[data-context-menu-open="true"] {
-    background: var(--dropdown-selection-bg);
+.workspace-file-tree-entry[aria-selected="true"], .workspace-file-tree-entry[data-context-menu-open="true"] {
+    background: var(--control-surface);
+    color: var(--active-text);
+}
+
+.workspace-file-tree-root:not(:disabled):hover,
+.workspace-file-tree-root:not(:disabled):active,
+.workspace-file-tree-entry:not(:disabled):hover,
+.workspace-file-tree-entry:not(:disabled):active {
+    background: var(--control-surface-interactive);
     color: var(--active-text);
 }
 
@@ -501,12 +509,14 @@ h1, h2, h3, h4, h5, h6, p {
 
 .workspace-file-tree-edit {
     padding-right: 4px;
-    background: var(--dropdown-selection-bg);
+    background: var(--control-surface);
     color: var(--active-text);
     cursor: default;
 }
 
 .workspace-file-tree-edit .workspace-file-tree-edit-field {
+    --neumorphic-button-surface: transparent;
+    --neumorphic-button-hover-background: transparent;
     height: 22px;
     flex: 1 1 auto;
     border: 0;
@@ -562,6 +572,11 @@ h1, h2, h3, h4, h5, h6, p {
     background: var(--divider);
 }
 
+.workspace-file-context-menu {
+    --panel-backdrop-blur: 32px;
+    background: rgba(0, 0, 0, 0.75);
+}
+
 .liquid-glass-context-menu button:hover, .liquid-glass-context-menu button:focus-visible, .workspace-file-context-menu button:hover, .workspace-file-context-menu button:focus-visible {
     background: var(--dropdown-selection-bg);
     color: var(--dropdown-selection-text);
@@ -579,6 +594,7 @@ h1, h2, h3, h4, h5, h6, p {
 }
 
 .workspace-file-context-menu > button:is(:hover, :focus-visible, :active, [aria-selected="true"], [data-active="true"]) {
+    background: var(--control-surface-interactive);
     color: var(--active-text);
 }
 
