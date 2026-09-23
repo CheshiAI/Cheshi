@@ -77,18 +77,12 @@ h1, h2, h3, h4, h5, h6, p {
 }
 
 .app-layout > .sidebar-column {
-    width: var(--left-sidebar-width, var(--sidebar-width));
-    min-width: var(--left-sidebar-width, var(--sidebar-width));
-    max-width: var(--left-sidebar-width, var(--sidebar-width));
     border: 0;
     border-right: 1px solid var(--divider);
 }
 
 .app-layout > .right-sidebar-column {
-    width: var(--right-sidebar-width, var(--sidebar-width));
-    min-width: var(--right-sidebar-width, var(--sidebar-width));
-    max-width: var(--right-sidebar-width, var(--sidebar-width));
-    flex-basis: var(--right-sidebar-width, var(--sidebar-width));
+    flex-basis: var(--sidebar-width);
     border: 0;
     border-left: 1px solid var(--divider);
 }

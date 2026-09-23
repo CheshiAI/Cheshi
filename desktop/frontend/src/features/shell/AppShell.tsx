@@ -45,7 +45,6 @@ import { MailView } from '../mail/MailView';
 import { CalendarView } from '../calendar/CalendarView';
 import { appleNoteAttachment } from '../notes/appleNotesModel';
 import type { AppleNote } from '../../../../shared/apple-notes';
-import { useSidebarResize } from './useSidebarResize';
 
 const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'notes', 'calendar', 'mail', 'settings'];
 
@@ -133,8 +132,6 @@ export function AppShell() {
       item.kind === 'activity' && item.activity === 'files' && item.id === fileReview?.itemId
     )) ?? null;
   const reviewing = Boolean(reviewedItem || lineCommitTarget || localHistoryPath !== null);
-  const sidebarResize = useSidebarResize({ rightOpen: false,
-    reviewing: rightSidebarOpen && reviewing, disabled: updateResume.busy || workspace.accountSwitchPending });
 
   const openChat = (sessionId: string): void => {
     if (chatSessionSelectionDisabled) return;
@@ -251,9 +248,6 @@ export function AppShell() {
       <div
         inert={updateResume.busy}
         className={`app-layout ${styles.layout}`}
-        ref={sidebarResize.layoutRef}
-        style={sidebarResize.style}
-        data-sidebar-resizing={sidebarResize.resizing ?? undefined}
         data-active-view={activeView}
         data-left-sidebar-open={leftSidebarOpen ? 'true' : 'false'}
         data-file-review={reviewedItem || lineCommitTarget || localHistoryPath !== null ? 'true' : undefined}
@@ -297,8 +291,6 @@ export function AppShell() {
               onOpenLocalHistory={openLocalHistory}
             />
         </SlidingSidePanel>
-        <div hidden={!leftSidebarOpen} className={`${styles.sidebarResizer} ${styles.leftResizer}`}
-          {...sidebarResize.separatorProps('left')} />
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
           <WorkspaceEditorSplit mode={editorLayoutMode} editor={
             <WorkspaceEditor

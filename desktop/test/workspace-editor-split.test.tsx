@@ -95,8 +95,6 @@ function shellHarness(initialHistoryLoading = false) {
       sessionHistory: { loading: historyLoading, sessions: [] }, responseThreadIds: [], accountSwitchPending: false }) },
     '../chat/useChatHistorySearch': { useChatHistorySearch: () => ({ clear() {} }) },
     './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
-    './useSidebarResize': { useSidebarResize: () => ({ layoutRef: { current: null }, style: {}, resizing: null,
-      separatorProps: (side: string) => ({ role: 'separator', 'aria-label': `Resize ${side} sidebar` }) }) },
     '../navigation/fileSearchShortcut': { installFileSearchShortcut: (_document: unknown, open: () => void) => {
       openSearch = open; return () => {};
     } },
@@ -144,7 +142,7 @@ test('left carousel retains navigation and loads initial chats before limiting r
   expect(chat().sessionSyncEnabled).toBe(false);
 });
 
-test('the fixed navigation rail precedes the resizable left sidebar', () => {
+test('the fixed navigation rail precedes the left sidebar', () => {
   const tree = shellHarness().render();
   const panels = elements(tree).filter(element => element.type === 'LiquidGlassPanel');
   const rail = panels[0]?.props as HTMLAttributes<HTMLElement> | undefined;
@@ -168,7 +166,7 @@ test('the rail control collapses and restores the left sidebar', () => {
   expect(panel).toMatchObject({ open: false, id: 'workspace-sidebar' });
   expect(elements(panel.children).some(element => element.type === 'Sidebar')).toBe(true);
   const resizer = elements(tree).find(element => (element.props as HTMLAttributes<HTMLElement>)['aria-label'] === 'Resize left sidebar');
-  expect((resizer?.props as HTMLAttributes<HTMLElement>).hidden).toBe(true);
+  expect(resizer).toBeUndefined();
   const rail = props<ComponentProps<typeof SidebarRail>>(tree, 'SidebarRail');
   expect(rail.sidebarOpen).toBe(false);
   rail.onToggleSidebar();
@@ -395,7 +393,7 @@ test('only the standalone editor controls the shared right sidebar and preserves
   expect(editor().rightSidebarOpen).toBe(true);
 });
 
-test('files and chats share only the left resize handle and review resizing stays in its panel', () => {
+test('files and chats switch without shell resize handles while review controls stay in their panel', () => {
   const app = shellHarness();
   const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   const handles = () => elements(app.render()).flatMap(element => {
@@ -403,16 +401,18 @@ test('files and chats share only the left resize handle and review resizing stay
     return attributes.role === 'separator' ? [attributes['aria-label']] : [];
   });
   const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
-  expect(handles()).toEqual(['Resize left sidebar']);
+  expect(handles()).toEqual([]);
   sidebar().onPanelChange!('chats');
-  expect(handles()).toEqual(['Resize left sidebar']);
+  expect(sidebar().activePanel).toBe('chats');
+  expect(handles()).toEqual([]);
   sidebar().onPanelChange!('files');
-  expect(handles()).toEqual(['Resize left sidebar']);
+  expect(sidebar().activePanel).toBe('files');
+  expect(handles()).toEqual([]);
   props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor')
     .onShowLineCommit({ path: 'sample.ts', line: 1, content: 'sample' });
-  expect(handles()).toEqual(['Resize left sidebar']);
+  expect(handles()).toEqual([]);
   props<ComponentProps<typeof ReviewSidebar>>(app.render(), 'ReviewSidebar').onCloseReview();
-  expect(handles()).toEqual(['Resize left sidebar']);
+  expect(handles()).toEqual([]);
 });
 
 test('line commits remain independent of the selected left panel and keep chats available on close', () => {

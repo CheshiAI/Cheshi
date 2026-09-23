@@ -1,5 +1,5 @@
 .reviewSlot {
-  --review-width: calc((100cqw - var(--left-sidebar-width, var(--sidebar-width))) / 2);
+  --review-width: calc((100cqw - var(--sidebar-width)) / 2);
   position: relative;
   width: 0;
   min-width: 0;
@@ -14,13 +14,11 @@
 }
 
 .reviewSlot[data-resizable='true'] {
-  --review-width: calc((100cqw - var(--left-sidebar-width, var(--sidebar-width))) * var(--review-ratio, 0.5));
+  --review-width: calc((100cqw - var(--sidebar-width)) * var(--review-ratio, 0.5));
 }
 
 .reviewSlot[data-resizing='true'],
-.reviewSlot[data-resizing='true'] .reviewContent,
-:global(.app-layout[data-sidebar-resizing]) .reviewSlot,
-:global(.app-layout[data-sidebar-resizing]) .reviewContent {
+.reviewSlot[data-resizing='true'] .reviewContent {
   transition: none;
   user-select: none;
 }

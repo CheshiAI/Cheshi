@@ -23,7 +23,7 @@
 }
 
 .sidebarPanelStage {
-  --sliding-side-panel-width: var(--left-sidebar-width, var(--sidebar-width));
+  --sliding-side-panel-width: var(--sidebar-width);
 }
 
 .sidebarPanel {
@@ -33,46 +33,3 @@
   border: 0;
   border-right: 1px solid var(--divider);
 }
-
-.sidebarResizer {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  z-index: 5;
-  width: 5px;
-  color: var(--text);
-  cursor: col-resize;
-  touch-action: none;
-  -webkit-app-region: no-drag;
-}
-
-.leftResizer { left: calc(var(--sidebar-rail-width) + var(--left-sidebar-width, var(--sidebar-width)) - 5px); }
-
-.sidebarResizer::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 2px;
-  height: 24px;
-  border-radius: 999px;
-  background: currentColor;
-  transform: translate(-50%, -50%);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.sidebarResizer:hover,
-.sidebarResizer:focus-visible,
-.layout[data-sidebar-resizing='left'] .leftResizer {
-  background: var(--divider);
-  outline: none;
-}
-
-.sidebarResizer:hover::after,
-.sidebarResizer:focus-visible::after,
-.layout[data-sidebar-resizing='left'] .leftResizer::after { opacity: 1; }
-
-.sidebarResizer[aria-disabled='true'] { pointer-events: none; }
-
-.layout[data-sidebar-resizing] { cursor: col-resize; user-select: none; }

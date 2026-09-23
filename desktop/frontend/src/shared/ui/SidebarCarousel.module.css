@@ -9,5 +9,4 @@
 .pagination .dot { display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 22px; height: 22px; padding: 0; border: none; background: transparent; color: var(--text); cursor: pointer; transform: none; }
 .dot > span { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .35; }
 .dot[data-highlighted='true'] > span, .dot:hover > span, .dot:focus-visible > span { opacity: 1; }
-:global(.app-layout[data-sidebar-resizing]) .track { transition: none; }
 @media (prefers-reduced-motion: reduce) { .track { transition: none; } }

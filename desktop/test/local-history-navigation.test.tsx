@@ -97,8 +97,6 @@ function createHarness() {
     '../settings/SettingsView': { SettingsView: 'SettingsView' },
     './ReviewSidebar': { ReviewSidebar: 'ReviewSidebar' },
     './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
-    './useSidebarResize': { useSidebarResize: () => ({ layoutRef: { current: null }, style: {}, resizing: null,
-      separatorProps: () => ({ role: 'separator' }) }) },
     './WorkspaceStatusBar': { WorkspaceStatusBar: 'WorkspaceStatusBar' },
     './WorkspaceEditorSplit': { WorkspaceEditorSplit: 'WorkspaceEditorSplit' },
     './AppShell.module.css': { default: {} },
