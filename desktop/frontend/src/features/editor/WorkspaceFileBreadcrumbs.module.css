@@ -1,5 +1,6 @@
 .bar {
   --liquid-glass-radius: 0;
+  box-sizing: border-box;
   display: flex;
   height: var(--editor-breadcrumb-height);
   min-width: 0;
@@ -9,7 +10,8 @@
   overflow-y: hidden;
   border-width: 0 0 1px;
   color: var(--sidebar-section-label-color);
-  font: 400 10px/1 var(--font-ui), sans-serif;
+  font: 400 var(--font-size-small)/1 var(--font-ui), sans-serif;
+  letter-spacing: normal;
   padding: 0 var(--space-default);
   scrollbar-width: none;
 }
