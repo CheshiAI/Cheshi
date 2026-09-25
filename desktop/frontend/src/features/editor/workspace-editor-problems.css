@@ -205,6 +205,18 @@
   flex: 0 0 108px;
 }
 
+.workspace-editor-language-server-select > button[data-appearance='flat'] {
+  box-sizing: border-box;
+  border: none;
+  background: var(--control-surface);
+  color: var(--text);
+}
+
+.workspace-editor-language-server-select > button[data-appearance='flat']:not(:disabled):is(:hover, :active, [aria-expanded='true']) {
+  background: var(--control-surface-interactive);
+  color: var(--text);
+}
+
 .workspace-editor-language-server > button {
   display: grid;
   width: var(--editor-search-button-size);
@@ -255,12 +267,14 @@
   display: grid;
   width: 100%;
   min-width: 0;
-  grid-template-columns: var(--icon-size-default) minmax(0, 1fr) auto;
+  grid-template-columns: var(--icon-button-icon-size) minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-10);
   border: 0;
   background: transparent;
-  color: var(--text);
+  color: var(--sidebar-section-label-color);
+  font: 400 var(--font-size-small)/1.5 var(--font-ui), sans-serif;
+  letter-spacing: normal;
   padding: var(--space-8) var(--space-default);
   text-align: left;
 }
@@ -276,8 +290,8 @@
 
 .workspace-editor-problem-row > svg {
   color: inherit;
-  width: var(--icon-size-default);
-  height: var(--icon-size-default);
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
 }
 
 .workspace-editor-problem-message {
@@ -293,16 +307,11 @@
   white-space: nowrap;
 }
 
-.workspace-editor-problem-message strong {
-  font-size: var(--font-size-label);
-  font-weight: 400;
-  line-height: 15px;
-}
-
+.workspace-editor-problem-message strong,
 .workspace-editor-problem-message small,
 .workspace-editor-problem-location {
   color: inherit;
-  font: 400 var(--font-size-caption)/13px var(--font-mono);
+  font: inherit;
 }
 
 .workspace-editor-problem-location {
@@ -317,10 +326,14 @@
   justify-content: center;
   gap: var(--space-8);
   color: var(--sidebar-section-label-color);
-  font-size: var(--font-size-label);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
 }
 
 .workspace-editor-problems-empty > svg {
-  width: var(--icon-size-default);
-  height: var(--icon-size-default);
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  flex-shrink: 0;
 }

@@ -14,6 +14,7 @@ import { LiquidGlassPanel } from './LiquidGlassPanel';
 import { NeumorphicButton } from './NeumorphicButton';
 import { PillDropdownButton } from './PillDropdownButton';
 import styles from './LiquidGlassSelect.module.css';
+import menuStyles from './ToolbarMenu.module.css';
 
 export interface LiquidGlassSelectOption<Value extends string> {
   label: string;
@@ -30,6 +31,7 @@ interface LiquidGlassSelectProps<Value extends string> {
   title?: string;
   placeholder?: string;
   menuLabel?: string;
+  menuAppearance?: 'default' | 'toolbar';
   menuPlacement?: 'auto' | 'left';
   menuWidth?: number;
   onChange: (value: Value) => void;
@@ -77,6 +79,7 @@ export function LiquidGlassSelect<Value extends string>({
   title,
   placeholder,
   menuLabel = ariaLabel,
+  menuAppearance = 'default',
   menuPlacement = 'auto',
   menuWidth,
   onChange,
@@ -129,9 +132,9 @@ export function LiquidGlassSelect<Value extends string>({
         menuWidth ?? Math.max(rect.width, DEFAULT_MENU_WIDTH),
         window.innerWidth - VIEWPORT_GAP * 2,
       );
-      const estimatedHeight = options.length * MENU_ITEM_HEIGHT
+      const estimatedHeight = options.length * (menuAppearance === 'toolbar' ? 32 : MENU_ITEM_HEIGHT)
         + Math.max(0, options.length - 1) * MENU_ITEM_GAP
-        + MENU_PADDING + MENU_BORDER_WIDTH * 2;
+        + (menuAppearance === 'toolbar' ? 32 : MENU_PADDING) + MENU_BORDER_WIDTH * 2;
       if (menuPlacement === 'left') {
         const left = Math.max(VIEWPORT_GAP, rect.left - width - MENU_GAP);
         const top = Math.min(
@@ -164,13 +167,15 @@ export function LiquidGlassSelect<Value extends string>({
       window.removeEventListener('resize', updateMenuPosition);
       window.removeEventListener('scroll', updateMenuPosition, true);
     };
-  }, [menuPlacement, menuWidth, open, options.length]);
+  }, [menuAppearance, menuPlacement, menuWidth, open, options.length]);
 
   const rootClassName = className ? `${styles.root} ${className}` : styles.root;
   const triggerClassName = triggerAppearance === 'raised'
     ? `neumorphic-surface ${styles.trigger}`
     : styles.trigger;
   const Trigger = triggerAppearance === 'pill' ? PillDropdownButton : NeumorphicButton;
+  const toolbarMenu = menuAppearance === 'toolbar';
+  const Option = toolbarMenu ? NeumorphicButton : 'button';
 
   return (
     <div className={rootClassName} ref={rootRef}>
@@ -199,14 +204,14 @@ export function LiquidGlassSelect<Value extends string>({
       {open && menuPosition && createPortal(
         <div
           ref={menuRef}
-          className={styles.popoverAnchor}
+          className={toolbarMenu ? menuStyles.menuAnchor : styles.popoverAnchor}
           data-placement={menuPlacement}
           style={menuPosition}
         >
           <LiquidGlassPanel
             id={menuId}
-            className={styles.popover}
-            data-liquid-glass-surface="side-panel"
+            className={toolbarMenu ? menuStyles.menu : styles.popover}
+            data-liquid-glass-surface={toolbarMenu ? undefined : 'side-panel'}
             role="menu"
             aria-label={menuLabel}
             onKeyDown={focusAdjacentOption}
@@ -214,8 +219,9 @@ export function LiquidGlassSelect<Value extends string>({
             {options.map((option) => {
               const selected = option.value === value;
               return (
-                <button
-                  className={`liquid-glass-menu-item ${styles.option}`}
+                <Option
+                  {...(toolbarMenu ? { size: 'standard' as const } : {})}
+                  className={toolbarMenu ? menuStyles.item : `liquid-glass-menu-item ${styles.option}`}
                   key={option.value}
                   type="button"
                   role="menuitemradio"
@@ -230,7 +236,7 @@ export function LiquidGlassSelect<Value extends string>({
                 >
                   <span>{option.label}</span>
                   {selected && <Check aria-hidden="true" />}
-                </button>
+                </Option>
               );
             })}
           </LiquidGlassPanel>

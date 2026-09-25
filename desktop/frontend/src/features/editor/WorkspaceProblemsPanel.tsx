@@ -111,6 +111,7 @@ export function WorkspaceProblemsPanel({
                   className="workspace-editor-language-server-select"
                   disabled={languageServerConfiguring || !open}
                   menuLabel={`${languageServer.displayName} language server mode`}
+                  menuAppearance="toolbar"
                   options={languageServerModeOptions}
                   triggerAppearance="flat"
                   value={languageServer.mode}

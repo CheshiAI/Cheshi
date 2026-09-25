@@ -3,6 +3,7 @@ import { Window } from 'happy-dom';
 import { act, type ComponentProps, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ToolbarMenu } from '../frontend/src/shared/ui/ToolbarMenu';
+import { LiquidGlassSelect } from '../frontend/src/shared/ui/LiquidGlassSelect';
 import { useSplitPreviewActive } from '../frontend/src/shared/ui/splitPreviewState';
 import { WorkspaceEditorFileToolbar } from '../frontend/src/features/editor/WorkspaceEditorFileToolbar';
 
@@ -32,6 +33,38 @@ async function withDOM(run: (h: { window: Window; render(node: ReactNode): Promi
     }
   }
 }
+
+test('select menu appearances preserve checked values, keyboard navigation and focus restoration', async () => {
+  await withDOM(async ({ window, render, click }) => {
+    for (const menuAppearance of ['default', 'toolbar'] as const) {
+      const selected: string[] = [];
+      await render(<LiquidGlassSelect ariaLabel="Diagnostics mode" menuAppearance={menuAppearance}
+        value="auto" onChange={value => selected.push(value)} options={[
+          { value: 'parser', label: 'Parser only' },
+          { value: 'auto', label: 'Auto detect' },
+          { value: 'unavailable', label: 'Unavailable', disabled: true },
+          { value: 'custom', label: 'Custom' },
+        ]} />);
+      await click('Diagnostics mode');
+      await act(async () => { await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve())); });
+      const checked = document.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')!;
+      expect(checked.textContent).toBe('Auto detect');
+      expect(checked.querySelector('svg')).not.toBeNull();
+      expect(document.activeElement).toBe(checked);
+      await act(async () => { checked.dispatchEvent(new window.KeyboardEvent('keydown', {
+        key: 'ArrowDown', bubbles: true, cancelable: true,
+      }) as unknown as Event); });
+      expect(document.activeElement?.textContent).toBe('Custom');
+      await act(async () => { (document.activeElement as HTMLButtonElement).click(); });
+      expect(selected).toEqual(['custom']);
+      expect(document.querySelector('[role="menu"]')).toBeNull();
+      expect(document.activeElement?.getAttribute('aria-label')).toBe('Diagnostics mode');
+      await click('Diagnostics mode');
+      await act(async () => { document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }) as unknown as Event); });
+      expect(document.querySelector('[role="menu"]')).toBeNull();
+    }
+  });
+});
 
 test('toolbar menu supports keyboard navigation, disabled actions, closing and native surface restoration', async () => {
   await withDOM(async ({ window, render, click }) => {
