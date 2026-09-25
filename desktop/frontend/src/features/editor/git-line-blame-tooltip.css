@@ -1,0 +1,86 @@
+.git-line-blame-tooltip-anchor {
+  --panel-backdrop-blur: 16px;
+  --liquid-glass-radius: 12px;
+  position: fixed;
+  z-index: 120;
+  width: max-content;
+  min-width: min(320px, calc(100vw - 16px));
+  max-width: min(720px, calc(100vw - 16px));
+  -webkit-app-region: no-drag;
+}
+
+.git-line-blame-tooltip-anchor::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--liquid-glass-radius);
+  background: rgba(0, 0, 0, 0.01);
+  -webkit-backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
+  backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
+  pointer-events: none;
+}
+
+.git-line-blame-tooltip {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: var(--space-default);
+  background: rgba(0, 0, 0, 0.01);
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  font-style: normal;
+  letter-spacing: normal;
+  line-height: 1.5;
+}
+
+.git-line-blame-tooltip-heading,
+.git-line-blame-tooltip-metadata {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-default);
+  white-space: nowrap;
+}
+
+.git-line-blame-tooltip-heading > span {
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-label);
+  font-weight: 600;
+}
+
+.git-line-blame-tooltip-heading > code {
+  flex-shrink: 0;
+  padding: 2px var(--space-4);
+  border-radius: 4px;
+  background: var(--control-surface);
+  font-family: var(--font-mono);
+}
+
+.git-line-blame-tooltip-metadata > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-line-blame-tooltip-metadata,
+.git-line-blame-tooltip-message {
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+  font-weight: 400;
+}
+
+.git-line-blame-tooltip-metadata > time {
+  flex-shrink: 0;
+}
+
+.git-line-blame-tooltip-message {
+  margin: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
