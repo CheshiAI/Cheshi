@@ -44,6 +44,7 @@ import {
 import { workspaceEditorHighlightStyle, workspaceEditorTheme } from './workspaceEditorTheme';
 import { workspaceEditorContentClip } from './workspaceEditorContentClip';
 import { workspaceEditorScrollbars } from './workspaceEditorScrollbars';
+import { workspaceEditorTooltips } from './workspaceEditorTooltips';
 import type { WorkspaceLanguageServerController } from './useWorkspaceLanguageServer';
 
 interface UseWorkspaceCodeEditorOptions {
@@ -163,6 +164,7 @@ export function useWorkspaceCodeEditor({
     const readGitLineBlame = workspace?.getGitLineBlame;
     const extensions: Extension[] = [
       workspaceEditorTheme,
+      workspaceEditorTooltips(host.ownerDocument),
       ...(readGitLineBlame ? [gitLineBlame({
         path: editorPath, lineEnding: tab.file.lineEnding,
         read: readGitLineBlame,

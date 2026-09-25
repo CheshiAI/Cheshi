@@ -80,14 +80,35 @@ export const workspaceEditorTheme = EditorView.theme({
   '.cm-panels:has(> [data-code-editor-search-bridge]:only-child)': {
     display: 'none',
   },
-  '.cm-tooltip.cm-tooltip-autocomplete': {
-    overflow: 'hidden',
-    border: '1px solid var(--divider)',
-    borderRadius: 'var(--radius-popover)',
+  '.cm-tooltip': {
+    '--panel-backdrop-blur': '16px',
+    border: '1px solid transparent',
+    borderRadius: '12px',
     background: 'transparent',
-    color: 'var(--text)',
+    pointerEvents: 'auto',
+  },
+  '.cm-tooltip::before': {
+    content: '""',
+    position: 'absolute',
+    inset: '-1px',
+    zIndex: '-2',
+    borderRadius: 'inherit',
+    background: 'rgba(0, 0, 0, 0.01)',
     backdropFilter: 'blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation))',
     WebkitBackdropFilter: 'blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation))',
+    pointerEvents: 'none',
+  },
+  '.cm-tooltip > .workspace-editor-tooltip-surface': {
+    position: 'absolute',
+    inset: '-1px',
+    zIndex: '-1',
+    borderRadius: 'inherit',
+    background: 'rgba(0, 0, 0, 0.01)',
+    pointerEvents: 'none',
+  },
+  '.cm-tooltip.cm-tooltip-autocomplete': {
+    overflow: 'visible',
+    color: 'var(--text)',
     padding: 'var(--space-6)',
   },
   '.cm-tooltip.cm-tooltip-autocomplete > ul': {
@@ -218,9 +239,6 @@ export const workspaceEditorTheme = EditorView.theme({
     color: 'var(--editor-accent)',
   },
   '.cm-tooltip.cm-completionInfo': {
-    border: '1px solid var(--editor-completion-border)',
-    borderRadius: 'var(--radius-popover)',
-    background: 'var(--editor-completion-surface)',
     color: 'var(--editor-text)',
     font: 'var(--font-size-small)/1.55 var(--font-mono)',
     padding: 'var(--space-10) var(--space-12)',
@@ -228,14 +246,9 @@ export const workspaceEditorTheme = EditorView.theme({
   '.cm-tooltip.cm-tooltip-hover': {
     maxWidth: 'min(720px, calc(100vw - 48px))',
     overflow: 'visible',
-    border: '1px solid var(--divider)',
-    borderRadius: 'var(--radius-popover)',
-    background: 'var(--divider)',
     color: 'var(--editor-text)',
   },
   '.cm-tooltip.cm-tooltip-lint': {
-    border: '1px solid var(--divider)',
-    background: 'var(--divider)',
     color: 'var(--editor-text)',
   },
   '.cm-tooltip-lint .cm-diagnostic': {
@@ -268,9 +281,6 @@ export const workspaceEditorTheme = EditorView.theme({
   '.cm-tooltip.workspace-editor-signature-help': {
     minWidth: '260px',
     maxWidth: 'min(680px, calc(100vw - 48px))',
-    border: '1px solid var(--editor-completion-border)',
-    borderRadius: '9px',
-    background: 'var(--editor-completion-surface)',
     color: 'var(--editor-text)',
     padding: 'var(--space-10) var(--space-12)',
   },
@@ -315,16 +325,16 @@ export const workspaceEditorTheme = EditorView.theme({
     textDecorationThickness: '1px',
     textUnderlineOffset: '3px',
   },
-  '.cm-tooltip-above.cm-tooltip-hover > .cm-tooltip-arrow::before': {
+  '.cm-tooltip-above > .cm-tooltip-arrow::before': {
     borderTopColor: 'var(--divider)',
   },
-  '.cm-tooltip-above.cm-tooltip-hover > .cm-tooltip-arrow::after': {
-    borderTopColor: 'var(--divider)',
+  '.cm-tooltip-above > .cm-tooltip-arrow::after': {
+    borderTopColor: 'rgba(0, 0, 0, 0.01)',
   },
-  '.cm-tooltip-below.cm-tooltip-hover > .cm-tooltip-arrow::before': {
+  '.cm-tooltip-below > .cm-tooltip-arrow::before': {
     borderBottomColor: 'var(--divider)',
   },
-  '.cm-tooltip-below.cm-tooltip-hover > .cm-tooltip-arrow::after': {
-    borderBottomColor: 'var(--divider)',
+  '.cm-tooltip-below > .cm-tooltip-arrow::after': {
+    borderBottomColor: 'rgba(0, 0, 0, 0.01)',
   },
 });
