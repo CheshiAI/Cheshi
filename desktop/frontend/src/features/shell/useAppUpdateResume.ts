@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { EditorSessionMode } from '../../../../shared/editor-session';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { WorkspaceView } from '../navigation/Sidebar';
+import { normalizeSidebarPanel, type SidebarPanel } from '../navigation/sidebarPanel';
 import { resumeRecord, updateResumeCoordinator } from './updateWorkspaceResume';
 
 const restorableViews: readonly WorkspaceView[] = ['chat', 'notes', 'calendar', 'mail', 'blank', 'codegraph', 'editor', 'git', 'plugins', 'terminal', 'settings'];
@@ -10,11 +11,11 @@ let initialSnapshot: Promise<unknown> | undefined;
 export function useAppUpdateResume(options: {
   activeView: WorkspaceView;
   rightSidebarOpen: boolean;
-  sidebarPanel: 'files' | 'chats';
+  sidebarPanel: SidebarPanel;
   blockedReason: string | null;
   setActiveView(view: WorkspaceView): void;
   setRightSidebarOpen(open: boolean): void;
-  setSidebarPanel(panel: 'files' | 'chats'): void;
+  setSidebarPanel(panel: SidebarPanel): void;
 }) {
   const current = useRef(options);
   current.current = options;
@@ -43,7 +44,7 @@ export function useAppUpdateResume(options: {
         const view = restorableViews.find((entry) => entry === record.activeView) ?? 'chat';
         current.current.setActiveView(view);
         current.current.setRightSidebarOpen(record.rightSidebarOpen);
-        current.current.setSidebarPanel(record.sidebarPanel === 'chats' ? 'chats' : 'files');
+        current.current.setSidebarPanel(normalizeSidebarPanel(record.sidebarPanel));
       },
     });
     setBusy(true);

@@ -49,7 +49,7 @@ export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, o
   return (
     <>
       <section className="workspace-file-tree" aria-label="File explorer">
-        <SidebarPanelHeader title="EXPLORER" icon={<Folder aria-hidden="true" />} actions={<>
+        <SidebarPanelHeader title="FILES" icon={<Folder aria-hidden="true" />} actions={<>
           <NeumorphicButton
             raised
             size="icon"

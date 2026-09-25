@@ -28,6 +28,7 @@ import { GitWorkspace } from '../git';
 import { CodeGraphView } from '../graph';
 import { BlankView } from '../home/BlankView';
 import { Sidebar, type WorkspaceView } from '../navigation/Sidebar';
+import { readSidebarPanel, saveSidebarPanel } from '../navigation/sidebarPanel';
 import { SidebarRail } from '../navigation/SidebarRail';
 import { PluginsView } from '../plugins';
 import { TerminalWorkspace } from '../terminal';
@@ -72,7 +73,8 @@ export function AppShell() {
   const closeReview = useCallback(() => { setFileReview(null); setLineCommitTarget(null); setLocalHistoryPath(null); }, []);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
-  const [sidebarPanel, setSidebarPanel] = useState<'files' | 'chats'>('files');
+  const [sidebarPanel, setSidebarPanel] = useState(readSidebarPanel);
+  useEffect(() => { saveSidebarPanel(sidebarPanel); }, [sidebarPanel]);
   const openFileReview = useCallback((paneId: string, itemId: string, path?: string) => {
     setLineCommitTarget(null);
     setLocalHistoryPath(null);

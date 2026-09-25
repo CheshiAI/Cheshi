@@ -1,0 +1,65 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.root .tabs {
+  box-sizing: border-box;
+  height: var(--header-height);
+  min-height: var(--header-height);
+  flex: 0 0 var(--header-height);
+  gap: 4px;
+  padding: 0 var(--icon-default);
+  border-bottom: 1px solid var(--divider);
+}
+
+.tabs .tab {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  padding: 0 var(--icon-default);
+  font-size: 12px;
+  background: var(--control-surface-ghost);
+}
+
+.tabs .tab[data-active='true'] {
+  background: var(--control-surface);
+}
+
+.tabs .tab:hover,
+.tabs .tab:active {
+  background: var(--control-surface-interactive);
+}
+
+.tab:focus-visible {
+  outline: var(--focus-outline-width) solid var(--dropdown-selection-text);
+  outline-offset: var(--focus-outline-inset);
+}
+
+.panels {
+  display: grid;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Keep panel dimensions and mounted content stable to retain scroll and input state. */
+.panel[aria-hidden='true'] {
+  visibility: hidden;
+  pointer-events: none;
+}

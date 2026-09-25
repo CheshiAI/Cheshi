@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -55,6 +56,8 @@ function Split({
   collapsedPane,
 }: SplitProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const firstRegionRef = useRef<HTMLDivElement | null>(null);
+  const secondRegionRef = useRef<HTMLDivElement | null>(null);
   const pointerIdRef = useRef<number | null>(null);
   const ratioRef = useRef(layout.ratio);
   const [ratio, setRatio] = useState(layout.ratio);
@@ -64,6 +67,24 @@ function Split({
   useEffect(() => {
     if (pointerIdRef.current === null) setRatio(layout.ratio);
   }, [layout.ratio]);
+
+  useLayoutEffect(() => {
+    const first = firstRegionRef.current;
+    const second = secondRegionRef.current;
+    if (!first || !second) return;
+
+    // Enable the destination before moving focus, including when switching collapsed sides.
+    if (collapsedPane !== 'first') first.removeAttribute('inert');
+    if (collapsedPane !== 'second') second.removeAttribute('inert');
+    const closing = collapsedPane === 'first' ? first : collapsedPane === 'second' ? second : null;
+    const visible = collapsedPane === 'first' ? second : first;
+    if (closing?.contains(closing.ownerDocument.activeElement)) {
+      visible.focus({ preventScroll: true });
+    }
+    // Applying inert earlier can blur the focused descendant before we can transfer focus.
+    first.toggleAttribute('inert', collapsedPane === 'first');
+    second.toggleAttribute('inert', collapsedPane === 'second');
+  }, [collapsedPane]);
 
   const availableSize = useCallback((): number => {
     const bounds = containerRef.current?.getBoundingClientRect();
@@ -174,8 +195,8 @@ function Split({
           collapsedPane === 'first' ? 'minmax(0, 0fr) 0px minmax(0, 1fr)' : 'minmax(0, 1fr) 0px minmax(0, 0fr)',
       } : splitGridStyle(layout.axis, ratio)}
     >
-      <div className={styles.region} data-collapsed={collapsedPane === 'first' ? 'true' : undefined}
-        aria-hidden={collapsedPane === 'first' || undefined} inert={collapsedPane === 'first'}>
+      <div ref={firstRegionRef} className={styles.region} tabIndex={-1}
+        data-collapsed={collapsedPane === 'first' ? 'true' : undefined}>
         <SplitPaneLayout
           layout={layout.first}
           renderPane={renderPane}
@@ -203,8 +224,8 @@ function Split({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       />
-      <div className={styles.region} data-collapsed={collapsedPane === 'second' ? 'true' : undefined}
-        aria-hidden={collapsedPane === 'second' || undefined} inert={collapsedPane === 'second'}>
+      <div ref={secondRegionRef} className={styles.region} tabIndex={-1}
+        data-collapsed={collapsedPane === 'second' ? 'true' : undefined}>
         <SplitPaneLayout
           layout={layout.second}
           renderPane={renderPane}

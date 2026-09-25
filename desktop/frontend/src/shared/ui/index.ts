@@ -10,7 +10,7 @@ export { LiquidGlassSelect, type LiquidGlassSelectOption } from './LiquidGlassSe
 export { LoadingIndicator, LoadingState, type LoadingStateType } from './LoadingState';
 export { Modal } from './Modal';
 export { NeumorphicButton } from './NeumorphicButton';
-export { SidebarCarousel, type SidebarSlide } from './SidebarCarousel';
+export { SidebarTabs, type SidebarTab } from './SidebarTabs';
 export { SidebarPanelHeader } from './SidebarPanelHeader';
 export { SidebarRailButton } from './SidebarRailButton';
 export { SlidingSidePanel } from './SlidingSidePanel';

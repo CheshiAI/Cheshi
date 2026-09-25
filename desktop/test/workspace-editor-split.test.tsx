@@ -9,6 +9,7 @@ import type { WorkspaceEditorSplit } from '../frontend/src/features/shell/Worksp
 import type { SplitPaneLayout } from '../frontend/src/shared/ui/SplitPaneLayout';
 import type { SlidingSidePanel } from '../frontend/src/shared/ui/SlidingSidePanel';
 import type { Sidebar } from '../frontend/src/features/navigation/Sidebar';
+import type { SidebarPanel } from '../frontend/src/features/navigation/sidebarPanel';
 import type { SidebarRail } from '../frontend/src/features/navigation/SidebarRail';
 import type { WorkspaceEditor } from '../frontend/src/features/editor/WorkspaceEditor';
 import type { ChatWorkspace } from '../frontend/src/features/chat/ChatWorkspace';
@@ -81,13 +82,17 @@ function props<T>(tree: ReactNode, name: string): T {
   return node.props as T;
 }
 
-function shellHarness(initialHistoryLoading = false) {
+function shellHarness(initialHistoryLoading = false, preference: { panel: SidebarPanel } = { panel: 'files' }) {
   const app = hooks();
   let historyLoading = initialHistoryLoading;
   let openSearch = () => {};
   const attachments = draftAttachmentModule.createChatDraftAttachments();
   const modules: Record<string, unknown> = {
     react: app.react,
+    '../navigation/sidebarPanel': {
+      readSidebarPanel: () => preference.panel,
+      saveSidebarPanel: (panel: SidebarPanel) => { preference.panel = panel; },
+    },
     '../chat/HistoryRecallActivity': { HistoryRecallNavigation: { Provider: 'HistoryRecallNavigation' } },
     '../chat/chatDraftAttachments': { ...draftAttachmentModule, createChatDraftAttachments: () => attachments },
     '../notes/appleNotesModel': { appleNoteAttachment },
@@ -121,7 +126,7 @@ function shellHarness(initialHistoryLoading = false) {
     finishInitialHistory: () => { historyLoading = false; } };
 }
 
-test('left carousel retains navigation and loads initial chats before limiting refresh to its visible panel', () => {
+test('sidebar tabs retain navigation and load initial chats before limiting refresh to Sessions', () => {
   const app = shellHarness(true);
   const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
   const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
@@ -140,6 +145,19 @@ test('left carousel retains navigation and loads initial chats before limiting r
   expect(elements(app.render()).some(element => element.type === 'SettingsView')).toBe(true);
   sidebar().onPanelChange!('files');
   expect(chat().sessionSyncEnabled).toBe(false);
+  sidebar().onPanelChange!('memos');
+  expect(sidebar().activePanel).toBe('memos');
+  expect(chat().sessionSyncEnabled).toBe(false);
+});
+
+test('shell saves and restores the last selected sidebar tab', () => {
+  const preference: { panel: SidebarPanel } = { panel: 'chats' };
+  const app = shellHarness(false, preference);
+  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('chats');
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onPanelChange!('memos');
+  app.render();
+  expect(preference.panel).toBe('memos');
+  expect(props<ComponentProps<typeof Sidebar>>(shellHarness(false, preference).render(), 'Sidebar').activePanel).toBe('memos');
 });
 
 test('the fixed navigation rail precedes the left sidebar', () => {
@@ -344,7 +362,7 @@ test('closing Codex keeps file tabs and sidebar controls, and navigation restore
   });
 });
 
-test('collapsed split keeps both panes mounted while hiding the separator and disabling the closed region', () => {
+test('collapsed split keeps both panes mounted while hiding the separator and restores its ratio on reopening', () => {
   const app = hooks();
   const Layout = load<typeof SplitPaneLayout>('shared/ui/SplitPaneLayout.tsx', 'SplitPaneLayout', { react: app.react });
   const options: ComponentProps<typeof SplitPaneLayout> = {
@@ -358,13 +376,10 @@ test('collapsed split keeps both panes mounted while hiding the separator and di
   const attrs = elements(tree).map(node => node.props as HTMLAttributes<HTMLDivElement>);
   expect(attrs[0]!.style?.gridTemplateColumns).toBe('minmax(0, 1fr) 0px minmax(0, 0fr)');
   expect(attrs.find(node => node.role === 'separator')?.hidden).toBe(true);
-  expect(attrs.filter(node => node.inert)).toHaveLength(1);
-  expect(attrs.find(node => node.inert)?.['aria-hidden']).toBe(true);
   expect(elements(tree).filter(node => node.type === Layout)).toHaveLength(2);
   const reopened = app.render(() => Component({ ...options, collapsedPane: null }));
   const reopenedAttrs = elements(reopened).map(node => node.props as HTMLAttributes<HTMLDivElement>);
   expect(reopenedAttrs[0]!.style?.gridTemplateColumns).toContain('0.7fr');
-  expect(reopenedAttrs.some(node => node.inert)).toBe(false);
   expect(reopenedAttrs.find(node => node.role === 'separator')?.hidden).toBe(false);
 });
 

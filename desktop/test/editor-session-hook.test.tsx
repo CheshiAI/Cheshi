@@ -8,6 +8,7 @@ import type { EditorSession, EditorSessionMode } from '../shared/editor-session'
 import type { WorkspaceFileReadResult } from '../frontend/src/cheshiDesktop';
 import * as sessions from '../frontend/src/features/editor/workspaceEditorSession';
 import { createUpdateResumeCoordinator, resumeRecord } from '../frontend/src/features/shell/updateWorkspaceResume';
+import { normalizeSidebarPanel } from '../frontend/src/features/navigation/sidebarPanel';
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -134,13 +135,14 @@ test('a failed update recovery allows file use without overwriting saved metadat
 });
 
 test('app update recovery selects normal restore or update preservation only after restoration completes', async () => {
-  for (const mode of ['normal', 'update', 'legacy'] as const) {
+  for (const mode of ['normal', 'update', 'memos', 'legacy'] as const) {
     const update = mode !== 'normal';
     const coordinator = createUpdateResumeCoordinator();
     const restored = createDeferred<void>();
     coordinator.register('editor', { capture() {}, restore: () => restored.promise });
     const snapshot = update ? { schemaVersion: 1, workspaceRoot: '/workspace', createdAt: Date.now(), sections: {
-      editor: {}, shell: { activeView: 'chat', rightSidebarOpen: true, ...(mode === 'update' ? { sidebarPanel: 'chats' } : {}) },
+      editor: {}, shell: { activeView: 'chat', rightSidebarOpen: true,
+        ...(mode === 'update' ? { sidebarPanel: 'chats' } : mode === 'memos' ? { sidebarPanel: 'memos' } : {}) },
     } } : null;
     let restoredPanel: string | undefined;
     const hook = harness<typeof useAppUpdateResume>('shell/useAppUpdateResume.ts', 'useAppUpdateResume', {
@@ -150,6 +152,7 @@ test('app update recovery selects normal restore or update preservation only aft
         onAppUpdatePreparationCancelled: () => () => {}, async clearUpdateResume() {},
       } },
       './updateWorkspaceResume': { updateResumeCoordinator: coordinator, resumeRecord },
+      '../navigation/sidebarPanel': { normalizeSidebarPanel },
     });
     const render = () => hook.render(use => use({ activeView: 'chat', rightSidebarOpen: true, sidebarPanel: 'files', blockedReason: null,
       setActiveView() {}, setRightSidebarOpen() {}, setSidebarPanel(panel) { restoredPanel = panel; } }));
@@ -159,6 +162,6 @@ test('app update recovery selects normal restore or update preservation only aft
     restored.resolve();
     await tick();
     expect(render().editorSessionMode).toBe(update ? 'preserve' : 'restore');
-    expect(restoredPanel).toBe(mode === 'update' ? 'chats' : mode === 'legacy' ? 'files' : undefined);
+    expect(restoredPanel).toBe(mode === 'update' ? 'chats' : mode === 'memos' ? 'memos' : mode === 'legacy' ? 'files' : undefined);
   }
 });
