@@ -1,2 +1,2 @@
-.actions { display: flex; flex: 0 0 auto; align-items: center; gap: var(--icon-default); padding-right: var(--icon-default); border-right: 1px solid var(--divider); -webkit-app-region: no-drag; }
-.actions [draggable='true'] { cursor: grab; }
+.actions { display: flex; flex: 0 0 auto; align-items: center; gap: var(--icon-default); -webkit-app-region: no-drag; }
+.dragHandle[draggable='true'] { cursor: grab; }

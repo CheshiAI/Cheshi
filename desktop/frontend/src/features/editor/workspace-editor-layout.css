@@ -83,6 +83,7 @@
 
 .workspace-editor-file-info {
   display: flex;
+  flex: 1 1 auto;
   min-width: 0;
   align-items: center;
   gap: var(--space-default);
@@ -105,18 +106,9 @@
   gap: var(--space-8);
 }
 
-.workspace-editor-file-revision {
-  overflow: hidden;
-  min-width: 0;
-  color: var(--sidebar-section-label-color);
-  font-size: var(--font-size-small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .workspace-editor-actions {
   flex: 0 0 auto;
-  gap: var(--space-4);
+  gap: var(--icon-default);
 }
 
 .workspace-editor-readonly-label,

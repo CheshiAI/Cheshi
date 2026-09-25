@@ -1,23 +1,12 @@
 import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
 import {
   AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
   FileCode2,
-  FileSearch,
   FileText,
-  History,
-  Lightbulb,
-  PanelRight,
-  PencilLine,
-  RotateCw,
-  Save,
-  Search,
 } from 'lucide-react';
 import { useContext, useEffect } from 'react';
 
 import {
-  SidebarToggle,
   draggableWindowRegionStyle,
   FlatTab,
   FlatTabList,
@@ -25,6 +14,7 @@ import {
   nonDraggableWindowRegionStyle,
   TieredHeader,
 } from '../../shared/ui';
+import { WorkspaceEditorFileToolbar } from './WorkspaceEditorFileToolbar';
 import { WorkspaceCodeExplanationMenu } from './WorkspaceCodeExplanationMenu';
 import type { GitLineBlameRequest } from '../../../../shared/git-line-blame';
 import { WorkspaceCodeExplanationToast } from './WorkspaceCodeExplanationToast';
@@ -37,7 +27,6 @@ import {
   workspaceProblemsStageStyle,
 } from './WorkspaceProblemsResizer';
 import {
-  canUseLanguageServer,
   formatBytes,
   isTabDirty,
   tabLabel,
@@ -118,31 +107,20 @@ export function WorkspaceEditor({
     errorMessage,
     findNextMatch,
     findPreviousMatch,
-    isDirty,
     languageServerConfiguring,
-    languageServers,
-    navigateHistory,
-    navigationAvailability,
     openReference,
     problemsRatio,
     problemsVisible,
     reloadSelectedFile,
     replaceAllMatches,
     replaceNextMatch,
-    requestCodeActionsAtSelection,
-    requestReferencesAtSelection,
-    requestRenameAtSelection,
     revealDiagnostic,
-    saveFile,
-    saving,
     selectAllMatches,
     selectedPath,
     selectReference,
-    setProblemsOpen,
     setProblemsRatio,
     submitRename,
     tabs,
-    toggleEditorSearch,
     updateEditorSearchControls,
   } = controller;
   const problemsLayout = useWorkspaceProblemsLayout(problemsRatio, active);
@@ -197,136 +175,11 @@ export function WorkspaceEditor({
               style={nonDraggableWindowRegionStyle}
             >
               <WorkspaceLayoutControls />
-              <NeumorphicButton
-                raised
-                aria-label="Navigate back"
-                className="neumorphic-surface workspace-editor-action"
-                disabled={!navigationAvailability.back}
-                title="Navigate back (⌘[ / Ctrl+-)"
-                type="button"
-                onClick={() => void navigateHistory('back')}
-              >
-                <ArrowLeft aria-hidden="true" />
-              </NeumorphicButton>
-              <NeumorphicButton
-                raised
-                aria-label="Navigate forward"
-                className="neumorphic-surface workspace-editor-action"
-                disabled={!navigationAvailability.forward}
-                title="Navigate forward (⌘] / Ctrl+Shift+-)"
-                type="button"
-                onClick={() => void navigateHistory('forward')}
-              >
-                <ArrowRight aria-hidden="true" />
-              </NeumorphicButton>
-              <NeumorphicButton
-                raised
-                type="button"
-                aria-controls="workspace-editor-problems"
-                aria-expanded={problemsVisible}
-                aria-label={problemsVisible ? 'Close problems panel' : 'Open problems panel'}
-                className="neumorphic-surface codegraph-inspector-toggle"
-                disabled={currentFile?.fileKind !== 'text'}
-                style={nonDraggableWindowRegionStyle}
-                onClick={() => setProblemsOpen((open) => !open)}
-              >
-                <AlertTriangle aria-hidden="true" />
-              </NeumorphicButton>
-              {onToggleRightSidebar && <SidebarToggle raised size="icon"
-                aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-                title={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-                aria-pressed={rightSidebarOpen} aria-expanded={rightSidebarOpen}
-                onClick={onToggleRightSidebar}>
-                <PanelRight aria-hidden="true" />
-              </SidebarToggle>}
             </div>
           </>
         )}
-        secondary={currentFile ? (
-          <>
-            <div className="workspace-editor-file-info">
-              <strong>{currentFile.path.split('/').at(-1) ?? currentFile.path}</strong>
-              <div className="workspace-editor-file-meta">
-                <span className="workspace-editor-file-revision">
-                  {currentFile.lineEnding.toUpperCase()} · {formatBytes(currentFile.size)} · rev {currentFile.revision.slice(-12)}
-                </span>
-                {activeTab?.sourceExcerpt
-                  ? <span className="workspace-editor-readonly-label">Read only</span>
-                  : conflictMessage
-                    ? <span className="workspace-editor-conflict-label">Conflict</span>
-                    : isDirty
-                      ? <span className="workspace-editor-unsaved-label">Modified</span>
-                      : null}
-              </div>
-            </div>
-            <div className="workspace-editor-actions" style={nonDraggableWindowRegionStyle}>
-              {currentFile.fileKind === 'text' && (
-                <>
-                  <NeumorphicButton raised size="icon" aria-label="Local history" title="Local history"
-                    disabled={!onOpenLocalHistory || Boolean(activeTab?.sourceExcerpt)}
-                    onClick={() => onOpenLocalHistory?.(currentFile.path)}>
-                    <History aria-hidden="true" />
-                  </NeumorphicButton>
-                  <NeumorphicButton
-                    raised
-                    active={editorSearchOpen}
-                    className="neumorphic-surface workspace-editor-action"
-                    aria-controls="workspace-editor-search"
-                    aria-expanded={editorSearchOpen}
-                    aria-label="Find and replace"
-                    title="Find and replace (⌘F / Ctrl+F)"
-                    onClick={toggleEditorSearch}
-                  >
-                    <Search aria-hidden="true" />
-                  </NeumorphicButton>
-                  <NeumorphicButton
-                    raised
-                    className="neumorphic-surface workspace-editor-action"
-                    aria-label="Save file"
-                    title="Save (⌘S / Ctrl+S)"
-                    disabled={!isDirty || saving || Boolean(conflictMessage)}
-                    onClick={() => void saveFile()}
-                  >
-                    {saving
-                      ? <RotateCw className="workspace-editor-spinner" aria-hidden="true" />
-                      : <Save aria-hidden="true" />}
-                  </NeumorphicButton>
-                  {activeLanguageServer && canUseLanguageServer(activeLanguageServer.language, languageServers) && (
-                    <>
-                      <NeumorphicButton
-                        raised
-                        className="neumorphic-surface workspace-editor-action"
-                        aria-label="Find symbol references"
-                        title="Find references (Shift+F12)"
-                        onClick={requestReferencesAtSelection}
-                      >
-                        <FileSearch aria-hidden="true" />
-                      </NeumorphicButton>
-                      <NeumorphicButton
-                        raised
-                        className="neumorphic-surface workspace-editor-action"
-                        aria-label="Show quick fixes"
-                        title="Quick fix (⌘. / Ctrl+.)"
-                        onClick={requestCodeActionsAtSelection}
-                      >
-                        <Lightbulb aria-hidden="true" />
-                      </NeumorphicButton>
-                      <NeumorphicButton
-                        raised
-                        className="neumorphic-surface workspace-editor-action"
-                        aria-label="Rename symbol"
-                        title="Rename symbol (F2)"
-                        onClick={requestRenameAtSelection}
-                      >
-                        <PencilLine aria-hidden="true" />
-                      </NeumorphicButton>
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-          </>
-        ) : undefined}
+        secondary={currentFile ? <WorkspaceEditorFileToolbar controller={controller} onOpenLocalHistory={onOpenLocalHistory}
+          rightSidebarOpen={rightSidebarOpen} onToggleRightSidebar={onToggleRightSidebar} /> : undefined}
         tertiary={editorSearchOpen && currentFile?.fileKind === 'text' ? (
           <WorkspaceEditorSearchPanel
             controls={editorSearchControls}

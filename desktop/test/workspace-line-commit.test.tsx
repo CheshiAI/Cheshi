@@ -279,3 +279,32 @@ test(`${panelName} resizing clamps both panes, cancels safely, and retains the p
   });
 });
 }
+
+test('file toolbar explanation captures the current selection without opening a context menu', async () => {
+  await withDOM(async (_window, _container, root) => {
+    const editorHost = document.createElement('div');
+    document.body.append(editorHost);
+    const view = new EditorView({ parent: editorHost, state: EditorState.create({ doc: 'first\nsecond' }) });
+    let actions!: ReturnType<typeof useWorkspaceCodeExplanation>;
+    function Harness({ active = true }: { active?: boolean }) {
+      const ref = useRef<EditorView | null>(view);
+      actions = useWorkspaceCodeExplanation({ active, path: 'sample.ts', firstLine: 100, lineEnding: 'lf', editorViewRef: ref });
+      return null;
+    }
+    try {
+      await act(async () => root.render(<Harness />));
+      await act(async () => actions.explainCurrentSelection());
+      expect(actions.selectionError).toBe('Select the code you want explained.');
+      expect(actions.state).toBeNull();
+      view.dispatch({ selection: { anchor: 6, head: 12 } });
+      await act(async () => actions.explainCurrentSelection());
+      expect(actions.menu).toBeNull();
+      expect(actions.selectionError).toBeNull();
+      expect(actions.state?.selection).toMatchObject({ path: 'sample.ts', startLine: 101, endLine: 101, selectedText: 'second' });
+      await act(async () => actions.dismiss());
+      await act(async () => root.render(<Harness active={false} />));
+      await act(async () => actions.explainCurrentSelection());
+      expect(actions.state).toBeNull();
+    } finally { view.destroy(); editorHost.remove(); }
+  });
+});

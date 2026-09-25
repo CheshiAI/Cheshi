@@ -15,26 +15,34 @@ export const WorkspaceLayoutContext = createContext<{
 export const WorkspacePaneContext = createContext<WorkspacePaneId>('primary');
 export const WorkspacePaneVisibilityContext = createContext(true);
 export const workspacePaneDragType = 'application/x-cheshi-workspace-pane';
+function WorkspacePaneDragHandle() {
+  const controls = useContext(WorkspaceLayoutContext);
+  const pane = useContext(WorkspacePaneContext);
+  if (!controls) return null;
+  return <NeumorphicButton size="icon" draggable className={styles.dragHandle}
+    aria-label="Move workspace pane" title="Drag to a pane's left, right, top or bottom edge"
+    onDragStart={event => {
+      event.dataTransfer.setData(workspacePaneDragType, pane);
+      event.dataTransfer.effectAllowed = 'move';
+      controls.startDrag(pane);
+    }}><GripVertical aria-hidden="true" /></NeumorphicButton>;
+}
+
 export function WorkspaceLayoutControls() {
   const controls = useContext(WorkspaceLayoutContext);
   const pane = useContext(WorkspacePaneContext);
   if (!controls) return null;
+  const maximized = controls.maximized === pane;
   return <div className={styles.actions} role="group" aria-label="Pane layout">
-    <NeumorphicButton size="icon" draggable aria-label="Move workspace pane" title="Drag to a pane's left, right, top or bottom edge"
-      onDragStart={event => {
-        event.dataTransfer.setData(workspacePaneDragType, pane);
-        event.dataTransfer.effectAllowed = 'move';
-        controls.startDrag(pane);
-      }}><GripVertical aria-hidden="true" /></NeumorphicButton>
+    <WorkspacePaneDragHandle />
     <NeumorphicButton size="icon" aria-label="Split area right" title="Split this area right" aria-haspopup="dialog"
       onClick={() => controls.split(pane, 'right')}><Columns2 aria-hidden="true" /></NeumorphicButton>
     <NeumorphicButton size="icon" aria-label="Split area down" title="Split this area down" aria-haspopup="dialog"
       onClick={() => controls.split(pane, 'down')}><Rows2 aria-hidden="true" /></NeumorphicButton>
-    <NeumorphicButton size="icon" aria-label={controls.maximized === pane ? 'Restore pane size' : 'Maximize pane'}
-      disabled={!controls.canMaximize}
-      title={controls.maximized === pane ? 'Restore pane size' : 'Maximize pane'}
+    <NeumorphicButton size="icon" aria-label={maximized ? 'Restore pane size' : 'Maximize pane'}
+      title={maximized ? 'Restore pane size' : 'Maximize pane'} disabled={!controls.canMaximize}
       onClick={() => controls.maximize(pane)}>
-      {controls.maximized === pane ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
+      {maximized ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
     </NeumorphicButton>
   </div>;
 }
