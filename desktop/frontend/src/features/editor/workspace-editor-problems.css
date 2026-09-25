@@ -159,26 +159,23 @@
   min-width: 0;
   align-items: center;
   flex: 0 0 auto;
-  gap: var(--space-6);
+  gap: 10px;
 }
 
-.workspace-editor-problems-icon {
-  border: 1px solid var(--divider);
-  border-radius: 50%;
-  background: var(--neumorphic-button-surface);
-  color: var(--text);
-}
-
-.workspace-editor-problems-icon svg {
-  width: var(--icon-button-icon-size);
-  height: var(--icon-button-icon-size);
-  stroke-width: var(--icon-button-stroke-width);
+.workspace-editor-problems-icon:disabled {
+  cursor: default;
+  pointer-events: none;
 }
 
 .workspace-editor-problems-title strong {
-  color: var(--title);
+  overflow: hidden;
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
   font-size: var(--font-size-label);
   font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.5;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

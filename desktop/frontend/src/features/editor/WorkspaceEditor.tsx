@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useContext, useEffect } from 'react';
 
+import { FileTypeIcon } from '../../shared/file-icons/FileTypeIcon';
 import {
   draggableWindowRegionStyle,
   FlatTab,
@@ -155,7 +156,7 @@ export function WorkspaceEditor({
                     closeLabel={`Close ${tab.path}`}
                     key={tab.path}
                     label={tabLabel(tab)}
-                    leading={<FileText aria-hidden="true" />}
+                    leading={<FileTypeIcon className="workspace-editor-tab-icon" name={tabLabel(tab)} path={tab.path} />}
                     onActivate={() => activateOpenTab(tab.path)}
                     onClose={() => closeTab(tab.path)}
                     onCopyFullPath={() => void copyTabFullPath(tab.path)}

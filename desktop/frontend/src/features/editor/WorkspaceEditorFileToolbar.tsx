@@ -63,22 +63,22 @@ export function WorkspaceEditorFileToolbar({ controller, onOpenLocalHistory, rig
     </div>
     <div className="workspace-editor-actions" style={nonDraggableWindowRegionStyle}>
       {textFile && <>
-        <NeumorphicButton raised size="icon" active={controller.editorSearchOpen}
+        <NeumorphicButton size="icon" active={controller.editorSearchOpen}
           aria-controls="workspace-editor-search" aria-expanded={controller.editorSearchOpen}
           aria-label="Find and replace" title="Find and replace (⌘F / Ctrl+F)" onClick={controller.toggleEditorSearch}>
           <Search aria-hidden="true" />
         </NeumorphicButton>
-        <NeumorphicButton raised size="icon" aria-controls="workspace-editor-problems" aria-expanded={controller.problemsVisible}
+        <NeumorphicButton size="icon" aria-controls="workspace-editor-problems" aria-expanded={controller.problemsVisible}
           aria-label={controller.problemsVisible ? 'Close problems panel' : 'Open problems panel'} title="Problems"
           onClick={() => controller.setProblemsOpen(open => !open)}>
           <AlertTriangle aria-hidden="true" />
         </NeumorphicButton>
-        {(isDirty || saving) && <NeumorphicButton raised size="icon" aria-label="Save file" title="Save (⌘S / Ctrl+S)"
+        {(isDirty || saving) && <NeumorphicButton size="icon" aria-label="Save file" title="Save (⌘S / Ctrl+S)"
           disabled={!isDirty || saving || Boolean(conflictMessage)} onClick={() => { void controller.saveFile(); }}>
           {saving ? <RotateCw className="workspace-editor-spinner" aria-hidden="true" /> : <Save aria-hidden="true" />}
         </NeumorphicButton>}
       </>}
-      <ToolbarMenu label="File actions" items={items} raised />
+      <ToolbarMenu label="File actions" items={items} />
     </div>
   </>;
 }

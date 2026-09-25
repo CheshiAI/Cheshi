@@ -5,6 +5,7 @@ import {
   LiquidGlassPanel,
   LiquidGlassSelect,
   LoadingIndicator,
+  NeumorphicButton,
 } from '../../shared/ui';
 import badgeStyles from '../../shared/ui/Badge.module.css';
 import type { LanguageServerMode, LanguageServerStatus } from '../../cheshiDesktop';
@@ -79,13 +80,16 @@ export function WorkspaceProblemsPanel({
         data-liquid-glass-surface="side-panel"
       >
         <div className="workspace-editor-problems-title">
-          <div
+          <NeumorphicButton
+            raised
+            size="icon"
+            disabled
             aria-hidden="true"
-            className="neumorphic-surface-tokens workspace-editor-problems-icon"
+            className="workspace-editor-problems-icon"
           >
-            <AlertTriangle />
-          </div>
-          <strong>Problems</strong>
+            <AlertTriangle aria-hidden="true" />
+          </NeumorphicButton>
+          <strong>PROBLEMS</strong>
           {problemCount > 0 && (
             <span className={badgeStyles.badge}>{problemCount}</span>
           )}
