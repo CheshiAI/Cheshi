@@ -77,7 +77,6 @@ export function ChatSessionList({
     <section className={styles.root} aria-label="Chat history">
       <SidebarPanelHeader title="CHATS" icon={<MessageSquareText aria-hidden="true" />} actions={<>
         {onTemporaryChat && <NeumorphicButton
-          raised
           size="icon"
           aria-label="Open temporary chat"
           title="Temporary chat · Not saved to chat history"
@@ -88,7 +87,6 @@ export function ChatSessionList({
           <MessageCircleDashed aria-hidden="true" />
         </NeumorphicButton>}
         <NeumorphicButton
-          raised
           size="icon"
           aria-label="New chat"
           title="New chat"

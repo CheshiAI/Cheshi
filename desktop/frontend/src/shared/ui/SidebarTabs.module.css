@@ -17,12 +17,17 @@
   border-bottom: 1px solid var(--divider);
 }
 
-.tabs .tab {
+.root .tabs .tab {
+  box-sizing: border-box;
   flex: 1 1 0;
   min-width: 0;
   justify-content: center;
   padding: 0 var(--icon-default);
-  font-size: 12px;
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-label);
+  font-weight: 600;
+  letter-spacing: normal;
+  color: var(--text);
   background: var(--control-surface-ghost);
 }
 

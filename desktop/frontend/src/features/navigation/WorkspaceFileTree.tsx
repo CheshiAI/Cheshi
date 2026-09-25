@@ -51,7 +51,6 @@ export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, o
       <section className="workspace-file-tree" aria-label="File explorer">
         <SidebarPanelHeader title="FILES" icon={<Folder aria-hidden="true" />} actions={<>
           <NeumorphicButton
-            raised
             size="icon"
             aria-label={showHiddenFiles ? 'Hide hidden files' : 'Show hidden files'}
             aria-pressed={showHiddenFiles}
@@ -61,7 +60,6 @@ export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, o
             {showHiddenFiles ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
           </NeumorphicButton>
           <NeumorphicButton
-            raised
             size="icon"
             aria-busy={refreshing || loadingDirectory !== null}
             aria-label={refreshing ? 'Refreshing project explorer' : 'Refresh project explorer'}
@@ -75,7 +73,6 @@ export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, o
             />
           </NeumorphicButton>
           <NeumorphicButton
-            raised
             size="icon"
             aria-label="New file in Workspace root"
             title="New file"
@@ -84,7 +81,6 @@ export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, o
             <FilePlus2 aria-hidden="true" />
           </NeumorphicButton>
           <NeumorphicButton
-            raised
             size="icon"
             aria-label="New folder in Workspace root"
             title="New folder"
