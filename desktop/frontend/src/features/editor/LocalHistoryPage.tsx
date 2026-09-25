@@ -5,6 +5,7 @@ import {
   LOCAL_HISTORY_MAX_BYTES, LOCAL_HISTORY_RETENTION_DAYS, type LocalHistoryReason,
 } from '../../../../shared/local-history';
 import { cheshiDesktop, type WorkspaceFileWriteResult } from '../../cheshiDesktop';
+import { FileTypeIcon } from '../../shared/file-icons/FileTypeIcon';
 import { LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
 import { localHistoryDiff } from './localHistoryDiff';
 import { LocalHistoryModel } from './localHistoryModel';
@@ -32,6 +33,7 @@ const formatDate = (timestamp: number): string => new Date(timestamp).toLocaleSt
 export function LocalHistoryPage({
   path, draftDirty = false, onClose, onRestored,
 }: LocalHistoryPageProps) {
+  const fileName = path.split(/[\\/]/).pop() || path;
   const model = useMemo(() => new LocalHistoryModel(
     path, cheshiDesktop?.localHistory ? cheshiDesktop : undefined,
   ), [path]);
@@ -69,18 +71,21 @@ export function LocalHistoryPage({
       onKeyDown={event => { if (event.key === 'Escape' && !restoring) { event.stopPropagation(); onClose(); } }}>
       <header className={styles.header}>
         <div className={styles.title}>
-          <NeumorphicButton raised className={`theme-toggle ${styles.titleMark}`} disabled aria-hidden="true">
+          <NeumorphicButton raised size="icon" className={styles.titleMark} disabled aria-hidden="true">
             <History aria-hidden="true" />
           </NeumorphicButton>
-          <h2>Local history</h2>
+          <h2>LOCAL HISTORY</h2>
         </div>
-        <span className={styles.path} title={path}>{path}</span>
+        <span className={styles.path} title={path}>
+          <FileTypeIcon className={styles.fileIcon} name={fileName} path={path} />
+          <span className={styles.fileName}>{fileName}</span>
+        </span>
         <div className={styles.headerActions}>
-          <NeumorphicButton raised size="icon" aria-label="Refresh local history" aria-busy={loading}
+          <NeumorphicButton size="icon" aria-label="Refresh local history" aria-busy={loading}
             title="Refresh local history" disabled={loading || restoring} onClick={() => void model.refresh()}>
             <RotateCw aria-hidden="true" />
           </NeumorphicButton>
-          <NeumorphicButton raised size="icon" onClick={onClose} disabled={restoring}
+          <NeumorphicButton size="icon" onClick={onClose} disabled={restoring}
             aria-label="Close local history" title="Close local history">
             <X aria-hidden="true" />
           </NeumorphicButton>
@@ -96,12 +101,12 @@ export function LocalHistoryPage({
           <nav className={styles.history} aria-label="Saved file versions">
             {loading && entries.length === 0 ? <p role="status">Loading history…</p>
               : entries.length === 0 ? <p>No saved versions yet.</p> : entries.map((entry) => (
-                <button key={entry.id} type="button" className={styles.entry}
+                <NeumorphicButton key={entry.id} size="standard" raised={entry.id === selectedId} className={styles.entry}
                   aria-current={entry.id === selectedId ? 'true' : undefined}
                   disabled={loading || restoring} onClick={() => void model.select(entry.id)}>
                   <span>{reasonLabels[entry.reason]}</span>
                   <time dateTime={new Date(entry.createdAt).toISOString()}>{formatDate(entry.createdAt)}</time>
-                </button>
+                </NeumorphicButton>
               ))}
           </nav>
           <section className={styles.comparison} aria-label="Version comparison">
