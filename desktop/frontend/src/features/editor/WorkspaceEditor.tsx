@@ -1,3 +1,4 @@
+import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -7,14 +8,13 @@ import {
   FileText,
   History,
   Lightbulb,
-  PanelBottom,
   PanelRight,
   PencilLine,
   RotateCw,
   Save,
   Search,
 } from 'lucide-react';
-import { useEffect } from 'react';
+import { useContext, useEffect } from 'react';
 
 import {
   SidebarToggle,
@@ -80,6 +80,8 @@ export function WorkspaceEditor({
   onOpenLocalHistory,
   onShowLineCommit,
 }: WorkspaceEditorProps) {
+  const paneVisible = useContext(WorkspacePaneVisibilityContext);
+  active = active && paneVisible;
   const controller = useWorkspaceEditorController({
     sessionMode,
     onSessionRestored,
@@ -194,6 +196,7 @@ export function WorkspaceEditor({
               className="workspace-editor-header-actions"
               style={nonDraggableWindowRegionStyle}
             >
+              <WorkspaceLayoutControls />
               <NeumorphicButton
                 raised
                 aria-label="Navigate back"
@@ -227,7 +230,7 @@ export function WorkspaceEditor({
                 style={nonDraggableWindowRegionStyle}
                 onClick={() => setProblemsOpen((open) => !open)}
               >
-                <PanelBottom aria-hidden="true" />
+                <AlertTriangle aria-hidden="true" />
               </NeumorphicButton>
               {onToggleRightSidebar && <SidebarToggle raised size="icon"
                 aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}

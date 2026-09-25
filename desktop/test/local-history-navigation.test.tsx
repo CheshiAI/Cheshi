@@ -1,3 +1,5 @@
+import * as layoutModel from '../frontend/src/features/shell/workspaceLayoutModel';
+import * as splitModel from '../frontend/src/shared/ui/splitPaneModel';
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -19,7 +21,7 @@ function elements(value: unknown): TestElement[] {
   if (Array.isArray(value)) return value.flatMap(elements);
   if (!isElement(value)) return [];
   return [value, ...elements(value.props.children),
-    ...(value.type === 'WorkspaceEditorSplit' ? elements(value.props.editor) : [])];
+    ...(value.type === 'WorkspaceEditorSplit' ? [...elements(value.props.editor), ...elements(value.props.terminal)] : [])];
 }
 
 function element(tree: unknown, type: string): TestElement {
@@ -45,6 +47,8 @@ function createHarness() {
   const slots: unknown[] = [];
   const jsx = (type: string, props: Record<string, unknown>, key?: string): TestElement => ({ type, props, key });
   const modules: Record<string, unknown> = {
+    './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => null, saveWorkspaceLayout() {} },
+    '../../shared/ui/splitPaneModel': splitModel,
     react: {
       useRef(current: unknown) { return slots[cursor++] ??= { current }; },
       useState(initial: unknown) {
@@ -84,6 +88,7 @@ function createHarness() {
     '../git': { GitWorkspace: 'GitWorkspace' },
     '../graph': { CodeGraphView: 'CodeGraphView' },
     '../home/BlankView': { BlankView: 'BlankView' },
+    '../navigation/sidebarPanel': { readSidebarPanel: () => 'files', saveSidebarPanel() {} },
     '../navigation/Sidebar': { Sidebar: 'Sidebar' },
     '../navigation/SidebarRail': { SidebarRail: 'SidebarRail' },
     '../navigation/WorkspaceFileSearch': { WorkspaceFileSearch: 'WorkspaceFileSearch' },

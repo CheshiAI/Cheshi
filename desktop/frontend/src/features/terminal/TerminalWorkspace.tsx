@@ -1,3 +1,6 @@
+import { useContext } from 'react';
+import { useSplitPreviewActive } from '../../shared/ui/splitPreviewState';
+import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
 import { AlertTriangle, PanelRight, Plus, SquareTerminal, X } from 'lucide-react';
 
 import {
@@ -29,7 +32,10 @@ export function TerminalWorkspace({
   onToggleRightSidebar,
   onCloseWorkspace,
 }: TerminalWorkspaceProps) {
-  const terminal = useTerminalController(active && !blocked);
+  const paneVisible = useContext(WorkspacePaneVisibilityContext);
+  active = active && paneVisible;
+  const previewActive = useSplitPreviewActive();
+  const terminal = useTerminalController(active && !blocked, previewActive);
   const { state } = terminal;
   const activeSession = state.sessions.find((session) => session.id === state.activeSessionId) ?? null;
 
@@ -75,6 +81,7 @@ export function TerminalWorkspace({
               </FlatTabList>
             )}
             <div className="terminal-header-actions" style={nonDraggableWindowRegionStyle}>
+              <WorkspaceLayoutControls />
               <NeumorphicButton
                 raised
                 className="neumorphic-surface terminal-action"

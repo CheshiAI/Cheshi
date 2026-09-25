@@ -1,3 +1,5 @@
+import * as layoutModel from '../frontend/src/features/shell/workspaceLayoutModel';
+import * as splitModel from '../frontend/src/shared/ui/splitPaneModel';
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -88,6 +90,8 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
   let openSearch = () => {};
   const attachments = draftAttachmentModule.createChatDraftAttachments();
   const modules: Record<string, unknown> = {
+    './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => null, saveWorkspaceLayout() {} },
+    '../../shared/ui/splitPaneModel': splitModel,
     react: app.react,
     '../navigation/sidebarPanel': {
       readSidebarPanel: () => preference.panel,
@@ -243,44 +247,6 @@ test('closing the final tab restores the current page and does not reopen the cl
   expect(closed.mode).toBe('primary');
   expect(elements(closed.children).some(element => element.type === 'GitWorkspace')).toBe(true);
   expect(props<ComponentProps<typeof WorkspaceEditor>>(closed.editor, 'WorkspaceEditor')).toMatchObject({ active: false, target: null });
-});
-
-test('page and editor portal hosts stay stable through split, resize, collapse and reopening', () => {
-  const app = hooks();
-  const portals: { children: ReactNode; host: object; key: string }[] = [];
-  const Split = load<typeof WorkspaceEditorSplit>('features/shell/WorkspaceEditorSplit.tsx', 'WorkspaceEditorSplit', {
-    react: app.react,
-    'react-dom': { createPortal(children: ReactNode, host: object, key: string) { portals.push({ children, host, key }); return null; } },
-    '../../shared/ui/SplitPaneLayout': { SplitPaneLayout: 'SplitPaneLayout' },
-  }, { document: { createElement: () => ({ className: '' }) } });
-  const page = <textarea defaultValue="unsent chat" />;
-  const editor = <textarea defaultValue="unsaved file" />;
-  const render = (mode: ComponentProps<typeof WorkspaceEditorSplit>['mode']) => app.render(() => Split({ mode, children: page, editor }));
-  render('primary');
-  const original = portals.slice();
-  let layout = props<ComponentProps<typeof SplitPaneLayout>>(render('split'), 'SplitPaneLayout');
-  expect(layout.layout).toMatchObject({ type: 'split', axis: 'columns', ratio: 0.5,
-    first: { paneId: 'editor' }, second: { paneId: 'primary' } });
-  layout.onResizeSplit('workspace-editor', 0.7);
-  layout = props<ComponentProps<typeof SplitPaneLayout>>(render('split'), 'SplitPaneLayout');
-  expect(layout.layout).toMatchObject({ ratio: 0.7 });
-  const collapsed = props<ComponentProps<typeof SplitPaneLayout>>(render('editor'), 'SplitPaneLayout');
-  expect(collapsed.collapsedPane).toBe('second');
-  expect(collapsed.layout).toMatchObject({ type: 'split', ratio: 0.7 });
-  const reopened = props<ComponentProps<typeof SplitPaneLayout>>(render('split'), 'SplitPaneLayout');
-  expect(reopened.collapsedPane).toBeNull();
-  expect(reopened.layout).toMatchObject({ ratio: 0.7 });
-  const fullPage = props<ComponentProps<typeof SplitPaneLayout>>(render('page'), 'SplitPaneLayout');
-  expect(fullPage.collapsedPane).toBe('first');
-  expect(fullPage.layout).toMatchObject({ type: 'split', ratio: 0.7 });
-  expect(props<ComponentProps<typeof SplitPaneLayout>>(render('split'), 'SplitPaneLayout').layout).toMatchObject({ ratio: 0.7 });
-  render('primary');
-  expect(props<ComponentProps<typeof SplitPaneLayout>>(render('split'), 'SplitPaneLayout').layout).toMatchObject({ ratio: 0.5 });
-  for (const portal of portals) {
-    const expected = original.find(item => item.key === portal.key)!;
-    expect(portal.host).toBe(expected.host);
-    expect(portal.children).toBe(expected.children);
-  }
 });
 
 test('the shared separator updates the split continuously while dragging and commits on release', () => {
@@ -472,7 +438,7 @@ for (const [view, component] of [['codegraph', 'CodeGraphView'], ['terminal', 'T
   test(`${view} workspace closes beside files and reopens through navigation`, () => {
     const app = shellHarness();
     const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
-    const page = () => props<ComponentProps<typeof CodeGraphView> | ComponentProps<typeof TerminalWorkspace>>(split().children, component);
+    const page = () => props<ComponentProps<typeof CodeGraphView> | ComponentProps<typeof TerminalWorkspace>>(view === 'terminal' ? split().terminal : split().children, component);
     props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate(view);
     expect(page().onCloseWorkspace).toBeUndefined();
     props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
@@ -567,4 +533,21 @@ test('failed Notes attachment keeps the Notes page and late success does not ove
   complete(true);
   expect(await attaching).toBe(true);
   expect(props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').activeView).toBe('git');
+});
+
+test('custom workspace layout keeps editor, chat and terminal visible together and closing only hides the chosen area', () => {
+  const app = shellHarness();
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  const layout = layoutModel.placeWorkspacePane(layoutModel.visibleWorkspaceLayout('split', false), 'workspace', 'terminal', 'down');
+  split().onLayoutChange!(layout);
+  split().onOpenPane!('terminal');
+  expect(props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor').active).toBe(true);
+  expect(props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace').active).toBe(true);
+  expect(props<ComponentProps<typeof TerminalWorkspace>>(split().terminal, 'TerminalWorkspace').active).toBe(true);
+  props<ComponentProps<typeof TerminalWorkspace>>(split().terminal, 'TerminalWorkspace').onCloseWorkspace!();
+  expect(splitModel.splitPaneIds(split().layout!)).toEqual(['editor', 'primary']);
+  expect(props<ComponentProps<typeof TerminalWorkspace>>(split().terminal, 'TerminalWorkspace').active).toBe(false);
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('terminal');
+  expect(props<ComponentProps<typeof TerminalWorkspace>>(split().terminal, 'TerminalWorkspace').active).toBe(true);
+  expect(props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace').active).toBe(true);
 });

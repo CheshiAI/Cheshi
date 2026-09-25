@@ -44,3 +44,18 @@
 .root > [data-axis='columns'][data-dragging='true'] > [role='separator']::before {
   opacity: 1;
 }
+
+.mount { position: relative; }
+.mount[data-drop]::after {
+  content: '';
+  position: absolute;
+  z-index: 20;
+  inset: 0 0 0 50%;
+  border: 1px dashed var(--active-text);
+  background: var(--control-surface-interactive);
+  pointer-events: none;
+}
+.mount[data-drop='down']::after { inset: 50% 0 0; }
+
+.mount[data-drop='left']::after { inset: 0 50% 0 0; }
+.mount[data-drop='up']::after { inset: 0 0 50%; }

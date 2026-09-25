@@ -25,18 +25,20 @@ export interface TerminalController {
     sessionId: string,
     paneId: string,
     direction: TerminalSplitDirection,
-  ) => void;
+  ) => Promise<boolean>;
   resizeSplit: (sessionId: string, splitId: string, ratio: number) => void;
   closePane: (sessionId: string, paneId: string) => void;
 }
 
-export function useTerminalController(active: boolean): TerminalController {
+export function useTerminalController(active: boolean, previewActive = false): TerminalController {
   const desktopApi = cheshiDesktop;
   const [state, setState] = useState<TerminalRuntimeState>(EMPTY_TERMINAL_STATE);
   const [clientError, setClientError] = useState('');
   const views = useRef(new Map<string, TerminalSurfaceView>());
   const activeRef = useRef(active);
   activeRef.current = active;
+  const previewRef = useRef(previewActive);
+  previewRef.current = previewActive;
 
   const applyState = useCallback((value: unknown): void => {
     const next = normalizeTerminalState(value);
@@ -47,6 +49,7 @@ export function useTerminalController(active: boolean): TerminalController {
     setState(next);
     setClientError('');
     window.requestAnimationFrame(() => {
+      if (previewRef.current) return;
       for (const [paneId, view] of views.current) {
         const bounds = view.host.getBoundingClientRect();
         desktopApi?.updateTerminalSurfaceBounds({
@@ -69,7 +72,7 @@ export function useTerminalController(active: boolean): TerminalController {
 
   const syncPane = useCallback((paneId: string): void => {
     const view = views.current.get(paneId);
-    if (!view || !desktopApi) return;
+    if (!view || !desktopApi || previewRef.current) return;
     const bounds = view.host.getBoundingClientRect();
     desktopApi.updateTerminalSurfaceBounds({
       paneId,
@@ -121,8 +124,8 @@ export function useTerminalController(active: boolean): TerminalController {
 
   useEffect(() => {
     if (!desktopApi) return;
-    runAction(() => desktopApi.setTerminalViewVisible(active));
-  }, [active, desktopApi, runAction]);
+    runAction(() => desktopApi.setTerminalViewVisible(active && !previewActive));
+  }, [active, previewActive, desktopApi, runAction]);
 
   useEffect(() => () => {
     for (const paneId of [...views.current.keys()]) disposeView(paneId);
@@ -162,9 +165,18 @@ export function useTerminalController(active: boolean): TerminalController {
     selectPane: (sessionId, paneId) => invoke(
       desktopApi && (() => desktopApi.selectTerminalPane(sessionId, paneId)),
     ),
-    splitPane: (sessionId, paneId, direction) => invoke(
-      desktopApi && (() => desktopApi.splitTerminalPane(sessionId, paneId, direction)),
-    ),
+    splitPane: async (sessionId, paneId, direction) => {
+      if (!desktopApi) { setClientError('Terminal requires the Cheshi Electron app.'); return false; }
+      try {
+        const next = await desktopApi.splitTerminalPane(sessionId, paneId, direction);
+        applyState(next);
+        const normalized = normalizeTerminalState(next);
+        return normalized !== null && !normalized.error;
+      } catch (error) {
+        setClientError(error instanceof Error ? error.message : String(error));
+        return false;
+      }
+    },
     resizeSplit: (sessionId, splitId, ratio) => invoke(
       desktopApi && (() => desktopApi.resizeTerminalSplit(sessionId, splitId, ratio)),
     ),

@@ -38,6 +38,8 @@ import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import styles from './AppShell.module.css';
 import { useAppUpdateResume } from './useAppUpdateResume';
 import { WorkspaceEditorSplit } from './WorkspaceEditorSplit';
+import { readWorkspaceLayout, revealWorkspacePane, saveWorkspaceLayout, visibleWorkspaceLayout } from './workspaceLayoutModel';
+import { removeSplitPane, splitPaneIds } from '../../shared/ui/splitPaneModel';
 import { WorkspaceFileSearch } from '../navigation/WorkspaceFileSearch';
 import { installFileSearchShortcut } from '../navigation/fileSearchShortcut';
 import { ChatDraftAttachmentsContext, createChatDraftAttachments } from '../chat/chatDraftAttachments';
@@ -90,6 +92,8 @@ export function AppShell() {
   const [editorTarget, setEditorTarget] = useState<WorkspaceEditorTarget | null>(null);
   const [editorSplitOpen, setEditorSplitOpen] = useState(false);
   const [primaryPaneClosed, setPrimaryPaneClosed] = useState(false);
+  const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
+  useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
   const editorReturnView = useRef<WorkspaceView>('chat');
   const [editorMutation, setEditorMutation] = useState<WorkspaceEditorMutation | null>(null);
   const [editorSelectedPath, setEditorSelectedPath] = useState<string | null>(null);
@@ -147,6 +151,7 @@ export function AppShell() {
     historyRequestId.current += 1;
     closeReview();
     setActiveView('chat');
+    setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
     setPrimaryPaneClosed(false);
     void chat?.openSession(threadId);
   };
@@ -159,6 +164,7 @@ export function AppShell() {
     if (!opened || requestId !== historyRequestId.current) return false;
     closeReview();
     setActiveView('chat');
+    setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
     setPrimaryPaneClosed(false);
     setHistoryTarget({ threadId: hit.threadId, itemId: hit.itemId, requestId });
     return true;
@@ -169,6 +175,7 @@ export function AppShell() {
     historyRequestId.current += 1;
     closeReview();
     setActiveView('chat');
+    setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
     setPrimaryPaneClosed(false);
     void chat?.newSession();
   };
@@ -176,6 +183,11 @@ export function AppShell() {
   const navigate = (view: WorkspaceView): void => {
     historyRequestId.current += 1;
     closeReview();
+    if (customLayout) {
+      const pane = view === 'terminal' ? 'terminal' : view === 'editor' ? 'editor' : 'primary';
+      setCustomLayout(current => current && revealWorkspacePane(current, pane));
+      if (view === 'terminal') return;
+    }
     setActiveView(view);
     setPrimaryPaneClosed(false);
   };
@@ -218,7 +230,8 @@ export function AppShell() {
     closeReview();
     setEditorTarget({ path, line, requestId: editorRequestId.current });
     setEditorSplitOpen(true);
-    if (fullWidthViews.includes(activeView)) {
+    setCustomLayout(current => current && revealWorkspacePane(current, 'editor'));
+    if (!customLayout && fullWidthViews.includes(activeView)) {
       editorReturnView.current = activeView;
       setPrimaryPaneClosed(false);
       setActiveView('editor');
@@ -228,6 +241,7 @@ export function AppShell() {
   const closeEditorSplit = (): void => {
     setLineCommitTarget(null);
     setEditorSplitOpen(false);
+    setCustomLayout(current => current ? removeSplitPane(current, 'editor') : null);
     setPrimaryPaneClosed(false);
     setEditorTarget(null);
     if (activeView === 'editor') navigate(editorReturnView.current);
@@ -241,6 +255,12 @@ export function AppShell() {
     : !editorSplitOpen ? 'primary'
       : fullWidthViews.includes(activeView) ? 'page'
         : primaryPaneClosed ? 'editor' : 'split';
+
+  const visiblePanes = splitPaneIds(customLayout ?? visibleWorkspaceLayout(editorLayoutMode, activeView === 'terminal'));
+  const closePane = (pane: 'primary' | 'terminal') => {
+    if (customLayout) setCustomLayout(current => removeSplitPane(current, pane));
+    else setPrimaryPaneClosed(true);
+  };
 
   return (
     <ChatDraftAttachmentsContext.Provider value={draftAttachments}>
@@ -294,11 +314,23 @@ export function AppShell() {
             />
         </SlidingSidePanel>
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
-          <WorkspaceEditorSplit mode={editorLayoutMode} editor={
+          <WorkspaceEditorSplit mode={editorLayoutMode} layout={customLayout} onLayoutChange={setCustomLayout}
+            terminalPrimary={activeView === 'terminal'} disabled={updateResume.busy || workspace.accountSwitchPending}
+            onOpenPane={pane => {
+              if (pane === 'editor') setEditorSplitOpen(true);
+              if (pane === 'primary') { setActiveView('chat'); setPrimaryPaneClosed(false); }
+            }}
+            terminal={<TerminalWorkspace
+              active={visiblePanes.includes('terminal')}
+              onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('terminal') : undefined}
+              blocked={updateResume.busy || fileSearchOpen}
+              rightSidebarOpen={rightSidebarOpen}
+              onToggleRightSidebar={() => setRightSidebarOpen(open => !open)}
+            />} editor={
             <WorkspaceEditor
               sessionMode={updateResume.editorSessionMode}
               onSessionRestored={() => setEditorSplitOpen(true)}
-              active={editorLayoutMode === 'split' || editorLayoutMode === 'editor'}
+              active={visiblePanes.includes('editor')}
               rightSidebarOpen={rightSidebarOpen}
               onToggleRightSidebar={editorLayoutMode === 'editor'
                 ? () => setRightSidebarOpen((open) => !open) : undefined}
@@ -330,8 +362,8 @@ export function AppShell() {
             disabled: chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running || workspace.responseThreadIds.length > 0 }}>
             <ChatWorkspace
               workspace={workspace}
-              active={activeView === 'chat' && !primaryPaneClosed}
-              onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
+              active={activeView === 'chat' && visiblePanes.includes('primary')}
+              onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}
               sessionSyncEnabled={workspace.sessionHistory.loading || sidebarPanel === 'chats'}
               onReviewFileChanges={openFileReview}
               historyTarget={historyTarget}
@@ -342,7 +374,7 @@ export function AppShell() {
           </HistoryRecallNavigation.Provider>
           {activeView === 'codegraph' && (
             <CodeGraphView
-              onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
+              onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}
               onOpenWorkspaceFile={openWorkspaceFile}
               rightSidebarOpen={rightSidebarOpen}
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
@@ -364,13 +396,6 @@ export function AppShell() {
             />
           )}
           {activeView === 'settings' && <SettingsView />}
-          <TerminalWorkspace
-            active={activeView === 'terminal' && !primaryPaneClosed}
-            onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
-            blocked={fileSearchOpen}
-            rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
-          />
           {activeView === 'blank' && <BlankView />}
           </WorkspaceEditorSplit>
         </div>

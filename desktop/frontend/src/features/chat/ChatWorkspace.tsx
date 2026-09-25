@@ -1,5 +1,6 @@
+import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
 import { ArrowLeft, Columns2, PanelRight, Plus, Rows2, X } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { chatRelayContextIds } from '../../../../shared/chat-relay';
 import {
@@ -71,6 +72,8 @@ function ChatPane({
   return createPortal(
     <section
       className={styles.pane}
+      data-chat-pane={paneId}
+      tabIndex={-1}
       data-active={selected ? 'true' : undefined}
       aria-label={threadLabel}
       onPointerDownCapture={() => selectPane(paneId)}
@@ -141,13 +144,15 @@ function ChatPane({
         onHistoryTargetHandled={onHistoryTargetHandled}
       />
       {splitChoice && <ChatSplitDialog workspace={workspace} paneId={paneId} direction={splitChoice.direction}
-        sourceThreadId={splitChoice.sourceThreadId} onClose={() => setSplitChoice(null)} />}
+        sourceThreadId={splitChoice.sourceThreadId} target={host} onClose={() => setSplitChoice(null)} />}
     </section>, host, paneId,
   );
 }
 
 export function ChatWorkspace(props: ChatWorkspaceProps) {
-  const { workspace, active, rightSidebarOpen, onToggleRightSidebar } = props;
+  const { workspace, rightSidebarOpen, onToggleRightSidebar } = props;
+  const paneVisible = useContext(WorkspacePaneVisibilityContext);
+  const active = props.active && paneVisible;
   // Keep pane portals stable while recursive split branches are replaced.
   const hosts = useRef(new Map<string, HTMLDivElement>());
   for (const paneId of workspace.paneIds) {
@@ -172,6 +177,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
             <h1>Codex</h1>
           </div>
           <div className={styles.headerActions} style={nonDraggableWindowRegionStyle}>
+              <WorkspaceLayoutControls />
             <ChatRelayButton workspace={workspace} className={`theme-toggle ${viewStyles.sidebarToggle}`} />
             <NeumorphicButton
               raised
@@ -214,6 +220,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
       {workspace.paneIds.map((paneId) => (
         <ChatPane
           {...props}
+          active={active}
           key={paneId}
           paneId={paneId}
           host={hosts.current.get(paneId)!}
