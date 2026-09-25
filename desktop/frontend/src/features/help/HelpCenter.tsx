@@ -1,4 +1,4 @@
-import { MessageCircleQuestionMark } from 'lucide-react';
+import { CircleQuestionMark, MessageCircleQuestionMark } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { NeumorphicButton, SidebarRailButton, nonDraggableWindowRegionStyle } from '../../shared/ui';
@@ -22,7 +22,7 @@ export function HelpCenter({ variant = 'chrome' }: { variant?: 'chrome' | 'rail'
     <span ref={triggerRef} className={variant === 'rail' ? styles.railLauncher : styles.launcher}
       style={nonDraggableWindowRegionStyle}>
       {variant === 'rail'
-        ? <SidebarRailButton active={open} icon={<MessageCircleQuestionMark aria-hidden="true" />} label={text.title}
+        ? <SidebarRailButton active={open} icon={<CircleQuestionMark aria-hidden="true" />} label={text.title}
           aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)} />
         : <NeumorphicButton raised size="icon" title={text.title} aria-label={text.title} aria-expanded={open}
           aria-controls={id} onClick={() => setOpen(value => !value)}>
