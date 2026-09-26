@@ -21,10 +21,36 @@ async function withTabs(run: (h: {
   window: Window;
   tab(label: string): HTMLButtonElement;
   panel(label: string): HTMLElement;
+  viewport: HTMLElement;
+  scrolls: ScrollToOptions[];
+  settle(left: number, target?: Element): Promise<void>;
+  resize(width: number): Promise<void>;
+  reduceMotion(): void;
+  observerConnected(): boolean;
   click(label: string): Promise<void>;
   key(label: string, key: string): Promise<void>;
+  wheel(target: Element, options: WheelEventInit): Promise<Event>;
+  clear(): Promise<void>;
 }) => Promise<void>) {
   const window = new Window();
+  let width = 320;
+  let reduceMotion = false;
+  let resize = () => {};
+  let connected = false;
+  const scrolls: ScrollToOptions[] = [];
+  Object.defineProperty(window.HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => width });
+  Object.defineProperty(window.HTMLElement.prototype, 'scrollTo', { configurable: true,
+    value(this: HTMLElement, options: ScrollToOptions) {
+      scrolls.push(options);
+      if (options.behavior === 'instant') this.scrollLeft = options.left ?? 0;
+    },
+  });
+  Object.defineProperty(window, 'matchMedia', { value: () => ({ matches: reduceMotion }) });
+  Object.defineProperty(window, 'ResizeObserver', { value: class {
+    constructor(callback: () => void) { resize = callback; }
+    observe() { connected = true; }
+    disconnect() { connected = false; }
+  } });
   const globals = { window, document: window.document, navigator: window.navigator, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
@@ -37,7 +63,28 @@ async function withTabs(run: (h: {
   const panel = (label: string) => document.getElementById(tab(label).getAttribute('aria-controls')!)!;
   try {
     await act(async () => root.render(<Fixture />));
-    await run({ container, window, tab, panel,
+    const viewport = panel('Files').parentElement!.parentElement!;
+    await run({ container, window, tab, panel, viewport, scrolls,
+      settle: async (left, target = viewport) => {
+        await act(async () => {
+          viewport.scrollLeft = left;
+          target.dispatchEvent(new window.Event('scrollend', { bubbles: true }) as unknown as Event);
+        });
+      },
+      resize: async next => { width = next; await act(async () => { resize(); }); },
+      reduceMotion: () => { reduceMotion = true; },
+      observerConnected: () => connected,
+      clear: async () => { await act(async () => root.render(null)); },
+      wheel: async (target, options) => {
+        const event = new window.WheelEvent('wheel', { bubbles: true, cancelable: options.cancelable ?? true,
+          deltaX: options.deltaX, deltaY: options.deltaY, deltaMode: options.deltaMode });
+        // Happy DOM's WheelEvent does not implement the inherited mouse modifier fields.
+        for (const key of ['ctrlKey', 'metaKey', 'altKey', 'shiftKey'] as const) {
+          Object.defineProperty(event, key, { value: options[key] ?? false });
+        }
+        await act(async () => { target.dispatchEvent(event as unknown as Event); });
+        return event as unknown as Event;
+      },
       click: async label => { await act(async () => tab(label).click()); },
       key: async (label, key) => {
         await act(async () => {
@@ -109,14 +156,146 @@ test('keyboard navigation moves selection and focus with one tab stop and wraps 
   });
 });
 
-test('horizontal and vertical wheel input remains available to content without changing tabs', async () => {
-  await withTabs(async ({ window, tab, panel }) => {
-    for (const [deltaX, deltaY] of [[250, 0], [-250, 0], [0, 100]]) {
-      const event = new window.WheelEvent('wheel', { deltaX, deltaY, bubbles: true, cancelable: true });
-      await act(async () => { panel('Files').dispatchEvent(event as unknown as WheelEvent); });
-      expect(event.defaultPrevented).toBe(false);
+test('rapid tab clicks scroll to the latest page without remounting panels', async () => {
+  await withTabs(async ({ container, panel, click, viewport, scrolls, settle, tab }) => {
+    const panels = ['Sessions', 'Files', 'Memos'].map(panel);
+    const track = panels[0]!.parentElement!;
+    expect(viewport.scrollLeft).toBe(320);
+    for (const [label, offset] of [['Memos', 640], ['Sessions', 0], ['Memos', 640]] as const) {
+      await click(label);
+      expect(panel(label).parentElement).toBe(track);
+      expect(scrolls.at(-1)).toEqual({ left: offset, behavior: 'smooth' });
+      expect([...track.children]).toEqual(panels);
+      expect(container.querySelectorAll('[role="tabpanel"][aria-hidden="false"]')).toHaveLength(1);
+      expect(panel(label).hasAttribute('inert')).toBe(false);
+    }
+    await settle(0);
+    expect(tab('Memos').getAttribute('aria-selected')).toBe('true');
+    await settle(640);
+    expect(tab('Memos').getAttribute('aria-selected')).toBe('true');
+  });
+});
+
+test('clicking a tab moves focus out of the outgoing panel before making it inert', async () => {
+  await withTabs(async ({ tab, panel, click }) => {
+    const input = panel('Files').querySelector('input')!;
+    input.focus();
+    expect(document.activeElement).toBe(input);
+    await click('Sessions');
+    expect(document.activeElement).toBe(tab('Sessions'));
+    expect(panel('Files').hasAttribute('inert')).toBe(true);
+  });
+});
+
+test('native wheel input is never canceled or used to select a tab before scrolling settles', async () => {
+  await withTabs(async ({ tab, panel, wheel }) => {
+    for (const options of [{ deltaY: 100 }, { deltaX: 100, deltaY: 90 },
+      { deltaX: 100 }, { deltaX: -100, cancelable: false }, { deltaX: 2, deltaMode: 1 },
+      { deltaX: 100, ctrlKey: true }, { deltaX: 100, metaKey: true },
+      { deltaX: 100, shiftKey: true }, { deltaX: 100, altKey: true }]) {
+      expect((await wheel(panel('Files'), options)).defaultPrevented).toBe(false);
       expect(tab('Files').getAttribute('aria-selected')).toBe('true');
     }
+  });
+});
+
+test('a settled native swipe updates selection and moves focus out of the outgoing panel', async () => {
+  await withTabs(async ({ tab, panel, wheel, settle }) => {
+    const input = panel('Files').querySelector('input')!;
+    input.value = 'keep this search';
+    input.focus();
+    await wheel(panel('Files'), { deltaX: -8 });
+    await settle(0);
+    expect(tab('Sessions').getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(tab('Sessions'));
+    expect(panel('Files').hasAttribute('inert')).toBe(true);
+    await wheel(panel('Sessions'), { deltaX: 8, cancelable: false });
+    await settle(320);
+    expect(tab('Files').getAttribute('aria-selected')).toBe('true');
+    expect(input.value).toBe('keep this search');
+  });
+});
+
+test('consecutive swipes in the same direction work without moving the pointer or waiting', async () => {
+  await withTabs(async ({ tab, panel, wheel, settle, click }) => {
+    await click('Sessions');
+    await settle(0);
+    // The browser supplies gesture boundaries; no timer or accumulated delta decides whether to accept them.
+    for (const [from, to, deltaX, left] of [
+      ['Sessions', 'Files', 4, 320], ['Files', 'Memos', 4, 640],
+      ['Memos', 'Files', -4, 320], ['Files', 'Sessions', -4, 0],
+    ] as const) {
+      await wheel(panel(from), { deltaX });
+      await settle(left);
+      expect(tab(to).getAttribute('aria-selected')).toBe('true');
+    }
+  });
+});
+
+test('vertical input does not lock out the next horizontal gesture', async () => {
+  await withTabs(async ({ tab, panel, wheel, settle }) => {
+    await wheel(panel('Files'), { deltaY: 100 });
+    await wheel(panel('Files'), { deltaX: -4 });
+    await settle(0);
+    expect(tab('Sessions').getAttribute('aria-selected')).toBe('true');
+  });
+});
+
+test('a user swipe can interrupt a pending smooth tab click', async () => {
+  await withTabs(async ({ tab, panel, click, wheel, settle }) => {
+    await click('Memos');
+    await wheel(panel('Memos'), { deltaX: -4 });
+    await settle(0);
+    expect(tab('Sessions').getAttribute('aria-selected')).toBe('true');
+  });
+});
+
+test('clicking back to the current position cancels a smooth scroll that has not moved yet', async () => {
+  await withTabs(async ({ tab, click, scrolls, settle }) => {
+    await click('Memos');
+    await click('Files');
+    expect(scrolls.at(-1)).toEqual({ left: 320, behavior: 'instant' });
+    await settle(640);
+    expect(tab('Files').getAttribute('aria-selected')).toBe('true');
+    await settle(320);
+    expect(tab('Files').getAttribute('aria-selected')).toBe('true');
+  });
+});
+
+test('nested list scroll completion and partial page positions do not change tabs', async () => {
+  await withTabs(async ({ tab, panel, wheel, settle }) => {
+    await wheel(panel('Files'), { deltaX: -4 });
+    await settle(0, panel('Files').querySelector('[data-scroll]')!);
+    expect(tab('Files').getAttribute('aria-selected')).toBe('true');
+    await settle(170);
+    expect(tab('Files').getAttribute('aria-selected')).toBe('true');
+    await settle(0);
+    expect(tab('Sessions').getAttribute('aria-selected')).toBe('true');
+  });
+});
+
+test('resizing or reopening the sidebar keeps the selected page aligned', async () => {
+  await withTabs(async ({ tab, click, resize, viewport, scrolls }) => {
+    await click('Memos');
+    await resize(400);
+    expect(viewport.scrollLeft).toBe(800);
+    expect(scrolls.at(-1)).toEqual({ left: 800, behavior: 'instant' });
+    await resize(0);
+    await resize(300);
+    expect(viewport.scrollLeft).toBe(600);
+    expect(tab('Memos').getAttribute('aria-selected')).toBe('true');
+  });
+});
+
+test('reduced motion tab clicks align immediately and unmount releases observers', async () => {
+  await withTabs(async ({ reduceMotion, click, viewport, scrolls, observerConnected, clear }) => {
+    reduceMotion();
+    await click('Memos');
+    expect(viewport.scrollLeft).toBe(640);
+    expect(scrolls.at(-1)).toEqual({ left: 640, behavior: 'instant' });
+    expect(observerConnected()).toBe(true);
+    await clear();
+    expect(observerConnected()).toBe(false);
   });
 });
 
