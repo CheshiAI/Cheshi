@@ -1,23 +1,50 @@
 .root {
+  --sidebar-tab-gap: 4px;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   height: 100%;
+  timeline-scope: --sidebar-tabs;
   -webkit-app-region: no-drag;
 }
 
 .root .tabs {
+  position: relative;
+  isolation: isolate;
   box-sizing: border-box;
   height: var(--header-height);
   min-height: var(--header-height);
   flex: 0 0 var(--header-height);
-  gap: 4px;
+  gap: var(--sidebar-tab-gap);
   padding: 0 var(--icon-default);
   border-bottom: 1px solid var(--divider);
 }
 
+.root .tabs::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: calc(50% - 16px);
+  left: var(--icon-default);
+  width: calc((100% - 2 * var(--icon-default) - (var(--sidebar-tab-count) - 1) * var(--sidebar-tab-gap)) / var(--sidebar-tab-count));
+  height: 32px;
+  border-radius: 8px;
+  background: var(--control-surface);
+  pointer-events: none;
+  /* Share the content's native scroll timeline, including reversals and snap-back. */
+  animation: sidebar-selection linear both;
+  animation-timeline: --sidebar-tabs;
+}
+
+@keyframes sidebar-selection {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc((100% + var(--sidebar-tab-gap)) * (var(--sidebar-tab-count) - 1))); }
+}
+
 .root .tabs .tab {
+  position: relative;
+  z-index: 1;
   box-sizing: border-box;
   flex: 1 1 0;
   min-width: 0;
@@ -29,10 +56,6 @@
   letter-spacing: normal;
   color: var(--text);
   background: var(--control-surface-ghost);
-}
-
-.tabs .tab[data-active='true'] {
-  background: var(--control-surface);
 }
 
 .tabs .tab:hover,
@@ -54,6 +77,7 @@
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
+  scroll-timeline: --sidebar-tabs x;
   scrollbar-width: none;
 }
 

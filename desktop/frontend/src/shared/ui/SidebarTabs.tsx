@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react';
+import { useId, type CSSProperties, type ReactNode } from 'react';
 
 import { FilterTab, FilterTabList } from './FilterTab';
 import { useScrollSnapTabs } from './useScrollSnapTabs';
@@ -27,7 +27,7 @@ export function SidebarTabs({ tabs, activeId, onSelect }: {
     }
     onSelect(next.id);
   });
-  return <div className={styles.root}>
+  return <div className={styles.root} style={{ '--sidebar-tab-count': tabs.length } as CSSProperties}>
     <FilterTabList className={styles.tabs} role="tablist" aria-label="Sidebar panels">
       {tabs.map((tab, index) => <FilterTab key={tab.id} className={styles.tab}
         id={`${id}-tab-${tab.id}`} role="tab" active={index === activeIndex}
