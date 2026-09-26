@@ -8,6 +8,7 @@ import {
   X,
 } from 'lucide-react';
 import { useRef, type SubmitEvent } from 'react';
+import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 
 import { LiquidGlassPanel, LoadingState, NeumorphicButton, NeumorphicTextField, SearchClearButton } from '../../shared/ui';
 import type {
@@ -56,6 +57,7 @@ export function WorkspaceEditorAssistPanel({
   onSelectReference,
 }: WorkspaceEditorAssistPanelProps) {
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const scrollbarSurface = useAutoHideScrollbars<HTMLDivElement>();
   const selectedReference = state.kind === 'references'
     ? state.locations[state.selectedIndex]
     : undefined;
@@ -249,5 +251,5 @@ export function WorkspaceEditorAssistPanel({
       )}
     </LiquidGlassPanel>
   );
-  return <div className="workspace-editor-assist-popup-anchor">{panel}</div>;
+  return <div ref={scrollbarSurface} className="workspace-editor-assist-popup-anchor">{panel}</div>;
 }

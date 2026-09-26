@@ -1,5 +1,6 @@
 import { AlertTriangle, FileCode2, FolderOpen, Wrench } from 'lucide-react';
 import { useMemo } from 'react';
+import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 
 import {
   LiquidGlassPanel,
@@ -60,6 +61,7 @@ export function WorkspaceProblemsPanel({
   onConfigureLanguageServer,
   onSelectDiagnostic,
 }: WorkspaceProblemsPanelProps) {
+  const scrollbarSurface = useAutoHideScrollbars<HTMLDivElement>();
   const refactoringRecommendation = useMemo(() => fileRefactoringRecommendation(content, filePath), [content, filePath]);
   const problemCount = diagnostics.length + (refactoringRecommendation ? 1 : 0);
   const fileName = filePath.split('/').at(-1) ?? filePath;
@@ -136,7 +138,7 @@ export function WorkspaceProblemsPanel({
         )}
       </LiquidGlassPanel>
 
-      <div className="workspace-editor-problems-content">
+      <div ref={open ? scrollbarSurface : null} className="workspace-editor-problems-content">
         {diagnostics.length > 0 || refactoringRecommendation ? (
           <ul className="workspace-editor-problem-list">
             {diagnostics.map((diagnostic) => (

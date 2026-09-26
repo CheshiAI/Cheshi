@@ -45,6 +45,11 @@ export function useWorkspaceAssistRequests({ editorPathRef, editorViewRef, pendi
   }, [assistRequests, referencePreviewRequestSequence]);
 
   const referenceRequestRef = useRef<WorkspaceEditorRequest | null>(null);
+  const dismissReferencePreview = useCallback(() => {
+    referencePreviewRequestSequence.current += 1;
+    referenceRequestRef.current = null;
+    setAssistState(current => current?.kind === 'references' ? null : current);
+  }, []);
   const beginRequest = useCallback((view: EditorView, path: string) => {
     referencePreviewRequestSequence.current += 1;
     pendingRenameRef.current = null;
@@ -218,5 +223,5 @@ export function useWorkspaceAssistRequests({ editorPathRef, editorViewRef, pendi
     });
   }, [api, beginRequest, nextLanguageServerDocumentVersion]);
 
-  return { loadReferencePreview, requestLanguageServerReferences, requestLanguageServerRename, requestLanguageServerCodeActions };
+  return { dismissReferencePreview, loadReferencePreview, requestLanguageServerReferences, requestLanguageServerRename, requestLanguageServerCodeActions };
 }

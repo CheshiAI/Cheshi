@@ -6,6 +6,7 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useWorkspaceCodeExplanation } from '../frontend/src/features/editor/useWorkspaceCodeExplanation';
 import { WorkspaceCodeExplanationMenu } from '../frontend/src/features/editor/WorkspaceCodeExplanationMenu';
+import { WorkspaceCodeExplanationToast } from '../frontend/src/features/editor/WorkspaceCodeExplanationToast';
 import { WorkspaceLineCommitPanel } from '../frontend/src/features/editor/WorkspaceLineCommitPanel';
 import { ReviewSidebar } from '../frontend/src/features/shell/ReviewSidebar';
 import type { GitLineBlameRequest, GitLineCommit } from '../shared/git-line-blame';
@@ -396,5 +397,25 @@ test('file toolbar explanation captures the current selection without opening a 
       await act(async () => actions.explainCurrentSelection());
       expect(actions.state).toBeNull();
     } finally { view.destroy(); editorHost.remove(); }
+  });
+});
+
+test('code explanation keeps literal text and its close action inside the layered popup', async () => {
+  await withDOM(async (_window, _container, root) => {
+    let closed = 0;
+    await act(async () => root.render(<WorkspaceCodeExplanationToast state={null}
+      selectionError="<script>literal explanation error</script>" onDismiss={() => { closed += 1; }} />));
+    const popup = document.querySelector<HTMLElement>('[role="region"]')!;
+    expect(popup.parentElement?.parentElement).toBe(document.body);
+    expect(popup.textContent).toContain('<script>literal explanation error</script>');
+    expect(popup.querySelector('script')).toBeNull();
+    expect(popup.querySelector('[role="alert"]')).not.toBeNull();
+    const close = popup.querySelector<HTMLButtonElement>('[aria-label="Close code explanation"]')!;
+    await act(async () => close.click());
+    expect(closed).toBe(1);
+    const anchor = popup.parentElement!;
+    await act(async () => root.render(<WorkspaceCodeExplanationToast state={null} selectionError={null} onDismiss={() => {}} />));
+    expect(anchor.isConnected).toBe(false);
+    expect(anchor.hasAttribute('data-auto-hide-scrollbars')).toBe(false);
   });
 });

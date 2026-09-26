@@ -1,0 +1,48 @@
+.anchor {
+  composes: anchor from './PopupSurface.module.css';
+  --liquid-glass-radius: 12px;
+  position: fixed;
+  z-index: 110;
+  max-width: calc(100vw - 16px);
+  -webkit-app-region: no-drag;
+}
+
+.menu {
+  composes: surface from './PopupSurface.module.css';
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  box-sizing: border-box;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: var(--space-8);
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
+}
+
+.item {
+  width: 100%;
+  justify-content: space-between;
+  padding: 0 var(--space-8);
+  border-radius: var(--radius-control);
+  font-weight: 400;
+}
+
+.item:not(:disabled):focus-visible {
+  background: var(--control-surface-interactive);
+}
+
+.item > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu .item > svg {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  stroke-width: var(--icon-button-stroke-width);
+}

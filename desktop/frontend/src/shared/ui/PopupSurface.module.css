@@ -1,0 +1,20 @@
+/* Only the two popup background layers; consumers own placement and layout. */
+.anchor {
+  --panel-backdrop-blur: 16px;
+}
+
+.anchor::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--liquid-glass-radius, var(--panel-radius));
+  background: rgba(0, 0, 0, 0.01);
+  -webkit-backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
+  backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
+  pointer-events: none;
+}
+
+.surface {
+  background: rgba(0, 0, 0, 0.01);
+}

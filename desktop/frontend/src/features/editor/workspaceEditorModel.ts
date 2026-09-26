@@ -107,7 +107,8 @@ export const setSignatureHelpTooltip = StateEffect.define<Tooltip | null>();
 export const signatureHelpTooltipField = StateField.define<Tooltip | null>({
   create: () => null,
   update: (current, transaction) => {
-    let next = current;
+    let next = transaction.docChanged || !transaction.startState.selection.eq(transaction.newSelection)
+      ? null : current;
     for (const effect of transaction.effects) {
       if (effect.is(setSignatureHelpTooltip)) next = effect.value;
     }

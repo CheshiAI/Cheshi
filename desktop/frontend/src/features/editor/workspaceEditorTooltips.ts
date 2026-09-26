@@ -2,6 +2,7 @@ import { type Extension } from '@codemirror/state';
 import { tooltips, ViewPlugin } from '@codemirror/view';
 import panelStyles from '../../shared/ui/LiquidGlassPanel.module.css';
 import { beginSplitPreview } from '../../shared/ui/splitPreviewState';
+import { installAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 
 /** Keep CodeMirror's tooltip DOM and positioning, but render above the editor's clipping layers. */
 export function workspaceEditorTooltips(document: Document): Extension {
@@ -12,9 +13,11 @@ export function workspaceEditorTooltips(document: Document): Extension {
   const surfaces = ViewPlugin.fromClass(class {
     private readonly observer: MutationObserver;
     private restoreNativeSurfaces: (() => void) | undefined;
+    private readonly cleanupScrollbars: () => void;
 
     constructor() {
       document.body.append(portal);
+      this.cleanupScrollbars = installAutoHideScrollbars(portal);
       this.observer = new document.defaultView!.MutationObserver(() => this.sync());
       this.observer.observe(portal, { childList: true, subtree: true });
       this.sync();
@@ -41,6 +44,7 @@ export function workspaceEditorTooltips(document: Document): Extension {
 
     destroy(): void {
       this.observer.disconnect();
+      this.cleanupScrollbars();
       this.restoreNativeSurfaces?.();
       portal.remove();
     }

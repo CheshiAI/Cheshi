@@ -3,7 +3,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language';
 import { lintGutter } from '@codemirror/lint';
 import { search } from '@codemirror/search';
-import { EditorState, type Extension } from '@codemirror/state';
+import { EditorState, Prec, type Extension } from '@codemirror/state';
 import {
   closeHoverTooltip,
   drawSelection,
@@ -43,9 +43,10 @@ import { workspaceEditorHighlightStyle, workspaceEditorTheme } from './workspace
 import { workspaceEditorContentClip } from './workspaceEditorContentClip';
 import { workspaceEditorScrollbars } from './workspaceEditorScrollbars';
 import { workspaceEditorTooltips } from './workspaceEditorTooltips';
+import { workspaceEditorRequestLifecycle } from './workspaceEditorRequestLifecycle';
 import type { WorkspaceLanguageServerController } from './useWorkspaceLanguageServer';
 
-import { workspaceNavigationKeymap, workspaceTabKeymap } from './workspaceEditorKeymap';
+import { workspaceAssistEscapeBinding, workspaceNavigationKeymap, workspaceTabKeymap } from './workspaceEditorKeymap';
 
 interface UseWorkspaceCodeEditorOptions {
   activateOpenTab: (path: string) => void;
@@ -81,6 +82,7 @@ export function useWorkspaceCodeEditor({
   const {
     cancelDiagnostics,
     cancelSignatureHelp,
+    dismissReferencePreview,
     isLanguageServerUsable,
     languageServerCompletionSource,
     requestLanguageServerCodeActions,
@@ -193,6 +195,7 @@ export function useWorkspaceCodeEditor({
         { key: 'Mod-Alt-f', run: openEditorSearch },
         ...workspaceTabKeymap(editorPath, closeTabRef, tabsRef, activateOpenTab),
       ]),
+      workspaceEditorRequestLifecycle(cancelSignatureHelp, dismissReferencePreview),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
         let signatureTrigger = false;
@@ -306,6 +309,10 @@ export function useWorkspaceCodeEditor({
         symbolHover,
         definitionLinkRangeField,
         signatureHelpTooltipField,
+        // Cancel pending help before completion/search consumes Escape.
+        Prec.highest(keymap.of([
+          workspaceAssistEscapeBinding(assistStateRef, closeAssist, cancelSignatureHelp),
+        ])),
         keymap.of([
           {
             key: 'Shift-F12',
@@ -332,18 +339,6 @@ export function useWorkspaceCodeEditor({
             key: 'Mod-Shift-Space',
             run: (view) => {
               void requestLanguageServerSignatureHelp(view, editorPath, view.state.selection.main.head);
-              return true;
-            },
-          },
-          {
-            key: 'Escape',
-            run: (view) => {
-              const hasSignature = view.state.field(signatureHelpTooltipField, false) !== null;
-              const hadAssist = assistStateRef.current !== null;
-              closeAssist();
-              if (!hadAssist && !hasSignature) return false;
-              cancelSignatureHelp();
-              view.dispatch({ effects: setSignatureHelpTooltip.of(null) });
               return true;
             },
           },
@@ -397,6 +392,7 @@ export function useWorkspaceCodeEditor({
     cancelDiagnostics,
     cancelSignatureHelp,
     destroyEditor,
+    dismissReferencePreview,
     languageServerCompletionSource,
     isLanguageServerUsable,
     navigateHistory,

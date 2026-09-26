@@ -1,16 +1,19 @@
 import { CompletionContext } from '@codemirror/autocomplete';
 import { createWorkspaceLanguageServerCompletion } from '../frontend/src/features/editor/workspaceLanguageServerCompletion';
 import { useWorkspaceEditorNavigation } from '../frontend/src/features/editor/useWorkspaceEditorNavigation';
-import { workspaceNavigationKeymap, workspaceTabKeymap } from '../frontend/src/features/editor/workspaceEditorKeymap';
+import { workspaceAssistEscapeBinding, workspaceNavigationKeymap, workspaceTabKeymap } from '../frontend/src/features/editor/workspaceEditorKeymap';
+import { useWorkspaceSymbolRequests } from '../frontend/src/features/editor/useWorkspaceSymbolRequests';
+import { signatureHelpTooltipField } from '../frontend/src/features/editor/workspaceEditorModel';
 import { expect, test } from 'bun:test';
 import { act, type Dispatch, type SetStateAction } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Window } from 'happy-dom';
-import { EditorState } from '@codemirror/state';
+import { EditorState, type TransactionSpec } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { LanguageServerLocation, LanguageServerPrepareRenameResult, LanguageServerReferenceResult,
   LanguageServerRenameResult, WorkspaceFileReadResult, WorkspaceFileVersion, WorkspaceFilesWriteResult,
-  LanguageServerStatus, LanguageServerCodeAction, WorkspaceFileExcerptResult, LanguageServerCompletionResult } from '../frontend/src/cheshiDesktop';
+  LanguageServerStatus, LanguageServerCodeAction, WorkspaceFileExcerptResult, LanguageServerCompletionResult,
+  LanguageServerDefinitionResult, LanguageServerSignatureHelpResult } from '../frontend/src/cheshiDesktop';
 import { useWorkspaceAssistRequests, type PendingWorkspaceRename } from '../frontend/src/features/editor/useWorkspaceAssistRequests';
 import { useWorkspaceEditorEdits } from '../frontend/src/features/editor/useWorkspaceEditorEdits';
 import { beginWorkspaceEditorRequest, createWorkspaceRequestTracker } from '../frontend/src/features/editor/workspaceEditorRequest';
@@ -387,3 +390,160 @@ for (const change of ['none', 'path', 'document', 'editor'] as const) {
     else expect(result).toBeNull();
   });
 }
+
+function createSymbolModel() {
+  const model = createModel();
+  model.setEditorState(EditorState.create({ doc: 'name', extensions: [signatureHelpTooltipField] }));
+  Object.assign(model.view, { dispatch: (spec: TransactionSpec) => {
+    model.setEditorState(model.view.state.update(spec).state);
+  } });
+  const opened: string[] = [];
+  let origins = 0;
+  return { ...model, opened, origins: () => origins,
+    recordNavigationOrigin: () => { origins += 1; },
+    loadFileRef: { current: async (path: string) => { opened.push(path); } },
+  };
+}
+
+const signatureResult: LanguageServerSignatureHelpResult = {
+  signatures: [{ label: 'name(value)', documentation: null, parameters: [], activeParameter: null }],
+  activeSignature: 0, activeParameter: null,
+};
+
+type SymbolApi = NonNullable<Parameters<typeof useWorkspaceSymbolRequests>[0]['api']>;
+function symbolApi(overrides: Partial<SymbolApi> = {}): SymbolApi {
+  return { getLanguageServerDefinitions: async () => ({ locations: [location] }),
+    getLanguageServerSignatureHelp: async () => signatureResult, ...overrides };
+}
+
+test('definition navigation ignores older results and errors on the same file', async () => {
+  for (const fail of [false, true]) {
+    const model = createSymbolModel();
+    const old = createDeferred<LanguageServerDefinitionResult>();
+    const fresh = createDeferred<LanguageServerDefinitionResult>();
+    let count = 0;
+    const api = symbolApi({ getLanguageServerDefinitions: () => (++count === 1 ? old.promise : fresh.promise) });
+    await withHooks(() => useWorkspaceSymbolRequests({ ...model, api }), async read => {
+      const first = read().requestLanguageServerDefinition(model.view, 'sample.ts', 0);
+      const second = read().requestLanguageServerDefinition(model.view, 'sample.ts', 2);
+      fresh.resolve({ locations: [{ ...location, path: 'new.ts' }] });
+      await second;
+      if (fail) old.reject(new Error('Obsolete definition error'));
+      else old.resolve({ locations: [{ ...location, path: 'old.ts' }] });
+      await first;
+      expect(model.opened).toEqual(['new.ts']);
+      expect(model.origins()).toBe(1);
+      expect(model.error()).toBe('');
+    });
+  }
+});
+
+for (const invalidation of ['document', 'path', 'editor', 'reset', 'unmount'] as const) {
+  test(`definition navigation and signature help ignore responses after ${invalidation}`, async () => {
+    const model = createSymbolModel();
+    const definition = createDeferred<LanguageServerDefinitionResult>();
+    const signature = createDeferred<LanguageServerSignatureHelpResult>();
+    const api = symbolApi({ getLanguageServerDefinitions: () => definition.promise,
+      getLanguageServerSignatureHelp: () => signature.promise });
+    await withHooks(() => useWorkspaceSymbolRequests({ ...model, api }), async (read, unmount) => {
+      const navigation = read().requestLanguageServerDefinition(model.view, 'sample.ts', 0);
+      const help = read().requestLanguageServerSignatureHelp(model.view, 'sample.ts', 0);
+      if (invalidation === 'document') model.setEditorState(model.view.state.update({ changes: { from: 0, insert: 'x' } }).state);
+      if (invalidation === 'path') model.editorPathRef.current = 'other.ts';
+      if (invalidation === 'editor') model.editorViewRef.current = null;
+      if (invalidation === 'reset') read().resetSymbolRequests();
+      if (invalidation === 'unmount') await unmount();
+      definition.resolve({ locations: [location] });
+      signature.resolve(signatureResult);
+      await Promise.all([navigation, help]);
+      expect(model.opened).toEqual([]);
+      expect(model.origins()).toBe(0);
+      expect(model.view.state.field(signatureHelpTooltipField)).toBeNull();
+    });
+  });
+}
+
+test('definition link lookups do not cancel explicit navigation', async () => {
+  const model = createSymbolModel();
+  const navigation = createDeferred<LanguageServerDefinitionResult>();
+  let count = 0;
+  const api = symbolApi({ getLanguageServerDefinitions: async () => ++count === 1
+    ? navigation.promise : { locations: [location] } });
+  await withHooks(() => useWorkspaceSymbolRequests({ ...model, api }), async read => {
+    const pending = read().requestLanguageServerDefinition(model.view, 'sample.ts', 0);
+    expect(await read().resolveLanguageServerDefinitionLocations(model.view, 'sample.ts', 2)).toEqual([location]);
+    navigation.resolve({ locations: [{ ...location, path: 'target.ts' }] });
+    await pending;
+    expect(model.opened).toEqual(['target.ts']);
+  });
+});
+
+test('Escape dismisses pending signature help before its tooltip exists and permits a fresh request', async () => {
+  const model = createSymbolModel();
+  const pending = createDeferred<LanguageServerSignatureHelpResult>();
+  let count = 0;
+  const api = symbolApi({ getLanguageServerSignatureHelp: async () => ++count === 1 ? pending.promise : signatureResult });
+  await withHooks(() => useWorkspaceSymbolRequests({ ...model, api }), async read => {
+    const first = read().requestLanguageServerSignatureHelp(model.view, 'sample.ts', 0);
+    const escape = workspaceAssistEscapeBinding(model.assistStateRef, model.close, read().cancelSignatureHelp);
+    expect(escape.run!(model.view)).toBe(false);
+    pending.resolve(signatureResult);
+    await first;
+    expect(model.view.state.field(signatureHelpTooltipField)).toBeNull();
+    await read().requestLanguageServerSignatureHelp(model.view, 'sample.ts', 0);
+    expect(model.view.state.field(signatureHelpTooltipField)).not.toBeNull();
+    expect(escape.run!(model.view)).toBe(true);
+    expect(model.view.state.field(signatureHelpTooltipField)).toBeNull();
+  });
+});
+
+test('an old signature failure does not dismiss the latest tooltip', async () => {
+  const model = createSymbolModel();
+  const old = createDeferred<LanguageServerSignatureHelpResult>();
+  let count = 0;
+  const api = symbolApi({ getLanguageServerSignatureHelp: async () => ++count === 1 ? old.promise : signatureResult });
+  await withHooks(() => useWorkspaceSymbolRequests({ ...model, api }), async read => {
+    const first = read().requestLanguageServerSignatureHelp(model.view, 'sample.ts', 0);
+    await read().requestLanguageServerSignatureHelp(model.view, 'sample.ts', 0);
+    const tooltip = model.view.state.field(signatureHelpTooltipField);
+    expect(tooltip).not.toBeNull();
+    old.reject(new Error('Old help failure'));
+    await first;
+    expect(model.view.state.field(signatureHelpTooltipField)).toBe(tooltip);
+  });
+});
+
+test('signature help ignores a response after the cursor moves without editing', async () => {
+  const model = createSymbolModel();
+  const pending = createDeferred<LanguageServerSignatureHelpResult>();
+  const api = symbolApi({ getLanguageServerSignatureHelp: () => pending.promise });
+  await withHooks(() => useWorkspaceSymbolRequests({ ...model, api }), async read => {
+    const request = read().requestLanguageServerSignatureHelp(model.view, 'sample.ts', 0);
+    model.view.dispatch({ selection: { anchor: 3 } });
+    pending.resolve(signatureResult);
+    await request;
+    expect(model.view.state.field(signatureHelpTooltipField)).toBeNull();
+  });
+});
+
+test('document changes dismiss a loading reference preview and its late response cannot replace a new panel', async () => {
+  const model = createModel();
+  const excerpt = createDeferred<WorkspaceFileExcerptResult>();
+  const api = assistApi({ getLanguageServerReferences: async () => ({ locations: [location] }),
+    readWorkspaceFileExcerpt: () => excerpt.promise });
+  await withHooks(() => useWorkspaceAssistRequests({ ...model, api }), async read => {
+    await read().requestLanguageServerReferences(model.view, 'sample.ts', 0);
+    expect(model.assistStateRef.current?.kind).toBe('references');
+    model.setEditorState(model.view.state.update({ changes: { from: 0, insert: 'x' } }).state);
+    read().dismissReferencePreview();
+    expect(model.assistStateRef.current).toBeNull();
+    await read().requestLanguageServerRename(model.view, 'sample.ts', 0);
+    const renamed = model.assistStateRef.current;
+    expect(renamed?.kind).toBe('rename');
+    excerpt.resolve({ file: version, content: 'name', startLine: 1, endLine: 1, targetLine: 1,
+      hasMoreBefore: false, hasMoreAfter: false });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(model.assistStateRef.current).toBe(renamed);
+  });
+});

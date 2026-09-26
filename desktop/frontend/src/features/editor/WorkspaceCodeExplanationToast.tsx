@@ -16,8 +16,7 @@ export function WorkspaceCodeExplanationToast({ state, selectionError, onDismiss
   const error = selectionError ?? state?.error;
   return (
     <DismissibleToast
-      className={styles.card}
-      title="Code explanation"
+      title="CODE EXPLANATION"
       icon={<BookOpen aria-hidden="true" />}
       description={selection ? `${selection.path} · ${selection.startLine}–${selection.endLine}` : undefined}
       onDismiss={onDismiss}

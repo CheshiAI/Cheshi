@@ -5,6 +5,9 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useAutoHideScrollbars } from '../frontend/src/shared/useAutoHideScrollbars';
 import { workspaceEditorScrollbars } from '../frontend/src/features/editor/workspaceEditorScrollbars';
+import { WorkspaceEditorAssistPanel } from '../frontend/src/features/editor/WorkspaceEditorAssistPanel';
+import { WorkspaceProblemsPanel } from '../frontend/src/features/editor/WorkspaceProblemsPanel';
+import type { WorkspaceEditorAssistState } from '../frontend/src/features/editor/workspaceEditorAssistState';
 
 function Fixture({ visible, revision }: { visible: boolean; revision: number }) {
   const surface = useAutoHideScrollbars<HTMLElement>();
@@ -17,6 +20,8 @@ function Fixture({ visible, revision }: { visible: boolean; revision: number }) 
 async function withScrollbars(run: (h: {
   container: HTMLElement;
   render(visible?: boolean, revision?: number): Promise<void>;
+  renderAssist(state: WorkspaceEditorAssistState | null): Promise<void>;
+  renderProblems(open: boolean): Promise<void>;
   scroll(target: HTMLElement): void;
   hoverContent(target: HTMLElement): void;
   advance(ms: number): void;
@@ -50,6 +55,13 @@ async function withScrollbars(run: (h: {
     await run({
       container,
       render: async (visible = true, revision = 0) => { await act(async () => root.render(<Fixture visible={visible} revision={revision} />)); },
+      renderAssist: async state => { await act(async () => root.render(state ? <WorkspaceEditorAssistPanel
+        state={state} onApplyEdit={() => {}} onChooseAction={() => {}} onClose={() => {}}
+        onOpenReference={() => {}} onRenameChange={() => {}} onRenameSubmit={() => {}} onSelectReference={() => {}}
+      /> : null)); },
+      renderProblems: async open => { await act(async () => root.render(<WorkspaceProblemsPanel open={open}
+        content="" diagnostics={[]} filePath="sample.ts" languageServer={null} languageServerConfiguring={false}
+        status="ready" onConfigureLanguageServer={() => {}} onSelectDiagnostic={() => {}} />)); },
       scroll: target => { target.dispatchEvent(new window.Event('scroll') as unknown as Event); },
       hoverContent: target => { target.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }) as unknown as MouseEvent); },
       pending: () => timers.size,
@@ -212,5 +224,56 @@ test.each([false, true])('editor scrollbars handle both axes and restored tabs (
     scroll(editor.scrollDOM);
     advance(1000);
     expect(editor.scrollDOM.hasAttribute('data-scrollbar-active')).toBe(false);
+  });
+});
+
+test('assistant lists and source previews share scrollbar activity and clean up on close', async () => {
+  await withScrollbars(async ({ container, renderAssist, scroll, advance, pending }) => {
+    await renderAssist({ kind: 'references', locations: [], selectedIndex: 0,
+      preview: { content: 'example', startLine: 1, targetLine: 1 }, previewLoading: false });
+    const surface = container.querySelector('.workspace-editor-assist-popup-anchor')!;
+    const list = container.querySelector<HTMLElement>('.workspace-editor-reference-list')!;
+    const preview = container.querySelector<HTMLElement>('.workspace-editor-reference-preview')!;
+    expect(surface.hasAttribute('data-auto-hide-scrollbars')).toBe(true);
+    scroll(list);
+    scroll(preview);
+    expect(pending()).toBe(2);
+    advance(700);
+    expect(list.getAttribute('data-scrollbar-active')).toBe('false');
+    expect(preview.getAttribute('data-scrollbar-active')).toBe('false');
+    await renderAssist({ kind: 'edit-preview', title: 'Edits', files: [], applying: false });
+    const edits = container.querySelector<HTMLElement>('.workspace-editor-edit-preview ul')!;
+    scroll(edits);
+    expect(edits.getAttribute('data-scrollbar-active')).toBe('true');
+    await renderAssist(null);
+    expect(pending()).toBe(0);
+    expect(surface.hasAttribute('data-auto-hide-scrollbars')).toBe(false);
+    expect(edits.hasAttribute('data-scrollbar-active')).toBe(false);
+    scroll(edits);
+    expect(pending()).toBe(0);
+  });
+});
+
+test('Problems scrollbars hide after inactivity and clean up when the panel closes', async () => {
+  await withScrollbars(async ({ container, renderProblems, scroll, advance, pending }) => {
+    await renderProblems(true);
+    const surface = container.querySelector<HTMLElement>('.workspace-editor-problems-content')!;
+    expect(surface.hasAttribute('data-auto-hide-scrollbars')).toBe(true);
+    scroll(surface);
+    advance(699);
+    expect(surface.getAttribute('data-scrollbar-active')).toBe('true');
+    advance(1);
+    expect(surface.getAttribute('data-scrollbar-active')).toBe('false');
+    scroll(surface);
+    await renderProblems(false);
+    expect(pending()).toBe(0);
+    expect(surface.hasAttribute('data-auto-hide-scrollbars')).toBe(false);
+    expect(surface.hasAttribute('data-scrollbar-active')).toBe(false);
+    scroll(surface);
+    expect(pending()).toBe(0);
+    await renderProblems(true);
+    expect(surface.hasAttribute('data-auto-hide-scrollbars')).toBe(true);
+    scroll(surface);
+    expect(surface.getAttribute('data-scrollbar-active')).toBe('true');
   });
 });

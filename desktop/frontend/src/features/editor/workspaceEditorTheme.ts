@@ -82,6 +82,9 @@ export const workspaceEditorTheme = EditorView.theme({
   },
   '.cm-tooltip': {
     '--panel-backdrop-blur': '16px',
+    '--scrollbar-size': 'var(--auto-hide-scrollbar-size)',
+    scrollbarColor: 'auto',
+    scrollbarWidth: 'auto',
     border: '1px solid transparent',
     borderRadius: '12px',
     background: 'transparent',
@@ -120,8 +123,8 @@ export const workspaceEditorTheme = EditorView.theme({
     margin: '0',
     overflowX: 'hidden',
     padding: '0',
-    scrollbarColor: 'color-mix(in srgb, var(--editor-muted) 42%, transparent) transparent',
-    scrollbarWidth: 'thin',
+    scrollbarColor: 'auto',
+    scrollbarWidth: 'auto',
   },
   '.cm-tooltip.cm-tooltip-autocomplete > ul > li': {
     display: 'flex',
@@ -270,8 +273,8 @@ export const workspaceEditorTheme = EditorView.theme({
   '.workspace-editor-symbol-hover[data-mode="documentation"]': {
     maxHeight: 'min(520px, calc(100vh - 96px))',
     overflow: 'auto',
-    scrollbarColor: 'color-mix(in srgb, var(--editor-muted) 42%, transparent) transparent',
-    scrollbarWidth: 'thin',
+    scrollbarColor: 'auto',
+    scrollbarWidth: 'auto',
   },
   '.workspace-editor-symbol-hover-signature, .workspace-editor-symbol-hover-documentation': {
     margin: '0',

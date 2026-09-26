@@ -1,5 +1,24 @@
 import type { KeyBinding } from '@codemirror/view';
 import type { RefObject } from 'react';
+import type { WorkspaceEditorAssistState } from './workspaceEditorAssistState';
+import { setSignatureHelpTooltip, signatureHelpTooltipField } from './workspaceEditorModel';
+
+export function workspaceAssistEscapeBinding(
+  assistStateRef: RefObject<WorkspaceEditorAssistState | null>,
+  closeAssist: () => void,
+  cancelSignatureHelp: () => void,
+): KeyBinding {
+  return { key: 'Escape', run: view => {
+    const hasSignature = view.state.field(signatureHelpTooltipField, false) != null;
+    const hadAssist = assistStateRef.current !== null;
+    closeAssist();
+    // Invalidate pending help even when its tooltip has not appeared yet.
+    cancelSignatureHelp();
+    if (!hadAssist && !hasSignature) return false;
+    view.dispatch({ effects: setSignatureHelpTooltip.of(null) });
+    return true;
+  } };
+}
 
 export function workspaceNavigationKeymap(navigate: (direction: 'back' | 'forward') => Promise<void>): KeyBinding[] {
   return [

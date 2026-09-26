@@ -15,18 +15,15 @@ import {
   type LanguageServerDiagnostic,
   type LanguageServerHoverResult,
   type LanguageServerLanguage,
-  type LanguageServerLocation,
   type LanguageServerMode,
   type LanguageServerStatus,
 } from '../../cheshiDesktop';
 import {
   languageServerLanguageForPath,
-  normalizeLanguageServerDefinitionResult,
   normalizeLanguageServerDiagnostic,
   normalizeLanguageServerDiagnosticsEvent,
   normalizeLanguageServerHoverResult,
   normalizeLanguageServerSelectionResult,
-  normalizeLanguageServerSignatureHelpResult,
   normalizeLanguageServerStatuses,
   normalizeLanguageServerUpdateResult,
   workspaceDiagnosticsFromLanguageServer,
@@ -43,14 +40,13 @@ import {
   canUseLanguageServer,
   diagnosticMode,
   languageServerPositionAt,
-  languageServerSignatureTooltip,
   languageSupport,
   LANGUAGE_SERVER_FALLBACK_DELAY_MS,
-  setSignatureHelpTooltip,
   type LanguageServerExpectation,
   type WorkspaceDiagnosticMode,
 } from './workspaceEditorModel';
 
+import { useWorkspaceSymbolRequests } from './useWorkspaceSymbolRequests';
 import { createWorkspaceLanguageServerCompletion } from './workspaceLanguageServerCompletion';
 import { useWorkspaceAssistRequests, type WorkspaceAssistRequestOptions } from './useWorkspaceAssistRequests';
 
@@ -88,7 +84,6 @@ export function useWorkspaceLanguageServer({
   const languageServerFallbackTimerRef = useRef<number | null>(null);
   const diagnosticsWorkerRef = useRef<Worker | null>(null);
   const diagnosticsRequestSequence = useRef(0);
-  const signatureHelpRequestSequence = useRef(0);
   const languageServerDocumentVersionsRef = useRef(new Map<string, number>());
   const languageServerDiagnosticsRef = useRef(new Map<string, LanguageServerDiagnostic[]>());
   const workspaceDiagnosticsRef = useRef(diagnostics);
@@ -116,6 +111,12 @@ export function useWorkspaceLanguageServer({
   const assist = useWorkspaceAssistRequests({ editorPathRef, editorViewRef, pendingRenameRef, assistRequests,
     referencePreviewRequestSequence, setAssistState, setErrorMessage, languageServersRef,
     languageServerDiagnosticsRef, workspaceDiagnosticsRef, nextLanguageServerDocumentVersion });
+
+  const { requestLanguageServerDefinition, resolveLanguageServerDefinitionLocations,
+    requestLanguageServerSignatureHelp, cancelSignatureHelp, resetSymbolRequests } = useWorkspaceSymbolRequests({
+    editorViewRef, editorPathRef, languageServersRef, nextLanguageServerDocumentVersion,
+    loadFileRef, recordNavigationOrigin, setErrorMessage,
+  });
 
   const applyDiagnostics = useCallback((
     view: EditorView,
@@ -386,86 +387,6 @@ export function useWorkspaceLanguageServer({
     languageServersRef, editorViewRef, editorPathRef, nextLanguageServerDocumentVersion,
   }), [nextLanguageServerDocumentVersion]);
 
-  const requestLanguageServerSignatureHelp = useCallback(async (
-    view: EditorView,
-    editorPath: string,
-    offset: number,
-  ): Promise<void> => {
-    const language = languageServerLanguageForPath(editorPath);
-    const getSignatureHelp = workspace?.getLanguageServerSignatureHelp;
-    if (
-      !language
-      || !getSignatureHelp
-      || !canUseLanguageServer(language, languageServersRef.current)
-    ) return;
-    const sequence = ++signatureHelpRequestSequence.current;
-    try {
-      const response = normalizeLanguageServerSignatureHelpResult(await getSignatureHelp({
-        language,
-        path: editorPath,
-        content: view.state.doc.toString(),
-        version: nextLanguageServerDocumentVersion(editorPath),
-        position: languageServerPositionAt(view, offset),
-      }));
-      if (
-        sequence !== signatureHelpRequestSequence.current
-        || editorViewRef.current !== view
-        || editorPathRef.current !== editorPath
-      ) return;
-      const tooltip = response ? languageServerSignatureTooltip(view, response) : null;
-      view.dispatch({ effects: setSignatureHelpTooltip.of(tooltip) });
-    } catch {
-      if (sequence === signatureHelpRequestSequence.current && editorViewRef.current === view) {
-        view.dispatch({ effects: setSignatureHelpTooltip.of(null) });
-      }
-    }
-  }, [nextLanguageServerDocumentVersion]);
-
-  const resolveLanguageServerDefinitionLocations = useCallback(async (
-    view: EditorView,
-    editorPath: string,
-    offset: number,
-  ): Promise<LanguageServerLocation[] | null> => {
-    const language = languageServerLanguageForPath(editorPath);
-    const getDefinitions = workspace?.getLanguageServerDefinitions;
-    if (
-      !language
-      || !getDefinitions
-      || !canUseLanguageServer(language, languageServersRef.current)
-    ) return null;
-    const response = normalizeLanguageServerDefinitionResult(await getDefinitions({
-      language,
-      path: editorPath,
-      content: view.state.doc.toString(),
-      version: nextLanguageServerDocumentVersion(editorPath),
-      position: languageServerPositionAt(view, offset),
-    }));
-    assertLanguageServerValue(response, 'Cheshi returned an invalid language server definition response.');
-    if (editorViewRef.current !== view || editorPathRef.current !== editorPath) return null;
-    return response.locations;
-  }, [nextLanguageServerDocumentVersion]);
-
-  const requestLanguageServerDefinition = useCallback(async (
-    view: EditorView,
-    editorPath: string,
-    offset: number,
-  ): Promise<void> => {
-    try {
-      const locations = await resolveLanguageServerDefinitionLocations(view, editorPath, offset);
-      const location = locations?.[0];
-      if (!location) return;
-      recordNavigationOrigin();
-      await loadFileRef.current(
-        location.path,
-        location.range.start.line + 1,
-        false,
-        location.range.start.character,
-      );
-    } catch (error) {
-      setErrorMessage(toErrorMessage(error));
-    }
-  }, [recordNavigationOrigin, resolveLanguageServerDefinitionLocations]);
-
   const requestLanguageServerHover = useCallback(async (
     view: EditorView,
     editorPath: string,
@@ -507,18 +428,14 @@ export function useWorkspaceLanguageServer({
     }
   }, []);
 
-  const cancelSignatureHelp = useCallback((): void => {
-    signatureHelpRequestSequence.current += 1;
-  }, []);
-
   const resetLanguageServerRequests = useCallback((): void => {
     assistRequests.invalidate();
     referencePreviewRequestSequence.current += 1;
     pendingRenameRef.current = null;
     setAssistState(null);
     cancelDiagnostics();
-    cancelSignatureHelp();
-  }, [assistRequests, cancelDiagnostics, cancelSignatureHelp]);
+    resetSymbolRequests();
+  }, [assistRequests, cancelDiagnostics, resetSymbolRequests]);
 
   const isLanguageServerUsable = useCallback((language: LanguageServerLanguage): boolean => (
     canUseLanguageServer(language, languageServersRef.current)

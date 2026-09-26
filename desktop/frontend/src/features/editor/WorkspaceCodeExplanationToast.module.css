@@ -1,12 +1,10 @@
-.card[data-liquid-glass-backdrop='true'] {
-  background: transparent;
-}
-
 .message {
   margin: 0;
-  color: var(--text);
-  font-size: var(--font-size-default);
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
   font-weight: 400;
+  letter-spacing: normal;
   line-height: 1.65;
   overflow-wrap: anywhere;
   white-space: pre-wrap;

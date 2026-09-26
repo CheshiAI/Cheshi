@@ -26,7 +26,8 @@ function render(onOpenLocalHistory?: () => void) {
     'lucide-react': { Copy: 'Copy', History: 'History', X: 'X' },
     './contextMenuInteractions': { useContextMenuInteractions() {}, focusAdjacentMenuItem() {} },
     './LiquidGlassPanel': { LiquidGlassPanel: 'LiquidGlassPanel' },
-    './FlatTabContextMenu.module.css': { default: {} },
+    './NeumorphicButton': { NeumorphicButton: 'NeumorphicButton' },
+    './ContextMenu.module.css': { default: {} },
   };
   const source = readFileSync(new URL('../frontend/src/shared/ui/FlatTabContextMenu.tsx', import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: {
@@ -65,7 +66,7 @@ test('file history dismisses the tab menu before opening the requested history',
   click(menu.items[0]);
   expect(menu.calls).toEqual(['close', 'history']);
   expect(opened).toBe(1);
-  expect(menu.tree.props.style.top + 134).toBeLessThanOrEqual(592);
+  expect(menu.tree.props.style.top + 122).toBeLessThanOrEqual(592);
 });
 
 test('tabs without history retain close all and copy actions', () => {

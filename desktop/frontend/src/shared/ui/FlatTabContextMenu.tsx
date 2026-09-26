@@ -4,7 +4,8 @@ import { createPortal } from 'react-dom';
 
 import { focusAdjacentMenuItem, useContextMenuInteractions } from './contextMenuInteractions';
 import { LiquidGlassPanel } from './LiquidGlassPanel';
-import styles from './FlatTabContextMenu.module.css';
+import { NeumorphicButton } from './NeumorphicButton';
+import styles from './ContextMenu.module.css';
 
 export interface FlatTabContextMenuTarget {
   x: number;
@@ -22,8 +23,8 @@ interface FlatTabContextMenuProps {
 }
 
 const MENU_WIDTH = 180;
-const MENU_HEIGHT = 94;
-const MENU_ITEM_HEIGHT = 40;
+const MENU_HEIGHT = 86; // Two 32px rows, one 4px gap, 16px padding and 2px border.
+const MENU_ITEM_HEIGHT = 36;
 const VIEWPORT_GAP = 8;
 
 function menuCoordinate(position: number, viewportSize: number, menuSize: number) {
@@ -43,7 +44,7 @@ export function FlatTabContextMenu({ target, onClose, onCloseAll }: FlatTabConte
   return createPortal(
     <div
       ref={menuRef}
-      className="liquid-glass-context-menu-anchor"
+      className={styles.anchor}
       style={{
         left: menuCoordinate(target.x, window.innerWidth, MENU_WIDTH),
         top: menuCoordinate(target.y, window.innerHeight, MENU_HEIGHT + (target.onOpenLocalHistory ? MENU_ITEM_HEIGHT : 0)),
@@ -51,33 +52,33 @@ export function FlatTabContextMenu({ target, onClose, onCloseAll }: FlatTabConte
       }}
     >
       <LiquidGlassPanel
-        className={`liquid-glass-context-menu ${styles.menu}`}
+        className={styles.menu}
         role="menu"
         aria-label={`Tab actions for ${target.title}`}
         onContextMenu={(event) => event.preventDefault()}
         onKeyDown={focusAdjacentMenuItem}
       >
         {target.onOpenLocalHistory && (
-          <button className="liquid-glass-menu-item" type="button" role="menuitem"
+          <NeumorphicButton variant="ghost" className={styles.item} role="menuitem"
             onClick={() => runAction(target.onOpenLocalHistory)}>
             <span>Local history</span>
             <History aria-hidden="true" />
-          </button>
+          </NeumorphicButton>
         )}
-        <button className="liquid-glass-menu-item" type="button" role="menuitem" onClick={() => runAction(onCloseAll)}>
+        <NeumorphicButton variant="ghost" className={styles.item} role="menuitem" onClick={() => runAction(onCloseAll)}>
           <span>Close all tabs</span>
           <X aria-hidden="true" />
-        </button>
-        <button
-          className={`liquid-glass-menu-item ${styles.item}`}
-          type="button"
+        </NeumorphicButton>
+        <NeumorphicButton
+          variant="ghost"
+          className={styles.item}
           role="menuitem"
           disabled={!target.onCopyFullPath}
           onClick={() => runAction(target.onCopyFullPath)}
         >
           <span>Copy full path</span>
           <Copy aria-hidden="true" />
-        </button>
+        </NeumorphicButton>
       </LiquidGlassPanel>
     </div>,
     document.body,
