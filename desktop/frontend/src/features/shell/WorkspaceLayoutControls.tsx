@@ -28,20 +28,29 @@ function WorkspacePaneDragHandle() {
     }}><GripVertical aria-hidden="true" /></NeumorphicButton>;
 }
 
-export function WorkspaceLayoutControls() {
+export interface PaneMaximizeControl {
+  enabled: boolean;
+  maximized: boolean;
+  toggle(): void;
+}
+
+export function WorkspaceLayoutControls({ maximizeControl }: { maximizeControl?: PaneMaximizeControl } = {}) {
   const controls = useContext(WorkspaceLayoutContext);
   const pane = useContext(WorkspacePaneContext);
-  if (!controls) return null;
-  const maximized = controls.maximized === pane;
+  if (!controls && !maximizeControl) return null;
+  const maximized = maximizeControl?.maximized ?? controls?.maximized === pane;
+  const canMaximize = maximizeControl?.enabled ?? controls?.canMaximize ?? false;
   return <div className={styles.actions} role="group" aria-label="Pane layout">
-    <WorkspacePaneDragHandle />
-    <NeumorphicButton size="icon" aria-label="Split area right" title="Split this area right" aria-haspopup="dialog"
-      onClick={() => controls.split(pane, 'right')}><Columns2 aria-hidden="true" /></NeumorphicButton>
-    <NeumorphicButton size="icon" aria-label="Split area down" title="Split this area down" aria-haspopup="dialog"
-      onClick={() => controls.split(pane, 'down')}><Rows2 aria-hidden="true" /></NeumorphicButton>
+    {controls && <>
+      <WorkspacePaneDragHandle />
+      <NeumorphicButton size="icon" aria-label="Split area right" title="Split this area right" aria-haspopup="dialog"
+        onClick={() => controls.split(pane, 'right')}><Columns2 aria-hidden="true" /></NeumorphicButton>
+      <NeumorphicButton size="icon" aria-label="Split area down" title="Split this area down" aria-haspopup="dialog"
+        onClick={() => controls.split(pane, 'down')}><Rows2 aria-hidden="true" /></NeumorphicButton>
+    </>}
     <NeumorphicButton size="icon" aria-label={maximized ? 'Restore pane size' : 'Maximize pane'}
-      title={maximized ? 'Restore pane size' : 'Maximize pane'} disabled={!controls.canMaximize}
-      onClick={() => controls.maximize(pane)}>
+      title={maximized ? 'Restore pane size' : 'Maximize pane'} disabled={!canMaximize}
+      onClick={() => maximizeControl ? maximizeControl.toggle() : controls?.maximize(pane)}>
       {maximized ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
     </NeumorphicButton>
   </div>;

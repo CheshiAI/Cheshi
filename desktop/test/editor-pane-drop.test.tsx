@@ -43,6 +43,9 @@ async function withDropPane(run: (h: {
     const bounds = { x: 0, y: 0, top: 0, left: 0, right: 500, bottom: 400, width: 500, height: 400, toJSON: () => ({}) };
     mount.getBoundingClientRect = () => bounds;
     host.querySelector<HTMLElement>('.workspace-editor-stage')!.getBoundingClientRect = () => bounds;
+    for (const tab of host.querySelectorAll('[role="tab"]')) {
+      tab.parentElement!.getBoundingClientRect = () => ({ ...bounds, width: 100, right: 100 });
+    }
     await run({ host, mount, drop, reordered,
       drag: async (target, type, x, y, mime) => {
         if (mime) { dataTransfer.clearData(); dataTransfer.setData(mime, '[]'); }

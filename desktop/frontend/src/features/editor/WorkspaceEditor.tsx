@@ -2,8 +2,8 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState }
 import { createPortal } from 'react-dom';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { SplitPaneLayout } from '../../shared/ui/SplitPaneLayout';
-import type { SplitPaneDirection } from '../../shared/ui/splitPaneModel';
-import { WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
+import type { SplitLayoutNode, SplitPaneDirection } from '../../shared/ui/splitPaneModel';
+import { WorkspaceLayoutContext, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
 import { WorkspaceEditorPane, type WorkspaceEditorProps } from './WorkspaceEditorPane';
 import { useEditorPanes } from './useEditorPanes';
 import { EditorPaneHost } from './EditorPaneHost';
@@ -20,8 +20,34 @@ const ignoreSelection = () => {};
 /** Pane controllers remain mounted in stable portals as the split tree changes. */
 export function WorkspaceEditor(props: WorkspaceEditorProps) {
   const visible = useContext(WorkspacePaneVisibilityContext);
+  const workspaceLayout = useContext(WorkspaceLayoutContext);
   const active = props.active && visible;
   const { store, state, ready, error, setError } = useEditorPanes(props);
+  const [maximizedId, setMaximizedId] = useState<string | null>(null);
+  const expandedWorkspace = useRef(false);
+  const canMaximize = Object.keys(state.groups).length > 1;
+  const maximized = canMaximize && maximizedId && state.groups[maximizedId] ? maximizedId : null;
+  const shownLayout: SplitLayoutNode = maximized ? { type: 'pane', paneId: maximized } : state.layout;
+  // Adding/removing a split reveals its result; restoring never modifies saved ratios or tab groups.
+  useEffect(() => { setMaximizedId(null); }, [state.layout]);
+  useEffect(() => {
+    if (!expandedWorkspace.current) return;
+    if (workspaceLayout?.maximized !== 'editor') {
+      expandedWorkspace.current = false;
+      setMaximizedId(null);
+    } else if (!maximized) {
+      expandedWorkspace.current = false;
+      workspaceLayout.maximize('editor');
+    }
+  }, [maximized, workspaceLayout]);
+  const toggleMaximized = (id: string) => {
+    store.activate(id);
+    setMaximizedId(current => current === id ? null : id);
+    if (maximized !== id && workspaceLayout?.canMaximize && workspaceLayout.maximized !== 'editor') {
+      expandedWorkspace.current = true;
+      workspaceLayout.maximize('editor');
+    }
+  };
   const [hosts] = useState(() => new Map<string, HTMLDivElement>());
   const detachedFocus = useRef<HTMLElement | null>(null);
   const onDetach = useCallback((element: HTMLElement) => { detachedFocus.current = element; }, []);
@@ -85,10 +111,19 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
   }, [store, setError]);
   return <div className={styles.root} style={!active ? { display: 'none' } : undefined}>
     {error && <p role="alert">{error}</p>}
-    <SplitPaneLayout layout={state.layout} onResizeSplit={store.resize} resizeLabel="Resize editor panes"
+    <SplitPaneLayout layout={shownLayout} onResizeSplit={store.resize} resizeLabel="Resize editor panes"
       renderPane={id => <EditorPaneHost host={hosts.get(id)!} id={id} onDetach={onDetach} onDrop={receive} />} />
+    <div hidden inert>
+      {maximized && Object.keys(state.groups).filter(id => id !== maximized).map(id =>
+        <EditorPaneHost key={id} host={hosts.get(id)!} id={id} onDetach={onDetach} onDrop={receive} />)}
+    </div>
     {Object.keys(state.groups).map(id => createPortal(
       <WorkspaceEditorPane {...props} active={active} pane={{ store, id, ready }}
+        maximizeControl={canMaximize ? {
+          enabled: true,
+          maximized: maximized === id,
+          toggle: () => toggleMaximized(id),
+        } : undefined}
         target={routedTarget?.id === id ? routedTarget.target : null}
         onSelectedPathChange={ignoreSelection} onDirtyPathsChange={undefined}
         onAllTabsClosed={() => {

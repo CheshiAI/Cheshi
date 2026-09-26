@@ -1,4 +1,4 @@
-import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
+import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext, type PaneMaximizeControl } from '../shell/WorkspaceLayoutControls';
 import {
   AlertTriangle,
   FileCode2,
@@ -59,6 +59,7 @@ export interface WorkspaceEditorProps {
 
 export function WorkspaceEditorPane({
   pane,
+  maximizeControl,
   active,
   rightSidebarOpen = false,
   onToggleRightSidebar,
@@ -67,7 +68,7 @@ export function WorkspaceEditorPane({
   onAllTabsClosed,
   onOpenLocalHistory,
   onShowLineCommit,
-}: WorkspaceEditorProps & { pane: EditorPaneBinding }) {
+}: WorkspaceEditorProps & { pane: EditorPaneBinding; maximizeControl?: PaneMaximizeControl }) {
   const paneVisible = useContext(WorkspacePaneVisibilityContext);
   active = active && paneVisible;
   const controller = useWorkspaceEditorController({
@@ -175,7 +176,7 @@ export function WorkspaceEditorPane({
               className="workspace-editor-header-actions"
               style={nonDraggableWindowRegionStyle}
             >
-              <WorkspaceLayoutControls />
+              <WorkspaceLayoutControls maximizeControl={maximizeControl} />
             </div>
           </>
         )}
