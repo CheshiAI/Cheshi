@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from 'bun:test';
-import { Window } from 'happy-dom';
+import { Window, type HTMLElement as HappyHTMLElement } from 'happy-dom';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { GitLineBlameRequest } from '../frontend/src/features/editor/gitLineBlameRequest';
@@ -75,7 +75,7 @@ test('blame tooltip stays on screen, allows hovering its contents, and cleans up
   window.innerHeight = 600;
   const anchor = window.document.createElement('span');
   window.document.body.append(anchor);
-  const bounds = spyOn(window.HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+  const bounds = spyOn(window.HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HappyHTMLElement) {
     return this === anchor ? new window.DOMRect(760, 550, 100, 20) : new window.DOMRect(0, 0, 600, 160);
   });
   const cleanup = attachGitLineBlameTooltip(anchor as unknown as HTMLElement, {
@@ -162,7 +162,7 @@ test('selected-line history ignores pointer movement and refreshes on selection,
     await tick(350);
     expect(calls).toHaveLength(2);
 
-    const trigger = container.querySelector<HTMLElement>('.cm-git-line-blame')!;
+    const trigger = container.querySelector<HappyHTMLElement>('.cm-git-line-blame')!;
     expect(trigger.hasAttribute('title')).toBe(false);
     trigger.dispatchEvent(new window.FocusEvent('focus'));
     const tooltip = window.document.querySelector('[role="tooltip"]')!;

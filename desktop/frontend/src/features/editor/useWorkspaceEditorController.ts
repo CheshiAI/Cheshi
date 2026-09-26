@@ -21,41 +21,22 @@ import { errorMessage as toErrorMessage } from '../../shared/errorMessage';
 import { isWorkspacePathAtOrBelow, renameWorkspacePathPrefix } from '../../shared/workspacePaths';
 import {
   cheshiDesktop as workspace,
-  type LanguageServerCodeAction,
   type LanguageServerLocation,
-  type LanguageServerPosition,
-  type LanguageServerWorkspaceEdit,
   type WorkspaceEntryMutation,
   type WorkspaceFileExcerptResult,
   type WorkspaceFileReadResult,
-  type WorkspaceFileVersion,
   type WorkspaceFileWriteResult,
-  type WorkspaceFilesWriteResult,
 } from '../../cheshiDesktop';
 import { useCodeEditorSearch } from './codeEditorSearch';
-import {
-  languageServerLanguageForPath,
-  normalizeLanguageServerRenameResult,
-} from './languageServerDiagnostics';
-import type { WorkspaceEditorAssistState } from './WorkspaceEditorAssistPanel';
+import { languageServerLanguageForPath } from './languageServerDiagnostics';
+import type { WorkspaceEditorAssistState } from './workspaceEditorAssistState';
 import { DEFAULT_WORKSPACE_PROBLEMS_RATIO } from './WorkspaceProblemsResizer';
 import {
-  assertLanguageServerValue,
   assertSourceExcerptReaderAvailable,
-  assertWorkspaceEditPreviewCurrent,
-  assertWorkspaceFilesWritten,
   isTabDirty,
-  languageServerPositionAt,
-  MAX_NAVIGATION_HISTORY,
-  requireLanguageServerRenameEdit,
-  sameNavigationLocation,
   SOURCE_EXCERPT_CONTEXT_LINES,
-  type NavigationLocation,
-  type PreparedWorkspaceEdit,
-  type PreparedWorkspaceEditFile,
   type WorkspaceTab,
 } from './workspaceEditorModel';
-import { applyLanguageServerTextEdits } from './workspaceTextEdits';
 import { confirmWorkspaceTabsClose } from './workspaceTabClose';
 import { applyWorkspaceFileSaveResult, canSaveWorkspaceTab } from './workspaceFileSave';
 import {
@@ -66,6 +47,11 @@ import {
 import { useWorkspaceCodeEditor } from './useWorkspaceCodeEditor';
 import { useWorkspaceCodeExplanation } from './useWorkspaceCodeExplanation';
 import { useWorkspaceLanguageServer } from './useWorkspaceLanguageServer';
+
+import { useWorkspaceEditorEdits } from './useWorkspaceEditorEdits';
+import { useWorkspaceEditorNavigation } from './useWorkspaceEditorNavigation';
+import { createWorkspaceRequestTracker } from './workspaceEditorRequest';
+import type { PendingWorkspaceRename } from './useWorkspaceAssistRequests';
 
 export interface WorkspaceEditorTarget {
   path: string;
@@ -103,7 +89,6 @@ export function useWorkspaceEditorController({
   const [problemsOpen, setProblemsOpen] = useState(true);
   const [problemsRatio, setProblemsRatio] = useState(DEFAULT_WORKSPACE_PROBLEMS_RATIO);
   const [assistState, setAssistState] = useState<WorkspaceEditorAssistState | null>(null);
-  const [navigationAvailability, setNavigationAvailability] = useState({ back: false, forward: false });
   const editorHostRef = useRef<HTMLDivElement>(null);
   const assistStateRef = useRef(assistState);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -111,10 +96,8 @@ export function useWorkspaceEditorController({
   const referencePreviewRequestSequence = useRef(0);
   const pendingLineRef = useRef<number | null>(null);
   const pendingCharacterRef = useRef<number | null>(null);
-  const navigationBackRef = useRef<NavigationLocation[]>([]);
-  const navigationForwardRef = useRef<NavigationLocation[]>([]);
-  const pendingRenameRef = useRef<{ path: string; position: LanguageServerPosition } | null>(null);
-  const preparedWorkspaceEditRef = useRef<PreparedWorkspaceEdit | null>(null);
+  const pendingRenameRef = useRef<PendingWorkspaceRename | null>(null);
+  const assistRequests = useMemo(createWorkspaceRequestTracker, []);
   const loadFileRef = useRef<(
     relativePath: string,
     lineNumber?: number | null,
@@ -174,9 +157,9 @@ export function useWorkspaceEditorController({
 
   const selectPath = useCallback((path: string | null): void => {
     if (path !== selectedPathRef.current) {
+      assistRequests.invalidate();
       referencePreviewRequestSequence.current += 1;
       pendingRenameRef.current = null;
-      preparedWorkspaceEditRef.current = null;
       setAssistState(null);
     }
     selectedPathRef.current = path;
@@ -204,37 +187,8 @@ export function useWorkspaceEditorController({
     replaceTabs((current) => current.map((tab) => tab.path === path ? update(tab) : tab));
   }, [replaceTabs]);
 
-  const syncNavigationAvailability = useCallback((): void => {
-    setNavigationAvailability({
-      back: navigationBackRef.current.length > 0,
-      forward: navigationForwardRef.current.length > 0,
-    });
-  }, []);
-
-  const currentNavigationLocation = useCallback((): NavigationLocation | null => {
-    const path = selectedPathRef.current;
-    const view = editorViewRef.current;
-    if (!path || !view) return null;
-    const position = languageServerPositionAt(view, view.state.selection.main.head);
-    const tab = tabsRef.current.find((candidate) => candidate.path === path);
-    return {
-      path,
-      line: (tab?.sourceExcerpt?.startLine ?? 1) + position.line,
-      character: position.character,
-    };
-  }, []);
-
-  const recordNavigationOrigin = useCallback((): void => {
-    const location = currentNavigationLocation();
-    if (!location) return;
-    const previous = navigationBackRef.current.at(-1) ?? null;
-    if (!sameNavigationLocation(previous, location)) {
-      navigationBackRef.current.push(location);
-      if (navigationBackRef.current.length > MAX_NAVIGATION_HISTORY) navigationBackRef.current.shift();
-    }
-    navigationForwardRef.current = [];
-    syncNavigationAvailability();
-  }, [currentNavigationLocation, syncNavigationAvailability]);
+  const { navigationAvailability, recordNavigationOrigin, navigateHistory, renameNavigationPath, removeNavigationPath }
+    = useWorkspaceEditorNavigation({ selectedPathRef, editorViewRef, tabsRef, loadFileRef });
 
   const activateOpenTab = useCallback((path: string): void => {
     if (!tabsRef.current.some((tab) => tab.path === path)) return;
@@ -246,37 +200,13 @@ export function useWorkspaceEditorController({
     selectPath(path);
   }, [invalidatePendingFileLoad, recordNavigationOrigin, selectPath]);
 
-  const navigateHistory = useCallback(async (direction: 'back' | 'forward'): Promise<void> => {
-    const source = direction === 'back' ? navigationBackRef.current : navigationForwardRef.current;
-    const destination = direction === 'back' ? navigationForwardRef.current : navigationBackRef.current;
-    let targetLocation = source.pop() ?? null;
-    const current = currentNavigationLocation();
-    while (targetLocation && sameNavigationLocation(targetLocation, current)) {
-      targetLocation = source.pop() ?? null;
-    }
-    if (!targetLocation) {
-      syncNavigationAvailability();
-      return;
-    }
-    if (current && !sameNavigationLocation(destination.at(-1) ?? null, current)) {
-      destination.push(current);
-      if (destination.length > MAX_NAVIGATION_HISTORY) destination.shift();
-    }
-    syncNavigationAvailability();
-    await loadFileRef.current(
-      targetLocation.path,
-      targetLocation.line,
-      false,
-      targetLocation.character,
-    );
-  }, [currentNavigationLocation, syncNavigationAvailability]);
-
   const languageServer = useWorkspaceLanguageServer({
     activeLanguageServerLanguage,
     editorPathRef,
     editorViewRef,
     loadFileRef,
     pendingRenameRef,
+    assistRequests,
     recordNavigationOrigin,
     referencePreviewRequestSequence,
     setAssistState,
@@ -299,6 +229,14 @@ export function useWorkspaceEditorController({
     ? languageServers.find((status) => status.language === activeLanguageServerLanguage) ?? null
     : null;
 
+  const closeAssist = useCallback((): void => {
+    assistRequests.invalidate();
+    referencePreviewRequestSequence.current += 1;
+    pendingRenameRef.current = null;
+    setAssistState(null);
+    editorViewRef.current?.focus();
+  }, [assistRequests]);
+
   const {
     closeTabRef,
     createEditor,
@@ -317,7 +255,7 @@ export function useWorkspaceEditorController({
     navigateHistory,
     openEditorSearch,
     recordNavigationOrigin,
-    setAssistState,
+    closeAssist,
     syncEditorSearchPanel,
     tabsRef,
     updateTab,
@@ -424,17 +362,7 @@ export function useWorkspaceEditorController({
     const currentTabs = tabsRef.current;
 
     if (mutation.type === 'renamed' || mutation.type === 'moved') {
-      const rewriteHistory = (locations: NavigationLocation[]): NavigationLocation[] => locations.map((location) => (
-        isWorkspacePathAtOrBelow(location.path, mutation.previousPath)
-          ? {
-              ...location,
-              path: renameWorkspacePathPrefix(location.path, mutation.previousPath, mutation.path),
-            }
-          : location
-      ));
-      navigationBackRef.current = rewriteHistory(navigationBackRef.current);
-      navigationForwardRef.current = rewriteHistory(navigationForwardRef.current);
-      syncNavigationAvailability();
+      renameNavigationPath(mutation.previousPath, mutation.path);
       if (!currentTabs.some((tab) => isWorkspacePathAtOrBelow(tab.path, mutation.previousPath))) return;
       if (editorPathRef.current && isWorkspacePathAtOrBelow(editorPathRef.current, mutation.previousPath)) {
         destroyEditor(false);
@@ -473,13 +401,7 @@ export function useWorkspaceEditorController({
     }
 
     const selectedIndex = currentTabs.findIndex((tab) => tab.path === selectedPathRef.current);
-    navigationBackRef.current = navigationBackRef.current.filter(
-      (location) => !isWorkspacePathAtOrBelow(location.path, mutation.path),
-    );
-    navigationForwardRef.current = navigationForwardRef.current.filter(
-      (location) => !isWorkspacePathAtOrBelow(location.path, mutation.path),
-    );
-    syncNavigationAvailability();
+    removeNavigationPath(mutation.path);
     const affectedTabs = currentTabs.filter((tab) => isWorkspacePathAtOrBelow(tab.path, mutation.path));
     if (affectedTabs.length === 0) return;
     if (editorPathRef.current && isWorkspacePathAtOrBelow(editorPathRef.current, mutation.path)) {
@@ -508,7 +430,8 @@ export function useWorkspaceEditorController({
     onAllTabsClosed,
     replaceTabs,
     selectPath,
-    syncNavigationAvailability,
+    renameNavigationPath,
+    removeNavigationPath,
   ]);
 
   const loadFile = useCallback(async (
@@ -586,14 +509,6 @@ export function useWorkspaceEditorController({
   }, [activateTab, destroyEditor, fileLoadTracker, invalidatePendingFileLoad, replaceTabs, selectPath]);
   loadFileRef.current = loadFile;
 
-  const closeAssist = useCallback((): void => {
-    referencePreviewRequestSequence.current += 1;
-    preparedWorkspaceEditRef.current = null;
-    pendingRenameRef.current = null;
-    setAssistState(null);
-    editorViewRef.current?.focus();
-  }, []);
-
   const selectReference = useCallback((index: number): void => {
     const current = assistStateRef.current;
     if (current?.kind !== 'references') return;
@@ -612,150 +527,11 @@ export function useWorkspaceEditorController({
     );
   }, [closeAssist, recordNavigationOrigin]);
 
-  const prepareWorkspaceEdit = useCallback(async (
-    title: string,
-    edit: LanguageServerWorkspaceEdit,
-  ): Promise<void> => {
-    if (edit.files.length === 0) throw new Error('The language server returned an empty edit.');
-    const files = await Promise.all(edit.files.map(async (editFile): Promise<PreparedWorkspaceEditFile> => {
-      const openTab = tabsRef.current.find((tab) => tab.path === editFile.path);
-      if (openTab && openTab.file.fileKind !== 'text') {
-        throw new Error(`Only editable text files can be changed: ${editFile.path}`);
-      }
-      if (openTab && isTabDirty(openTab) && openTab.path !== selectedPathRef.current) {
-        throw new Error(`Save or reload ${editFile.path} before applying a multi-file edit.`);
-      }
-      let file: WorkspaceFileVersion;
-      let originalContent: string;
-      if (openTab) {
-        file = openTab.file;
-        originalContent = openTab.draftContent;
-      } else {
-        const response = await workspace?.readWorkspaceFile?.(editFile.path);
-        if (!response || response.file.fileKind !== 'text' || response.content === null) {
-          throw new Error(`Only editable UTF-8 files can be changed: ${editFile.path}`);
-        }
-        file = response.file;
-        originalContent = response.content;
-      }
-      const applied = applyLanguageServerTextEdits(originalContent, editFile.edits);
-      return {
-        path: editFile.path,
-        originalContent,
-        nextContent: applied.content,
-        file,
-        previews: applied.previews,
-      };
-    }));
-    preparedWorkspaceEditRef.current = { title, files };
-    setAssistState({
-      kind: 'edit-preview',
-      title,
-      files: files.map((file) => ({ path: file.path, edits: file.previews })),
-      applying: false,
-    });
-  }, []);
-
-  const chooseCodeAction = useCallback((action: LanguageServerCodeAction): void => {
-    if (!action.edit || action.disabledReason) return;
-    void prepareWorkspaceEdit(action.title, action.edit).catch((error) => {
-      setErrorMessage(toErrorMessage(error));
-    });
-  }, [prepareWorkspaceEdit]);
-
-  const changeRenameValue = useCallback((value: string): void => {
-    setAssistState((current) => current?.kind === 'rename' ? { ...current, value } : current);
-  }, []);
-
-  const submitRename = useCallback(async (): Promise<void> => {
-    const current = assistStateRef.current;
-    const pending = pendingRenameRef.current;
-    const view = editorViewRef.current;
-    const language = pending ? languageServerLanguageForPath(pending.path) : null;
-    const renameSymbol = workspace?.renameLanguageServerSymbol;
-    if (
-      current?.kind !== 'rename'
-      || !pending
-      || !view
-      || editorPathRef.current !== pending.path
-      || !language
-      || !renameSymbol
-      || !current.value
-    ) return;
-    setAssistState({ ...current, submitting: true });
-    setErrorMessage('');
-    try {
-      const response = normalizeLanguageServerRenameResult(await renameSymbol({
-        language,
-        path: pending.path,
-        content: view.state.doc.toString(),
-        version: nextLanguageServerDocumentVersion(pending.path),
-        position: pending.position,
-        newName: current.value,
-      }));
-      assertLanguageServerValue(response, 'Cheshi returned an invalid language server rename result.');
-      const edit = requireLanguageServerRenameEdit(response);
-      await prepareWorkspaceEdit(
-        `Rename ${current.placeholder} to ${current.value}`,
-        edit,
-      );
-    } catch (error) {
-      setAssistState((state) => state?.kind === 'rename' ? { ...state, submitting: false } : state);
-      setErrorMessage(toErrorMessage(error));
-    }
-  }, [nextLanguageServerDocumentVersion, prepareWorkspaceEdit]);
-
-  const applyPreparedWorkspaceEdit = useCallback(async (): Promise<void> => {
-    const prepared = preparedWorkspaceEditRef.current;
-    const writeWorkspaceFiles = workspace?.writeWorkspaceFiles;
-    if (!prepared || !writeWorkspaceFiles) return;
-    setAssistState((current) => current?.kind === 'edit-preview'
-      ? { ...current, applying: true }
-      : current);
-    setErrorMessage('');
-    try {
-      for (const file of prepared.files) {
-        const tab = tabsRef.current.find((candidate) => candidate.path === file.path);
-        assertWorkspaceEditPreviewCurrent(file, tab);
-      }
-      const response: WorkspaceFilesWriteResult = await writeWorkspaceFiles({
-        files: prepared.files.map((file) => ({
-          path: file.path,
-          content: file.nextContent,
-          expectedRevision: file.file.revision,
-          hasBom: file.file.hasBom,
-          lineEnding: file.file.lineEnding,
-        })),
-      });
-      assertWorkspaceFilesWritten(response);
-      const updatedVersions = new Map(response.files.map((file) => [file.path, file]));
-      const affectedPaths = new Set(prepared.files.map((file) => file.path));
-      if (selectedPathRef.current && affectedPaths.has(selectedPathRef.current)) destroyEditor(false, false);
-      replaceTabs((currentTabs) => currentTabs.map((tab) => {
-        const file = prepared.files.find((candidate) => candidate.path === tab.path);
-        const version = updatedVersions.get(tab.path);
-        if (!file || !version) return tab;
-        const content = normalizeWorkspaceEditorContent(file.nextContent);
-        return {
-          ...tab,
-          file: version,
-          savedContent: content,
-          draftContent: content,
-          conflictMessage: null,
-          loadGeneration: ++nextTabGeneration.current,
-          editorState: undefined,
-        };
-      }));
-      preparedWorkspaceEditRef.current = null;
-      pendingRenameRef.current = null;
-      setAssistState(null);
-    } catch (error) {
-      setAssistState((current) => current?.kind === 'edit-preview'
-        ? { ...current, applying: false }
-        : current);
-      setErrorMessage(toErrorMessage(error));
-    }
-  }, [destroyEditor, replaceTabs]);
+  const { chooseCodeAction, changeRenameValue, submitRename, applyPreparedWorkspaceEdit } = useWorkspaceEditorEdits({
+    assistStateRef, assistRequests, pendingRenameRef, editorViewRef, editorPathRef, selectedPathRef,
+    tabsRef, nextTabGeneration, nextLanguageServerDocumentVersion, destroyEditor, replaceTabs,
+    setAssistState, setErrorMessage,
+  });
 
   const saveFile = useCallback(async (): Promise<void> => {
     const tab = tabsRef.current.find((candidate) => candidate.path === selectedPathRef.current);

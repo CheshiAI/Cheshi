@@ -1,17 +1,12 @@
-import {
-  type CompletionContext,
-  type CompletionResult,
-} from '@codemirror/autocomplete';
 import { setDiagnostics as setCodeMirrorDiagnostics } from '@codemirror/lint';
 import { EditorView } from '@codemirror/view';
 import {
   useCallback,
+  useMemo,
   useEffect,
   useRef,
   useState,
-  type Dispatch,
   type RefObject,
-  type SetStateAction,
 } from 'react';
 
 import { errorMessage as toErrorMessage } from '../../shared/errorMessage';
@@ -22,30 +17,20 @@ import {
   type LanguageServerLanguage,
   type LanguageServerLocation,
   type LanguageServerMode,
-  type LanguageServerPosition,
   type LanguageServerStatus,
 } from '../../cheshiDesktop';
 import {
   languageServerLanguageForPath,
-  normalizeLanguageServerCompletionResult,
-  normalizeLanguageServerCodeActionResult,
   normalizeLanguageServerDefinitionResult,
   normalizeLanguageServerDiagnostic,
   normalizeLanguageServerDiagnosticsEvent,
   normalizeLanguageServerHoverResult,
-  normalizeLanguageServerPrepareRenameResult,
-  normalizeLanguageServerReferenceResult,
   normalizeLanguageServerSelectionResult,
   normalizeLanguageServerSignatureHelpResult,
   normalizeLanguageServerStatuses,
   normalizeLanguageServerUpdateResult,
   workspaceDiagnosticsFromLanguageServer,
 } from './languageServerDiagnostics';
-import type {
-  ReferenceSourcePreview,
-  WorkspaceEditorAssistState,
-} from './WorkspaceEditorAssistPanel';
-import { requestWorkspaceCodeActions } from './workspaceCodeActionRequest';
 import {
   collectParserDiagnostics,
   toCodeMirrorDiagnostics,
@@ -56,22 +41,20 @@ import {
 import {
   assertLanguageServerValue,
   canUseLanguageServer,
-  codeMirrorCompletion,
   diagnosticMode,
-  editorOffsetAt,
   languageServerPositionAt,
-  languageServerSelectionRange,
   languageServerSignatureTooltip,
   languageSupport,
   LANGUAGE_SERVER_FALLBACK_DELAY_MS,
-  rangeContainsPosition,
-  REFERENCE_PREVIEW_CONTEXT_LINES,
   setSignatureHelpTooltip,
   type LanguageServerExpectation,
   type WorkspaceDiagnosticMode,
 } from './workspaceEditorModel';
 
-interface UseWorkspaceLanguageServerOptions {
+import { createWorkspaceLanguageServerCompletion } from './workspaceLanguageServerCompletion';
+import { useWorkspaceAssistRequests, type WorkspaceAssistRequestOptions } from './useWorkspaceAssistRequests';
+
+interface UseWorkspaceLanguageServerOptions extends WorkspaceAssistRequestOptions {
   activeLanguageServerLanguage: LanguageServerLanguage | null;
   editorPathRef: RefObject<string | null>;
   editorViewRef: RefObject<EditorView | null>;
@@ -81,14 +64,7 @@ interface UseWorkspaceLanguageServerOptions {
     forceReload?: boolean,
     character?: number | null,
   ) => Promise<void>>;
-  pendingRenameRef: RefObject<{
-    path: string;
-    position: LanguageServerPosition;
-  } | null>;
   recordNavigationOrigin: () => void;
-  referencePreviewRequestSequence: RefObject<number>;
-  setAssistState: Dispatch<SetStateAction<WorkspaceEditorAssistState | null>>;
-  setErrorMessage: Dispatch<SetStateAction<string>>;
 }
 
 export function useWorkspaceLanguageServer({
@@ -97,6 +73,7 @@ export function useWorkspaceLanguageServer({
   editorViewRef,
   loadFileRef,
   pendingRenameRef,
+  assistRequests,
   recordNavigationOrigin,
   referencePreviewRequestSequence,
   setAssistState,
@@ -135,6 +112,10 @@ export function useWorkspaceLanguageServer({
     languageServerDocumentVersionsRef.current.set(path, version);
     return version;
   }, []);
+
+  const assist = useWorkspaceAssistRequests({ editorPathRef, editorViewRef, pendingRenameRef, assistRequests,
+    referencePreviewRequestSequence, setAssistState, setErrorMessage, languageServersRef,
+    languageServerDiagnosticsRef, workspaceDiagnosticsRef, nextLanguageServerDocumentVersion });
 
   const applyDiagnostics = useCallback((
     view: EditorView,
@@ -401,131 +382,9 @@ export function useWorkspaceLanguageServer({
     }
   }, [activeLanguageServerLanguage, scheduleEditorDiagnostics]);
 
-  const languageServerCompletionSource = useCallback((editorPath: string) => (
-    async (context: CompletionContext): Promise<CompletionResult | null> => {
-      const language = languageServerLanguageForPath(editorPath);
-      const getCompletions = workspace?.getLanguageServerCompletions;
-      const view = context.view;
-      if (
-        !language
-        || !getCompletions
-        || !view
-        || !canUseLanguageServer(language, languageServersRef.current)
-      ) return null;
-
-      const token = context.matchBefore(/[\w$]*/);
-      const previousCharacter = context.state.sliceDoc(Math.max(0, context.pos - 1), context.pos);
-      if (!context.explicit && (!token || (token.from === token.to && !'.:>'.includes(previousCharacter)))) {
-        return null;
-      }
-
-      let aborted = false;
-      context.addEventListener('abort', () => {
-        aborted = true;
-      }, { onDocChange: true });
-      try {
-        const response = normalizeLanguageServerCompletionResult(await getCompletions({
-          language,
-          path: editorPath,
-          content: context.state.doc.toString(),
-          version: nextLanguageServerDocumentVersion(editorPath),
-          position: languageServerPositionAt(view, context.pos),
-        }));
-        if (aborted) return null;
-        assertLanguageServerValue(response, 'Cheshi returned an invalid language server completion response.');
-
-        const firstEditRange = response.items[0]?.textEdit?.range;
-        const sharedEditRange = firstEditRange && response.items.every((item) => (
-          item.textEdit?.range.start.line === firstEditRange.start.line
-          && item.textEdit.range.start.character === firstEditRange.start.character
-          && item.textEdit.range.end.line === firstEditRange.end.line
-          && item.textEdit.range.end.character === firstEditRange.end.character
-        ));
-        const requestedFrom = sharedEditRange
-          ? editorOffsetAt(view, firstEditRange.start)
-          : token?.from ?? context.pos;
-        const from = requestedFrom <= context.pos ? requestedFrom : token?.from ?? context.pos;
-        const requestedTo = sharedEditRange ? editorOffsetAt(view, firstEditRange.end) : context.pos;
-        const to = requestedTo >= from ? requestedTo : context.pos;
-        return {
-          from,
-          to,
-          options: response.items.map(codeMirrorCompletion),
-          ...(response.isIncomplete ? {} : { validFor: /^[\w$]*$/ }),
-        };
-      } catch {
-        return null;
-      }
-    }
-  ), [nextLanguageServerDocumentVersion]);
-
-  const loadReferencePreview = useCallback(async (
-    location: LanguageServerLocation,
-    selectedIndex: number,
-  ): Promise<void> => {
-    const sequence = ++referencePreviewRequestSequence.current;
-    setAssistState((current) => current?.kind === 'references'
-      ? { ...current, selectedIndex, preview: null, previewLoading: true }
-      : current);
-    try {
-      const excerpt = await workspace?.readWorkspaceFileExcerpt?.({
-        path: location.path,
-        line: location.range.start.line + 1,
-        contextLines: REFERENCE_PREVIEW_CONTEXT_LINES,
-      });
-      if (sequence !== referencePreviewRequestSequence.current || !excerpt) return;
-      const preview: ReferenceSourcePreview = {
-        content: excerpt.content,
-        startLine: excerpt.startLine,
-        targetLine: location.range.start.line + 1,
-      };
-      setAssistState((current) => current?.kind === 'references' && current.selectedIndex === selectedIndex
-        ? { ...current, preview, previewLoading: false }
-        : current);
-    } catch {
-      if (sequence !== referencePreviewRequestSequence.current) return;
-      setAssistState((current) => current?.kind === 'references' && current.selectedIndex === selectedIndex
-        ? { ...current, preview: null, previewLoading: false }
-        : current);
-    }
-  }, []);
-
-  const requestLanguageServerReferences = useCallback(async (
-    view: EditorView,
-    editorPath: string,
-    offset: number,
-  ): Promise<void> => {
-    const language = languageServerLanguageForPath(editorPath);
-    const getReferences = workspace?.getLanguageServerReferences;
-    if (
-      !language
-      || !getReferences
-      || !canUseLanguageServer(language, languageServersRef.current)
-    ) return;
-    setErrorMessage('');
-    try {
-      const response = normalizeLanguageServerReferenceResult(await getReferences({
-        language,
-        path: editorPath,
-        content: view.state.doc.toString(),
-        version: nextLanguageServerDocumentVersion(editorPath),
-        position: languageServerPositionAt(view, offset),
-      }));
-      assertLanguageServerValue(response, 'Cheshi returned an invalid language server reference response.');
-      if (editorViewRef.current !== view || editorPathRef.current !== editorPath) return;
-      setAssistState({
-        kind: 'references',
-        locations: response.locations,
-        selectedIndex: 0,
-        preview: null,
-        previewLoading: response.locations.length > 0,
-      });
-      const first = response.locations[0];
-      if (first) void loadReferencePreview(first, 0);
-    } catch (error) {
-      setErrorMessage(toErrorMessage(error));
-    }
-  }, [loadReferencePreview, nextLanguageServerDocumentVersion]);
+  const languageServerCompletionSource = useMemo(() => createWorkspaceLanguageServerCompletion({
+    languageServersRef, editorViewRef, editorPathRef, nextLanguageServerDocumentVersion,
+  }), [nextLanguageServerDocumentVersion]);
 
   const requestLanguageServerSignatureHelp = useCallback(async (
     view: EditorView,
@@ -560,101 +419,6 @@ export function useWorkspaceLanguageServer({
         view.dispatch({ effects: setSignatureHelpTooltip.of(null) });
       }
     }
-  }, [nextLanguageServerDocumentVersion]);
-
-  const requestLanguageServerRename = useCallback(async (
-    view: EditorView,
-    editorPath: string,
-    offset: number,
-  ): Promise<void> => {
-    const language = languageServerLanguageForPath(editorPath);
-    const prepareRename = workspace?.prepareLanguageServerRename;
-    if (
-      !language
-      || !prepareRename
-      || !canUseLanguageServer(language, languageServersRef.current)
-    ) return;
-    setErrorMessage('');
-    try {
-      const position = languageServerPositionAt(view, offset);
-      const response = normalizeLanguageServerPrepareRenameResult(await prepareRename({
-        language,
-        path: editorPath,
-        content: view.state.doc.toString(),
-        version: nextLanguageServerDocumentVersion(editorPath),
-        position,
-      }));
-      assertLanguageServerValue(response, 'Cheshi returned an invalid language server rename response.');
-      if (editorViewRef.current !== view || editorPathRef.current !== editorPath) return;
-      if (!response.available) return;
-      const fallbackWord = view.state.wordAt(offset);
-      const from = response.range ? editorOffsetAt(view, response.range.start) : fallbackWord?.from ?? offset;
-      const to = response.range ? editorOffsetAt(view, response.range.end) : fallbackWord?.to ?? offset;
-      const placeholder = response.placeholder ?? view.state.sliceDoc(from, to);
-      if (!placeholder) return;
-      pendingRenameRef.current = { path: editorPath, position };
-      setAssistState({ kind: 'rename', value: placeholder, placeholder, submitting: false });
-    } catch (error) {
-      setErrorMessage(toErrorMessage(error));
-    }
-  }, [nextLanguageServerDocumentVersion]);
-
-  const requestLanguageServerCodeActions = useCallback(async (
-    view: EditorView,
-    editorPath: string,
-  ): Promise<void> => {
-    const language = languageServerLanguageForPath(editorPath);
-    const getCodeActions = workspace?.getLanguageServerCodeActions;
-    if (
-      !language
-      || !getCodeActions
-      || !canUseLanguageServer(language, languageServersRef.current)
-    ) return;
-    setErrorMessage('');
-    const requestedDocument = view.state.doc;
-    await requestWorkspaceCodeActions({
-      setAssistState,
-      isCurrent: () => editorViewRef.current === view
-        && editorPathRef.current === editorPath
-        && view.state.doc === requestedDocument,
-      load: async () => {
-        const offset = view.state.selection.main.head;
-        const position = languageServerPositionAt(view, offset);
-        const availableDiagnostics = languageServerDiagnosticsRef.current.get(editorPath) ?? [];
-        const languageServerDiagnostics = availableDiagnostics.filter((diagnostic) => (
-          rangeContainsPosition(diagnostic.range, position)
-        )).map((diagnostic) => ({
-          ...diagnostic,
-          ...(typeof diagnostic.code === 'string' || typeof diagnostic.code === 'number'
-            ? { code: diagnostic.code }
-            : { code: undefined }),
-        }));
-        const requestDiagnostics = languageServerDiagnostics.length > 0
-          ? languageServerDiagnostics
-          : workspaceDiagnosticsRef.current
-            .filter((diagnostic) => diagnostic.from <= offset && offset <= diagnostic.to)
-            .map((diagnostic): LanguageServerDiagnostic => ({
-              range: {
-                start: languageServerPositionAt(view, diagnostic.from),
-                end: languageServerPositionAt(view, diagnostic.to),
-              },
-              message: diagnostic.message,
-              severity: diagnostic.severity === 'error' ? 1 : diagnostic.severity === 'warning' ? 2 : 3,
-              ...(diagnostic.code === undefined ? {} : { code: diagnostic.code }),
-              ...(diagnostic.source ? { source: diagnostic.source } : {}),
-            }));
-        const response = normalizeLanguageServerCodeActionResult(await getCodeActions({
-          language,
-          path: editorPath,
-          content: view.state.doc.toString(),
-          version: nextLanguageServerDocumentVersion(editorPath),
-          range: requestDiagnostics[0]?.range ?? languageServerSelectionRange(view),
-          diagnostics: requestDiagnostics,
-        }));
-        assertLanguageServerValue(response, 'Cheshi returned an invalid language server code action response.');
-        return response.actions;
-      },
-    });
   }, [nextLanguageServerDocumentVersion]);
 
   const resolveLanguageServerDefinitionLocations = useCallback(async (
@@ -748,9 +512,13 @@ export function useWorkspaceLanguageServer({
   }, []);
 
   const resetLanguageServerRequests = useCallback((): void => {
+    assistRequests.invalidate();
+    referencePreviewRequestSequence.current += 1;
+    pendingRenameRef.current = null;
+    setAssistState(null);
     cancelDiagnostics();
     cancelSignatureHelp();
-  }, [cancelDiagnostics, cancelSignatureHelp]);
+  }, [assistRequests, cancelDiagnostics, cancelSignatureHelp]);
 
   const isLanguageServerUsable = useCallback((language: LanguageServerLanguage): boolean => (
     canUseLanguageServer(language, languageServersRef.current)
@@ -763,6 +531,7 @@ export function useWorkspaceLanguageServer({
   }, [resetLanguageServerRequests]);
 
   return {
+    ...assist,
     cancelDiagnostics,
     cancelSignatureHelp,
     configureActiveLanguageServer,
@@ -772,13 +541,9 @@ export function useWorkspaceLanguageServer({
     languageServerCompletionSource,
     languageServerConfiguring,
     languageServers,
-    loadReferencePreview,
     nextLanguageServerDocumentVersion,
-    requestLanguageServerCodeActions,
     requestLanguageServerDefinition,
     requestLanguageServerHover,
-    requestLanguageServerReferences,
-    requestLanguageServerRename,
     requestLanguageServerSignatureHelp,
     resetLanguageServerRequests,
     resolveLanguageServerDefinitionLocations,
