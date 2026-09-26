@@ -190,12 +190,6 @@
   font-size: var(--font-size-small);
 }
 
-.workspace-editor-language-server > button svg {
-  width: var(--icon-size-default);
-  height: var(--icon-size-default);
-  flex: 0 0 auto;
-}
-
 .workspace-editor-language-server > small {
   white-space: nowrap;
 }
@@ -215,31 +209,6 @@
 .workspace-editor-language-server-select > button[data-appearance='flat']:not(:disabled):is(:hover, :active, [aria-expanded='true']) {
   background: var(--control-surface-interactive);
   color: var(--text);
-}
-
-.workspace-editor-language-server > button {
-  display: grid;
-  width: var(--editor-search-button-size);
-  height: var(--editor-search-button-size);
-  flex: 0 0 var(--editor-search-button-size);
-  place-items: center;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--editor-muted);
-  cursor: pointer;
-  padding: 0;
-}
-
-.workspace-editor-language-server > button:hover,
-.workspace-editor-language-server > button:focus-visible {
-  background: color-mix(in srgb, var(--editor-accent) 10%, transparent);
-  color: var(--editor-text);
-}
-
-.workspace-editor-language-server > button:disabled {
-  cursor: default;
-  opacity: .5;
 }
 
 .workspace-editor-language-server > small[data-state='running'] { color: var(--text); }
@@ -283,9 +252,8 @@
   cursor: pointer;
 }
 
-.workspace-editor-problem-list button:hover,
-.workspace-editor-problem-list button:focus-visible {
-  background: color-mix(in srgb, var(--editor-accent) 9%, transparent);
+.workspace-editor-problem-list button:not(:disabled):is(:hover, :active, :focus-visible) {
+  background: var(--control-surface-interactive);
 }
 
 .workspace-editor-problem-row > svg {

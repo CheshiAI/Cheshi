@@ -145,18 +145,6 @@
 .workspace-editor-unsaved-label { color: var(--editor-modified-color); }
 .workspace-editor-conflict-label { color: var(--editor-problem-syntax); }
 
-.workspace-editor-conflict-reload {
-  --neumorphic-button-radius: var(--radius-control);
-  display: inline-flex;
-  min-height: 28px;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-6);
-  cursor: pointer;
-  font-size: var(--font-size-small);
-  padding: 5px 9px;
-}
-
 .workspace-editor-action {
   min-height: var(--icon-button-size);
   cursor: pointer;
@@ -201,11 +189,4 @@
 .workspace-editor-conflict span {
   min-width: 0;
   flex: 1 1 auto;
-}
-
-.workspace-editor-conflict-reload {
-  min-height: 24px;
-  flex: 0 0 auto;
-  color: inherit;
-  padding: 3px var(--space-8);
 }

@@ -99,29 +99,8 @@
   color: var(--text);
 }
 
-.workspace-editor-assist-close {
-  --neumorphic-button-radius: 50%;
-  display: grid;
-  width: var(--compact-icon-button-size);
-  height: var(--compact-icon-button-size);
-  flex: 0 0 var(--compact-icon-button-size);
-  place-items: center;
-  padding: 0;
-  cursor: pointer;
-}
-
-.workspace-editor-assist-close svg {
-  width: var(--compact-icon-size);
-  height: var(--compact-icon-size);
-  stroke-width: var(--compact-icon-stroke-width);
-}
-
-.workspace-editor-assist-close:focus-visible {
-  outline: var(--focus-outline-width) solid var(--flat-tab-accent, var(--dropdown-selection-text));
-  outline-offset: var(--focus-outline-inset);
-}
-
-.workspace-editor-assist button:not(.neumorphic-surface):not([data-variant]) {
+.workspace-editor-reference-list button,
+.workspace-editor-action-list button {
   border: 0;
   background: transparent;
   color: inherit;
@@ -129,19 +108,13 @@
   font: inherit;
 }
 
-.workspace-editor-assist button:not([data-variant]):disabled {
-  cursor: default;
-  opacity: .48;
+.workspace-editor-action-list button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
 }
 
-.workspace-editor-assist-footer > button:hover,
-.workspace-editor-action-list button:hover {
-  background: color-mix(in srgb, var(--dropdown-selection-bg) 72%, transparent);
-}
-
-.workspace-editor-assist-primary svg {
-  width: var(--icon-size-default);
-  height: var(--icon-size-default);
+.workspace-editor-action-list button:not(:disabled):is(:hover, :active, :focus-visible) {
+  background: var(--control-surface-interactive);
 }
 
 .workspace-editor-reference-layout {
@@ -185,10 +158,12 @@
   text-align: left;
 }
 
-.workspace-editor-reference-list button:hover,
 .workspace-editor-reference-list button[data-active='true'] {
-  background: var(--dropdown-selection-bg);
-  color: var(--dropdown-selection-text);
+  background: var(--control-surface);
+}
+
+.workspace-editor-reference-list button:not(:disabled):is(:hover, :active, :focus-visible) {
+  background: var(--control-surface-interactive);
 }
 
 .workspace-editor-reference-list span,
@@ -266,22 +241,6 @@
   grid-column: 2;
   justify-self: end;
   margin: var(--space-8);
-}
-
-.workspace-editor-assist-primary {
-  --neumorphic-button-radius: var(--radius-control);
-  display: inline-flex;
-  min-height: 30px;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-6);
-  font-size: var(--font-size-label);
-  font-weight: 600;
-  padding: var(--space-6) var(--space-10);
-}
-
-.workspace-editor-assist-primary:not(:disabled):hover {
-  --neumorphic-button-active-color: var(--active-text);
 }
 
 .workspace-editor-action-list button {
@@ -366,7 +325,11 @@
 
 .workspace-editor-edit-preview > p {
   flex: 0 0 auto;
-  color: var(--editor-muted);
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
   margin: 0;
   padding: var(--space-10) var(--space-default) 0;
 }
@@ -419,10 +382,4 @@
   gap: var(--space-8);
   border-top: 1px solid var(--divider);
   padding: var(--space-8) var(--space-default);
-}
-
-.workspace-editor-assist-footer > button {
-  min-height: 30px;
-  border-radius: var(--radius-control);
-  padding: var(--space-6) var(--space-10);
 }

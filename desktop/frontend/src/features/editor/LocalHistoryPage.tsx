@@ -71,7 +71,7 @@ export function LocalHistoryPage({
       onKeyDown={event => { if (event.key === 'Escape' && !restoring) { event.stopPropagation(); onClose(); } }}>
       <header className={styles.header}>
         <div className={styles.title}>
-          <NeumorphicButton raised size="icon" className={styles.titleMark} disabled aria-hidden="true">
+          <NeumorphicButton variant="standard" size="icon" className={styles.titleMark} disabled aria-hidden="true">
             <History aria-hidden="true" />
           </NeumorphicButton>
           <h2>LOCAL HISTORY</h2>
@@ -81,11 +81,11 @@ export function LocalHistoryPage({
           <span className={styles.fileName}>{fileName}</span>
         </span>
         <div className={styles.headerActions}>
-          <NeumorphicButton size="icon" aria-label="Refresh local history" aria-busy={loading}
+          <NeumorphicButton variant="ghost" size="icon" aria-label="Refresh local history" aria-busy={loading}
             title="Refresh local history" disabled={loading || restoring} onClick={() => void model.refresh()}>
             <RotateCw aria-hidden="true" />
           </NeumorphicButton>
-          <NeumorphicButton size="icon" onClick={onClose} disabled={restoring}
+          <NeumorphicButton variant="ghost" size="icon" onClick={onClose} disabled={restoring}
             aria-label="Close local history" title="Close local history">
             <X aria-hidden="true" />
           </NeumorphicButton>
@@ -101,7 +101,7 @@ export function LocalHistoryPage({
           <nav className={styles.history} aria-label="Saved file versions">
             {loading && entries.length === 0 ? <p role="status">Loading history…</p>
               : entries.length === 0 ? <p>No saved versions yet.</p> : entries.map((entry) => (
-                <NeumorphicButton key={entry.id} size="standard" raised={entry.id === selectedId} className={styles.entry}
+                <NeumorphicButton key={entry.id} variant="ghost" className={styles.entry}
                   aria-current={entry.id === selectedId ? 'true' : undefined}
                   disabled={loading || restoring} onClick={() => void model.select(entry.id)}>
                   <span>{reasonLabels[entry.reason]}</span>
@@ -152,7 +152,7 @@ export function LocalHistoryPage({
         <footer className={styles.footer}>
           <p>Stored on this device · Up to {LOCAL_HISTORY_RETENTION_DAYS} days / {LOCAL_HISTORY_MAX_BYTES / 1024 / 1024}
             {' '}MiB per workspace. Git commits stay unchanged.</p>
-          <NeumorphicButton raised size="standard" disabled={!canRestore} aria-busy={restoring}
+          <NeumorphicButton variant="standard" disabled={!canRestore} aria-busy={restoring}
             title={draftDirty ? 'Save your edits before restoring' : 'Restore this version and keep the current contents in history'}
             onClick={() => void restore()}>
             <RotateCcw aria-hidden="true" />{restoring ? 'Restoring…' : 'Restore this version'}

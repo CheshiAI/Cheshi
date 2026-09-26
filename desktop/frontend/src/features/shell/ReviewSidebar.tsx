@@ -5,6 +5,7 @@ import type { GitLineBlameRequest } from '../../../../shared/git-line-blame';
 import styles from './ReviewSidebar.module.css';
 import { useReviewSidebarResize } from './useReviewSidebarResize';
 import { LocalHistoryPage } from '../editor/LocalHistoryPage';
+import { useReviewSidebarFocus } from './useReviewSidebarFocus';
 
 interface ReviewSidebarProps {
   open: boolean;
@@ -21,6 +22,7 @@ export function ReviewSidebar({ open, item, initialPath, lineCommit = null, loca
   const reviewing = item !== null || lineCommit !== null || localHistoryPath !== null;
   const resizableOpen = open && (lineCommit !== null || localHistoryPath !== null);
   const resize = useReviewSidebarResize(resizableOpen, localHistoryPath !== null ? 'local history' : 'line commit');
+  const focus = useReviewSidebarFocus(open && reviewing, resize.slotRef);
   const [retainedReview, setRetainedReview] = useState({ item, initialPath, lineCommit, localHistoryPath, active: reviewing, revision: 0 });
   // Keep the last review mounted during closing, including interrupted transitions.
   if (retainedReview.active !== reviewing
@@ -41,7 +43,7 @@ export function ReviewSidebar({ open, item, initialPath, lineCommit = null, loca
       data-resizable={retainedReview.lineCommit || retainedReview.localHistoryPath !== null ? 'true' : undefined}
       data-resizing={resize.resizing ? 'true' : undefined} style={resize.style}
       aria-label="Review sidebar"
-      aria-hidden={!open || !reviewing} inert={!open || !reviewing}>
+      aria-hidden={focus.hidden} inert={focus.hidden} onFocusCapture={focus.onFocusCapture}>
       <div className={styles.reviewContent}>
         {resizableOpen && <div className={styles.resizer} {...resize.separatorProps} />}
         {retainedReview.localHistoryPath !== null ? <LocalHistoryPage

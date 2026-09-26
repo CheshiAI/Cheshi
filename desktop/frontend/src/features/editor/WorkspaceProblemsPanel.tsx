@@ -118,7 +118,9 @@ export function WorkspaceProblemsPanel({
                   onChange={onConfigureLanguageServer}
                 />
                 {languageServer.mode === 'custom' && (
-                  <button
+                  <NeumorphicButton
+                    variant="ghost"
+                    size="icon"
                     aria-label={`Choose ${languageServer.serverName} executable`}
                     disabled={languageServerConfiguring}
                     title={`Choose ${languageServer.serverName} executable`}
@@ -126,7 +128,7 @@ export function WorkspaceProblemsPanel({
                     onClick={() => onConfigureLanguageServer('custom')}
                   >
                     <FolderOpen aria-hidden="true" />
-                  </button>
+                  </NeumorphicButton>
                 )}
               </>
             )}

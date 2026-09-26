@@ -161,6 +161,96 @@ test('closing and reopening retains the side panel for transitions without block
   });
 });
 
+for (const panel of ['line commit', 'local history'] as const) {
+  for (const dismissal of ['button', 'Escape', 'sidebar toggle', 'review cleared'] as const) {
+    test(`${panel} restores focus before becoming aria-hidden on ${dismissal}`, async () => {
+      await withDOM(async (window, _container, root) => {
+        const render = (visible: boolean, keepReview = visible) => <>
+          <button aria-label="Review opener">Open review</button>
+          <ReviewSidebar open={visible} item={null} initialPath={null}
+            lineCommit={keepReview && panel === 'line commit' ? request : null}
+            localHistoryPath={keepReview && panel === 'local history' ? 'sample.ts' : null}
+            onCloseReview={() => root.render(render(false))} />
+        </>;
+        await act(async () => root.render(render(false)));
+        const opener = document.querySelector<HTMLButtonElement>('[aria-label="Review opener"]')!;
+        opener.focus();
+        await act(async () => root.render(render(true)));
+        const slot = document.querySelector<HTMLElement>('[aria-label="Review sidebar"]')!;
+        const close = slot.querySelector<HTMLButtonElement>(`[aria-label="Close ${panel}"]`)!;
+        close.focus();
+        expect(document.activeElement).toBe(close);
+        const setAttribute = slot.setAttribute.bind(slot);
+        let checkedHiddenCommit = false;
+        const attributeSpy = spyOn(slot, 'setAttribute').mockImplementation((name, value) => {
+          if (name === 'aria-hidden' && value === 'true') {
+            checkedHiddenCommit = true;
+            expect(document.activeElement).toBe(opener);
+          }
+          setAttribute(name, value);
+        });
+        try {
+          await act(async () => {
+            if (dismissal === 'button') close.click();
+            else if (dismissal === 'Escape') close.dispatchEvent(new window.KeyboardEvent('keydown', {
+              key: 'Escape', bubbles: true,
+            }) as unknown as KeyboardEvent);
+            else if (dismissal === 'sidebar toggle') root.render(render(false, true));
+            else root.render(render(true, false));
+          });
+          expect(checkedHiddenCommit).toBe(true);
+          expect(document.activeElement).toBe(opener);
+          expect(slot.getAttribute('aria-hidden')).toBe('true');
+          expect(slot.hasAttribute('inert')).toBe(true);
+          expect(slot.querySelector(`[aria-label="Close ${panel}"]`)).toBe(close);
+        } finally { attributeSpy.mockRestore(); }
+      });
+    });
+  }
+}
+
+test('closing a review preserves focus that has already moved outside the panel', async () => {
+  await withDOM(async (_window, _container, root) => {
+    const render = (open: boolean) => <>
+      <button aria-label="Review opener">Open review</button>
+      <input aria-label="Other editor" defaultValue="unsaved draft" />
+      <ReviewSidebar open={open} item={null} initialPath={null} lineCommit={request} onCloseReview={() => {}} />
+    </>;
+    await act(async () => root.render(render(false)));
+    document.querySelector<HTMLButtonElement>('button')!.focus();
+    await act(async () => root.render(render(true)));
+    document.querySelector<HTMLButtonElement>('[aria-label="Close line commit"]')!.focus();
+    const input = document.querySelector<HTMLInputElement>('input')!;
+    input.focus();
+    await act(async () => root.render(render(false)));
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe('unsaved draft');
+  });
+});
+
+test('a removed review opener falls back to the visible editor without focusing an inert editor', async () => {
+  await withDOM(async (_window, _container, root) => {
+    const render = (open: boolean, showOpener = true) => <>
+      {showOpener && <button aria-label="Review opener">Open review</button>}
+      <div className="workspace-column">
+        <div inert><div className="cm-content" tabIndex={0}>Hidden editor</div></div>
+        <div className="cm-content" tabIndex={0} aria-label="Visible editor">Unsaved draft</div>
+      </div>
+      <ReviewSidebar open={open} item={null} initialPath={null} lineCommit={request} onCloseReview={() => {}} />
+    </>;
+    await act(async () => root.render(render(false)));
+    const opener = document.querySelector<HTMLButtonElement>('button')!;
+    opener.focus();
+    await act(async () => root.render(render(true)));
+    const close = document.querySelector<HTMLButtonElement>('[aria-label="Close line commit"]')!;
+    close.focus();
+    await act(async () => root.render(render(true, false)));
+    expect(opener.isConnected).toBe(false);
+    await act(async () => root.render(render(false, false)));
+    expect(document.activeElement).toBe(document.querySelector('[aria-label="Visible editor"]'));
+  });
+});
+
 test('late responses never replace a newer line result; uncommitted and error states show no diff', async () => {
   await withDOM(async (_window, _container, root) => {
     const old = createDeferred<GitLineCommit>();

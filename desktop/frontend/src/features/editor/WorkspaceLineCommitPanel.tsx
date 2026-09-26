@@ -41,9 +41,9 @@ export function WorkspaceLineCommitPanel({ request, onClose, read = readLineComm
           <NeumorphicButton raised className={`theme-toggle ${styles.titleMark}`} disabled aria-hidden="true">
             <GitCommitHorizontal aria-hidden="true" />
           </NeumorphicButton>
-          <h2>Line commit</h2>
+          <h2>LINE COMMIT</h2>
         </div>
-        <NeumorphicButton raised size="icon" aria-label="Close line commit" onClick={onClose}><X aria-hidden="true" /></NeumorphicButton>
+        <NeumorphicButton variant="standard" size="icon" aria-label="Close line commit" onClick={onClose}><X aria-hidden="true" /></NeumorphicButton>
       </header>
       <div className={styles.body}>
         <p className={styles.origin}>{request.path}:{request.line} · Last change</p>

@@ -21,7 +21,7 @@
 .title { display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px; }
 .titleMark { cursor: default; pointer-events: none; }
 .titleMark svg { width: 11px; height: 11px; stroke-width: 1.7; }
-.title h2 { margin: 0; font-size: 10px; font-weight: 600; line-height: 15px; color: var(--sidebar-section-label-color); }
+.title h2 { margin: 0; font-family: var(--font-ui), sans-serif; font-size: var(--font-size-label); font-weight: 600; letter-spacing: normal; line-height: 1.5; color: var(--sidebar-section-label-color); }
 .body { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: var(--space-default); padding: var(--space-default); overflow: auto; }
 .body p { margin: 0; }
 .origin { overflow-wrap: anywhere; color: var(--sub-text); }
@@ -31,11 +31,12 @@
 .diff { display: flex; flex: 1; min-height: 180px; overflow: hidden; }
 .diff > section { flex: 1; min-width: 0; min-height: 0; }
 .panel .diff { font-size: 10px; }
-.diff > section > header {
+.panel .diff > section > header {
   box-sizing: border-box;
   height: 42px;
   min-height: 42px;
   max-height: 42px;
   flex: 0 0 42px;
+  background: var(--control-surface-interactive);
 }
 .diff > section > header strong { font-size: 11px; }

@@ -210,7 +210,7 @@ export function WorkspaceEditor({
           <AlertTriangle aria-hidden="true" />
           <span>{conflictMessage}</span>
           <NeumorphicButton
-            className="neumorphic-surface workspace-editor-conflict-reload"
+            variant="standard"
             onClick={reloadSelectedFile}
           >
             Reload from disk

@@ -56,7 +56,6 @@ export function WorkspaceEditorAssistPanel({
   onSelectReference,
 }: WorkspaceEditorAssistPanelProps) {
   const renameInputRef = useRef<HTMLInputElement>(null);
-  const sharedPopup = state.kind === 'references' || state.kind === 'actions' || state.kind === 'rename';
   const selectedReference = state.kind === 'references'
     ? state.locations[state.selectedIndex]
     : undefined;
@@ -84,12 +83,10 @@ export function WorkspaceEditorAssistPanel({
         <AssistIcon state={state} />
         <strong>{assistTitle(state)}</strong>
         <NeumorphicButton
-          raised={!sharedPopup}
-          variant={sharedPopup ? 'standard' : undefined}
-          size={sharedPopup ? 'icon' : undefined}
+          variant="standard"
+          size="icon"
           aria-label="Close editor assistant"
           title="Close editor assistant"
-          className={sharedPopup ? undefined : 'workspace-editor-assist-close'}
           onClick={onClose}
         >
           <X aria-hidden="true" />
@@ -138,7 +135,7 @@ export function WorkspaceEditorAssistPanel({
           </div>
           {selectedReference && (
             <NeumorphicButton
-              raised
+              variant="standard"
               className="workspace-editor-assist-primary"
               type="button"
               onClick={() => onOpenReference(selectedReference)}
@@ -237,10 +234,9 @@ export function WorkspaceEditorAssistPanel({
             ))}
           </ul>
           <div className="workspace-editor-assist-footer">
-            <button type="button" onClick={onClose}>Cancel</button>
+            <NeumorphicButton variant="ghost" type="button" onClick={onClose}>Cancel</NeumorphicButton>
             <NeumorphicButton
-              raised
-              className="workspace-editor-assist-primary"
+              variant="standard"
               disabled={state.applying}
               type="button"
               onClick={onApplyEdit}
@@ -253,7 +249,5 @@ export function WorkspaceEditorAssistPanel({
       )}
     </LiquidGlassPanel>
   );
-  return sharedPopup
-    ? <div className="workspace-editor-assist-popup-anchor">{panel}</div>
-    : panel;
+  return <div className="workspace-editor-assist-popup-anchor">{panel}</div>;
 }
