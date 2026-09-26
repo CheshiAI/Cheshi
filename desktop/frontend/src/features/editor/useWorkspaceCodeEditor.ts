@@ -3,7 +3,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language';
 import { lintGutter } from '@codemirror/lint';
 import { search } from '@codemirror/search';
-import { EditorState, Prec, type Extension } from '@codemirror/state';
+import { EditorState, Prec, StateEffect, type Extension } from '@codemirror/state';
 import {
   closeHoverTooltip,
   drawSelection,
@@ -21,6 +21,7 @@ import {
 } from 'react';
 
 import { cheshiDesktop as workspace } from '../../cheshiDesktop';
+import { dispatchSharedEditorTransactions, sharedEditorDocument } from './editorSharedDocuments';
 import { bracketPairGuides } from './bracketPairGuides';
 import { gitLineBlame } from './gitLineBlame';
 import { createEditorSearchBridgePanel } from './codeEditorSearch';
@@ -49,6 +50,7 @@ import type { WorkspaceLanguageServerController } from './useWorkspaceLanguageSe
 import { workspaceAssistEscapeBinding, workspaceNavigationKeymap, workspaceTabKeymap } from './workspaceEditorKeymap';
 
 interface UseWorkspaceCodeEditorOptions {
+  shouldFocus: () => boolean;
   activateOpenTab: (path: string) => void;
   assistStateRef: RefObject<WorkspaceEditorAssistState | null>;
   editorHostRef: RefObject<HTMLDivElement | null>;
@@ -65,6 +67,7 @@ interface UseWorkspaceCodeEditorOptions {
 }
 
 export function useWorkspaceCodeEditor({
+  shouldFocus,
   activateOpenTab,
   assistStateRef,
   editorHostRef,
@@ -96,7 +99,8 @@ export function useWorkspaceCodeEditor({
     scheduleEditorDiagnostics,
   } = languageServer;
 
-  const destroyEditor = useCallback((captureState = true, closeLanguageServerDocument = true): void => {
+  const displayedGeneration = useRef<number | null>(null);
+  const destroyEditor = useCallback((captureState = true): void => {
     resetLanguageServerRequests();
     const view = editorViewRef.current;
     if (!view) return;
@@ -107,12 +111,8 @@ export function useWorkspaceCodeEditor({
       ],
     });
     const path = editorPathRef.current;
-    const language = path ? languageServerLanguageForPath(path) : null;
-    if (path && language && closeLanguageServerDocument) {
-      void workspace?.closeLanguageServerDocument?.({ language, path });
-    }
     if (path && captureState) {
-      updateTab(path, (tab) => ({
+      updateTab(path, (tab) => tab.loadGeneration !== displayedGeneration.current ? tab : ({
         ...tab,
         editorState: view.state,
         draftContent: view.state.doc.toString(),
@@ -121,6 +121,7 @@ export function useWorkspaceCodeEditor({
     view.destroy();
     editorViewRef.current = null;
     editorPathRef.current = null;
+    displayedGeneration.current = null;
   }, [resetLanguageServerRequests, updateTab]);
 
   const saveFileRef = useRef<() => Promise<void>>(async () => undefined);
@@ -165,6 +166,7 @@ export function useWorkspaceCodeEditor({
     const diagnosticsMode = diagnosticMode(tab.file.path, language);
     const readGitLineBlame = workspace?.getGitLineBlame;
     const extensions: Extension[] = [
+      sharedEditorDocument(editorPath),
       workspaceEditorTheme,
       workspaceEditorTooltips(host.ownerDocument),
       ...(readGitLineBlame ? [gitLineBlame({
@@ -376,16 +378,22 @@ export function useWorkspaceCodeEditor({
       );
     }
     if (language) extensions.push(language);
-    const state = tab.editorState ?? EditorState.create({ doc: tab.draftContent, extensions });
-    const view = new EditorView({ state, parent: host });
+    // Retain history/selection but replace callbacks captured by the previous pane.
+    const state = tab.editorState
+      ? tab.editorState.update({ effects: StateEffect.reconfigure.of(extensions) }).state
+      : EditorState.create({ doc: tab.draftContent, extensions });
+    const view = new EditorView({ state, parent: host,
+      dispatchTransactions: (transactions, current) => dispatchSharedEditorTransactions(editorPath, transactions, current) });
     editorViewRef.current = view;
     editorPathRef.current = editorPath;
+    displayedGeneration.current = tab.loadGeneration;
     syncEditorSearchPanel(view);
     scheduleEditorDiagnostics(view, editorPath, diagnosticsMode, 0);
     updateTab(tab.path, (current) => ({ ...current, editorState: view.state }));
     requestAnimationFrame(() => {
+      if (editorViewRef.current !== view) return;
       revealLine(lineNumber, character ?? 0);
-      view.focus();
+      if (shouldFocus()) view.focus();
     });
   }, [
     closeAssist,
@@ -409,6 +417,7 @@ export function useWorkspaceCodeEditor({
     activateOpenTab,
     syncEditorSearchPanel,
     updateTab,
+    shouldFocus,
   ]);
 
   const createSourceExcerptViewer = useCallback((
@@ -456,10 +465,11 @@ export function useWorkspaceCodeEditor({
       view.state.doc.lines,
     );
     requestAnimationFrame(() => {
+      if (editorViewRef.current !== view) return;
       revealLine(localLine, character ?? 0);
-      view.focus();
+      if (shouldFocus()) view.focus();
     });
-  }, [activateOpenTab, destroyEditor, navigateHistory, revealLine]);
+  }, [activateOpenTab, destroyEditor, navigateHistory, revealLine, shouldFocus]);
 
 
   return {

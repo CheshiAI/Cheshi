@@ -24,7 +24,7 @@ interface Options {
   tabsRef: RefObject<WorkspaceTab[]>;
   nextTabGeneration: RefObject<number>;
   nextLanguageServerDocumentVersion: (path: string) => number;
-  destroyEditor: (captureState?: boolean, closeDocument?: boolean) => void;
+  destroyEditor: (captureState?: boolean) => void;
   replaceTabs: (update: (tabs: WorkspaceTab[]) => WorkspaceTab[]) => void;
   setAssistState: Dispatch<SetStateAction<WorkspaceEditorAssistState | null>>;
   setErrorMessage: Dispatch<SetStateAction<string>>;
@@ -171,7 +171,7 @@ export function useWorkspaceEditorEdits({ assistStateRef, assistRequests, pendin
       const ownsPanel = prepared.request.isCurrent();
       const updatedVersions = new Map(response.files.map((file) => [file.path, file]));
       const affectedPaths = new Set(prepared.files.map((file) => file.path));
-      if (selectedPathRef.current && affectedPaths.has(selectedPathRef.current)) destroyEditor(false, false);
+      if (selectedPathRef.current && affectedPaths.has(selectedPathRef.current)) destroyEditor(false);
       replaceTabs((currentTabs) => currentTabs.map((tab) => {
         const file = prepared.files.find((candidate) => candidate.path === tab.path);
         const version = updatedVersions.get(tab.path);

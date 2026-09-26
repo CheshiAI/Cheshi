@@ -48,6 +48,7 @@ import {
 
 import { useWorkspaceSymbolRequests } from './useWorkspaceSymbolRequests';
 import { createWorkspaceLanguageServerCompletion } from './workspaceLanguageServerCompletion';
+import { nextEditorDocumentVersion } from './editorSharedDocuments';
 import { useWorkspaceAssistRequests, type WorkspaceAssistRequestOptions } from './useWorkspaceAssistRequests';
 
 interface UseWorkspaceLanguageServerOptions extends WorkspaceAssistRequestOptions {
@@ -84,7 +85,6 @@ export function useWorkspaceLanguageServer({
   const languageServerFallbackTimerRef = useRef<number | null>(null);
   const diagnosticsWorkerRef = useRef<Worker | null>(null);
   const diagnosticsRequestSequence = useRef(0);
-  const languageServerDocumentVersionsRef = useRef(new Map<string, number>());
   const languageServerDiagnosticsRef = useRef(new Map<string, LanguageServerDiagnostic[]>());
   const workspaceDiagnosticsRef = useRef(diagnostics);
   const languageServerExpectationRef = useRef<LanguageServerExpectation | null>(null);
@@ -102,11 +102,7 @@ export function useWorkspaceLanguageServer({
     });
   }, []);
 
-  const nextLanguageServerDocumentVersion = useCallback((path: string): number => {
-    const version = (languageServerDocumentVersionsRef.current.get(path) ?? 0) + 1;
-    languageServerDocumentVersionsRef.current.set(path, version);
-    return version;
-  }, []);
+  const nextLanguageServerDocumentVersion = nextEditorDocumentVersion;
 
   const assist = useWorkspaceAssistRequests({ editorPathRef, editorViewRef, pendingRenameRef, assistRequests,
     referencePreviewRequestSequence, setAssistState, setErrorMessage, languageServersRef,

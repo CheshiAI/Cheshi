@@ -3,6 +3,7 @@ import { resumeRecord } from '../shell/updateWorkspaceResume';
 import type { WorkspaceTab } from './workspaceEditorModel';
 
 export interface EditorUpdateSnapshot {
+  paneLayout?: unknown;
   tabs: Array<Pick<WorkspaceTab, 'path' | 'file' | 'savedContent' | 'draftContent' | 'conflictMessage'>>;
   selectedPath: string | null;
   problemsOpen: boolean;

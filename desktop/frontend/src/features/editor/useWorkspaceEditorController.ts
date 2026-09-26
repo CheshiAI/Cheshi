@@ -12,11 +12,10 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 
-import { useEditorSession } from './useEditorSession';
-import type { EditorSessionMode } from '../../../../shared/editor-session';
-import { useEditorUpdateResume } from './useEditorUpdateResume';
+import { updateEditorStateDocument, type EditorPaneStore } from './editorPaneStore';
 import { errorMessage as toErrorMessage } from '../../shared/errorMessage';
 import { isWorkspacePathAtOrBelow, renameWorkspacePathPrefix } from '../../shared/workspacePaths';
 import {
@@ -62,33 +61,40 @@ export interface WorkspaceEditorTarget {
 
 export type WorkspaceEditorMutation = WorkspaceEntryMutation & { requestId: number };
 
+const emptyTabs: WorkspaceTab[] = [];
+
+export interface EditorPaneBinding { store: EditorPaneStore; id: string; ready: boolean; }
+
 interface UseWorkspaceEditorControllerOptions {
-  sessionMode?: EditorSessionMode;
-  onSessionRestored?: () => void;
+  pane: EditorPaneBinding;
   active: boolean;
   mutation: WorkspaceEditorMutation | null;
   target: WorkspaceEditorTarget | null;
   onAllTabsClosed: () => void;
-  onSelectedPathChange: (path: string | null) => void;
 }
 
 export function useWorkspaceEditorController({
-  sessionMode = 'restore',
-  onSessionRestored,
+  pane,
   active,
   mutation,
   target,
   onAllTabsClosed,
-  onSelectedPathChange,
 }: UseWorkspaceEditorControllerOptions) {
-  const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const paneState = useSyncExternalStore(pane.store.subscribe, pane.store.getSnapshot);
+  const group = paneState.groups[pane.id];
+  const tabs = group?.tabs ?? emptyTabs;
+  const selectedPath = group?.selectedPath ?? null;
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const savingRef = useRef(false);
+  const savingRef = pane.store.saving;
   const [errorMessage, setErrorMessage] = useState('');
-  const [problemsOpen, setProblemsOpen] = useState(true);
-  const [problemsRatio, setProblemsRatio] = useState(DEFAULT_WORKSPACE_PROBLEMS_RATIO);
+  const problemsOpen = group?.problemsOpen ?? true;
+  const problemsRatio = group?.problemsRatio ?? DEFAULT_WORKSPACE_PROBLEMS_RATIO;
+  const setProblemsOpen = useCallback((value: boolean | ((current: boolean) => boolean)) => {
+    const current = pane.store.getSnapshot().groups[pane.id]?.problemsOpen ?? true;
+    pane.store.configure(pane.id, { problemsOpen: typeof value === 'function' ? value(current) : value });
+  }, [pane.store, pane.id]);
+  const setProblemsRatio = useCallback((value: number) => pane.store.configure(pane.id, { problemsRatio: value }), [pane.store, pane.id]);
   const [assistState, setAssistState] = useState<WorkspaceEditorAssistState | null>(null);
   const editorHostRef = useRef<HTMLDivElement>(null);
   const assistStateRef = useRef(assistState);
@@ -106,7 +112,7 @@ export function useWorkspaceEditorController({
     character?: number | null,
   ) => Promise<void>>(async () => undefined);
   const fileLoadTracker = useMemo(createWorkspaceFileLoadTracker, []);
-  const nextTabGeneration = useRef(0);
+  const nextTabGeneration = pane.store.nextGeneration;
   const tabsRef = useRef(tabs);
   const selectedPathRef = useRef(selectedPath);
   tabsRef.current = tabs;
@@ -147,6 +153,14 @@ export function useWorkspaceEditorController({
     setLoading(false);
   }, [fileLoadTracker]);
 
+  useEffect(() => {
+    assistRequests.invalidate();
+    referencePreviewRequestSequence.current += 1;
+    pendingRenameRef.current = null;
+    setAssistState(null);
+    invalidatePendingFileLoad();
+  }, [selectedPath, assistRequests, invalidatePendingFileLoad]);
+
   const toggleEditorSearch = (): void => {
     if (editorSearchOpen) {
       closeEditorSearch();
@@ -164,33 +178,28 @@ export function useWorkspaceEditorController({
       setAssistState(null);
     }
     selectedPathRef.current = path;
-    setSelectedPath(path);
-  }, []);
+    pane.store.select(pane.id, path);
+  }, [pane.store, pane.id]);
 
   const replaceTabs = useCallback((update: (current: WorkspaceTab[]) => WorkspaceTab[]): void => {
-    setTabs((current) => {
-      const next = update(current);
-      tabsRef.current = next;
-      return next;
-    });
-  }, []);
+    pane.store.replace(pane.id, update);
+    tabsRef.current = pane.store.getSnapshot().groups[pane.id]?.tabs ?? [];
+  }, [pane.store, pane.id]);
 
   const reorderTab = useCallback((source: string, target: string, side: 'before' | 'after') => {
     replaceTabs(current => reorderWorkspaceTabs(current, source, target, side));
   }, [replaceTabs]);
 
-  const sessionReady = useEditorSession({ mode: sessionMode, tabs, selectedPath, nextTabGeneration,
-    replaceTabs, selectPath, onSessionRestored: () => onSessionRestored?.(), onError: setErrorMessage });
-
-  const updateDraftsPreserved = useEditorUpdateResume({
-    tabsRef, selectedPathRef, nextTabGeneration, savingRef, loading: loading || !sessionReady,
-    applyingEdit: assistState?.kind === 'edit-preview' && assistState.applying,
-    problemsOpen, problemsRatio, replaceTabs, selectPath, setProblemsOpen, setProblemsRatio,
-  });
+  const sessionReady = pane.ready;
 
   const updateTab = useCallback((path: string, update: (tab: WorkspaceTab) => WorkspaceTab): void => {
     replaceTabs((current) => current.map((tab) => tab.path === path ? update(tab) : tab));
   }, [replaceTabs]);
+  const documentTabsRef = useMemo(() => ({ get current() { return pane.store.allTabs(); } }), [pane.store]);
+  const replaceDocuments = useCallback((update: (tabs: WorkspaceTab[]) => WorkspaceTab[]) => {
+    pane.store.replaceDocuments(update);
+  }, [pane.store]);
+  const shouldFocus = useCallback(() => pane.store.getSnapshot().activeId === pane.id, [pane.store, pane.id]);
 
   const { navigationAvailability, recordNavigationOrigin, navigateHistory, renameNavigationPath, removeNavigationPath }
     = useWorkspaceEditorNavigation({ selectedPathRef, editorViewRef, tabsRef, loadFileRef });
@@ -251,6 +260,7 @@ export function useWorkspaceEditorController({
     revealLine,
     saveFileRef,
   } = useWorkspaceCodeEditor({
+    shouldFocus,
     activateOpenTab,
     assistStateRef,
     editorHostRef,
@@ -292,6 +302,14 @@ export function useWorkspaceEditorController({
     destroyEditor,
   ]);
 
+  useEffect(() => {
+    const view = editorViewRef.current;
+    if (!view || !activeTab || editorPathRef.current !== activeTab.path
+      || view.state.doc.toString() === activeTab.draftContent) return;
+    const next = updateEditorStateDocument(view.state, activeTab.draftContent);
+    if (next) view.setState(next);
+  }, [activeTab?.draftContent, activeTab?.path]);
+
   const activateTab = useCallback((
     path: string,
     lineNumber?: number | null,
@@ -317,7 +335,7 @@ export function useWorkspaceEditorController({
     const index = current.findIndex((tab) => tab.path === path);
     const tab = current[index];
     if (!tab) return;
-    if (!confirmWorkspaceTabsClose([tab], isTabDirty, (dirtyPath) => window.confirm(`Discard unsaved changes in ${dirtyPath}?`))) return;
+    if (!confirmWorkspaceTabsClose([tab], candidate => isTabDirty(candidate) && !pane.store.sharedElsewhere(pane.id, candidate.path), (dirtyPath) => window.confirm(`Discard unsaved changes in ${dirtyPath}?`))) return;
     invalidatePendingFileLoad();
     const nextTabs = current.filter((candidate) => candidate.path !== path);
     replaceTabs(() => nextTabs);
@@ -339,7 +357,7 @@ export function useWorkspaceEditorController({
   const closeAllTabs = useCallback((): void => {
     const current = tabsRef.current;
     if (current.length === 0) return;
-    if (!confirmWorkspaceTabsClose(current, isTabDirty, (path) => window.confirm(`Discard unsaved changes in ${path}?`))) return;
+    if (!confirmWorkspaceTabsClose(current, candidate => isTabDirty(candidate) && !pane.store.sharedElsewhere(pane.id, candidate.path), (path) => window.confirm(`Discard unsaved changes in ${path}?`))) return;
     invalidatePendingFileLoad();
     replaceTabs(() => []);
     pendingLineRef.current = null;
@@ -447,6 +465,12 @@ export function useWorkspaceEditorController({
   ): Promise<void> => {
     invalidatePendingFileLoad();
     const existing = tabsRef.current.find((tab) => tab.path === relativePath);
+    const shared = pane.store.allTabs().find(tab => tab.path === relativePath);
+    if (!existing && shared && !forceReload && !shared.sourceExcerpt && shared.file.fileKind !== 'too_large') {
+      replaceTabs(current => [...current, shared]);
+      activateTab(relativePath, lineNumber, character);
+      return;
+    }
     const requestedLine = lineNumber ?? (forceReload ? existing?.sourceExcerpt?.targetLine ?? null : null);
     const existingExcerpt = existing?.sourceExcerpt;
     const needsSourceExcerpt = Boolean(
@@ -495,7 +519,7 @@ export function useWorkspaceEditorController({
         conflictMessage: null,
         loadGeneration: ++nextTabGeneration.current,
       };
-      if (forceReload && relativePath === selectedPathRef.current) destroyEditor(false, false);
+      if (forceReload && relativePath === selectedPathRef.current) destroyEditor(false);
       replaceTabs((current) => {
         const index = current.findIndex((tab) => tab.path === relativePath);
         if (index < 0) return [...current, nextTab];
@@ -534,7 +558,7 @@ export function useWorkspaceEditorController({
 
   const { chooseCodeAction, changeRenameValue, submitRename, applyPreparedWorkspaceEdit } = useWorkspaceEditorEdits({
     assistStateRef, assistRequests, pendingRenameRef, editorViewRef, editorPathRef, selectedPathRef,
-    tabsRef, nextTabGeneration, nextLanguageServerDocumentVersion, destroyEditor, replaceTabs,
+    tabsRef: documentTabsRef, nextTabGeneration, nextLanguageServerDocumentVersion, destroyEditor, replaceTabs: replaceDocuments,
     setAssistState, setErrorMessage,
   });
 
@@ -565,10 +589,6 @@ export function useWorkspaceEditorController({
     }
   }, [updateTab]);
   saveFileRef.current = saveFile;
-
-  useEffect(() => {
-    onSelectedPathChange(selectedPath);
-  }, [onSelectedPathChange, selectedPath]);
 
   useEffect(() => {
     if (!active) {
@@ -610,26 +630,26 @@ export function useWorkspaceEditorController({
     };
   }, [active, currentFile?.revision, loadFile, loading, selectedPath, updateTab]);
 
-  useEffect(() => {
-    const handleBeforeUnload = (): string | undefined => (
-      tabsRef.current.some(isTabDirty) && !updateDraftsPreserved() ? '' : undefined
-    );
-    window.onbeforeunload = handleBeforeUnload;
-    return () => {
-      if (window.onbeforeunload === handleBeforeUnload) window.onbeforeunload = null;
-    };
-  }, []);
-
   useEffect(() => () => {
     fileLoadTracker.invalidate();
     resetLanguageServerRequests();
-    const path = editorPathRef.current;
-    const language = path ? languageServerLanguageForPath(path) : null;
-    if (path && language) void workspace?.closeLanguageServerDocument?.({ language, path });
     editorViewRef.current?.destroy();
     editorViewRef.current = null;
     editorPathRef.current = null;
   }, [fileLoadTracker, resetLanguageServerRequests]);
+
+  useEffect(() => {
+    return pane.store.registerCapture(pane.id, () => {
+      invalidatePendingFileLoad();
+      const view = editorViewRef.current;
+      const path = editorPathRef.current;
+      if (view && path) updateTab(path, tab => ({ ...tab, editorState: view.state, draftContent: view.state.doc.toString() }));
+    });
+  }, [pane.store, pane.id, updateTab, invalidatePendingFileLoad]);
+  useEffect(() => {
+    pane.store.setBusy(pane.id, loading || (assistState?.kind === 'edit-preview' && assistState.applying));
+    return () => pane.store.setBusy(pane.id, false);
+  }, [pane.store, pane.id, loading, assistState]);
 
   const requestReferencesAtSelection = (): void => {
     const view = editorViewRef.current;

@@ -8,6 +8,7 @@ import {
   useState,
   type ComponentPropsWithoutRef,
   type CSSProperties,
+  type DragEvent,
   type ReactNode,
 } from 'react';
 
@@ -19,6 +20,7 @@ import styles from './FlatTab.module.css';
 interface FlatTabListProps extends Omit<ComponentPropsWithoutRef<'nav'>, 'role'> {
   onCloseAll: () => void;
   onReorder?: ReorderTab;
+  onTabDragStart?: (event: DragEvent<HTMLElement>, id: string) => void;
 }
 
 const TabContextMenu = createContext<((target: FlatTabContextMenuTarget) => void) | null>(null);
@@ -39,8 +41,8 @@ interface FlatTabProps {
   trailing?: ReactNode;
 }
 
-export function FlatTabList({ className, children, onCloseAll, onReorder, ...props }: FlatTabListProps) {
-  const reorder = useFlatTabReorder(onReorder);
+export function FlatTabList({ className, children, onCloseAll, onReorder, onTabDragStart, ...props }: FlatTabListProps) {
+  const reorder = useFlatTabReorder(onReorder, onTabDragStart);
   const [menu, setMenu] = useState<FlatTabContextMenuTarget | null>(null);
   const originRef = useRef<HTMLButtonElement | null>(null);
   const openMenu = useCallback((target: FlatTabContextMenuTarget) => {

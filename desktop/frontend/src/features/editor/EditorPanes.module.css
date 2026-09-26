@@ -1,0 +1,23 @@
+.root, .host, .mount {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 0;
+}
+.root { overflow: hidden; --split-pane-accent: var(--editor-accent); }
+.host { flex-direction: column; overflow: hidden; }
+.host[data-active='true'] { --flat-tab-accent: var(--editor-accent); }
+.mount { position: relative; }
+.mount[data-editor-drop]::after {
+  content: '';
+  position: absolute;
+  z-index: 25;
+  inset: 0;
+  border: 1px dashed var(--active-text);
+  background: var(--control-surface-interactive);
+  pointer-events: none;
+}
+.mount[data-editor-drop='right']::after { inset: 0 0 0 50%; }
+.mount[data-editor-drop='left']::after { inset: 0 50% 0 0; }
+.mount[data-editor-drop='up']::after { inset: 0 0 50%; }
+.mount[data-editor-drop='down']::after { inset: 50% 0 0; }

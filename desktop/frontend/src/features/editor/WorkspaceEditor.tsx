@@ -1,306 +1,100 @@
-import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
-import {
-  AlertTriangle,
-  FileCode2,
-  FileText,
-} from 'lucide-react';
-import { useContext, useEffect } from 'react';
-
-import { FileTypeIcon } from '../../shared/file-icons/FileTypeIcon';
-import {
-  draggableWindowRegionStyle,
-  FlatTab,
-  FlatTabList,
-  NeumorphicButton,
-  nonDraggableWindowRegionStyle,
-  TieredHeader,
-} from '../../shared/ui';
-import { WorkspaceEditorFileToolbar } from './WorkspaceEditorFileToolbar';
-import { WorkspaceCodeExplanationMenu } from './WorkspaceCodeExplanationMenu';
-import type { GitLineBlameRequest } from '../../../../shared/git-line-blame';
-import { WorkspaceCodeExplanationToast } from './WorkspaceCodeExplanationToast';
-import { WorkspaceEditorAssistPanel } from './WorkspaceEditorAssistPanel';
-import { WorkspaceEditorSearchPanel } from './WorkspaceEditorSearchPanel';
-import { WorkspaceProblemsPanel } from './WorkspaceProblemsPanel';
-import { useWorkspaceProblemsLayout } from './workspaceProblemsLayout';
-import {
-  WorkspaceProblemsResizer,
-  workspaceProblemsStageStyle,
-} from './WorkspaceProblemsResizer';
-import {
-  formatBytes,
-  isTabDirty,
-  tabLabel,
-} from './workspaceEditorModel';
-import {
-  useWorkspaceEditorController,
-  type WorkspaceEditorMutation,
-  type WorkspaceEditorTarget,
-} from './useWorkspaceEditorController';
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { cheshiDesktop } from '../../cheshiDesktop';
+import { SplitPaneLayout } from '../../shared/ui/SplitPaneLayout';
+import type { SplitPaneDirection } from '../../shared/ui/splitPaneModel';
+import { WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
+import { WorkspaceEditorPane, type WorkspaceEditorProps } from './WorkspaceEditorPane';
+import { useEditorPanes } from './useEditorPanes';
+import { EditorPaneHost } from './EditorPaneHost';
+import { droppedWorkspacePaths, readEditorTabTransfer } from './editorFileDrop';
+import { normalizeWorkspaceEditorContent } from './workspaceFileLoad';
+import type { WorkspaceEditorTarget } from './useWorkspaceEditorController';
+import type { WorkspaceTab } from './workspaceEditorModel';
+import styles from './EditorPanes.module.css';
 import './workspace-editor.css';
 
 export type { WorkspaceEditorMutation, WorkspaceEditorTarget } from './useWorkspaceEditorController';
+const ignoreSelection = () => {};
 
-interface WorkspaceEditorProps {
-  sessionMode?: import('../../../../shared/editor-session').EditorSessionMode;
-  onSessionRestored?: () => void;
-  active: boolean;
-  rightSidebarOpen?: boolean;
-  onToggleRightSidebar?: () => void;
-  mutation: WorkspaceEditorMutation | null;
-  target: WorkspaceEditorTarget | null;
-  onAllTabsClosed: () => void;
-  onSelectedPathChange: (path: string | null) => void;
-  onDirtyPathsChange?: (paths: string[]) => void;
-  onOpenLocalHistory?: (path: string) => void;
-  onShowLineCommit: (request: GitLineBlameRequest) => void;
-}
-
-export function WorkspaceEditor({
-  sessionMode,
-  onSessionRestored,
-  active,
-  rightSidebarOpen = false,
-  onToggleRightSidebar,
-  mutation,
-  target,
-  onAllTabsClosed,
-  onSelectedPathChange,
-  onDirtyPathsChange,
-  onOpenLocalHistory,
-  onShowLineCommit,
-}: WorkspaceEditorProps) {
-  const paneVisible = useContext(WorkspacePaneVisibilityContext);
-  active = active && paneVisible;
-  const controller = useWorkspaceEditorController({
-    sessionMode,
-    onSessionRestored,
-    active,
-    mutation,
-    target,
-    onAllTabsClosed,
-    onSelectedPathChange,
-  });
-  const {
-    activeLanguageServer,
-    activeTab,
-    activateOpenTab,
-    applyPreparedWorkspaceEdit,
-    assistState,
-    changeRenameValue,
-    chooseCodeAction,
-    closeAllTabs,
-    closeAssist,
-    closeEditorSearch,
-    closeTab,
-    configureActiveLanguageServer,
-    codeExplanation,
-    conflictMessage,
-    copyTabFullPath,
-    currentFile,
-    diagnostics,
-    diagnosticsStatus,
-    editorHostRef,
-    editorSearchControls,
-    editorSearchInputRef,
-    editorSearchOpen,
-    editorSearchQueryValid,
-    errorMessage,
-    findNextMatch,
-    findPreviousMatch,
-    languageServerConfiguring,
-    openReference,
-    problemsRatio,
-    problemsVisible,
-    reloadSelectedFile,
-    reorderTab,
-    replaceAllMatches,
-    replaceNextMatch,
-    revealDiagnostic,
-    selectAllMatches,
-    selectedPath,
-    selectReference,
-    setProblemsRatio,
-    submitRename,
-    tabs,
-    updateEditorSearchControls,
-  } = controller;
-  const problemsLayout = useWorkspaceProblemsLayout(problemsRatio, active);
-  const dirtyPathKey = tabs.filter(isTabDirty).map(tab => tab.path).join('\0');
+/** Pane controllers remain mounted in stable portals as the split tree changes. */
+export function WorkspaceEditor(props: WorkspaceEditorProps) {
+  const visible = useContext(WorkspacePaneVisibilityContext);
+  const active = props.active && visible;
+  const { store, state, ready, error, setError } = useEditorPanes(props);
+  const [hosts] = useState(() => new Map<string, HTMLDivElement>());
+  const detachedFocus = useRef<HTMLElement | null>(null);
+  const onDetach = useCallback((element: HTMLElement) => { detachedFocus.current = element; }, []);
+  const [routedTarget, setRoutedTarget] = useState<{ id: string; target: WorkspaceEditorTarget } | null>(null);
   useEffect(() => {
-    onDirtyPathsChange?.(dirtyPathKey ? dirtyPathKey.split('\0') : []);
-  }, [dirtyPathKey, onDirtyPathsChange]);
-
-  const explanationToast = (
-    <WorkspaceCodeExplanationToast
-      state={codeExplanation.state}
-      selectionError={codeExplanation.selectionError}
-      onDismiss={codeExplanation.dismiss}
-    />
-  );
-
-  if (!active) return explanationToast;
-
-  return (
-    <main className="workspace-editor" aria-label="Workspace editor">
-      <TieredHeader
-        className="workspace-editor-header"
-        primaryClassName="workspace-editor-tab-row"
-        primary={(
-          <>
-            <FlatTabList aria-label="Open files" onCloseAll={closeAllTabs} onReorder={reorderTab}>
-              {tabs.map((tab) => {
-                const selected = tab.path === selectedPath;
-                return (
-                  <FlatTab
-                    active={selected}
-                    closeLabel={`Close ${tab.path}`}
-                    key={tab.path}
-                    tabId={tab.path}
-                    label={tabLabel(tab)}
-                    leading={<FileTypeIcon className="workspace-editor-tab-icon" name={tabLabel(tab)} path={tab.path} />}
-                    onActivate={() => activateOpenTab(tab.path)}
-                    onClose={() => closeTab(tab.path)}
-                    onCopyFullPath={() => void copyTabFullPath(tab.path)}
-                    onOpenLocalHistory={onOpenLocalHistory && !tab.sourceExcerpt && tab.file.fileKind === 'text'
-                      ? () => onOpenLocalHistory(tab.path) : undefined}
-                    style={nonDraggableWindowRegionStyle}
-                    title={tab.path}
-                    trailing={isTabDirty(tab) && (
-                      <span className="workspace-editor-tab-modified" aria-label="Unsaved changes" />
-                    )}
-                  />
-                );
-              })}
-            </FlatTabList>
-            <div
-              className="workspace-editor-header-actions"
-              style={nonDraggableWindowRegionStyle}
-            >
-              <WorkspaceLayoutControls />
-            </div>
-          </>
-        )}
-        secondary={currentFile ? <WorkspaceEditorFileToolbar controller={controller} onOpenLocalHistory={onOpenLocalHistory}
-          rightSidebarOpen={rightSidebarOpen} onToggleRightSidebar={onToggleRightSidebar} /> : undefined}
-        tertiary={editorSearchOpen && currentFile?.fileKind === 'text' ? (
-          <WorkspaceEditorSearchPanel
-            controls={editorSearchControls}
-            inputRef={editorSearchInputRef}
-            queryValid={editorSearchQueryValid}
-            onChange={updateEditorSearchControls}
-            onNext={findNextMatch}
-            onPrevious={findPreviousMatch}
-            onSelectAll={selectAllMatches}
-            onReplace={replaceNextMatch}
-            onReplaceAll={replaceAllMatches}
-            onClose={closeEditorSearch}
-          />
-        ) : undefined}
-        style={draggableWindowRegionStyle}
-      />
-
-      {errorMessage && (
-        <div className="workspace-editor-error" role="alert">
-          <AlertTriangle aria-hidden="true" />
-          <span>{errorMessage}</span>
-        </div>
-      )}
-
-      {conflictMessage && (
-        <div className="workspace-editor-conflict" role="alert">
-          <AlertTriangle aria-hidden="true" />
-          <span>{conflictMessage}</span>
-          <NeumorphicButton
-            variant="standard"
-            onClick={reloadSelectedFile}
-          >
-            Reload from disk
-          </NeumorphicButton>
-        </div>
-      )}
-
-      <section
-        ref={problemsLayout.stageRef}
-        className="workspace-editor-stage"
-        data-problems-open={currentFile?.fileKind === 'text' ? String(problemsVisible) : undefined}
-        aria-label={currentFile ? `Editor for ${currentFile.path}` : 'Editor canvas'}
-        style={currentFile?.fileKind === 'text' ? workspaceProblemsStageStyle(problemsLayout.ratio, problemsVisible) : undefined}
-      >
-        {currentFile?.fileKind === 'text' ? (
-          <>
-            <div ref={editorHostRef} className="workspace-editor-host" {...codeExplanation.hostHandlers} />
-            <WorkspaceProblemsResizer
-              ratio={problemsLayout.ratio}
-              onRatioChange={setProblemsRatio}
-            />
-            <WorkspaceProblemsPanel
-              open={problemsVisible}
-              content={activeTab?.draftContent ?? ''}
-              diagnostics={diagnostics}
-              filePath={currentFile.path}
-              languageServer={activeLanguageServer}
-              languageServerConfiguring={languageServerConfiguring}
-              status={diagnosticsStatus}
-              onConfigureLanguageServer={(mode) => void configureActiveLanguageServer(mode)}
-              onSelectDiagnostic={revealDiagnostic}
-            />
-          </>
-        ) : activeTab?.sourceExcerpt ? (
-          <div className="workspace-editor-source-excerpt">
-            <div className="workspace-editor-source-excerpt-notice" role="note">
-              <FileText aria-hidden="true" />
-              <span>
-                Read-only definition excerpt · lines {activeTab.sourceExcerpt.startLine}–{activeTab.sourceExcerpt.endLine}
-              </span>
-            </div>
-            <div ref={editorHostRef} className="workspace-editor-host" {...codeExplanation.hostHandlers} />
-          </div>
-        ) : currentFile?.fileKind === 'image' ? (
-          <div className="workspace-editor-preview">
-            {activeTab?.previewDataUrl
-              ? <img src={activeTab.previewDataUrl} alt={currentFile.path} />
-              : <p>Image preview is unavailable for files larger than the preview limit.</p>}
-          </div>
-        ) : currentFile ? (
-          <div className="workspace-editor-empty">
-            <span className="workspace-editor-empty-mark">
-              <AlertTriangle aria-hidden="true" />
-            </span>
-            <strong>{currentFile.fileKind === 'too_large' ? 'File is too large to edit' : 'Binary file'}</strong>
-            <p>{currentFile.path} · {formatBytes(currentFile.size)}</p>
-          </div>
-        ) : (
-          <div className="workspace-editor-empty">
-            <span className="workspace-editor-empty-mark">
-              <FileCode2 aria-hidden="true" />
-            </span>
-            <strong>Choose a file</strong>
-            <p>Open a file from the Explorer to inspect or edit it.</p>
-          </div>
-        )}
-        {assistState && (
-          <WorkspaceEditorAssistPanel
-            state={assistState}
-            onApplyEdit={() => void applyPreparedWorkspaceEdit()}
-            onChooseAction={chooseCodeAction}
-            onClose={closeAssist}
-            onOpenReference={openReference}
-            onRenameChange={changeRenameValue}
-            onRenameSubmit={() => void submitRename()}
-            onSelectReference={selectReference}
-          />
-        )}
-      </section>
-      {codeExplanation.menu && (
-        <WorkspaceCodeExplanationMenu
-          target={codeExplanation.menu}
-          onClose={codeExplanation.closeMenu}
-          onExplain={codeExplanation.explainSelection}
-          onShowLineCommit={() => codeExplanation.showLineCommit(onShowLineCommit)}
-        />
-      )}
-      {explanationToast}
-    </main>
-  );
+    if (props.target && active && ready) setRoutedTarget({ id: store.getSnapshot().activeId, target: props.target });
+  }, [props.target, active, ready, store]);
+  for (const id of Object.keys(state.groups)) {
+    if (!hosts.has(id)) {
+      const host = document.createElement('div');
+      host.className = styles.host ?? '';
+      hosts.set(id, host);
+    }
+    hosts.get(id)!.dataset.active = String(id === state.activeId);
+  }
+  useEffect(() => {
+    for (const id of hosts.keys()) if (!state.groups[id]) hosts.delete(id);
+  }, [hosts, state.groups]);
+  useLayoutEffect(() => {
+    const previous = detachedFocus.current;
+    detachedFocus.current = null;
+    if (previous?.isConnected && document.activeElement === document.body) previous.focus({ preventScroll: true });
+  });
+  const dropSequence = useRef(0);
+  useEffect(() => () => { dropSequence.current++; }, []);
+  useEffect(() => { if (!active) dropSequence.current++; }, [active]);
+  const receive = useCallback((data: DataTransfer, target: string, direction: SplitPaneDirection | null) => {
+    const transfer = readEditorTabTransfer(data);
+    const sequence = ++dropSequence.current;
+    if (transfer) {
+      const tab = store.getSnapshot().groups[transfer.paneId]?.tabs.find(t => t.path === transfer.path);
+      if (tab) store.place(tab, target, direction, transfer.paneId);
+      return;
+    }
+    if (!cheshiDesktop) return;
+    const paths = droppedWorkspacePaths(data, cheshiDesktop.workspaceRoot);
+    if (!paths.length) return;
+    const busyId = `drop-${sequence}`;
+    store.setBusy(busyId, true);
+    void (async () => {
+      let destination = target;
+      for (const path of paths) {
+        let tab = store.allTabs().find(t => t.path === path);
+        if (!tab) {
+          const response = await cheshiDesktop!.readWorkspaceFile(path);
+          const content = normalizeWorkspaceEditorContent(response.content ?? '');
+          tab = { path, file: response.file, savedContent: content, draftContent: content,
+            previewDataUrl: response.dataUrl, sourceExcerpt: null, conflictMessage: null,
+            loadGeneration: ++store.nextGeneration.current } satisfies WorkspaceTab;
+        }
+        if (sequence !== dropSequence.current || !store.getSnapshot().groups[destination]) return;
+        const placed = store.place(tab, destination, direction);
+        if (!placed) return;
+        destination = placed;
+        direction = null;
+      }
+      setError('');
+    })().catch((reason: unknown) => {
+      if (sequence === dropSequence.current) setError(String(reason));
+    }).finally(() => store.setBusy(busyId, false));
+  }, [store, setError]);
+  return <div className={styles.root} style={!active ? { display: 'none' } : undefined}>
+    {error && <p role="alert">{error}</p>}
+    <SplitPaneLayout layout={state.layout} onResizeSplit={store.resize} resizeLabel="Resize editor panes"
+      renderPane={id => <EditorPaneHost host={hosts.get(id)!} id={id} onDetach={onDetach} onDrop={receive} />} />
+    {Object.keys(state.groups).map(id => createPortal(
+      <WorkspaceEditorPane {...props} active={active} pane={{ store, id, ready }}
+        target={routedTarget?.id === id ? routedTarget.target : null}
+        onSelectedPathChange={ignoreSelection} onDirtyPathsChange={undefined}
+        onAllTabsClosed={() => {
+          store.closeEmpty(id);
+          if (store.allTabs().length === 0) props.onAllTabsClosed();
+        }} />,
+      hosts.get(id)!, id))}
+  </div>;
 }

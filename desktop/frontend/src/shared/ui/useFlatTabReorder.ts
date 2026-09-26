@@ -1,15 +1,25 @@
-import { useRef, useState, type DragEvent } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 
 export type TabDropSide = 'before' | 'after';
 export type ReorderTab = (source: string, target: string, side: TabDropSide) => void;
 
-export function useFlatTabReorder(onReorder?: ReorderTab) {
+export function useFlatTabReorder(onReorder?: ReorderTab, onStart?: (event: DragEvent<HTMLElement>, id: string) => void) {
   const sourceRef = useRef<string | null>(null);
   const [target, setTarget] = useState<{ id: string; side: TabDropSide } | null>(null);
   const finish = () => {
     sourceRef.current = null;
     setTarget(null);
   };
+  useEffect(() => {
+    document.addEventListener('dragend', finish);
+    document.addEventListener('drop', finish);
+    window.addEventListener('blur', finish);
+    return () => {
+      document.removeEventListener('dragend', finish);
+      document.removeEventListener('drop', finish);
+      window.removeEventListener('blur', finish);
+    };
+  }, []);
   const sideAt = (event: DragEvent<HTMLElement>): TabDropSide => {
     const bounds = event.currentTarget.getBoundingClientRect();
     return event.clientX < bounds.left + bounds.width / 2 ? 'before' : 'after';
@@ -23,6 +33,7 @@ export function useFlatTabReorder(onReorder?: ReorderTab) {
       sourceRef.current = id;
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('application/x-cheshi-tab', id);
+      onStart?.(event, id);
     },
     over(event: DragEvent<HTMLElement>, id: string) {
       if (!onReorder || sourceRef.current === null) return;
