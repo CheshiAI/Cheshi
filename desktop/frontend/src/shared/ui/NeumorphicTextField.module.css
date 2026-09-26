@@ -14,6 +14,29 @@
   height: auto;
 }
 
+.field[data-variant='standard'] {
+  --field-height: 32px;
+  --field-font-size: var(--font-size-label);
+  --field-font-weight: 400;
+  --field-placeholder-opacity: .4;
+  position: relative;
+  overflow: clip;
+  border: none;
+  border-radius: 999px;
+  background: var(--control-surface);
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+  transition: background-color var(--button-transition-duration) ease;
+}
+
+.field[data-variant='standard']:not([data-disabled='true']):is(:hover, :active, :focus-within) {
+  background: var(--control-surface-interactive);
+}
+
+.field[data-variant='standard'] .control {
+  cursor: text;
+}
+
 .field[data-disabled='true'] {
   opacity: var(--field-disabled-opacity);
   pointer-events: none;
@@ -71,4 +94,10 @@
 .control::-webkit-search-cancel-button {
   appearance: none;
   display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field[data-variant='standard'] {
+    transition: none;
+  }
 }

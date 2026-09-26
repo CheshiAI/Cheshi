@@ -3,6 +3,7 @@
   --editor-text: #e7e7e7;
   --editor-muted: #929497;
   --editor-accent: #3d5569;
+  --editor-cursor: #18A9CF;
   --editor-border: var(--divider);
   --editor-gutter-surface: transparent;
   --editor-active-line: rgba(133, 201, 192, .07);
@@ -43,7 +44,6 @@
   --editor-completion-file-color: #6d9eaa;
   --editor-search-button-size: 26px;
   --editor-search-icon-size: 13px;
-  --editor-search-button-radius: 6px;
   --editor-disabled-opacity: .42;
   --editor-breadcrumb-height: 28px;
   --editor-badge-height: 14px;

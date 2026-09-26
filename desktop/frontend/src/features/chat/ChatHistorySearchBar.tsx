@@ -21,14 +21,14 @@ export function ChatHistorySearchBar({ query, disabled, onQueryChange, onSubmit,
       event.preventDefault();
       if (!disabled && query.trim()) onSubmit();
     }}>
-    <NeumorphicTextField ref={inputRef} className={styles.searchField} type="search"
+    <NeumorphicTextField variant="standard" ref={inputRef} className={styles.searchField} type="search"
       value={query} maxLength={500} disabled={disabled} placeholder="Search…"
       aria-label={searchDescription} title={searchDescription}
       onFocus={onFocus} onChange={(event) => onQueryChange(event.target.value)}
       onKeyDown={(event) => {
         if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault();
       }}
-      trailingAction={query ? <SearchClearButton aria-label="Clear search" title="Clear search" disabled={disabled}
+      trailingAction={query ? <SearchClearButton variant="ghost" aria-label="Clear search" title="Clear search" disabled={disabled}
         onClick={() => {
           onQueryChange('');
           inputRef.current?.focus();

@@ -56,6 +56,7 @@ export function WorkspaceEditorAssistPanel({
   onSelectReference,
 }: WorkspaceEditorAssistPanelProps) {
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const sharedPopup = state.kind === 'references' || state.kind === 'actions' || state.kind === 'rename';
   const selectedReference = state.kind === 'references'
     ? state.locations[state.selectedIndex]
     : undefined;
@@ -65,11 +66,12 @@ export function WorkspaceEditorAssistPanel({
     onRenameSubmit();
   };
 
-  return (
+  const panel = (
     <LiquidGlassPanel
       as="section"
       aria-label={assistTitle(state)}
       className="workspace-editor-assist"
+      data-kind={state.kind}
       data-liquid-glass-backdrop="true"
       role="dialog"
       onKeyDown={(event) => {
@@ -82,9 +84,12 @@ export function WorkspaceEditorAssistPanel({
         <AssistIcon state={state} />
         <strong>{assistTitle(state)}</strong>
         <NeumorphicButton
-          raised
+          raised={!sharedPopup}
+          variant={sharedPopup ? 'standard' : undefined}
+          size={sharedPopup ? 'icon' : undefined}
           aria-label="Close editor assistant"
-          className="workspace-editor-assist-close"
+          title="Close editor assistant"
+          className={sharedPopup ? undefined : 'workspace-editor-assist-close'}
           onClick={onClose}
         >
           <X aria-hidden="true" />
@@ -108,7 +113,8 @@ export function WorkspaceEditorAssistPanel({
               </li>
             ))}
           </ol>
-          <div className="workspace-editor-reference-preview">
+          <div className="workspace-editor-reference-preview"
+            data-empty={!state.previewLoading && !state.preview ? 'true' : undefined}>
             {state.previewLoading ? (
               <LoaderCircle className="workspace-editor-spinner" aria-label="Loading reference preview" />
             ) : state.preview ? (
@@ -127,7 +133,7 @@ export function WorkspaceEditorAssistPanel({
                 })}
               </pre>
             ) : (
-              <span>Source preview is unavailable.</span>
+              <span className="workspace-editor-reference-empty">Source preview is unavailable.</span>
             )}
           </div>
           {selectedReference && (
@@ -178,6 +184,7 @@ export function WorkspaceEditorAssistPanel({
         <form className="workspace-editor-rename" onSubmit={submitRename}>
           <label htmlFor="workspace-editor-rename-input">New symbol name</label>
           <NeumorphicTextField
+            variant="standard"
             autoFocus
             ref={renameInputRef}
             id="workspace-editor-rename-input"
@@ -187,6 +194,7 @@ export function WorkspaceEditorAssistPanel({
             onChange={(event) => onRenameChange(event.target.value)}
             trailingAction={state.value ? (
               <SearchClearButton
+                variant="ghost"
                 aria-label="Clear symbol name"
                 onClick={() => {
                   onRenameChange('');
@@ -196,8 +204,7 @@ export function WorkspaceEditorAssistPanel({
             ) : undefined}
           />
           <NeumorphicButton
-            raised
-            className="neumorphic-surface"
+            variant="standard"
             disabled={!state.value || state.submitting}
             type="submit"
           >
@@ -246,4 +253,7 @@ export function WorkspaceEditorAssistPanel({
       )}
     </LiquidGlassPanel>
   );
+  return sharedPopup
+    ? <div className="workspace-editor-assist-popup-anchor">{panel}</div>
+    : panel;
 }

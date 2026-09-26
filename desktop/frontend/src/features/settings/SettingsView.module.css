@@ -47,25 +47,6 @@
 @media (prefers-reduced-motion: reduce) { .toggle > span { transition: none; } }
 .form p { margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
 .keyRow { display: grid; min-height: 36px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--icon-default); }
-.keyRow .keyField[data-raised='true'] {
-  --field-height: 32px;
-  --field-radius: 999px;
-  --field-font-size: 11px;
-  --field-font-weight: 400;
-  --field-placeholder-opacity: .4;
-  --key-field-background: rgba(41, 52, 61, .4);
-  --neumorphic-button-surface: var(--key-field-background);
-  --neumorphic-button-hover-background: var(--key-field-background);
-  --neumorphic-button-active-color: var(--text);
-  --button-active-transform: none;
-  box-sizing: border-box;
-  border: none;
-  color: var(--text);
-}
-.keyRow .keyField[data-raised='true']:not([data-disabled='true']):is(:hover, :active, :focus-within) {
-  --key-field-background: rgba(41, 52, 61, .8);
-}
-.keyField input { cursor: text; }
 .actions { display: flex; align-items: center; gap: var(--icon-default); }
 .actions .circleButton[data-size='icon'] {
   --neumorphic-button-surface: rgba(41, 52, 61, .4);

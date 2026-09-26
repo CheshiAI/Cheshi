@@ -10,11 +10,11 @@ interface TextFieldLayoutProps {
 }
 
 type NeumorphicTextFieldProps = TextFieldLayoutProps & (
-  | (Omit<InputHTMLAttributes<HTMLInputElement>, 'children'> & { multiline?: false; ref?: Ref<HTMLInputElement> })
-  | (Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'children'> & { multiline: true; ref?: Ref<HTMLTextAreaElement> })
+  | (Omit<InputHTMLAttributes<HTMLInputElement>, 'children'> & { multiline?: false; variant?: 'standard'; ref?: Ref<HTMLInputElement> })
+  | (Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'children'> & { multiline: true; variant?: never; ref?: Ref<HTMLTextAreaElement> })
 );
 
-export function NeumorphicTextField({ className, fitPlaceholder = false, trailingAction, ...props }: NeumorphicTextFieldProps) {
+export function NeumorphicTextField({ className, fitPlaceholder = false, trailingAction, variant, ...props }: NeumorphicTextFieldProps) {
   let control: ReactNode;
   if (props.multiline) {
     const { multiline, ref, ...nativeProps } = props;
@@ -25,20 +25,22 @@ export function NeumorphicTextField({ className, fitPlaceholder = false, trailin
   }
 
   const sizeToPlaceholder = fitPlaceholder && !props.multiline;
-  return (
-    <NeumorphicSurface
-      as="span"
-      raised
-      highlightFocus
-      className={className ? `${styles.field} ${className}` : styles.field}
-      data-multiline={props.multiline ? 'true' : undefined}
-      data-fit-placeholder={sizeToPlaceholder ? 'true' : undefined}
-      data-trailing-action={trailingAction ? 'true' : undefined}
-      data-disabled={props.disabled ? 'true' : undefined}
-    >
+  const surfaceProps = {
+    className: className ? `${styles.field} ${className}` : styles.field,
+    'data-variant': variant,
+    'data-multiline': props.multiline ? 'true' : undefined,
+    'data-fit-placeholder': sizeToPlaceholder ? 'true' : undefined,
+    'data-trailing-action': trailingAction ? 'true' : undefined,
+    'data-disabled': props.disabled ? 'true' : undefined,
+  };
+  const content = (
+    <>
       {sizeToPlaceholder && <span className={styles.sizingText} aria-hidden="true">{props.placeholder}</span>}
       {control}
       {trailingAction}
-    </NeumorphicSurface>
+    </>
   );
+  return variant === 'standard'
+    ? <span {...surfaceProps}>{content}</span>
+    : <NeumorphicSurface as="span" raised highlightFocus {...surfaceProps}>{content}</NeumorphicSurface>;
 }

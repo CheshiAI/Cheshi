@@ -69,6 +69,7 @@ export function WorkspaceEditorSearchPanel({
       <div className="workspace-editor-search-row">
         <Search aria-hidden="true" />
         <NeumorphicTextField
+          variant="standard"
           ref={inputRef}
           className="workspace-editor-search-input"
           name="search"
@@ -79,6 +80,7 @@ export function WorkspaceEditorSearchPanel({
           onKeyDown={handleSearchKeyDown}
           trailingAction={controls.search ? (
             <SearchClearButton
+              variant="ghost"
               aria-label="Clear find text"
               onClick={() => {
                 onChange({ search: '' });
@@ -87,31 +89,32 @@ export function WorkspaceEditorSearchPanel({
             />
           ) : undefined}
         />
-        <NeumorphicButton active={controls.caseSensitive} className="neumorphic-surface workspace-editor-search-option" aria-label="Match case" aria-pressed={controls.caseSensitive} onClick={() => onChange({ caseSensitive: !controls.caseSensitive })}>
+        <NeumorphicButton variant="ghost" size="icon" active={controls.caseSensitive} aria-label="Match case" title="Match case" aria-pressed={controls.caseSensitive} onClick={() => onChange({ caseSensitive: !controls.caseSensitive })}>
           <CaseSensitive aria-hidden="true" />
         </NeumorphicButton>
-        <NeumorphicButton active={controls.wholeWord} className="neumorphic-surface workspace-editor-search-option" aria-label="Match whole word" aria-pressed={controls.wholeWord} onClick={() => onChange({ wholeWord: !controls.wholeWord })}>
+        <NeumorphicButton variant="ghost" size="icon" active={controls.wholeWord} aria-label="Match whole word" title="Match whole word" aria-pressed={controls.wholeWord} onClick={() => onChange({ wholeWord: !controls.wholeWord })}>
           <WholeWord aria-hidden="true" />
         </NeumorphicButton>
-        <NeumorphicButton active={controls.regexp} className="neumorphic-surface workspace-editor-search-option" aria-label="Use regular expression" aria-pressed={controls.regexp} onClick={() => onChange({ regexp: !controls.regexp })}>
+        <NeumorphicButton variant="ghost" size="icon" active={controls.regexp} aria-label="Use regular expression" title="Use regular expression" aria-pressed={controls.regexp} onClick={() => onChange({ regexp: !controls.regexp })}>
           <Regex aria-hidden="true" />
         </NeumorphicButton>
-        <NeumorphicButton className="neumorphic-surface workspace-editor-search-option" aria-label="Previous match" disabled={!queryValid} onClick={onPrevious}>
+        <NeumorphicButton variant="ghost" size="icon" aria-label="Previous match" title="Previous match" disabled={!queryValid} onClick={onPrevious}>
           <ChevronUp aria-hidden="true" />
         </NeumorphicButton>
-        <NeumorphicButton className="neumorphic-surface workspace-editor-search-option" aria-label="Next match" disabled={!queryValid} onClick={onNext}>
+        <NeumorphicButton variant="ghost" size="icon" aria-label="Next match" title="Next match" disabled={!queryValid} onClick={onNext}>
           <ChevronDown aria-hidden="true" />
         </NeumorphicButton>
-        <NeumorphicButton className="neumorphic-surface workspace-editor-search-option" aria-label="Select all matches" disabled={!queryValid} onClick={onSelectAll}>
+        <NeumorphicButton variant="ghost" aria-label="Select all matches" disabled={!queryValid} onClick={onSelectAll}>
           <span aria-hidden="true">All</span>
         </NeumorphicButton>
-        <NeumorphicButton className="neumorphic-surface workspace-editor-search-option workspace-editor-search-close" aria-label="Close find and replace" onClick={onClose}>
+        <NeumorphicButton variant="ghost" size="icon" className="workspace-editor-search-close" aria-label="Close find and replace" title="Close find and replace" onClick={onClose}>
           <X aria-hidden="true" />
         </NeumorphicButton>
       </div>
       <div className="workspace-editor-search-row">
         <Replace aria-hidden="true" />
         <NeumorphicTextField
+          variant="standard"
           className="workspace-editor-search-input"
           name="replace"
           value={controls.replace}
@@ -125,11 +128,11 @@ export function WorkspaceEditorSearchPanel({
             }
           }}
         />
-        <NeumorphicButton className="neumorphic-surface workspace-editor-search-action" disabled={!queryValid} onClick={onReplace}>
+        <NeumorphicButton variant="ghost" disabled={!queryValid} onClick={onReplace}>
           <Replace aria-hidden="true" />
           Replace
         </NeumorphicButton>
-        <NeumorphicButton className="neumorphic-surface workspace-editor-search-action" disabled={!queryValid} onClick={onReplaceAll}>
+        <NeumorphicButton variant="ghost" disabled={!queryValid} onClick={onReplaceAll}>
           <ReplaceAll aria-hidden="true" />
           Replace all
         </NeumorphicButton>

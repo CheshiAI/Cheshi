@@ -98,7 +98,7 @@ export function SettingsView({ api = cheshiDesktop?.settings }: { api?: Settings
               </div>}
             </div>
             <div className={styles.keyRow}>
-              <NeumorphicTextField className={styles.keyField} aria-label="TypeSafe API key" type="password" autoComplete="new-password" spellCheck={false}
+              <NeumorphicTextField variant="standard" aria-label="TypeSafe API key" type="password" autoComplete="new-password" spellCheck={false}
                 value={key} maxLength={4096} disabled={keyBusy || !state?.canSave} placeholder={state?.source === 'saved' ? 'Enter a replacement key' : 'Enter your TypeSafe API key'}
                 onChange={event => { setKey(event.target.value); setNotice(null); setError(null); }} />
               <div className={styles.actions}>

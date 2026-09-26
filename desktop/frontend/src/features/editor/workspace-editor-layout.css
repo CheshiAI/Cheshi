@@ -145,7 +145,6 @@
 .workspace-editor-unsaved-label { color: var(--editor-modified-color); }
 .workspace-editor-conflict-label { color: var(--editor-problem-syntax); }
 
-.workspace-editor-search-action,
 .workspace-editor-conflict-reload {
   --neumorphic-button-radius: var(--radius-control);
   display: inline-flex;
@@ -171,14 +170,7 @@
   stroke-width: var(--icon-button-stroke-width);
 }
 
-.workspace-editor-search-action svg {
-  width: var(--editor-search-icon-size);
-  height: var(--editor-search-icon-size);
-}
-
-.workspace-editor-action:disabled,
-.workspace-editor-search-option:disabled,
-.workspace-editor-search-action:disabled {
+.workspace-editor-action:disabled {
   cursor: default;
   opacity: var(--editor-disabled-opacity);
 }

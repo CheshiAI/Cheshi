@@ -572,9 +572,25 @@ h1, h2, h3, h4, h5, h6, p {
     background: var(--divider);
 }
 
+.workspace-file-context-menu-anchor {
+    --panel-backdrop-blur: 16px;
+    --liquid-glass-radius: 12px;
+}
+
+.workspace-file-context-menu-anchor::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: var(--liquid-glass-radius);
+    background: rgba(0, 0, 0, 0.01);
+    -webkit-backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
+    backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
+    pointer-events: none;
+}
+
 .workspace-file-context-menu {
-    --panel-backdrop-blur: 32px;
-    background: rgba(0, 0, 0, 0.75);
+    background: rgba(0, 0, 0, 0.01);
 }
 
 .liquid-glass-context-menu button:hover, .liquid-glass-context-menu button:focus-visible, .workspace-file-context-menu button:hover, .workspace-file-context-menu button:focus-visible {

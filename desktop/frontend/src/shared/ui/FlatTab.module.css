@@ -33,8 +33,11 @@
 
 .tab:hover,
 .tab[data-active='true'] {
-  background: var(--dropdown-selection-bg);
   color: var(--dropdown-selection-text);
+}
+
+.tab:hover {
+  background: var(--control-surface-interactive);
 }
 
 .trigger {
@@ -87,10 +90,6 @@
 .tab[data-active='true'] .close,
 .tab:hover .close {
   visibility: visible;
-}
-
-.tab[data-active='true'] {
-  background: transparent;
 }
 
 .tab[data-active='true']::after {

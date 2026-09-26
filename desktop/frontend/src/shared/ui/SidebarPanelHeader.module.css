@@ -13,7 +13,7 @@
   align-items: center;
 }
 
-.title { gap: 10px; }
+.title { gap: 10px; margin: 0; }
 .actions {
   gap: var(--icon-default);
   -webkit-app-region: no-drag;

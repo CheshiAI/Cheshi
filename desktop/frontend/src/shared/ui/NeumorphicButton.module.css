@@ -121,8 +121,67 @@
 }
 .button[data-size]:disabled { cursor: not-allowed; opacity: .5; }
 
+.control {
+  appearance: none;
+  display: inline-flex;
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: var(--icon-default);
+  padding: 0 var(--space-default);
+  border: none;
+  border-radius: var(--button-radius);
+  background: var(--control-surface);
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-label);
+  font-weight: 400;
+  line-height: 16px;
+  cursor: pointer;
+  transition: background-color var(--button-transition-duration) ease;
+}
+
+.control[data-variant='ghost'] {
+  background: var(--control-surface-ghost);
+}
+
+.control:not(:disabled):is(:hover, :active, [data-active='true'], [aria-pressed='true'], [aria-expanded='true']) {
+  background: var(--control-surface-interactive);
+}
+
+.control > svg {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 auto;
+  color: inherit;
+}
+
+.control[data-size='icon'] {
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  min-height: var(--icon-button-size);
+  padding: 0;
+  border-radius: 50%;
+  outline: none;
+}
+
+.control[data-size='icon'] > svg {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  stroke-width: var(--icon-button-stroke-width);
+}
+
+.control:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .button {
+  .button,
+  .control {
     transition: none;
   }
 }

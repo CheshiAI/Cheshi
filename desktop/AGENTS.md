@@ -89,30 +89,49 @@ Provide the Standard and Ghost styles through shared circle-button components
 and reuse those components. Controls with separate specifications, including
 switches and tab-close buttons, follow their own standards.
 
+## Shared popup backgrounds
+
+Use this default background for all popups, including dropdown menus,
+autocomplete popups, Git line-change information cards, and tooltips.
+These rules describe the popup surface; item hover, selection, and pressed
+backgrounds follow their control-specific rules independently.
+
+### Layered background
+
+- Keep two layers: a rear decorative background and the foreground popup panel.
+- Apply `rgba(0, 0, 0, 0.01)` to each layer independently.
+- Apply `backdrop-filter: blur(16px) saturate(var(--panel-backdrop-saturation))`
+  and its `-webkit-` equivalent to both layers. Set `--panel-backdrop-blur: 16px`
+  on the popup anchor; retain the shared saturation token (currently `88%`).
+- Use the anchor's `::before` for the rear layer, normally with `inset: 0`,
+  `z-index: -1`, and `pointer-events: none`. Keep it behind the foreground
+  panel while allowing both layers to sample the page independently.
+- Use `LiquidGlassPanel` for the foreground panel. Its `role="menu"`,
+  `role="listbox"`, or `data-liquid-glass-backdrop="true"` enables the shared
+  backdrop effect. Preserve the correct accessibility role for each popup;
+  use the data attribute for tooltips. Retain the shared
+  `1px solid var(--divider)` border.
+- Match both layers' radius with
+  `var(--liquid-glass-radius, var(--panel-radius))`.
+- Apply translucency to background colors, not the entire popup's `opacity`.
+  Keep text and icons sharp; do not apply `filter: blur()` to popup contents.
+- Keep the overlay in the existing HTML portal. Do not introduce a separate
+  native window for this effect.
+
+CodeMirror popups retain their existing DOM and positioning. Reuse the shared
+panel CSS through the foreground surface installed by
+[workspaceEditorTooltips](frontend/src/features/editor/workspaceEditorTooltips.ts).
+Preserve its border-aligned `inset: -1px` layers and rear/foreground z-indexes
+of `-2`/`-1`, defined in
+[workspaceEditorTheme](frontend/src/features/editor/workspaceEditorTheme.ts).
+
 ## Dropdown menu styles
 
 Use a dropdown menu for actions such as File actions. A Select chooses a value;
 keep its selection semantics separate from action menus (`menu` / `menuitem`).
 Reuse [ToolbarMenu](frontend/src/shared/ui/ToolbarMenu.tsx) and its
 [styles](frontend/src/shared/ui/ToolbarMenu.module.css) for toolbar action menus.
-
-### Layered background
-
-- Keep two layers: a rear decorative background and the foreground menu panel.
-- Apply `rgba(0, 0, 0, 0.01)` to each layer independently.
-- Apply `backdrop-filter: blur(16px) saturate(var(--panel-backdrop-saturation))`
-  and its `-webkit-` equivalent to both layers. Set `--panel-backdrop-blur: 16px`
-  on the menu anchor; retain the shared saturation token (currently `88%`).
-- Use the anchor's `::before` for the rear layer, with `inset: 0`, `z-index: -1`,
-  and `pointer-events: none`, inside the anchor's stacking context.
-- Use `LiquidGlassPanel` for the foreground menu. Its `role="menu"` supplies
-  the shared backdrop effect; retain its `1px solid var(--divider)` border.
-- Match both layers' radius with
-  `var(--liquid-glass-radius, var(--panel-radius))`.
-- Apply translucency to background colors, not the entire menu's `opacity`.
-  Keep text and icons sharp; do not apply `filter: blur()` to menu contents.
-- Keep the overlay in the existing HTML portal. Do not introduce a separate
-  native window for this effect.
+Apply the [shared popup backgrounds](#shared-popup-backgrounds) above.
 
 ### Menu contents
 

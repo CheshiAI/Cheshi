@@ -1,8 +1,13 @@
-.button[data-raised='true'] {
-  --neumorphic-button-radius: 50%;
+.button[data-raised='true'],
+.button[data-variant] {
   position: absolute;
   top: 50%;
   right: var(--icon-default);
+  translate: 0 -50%;
+}
+
+.button[data-raised='true'] {
+  --neumorphic-button-radius: 50%;
   display: grid;
   width: var(--compact-icon-button-size);
   height: var(--compact-icon-button-size);
@@ -10,10 +15,9 @@
   color: var(--search-clear-color, var(--neumorphic-button-active-color));
   cursor: pointer;
   padding: 0;
-  translate: 0 -50%;
 }
 
-.button:focus-visible {
+.button:not([data-variant]):focus-visible {
   outline: var(--focus-outline-width) solid var(--flat-tab-accent, var(--dropdown-selection-text));
   outline-offset: var(--focus-outline-inset);
 }

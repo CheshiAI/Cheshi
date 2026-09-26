@@ -33,6 +33,41 @@
   padding: 0 var(--space-default);
 }
 
+.workspace-editor-assist-popup-anchor {
+  --panel-backdrop-blur: 16px;
+  --liquid-glass-radius: var(--radius-panel);
+  position: absolute;
+  z-index: 20;
+  top: var(--space-default);
+  right: var(--space-default);
+  display: flex;
+  flex-direction: column;
+  width: min(680px, calc(100% - 32px));
+  max-height: min(620px, calc(100% - 32px));
+}
+
+.workspace-editor-assist-popup-anchor::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--liquid-glass-radius);
+  background: rgba(0, 0, 0, 0.01);
+  -webkit-backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
+  backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
+  pointer-events: none;
+}
+
+.workspace-editor-assist-popup-anchor > .workspace-editor-assist {
+  position: relative;
+  top: auto;
+  right: auto;
+  width: 100%;
+  min-height: 0;
+  max-height: none;
+  background: rgba(0, 0, 0, 0.01);
+}
+
 .workspace-editor-assist-header > svg {
   width: var(--icon-size-default);
   height: var(--icon-size-default);
@@ -44,6 +79,24 @@
   flex: 1 1 auto;
   font-size: var(--font-size-small);
   font-weight: 600;
+}
+
+.workspace-editor-assist-popup-anchor .workspace-editor-assist-header {
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
+}
+
+.workspace-editor-assist-popup-anchor .workspace-editor-assist-header > svg {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  flex: 0 0 var(--icon-button-icon-size);
+}
+
+.workspace-editor-assist-popup-anchor .workspace-editor-assist-header strong {
+  font-size: var(--font-size-label);
+  font-weight: 400;
+  color: var(--text);
 }
 
 .workspace-editor-assist-close {
@@ -68,7 +121,7 @@
   outline-offset: var(--focus-outline-inset);
 }
 
-.workspace-editor-assist button:not(.neumorphic-surface) {
+.workspace-editor-assist button:not(.neumorphic-surface):not([data-variant]) {
   border: 0;
   background: transparent;
   color: inherit;
@@ -76,7 +129,7 @@
   font: inherit;
 }
 
-.workspace-editor-assist button:disabled {
+.workspace-editor-assist button:not([data-variant]):disabled {
   cursor: default;
   opacity: .48;
 }
@@ -86,8 +139,7 @@
   background: color-mix(in srgb, var(--dropdown-selection-bg) 72%, transparent);
 }
 
-.workspace-editor-assist-primary svg,
-.workspace-editor-action-list svg {
+.workspace-editor-assist-primary svg {
   width: var(--icon-size-default);
   height: var(--icon-size-default);
 }
@@ -164,6 +216,21 @@
   margin: var(--space-32) auto;
 }
 
+.workspace-editor-reference-preview[data-empty='true'] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.workspace-editor-reference-empty {
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
 .workspace-editor-reference-preview pre {
   margin: 0;
   color: var(--text);
@@ -235,15 +302,26 @@
   gap: var(--space-2);
 }
 
+.workspace-editor-action-list button > svg {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  flex: 0 0 var(--icon-button-icon-size);
+  color: var(--sidebar-section-label-color);
+}
+
 .workspace-editor-action-list strong,
 .workspace-editor-action-list small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-weight: 400;
+  letter-spacing: normal;
 }
 
-.workspace-editor-action-list strong { font-weight: 500; }
-.workspace-editor-action-list small { color: var(--editor-muted); font-size: var(--font-size-small); }
+.workspace-editor-action-list strong { font-size: var(--font-size-label); }
+.workspace-editor-action-list small { font-size: var(--font-size-small); }
 .workspace-editor-action-list em {
   flex: 0 0 auto;
   color: var(--editor-accent);
@@ -268,29 +346,15 @@
 .workspace-editor-rename label {
   grid-column: 1 / -1;
   color: var(--text);
-  font-size: var(--font-size-small);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-label);
+  font-weight: 400;
+  letter-spacing: normal;
 }
 
-.workspace-editor-assist .workspace-editor-rename > button {
-  --neumorphic-button-radius: var(--radius-control);
-  display: inline-flex;
-  height: var(--field-height);
-  min-height: var(--field-height);
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-6);
-  font-size: var(--font-size-small);
-  font-weight: 600;
-  padding: var(--space-6) var(--space-10);
-}
-
-.workspace-editor-assist .workspace-editor-rename > button:not(:disabled):hover {
-  --neumorphic-button-active-color: var(--active-text);
-}
-
-.workspace-editor-assist .workspace-editor-rename > button svg {
-  width: var(--icon-size-default);
-  height: var(--icon-size-default);
+.workspace-editor-rename > button > svg {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
 }
 
 .workspace-editor-edit-preview {

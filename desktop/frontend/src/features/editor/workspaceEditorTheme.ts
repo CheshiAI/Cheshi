@@ -35,14 +35,14 @@ export const workspaceEditorTheme = EditorView.theme({
     overflow: 'auto',
   },
   '.cm-content': {
-    caretColor: 'var(--editor-accent)',
+    caretColor: 'var(--editor-cursor)',
     padding: '0 0 var(--space-4)',
   },
   '.cm-line': {
     padding: '0 var(--editor-line-padding)',
   },
   '.cm-cursor, .cm-dropCursor': {
-    borderLeftColor: 'var(--editor-accent)',
+    borderLeftColor: 'var(--editor-cursor)',
   },
   '.cm-gutters': {
     borderRight: '1px solid var(--editor-border)',

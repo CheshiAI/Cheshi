@@ -6,14 +6,8 @@
   margin: 0;
 }
 
-.searchField[data-raised='true'] {
-  --neumorphic-button-radius: 999px;
-  --neumorphic-button-surface: var(--divider);
-  border-color: var(--divider);
-}
-
 .searchField > input {
-  padding-left: calc(22px + var(--icon-default) * 2);
+  padding-left: calc(var(--icon-button-size) + var(--icon-default) * 2);
 }
 
 .searchSubmit[data-size='icon'] {
