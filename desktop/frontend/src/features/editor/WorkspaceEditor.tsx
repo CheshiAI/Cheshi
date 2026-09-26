@@ -113,6 +113,7 @@ export function WorkspaceEditor({
     problemsRatio,
     problemsVisible,
     reloadSelectedFile,
+    reorderTab,
     replaceAllMatches,
     replaceNextMatch,
     revealDiagnostic,
@@ -147,7 +148,7 @@ export function WorkspaceEditor({
         primaryClassName="workspace-editor-tab-row"
         primary={(
           <>
-            <FlatTabList aria-label="Open files" onCloseAll={closeAllTabs}>
+            <FlatTabList aria-label="Open files" onCloseAll={closeAllTabs} onReorder={reorderTab}>
               {tabs.map((tab) => {
                 const selected = tab.path === selectedPath;
                 return (
@@ -155,6 +156,7 @@ export function WorkspaceEditor({
                     active={selected}
                     closeLabel={`Close ${tab.path}`}
                     key={tab.path}
+                    tabId={tab.path}
                     label={tabLabel(tab)}
                     leading={<FileTypeIcon className="workspace-editor-tab-icon" name={tabLabel(tab)} path={tab.path} />}
                     onActivate={() => activateOpenTab(tab.path)}

@@ -103,6 +103,25 @@
   pointer-events: none;
 }
 
+.tab[data-drop-side]::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  z-index: 1;
+  background: var(--dropdown-selection-text);
+  content: '';
+  pointer-events: none;
+}
+
+.tab[data-drop-side='before']::before {
+  left: 0;
+}
+
+.tab[data-drop-side='after']::before {
+  right: 0;
+}
+
 .trigger > svg {
   color: var(--sidebar-section-label-color);
   width: var(--tab-icon-size);

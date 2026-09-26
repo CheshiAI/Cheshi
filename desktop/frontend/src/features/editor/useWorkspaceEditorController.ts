@@ -38,6 +38,7 @@ import {
   type WorkspaceTab,
 } from './workspaceEditorModel';
 import { confirmWorkspaceTabsClose } from './workspaceTabClose';
+import { reorderWorkspaceTabs } from './workspaceTabOrder';
 import { applyWorkspaceFileSaveResult, canSaveWorkspaceTab } from './workspaceFileSave';
 import {
   canApplyWorkspaceFileLoad,
@@ -173,6 +174,10 @@ export function useWorkspaceEditorController({
       return next;
     });
   }, []);
+
+  const reorderTab = useCallback((source: string, target: string, side: 'before' | 'after') => {
+    replaceTabs(current => reorderWorkspaceTabs(current, source, target, side));
+  }, [replaceTabs]);
 
   const sessionReady = useEditorSession({ mode: sessionMode, tabs, selectedPath, nextTabGeneration,
     replaceTabs, selectPath, onSessionRestored: () => onSessionRestored?.(), onError: setErrorMessage });
@@ -688,6 +693,7 @@ export function useWorkspaceEditorController({
     problemsRatio,
     problemsVisible,
     reloadSelectedFile,
+    reorderTab,
     replaceAllMatches: () => runEditorSearchCommand(replaceAllSearchMatches),
     replaceNextMatch: () => runEditorSearchCommand(replaceNextSearchMatch),
     requestCodeActionsAtSelection,
