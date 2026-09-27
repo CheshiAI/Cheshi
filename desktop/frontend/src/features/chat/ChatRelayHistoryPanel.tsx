@@ -103,13 +103,13 @@ export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, 
       </SlidingSidePanel>
       <div ref={railRef} className={styles.rail} role="group" aria-label="Conversation panels">
         <Tooltip content="Conversation history">{(triggerProps) => (
-          <NeumorphicButton {...triggerProps} variant="ghost" size="icon" active={activePanel === 'history'} className={styles.button}
+          <NeumorphicButton {...triggerProps} variant="ghost" size="icon" active={activePanel === 'history'}
             id={`${id}-button`} aria-label="Conversation history" aria-controls={id} aria-expanded={activePanel === 'history'} onClick={toggle}>
             <History aria-hidden="true" />
           </NeumorphicButton>
         )}</Tooltip>
         {savedTurns && <Tooltip content="Saved turns">{(triggerProps) => (
-          <NeumorphicButton {...triggerProps} variant="ghost" size="icon" active={activePanel === 'saved'} className={styles.button}
+          <NeumorphicButton {...triggerProps} variant="ghost" size="icon" active={activePanel === 'saved'}
             id={`${id}-saved-button`} aria-label="Saved turns" aria-controls={`${id}-saved`} aria-expanded={activePanel === 'saved'}
             onClick={() => {
               if (activePanel !== 'saved') void savedTurns.refresh();

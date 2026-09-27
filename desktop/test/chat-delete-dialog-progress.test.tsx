@@ -53,6 +53,7 @@ function harness(kind: Kind) {
     typeof type === 'function' ? type(props) : { type, props };
   const modules: Record<string, unknown> = {
     react: {
+      useEffect() {},
       useState(initial: unknown) {
         const index = hookIndex++;
         if (index >= hooks.length) hooks[index] = initial;

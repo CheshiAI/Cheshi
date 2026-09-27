@@ -42,7 +42,7 @@ export function ChatHistoryOpenDialog({ workspace, sessionId, sessionTitle, pane
     }
   };
   return (
-    <Modal className={styles.historyDialog} title="Open conversation" titleIcon={<MessageSquareText aria-hidden="true" />}
+    <Modal className={styles.historyDialog} title="OPEN CONVERSATION" headerVariant="section" titleIcon={<MessageSquareText aria-hidden="true" />}
       closeDisabled={busy} restoreFocus={() => !completed.current} onClose={close}>
       <form className={styles.form} onSubmit={(event) => { event.preventDefault(); void open(); }}>
         <p className={styles.sessionTitle} title={sessionTitle}>{sessionTitle}</p>
@@ -61,8 +61,8 @@ export function ChatHistoryOpenDialog({ workspace, sessionId, sessionTitle, pane
         {busy && <LoadingState type={mode === 'fork' ? 'processing' : 'preparing'}
           label={mode === 'fork' ? 'Creating fork…' : 'Opening conversation…'} className={styles.openingProgress} />}
         <div className={styles.buttons}>
-          <NeumorphicButton size="standard" raised type="button" disabled={busy} onClick={close}>Cancel</NeumorphicButton>
-          <NeumorphicButton size="standard" raised type="submit" disabled={!canOpen} aria-busy={busy}>{mode === 'fork' ? 'Fork conversation' : 'Resume conversation'}</NeumorphicButton>
+          <NeumorphicButton variant="standard" type="button" disabled={busy} onClick={close}>Cancel</NeumorphicButton>
+          <NeumorphicButton variant="standard" type="submit" disabled={!canOpen} aria-busy={busy}>{mode === 'fork' ? 'Fork conversation' : 'Resume conversation'}</NeumorphicButton>
         </div>
       </form>
     </Modal>

@@ -19,7 +19,6 @@
   align-items: center; flex-direction: column; gap: var(--icon-default);
   border-left: 1px solid var(--divider); padding: var(--space-default) 0;
 }
-.rail .button[data-active='true'] { background: var(--dropdown-selection-bg); color: var(--dropdown-selection-text); }
 .list { display: flex; flex: 1; flex-direction: column; gap: var(--icon-default); min-height: 0; overflow: auto; padding: var(--space-default); }
 .record {
   display: flex; flex-direction: column; gap: var(--icon-default); flex: 0 0 auto; min-width: 0;

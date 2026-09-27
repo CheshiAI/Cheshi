@@ -42,6 +42,10 @@ export function Modal({ title, titleIcon, headerVariant = 'default', leadingActi
       ref={dialogRef}
       className={className ? `${styles.dialog} ${className}` : styles.dialog}
       aria-labelledby={titleId}
+      onKeyDown={(event) => {
+        // Portal events still bubble through the React tree to the panel behind us.
+        if (event.key === 'Escape') event.stopPropagation();
+      }}
       onCancel={(event) => {
         event.preventDefault();
         if (!closeDisabled) onClose();

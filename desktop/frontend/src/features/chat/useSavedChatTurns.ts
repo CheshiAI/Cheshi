@@ -26,28 +26,33 @@ export function useSavedChatTurns() {
   const refreshSequence = useRef(0);
   const [deleting, setDeleting] = useState(false);
   const deletingRef = useRef(false);
-  const deletedIds = useRef(new Set<string>());
 
   const accept = useCallback((incoming: ChatSavedTurn[]) => {
-    saved.current = mergeSavedChatTurns(saved.current, incoming.filter(record => !deletedIds.current.has(record.id)));
+    saved.current = mergeSavedChatTurns(saved.current, incoming);
     setRecords(saved.current);
   }, []);
 
   const refresh = useCallback(async (): Promise<void> => {
     if (deletingRef.current) return;
     const sequence = ++refreshSequence.current;
+    const beforeRefresh = new Set(saved.current);
     setLoading(true);
     setError(null);
     try {
       if (!cheshiDesktop?.listCodexSavedTurns) throw new Error('Restart Cheshi to load saved turns.');
       const next = await cheshiDesktop.listCodexSavedTurns();
-      if (mounted.current && sequence === refreshSequence.current) accept(next);
+      if (mounted.current && sequence === refreshSequence.current) {
+        // The list is authoritative except for local saves completed while it was loading.
+        const concurrentSaves = saved.current.filter(record => !beforeRefresh.has(record));
+        saved.current = mergeSavedChatTurns(next, concurrentSaves);
+        setRecords(saved.current);
+      }
     } catch (reason) {
       if (mounted.current && sequence === refreshSequence.current) setError(errorMessage(reason));
     } finally {
       if (mounted.current && sequence === refreshSequence.current) setLoading(false);
     }
-  }, [accept]);
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -70,7 +75,6 @@ export function useSavedChatTurns() {
       try {
         if (!cheshiDesktop?.saveCodexTurn) throw new Error('Restart Cheshi to save turns.');
         const record = await cheshiDesktop.saveCodexTurn(input);
-        deletedIds.current.delete(record.id);
         if (mounted.current) accept([record]);
         return true;
       } catch (reason) {
@@ -106,7 +110,6 @@ export function useSavedChatTurns() {
     setError(null);
     try {
       await operation(id);
-      deletedIds.current.add(id);
       refreshSequence.current += 1;
       saved.current = saved.current.filter(record => record.id !== id);
       if (mounted.current) { setRecords(saved.current); setLoading(false); setError(null); }
