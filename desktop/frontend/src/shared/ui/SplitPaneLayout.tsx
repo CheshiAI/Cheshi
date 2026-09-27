@@ -11,12 +11,12 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { SplitLayoutNode } from './splitPaneModel';
+import { SPLIT_SEPARATOR_TRACK_SIZE, splitPaneMinimumWidth } from './splitPaneSizing';
 import styles from './SplitPaneLayout.module.css';
 
 const MIN_SPLIT_RATIO = 0.1;
 const MAX_SPLIT_RATIO = 0.9;
 const MIN_PANE_SIZE = 120;
-const SPLIT_SEPARATOR_TRACK_SIZE = 1;
 const KEYBOARD_RATIO_STEP = 0.05;
 
 type SplitLayout = Extract<SplitLayoutNode, { type: 'split' }>;
@@ -27,22 +27,30 @@ export interface SplitPaneLayoutProps {
   onResizeSplit: (splitId: string, ratio: number) => void;
   resizeLabel?: string;
   collapsedPane?: 'first' | 'second' | null;
+  minimumPaneWidth?: number;
 }
 
 interface SplitProps extends Omit<SplitPaneLayoutProps, 'layout'> {
   layout: SplitLayout;
 }
 
-function clampSplitRatio(ratio: number, availableSize: number): number {
+function clampSplitRatio(ratio: number, availableSize: number, firstWidth = MIN_PANE_SIZE, secondWidth = MIN_PANE_SIZE): number {
+  if (availableSize > 0 && (firstWidth !== MIN_PANE_SIZE || secondWidth !== MIN_PANE_SIZE)) {
+    const minimum = Math.max(MIN_SPLIT_RATIO, firstWidth / availableSize);
+    const maximum = Math.min(MAX_SPLIT_RATIO, 1 - secondWidth / availableSize);
+    // CSS minimum tracks remain authoritative when the branch cannot shrink further.
+    return Math.max(MIN_SPLIT_RATIO, Math.min(MAX_SPLIT_RATIO,
+      minimum > maximum ? firstWidth / (firstWidth + secondWidth) : Math.min(maximum, Math.max(minimum, ratio))));
+  }
   const minimum = availableSize > 0
     ? Math.min(0.5, Math.max(MIN_SPLIT_RATIO, MIN_PANE_SIZE / availableSize))
     : MIN_SPLIT_RATIO;
   return Math.min(1 - minimum, Math.max(minimum, ratio));
 }
 
-function splitGridStyle(axis: SplitLayout['axis'], ratio: number): CSSProperties {
-  const first = `minmax(0, ${ratio}fr)`;
-  const second = `minmax(0, ${1 - ratio}fr)`;
+function splitGridStyle(axis: SplitLayout['axis'], ratio: number, firstWidth = 0, secondWidth = 0): CSSProperties {
+  const first = `minmax(${firstWidth}px, ${ratio}fr)`;
+  const second = `minmax(${secondWidth}px, ${1 - ratio}fr)`;
   return axis === 'columns'
     ? { gridTemplateColumns: `${first} ${SPLIT_SEPARATOR_TRACK_SIZE}px ${second}` }
     : { gridTemplateRows: `${first} ${SPLIT_SEPARATOR_TRACK_SIZE}px ${second}` };
@@ -54,6 +62,7 @@ function Split({
   onResizeSplit,
   resizeLabel = 'Resize panes',
   collapsedPane,
+  minimumPaneWidth,
 }: SplitProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const firstRegionRef = useRef<HTMLDivElement | null>(null);
@@ -63,6 +72,10 @@ function Split({
   const [ratio, setRatio] = useState(layout.ratio);
   const [dragging, setDragging] = useState(false);
   ratioRef.current = ratio;
+  const firstWidth = minimumPaneWidth && layout.axis === 'columns'
+    ? splitPaneMinimumWidth(layout.first, minimumPaneWidth) : undefined;
+  const secondWidth = minimumPaneWidth && layout.axis === 'columns'
+    ? splitPaneMinimumWidth(layout.second, minimumPaneWidth) : undefined;
 
   useEffect(() => {
     if (pointerIdRef.current === null) setRatio(layout.ratio);
@@ -104,8 +117,8 @@ function Split({
     const offset = layout.axis === 'columns'
       ? clientX - bounds.left - SPLIT_SEPARATOR_TRACK_SIZE / 2
       : clientY - bounds.top - SPLIT_SEPARATOR_TRACK_SIZE / 2;
-    return clampSplitRatio(offset / size, size);
-  }, [layout.axis]);
+    return clampSplitRatio(offset / size, size, firstWidth, secondWidth);
+  }, [layout.axis, firstWidth, secondWidth]);
 
   const applyRatio = useCallback((nextRatio: number): void => {
     ratioRef.current = nextRatio;
@@ -155,16 +168,19 @@ function Split({
   };
 
   const commitKeyboardRatio = (nextRatio: number): void => {
-    const clamped = clampSplitRatio(nextRatio, availableSize());
+    const clamped = clampSplitRatio(nextRatio, availableSize(), firstWidth, secondWidth);
     applyRatio(clamped);
     onResizeSplit(layout.id, clamped);
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     let nextRatio: number | null = null;
+    const size = availableSize();
+    const currentRatio = firstWidth && size > 0 && firstRegionRef.current
+      ? firstRegionRef.current.getBoundingClientRect().width / size : ratioRef.current;
     if (layout.axis === 'columns') {
-      if (event.key === 'ArrowLeft') nextRatio = ratioRef.current - KEYBOARD_RATIO_STEP;
-      if (event.key === 'ArrowRight') nextRatio = ratioRef.current + KEYBOARD_RATIO_STEP;
+      if (event.key === 'ArrowLeft') nextRatio = currentRatio - KEYBOARD_RATIO_STEP;
+      if (event.key === 'ArrowRight') nextRatio = currentRatio + KEYBOARD_RATIO_STEP;
     } else {
       if (event.key === 'ArrowUp') nextRatio = ratioRef.current - KEYBOARD_RATIO_STEP;
       if (event.key === 'ArrowDown') nextRatio = ratioRef.current + KEYBOARD_RATIO_STEP;
@@ -190,10 +206,12 @@ function Split({
       data-axis={layout.axis}
       data-dragging={dragging ? 'true' : undefined}
       data-collapsible={collapsedPane !== undefined ? 'true' : undefined}
+      data-minimum-width={minimumPaneWidth ? 'true' : undefined}
       style={collapsedPane ? {
         [layout.axis === 'columns' ? 'gridTemplateColumns' : 'gridTemplateRows']:
           collapsedPane === 'first' ? 'minmax(0, 0fr) 0px minmax(0, 1fr)' : 'minmax(0, 1fr) 0px minmax(0, 0fr)',
-      } : splitGridStyle(layout.axis, ratio)}
+      } : { ...splitGridStyle(layout.axis, ratio, firstWidth, secondWidth),
+        ...(minimumPaneWidth ? { minWidth: splitPaneMinimumWidth(layout, minimumPaneWidth) } : {}) }}
     >
       <div ref={firstRegionRef} className={styles.region} tabIndex={-1}
         data-collapsed={collapsedPane === 'first' ? 'true' : undefined}>
@@ -202,6 +220,7 @@ function Split({
           renderPane={renderPane}
           onResizeSplit={onResizeSplit}
           resizeLabel={resizeLabel}
+          minimumPaneWidth={minimumPaneWidth}
         />
       </div>
       <div
@@ -231,6 +250,7 @@ function Split({
           renderPane={renderPane}
           onResizeSplit={onResizeSplit}
           resizeLabel={resizeLabel}
+          minimumPaneWidth={minimumPaneWidth}
         />
       </div>
     </div>

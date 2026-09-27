@@ -1,5 +1,6 @@
 import * as layoutModel from '../frontend/src/features/shell/workspaceLayoutModel';
 import * as splitModel from '../frontend/src/shared/ui/splitPaneModel';
+import * as splitSizing from '../frontend/src/shared/ui/splitPaneSizing';
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -249,11 +250,16 @@ test('closing the final tab restores the current page and does not reopen the cl
   expect(props<ComponentProps<typeof WorkspaceEditor>>(closed.editor, 'WorkspaceEditor')).toMatchObject({ active: false, target: null });
 });
 
-test('the shared separator updates the split continuously while dragging and commits on release', () => {
+test.each([
+  { minimumPaneWidth: undefined, pointerX: 700.5, expected: 0.7 },
+  { minimumPaneWidth: 475, pointerX: 900.5, expected: 0.525 },
+  { minimumPaneWidth: 475, pointerX: 100.5, expected: 0.475 },
+])('the shared separator respects $minimumPaneWidth minimum width and commits $expected on release', ({ minimumPaneWidth, pointerX, expected }) => {
   const app = hooks();
-  const Layout = load<typeof SplitPaneLayout>('shared/ui/SplitPaneLayout.tsx', 'SplitPaneLayout', { react: app.react });
+  const Layout = load<typeof SplitPaneLayout>('shared/ui/SplitPaneLayout.tsx', 'SplitPaneLayout', { react: app.react, './splitPaneSizing': splitSizing });
   const committed: number[] = [];
   const options: ComponentProps<typeof SplitPaneLayout> = {
+    minimumPaneWidth,
     layout: { type: 'split', id: 'workspace-editor', axis: 'columns', ratio: 0.5,
       first: { type: 'pane', paneId: 'editor' }, second: { type: 'pane', paneId: 'primary' } },
     renderPane: id => <div>{id}</div>, onResizeSplit: (_id, ratio) => committed.push(ratio),
@@ -277,11 +283,11 @@ test('the shared separator updates the split continuously while dragging and com
       releasePointerCapture() { captured = false; } },
   }) as unknown as PointerEvent<HTMLDivElement>;
   separator(first).onPointerDown?.(pointer(500.5));
-  separator(render()).onPointerMove?.(pointer(700.5));
-  expect((render().props as { style: CSSProperties }).style.gridTemplateColumns).toContain('0.7fr');
+  separator(render()).onPointerMove?.(pointer(pointerX));
+  expect((render().props as { style: CSSProperties }).style.gridTemplateColumns).toContain(`${expected}fr`);
   expect(committed).toEqual([]);
-  separator(render()).onPointerUp?.(pointer(700.5));
-  expect(committed).toEqual([0.7]);
+  separator(render()).onPointerUp?.(pointer(pointerX));
+  expect(committed).toEqual([expected]);
   expect(captured).toBe(false);
 });
 
@@ -330,7 +336,7 @@ test('closing Codex keeps file tabs and sidebar controls, and navigation restore
 
 test('collapsed split keeps both panes mounted while hiding the separator and restores its ratio on reopening', () => {
   const app = hooks();
-  const Layout = load<typeof SplitPaneLayout>('shared/ui/SplitPaneLayout.tsx', 'SplitPaneLayout', { react: app.react });
+  const Layout = load<typeof SplitPaneLayout>('shared/ui/SplitPaneLayout.tsx', 'SplitPaneLayout', { react: app.react, './splitPaneSizing': splitSizing });
   const options: ComponentProps<typeof SplitPaneLayout> = {
     layout: { type: 'split', id: 'workspace-editor', axis: 'columns', ratio: 0.7,
       first: { type: 'pane', paneId: 'editor' }, second: { type: 'pane', paneId: 'primary' } },

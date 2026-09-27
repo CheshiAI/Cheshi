@@ -20,6 +20,12 @@
   overflow: hidden;
 }
 
+/* Keep leaf snap targets attached to the outer horizontal viewport. */
+.split[data-minimum-width='true'],
+.split[data-minimum-width='true'] > .region {
+  overflow: clip;
+}
+
 .separator {
   position: relative;
   z-index: 3;

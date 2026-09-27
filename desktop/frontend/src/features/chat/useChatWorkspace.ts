@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { chatRelayContextIds } from '../../../../shared/chat-relay';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { splitPaneIds, type SplitPaneDirection } from '../../shared/ui/splitPaneModel';
-import { closeChatPane, createChatWorkspace, resizeChatPane, splitChatPane } from './chatWorkspaceModel';
+import { splitPaneIds } from '../../shared/ui/splitPaneModel';
+import { CHAT_PANE_LIMIT, closeChatPane, createChatWorkspace, resizeChatPane, splitChatPane } from './chatWorkspaceModel';
 import type { ChatController } from './useChatController';
 import type { ChatDraftSnapshot } from './chatDraftRecovery';
 import { useChatRelay } from './useChatRelay';
@@ -146,14 +146,14 @@ export function useChatWorkspace() {
     setState((current) => current.activePaneId === paneId || !splitPaneIds(current.layout).includes(paneId)
       ? current : { ...current, activePaneId: paneId });
   }, []);
-  const splitPane = useCallback(async (targetId: string, direction: SplitPaneDirection, mode: 'new' | 'fork' = 'new', sourceThreadId?: string): Promise<boolean> => {
+  const splitPane = useCallback(async (targetId: string, mode: 'new' | 'fork' = 'new', sourceThreadId?: string): Promise<boolean> => {
     if (splitPendingRef.current || deletePendingRef.current) return false;
     const ids = splitPaneIds(currentStateRef.current.layout);
-    if (!ids.includes(targetId) || ids.length >= 32) return false;
+    if (!ids.includes(targetId) || ids.length >= CHAT_PANE_LIMIT) return false;
     const paneId = crypto.randomUUID();
     const splitId = crypto.randomUUID();
     if (mode === 'new') {
-      setState((current) => splitChatPane(current, targetId, paneId, direction, splitId));
+      setState((current) => splitChatPane(current, targetId, paneId, splitId));
       return true;
     }
     const source = controllers[targetId]?.state;
@@ -170,12 +170,12 @@ export function useChatWorkspace() {
     try {
       const sessionId = await prepareChatFork(cheshiDesktop, sourceThreadId, paneId);
       const currentIds = splitPaneIds(currentStateRef.current.layout);
-      if (!mountedRef.current || !currentIds.includes(targetId) || currentIds.length >= 32) {
+      if (!mountedRef.current || !currentIds.includes(targetId) || currentIds.length >= CHAT_PANE_LIMIT) {
         await cheshiDesktop.disposeCodexChatContext(paneId);
         return false;
       }
       setInitialSessionIds((current) => ({ ...current, [paneId]: sessionId }));
-      setState((current) => splitChatPane(current, targetId, paneId, direction, splitId));
+      setState((current) => splitChatPane(current, targetId, paneId, splitId));
       return true;
     } catch (reason) {
       if (mountedRef.current) setError(reason instanceof Error ? reason.message : String(reason));
@@ -188,9 +188,9 @@ export function useChatWorkspace() {
   const openSideChat = useCallback((targetId: string, input: ChatDraftSnapshot): boolean => {
     const current = currentStateRef.current;
     const ids = splitPaneIds(current.layout);
-    if (accountSwitchRef.current || splitPendingRef.current || deletePendingRef.current || !ids.includes(targetId) || ids.length >= 32) return false;
+    if (accountSwitchRef.current || splitPendingRef.current || deletePendingRef.current || !ids.includes(targetId) || ids.length >= CHAT_PANE_LIMIT) return false;
     const paneId = crypto.randomUUID();
-    const next = splitChatPane(current, targetId, paneId, 'right', crypto.randomUUID());
+    const next = splitChatPane(current, targetId, paneId, crypto.randomUUID());
     currentStateRef.current = next;
     setInitialDrafts((drafts) => ({ ...drafts, [paneId]: { ...input, attachments: [...input.attachments] } }));
     setState(next);

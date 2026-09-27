@@ -14,7 +14,7 @@ export interface SplitPreviewChoice {
   disabledReason?: string;
 }
 
-export function SplitPreview({ target, direction, title, choices, onChoose, onClose, onCommitted }: {
+export function SplitPreview({ target, direction, title, choices, onChoose, onClose, onCommitted, minimumTargetWidth = 560 }: {
   target: HTMLElement;
   direction: SplitPreviewDirection;
   title: string;
@@ -22,6 +22,7 @@ export function SplitPreview({ target, direction, title, choices, onChoose, onCl
   onChoose(id: string): boolean | Promise<boolean>;
   onClose(): void;
   onCommitted?(): void;
+  minimumTargetWidth?: number;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const busyRef = useRef(false);
@@ -45,7 +46,7 @@ export function SplitPreview({ target, direction, title, choices, onChoose, onCl
       Object.assign(dialog.style, {
         left: `${bounds.left}px`, top: `${bounds.top}px`, width: `${bounds.width}px`, height: `${bounds.height}px`,
       });
-      setFits(direction === 'right' ? bounds.width >= 560 && bounds.height >= 240 : bounds.height >= 400 && bounds.width >= 280);
+      setFits(direction === 'right' ? bounds.width >= minimumTargetWidth && bounds.height >= 240 : bounds.height >= 400 && bounds.width >= 280);
       target.classList.add(previewClass);
     };
     measure();
@@ -62,7 +63,7 @@ export function SplitPreview({ target, direction, title, choices, onChoose, onCl
       if (completed.current) latest.current.onCommitted?.();
       else if (previous?.isConnected) previous.focus({ preventScroll: true });
     };
-  }, [target, direction]);
+  }, [target, direction, minimumTargetWidth]);
 
   const choose = async (id: string) => {
     if (busyRef.current || !fits) return;

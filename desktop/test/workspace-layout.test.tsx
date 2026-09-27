@@ -249,7 +249,7 @@ test('terminal pane creates a shell only after choosing Terminal and keeps the o
 
 test('chat split chooser preserves the new-session and fork operations and blocks a changed source', async () => {
   const { ChatSplitDialog } = await import('../frontend/src/features/chat/ChatSplitDialog');
-  await withDOM(async ({ render, click }) => {
+  await withDOM(async ({ render, click, window }) => {
     const target = document.createElement('section');
     document.body.append(target);
     const calls: unknown[][] = [];
@@ -260,16 +260,27 @@ test('chat split chooser preserves the new-session and fork operations and block
     };
     const renderChoice = (sourceThreadId: string) => render(<ChatSplitDialog
       workspace={workspace as unknown as import('../frontend/src/features/chat/useChatWorkspace').ChatWorkspaceController}
-      paneId="chat" direction="down" sourceThreadId={sourceThreadId} target={target} onClose={() => {}} />);
+      paneId="chat" sourceThreadId={sourceThreadId} target={target} onClose={() => {}} />);
+    target.getBoundingClientRect = () => new window.DOMRect(0, 0, 475, 800);
     await renderChoice('thread');
     expect(calls).toEqual([]);
     await click('New session');
-    expect(calls.at(-1)).toEqual(['chat', 'down', 'new', 'thread']);
+    expect(calls.at(-1)).toEqual(['chat', 'new', 'thread']);
     await click('Fork current conversation');
-    expect(calls.at(-1)).toEqual(['chat', 'down', 'fork', 'thread']);
+    expect(calls.at(-1)).toEqual(['chat', 'fork', 'thread']);
     await renderChoice('different-thread');
     await click('Fork current conversation');
     expect(calls).toHaveLength(2);
+    workspace.paneIds = ['chat', ...Array.from({ length: 9 }, (_, index) => `pane-${index}`)];
+    await renderChoice('thread');
+    await click('New session');
+    await click('Fork current conversation');
+    expect(calls).toHaveLength(2);
+    workspace.paneIds.pop();
+    await renderChoice('thread');
+    await click('New session');
+    await click('Fork current conversation');
+    expect(calls).toHaveLength(4);
   });
 });
 

@@ -12,6 +12,21 @@
 .root[hidden] { display: none; }
 .body { overflow: hidden; container-type: inline-size; }
 .split { overflow: hidden; }
+.paneViewport {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+.paneTrack { display: flex; flex: 1 0 100%; min-height: 0; }
+.mount { scroll-snap-align: start; scroll-snap-stop: always; }
 .root .split [data-axis='columns'] > [role='separator'] { width: 5px; }
 .root .split [data-axis='rows'] > [role='separator'] { height: 5px; }
 .split [data-axis] > [role='separator']::after { background: var(--divider); }

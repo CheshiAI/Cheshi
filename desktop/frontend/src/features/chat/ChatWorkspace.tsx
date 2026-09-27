@@ -1,5 +1,5 @@
 import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
-import { ArrowLeft, Columns2, PanelRight, Rows2, X } from 'lucide-react';
+import { ArrowLeft, Columns2, PanelRight, X } from 'lucide-react';
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { chatRelayContextIds } from '../../../../shared/chat-relay';
@@ -8,7 +8,7 @@ import {
   LiquidGlassPanel, NeumorphicButton, TwoTierHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle,
 } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
-import { SplitPaneLayout } from '../../shared/ui/SplitPaneLayout';
+import { ChatPaneViewport } from './ChatPaneViewport';
 import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { ChatView } from './ChatView';
 import { ChatErrorNotice } from './ChatErrorNotice';
@@ -16,6 +16,7 @@ import { ChatPaneIcon } from './ChatPaneIcon';
 import { ChatRelayButton, ChatRelayStatus } from './ChatRelayControls';
 import { ChatRelayHistoryPanel } from './ChatRelayHistoryPanel';
 import { ChatSplitDialog } from './ChatSplitDialog';
+import { CHAT_PANE_LIMIT } from './chatWorkspaceModel';
 import { useChatController } from './useChatController';
 import type { ChatWorkspaceController } from './useChatWorkspace';
 import type { ChatHistorySearchNavigation } from './chatHistorySearchNavigation';
@@ -32,7 +33,7 @@ interface ChatWorkspaceProps extends ChatHistorySearchNavigation {
   onReviewFileChanges: (paneId: string, itemId: string, path?: string) => void;
 }
 
-function PaneMount({ host }: { host: HTMLDivElement }) {
+function PaneMount({ host, paneId }: { host: HTMLDivElement; paneId: string }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const hostClassName = styles.host ?? '';
   // CSS module names can change during HMR while the portal host stays alive.
@@ -43,7 +44,7 @@ function PaneMount({ host }: { host: HTMLDivElement }) {
     mountRef.current?.append(host);
     return () => host.remove();
   }, [host]);
-  return <div className={styles.mount} ref={mountRef} />;
+  return <div className={styles.mount} data-chat-pane-mount={paneId} ref={mountRef} />;
 }
 
 function ChatPane({
@@ -59,7 +60,7 @@ function ChatPane({
   const updateAccountSwitchGuard = useCallback((guard: (() => string | null) | null) => {
     registerAccountSwitchGuard(paneId, guard);
   }, [paneId, registerAccountSwitchGuard]);
-  const [splitChoice, setSplitChoice] = useState<{ direction: 'right' | 'down'; sourceThreadId: string | null } | null>(null);
+  const [splitChoice, setSplitChoice] = useState<{ sourceThreadId: string | null } | null>(null);
   const initialSessionId = workspace.initialSessionIds[paneId];
   const initialSessionOpened = useRef(false);
   useEffect(() => {
@@ -107,23 +108,11 @@ function ChatPane({
             size="icon"
             aria-label="Split chat right"
             title="Split chat right"
-            disabled={workspace.paneIds.length >= 32 || workspace.splitPending}
+            disabled={workspace.paneIds.length >= CHAT_PANE_LIMIT || workspace.splitPending}
             aria-haspopup="dialog"
-            onClick={() => { workspace.dismissError(); setSplitChoice({ direction: 'right', sourceThreadId: controller.state.activeSessionId }); }}
+            onClick={() => { workspace.dismissError(); setSplitChoice({ sourceThreadId: controller.state.activeSessionId }); }}
           >
             <Columns2 aria-hidden="true" />
-          </TooltipButton>
-          <TooltipButton
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Split chat down"
-            title="Split chat down"
-            disabled={workspace.paneIds.length >= 32 || workspace.splitPending}
-            aria-haspopup="dialog"
-            onClick={() => { workspace.dismissError(); setSplitChoice({ direction: 'down', sourceThreadId: controller.state.activeSessionId }); }}
-          >
-            <Rows2 aria-hidden="true" />
           </TooltipButton>
           <TooltipButton
             type="button"
@@ -140,7 +129,7 @@ function ChatPane({
       <ChatView
         controller={controller}
         initialDraft={workspace.initialDrafts[paneId]}
-        onOpenSideChat={workspace.paneIds.length < 32 && !workspace.splitPending
+        onOpenSideChat={workspace.paneIds.length < CHAT_PANE_LIMIT && !workspace.splitPending
           ? (input) => workspace.openSideChat(paneId, input) : undefined}
         onAccountSwitchGuard={updateAccountSwitchGuard}
         savedTurns={workspace.savedTurns}
@@ -152,7 +141,7 @@ function ChatPane({
         historyTarget={selected && controller.state.activeSessionId === historyTarget?.threadId ? historyTarget : null}
         onHistoryTargetHandled={onHistoryTargetHandled}
       />
-      {splitChoice && <ChatSplitDialog workspace={workspace} paneId={paneId} direction={splitChoice.direction}
+      {splitChoice && <ChatSplitDialog workspace={workspace} paneId={paneId}
         sourceThreadId={splitChoice.sourceThreadId} target={host} onClose={() => setSplitChoice(null)} />}
     </section>, host, paneId,
   );
@@ -206,9 +195,9 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
         <div className={styles.content}>
           <ChatRelayStatus workspace={workspace} />
           {workspace.error && <ChatErrorNotice onDismiss={workspace.dismissError} dismissLabel="Dismiss chat error">{workspace.error}</ChatErrorNotice>}
-          <div className={styles.split}>
-            <SplitPaneLayout layout={workspace.layout} renderPane={(id) => <PaneMount host={hosts.current.get(id)!} />} onResizeSplit={workspace.resizeSplit} resizeLabel="Resize chat panes" />
-          </div>
+          <ChatPaneViewport layout={workspace.layout} activePaneId={workspace.activePaneId}
+            onSelectPane={workspace.selectPane} onResizeSplit={workspace.resizeSplit}
+            renderPane={(id) => <PaneMount paneId={id} host={hosts.current.get(id)!} />} />
         </div>
         <ChatRelayHistoryPanel relay={workspace.relay} savedTurns={workspace.savedTurns}
           onContinueSavedTurn={workspace.continueSavedTurn} continuationDisabledReason={workspace.savedTurnContinuationReason} />

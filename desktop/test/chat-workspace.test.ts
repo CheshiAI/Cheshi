@@ -28,11 +28,12 @@ describe('chat workspace', () => {
   });
   test('nested splits retain existing pane identities and focus the new pane', () => {
     const initial = createChatWorkspace('first');
-    const right = splitChatPane(initial, 'first', 'second', 'right', 'columns');
-    const down = splitChatPane(right, 'first', 'third', 'down', 'rows');
-    expect(splitPaneIds(down.layout)).toEqual(['first', 'third', 'second']);
-    expect(down.activePaneId).toBe('third');
-    const resized = resizeChatPane(down, 'columns', 0.7);
+    const right = splitChatPane(initial, 'first', 'second', 'columns');
+    const nested = splitChatPane(right, 'first', 'third', 'nested');
+    expect(splitPaneIds(nested.layout)).toEqual(['first', 'third', 'second']);
+    expect(nested.layout).toMatchObject({ axis: 'columns', first: { axis: 'columns' } });
+    expect(nested.activePaneId).toBe('third');
+    const resized = resizeChatPane(nested, 'columns', 0.7);
     expect(splitPaneIds(resized.layout)).toEqual(['first', 'third', 'second']);
     expect(resized.activePaneId).toBe('third');
     expect(resized.layout).toMatchObject({ axis: 'columns', ratio: 0.7 });
@@ -40,12 +41,28 @@ describe('chat workspace', () => {
   });
 
   test('closing active and inactive panes chooses a surviving neighbor without replacing it', () => {
-    const split = splitChatPane(createChatWorkspace('first'), 'first', 'second', 'right', 'split');
+    const split = splitChatPane(createChatWorkspace('first'), 'first', 'second', 'split');
     const inactiveClosed = closeChatPane(split, 'first', 'unused');
     expect(inactiveClosed).toEqual(createChatWorkspace('second'));
     const activeClosed = closeChatPane(split, 'second', 'unused');
     expect(activeClosed).toEqual(createChatWorkspace('first'));
     expect(closeChatPane(split, 'missing', 'unused')).toBe(split);
+  });
+
+  test('allows ten panes, rejects an eleventh, and allows another after closing one', () => {
+    let workspace = createChatWorkspace('first');
+    for (let index = 1; index < 9; index++) {
+      workspace = splitChatPane(workspace, 'first', `pane-${index}`, `split-${index}`);
+    }
+    expect(splitPaneIds(workspace.layout)).toHaveLength(9);
+    const full = splitChatPane(workspace, 'first', 'tenth', 'split-tenth');
+    expect(splitPaneIds(full.layout)).toHaveLength(10);
+    expect(full.activePaneId).toBe('tenth');
+    expect(splitChatPane(full, 'first', 'eleventh', 'split-eleventh')).toBe(full);
+    const closed = closeChatPane(full, 'tenth', 'unused');
+    const reopened = splitChatPane(closed, 'first', 'replacement', 'split-replacement');
+    expect(splitPaneIds(reopened.layout)).toHaveLength(10);
+    expect(reopened.activePaneId).toBe('replacement');
   });
 
   test('closing the final pane starts a fresh context, while retained history is outside layout state', () => {
