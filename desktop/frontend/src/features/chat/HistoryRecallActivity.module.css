@@ -42,8 +42,7 @@
 .preview { min-width: 0; }
 .card > details,
 .card .preview > div,
-.source .preview :is(h1, h2, h3, h4, h5, h6, pre, code),
-.card button { font-size: 10px; }
+.source .preview :is(h1, h2, h3, h4, h5, h6, pre, code) { font-size: 10px; }
 .footer { min-width: 0; border-top: 1px solid var(--divider); padding-top: var(--space-default); }
 .totals { display: grid; gap: var(--icon-default); font-size: 10px; font-weight: 400; line-height: 1.5; }
 .totals .metrics { font-size: inherit; }

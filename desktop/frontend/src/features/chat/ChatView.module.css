@@ -1,6 +1,8 @@
 .root {
   --composer-overlay-height: 118px;
   --composer-overlay-top-padding: 10px;
+  --chat-content-max-width: 780px;
+  --chat-content-padding: 40px;
   --chat-muted: #929497;
   position: relative;
   display: flex;
@@ -37,12 +39,12 @@
 }
 .timelineContent {
   display: flex;
-  width: min(100%, 860px);
+  width: min(100%, calc(var(--chat-content-max-width) + 2 * var(--chat-content-padding)));
   min-height: 100%;
   flex-direction: column;
   gap: 20px;
   margin: 0 auto;
-  padding: 32px 40px calc(var(--composer-overlay-height) + 28px);
+  padding: 32px var(--chat-content-padding) calc(var(--composer-overlay-height) + 28px);
 }
 
 .timeline[data-welcome='true'] {
@@ -93,8 +95,7 @@
 .welcomeQuote { display: grid; gap: var(--icon-default); margin: 0; color: var(--sub-text); font-size: 12px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
 .welcomeQuoteAuthor { width: 100%; margin-top: var(--space-default); color: var(--sub-text); font-size: 12px; line-height: 20px; text-align: center; }
 
-.loading { display: flex; flex: 1 1 auto; align-items: center; justify-content: center; gap: 10px; color: var(--chat-muted); }
-.loading svg { width: var(--icon-size-default); height: var(--icon-size-default); animation: pulse 1.4s ease-in-out infinite; color: var(--chat-accent); }
+.loading { flex: 1 1 auto; justify-content: center; }
 .thinking { justify-content: flex-start; }
 
 .userRow { display: flex; justify-content: flex-end; padding-left: 14%; }
@@ -171,12 +172,13 @@
 .inlineCode { border: 1px solid rgba(255, 255, 255, .07); border-radius: 5px; background: rgba(0, 0, 0, .22); color: #d6dddd; font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; padding: 1px 4px; margin-inline: 3px; }
 .assistantMessage .inlineCode { background: var(--divider); color: var(--sidebar-section-label-color); }
 
-.reasoning { margin-left: 40px; border-left: 1px solid rgba(133, 201, 192, .2); color: #92999a; padding-left: 12px; }
-.reasoning summary { display: inline-flex; align-items: center; gap: 7px; color: #9aa2a3; cursor: pointer; font-size: 11px; list-style: none; user-select: none; }
-.reasoning summary::-webkit-details-marker { display: none; }
-.reasoning summary svg { width: 13px; height: 13px; stroke-width: 1.6; }
-.reasoning[open] summary { color: #b5bbbb; }
-.reasoningContent { margin-top: 8px; color: #8f9697; }
+.reasoningGroup { display: flex; flex-direction: column; min-width: 0; gap: 0; }
+.reasoning {
+  min-width: 0;
+  border-left: 2px solid var(--sidebar-section-label-color);
+  padding-left: var(--space-default);
+  margin: 0;
+}
 
 .activity {
   --content-card-icon-size: var(--icon-button-icon-size);
@@ -190,7 +192,7 @@
   position: absolute;
   z-index: 3;
   bottom: calc(var(--composer-overlay-height) + 20px - var(--composer-overlay-top-padding));
-  left: 50%;
+  left: calc((100% - var(--chat-scrollbar-width, 0px)) / 2);
   transform: translateX(-50%);
 }
 
@@ -266,18 +268,17 @@
 .commandStatus dt { color: var(--sidebar-section-label-color); font-size: var(--font-size-small); letter-spacing: normal; text-transform: uppercase; }
 .commandStatus dd { overflow: hidden; margin: 0; color: var(--text); font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; line-height: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .commandHelp { margin: 0; border-top: 1px solid var(--divider); color: var(--sub-text); font-size: var(--font-size-small); line-height: 12px; padding: var(--icon-default) var(--space-default); }
-@keyframes pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
 
 @media (max-width: 1200px) {
-  .timelineContent { padding-right: 28px; padding-left: 28px; }
+  .root { --chat-content-padding: 28px; }
 }
 
 @container (max-width: 600px) {
-  .timelineContent { padding-inline: var(--space-default); }
+  .root { --chat-content-padding: var(--space-default); }
 }
 
 @container (max-width: 360px) {
-  .timelineContent { padding-inline: 8px; }
+  .root { --chat-content-padding: var(--icon-default); }
   .commandOptions .commandOption { grid-template-columns: minmax(0, 1fr); }
   .commandIcon, .commandMeta { display: none; }
 }

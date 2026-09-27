@@ -167,14 +167,14 @@ interface Element { type: unknown; props: Record<string, unknown> }
 function elements(value: unknown): Element[] {
   if (Array.isArray(value)) return value.flatMap(elements);
   if (!value || typeof value !== 'object' || !('props' in value)) return [];
-  const element = value as Element; return [element, ...elements(element.props.children)];
+  const element = value as Element; return [element, ...elements(element.props.children), ...elements(element.props.actions)];
 }
 
 test('the panel exposes selectable questions, a close action and keyboard help', () => {
   const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
   const component = load<typeof ChatInputHistoryPanel>('ChatInputHistoryPanel.tsx', 'ChatInputHistoryPanel', {
     'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react': { MessageSquareText: 'Message', X: 'X' },
-    '../../shared/ui': { LiquidGlassPanel: 'Panel', NeumorphicButton: 'Button' },
+    '../../shared/ui': { LiquidGlassPanel: 'Panel', NeumorphicButton: 'Button', SidebarPanelHeader: 'Header' },
     './ChatView.module.css': { default: {} }, './ChatInputHistory.module.css': { default: {} },
   });
   const app = harness(); expect(component({ history: app.render() })).toBeNull();

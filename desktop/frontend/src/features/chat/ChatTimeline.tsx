@@ -1,4 +1,4 @@
-import { ArrowDown, Sparkles } from 'lucide-react';
+import { ArrowDown } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 
 import { LoadingState, NeumorphicButton } from '../../shared/ui';
@@ -56,7 +56,7 @@ export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, hist
           {state.items.length === 0 && !loading && (
             <ChatWelcome workspaceName={workspaceName} />
           )}
-          {loading && <div className={styles.loading}><Sparkles aria-hidden="true" /> Loading conversation…</div>}
+          {loading && <LoadingState type="preparing" className={styles.loading} label="Loading conversation…" />}
           <ChatTimelineHistory
             key={`${state.activeSessionId ?? ''}:${state.items[0]?.id ?? ''}`}
             items={state.items}

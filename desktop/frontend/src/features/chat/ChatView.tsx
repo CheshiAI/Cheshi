@@ -47,6 +47,21 @@ export function ChatView({
   const busy = viewController.sendPending || viewController.commandLoading || viewController.configurationLoading
     || viewController.attachmentPickerOpen || viewController.attachmentTransfer.loading;
   useLayoutEffect(() => {
+    const root = viewController.rootRef.current;
+    const timeline = viewController.timelineRef.current;
+    if (!root || !timeline) return;
+    const syncScrollbarWidth = () => {
+      root.style.setProperty('--chat-scrollbar-width', `${Math.max(0, timeline.offsetWidth - timeline.clientWidth)}px`);
+    };
+    syncScrollbarWidth();
+    const observer = new ResizeObserver(syncScrollbarWidth);
+    observer.observe(timeline);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--chat-scrollbar-width');
+    };
+  }, [controller.contextId, controller.state.activeSessionId, viewController.rootRef, viewController.timelineRef]);
+  useLayoutEffect(() => {
     onAccountSwitchGuard?.(() => {
       const current = latest.current;
       if (current.messageQueue.total) return 'Send or remove queued messages before switching accounts.';

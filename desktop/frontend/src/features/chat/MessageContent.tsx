@@ -12,6 +12,7 @@ import markdownStyles from './MessageContent.module.css';
 interface MessageContentProps {
   text: string;
   renderLocalImages?: boolean;
+  presentation?: 'default' | 'description';
 }
 
 interface ContentSegment {
@@ -181,13 +182,20 @@ const localImageComponents: Components = {
   p: LocalImageParagraph,
 };
 
-export function MessageContent({ renderLocalImages = false, text }: MessageContentProps) {
-  const jsonSegment = jsonSegmentFromText(text);
+const descriptionComponents: Components = {
+  ...markdownComponents,
+  pre: ({ children }) => <pre>{children}</pre>,
+  code: ({ children }) => <code>{children}</code>,
+};
+
+export function MessageContent({ renderLocalImages = false, text, presentation = 'default' }: MessageContentProps) {
+  const description = presentation === 'description';
+  const jsonSegment = description ? null : jsonSegmentFromText(text);
   if (jsonSegment) return <CodePanel code={jsonSegment.value} language={jsonSegment.language} />;
   return (
-    <div className={markdownStyles.markdown}>
+    <div className={`${markdownStyles.markdown}${description ? ` ${markdownStyles.description}` : ''}`}>
       <ReactMarkdown
-        components={renderLocalImages ? localImageComponents : markdownComponents}
+        components={description ? descriptionComponents : renderLocalImages ? localImageComponents : markdownComponents}
         remarkPlugins={[remarkGfm]}
         urlTransform={(url, key) => key === 'href' && localFileLinkPath(url) ? url : defaultUrlTransform(url)}
       >

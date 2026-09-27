@@ -4,6 +4,8 @@ import { NeumorphicButton } from '../../shared/ui';
 import { ChatTimelineItem } from './ChatTimelineItem';
 import { HistoryRecallTotals, recallTurnMetrics } from './HistoryRecallActivity';
 import { captureChatHistoryAnchor, previousChatHistoryStart } from './chatHistoryWindow';
+import { groupReasoningItems } from './chatReasoningPresentation';
+import styles from './ChatView.module.css';
 import type { ChatTimelineItem as TimelineItem } from './model';
 import type { SavedChatTurnsController } from './useSavedChatTurns';
 import { chatHistoryItemMatches, findChatHistoryTarget, type ChatHistorySearchNavigation, type ChatHistorySearchTarget } from './chatHistorySearchNavigation';
@@ -94,20 +96,23 @@ export const ChatTimelineHistory = memo(function ChatTimelineHistory({
   }, [loading, revealEarlier, start, timelineRef]);
 
   const visibleItems = items.slice(start);
+  const renderItem = (item: TimelineItem) => <ChatTimelineItem
+      key={item.id}
+      item={item}
+      searchMatch={searchMatch !== null && chatHistoryItemMatches(item, searchMatch.itemId)}
+      streaming={streaming && item === visibleItems.at(-1)}
+      turn={completedTurns.get(item.id)}
+      savedTurns={savedTurns}
+      usageDetails={usageByItem.has(item.id) ? <HistoryRecallTotals metrics={usageByItem.get(item.id)} /> : undefined}
+      onReviewFileChanges={onReviewFileChanges}
+    />;
 
   return <>
     {start > 0 && <NeumorphicButton size="standard" disabled={loading} onClick={revealEarlier}>
       Show earlier messages
     </NeumorphicButton>}
-    {visibleItems.map((item, index) => <ChatTimelineItem
-      key={item.id}
-      item={item}
-      searchMatch={searchMatch !== null && chatHistoryItemMatches(item, searchMatch.itemId)}
-      streaming={streaming && index === visibleItems.length - 1}
-      turn={completedTurns.get(item.id)}
-      savedTurns={savedTurns}
-      usageDetails={usageByItem.has(item.id) ? <HistoryRecallTotals metrics={usageByItem.get(item.id)} /> : undefined}
-      onReviewFileChanges={onReviewFileChanges}
-    />)}
+    {groupReasoningItems(visibleItems).map(group => group[0].kind === 'reasoning'
+      ? <div key={group[0].id} className={styles.reasoningGroup} data-reasoning-group="true">{group.map(renderItem)}</div>
+      : renderItem(group[0]))}
   </>;
 });

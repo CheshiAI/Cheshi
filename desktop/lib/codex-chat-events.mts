@@ -21,6 +21,20 @@ import { recordValue, stringValue } from "./codex-service-utils.mts";
 import { chatRelaySessionTitle } from '../shared/chat-relay.ts';
 import { asyncQuestionsFromMessage } from '../shared/chat-async-questions.ts';
 
+const reasoningSummaryIndexes = new WeakMap<ActiveTurn, Map<string, number>>();
+
+function reasoningSummaryDelta(active: ActiveTurn, itemId: string, summaryIndex: unknown, delta: string): string {
+  if (typeof summaryIndex !== 'number' || !Number.isSafeInteger(summaryIndex) || summaryIndex < 0) return delta;
+  let indexes = reasoningSummaryIndexes.get(active);
+  if (!indexes) {
+    indexes = new Map();
+    reasoningSummaryIndexes.set(active, indexes);
+  }
+  const previous = indexes.get(itemId);
+  indexes.set(itemId, summaryIndex);
+  return previous !== undefined && summaryIndex > previous ? `\n\n${delta}` : delta;
+}
+
 interface CodexChatEventContext {
   client: CodexChatClient;
   activeTurns: Map<string, ActiveTurn>;
@@ -261,7 +275,8 @@ export function handleCodexNotification(context: CodexChatEventContext, value: J
       threadId: active.threadId,
       turnId: active.turnId,
       itemId,
-      text: delta,
+      text: method === "item/reasoning/summaryTextDelta"
+        ? reasoningSummaryDelta(active, itemId, params.summaryIndex, delta) : delta,
     });
     return;
   }

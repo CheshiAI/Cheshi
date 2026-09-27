@@ -3,7 +3,7 @@ import { registerCodexChatIpc } from '../lib/codex-chat-ipc.mts';
 import { CodexChatContexts } from '../lib/codex-chat-contexts.mts';
 import { CodexChatRelays } from '../lib/codex-chat-relay.mts';
 import { expect, test } from 'bun:test';
-import { timelineFromThread } from '../lib/codex-chat-thread-data.mts';
+import { textFromReasoningItem, timelineFromThread } from '../lib/codex-chat-thread-data.mts';
 import { codexThread, createCodexChatService, createFakeCodexClient } from './codex-chat-test-helpers.ts';
 
 function createDeferred<T>() {
@@ -26,6 +26,40 @@ function fixture(responses: Record<string, unknown> = {}) {
 }
 const model = { id: 'model', model: 'model', displayName: 'Test model', description: '', isDefault: true,
   defaultReasoningEffort: 'medium', supportedReasoningEfforts: [{ effort: 'medium', description: '' }], serviceTiers: [], defaultServiceTier: null };
+
+test.each(['default', 'plan'] as const)('requests reasoning summaries in %s mode', async (mode) => {
+  const { service, client, events } = fixture();
+  service.availableModels.set(model.model, model);
+  try {
+    service.setCollaborationMode(mode);
+    await service.sendMessage('Check the result', 'summary-test');
+    expect(client.requests.at(-1)).toMatchObject({ method: 'turn/start', params: { summary: 'auto' } });
+    client.emit('item/reasoning/summaryTextDelta', { threadId: 'thread', turnId: 'turn', itemId: 'reasoning', delta: 'Checking the result.' });
+    expect(events).toContainEqual(expect.objectContaining({ type: 'reasoning-delta', itemId: 'reasoning', text: 'Checking the result.' }));
+  } finally { service.stop(); }
+});
+
+test('separates streamed reasoning summary parts without splitting chunks or mixing items', async () => {
+  const { service, client, events } = fixture();
+  try {
+    await service.sendMessage('Check the result', 'summary-parts');
+    const emit = (itemId: string, summaryIndex: unknown, delta: string) => client.emit('item/reasoning/summaryTextDelta',
+      { threadId: 'thread', turnId: 'turn', itemId, summaryIndex, delta });
+    emit('first', 0, '**First');
+    emit('first', 0, ' summary**');
+    emit('second', 0, 'Other item');
+    emit('first', 1, '');
+    emit('first', 1, '**Second');
+    emit('first', 1, ' summary**');
+    emit('second', undefined, ' continued');
+    emit('second', '1', ' unchanged');
+    const text = (id: string) => events.filter(event => event.type === 'reasoning-delta' && event.itemId === id)
+      .map(event => event.text).join('');
+    expect(text('first')).toBe('**First summary**\n\n**Second summary**');
+    expect(text('first')).toBe(textFromReasoningItem({ summary: ['**First summary**', '**Second summary**'] }));
+    expect(text('second')).toBe('Other item continued unchanged');
+  } finally { service.stop(); }
+});
 
 test('steers the expected active turn with text, files and images without starting a new turn', async () => {
   const { service, client } = fixture();

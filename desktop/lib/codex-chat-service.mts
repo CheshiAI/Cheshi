@@ -679,6 +679,7 @@ export class CodexChatService {
           ...collaborationOverride,
           ...this.permissionOverrides(),
           effort: this.selectedReasoningEffort,
+          summary: "auto",
           ...(this.selectedModel ? { model: this.selectedModel } : {}),
           ...this.serviceTierOverride(),
         });

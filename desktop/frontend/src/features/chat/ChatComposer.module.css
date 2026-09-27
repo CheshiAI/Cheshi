@@ -5,43 +5,19 @@
   color: var(--text);
   position: absolute;
   z-index: 2;
-  right: 0;
+  right: var(--chat-scrollbar-width, 0px);
   bottom: 0;
   left: 0;
-  padding: var(--composer-overlay-top-padding) 40px 0;
+  padding: var(--composer-overlay-top-padding) var(--chat-content-padding) 0;
 }
-.approvalPrompt, .composerAnchor, .error, .sendRecovery { width: min(100%, 780px); margin-right: auto; margin-left: auto; }
+.approvalPrompt, .composerAnchor, .error, .sendRecovery { width: min(100%, var(--chat-content-max-width)); margin-right: auto; margin-left: auto; }
 .approvalPrompt {
-  --liquid-glass-radius: 14px;
-  display: grid;
-  min-height: 58px;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-default);
-  margin-bottom: 8px;
-  padding: var(--space-default);
-  background: transparent;
-  color: var(--text);
+  composes: notice from './ChatErrorNotice.module.css';
+  margin-bottom: var(--icon-default);
 }
-.approvalIcon {
-  --neumorphic-button-radius: 50%;
-  display: grid;
-  box-sizing: border-box;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  padding: 0;
-  pointer-events: none;
-}
-.approvalIcon svg { width: 11px; height: 11px; stroke-width: 1.7; }
-.approvalCopy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-.approvalCopy strong { color: var(--text); font-size: var(--font-size-label); font-weight: 650; line-height: 1.5; }
-.approvalCopy > span { color: var(--sidebar-section-label-color); font-family: "SFMono-Regular", Consolas, monospace; font-size: var(--font-size-small); line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
-.approvalCopy > .approvalError { color: var(--sub-text); font-family: inherit; }
-.approvalActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--icon-default); }
-.approvalAction {
-  white-space: nowrap;
-}
+.approvalError { display: block; color: var(--sub-text); }
+.approvalActions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--icon-default); }
+.approvalAction { white-space: nowrap; }
 
 .sendRecovery {
   display: flex;
@@ -181,18 +157,8 @@
 @media (prefers-reduced-motion: reduce) {
   .composerAnchor, .composerSurface, .configurationChevron { transition: none; }
 }
-@media (max-width: 1200px) {
-  .composerArea { padding-right: 28px; padding-left: 28px; }
-  .approvalPrompt { grid-template-columns: 22px minmax(0, 1fr); }
-  .approvalActions { grid-column: 2; justify-content: flex-start; }
-}
-@container (max-width: 600px) {
-  .composerArea { padding-inline: var(--space-default); }
-  .approvalPrompt { grid-template-columns: minmax(0, 1fr); }
-  .approvalActions { grid-column: 1; flex-wrap: wrap; }
-}
 @container (max-width: 360px) {
-  .composerArea, .composerFooter { padding-inline: var(--icon-default); }
+  .composerFooter { padding-inline: var(--icon-default); }
   .composerActions { flex: 1; }
   .configurationTriggerEffort { display: none; }
 }

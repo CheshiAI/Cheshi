@@ -19,12 +19,13 @@ interface ContentCardProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
   status?: ReactNode;
   actions?: ReactNode;
   collapsible?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   bodyClassName?: string;
 }
 
 /** Shared surface and header for result cards and their nested code panels. */
 export function ContentCard({ as = 'article', title, icon, description, status, actions,
-  collapsible = false, descriptionWhenCollapsed = false, bodyClassName, className, children, ...props }: ContentCardProps) {
+  collapsible = false, onExpandedChange, descriptionWhenCollapsed = false, bodyClassName, className, children, ...props }: ContentCardProps) {
   const nested = useContentCardNesting();
   const header = <>
     {icon && <span className={styles.icon}>{icon}</span>}
@@ -42,7 +43,9 @@ export function ContentCard({ as = 'article', title, icon, description, status, 
   return <LiquidGlassPanel {...props} as={as} className={`${styles.card} ${className ?? ''}`}
     data-nested={nested ? 'true' : undefined}>
     <ContentCardContext.Provider value={true}>
-      {collapsible ? <details>
+      {collapsible ? <details onToggle={event => {
+        if (event.target === event.currentTarget) onExpandedChange?.(event.currentTarget.open);
+      }}>
         <summary className={styles.header}>{header}</summary>
         {body}
       </details> : <>

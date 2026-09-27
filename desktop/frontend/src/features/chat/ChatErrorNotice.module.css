@@ -1,14 +1,23 @@
 .notice {
-  --liquid-glass-radius: 10px;
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--icon-default);
-  padding: var(--space-default);
-  background: transparent;
-  color: var(--text);
-  font-size: 12px;
-  line-height: 1.5;
+  --content-card-icon-size: var(--icon-button-icon-size);
+  --content-card-icon-color: var(--sidebar-section-label-color);
+  --content-card-title-size: 10px;
+  --content-card-title-weight: 400;
+  --content-card-description-size: 9px;
+  container-type: inline-size;
 }
-.icon { width: var(--icon-size-default); height: var(--icon-size-default); flex: 0 0 auto; color: var(--sub-text); }
-.message { min-width: 0; flex: 1; overflow-wrap: anywhere; white-space: pre-wrap; }
+.notice > header {
+  display: grid;
+  grid-template-columns: var(--icon-button-icon-size) minmax(0, 1fr) auto;
+}
+.notice > header > span > strong[class],
+.notice > header > span > strong + span[class] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.notice > header > span:last-child:not(:has(> strong)) { flex-wrap: wrap; }
+
+@container (max-width: 560px) {
+  .notice > header { grid-template-columns: var(--icon-button-icon-size) minmax(0, 1fr); }
+  .notice > header > span:last-child:not(:has(> strong)) { grid-column: 2; }
+}

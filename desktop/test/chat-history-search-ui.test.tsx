@@ -13,6 +13,7 @@ import type { ChatHistorySearchBar } from '../frontend/src/features/chat/ChatHis
 import type { ChatHistorySearchPage } from '../frontend/src/features/chat/ChatHistorySearchPage';
 import { chatHistoryItemMatches, findChatHistoryTarget } from '../frontend/src/features/chat/chatHistorySearchNavigation';
 import { captureChatHistoryAnchor, previousChatHistoryStart } from '../frontend/src/features/chat/chatHistoryWindow';
+import { groupReasoningItems } from '../frontend/src/features/chat/chatReasoningPresentation';
 
 mock.module('../frontend/src/cheshiDesktop', () => ({ cheshiDesktop: undefined }));
 const { ChatHistorySearchResults } = await import('../frontend/src/features/chat/ChatHistorySearchPage');
@@ -320,6 +321,8 @@ function historyHarness() {
     './ChatTimelineItem': { ChatTimelineItem: 'timeline-item' },
     './HistoryRecallActivity': { HistoryRecallTotals: 'history-recall-totals', recallTurnMetrics: () => new Map() },
     './chatHistoryWindow': { captureChatHistoryAnchor, previousChatHistoryStart },
+    './chatReasoningPresentation': { groupReasoningItems },
+    './ChatView.module.css': { default: { reasoningGroup: 'reasoning-group' } },
     './chatHistorySearchNavigation': { chatHistoryItemMatches, findChatHistoryTarget },
   });
 }

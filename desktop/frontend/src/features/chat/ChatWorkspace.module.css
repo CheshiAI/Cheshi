@@ -104,6 +104,7 @@
 }
 .paneTitleText { display: flex; min-width: 0; flex-direction: column; text-align: left; }
 .paneTitleText > span, .sessionId { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.paneTitleText > span { max-width: 250px; }
 .sessionId {
   color: var(--sidebar-section-label-color);
   font-size: var(--font-size-caption);

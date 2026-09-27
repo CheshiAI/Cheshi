@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 
-import { LiquidGlassPanel, NeumorphicButton, NeumorphicSurface } from '../../shared/ui';
+import { ContentCard, LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
 import { ChatErrorNotice } from './ChatErrorNotice';
 import { ChatCommandMenu } from './ChatCommandMenu';
 import { ChatConfigurationMenu } from './ChatConfigurationMenu';
@@ -80,19 +80,17 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
           disabled={!controller.canRestoreFailedMessage} onClick={controller.restoreFailedMessage}>Restore draft</NeumorphicButton>}
       </div>}
       {pendingApproval && (
-        <LiquidGlassPanel
+        <ContentCard
           as="section"
           aria-label={pendingApproval.title}
           className={styles.approvalPrompt}
-          data-liquid-glass-backdrop="true"
-        >
-          <NeumorphicSurface as="span" raised className={styles.approvalIcon}><ShieldCheck aria-hidden="true" /></NeumorphicSurface>
-          <div className={styles.approvalCopy}>
-            <strong>{pendingApproval.title}</strong>
-            <span title={pendingApproval.detail}>{pendingApproval.detail}</span>
+          icon={<ShieldCheck aria-hidden="true" />}
+          title={pendingApproval.title}
+          description={<>
+            <span>{pendingApproval.detail}</span>
             {approvalError && <span className={styles.approvalError} role="alert">{approvalError}</span>}
-          </div>
-          <div className={styles.approvalActions}>
+          </>}
+          actions={<span className={styles.approvalActions}>
             <NeumorphicButton
               variant="standard"
               size="standard"
@@ -122,8 +120,8 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
                 Allow session
               </NeumorphicButton>
             )}
-          </div>
-        </LiquidGlassPanel>
+          </span>}
+        />
       )}
 
       <ChatCommandMenu controller={controller} />

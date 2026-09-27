@@ -1,6 +1,5 @@
 import {
   AlertCircle,
-  Brain,
   Database,
   FileCode2,
   Image,
@@ -26,6 +25,7 @@ import type { SavedChatTurnsController } from './useSavedChatTurns';
 import { ChatInlineQuestion } from './ChatInlineQuestion';
 import { AgentActivity } from './AgentActivity';
 import { HistoryRecallActivity } from './HistoryRecallActivity';
+import { reasoningMarkdown } from './chatReasoningPresentation';
 
 function ActivityIcon({ item }: { item: ChatActivityItem }) {
   if (item.activity === 'files') return <FileCode2 aria-hidden="true" />;
@@ -84,12 +84,9 @@ function TimelineItemContent({
     </article>;
   }
   if (item.kind === 'reasoning') {
-    return (
-      <details className={styles.reasoning} open={streaming}>
-        <summary><Brain aria-hidden="true" /><span>Reasoning</span></summary>
-        <div className={styles.reasoningContent}><MessageContent text={item.text} /></div>
-      </details>
-    );
+    return <section className={styles.reasoning} aria-label="Reasoning">
+      <MessageContent text={reasoningMarkdown(item.text)} presentation="description" />
+    </section>;
   }
   if (item.kind === 'activity' && item.activity === 'files' && item.changes?.length) {
     return <FileChangesActivity item={item} onReview={onReviewFileChanges} />;

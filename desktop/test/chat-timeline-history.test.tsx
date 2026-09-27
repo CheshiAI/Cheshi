@@ -4,6 +4,7 @@ import { captureChatHistoryAnchor, previousChatHistoryStart } from '../frontend/
 import { completedChatTurnInputs } from '../frontend/src/features/chat/chatTurnSnapshots';
 import type { ChatTimelineItem as TimelineItem } from '../frontend/src/features/chat/model';
 import type { SavedChatTurnsController } from '../frontend/src/features/chat/useSavedChatTurns';
+import { groupReasoningItems, reasoningMarkdown } from '../frontend/src/features/chat/chatReasoningPresentation';
 
 mock.module('../frontend/src/cheshiDesktop', () => ({ cheshiDesktop: undefined }));
 const { ChatTimelineHistory } = await import('../frontend/src/features/chat/ChatTimelineHistory');
@@ -68,11 +69,54 @@ describe('progressive chat history', () => {
     expect(completedChatTurnInputs(items, 'thread', 'History', true).size).toBe(0);
   });
 
-  test('keeps the latest reasoning item expanded while streaming', () => {
-    const items = history(100);
-    items.push({ id: 'reasoning', kind: 'reasoning', createdAt: 1, text: 'Working through the next step' });
-    expect(renderHistory(items, true)).toMatch(/<details[^>]*open=""/);
-    expect(renderHistory(items, false)).not.toMatch(/<details[^>]*open=""/);
+  test('renders reasoning Markdown without copy controls during streaming and after completion', () => {
+    const items: TimelineItem[] = [{ id: 'reasoning', kind: 'reasoning', createdAt: 1,
+      text: '**First summary**\n\nSecond summary\ncontinued\n\n```text\nexample\n```' }];
+    for (const streaming of [true, false]) {
+      const html = renderHistory(items, streaming);
+      expect(html).toContain('aria-label="Reasoning"');
+      expect(html).toContain('<strong>First summary</strong>');
+      expect(html).toContain('<p>Second summary\ncontinued</p>');
+      expect(html).toContain('<pre><code>example\n</code></pre>');
+      expect(html).not.toContain('**');
+      expect(html).not.toContain('<button');
+      expect(html).not.toContain('<details');
+    }
+  });
+});
+
+describe('compact reasoning presentation', () => {
+  test('separates legacy joined headings and keeps their item identities in one group', () => {
+    const items: TimelineItem[] = [
+      { id: 'first', kind: 'reasoning', turnId: 'turn', createdAt: 1, text: '**Computing minimum C****Verifying minimum C**' },
+      { id: 'second', kind: 'reasoning', turnId: 'turn', createdAt: 1, text: '**Verifying candidate cases****Checking four candidate pairs**' },
+    ];
+    const html = renderHistory(items);
+    expect(html.match(/data-reasoning-group="true"/g)).toHaveLength(1);
+    expect(html.match(/data-chat-item-id=/g)).toHaveLength(2);
+    for (const line of ['Computing minimum C', 'Verifying minimum C', 'Verifying candidate cases', 'Checking four candidate pairs']) {
+      expect(html).toContain(`<p><strong>${line}</strong></p>`);
+    }
+    expect(html).not.toContain('**');
+  });
+
+  test('does not combine reasoning across turns or intervening messages', () => {
+    const items: TimelineItem[] = [
+      { id: 'first', kind: 'reasoning', turnId: 'one', createdAt: 1, text: 'First' },
+      { id: 'second', kind: 'reasoning', turnId: 'two', createdAt: 1, text: 'Second' },
+      { id: 'answer', kind: 'assistant', turnId: 'two', createdAt: 1, text: 'Answer' },
+      { id: 'third', kind: 'reasoning', turnId: 'two', createdAt: 1, text: 'Third' },
+    ];
+    expect(groupReasoningItems(items).map(group => group.map(item => item.id))).toEqual([
+      ['first'], ['second'], ['answer'], ['third'],
+    ]);
+  });
+
+  test('preserves valid Markdown and code containing literal asterisks', () => {
+    for (const text of ['**One**\n\n**Two**', 'An **inline** emphasis', '    **code****example**',
+      '```text\n**code****example**\n```', '~~~\n**code****example**\n~~~']) {
+      expect(reasoningMarkdown(text)).toBe(text);
+    }
   });
 });
 

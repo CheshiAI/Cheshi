@@ -123,7 +123,7 @@
   gap: var(--icon-default);
   border: 0;
   border-radius: 0;
-  background: transparent;
+  background: var(--control-surface-ghost);
   color: var(--text);
   padding: var(--space-default);
   text-align: left;
@@ -131,9 +131,9 @@
   cursor: pointer;
 }
 
-.hit:not(:disabled):is(:hover, :focus-visible) {
-  background: var(--dropdown-selection-bg);
-  color: var(--active-text);
+.hit:not(:disabled):is(:hover, :active, :focus-visible) {
+  background: var(--control-surface-interactive);
+  color: var(--text);
 }
 
 .hit:focus-visible {
