@@ -228,7 +228,7 @@ export function FileChangesReviewPanel({ item, initialPath, onClose }: FileChang
           <ChangeStats additions={totals.additions} deletions={totals.deletions} />
         </div>
         <NeumorphicButton
-          variant="standard"
+          variant="ghost"
           size="icon"
           aria-label="Close file changes review"
           onClick={onClose}
