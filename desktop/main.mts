@@ -34,6 +34,7 @@ import { APP_UPDATE_CHANNEL } from './shared/app-update.ts';
 import { KEEP_AWAKE_CHANNEL } from './shared/keep-awake.ts';
 import { createIMessageNotifications } from './lib/imessage-notifications.mts';
 import { registerIMessageIpc } from './lib/imessage-ipc.mts';
+import { createIMessageCommands } from './lib/imessage-commands.mts';
 import { KeepAwakeService } from './lib/keep-awake-service.mts';
 import type { WorkspaceRuntimeOptions } from './lib/workspace-application.mts';
 
@@ -68,6 +69,8 @@ const apiSettings = createSettingsService({
   checkKey: checkTypeSafeConnection,
 });
 const notifications = createIMessageNotifications({ filename: path.join(app.getPath('userData'), 'imessage-notifications.json') });
+const messageCommands = createIMessageCommands({ recipient: async () => (await notifications.get()).recipient,
+  reply: (recipient, text) => notifications.reply(recipient, text) });
 const keepAwake = new KeepAwakeService();
 const updatePreview = createAppUpdatePreview({ packaged: app.isPackaged, setting: process.env.CHESHI_UPDATE_PREVIEW });
 const updates = createAppUpdateService({
@@ -89,7 +92,7 @@ const updates = createAppUpdateService({
       quitting = true;
       await workspaces.closeAll();
       await keepAwake.dispose();
-      await notifications.dispose();
+      await messageCommands.dispose(); await notifications.dispose();
       await backgroundUsage.dispose().catch(reportTrayError);
       usageTray?.dispose();
       aboutWindow.close();
@@ -173,11 +176,11 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   let notificationIpc: ReturnType<typeof registerIMessageIpc> | undefined;
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try {
-    runtime = createWorkspaceRuntime({ ...options, notifications, getTypeSafeKey: apiSettings.getKey,
+    runtime = createWorkspaceRuntime({ ...options, notifications, messageCommands, getTypeSafeKey: apiSettings.getKey,
       historyRecall: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) },
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
-      notificationIpc = registerIMessageIpc({ window, ipc: options.scope.ipc, service: notifications });
+      notificationIpc = registerIMessageIpc({ window, ipc: options.scope.ipc, service: notifications, commands: messageCommands });
     });
   }
   catch (error) { source?.dispose(); throw error; }
@@ -297,7 +300,7 @@ app.on('before-quit', (event) => {
   quitting = true;
   void workspaces.closeAll().then(async () => {
     await keepAwake.dispose();
-    await notifications.dispose();
+    await messageCommands.dispose(); await notifications.dispose();
     await backgroundUsage.dispose().catch(reportTrayError);
     usageTray?.dispose();
     aboutWindow.dispose();

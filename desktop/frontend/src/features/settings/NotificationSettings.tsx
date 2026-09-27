@@ -4,6 +4,7 @@ import { cheshiDesktop } from '../../cheshiDesktop';
 import { DEFAULT_IMESSAGE_PREFERENCES, type IMessageApi, type IMessagePreferences, type IMessageSettings } from '../../../../shared/imessage-notifications';
 import { NeumorphicButton, NeumorphicTextField } from '../../shared/ui';
 import styles from './SettingsView.module.css';
+import { MessageCommandSettings } from './MessageCommandSettings';
 
 export function NotificationSettings({ api = cheshiDesktop?.iMessage }: { api?: IMessageApi }) {
   const [state, setState] = useState<IMessageSettings | null>(null);
@@ -75,6 +76,7 @@ export function NotificationSettings({ api = cheshiDesktop?.iMessage }: { api?: 
         Messages include the workspace, conversation identifier and status. Conversation text is not included.</p>
       <p className={styles.description}>Keep this Mac awake and online. Confirm receipt on your device, especially with the same Apple account.<br />
         Replies in Messages do not approve actions in Cheshi.</p>
+      {api?.commands && <MessageCommandSettings api={api.commands} available={state?.available === true && Boolean(state.recipient)} />}
     </form>
   </div></section>;
 }

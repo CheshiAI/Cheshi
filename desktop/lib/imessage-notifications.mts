@@ -39,6 +39,15 @@ export function createIMessageNotifications(options: {
     if (closed || !available) throw new Error('iMessage notifications are available on macOS only.');
   };
   return {
+    async reply(recipient: string, text: string) {
+      assertAvailable();
+      const atRevision = revision;
+      return serialize(async () => {
+        await ready;
+        if (closed || revision !== atRevision || preferences.recipient.toLowerCase() !== recipient.toLowerCase()) return;
+        await submit(text);
+      });
+    },
     async get() { await ready; return snapshot(); },
     subscribe(listener: (state: IMessageSettings) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     async save(value: unknown) {

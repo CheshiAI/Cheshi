@@ -12,6 +12,7 @@ export interface IMessageSettings extends IMessagePreferences {
   lastStatus: string | null;
 }
 export interface IMessageApi {
+  commands?: import('./imessage-commands').IMessageCommandApi;
   get(): Promise<IMessageSettings>;
   save(value: IMessagePreferences): Promise<IMessageSettings>;
   test(): Promise<IMessageSettings>;

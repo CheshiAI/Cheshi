@@ -191,7 +191,8 @@ const ephemeralSessionClient = createChatClient();
 const codeExplanation = createWorkspaceCodeExplanation(ephemeralSessionClient, workspaceRoot);
 const preloadPath = app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'preload.cjs')
   : path.join(currentDirectory, 'runtime', 'preload.cjs');
-const notifications = createWorkspaceNotifications({ workspaceRoot, scope: options.scope, getParent: () => mainWindow, sink: options.notifications });
+const notifications = createWorkspaceNotifications({ workspaceRoot, scope: options.scope, getParent: () => mainWindow, sink: options.notifications,
+  commands: options.messageCommands, services: () => [{ contextId: 'main', service: codexChatService }, ...codexChatContexts.allServices()] });
 const temporaryChats = createWorkspaceTemporaryChat({
   wrapService: service => notifications.temporary(service),
   scope: options.scope, getParent: () => mainWindow, createWindow: configuration => new BrowserWindow(configuration),

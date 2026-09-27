@@ -8,11 +8,17 @@ import { createChatNotifications } from './chat-notifications.mts';
 import type { NotificationSink } from './imessage-notifications.mts';
 import type { TemporaryChatService } from './temporary-chat-service.mts';
 import { inputRecord } from '../shared/chat-user-input.ts';
+import { registerWorkspaceMessageCommands } from './workspace-imessage-commands.mts';
 
 export function createWorkspaceNotifications(options: {
   workspaceRoot: string; scope: WorkspaceIpcScope; getParent(): BrowserWindow | null; sink?: NotificationSink;
+  commands?: Parameters<typeof registerWorkspaceMessageCommands>[0]['registry'];
+  services?: Parameters<typeof registerWorkspaceMessageCommands>[0]['services'];
 }) {
   const tracker = createChatNotifications({ workspace: path.basename(options.workspaceRoot), notify: event => options.sink?.notify(event) });
+  const queueCounts = new Map<string, Map<string, number>>();
+  const unregisterCommands = registerWorkspaceMessageCommands({ registry: options.commands, workspaceRoot: options.workspaceRoot,
+    services: options.services ?? (() => []), queueSize: (context, thread) => queueCounts.get(context)?.get(thread) ?? 0 });
   options.scope.ipc.handle(`${IMESSAGE_CHANNEL}:queue`, (event, value: unknown) => {
     const parent = options.getParent();
     if (!parent || event.sender !== parent.webContents || event.senderFrame !== parent.webContents.mainFrame) throw new Error('Invalid queue notification owner.');
@@ -28,10 +34,11 @@ export function createWorkspaceNotifications(options: {
       return { threadId: entry.threadId, count: entry.count };
     });
     tracker.queue(report.contextId, entries);
+    queueCounts.set(report.contextId, new Map(entries.map(entry => [entry.threadId, entry.count])));
   });
   return {
     event(context: string, event: unknown) { tracker.event(context, event); },
-    remove(context: string) { tracker.remove(context); },
+    remove(context: string) { tracker.remove(context); queueCounts.delete(context); },
     temporary(service: Pick<TemporaryChatService, 'models' | 'send' | 'close'>) {
       const id = `temporary-${randomUUID()}`;
       let closed = false, sending = false;
@@ -54,6 +61,6 @@ export function createWorkspaceNotifications(options: {
         async close() { closed = true; tracker.remove(id); await service.close(); },
       };
     },
-    dispose() { tracker.dispose(); options.scope.ipc.removeHandler(`${IMESSAGE_CHANNEL}:queue`); },
+    dispose() { unregisterCommands(); tracker.dispose(); queueCounts.clear(); options.scope.ipc.removeHandler(`${IMESSAGE_CHANNEL}:queue`); },
   };
 }

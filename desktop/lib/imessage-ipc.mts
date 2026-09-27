@@ -5,6 +5,7 @@ import type { createIMessageNotifications } from './imessage-notifications.mts';
 export function registerIMessageIpc(options: {
   window: BrowserWindow; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>;
   service: ReturnType<typeof createIMessageNotifications>;
+  commands?: ReturnType<typeof import('./imessage-commands.mts').createIMessageCommands>;
 }) {
   const owner = options.window.webContents;
   const assertOwner = (event: IpcMainInvokeEvent) => {
@@ -28,6 +29,10 @@ export function registerIMessageIpc(options: {
     handle('get', () => options.service.get());
     handle('save', value => options.service.save(value));
     handle('test', () => options.service.test());
+    if (options.commands) {
+      handle('commands:get', () => options.commands!.get());
+      handle('commands:configure', value => options.commands!.configure(value));
+    }
     options.window.once('closed', dispose);
   } catch (error) { dispose(); throw error; }
   return { dispose };

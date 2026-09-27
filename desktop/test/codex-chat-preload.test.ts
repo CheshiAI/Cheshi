@@ -69,6 +69,19 @@ test('iMessage bridge sends only explicit settings and test requests, validates 
   await assert.rejects(() => malformed.get(), /Invalid iMessage switch/);
 });
 
+test('message command settings use explicit validated IPC calls', async () => {
+  const state = { enabled: false, targetId: null, targets: [{ id: 'target', label: 'Test' }], status: 'Off' };
+  const bridge = createHarness('Alex', state);
+  const api = (bridge.read('iMessage') as NonNullable<CheshiDesktopApi['iMessage']>).commands!;
+  assert.deepEqual(structuredClone(await api.get()), state);
+  await api.configure({ enabled: true, targetId: 'target' });
+  assert.deepEqual(bridge.calls, [['cheshi:imessage:commands:get'],
+    ['cheshi:imessage:commands:configure', { enabled: true, targetId: 'target' }]]);
+  const bad = createHarness('Alex', { ...state, enabled: 'true' });
+  const badApi = (bad.read('iMessage') as NonNullable<CheshiDesktopApi['iMessage']>).commands!;
+  await assert.rejects(() => badApi.get(), /Invalid message command settings/);
+});
+
 test('agent detail reads carry the parent, target ids and pane without invoking navigation', async () => {
   const bridge = createHarness('Alex', { agents: [] });
   await bridge.call('readCodexAgentDetails', 'root', ['child'], 'pane-b');
