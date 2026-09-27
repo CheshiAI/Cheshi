@@ -213,6 +213,19 @@ function handleMainSourceChange(changedPath: string): void {
 
 function watchMainSources(): FSWatcher[] {
   const sourcePaths = [
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-store.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-rest.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-gateway.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-channels.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-service.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-ipc.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-setup.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-setup-tools.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-setup-browser.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-setup-page.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'workspace-discord.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-preload.cts'),
+    path.join(rootDirectory, 'desktop', 'shared', 'discord.ts'),
     ...['window-appearance.mts', 'window-appearance-store.mts', 'window-appearance-preload.cts']
       .map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
     path.join(rootDirectory, 'desktop', 'shared', 'window-appearance.ts'),

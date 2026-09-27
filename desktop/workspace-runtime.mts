@@ -192,7 +192,7 @@ const codeExplanation = createWorkspaceCodeExplanation(ephemeralSessionClient, w
 const preloadPath = app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'preload.cjs')
   : path.join(currentDirectory, 'runtime', 'preload.cjs');
 const notifications = createWorkspaceNotifications({ workspaceRoot, scope: options.scope, getParent: () => mainWindow, sink: options.notifications,
-  commands: options.messageCommands, services: () => [{ contextId: 'main', service: codexChatService }, ...codexChatContexts.allServices()] });
+  discord: options.discord, commands: options.messageCommands, services: () => [{ contextId: 'main', service: codexChatService }, ...codexChatContexts.allServices()] });
 const temporaryChats = createWorkspaceTemporaryChat({
   wrapService: service => notifications.temporary(service),
   scope: options.scope, getParent: () => mainWindow, createWindow: configuration => new BrowserWindow(configuration),
@@ -995,5 +995,5 @@ function show() {
   if (!revealPreparedWindow) throw new Error('The workspace window is not ready.');
   revealPreparedWindow();
 }
-return { start, show, dispose };
+return { start, show, dispose, startDiscordSetup: notifications.setupDiscord };
 }

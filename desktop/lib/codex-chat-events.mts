@@ -346,6 +346,9 @@ export function handleCodexNotification(context: CodexChatEventContext, value: J
     }
     if (method === "item/completed" && item.type === "agentMessage") {
       const text = stringValue(item.text);
+      if (text && (item.phase == null || item.phase === 'final_answer')) context.emit({
+        type: 'assistant-completed', threadId: active.threadId, turnId: active.turnId, itemId, text,
+      });
       const questions = asyncQuestionsFromMessage(item);
       if (questions && typeof item.text === 'string') {
         context.emit({ type: 'assistant-question', threadId: active.threadId, turnId: active.turnId,

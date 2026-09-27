@@ -9,6 +9,7 @@ export interface WorkspaceWindowState { bounds: Rectangle; maximized: boolean; f
 export interface WorkspaceRuntimeOptions {
   workspaceRoot: string;
   notifications?: import('./imessage-notifications.mts').NotificationSink;
+  discord?: import('./discord-service.mts').DiscordBridge;
   messageCommands?: import('./imessage-commands.mts').IMessageCommandRegistry;
   getTypeSafeKey?(): string | null;
   historyRecall?: HistoryRecallAccess;

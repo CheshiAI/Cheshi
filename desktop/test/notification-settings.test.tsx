@@ -51,7 +51,7 @@ test.each(['success', 'failure'] as const)('test %s keeps settings editable, ret
     await act(async () => testButton.click());
     expect(sends).toBe(1); expect(saveButton.disabled).toBe(true); expect(testButton.disabled).toBe(true);
     expect(recipient.disabled).toBe(false);
-    for (const control of container.querySelectorAll<HTMLButtonElement>('[role="switch"]')) expect(control.disabled).toBe(false);
+    for (const control of recipient.closest('form')!.querySelectorAll<HTMLButtonElement>('[role="switch"]')) expect(control.disabled).toBe(false);
     expect(container.querySelector('[role="status"]')).toBe(feedback);
     expect(feedback.textContent).toBe('Sending test iMessage…');
     await act(async () => {

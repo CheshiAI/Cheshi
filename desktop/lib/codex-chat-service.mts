@@ -1,5 +1,6 @@
 import { chatMessageFailure, codexCollaborationOverride, setCodexCollaborationMode, steerCodexMessage } from './codex-chat-turn-controls.mts';
 import { historyTurnContext } from './codex-chat-history-tools.mts';
+import { closeDiscordSetup, discordSetupThreadOptions, handleDiscordSetupRequest } from './discord-setup-tools.mts';
 import { CodexChatUserInputs } from './codex-chat-user-input.mts';
 import { CodexAgentTokenUsage } from './codex-agent-token-usage.mts';
 import { readCodexAgentDetails } from './codex-chat-agent-details.mts';
@@ -478,6 +479,7 @@ export class CodexChatService {
     this.viewedThreadId = sessionId;
     this.viewedThreadIsSubagent = stringValue(thread.parentThreadId) !== null;
     this.threadIsSubagent.set(sessionId, this.viewedThreadIsSubagent);
+    if (!this.viewedThreadIsSubagent) this.emit({ type: 'session-opened', session });
     const responseThreadIds = [...this.activeTurns.keys()];
     return {
       session,
@@ -490,6 +492,7 @@ export class CodexChatService {
 
   /** @returns {Promise<{ sessionId: null, items: [] }>} */
   async newSession(): Promise<{ sessionId: null; items: [] }> {
+    closeDiscordSetup(this);
     await this.releaseThreadSubscription(this.viewedThreadId, "new-session");
     this.resetPermissionMode();
     this.viewedThreadId = null;
@@ -567,6 +570,7 @@ export class CodexChatService {
     }
     if (!threadId) {
       const raw = await this.client.request("thread/start", {
+        ...discordSetupThreadOptions(this),
         cwd: this.cwd,
         ...this.permissionOverrides(),
         developerInstructions: this.developerInstructions,
@@ -847,6 +851,7 @@ export class CodexChatService {
   }
 
   handleRequest(value: JsonObject) {
+    if (handleDiscordSetupRequest(this, value)) return;
     if (this.userInputs.handle(value)) return;
     return handleCodexRequest(this, value);
   }
@@ -861,6 +866,7 @@ export class CodexChatService {
   }
 
   stop(): Promise<void> {
+    closeDiscordSetup(this);
     this.turnStartLifetime.abort(new Error('This chat pane has been closed.'));
     this.pendingSteers.clear();
     this.pendingTurnStarts.clear();

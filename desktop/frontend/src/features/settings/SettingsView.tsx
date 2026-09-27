@@ -9,7 +9,7 @@ import { AppearanceSettings } from './AppearanceSettings';
 import { AboutSettings } from './AboutSettings';
 import { NotificationSettings } from './NotificationSettings';
 
-export function SettingsView({ api = cheshiDesktop?.settings }: { api?: SettingsApi }) {
+export function SettingsView({ api = cheshiDesktop?.settings, contextId, onOpenChat }: { api?: SettingsApi; contextId?: string; onOpenChat?(thread: string): void }) {
   const [category, setCategory] = useState<'typesafe' | 'appearance' | 'notifications' | 'about'>('typesafe');
   const [state, setState] = useState<TypeSafeSettings | null>(null);
   const [key, setKey] = useState('');
@@ -84,7 +84,7 @@ export function SettingsView({ api = cheshiDesktop?.settings }: { api?: Settings
         <button type="button" className={styles.item} aria-current={category === 'notifications' ? 'page' : undefined} onClick={() => setCategory('notifications')}><Bell aria-hidden="true" />Notifications</button>
         <button type="button" className={styles.item} aria-current={category === 'about' ? 'page' : undefined} onClick={() => setCategory('about')}><Info aria-hidden="true" />About</button>
       </LiquidGlassPanel>
-      {category === 'notifications' ? <NotificationSettings /> : category === 'about' ? <AboutSettings /> : category === 'appearance' ? <AppearanceSettings /> : <section className={styles.detail} aria-labelledby="typesafe-heading">
+      {category === 'notifications' ? <NotificationSettings contextId={contextId} onStarted={onOpenChat} /> : category === 'about' ? <AboutSettings /> : category === 'appearance' ? <AppearanceSettings /> : <section className={styles.detail} aria-labelledby="typesafe-heading">
         <div className={styles.scroll}>
           <form className={styles.form} onSubmit={event => { event.preventDefault(); void execute('save'); }}>
             <div className={styles.titleRow}>

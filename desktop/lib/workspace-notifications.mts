@@ -1,4 +1,6 @@
 import path from 'node:path';
+import { createWorkspaceDiscord } from './workspace-discord.mts';
+import type { DiscordBridge } from './discord-service.mts';
 import { randomUUID } from 'node:crypto';
 import type { BrowserWindow } from 'electron';
 import type { WorkspaceIpcScope } from './workspace-ipc-router.mts';
@@ -12,11 +14,14 @@ import { registerWorkspaceMessageCommands } from './workspace-imessage-commands.
 
 export function createWorkspaceNotifications(options: {
   workspaceRoot: string; scope: WorkspaceIpcScope; getParent(): BrowserWindow | null; sink?: NotificationSink;
+  discord?: DiscordBridge;
   commands?: Parameters<typeof registerWorkspaceMessageCommands>[0]['registry'];
   services?: Parameters<typeof registerWorkspaceMessageCommands>[0]['services'];
 }) {
   const tracker = createChatNotifications({ workspace: path.basename(options.workspaceRoot), notify: event => options.sink?.notify(event) });
   const queueCounts = new Map<string, Map<string, number>>();
+  const discord = createWorkspaceDiscord({ workspace: options.workspaceRoot, bridge: options.discord,
+    services: options.services ?? (() => []), queueSize: (context, thread) => queueCounts.has(context) ? queueCounts.get(context)?.get(thread) ?? 0 : null });
   const unregisterCommands = registerWorkspaceMessageCommands({ registry: options.commands, workspaceRoot: options.workspaceRoot,
     services: options.services ?? (() => []), queueSize: (context, thread) => queueCounts.get(context)?.get(thread) ?? 0 });
   options.scope.ipc.handle(`${IMESSAGE_CHANNEL}:queue`, (event, value: unknown) => {
@@ -35,10 +40,12 @@ export function createWorkspaceNotifications(options: {
     });
     tracker.queue(report.contextId, entries);
     queueCounts.set(report.contextId, new Map(entries.map(entry => [entry.threadId, entry.count])));
+    discord.queue(report.contextId);
   });
   return {
-    event(context: string, event: unknown) { tracker.event(context, event); },
-    remove(context: string) { tracker.remove(context); queueCounts.delete(context); },
+    setupDiscord: discord.setup,
+    event(context: string, event: unknown) { tracker.event(context, event); discord.event(context, event); },
+    remove(context: string) { tracker.remove(context); queueCounts.delete(context); discord.remove(context); },
     temporary(service: Pick<TemporaryChatService, 'models' | 'send' | 'close'>) {
       const id = `temporary-${randomUUID()}`;
       let closed = false, sending = false;
@@ -61,6 +68,6 @@ export function createWorkspaceNotifications(options: {
         async close() { closed = true; tracker.remove(id); await service.close(); },
       };
     },
-    dispose() { unregisterCommands(); tracker.dispose(); queueCounts.clear(); options.scope.ipc.removeHandler(`${IMESSAGE_CHANNEL}:queue`); },
+    dispose() { discord.dispose(); unregisterCommands(); tracker.dispose(); queueCounts.clear(); options.scope.ipc.removeHandler(`${IMESSAGE_CHANNEL}:queue`); },
   };
 }

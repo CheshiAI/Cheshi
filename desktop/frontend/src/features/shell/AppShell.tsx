@@ -33,10 +33,12 @@ import { SidebarRail } from '../navigation/SidebarRail';
 import { PluginsView } from '../plugins';
 import { TerminalWorkspace } from '../terminal';
 import { SettingsView } from '../settings/SettingsView';
+import { DiscordSetupConfirmation } from '../settings/DiscordSetupConfirmation';
 import { ReviewSidebar } from './ReviewSidebar';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import styles from './AppShell.module.css';
 import { useAppUpdateResume } from './useAppUpdateResume';
+import { useWorkflowChatNavigation } from './useWorkflowChatNavigation';
 import { WorkspaceEditorSplit } from './WorkspaceEditorSplit';
 import { readWorkspaceLayout, revealWorkspacePane, saveWorkspaceLayout, visibleWorkspaceLayout } from './workspaceLayoutModel';
 import { removeSplitPane, splitPaneIds } from '../../shared/ui/splitPaneModel';
@@ -154,15 +156,13 @@ export function AppShell() {
       paneId: workspace.activePaneId });
   };
 
-  const openWorkflowChat = (threadId: string): void => {
-    if (workspace.deletePending) return;
+  const openWorkflowChat = useWorkflowChatNavigation(workspace, () => {
     historyRequestId.current += 1;
     closeReview();
     setActiveView('chat');
     setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
     setPrimaryPaneClosed(false);
-    void chat?.openSession(threadId);
-  };
+  });
 
   const openHistorySearchHit = async (hit: Pick<ChatHistorySearchHit, 'threadId' | 'itemId'>): Promise<boolean> => {
     if (chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running) return false;
@@ -403,7 +403,7 @@ export function AppShell() {
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
           )}
-          {activeView === 'settings' && <SettingsView />}
+          {activeView === 'settings' && <SettingsView contextId={workspace.activePaneId} onOpenChat={openWorkflowChat} />}
           {activeView === 'blank' && <BlankView />}
           </WorkspaceEditorSplit>
         </div>
@@ -421,6 +421,7 @@ export function AppShell() {
         selectionDisabledReason={accountSwitchReason}
         onBeforeSelect={beforeAccountSelect} onSelectionFinished={accountSelectionFinished} />
       {fileSearchOpen && <WorkspaceFileSearch onOpenFile={openWorkspaceFile} onClose={() => setFileSearchOpen(false)} />}
+      <DiscordSetupConfirmation api={cheshiDesktop?.discord} />
       {deleteChoice && <ChatDeleteSessionDialog sessionTitle={deleteChoice.title}
         reason={workspace.deletePending ? null : workspace.deleteSessionReason(deleteChoice.sessionId)}
         pending={workspace.deletePending} error={workspace.error ?? chat?.state.error ?? null}

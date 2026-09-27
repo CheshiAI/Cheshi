@@ -32,6 +32,9 @@ import { appUpdateUnavailableReason, stageAppUpdate } from './lib/app-update-ins
 import { createAppUpdateResume } from './lib/app-update-resume.mts';
 import { APP_UPDATE_CHANNEL } from './shared/app-update.ts';
 import { KEEP_AWAKE_CHANNEL } from './shared/keep-awake.ts';
+import { createDiscordService } from './lib/discord-service.mts';
+import { createDiscordSetupBrowser } from './lib/discord-setup-browser.mts';
+import { registerDiscordIpc } from './lib/discord-ipc.mts';
 import { createIMessageNotifications } from './lib/imessage-notifications.mts';
 import { registerIMessageIpc } from './lib/imessage-ipc.mts';
 import { createIMessageCommands } from './lib/imessage-commands.mts';
@@ -68,6 +71,8 @@ const apiSettings = createSettingsService({
   }),
   checkKey: checkTypeSafeConnection,
 });
+const discord = createDiscordService({ directory: app.getPath('userData'), encryption: safeStorage });
+void app.whenReady().then(() => discord.start());
 const notifications = createIMessageNotifications({ filename: path.join(app.getPath('userData'), 'imessage-notifications.json') });
 const messageCommands = createIMessageCommands({ recipient: async () => (await notifications.get()).recipient,
   reply: (recipient, text) => notifications.reply(recipient, text) });
@@ -92,7 +97,7 @@ const updates = createAppUpdateService({
       quitting = true;
       await workspaces.closeAll();
       await keepAwake.dispose();
-      await messageCommands.dispose(); await notifications.dispose();
+      await discord.dispose(); await messageCommands.dispose(); await notifications.dispose();
       await backgroundUsage.dispose().catch(reportTrayError);
       usageTray?.dispose();
       aboutWindow.close();
@@ -173,13 +178,18 @@ let openingStartupWindow = false;
 function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntime>[0]) {
   const source = usageTray?.register();
   let settingsIpc: ReturnType<typeof registerSettingsIpc> | undefined;
+  let discordIpc: ReturnType<typeof registerDiscordIpc> | undefined;
   let notificationIpc: ReturnType<typeof registerIMessageIpc> | undefined;
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try {
-    runtime = createWorkspaceRuntime({ ...options, notifications, messageCommands, getTypeSafeKey: apiSettings.getKey,
+    runtime = createWorkspaceRuntime({ ...options, notifications, messageCommands, discord, getTypeSafeKey: apiSettings.getKey,
       historyRecall: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) },
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
+      discordIpc = registerDiscordIpc({ window, ipc: options.scope.ipc, service: discord,
+        setup: context => runtime.startDiscordSetup(context, () => createDiscordSetupBrowser({ parent: window,
+          createWindow: configuration => new BrowserWindow(configuration), clipboard, settings: discord,
+          confirm: (preferences, signal) => discordIpc?.confirm(preferences, signal) ?? Promise.resolve(false) })) });
       notificationIpc = registerIMessageIpc({ window, ipc: options.scope.ipc, service: notifications, commands: messageCommands });
     });
   }
@@ -195,7 +205,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
     },
     show: () => runtime.show(),
     async dispose() {
-      try { notificationIpc?.dispose(); settingsIpc?.dispose(); }
+      try { discordIpc?.dispose(); notificationIpc?.dispose(); settingsIpc?.dispose(); }
       finally { try { await runtime.dispose(); } finally { source?.dispose(); } }
     },
   };
@@ -300,7 +310,7 @@ app.on('before-quit', (event) => {
   quitting = true;
   void workspaces.closeAll().then(async () => {
     await keepAwake.dispose();
-    await messageCommands.dispose(); await notifications.dispose();
+    await discord.dispose(); await messageCommands.dispose(); await notifications.dispose();
     await backgroundUsage.dispose().catch(reportTrayError);
     usageTray?.dispose();
     aboutWindow.dispose();
