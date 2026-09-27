@@ -102,8 +102,8 @@
 .deliveryStatus { color: var(--sidebar-section-label-color); font-size: 10.5px; line-height: 1.5; }
 .userMessageGroup { display: flex; min-width: 0; max-width: 100%; flex-direction: column; align-items: flex-start; gap: 8px; }
 .messageLabel { display: flex; align-items: center; gap: 6px; color: var(--text); }
-.messageLabel strong { font-size: 10px; font-weight: 650; letter-spacing: .08em; line-height: var(--icon-size-default); }
-.messageTimestamp { color: var(--sub-text); font-size: 9px; font-variant-numeric: tabular-nums; letter-spacing: .02em; line-height: var(--icon-size-default); }
+.messageLabel strong { color: var(--sidebar-section-label-color); font-family: var(--font-ui), sans-serif; font-size: var(--font-size-label); font-weight: 600; letter-spacing: normal; line-height: var(--icon-size-default); }
+.messageTimestamp { color: var(--sidebar-section-label-color); font-family: var(--font-ui), sans-serif; font-size: 9px; font-weight: 400; font-variant-numeric: tabular-nums; letter-spacing: normal; line-height: var(--icon-size-default); }
 .userLabel { align-self: flex-end; padding-right: 4px; }
 .userMessage {
   composes: neumorphic-surface-tokens from global;
@@ -111,7 +111,7 @@
   max-width: 100%;
   border: 1px solid var(--divider);
   border-radius: 16px 16px 4px 16px;
-  background: var(--neumorphic-button-surface);
+  background: var(--control-surface-interactive);
   color: var(--text);
   padding: 10px 14px;
 }
