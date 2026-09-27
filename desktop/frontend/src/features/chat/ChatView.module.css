@@ -19,19 +19,15 @@
   flex: 0 0 var(--header-height);
 }
 
-.title { display: flex; min-width: 0; align-items: center; gap: 10px; }
-.titleMark { cursor: default; pointer-events: none; }
-.titleMark .openAIMark { width: 11px; height: 11px; }
 .sidebarToggle svg { width: 11px; height: 11px; stroke-width: 1.7; }
 .openAIMark {
   display: block;
-  width: var(--icon-size-default);
-  height: var(--icon-size-default);
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
   background-color: currentColor;
   -webkit-mask: url('../../../../../resources/icons/OpenAIMark.svg') center / contain no-repeat;
   mask: url('../../../../../resources/icons/OpenAIMark.svg') center / contain no-repeat;
 }
-.title h1 { overflow: hidden; margin: 0; color: var(--sidebar-section-label-color); font-size: 10px; font-weight: 600; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .timeline {
   min-height: 0;
   flex: 1 1 auto;

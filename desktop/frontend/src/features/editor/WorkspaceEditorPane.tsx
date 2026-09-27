@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   FileCode2,
   FileText,
+  X,
 } from 'lucide-react';
 import { useContext } from 'react';
 import type { EditorPaneBinding } from './useWorkspaceEditorController';
@@ -17,6 +18,7 @@ import {
   nonDraggableWindowRegionStyle,
   TieredHeader,
 } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { WorkspaceEditorFileToolbar } from './WorkspaceEditorFileToolbar';
 import { WorkspaceCodeExplanationMenu } from './WorkspaceCodeExplanationMenu';
 import type { GitLineBlameRequest } from '../../../../shared/git-line-blame';
@@ -177,6 +179,11 @@ export function WorkspaceEditorPane({
               style={nonDraggableWindowRegionStyle}
             >
               <WorkspaceLayoutControls maximizeControl={maximizeControl} />
+              <TooltipButton variant="ghost" size="icon"
+                aria-label="Close all file tabs" title="Close all file tabs in this pane"
+                disabled={tabs.length === 0} onClick={closeAllTabs}>
+                <X aria-hidden="true" />
+              </TooltipButton>
             </div>
           </>
         )}
