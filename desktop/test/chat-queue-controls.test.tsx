@@ -32,9 +32,9 @@ function harness() {
     require(name: string) { assert.ok(Object.hasOwn(modules, name), `Unexpected dependency: ${name}`); return modules[name]; } });
   // This rendering boundary supplies only fields used by the queue controls.
   const controller: ChatQueueController = { streaming: true, loading: false, queueBlocked: false, interactionsLocked: false,
-    commandMenuOpen: false, canOpenSideChat: true, draft: '', attachments: [], selectedSkill: null, sendRecovery: null,
+    commandMenuOpen: false, canOpenTemporaryChat: true, draft: '', attachments: [], selectedSkill: null, sendRecovery: null,
     editQueuedMessage: (id: string) => { calls.push(`edit:${id}`); },
-    openQueuedSideChat: (id: string) => { calls.push(`side:${id}`); },
+    openQueuedTemporaryChat: (id: string) => { calls.push(`side:${id}`); },
     messageQueue: { paused: false, entries: [{ id: 'one', threadId: 'a', status: 'queued',
       input: { draft: '다음 요청', selectedSkill: null, attachments: [] } }],
       steer: async (id: string) => { calls.push(`steer:${id}`); return true; },
@@ -71,10 +71,10 @@ function harness() {
   return { controller, calls, render, click, button };
 }
 
-test('queue card and more menu invoke steer, delete, edit, side chat, and queue toggle', () => {
+test('queue card and more menu invoke steer, delete, edit, temporary chat, and queue toggle', () => {
   const app = harness();
   app.click('현재 작업 조정'); app.click('대기 메시지 삭제');
-  for (const label of ['메시지 편집', '사이드 채팅에서 열기', '대기열 끄기']) {
+  for (const label of ['메시지 편집', 'Open in temporary chat', '대기열 끄기']) {
     app.click('대기 메시지 더보기');
     expect(app.button('대기 메시지 더보기').props['aria-expanded']).toBe(true);
     app.click(label);
@@ -84,16 +84,16 @@ test('queue card and more menu invoke steer, delete, edit, side chat, and queue 
   expect(app.button('대기열 켜기').props['aria-pressed']).toBe(false);
 });
 
-test('editing never overwrites a current draft and unavailable side chat stays disabled', () => {
-  const app = harness(); app.controller.draft = '작성 중'; app.controller.canOpenSideChat = false;
+test('editing never overwrites a current draft and unavailable temporary chat stays disabled', () => {
+  const app = harness(); app.controller.draft = '작성 중'; app.controller.canOpenTemporaryChat = false;
   app.click('대기 메시지 더보기');
   expect(app.button('메시지 편집').props.disabled).toBe(true);
-  expect(app.button('사이드 채팅에서 열기').props.disabled).toBe(true);
+  expect(app.button('Open in temporary chat').props.disabled).toBe(true);
   expect(app.calls).toEqual([]);
 });
 
-test('sending rows cannot be edited or deleted and uncertain delivery cannot be steered', () => {
-  const app = harness(); app.controller.messageQueue.entries[0]!.status = 'sending';
+test.each(['sending', 'transferring'] as const)('%s rows cannot be edited or deleted and uncertain delivery cannot be steered', (status) => {
+  const app = harness(); app.controller.messageQueue.entries[0]!.status = status;
   expect(app.button('현재 작업 조정').props.disabled).toBe(true);
   expect(app.button('대기 메시지 삭제').props.disabled).toBe(true);
   expect(app.button('대기 메시지 더보기').props.disabled).toBe(true);

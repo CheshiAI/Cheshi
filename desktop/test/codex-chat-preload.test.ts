@@ -444,3 +444,34 @@ test('routes additional instructions and validates conversation mode through pre
   assert.throws(() => harness.call('steerCodexChatMessage', '', 'steer-two'), /non-empty string/);
   assert.equal(harness.calls.length, 3);
 });
+
+
+test('temporary window draft handoff uses dedicated IPC without sending a provider request', async () => {
+  const draft = { text: 'Queued question', attachments: [] };
+  const harness = createHarness('Alex', draft);
+  const temporary = harness.read('temporaryChat') as CheshiDesktopApi['temporaryChat'];
+  await temporary.openWindow(draft);
+  assert.deepEqual(await temporary.initialDraft(), draft);
+  await temporary.acceptDraft();
+  await temporary.acceptDraft('Attachment missing');
+  assert.deepEqual(harness.calls, [
+    ['cheshi:temporary-chat-open-window', draft],
+    ['cheshi:temporary-chat-initial-draft'],
+    ['cheshi:temporary-chat-accept-draft', undefined],
+    ['cheshi:temporary-chat-accept-draft', 'Attachment missing'],
+  ]);
+});
+
+
+test('temporary window opening events have an explicit cleanup', () => {
+  const harness = createHarness();
+  const temporary = harness.read('temporaryChat') as CheshiDesktopApi['temporaryChat'];
+  let opened = 0;
+  const unsubscribe = temporary.onOpened(() => { opened++; });
+  harness.emit(undefined, 'cheshi:temporary-chat-opened');
+  assert.equal(opened, 1);
+  unsubscribe();
+  harness.emit(undefined, 'cheshi:temporary-chat-opened');
+  assert.equal(opened, 1);
+  assert.deepEqual(harness.calls, []);
+});

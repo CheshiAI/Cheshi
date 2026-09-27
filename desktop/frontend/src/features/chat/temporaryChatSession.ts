@@ -1,4 +1,4 @@
-import type { TemporaryChatRequest, TemporaryChatResult } from '../../../../shared/temporary-chat';
+import type { TemporaryChatDraft, TemporaryChatRequest, TemporaryChatResult } from '../../../../shared/temporary-chat';
 import type { CodexChatAttachment } from '../../cheshiDesktop';
 import type { ChatModel } from './model';
 
@@ -40,6 +40,10 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Temporary chat could not complete the request.';
 }
 
+function assertAttachmentCount(actual: number, expected: number): void {
+  if (actual !== expected) throw new Error('Could not transfer all attachments.');
+}
+
 /** Owns one panel's in-memory state and prevents late operations from reviving a closed session. */
 export class TemporaryChatSession {
   private readonly api: TemporaryChatApi;
@@ -75,6 +79,26 @@ export class TemporaryChatSession {
     } catch (error) {
       this.update({ loading: false, failed: true, error: `${errorMessage(error)} Close and reopen to retry.` });
     }
+  }
+
+  private assertDraftDestination(): void {
+    if (this.closed || this.state.failed || this.state.draft || this.state.attachments.length) {
+      throw new Error('The temporary chat changed before the message arrived.');
+    }
+  }
+
+  async receiveDraft(draft: TemporaryChatDraft): Promise<void> {
+    const available = () => !this.closed && !this.state.loading && !this.state.busy && !this.state.picking
+      && !this.state.failed && !this.state.draft && this.state.attachments.length === 0;
+    if (!available()) throw new Error('The temporary chat is not ready to receive this message.');
+    this.update({ picking: true });
+    try {
+      const attachments = draft.attachments.length
+        ? await this.api.importAttachments(this.id, draft.attachments.map(item => item.path)) : [];
+      assertAttachmentCount(attachments.length, draft.attachments.length);
+      this.assertDraftDestination();
+      this.update({ draft: draft.text, attachments });
+    } finally { this.update({ picking: false }); }
   }
 
   setDraft(draft: string): void { this.update({ draft }); }

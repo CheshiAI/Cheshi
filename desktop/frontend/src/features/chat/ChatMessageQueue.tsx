@@ -9,21 +9,21 @@ import styles from './ChatMessageQueue.module.css';
 
 const labels = {
   ko: { queue: '대기열', steer: '현재 작업 조정', remove: '대기 메시지 삭제', more: '대기 메시지 더보기',
-    edit: '메시지 편집', side: '사이드 채팅에서 열기', enable: '대기열 켜기', disable: '대기열 끄기',
+    edit: '메시지 편집', side: 'Open in temporary chat', enable: '대기열 켜기', disable: '대기열 끄기',
     paused: '자동 전송 일시 중지', waiting: '현재 응답이 끝나면 순서대로 전송합니다',
     sending: '전송 중', unknown: '전송 여부를 확인할 수 없습니다. 대화를 확인한 뒤 편집하거나 삭제하세요.',
     clearDraft: '입력 중인 메시지를 먼저 보내거나 비운 뒤 편집할 수 있습니다.',
     hint: 'Enter / Tab: 대기열에 추가', show: '대기열 펼치기', hide: '대기열 접기' },
   en: { queue: 'Message queue', steer: 'Steer current task', remove: 'Delete queued message', more: 'Queued message actions',
-    edit: 'Edit message', side: 'Open in side chat', enable: 'Enable queue', disable: 'Disable queue',
+    edit: 'Edit message', side: 'Open in temporary chat', enable: 'Enable queue', disable: 'Disable queue',
     paused: 'Automatic sending paused', waiting: 'Messages send in order after the current response',
     sending: 'Sending', unknown: 'Delivery is unconfirmed. Check this conversation before editing or deleting.',
     clearDraft: 'Send or clear your current draft before editing this message.',
     hint: 'Enter / Tab: queue message', show: 'Show message queue', hide: 'Hide message queue' },
 };
 export type ChatQueueController = Pick<ChatViewController,
-  'streaming' | 'loading' | 'queueBlocked' | 'interactionsLocked' | 'commandMenuOpen' | 'canOpenSideChat'
-  | 'draft' | 'attachments' | 'selectedSkill' | 'sendRecovery' | 'editQueuedMessage' | 'openQueuedSideChat'> & {
+  'streaming' | 'loading' | 'queueBlocked' | 'interactionsLocked' | 'commandMenuOpen' | 'canOpenTemporaryChat'
+  | 'draft' | 'attachments' | 'selectedSkill' | 'sendRecovery' | 'editQueuedMessage' | 'openQueuedTemporaryChat'> & {
     messageQueue: Pick<ChatViewController['messageQueue'], 'paused' | 'entries' | 'steer' | 'remove' | 'toggleCurrent'>;
   };
 interface MenuTarget { id: string; trigger: HTMLButtonElement }
@@ -38,7 +38,7 @@ function QueueMenu({ target, controller, onClose }: {
   const canEdit = !controller.draft && !controller.selectedSkill && controller.attachments.length === 0
     && (!controller.sendRecovery || controller.sendRecovery.status === 'restored');
   const disabled = controller.queueBlocked || controller.loading || controller.messageQueue.entries
-    .some((entry) => entry.id === target.id && entry.status === 'sending');
+    .some((entry) => entry.id === target.id && (entry.status === 'sending' || entry.status === 'transferring'));
   const action = (run: () => void) => { onClose(); run(); };
   return createPortal(<div ref={ref} className={styles.menuAnchor} style={{
     left: Math.max(8, Math.min(rect.right - 280, window.innerWidth - 288)),
@@ -51,8 +51,8 @@ function QueueMenu({ target, controller, onClose }: {
         title={!canEdit ? copy.clearDraft : undefined} onClick={() => action(() => controller.editQueuedMessage(target.id))}>
         <Pencil aria-hidden="true" /><span>{copy.edit}</span>
       </NeumorphicButton>
-      <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={disabled || !controller.canOpenSideChat}
-        onClick={() => action(() => controller.openQueuedSideChat(target.id))}>
+      <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={disabled || !controller.canOpenTemporaryChat}
+        onClick={() => action(() => controller.openQueuedTemporaryChat(target.id))}>
         <MessageCirclePlus aria-hidden="true" /><span>{copy.side}</span>
       </NeumorphicButton>
       <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={controller.interactionsLocked}
@@ -91,7 +91,7 @@ export function ChatMessageQueue({ controller, open, panelId }: {
         </div>
         <ol className={styles.entries}>
           {queue.entries.map((entry) => {
-            const sending = entry.status === 'sending';
+            const sending = (entry.status === 'sending' || entry.status === 'transferring');
             const disabled = sending || controller.queueBlocked || controller.loading;
             return <li key={entry.id} className={styles.entry} aria-busy={sending}>
               <div className={styles.row}>
@@ -114,7 +114,7 @@ export function ChatMessageQueue({ controller, open, panelId }: {
                   aria-expanded={visibleTarget?.id === entry.id} title={copy.more} aria-label={copy.more}
                   onClick={(event) => setTarget({ id: entry.id, trigger: event.currentTarget })}><MoreHorizontal aria-hidden="true" /></NeumorphicButton>
               </div>
-              {sending && <span className={styles.notice} role="status">{copy.sending}</span>}
+              {sending && <span className={styles.notice} role="status">{entry.status === 'transferring' ? 'Opening temporary chat…' : copy.sending}</span>}
               {entry.error && <span className={styles.notice} role="status">{entry.status === 'unknown' ? copy.unknown : entry.error}</span>}
             </li>;
           })}

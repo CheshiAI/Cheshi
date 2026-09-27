@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { temporaryChatDraft } from '../shared/temporary-chat.ts';
 import type { BrowserWindow, BrowserWindowConstructorOptions, IpcMainInvokeEvent, Shell } from 'electron';
 import type { WorkspaceIpcScope } from './workspace-ipc-router.mts';
 import { createTemporaryChatWindow } from './temporary-chat-window.mts';
@@ -44,8 +45,8 @@ export function createWorkspaceTemporaryChat(options: {
       throw new Error('Temporary chat can only be opened by its workspace.');
     }
   };
-  options.scope.ipc.handle('cheshi:temporary-chat-open-window', event => {
-    assertParent(event); return manager.open();
+  options.scope.ipc.handle('cheshi:temporary-chat-open-window', (event, draft: unknown) => {
+    assertParent(event); return manager.open(draft === undefined ? undefined : temporaryChatDraft(draft));
   });
   options.scope.ipc.handle('cheshi:temporary-chat-window-state', event => {
     assertParent(event); return manager.isOpen;

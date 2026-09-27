@@ -810,7 +810,10 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   cancelCodeExplanation: (requestId: string) => Promise<void>;
   listCodexModels: (contextId?: string) => Promise<unknown>;
   temporaryChat: {
-    openWindow(): Promise<void>;
+    openWindow(draft?: import('../../shared/temporary-chat').TemporaryChatDraft): Promise<void>;
+    initialDraft(): Promise<import('../../shared/temporary-chat').TemporaryChatDraft | null>;
+    acceptDraft(error?: string): Promise<void>;
+    onOpened(listener: () => void): () => void;
     isWindowOpen(): Promise<boolean>;
     onWindowChanged(listener: (open: boolean) => void): () => void;
     models: (sessionId: string) => Promise<import('./features/chat/model').ChatModel[]>;

@@ -15,6 +15,8 @@ test('temporary native window renders and sends through the shared UI and dispos
   const directory = await mkdtemp(path.join(tmpdir(), 'cheshi-temporary-bridge-'));
   try {
     const mainPath = path.join(directory, 'main.mts');
+    const attachmentPath = path.join(directory, 'queued.txt');
+    await writeFile(attachmentPath, 'Queued attachment');
     await writeFile(mainPath, `
 import { createRequire } from 'node:module';
 const { app, BrowserWindow, ipcMain } = createRequire(import.meta.url)('electron');
@@ -35,7 +37,7 @@ const router = new WorkspaceIpcRouter(ipcMain);
 const scope = router.createScope();
 scope.addOwner(parent.webContents);
 const errors = [], sends = [];
-let child, closes = 0;
+let child, finishFirst, closes = 0;
 const manager = createTemporaryChatWindow({
   scope, getParent: () => parent,
   preload: ${JSON.stringify(fileURLToPath(new URL('../runtime/preload.cjs', import.meta.url)))},
@@ -59,7 +61,11 @@ const manager = createTemporaryChatWindow({
       models: async () => [{ id: 'test', model: 'test', displayName: 'Test model', description: 'Fixture', isDefault: true,
         defaultReasoningEffort: 'medium', supportedReasoningEfforts: [{ effort: 'medium', description: 'Fixture effort' }],
         serviceTiers: [], defaultServiceTier: null }],
-      send: async request => { sends.push(request); return { text: '**Fixture reply**', model: 'test' }; },
+      send: async request => {
+        sends.push(request);
+        if (request.text === 'Fixture question') await new Promise(resolve => { finishFirst = resolve; });
+        return { text: '**Fixture reply**', model: 'test' };
+      },
       close: async () => { closes++; },
     }),
   }),
@@ -80,6 +86,20 @@ try {
   await evaluate('Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(document.querySelector("textarea"), "Fixture question"); document.querySelector("textarea").dispatchEvent(new Event("input", { bubbles: true }));');
   await waitFor('!Array.from(document.querySelectorAll("button")).find(button => button.ariaLabel === "Send message").disabled');
   await evaluate('document.querySelector("form").requestSubmit()');
+  for (let i = 0; i < 100 && !finishFirst; i++) await new Promise(resolve => setTimeout(resolve, 20));
+  if (!finishFirst) throw new Error('First request did not start');
+  const firstChild = child;
+  await manager.open({ text: 'Second queued question', attachments: [{ kind: 'file', name: 'queued.txt', path: ${JSON.stringify(attachmentPath)} }] });
+  await waitFor('!!document.querySelector("[data-chat-item-id=temporary-1] p strong")');
+  const independent = { windows: BrowserWindow.getAllWindows().length - 1, automaticSends: sends.length,
+    firstBusy: await firstChild.webContents.executeJavaScript('document.querySelector("textarea").readOnly'),
+    attachment: await evaluate('document.body.textContent.includes("queued.txt")') };
+  child.webContents.send('cheshi:temporary-chat-opened');
+  await new Promise(resolve => setTimeout(resolve, 50));
+  child.destroy();
+  independent.remainingOpen = manager.isOpen;
+  child = firstChild;
+  finishFirst();
   await waitFor('!!document.querySelector("[data-chat-item-id=temporary-1] p strong")');
   const replied = await evaluate('document.querySelector("[data-chat-item-id=temporary-1] p strong").textContent');
   const measure = () => evaluate('(() => { const card = document.querySelector("[data-chat-item-id=temporary-1]").getBoundingClientRect(); const input = document.querySelector("form").parentElement.getBoundingClientRect(); return { left: Math.abs(card.left - input.left), right: Math.abs(card.right - input.right), overflow: document.documentElement.scrollWidth > innerWidth }; })()');
@@ -94,7 +114,7 @@ try {
   const menu = await evaluate('document.querySelector("[role=menu]").textContent');
   await manager.stop();
   parent.destroy(); scope.dispose();
-  console.log('RESULT:' + JSON.stringify({ initialSize, initial, replied, wide, narrow, menu, sends, closes, errors }));
+  console.log('RESULT:' + JSON.stringify({ initialSize, initial, independent, replied, wide, narrow, menu, sends, closes, errors }));
   clearTimeout(timer); app.exit(0);
 } catch (error) {
   console.error(error); await manager.stop(); parent.destroy(); scope.dispose(); clearTimeout(timer); app.exit(1);
@@ -113,9 +133,12 @@ try {
     assert.deepEqual(value.initialSize, [500, 750]);
     assert.deepEqual(value.initial, { shell: true, conversation: true, user: 'Tester', modal: false, noHistory: true });
     assert.equal(value.replied, 'Fixture reply');
-    assert.equal(value.sends.length, 1);
+    assert.equal(value.sends.length, 2);
+    assert.deepEqual(value.independent, { windows: 2, automaticSends: 2, firstBusy: true, attachment: true, remainingOpen: true });
+    assert.equal(value.sends[1].text, 'Second queued question');
+    assert.equal(value.sends[1].attachments[0].path, attachmentPath);
     assert.equal(value.sends[0].text, 'Fixture question');
-    assert.equal(value.closes, 1);
+    assert.equal(value.closes, 2);
     assert.match(value.menu, /Model.*Reasoning/);
     for (const size of [value.wide, value.narrow]) {
       assert.ok(size.left <= 1 && size.right <= 1, JSON.stringify(size));

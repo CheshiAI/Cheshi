@@ -7,6 +7,7 @@ import { TemporaryChatSession, initialTemporaryChatState, type TemporaryChatApi 
 import { INITIAL_CHAT_STATE } from '../frontend/src/features/chat/model';
 import { temporaryChatItems } from '../frontend/src/features/chat/temporaryChatTimeline';
 import * as transfer from '../frontend/src/features/chat/attachmentTransferModel';
+import type { TemporaryChatDraft, TemporaryChatRequest } from '../shared/temporary-chat';
 import { WORKSPACE_FILE_TRANSFER_TYPE } from '../frontend/src/shared/workspaceFileTransfer';
 
 interface Element { type: unknown; props: Record<string, unknown> }
@@ -17,8 +18,11 @@ function elements(value: unknown): Element[] {
   return [element, ...elements(element.props.children)];
 }
 
-function harness() {
+function harness(draft: TemporaryChatDraft | null = null, overrides: Partial<TemporaryChatApi> = {}) {
   const imports: unknown[] = [];
+  const sends: TemporaryChatRequest[] = [];
+  const openedListeners = new Set<() => void>();
+  const accepted: (string | undefined)[] = [];
   const states: unknown[] = [];
   const refs: { current: unknown }[] = [];
   const effects: (() => (() => void) | undefined)[] = [];
@@ -26,7 +30,13 @@ function harness() {
   let cursor = 0;
   let refCursor = 0;
   let mounted = false;
-  const api: TemporaryChatApi = {
+  const api: TemporaryChatApi & {
+    initialDraft(): Promise<TemporaryChatDraft | null>; acceptDraft(error?: string): Promise<void>;
+    onOpened(listener: () => void): () => void;
+  } = {
+    initialDraft: async () => draft,
+    acceptDraft: async error => { accepted.push(error); },
+    onOpened: listener => { openedListeners.add(listener); return () => { openedListeners.delete(listener); }; },
     models: async () => [{ id: 'model', model: 'model', displayName: 'Model', description: '', isDefault: true,
       defaultReasoningEffort: 'medium', supportedReasoningEfforts: [], serviceTiers: [], defaultServiceTier: null }],
     selectAttachments: async () => [],
@@ -37,8 +47,9 @@ function harness() {
         return { kind: 'file' as const, name: file.split('/').at(-1)!, path: file };
       });
     },
-    send: async () => ({ text: 'Reply', model: 'model' }),
+    send: async (_id, request) => { sends.push(request); return { text: 'Reply', model: 'model' }; },
     close: async () => {},
+    ...overrides,
   };
   const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
   const modules: Record<string, unknown> = {
@@ -88,14 +99,16 @@ function harness() {
   } });
   const exports: Record<string, unknown> = {};
   vm.runInNewContext(compiled.outputText, {
-    exports, document: { activeElement: null, body: {} }, crypto: { randomUUID: () => 'drop-session' }, console,
+    exports, document: { activeElement: null, body: {} }, crypto: { randomUUID: () => 'drop-session' }, console, Error,
     HTMLElement: class {}, window: { dispatchEvent() {} }, Event: class {},
     require(name: string) { assert.ok(Object.hasOwn(modules, name), `Unexpected dependency: ${name}`); return modules[name]; },
   });
   const component = exports.TemporaryChatPanel;
   assert.equal(typeof component, 'function');
   return {
-    imports,
+    imports, sends, accepted,
+    get state() { return states[0] as import('../frontend/src/features/chat/temporaryChatSession').TemporaryChatState; },
+    opened() { for (const listener of openedListeners) listener(); },
     render() {
       cursor = 0; refCursor = 0;
       const tree = (component as (props: { onClose(): void }) => unknown)({ onClose() {} });
@@ -156,5 +169,56 @@ test('loading blocks file drops while ordinary text drags remain untouched', asy
     dispatch(form, 'onDrop', text);
     expect(text.consumed).toBe(false);
     await settle();
+  } finally { app.close(); }
+});
+
+
+test('queued questions automatically send once only after their new window opens', async () => {
+  const draft: TemporaryChatDraft = { text: 'Run immediately', attachments: [{ kind: 'file', name: 'a.txt', path: '/workspace/a.txt' }] };
+  const app = harness(draft);
+  try {
+    app.render(); await settle();
+    expect(app.accepted).toEqual([undefined]);
+    expect(app.sends).toEqual([]);
+    app.opened(); await settle(); app.render();
+    expect(app.sends).toHaveLength(1);
+    expect(app.sends[0]).toMatchObject(draft);
+    expect(app.state.messages.map(message => message.role)).toEqual(['user', 'assistant']);
+    app.opened(); app.render(); await settle();
+    expect(app.sends).toHaveLength(1);
+  } finally { app.close(); }
+});
+
+test('ordinary empty windows do not auto-send and closed windows cannot send late', async () => {
+  for (const draft of [null, { text: 'Closed before opening', attachments: [] }]) {
+    const app = harness(draft);
+    app.render(); await settle();
+    if (draft) app.close();
+    app.opened(); await settle();
+    expect(app.sends).toHaveLength(0);
+    if (!draft) app.close();
+  }
+});
+
+test('automatic send failure preserves the question and attachments in its temporary window', async () => {
+  let attempts = 0;
+  const draft: TemporaryChatDraft = { text: 'Keep on failure', attachments: [{ kind: 'file', name: 'a.txt', path: '/workspace/a.txt' }] };
+  const app = harness(draft, { send: async () => { attempts++; throw new Error('Provider failed'); } });
+  try {
+    app.render(); await settle(); app.opened(); await settle(); app.render();
+    expect(app.state).toMatchObject({ draft: draft.text, attachments: draft.attachments, failed: true, busy: false });
+    expect(app.state.error).toContain('Provider failed');
+    app.opened(); await settle();
+    expect(attempts).toBe(1);
+  } finally { app.close(); }
+});
+
+test('a failed attachment handoff cannot start an automatic request', async () => {
+  const app = harness({ text: 'Do not send without attachment', attachments: [{ kind: 'file', name: 'missing', path: '/missing' }] },
+    { importAttachments: async () => { throw new Error('Attachment missing'); } });
+  try {
+    app.render(); await settle(); app.opened(); await settle();
+    expect(app.accepted).toEqual(['Attachment missing']);
+    expect(app.sends).toHaveLength(0);
   } finally { app.close(); }
 });

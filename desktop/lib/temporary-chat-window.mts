@@ -1,3 +1,4 @@
+import type { TemporaryChatDraft } from '../shared/temporary-chat.ts';
 import type { BrowserWindow, BrowserWindowConstructorOptions } from 'electron';
 import type { WorkspaceIpcScope } from './workspace-ipc-router.mts';
 import { createWorkspaceWindowReadiness } from './workspace-window-readiness.mts';
@@ -17,28 +18,26 @@ interface Options {
   createAppearance?: typeof createWindowAppearance;
 }
 
-/** One independent window per workspace, with only ephemeral chat capabilities. */
+function assertWindowOpen(window: BrowserWindow): void {
+  if (window.isDestroyed()) throw new Error('The temporary chat window was closed.');
+}
+
+/** Each request owns an independent window with only ephemeral chat capabilities. */
 export function createTemporaryChatWindow(options: Options) {
-  let current: BrowserWindow | null = null;
-  let opening: Promise<void> | null = null;
+  const windows = new Set<BrowserWindow>();
   let stopped = false;
   const closing = new Set<Promise<void>>();
   const publish = () => {
     const parent = options.getParent();
-    if (parent && !parent.isDestroyed()) parent.webContents.send('cheshi:temporary-chat-window-changed', current !== null);
+    if (parent && !parent.isDestroyed()) parent.webContents.send('cheshi:temporary-chat-window-changed', windows.size > 0);
   };
   const stopSession = (stop: () => Promise<void>) => {
     const flight = Promise.resolve().then(stop);
     closing.add(flight);
     void flight.finally(() => closing.delete(flight)).catch(options.onCleanupError);
   };
-  const open = async () => {
+  const open = async (draft?: TemporaryChatDraft) => {
     if (stopped) throw new Error('The workspace is closing.');
-    if (opening) return opening;
-    if (current && !current.isDestroyed()) {
-      if (current.isMinimized()) current.restore();
-      current.show(); current.focus(); return;
-    }
     const parent = options.getParent();
     if (!parent || parent.isDestroyed()) throw new Error('The workspace window is unavailable.');
     const scope = options.scope.fork();
@@ -52,7 +51,7 @@ export function createTemporaryChatWindow(options: Options) {
     const lifetime = new AbortController();
     const readiness = createWorkspaceWindowReadiness({ signal: lifetime.signal });
     window.once('ready-to-show', () => readiness.browserReady());
-    current = window;
+    windows.add(window);
     let session: ReturnType<Options['registerSession']> | undefined;
     let appearance: ReturnType<typeof createWindowAppearance> | undefined;
     const parentClosed = () => window.destroy();
@@ -60,7 +59,7 @@ export function createTemporaryChatWindow(options: Options) {
     window.once('closed', () => {
       lifetime.abort();
       parent.off('closed', parentClosed);
-      if (current === window) current = null;
+      windows.delete(window);
       appearance?.dispose();
       scope.dispose();
       if (session) stopSession(() => session!.stop());
@@ -69,11 +68,21 @@ export function createTemporaryChatWindow(options: Options) {
     try {
       scope.addOwner(window.webContents);
       scope.ipc.on('cheshi:get-workspace-metadata', event => { event.returnValue = options.metadata; });
+      let draftAccepted = draft === undefined;
+      scope.ipc.handle('cheshi:temporary-chat-initial-draft', () => draftAccepted ? null : draft ?? null);
+      scope.ipc.handle('cheshi:temporary-chat-accept-draft', (_event, error: unknown) => {
+        if (error !== undefined) {
+          readiness.fail(new Error(typeof error === 'string' ? error : 'Could not transfer the queued message.'));
+          return;
+        }
+        draftAccepted = true;
+      });
       session = options.registerSession(scope, window);
       appearance = (options.createAppearance ?? createWindowAppearance)({ window, ipc: scope.ipc,
         filename: options.appearanceFile, backgrounds: INITIAL_WINDOW_BACKGROUND_COLORS });
       scope.ipc.on('cheshi:renderer-ready', (event, theme: unknown) => {
         if (event.sender !== window.webContents || (theme !== 'dark' && theme !== 'light')) return;
+        if (!draftAccepted) { readiness.fail(new Error('The queued message was not accepted.')); return; }
         readiness.rendererReady(theme);
       });
       window.webContents.setWindowOpenHandler(({ url }) => {
@@ -87,15 +96,12 @@ export function createTemporaryChatWindow(options: Options) {
       url.searchParams.set('temporaryChat', '1');
       url.hash = '';
       publish();
-      opening = window.loadURL(url.href).then(async () => {
-        readiness.loaded();
-        const theme = await readiness.ready;
-        if (!window.isDestroyed()) { appearance?.ready(theme); window.show(); window.focus(); }
-      }).catch((error: unknown) => {
-        if (!window.isDestroyed()) window.destroy();
-        throw error;
-      }).finally(() => { opening = null; });
-      await opening;
+      await window.loadURL(url.href);
+      readiness.loaded();
+      const theme = await readiness.ready;
+      assertWindowOpen(window);
+      appearance?.ready(theme); window.show(); window.focus();
+      window.webContents.send('cheshi:temporary-chat-opened');
     } catch (error) {
       if (!window.isDestroyed()) window.destroy();
       throw error;
@@ -103,11 +109,11 @@ export function createTemporaryChatWindow(options: Options) {
   };
   return {
     open,
-    get hasSessions() { return current !== null || closing.size > 0; },
-    get isOpen() { return current !== null; },
+    get hasSessions() { return windows.size > 0 || closing.size > 0; },
+    get isOpen() { return windows.size > 0; },
     async stop() {
       stopped = true;
-      if (current && !current.isDestroyed()) current.destroy();
+      for (const window of windows) if (!window.isDestroyed()) window.destroy();
       await Promise.allSettled([...closing]);
     },
   };

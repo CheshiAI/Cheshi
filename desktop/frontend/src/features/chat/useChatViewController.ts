@@ -48,12 +48,12 @@ interface UseChatViewControllerOptions {
   controller: ChatController;
   onNewSession: () => void;
   initialDraft?: ChatDraftSnapshot;
-  onOpenSideChat?: (input: ChatDraftSnapshot) => boolean;
+  onOpenTemporaryChat?: (input: ChatDraftSnapshot) => Promise<void>;
   active?: boolean;
   interactionsLocked?: boolean;
 }
 
-export function useChatViewController({ controller, onNewSession, initialDraft, onOpenSideChat, active = true, interactionsLocked = false }: UseChatViewControllerOptions) {
+export function useChatViewController({ controller, onNewSession, initialDraft, onOpenTemporaryChat, active = true, interactionsLocked = false }: UseChatViewControllerOptions) {
   const {
     state,
     sessionRevision,
@@ -867,8 +867,8 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
   const editQueuedMessage = (id: string) => {
     if (messageQueue.take(id, receiveDraft)) focusComposer();
   };
-  const openQueuedSideChat = (id: string) => {
-    if (onOpenSideChat) messageQueue.take(id, onOpenSideChat);
+  const openQueuedTemporaryChat = (id: string) => {
+    if (onOpenTemporaryChat) void messageQueue.transfer(id, onOpenTemporaryChat);
   };
   const cancelAllPending = useRef(false);
   const handleEscape = (event: KeyboardEvent<HTMLElement>) => handleChatEscape(event, {
@@ -910,8 +910,8 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
     messageQueue,
     enqueueDraft,
     editQueuedMessage,
-    openQueuedSideChat,
-    canOpenSideChat: Boolean(onOpenSideChat),
+    openQueuedTemporaryChat,
+    canOpenTemporaryChat: Boolean(onOpenTemporaryChat),
     queueBlocked,
     chatConfiguration,
     closeCommandMenu,

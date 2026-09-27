@@ -51,7 +51,7 @@ class TestWindow extends EventEmitter {
   }
 }
 
-async function fixture() {
+async function fixture(draftResult: 'accept' | 'reject' | 'close' | 'unaccepted' = 'accept') {
   const directory = await mkdtemp(path.join(tmpdir(), 'cheshi-temporary-window-'));
   const handlers = new Map<string, Parameters<IpcMain['handle']>[1]>();
   const listeners = new Map<string, Parameters<IpcMain['on']>[1]>();
@@ -68,6 +68,7 @@ async function fixture() {
   scope.ipc.handle('persistent-chat', () => 'parent only');
   const windows: TestWindow[] = [];
   const configurations: BrowserWindowConstructorOptions[] = [];
+  const receivedDrafts: unknown[] = [];
   let closes = 0, failLoad = false;
   const errors: unknown[] = [];
   const manager = createTemporaryChatWindow({
@@ -79,9 +80,18 @@ async function fixture() {
     createWindow: configuration => {
       configurations.push(configuration);
       const window = new TestWindow(); window.failLoad = failLoad;
-      window.sendReady = () => listeners.get('cheshi:renderer-ready')?.({
-        sender: window.webContents, senderFrame: window.webContents.mainFrame,
-      } as unknown as Parameters<Parameters<IpcMain['on']>[1]>[0], 'dark');
+      window.sendReady = () => {
+        const draft = invoke(window, 'cheshi:temporary-chat-initial-draft');
+        receivedDrafts.push(draft);
+        if (draft) {
+          if (draftResult === 'close') { window.destroy(); return; }
+          if (draftResult !== 'unaccepted') invoke(window, 'cheshi:temporary-chat-accept-draft',
+            draftResult === 'reject' ? 'Attachment unavailable' : undefined);
+        }
+        listeners.get('cheshi:renderer-ready')?.({
+          sender: window.webContents, senderFrame: window.webContents.mainFrame,
+        } as unknown as Parameters<Parameters<IpcMain['on']>[1]>[0], 'dark');
+      };
       windows.push(window);
       return window as unknown as BrowserWindow;
     },
@@ -96,17 +106,17 @@ async function fixture() {
   const invoke = (window: TestWindow, channel: string, ...args: unknown[]) => handlers.get(channel)!({
     sender: window.webContents, senderFrame: window.webContents.mainFrame,
   } as unknown as IpcMainInvokeEvent, ...args);
-  return { parent, windows, configurations, manager, invoke, errors, get closes() { return closes; },
+  return { parent, windows, configurations, receivedDrafts, manager, invoke, errors, get closes() { return closes; },
     failLoad() { failLoad = true; },
     async dispose() { await manager.stop(); scope.dispose(); await rm(directory, { recursive: true, force: true }); },
   };
 }
 
-test('opens one isolated window and focuses/restores it on repeated requests', async () => {
+test('opens independent windows on concurrent requests and preserves their isolated capabilities', async () => {
   const f = await fixture();
   try {
     await Promise.all([f.manager.open(), f.manager.open()]);
-    assert.equal(f.windows.length, 1);
+    assert.equal(f.windows.length, 2);
     const child = f.windows[0]!;
     assert.equal(new URL(child.url).searchParams.get('temporaryChat'), '1');
     assert.equal(new URL(child.url).searchParams.get('workspace'), 'fixture');
@@ -117,18 +127,21 @@ test('opens one isolated window and focuses/restores it on repeated requests', a
     assert.equal(f.configurations[0]!.height, 840);
     assert.equal(f.configurations[0]!.webPreferences?.sandbox, true);
     assert.equal(f.configurations[0]!.parent, undefined);
-    child.minimized = true;
-    await f.manager.open();
-    assert.equal(child.restored, 1);
-    assert.equal(child.focused, 2);
-    assert.equal(f.windows.length, 1);
+    assert.equal(child.focused, 1);
+    const other = f.windows[1]!;
+    await f.invoke(other, 'cheshi:temporary-chat-models', 'other-session');
     assert.throws(() => f.invoke(child, 'persistent-chat'), /not authorized/);
     assert.throws(() => f.invoke(f.parent, 'cheshi:temporary-chat-models', 'invalid-owner'), /not authorized/);
     await f.invoke(child, 'cheshi:temporary-chat-models', 'session');
     assert.equal(f.manager.hasSessions, true);
     child.destroy();
+    assert.equal(f.manager.isOpen, true);
+    assert.deepEqual(f.parent.messages.at(-1), ['cheshi:temporary-chat-window-changed', true]);
+    assert.deepEqual(await f.invoke(other, 'cheshi:temporary-chat-send', 'other-session',
+      { text: 'Continue independently', attachments: [], model: 'test', effort: 'low' }),
+      { status: 'ok', value: { text: 'Reply', model: 'test' } });
     await f.manager.stop();
-    assert.equal(f.closes, 1);
+    assert.equal(f.closes, 2);
     assert.equal(f.manager.hasSessions, false);
     assert.deepEqual(f.parent.messages.at(-1), ['cheshi:temporary-chat-window-changed', false]);
     assert.deepEqual(f.errors, []);
@@ -173,3 +186,36 @@ test('renderer crashes end the temporary session', async () => {
     assert.equal(f.manager.isOpen, false);
   } finally { await f.dispose(); }
 });
+
+
+test('drafts stay private to each new window and are accepted before opening succeeds', async () => {
+  const f = await fixture();
+  try {
+    const first = { text: 'First question', attachments: [{ kind: 'file' as const, path: '/fixture/a.txt', name: 'a.txt' }] };
+    const second = { text: 'Second question', attachments: [] };
+    await Promise.all([f.manager.open(first), f.manager.open(second)]);
+    assert.deepEqual(f.receivedDrafts, [first, second]);
+    assert.equal(f.invoke(f.windows[0]!, 'cheshi:temporary-chat-initial-draft'), null);
+    assert.equal(f.invoke(f.windows[1]!, 'cheshi:temporary-chat-initial-draft'), null);
+    assert.throws(() => f.invoke(f.parent, 'cheshi:temporary-chat-initial-draft'), /not authorized/);
+    await f.invoke(f.windows[0]!, 'cheshi:temporary-chat-models', 'first');
+    await f.invoke(f.windows[1]!, 'cheshi:temporary-chat-models', 'second');
+    f.parent.destroy();
+    await f.manager.stop();
+    assert.equal(f.closes, 2);
+    assert.equal(f.windows.every(window => window.destroyed), true);
+  } finally { await f.dispose(); }
+});
+
+for (const result of ['reject', 'close', 'unaccepted'] as const) {
+  test(`a ${result} draft rejects transfer and destroys only its new window`, async () => {
+    const f = await fixture(result);
+    try {
+      await f.manager.open();
+      await assert.rejects(f.manager.open({ text: 'Keep queued', attachments: [] }));
+      assert.equal(f.windows[1]!.destroyed, true);
+      assert.equal(f.windows[0]!.destroyed, false);
+      assert.equal(f.manager.isOpen, true);
+    } finally { await f.dispose(); }
+  });
+}

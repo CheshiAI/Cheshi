@@ -10,7 +10,14 @@ export function createTemporaryChatApi(
     readTemporaryChatReply<T>(await ipc.invoke(channel, ...args))
   );
   return {
-    openWindow: () => ipc.invoke('cheshi:temporary-chat-open-window'),
+    openWindow: draft => ipc.invoke('cheshi:temporary-chat-open-window', draft),
+    initialDraft: () => ipc.invoke('cheshi:temporary-chat-initial-draft'),
+    acceptDraft: error => ipc.invoke('cheshi:temporary-chat-accept-draft', error),
+    onOpened: listener => {
+      const handler = () => listener();
+      ipc.on('cheshi:temporary-chat-opened', handler);
+      return () => { ipc.removeListener('cheshi:temporary-chat-opened', handler); };
+    },
     isWindowOpen: () => ipc.invoke('cheshi:temporary-chat-window-state'),
     onWindowChanged: listener => {
       const handler = (_event: unknown, open: unknown) => listener(open === true);

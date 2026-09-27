@@ -46,11 +46,37 @@ export function TemporaryChatPanel() {
     const api = cheshiDesktop?.temporaryChat;
     const active = api ? new TemporaryChatSession(api, crypto.randomUUID(), setState) : null;
     session.current = active;
-    if (active) void active.start();
-    else setState({ ...initialTemporaryChatState(), loading: false, failed: true, error: 'Temporary chat is unavailable in this window.' });
+    let mounted = true;
+    let autoSend = false;
+    let unsubscribeOpened = () => {};
+    if (active && api) {
+      unsubscribeOpened = api.onOpened(() => {
+        if (!mounted || !autoSend) return;
+        autoSend = false;
+        void active.send().catch(error => console.error('Could not send temporary chat.', error));
+      });
+      const started = active.start();
+      void (async () => {
+        try {
+          const draft = await api.initialDraft();
+          if (draft) {
+            await started;
+            if (!mounted) return;
+            await active.receiveDraft(draft);
+            if (!mounted) return;
+            await api.acceptDraft();
+            autoSend = true;
+          }
+          if (mounted) window.dispatchEvent(new Event('cheshi:workspace-content-ready'));
+        } catch (error) {
+          if (mounted) await api.acceptDraft(error instanceof Error ? error.message : String(error));
+        }
+      })().catch(error => console.error('Could not initialize temporary chat.', error));
+    } else setState({ ...initialTemporaryChatState(), loading: false, failed: true, error: 'Temporary chat is unavailable in this window.' });
     textareaRef.current?.focus();
-    window.dispatchEvent(new Event('cheshi:workspace-content-ready'));
     return () => {
+      mounted = false;
+      unsubscribeOpened();
       session.current = null;
       if (active) void active.close().catch(error => console.error('Could not close temporary chat.', error));
     };

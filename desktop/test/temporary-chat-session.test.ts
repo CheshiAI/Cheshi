@@ -179,3 +179,42 @@ describe('temporary chat panel session', () => {
     await session.close();
   });
 });
+
+
+test('receives a queued draft with revalidated attachments without sending it', async () => {
+  const attachment = { kind: 'file' as const, name: 'a.txt', path: '/workspace/a.txt' };
+  const imports: unknown[] = [];
+  const f = fixture({ importAttachments: async (_id, paths) => { imports.push(paths); return [attachment]; } });
+  await f.session.start();
+  await f.session.receiveDraft({ text: '**Question**', attachments: [attachment] });
+  expect(f.latest().draft).toBe('**Question**');
+  expect(f.latest().attachments).toEqual([attachment]);
+  expect(f.latest().messages).toEqual([]);
+  expect(imports).toEqual([[attachment.path]]);
+  expect(f.calls).toEqual(['models:session']);
+});
+
+test('failed attachment import leaves the temporary draft untouched', async () => {
+  const f = fixture({ importAttachments: async () => { throw new Error('File missing'); } });
+  await f.session.start();
+  let failure: unknown;
+  try { await f.session.receiveDraft({ text: 'Question', attachments: [{ kind: 'file', name: 'a', path: '/a' }] }); }
+  catch (error) { failure = error; }
+  expect(failure).toBeInstanceOf(Error);
+  expect(f.latest()).toMatchObject({ draft: '', attachments: [], picking: false });
+});
+
+test('a late draft cannot revive a closed session or overwrite user edits', async () => {
+  for (const close of [false, true]) {
+    const gate = createDeferred<{ kind: 'file'; name: string; path: string }[]>();
+    const f = fixture({ importAttachments: () => gate.promise });
+    await f.session.start();
+    const incoming = f.session.receiveDraft({ text: 'Queued', attachments: [{ kind: 'file', name: 'a', path: '/a' }] });
+    if (close) await f.session.close(); else f.session.setDraft('User edit');
+    gate.resolve([{ kind: 'file', name: 'a', path: '/a' }]);
+    let failure: unknown;
+    try { await incoming; } catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(Error);
+    expect(f.latest().draft).toBe(close ? '' : 'User edit');
+  }
+});

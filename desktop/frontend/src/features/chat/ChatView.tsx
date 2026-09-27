@@ -17,7 +17,7 @@ interface ChatViewProps extends ChatHistorySearchNavigation {
   controller: ChatController;
   onNewSession: () => void;
   initialDraft?: ChatDraftSnapshot;
-  onOpenSideChat?: (input: ChatDraftSnapshot) => boolean;
+  onOpenTemporaryChat?: (input: ChatDraftSnapshot) => Promise<void>;
   onReviewFileChanges: (itemId: string, path?: string) => void;
   active: boolean;
   interactionsLocked?: boolean;
@@ -29,7 +29,7 @@ export function ChatView({
   controller,
   onNewSession,
   initialDraft,
-  onOpenSideChat,
+  onOpenTemporaryChat,
   onReviewFileChanges,
   active,
   interactionsLocked = false,
@@ -38,7 +38,7 @@ export function ChatView({
   historyTarget,
   onHistoryTargetHandled,
 }: ChatViewProps) {
-  const viewController = useChatViewController({ controller, onNewSession, initialDraft, onOpenSideChat, active, interactionsLocked });
+  const viewController = useChatViewController({ controller, onNewSession, initialDraft, onOpenTemporaryChat, active, interactionsLocked });
   useChatDraftAttachmentTarget(controller.contextId, viewController.attachmentTransfer.attachFilesToDraft);
   const latest = useRef(viewController);
   latest.current = viewController;
