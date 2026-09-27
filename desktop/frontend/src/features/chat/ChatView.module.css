@@ -179,33 +179,12 @@
 .reasoningContent { margin-top: 8px; color: #8f9697; }
 
 .activity {
-  --liquid-glass-radius: 10px;
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  background: rgba(255, 255, 255, .022);
-  color: #858b8d;
-  padding: 8px 10px;
+  --content-card-icon-size: var(--icon-button-icon-size);
+  --content-card-icon-color: var(--sidebar-section-label-color);
+  --content-card-title-size: 10px;
+  --content-card-title-weight: 400;
+  --content-card-description-size: 9px;
 }
-.activity:not([data-liquid-glass-backdrop='true']) { border-color: rgba(255, 255, 255, .06); }
-.activity > svg { width: 14px; height: 14px; justify-self: center; color: #7faaa5; stroke-width: 1.55; }
-.activity > div { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-.activity strong { color: #b6bbbc; font-size: 11px; font-weight: 550; line-height: 14px; }
-.activity span { overflow: hidden; font-family: "SFMono-Regular", Consolas, monospace; font-size: 9px; line-height: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.activity[data-liquid-glass-backdrop='true'] { background: transparent; }
-.activity[data-liquid-glass-backdrop='true']:not([data-activity='tool']) { font-size: 10.5px; }
-.activity[data-liquid-glass-backdrop='true']:not([data-activity='tool']) > svg { color: var(--text); }
-.activity[data-liquid-glass-backdrop='true']:not([data-activity='tool']) strong { color: var(--text); font-size: inherit; line-height: inherit; }
-.activity[data-liquid-glass-backdrop='true']:not([data-activity='tool']) span { color: var(--sidebar-section-label-color); font-size: inherit; line-height: inherit; }
-.activity[data-activity='agent'] { grid-template-columns: var(--icon-size-default) minmax(0, 1fr) auto; gap: var(--space-default); padding: 10px var(--space-default); }
-.activity[data-activity='agent'] > svg { width: var(--icon-size-default); height: var(--icon-size-default); stroke-width: 2; }
-.activity > i { width: 6px; height: 6px; border-radius: 50%; background: var(--chat-accent); animation: pulse 1.2s ease-in-out infinite; }
-.activity:not([data-liquid-glass-backdrop='true'])[data-status="failed"] { border-color: rgba(212, 120, 120, .16); }
-.activity:not([data-liquid-glass-backdrop='true']):is([data-status="failed"], [data-status="declined"]) > svg { color: #c98181; }
-.activity[data-activity='tool']:is([data-status="failed"], [data-status="declined"]) > svg { color: #c98181; }
 
 .scrollToBottomControl {
   position: absolute;

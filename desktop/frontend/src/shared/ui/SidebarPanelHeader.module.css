@@ -32,3 +32,9 @@
 }
 
 .titleMark { cursor: default; pointer-events: none; }
+
+.title > .description {
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  font-weight: 400;
+}

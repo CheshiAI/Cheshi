@@ -83,7 +83,7 @@ test('untagged calls join the provider turn when its ID arrives later', () => {
   expect(totals.get('answer')?.requests).toBe(2);
 });
 
-test('source navigation passes exact ids, respects disabled state and reports missing sources', async () => {
+async function withRecallDom(run: (container: HTMLElement, root: ReturnType<typeof createRoot>) => Promise<void>) {
   const window = new Window();
   const globals = { window, document: window.document, navigator: window.navigator, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -91,20 +91,8 @@ test('source navigation passes exact ids, respects disabled state and reports mi
   const container = window.document.createElement('div');
   window.document.body.append(container);
   const root = createRoot(container as unknown as HTMLElement);
-  const opened: Array<Pick<RecallSource, 'threadId' | 'itemId'>> = [];
-  const open = async (value: Pick<RecallSource, 'threadId' | 'itemId'>) => { opened.push(value); return false; };
-  const render = (disabled: boolean) => <HistoryRecallNavigation.Provider value={{ open, disabled }}>
-    <HistoryRecallActivity item={item} />
-  </HistoryRecallNavigation.Provider>;
   try {
-    await act(async () => root.render(render(true)));
-    expect(container.querySelector('button')?.disabled).toBe(true);
-    await act(async () => container.querySelector('button')?.click());
-    expect(opened).toHaveLength(0);
-    await act(async () => root.render(render(false)));
-    await act(async () => container.querySelector('button')?.click());
-    expect(opened).toEqual([source]);
-    expect(container.textContent).toContain('could not be opened');
+    await run(container as unknown as HTMLElement, root);
   } finally {
     await act(async () => root.unmount());
     await window.happyDOM.close();
@@ -113,6 +101,76 @@ test('source navigation passes exact ids, respects disabled state and reports mi
       else Reflect.deleteProperty(globalThis, key);
     }
   }
+}
+
+test('source navigation passes exact ids, respects disabled state and reports missing sources', async () => {
+  await withRecallDom(async (container, root) => {
+    const opened: Array<Pick<RecallSource, 'threadId' | 'itemId'>> = [];
+    const open = async (value: Pick<RecallSource, 'threadId' | 'itemId'>) => { opened.push(value); return false; };
+    const render = (disabled: boolean) => <HistoryRecallNavigation.Provider value={{ open, disabled }}>
+      <HistoryRecallActivity item={item} />
+    </HistoryRecallNavigation.Provider>;
+    await act(async () => root.render(render(true)));
+    await act(async () => container.querySelector<HTMLElement>('article > details > summary')?.click());
+    const sourceDetails = Array.from(container.querySelectorAll('details')).find(detail =>
+      detail.querySelector(':scope > summary')?.textContent === source.title)!;
+    await act(async () => sourceDetails.querySelector('summary')?.click());
+    expect(container.querySelector('button')?.disabled).toBe(true);
+    await act(async () => container.querySelector('button')?.click());
+    expect(opened).toHaveLength(0);
+    await act(async () => root.render(render(false)));
+    await act(async () => container.querySelector('button')?.click());
+    expect(opened).toEqual([source]);
+    expect(container.textContent).toContain('could not be opened');
+  });
+});
+
+test.each(['search', 'read'] as const)('history disclosures retain independent source expansion for %s', async (operation) => {
+  await withRecallDom(async (container, root) => {
+    const second: RecallSource = { ...source, itemId: 'second', title: 'Another conversation', text: 'Second source body' };
+    const render = (sources: RecallSource[]) => <HistoryRecallActivity item={{ ...item,
+      recall: { ...item.recall!, operation, partial: false, sources } }} />;
+    await act(async () => root.render(render([source, second])));
+    const card = container.querySelector<HTMLDetailsElement>('article > details')!;
+    const first = Array.from(card.querySelectorAll('details')).find(detail =>
+      detail.querySelector(':scope > summary')?.textContent === source.title)!;
+    const next = Array.from(card.querySelectorAll('details')).find(detail =>
+      detail.querySelector(':scope > summary')?.textContent === second.title)!;
+    expect(card.open).toBe(false);
+    expect(first.open).toBe(false);
+    expect(next.open).toBe(false);
+    expect(card.querySelector('summary')?.textContent).toContain(operation === 'read' ? 'Original message' : 'Searched selected scope');
+    await act(async () => card.querySelector('summary')?.click());
+    expect(card.open).toBe(true);
+    expect(first.open).toBe(false);
+    await act(async () => first.querySelector('summary')?.click());
+    expect(first.open).toBe(true);
+    expect(next.open).toBe(false);
+    const ids = first.querySelector('details')!;
+    await act(async () => ids.querySelector('summary')?.click());
+    expect(ids.open).toBe(true);
+    expect(ids.textContent).toContain(`Session: ${source.threadId}`);
+    await act(async () => root.render(render([second, source])));
+    expect(first.isConnected).toBe(true);
+    expect(first.open).toBe(true);
+    expect(ids.open).toBe(true);
+    expect(next.open).toBe(false);
+    await act(async () => card.querySelector('summary')?.click());
+    expect(card.open).toBe(false);
+    await act(async () => card.querySelector('summary')?.click());
+    expect(first.open).toBe(true);
+    expect(next.open).toBe(false);
+  });
+});
+
+test('empty and failed searches retain query, status and error without inventing sources', () => {
+  const html = renderToStaticMarkup(<HistoryRecallActivity item={{ ...item,
+    recall: { ...item.recall!, status: 'error', sources: [], error: 'Search unavailable' } }} />);
+  expect(html).toContain('Failed');
+  expect(html).toContain('aside');
+  expect(html).toContain('0 candidate sources');
+  expect(html).toContain('role="status">Search unavailable');
+  expect(html).not.toContain('Open original message');
 });
 
 test('Luna fallback totals stay separate, deduplicated and unknown rather than free', () => {

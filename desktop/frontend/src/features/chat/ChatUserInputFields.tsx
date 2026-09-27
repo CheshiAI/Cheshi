@@ -17,7 +17,7 @@ function QuestionAnswerField({ question, value, selected, onChange }: {
   const trailingAction = value.length > 0 && <SearchClearButton aria-label={`Clear ${question.header} answer`}
     onClick={() => { onChange(question.id, ''); (question.isSecret ? inputRef.current : textareaRef.current)?.focus(); }} />;
   return <div className={styles.field}>
-    {question.isSecret ? <NeumorphicTextField aria-label={label} ref={inputRef} type="password" value={value}
+    {question.isSecret ? <NeumorphicTextField variant="standard" aria-label={label} ref={inputRef} type="password" value={value}
       autoComplete="off" required={!selected} placeholder={label}
       onChange={event => onChange(question.id, event.target.value)} trailingAction={trailingAction} />
       : <NeumorphicTextField aria-label={label} className={styles.answerInput} ref={textareaRef} multiline rows={1} value={value}
@@ -36,7 +36,7 @@ export function ChatQuestionFields({ questions, draft, onChange, notes = {}, onN
     return <fieldset key={question.id} className={styles.question}>
       <legend>{question.question}</legend>
       <div className={styles.choices}>
-        {question.options?.map((option, index) => <NeumorphicButton size="standard" className={styles.choice} key={option.label}
+        {question.options?.map((option, index) => <NeumorphicButton variant="ghost" size="standard" className={styles.choice} key={option.label}
           aria-pressed={value === option.label} onClick={() => onChange(question.id, value === option.label ? '' : option.label)}>
           <span className={styles.number} aria-hidden="true">{index + 1}</span>
           <span className={styles.choiceText}><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>

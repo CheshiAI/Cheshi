@@ -1,5 +1,5 @@
 import { createContext, useContext, useState } from 'react';
-import { Search, ExternalLink, ChevronDown } from 'lucide-react';
+import { Search, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
 import { sumRecallLunaUsage, type RecallMetrics, type RecallSource } from '../../../../shared/history-recall';
 import { ContentCard, NeumorphicButton } from '../../shared/ui';
 import type { ChatActivityItem, ChatTimelineItem } from './model';
@@ -47,28 +47,32 @@ export function HistoryRecallActivity({ item }: { item: ChatActivityItem }) {
     catch { setError('The source could not be opened. Try again.'); }
     finally { setPending(false); }
   };
-  return <ContentCard className={styles.card} icon={<Search aria-hidden="true" />}
+  return <ContentCard className={styles.card} collapsible descriptionWhenCollapsed icon={<Search aria-hidden="true" />}
     title={recall.operation === 'search' ? 'History search' : 'History source'}
-    description={recall.status === 'error' ? 'Failed' : recall.partial ? 'Partial search' : recall.operation === 'read' ? 'Original message' : 'Searched selected scope'}>
+    description={recall.query || recall.sources[0]?.title}
+    status={recall.status === 'error' ? 'Failed' : recall.partial ? 'Partial search' : recall.operation === 'read' ? 'Original message' : 'Searched selected scope'}>
     {recall.query && <p>{recall.query}</p>}
-    {recall.metrics && <RecallMetricsView metrics={recall.metrics} />}
     {recall.error && <p role="status">{recall.error}</p>}
-    {recall.sources.length > 0 && <details>
-      <summary className={styles.disclosureSummary}><ChevronDown className={styles.chevron} aria-hidden="true" />
-        <span>{recall.sources.length} {recall.operation === 'search' ? 'candidate sources' : 'source'}</span>
+    <p className={styles.sourceCount}>{recall.sources.length} {recall.operation === 'search' ? 'candidate sources' : recall.sources.length === 1 ? 'source' : 'sources'}</p>
+    {recall.sources.length > 0 && <div className={styles.sources}>{recall.sources.map(source => <details className={styles.source}
+      key={`${source.threadId}:${source.turnId}:${source.itemId}`}>
+      <summary className={styles.sourceSummary}>
+        <ChevronRight className={styles.sourceChevron} aria-hidden="true" />
+        <span>{source.title || 'Conversation'}</span>
       </summary>
-      <div className={styles.sources}>{recall.sources.map(source => <div className={styles.source}
-        key={`${source.threadId}:${source.turnId}:${source.itemId}`}>
-        <strong>{source.title || 'Conversation'}</strong>
+      <div className={styles.sourceBody}>
         <div className={styles.preview}><MessageContent text={source.text} /></div>
-        <NeumorphicButton variant="ghost" size="standard" disabled={!navigation || navigation.disabled || pending} onClick={() => void open(source)}>
-          <ExternalLink aria-hidden="true" />Open original message
-        </NeumorphicButton>
-        <details className={styles.sourceIds}><summary className={styles.disclosureSummary}><ChevronDown className={styles.chevron} aria-hidden="true" />
-          <span>Source IDs</span></summary><small>Session: {source.threadId}<br />Turn: {source.turnId}<br />Message: {source.itemId}</small></details>
-      </div>)}</div>
-    </details>}
+        <div className={styles.sourceActions}>
+          <NeumorphicButton variant="ghost" size="standard" disabled={!navigation || navigation.disabled || pending} onClick={() => void open(source)}>
+            <ExternalLink aria-hidden="true" />Open original message
+          </NeumorphicButton>
+          <details className={styles.sourceIds}><summary className={styles.disclosureSummary}><ChevronDown className={styles.chevron} aria-hidden="true" />
+            <span>Source IDs</span></summary><small>Session: {source.threadId}<br />Turn: {source.turnId}<br />Message: {source.itemId}</small></details>
+        </div>
+      </div>
+    </details>)}</div>}
     {error && <p role="status">{error}</p>}
+    {recall.metrics && <footer className={styles.footer}><RecallMetricsView metrics={recall.metrics} /></footer>}
   </ContentCard>;
 }
 

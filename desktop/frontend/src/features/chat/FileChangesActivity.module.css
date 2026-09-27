@@ -1,58 +1,38 @@
 .card {
-  --liquid-glass-radius: 12px;
-  display: flex;
-  overflow: hidden;
-  width: 100%;
-  min-width: 0;
-  flex-direction: column;
-  background: transparent;
-  color: #dfe3e3;
+  --content-card-icon-size: var(--icon-button-icon-size);
+  --content-card-icon-color: var(--sidebar-section-label-color);
+  --content-card-title-size: 10px;
+  --content-card-title-weight: 400;
+  --content-card-description-size: 9px;
 }
 
-.cardHeader {
-  display: grid;
-  min-height: 45px;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-}
-
-.cardIcon,
-.changeKind {
-  --neumorphic-button-radius: 50%;
-  --neumorphic-button-active-color: var(--text);
-  display: grid;
-  box-sizing: border-box;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  padding: 0;
-  pointer-events: none;
-}
-
-.cardIcon svg {
-  width: 11px;
-  height: 11px;
-  stroke-width: 1.7;
-}
+.card .cardBody { padding: 0; gap: 0; }
+.card .fileList { border-top: 0; }
 
 .cardTitle {
   display: flex;
-  overflow: hidden;
   min-width: 0;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--icon-default);
 }
 
-.cardTitle strong {
+.cardTitle > span:first-child {
   overflow: hidden;
-  color: var(--text);
-  font-size: 10.5px;
-  font-weight: 550;
-  line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.changeKind {
+  --neumorphic-button-radius: 50%;
+  --neumorphic-button-surface: var(--control-surface);
+  --neumorphic-button-active-color: var(--sidebar-section-label-color);
+  display: grid;
+  box-sizing: border-box;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  place-items: center;
+  padding: 0;
+  pointer-events: none;
 }
 
 .stats {
@@ -65,23 +45,9 @@
   line-height: 14px;
 }
 
-.stats b { font-weight: 550; }
+.stats b { font-weight: 400; }
 .additions { color: #66c985; }
 .deletions { color: #e26464; }
-
-.cardActions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.cardActions > i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #85c9c0;
-  animation: file-changes-pulse 1.2s ease-in-out infinite;
-}
 
 .fileList {
   display: grid;
@@ -94,31 +60,27 @@
   display: grid;
   width: 100%;
   min-width: 0;
-  min-height: 36px;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
+  min-height: 32px;
+  grid-template-columns: var(--icon-button-size) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: var(--icon-default);
   border: 0;
   border-top: 1px solid var(--divider);
-  background: transparent;
+  background: var(--control-surface-ghost);
   color: var(--text);
   cursor: pointer;
-  padding: 0 12px;
+  padding: 0 var(--space-default);
   text-align: left;
 }
 
 .fileRow:first-child { border-top: 0; }
-.fileRow:hover,
-.fileRow[aria-current="true"] { background: var(--dropdown-selection-bg); color: var(--dropdown-selection-text); }
-.card .fileRow[aria-current="true"] { background: transparent; }
-.card .fileRow:hover { background: var(--dropdown-selection-bg); }
-.card .path { color: var(--text); }
-.card .fileRow:hover .path { color: var(--dropdown-selection-text); }
+.fileRow[aria-current="true"] { background: var(--control-surface); }
+.fileRow:is(:hover, :active, :focus-visible) { background: var(--control-surface-interactive); }
 
 .changeKind {
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 9px;
-  font-weight: 650;
+  font-weight: 400;
 }
 
 .changeKind[data-kind="add"] { --neumorphic-button-active-color: #66c985; }
@@ -129,6 +91,8 @@
   min-width: 0;
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 10px;
+  font-weight: 400;
+  color: var(--text);
   line-height: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -136,6 +100,7 @@
 
 .reviewPanel {
   --liquid-glass-radius: 0;
+  border-block: 0;
   display: flex;
   overflow: hidden;
   min-width: 0;
@@ -145,46 +110,24 @@
   color: #dfe3e3;
 }
 
-.reviewHeader {
-  display: flex;
-  min-height: 72px;
-  flex: 0 0 72px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, .07);
-  padding: 0 16px;
-}
-
-.reviewHeading {
-  display: flex;
-  overflow: hidden;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.reviewHeading strong { color: var(--title); font-size: 11px; font-weight: 650; line-height: 20px; }
-.reviewHeading span { overflow: hidden; color: var(--sidebar-section-label-color); font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
-
-.reviewHeaderActions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .reviewHeaderStats {
   display: inline-flex;
+  box-sizing: border-box;
+  height: 32px;
   align-items: center;
-  gap: 10px;
+  gap: var(--icon-default);
   border: 0;
   border-radius: 999px;
-  background: var(--divider);
-  color: var(--text);
-  padding: 4px 10px;
+  background: var(--control-surface);
+  color: var(--sidebar-section-label-color);
+  padding: 0 var(--space-default);
+  font-family: var(--font-ui), sans-serif;
+  font-size: 10px;
+  font-weight: 400;
+  white-space: nowrap;
 }
 
-.reviewFileCount { font-size: 10px; white-space: nowrap; }
+.reviewFileCount { font: inherit; }
 
 .reviewFiles {
   align-content: start;
@@ -193,11 +136,15 @@
   overflow-y: auto;
   max-height: min(30vh, 320px);
   flex: 0 0 auto;
-  border-bottom: 1px solid rgba(255, 255, 255, .07);
-  background: rgba(0, 0, 0, .06);
+  border-bottom: 1px solid var(--divider);
+  background: transparent;
 }
 
-.reviewFiles .fileRow { min-height: 38px; padding-right: 16px; padding-left: 16px; }
+.reviewFiles .fileRow {
+  box-sizing: border-box;
+  height: var(--header-height);
+  min-height: var(--header-height);
+}
 
 .diffArea {
   display: flex;
@@ -271,16 +218,3 @@
 
 .emptyReview { margin: auto; text-align: center; }
 .truncated { border-top: 1px solid rgba(255, 255, 255, .06); }
-
-@keyframes file-changes-pulse {
-  0%, 100% { opacity: .45; }
-  50% { opacity: 1; }
-}
-
-@media (max-width: 1200px) {
-  .card { margin-left: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .cardActions > i { animation: none; }
-}

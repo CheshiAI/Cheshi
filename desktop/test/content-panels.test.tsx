@@ -51,9 +51,9 @@ test.each([false, true])('code panels preserve copying and retry behavior (neste
     expect(container.querySelector('script')).toBeNull();
     await act(async () => container.querySelector('button')?.click());
     expect(written).toEqual([code]);
-    expect(container.querySelector('button')?.textContent).toBe('Copied');
+    expect(container.querySelector('button')?.textContent).toBe(nested ? '복사됨' : 'Copied');
     await act(async () => root.render(render('next output')));
-    expect(container.querySelector('button')?.textContent).toBe('Copy');
+    expect(container.querySelector('button')?.textContent).toBe(nested ? '코드 · ts' : 'Copy');
     rejectCopy = true;
     await act(async () => container.querySelector('button')?.click());
     expect(container.querySelector('[role="status"]')?.textContent).toContain('Could not copy');
@@ -61,6 +61,31 @@ test.each([false, true])('code panels preserve copying and retry behavior (neste
     await act(async () => container.querySelector('button')?.click());
     expect(written).toEqual([code, 'next output']);
     expect(container.querySelector('[role="status"]')).toBeNull();
+  });
+});
+
+test('each nested copy action identifies and copies only its own code block', async () => {
+  await withDom(async (container, root) => {
+    const written: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async (value: string) => { written.push(value); },
+    } });
+    await act(async () => root.render(<ContentCard title="History source">
+      <p>Surrounding message</p>
+      <CodePanel code="first block" />
+      <p>Explanation between blocks</p>
+      <CodePanel code="second block" language="ts" />
+    </ContentCard>));
+    const buttons = Array.from(container.querySelectorAll('button'));
+    expect(buttons).toHaveLength(2);
+    for (const [index, button] of buttons.entries()) {
+      expect(button.textContent).toBe(index === 0 ? '코드' : '코드 · ts');
+      expect(button.getAttribute('aria-label')).toBe('코드 복사');
+      const target = container.ownerDocument.getElementById(button.getAttribute('aria-controls')!);
+      expect(target?.textContent).toBe(index === 0 ? 'first block' : 'second block');
+      await act(async () => button.click());
+    }
+    expect(written).toEqual(['first block', 'second block']);
   });
 });
 
@@ -83,15 +108,47 @@ test('command disclosure retains the user expansion while output and completion 
   });
 });
 
-test('web search cards retain the result description and distinguish running and interrupted states', () => {
-  const item: ChatActivityItem = { id: 'search', kind: 'activity', activity: 'search',
-    label: 'Web search', detail: 'https://example.com/source', status: 'inProgress' };
+test('file change cards retain counts and open the selected file after activity updates', async () => {
+  await withDom(async (container, root) => {
+    const reviewed: Array<[string, string | undefined]> = [];
+    const item: ChatActivityItem = { id: 'files', kind: 'activity', activity: 'files', label: 'File changes',
+      detail: '', status: 'inProgress', changes: [
+        { path: 'src/first.ts', kind: 'update', movePath: null, diff: '@@ -1 +1 @@\n-old\n+new\n' },
+        { path: 'src/second.ts', kind: 'add', movePath: null, diff: 'first\nsecond\n' },
+      ] };
+    const render = (status: ChatActivityItem['status']) => <ChatTimelineItem item={{ ...item, status }}
+      streaming={false} onReviewFileChanges={(id, path) => reviewed.push([id, path])} />;
+    await act(async () => root.render(render('inProgress')));
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('In progress');
+    expect(container.querySelector('header')?.textContent).toContain('Editing 2 files');
+    expect(container.querySelector('header [aria-label="3 additions, 1 deletions"]')).not.toBeNull();
+    await act(async () => root.render(render('completed')));
+    expect(container.querySelector('header')?.textContent).toContain('Edited 2 files');
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    const rows = [...container.querySelectorAll('button')];
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.querySelector('[aria-label="1 additions, 1 deletions"]')).not.toBeNull();
+    expect(rows[1]?.querySelector('[aria-label="2 additions, 0 deletions"]')).not.toBeNull();
+    await act(async () => { rows[1]?.click(); rows[0]?.click(); });
+    expect(reviewed).toEqual([['files', 'src/second.ts'], ['files', 'src/first.ts']]);
+  });
+});
+
+test.each([
+  { activity: 'search', label: 'Web search', detail: 'https://example.com/source' },
+  { activity: 'tool', label: 'codegraph_explore', detail: 'cheshi_codegraph' },
+  { activity: 'context', label: 'Context compacted', detail: 'Conversation context was summarized' },
+])('activity cards retain descriptions and distinguish states for $activity', ({ activity, label, detail }) => {
+  const item: ChatActivityItem = { id: activity, kind: 'activity', activity, label, detail, status: 'inProgress' };
   const render = (status: ChatActivityItem['status']) => renderToStaticMarkup(
     <ChatTimelineItem item={{ ...item, status }} streaming={false} onReviewFileChanges={() => {}} />,
   );
   expect(render('inProgress')).toContain('role="status">In progress');
   expect(render('completed')).toContain(item.detail);
   expect(render('completed')).not.toContain('In progress');
+  expect(render('completed')).toContain('Completed');
+  expect(render('completed')).toContain(item.label);
   expect(render('interrupted')).toContain('Response stopped');
   expect(render('failed')).toContain('Failed');
+  expect(render('declined')).toContain('Declined');
 });

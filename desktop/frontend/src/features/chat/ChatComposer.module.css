@@ -169,6 +169,7 @@
   --badge-background: var(--control-surface);
   --badge-color: var(--sidebar-section-label-color);
   --editor-badge-font-size: 9px;
+  --editor-badge-padding: 10px;
   --radius-popover: 999px;
   -webkit-backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
   backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));

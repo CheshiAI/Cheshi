@@ -18,5 +18,6 @@
 }
 
 .code { --code-panel-max-height: 360px; margin: 0; }
+.card pre { font-size: 10px; }
 .output { min-width: 0; border-top: 1px solid var(--divider); padding-top: var(--space-default); }
 .empty { margin: 0; color: var(--sidebar-section-label-color); font-size: 10px; }

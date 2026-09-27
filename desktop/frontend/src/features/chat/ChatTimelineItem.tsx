@@ -5,15 +5,13 @@ import {
   FileCode2,
   Image,
   Search,
-  Terminal,
-  Users,
   Wrench,
 } from 'lucide-react';
 import { memo, type ReactNode } from 'react';
 
 import { parseChatRelayMessage } from '../../../../shared/chat-relay';
 import { parseSavedChatTurnPrompt } from '../../../../shared/chat-saved-turn-continuation';
-import { ContentCard, LiquidGlassPanel } from '../../shared/ui';
+import { ContentCard } from '../../shared/ui';
 import { ChatMessageLabel } from './ChatMessageLabel';
 import { relayAssistantDisplayText, relayDisplayText } from './chatRelayMessageView';
 import { FileChangesActivity } from './FileChangesActivity';
@@ -30,11 +28,9 @@ import { AgentActivity } from './AgentActivity';
 import { HistoryRecallActivity } from './HistoryRecallActivity';
 
 function ActivityIcon({ item }: { item: ChatActivityItem }) {
-  if (item.activity === 'command') return <Terminal aria-hidden="true" />;
   if (item.activity === 'files') return <FileCode2 aria-hidden="true" />;
   if (item.activity === 'search') return <Search aria-hidden="true" />;
   if (item.activity === 'image') return <Image aria-hidden="true" />;
-  if (item.activity === 'agent') return <Users aria-hidden="true" />;
   if (item.activity === 'context') return <Database aria-hidden="true" />;
   if (item.activity === 'error') return <AlertCircle aria-hidden="true" />;
   return <Wrench aria-hidden="true" />;
@@ -103,25 +99,12 @@ function TimelineItemContent({
   }
   if (item.kind === 'activity' && item.activity === 'agent') return <AgentActivity item={item} />;
   if (item.kind === 'activity' && item.recall) return <HistoryRecallActivity item={item} />;
-  if (item.kind === 'activity' && item.activity === 'search') {
-    return <ContentCard icon={<Search aria-hidden="true" />} title={item.label} description={item.detail}
+  if (item.kind === 'activity') {
+    return <ContentCard className={styles.activity} icon={<ActivityIcon item={item} />} title={item.label} description={item.detail}
       data-activity={item.activity} data-status={item.status}
       status={item.status === 'inProgress' ? <span role="status">In progress</span>
         : item.status === 'failed' ? 'Failed' : item.status === 'declined' ? 'Declined'
-          : item.status === 'interrupted' ? 'Response stopped' : undefined} />;
-  }
-  if (item.kind === 'activity') {
-    return (
-      <LiquidGlassPanel as="article" className={styles.activity} data-activity={item.activity} data-status={item.status}
-        data-liquid-glass-backdrop={item.activity === 'context' || item.activity === 'error' || item.activity === 'agent' || item.activity === 'tool' ? 'true' : undefined}>
-        <ActivityIcon item={item} />
-        <div>
-          <strong>{item.label}</strong>
-          {item.detail && <span>{item.detail}</span>}
-        </div>
-        {item.status === 'inProgress' && <i aria-label="In progress" />}
-      </LiquidGlassPanel>
-    );
+          : item.status === 'interrupted' ? 'Response stopped' : item.status === 'completed' ? 'Completed' : undefined} />;
   }
   return (
     <article className={styles.assistantRow}>

@@ -1,7 +1,7 @@
 import { FileCode2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-import { LiquidGlassPanel, NeumorphicButton, NeumorphicSurface } from '../../shared/ui';
+import { ContentCard, LiquidGlassPanel, NeumorphicButton, NeumorphicSurface, SidebarPanelHeader } from '../../shared/ui';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { ChatActivityItem, ChatFileChange } from './model';
 import styles from './FileChangesActivity.module.css';
@@ -168,18 +168,14 @@ export function FileChangesActivity({ item, onReview }: FileChangesActivityProps
   const changes = item.changes ?? [];
   const metrics = useMemo(() => aggregateMetrics(changes), [changes]);
   return (
-    <LiquidGlassPanel as="article" className={styles.card} data-status={item.status} data-liquid-glass-backdrop="true">
-      <header className={styles.cardHeader}>
-        <NeumorphicSurface as="span" raised className={styles.cardIcon}><FileCode2 aria-hidden="true" /></NeumorphicSurface>
-        <div className={styles.cardTitle}>
-          <strong>{activityTitle(item, changes.length)}</strong>
-          <ChangeStats additions={metrics.additions} deletions={metrics.deletions} />
-        </div>
-        {item.status === 'inProgress' && (
-          <div className={styles.cardActions}><i aria-label="In progress" /></div>
-        )}
-      </header>
-      {changes.length > 0 && (
+    <ContentCard className={styles.card} bodyClassName={styles.cardBody} data-status={item.status}
+      icon={<FileCode2 aria-hidden="true" />}
+      title={<span className={styles.cardTitle}>
+        <span>{activityTitle(item, changes.length)}</span>
+        <ChangeStats additions={metrics.additions} deletions={metrics.deletions} />
+      </span>}
+      status={item.status === 'inProgress' ? <span role="status">In progress</span> : undefined}>
+      {changes.length > 0 ? (
         <div className={styles.fileList}>
           {changes.map((change) => (
             <FileRow
@@ -189,8 +185,8 @@ export function FileChangesActivity({ item, onReview }: FileChangesActivityProps
             />
           ))}
         </div>
-      )}
-    </LiquidGlassPanel>
+      ) : null}
+    </ContentCard>
   );
 }
 
@@ -224,28 +220,22 @@ export function FileChangesReviewPanel({ item, initialPath, onClose }: FileChang
       data-liquid-glass-surface="side-panel"
       aria-label="File changes review"
     >
-      <header className={styles.reviewHeader}>
-        <div className={styles.reviewHeading}>
-          <strong>Review</strong>
-          <span>{activityTitle(item, changes.length)}</span>
+      <SidebarPanelHeader icon={<FileCode2 aria-hidden="true" />} title="REVIEW" description={activityTitle(item, changes.length)} actions={<>
+        <div className={styles.reviewHeaderStats}>
+          <span className={styles.reviewFileCount}>
+            {changes.length === 1 ? '1 changed file' : `${changes.length} changed files`}
+          </span>
+          <ChangeStats additions={totals.additions} deletions={totals.deletions} />
         </div>
-        <div className={styles.reviewHeaderActions}>
-          <div className={styles.reviewHeaderStats}>
-            <span className={styles.reviewFileCount}>
-              {changes.length === 1 ? '1 changed file' : `${changes.length} changed files`}
-            </span>
-            <ChangeStats additions={totals.additions} deletions={totals.deletions} />
-          </div>
-          <NeumorphicButton
-            raised
-            className="sidebar-heading-action"
-            aria-label="Close file changes review"
-            onClick={onClose}
-          >
-            <X aria-hidden="true" />
-          </NeumorphicButton>
-        </div>
-      </header>
+        <NeumorphicButton
+          variant="standard"
+          size="icon"
+          aria-label="Close file changes review"
+          onClick={onClose}
+        >
+          <X aria-hidden="true" />
+        </NeumorphicButton>
+      </>} />
       <nav className={styles.reviewFiles} aria-label="Changed files">
         {changes.map((change) => (
           <FileRow

@@ -1,8 +1,11 @@
 .panel { margin: var(--space-default) 0; }
 .panel .body { padding: 0; gap: 0; }
 .plain { display: grid; gap: var(--icon-default); min-width: 0; max-width: 100%; }
+.plain[data-copyable='true'] { border-left: 2px solid var(--sidebar-section-label-color); padding-left: var(--space-default); margin: var(--space-default) 0; }
 .plain > .code { padding: 0; }
-.actions { display: flex; justify-content: flex-end; }
+.plainHeader { display: flex; flex-wrap: wrap; align-items: center; gap: var(--icon-default); color: var(--text); }
+.plainHeader button { margin-left: -4px; }
+.plainHeader button > svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); }
 .label { font-size: 10px; font-weight: 400; }
 .code {
   box-sizing: border-box;

@@ -1,5 +1,5 @@
 import { Check, Copy } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { ContentCard, useContentCardNesting } from './ContentCard';
 import { NeumorphicButton } from './NeumorphicButton';
@@ -18,6 +18,7 @@ interface CodePanelProps {
 export function CodePanel({ code, language, label, ariaLabel, copyable = true, variant, className }: CodePanelProps) {
   const nested = useContentCardNesting();
   const plain = (variant ?? (nested ? 'plain' : 'panel')) === 'plain';
+  const codeId = useId();
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -39,18 +40,21 @@ export function CodePanel({ code, language, label, ariaLabel, copyable = true, v
     }
   };
 
-  const copyButton = copyable && <NeumorphicButton variant="ghost" onClick={() => void copy()}>
+  const copyButton = copyable && <NeumorphicButton variant={plain ? 'standard' : 'ghost'} aria-controls={codeId}
+    aria-label={plain ? (copied ? '코드 복사 완료' : '코드 복사') : undefined} onClick={() => void copy()}>
     {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-    {copied ? 'Copied' : 'Copy'}
+    {plain ? (copied ? '복사됨' : `코드${language ? ` · ${language}` : ''}`) : (copied ? 'Copied' : 'Copy')}
   </NeumorphicButton>;
   const content = <>
-    <pre className={styles.code} tabIndex={0} aria-label={ariaLabel || label || `${language || 'Plain text'} code`}><code>{code}</code></pre>
+    <pre id={codeId} className={styles.code} tabIndex={0} aria-label={ariaLabel || label || `${language || 'Plain text'} code`}><code>{code}</code></pre>
     {copyError && <p className={styles.error} role="status">Could not copy. Try again.</p>}
   </>;
 
-  if (plain) return <div className={`${styles.plain} ${className ?? ''}`}>
+  if (plain) return <div className={`${styles.plain} ${className ?? ''}`} data-copyable={copyable ? 'true' : undefined}>
+    {copyButton && <header className={styles.plainHeader}>
+      {copyButton}
+    </header>}
     {content}
-    {copyButton && <div className={styles.actions}>{copyButton}</div>}
   </div>;
 
   return <ContentCard as="section" className={`${styles.panel} ${className ?? ''}`}
