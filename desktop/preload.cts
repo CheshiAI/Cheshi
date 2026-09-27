@@ -1,3 +1,4 @@
+import { createIMessageApi } from './lib/imessage-preload.cts';
 import { createGitHubIssuesApi } from './lib/github-issue-preload.cts';
 import { chatUserInputRequest, chatUserInputResponse } from './shared/chat-user-input.ts';
 import { chatRelayHistoryRecord, chatRelayRequest, chatRelayState } from './shared/chat-relay.ts';
@@ -836,6 +837,7 @@ const cheshiDesktopApi = {
   addCodexMarketplace: (request) => ipcRenderer.invoke('cheshi:add-codex-marketplace', marketplaceAddRequest(request)),
   explainCode: (request) => ipcRenderer.invoke('cheshi:explain-code', codeExplanationRequest(request)),
   cancelCodeExplanation: (requestId) => ipcRenderer.invoke('cheshi:cancel-code-explanation', codeExplanationRequestId(requestId)),
+  iMessage: createIMessageApi(ipcRenderer),
   temporaryChat: createTemporaryChatApi(ipcRenderer, file => webUtils.getPathForFile(file)),
   appleNotes: createAppleNotesApi(ipcRenderer, process.platform),
   startPluginWorkflow: (request, contextId) => ipcRenderer.invoke('cheshi:start-plugin-workflow', pluginWorkflowRequest(request), contextId),

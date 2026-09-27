@@ -19,21 +19,21 @@ export function AppearanceSettings({ api = cheshiDesktop?.appearance }: { api?: 
         {!api && <p role="status" className={styles.description}>Appearance settings are available in the Cheshi desktop app.</p>}
         {state && !state.supported && <p role="status" className={styles.description}>Native transparency is unavailable on this system.</p>}
         {draft && <>
-          <div className={appearance.row}><span id="window-transparency-label" className={styles.settingLabel}>Window transparency</span>
+          <div className={styles.settingRow}><span id="window-transparency-label" className={styles.settingLabel}>Window transparency</span>
             <NeumorphicButton className={styles.toggle} role="switch" aria-labelledby="window-transparency-label"
               aria-checked={draft.enabled} disabled={!state?.supported}
               onClick={() => update({ ...draft, enabled: !draft.enabled }, true)}><span /></NeumorphicButton></div>
-          <div className={appearance.row}><span id="main-pane-transparency-label" className={styles.settingLabel}>Main pane transparency</span>
+          <div className={styles.settingRow}><span id="main-pane-transparency-label" className={styles.settingLabel}>Main pane transparency</span>
             <NeumorphicButton className={styles.toggle} role="switch" aria-labelledby="main-pane-transparency-label"
               aria-checked={draft.mainPaneGlass} disabled={!state?.supported || !draft.enabled}
               onClick={() => update({ ...draft, mainPaneGlass: !draft.mainPaneGlass }, true)}><span /></NeumorphicButton></div>
-          <label className={appearance.row}><span className={styles.settingLabel}>Window Opacity: {Math.round(draft.opacity * 100)}</span>
+          <label className={styles.settingRow}><span className={styles.settingLabel}>Window Opacity: {Math.round(draft.opacity * 100)}</span>
             <input className={appearance.slider} aria-label="Window Opacity" aria-valuetext={`${Math.round(draft.opacity * 100)}%`}
               type="range" min="15" max="100" step="1" value={Math.round(draft.opacity * 100)}
               disabled={!state?.supported || !draft.enabled}
               onChange={event => update({ ...draft, opacity: Number(event.target.value) / 100 })}
               onPointerUp={() => { void flush(); }} onKeyUp={() => { void flush(); }} /></label>
-          <label className={appearance.row}><span className={styles.settingLabel}>Window Blur Radius: {draft.blurRadius}</span>
+          <label className={styles.settingRow}><span className={styles.settingLabel}>Window Blur Radius: {draft.blurRadius}</span>
             <input className={appearance.slider} aria-label="Window Blur Radius" type="range" min="0" max="64" step="1" value={draft.blurRadius}
               disabled={!state?.supported || !draft.enabled}
               onChange={event => update({ ...draft, blurRadius: Number(event.target.value) })}

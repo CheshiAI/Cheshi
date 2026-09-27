@@ -347,7 +347,7 @@ export function handleCodexNotification(context: CodexChatEventContext, value: J
     if (method === "item/completed" && item.type === "agentMessage") {
       const text = stringValue(item.text);
       const questions = asyncQuestionsFromMessage(item);
-      if (activeThreadIsViewed && questions && typeof item.text === 'string') {
+      if (questions && typeof item.text === 'string') {
         context.emit({ type: 'assistant-question', threadId: active.threadId, turnId: active.turnId,
           itemId, text: item.text, questions });
         return;

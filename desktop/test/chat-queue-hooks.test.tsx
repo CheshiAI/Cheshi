@@ -65,10 +65,12 @@ test('side-chat draft survives Strict Mode replay, then never reappears in anoth
 test('queue subscribes to its pane, drains through real normalized completion events, and unsubscribes', async () => {
   const app = hooks();
   const subscriptions = new Map<string | undefined, (value: unknown) => void>();
+  const reports: { context: string; entries: { threadId: string; count: number }[] }[] = [];
   const hook = load<typeof useChatMessageQueue>('useChatMessageQueue.ts', 'useChatMessageQueue', {
     react: app.react, './chatMessageQueueStore': { createChatMessageQueue },
     './model': { isViewedSessionResponding, normalizeChatEvent },
     '../../cheshiDesktop': { cheshiDesktop: {
+      iMessage: { async reportQueue(context: string, entries: { threadId: string; count: number }[]) { reports.push({ context, entries }); } },
       onCodexChatEvent(handler: (value: unknown) => void, contextId?: string) {
         subscriptions.set(contextId, handler); return () => { subscriptions.delete(contextId); };
       },
@@ -85,6 +87,8 @@ test('queue subscribes to its pane, drains through real normalized completion ev
   expect([...subscriptions.keys()]).toEqual(['pane-a']);
   queue.enqueue({ draft: 'first', selectedSkill: null, attachments: [] });
   queue.enqueue({ draft: 'second', selectedSkill: null, attachments: [] });
+  render();
+  expect(reports.at(-1)).toEqual({ context: 'pane-a', entries: [{ threadId: 'thread-a', count: 2 }] });
   const complete = () => subscriptions.get('pane-a')!({ type: 'turn-completed', threadId: 'thread-a', status: 'completed' });
   complete(); controller.state.responseThreadIds = []; render();
   for (let index = 0; index < 4; index++) await Promise.resolve();
@@ -92,6 +96,9 @@ test('queue subscribes to its pane, drains through real normalized completion ev
   controller.state.responseThreadIds = ['thread-a']; render();
   complete(); controller.state.responseThreadIds = []; render();
   expect(sent).toEqual(['first', 'second']);
+  for (let index = 0; index < 4; index++) await Promise.resolve();
+  render();
+  expect(reports.at(-1)).toEqual({ context: 'pane-a', entries: [] });
   app.unmount(); expect(subscriptions.size).toBe(0);
 });
 

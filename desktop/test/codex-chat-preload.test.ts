@@ -50,6 +50,25 @@ test('response statistics reads carry the conversation and pane without navigati
   assert.deepEqual(bridge.calls, [['cheshi:read-codex-turn-metrics', 'root', 'pane-b']]);
 });
 
+test('iMessage bridge sends only explicit settings and test requests, validates responses and cleans subscriptions', async () => {
+  const state = { enabled: false, recipient: 'me@example.com', completed: true, attention: true, failed: true,
+    available: true, lastStatus: null };
+  const bridge = createHarness('Alex', state);
+  const api = bridge.read('iMessage') as NonNullable<CheshiDesktopApi['iMessage']>;
+  assert.deepEqual(bridge.calls, []);
+  assert.deepEqual(structuredClone(await api.get()), state);
+  const { available: _available, lastStatus: _status, ...preferences } = state;
+  await api.save(preferences); await api.test(); await api.reportQueue('pane', [{ threadId: 'thread', count: 1 }]);
+  assert.deepEqual(bridge.calls, [['cheshi:imessage:get', undefined], ['cheshi:imessage:save', preferences],
+    ['cheshi:imessage:test', undefined], ['cheshi:imessage:queue', { contextId: 'pane', threads: [{ threadId: 'thread', count: 1 }] }]]);
+  const received: unknown[] = [];
+  const unsubscribe = api.onChanged(value => received.push(structuredClone(value)));
+  bridge.emit(state, 'cheshi:imessage:changed'); unsubscribe(); bridge.emit(state, 'cheshi:imessage:changed');
+  assert.deepEqual(received, [state]);
+  const malformed = createHarness('Alex', { ...state, enabled: 'true' }).read('iMessage') as NonNullable<CheshiDesktopApi['iMessage']>;
+  await assert.rejects(() => malformed.get(), /Invalid iMessage switch/);
+});
+
 test('agent detail reads carry the parent, target ids and pane without invoking navigation', async () => {
   const bridge = createHarness('Alex', { agents: [] });
   await bridge.call('readCodexAgentDetails', 'root', ['child'], 'pane-b');

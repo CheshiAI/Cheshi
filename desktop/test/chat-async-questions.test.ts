@@ -56,6 +56,24 @@ test('structured questions support arbitrary wording, multiple questions and fre
   ] });
 });
 
+test('background async questions reach notification observers without entering the viewed conversation', async () => {
+  const client = createFakeCodexClient({ 'thread/start': { thread: codexThread('thread') },
+    'turn/start': { turn: { id: 'turn' } }, 'thread/read': { thread: codexThread('other') },
+    'thread/resume': { thread: codexThread('other') } });
+  const service = createCodexChatService(client);
+  const received: unknown[] = [];
+  service.onEvent(value => { if (value.type === 'assistant-question') received.push(value); });
+  try {
+    await service.sendMessage('Start work', 'first');
+    await service.openSession('other');
+    client.emit('item/completed', { threadId: 'thread', turnId: 'turn', item: message });
+    expect(received).toEqual([expect.objectContaining({ type: 'assistant-question', threadId: 'thread', questions })]);
+    const event = normalizeChatEvent(received[0])!;
+    const state = { ...INITIAL_CHAT_STATE, activeSessionId: 'other' };
+    expect(chatReducer(state, { type: 'event', event })).toBe(state);
+  } finally { await service.stop(); }
+});
+
 test('validates async metadata at provider and renderer boundaries without accepting truthy delivery flags', () => {
   for (const value of [null, [], {}, [{ title: '' }], [{ title: 1 }], [{ title, options: 'yes' }],
     [{ title, options: [1] }], [{ title, options: [' '] }], [{ title }, null]]) {

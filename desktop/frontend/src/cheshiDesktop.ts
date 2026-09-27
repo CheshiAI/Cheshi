@@ -809,6 +809,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   explainCode: (request: import('../../shared/workspace-code-explanation').CodeExplanationRequest) => Promise<import('../../shared/workspace-code-explanation').CodeExplanationResult>;
   cancelCodeExplanation: (requestId: string) => Promise<void>;
   listCodexModels: (contextId?: string) => Promise<unknown>;
+  iMessage?: import('../../shared/imessage-notifications').IMessageApi;
   temporaryChat: {
     openWindow(draft?: import('../../shared/temporary-chat').TemporaryChatDraft): Promise<void>;
     initialDraft(): Promise<import('../../shared/temporary-chat').TemporaryChatDraft | null>;

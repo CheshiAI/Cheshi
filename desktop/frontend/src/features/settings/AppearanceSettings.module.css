@@ -19,15 +19,6 @@
   color: var(--text);
 }
 
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-default);
-  min-height: 36px;
-}
-
 .helpLines {
   min-width: 0;
   overflow-x: auto;
@@ -59,4 +50,3 @@
 }
 .slider:hover:not(:disabled)::-webkit-slider-runnable-track { background: #b8b8b8; }
 .slider:disabled { cursor: not-allowed; opacity: .5; }
-

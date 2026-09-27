@@ -1,3 +1,4 @@
+import { createWorkspaceNotifications } from './lib/workspace-notifications.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
 import { chatWindowOptions } from './lib/chat-window-options.mts';
 import { createWorkspaceTemporaryChat } from './lib/workspace-temporary-chat.mts';
@@ -190,7 +191,9 @@ const ephemeralSessionClient = createChatClient();
 const codeExplanation = createWorkspaceCodeExplanation(ephemeralSessionClient, workspaceRoot);
 const preloadPath = app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'preload.cjs')
   : path.join(currentDirectory, 'runtime', 'preload.cjs');
+const notifications = createWorkspaceNotifications({ workspaceRoot, scope: options.scope, getParent: () => mainWindow, sink: options.notifications });
 const temporaryChats = createWorkspaceTemporaryChat({
+  wrapService: service => notifications.temporary(service),
   scope: options.scope, getParent: () => mainWindow, createWindow: configuration => new BrowserWindow(configuration),
   workspaceRoot, userName: currentUserName(), createClient: createChatClient, shell,
   preload: preloadPath, appearanceFile: path.join(userDataDirectory, 'appearance.json'),
@@ -224,10 +227,12 @@ const codexChatContexts = new CodexChatContexts({
   createClient: createChatClient,
   service: chatServiceOptions,
   emit: (ownerId, event) => {
+    notifications.event(String(event.contextId ?? 'main'), event);
     const window = workspaceWindows().find((candidate) => candidate.webContents.id === ownerId);
     rendererEvents.send(window ?? null, CODEX_CHAT_EVENT_CHANNEL, event);
   },
 });
+const unsubscribeNotificationContext = codexChatContexts.onDispose((_ownerId, contextId) => { if (contextId) notifications.remove(contextId); });
 const codexChatRelays = new CodexChatRelays({
   contexts: codexChatContexts,
   history: new CodexChatRelayHistory(path.join(path.dirname(codeGraphDirectory), 'chat-relays')),
@@ -282,6 +287,7 @@ const unsubscribeAccount = codexAccountService.onDidChange((status) => {
 });
 
 const unsubscribeChat = codexChatService.onEvent((event) => {
+  notifications.event('main', event);
   for (const window of workspaceWindows()) {
     rendererEvents.send(window, CODEX_CHAT_EVENT_CHANNEL, event);
   }
@@ -953,6 +959,7 @@ function dispose(): Promise<void> {
   rendererEvents.stop();
   unsubscribeAccount();
   unsubscribeChat();
+  unsubscribeNotificationContext(); notifications.dispose();
   unsubscribeDiagnostics();
   disposeWorkspaceFileWatcher();
   disposeGitRepositoryWatcher();

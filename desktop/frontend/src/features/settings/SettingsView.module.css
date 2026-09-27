@@ -22,14 +22,20 @@
 .description code { font: inherit; }
 .form .settingLabel { color: var(--text); font-size: 11px; font-weight: 400; line-height: 1.5; }
 .titleRow { display: flex; min-height: 32px; align-items: center; justify-content: space-between; gap: var(--space-default); }
+.settingRow { display: flex; flex-wrap: wrap; min-height: 36px; align-items: center; justify-content: space-between; gap: var(--space-default); }
 .descriptionGroup { display: flex; flex-direction: column; gap: var(--space-default); }
+.operationStatus { block-size: 3.2em; flex: 0 0 auto; overflow: auto; }
 .toggle[role='switch'] {
   --neumorphic-button-radius: 10px;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  gap: 0;
   flex: 0 0 auto;
   width: 36px;
   height: 20px;
+  min-height: 20px;
   padding: 0;
   border: 0;
   border-radius: 10px;
@@ -40,7 +46,7 @@
 .toggle[aria-checked='true'] { background: #18a9cf; }
 .toggle[role='switch']:hover:not(:disabled) { background: #a6a6a6; }
 .toggle[aria-checked='true']:hover:not(:disabled) { background: #18a9cf; }
-.toggle > span { width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform 160ms ease; }
+.toggle > span { flex: 0 0 20px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform 160ms ease; }
 .toggle[aria-checked='true'] > span { transform: translateX(16px); }
 
 .toggle:disabled { cursor: not-allowed; opacity: .5; }

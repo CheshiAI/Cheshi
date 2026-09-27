@@ -21,6 +21,14 @@ export function useChatMessageQueue(controller: ChatController, blocked: boolean
     }, controller.contextId);
     return () => { store.suspend(); unsubscribe?.(); };
   }, [store, controller.contextId]);
+  useEffect(() => {
+    const api = cheshiDesktop?.iMessage;
+    if (!api) return;
+    const counts = new Map<string, number>();
+    for (const entry of snapshot.entries) counts.set(entry.threadId, (counts.get(entry.threadId) ?? 0) + 1);
+    void api.reportQueue(controller.contextId ?? 'main', [...counts].map(([threadId, count]) => ({ threadId, count })))
+      .catch(() => { /* An unavailable notification bridge must not interrupt chat. */ });
+  }, [snapshot.entries, controller.contextId]);
   useLayoutEffect(() => {
     store.setContext({ threadId: controller.state.activeSessionId, responding: isViewedSessionResponding(controller.state),
       blocked: blocked || controller.configurationPending || controller.state.phase === 'loading' || Boolean(controller.state.error) });

@@ -8,6 +8,7 @@ import type { WorkspaceAccountSelection } from './settings-service.mts';
 export interface WorkspaceWindowState { bounds: Rectangle; maximized: boolean; fullscreen: boolean; }
 export interface WorkspaceRuntimeOptions {
   workspaceRoot: string;
+  notifications?: import('./imessage-notifications.mts').NotificationSink;
   getTypeSafeKey?(): string | null;
   historyRecall?: HistoryRecallAccess;
   accountSelection?: WorkspaceAccountSelection;
