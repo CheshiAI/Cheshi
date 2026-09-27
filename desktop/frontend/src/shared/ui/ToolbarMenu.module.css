@@ -29,7 +29,9 @@
   background: var(--control-surface-ghost);
   color: var(--text);
   font-size: var(--font-size-label);
+  font-weight: 400;
 }
+.menu .item:is([aria-checked='true'], [aria-selected='true'], [data-active='true']) { background: var(--control-surface); color: var(--text); }
 .menu .item:not(:disabled):is(:hover, :active, :focus-visible) { background: var(--control-surface-interactive); color: var(--text); }
 .item > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; }
 .item > span { flex: 1; text-align: left; white-space: nowrap; }

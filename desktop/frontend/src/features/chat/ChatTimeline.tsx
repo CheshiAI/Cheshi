@@ -77,9 +77,10 @@ export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, hist
       {showScrollToBottom && state.items.length > 0 && (
         <div className={styles.scrollToBottomControl}>
           <NeumorphicButton
-            raised
+            variant="standard"
+            size="icon"
             aria-label="Scroll to latest message"
-            className="sidebar-heading-action"
+            title="Scroll to latest message"
             onClick={scrollToBottom}
           >
             <ArrowDown aria-hidden="true" />

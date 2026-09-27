@@ -1,0 +1,98 @@
+.configurationPopoverAnchor {
+  composes: anchor from '../../shared/ui/PopupSurface.module.css';
+  --liquid-glass-radius: 12px;
+  position: fixed;
+  z-index: 110;
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
+}
+
+.configurationSubmenuAnchor {
+  composes: anchor from '../../shared/ui/PopupSurface.module.css';
+  position: absolute;
+  bottom: 0;
+  z-index: 0;
+  width: 240px;
+}
+.configurationPopoverAnchor[data-submenu-side='left'] .configurationSubmenuAnchor { right: calc(100% + var(--icon-default)); }
+.configurationPopoverAnchor[data-submenu-side='right'] .configurationSubmenuAnchor { left: calc(100% + var(--icon-default)); }
+
+.configurationMenu {
+  composes: menu from '../../shared/ui/ToolbarMenu.module.css';
+  width: 100%;
+}
+.configurationSubmenu {
+  composes: menu from '../../shared/ui/ToolbarMenu.module.css';
+  display: grid;
+  width: 100%;
+  max-height: min(310px, calc(100vh - 16px));
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+.configurationSubmenuTitle {
+  composes: title from '../../shared/ui/ToolbarMenu.module.css';
+  line-height: 16px;
+  text-transform: uppercase;
+}
+.configurationOptions { display: grid; min-height: 0; gap: var(--space-4); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.configurationMenuRow {
+  composes: item from '../../shared/ui/ToolbarMenu.module.css';
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+  grid-template-columns: minmax(0, 1fr) auto var(--icon-size-default);
+  text-align: left;
+}
+.configurationOption {
+  composes: item from '../../shared/ui/ToolbarMenu.module.css';
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) var(--icon-size-default);
+  text-align: left;
+}
+.configurationMenuRow > svg,
+.configurationOption > svg,
+.configurationMenuIndicator > svg {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  color: var(--text);
+}
+.configurationMenuIndicator { display: flex; width: var(--icon-size-default); height: var(--icon-size-default); align-items: center; justify-content: center; }
+.configurationMenuValue { overflow: hidden; min-width: 0; max-width: 90px; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+.configurationOptionCopy { display: flex; min-width: 0; flex-direction: column; }
+.configurationOptionCopy strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.configurationOptionCopy > span {
+  overflow: hidden;
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+  font-weight: 400;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.configurationPopoverAnchor[data-saving='true'] :is(.configurationMenuRow, .configurationOption):disabled:not([data-unavailable='true']) { opacity: 1; }
+.configurationMenuStatus,
+.configurationMenuError {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: var(--icon-default);
+  border-top: 1px solid var(--divider);
+  padding-top: var(--icon-default);
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  line-height: 14px;
+}
+.configurationMenuStatus svg,
+.configurationMenuError svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; }

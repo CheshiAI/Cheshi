@@ -1,6 +1,6 @@
 import { ArrowUp, Square } from 'lucide-react';
 import { NeumorphicButton } from '../../shared/ui';
-import styles from './ChatView.module.css';
+import styles from './ChatComposer.module.css';
 
 interface ChatSubmitButtonProps {
   streaming: boolean;
@@ -14,8 +14,8 @@ export function ChatSubmitButton({ streaming, sendDisabled, goalEditorOpen, onSt
   const label = stopping ? 'Stop response' : goalEditorOpen ? 'Set persistent goal'
     : streaming ? 'Queue message' : 'Send message';
   return (
-    <NeumorphicButton raised
-      className={`sidebar-heading-action ${stopping ? styles.stopButton : styles.sendButton}`}
+    <NeumorphicButton variant="standard" size="icon"
+      className={stopping ? styles.stopButton : styles.sendButton}
       aria-label={label} title={label}
       disabled={!stopping && sendDisabled}
       type={stopping ? 'button' : 'submit'}

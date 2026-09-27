@@ -1,28 +1,17 @@
 import { useId, useMemo, useState } from 'react';
-import {
-  Bot,
-  ClipboardList,
-  FileText,
-  LoaderCircle,
-  Paperclip,
-  ShieldCheck,
-  Sparkles,
-  X,
-  Zap,
-} from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 
-import { LiquidGlassPanel, NeumorphicButton, NeumorphicSurface, PillButton, PillDropdownButton } from '../../shared/ui';
+import { LiquidGlassPanel, NeumorphicButton, NeumorphicSurface } from '../../shared/ui';
 import { ChatErrorNotice } from './ChatErrorNotice';
-import { attachmentTypeLabel, formatReasoningEffort } from './chatViewModel';
 import { ChatCommandMenu } from './ChatCommandMenu';
 import { ChatConfigurationMenu } from './ChatConfigurationMenu';
 import { ChatInputHistoryPanel } from './ChatInputHistoryPanel';
 import { useChatInputHistory } from './useChatInputHistory';
-import styles from './ChatView.module.css';
+import styles from './ChatComposer.module.css';
+import { ChatComposerAttachments } from './ChatComposerAttachments';
+import { ChatComposerToolbar } from './ChatComposerToolbar';
 import type { ChatViewController } from './useChatViewController';
 import { ChatUserInputRequests } from './ChatUserInputPrompt';
-import { ChatPermissionSelect } from './ChatPermissionSelect';
-import { ChatSubmitButton } from './ChatSubmitButton';
 import type { ChatController } from './useChatController';
 import { GithubLinkChips } from './GithubLinkChips';
 import { ChatMessageQueue, ChatQueueToggle } from './ChatMessageQueue';
@@ -36,19 +25,12 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
     answerApproval,
     approvalError,
     approvalLoadingId,
-    attachmentError,
-    attachmentPickerOpen,
     attachments,
-    cancelResponse,
-    chatConfiguration,
     commandLoading,
     commandMenuMode,
     commandMenuOpen,
     composerAreaRef,
-    configurationControlsDisabled,
-    configurationLoading,
     configurationMenuOpen,
-    configurationTriggerRef,
     dismissError,
     draft,
     goal,
@@ -63,15 +45,12 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
     permissionsPickerOpen,
     reasoningPickerOpen,
     removeAttachment,
-    selectAttachments,
     selectedSkill,
-    setSelectedSkill,
     skillPickerOpen,
     state,
     streaming,
     submit,
     textareaRef,
-    toggleConfigurationMenu,
   } = controller;
   const agentPickerOpen = controller.agentPickerOpen;
   const queuePanelId = useId();
@@ -152,171 +131,52 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
 
       <ChatMessageQueue controller={controller} open={queueOpen} panelId={queuePanelId} />
       <ChatInputHistoryPanel history={history} />
-      <LiquidGlassPanel className={styles.composerSurface} data-queue-open={queueOpen ? 'true' : 'false'} data-liquid-glass-surface="side-panel" data-liquid-glass-backdrop="true">
-        <form className={styles.composer} onSubmit={submit}>
-          {attachments.length > 0 && (
-            <div className={styles.attachmentTray} aria-label="Attached files">
-              {attachments.map((attachment) => {
-                const showImage = attachment.kind === 'image' && Boolean(attachment.previewUrl);
-                return (
-                  <div
-                    className={`${styles.attachmentCard} ${showImage ? styles.imageAttachmentCard : styles.fileAttachmentCard}`}
-                    key={attachment.path}
-                    title={attachment.path}
-                  >
-                    {showImage ? (
-                      <img alt={attachment.name} src={attachment.previewUrl} />
-                    ) : (
-                      <div className={styles.attachmentFileContent}>
-                        <FileText aria-hidden="true" />
-                        <span>
-                          <strong>{attachment.name}</strong>
-                          <small>{attachmentTypeLabel(attachment.name)}</small>
-                        </span>
-                      </div>
-                    )}
-                    <NeumorphicButton
-                      raised
-                      aria-label={`Remove ${attachment.name}`}
-                      className={`sidebar-heading-action ${styles.attachmentRemove}`}
-                      onClick={() => removeAttachment(attachment.path)}
-                    >
-                      <X aria-hidden="true" />
-                    </NeumorphicButton>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {!commandMenuOpen && <GithubLinkChips draft={draft} />}
-          <textarea
-            aria-label={goalEditorOpen ? 'Persistent goal objective' : 'Message Codex'}
-            disabled={loading}
-            aria-controls={history.open ? history.listId : commandMenuOpen ? controller.commandMenuId : undefined}
-            aria-expanded={history.open || commandMenuOpen}
-            aria-activedescendant={history.open ? `${history.listId}-${history.state.selected}` : undefined}
-            placeholder={skillPickerOpen
-              ? 'Search installed skills'
-              : agentPickerOpen
-                ? 'Search agent threads'
-                : modelPickerOpen
-                  ? 'Search available models'
-                  : reasoningPickerOpen
-                    ? 'Search reasoning levels'
-                    : permissionsPickerOpen
-                      ? 'Search permission modes'
-                      : commandMenuMode === 'status'
-                        ? 'Current chat status'
-                        : mcpStatusOpen
-                          ? 'Filter connected MCP servers'
-                          : goalEditorOpen
-                            ? goal ? 'Replace the persistent goal' : 'Set a persistent goal for this chat'
-                            : selectedSkill
-                              ? `Ask with ${selectedSkill.displayName}`
-                              : streaming ? 'Queue a message for after the current response' : 'Ask Codex about this workspace'}
-            ref={textareaRef}
-            rows={1}
-            value={draft}
-            onChange={(event) => { history.close(); handleDraftChange(event.target.value); }}
-            onPaste={controller.attachmentTransfer.onPaste}
-            onKeyDown={history.onKeyDown}
-          />
-          <div className={styles.composerFooter} data-configuration-pending={chatController.configurationPending || undefined}>
-            <div className={styles.composerMeta}>
-              <NeumorphicButton
-                raised
-                aria-label="Attach files"
-                className={`sidebar-heading-action ${styles.attachmentButton}`}
-                disabled={interactionsLocked || loading || commandMenuOpen || attachmentPickerOpen || controller.attachmentTransfer.loading || controller.sendPending}
-                title="Attach files"
-                onClick={() => void selectAttachments()}
-              >
-                {attachmentPickerOpen
-                  ? <LoaderCircle aria-hidden="true" className={styles.attachmentSpinner} />
-                  : <Paperclip aria-hidden="true" />}
-              </NeumorphicButton>
-              <ChatPermissionSelect controller={chatController} disabled={configurationControlsDisabled}
-                permissionPending={chatController.configurationPending} />
-              <PillButton aria-label="Plan mode" aria-pressed={chatConfiguration?.collaborationMode === 'plan'}
-                disabled={configurationControlsDisabled || configurationLoading || !chatConfiguration}
-                title={chatConfiguration?.collaborationMode === 'plan' ? 'Turn off Plan mode' : 'Turn on Plan mode'}
-                onClick={() => void controller.selectCollaborationMode(chatConfiguration?.collaborationMode === 'plan' ? 'default' : 'plan')}>
-                <ClipboardList aria-hidden="true" />
-                <span>Plan</span>
-              </PillButton>
-              {controller.attachmentTransfer.loading && <span role="status">Adding attachments…</span>}
-              {attachmentError && (
-                <span className={styles.attachmentError} role="alert" title={attachmentError}>
-                  {attachmentError}
-                </span>
-              )}
-              {selectedSkill && (
-                <button
-                  aria-label={`Remove ${selectedSkill.displayName} skill`}
-                  className={styles.skillChip}
-                  title={selectedSkill.path}
-                  type="button"
-                  onClick={() => setSelectedSkill(null)}
-                >
-                  <Sparkles aria-hidden="true" />
-                  <span>{selectedSkill.displayName}</span>
-                  <X aria-hidden="true" />
-                </button>
-              )}
-            </div>
-            <div className={styles.composerActions}>
-              <div className={styles.configurationTriggerAnchor} ref={configurationTriggerRef}>
-                <PillDropdownButton
-                  active={configurationMenuOpen}
-                  raised
-                  aria-controls={configurationMenuOpen ? controller.configurationMenuId : undefined}
-                  aria-expanded={configurationMenuOpen}
-                  aria-haspopup="menu"
-                  aria-busy={configurationLoading}
-                  aria-label="Configure model, reasoning effort, and service tier"
-                  className={`neumorphic-surface ${styles.configurationTrigger}`}
-                  disabled={configurationControlsDisabled}
-                  title={chatConfiguration
-                    ? `${chatConfiguration.modelDisplayName} · ${formatReasoningEffort(chatConfiguration.reasoningEffort)} · ${chatConfiguration.serviceTierDisplayName}`
-                    : 'Chat configuration'}
-                  onClick={toggleConfigurationMenu}
-                >
-                  {configurationLoading && !chatConfiguration
-                    ? <LoaderCircle aria-hidden="true" className={styles.configurationSpinner} />
-                    : chatConfiguration?.fastModeEnabled
-                      ? <Zap aria-hidden="true" />
-                      : <Bot aria-hidden="true" />}
-                  <span className={styles.configurationTriggerModel}>
-                    {chatConfiguration?.modelDisplayName ?? 'Default model'}
-                  </span>
-                  <span className={styles.configurationTriggerEffort}>
-                    {chatConfiguration ? formatReasoningEffort(chatConfiguration.reasoningEffort) : 'Default'}
-                  </span>
-                </PillDropdownButton>
-              </div>
-              <ChatSubmitButton
-                streaming={streaming}
-                goalEditorOpen={goalEditorOpen}
-                onStop={() => void cancelResponse()}
-                sendDisabled={
-                  !draft.trim()
-                  || interactionsLocked
-                  || loading
-                  || chatController.configurationPending
-                  || attachmentPickerOpen
-                  || controller.attachmentTransfer.loading
-                  || commandLoading
-                  || controller.sendPending
-                  || (commandMenuOpen && !goalEditorOpen)
-                }
-              />
-            </div>
-          </div>
-          <ChatQueueToggle controller={controller} open={queueOpen} panelId={queuePanelId}
-            onToggle={() => setQueueVisible((visible) => !visible)} />
-        </form>
-      </LiquidGlassPanel>
-      <p className={styles.disclaimer}>Codex can make mistakes. Check important answers.</p>
+      <div className={styles.composerAnchor} data-queue-open={queueOpen ? 'true' : 'false'}>
+        <LiquidGlassPanel className={styles.composerSurface} data-liquid-glass-backdrop="true">
+          <form className={styles.composer} onSubmit={submit}>
+            <ChatComposerAttachments attachments={attachments} removeAttachment={removeAttachment} />
+            {!commandMenuOpen && <GithubLinkChips draft={draft} />}
+            <textarea
+              aria-label={goalEditorOpen ? 'Persistent goal objective' : 'Message Codex'}
+              disabled={loading}
+              aria-controls={history.open ? history.listId : commandMenuOpen ? controller.commandMenuId : undefined}
+              aria-expanded={history.open || commandMenuOpen}
+              aria-activedescendant={history.open ? `${history.listId}-${history.state.selected}` : undefined}
+              placeholder={skillPickerOpen
+                ? 'Search installed skills'
+                : agentPickerOpen
+                  ? 'Search agent threads'
+                  : modelPickerOpen
+                    ? 'Search available models'
+                    : reasoningPickerOpen
+                      ? 'Search reasoning levels'
+                      : permissionsPickerOpen
+                        ? 'Search permission modes'
+                        : commandMenuMode === 'status'
+                          ? 'Current chat status'
+                          : mcpStatusOpen
+                            ? 'Filter connected MCP servers'
+                            : goalEditorOpen
+                              ? goal ? 'Replace the persistent goal' : 'Set a persistent goal for this chat'
+                              : selectedSkill
+                                ? `Ask with ${selectedSkill.displayName}`
+                                : streaming ? 'Queue a message for after the current response' : 'Ask Codex about this workspace'}
+              ref={textareaRef}
+              rows={1}
+              value={draft}
+              onChange={(event) => { history.close(); handleDraftChange(event.target.value); }}
+              onPaste={controller.attachmentTransfer.onPaste}
+              onKeyDown={history.onKeyDown}
+            />
+            <ChatComposerToolbar controller={controller} chatController={chatController} />
+            <ChatQueueToggle controller={controller} open={queueOpen} panelId={queuePanelId}
+              onToggle={() => setQueueVisible((visible) => !visible)} />
+          </form>
+        </LiquidGlassPanel>
+      </div>
+      <div className={styles.disclaimerRow}>
+        <p className={styles.disclaimer}>codex can make mistakes. check important answers.</p>
+      </div>
     </footer>
   );
 }

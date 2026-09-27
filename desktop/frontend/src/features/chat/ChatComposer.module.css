@@ -1,0 +1,202 @@
+.composerArea {
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-label);
+  font-weight: 400;
+  color: var(--text);
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: var(--composer-overlay-top-padding) 40px 0;
+}
+.approvalPrompt, .composerAnchor, .error, .sendRecovery { width: min(100%, 780px); margin-right: auto; margin-left: auto; }
+.approvalPrompt {
+  --liquid-glass-radius: 14px;
+  display: grid;
+  min-height: 58px;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-default);
+  margin-bottom: 8px;
+  padding: var(--space-default);
+  background: transparent;
+  color: var(--text);
+}
+.approvalIcon {
+  --neumorphic-button-radius: 50%;
+  display: grid;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0;
+  pointer-events: none;
+}
+.approvalIcon svg { width: 11px; height: 11px; stroke-width: 1.7; }
+.approvalCopy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.approvalCopy strong { color: var(--text); font-size: var(--font-size-label); font-weight: 650; line-height: 1.5; }
+.approvalCopy > span { color: var(--sidebar-section-label-color); font-family: "SFMono-Regular", Consolas, monospace; font-size: var(--font-size-small); line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
+.approvalCopy > .approvalError { color: var(--sub-text); font-family: inherit; }
+.approvalActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--icon-default); }
+.approvalAction {
+  white-space: nowrap;
+}
+
+.sendRecovery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-default);
+  margin-bottom: var(--space-default);
+  font-size: var(--font-size-label);
+  line-height: 1.5;
+  color: var(--sidebar-section-label-color);
+}
+.sendRecovery > span { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.sendRecovery button { flex-shrink: 0; }
+
+.composerAnchor {
+  composes: anchor from '../../shared/ui/PopupSurface.module.css';
+  --liquid-glass-radius: 16px;
+  position: relative;
+  z-index: 0;
+  margin-top: 0;
+  transition: border-radius 200ms ease, margin-top 200ms ease;
+}
+.composerAnchor[data-queue-open='true'] {
+  --liquid-glass-radius: 0 0 16px 16px;
+  margin-top: -1px;
+}
+.composerSurface {
+  composes: surface from '../../shared/ui/PopupSurface.module.css';
+  width: 100%;
+  overflow: hidden;
+  transition: border-radius 200ms ease;
+}
+.composer { width: 100%; background: transparent; }
+.composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  max-height: 180px;
+  resize: none;
+  overflow-y: auto;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  line-height: 20px;
+  padding: var(--space-default) var(--space-default) var(--icon-default);
+}
+.composer textarea::placeholder { color: var(--text); opacity: .4; }
+.composer textarea:disabled { cursor: wait; }
+
+.attachmentTray {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--space-default);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--space-default) var(--space-default) var(--icon-default);
+}
+.attachmentCard { position: relative; flex: 0 0 auto; border: 1px solid var(--divider); border-radius: 12px; }
+.imageAttachmentCard { width: 72px; height: 72px; }
+.imageAttachmentCard > img { display: block; width: 100%; height: 100%; border-radius: 11px; object-fit: cover; }
+.fileAttachmentCard { display: flex; width: 176px; height: 72px; align-items: center; background: var(--control-surface); padding: var(--icon-default) 32px var(--icon-default) var(--icon-default); }
+.attachmentFileContent { display: grid; width: 100%; min-width: 0; grid-template-columns: var(--icon-button-icon-size) minmax(0, 1fr); align-items: center; gap: var(--icon-default); }
+.attachmentFileContent > svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); color: var(--text); stroke-width: var(--icon-button-stroke-width); }
+.attachmentFileContent > span { display: flex; min-width: 0; flex-direction: column; }
+.attachmentFileContent strong { overflow: hidden; color: var(--text); font-size: inherit; font-weight: 400; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.attachmentFileContent small { color: var(--sidebar-section-label-color); font-size: var(--font-size-small); line-height: 16px; }
+.attachmentCard > .attachmentRemove { position: absolute; top: 1px; right: 1px; z-index: 1; }
+
+.composerFooter {
+  --composer-control-height: 30px;
+  display: flex;
+  flex-wrap: wrap;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-default);
+  padding: var(--icon-default) var(--space-default);
+}
+.composerMeta { display: flex; flex-wrap: wrap; min-width: 0; max-width: 100%; align-items: center; gap: var(--icon-default); }
+.composerActions { display: flex; min-width: 0; max-width: 100%; flex: 0 1 auto; align-items: center; justify-content: flex-end; gap: var(--icon-default); margin-left: auto; }
+/* Composer controls intentionally use a compact 30px height. */
+.composerFooter button[data-size='standard'] {
+  height: var(--composer-control-height);
+  min-height: var(--composer-control-height);
+  min-width: 0;
+  border-radius: 999px;
+  padding: 0 var(--icon-default);
+  font-size: var(--font-size-label);
+}
+.composerFooter button[data-size='standard'] > svg {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  stroke-width: var(--icon-button-stroke-width);
+}
+.attachmentButton, .sendButton, .stopButton {
+  --icon-button-size: var(--composer-control-height);
+  flex: 0 0 var(--icon-button-size);
+}
+.stopButton svg { fill: currentColor; }
+.attachmentSpinner, .configurationSpinner { animation: spin .9s linear infinite; }
+.attachmentError { overflow: hidden; max-width: 180px; color: var(--sidebar-section-label-color); font-size: var(--font-size-small); line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.skillChip { max-width: min(260px, 100%); }
+.skillChip span { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+.configurationTriggerAnchor { min-width: 0; flex: 0 1 auto; }
+.composerFooter[data-configuration-pending='true'] :is(button[aria-haspopup='menu'], button[aria-label='Plan mode']):disabled { opacity: 1; }
+.configurationTrigger { max-width: 250px; width: 100%; }
+.configurationTriggerModel { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+.configurationTriggerEffort { flex: 0 0 auto; color: var(--sidebar-section-label-color); white-space: nowrap; }
+.configurationChevron { margin-left: auto; transition: transform 160ms ease; }
+.configurationTrigger[aria-expanded='true'] > .configurationChevron { transform: rotate(180deg); }
+
+.disclaimerRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-block: var(--icon-default);
+}
+.disclaimerRow > p.disclaimer { display: flex; }
+.disclaimer {
+  composes: badge from '../../shared/ui/Badge.module.css';
+  --badge-height: 24px;
+  --badge-background: var(--control-surface);
+  --badge-color: var(--sidebar-section-label-color);
+  --editor-badge-font-size: 9px;
+  --radius-popover: 999px;
+  -webkit-backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
+  backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
+  width: fit-content;
+  max-width: 100%;
+  min-height: var(--editor-badge-height);
+  margin: 0;
+  text-align: center;
+}
+.error { margin-bottom: var(--icon-default); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .composerAnchor, .composerSurface, .configurationChevron { transition: none; }
+  .attachmentSpinner, .configurationSpinner { animation: none; }
+}
+@media (max-width: 1200px) {
+  .composerArea { padding-right: 28px; padding-left: 28px; }
+  .approvalPrompt { grid-template-columns: 22px minmax(0, 1fr); }
+  .approvalActions { grid-column: 2; justify-content: flex-start; }
+}
+@container (max-width: 600px) {
+  .composerArea { padding-inline: var(--space-default); }
+  .approvalPrompt { grid-template-columns: minmax(0, 1fr); }
+  .approvalActions { grid-column: 1; flex-wrap: wrap; }
+}
+@container (max-width: 360px) {
+  .composerArea, .composerFooter { padding-inline: var(--icon-default); }
+  .composerActions { flex: 1; }
+  .configurationTriggerEffort { display: none; }
+}

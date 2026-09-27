@@ -37,44 +37,38 @@
 .notice { display: block; padding-top: 8px; overflow-wrap: anywhere; color: var(--sub-text); }
 .menu { --liquid-glass-menu-item-font-size: 10px; }
 .menu button { justify-content: flex-start; gap: var(--space-default); }
-.hint { justify-content: space-between; padding: 4px 14px 8px; font-size: 10px; color: var(--sub-text); }
-.hint > button { margin-left: auto; padding: 4px 8px; font: inherit; cursor: pointer; }
+.hint { flex-wrap: wrap; justify-content: space-between; padding: var(--icon-default) var(--space-default); font-size: var(--font-size-label); color: var(--sidebar-section-label-color); }
+.hint > button { margin-left: auto; padding: 0; font: inherit; cursor: pointer; }
 .hint > .toggle[aria-pressed] {
-  --neumorphic-button-radius: 999px;
-  --neumorphic-button-hover-background: var(--neumorphic-button-surface);
-  border-color: transparent;
-  border-radius: var(--neumorphic-button-radius);
+  border: none;
+  border-radius: 999px;
   background: transparent;
-}
-.hint > .toggle[aria-pressed]:not(:disabled):hover {
-  border-color: var(--divider);
-  background: var(--neumorphic-button-surface);
+  color: inherit;
+  outline: none;
+  transform: none;
 }
 .switchTrack {
   position: relative;
-  width: 24px;
-  height: 14px;
-  flex: 0 0 24px;
-  border: 1px solid var(--divider);
-  border-radius: 7px;
-  background: var(--neumorphic-button-surface);
-}
-.toggle:not(:disabled):hover .switchTrack {
-  border-color: var(--sub-text);
-  background: var(--app-bg);
+  width: 36px;
+  height: 20px;
+  flex: 0 0 36px;
+  border: none;
+  border-radius: 10px;
+  background: var(--control-track-color);
 }
 .switchTrack::after {
   content: '';
   position: absolute;
-  top: 1px;
-  left: 1px;
-  width: 10px;
-  height: 10px;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: var(--sub-text);
-  transition: transform 200ms ease, background 160ms ease;
+  background: var(--control-thumb-color);
+  transition: transform 160ms ease;
 }
-.toggle[aria-pressed='true'] .switchTrack::after { transform: translateX(10px); background: var(--active-text); }
+.toggle[aria-pressed='true'] .switchTrack { background: var(--toggle-track-on-color); }
+.toggle[aria-pressed='true'] .switchTrack::after { transform: translateX(16px); }
 @media (prefers-reduced-motion: reduce) {
   .collapse, .queue, .switchTrack::after { transition: none; }
 }
