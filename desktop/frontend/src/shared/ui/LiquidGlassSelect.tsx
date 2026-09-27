@@ -105,15 +105,17 @@ export function LiquidGlassSelect<Value extends string>({
     };
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
       setOpen(false);
       rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
     };
 
     document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown, true);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [open]);
 
@@ -222,7 +224,7 @@ export function LiquidGlassSelect<Value extends string>({
               return (
                 <Option
                   {...(toolbarMenu ? { size: 'standard' as const } : {})}
-                  className={toolbarMenu ? menuStyles.item : `liquid-glass-menu-item ${styles.option}`}
+                  className={toolbarMenu ? `${menuStyles.item} ${styles.toolbarOption}` : `liquid-glass-menu-item ${styles.option}`}
                   key={option.value}
                   type="button"
                   role="menuitemradio"
@@ -242,7 +244,7 @@ export function LiquidGlassSelect<Value extends string>({
             })}
           </LiquidGlassPanel>
         </div>,
-        document.body,
+        rootRef.current?.closest('dialog') ?? document.body,
       )}
     </div>
   );

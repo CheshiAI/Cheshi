@@ -1,19 +1,17 @@
-import { useId } from 'react';
 import type { AppleNotesFolder } from '../../../../shared/apple-notes';
-import { NeumorphicSurface } from '../../shared/ui';
+import { LiquidGlassSelect } from '../../shared/ui';
 import styles from './AppleNotes.module.css';
 
 export function AppleNotesFolderField({ folders, value, disabled, onChange }: {
   folders: AppleNotesFolder[]; value: string; disabled: boolean; onChange: (id: string) => void;
 }) {
-  const id = useId();
-  return <label className={styles.field} htmlFor={id}>
+  return <div className={styles.field}>
     <span>Folder</span>
-    <NeumorphicSurface raised highlightFocus className={styles.selectSurface}>
-      <select id={id} value={value} disabled={disabled || folders.length === 0} onChange={event => onChange(event.target.value)}>
-        {folders.length === 0 && <option value="">No folders available</option>}
-        {folders.map(folder => <option key={folder.id} value={folder.id}>{folder.account} / {folder.path}</option>)}
-      </select>
-    </NeumorphicSurface>
-  </label>;
+    <LiquidGlassSelect ariaLabel="Folder" triggerAppearance="standard" menuAppearance="toolbar"
+      value={value} disabled={disabled || folders.length === 0} onChange={onChange}
+      placeholder={folders.length === 0 ? 'No folders available' : 'Choose a folder'}
+      options={folders.map(folder => ({
+        value: folder.id, label: `${folder.account} / ${folder.path}`, description: `${folder.account} / ${folder.path}`,
+      }))} />
+  </div>;
 }

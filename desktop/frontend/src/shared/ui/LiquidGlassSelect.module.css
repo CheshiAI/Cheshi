@@ -96,6 +96,12 @@
 
 .option:disabled { cursor: not-allowed; opacity: .5; }
 
+.toolbarOption > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @keyframes liquid-glass-select-popover-in {
   from { opacity: 0; transform: translateY(-4px) scale(.98); }
 }

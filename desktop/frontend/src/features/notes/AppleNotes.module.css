@@ -2,29 +2,15 @@
 .content { display: flex; flex-direction: column; gap: var(--space-default); min-width: 0; font-size: 12px; }
 .content p { margin: 0; }
 .field { display: flex; flex: 1; flex-direction: column; gap: var(--icon-default); min-width: 0; }
-.selectSurface {
-  --neumorphic-button-radius: var(--field-radius);
-  display: block;
-  height: var(--field-height);
-  min-width: 0;
-  box-sizing: border-box;
+.saveDialog {
+  --modal-header-height: var(--header-height);
+  --modal-header-padding: 0 var(--space-default);
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
 }
-.selectSurface select {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: var(--field-font-size);
-  font-weight: var(--field-font-weight);
-  line-height: var(--field-line-height);
-  padding: 0 var(--field-padding-inline);
-  cursor: pointer;
-}
-.selectSurface select:disabled { opacity: var(--field-disabled-opacity); cursor: not-allowed; }
+.saveDialog .field > span { color: var(--text); font-size: var(--font-size-label); font-weight: 400; }
+.saveDialog .preview { background: var(--control-surface); }
+.saveDialog .hint, .saveDialog p[role='status'] { font-size: var(--font-size-small); font-weight: 400; color: var(--sidebar-section-label-color); }
 .browser { display: grid; flex: 1; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: 0; }
 .folderPanel {
   --liquid-glass-radius: 0;

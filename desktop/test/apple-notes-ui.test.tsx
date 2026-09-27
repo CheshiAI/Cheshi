@@ -488,6 +488,24 @@ test('saving a response submits exactly once and waits for acknowledgement befor
   expect(saved).toBe(1);
 });
 
+test('clearing the response title prevents saving until a title is entered again', () => {
+  let creates = 0;
+  const app = harness<typeof AppleNotesSaveDialog>('AppleNotesSaveDialog.tsx', 'AppleNotesSaveDialog');
+  const render = () => app.render(component => component({
+    api: api(async () => { creates++; return { ok: true, value: { id: 'new', title: 'Title' } }; }),
+    initialTitle: 'Conversation', body: 'Answer', onClose() {}, onSaved() {},
+  }));
+  const title = find(render(), element => element.props.clearLabel === 'Clear title');
+  if (typeof title.props.onClear !== 'function') throw new Error('Missing title clear action.');
+  title.props.onClear();
+  expect(find(render(), element => element.props.clearLabel === 'Clear title').props.value).toBe('');
+  expect(find(render(), element => element.props.type === 'submit').props.disabled).toBe(true);
+  submit(render());
+  expect(creates).toBe(0);
+  change(render(), element => element.props.clearLabel === 'Clear title', 'New title');
+  expect(find(render(), element => element.props.type === 'submit').props.disabled).toBe(false);
+});
+
 test('an uncertain save shows its message and prevents an immediate duplicate retry', async () => {
   const pending = createDeferred<contract.AppleNotesReply<contract.AppleNoteCreated>>();
   let calls = 0;

@@ -44,25 +44,26 @@ export function AppleNotesSaveDialog({ api, initialTitle, body: responseBody, in
     }
   };
 
-  return <Modal title="Save to Apple Notes" titleIcon={<StickyNote aria-hidden="true" />} onClose={onClose} closeDisabled={saving}
-    className={styles.dialog}>
+  return <Modal title="SAVE TO APPLE NOTES" headerVariant="section" titleIcon={<StickyNote aria-hidden="true" />} onClose={onClose} closeDisabled={saving}
+    className={`${styles.dialog} ${styles.saveDialog}`}>
     <form className={styles.content} onSubmit={event => { event.preventDefault(); void save(); }}>
       <label htmlFor={titleId} className={styles.field}><span>Title</span>
-        <NeumorphicTextField id={titleId} value={title} maxLength={APPLE_NOTES_MAX_TITLE_LENGTH} disabled={saving}
+        <NeumorphicTextField variant="standard" id={titleId} value={title} maxLength={APPLE_NOTES_MAX_TITLE_LENGTH} disabled={saving}
+          onClear={() => setTitle('')} clearLabel="Clear title"
           onChange={event => setTitle(event.target.value)} />
       </label>
       <AppleNotesFolderField folders={state.folders} value={folderId} disabled={state.loadingFolders || saving}
         onChange={setSelectedFolderId} />
       {state.loadingFolders && <p role="status">Loading folders…</p>}
       {state.error && <div className={styles.content}><p className={styles.error} role="alert">{state.error}</p>
-        <NeumorphicButton type="button" raised size="standard" disabled={saving || state.loadingFolders}
+        <NeumorphicButton type="button" variant="standard" disabled={saving || state.loadingFolders}
           onClick={() => void browser.refresh()}>Retry loading folders</NeumorphicButton></div>}
       <LiquidGlassPanel as="section" className={styles.preview} aria-label="Response to save" tabIndex={0}><pre>{body}</pre></LiquidGlassPanel>
-      <p className={styles.hint}>Creates a new note with this response as text. Markdown is kept as text; images and files are not included.</p>
+      <p className={styles.hint}>Saves this response as text. Markdown stays as text; images and files are excluded.</p>
       {(error || tooLarge) && <p className={styles.error} role="alert">{error ?? 'This text is too large to save to Apple Notes.'}</p>}
       <div className={styles.actions}>
-        <NeumorphicButton type="button" raised size="standard" disabled={saving} onClick={onClose}>Cancel</NeumorphicButton>
-        <NeumorphicButton type="submit" raised size="standard"
+        <NeumorphicButton type="button" variant="standard" disabled={saving} onClick={onClose}>Cancel</NeumorphicButton>
+        <NeumorphicButton type="submit" variant="standard"
           disabled={saving || state.loadingFolders || !folderId || !title.trim() || !body.trim() || tooLarge || unknownResult}>
           {saving ? 'Saving…' : 'Create note'}
         </NeumorphicButton>

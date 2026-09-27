@@ -81,6 +81,10 @@
   inset: 0;
 }
 
+.field[data-trailing-action='true'] {
+  position: relative;
+}
+
 .field[data-trailing-action='true'] .control {
   padding-right: var(--field-trailing-padding);
 }
