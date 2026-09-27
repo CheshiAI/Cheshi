@@ -1,4 +1,4 @@
-import { ExternalLink, MessageCircleQuestion, X } from 'lucide-react';
+import { ExternalLink, Ghost, X } from 'lucide-react';
 import { useRef, useState, type ReactNode } from 'react';
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../../../shared/chat-user-input';
 import { ContentCard, NeumorphicButton } from '../../shared/ui';
@@ -52,7 +52,7 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
     ? korean ? '답변 완료' : 'Answered' : resolution.action === 'skip' ? korean ? '건너뜀' : 'Skipped' : korean ? '닫힘' : 'Closed') : null;
   return <ContentCard as="section" className={styles.panel} bodyClassName={styles.body} aria-label="Input requested"
     data-resolved={resolution ? 'true' : undefined} collapsible={Boolean(resolution)} descriptionWhenCollapsed
-    icon={<MessageCircleQuestion aria-hidden="true" />}
+    icon={<Ghost aria-hidden="true" />}
     title={request.kind === 'questions' ? korean ? '질문' : 'Question' : `${request.serverName} needs your input`}
     description={resolution ? (request.kind === 'questions' ? request.questions[0]?.question : request.message) : undefined}
     status={resolutionLabel ? <span role="status">{resolutionLabel}</span> : undefined}
