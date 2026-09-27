@@ -10,6 +10,7 @@ import { useChatInputHistory } from './useChatInputHistory';
 import styles from './ChatComposer.module.css';
 import { ChatComposerAttachments } from './ChatComposerAttachments';
 import { ChatComposerToolbar } from './ChatComposerToolbar';
+import { ChatPlanToggle } from './ChatPlanToggle';
 import type { ChatViewController } from './useChatViewController';
 import { ChatUserInputRequests } from './ChatUserInputPrompt';
 import type { ChatController } from './useChatController';
@@ -168,6 +169,7 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
             />
             <ChatComposerToolbar controller={controller} chatController={chatController} />
             <ChatQueueToggle controller={controller} open={queueOpen} panelId={queuePanelId}
+              leading={<ChatPlanToggle controller={controller} pending={chatController.configurationPending} />}
               onToggle={() => setQueueVisible((visible) => !visible)} />
           </form>
         </LiquidGlassPanel>

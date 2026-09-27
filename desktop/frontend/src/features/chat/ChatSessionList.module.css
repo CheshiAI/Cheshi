@@ -59,7 +59,7 @@
 .sessionRow .session[aria-current='page'] { background: var(--control-surface); }
 .sessionRow .session:not(:disabled):is(:hover, :active, :focus-visible),
 .sessionRow:hover .session:not(:disabled) { background: var(--control-surface-interactive); color: var(--text); }
-.session:disabled { cursor: not-allowed; }
+.sessionRow .session:disabled { cursor: not-allowed; opacity: 1; }
 .sessionRow .session svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); flex: 0 0 auto; color: inherit; stroke-width: var(--icon-button-stroke-width); }
 .sessionTitle { overflow: hidden; min-width: 0; flex: 1 1 auto; text-overflow: ellipsis; white-space: nowrap; }
 

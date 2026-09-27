@@ -1,5 +1,5 @@
 import { CornerDownRight, ListEnd, MessageCirclePlus, MoreHorizontal, Pause, Pencil, Play, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { LiquidGlassPanel, NeumorphicButton, NeumorphicSurface } from '../../shared/ui';
 import { focusAdjacentMenuItem, useContextMenuInteractions } from '../../shared/ui/contextMenuInteractions';
@@ -125,14 +125,15 @@ export function ChatMessageQueue({ controller, open, panelId }: {
   </div>;
 }
 
-export function ChatQueueToggle({ controller, open, panelId, onToggle }: {
-  controller: ChatQueueController; open: boolean; panelId: string; onToggle(): void;
+export function ChatQueueToggle({ controller, open, panelId, onToggle, leading }: {
+  controller: ChatQueueController; open: boolean; panelId: string; onToggle(): void; leading?: ReactNode;
 }) {
   const [language] = useHelpLanguage();
   const copy = labels[language];
   const available = controller.messageQueue.entries.length > 0;
   const expanded = available && open;
   return <div className={styles.hint}>
+    {leading}
     {controller.streaming && !controller.commandMenuOpen && <span>{copy.hint}</span>}
     <NeumorphicButton className={styles.toggle} title={expanded ? copy.hide : copy.show}
       aria-label={copy.queue} aria-pressed={expanded} aria-expanded={expanded} aria-controls={panelId}

@@ -65,7 +65,7 @@
 .configurationOptionCopy strong {
   overflow: hidden;
   color: var(--text);
-  font-size: var(--font-size-label);
+  font-size: 10px;
   font-weight: 400;
   line-height: 14px;
   text-overflow: ellipsis;
@@ -74,7 +74,7 @@
 .configurationOptionCopy > span {
   overflow: hidden;
   color: var(--sidebar-section-label-color);
-  font-size: var(--font-size-small);
+  font-size: 9px;
   font-weight: 400;
   line-height: 14px;
   text-overflow: ellipsis;

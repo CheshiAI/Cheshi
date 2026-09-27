@@ -27,7 +27,7 @@ function approvalHarness() {
     './chatQuestionChoices': { composerQuestionRequest: () => null },
   };
   for (const name of ['ChatErrorNotice', 'ChatCommandMenu', 'ChatConfigurationMenu', 'ChatInputHistoryPanel',
-    'ChatComposerAttachments', 'ChatComposerToolbar', 'ChatUserInputPrompt', 'GithubLinkChips', 'ChatMessageQueue', 'ChatFallbackQuestion']) {
+    'ChatComposerAttachments', 'ChatComposerToolbar', 'ChatPlanToggle', 'ChatUserInputPrompt', 'GithubLinkChips', 'ChatMessageQueue', 'ChatFallbackQuestion']) {
     modules[`./${name}`] = {};
   }
   const source = readFileSync(new URL('../frontend/src/features/chat/ChatComposer.tsx', import.meta.url), 'utf8');

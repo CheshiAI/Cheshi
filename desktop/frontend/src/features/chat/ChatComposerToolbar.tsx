@@ -1,4 +1,4 @@
-import { Bot, ChevronDown, ClipboardList, Paperclip, Sparkles, X, Zap } from 'lucide-react';
+import { Bot, ChevronDown, Paperclip, Sparkles, X, Zap } from 'lucide-react';
 import { LoadingIndicator, NeumorphicButton } from '../../shared/ui';
 import { ChatPermissionSelect } from './ChatPermissionSelect';
 import { ChatSubmitButton } from './ChatSubmitButton';
@@ -50,13 +50,6 @@ export function ChatComposerToolbar({ controller, chatController }: {
         </NeumorphicButton>
         <ChatPermissionSelect controller={chatController} disabled={configurationControlsDisabled}
           permissionPending={chatController.configurationPending} />
-        <NeumorphicButton variant="standard" aria-label="Plan mode" aria-pressed={chatConfiguration?.collaborationMode === 'plan'}
-          disabled={configurationControlsDisabled || configurationLoading || !chatConfiguration}
-          title={chatConfiguration?.collaborationMode === 'plan' ? 'Turn off Plan mode' : 'Turn on Plan mode'}
-          onClick={() => void controller.selectCollaborationMode(chatConfiguration?.collaborationMode === 'plan' ? 'default' : 'plan')}>
-          <ClipboardList aria-hidden="true" />
-          <span>Plan</span>
-        </NeumorphicButton>
         {controller.attachmentTransfer.loading && <span role="status">Adding attachments…</span>}
         {attachmentError && (
           <span className={styles.attachmentError} role="alert" title={attachmentError}>

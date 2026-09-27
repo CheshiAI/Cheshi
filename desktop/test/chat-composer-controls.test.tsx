@@ -3,6 +3,7 @@ import { Children, isValidElement, type ReactElement, type ReactNode } from 'rea
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ChatComposerAttachments } from '../frontend/src/features/chat/ChatComposerAttachments';
 import { ChatComposerToolbar } from '../frontend/src/features/chat/ChatComposerToolbar';
+import { ChatPlanToggle } from '../frontend/src/features/chat/ChatPlanToggle';
 import { ChatSubmitButton } from '../frontend/src/features/chat/ChatSubmitButton';
 import type { ChatController } from '../frontend/src/features/chat/useChatController';
 import type { ChatViewController } from '../frontend/src/features/chat/useChatViewController';
@@ -34,9 +35,9 @@ function toolbarHarness() {
   return { controller, chatController, calls, control, submit };
 }
 
-test('extracted toolbar preserves attachment, Plan, and model actions without submitting the draft', () => {
+test('extracted toolbar preserves attachment and model actions without submitting the draft', () => {
   const app = toolbarHarness();
-  for (const label of ['Attach files', 'Plan mode', 'Configure model, reasoning effort, and service tier']) {
+  for (const label of ['Attach files', 'Configure model, reasoning effort, and service tier']) {
     const action = app.control(label);
     expect(action).toBeDefined();
     expect(renderToStaticMarkup(action)).toContain('type="button"');
@@ -44,9 +45,9 @@ test('extracted toolbar preserves attachment, Plan, and model actions without su
     if (typeof onClick !== 'function') throw new Error(`Missing action: ${label}`);
     onClick();
   }
-  expect(app.calls).toEqual(['attach', 'default', 'model']);
+  expect(app.calls).toEqual(['attach', 'model']);
   expect(app.controller.draft).toBe('Keep this draft');
-  expect(app.control('Plan mode').props['aria-pressed']).toBe(true);
+  expect(app.control('Plan mode')).toBeUndefined();
   expect(app.control('Configure model, reasoning effort, and service tier').props['aria-controls']).toBe('model-menu');
 });
 
@@ -86,4 +87,35 @@ test('attachment tray preserves previews, fallback file names, and removal by ex
   }
   expect(removed).toEqual(attachments.map((attachment) => attachment.path));
   expect(ChatComposerAttachments({ attachments: [], removeAttachment })).toBeNull();
+});
+
+
+test('bottom Plan switch follows configuration and requests both modes without submitting the draft', () => {
+  const app = toolbarHarness();
+  let toggle = ChatPlanToggle({ controller: app.controller });
+  expect(toggle.props.role).toBe('switch');
+  expect(toggle.props['aria-checked']).toBe(true);
+  expect(renderToStaticMarkup(toggle)).toContain('type="button"');
+  toggle.props.onClick();
+  expect(app.calls).toEqual(['default']);
+  app.controller.chatConfiguration!.collaborationMode = 'default';
+  toggle = ChatPlanToggle({ controller: app.controller });
+  expect(toggle.props['aria-checked']).toBe(false);
+  toggle.props.onClick();
+  expect(app.calls).toEqual(['default', 'plan']);
+  expect(app.controller.draft).toBe('Keep this draft');
+});
+
+test('Plan switch is disabled while configuration is unavailable, loading, pending, or locked', () => {
+  const app = toolbarHarness();
+  expect(ChatPlanToggle({ controller: app.controller }).props.disabled).toBe(false);
+  expect(ChatPlanToggle({ controller: app.controller, pending: true }).props.disabled).toBe(true);
+  app.controller.configurationControlsDisabled = true;
+  expect(ChatPlanToggle({ controller: app.controller }).props.disabled).toBe(true);
+  app.controller.configurationControlsDisabled = false;
+  app.controller.configurationLoading = true;
+  expect(ChatPlanToggle({ controller: app.controller }).props.disabled).toBe(true);
+  app.controller.configurationLoading = false;
+  app.controller.chatConfiguration = null;
+  expect(ChatPlanToggle({ controller: app.controller }).props.disabled).toBe(true);
 });
