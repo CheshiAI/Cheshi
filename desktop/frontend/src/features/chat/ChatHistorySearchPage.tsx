@@ -120,8 +120,7 @@ export function ChatHistorySearchPage({ query, result, loading, error, selection
       {loading && <LoadingState type="processing" label="Searching conversation history…" />}
       {opening && <LoadingState type="preparing" label="Opening original message…" />}
       {(error || openError) && <p className={styles.notice} role="alert">{error || openError}</p>}
-      {!result && !loading && !error && <div className={styles.emptyState}>
-        <Search aria-hidden="true" />
+      {!result && !loading && !error && <div className={`${styles.emptyState} ${styles.searchIntroduction}`}>
         <h2>Search conversations</h2>
         <p>Find messages, tool activity, and file paths from this workspace.</p>
         <p>Enter a search in the sidebar, then press Enter.</p>

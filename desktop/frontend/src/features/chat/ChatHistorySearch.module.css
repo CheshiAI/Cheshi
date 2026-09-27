@@ -227,3 +227,20 @@
   font-size: 14px;
   font-weight: 500;
 }
+
+.searchIntroduction h2,
+.searchIntroduction p {
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
+}
+
+.searchIntroduction h2 {
+  font-size: var(--font-size-label);
+  font-weight: 600;
+}
+
+.searchIntroduction p {
+  font-size: var(--font-size-small);
+  font-weight: 400;
+}
