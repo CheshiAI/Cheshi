@@ -45,17 +45,17 @@ export function ChatTurnActions({ turn, savedTurns, usageDetails }: {
       {usageDetails}
       <div className={styles.actions} role="group" aria-label="Response actions">
         <Tooltip content={copied ? 'Copied' : 'Copy response'}>{(props) => (
-          <NeumorphicButton {...props} type="button" className={styles.button} aria-label={copied ? 'Copied' : 'Copy response'} onClick={() => void copy()}>
+          <NeumorphicButton {...props} variant="ghost" size="icon" type="button" aria-label={copied ? 'Copied' : 'Copy response'} onClick={() => void copy()}>
             {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
           </NeumorphicButton>
         )}</Tooltip>
         <Tooltip content={saveLabel}>{(props) => (
-          <NeumorphicButton {...props} type="button" className={styles.button} aria-label={saveLabel}
+          <NeumorphicButton {...props} variant="ghost" size="icon" type="button" aria-label={saveLabel}
             aria-pressed={saved} disabled={saving || saved} onClick={() => void save()}>
             <ClipboardClock aria-hidden="true" />
           </NeumorphicButton>
         )}</Tooltip>
-        <AppleNotesSaveAction key={`${turn.threadId}:${turn.itemId}`} className={styles.button} title={turn.sessionTitle} body={turn.assistantText} />
+        <AppleNotesSaveAction key={`${turn.threadId}:${turn.itemId}`} title={turn.sessionTitle} body={turn.assistantText} />
         <span className={styles.feedback} role="status">{copied ? 'Copied' : saved ? 'Saved' : saving ? 'Saving…' : ''}</span>
       </div>
       {(copyError || saveError) && <p className={styles.error} role="alert">{copyError || 'Could not save this turn. Please try again.'}</p>}

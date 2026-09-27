@@ -73,11 +73,14 @@ describe('saved turn presentation', () => {
   });
 
   test('distinguishes empty and loading states', () => {
-    expect(render(fixture({ records: [] }))).toContain('No saved turns yet.');
+    expect(render(fixture({ records: [] }))).toContain('no saved turns yet.');
     const loading = render(fixture({ records: [], loading: true }));
     expect(loading).toContain('aria-busy="true"');
-    expect(loading).toContain('Loading saved turns');
-    expect(loading).not.toContain('No saved turns yet.');
+    expect(loading).toContain('role="status" aria-label="loading saved turns…"');
+    expect(loading).not.toContain('no saved turns yet.');
+    const refreshing = render(fixture({ loading: true }));
+    expect(refreshing).toContain('aria-label="loading saved turns…"');
+    expect(refreshing).toContain('My discussion');
   });
 
   test('offers continuation and explains when the destination is busy', () => {

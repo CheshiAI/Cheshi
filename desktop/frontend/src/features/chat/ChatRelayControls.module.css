@@ -1,8 +1,5 @@
 .dialog { --modal-title-color: var(--active-text); }
 
-.trigger:disabled { cursor: default; opacity: .45; }
-.trigger:disabled svg { color: var(--neumorphic-button-active-color); }
-
 .form, .field { display: flex; flex-direction: column; gap: var(--space-default); min-width: 0; }
 .form { font-size: 12px; }
 .form p { margin: 0; line-height: 1.5; }

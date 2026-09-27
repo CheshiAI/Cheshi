@@ -40,7 +40,7 @@ export function CodePanel({ code, language, label, ariaLabel, copyable = true, v
     }
   };
 
-  const copyButton = copyable && <NeumorphicButton variant={plain ? 'standard' : 'ghost'} aria-controls={codeId}
+  const copyButton = copyable && <NeumorphicButton variant={plain ? 'standard' : 'ghost'} size="standard" className={styles.copyButton} aria-controls={codeId}
     aria-label={plain ? (copied ? '코드 복사 완료' : '코드 복사') : undefined} onClick={() => void copy()}>
     {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
     {plain ? (copied ? '복사됨' : `코드${language ? ` · ${language}` : ''}`) : (copied ? 'Copied' : 'Copy')}

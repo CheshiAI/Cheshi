@@ -1,7 +1,8 @@
 import { ClipboardClock, History, RefreshCw, Trash2, X } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import type { ChatRelayHistoryRecord, ChatRelayState } from '../../../../shared/chat-relay';
-import { NeumorphicButton, SlidingSidePanel, Tooltip } from '../../shared/ui';
+import { LoadingState, NeumorphicButton, SlidingSidePanel, Tooltip } from '../../shared/ui';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import type { ChatRelayController } from './useChatRelay';
 import styles from './ChatRelayHistoryPanel.module.css';
 import { ChatDeleteRecordDialog } from './ChatDeleteRecordDialog';
@@ -51,11 +52,11 @@ export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, 
         }}>
           <section className={styles.content} id={id} aria-labelledby={`${id}-button`} hidden={activePanel === 'saved'}>
             <header className={styles.heading}>
-              <span>Conversation history</span>
+              <SidebarPanelTitle title="CONVERSATION HISTORY" />
               <div className={styles.actions}>
-                <NeumorphicButton raised className={styles.button} aria-label="Refresh conversation history" title="Refresh history"
+                <NeumorphicButton variant="ghost" size="icon" aria-label="Refresh conversation history" title="Refresh history"
                   disabled={relay.historyLoading || relay.historyDeleting} onClick={() => void relay.refreshHistory()}><RefreshCw aria-hidden="true" /></NeumorphicButton>
-                <NeumorphicButton raised className={styles.button} aria-label="Close conversation history panel"
+                <NeumorphicButton variant="ghost" size="icon" aria-label="Close conversation history panel"
                   onClick={close}><X aria-hidden="true" /></NeumorphicButton>
               </div>
             </header>
@@ -71,9 +72,10 @@ export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, 
                 <p>{relay.historyError}</p>
                 <NeumorphicButton raised disabled={relay.historyLoading || relay.historyDeleting} onClick={() => void relay.refreshHistory()}>Retry</NeumorphicButton>
               </div>}
-              {relay.historyLoading && <p className={styles.notice} role="status">Loading history…</p>}
-              {!relay.historyLoading && !relay.historyError && relay.history.length === 0 && (
-                <p className={styles.notice}>No saved conversations yet. Completed, stopped, and failed conversations appear here.</p>
+              {relay.historyLoading && <LoadingState label="loading history…"
+                className={!showCurrent && records.length === 0 && !relay.historyError ? styles.emptyState : undefined} />}
+              {!relay.historyLoading && !relay.historyError && !showCurrent && records.length === 0 && (
+                <p className={`${styles.notice} ${styles.emptyState}`}>no conversation history yet.<br />finished conversations appear here.</p>
               )}
               {records.map((record) => (
                 <div key={record.id} className={styles.recordRow}>
@@ -86,7 +88,7 @@ export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, 
                     <time dateTime={record.finishedAt ?? record.updatedAt}>{new Date(record.finishedAt ?? record.updatedAt).toLocaleString()}</time>
                     <Participants state={record.state} />
                   </button>
-                  <NeumorphicButton raised className={`${styles.button} ${styles.deleteButton}`}
+                  <NeumorphicButton variant="ghost" size="icon" className={styles.deleteButton}
                     aria-label={`Delete conversation history: ${record.objective}`} title="Delete conversation history"
                     disabled={relay.historyDeleting || relay.historyLoading}
                     onClick={() => setDeleteRecord(record)}><Trash2 aria-hidden="true" /></NeumorphicButton>
@@ -101,13 +103,13 @@ export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, 
       </SlidingSidePanel>
       <div ref={railRef} className={styles.rail} role="group" aria-label="Conversation panels">
         <Tooltip content="Conversation history">{(triggerProps) => (
-          <NeumorphicButton {...triggerProps} raised active={activePanel === 'history'} className={styles.button}
+          <NeumorphicButton {...triggerProps} variant="ghost" size="icon" active={activePanel === 'history'} className={styles.button}
             id={`${id}-button`} aria-label="Conversation history" aria-controls={id} aria-expanded={activePanel === 'history'} onClick={toggle}>
             <History aria-hidden="true" />
           </NeumorphicButton>
         )}</Tooltip>
         {savedTurns && <Tooltip content="Saved turns">{(triggerProps) => (
-          <NeumorphicButton {...triggerProps} raised active={activePanel === 'saved'} className={styles.button}
+          <NeumorphicButton {...triggerProps} variant="ghost" size="icon" active={activePanel === 'saved'} className={styles.button}
             id={`${id}-saved-button`} aria-label="Saved turns" aria-controls={`${id}-saved`} aria-expanded={activePanel === 'saved'}
             onClick={() => {
               if (activePanel !== 'saved') void savedTurns.refresh();

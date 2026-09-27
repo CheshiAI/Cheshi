@@ -11,7 +11,7 @@ export function AppleNotesSaveAction({ title, body, className }: { title: string
   if (!api?.available) return null;
   const label = saved ? 'Saved to Apple Notes' : 'Save response to Apple Notes';
   return <>
-    <Tooltip content={label}>{props => <NeumorphicButton {...props} className={className} aria-label={label}
+    <Tooltip content={label}>{props => <NeumorphicButton {...props} variant="ghost" size="icon" className={className} aria-label={label}
       disabled={!body.trim()} onClick={() => setOpen(true)}>{saved ? <Check aria-hidden="true" /> : <StickyNote aria-hidden="true" />}</NeumorphicButton>}</Tooltip>
     {open && <AppleNotesSaveDialog api={api} initialTitle={title} body={body} onClose={() => setOpen(false)}
       onSaved={() => { setSaved(true); setOpen(false); }} />}

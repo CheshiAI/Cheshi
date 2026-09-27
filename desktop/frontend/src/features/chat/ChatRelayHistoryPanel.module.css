@@ -19,14 +19,8 @@
   align-items: center; flex-direction: column; gap: var(--icon-default);
   border-left: 1px solid var(--divider); padding: var(--space-default) 0;
 }
-.button {
-  --neumorphic-button-radius: 50%; display: inline-grid; width: 22px; height: 22px; flex: 0 0 auto;
-  place-items: center; cursor: pointer; padding: 0;
-}
-.button:disabled { cursor: default; opacity: .45; }
 .rail .button[data-active='true'] { background: var(--dropdown-selection-bg); color: var(--dropdown-selection-text); }
-.button svg { width: 11px; height: 11px; stroke-width: 1.7; }
-.list { display: flex; flex-direction: column; gap: var(--icon-default); min-height: 0; overflow: auto; padding: var(--space-default); }
+.list { display: flex; flex: 1; flex-direction: column; gap: var(--icon-default); min-height: 0; overflow: auto; padding: var(--space-default); }
 .record {
   display: flex; flex-direction: column; gap: var(--icon-default); flex: 0 0 auto; min-width: 0;
   border: 1px solid var(--divider); border-radius: 9px; padding: 12px; background: transparent;
@@ -36,9 +30,10 @@
 .record strong { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.5; font-weight: 500; }
 .record span, .record time, .record small { color: var(--sidebar-section-label-color); font-size: 10px; line-height: 1.5; }
 .notice { margin: 0; line-height: 1.5; color: var(--sidebar-section-label-color); overflow-wrap: anywhere; }
+.emptyState { flex-shrink: 0; margin-block: auto; text-align: center; }
 .notice p { margin: 0 0 var(--icon-default); }
 .notice button { cursor: pointer; padding: 4px 12px; font: inherit; }
-.button:focus-visible, .record:focus-visible { outline: 2px solid var(--dropdown-selection-text); outline-offset: 2px; }
+.record:focus-visible { outline: 2px solid var(--dropdown-selection-text); outline-offset: 2px; }
 .recordRow { position: relative; flex: 0 0 auto; min-width: 0; }
 .savedRecord { width: 100%; box-sizing: border-box; padding-right: 42px; }
 .deleteButton { position: absolute; top: 12px; right: 12px; }

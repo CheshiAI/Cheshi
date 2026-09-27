@@ -153,13 +153,13 @@ function ChatRelayDialog({ workspace, source, onClose }: {
   );
 }
 
-export function ChatRelayButton({ workspace, className }: { workspace: ChatWorkspaceController; className: string }) {
+export function ChatRelayButton({ workspace }: { workspace: ChatWorkspaceController }) {
   const [source, setSource] = useState<RelayPane | null>(null);
   const pane = paneFor(workspace.activePaneId, workspace.activeController ?? undefined);
   const disabled = !pane?.ready || workspace.relay.running || workspace.relay.pending;
   return (
     <>
-      <NeumorphicButton raised className={`${className} ${styles.trigger}`} aria-label="Connect conversations" title={pane ? 'Connect conversations' : 'Send a message to create a thread before connecting'}
+      <NeumorphicButton variant="ghost" size="icon" aria-label="Connect conversations" title={pane ? 'Connect conversations' : 'Send a message to create a thread before connecting'}
         disabled={disabled} onClick={() => { workspace.relay.dismissError(); setSource(pane); }}>
         <Link2 aria-hidden="true" />
       </NeumorphicButton>

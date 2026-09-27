@@ -69,6 +69,26 @@ describe('conversation history presentation', () => {
     const html = renderToStaticMarkup(<ChatRelayHistoryPanel relay={relayFixture({ history: [], resultVisible: false })} />);
     expect(html).toContain('Latest conversation');
     expect(html).toContain('Conversation history');
+    expect(html).not.toContain('no conversation history yet.');
+  });
+
+  test('shows an empty notice only when no conversation is available', () => {
+    const render = (overrides: Partial<ChatRelayController> = {}) => renderToStaticMarkup(
+      <ChatRelayHistoryPanel relay={relayFixture({ history: [], state: null, ...overrides })} />,
+    );
+    expect(render()).toContain('no conversation history yet.');
+    const loading = render({ historyLoading: true });
+    expect(loading).not.toContain('no conversation history yet.');
+    expect(loading).toContain('role="status" aria-label="loading history…"');
+    expect(render({ historyError: 'History unavailable' })).not.toContain('no conversation history yet.');
+  });
+
+  test('keeps existing conversations visible during refresh', () => {
+    const html = renderToStaticMarkup(<ChatRelayHistoryPanel relay={relayFixture({ historyLoading: true })} />);
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain('aria-label="loading history…"');
+    expect(html).toContain('Compare the input layouts');
+    expect(html).not.toContain('no conversation history yet.');
   });
 
   test('shows recoverable history loading errors without discarding available records', () => {
