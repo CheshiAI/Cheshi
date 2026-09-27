@@ -86,22 +86,24 @@ export function SplitPreview({ target, direction, title, choices, onChoose, onCl
     data-direction={direction} aria-busy={busy}
     onCancel={event => { event.preventDefault(); if (!busyRef.current) onClose(); }}>
     <div className={styles.existing} aria-hidden="true"><span>Current layout</span></div>
-    <LiquidGlassPanel className={styles.destination}>
-      <h2>{title}</h2>
-      <p>Open in the new pane</p>
-      {!fits && <p role="status">Make this area larger to split it.</p>}
-      <div className={styles.choices}>
-        {choices.map(choice => <NeumorphicButton key={choice.id} size="standard" className={styles.choice}
-          disabled={busy || !fits || Boolean(choice.disabledReason)} title={choice.disabledReason}
-          onClick={() => void choose(choice.id)}>
-          {choice.icon}<span><strong>{choice.label}</strong>
-            {(choice.disabledReason || choice.description) && <small>{choice.disabledReason || choice.description}</small>}
-          </span>
-        </NeumorphicButton>)}
-      </div>
-      {error && <p role="alert">{error}</p>}
-      {busy && <p role="status">Opening pane…</p>}
-      <NeumorphicButton size="standard" disabled={busy} onClick={onClose}>Cancel</NeumorphicButton>
-    </LiquidGlassPanel>
+    <div className={styles.destinationAnchor}>
+      <LiquidGlassPanel className={styles.destination} data-liquid-glass-backdrop="true">
+        <h2>{title}</h2>
+        <p>Open in the new pane</p>
+        {!fits && <p role="status">Make this area larger to split it.</p>}
+        <div className={styles.choices}>
+          {choices.map(choice => <NeumorphicButton key={choice.id} variant="standard" className={styles.choice}
+            disabled={busy || !fits || Boolean(choice.disabledReason)} title={choice.disabledReason}
+            onClick={() => void choose(choice.id)}>
+            {choice.icon}<span><strong>{choice.label}</strong>
+              {(choice.disabledReason || choice.description) && <small>{choice.disabledReason || choice.description}</small>}
+            </span>
+          </NeumorphicButton>)}
+        </div>
+        {error && <p role="alert">{error}</p>}
+        {busy && <p role="status">Opening pane…</p>}
+        <NeumorphicButton variant="ghost" disabled={busy} onClick={onClose}>Cancel</NeumorphicButton>
+      </LiquidGlassPanel>
+    </div>
   </dialog>, target.ownerDocument.body);
 }

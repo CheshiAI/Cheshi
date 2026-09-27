@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { chatRelayContextIds } from '../../../../shared/chat-relay';
 import {
   SidebarToggle,
-  LiquidGlassPanel, NeumorphicButton, Tooltip, TwoTierHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle,
+  LiquidGlassPanel, NeumorphicButton, TwoTierHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle,
 } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { SplitPaneLayout } from '../../shared/ui/SplitPaneLayout';
@@ -92,12 +92,13 @@ function ChatPane({
               <ArrowLeft aria-hidden="true" />
             </TooltipButton>
           )}
-          <Tooltip<HTMLButtonElement> content={threadLabel}>
-            {trigger => <button {...trigger} className={styles.paneTitle} onClick={() => selectPane(paneId)} type="button">
-              {!controller.agentBackThreadId && <ChatPaneIcon />}
+          <button className={styles.paneTitle} onClick={() => selectPane(paneId)} type="button">
+            {!controller.agentBackThreadId && <ChatPaneIcon />}
+            <span className={styles.paneTitleText}>
               <span>{threadLabel}</span>
-            </button>}
-          </Tooltip>
+              {controller.state.activeSessionId && <small className={styles.sessionId}>{controller.state.activeSessionId}</small>}
+            </span>
+          </button>
         </div>
         <div className={styles.actions}>
           <TooltipButton
