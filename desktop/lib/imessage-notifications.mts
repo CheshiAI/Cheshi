@@ -6,7 +6,7 @@ import { DEFAULT_IMESSAGE_PREFERENCES, parseIMessagePreferences, parseIMessageRe
 import { sendIMessage } from './imessage-process.mts';
 import { NOTIFICATION_KINDS, type NotificationPolicy } from '../shared/notification-events.ts';
 
-export interface ChatNotification { kind: NotificationKind; workspace: string; conversation: string; }
+export interface ChatNotification { kind: NotificationKind; workspace: string; conversation: string; isViewed?(): boolean; }
 export interface NotificationSink { notify(event: ChatNotification): void; }
 /** App-wide settings and bounded, serialized delivery; notification failures never fail chat work. */
 export function createIMessageNotifications(options: {
@@ -87,13 +87,14 @@ export function createIMessageNotifications(options: {
       } finally { pending--; }
     },
     notify(event: ChatNotification) {
-      if (closed || !available || pending >= 64 || !allows(event.kind)) return;
+      if (closed || !available || pending >= 64 || !allows(event.kind) || event.isViewed?.() === true) return;
       const atRevision = revision;
       const atVersion = versions[event.kind];
       pending++;
       void serialize(async () => {
         await ready;
-        if (closed || revision !== atRevision || versions[event.kind] !== atVersion || !preferences.enabled || !allows(event.kind)) return;
+        if (closed || revision !== atRevision || versions[event.kind] !== atVersion || !preferences.enabled || !allows(event.kind)
+          || event.isViewed?.() === true) return;
         const description = { completed: 'Work and the message queue are complete.', attention: 'An approval or question needs your response. Check Cheshi.', failed: 'Work failed. Check Cheshi.' }[event.kind];
         const clean = (text: string) => text.replace(/[\r\n\0]/g, ' ').slice(0, 120);
         await submit(`Cheshi · ${clean(event.workspace)}\n${clean(event.conversation)}\n${description}`, event.kind);

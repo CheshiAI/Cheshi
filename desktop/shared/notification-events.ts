@@ -4,6 +4,7 @@ export type NotificationKind = typeof NOTIFICATION_KINDS[number];
 export type NotificationEventPreferences = Record<NotificationKind, boolean>;
 export interface NotificationEventSettings extends NotificationEventPreferences { error: string | null; }
 export interface NotificationEventsApi {
+  reportView(contextId: string, threadId: string | null): Promise<void>;
   get(): Promise<NotificationEventSettings>;
   set(kind: NotificationKind, enabled: boolean): Promise<NotificationEventSettings>;
   onChanged(listener: (value: NotificationEventSettings) => void): () => void;

@@ -47,6 +47,7 @@ function shouldIgnore(packagePath: string): boolean {
   const packagedLibraryFiles = new Set([
     'notification-events.mts',
     'notification-events-ipc.mts',
+    'notification-visibility.mts',
     'discord-store.mts',
     'discord-rest.mts',
     'discord-gateway.mts',

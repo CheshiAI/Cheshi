@@ -9,6 +9,7 @@ export function createWorkspaceDiscord(options: {
   workspace: string; bridge?: DiscordBridge;
   services(): Array<{ contextId: string; service: CodexChatService }>;
   queueSize(context: string, thread: string): number | null;
+  isViewed?(thread: string): boolean;
 }) {
   const bindings = new Map<string, { key: string; context: string; target: DiscordTarget; permissions: string }>();
   const pending = new Map<string, string>();
@@ -22,6 +23,7 @@ export function createWorkspaceDiscord(options: {
     const permissions = source.viewedThreadId === thread || created ? JSON.stringify(source.permissionOverrides()) : previous?.permissions ?? 'reopen-required';
     const target: DiscordTarget = {
       workspace: options.workspace, thread, title: title || previous?.target.title || `${path.basename(options.workspace)}-new-chat`,
+      isViewed: () => options.isViewed?.(target.thread) === true,
       async execute(text, id, signal) {
         signal.throwIfAborted();
         const currentThread = target.thread;

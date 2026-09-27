@@ -125,6 +125,48 @@ test('existing Discord stores retain notification delivery and connection settin
   expect(loaded.data.bindings).toEqual(legacy.bindings);
 });
 
+test.each(['completed', 'attention', 'failed'] as const)('viewed Discord %s keeps content without mentions or push, then resumes alerts when away', async kind => {
+  const f = fixture(); await f.service.save({ ...preferences, token }); f.ready();
+  let viewed = true;
+  const key = f.service.observe({ workspace: '/project', thread: 'viewed', title: 'Viewed', isViewed: () => viewed,
+    execute: async () => ({ text: 'ok' }) });
+  await eventually(() => f.service.get().channels === 1);
+  const trigger = (turn: string) => {
+    f.service.event(key, { type: 'turn-started', turnId: turn }, 0);
+    if (kind === 'attention') f.service.event(key, { type: 'approval-requested', approval: { id: turn } }, 0);
+    else {
+      if (kind === 'completed') f.service.event(key, { type: 'assistant-completed', itemId: turn, text: `ANSWER_${turn}` }, 0);
+      f.service.event(key, { type: 'turn-completed', turnId: turn, status: kind === 'failed' ? 'failed' : 'completed' }, 0);
+    }
+  };
+  const text = kind === 'completed' ? 'ANSWER_seen' : kind === 'attention' ? 'An approval or question' : 'Work failed.';
+  trigger('seen');
+  await eventually(() => f.messages.some(message => String(message.content).startsWith(text)));
+  const silent = f.messages.find(message => String(message.content).startsWith(text))!;
+  expect(silent.flags).toBe(4096);
+  expect(silent.allowed_mentions).toEqual({ parse: [], users: [], replied_user: false });
+  viewed = false; trigger('away');
+  await eventually(() => f.messages.some(message => String(message.content).startsWith(`<@${owner}>`)));
+  expect(f.messages.filter(message => String(message.content).startsWith(`<@${owner}>`))).toHaveLength(1);
+  // An explicit connection test still alerts even while viewing this conversation.
+  viewed = true; await f.service.test();
+  expect(f.messages.some(message => String(message.content).startsWith(`<@${owner}> Cheshi Discord`))).toBe(true);
+});
+
+test('returning before queued Discord delivery suppresses its push without losing its content', async () => {
+  const f = fixture(); await f.service.save({ ...preferences, token }); f.ready();
+  let viewed = false;
+  const key = f.service.observe({ workspace: '/project', thread: 'pending-view', title: 'Pending', isViewed: () => viewed,
+    execute: async () => ({ text: 'ok' }) });
+  await eventually(() => f.service.get().channels === 1);
+  f.service.event(key, { type: 'turn-started', turnId: 'pending' }, 0);
+  f.service.event(key, { type: 'approval-requested', approval: { id: 'pending' } }, 0);
+  viewed = true;
+  await eventually(() => f.messages.some(message => String(message.content).startsWith('An approval or question')));
+  const message = f.messages.find(message => String(message.content).startsWith('An approval or question'))!;
+  expect(message.flags).toBe(4096); expect(String(message.content)).not.toContain(`<@${owner}>`);
+});
+
 test.each(['completed', 'attention', 'failed'] as const)('common %s switch filters Discord events and suppresses pending alerts', async kind => {
   const f = fixture(); await f.service.save({ ...preferences, token }); f.ready();
   const key = f.service.observe({ workspace: '/project', thread: 'filtered', title: 'Filtered', execute: async () => ({ text: 'ok' }) });

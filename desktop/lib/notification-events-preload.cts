@@ -3,6 +3,7 @@ import { NOTIFICATION_EVENTS_CHANNEL, parseNotificationEventSettings, type Notif
 
 export function createNotificationEventsApi(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>): NotificationEventsApi {
   return {
+    reportView: (contextId, threadId) => ipc.invoke(`${NOTIFICATION_EVENTS_CHANNEL}:view`, { contextId, threadId }),
     get: async () => parseNotificationEventSettings(await ipc.invoke(`${NOTIFICATION_EVENTS_CHANNEL}:get`)),
     set: async (kind, enabled) => parseNotificationEventSettings(await ipc.invoke(`${NOTIFICATION_EVENTS_CHANNEL}:set`, kind, enabled)),
     onChanged: listener => {

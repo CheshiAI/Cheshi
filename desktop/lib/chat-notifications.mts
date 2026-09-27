@@ -7,7 +7,7 @@ interface Conversation {
   waiting: Set<string>; noticed: Set<string>; timer?: ReturnType<typeof setTimeout>;
 }
 /** Observes live events only. Loading history never generates alerts. */
-export function createChatNotifications(options: { workspace: string; notify(event: ChatNotification): void; delayMs?: number }) {
+export function createChatNotifications(options: { workspace: string; notify(event: ChatNotification, context: string, thread: string): void; delayMs?: number }) {
   const contexts = new Map<string, Map<string, Conversation>>();
   const queues = new Map<string, Map<string, number>>();
   let disposed = false;
@@ -22,8 +22,8 @@ export function createChatNotifications(options: { workspace: string; notify(eve
     }
     return state;
   };
-  const emit = (thread: string, kind: ChatNotification['kind']) => options.notify({ kind, workspace: options.workspace,
-    conversation: thread.startsWith('temporary-') ? 'Temporary chat' : `Chat ${thread.slice(0, 12)}` });
+  const emit = (context: string, thread: string, kind: ChatNotification['kind']) => options.notify({ kind, workspace: options.workspace,
+    conversation: thread.startsWith('temporary-') ? 'Temporary chat' : `Chat ${thread.slice(0, 12)}` }, context, thread);
   const cancel = (state: Conversation) => { clearTimeout(state.timer); state.timer = undefined; };
   const check = (context: string, thread: string, state: Conversation) => {
     cancel(state);
@@ -31,7 +31,7 @@ export function createChatNotifications(options: { workspace: string; notify(eve
     state.timer = setTimeout(() => {
       state.timer = undefined;
       if (disposed || state.busy || state.queue || state.waiting.size || !state.completed) return;
-      state.completed = false; emit(thread, 'completed');
+      state.completed = false; emit(context, thread, 'completed');
     }, options.delayMs ?? 350);
     state.timer.unref?.();
   };
@@ -61,13 +61,13 @@ export function createChatNotifications(options: { workspace: string; notify(eve
       if (type === 'approval-requested' || type === 'user-input-requested' || type === 'assistant-question') {
         const id = String(request?.id ?? event.itemId ?? 'question');
         if (state.noticed.has(id)) return;
-        state.noticed.add(id); state.waiting.add(id); cancel(state); emit(thread, 'attention'); return;
+        state.noticed.add(id); state.waiting.add(id); cancel(state); emit(context, thread, 'attention'); return;
       }
       if (type === 'approval-resolved' || type === 'user-input-resolved') {
         state.waiting.delete(String(event.approvalId ?? event.requestId)); check(context, thread, state); return;
       }
       if (type === 'error' || (type === 'turn-completed' && event.status === 'failed')) {
-        if (state.busy && !state.failed) { state.failed = true; emit(thread, 'failed'); }
+        if (state.busy && !state.failed) { state.failed = true; emit(context, thread, 'failed'); }
         state.busy = false; state.completed = false; cancel(state); return;
       }
       if (type === 'turn-completed') {

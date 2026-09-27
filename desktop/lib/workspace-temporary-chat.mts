@@ -16,7 +16,7 @@ export function createWorkspaceTemporaryChat(options: {
   appearanceFile: string;
   workspaceRoot: string;
   userName: string;
-  wrapService?(service: Pick<TemporaryChatService, 'models' | 'send' | 'close'>): Pick<TemporaryChatService, 'models' | 'send' | 'close'>;
+  wrapService?(service: Pick<TemporaryChatService, 'models' | 'send' | 'close'>, window: BrowserWindow): Pick<TemporaryChatService, 'models' | 'send' | 'close'>;
   createClient: ConstructorParameters<typeof TemporaryChatService>[0]['createClient'];
   selectFiles(window: BrowserWindow): Promise<string[]>;
   shell: Pick<Shell, 'openPath' | 'openExternal'>;
@@ -37,7 +37,7 @@ export function createWorkspaceTemporaryChat(options: {
         ipc: scope.ipc, assertSender,
         createService: () => {
           const service = new TemporaryChatService({ createClient: options.createClient, cwd: options.workspaceRoot });
-          return options.wrapService?.(service) ?? service;
+          return options.wrapService?.(service, window) ?? service;
         },
         selectFiles: () => options.selectFiles(window), onCleanupError: options.onCleanupError,
       });

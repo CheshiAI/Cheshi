@@ -194,7 +194,7 @@ const preloadPath = app.isPackaged ? path.join(process.resourcesPath, 'runtime',
 const notifications = createWorkspaceNotifications({ workspaceRoot, scope: options.scope, getParent: () => mainWindow, sink: options.notifications,
   discord: options.discord, commands: options.messageCommands, services: () => [{ contextId: 'main', service: codexChatService }, ...codexChatContexts.allServices()] });
 const temporaryChats = createWorkspaceTemporaryChat({
-  wrapService: service => notifications.temporary(service),
+  wrapService: (service, window) => notifications.temporary(service, window),
   scope: options.scope, getParent: () => mainWindow, createWindow: configuration => new BrowserWindow(configuration),
   workspaceRoot, userName: currentUserName(), createClient: createChatClient, shell,
   preload: preloadPath, appearanceFile: path.join(userDataDirectory, 'appearance.json'),

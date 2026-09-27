@@ -38,6 +38,7 @@ test.each([
   let eventsListener: ((value: NotificationEventSettings) => void) | undefined;
   const eventWrites: string[] = [];
   const eventsApi: NotificationEventsApi = {
+    reportView: async () => {},
     get: async () => events,
     set: async (kind, enabled) => { eventWrites.push(kind); events = { ...events, [kind]: enabled }; eventsListener?.(events); return events; },
     onChanged: callback => { eventsListener = callback; return () => { eventsListener = undefined; }; },

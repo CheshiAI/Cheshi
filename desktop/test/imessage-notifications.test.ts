@@ -28,6 +28,23 @@ const enabled = { ...DEFAULT_IMESSAGE_PREFERENCES, enabled: true, recipient: '+8
 const event = { kind: 'completed' as const, workspace: 'fixture', conversation: 'chat-one' };
 async function settled() { for (let i = 0; i < 30; i++) await Promise.resolve(); }
 
+test.each(['completed', 'attention', 'failed'] as const)('viewed %s iMessages are skipped at enqueue and just before sending', async kind => {
+  const f = await fixture();
+  let viewed = true;
+  const notification = { ...event, kind, isViewed: () => viewed };
+  try {
+    await f.service.save(enabled);
+    f.service.notify(notification); viewed = false; await settled();
+    expect(f.sent).toHaveLength(0);
+    f.service.notify(notification); viewed = true; await settled();
+    expect(f.sent).toHaveLength(0);
+    viewed = false; f.service.notify(notification); await settled();
+    expect(f.sent).toHaveLength(1);
+    viewed = true; await f.service.test();
+    expect(f.sent).toHaveLength(2);
+  } finally { await f.close(); }
+});
+
 test('settings validate literal switches and iMessage addresses, never accepting script input', () => {
   expect(parseIMessageRecipient(' +821012345678 ')).toBe('+821012345678');
   expect(parseIMessageRecipient('me@example.com')).toBe('me@example.com');

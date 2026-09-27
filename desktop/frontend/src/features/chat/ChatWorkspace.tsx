@@ -133,6 +133,7 @@ function ChatPane({
         interactionsLocked={workspace.accountSwitchPending || (workspace.relay.running && workspace.relay.state !== null
           && chatRelayContextIds(workspace.relay.state).includes(paneId))}
         active={active && selected}
+        visible={active}
         onNewSession={() => void controller.newSession()}
         onReviewFileChanges={reviewFileChanges}
         historyTarget={selected && controller.state.activeSessionId === historyTarget?.threadId ? historyTarget : null}

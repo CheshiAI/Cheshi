@@ -12,6 +12,7 @@ import { useChatDraftAttachmentTarget } from './chatDraftAttachments';
 import { ChatQuestionProvider } from './ChatInlineQuestion';
 import { AgentActivityProvider } from './AgentActivity';
 import { ChatTurnMetricsProvider, latestResponseItemId } from './ChatTurnMetrics';
+import { useChatNotificationVisibility } from './useChatNotificationVisibility';
 
 interface ChatViewProps extends ChatHistorySearchNavigation {
   controller: ChatController;
@@ -20,6 +21,7 @@ interface ChatViewProps extends ChatHistorySearchNavigation {
   onOpenTemporaryChat?: (input: ChatDraftSnapshot) => Promise<void>;
   onReviewFileChanges: (itemId: string, path?: string) => void;
   active: boolean;
+  visible?: boolean;
   interactionsLocked?: boolean;
   savedTurns?: SavedChatTurnsController;
   onAccountSwitchGuard?: (guard: (() => string | null) | null) => void;
@@ -32,6 +34,7 @@ export function ChatView({
   onOpenTemporaryChat,
   onReviewFileChanges,
   active,
+  visible = active,
   interactionsLocked = false,
   savedTurns,
   onAccountSwitchGuard,
@@ -39,6 +42,7 @@ export function ChatView({
   onHistoryTargetHandled,
 }: ChatViewProps) {
   const viewController = useChatViewController({ controller, onNewSession, initialDraft, onOpenTemporaryChat, active, interactionsLocked });
+  useChatNotificationVisibility(viewController.rootRef, controller.contextId ?? 'main', controller.state.activeSessionId, visible);
   useChatDraftAttachmentTarget(controller.contextId, viewController.attachmentTransfer.attachFilesToDraft);
   const latest = useRef(viewController);
   latest.current = viewController;

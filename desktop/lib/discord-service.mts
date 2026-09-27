@@ -9,6 +9,7 @@ import { createChatNotifications } from './chat-notifications.mts';
 
 export interface DiscordTarget {
   workspace: string; thread: string; title: string;
+  isViewed?(): boolean;
   execute(text: string, id: string, signal: AbortSignal): Promise<{ text: string; thread?: string }>;
 }
 export interface DiscordBridge {
@@ -56,9 +57,11 @@ export function createDiscordService(options: {
   };
   const canAlert = (entry: Pick<DiscordDelivery, 'kind' | 'test'>) => entry.test === true || (data.notificationsEnabled === true
     && (!entry.kind || (options.events?.allows(entry.kind) ?? true)));
+  const isViewed = (key: string, test?: boolean) => test !== true && targets.get(key)?.isViewed?.() === true;
   function muteOutbox() {
     let changed = false;
     data.outbox = data.outbox.filter(entry => {
+      if (entry.alert && !entry.muted && isViewed(entry.binding, entry.test)) { entry.muted = true; changed = true; }
       if (!entry.alert || canAlert(entry)) return true;
       if (entry.kind && !entry.retainWhenMuted) { changed = true; return false; }
       if (!entry.muted) { entry.muted = true; changed = true; }
@@ -69,8 +72,9 @@ export function createDiscordService(options: {
   const unsubscribeEvents = options.events?.subscribe(muteOutbox);
   function enqueue(key: string, text: string, alert: boolean, details: Pick<DiscordDelivery, 'kind' | 'retainWhenMuted' | 'test'> = {}) {
     if (!data.preferences.enabled || !data.bindings[key] || data.bindings[key].disabled) return;
-    const muted = alert && !canAlert(details);
-    if (muted && details.kind && !details.retainWhenMuted) return;
+    const policyMuted = alert && !canAlert(details);
+    const muted = policyMuted || (alert && isViewed(key, details.test));
+    if (policyMuted && details.kind && !details.retainWhenMuted) return;
     if (!alert) data.outbox = data.outbox.filter(entry => entry.binding !== key || entry.alert);
     if (data.outbox.length >= 1000) { status = 'Discord delivery queue is full. Reconnect before continuing.'; return; }
     data.outbox.push({ id: randomUUID().replaceAll('-', '').slice(0, 24), binding: key, text: brief(text), alert, ...details, muted });
@@ -91,7 +95,6 @@ export function createDiscordService(options: {
       await ensure(entry.binding, binding);
       muteOutbox();
       if (!data.outbox.includes(entry)) continue;
-      const alert = entry.alert && !entry.muted && canAlert(entry);
       const update = !entry.alert && binding.statusMessage;
       let message: Record<string, unknown> | undefined;
       if (entry.attempted && !update) {
@@ -102,6 +105,9 @@ export function createDiscordService(options: {
         if (!message) { status = 'A Discord delivery is unconfirmed. Check the channel; it will not be resent automatically.'; continue; }
       }
       if (!message) {
+        // Recheck after awaited channel/nonce requests; returning to the chat must silence queued delivery.
+        if (isViewed(entry.binding, entry.test)) entry.muted = true;
+        const alert = entry.alert && !entry.muted && canAlert(entry);
         entry.attempted = true; store.write();
         try {
           message = discordRecord(await rest(update ? 'PATCH' : 'POST', `/channels/${binding.channel}/messages${update ? `/${update}` : ''}`, {
