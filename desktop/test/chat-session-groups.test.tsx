@@ -19,10 +19,10 @@ test('groups today separately and combines all earlier chats under Previous in t
   const html = renderSessions([today, today - 1, today - 30 * 24 * 60 * 60, NaN]);
   expect([...html.matchAll(/<h2>(.*?)<\/h2>/g)].map(match => match[1])).toEqual(['Today', 'Previous']);
   const boundary = html.indexOf('<h2>Previous</h2>');
-  expect(html.indexOf('title="Chat 0"')).toBeLessThan(boundary);
+  expect(html.indexOf('aria-label="Chat 0"')).toBeLessThan(boundary);
   let previous = boundary;
   for (const index of [1, 2, 3]) {
-    const position = html.indexOf(`title="Chat ${index}"`);
+    const position = html.indexOf(`aria-label="Chat ${index}"`);
     expect(position).toBeGreaterThan(previous);
     previous = position;
   }

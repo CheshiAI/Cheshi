@@ -1,9 +1,9 @@
-import { ArrowUp, Bot, LoaderCircle, MessageCircleDashed, Paperclip, X } from 'lucide-react';
+import { ArrowUp, Bot, ChevronDown, MessageCircleDashed, Paperclip, X } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { LiquidGlassPanel, LoadingState, NeumorphicButton, NeumorphicTextField, PillDropdownButton } from '../../shared/ui';
+import { LiquidGlassPanel, LoadingIndicator, LoadingState, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader } from '../../shared/ui';
 import toastStyles from '../../shared/ui/DismissibleToast.module.css';
 import { MessageContent } from './MessageContent';
 import { ChatMessageLabel } from './ChatMessageLabel';
@@ -14,7 +14,6 @@ import { TemporaryChatConfigurationMenu } from './TemporaryChatConfigurationMenu
 import { chatDroppedFiles, hasChatTransferFiles } from './attachmentTransferModel';
 
 export function TemporaryChatPanel({ onClose }: { onClose: () => void }) {
-  const titleId = useId();
   const descriptionId = useId();
   const configurationId = useId();
   const [state, setState] = useState(initialTemporaryChatState);
@@ -84,28 +83,22 @@ export function TemporaryChatPanel({ onClose }: { onClose: () => void }) {
   };
 
   return createPortal(
-    <div ref={rootRef} onKeyDown={handleKeyDown}>
+    <div ref={rootRef} className={`${toastStyles.popupAnchor} ${styles.card}`} onKeyDown={handleKeyDown}>
       <LiquidGlassPanel
         as="section"
         role="dialog"
-        aria-labelledby={titleId}
+        aria-label="Temporary chat"
         aria-describedby={descriptionId}
-        className={`${toastStyles.card} ${styles.card}`}
+        className={`${toastStyles.popup} ${styles.panel}`}
         data-liquid-glass-backdrop="true"
       >
-        <header className={`${toastStyles.header} ${styles.header}`}>
-          <span className={toastStyles.icon}><MessageCircleDashed aria-hidden="true" /></span>
-          <div className={toastStyles.heading}>
-            <h2 id={titleId} className={toastStyles.title}>Temporary chat</h2>
-          </div>
-          <NeumorphicButton raised className={toastStyles.close} aria-label="Close temporary chat"
-            title="Close temporary chat" onClick={close}><X aria-hidden="true" /></NeumorphicButton>
-          <div id={descriptionId} className={`${toastStyles.description} ${styles.description}`}>Not saved to chat history · Ends when closed</div>
-        </header>
+        <SidebarPanelHeader title="TEMPORARY CHAT" icon={<MessageCircleDashed aria-hidden="true" />}
+          actions={<NeumorphicButton variant="ghost" size="icon" aria-label="Close temporary chat"
+            title="Close temporary chat" onClick={close}><X aria-hidden="true" /></NeumorphicButton>} />
+        <p id={descriptionId} className={styles.description}>Not saved to chat history · Ends when closed</p>
         <div className={`${toastStyles.body} ${styles.messages}`} role="log" aria-label="Temporary conversation" tabIndex={0}>
-          {state.messages.length === 0 && <p className={styles.empty}>
-            {state.loading ? 'Loading models…' : 'Ask a question. Continue the conversation here until you close this window.'}
-          </p>}
+          {state.messages.length === 0 && (state.loading ? <LoadingState label="Loading models…" />
+            : <p className={styles.empty}>Ask a question. Continue the conversation here until you close this window.</p>)}
           {state.messages.map((message, index) => (
             <article className={styles.message} key={index}>
               <div className={styles.speaker}><ChatMessageLabel author={message.role} createdAt={message.createdAt} /></div>
@@ -141,7 +134,7 @@ export function TemporaryChatPanel({ onClose }: { onClose: () => void }) {
           {state.attachments.length > 0 && <ul className={styles.attachments} aria-label="Attachments to send">
             {state.attachments.map(attachment => <li key={attachment.path}>
               <span title={attachment.path}>{attachment.name}</span>
-              <NeumorphicButton raised className={toastStyles.close} disabled={state.busy}
+              <NeumorphicButton variant="ghost" size="icon" disabled={state.busy}
                 aria-label={`Remove ${attachment.name}`} onClick={() => session.current?.removeAttachment(attachment.path)}>
                 <X aria-hidden="true" />
               </NeumorphicButton>
@@ -160,19 +153,19 @@ export function TemporaryChatPanel({ onClose }: { onClose: () => void }) {
               }
             }} />
           <div className={styles.controls}>
-            <NeumorphicButton raised size="icon" className={styles.circle} disabled={locked || state.picking}
+            <NeumorphicButton variant="standard" size="icon" disabled={locked || state.picking}
               title="Attach files" aria-label="Attach files" onClick={() => void session.current?.selectAttachments()}>
-              {state.picking ? <LoaderCircle className={styles.spinner} aria-hidden="true" /> : <Paperclip aria-hidden="true" />}
+              {state.picking ? <LoadingIndicator label="Opening attachment picker" /> : <Paperclip aria-hidden="true" />}
             </NeumorphicButton>
             <div className={styles.configurationAnchor} ref={configurationRef}>
-              <PillDropdownButton aria-label="Choose model and reasoning effort" aria-haspopup="menu" aria-expanded={configurationOpen}
+              <NeumorphicButton variant="standard" aria-label="Choose model and reasoning effort" aria-haspopup="menu" aria-expanded={configurationOpen}
                 aria-controls={configurationOpen ? configurationId : undefined} disabled={locked || state.picking}
                 className={styles.modelTrigger} active={configurationOpen} onClick={() => setConfigurationOpen(!configurationOpen)}>
                 <Bot aria-hidden="true" /><span>{model?.displayName ?? 'Loading models…'}</span>
                 <span className={styles.effort}>{formatReasoningEffort(state.effort)}</span>
-              </PillDropdownButton>
+              <ChevronDown aria-hidden="true" /></NeumorphicButton>
             </div>
-            <NeumorphicButton raised size="icon" type="submit" className={styles.circle} aria-label="Send temporary message"
+            <NeumorphicButton variant="standard" size="icon" type="submit" aria-label="Send temporary message"
               title="Send message" disabled={locked || state.picking || (!state.draft.trim() && state.attachments.length === 0)}>
               <ArrowUp aria-hidden="true" />
             </NeumorphicButton>

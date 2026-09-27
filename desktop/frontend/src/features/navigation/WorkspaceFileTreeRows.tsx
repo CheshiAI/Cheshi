@@ -17,6 +17,7 @@ import { useHorizontalOverflow } from '../../shared/useHorizontalOverflow';
 import { writeWorkspaceFileTransfer } from '../../shared/workspaceFileTransfer';
 import { FileTypeIcon } from '../../shared/file-icons/FileTypeIcon';
 import { NeumorphicTextField, SearchClearButton, Tooltip } from '../../shared/ui';
+import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { WorkspaceFileTreeController } from './useWorkspaceFileTreeController';
 import { handleWorkspaceEntryEditKeyDown } from './workspaceEntryEditInteraction';
@@ -191,7 +192,7 @@ export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFil
   };
 
   return (
-    <div className="workspace-file-tree-list">
+    <OverlayScrollArea className="workspace-file-tree-list" label="Workspace files">
       <div className="workspace-file-tree-list-content" role="tree">
         {entryEdit?.mode === 'create' && entryEdit.directoryPath === '.' && renderCreateEditRow(0)}
         {visibleEntries.map(({ entry, depth }) => {
@@ -306,6 +307,6 @@ export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFil
         {error && <p className="workspace-file-tree-status error">{error}</p>}
         <span className="workspace-file-tree-announcement" aria-live="polite">{announcement}</span>
       </div>
-    </div>
+    </OverlayScrollArea>
   );
 }

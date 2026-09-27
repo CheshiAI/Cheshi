@@ -144,7 +144,6 @@
   flex: 0 0 var(--icon-button-size);
 }
 .stopButton svg { fill: currentColor; }
-.attachmentSpinner, .configurationSpinner { animation: spin .9s linear infinite; }
 .attachmentError { overflow: hidden; max-width: 180px; color: var(--sidebar-section-label-color); font-size: var(--font-size-small); line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
 .skillChip { max-width: min(260px, 100%); }
 .skillChip span { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
@@ -179,10 +178,8 @@
 }
 .error { margin-bottom: var(--icon-default); }
 
-@keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .composerAnchor, .composerSurface, .configurationChevron { transition: none; }
-  .attachmentSpinner, .configurationSpinner { animation: none; }
 }
 @media (max-width: 1200px) {
   .composerArea { padding-right: 28px; padding-left: 28px; }

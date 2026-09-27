@@ -40,25 +40,26 @@ function QueueMenu({ target, controller, onClose }: {
   const disabled = controller.queueBlocked || controller.loading || controller.messageQueue.entries
     .some((entry) => entry.id === target.id && entry.status === 'sending');
   const action = (run: () => void) => { onClose(); run(); };
-  return createPortal(<div ref={ref} className="liquid-glass-context-menu-anchor" style={{
-    width: 232, left: Math.max(8, Math.min(rect.right - 232, window.innerWidth - 240)),
-    top: Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - 152)),
+  return createPortal(<div ref={ref} className={styles.menuAnchor} style={{
+    left: Math.max(8, Math.min(rect.right - 280, window.innerWidth - 288)),
+    top: Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - 208)),
   }}>
-    <LiquidGlassPanel role="menu" aria-label={copy.more} className={`liquid-glass-context-menu ${styles.menu}`}
-      onKeyDown={focusAdjacentMenuItem}>
-      <button type="button" role="menuitem" className="liquid-glass-menu-item" disabled={disabled || !canEdit}
+    <LiquidGlassPanel role="menu" aria-label={copy.more} className={styles.menu}
+      onKeyDown={event => { focusAdjacentMenuItem(event); if (event.key === 'Tab') onClose(); }}>
+      <div className={styles.menuTitle}>{copy.more}</div>
+      <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={disabled || !canEdit}
         title={!canEdit ? copy.clearDraft : undefined} onClick={() => action(() => controller.editQueuedMessage(target.id))}>
         <Pencil aria-hidden="true" /><span>{copy.edit}</span>
-      </button>
-      <button type="button" role="menuitem" className="liquid-glass-menu-item" disabled={disabled || !controller.canOpenSideChat}
+      </NeumorphicButton>
+      <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={disabled || !controller.canOpenSideChat}
         onClick={() => action(() => controller.openQueuedSideChat(target.id))}>
         <MessageCirclePlus aria-hidden="true" /><span>{copy.side}</span>
-      </button>
-      <button type="button" role="menuitem" className="liquid-glass-menu-item" disabled={controller.interactionsLocked}
+      </NeumorphicButton>
+      <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={controller.interactionsLocked}
         onClick={() => action(controller.messageQueue.toggleCurrent)}>
         {controller.messageQueue.paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
         <span>{controller.messageQueue.paused ? copy.enable : copy.disable}</span>
-      </button>
+      </NeumorphicButton>
     </LiquidGlassPanel>
   </div>, document.body);
 }
@@ -84,7 +85,7 @@ export function ChatMessageQueue({ controller, open, panelId }: {
       <LiquidGlassPanel as="section" aria-label={copy.queue} className={styles.queue} data-liquid-glass-backdrop="true">
         <div className={styles.status}>
           <span>{queue.paused ? copy.paused : copy.waiting}</span>
-          <NeumorphicButton size="icon" raised disabled={controller.interactionsLocked} aria-pressed={!queue.paused}
+          <NeumorphicButton variant="ghost" size="icon" disabled={controller.interactionsLocked} aria-pressed={!queue.paused}
             title={queue.paused ? copy.enable : copy.disable} aria-label={queue.paused ? copy.enable : copy.disable}
             onClick={queue.toggleCurrent}>{queue.paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}</NeumorphicButton>
         </div>
@@ -103,13 +104,13 @@ export function ChatMessageQueue({ controller, open, panelId }: {
                     {[entry.input.selectedSkill ? `$${entry.input.selectedSkill.name}` : '', ...entry.input.attachments.map((item) => item.name)].filter(Boolean).join(' · ')}
                   </small>}
                 </div>
-                <NeumorphicButton className={styles.steer} disabled={disabled || !controller.streaming || entry.status === 'unknown'}
+                <NeumorphicButton variant="ghost" className={styles.steer} disabled={disabled || !controller.streaming || entry.status === 'unknown'}
                   title={copy.steer} aria-label={copy.steer} onClick={() => { void queue.steer(entry.id); }}>
                   <CornerDownRight aria-hidden="true" /><span>{copy.steer}</span>
                 </NeumorphicButton>
-                <NeumorphicButton size="icon" raised disabled={sending || controller.interactionsLocked}
+                <NeumorphicButton variant="ghost" size="icon" disabled={sending || controller.interactionsLocked}
                   title={copy.remove} aria-label={copy.remove} onClick={() => queue.remove(entry.id)}><Trash2 aria-hidden="true" /></NeumorphicButton>
-                <NeumorphicButton size="icon" raised disabled={sending || controller.interactionsLocked} aria-haspopup="menu"
+                <NeumorphicButton variant="ghost" size="icon" disabled={sending || controller.interactionsLocked} aria-haspopup="menu"
                   aria-expanded={visibleTarget?.id === entry.id} title={copy.more} aria-label={copy.more}
                   onClick={(event) => setTarget({ id: entry.id, trigger: event.currentTarget })}><MoreHorizontal aria-hidden="true" /></NeumorphicButton>
               </div>

@@ -65,7 +65,8 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
           {request.kind === 'questions' && <ChatQuestionFields questions={request.questions} draft={completed?.draft ?? draft} onChange={onChange}
             notes={completed?.notes ?? notes} onNotesChange={onNotesChange} />}
           {request.kind !== 'questions' && <p className={styles.message}>{request.message}</p>}
-          {request.kind === 'form' && !unsupported && <ChatMcpFields fields={request.fields} draft={draft} onChange={onChange} />}
+          {request.kind === 'form' && !unsupported && <ChatMcpFields fields={request.fields} draft={draft}
+            disabled={busy || Boolean(resolution)} onChange={onChange} />}
           {unsupported && <p className={styles.message}>{unsupported}</p>}
           {request.kind === 'url' && (link
             ? <a className={styles.externalLink} href={link} target="_blank" rel="noopener noreferrer"><ExternalLink aria-hidden="true" />Open {new URL(link).hostname}</a>
@@ -97,5 +98,5 @@ export function ChatUserInputRequests({ contextId, activeThreadId, fallback, fal
   if (request) return <ChatUserInputPrompt key={request.id} request={request} respond={input.respond}
     pending={input.loadingId === request.id} error={input.error} otherThread={request.threadId !== activeThreadId} />;
   if (!input.error) return fallbackId && handledFallbacks.current.has(fallbackId) ? null : fallback ?? null;
-  return <ChatErrorNotice action={<NeumorphicButton raised size="standard" onClick={input.refresh}>Retry</NeumorphicButton>}>{input.error}</ChatErrorNotice>;
+  return <ChatErrorNotice action={<NeumorphicButton variant="standard" size="standard" onClick={input.refresh}>Retry</NeumorphicButton>}>{input.error}</ChatErrorNotice>;
 }

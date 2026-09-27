@@ -32,11 +32,13 @@
 .preview { flex: 1; min-width: 0; }
 .preview > span, .preview > small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .preview > small { color: var(--sub-text); font-size: 10px; }
-.steer { flex-shrink: 0; min-height: 22px; padding: 0 4px; font: inherit; cursor: pointer; }
+.steer { flex-shrink: 0; }
 .steer:disabled, .hint > button:disabled { cursor: not-allowed; opacity: .5; }
 .notice { display: block; padding-top: 8px; overflow-wrap: anywhere; color: var(--sub-text); }
-.menu { --liquid-glass-menu-item-font-size: 10px; }
-.menu button { justify-content: flex-start; gap: var(--space-default); }
+.menuAnchor { composes: menuAnchor from '../../shared/ui/ToolbarMenu.module.css'; }
+.menu { composes: menu from '../../shared/ui/ToolbarMenu.module.css'; }
+.menuTitle { composes: title from '../../shared/ui/ToolbarMenu.module.css'; }
+.menuItem { composes: item from '../../shared/ui/ToolbarMenu.module.css'; }
 .hint { flex-wrap: wrap; justify-content: space-between; padding: var(--icon-default) var(--space-default); font-size: var(--font-size-label); color: var(--sidebar-section-label-color); }
 .hint > button { margin-left: auto; padding: 0; font: inherit; cursor: pointer; }
 .hint > .toggle[aria-pressed] {

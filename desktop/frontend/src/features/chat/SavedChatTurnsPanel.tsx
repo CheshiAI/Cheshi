@@ -50,7 +50,7 @@ export function SavedChatTurnsPanel({ savedTurns, onClose, onContinue, continuat
     <div className={styles.list} aria-busy={savedTurns.loading}>
       {savedTurns.error && <div className={styles.notice} role="alert">
         <p>{savedTurns.error}</p>
-        <NeumorphicButton raised disabled={savedTurns.loading || savedTurns.deleting} onClick={() => void savedTurns.refresh()}>Retry</NeumorphicButton>
+        <NeumorphicButton variant="standard" disabled={savedTurns.loading || savedTurns.deleting} onClick={() => void savedTurns.refresh()}>Retry</NeumorphicButton>
       </div>}
       {savedTurns.loading && <LoadingState label="loading saved turns…"
         className={savedTurns.records.length === 0 && !savedTurns.error ? styles.emptyState : undefined} />}

@@ -20,8 +20,8 @@ export function ChatDeleteSessionForm({ sessionTitle, reason, pending, error, on
     <div className={styles.deletionActions}>
       {pending && <LoadingState type="processing" label="Deleting chat…" className={styles.deletionProgress} />}
       <div className={styles.buttons}>
-        <NeumorphicButton size="standard" raised autoFocus type="button" disabled={pending} onClick={onClose}>Cancel</NeumorphicButton>
-        <NeumorphicButton size="standard" raised type="submit" disabled={pending || reason !== null} aria-busy={pending}>Delete chat</NeumorphicButton>
+        <NeumorphicButton variant="standard" autoFocus type="button" disabled={pending} onClick={onClose}>Cancel</NeumorphicButton>
+        <NeumorphicButton variant="standard" type="submit" disabled={pending || reason !== null} aria-busy={pending}>Delete chat</NeumorphicButton>
       </div>
     </div>
   </form>;
@@ -56,7 +56,8 @@ export function ChatDeleteSessionDialog({ sessionTitle, reason, pending, error, 
       setSubmitting(false);
     }
   };
-  return <Modal title="Delete chat?" titleIcon={<Trash2 aria-hidden="true" />} closeDisabled={busy} onClose={close}>
+  return <Modal title="DELETE CHAT" headerVariant="section" className={styles.recordDeletionDialog}
+    titleIcon={<Trash2 aria-hidden="true" />} closeDisabled={busy} onClose={close}>
     <ChatDeleteSessionForm sessionTitle={sessionTitle} reason={reason} pending={busy} error={error || failure}
       onDelete={() => { void remove(); }} onClose={close} />
   </Modal>;

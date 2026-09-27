@@ -49,7 +49,7 @@ export function ChatFallbackQuestion({ candidate, controller, chatController, ac
   useLayoutEffect(() => { store.setActive(true); return () => { if (!retainedStore) store.setActive(false); }; }, [store, retainedStore]);
   useLayoutEffect(() => { store.sync(threadId,
     controller.loading || (controller.streaming && candidate?.delivery !== 'async') ? null : candidate, blocked); });
-  if (state.restoreError) return <ChatErrorNotice action={<NeumorphicButton raised size="standard" onClick={() => void store.retryRestore()}>Retry</NeumorphicButton>}>
+  if (state.restoreError) return <ChatErrorNotice action={<NeumorphicButton variant="standard" size="standard" onClick={() => void store.retryRestore()}>Retry</NeumorphicButton>}>
     {state.restoreError}
   </ChatErrorNotice>;
   if (inline && candidate?.threadId === threadId && state.resolution

@@ -59,6 +59,7 @@ export function createSessionListHarness() {
       LoadingIndicator: ({ label }: { label?: string }) => jsx('loading-indicator', { 'aria-label': label }),
       LoadingState: 'loading-state', NeumorphicButton: 'button', SidebarPanelHeader: 'sidebar-panel-header',
     },
+    '../../shared/ui/OverlayScrollArea': { OverlayScrollArea: 'overlay-scroll-area' },
     './ChatSessionList.module.css': { default: {} },
   };
   const source = readFileSync(new URL('../frontend/src/features/chat/ChatSessionList.tsx', import.meta.url), 'utf8');

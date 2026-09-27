@@ -21,17 +21,10 @@
 .question { display: flex; flex-direction: column; gap: var(--icon-default); border: 0; margin: 0; padding: 0; min-width: 0; }
 .question legend { padding: 0; font-weight: 400; margin-bottom: var(--icon-default); }
 .question p, .message { margin: 0; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-.option { display: flex; align-items: flex-start; gap: var(--icon-default); padding: 8px 12px; border: 1px solid var(--divider); border-radius: 8px; cursor: pointer; }
-.option:has(input:checked), .option:hover:has(input:enabled) { background: var(--control-surface-interactive); color: var(--text); }
-.option:has(input:disabled) { cursor: not-allowed; }
-.option input { flex: 0 0 auto; margin: 3px 0 0; accent-color: var(--text); cursor: inherit; }
-.option span, .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.option strong { font-weight: 400; }
-.option small, .field small { color: var(--sidebar-section-label-color); font-size: 9px; line-height: 1.5; }
-.field > input, .field > select { min-height: 32px; box-sizing: border-box; width: 100%; padding: 6px 8px; border: 1px solid var(--divider); border-radius: 6px; color: var(--text); background: var(--control-surface); font: inherit; }
-.panel :is(input, textarea, select), .actions button { font-size: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field small { color: var(--sidebar-section-label-color); font-size: 9px; line-height: 1.5; }
+.panel :is(input, textarea, select) { font-size: 10px; }
 .field input { cursor: text; }
-.field select { cursor: pointer; }
 .actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--icon-default); }
 .externalLink { display: inline-flex; align-items: center; gap: var(--icon-default); color: var(--sub-text); overflow-wrap: anywhere; cursor: pointer; }
 .externalLink:is(:hover, :focus-visible) { color: var(--dropdown-selection-text); }
@@ -39,3 +32,9 @@
 .panel :is(button, input, textarea, select):disabled { cursor: not-allowed; opacity: .5; }
 .panel[data-resolved='true'] :disabled { cursor: default; opacity: 1; }
 .error { margin: var(--icon-default) 0 0; line-height: 1.5; color: var(--sub-text); }
+
+.mcpFields { display: flex; flex-direction: column; gap: var(--space-default); min-width: 0; }
+.mcpFields .field, .mcpFields legend { color: var(--text); font-size: var(--font-size-label); font-weight: 400; }
+.mcpFields .field small, .mcpFields .question > p { color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
+.mcpFields input { font-size: var(--font-size-label); }
+.mcpOption { min-height: 32px; gap: var(--icon-default); color: var(--text); font-size: var(--font-size-label); }

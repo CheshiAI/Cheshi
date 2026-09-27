@@ -2,6 +2,7 @@ import { memo, useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } f
 import { MessageCircleDashed, MessageSquareText, Plus, Trash2 } from 'lucide-react';
 
 import { LoadingIndicator, LoadingState, NeumorphicButton, SidebarPanelHeader } from '../../shared/ui';
+import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
 import type { ChatSession } from './model';
 import styles from './ChatSessionList.module.css';
 
@@ -36,11 +37,11 @@ const ChatSessionButton = memo(function ChatSessionButton({
   id, title, active, responding, onOpen,
 }: { id: string; title: string; active: boolean; responding: boolean; onOpen: (id: string) => void }) {
   return (
-    <button className={styles.session} aria-current={active ? 'page' : undefined}
-      title={title} type="button" aria-haspopup="dialog" onClick={() => onOpen(id)}>
+    <NeumorphicButton variant="ghost" className={styles.session} aria-current={active ? 'page' : undefined}
+      aria-label={title} type="button" aria-haspopup="dialog" onClick={() => onOpen(id)}>
       {responding ? <LoadingIndicator label="Active response" /> : <MessageSquareText aria-hidden="true" />}
       <span className={styles.sessionTitle}>{title}</span>
-    </button>
+    </NeumorphicButton>
   );
 });
 
@@ -100,6 +101,7 @@ export function ChatSessionList({
       <div className={styles.body}>
         {sessions.length > 0 && search}
 
+        <OverlayScrollArea className={styles.listScroll} label="Conversation list">
         <fieldset className={styles.list} aria-label="Conversations" aria-busy={loading} disabled={selectionDisabled}>
           {loading && sessions.length === 0 && (
             <LoadingState className={styles.loading} />
@@ -122,7 +124,7 @@ export function ChatSessionList({
                       active={session.id === activeSessionId}
                       responding={session.status === 'active' || respondingSessions.has(session.id)}
                       onOpen={openSession} />
-                    <NeumorphicButton raised className={styles.deleteButton}
+                    <NeumorphicButton variant="ghost" size="icon" className={styles.deleteButton}
                       type="button" aria-label={`Delete chat: ${session.title}`} aria-haspopup="dialog"
                       title={reason ?? 'Delete chat'}
                       disabled={reason !== null}
@@ -136,6 +138,7 @@ export function ChatSessionList({
             </section>
           ))}
         </fieldset>
+        </OverlayScrollArea>
       </div>
     </section>
   );

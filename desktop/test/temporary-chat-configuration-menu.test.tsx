@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { isValidElement, type ComponentProps, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { NeumorphicButton } from '../frontend/src/shared/ui/NeumorphicButton';
 import { TemporaryChatConfigurationMenuContent, temporaryConfigurationPosition } from '../frontend/src/features/chat/TemporaryChatConfigurationMenu';
 
 type Props = ComponentProps<typeof TemporaryChatConfigurationMenuContent>;
@@ -20,7 +21,7 @@ function props(overrides: Partial<Props> = {}): Props {
 function buttons(node: ReactNode): ComponentProps<'button'>[] {
   if (Array.isArray(node)) return node.flatMap(buttons);
   if (!isValidElement<{ children?: ReactNode }>(node)) return [];
-  return [...(node.type === 'button' ? [node.props as ComponentProps<'button'>] : []), ...buttons(node.props.children)];
+  return [...(node.type === 'button' || node.type === NeumorphicButton ? [node.props as ComponentProps<'button'>] : []), ...buttons(node.props.children)];
 }
 
 test('temporary menu routes model and reasoning selections using their original values', () => {
@@ -45,6 +46,7 @@ test('temporary menu exposes only supported settings and disables choices when b
   expect((html.match(/role="menuitem"/g) ?? []).length).toBe(2);
   expect(html).not.toContain('Service tier');
   const tree = TemporaryChatConfigurationMenuContent(props({ disabled: true, view: 'models' }));
+  expect(buttons(tree)).toHaveLength(3);
   expect(buttons(tree).every(button => button.disabled)).toBe(true);
 });
 

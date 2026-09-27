@@ -12,7 +12,7 @@ function props(): Props {
   };
 }
 function row(nodes: SessionListElement[], title: string) {
-  return nodes.find((node) => node.type === 'button' && node.props.title === title)!;
+  return nodes.find((node) => node.type === 'button' && node.props['aria-label'] === title)!;
 }
 function click(node: SessionListElement) { (node.props.onClick as () => void)(); }
 

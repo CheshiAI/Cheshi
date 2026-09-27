@@ -1,0 +1,40 @@
+.root {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.viewport,
+.scrollbar {
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
+  overflow-x: hidden;
+  overflow-y: scroll;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+
+/* Clip only the viewport's native gutter; its content still fills the root. */
+.viewport {
+  width: calc(100% + var(--auto-hide-scrollbar-size));
+  height: 100%;
+}
+
+.content {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+}
+
+/* A synchronized native scrollbar retains track clicks and thumb dragging. */
+.scrollbar {
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  width: var(--auto-hide-scrollbar-size);
+}
+
+/* Chromium needs nonzero content width to include the spacer's vertical overflow. */
+.scrollbar > div {
+  width: 1px;
+}

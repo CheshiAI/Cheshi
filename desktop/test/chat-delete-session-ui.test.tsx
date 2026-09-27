@@ -27,7 +27,8 @@ test('chat title and delete action are separate keyboard buttons with separate c
   (remove.props.onClick as (() => void))();
   expect(deleted).toEqual(['thread']);
   expect(opened).toEqual([]);
-  const title = nodes.find((element) => element.type === 'button' && element.props.title === session.title)!;
+  const title = nodes.find((element) => element.type === 'button' && element.props['aria-label'] === session.title)!;
+  expect(title.props.title).toBeUndefined();
   (title.props.onClick as (() => void))();
   expect(opened).toEqual(['thread']);
   expect(elements(title.props.children as ReactNode).some((element) => element.props.onClick)).toBe(false);

@@ -398,13 +398,8 @@ h1, h2, h3, h4, h5, h6, p {
 }
 
 .workspace-file-tree-list {
-    --scrollbar-size: var(--auto-hide-scrollbar-size);
     min-height: 0;
     flex: 1 1 auto;
-    overflow-x: hidden;
-    overflow-y: auto;
-    scrollbar-width: auto;
-    scrollbar-color: auto;
 }
 
 .workspace-file-tree-list-content {

@@ -40,7 +40,6 @@
 .list > .notice, .list > [role='status'] { padding: var(--space-default); }
 .emptyState { flex-shrink: 0; margin-block: auto; text-align: center; }
 .notice p { margin: 0 0 var(--icon-default); }
-.notice button { cursor: pointer; padding: 4px 12px; font: inherit; }
 .record:focus-visible { outline: 1px solid var(--text); outline-offset: -1px; }
 .recordRow { position: relative; flex: 0 0 auto; min-width: 0; width: 100%; }
 .savedRecord { padding-right: calc(var(--space-default) + var(--icon-button-size) + var(--icon-default)); }

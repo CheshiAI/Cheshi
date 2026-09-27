@@ -70,7 +70,7 @@ export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, 
               </button>}
               {relay.historyError && <div className={styles.notice} role="alert">
                 <p>{relay.historyError}</p>
-                <NeumorphicButton raised disabled={relay.historyLoading || relay.historyDeleting} onClick={() => void relay.refreshHistory()}>Retry</NeumorphicButton>
+                <NeumorphicButton variant="standard" disabled={relay.historyLoading || relay.historyDeleting} onClick={() => void relay.refreshHistory()}>Retry</NeumorphicButton>
               </div>}
               {relay.historyLoading && <LoadingState label="loading history…"
                 className={!showCurrent && records.length === 0 && !relay.historyError ? styles.emptyState : undefined} />}

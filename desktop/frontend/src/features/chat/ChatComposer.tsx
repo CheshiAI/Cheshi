@@ -76,7 +76,7 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
           : controller.sendRecovery.status === 'available'
             ? 'Not sent. Your previous draft is saved. Clear the current draft to restore it.'
             : 'Delivery could not be confirmed. Check this conversation before sending again.'}</span>
-        {controller.sendRecovery.status === 'available' && <NeumorphicButton
+        {controller.sendRecovery.status === 'available' && <NeumorphicButton variant="standard"
           disabled={!controller.canRestoreFailedMessage} onClick={controller.restoreFailedMessage}>Restore draft</NeumorphicButton>}
       </div>}
       {pendingApproval && (
@@ -94,7 +94,7 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
           </div>
           <div className={styles.approvalActions}>
             <NeumorphicButton
-              raised
+              variant="standard"
               size="standard"
               className={styles.approvalAction}
               disabled={approvalLoadingId === pendingApproval.id}
@@ -103,7 +103,7 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
               Deny
             </NeumorphicButton>
             <NeumorphicButton
-              raised
+              variant="standard"
               size="standard"
               className={styles.approvalAction}
               disabled={approvalLoadingId === pendingApproval.id}
@@ -113,7 +113,7 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
             </NeumorphicButton>
             {pendingApproval.canAllowForSession && (
               <NeumorphicButton
-                raised
+                variant="standard"
                 size="standard"
                 className={styles.approvalAction}
                 disabled={approvalLoadingId === pendingApproval.id}

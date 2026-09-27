@@ -1,5 +1,5 @@
-import { Bot, ChevronDown, ClipboardList, LoaderCircle, Paperclip, Sparkles, X, Zap } from 'lucide-react';
-import { NeumorphicButton } from '../../shared/ui';
+import { Bot, ChevronDown, ClipboardList, Paperclip, Sparkles, X, Zap } from 'lucide-react';
+import { LoadingIndicator, NeumorphicButton } from '../../shared/ui';
 import { ChatPermissionSelect } from './ChatPermissionSelect';
 import { ChatSubmitButton } from './ChatSubmitButton';
 import { formatReasoningEffort } from './chatViewModel';
@@ -45,7 +45,7 @@ export function ChatComposerToolbar({ controller, chatController }: {
           onClick={() => void selectAttachments()}
         >
           {attachmentPickerOpen
-            ? <LoaderCircle aria-hidden="true" className={styles.attachmentSpinner} />
+            ? <LoadingIndicator label="Opening attachment picker" />
             : <Paperclip aria-hidden="true" />}
         </NeumorphicButton>
         <ChatPermissionSelect controller={chatController} disabled={configurationControlsDisabled}
@@ -95,7 +95,7 @@ export function ChatComposerToolbar({ controller, chatController }: {
             onClick={toggleConfigurationMenu}
           >
             {configurationLoading && !chatConfiguration
-              ? <LoaderCircle aria-hidden="true" className={styles.configurationSpinner} />
+              ? <LoadingIndicator label="Loading configuration" />
               : chatConfiguration?.fastModeEnabled
                 ? <Zap aria-hidden="true" />
                 : <Bot aria-hidden="true" />}

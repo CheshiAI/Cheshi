@@ -1,9 +1,9 @@
 import { Check, ChevronRight } from 'lucide-react';
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { LiquidGlassPanel } from '../../shared/ui';
+import { LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
 import { CONFIGURATION_MENU_WIDTH, CONFIGURATION_SUBMENU_WIDTH, formatReasoningEffort } from './chatViewModel';
 import type { ChatModel } from './model';
-import menuStyles from './ChatView.module.css';
+import menuStyles from './ChatConfigurationMenu.module.css';
 import styles from './TemporaryChatPanel.module.css';
 
 type MenuView = 'root' | 'models' | 'reasoning';
@@ -29,7 +29,7 @@ export function temporaryConfigurationPosition(rect: { right: number; top: numbe
   const stacked = Math.max(leftSpace, rightSpace) < CONFIGURATION_SUBMENU_WIDTH;
   return {
     left, width, bottom,
-    submenuHeight: Math.max(0, Math.min(310, viewport.height - bottom - gap - (stacked ? 94 : 0))),
+    submenuHeight: Math.max(0, Math.min(310, viewport.height - bottom - gap - (stacked ? 102 : 0))),
     submenuSide: leftSpace >= CONFIGURATION_SUBMENU_WIDTH || leftSpace >= rightSpace ? 'left' : 'right',
     stacked,
   };
@@ -95,13 +95,13 @@ export function TemporaryChatConfigurationMenuContent({
         event.preventDefault(); event.stopPropagation(); onViewChange('root');
       }
     }}>
-    {view !== 'root' && <LiquidGlassPanel as="section" className={`${menuStyles.configurationSubmenu} ${styles.configurationSubmenu}`}
+    {view !== 'root' && <div className={`${menuStyles.configurationSubmenuAnchor} ${styles.configurationSubmenuAnchor}`}><LiquidGlassPanel as="section" className={menuStyles.configurationSubmenu}
       style={{ maxHeight: position.submenuHeight }} data-liquid-glass-backdrop="true" aria-label={view === 'models' ? 'Model options' : 'Reasoning effort options'}>
       <strong className={menuStyles.configurationSubmenuTitle}>{view === 'models' ? 'Model' : 'Reasoning effort'}</strong>
       <div className={menuStyles.configurationOptions} role="listbox" aria-label={view === 'models' ? 'Model' : 'Reasoning effort'}>
         {options.map(option => {
           const selected = option.value === (view === 'models' ? model : effort);
-          return <button type="button" role="option" key={option.value} aria-selected={selected}
+          return <NeumorphicButton variant="ghost" type="button" role="option" key={option.value} aria-selected={selected}
             className={menuStyles.configurationOption} title={option.description} disabled={disabled}
             onClick={() => {
               if (view === 'models') onModelChange(option.value);
@@ -110,23 +110,23 @@ export function TemporaryChatConfigurationMenuContent({
             }}>
             <span className={menuStyles.configurationOptionCopy}><strong>{option.label}</strong><span>{option.description}</span></span>
             {selected && <Check aria-hidden="true" />}
-          </button>;
+          </NeumorphicButton>;
         })}
       </div>
-    </LiquidGlassPanel>}
+    </LiquidGlassPanel></div>}
     <LiquidGlassPanel id={id} role="menu" aria-label="Model and reasoning effort" className={menuStyles.configurationMenu}>
-      <button type="button" role="menuitem" aria-haspopup="listbox" aria-expanded={view === 'models'}
+      <NeumorphicButton variant="ghost" type="button" role="menuitem" aria-haspopup="listbox" aria-expanded={view === 'models'}
         data-configuration-view="models" className={menuStyles.configurationMenuRow}
         disabled={disabled || !models.length} onClick={() => onViewChange('models')}>
         <span>Model</span><span className={menuStyles.configurationMenuValue}>{selectedModel?.displayName ?? 'Default model'}</span>
         <ChevronRight aria-hidden="true" />
-      </button>
-      <button type="button" role="menuitem" aria-haspopup="listbox" aria-expanded={view === 'reasoning'}
+      </NeumorphicButton>
+      <NeumorphicButton variant="ghost" type="button" role="menuitem" aria-haspopup="listbox" aria-expanded={view === 'reasoning'}
         data-configuration-view="reasoning" className={menuStyles.configurationMenuRow}
         disabled={disabled || !selectedModel?.supportedReasoningEfforts.length} onClick={() => onViewChange('reasoning')}>
         <span>Reasoning</span><span className={menuStyles.configurationMenuValue}>{formatReasoningEffort(effort)}</span>
         <ChevronRight aria-hidden="true" />
-      </button>
+      </NeumorphicButton>
     </LiquidGlassPanel>
   </div>;
 }
