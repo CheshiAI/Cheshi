@@ -37,9 +37,9 @@ export function Sidebar({
           {chatPanel && onPanelChange ? <SidebarTabs activeId={activePanel}
             onSelect={panel => onPanelChange(normalizeSidebarPanel(panel))}
             tabs={[
-              { id: 'chats', label: 'Sessions', content: chatPanel },
-              { id: 'files', label: 'Files', content: files },
-              { id: 'memos', label: 'Memos', content: null },
+              { id: 'chats', label: 'SESSIONS', content: chatPanel },
+              { id: 'files', label: 'FILES', content: files },
+              { id: 'memos', label: 'MEMOS', content: null },
             ]} /> : files}
         </div>
 

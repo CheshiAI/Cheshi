@@ -46,7 +46,7 @@ test('hides only the search when there are no sessions, including while loading'
   for (const loading of [false, true]) {
     const html = renderSessions([], loading);
     expect(html).not.toContain('aria-label="Conversation search"');
-    expect(html).toContain('CHATS');
+    expect(html).toContain('SESSIONS');
     expect(html).toContain('aria-label="New chat"');
   }
   expect(renderSessions([0], true)).toContain('aria-label="Conversation search"');

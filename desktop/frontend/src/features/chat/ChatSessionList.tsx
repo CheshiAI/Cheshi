@@ -75,7 +75,7 @@ export function ChatSessionList({
 
   return (
     <section className={styles.root} aria-label="Chat history">
-      <SidebarPanelHeader title="CHATS" icon={<MessageSquareText aria-hidden="true" />} actions={<>
+      <SidebarPanelHeader title="SESSIONS" icon={<MessageSquareText aria-hidden="true" />} actions={<>
         {onTemporaryChat && <NeumorphicButton
           size="icon"
           aria-label="Open temporary chat"
