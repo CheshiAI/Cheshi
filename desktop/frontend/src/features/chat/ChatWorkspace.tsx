@@ -102,18 +102,17 @@ function ChatPane({
           </button>
         </div>
         <div className={styles.actions}>
-          <TooltipButton
+          <NeumorphicButton
             type="button"
             variant="ghost"
             size="icon"
             aria-label="Split chat right"
-            title="Split chat right"
             disabled={workspace.paneIds.length >= CHAT_PANE_LIMIT || workspace.splitPending}
             aria-haspopup="dialog"
             onClick={() => { workspace.dismissError(); setSplitChoice({ sourceThreadId: controller.state.activeSessionId }); }}
           >
             <Columns2 aria-hidden="true" />
-          </TooltipButton>
+          </NeumorphicButton>
           <TooltipButton
             type="button"
             variant="ghost"
