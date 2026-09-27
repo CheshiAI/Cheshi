@@ -2,6 +2,7 @@ import { MousePointer2, Search, SlidersHorizontal, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 
 import { LiquidGlassPanel, NeumorphicButton, Tooltip } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { GraphSearch, GraphSettings } from './GraphSidebar';
 import { GraphDetails } from './GraphWorkspace';
 import type { GraphController } from './useGraphController';
@@ -65,14 +66,15 @@ export function GraphInspector({ graph, openWorkspaceFile }: GraphInspectorProps
             >
               <header className={styles.heading}>
                 <span>{item.label}</span>
-                <NeumorphicButton
-                  raised
-                  className={styles.button}
+                <TooltipButton
+                  variant="standard"
+                  size="icon"
                   aria-label={`Close ${item.label} panel`}
+                  title={`Close ${item.label} panel`}
                   onClick={closePanel}
                 >
                   <X aria-hidden="true" />
-                </NeumorphicButton>
+                </TooltipButton>
               </header>
               {item.id === 'explore' && <GraphSearch graph={graph} />}
               {item.id === 'settings' && <GraphSettings graph={graph} />}
@@ -87,9 +89,9 @@ export function GraphInspector({ graph, openWorkspaceFile }: GraphInspectorProps
             {(triggerProps) => (
               <NeumorphicButton
                 {...triggerProps}
-                raised
+                variant="standard"
+                size="icon"
                 active={open && panel === key}
-                className={styles.button}
                 id={`${id}-${key}-button`}
                 aria-label={label}
                 aria-controls={`${id}-${key}`}

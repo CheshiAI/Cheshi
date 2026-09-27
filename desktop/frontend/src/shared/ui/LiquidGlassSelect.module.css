@@ -33,6 +33,19 @@
   white-space: nowrap;
 }
 
+.standardTrigger {
+  width: 100%;
+  min-width: 0;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.standardTrigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .trigger[data-appearance='flat'] {
   border-color: transparent;
   background: var(--neumorphic-button-surface);
@@ -55,7 +68,8 @@
   transition: transform .18s ease;
 }
 
-.trigger[aria-expanded='true'] .chevron { transform: rotate(180deg); }
+.trigger[aria-expanded='true'] .chevron,
+.standardTrigger[aria-expanded='true'] .chevron { transform: rotate(180deg); }
 
 .popoverAnchor {
   position: fixed;

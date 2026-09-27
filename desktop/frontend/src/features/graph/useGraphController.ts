@@ -20,7 +20,7 @@ import type {
 import { readViewerState, VIEWER_STATE_STORAGE_KEY, type ViewerStateSnapshot } from './model';
 
 const MIN_ZOOM = 0.05;
-const MAX_ZOOM = 4;
+const MAX_ZOOM = 9.99;
 const WHEEL_LINE_HEIGHT = 16;
 const TRACKPAD_ZOOM_SENSITIVITY = 0.0025;
 const preferredEdges = new Set(['calls', 'imports', 'references']);
@@ -93,6 +93,7 @@ export interface GraphController {
   activeEdgeKinds: string[];
   areAllEdgeKindsSelected: boolean;
   zoomPercent: number;
+  setZoomPercent: (percent: number) => void;
   graphTransformStyle: CSSProperties;
   isPanning: boolean;
   graphViewportRef: RefObject<HTMLDivElement | null>;
@@ -460,6 +461,9 @@ export function useGraphController(enabled = true): GraphController {
     areAllEdgeKindsSelected: Boolean(meta?.edgeKinds.length)
       && (meta?.edgeKinds.every((kind) => selectedEdgeKinds.includes(kind)) ?? false),
     zoomPercent: Math.round(zoom * 100),
+    setZoomPercent: (percent) => {
+      if (Number.isFinite(percent)) zoomAroundViewport(percent / (zoom * 100));
+    },
     graphTransformStyle: { transform: `translate3d(${panX}px, ${panY}px, 0) scale(${zoom})` },
     isPanning,
     graphViewportRef,

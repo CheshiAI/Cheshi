@@ -1,7 +1,7 @@
 import { Network } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { LiquidGlassPanel } from '../../shared/ui';
+import { LiquidGlassPanel, LoadingIndicator } from '../../shared/ui';
 import { cheshiDesktop as desktopApi } from '../../cheshiDesktop';
 import { GraphInspector } from './GraphInspector';
 import { GraphWorkspace } from './GraphWorkspace';
@@ -29,7 +29,10 @@ export function CodeGraphView({ onOpenWorkspaceFile, rightSidebarOpen, onToggleR
   }, []);
 
   if (indexed === null) {
-    return <main className="codegraph-unavailable"><span className="codegraph-spinner" />Checking CodeGraph status</main>;
+    return <main className="codegraph-unavailable" role="status">
+      <LoadingIndicator />
+      <span>Checking CodeGraph status</span>
+    </main>;
   }
 
   if (!indexed) {

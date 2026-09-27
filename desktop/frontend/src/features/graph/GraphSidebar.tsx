@@ -1,7 +1,8 @@
-import { ListChecks, Search } from 'lucide-react';
-import { useRef, type CSSProperties, type SubmitEvent } from 'react';
+import { ListChecks } from 'lucide-react';
+import { useRef, type SubmitEvent } from 'react';
 
-import { LiquidGlassSelect, NeumorphicButton, NeumorphicCheckbox, NeumorphicTextField, SearchClearButton } from '../../shared/ui';
+import { LiquidGlassSelect, LoadingIndicator, NeumorphicCheckbox, NeumorphicTextField, SearchClearButton } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import badgeStyles from '../../shared/ui/Badge.module.css';
 import type { GraphController } from './useGraphController';
 
@@ -10,13 +11,6 @@ const groupByOptions = [
   { value: 'language', label: 'Language' },
   { value: 'kind', label: 'Symbol type' },
 ] as const;
-
-type RangeProgressStyle = CSSProperties & { '--codegraph-range-progress': string };
-
-function rangeProgressStyle(value: number, min: number, max: number): RangeProgressStyle {
-  const progress = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
-  return { '--codegraph-range-progress': `${progress}%` };
-}
 
 export function GraphSearch({ graph }: { graph: GraphController }) {
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -31,10 +25,11 @@ export function GraphSearch({ graph }: { graph: GraphController }) {
       <section className="codegraph-control-section">
         <div className="codegraph-section-heading">
           <strong>Find symbol</strong>
-          {graph.searching && <span className="codegraph-spinner" aria-label="Searching" />}
+          {graph.searching && <LoadingIndicator label="Searching" />}
         </div>
         <form className="codegraph-search" onSubmit={submitSearch}>
           <NeumorphicTextField
+            variant="standard"
             ref={searchInputRef}
             value={graph.query}
             onChange={(event) => graph.setQuery(event.target.value)}
@@ -52,9 +47,6 @@ export function GraphSearch({ graph }: { graph: GraphController }) {
               />
             ) : undefined}
           />
-          <NeumorphicButton raised className="codegraph-search-button" type="submit" aria-label="Search">
-            <Search aria-hidden="true" />
-          </NeumorphicButton>
         </form>
         <div className="codegraph-results" aria-live="polite">
           {graph.results.map((result) => (
@@ -71,7 +63,7 @@ export function GraphSearch({ graph }: { graph: GraphController }) {
             </button>
           ))}
           {graph.results.length === 0 && !graph.searching && (
-            <p className="codegraph-hint">Search for a symbol to open its relationship graph.</p>
+            <p className="codegraph-hint">Enter a symbol name and press Enter to search.</p>
           )}
         </div>
       </section>
@@ -90,6 +82,8 @@ export function GraphSettings({ graph }: { graph: GraphController }) {
           <span>Group by</span>
           <LiquidGlassSelect
             ariaLabel="Group graph by"
+            triggerAppearance="standard"
+            menuAppearance="toolbar"
             menuPlacement="left"
             menuWidth={180}
             options={groupByOptions}
@@ -98,11 +92,10 @@ export function GraphSettings({ graph }: { graph: GraphController }) {
           />
         </div>
         <label className="codegraph-range">
-          <span>Traversal depth <output className={badgeStyles.badge}>{graph.depth}</output></span>
+          <span>Traversal depth <output>{graph.depth}</output></span>
           <input
             value={graph.depth}
             onChange={(event) => graph.setDepth(Number(event.target.value))}
-            style={rangeProgressStyle(graph.depth, 0, 4)}
             type="range"
             min="0"
             max="4"
@@ -110,11 +103,10 @@ export function GraphSettings({ graph }: { graph: GraphController }) {
           />
         </label>
         <label className="codegraph-range">
-          <span>Node limit <output className={badgeStyles.badge}>{graph.limit}</output></span>
+          <span>Node limit <output>{graph.limit}</output></span>
           <input
             value={graph.limit}
             onChange={(event) => graph.setLimit(Number(event.target.value))}
-            style={rangeProgressStyle(graph.limit, 12, 120)}
             type="range"
             min="12"
             max="120"
@@ -127,9 +119,9 @@ export function GraphSettings({ graph }: { graph: GraphController }) {
         <section className="codegraph-control-section codegraph-edge-section">
           <div className="codegraph-section-heading">
             <strong>Relationship types</strong>
-            <NeumorphicButton
-              raised
-              className="codegraph-edge-toggle"
+            <TooltipButton
+              variant="ghost"
+              size="icon"
               type="button"
               aria-label={graph.areAllEdgeKindsSelected
                 ? 'Clear all relationship types'
@@ -143,7 +135,7 @@ export function GraphSettings({ graph }: { graph: GraphController }) {
               )}
             >
               <ListChecks aria-hidden="true" />
-            </NeumorphicButton>
+            </TooltipButton>
           </div>
           <div className="codegraph-edge-list">
             {graph.activeEdgeKinds.map((kind) => (

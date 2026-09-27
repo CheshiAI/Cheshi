@@ -36,7 +36,7 @@ interface LiquidGlassSelectProps<Value extends string> {
   menuWidth?: number;
   onChange: (value: Value) => void;
   options: readonly LiquidGlassSelectOption<Value>[];
-  triggerAppearance?: 'flat' | 'raised' | 'pill';
+  triggerAppearance?: 'flat' | 'raised' | 'pill' | 'standard';
   value: Value;
 }
 
@@ -170,7 +170,7 @@ export function LiquidGlassSelect<Value extends string>({
   }, [menuAppearance, menuPlacement, menuWidth, open, options.length]);
 
   const rootClassName = className ? `${styles.root} ${className}` : styles.root;
-  const triggerClassName = triggerAppearance === 'raised'
+  const triggerClassName = triggerAppearance === 'standard' ? styles.standardTrigger : triggerAppearance === 'raised'
     ? `neumorphic-surface ${styles.trigger}`
     : styles.trigger;
   const Trigger = triggerAppearance === 'pill' ? PillDropdownButton : NeumorphicButton;
@@ -180,6 +180,7 @@ export function LiquidGlassSelect<Value extends string>({
   return (
     <div className={rootClassName} ref={rootRef}>
       <Trigger
+        variant={triggerAppearance === 'standard' ? 'standard' : undefined}
         raised={triggerAppearance !== 'flat'}
         className={triggerAppearance === 'pill' ? undefined : triggerClassName}
         data-appearance={triggerAppearance}

@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useState, type CSSProperties, type KeyboardE
 
 import { layoutGraph, type PositionedGraphNode } from './graphLayout';
 import type { GraphSlice } from './types';
+import { Tooltip } from '../../shared/ui';
 
 interface GraphSceneProps {
   graph: GraphSlice;
@@ -54,35 +55,37 @@ function GraphNodeCard({
 
   return (
     <g transform={`translate(${positioned.x} ${positioned.y})`}>
-      <g
-        className={`codegraph-node${root ? ' is-root' : ''}${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}`}
-        data-kind={node.kind}
-        role="button"
-        tabIndex={0}
-        aria-label={`Select ${node.name}, ${readableKind(node.kind)}`}
-        onClick={onSelect}
-        onKeyDown={handleKeyDown}
-        onMouseEnter={() => onHover(true)}
-        onMouseLeave={() => onHover(false)}
-      >
-        <title>{title}</title>
-        <rect className="codegraph-node-halo" x="-5" y="-5" width={width + 10} height={height + 10} rx={root ? 21 : 17} />
-        <rect className="codegraph-node-shell" width={width} height={height} rx={root ? 16 : 12} />
-        <rect className="codegraph-node-accent" x="0" y={root ? 15 : 13} width="4" height={height - (root ? 30 : 26)} rx="2" />
-        <circle className="codegraph-node-kind-dot" cx={root ? 22 : 20} cy={root ? 22 : 19} r={root ? 5 : 4} />
-        <text className="codegraph-node-kind" x={root ? 34 : 31} y={root ? 26 : 23}>
-          {root ? 'Focus' : readableKind(node.kind)}
-        </text>
-        <text className="codegraph-node-language" x={width - 14} y={root ? 26 : 23} textAnchor="end">
-          {root ? `${incomingCount} in · ${outgoingCount} out` : node.language}
-        </text>
-        <text className="codegraph-node-name" x={root ? 18 : 15} y={root ? 56 : 47}>
-          {compactText(node.name, root ? 29 : 25)}
-        </text>
-        <text className="codegraph-node-location" x={root ? 18 : 15} y={root ? 79 : 67}>
-          {compactText(location, root ? 35 : 31)}
-        </text>
-      </g>
+      <Tooltip<SVGGElement> content={title}>
+        {trigger => <g
+          {...trigger}
+          className={`codegraph-node${root ? ' is-root' : ''}${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}`}
+          data-kind={node.kind}
+          role="button"
+          tabIndex={0}
+          aria-label={`Select ${node.name}, ${readableKind(node.kind)}`}
+          onClick={onSelect}
+          onKeyDown={handleKeyDown}
+          onMouseEnter={() => onHover(true)}
+          onMouseLeave={() => onHover(false)}
+        >
+          <rect className="codegraph-node-halo" x="-5" y="-5" width={width + 10} height={height + 10} rx={root ? 21 : 17} />
+          <rect className="codegraph-node-shell" width={width} height={height} rx={root ? 16 : 12} />
+          <rect className="codegraph-node-accent" x="0" y={root ? 15 : 13} width="4" height={height - (root ? 30 : 26)} rx="2" />
+          <circle className="codegraph-node-kind-dot" cx={root ? 22 : 20} cy={root ? 22 : 19} r={root ? 5 : 4} />
+          <text className="codegraph-node-kind" x={root ? 34 : 31} y={root ? 26 : 23}>
+            {root ? 'Focus' : readableKind(node.kind)}
+          </text>
+          <text className="codegraph-node-language" x={width - 14} y={root ? 26 : 23} textAnchor="end">
+            {root ? `${incomingCount} in · ${outgoingCount} out` : node.language}
+          </text>
+          <text className="codegraph-node-name" x={root ? 18 : 15} y={root ? 56 : 47}>
+            {compactText(node.name, root ? 29 : 25)}
+          </text>
+          <text className="codegraph-node-location" x={root ? 18 : 15} y={root ? 79 : 67}>
+            {compactText(location, root ? 35 : 31)}
+          </text>
+        </g>}
+      </Tooltip>
     </g>
   );
 }
@@ -91,7 +94,6 @@ export function GraphScene({ graph, selectedId, displayPath, onSelectNode }: Gra
   const layout = useMemo(() => layoutGraph(graph), [graph]);
   const markerPrefix = useId().replaceAll(':', '');
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const edgeKinds = useMemo(() => [...new Set(layout.edges.map(({ edge }) => edge.kind))], [layout.edges]);
   const connectedNodeIds = useMemo(() => {
     if (!hoveredNodeId) return null;
@@ -105,7 +107,6 @@ export function GraphScene({ graph, selectedId, displayPath, onSelectNode }: Gra
 
   useEffect(() => {
     setHoveredNodeId(null);
-    setHoveredEdgeId(null);
   }, [graph]);
 
   return (
@@ -173,17 +174,17 @@ export function GraphScene({ graph, selectedId, displayPath, onSelectNode }: Gra
                 className="codegraph-edge-path"
                 d={positionedEdge.path}
                 markerEnd={`url(#${markerPrefix}-${markerSafeKind(edge.kind)})`}
-              >
-                <title>{relationLabel}</title>
-              </path>
-              <path
-                className="codegraph-edge-hit-area"
-                d={positionedEdge.path}
-                onMouseEnter={() => setHoveredEdgeId(positionedEdge.id)}
-                onMouseLeave={() => setHoveredEdgeId(null)}
+                aria-label={relationLabel}
               />
+              <Tooltip<SVGPathElement> content={relationLabel}>
+                {trigger => <path
+                  {...trigger}
+                  className="codegraph-edge-hit-area"
+                  d={positionedEdge.path}
+                />}
+              </Tooltip>
               <g
-                className={`codegraph-edge-label${hoveredEdgeId === positionedEdge.id || showConnectedLabel ? ' is-visible' : ''}`}
+                className={`codegraph-edge-label${showConnectedLabel ? ' is-visible' : ''}`}
                 transform={`translate(${positionedEdge.labelX} ${positionedEdge.labelY})`}
               >
                 <rect x={-labelWidth / 2} y="-11" width={labelWidth} height="22" rx="11" />

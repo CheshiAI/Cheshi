@@ -1,16 +1,18 @@
 .anchor {
+  composes: anchor from './PopupSurface.module.css';
+  --liquid-glass-radius: 8px;
   position: fixed;
   z-index: 120;
   width: max-content;
+  max-width: min(360px, calc(100vw - 16px));
   pointer-events: none;
   -webkit-app-region: no-drag;
 }
 
 .content {
-  --liquid-glass-radius: 8px;
+  composes: surface from './PopupSurface.module.css';
   padding: 4px 8px;
   border-color: var(--divider);
-  background: var(--divider);
   color: var(--text);
   font-family: var(--font-ui);
   font-size: 12px;

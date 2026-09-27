@@ -42,7 +42,8 @@
   min-width: 0;
   height: 100%;
   flex-direction: column;
-  font-size: 10px;
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
 }
 
 .content[hidden] {
@@ -57,9 +58,15 @@
   justify-content: space-between;
   gap: var(--icon-default);
   border-bottom: 1px solid var(--divider);
-  color: var(--sidebar-section-label-color);
-  font-weight: 600;
   padding: 0 var(--space-default);
+}
+
+.heading > span {
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-label);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: uppercase;
 }
 
 .rail {
@@ -72,33 +79,6 @@
   gap: var(--icon-default);
   border-left: 1px solid var(--divider);
   padding: var(--space-default) 0;
-}
-
-.button {
-  --neumorphic-button-radius: 50%;
-  display: inline-grid;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  place-items: center;
-  cursor: pointer;
-  padding: 0;
-}
-
-.rail .button[data-active='true'] {
-  background: var(--dropdown-selection-bg);
-  color: var(--dropdown-selection-text);
-}
-
-.inspector .button:focus-visible {
-  outline: 2px solid var(--dropdown-selection-text);
-  outline-offset: 2px;
-}
-
-.button svg {
-  width: 11px;
-  height: 11px;
-  stroke-width: 1.7;
 }
 
 @media (prefers-reduced-motion: reduce) {

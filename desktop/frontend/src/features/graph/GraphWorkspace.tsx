@@ -1,9 +1,14 @@
-import { Crosshair, FileCode2, Minus, PanelRight, Plus, X } from 'lucide-react';
+import { Crosshair, FileCode2, PanelRight, TriangleAlert, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { SidebarToggle, EmptyState, NeumorphicButton, TieredHeader } from '../../shared/ui';
+import { SidebarToggle, EmptyState, NeumorphicButton, TieredHeader, LoadingIndicator, Tooltip } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import badgeStyles from '../../shared/ui/Badge.module.css';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
+import { WorkspaceLayoutControls } from '../shell/WorkspaceLayoutControls';
 import { GraphScene } from './GraphScene';
+import { GraphViewControls } from './GraphViewControls';
 import type { GraphController } from './useGraphController';
 
 interface GraphWorkspaceProps {
@@ -15,60 +20,44 @@ interface GraphWorkspaceProps {
 }
 
 export function GraphWorkspace({ graph, inspector, rightSidebarOpen, onToggleRightSidebar, onCloseWorkspace }: GraphWorkspaceProps) {
+  const scrollbarSurface = useAutoHideScrollbars<HTMLElement>();
   return (
-    <section className="codegraph-workspace" aria-label="CodeGraph relationship graph">
+    <section ref={scrollbarSurface} className="codegraph-workspace" aria-label="CodeGraph relationship graph">
       <TieredHeader
         className="codegraph-toolbar"
         primary={(
           <>
             <div className="codegraph-toolbar-heading">
               <div className="codegraph-toolbar-title">
-                <NeumorphicButton
-                  raised
-                  aria-hidden="true"
-                  className="theme-toggle codegraph-toolbar-title-mark"
-                  disabled
-                >
-                  <Crosshair aria-hidden="true" />
-                </NeumorphicButton>
-                <strong>{graph.details?.node.name ?? 'Relationship Graph'}</strong>
+                <SidebarPanelTitle
+                  icon={<Crosshair aria-hidden="true" />}
+                  title="Relationship Graph"
+                />
               </div>
               {(graph.graph || graph.loading) && (
                 <div className="codegraph-summary-status" aria-live="polite">
-                  {graph.loading && <span className="codegraph-spinner" />}
+                  {graph.loading && <LoadingIndicator label="Loading graph" />}
                   {graph.graph && <span>{graph.graphSummary}</span>}
                 </div>
               )}
             </div>
             <div className="codegraph-toolbar-actions">
-              {graph.graph && (
-                <div className="codegraph-graph-controls" aria-label="Graph view controls">
-                  <NeumorphicButton raised className="codegraph-graph-control codegraph-graph-control-icon" onClick={graph.zoomOut} aria-label="Zoom out">
-                    <Minus aria-hidden="true" />
-                  </NeumorphicButton>
-                  <output aria-label="Graph zoom level">{graph.zoomPercent}%</output>
-                  <NeumorphicButton raised className="codegraph-graph-control codegraph-graph-control-icon" onClick={graph.zoomIn} aria-label="Zoom in">
-                    <Plus aria-hidden="true" />
-                  </NeumorphicButton>
-                  <NeumorphicButton raised className="codegraph-graph-control" onClick={graph.fitGraph}>Fit</NeumorphicButton>
-                  <NeumorphicButton raised className="codegraph-graph-control" onClick={graph.resetGraphView} aria-label="Reset graph zoom to 100%">100%</NeumorphicButton>
-                  <NeumorphicButton raised className="codegraph-graph-control codegraph-graph-control-icon" onClick={graph.closeGraphView} aria-label="Close graph">
-                    <X aria-hidden="true" />
-                  </NeumorphicButton>
-                </div>
-              )}
-              <SidebarToggle
-                raised
-                className="theme-toggle codegraph-sidebar-toggle"
-                aria-label={rightSidebarOpen ? 'Hide right sidebar' : 'Show right sidebar'}
-                aria-expanded={rightSidebarOpen}
-                onClick={onToggleRightSidebar}
-              >
-                <PanelRight aria-hidden="true" />
-              </SidebarToggle>
-              {onCloseWorkspace && <NeumorphicButton raised size="icon"
+              <WorkspaceLayoutControls />
+              <Tooltip content={rightSidebarOpen ? 'Hide right sidebar' : 'Show right sidebar'}>
+                {trigger => <SidebarToggle
+                  {...trigger}
+                  variant="ghost"
+                  size="icon"
+                  aria-label={rightSidebarOpen ? 'Hide right sidebar' : 'Show right sidebar'}
+                  aria-expanded={rightSidebarOpen}
+                  onClick={onToggleRightSidebar}
+                >
+                  <PanelRight aria-hidden="true" />
+                </SidebarToggle>}
+              </Tooltip>
+              {onCloseWorkspace && <TooltipButton raised size="icon"
                 aria-label="Close Relationship Graph workspace" title="Close Relationship Graph workspace"
-                onClick={onCloseWorkspace}><X aria-hidden="true" /></NeumorphicButton>}
+                onClick={onCloseWorkspace}><X aria-hidden="true" /></TooltipButton>}
             </div>
           </>
         )}
@@ -76,7 +65,10 @@ export function GraphWorkspace({ graph, inspector, rightSidebarOpen, onToggleRig
       <div className="codegraph-workspace-body">
         <div className="codegraph-workspace-content">
           {(graph.errorMessage || graph.graphError) && (
-            <div className="codegraph-error" role="alert">{graph.errorMessage || graph.graphError}</div>
+            <div className="codegraph-error" role="alert">
+              <TriangleAlert aria-hidden="true" />
+              <span>{graph.errorMessage || graph.graphError}</span>
+            </div>
           )}
           {!graph.graph && !graph.loading ? (
             <EmptyState
@@ -105,6 +97,7 @@ export function GraphWorkspace({ graph, inspector, rightSidebarOpen, onToggleRig
               </div>
             </div>
           )}
+          {graph.graph && <GraphViewControls graph={graph} />}
         </div>
         {inspector}
       </div>
@@ -129,7 +122,7 @@ export function GraphDetails({ graph, openWorkspaceFile }: GraphDetailsProps) {
             <span className={badgeStyles.badge}>{details.node.language}</span>
             <span className={badgeStyles.badge}>Lines {details.node.startLine}–{details.node.endLine}</span>
           </div>
-          <NeumorphicButton raised className="codegraph-open-file" type="button" onClick={() => openWorkspaceFile(details.node.filePath, details.node.startLine)}>
+          <NeumorphicButton variant="ghost" className="codegraph-open-file" type="button" onClick={() => openWorkspaceFile(details.node.filePath, details.node.startLine)}>
             <FileCode2 aria-hidden="true" />
             Open file at line {details.node.startLine}
           </NeumorphicButton>
@@ -158,10 +151,10 @@ function RelationList({
     <section className="codegraph-relations">
       <header><strong>{title}</strong><span className={badgeStyles.badge}>{relations.length}</span></header>
       {relations.map((relation) => (
-        <button key={`${relation.id}-${relation.edge}`} type="button" onClick={() => onSelect(relation)}>
+        <NeumorphicButton variant="ghost" key={`${relation.id}-${relation.edge}`} type="button" onClick={() => onSelect(relation)}>
           <span>{relation.name}</span>
           <small>{relation.edge}</small>
-        </button>
+        </NeumorphicButton>
       ))}
     </section>
   );

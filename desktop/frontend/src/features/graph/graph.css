@@ -1,21 +1,13 @@
 .codegraph-view {
-  --codegraph-border: rgba(255, 255, 255, .1);
-  --codegraph-surface-raised: #2b373c;
-  --codegraph-muted: #96a2a8;
-  --codegraph-control: #252e32;
-  --codegraph-canvas: var(--app-bg);
   --codegraph-grid-dot: rgba(151, 180, 189, .16);
   --codegraph-accent: #8fc4c8;
-  --codegraph-active-bg: #33464d;
-  --codegraph-item-text: #bdbdbd;
-  --codegraph-lane-surface: rgba(45, 54, 58, .46);
-  --codegraph-lane-border: rgba(170, 198, 205, .09);
-  --codegraph-node-surface: #293236;
-  --codegraph-node-surface-hover: #303b40;
-  --codegraph-node-root: #34464b;
-  --codegraph-node-border: rgba(192, 218, 223, .16);
-  --codegraph-node-text: #edf2f3;
-  --codegraph-node-muted: #94a3a9;
+  --codegraph-lane-surface: var(--control-surface);
+  --codegraph-lane-border: var(--divider);
+  --codegraph-node-surface: var(--control-surface);
+  --codegraph-node-surface-hover: var(--control-surface-interactive);
+  --codegraph-node-border: var(--divider);
+  --codegraph-node-text: var(--text);
+  --codegraph-node-muted: var(--sidebar-section-label-color);
   --codegraph-edge-default: #7f9299;
   position: relative;
   display: flex;
@@ -42,84 +34,120 @@
   overflow-y: auto;
   padding: var(--space-default);
 }
-.codegraph-details { font-size: 10px; }
+.codegraph-details { font-size: var(--font-size-small); }
 
-.codegraph-control-section { display: grid; flex: 0 0 auto; gap: 10px; }
-.codegraph-control-section + .codegraph-control-section { border-top: 1px solid var(--codegraph-border); padding-top: var(--space-default); }
+.codegraph-control-section { display: grid; flex: 0 0 auto; gap: var(--space-default); }
+.codegraph-control-section + .codegraph-control-section { border-top: 1px solid var(--divider); padding-top: var(--space-default); }
 .codegraph-edge-section { min-height: max-content; }
-.codegraph-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--codegraph-muted); }
-.codegraph-section-heading strong { color: var(--codegraph-muted); font-size: 10px; font-weight: 400; letter-spacing: .08em; line-height: 14px; text-transform: uppercase; }
-.codegraph-section-heading svg { width: var(--icon-size-default); height: var(--icon-size-default); }
+.codegraph-section-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--icon-default); color: var(--sidebar-section-label-color); }
+.codegraph-section-heading strong {
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-label);
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 14px;
+  text-transform: uppercase;
+}
 
-.codegraph-search { display: grid; grid-template-columns: minmax(0, 1fr) 22px; align-items: center; gap: var(--icon-default); }
-.codegraph-search .codegraph-search-button svg,
-.codegraph-section-heading .codegraph-edge-toggle svg { width: 11px; height: 11px; stroke-width: 1.7; }
-.codegraph-toolbar button svg, .codegraph-open-file svg, .codegraph-graph-control svg { width: var(--icon-size-default); height: var(--icon-size-default); }
+.codegraph-search { display: grid; grid-template-columns: minmax(0, 1fr); }
+.codegraph-toolbar button:not([data-size='icon']) svg, .codegraph-open-file svg { width: var(--icon-size-default); height: var(--icon-size-default); }
 
 .codegraph-results { display: grid; min-height: 48px; gap: 4px; overflow: auto; }
 .codegraph-result {
   display: grid;
+  box-sizing: border-box;
   min-width: 0;
+  height: 42px;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 4px 8px;
+  grid-template-rows: 16px 14px;
+  align-content: center;
+  gap: 0 var(--icon-default);
   border: 0;
   border-radius: 8px;
-  background: transparent;
+  background: var(--control-surface-ghost);
   color: var(--text);
   cursor: pointer;
-  font-size: 10px;
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-label);
+  font-weight: 400;
+  letter-spacing: normal;
   line-height: 16px;
-  padding: 8px;
+  padding: 6px var(--icon-default);
   text-align: left;
 }
-.codegraph-result:hover, .codegraph-result[data-selected="true"] { background: var(--codegraph-surface-raised); color: var(--active-text); }
+.codegraph-result[data-selected="true"] { background: var(--control-surface); }
+.codegraph-result:is(:hover, :active, :focus-visible) { background: var(--control-surface-interactive); }
 .codegraph-result-kind { grid-row: span 2; align-self: start; }
 .codegraph-result strong, .codegraph-result small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.codegraph-result strong { font-size: 10px; font-weight: 400; }
-.codegraph-result small { color: inherit; font-size: 10px; line-height: 14px; }
-.codegraph-hint { margin: 0; color: var(--codegraph-muted); line-height: 1.5; }
-.codegraph-symbol-search .codegraph-section-heading strong,
-.codegraph-symbol-search .codegraph-hint,
-.codegraph-details > .codegraph-hint { color: var(--sidebar-section-label-color); }
+.codegraph-result strong { color: var(--text); font-size: var(--font-size-label); font-weight: 400; }
+.codegraph-result small { color: var(--sidebar-section-label-color); font-size: var(--font-size-small); font-weight: 400; line-height: 14px; }
+.codegraph-hint { margin: 0; color: var(--sidebar-section-label-color); line-height: 1.5; }
+.codegraph-symbol-search .codegraph-hint {
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
+}
 
-.codegraph-field, .codegraph-range { display: grid; gap: 8px; color: var(--codegraph-muted); font-size: 10px; font-weight: 400; line-height: 16px; }
-.codegraph-range > span { display: flex; justify-content: space-between; }
-.codegraph-result .codegraph-result-kind { color: inherit; }
-.codegraph-settings .codegraph-section-heading strong,
-.codegraph-settings .codegraph-field > span,
-.codegraph-settings .codegraph-range > span { color: var(--sidebar-section-label-color); }
+.codegraph-settings .codegraph-section-heading { min-height: 32px; gap: var(--space-default); }
+.codegraph-field, .codegraph-range {
+  display: grid;
+  gap: var(--icon-default);
+  min-height: 36px;
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-label);
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 16px;
+}
+.codegraph-range > span { display: flex; align-items: center; justify-content: space-between; gap: var(--space-default); }
 .codegraph-range input {
-  --codegraph-range-progress: 0%;
-  width: 100%;
-  height: 16px;
+  width: 200px;
+  max-width: 100%;
+  height: 20px;
   margin: 0;
+  padding: 0;
+  border: 0;
   appearance: none;
   outline: none;
   background: transparent;
   cursor: pointer;
 }
 .codegraph-range input::-webkit-slider-runnable-track {
-  height: 8px;
+  height: 4px;
   border: 0;
-  border-radius: 999px;
-  background:
-    linear-gradient(90deg, #86d4d6 0%, #d8a7c5 52%, #c5b4ee 100%) left center / var(--codegraph-range-progress) 100% no-repeat,
-    rgba(0, 0, 0, .32);
+  border-radius: 2px;
+  background: var(--control-track-color);
 }
 .codegraph-range input::-webkit-slider-thumb {
-  width: 12px;
-  height: 12px;
-  margin-top: -2px;
+  width: 20px;
+  height: 20px;
+  margin-top: -8px;
   appearance: none;
-  border: 1px solid rgba(255, 255, 255, .5);
+  border: 0;
   border-radius: 50%;
-  background: #c5b4ee;
-  opacity: 1;
-  transform: scale(1);
-  transition: opacity 140ms ease, transform 180ms cubic-bezier(.22, 1, .36, 1);
+  background: var(--control-thumb-color);
 }
-.codegraph-edge-list { display: grid; gap: 8px; }
-.codegraph-edge-option { position: relative; display: flex; align-items: center; gap: 8px; color: var(--text); cursor: pointer; font-size: 10px; font-weight: 400; line-height: 16px; }
+.codegraph-range input:hover:not(:disabled)::-webkit-slider-runnable-track { background: var(--control-track-hover-color); }
+.codegraph-range input:disabled { cursor: not-allowed; opacity: .5; }
+.codegraph-edge-list { display: grid; gap: var(--icon-default); }
+.codegraph-edge-option {
+  position: relative;
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  gap: var(--icon-default);
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-label);
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 16px;
+}
 .codegraph-edge-dot { width: 7px; height: 7px; border-radius: 50%; background: #929292; }
 .codegraph-edge-dot[data-kind="calls"] { background: #ef6461; }
 .codegraph-edge-dot[data-kind="imports"] { background: #48b788; }
@@ -143,6 +171,7 @@
   overflow: hidden;
 }
 .codegraph-workspace-content {
+  position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -152,8 +181,18 @@
 }
 
 .codegraph-workspace .codegraph-empty-state {
-  --empty-text: var(--title);
-  --empty-muted: var(--sub-text);
+  --empty-text: var(--sidebar-section-label-color);
+  --empty-muted: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
+}
+.codegraph-workspace .codegraph-empty-state > strong {
+  font-size: var(--font-size-label);
+  font-weight: 600;
+}
+.codegraph-workspace .codegraph-empty-state > p {
+  font-size: var(--font-size-small);
+  font-weight: 400;
 }
 
 .codegraph-toolbar {
@@ -164,41 +203,95 @@
 }
 .codegraph-toolbar-heading, .codegraph-toolbar-title, .codegraph-toolbar-actions { display: flex; min-width: 0; align-items: center; gap: 6px; }
 .codegraph-toolbar-heading { flex: 1 1 auto; gap: var(--space-default); }
-.codegraph-toolbar-title { max-width: 180px; flex: 0 0 auto; gap: 10px; }
-.codegraph-toolbar-title-mark { color: var(--codegraph-accent); cursor: default; pointer-events: none; }
-.codegraph-toolbar .codegraph-toolbar-title-mark svg { width: 11px; height: 11px; stroke-width: 1.7; }
-.codegraph-toolbar-title strong { overflow: hidden; color: var(--sidebar-section-label-color); font-size: 10px; font-weight: 600; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
-.codegraph-toolbar-actions { flex: 0 0 auto; }
-.codegraph-toolbar .codegraph-sidebar-toggle svg { width: 11px; height: 11px; stroke-width: 1.7; }
-.codegraph-summary-status { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 8px; color: var(--sub-text); }
+.codegraph-toolbar-title { max-width: 180px; flex: 0 0 auto; text-transform: uppercase; }
+.codegraph-toolbar-actions { flex: 0 0 auto; gap: var(--icon-default); }
+.codegraph-summary-status {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--icon-default);
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
+}
 .codegraph-summary-status > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.codegraph-graph-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; font-size: 10px; }
-.codegraph-graph-controls output { min-width: 40px; color: var(--active-text); text-align: center; }
-.codegraph-graph-control { --neumorphic-button-radius: 8px; display: inline-grid; min-width: 30px; height: 30px; place-items: center; cursor: pointer; padding: 0 10px; }
-.codegraph-graph-control-icon { width: 30px; padding: 0; }
-.codegraph-graph-control:not(.codegraph-graph-control-icon) {
-  --neumorphic-button-radius: var(--button-radius);
-  min-height: var(--field-height);
-  height: auto;
-  padding: var(--space-8) var(--space-default);
-  font: inherit;
-  font-size: var(--font-size-default);
+.codegraph-workspace .codegraph-graph-controls {
+  --liquid-glass-radius: 999px;
+  position: absolute;
+  right: var(--space-default);
+  bottom: var(--space-default);
+  z-index: 1;
+  display: flex;
+  box-sizing: border-box;
+  width: max-content;
+  height: 42px;
+  max-width: calc(100% - var(--space-default) * 2);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  align-items: center;
+  gap: var(--icon-default);
+  padding: 0 var(--space-8);
+  background: var(--codegraph-lane-surface);
+  border: 0;
 }
-.codegraph-graph-control:not(.codegraph-graph-control-icon):not(:disabled):hover {
-  --neumorphic-button-active-color: var(--active-text);
-  color: var(--active-text);
+.codegraph-graph-controls .codegraph-zoom-input {
+  --field-padding-inline: var(--space-8);
+  width: 56px;
+  flex: 0 0 56px;
 }
-.codegraph-error { border-bottom: 1px solid rgba(210, 70, 70, .35); background: rgba(210, 70, 70, .13); color: #dc7777; padding: var(--space-default); }
-.codegraph-unavailable { display: flex; min-width: 0; min-height: 0; flex: 1 1 auto; align-items: center; justify-content: center; flex-direction: column; gap: var(--space-default); color: var(--codegraph-muted, #777); text-align: center; padding: var(--space-default); }
-.codegraph-unavailable > svg { width: 32px; height: 32px; }
-.codegraph-unavailable strong { color: var(--text); }
+.codegraph-zoom-input input { text-align: center; }
+.codegraph-error {
+  display: flex;
+  align-items: center;
+  gap: var(--icon-default);
+  border-bottom: 1px solid var(--divider);
+  background: var(--control-surface-ghost);
+  padding: var(--space-default);
+}
+.codegraph-error,
+.codegraph-unavailable {
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.5;
+}
+.codegraph-error > svg {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  flex: 0 0 auto;
+  color: var(--codegraph-disabled);
+}
+.codegraph-unavailable {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--space-default);
+  text-align: center;
+  padding: var(--space-default);
+}
+.codegraph-unavailable > svg { width: var(--icon-size-default); height: var(--icon-size-default); }
+.codegraph-unavailable strong { font-size: var(--font-size-label); font-weight: 600; }
+.codegraph-workspace :is(.codegraph-controls, .codegraph-details, .codegraph-results, .codegraph-graph-controls) {
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
 .codegraph-canvas {
   position: relative;
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  background-color: var(--codegraph-canvas);
+  background-color: transparent;
   background-image: radial-gradient(circle, var(--codegraph-grid-dot) 1px, transparent .075rem);
   background-size: 22px 22px;
   cursor: grab;
@@ -211,7 +304,8 @@
   display: block;
   max-width: none;
   overflow: visible;
-  font-family: "Avenir Next", "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
   user-select: none;
 }
 
@@ -223,12 +317,12 @@
 .codegraph-lane-title,
 .codegraph-lane-count {
   fill: var(--codegraph-node-muted);
-  font-size: 10px;
+  font-size: var(--font-size-label);
   font-weight: 600;
-  letter-spacing: .12em;
+  letter-spacing: normal;
   text-transform: uppercase;
 }
-.codegraph-lane-count { letter-spacing: .04em; }
+.codegraph-lane-count { font-size: var(--font-size-small); font-weight: 400; }
 
 .codegraph-edge {
   --codegraph-edge-color: var(--codegraph-edge-default);
@@ -279,9 +373,9 @@
 }
 .codegraph-edge-label text {
   fill: var(--codegraph-node-text);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: .02em;
+  font-size: var(--font-size-label);
+  font-weight: 400;
+  letter-spacing: normal;
 }
 
 .codegraph-node {
@@ -313,9 +407,8 @@
   stroke-width: 1px;
   transition: fill 160ms ease, stroke 160ms ease;
 }
-.codegraph-node:hover .codegraph-node-shell { fill: var(--codegraph-node-surface-hover); }
+.codegraph-node:is(:hover, :active, :focus-visible) .codegraph-node-shell { fill: var(--codegraph-node-surface-hover); }
 .codegraph-node.is-root .codegraph-node-shell {
-  fill: var(--codegraph-node-root);
   stroke: color-mix(in srgb, var(--codegraph-accent) 45%, transparent);
   stroke-width: .09375rem;
 }
@@ -337,34 +430,61 @@
 .codegraph-node-language,
 .codegraph-node-location { fill: var(--codegraph-node-muted); }
 .codegraph-node-kind {
-  font-size: 9px;
+  font-size: var(--font-size-label);
   font-weight: 600;
-  letter-spacing: .1em;
+  letter-spacing: normal;
   text-transform: uppercase;
 }
-.codegraph-node-language { font-size: 9px; font-weight: 500; }
+.codegraph-node-language { font-size: var(--font-size-small); font-weight: 400; }
 .codegraph-node-name {
   fill: var(--codegraph-node-text);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: 400;
 }
-.codegraph-node.is-root .codegraph-node-name { font-size: 16px; letter-spacing: -.01em; }
-.codegraph-node-location { font-size: .59375rem; font-weight: 400; }
+.codegraph-node-location { font-size: var(--font-size-small); font-weight: 400; }
 
-.codegraph-selected-summary { margin: 0; color: var(--sidebar-section-label-color); font-size: 10px; line-height: 14px; overflow-wrap: anywhere; }
-.codegraph-symbol-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.codegraph-selected-summary,
+.codegraph-details > .codegraph-hint {
+  margin: 0;
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 14px;
+  overflow-wrap: anywhere;
+}
+.codegraph-symbol-meta { display: flex; flex-wrap: wrap; gap: var(--icon-default); }
 
-.codegraph-open-file { display: inline-flex; width: 100%; min-height: 34px; align-items: center; justify-content: center; gap: 8px; cursor: pointer; padding: 0 10px; }
+.codegraph-open-file { width: 100%; }
 .codegraph-relations { display: grid; gap: 4px; }
-.codegraph-relations header { display: flex; justify-content: space-between; color: var(--codegraph-muted); font-size: 10px; font-weight: 400; letter-spacing: .08em; line-height: 14px; text-transform: uppercase; }
-.codegraph-relations header strong { color: var(--sidebar-section-label-color); font-weight: 400; }
-.codegraph-relations button { display: flex; width: 100%; min-width: 0; min-height: 24px; align-items: center; justify-content: space-between; gap: 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; font-size: 10px; font-weight: 400; line-height: 16px; padding: 4px 8px; text-align: left; }
-.codegraph-relations button:hover,
-.codegraph-relations button:active,
-.codegraph-relations button:focus-visible { background: var(--codegraph-surface-raised); color: var(--active-text); }
-.codegraph-relations button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.codegraph-relations button small, .codegraph-relations p { color: var(--codegraph-muted); font-size: 10px; line-height: 14px; }
-.codegraph-relations button small { color: inherit; }
-.codegraph-relations p { margin: 0; }
-.codegraph-spinner { width: var(--icon-size-default); height: var(--icon-size-default); border: 2px solid var(--codegraph-border, rgba(127, 127, 127, .25)); border-top-color: var(--codegraph-accent, #5a8d94); border-radius: 50%; animation: codegraph-spin .8s linear infinite; }
-@keyframes codegraph-spin { to { transform: rotate(360deg); } }
+.codegraph-relations header { display: flex; align-items: center; justify-content: space-between; gap: var(--icon-default); }
+.codegraph-relations header strong {
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-label);
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+.codegraph-relations button {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  min-height: 42px;
+  justify-content: space-between;
+  border-radius: 8px;
+  padding: 0 var(--icon-default);
+  text-align: left;
+}
+.codegraph-relations button:focus-visible { background: var(--control-surface-interactive); }
+.codegraph-relations button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.codegraph-relations button small {
+  flex: 0 0 auto;
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 14px;
+}

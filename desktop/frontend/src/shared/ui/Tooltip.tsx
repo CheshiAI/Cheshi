@@ -4,16 +4,16 @@ import { createPortal } from 'react-dom';
 import { LiquidGlassPanel } from './LiquidGlassPanel';
 import styles from './Tooltip.module.css';
 
-type TooltipTriggerProps = Pick<HTMLAttributes<HTMLElement>,
+type TooltipTriggerProps<T extends Element> = Pick<HTMLAttributes<T>,
   'aria-describedby' | 'onPointerEnter' | 'onPointerLeave' | 'onFocus' | 'onBlur'>;
 
-interface TooltipProps {
+interface TooltipProps<T extends Element> {
   content: string;
   delay?: number;
-  children: (props: TooltipTriggerProps) => ReactNode;
+  children: (props: TooltipTriggerProps<T>) => ReactNode;
 }
 
-function TooltipContent({ anchor, content, id }: { anchor: HTMLElement; content: string; id: string }) {
+function TooltipContent({ anchor, content, id }: { anchor: Element; content: string; id: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
 
@@ -32,7 +32,7 @@ function TooltipContent({ anchor, content, id }: { anchor: HTMLElement; content:
 
   return createPortal(
     <div ref={ref} className={styles.anchor} style={position ?? { visibility: 'hidden' }}>
-      <LiquidGlassPanel id={id} role="tooltip" className={styles.content}>
+      <LiquidGlassPanel id={id} role="tooltip" className={styles.content} data-liquid-glass-backdrop="true">
         {content}
       </LiquidGlassPanel>
     </div>,
@@ -40,9 +40,9 @@ function TooltipContent({ anchor, content, id }: { anchor: HTMLElement; content:
   );
 }
 
-export function Tooltip({ content, delay = 1000, children }: TooltipProps) {
+export function Tooltip<T extends Element = HTMLElement>({ content, delay = 1000, children }: TooltipProps<T>) {
   const id = useId();
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [anchor, setAnchor] = useState<Element | null>(null);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {

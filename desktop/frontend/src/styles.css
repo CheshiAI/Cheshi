@@ -173,14 +173,14 @@ h1, h2, h3, h4, h5, h6, p {
 }
 
 .neumorphic-surface-tokens,
-.neumorphic-surface, .theme-toggle, .sidebar-heading-action, .codegraph-inspector-toggle, .codegraph-search-button, .codegraph-edge-toggle, .neumorphic-checkbox, .codegraph-open-file, .codegraph-graph-control, .codegraph-source summary, .codegraph-search input, .codegraph-inspector-tab {
+.neumorphic-surface, .theme-toggle, .sidebar-heading-action, .codegraph-inspector-toggle, .neumorphic-checkbox {
     --neumorphic-button-surface: var(--divider);
     --neumorphic-button-surface-strong: var(--divider);
     --neumorphic-button-edge: var(--divider);
     --neumorphic-button-active-color: var(--text);
 }
 
-.theme-toggle, .sidebar-heading-action, .codegraph-inspector-toggle, .codegraph-search-button, .codegraph-edge-toggle {
+.theme-toggle, .sidebar-heading-action, .codegraph-inspector-toggle {
     --neumorphic-button-radius: 50%;
     position: relative;
     display: inline-flex;
@@ -197,30 +197,28 @@ h1, h2, h3, h4, h5, h6, p {
 
 .theme-toggle > svg,
 .sidebar-heading-action > svg,
-.codegraph-inspector-toggle > svg,
-.codegraph-search-button > svg,
-.codegraph-edge-toggle > svg {
+.codegraph-inspector-toggle > svg {
     display: block;
     flex: 0 0 auto;
 }
 
-.neumorphic-surface:hover, .theme-toggle:hover, .sidebar-heading-action:hover, .codegraph-inspector-toggle:hover, .codegraph-search-button:hover, .codegraph-edge-toggle:hover {
+.neumorphic-surface:hover, .theme-toggle:hover, .sidebar-heading-action:hover, .codegraph-inspector-toggle:hover {
     color: #e5e5e5;
 }
 
-.codegraph-inspector-toggle svg, .codegraph-search-button svg {
+.codegraph-inspector-toggle svg {
     width: var(--icon-size-default);
     height: var(--icon-size-default);
     stroke-width: 1.8;
 }
 
-.sidebar-heading-action, .codegraph-edge-toggle {
+.sidebar-heading-action {
     width: var(--icon-button-size);
     height: var(--icon-button-size);
     flex-basis: var(--icon-button-size);
 }
 
-.sidebar-heading-action svg, .codegraph-edge-toggle svg {
+.sidebar-heading-action svg {
     width: var(--icon-button-icon-size);
     height: var(--icon-button-icon-size);
     stroke-width: var(--icon-button-stroke-width);
