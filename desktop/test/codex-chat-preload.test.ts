@@ -51,7 +51,7 @@ test('response statistics reads carry the conversation and pane without navigati
 });
 
 test('iMessage bridge sends only explicit settings and test requests, validates responses and cleans subscriptions', async () => {
-  const state = { enabled: false, recipient: 'me@example.com', completed: true, attention: true, failed: true,
+  const state = { enabled: false, recipient: 'me@example.com',
     available: true, lastStatus: null };
   const bridge = createHarness('Alex', state);
   const api = bridge.read('iMessage') as NonNullable<CheshiDesktopApi['iMessage']>;
@@ -80,6 +80,29 @@ test('message command settings use explicit validated IPC calls', async () => {
   const bad = createHarness('Alex', { ...state, enabled: 'true' });
   const badApi = (bad.read('iMessage') as NonNullable<CheshiDesktopApi['iMessage']>).commands!;
   await assert.rejects(() => badApi.get(), /Invalid message command settings/);
+});
+
+test('shared notification events use their own validated bridge and unsubscribe cleanly', async () => {
+  const state = { completed: false, attention: true, failed: true, error: null };
+  const bridge = createHarness('Alex', state);
+  const api = bridge.read('notificationEvents') as NonNullable<CheshiDesktopApi['notificationEvents']>;
+  assert.deepEqual(structuredClone(await api.get()), state);
+  await api.set('completed', true);
+  assert.deepEqual(bridge.calls, [['cheshi:notification-events:get'], ['cheshi:notification-events:set', 'completed', true]]);
+  const received: unknown[] = [], unsubscribe = api.onChanged(value => received.push(structuredClone(value)));
+  bridge.emit(state, 'cheshi:notification-events:changed'); unsubscribe(); bridge.emit(state, 'cheshi:notification-events:changed');
+  assert.deepEqual(received, [state]);
+  const invalid = createHarness('Alex', { ...state, failed: 'true' }).read('notificationEvents') as typeof api;
+  await assert.rejects(() => invalid.get(), /Invalid notification switch/);
+});
+
+test('Discord notification toggle is separate from saving or reconnecting the bot', async () => {
+  const state = { enabled: true, notificationsEnabled: false, guildId: '111111111111111111', ownerId: '222222222222222222',
+    deviceName: 'Mac', hasToken: true, connected: true, status: 'Connected', channels: 1, pending: 0 };
+  const bridge = createHarness('Alex', state);
+  const api = bridge.read('discord') as NonNullable<CheshiDesktopApi['discord']>;
+  assert.deepEqual(structuredClone(await api.setNotificationsEnabled(false)), state);
+  assert.deepEqual(bridge.calls, [['cheshi:discord:notifications', false]]);
 });
 
 test('agent detail reads carry the parent, target ids and pane without invoking navigation', async () => {

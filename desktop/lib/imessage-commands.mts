@@ -13,7 +13,7 @@ export interface IMessageCommandRegistry {
 }
 export function messageCommand(text: string | null): string | null {
   if (!text || text.length > 8000) return null;
-  const match = /^체시(?:\s+|[,，:]\s*)(\S[\s\S]*)$/u.exec(text.trim());
+  const match = /^(?:체시(?:\s+|[,，:]\s*)|Cheshi\s+)([^·\s][\s\S]*)$/iu.exec(text.trim());
   return match?.[1]?.trim() ?? null;
 }
 /** One reader per app. Arming starts at the current high-water mark; old messages never execute. */
@@ -75,8 +75,8 @@ export function createIMessageCommands(options: {
         }
         catch (error) {
           reply = error instanceof Error && error.name === 'CodexMessageDeliveryUnknown'
-            ? '지시 접수 여부를 확인하지 못했습니다. 앱을 확인해 주세요. 자동 재전송하지 않습니다.'
-            : '지시를 처리하지 못했습니다. 앱의 대화와 대기 중인 요청을 확인해 주세요.';
+            ? 'Could not confirm whether the instruction was received. Check Cheshi. It will not be resent automatically.'
+            : 'Could not process the instruction. Check the conversation and pending requests in Cheshi.';
         }
         if (!current()) break;
         status = reply;
@@ -118,7 +118,7 @@ export function createIMessageCommands(options: {
           if (disposed || generation !== revision) return snapshot();
           inbox = (options.open ?? openIMessageInbox)();
           cursor = inbox.latest();
-          lifetime = new AbortController(); enabled = true; status = 'Listening for new iMessages starting with 체시.';
+          lifetime = new AbortController(); enabled = true; status = 'Listening for new iMessages starting with Cheshi.';
           schedule();
         }
         return snapshot();

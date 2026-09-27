@@ -29,33 +29,33 @@ export function createWorkspaceDiscord(options: {
         const owner = services.find(entry => entry.service.activeTurns.has(currentThread))
           ?? services.find(entry => entry.service.viewedThreadId === currentThread)
           ?? services.find(entry => entry.service === source);
-        if (!owner) return { text: '이 세션을 Cheshi에서 다시 열어 주세요. 명령은 실행되지 않았습니다.' };
+        if (!owner) return { text: 'Reopen this session in Cheshi. The instruction was not executed.' };
         const service = owner.service;
         const queued = services.reduce((sum, entry) => sum + (options.queueSize(entry.contextId, currentThread) ?? 0), 0);
         const waiting = services.some(entry => [...entry.service.pendingApprovals.values()].some(item => item.threadId === currentThread)
           || entry.service.userInputs.list().some(item => item.threadId === currentThread));
         const active = service.activeTurns.has(currentThread);
-        if (text === '/status' || text === '상태') return { text: `${waiting ? '사용자 응답 대기' : active ? '작업 중' : '대기 중'} · 대기열 ${queued}개` };
-        if (options.queueSize(owner.contextId, currentThread) === null) return { text: '앱의 대기열 상태를 확인 중입니다. 잠시 후 다시 지시해 주세요.' };
+        if (text === '/status' || text === '상태') return { text: `${waiting ? 'Waiting for your response' : active ? 'Working' : 'Idle'} · Queued messages: ${queued}` };
+        if (options.queueSize(owner.contextId, currentThread) === null) return { text: 'Checking the queue in Cheshi. Try again shortly.' };
         if (text === '/stop' || text === '중지') {
-          if (queued) return { text: '앱에서 대기열을 비운 뒤 중지해 주세요.' };
+          if (queued) return { text: 'Clear the queue in Cheshi before stopping.' };
           const result = await service.cancelResponse(currentThread);
-          return { text: result.requested ? '중지 요청됨' : '실행 중인 작업이 없습니다.' };
+          return { text: result.requested ? 'Stop requested' : 'No task is currently running.' };
         }
-        if (waiting) return { text: 'Cheshi에서 대기 중인 승인 또는 질문에 먼저 응답해 주세요.' };
+        if (waiting) return { text: 'Respond to the pending approval or question in Cheshi first.' };
         const binding = bindings.get(currentThread);
         const currentPermissions = JSON.stringify(service.permissionOverrides());
         // A different foreground session must not silently grant this channel its
         // permission profile. Reopening the bound session confirms its current mode.
         if (!active && service.viewedThreadId !== currentThread && binding?.permissions !== currentPermissions) {
-          return { text: '권한 설정이 달라졌습니다. Cheshi에서 이 세션을 열고 권한을 확인한 뒤 다시 지시해 주세요.' };
+          return { text: 'Permissions have changed. Open this session in Cheshi and check its permissions before sending another instruction.' };
         }
         if (binding && service.viewedThreadId === currentThread) binding.permissions = currentPermissions;
         if (services.some(entry => entry.service.pendingTurnStarts.has(currentThread)) || (!active && queued)) {
-          return { text: '작업 시작 또는 대기열 처리 중입니다. 잠시 후 다시 지시해 주세요.' };
+          return { text: 'A task is starting or queued messages are being processed. Try again shortly.' };
         }
         service.emit({ type: 'user-message', threadId: currentThread, clientMessageId: id, text, createdAt: Date.now() / 1000 });
-        if (active) { await service.steerMessage(text, id, null, [], currentThread); return { text: '추가 지시 전달됨' }; }
+        if (active) { await service.steerMessage(text, id, null, [], currentThread); return { text: 'Additional instruction sent' }; }
         pending.set(id, currentThread);
         let result;
         try { result = await service.sendMessage(text, id, null, [], currentThread, signal); }
@@ -65,7 +65,7 @@ export function createWorkspaceDiscord(options: {
           const binding = bindings.get(currentThread);
           if (binding) { bindings.delete(currentThread); bindings.set(result.threadId, binding); }
         }
-        return { text: '작업 중…', thread: result.threadId };
+        return { text: 'Working…', thread: result.threadId };
       },
     };
     bindings.set(thread, { key: options.bridge.observe(target), context, target, permissions });

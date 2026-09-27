@@ -32,6 +32,8 @@ import { appUpdateUnavailableReason, stageAppUpdate } from './lib/app-update-ins
 import { createAppUpdateResume } from './lib/app-update-resume.mts';
 import { APP_UPDATE_CHANNEL } from './shared/app-update.ts';
 import { KEEP_AWAKE_CHANNEL } from './shared/keep-awake.ts';
+import { createNotificationEvents } from './lib/notification-events.mts';
+import { registerNotificationEventsIpc } from './lib/notification-events-ipc.mts';
 import { createDiscordService } from './lib/discord-service.mts';
 import { createDiscordSetupBrowser } from './lib/discord-setup-browser.mts';
 import { registerDiscordIpc } from './lib/discord-ipc.mts';
@@ -71,9 +73,11 @@ const apiSettings = createSettingsService({
   }),
   checkKey: checkTypeSafeConnection,
 });
-const discord = createDiscordService({ directory: app.getPath('userData'), encryption: safeStorage });
+const notificationEvents = createNotificationEvents({ filename: path.join(app.getPath('userData'), 'notification-events.json'),
+  legacyIMessageFilename: path.join(app.getPath('userData'), 'imessage-notifications.json') });
+const discord = createDiscordService({ directory: app.getPath('userData'), encryption: safeStorage, events: notificationEvents });
 void app.whenReady().then(() => discord.start());
-const notifications = createIMessageNotifications({ filename: path.join(app.getPath('userData'), 'imessage-notifications.json') });
+const notifications = createIMessageNotifications({ filename: path.join(app.getPath('userData'), 'imessage-notifications.json'), events: notificationEvents });
 const messageCommands = createIMessageCommands({ recipient: async () => (await notifications.get()).recipient,
   reply: (recipient, text) => notifications.reply(recipient, text) });
 const keepAwake = new KeepAwakeService();
@@ -180,12 +184,14 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   let settingsIpc: ReturnType<typeof registerSettingsIpc> | undefined;
   let discordIpc: ReturnType<typeof registerDiscordIpc> | undefined;
   let notificationIpc: ReturnType<typeof registerIMessageIpc> | undefined;
+  let notificationEventsIpc: ReturnType<typeof registerNotificationEventsIpc> | undefined;
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try {
     runtime = createWorkspaceRuntime({ ...options, notifications, messageCommands, discord, getTypeSafeKey: apiSettings.getKey,
       historyRecall: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) },
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
+      notificationEventsIpc = registerNotificationEventsIpc({ window, ipc: options.scope.ipc, service: notificationEvents });
       discordIpc = registerDiscordIpc({ window, ipc: options.scope.ipc, service: discord,
         setup: context => runtime.startDiscordSetup(context, () => createDiscordSetupBrowser({ parent: window,
           createWindow: configuration => new BrowserWindow(configuration), clipboard, settings: discord,
@@ -205,7 +211,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
     },
     show: () => runtime.show(),
     async dispose() {
-      try { discordIpc?.dispose(); notificationIpc?.dispose(); settingsIpc?.dispose(); }
+      try { notificationEventsIpc?.dispose(); discordIpc?.dispose(); notificationIpc?.dispose(); settingsIpc?.dispose(); }
       finally { try { await runtime.dispose(); } finally { source?.dispose(); } }
     },
   };

@@ -810,6 +810,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   cancelCodeExplanation: (requestId: string) => Promise<void>;
   listCodexModels: (contextId?: string) => Promise<unknown>;
   discord?: import('../../shared/discord').DiscordApi;
+  notificationEvents?: import('../../shared/notification-events').NotificationEventsApi;
   iMessage?: import('../../shared/imessage-notifications').IMessageApi;
   temporaryChat: {
     openWindow(draft?: import('../../shared/temporary-chat').TemporaryChatDraft): Promise<void>;

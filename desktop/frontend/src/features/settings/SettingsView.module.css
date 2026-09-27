@@ -24,7 +24,8 @@
 .titleRow { display: flex; min-height: 32px; align-items: center; justify-content: space-between; gap: var(--space-default); }
 .settingRow { display: flex; flex-wrap: wrap; min-height: 36px; align-items: center; justify-content: space-between; gap: var(--space-default); }
 .descriptionGroup { display: flex; flex-direction: column; gap: var(--space-default); }
-.operationStatus { block-size: 3.2em; flex: 0 0 auto; overflow: auto; }
+.operationStatus { flex: 0 0 auto; }
+.operationStatus:empty { display: none; }
 .toggle[role='switch'] {
   --neumorphic-button-radius: 10px;
   display: flex;
@@ -75,7 +76,7 @@
   --neumorphic-button-surface: rgba(41, 52, 61, .8);
 }
 .status { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-default); }
-.discordForm { margin-top: var(--space-default); }
+.discordForm, .notificationDelivery { margin-top: var(--space-default); }
 .discordForm > label { display: flex; flex-direction: column; gap: var(--space-default); }
 .discordSetup { box-sizing: border-box; height: 32px; padding: 0 var(--space-default); border: 0; background: var(--control-surface); color: var(--text); font-size: var(--font-size-label); }
 .discordSetup:not(:disabled):is(:hover, :active) { border: 0; background: var(--control-surface-interactive); }

@@ -1,6 +1,7 @@
 export const DISCORD_CHANNEL = 'cheshi:discord';
 export interface DiscordPreferences { enabled: boolean; guildId: string; ownerId: string; deviceName: string; }
 export interface DiscordSettings extends DiscordPreferences {
+  notificationsEnabled: boolean;
   hasToken: boolean; status: string; connected: boolean; channels: number; pending: number;
 }
 export interface DiscordConfirmation {
@@ -10,6 +11,7 @@ export interface DiscordApi {
   get(): Promise<DiscordSettings>;
   save(value: DiscordPreferences & { token?: string }): Promise<DiscordSettings>;
   test(): Promise<DiscordSettings>;
+  setNotificationsEnabled(enabled: boolean): Promise<DiscordSettings>;
   setup(contextId?: string): Promise<string>;
   getConfirmation(): Promise<DiscordConfirmation | null>;
   onConfirmation(listener: (value: DiscordConfirmation | null) => void): () => void;
@@ -44,5 +46,10 @@ export function discordSettings(value: unknown): DiscordSettings {
     : discordPreferences(data);
   if (typeof data.hasToken !== 'boolean' || typeof data.connected !== 'boolean' || typeof data.status !== 'string'
     || !Number.isSafeInteger(data.channels) || Number(data.channels) < 0 || !Number.isSafeInteger(data.pending) || Number(data.pending) < 0) throw new TypeError('Invalid Discord settings.');
-  return { ...prefs, hasToken: data.hasToken, connected: data.connected, status: data.status, channels: Number(data.channels), pending: Number(data.pending) };
+  return { ...prefs, notificationsEnabled: discordNotificationSwitch(data.notificationsEnabled), hasToken: data.hasToken,
+    connected: data.connected, status: data.status, channels: Number(data.channels), pending: Number(data.pending) };
+}
+export function discordNotificationSwitch(value: unknown): boolean {
+  if (typeof value !== 'boolean') throw new TypeError('Invalid Discord notification switch.');
+  return value === true;
 }

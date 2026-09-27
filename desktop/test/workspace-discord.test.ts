@@ -26,11 +26,11 @@ test('a channel retains its session after UI navigation; busy instructions steer
   await run('hello'); expect(calls).toEqual([{ type: 'send', thread: 'one' }]);
   service.activeTurns.set('one', {}); await run('more'); expect(calls.at(-1)).toEqual({ type: 'steer', thread: 'one' });
   service.pendingApprovals.set('approval', { threadId: 'one' });
-  expect((await run('approve')).text).toContain('승인'); expect(calls).toHaveLength(2);
+  expect((await run('approve')).text).toContain('approval'); expect(calls).toHaveLength(2);
   service.pendingApprovals.clear(); queue = 1;
-  expect((await run('중지')).text).toContain('대기열'); expect(calls).toHaveLength(2);
+  expect((await run('중지')).text).toContain('queue'); expect(calls).toHaveLength(2);
   service.activeTurns.clear(); queue = 0; access = 'full-access';
-  expect((await run('실행')).text).toContain('권한'); expect(calls).toHaveLength(2);
+  expect((await run('실행')).text).toContain('Permissions'); expect(calls).toHaveLength(2);
   adapter.dispose();
 });
 

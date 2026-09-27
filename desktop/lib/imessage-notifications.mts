@@ -4,12 +4,14 @@ import { randomUUID } from 'node:crypto';
 import { DEFAULT_IMESSAGE_PREFERENCES, parseIMessagePreferences, parseIMessageRecipient,
   type IMessageSettings, type NotificationKind } from '../shared/imessage-notifications.ts';
 import { sendIMessage } from './imessage-process.mts';
+import { NOTIFICATION_KINDS, type NotificationPolicy } from '../shared/notification-events.ts';
 
 export interface ChatNotification { kind: NotificationKind; workspace: string; conversation: string; }
 export interface NotificationSink { notify(event: ChatNotification): void; }
 /** App-wide settings and bounded, serialized delivery; notification failures never fail chat work. */
 export function createIMessageNotifications(options: {
   filename: string; platform?: string;
+  events?: NotificationPolicy;
   send?: (recipient: string, text: string, signal: AbortSignal) => Promise<void>;
 }) {
   let preferences = { ...DEFAULT_IMESSAGE_PREFERENCES };
@@ -18,6 +20,15 @@ export function createIMessageNotifications(options: {
   const listeners = new Set<(state: IMessageSettings) => void>();
   let revision = 0, closed = false, pending = 0;
   let current: AbortController | null = null;
+  let currentKind: NotificationKind | undefined;
+  const versions = { completed: 0, attention: 0, failed: 0 };
+  const allows = (kind: NotificationKind) => options.events?.allows(kind) ?? true;
+  const unsubscribe = options.events?.subscribe(() => {
+    for (const kind of NOTIFICATION_KINDS) if (!allows(kind)) {
+      versions[kind]++;
+      if (currentKind === kind) current?.abort();
+    }
+  });
   let flight = Promise.resolve();
   const ready = readFile(options.filename, 'utf8').then(text => { preferences = parseIMessagePreferences(JSON.parse(text)); })
     .catch((error: unknown) => { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') lastStatus = 'Could not load notification settings. Notifications are off.'; });
@@ -26,14 +37,15 @@ export function createIMessageNotifications(options: {
   const serialize = <T,>(run: () => Promise<T>): Promise<T> => {
     const next = flight.then(run); flight = next.then(() => {}, () => {}); return next;
   };
-  const submit = async (text: string) => {
+  const submit = async (text: string, kind?: NotificationKind) => {
+    currentKind = kind;
     current = new AbortController();
     try {
       await (options.send ?? sendIMessage)(preferences.recipient, text, current.signal);
       lastStatus = 'Submitted to Messages. Delivery to your device is not confirmed.';
     } catch (error) {
       lastStatus = error instanceof Error ? error.message : 'Could not submit the notification.';
-    } finally { current = null; publish(); }
+    } finally { current = null; currentKind = undefined; publish(); }
   };
   const assertAvailable = () => {
     if (closed || !available) throw new Error('iMessage notifications are available on macOS only.');
@@ -75,17 +87,18 @@ export function createIMessageNotifications(options: {
       } finally { pending--; }
     },
     notify(event: ChatNotification) {
-      if (closed || !available || pending >= 64) return;
+      if (closed || !available || pending >= 64 || !allows(event.kind)) return;
       const atRevision = revision;
+      const atVersion = versions[event.kind];
       pending++;
       void serialize(async () => {
         await ready;
-        if (closed || revision !== atRevision || !preferences.enabled || !preferences[event.kind]) return;
-        const description = { completed: '작업과 대기열이 완료되었습니다.', attention: '승인 또는 질문에 사용자 응답이 필요합니다.', failed: '작업이 실패했습니다. 앱에서 확인해 주세요.' }[event.kind];
+        if (closed || revision !== atRevision || versions[event.kind] !== atVersion || !preferences.enabled || !allows(event.kind)) return;
+        const description = { completed: 'Work and the message queue are complete.', attention: 'An approval or question needs your response. Check Cheshi.', failed: 'Work failed. Check Cheshi.' }[event.kind];
         const clean = (text: string) => text.replace(/[\r\n\0]/g, ' ').slice(0, 120);
-        await submit(`Cheshi · ${clean(event.workspace)}\n${clean(event.conversation)}\n${description}`);
+        await submit(`Cheshi · ${clean(event.workspace)}\n${clean(event.conversation)}\n${description}`, event.kind);
       }).finally(() => { pending--; }).catch(() => { lastStatus = 'Could not process the notification.'; publish(); });
     },
-    async dispose() { closed = true; revision++; current?.abort(); await flight; listeners.clear(); },
+    async dispose() { closed = true; revision++; unsubscribe?.(); current?.abort(); await flight; listeners.clear(); },
   };
 }

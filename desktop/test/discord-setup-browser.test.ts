@@ -6,7 +6,7 @@ import type { DiscordSettings } from '../shared/discord.ts';
 
 function fixture(confirm?: Parameters<typeof createDiscordSetupBrowser>[0]['confirm']) {
   const parent = Object.assign(new EventEmitter(), { isDestroyed: () => false });
-  const settings: DiscordSettings = { enabled: false, guildId: '', ownerId: '', deviceName: '', hasToken: false,
+  const settings: DiscordSettings = { enabled: false, notificationsEnabled: true, guildId: '', ownerId: '', deviceName: '', hasToken: false,
     connected: false, status: 'Not connected', channels: 0, pending: 0 };
   const saves: unknown[] = [], scripts: string[] = [], urls: string[] = [];
   let confirmed = false, destroyed = false, clipboard = '', currentUrl = '';

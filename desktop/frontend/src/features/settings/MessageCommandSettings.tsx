@@ -3,7 +3,7 @@ import type { IMessageCommandApi, IMessageCommandSettings } from '../../../../sh
 import { LiquidGlassSelect, NeumorphicButton } from '../../shared/ui';
 import styles from './SettingsView.module.css';
 
-export function MessageCommandSettings({ api, available }: { api: IMessageCommandApi; available: boolean }) {
+export function MessageCommandSettings({ api, available, disabled = false }: { api: IMessageCommandApi; available: boolean; disabled?: boolean }) {
   const [state, setState] = useState<IMessageCommandSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +26,7 @@ export function MessageCommandSettings({ api, available }: { api: IMessageComman
     return () => { active = false; mounted.current = false; clearInterval(timer); };
   }, [api]);
   const configure = async (enabled: boolean, targetId: string | null) => {
-    if (pending.current) return;
+    if (pending.current || disabled) return;
     revision.current++; pending.current = true; setBusy(true); setError(null);
     try {
       const value = await api.configure({ enabled, targetId });
@@ -40,16 +40,16 @@ export function MessageCommandSettings({ api, available }: { api: IMessageComman
     <div className={styles.settingRow}>
       <span className={styles.settingLabel}>Receive instructions from iMessage</span>
       <NeumorphicButton type="button" className={styles.toggle} role="switch" aria-label="Receive instructions from iMessage"
-        aria-checked={state?.enabled === true} disabled={busy || !state || (!state.enabled && (!available || !state.targetId))}
+        aria-checked={state?.enabled === true} disabled={disabled || busy || !state || (!state.enabled && (!available || !state.targetId))}
         onClick={() => void configure(!state?.enabled, state?.targetId ?? null)}><span aria-hidden="true" /></NeumorphicButton>
     </div>
     <label className={styles.settingLabel}>Target conversation</label>
     <LiquidGlassSelect ariaLabel="iMessage target conversation" triggerAppearance="standard" menuAppearance="toolbar"
-      placeholder="Select an open conversation" value={state?.targetId ?? ''} disabled={busy || !state || state.targets.length === 0}
+      placeholder="Select an open conversation" value={state?.targetId ?? ''} disabled={disabled || busy || !state || state.targets.length === 0}
       options={state?.targets.map(target => ({ value: target.id, label: target.label })) ?? []}
       onChange={target => void configure(false, target)} />
     <p className={styles.description}>Save your iMessage recipient above, then select an open conversation and enable commands.<br />
-      Send “체시 상태”, “체시 중지”, or “체시 테스트 이어서 해줘”. Instructions join the current task while it is running.<br />
+      Send “Cheshi status”, “Cheshi stop”, or “Cheshi continue the test”. Instructions join the current task while it is running.<br />
       Commands use the conversation’s existing model and permissions. Approvals and questions still require an answer in the app.</p>
     <p className={styles.description}>Changes apply automatically. Commands turn off when Cheshi restarts or the selected conversation changes.<br />
       Requires Full Disk Access. Only new, direct, plain-text iMessages from the saved recipient are processed.</p>

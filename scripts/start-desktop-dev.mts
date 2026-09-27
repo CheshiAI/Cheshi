@@ -213,6 +213,9 @@ function handleMainSourceChange(changedPath: string): void {
 
 function watchMainSources(): FSWatcher[] {
   const sourcePaths = [
+    ...['notification-events.mts', 'notification-events-ipc.mts', 'notification-events-preload.cts']
+      .map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
+    path.join(rootDirectory, 'desktop', 'shared', 'notification-events.ts'),
     path.join(rootDirectory, 'desktop', 'lib', 'discord-store.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'discord-rest.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'discord-gateway.mts'),

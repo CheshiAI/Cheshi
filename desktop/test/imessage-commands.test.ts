@@ -32,6 +32,14 @@ function fixture(execute?: IMessageCommandEndpoint['execute']) {
 test('only bounded, explicit commands are parsed; outbound notifications never loop', () => {
   expect(messageCommand('체시 상태')).toBe('상태');
   expect(messageCommand('체시, 테스트\n이어서 해줘')).toBe('테스트\n이어서 해줘');
+  expect(messageCommand('Cheshi status')).toBe('status');
+  expect(messageCommand('cheshi STOP')).toBe('STOP');
+  expect(messageCommand('Cheshi continue the test')).toBe('continue the test');
+  expect(messageCommand('Cheshi 이 내용은 한국어로 유지')).toBe('이 내용은 한국어로 유지');
+  for (const value of ['Cheshi', 'Cheshistatus', 'hello Cheshi status', 'Cheshi · work\nWork failed. Check Cheshi.',
+    'Cheshi: iMessage notification connection test.', 'Cheshi ' + 'a'.repeat(8000)]) {
+    expect(messageCommand(value)).toBeNull();
+  }
   for (const value of [null, '', '체시', '체시상태', '안녕 체시 상태', 'Cheshi · work\n접수 완료', '체시 ' + 'a'.repeat(8000)]) {
     expect(messageCommand(value)).toBeNull();
   }
@@ -49,7 +57,7 @@ test('a confirmed continuation keeps receiving subsequent commands without repla
   });
   try {
     await f.service.configure({ enabled: true, targetId: 'target' });
-    f.add('체시 first', 'first'); f.add('체시 상태');
+    f.add('Cheshi first', 'first'); f.add('체시 상태');
     await until(() => f.replies.length === 2);
     expect(f.service.get().targetId).toBe('continued'); expect(f.service.get().enabled).toBe(true);
     expect(f.replies[0]).toContain('continued');
@@ -127,7 +135,7 @@ test('unknown provider delivery is reported without retries and unsupported bodi
     f.add(null); f.add('체시 run');
     await until(() => f.replies.length === 1);
     await until(() => f.reads() > 3);
-    expect(attempts).toBe(1); expect(f.replies[0]).toContain('자동 재전송하지 않습니다');
+    expect(attempts).toBe(1); expect(f.replies[0]).toContain('will not be resent automatically');
     expect(f.replies[0]).not.toContain('private');
   } finally { await f.service.dispose(); }
 });

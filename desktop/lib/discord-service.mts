@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { discordId, discordPreferences, discordRecord, type DiscordSettings } from '../shared/discord.ts';
-import { createDiscordStore, type DiscordEncryption, type DiscordBinding } from './discord-store.mts';
+import { createDiscordStore, type DiscordEncryption, type DiscordBinding, type DiscordDelivery } from './discord-store.mts';
+import type { NotificationPolicy } from '../shared/notification-events.ts';
 import { createDiscordRest, type DiscordRest, DiscordHttpError } from './discord-rest.mts';
 import { createDiscordGateway } from './discord-gateway.mts';
 import { ensureDiscordChannel } from './discord-channels.mts';
@@ -21,10 +22,11 @@ export function discordBindingKey(workspace: string, thread: string) {
   return createHash('sha256').update(JSON.stringify([workspace, thread])).digest('hex').slice(0, 24);
 }
 const snowflakeNow = () => ((BigInt(Date.now() - 1420070400000) << 22n)).toString();
-const brief = (text: string) => text.length > 1800 ? `${text.slice(0, 1740)}\n…전체 응답은 Cheshi에서 확인하세요.` : text;
+const brief = (text: string) => text.length > 1800 ? `${text.slice(0, 1740)}\n…View the full response in Cheshi.` : text;
 
 export function createDiscordService(options: {
   directory: string; encryption: DiscordEncryption;
+  events?: NotificationPolicy;
   rest?: typeof createDiscordRest; gateway?: typeof createDiscordGateway;
 }) {
   const store = createDiscordStore(options.directory, options.encryption);
@@ -44,7 +46,7 @@ export function createDiscordService(options: {
     catch { status = 'Could not save Discord state. Connection stopped to prevent duplicate work.'; connected = false; gateway?.stop(); lifetime.abort(); return false; }
   };
   const session = () => epoch;
-  const snapshot = (): DiscordSettings => ({ ...data.preferences, hasToken: Boolean(data.encryptedToken), connected, status,
+  const snapshot = (): DiscordSettings => ({ ...data.preferences, notificationsEnabled: data.notificationsEnabled, hasToken: Boolean(data.encryptedToken), connected, status,
     channels: Object.values(data.bindings).filter(binding => binding.channel).length, pending: data.outbox.length });
   const schedule = (task: () => Promise<unknown>) => {
     const version = session();
@@ -52,11 +54,26 @@ export function createDiscordService(options: {
     work = next.catch(error => { if (version === epoch && !disposed) status = error instanceof DiscordHttpError ? error.message : 'Discord operation could not finish. Check the connection and retry.'; });
     return work;
   };
-  function enqueue(key: string, text: string, alert: boolean) {
+  const canAlert = (entry: Pick<DiscordDelivery, 'kind' | 'test'>) => entry.test === true || (data.notificationsEnabled === true
+    && (!entry.kind || (options.events?.allows(entry.kind) ?? true)));
+  function muteOutbox() {
+    let changed = false;
+    data.outbox = data.outbox.filter(entry => {
+      if (!entry.alert || canAlert(entry)) return true;
+      if (entry.kind && !entry.retainWhenMuted) { changed = true; return false; }
+      if (!entry.muted) { entry.muted = true; changed = true; }
+      return true;
+    });
+    if (changed) persist();
+  }
+  const unsubscribeEvents = options.events?.subscribe(muteOutbox);
+  function enqueue(key: string, text: string, alert: boolean, details: Pick<DiscordDelivery, 'kind' | 'retainWhenMuted' | 'test'> = {}) {
     if (!data.preferences.enabled || !data.bindings[key] || data.bindings[key].disabled) return;
+    const muted = alert && !canAlert(details);
+    if (muted && details.kind && !details.retainWhenMuted) return;
     if (!alert) data.outbox = data.outbox.filter(entry => entry.binding !== key || entry.alert);
     if (data.outbox.length >= 1000) { status = 'Discord delivery queue is full. Reconnect before continuing.'; return; }
-    data.outbox.push({ id: randomUUID().replaceAll('-', '').slice(0, 24), binding: key, text: brief(text), alert });
+    data.outbox.push({ id: randomUUID().replaceAll('-', '').slice(0, 24), binding: key, text: brief(text), alert, ...details, muted });
     if (persist()) void schedule(flush);
   }
   async function ensure(key: string, binding: DiscordBinding) {
@@ -72,6 +89,9 @@ export function createDiscordService(options: {
       const binding = data.bindings[entry.binding];
       if (!binding || binding.disabled) continue;
       await ensure(entry.binding, binding);
+      muteOutbox();
+      if (!data.outbox.includes(entry)) continue;
+      const alert = entry.alert && !entry.muted && canAlert(entry);
       const update = !entry.alert && binding.statusMessage;
       let message: Record<string, unknown> | undefined;
       if (entry.attempted && !update) {
@@ -85,9 +105,9 @@ export function createDiscordService(options: {
         entry.attempted = true; store.write();
         try {
           message = discordRecord(await rest(update ? 'PATCH' : 'POST', `/channels/${binding.channel}/messages${update ? `/${update}` : ''}`, {
-            content: entry.alert ? `<@${data.preferences.ownerId}> ${entry.text}` : entry.text,
-            allowed_mentions: { parse: [], users: entry.alert ? [data.preferences.ownerId] : [], replied_user: false },
-            ...(!update ? { nonce: entry.id, enforce_nonce: true, ...(!entry.alert ? { flags: 4096 } : {}) } : {}),
+            content: alert ? `<@${data.preferences.ownerId}> ${entry.text}` : entry.text,
+            allowed_mentions: { parse: [], users: alert ? [data.preferences.ownerId] : [], replied_user: false },
+            ...(!update ? { nonce: entry.id, enforce_nonce: true, ...(!alert ? { flags: 4096 } : {}) } : {}),
           }));
         } catch (error) {
           if (error instanceof DiscordHttpError && [400, 401, 403, 404, 429].includes(error.status)) entry.attempted = false;
@@ -112,10 +132,10 @@ export function createDiscordService(options: {
     // is never automatically executed again, even after a Gateway replay.
     binding.cursor = id; store.write();
     const target = targets.get(key);
-    if (!target) { enqueue(key, '이 세션의 작업 공간을 Cheshi에서 열어 주세요. 명령은 실행되지 않았습니다.', true); return; }
+    if (!target) { enqueue(key, 'Open this session’s workspace in Cheshi. The instruction was not executed.', true); return; }
     const text = typeof value.content === 'string' ? value.content.trim() : '';
     if (!text || text.length > 8000 || (Array.isArray(value.attachments) && value.attachments.length)) {
-      enqueue(key, '현재는 8,000자 이내의 텍스트 지시를 지원합니다. 첨부 파일은 Cheshi에서 추가해 주세요.', true); return;
+      enqueue(key, 'Send text instructions of up to 8,000 characters. Add attachments in Cheshi.', true); return;
     }
     try {
       const result = await target.execute(text, `discord-${id}`, lifetime.signal);
@@ -123,7 +143,7 @@ export function createDiscordService(options: {
         binding.thread = result.thread; target.thread = result.thread; store.write();
       }
       enqueue(key, result.text, false);
-    } catch { enqueue(key, '명령 실행 여부를 확인할 수 없습니다. Cheshi에서 확인해 주세요. 자동 재실행하지 않습니다.', true); }
+    } catch { enqueue(key, 'Could not confirm whether the instruction was executed. Check Cheshi. It will not be retried automatically.', true); }
   }
   async function recover() {
     if (!rest || !connected) return;
@@ -209,25 +229,30 @@ export function createDiscordService(options: {
       if (!tracker) {
         tracker = createChatNotifications({ workspace: data.bindings[key].workspace, notify: notification => {
           const result = [...(outputs.get(key)?.values() ?? [])].join('\n\n');
-          const text = notification.kind === 'completed' ? (result || '작업과 대기열이 완료되었습니다.')
-            : notification.kind === 'attention' ? '승인 또는 질문에 응답이 필요합니다. Cheshi에서 확인해 주세요.' : '작업이 실패했습니다. Cheshi에서 확인해 주세요.';
-          enqueue(key, text, true);
+          const text = notification.kind === 'completed' ? (result || 'Work and the message queue are complete.')
+            : notification.kind === 'attention' ? 'An approval or question needs your response. Check Cheshi.' : 'Work failed. Check Cheshi.';
+          enqueue(key, text, true, { kind: notification.kind, retainWhenMuted: notification.kind === 'completed' && Boolean(result) });
         } }); trackers.set(key, tracker);
       }
       if (queue !== null) tracker.queue('discord', [{ threadId: thread, count: queue }]);
       tracker.event('discord', { ...event, threadId: thread });
-      if (event.type === 'turn-started') { outputs.set(key, new Map()); enqueue(key, '작업 중…', false); }
+      if (event.type === 'turn-started') { outputs.set(key, new Map()); enqueue(key, 'Working…', false); }
       if (event.type === 'assistant-completed' && typeof event.text === 'string') {
         const messages = outputs.get(key) ?? new Map<string, string>();
         messages.set(String(event.itemId), event.text); outputs.set(key, messages);
       }
-      if (event.type === 'turn-completed') enqueue(key, event.status === 'completed' ? (queue ? `대기열 ${queue}개 남음` : '응답 완료') : event.status === 'failed' ? '실패' : '중지됨', false);
+      if (event.type === 'turn-completed') enqueue(key, event.status === 'completed' ? (queue ? `Queued messages remaining: ${queue}` : 'Response complete') : event.status === 'failed' ? 'Failed' : 'Stopped', false);
       if (event.type === 'session-deleted') { data.bindings[key].disabled = true; persist(); }
     },
     unavailable(key) { targets.delete(key); trackers.get(key)?.dispose(); trackers.delete(key); },
   };
   return {
     ...bridge, get: snapshot,
+    setNotificationsEnabled(value: unknown) {
+      if (disposed || saving) throw new Error('Discord settings are unavailable.');
+      store.setNotificationsEnabled(value); muteOutbox();
+      return snapshot();
+    },
     async save(value: unknown) {
       if (saving) throw new Error('Discord settings are being saved.');
       saving = true;
@@ -244,9 +269,9 @@ export function createDiscordService(options: {
       if (!connected) throw new Error('Connect Discord first.');
       const key = Object.keys(data.bindings).find(key => data.bindings[key]?.disabled !== true);
       if (!key) throw new Error('Start a new chat to create its Discord channel first.');
-      enqueue(key, 'Cheshi Discord 연결 테스트입니다.', true); await schedule(flush); return snapshot();
+      enqueue(key, 'Cheshi Discord connection test.', true, { test: true }); await schedule(flush); return snapshot();
     },
     start: connect,
-    dispose() { disposed = true; epoch++; clearInterval(timer); clearTimeout(connectionRetry); gateway?.stop(); lifetime.abort(); for (const tracker of trackers.values()) tracker.dispose(); targets.clear(); return work; },
+    dispose() { disposed = true; unsubscribeEvents?.(); epoch++; clearInterval(timer); clearTimeout(connectionRetry); gateway?.stop(); lifetime.abort(); for (const tracker of trackers.values()) tracker.dispose(); targets.clear(); return work; },
   };
 }

@@ -55,6 +55,7 @@ export function registerDiscordIpc(options: {
   try {
     handle('get', () => options.service.get()); handle('save', value => options.service.save(value));
     handle('test', () => options.service.test()); handle('setup', options.setup);
+    handle('notifications', value => options.service.setNotificationsEnabled(value));
     handle('confirmation', () => pending?.request ?? null);
     handle('confirm', value => {
       const data = discordRecord(value);

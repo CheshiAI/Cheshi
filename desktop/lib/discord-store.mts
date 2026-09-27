@@ -2,15 +2,20 @@ import { mkdirSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
-import { discordPreferences, type DiscordPreferences } from '../shared/discord.ts';
+import { discordNotificationSwitch, discordPreferences, type DiscordPreferences } from '../shared/discord.ts';
+import type { NotificationKind } from '../shared/notification-events.ts';
 
 export interface DiscordBinding {
   workspace: string; thread: string; title: string; channel: string; cursor: string;
   statusMessage?: string; disabled?: boolean;
 }
-export interface DiscordDelivery { id: string; binding: string; text: string; alert: boolean; attempted?: boolean; }
+export interface DiscordDelivery {
+  id: string; binding: string; text: string; alert: boolean; attempted?: boolean;
+  kind?: NotificationKind; retainWhenMuted?: boolean; muted?: boolean; test?: boolean;
+}
 export interface DiscordData {
   version: 1; deviceId: string; preferences: DiscordPreferences; encryptedToken: string;
+  notificationsEnabled: boolean;
   bindings: Record<string, DiscordBinding>; outbox: DiscordDelivery[];
 }
 export interface DiscordEncryption {
@@ -25,10 +30,11 @@ export function createDiscordStore(directory: string, encryption: DiscordEncrypt
     if (data.version !== 1 || !/^[a-f0-9-]{36}$/.test(data.deviceId) || !data.bindings || !Array.isArray(data.outbox)
       || typeof data.encryptedToken !== 'string') throw new Error('Invalid Discord storage.');
     discordPreferences(data.preferences);
+    data.notificationsEnabled = data.notificationsEnabled === undefined ? true : discordNotificationSwitch(data.notificationsEnabled);
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') error = 'Could not read Discord settings. Existing data was preserved.';
     data = { version: 1, deviceId: randomUUID(), preferences: { enabled: false, guildId: '', ownerId: '', deviceName: hostname().slice(0, 60) },
-      encryptedToken: '', bindings: {}, outbox: [] };
+      notificationsEnabled: true, encryptedToken: '', bindings: {}, outbox: [] };
   }
   const write = () => {
     if (error) throw new Error(error);
@@ -39,6 +45,11 @@ export function createDiscordStore(directory: string, encryption: DiscordEncrypt
   };
   return {
     data, write, error,
+    setNotificationsEnabled(value: unknown) {
+      const next = discordNotificationSwitch(value), previous = data.notificationsEnabled;
+      data.notificationsEnabled = next;
+      try { write(); } catch (error) { data.notificationsEnabled = previous; throw error; }
+    },
     token() {
       if (!data.encryptedToken) return '';
       if (!encryption.isEncryptionAvailable()) throw new Error('Unlock secure storage to connect Discord.');

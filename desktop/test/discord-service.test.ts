@@ -1,11 +1,12 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createDiscordService, type DiscordTarget } from '../lib/discord-service.mts';
 import type { createDiscordGateway } from '../lib/discord-gateway.mts';
 import type { createDiscordRest } from '../lib/discord-rest.mts';
 import { createDiscordStore } from '../lib/discord-store.mts';
+import { createNotificationEvents } from '../lib/notification-events.mts';
 
 const owner = '111111111111111111', guild = '222222222222222222', bot = '333333333333333333';
 const token = 'test-only-discord-secret-never-real';
@@ -20,6 +21,7 @@ async function eventually(check: () => boolean) {
   throw new Error('Expected observable Discord state did not arrive.');
 }
 function fixture(directory = mkdtempSync(path.join(tmpdir(), 'cheshi-discord-'))) {
+  const events = createNotificationEvents({ filename: path.join(directory, 'events.json'), legacyIMessageFilename: path.join(directory, 'imessage.json') });
   const channels: Record<string, unknown>[] = [], messages: Record<string, unknown>[] = [], calls: string[] = [];
   let gateway: Parameters<typeof createDiscordGateway>[0] | undefined;
   let next = BigInt(Date.now() - 1420070400000) << 22n;
@@ -47,7 +49,7 @@ function fixture(directory = mkdtempSync(path.join(tmpdir(), 'cheshi-discord-'))
     if (method === 'PATCH') { const channel = channels.find(channel => route.endsWith(String(channel.id))); Object.assign(channel!, payload); return channel; }
     throw new Error('Unexpected request');
   };
-  const create = () => createDiscordService({ directory, encryption, rest,
+  const create = () => createDiscordService({ directory, encryption, rest, events,
     gateway: options => { gateway = options; return { stop() {} }; } });
   let service = create();
   cleanups.push(() => { rmSync(directory, { recursive: true, force: true }); });
@@ -58,7 +60,7 @@ function fixture(directory = mkdtempSync(path.join(tmpdir(), 'cheshi-discord-'))
     gateway!.dispatch('MESSAGE_CREATE', message); return message;
   };
   return { get service() { return service; }, async restart() { await service.dispose(); service = create(); await service.start(); },
-    directory, ready, inbound, channels, messages, calls,
+    directory, events, ready, inbound, channels, messages, calls,
     event: (type: string, message: Record<string, unknown>) => gateway!.dispatch(type, message),
     dispatch: (message: Record<string, unknown>) => gateway!.dispatch('MESSAGE_CREATE', message) };
 }
@@ -85,6 +87,63 @@ test('session discovery creates one private channel, updates its title, and acce
   expect(executed).toEqual(['execute once']);
   expect(readFileSync(path.join(f.directory, 'discord.json'), 'utf8')).not.toContain(token);
   expect(JSON.stringify(f.service.get())).not.toContain(token);
+});
+
+test('notification delivery can be disabled without reconnecting, losing replies or blocking instructions and tests', async () => {
+  const f = fixture(); await f.service.save({ ...preferences, token }); f.ready();
+  let executions = 0;
+  const key = f.service.observe({ workspace: '/project', thread: 'muted', title: 'Muted', execute: async () => { executions++; return { text: 'accepted' }; } });
+  await eventually(() => f.service.get().channels === 1);
+  const connectionCalls = f.calls.filter(call => call === 'GET /users/@me').length;
+  expect(f.service.setNotificationsEnabled(false)).toMatchObject({ notificationsEnabled: false, enabled: true, connected: true });
+  expect(f.calls.filter(call => call === 'GET /users/@me')).toHaveLength(connectionCalls);
+  expect(() => f.service.setNotificationsEnabled('false')).toThrow();
+  const channel = String(f.channels.find(item => item.type === 0)!.id);
+  f.inbound(channel, 'still execute'); await eventually(() => executions === 1);
+  f.service.event(key, { type: 'turn-started', turnId: 'silent' }, 0);
+  f.service.event(key, { type: 'assistant-completed', itemId: 'answer', text: 'SILENT_ANSWER' }, 0);
+  f.service.event(key, { type: 'turn-completed', turnId: 'silent', status: 'completed' }, 0);
+  await eventually(() => f.messages.some(item => item.content === 'SILENT_ANSWER'));
+  const answer = f.messages.find(item => item.content === 'SILENT_ANSWER')!;
+  expect(answer.flags).toBe(4096);
+  expect(answer.allowed_mentions).toEqual({ parse: [], users: [], replied_user: false });
+  await f.service.test();
+  expect(f.messages.some(item => String(item.content).includes(`<@${owner}> Cheshi Discord`))).toBe(true);
+  await f.restart(); expect(f.service.get().notificationsEnabled).toBe(false);
+});
+
+test('existing Discord stores retain notification delivery and connection settings on migration', async () => {
+  const f = fixture(); await f.service.save({ ...preferences, token });
+  await f.service.dispose();
+  const filename = path.join(f.directory, 'discord.json');
+  const legacy = createDiscordStore(f.directory, encryption).data;
+  writeFileSync(filename, JSON.stringify({ ...legacy, notificationsEnabled: undefined }));
+  await f.restart();
+  expect(f.service.get()).toMatchObject({ ...preferences, notificationsEnabled: true, hasToken: true });
+  const loaded = createDiscordStore(f.directory, encryption);
+  expect(loaded.data.deviceId).toBe(legacy.deviceId);
+  expect(loaded.data.bindings).toEqual(legacy.bindings);
+});
+
+test.each(['completed', 'attention', 'failed'] as const)('common %s switch filters Discord events and suppresses pending alerts', async kind => {
+  const f = fixture(); await f.service.save({ ...preferences, token }); f.ready();
+  const key = f.service.observe({ workspace: '/project', thread: 'filtered', title: 'Filtered', execute: async () => ({ text: 'ok' }) });
+  await eventually(() => f.service.get().channels === 1);
+  f.events.set(kind, false);
+  f.service.event(key, { type: 'turn-started', turnId: 'filtered' }, 0);
+  if (kind === 'attention') f.service.event(key, { type: 'approval-requested', approval: { id: 'approval' } }, 0);
+  else f.service.event(key, { type: 'turn-completed', turnId: 'filtered', status: kind === 'failed' ? 'failed' : 'completed' }, 0);
+  await new Promise(resolve => setTimeout(resolve, 400));
+  expect(f.messages.filter(item => String(item.content).includes(`<@${owner}>`))).toEqual([]);
+  f.events.set(kind, true);
+  expect(f.service.get().pending).toBe(0);
+  // Enqueue a fresh matching event, then disable before the serialized send runs.
+  f.service.event(key, { type: 'turn-started', turnId: 'pending' }, 0);
+  if (kind === 'attention') f.service.event(key, { type: 'approval-requested', approval: { id: 'pending-approval' } }, 0);
+  else f.service.event(key, { type: 'turn-completed', turnId: 'pending', status: kind === 'failed' ? 'failed' : 'completed' }, 0);
+  f.events.set(kind, false);
+  await new Promise(resolve => setTimeout(resolve, 400));
+  expect(f.messages.filter(item => String(item.content).includes(`<@${owner}>`))).toEqual([]);
 });
 
 test('completion waits for the queue and sends the final answer with a restricted owner mention', async () => {
@@ -130,7 +189,7 @@ test('disabling prevents new execution and unavailable sessions never route to a
   await eventually(() => f.service.get().channels === 1);
   const channel = String(f.channels.find(item => item.type === 0)!.id);
   f.service.unavailable(key); f.inbound(channel);
-  await eventually(() => f.messages.some(item => String(item.content).includes('명령은 실행되지')));
+  await eventually(() => f.messages.some(item => String(item.content).includes('instruction was not executed')));
   await f.service.save({ ...preferences, enabled: false }); f.inbound(channel);
   await new Promise(resolve => setTimeout(resolve, 20)); expect(count).toBe(0);
 });
@@ -143,8 +202,8 @@ test('channel privacy changes block execution and attention/failure alerts are d
   f.service.event(key, { type: 'turn-started', turnId: 'turn' }, 0);
   for (let index = 0; index < 2; index++) f.service.event(key, { type: 'approval-requested', approval: { id: 'request' } }, 0);
   for (let index = 0; index < 2; index++) f.service.event(key, { type: 'turn-completed', turnId: 'turn', status: 'failed' }, 0);
-  await eventually(() => f.messages.filter(item => String(item.content).includes('실패했습니다')).length === 1);
-  expect(f.messages.filter(item => String(item.content).includes('응답이 필요'))).toHaveLength(1);
+  await eventually(() => f.messages.filter(item => String(item.content).includes('Work failed.')).length === 1);
+  expect(f.messages.filter(item => String(item.content).includes('needs your response'))).toHaveLength(1);
   const channel = f.channels.find(item => item.type === 0)!;
   channel.permission_overwrites = [];
   f.event('CHANNEL_UPDATE', channel); f.inbound(String(channel.id));

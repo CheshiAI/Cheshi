@@ -1,11 +1,8 @@
 export const IMESSAGE_CHANNEL = 'cheshi:imessage';
-export type NotificationKind = 'completed' | 'attention' | 'failed';
+export type { NotificationKind } from './notification-events.ts';
 export interface IMessagePreferences {
   enabled: boolean;
   recipient: string;
-  completed: boolean;
-  attention: boolean;
-  failed: boolean;
 }
 export interface IMessageSettings extends IMessagePreferences {
   available: boolean;
@@ -20,7 +17,7 @@ export interface IMessageApi {
   reportQueue(contextId: string, threads: { threadId: string; count: number }[]): Promise<void>;
 }
 export const DEFAULT_IMESSAGE_PREFERENCES: IMessagePreferences = {
-  enabled: false, recipient: '', completed: true, attention: true, failed: true,
+  enabled: false, recipient: '',
 };
 export function parseIMessageRecipient(value: unknown, allowEmpty = false): string {
   if (typeof value !== 'string') throw new TypeError('Enter an iMessage phone number or email address.');
@@ -35,11 +32,10 @@ export function parseIMessageRecipient(value: unknown, allowEmpty = false): stri
 export function parseIMessagePreferences(value: unknown): IMessagePreferences {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Invalid iMessage settings.');
   const record = value as Record<string, unknown>;
-  for (const key of ['enabled', 'completed', 'attention', 'failed']) {
+  for (const key of ['enabled']) {
     if (record[key] !== true && record[key] !== false) throw new TypeError('Invalid iMessage switch value.');
   }
-  return { enabled: record.enabled === true, recipient: parseIMessageRecipient(record.recipient, record.enabled === false),
-    completed: record.completed === true, attention: record.attention === true, failed: record.failed === true };
+  return { enabled: record.enabled === true, recipient: parseIMessageRecipient(record.recipient, record.enabled === false) };
 }
 export function parseIMessageSettings(value: unknown): IMessageSettings {
   const preferences = parseIMessagePreferences(value);

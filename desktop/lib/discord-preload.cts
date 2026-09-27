@@ -5,6 +5,7 @@ export function createDiscordApi(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'remov
     get: async () => discordSettings(await ipc.invoke(`${DISCORD_CHANNEL}:get`)),
     save: async value => discordSettings(await ipc.invoke(`${DISCORD_CHANNEL}:save`, { ...discordPreferences(value), token: value.token })),
     test: async () => discordSettings(await ipc.invoke(`${DISCORD_CHANNEL}:test`)),
+    setNotificationsEnabled: async enabled => discordSettings(await ipc.invoke(`${DISCORD_CHANNEL}:notifications`, enabled)),
     setup: async contextId => {
       const value: unknown = await ipc.invoke(`${DISCORD_CHANNEL}:setup`, contextId);
       if (typeof value !== 'string') throw new TypeError('Invalid setup skill path.');

@@ -10,7 +10,7 @@ function fixture() {
   const owner = Object.assign(new EventEmitter(), { isDestroyed: () => false, mainFrame: {},
     send(channel: string, value: unknown) { renderer.emit(channel, {}, value); } });
   const window = Object.assign(new EventEmitter(), { webContents: owner, show() {}, focus() {} });
-  const state = { enabled: false, guildId: '', ownerId: '', deviceName: 'Mac', connected: false, hasToken: false,
+  const state = { enabled: false, notificationsEnabled: true, guildId: '', ownerId: '', deviceName: 'Mac', connected: false, hasToken: false,
     channels: 0, pending: 0, status: 'Disabled', token: 'should-not-cross-bridge' };
   const service = { get: () => state, save: () => state, test: () => state };
   const registration = registerDiscordIpc({ window: window as unknown as BrowserWindow,
