@@ -19,20 +19,29 @@
   align-items: center; flex-direction: column; gap: var(--icon-default);
   border-left: 1px solid var(--divider); padding: var(--space-default) 0;
 }
-.list { display: flex; flex: 1; flex-direction: column; gap: var(--icon-default); min-height: 0; overflow: auto; padding: var(--space-default); }
+.list { display: flex; flex: 1; flex-direction: column; gap: 0; min-height: 0; overflow: auto; padding: 0; }
 .record {
   display: flex; flex-direction: column; gap: var(--icon-default); flex: 0 0 auto; min-width: 0;
-  border: 1px solid var(--divider); border-radius: 9px; padding: 12px; background: transparent;
-  color: inherit; font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer;
+  box-sizing: border-box; width: 100%; border: 0; border-bottom: 1px solid var(--divider); border-radius: 0;
+  padding: var(--space-default); background: var(--control-surface-ghost);
+  color: var(--text); font-family: var(--font-ui), sans-serif; font-size: var(--font-size-label);
+  font-weight: 400; letter-spacing: normal; text-align: left; overflow-wrap: anywhere; cursor: pointer;
 }
-.record:hover, .record[data-selected='true'] { background: var(--dropdown-selection-bg); }
-.record strong { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.5; font-weight: 500; }
-.record span, .record time, .record small { color: var(--sidebar-section-label-color); font-size: 10px; line-height: 1.5; }
+.record[data-selected='true'] { background: var(--control-surface); }
+.record:is(:hover, :active, :focus-visible), .recordRow:has(.deleteButton:hover) .record {
+  background: var(--control-surface-interactive);
+}
+.record strong {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  color: var(--sidebar-section-label-color); font-size: var(--font-size-label); line-height: 1.5; font-weight: 600;
+}
+.record span, .record time, .record small { color: var(--sidebar-section-label-color); font-size: var(--font-size-small); font-weight: 400; line-height: 1.5; }
 .notice { margin: 0; line-height: 1.5; color: var(--sidebar-section-label-color); overflow-wrap: anywhere; }
+.list > .notice, .list > [role='status'] { padding: var(--space-default); }
 .emptyState { flex-shrink: 0; margin-block: auto; text-align: center; }
 .notice p { margin: 0 0 var(--icon-default); }
 .notice button { cursor: pointer; padding: 4px 12px; font: inherit; }
-.record:focus-visible { outline: 2px solid var(--dropdown-selection-text); outline-offset: 2px; }
-.recordRow { position: relative; flex: 0 0 auto; min-width: 0; }
-.savedRecord { width: 100%; box-sizing: border-box; padding-right: 42px; }
-.deleteButton { position: absolute; top: 12px; right: 12px; }
+.record:focus-visible { outline: 1px solid var(--text); outline-offset: -1px; }
+.recordRow { position: relative; flex: 0 0 auto; min-width: 0; width: 100%; }
+.savedRecord { padding-right: calc(var(--space-default) + var(--icon-button-size) + var(--icon-default)); }
+.deleteButton { position: absolute; top: var(--space-default); right: var(--space-default); }

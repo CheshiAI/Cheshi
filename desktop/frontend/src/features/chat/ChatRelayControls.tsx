@@ -2,6 +2,7 @@ import { ChevronRight, Link2, Square, X } from 'lucide-react';
 import { useState } from 'react';
 import { CHAT_RELAY_MAX_ROUNDS, type ChatRelayMode } from '../../../../shared/chat-relay';
 import { LiquidGlassPanel, Modal, NeumorphicButton, NeumorphicTextField } from '../../shared/ui';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import type { ChatWorkspaceController } from './useChatWorkspace';
 import type { ChatController } from './useChatController';
 import { MessageContent } from './MessageContent';
@@ -69,13 +70,13 @@ function ChatRelayDialog({ workspace, source, onClose }: {
   };
 
   return (
-    <Modal className={styles.dialog} title="Connect conversations" titleIcon={<Link2 aria-hidden="true" />} onClose={onClose}>
+    <Modal className={styles.dialog} headerVariant="section" title="CONNECT CONVERSATIONS" titleIcon={<Link2 aria-hidden="true" />} onClose={onClose}>
       <form className={styles.form} onSubmit={(event) => { event.preventDefault(); void start(); }}>
         <fieldset className={styles.peers} disabled={busy}>
-          <legend className={styles.sectionLabel}>Conversation mode</legend>
+          <legend>Conversation mode</legend>
           <div className={styles.modeList}>
             {relayModes.map((option) => (
-              <label key={option.value} className={`${styles.peer} ${styles.modeOption}`} data-selected={mode === option.value ? 'true' : undefined}>
+              <label key={option.value} className={styles.peer} data-selected={mode === option.value ? 'true' : undefined}>
                 <input type="radio" name="relay-mode" value={option.value} checked={mode === option.value}
                   onChange={() => setMode(option.value)} />
                 <span>{option.label}</span>
@@ -145,8 +146,8 @@ function ChatRelayDialog({ workspace, source, onClose }: {
         {!moderatorReady && <p role="status">The moderator is unavailable. Choose a ready session or create a new dedicated session.</p>}
         {relay.error && <p role="alert">{relay.error}</p>}
         <div className={styles.buttons}>
-          <NeumorphicButton size="standard" raised onClick={onClose}>Cancel</NeumorphicButton>
-          <NeumorphicButton size="standard" raised type="submit" disabled={!canStart}>{relay.pending ? 'Connecting…' : 'Start conversation'}</NeumorphicButton>
+          <NeumorphicButton variant="standard" onClick={onClose}>Cancel</NeumorphicButton>
+          <NeumorphicButton variant="standard" type="submit" disabled={!canStart}>{relay.pending ? 'Connecting…' : 'Start conversation'}</NeumorphicButton>
         </div>
       </form>
     </Modal>
@@ -182,37 +183,40 @@ export function ChatRelayStatus({ workspace }: { workspace: ChatWorkspaceControl
     : state?.status === 'stopped' ? 'Conversation stopped'
       : state?.status === 'error' ? 'Conversation failed' : stepLabel;
   return (
-    <LiquidGlassPanel className={styles.status} data-liquid-glass-backdrop="true">
+    <LiquidGlassPanel className={styles.status}>
       <header className={styles.statusMain}>
         <div className={styles.statusCopy} role="status" aria-live="polite">
-          <Link2 aria-hidden="true" />
-          <span>{state && label}</span>
+          <div className={styles.statusHeading}>
+            <SidebarPanelTitle icon={<Link2 aria-hidden="true" />} title={state ? label : 'Conversation failed'} />
+          </div>
           {state && <span className={styles.badge}>{state.mode === 'review' ? `${state.step}/3` : `Round ${state.round}/${state.maxRounds}`}</span>}
-          {state && <span className={styles.participants}>{relayModes.find((option) => option.value === state.mode)?.label}</span>}
-          {state?.proposalVersion != null && <span className={styles.participants}>Proposal v{state.proposalVersion}</span>}
-          {state && <span className={styles.participants} title={`A · ${state.sourceThreadId} ↔ B · ${state.targetThreadId}${state.moderatorThreadId ? ` → C · ${state.moderatorThreadId}` : ''}`}>
-            A · {state.sourceThreadId.slice(0, 8)}…{state.sourceThreadId.slice(-4)} ↔ B · {state.targetThreadId.slice(0, 8)}…{state.targetThreadId.slice(-4)}
-            {state.moderatorThreadId && <> → C · {state.moderatorThreadId.slice(0, 8)}…{state.moderatorThreadId.slice(-4)}</>}
-          </span>}
-          {(relay.error || state?.historyError || state?.message) && <span title={relay.error ?? state?.historyError ?? state?.message ?? undefined}>{relay.error ?? state?.historyError ?? state?.message}</span>}
+          <div className={styles.statusMetadata}>
+            {state && <span className={styles.participants}>{relayModes.find((option) => option.value === state.mode)?.label}</span>}
+            {state?.proposalVersion != null && <span className={styles.participants}>Proposal v{state.proposalVersion}</span>}
+            {state && <span className={styles.participantThreads} title={`A · ${state.sourceThreadId} ↔ B · ${state.targetThreadId}${state.moderatorThreadId ? ` → C · ${state.moderatorThreadId}` : ''}`}>
+              A · {state.sourceThreadId.slice(0, 8)}…{state.sourceThreadId.slice(-4)} ↔ B · {state.targetThreadId.slice(0, 8)}…{state.targetThreadId.slice(-4)}
+              {state.moderatorThreadId && <> → C · {state.moderatorThreadId.slice(0, 8)}…{state.moderatorThreadId.slice(-4)}</>}
+            </span>}
+            {(relay.error || state?.historyError || state?.message) && <span className={styles.statusMessage} title={relay.error ?? state?.historyError ?? state?.message ?? undefined}>{relay.error ?? state?.historyError ?? state?.message}</span>}
+          </div>
         </div>
         {relay.running && showingLive ? (
-          <NeumorphicButton raised className={styles.stop} disabled={relay.pending || state?.status === 'stopping'} onClick={() => void relay.stop()}>
+          <NeumorphicButton variant="standard" disabled={relay.pending || state?.status === 'stopping'} onClick={() => void relay.stop()}>
             <Square aria-hidden="true" />{relay.pending || state?.status === 'stopping' ? 'Stopping…' : 'Stop all'}
           </NeumorphicButton>
         ) : (
-          <NeumorphicButton raised className="theme-toggle" aria-label="Dismiss conversation status"
+          <NeumorphicButton variant="ghost" size="icon" aria-label="Dismiss conversation status" title="Dismiss conversation status"
             onClick={() => { relay.dismissResult(); relay.dismissError(); }}><X size={11} strokeWidth={1.7} aria-hidden="true" /></NeumorphicButton>
         )}
       </header>
       {relay.selectedResult && <div className={styles.savedObjective}>{relay.selectedResult.objective}</div>}
       {relay.running && !showingLive && <div className={styles.liveNotice}>
         <span>A conversation is running.</span>
-        <NeumorphicButton raised onClick={relay.showLiveResult}>Show current conversation</NeumorphicButton>
+        <NeumorphicButton variant="standard" onClick={relay.showLiveResult}>Show current conversation</NeumorphicButton>
       </div>}
       {state && (state.issues.length > 0 || state.proposal || state.summary) && (
         <details className={styles.result} open={state.status !== 'running' && state.status !== 'stopping' || undefined}>
-          <summary><ChevronRight aria-hidden="true" />{state.outcome === 'agreed' ? 'Agreed proposal' : state.mode === 'debate' ? (state.moderatorThreadId ? 'Moderator summary and remaining differences' : 'Final review and remaining differences') : 'Proposal and open issues'}
+          <summary><ChevronRight aria-hidden="true" /><span className={styles.resultLabel}>{state.outcome === 'agreed' ? 'Agreed proposal' : state.mode === 'debate' ? (state.moderatorThreadId ? 'Moderator summary and remaining differences' : 'Final review and remaining differences') : 'Proposal and open issues'}</span>
             {state.issues.length > 0 && <span className={styles.badge}>{state.issues.length}</span>}
           </summary>
           <div className={styles.resultBody}>

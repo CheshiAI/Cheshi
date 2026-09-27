@@ -171,8 +171,6 @@
   --editor-badge-font-size: 9px;
   --editor-badge-padding: 10px;
   --radius-popover: 999px;
-  -webkit-backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
-  backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
   width: fit-content;
   max-width: 100%;
   min-height: var(--editor-badge-height);
