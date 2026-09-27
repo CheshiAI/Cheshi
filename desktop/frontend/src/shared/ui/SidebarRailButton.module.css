@@ -1,4 +1,5 @@
 .slot {
+  -webkit-app-region: no-drag;
   position: relative;
   width: 42px;
   height: 42px;
@@ -20,34 +21,25 @@
   overflow: hidden;
   border: 0;
   border-radius: 8px;
-  background: rgba(41, 52, 61, .05);
+  background: var(--control-surface-ghost);
   color: var(--text);
   cursor: pointer;
   padding: 0;
   white-space: nowrap;
-  clip-path: inset(0 calc(100% - 42px) 0 0 round 8px);
-  transition: clip-path var(--motion-panel-duration) ease, background-color .16s ease, color .16s ease;
+  transition: background-color .16s ease, color .16s ease;
 }
 
-.button[data-active='true'] { background: rgba(41, 52, 61, .4); }
+.button[data-active='true'] { background: var(--control-surface); }
 
-.button:hover,
-.button:active,
-.button:focus-visible {
+.button:not(:disabled):is(:hover, :active, :focus-visible) {
   z-index: 2;
-  clip-path: inset(0 0 0 0 round 8px);
-  background: rgba(41, 52, 61, .8);
+  background: var(--control-surface-interactive);
   color: var(--text);
 }
 
 .button:disabled {
   cursor: not-allowed;
   opacity: .5;
-}
-
-.button:disabled:hover {
-  clip-path: inset(0 calc(100% - 42px) 0 0 round 8px);
-  background: rgba(41, 52, 61, .05);
 }
 
 .icon {
@@ -69,13 +61,24 @@
 .icon svg { stroke-width: 1.65; }
 
 .label {
+  interpolate-size: allow-keywords;
+  width: 0;
+  min-width: 0;
+  flex: 0 0 auto;
+  overflow: hidden;
   color: var(--text);
   font-size: 11px;
   font-weight: 400;
   line-height: 15px;
+  padding-right: 0;
+  transition: width var(--motion-panel-duration) ease, padding-right var(--motion-panel-duration) ease;
+}
+
+.button:not(:disabled):is(:hover, :active, :focus-visible) .label {
+  width: max-content;
   padding-right: 13px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .button { transition: none; }
+  .button, .label { transition: none; }
 }
