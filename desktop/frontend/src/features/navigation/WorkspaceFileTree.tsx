@@ -7,15 +7,18 @@ import {
   FolderPlus,
   RotateCw,
 } from 'lucide-react';
+import { useState } from 'react';
 
 import { NeumorphicButton, SidebarPanelHeader } from '../../shared/ui';
 import {
   cheshiDesktop as workspace,
+  type CheshiWorkspaceEntry,
   type WorkspaceEntryMutation,
 } from '../../cheshiDesktop';
 import { WorkspaceFileContextMenu } from './WorkspaceFileContextMenu';
 import { WorkspaceFileTreeRows } from './WorkspaceFileTreeRows';
 import { useWorkspaceFileTreeController } from './useWorkspaceFileTreeController';
+import { WorkspaceDeleteEntryDialog } from './WorkspaceDeleteEntryDialog';
 
 const workspaceName = workspace?.workspaceName ?? 'Workspace';
 
@@ -27,6 +30,7 @@ interface WorkspaceFileTreeProps {
 }
 
 export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, onOpenLocalHistory }: WorkspaceFileTreeProps) {
+  const [deleteTarget, setDeleteTarget] = useState<CheshiWorkspaceEntry | null>(null);
   const controller = useWorkspaceFileTreeController({ onEntryMutation, onOpenFile });
   const {
     beginCreate,
@@ -115,12 +119,14 @@ export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, o
           onClose={closeContextMenu}
           onCopyFullPath={(entry) => void copyFullPath(entry)}
           onCreate={beginCreate}
-          onDelete={(entry) => void deleteEntry(entry)}
+          onDelete={(entry) => { closeContextMenu(); setDeleteTarget(entry); }}
           onMove={beginMove}
           onRename={beginRename}
           onOpenLocalHistory={onOpenLocalHistory ? (entry) => { closeContextMenu(); onOpenLocalHistory(entry.path); } : undefined}
         />
       )}
+      {deleteTarget && <WorkspaceDeleteEntryDialog entry={deleteTarget}
+        onDelete={() => deleteEntry(deleteTarget)} onClose={() => setDeleteTarget(null)} />}
     </>
   );
 }

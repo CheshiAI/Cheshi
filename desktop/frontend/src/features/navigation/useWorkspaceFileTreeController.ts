@@ -462,14 +462,11 @@ export function useWorkspaceFileTreeController({
     }
   };
 
-  const deleteEntry = async (entry: CheshiWorkspaceEntry): Promise<void> => {
-    if (mutationInFlightRef.current) return;
+  const deleteEntry = async (entry: CheshiWorkspaceEntry): Promise<boolean> => {
+    if (mutationInFlightRef.current) return false;
     setContextMenu(null);
-    const entryKind = entry.kind === 'directory' ? 'folder' : 'file';
-    if (!window.confirm(`Move the ${entryKind} "${entry.name}" to Trash?`)) return;
     if (!workspace?.deleteWorkspaceEntry) {
-      setError('Electron Workspace delete API is unavailable.');
-      return;
+      throw new Error('Electron Workspace delete API is unavailable.');
     }
 
     mutationInFlightRef.current = true;
@@ -493,8 +490,7 @@ export function useWorkspaceFileTreeController({
       void loadDirectory(workspaceParentDirectory(result.path));
       setAnnouncement(`Moved ${entry.name} to Trash.`);
       onEntryMutation({ type: 'deleted', path: result.path });
-    } catch (deleteError) {
-      setError(errorMessage(deleteError));
+      return true;
     } finally {
       mutationInFlightRef.current = false;
       setMutatingPath(null);
