@@ -1,181 +1,157 @@
-import { ArrowUp, Bot, ChevronDown, MessageCircleDashed, Paperclip, X } from 'lucide-react';
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import { createPortal } from 'react-dom';
-
+import { Bot, ChevronDown, MessageCircleDashed, Paperclip } from 'lucide-react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { LiquidGlassPanel, LoadingIndicator, LoadingState, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader } from '../../shared/ui';
-import toastStyles from '../../shared/ui/DismissibleToast.module.css';
-import { MessageContent } from './MessageContent';
-import { ChatMessageLabel } from './ChatMessageLabel';
+import { LoadingIndicator, NeumorphicButton, SidebarPanelHeader, draggableWindowRegionStyle } from '../../shared/ui';
+import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
+import { syncChatComposerOverlayHeight } from './chatComposerOverlay';
+import { ChatTimeline } from './ChatTimeline';
+import { ChatViewSurface } from './ChatViewSurface';
+import { ChatComposerSurface, ChatComposerInput, ChatComposerDisclaimer } from './ChatComposerSurface';
+import { ChatComposerAttachments } from './ChatComposerAttachments';
+import { ChatSubmitButton } from './ChatSubmitButton';
+import { ChatErrorNotice } from './ChatErrorNotice';
 import { formatReasoningEffort } from './chatViewModel';
 import { initialTemporaryChatState, TemporaryChatSession } from './temporaryChatSession';
+import { INITIAL_CHAT_STATE } from './model';
+import { temporaryChatItems } from './temporaryChatTimeline';
 import styles from './TemporaryChatPanel.module.css';
+import composer from './ChatComposer.module.css';
 import { TemporaryChatConfigurationMenu } from './TemporaryChatConfigurationMenu';
-import { chatDroppedFiles, hasChatTransferFiles } from './attachmentTransferModel';
+import { chatDroppedFiles, chatTransferFiles, hasChatTransferFiles } from './attachmentTransferModel';
 
-export function TemporaryChatPanel({ onClose }: { onClose: () => void }) {
-  const descriptionId = useId();
+/** Native-window content using the same chat presentation modules as the workspace. */
+export function TemporaryChatPanel() {
   const configurationId = useId();
   const [state, setState] = useState(initialTemporaryChatState);
   const [configurationOpen, setConfigurationOpen] = useState(false);
   const closeConfiguration = useCallback(() => setConfigurationOpen(false), []);
   const session = useRef<TemporaryChatSession | null>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLElement>(null);
+  const timelineRef = useRef<HTMLElement>(null);
+  const composerRef = useRef<HTMLElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const configurationRef = useRef<HTMLDivElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const model = state.models.find(option => option.model === state.model);
   const locked = state.loading || state.busy || state.failed;
-
-  useEffect(() => {
-    const previousFocus = document.activeElement;
-    const api = cheshiDesktop?.temporaryChat;
-    if (api) {
-      const active = new TemporaryChatSession(api, crypto.randomUUID(), setState);
-      session.current = active;
-      setState(initialTemporaryChatState());
-      void active.start();
-    } else {
-      setState({ ...initialTemporaryChatState(), loading: false, failed: true,
-        error: 'Temporary chat is unavailable in this window.' });
-    }
-    textareaRef.current?.focus();
-    return () => {
-      const active = session.current;
-      session.current = null;
-      if (active) void active.close().catch(error => console.error('Could not close temporary chat.', error));
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
-    };
+  const scrollbars = useAutoHideScrollbars<HTMLDivElement>();
+  const scrollToBottom = useCallback(() => {
+    const timeline = timelineRef.current;
+    if (timeline) timeline.scrollTop = timeline.scrollHeight;
+    followLatest.current = true; setShowScrollToBottom(false);
   }, []);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [state.messages, state.busy]);
+  useEffect(() => {
+    const api = cheshiDesktop?.temporaryChat;
+    const active = api ? new TemporaryChatSession(api, crypto.randomUUID(), setState) : null;
+    session.current = active;
+    if (active) void active.start();
+    else setState({ ...initialTemporaryChatState(), loading: false, failed: true, error: 'Temporary chat is unavailable in this window.' });
+    textareaRef.current?.focus();
+    window.dispatchEvent(new Event('cheshi:workspace-content-ready'));
+    return () => {
+      session.current = null;
+      if (active) void active.close().catch(error => console.error('Could not close temporary chat.', error));
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const root = rootRef.current, area = composerRef.current;
+    if (!root || !area) return;
+    const sync = () => syncChatComposerOverlayHeight(root, area.getBoundingClientRect().height, timelineRef.current, followLatest.current);
+    sync(); const observer = new ResizeObserver(sync); observer.observe(area);
+    return () => observer.disconnect();
+  }, []);
+  useLayoutEffect(() => {
+    const input = textareaRef.current;
+    if (input) { input.style.height = 'auto'; input.style.height = `${Math.min(input.scrollHeight, 180)}px`; }
+  }, [state.draft]);
+  useLayoutEffect(() => { if (followLatest.current) scrollToBottom(); }, [state.messages, state.busy, scrollToBottom]);
+  useEffect(() => {
+    const timeline = timelineRef.current;
+    if (!timeline) return;
+    const onScroll = () => {
+      const bottom = timeline.scrollHeight - timeline.clientHeight - timeline.scrollTop < 32;
+      followLatest.current = bottom; setShowScrollToBottom(!bottom);
+    };
+    timeline.addEventListener('scroll', onScroll);
+    return () => timeline.removeEventListener('scroll', onScroll);
+  }, []);
+  const items = useMemo(() => temporaryChatItems(state.messages), [state.messages]);
+  const submit = () => { setConfigurationOpen(false); followLatest.current = true; void session.current?.send(); };
 
-  const close = () => {
-    const active = session.current;
-    if (active) void active.close().catch(error => console.error('Could not close temporary chat.', error));
-    onClose();
-  };
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.nativeEvent.isComposing) return;
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      if (configurationOpen) {
-        setConfigurationOpen(false);
-        configurationRef.current?.querySelector('button')?.focus();
-      } else close();
-      return;
-    }
-    if (event.key !== 'Tab') return;
-    const controls = [...(rootRef.current?.querySelectorAll<HTMLElement>(
-      'button:not(:disabled), textarea:not(:disabled), input:not(:disabled), a[href], [tabindex="0"]',
-    ) ?? [])].filter(element => element.getClientRects().length > 0);
-    const first = controls[0];
-    const last = controls.at(-1);
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last?.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first?.focus();
-    }
-  };
-
-  return createPortal(
-    <div ref={rootRef} className={`${toastStyles.popupAnchor} ${styles.card}`} onKeyDown={handleKeyDown}>
-      <LiquidGlassPanel
-        as="section"
-        role="dialog"
-        aria-label="Temporary chat"
-        aria-describedby={descriptionId}
-        className={`${toastStyles.popup} ${styles.panel}`}
-        data-liquid-glass-backdrop="true"
-      >
-        <SidebarPanelHeader title="TEMPORARY CHAT" icon={<MessageCircleDashed aria-hidden="true" />}
-          actions={<NeumorphicButton variant="ghost" size="icon" aria-label="Close temporary chat"
-            title="Close temporary chat" onClick={close}><X aria-hidden="true" /></NeumorphicButton>} />
-        <p id={descriptionId} className={styles.description}>Not saved to chat history · Ends when closed</p>
-        <div className={`${toastStyles.body} ${styles.messages}`} role="log" aria-label="Temporary conversation" tabIndex={0}>
-          {state.messages.length === 0 && (state.loading ? <LoadingState label="Loading models…" />
-            : <p className={styles.empty}>Ask a question. Continue the conversation here until you close this window.</p>)}
-          {state.messages.map((message, index) => (
-            <article className={styles.message} key={index}>
-              <div className={styles.speaker}><ChatMessageLabel author={message.role} createdAt={message.createdAt} /></div>
-              {message.text && <MessageContent text={message.text} />}
-              {message.attachments.length > 0 && <ul className={styles.fileList} aria-label="Attached files">
-                {message.attachments.map(attachment => <li key={attachment.path}>{attachment.name}</li>)}
-              </ul>}
-            </article>
-          ))}
-          {state.busy && <LoadingState type="thinking" className={styles.loading} />}
-          <div ref={endRef} />
-        </div>
-        <form className={`${toastStyles.footer} ${styles.composer}`}
-          onDragOver={event => {
-            if (!hasChatTransferFiles(event.dataTransfer)) return;
-            event.preventDefault();
-            event.stopPropagation();
-            event.dataTransfer.dropEffect = locked || state.picking ? 'none' : 'copy';
-          }}
-          onDrop={event => {
-            if (!hasChatTransferFiles(event.dataTransfer)) return;
-            event.preventDefault();
-            event.stopPropagation();
-            if (locked || state.picking) return;
-            setConfigurationOpen(false);
-            void session.current?.importAttachments(chatDroppedFiles(event.dataTransfer));
-          }} onSubmit={event => {
-          event.preventDefault();
-          setConfigurationOpen(false);
-          void session.current?.send();
+  return <div className={`app-shell ${styles.window}`} ref={scrollbars}>
+    <header className={styles.titlebar} style={draggableWindowRegionStyle}>
+      <SidebarPanelHeader title="TEMPORARY CHAT" icon={<MessageCircleDashed aria-hidden="true" />} />
+    </header>
+    <p className={styles.description}>Not saved to chat history · Ends when closed</p>
+    <main className={`workspace-column ${styles.content}`}>
+      <ChatViewSurface rootRef={rootRef} timelineRef={timelineRef}
+        onKeyDown={event => {
+          if (event.key === 'Escape' && configurationOpen && !event.nativeEvent.isComposing) {
+            event.preventDefault(); closeConfiguration(); configurationRef.current?.querySelector('button')?.focus();
+          }
+        }}
+        onDragOver={event => {
+          if (!hasChatTransferFiles(event.dataTransfer)) return;
+          event.preventDefault(); event.stopPropagation();
+          event.dataTransfer.dropEffect = locked || state.picking ? 'none' : 'copy';
+        }}
+        onDrop={event => {
+          if (!hasChatTransferFiles(event.dataTransfer)) return;
+          event.preventDefault(); event.stopPropagation();
+          if (!locked && !state.picking) { closeConfiguration(); void session.current?.importAttachments(chatDroppedFiles(event.dataTransfer)); }
         }}>
-          {state.error && <p className={styles.error} role="alert">{state.error}</p>}
-          {state.attachments.length > 0 && <ul className={styles.attachments} aria-label="Attachments to send">
-            {state.attachments.map(attachment => <li key={attachment.path}>
-              <span title={attachment.path}>{attachment.name}</span>
-              <NeumorphicButton variant="ghost" size="icon" disabled={state.busy}
-                aria-label={`Remove ${attachment.name}`} onClick={() => session.current?.removeAttachment(attachment.path)}>
-                <X aria-hidden="true" />
-              </NeumorphicButton>
-            </li>)}
-          </ul>}
-          <NeumorphicTextField multiline ref={textareaRef} className={styles.input} rows={3}
-            aria-label="Temporary chat message" placeholder="Ask anything…" value={state.draft}
-            readOnly={state.busy || state.failed} onChange={event => session.current?.setDraft(event.target.value)}
-            onFocus={() => setConfigurationOpen(false)}
-            onPointerDown={() => setConfigurationOpen(false)}
-            onKeyDown={event => {
-              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
-                event.preventDefault();
-                setConfigurationOpen(false);
-                void session.current?.send();
-              }
-            }} />
-          <div className={styles.controls}>
-            <NeumorphicButton variant="standard" size="icon" disabled={locked || state.picking}
-              title="Attach files" aria-label="Attach files" onClick={() => void session.current?.selectAttachments()}>
-              {state.picking ? <LoadingIndicator label="Opening attachment picker" /> : <Paperclip aria-hidden="true" />}
-            </NeumorphicButton>
-            <div className={styles.configurationAnchor} ref={configurationRef}>
-              <NeumorphicButton variant="standard" aria-label="Choose model and reasoning effort" aria-haspopup="menu" aria-expanded={configurationOpen}
-                aria-controls={configurationOpen ? configurationId : undefined} disabled={locked || state.picking}
-                className={styles.modelTrigger} active={configurationOpen} onClick={() => setConfigurationOpen(!configurationOpen)}>
-                <Bot aria-hidden="true" /><span>{model?.displayName ?? 'Loading models…'}</span>
-                <span className={styles.effort}>{formatReasoningEffort(state.effort)}</span>
-              <ChevronDown aria-hidden="true" /></NeumorphicButton>
+        <ChatTimeline controller={{ loading: state.loading, streaming: state.busy, timelineRef,
+          state: { ...INITIAL_CHAT_STATE, sessionsLoading: false, activeTitle: 'Temporary chat', items },
+          workspaceName: 'Temporary chat', showScrollToBottom, scrollToBottom,
+          pauseAutoScroll: () => { followLatest.current = false; } }} onReviewFileChanges={() => {}} />
+        <footer className={composer.composerArea} ref={composerRef}>
+          {state.error && <ChatErrorNotice className={composer.error}>{state.error}</ChatErrorNotice>}
+          <ChatComposerSurface onSubmit={event => { event.preventDefault(); submit(); }}>
+            <ChatComposerAttachments attachments={state.attachments} removeAttachment={path => session.current?.removeAttachment(path)} />
+            <ChatComposerInput ref={textareaRef} aria-label="Temporary chat message" placeholder="Ask anything…"
+              value={state.draft} readOnly={state.busy || state.failed} disabled={state.loading}
+              onChange={event => session.current?.setDraft(event.target.value)} onFocus={closeConfiguration}
+              onPaste={event => {
+                const files = chatTransferFiles(event.clipboardData);
+                if (files.length && !locked && !state.picking) { event.preventDefault(); void session.current?.importAttachments(files); }
+              }}
+              onKeyDown={event => {
+                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
+                  event.preventDefault(); submit();
+                }
+              }} />
+            <div className={composer.composerFooter}>
+              <div className={composer.composerMeta}>
+                <NeumorphicButton variant="standard" size="icon" className={composer.attachmentButton} disabled={locked || state.picking}
+                  title="Attach files" aria-label="Attach files" onClick={() => void session.current?.selectAttachments()}>
+                  {state.picking ? <LoadingIndicator label="Opening attachment picker" /> : <Paperclip aria-hidden="true" />}
+                </NeumorphicButton>
+              </div>
+              <div className={composer.composerActions}>
+                <div className={composer.configurationTriggerAnchor} ref={configurationRef}>
+                  <NeumorphicButton variant="standard" aria-label="Choose model and reasoning effort" aria-haspopup="menu"
+                    aria-expanded={configurationOpen} aria-controls={configurationOpen ? configurationId : undefined}
+                    disabled={locked || state.picking} className={composer.configurationTrigger} active={configurationOpen}
+                    onClick={() => setConfigurationOpen(!configurationOpen)}>
+                    <Bot aria-hidden="true" /><span className={composer.configurationTriggerModel}>{model?.displayName ?? 'Loading models…'}</span>
+                    <span className={composer.configurationTriggerEffort}>{formatReasoningEffort(state.effort)}</span>
+                    <ChevronDown aria-hidden="true" className={composer.configurationChevron} />
+                  </NeumorphicButton>
+                </div>
+                <ChatSubmitButton streaming={false} goalEditorOpen={false} onStop={() => {}}
+                  sendDisabled={locked || state.picking || (!state.draft.trim() && state.attachments.length === 0)} />
+              </div>
             </div>
-            <NeumorphicButton variant="standard" size="icon" type="submit" aria-label="Send temporary message"
-              title="Send message" disabled={locked || state.picking || (!state.draft.trim() && state.attachments.length === 0)}>
-              <ArrowUp aria-hidden="true" />
-            </NeumorphicButton>
-          </div>
-        </form>
-      </LiquidGlassPanel>
-      {configurationOpen && <TemporaryChatConfigurationMenu id={configurationId} trigger={configurationRef}
-        models={state.models} model={state.model} effort={state.effort} disabled={locked || state.picking}
-        onModelChange={value => session.current?.selectModel(value)}
-        onEffortChange={value => session.current?.selectEffort(value)} onClose={closeConfiguration} />}
-    </div>, document.body,
-  );
+          </ChatComposerSurface>
+          <ChatComposerDisclaimer />
+        </footer>
+        {configurationOpen && <TemporaryChatConfigurationMenu id={configurationId} trigger={configurationRef}
+          models={state.models} model={state.model} effort={state.effort} disabled={locked || state.picking}
+          onModelChange={value => session.current?.selectModel(value)} onEffortChange={value => session.current?.selectEffort(value)}
+          onClose={closeConfiguration} />}
+      </ChatViewSurface>
+    </main>
+  </div>;
 }

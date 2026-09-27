@@ -1,8 +1,8 @@
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
+import { chatWindowOptions } from './lib/chat-window-options.mts';
+import { createWorkspaceTemporaryChat } from './lib/workspace-temporary-chat.mts';
 import { createWorkspaceWindowReadiness } from './lib/workspace-window-readiness.mts';
 import { createWorkspaceRendererEvents } from './lib/workspace-renderer-events.mts';
-import { TemporaryChatService } from './lib/temporary-chat-service.mts';
-import { registerTemporaryChatIpc } from './lib/temporary-chat-ipc.mts';
 import { createWorkspaceCodeExplanation } from './lib/workspace-code-explanation.mts';
 import path from 'node:path';
 import { userInfo } from 'node:os';
@@ -188,16 +188,18 @@ const createChatClient = workspaceAccounts.createClient;
 const codexAppServerClient = createChatClient();
 const ephemeralSessionClient = createChatClient();
 const codeExplanation = createWorkspaceCodeExplanation(ephemeralSessionClient, workspaceRoot);
-const temporaryChats = registerTemporaryChatIpc({
-  ipc: ipcMain, assertSender: assertCheshiSender,
-  createService: () => new TemporaryChatService({ createClient: createChatClient, cwd: workspaceRoot }),
-  selectFiles: async (event) => {
-    const owner = BrowserWindow.fromWebContents(event.sender);
-    const options: OpenDialogOptions = { title: 'Attach files to temporary chat', buttonLabel: 'Attach', properties: ['openFile', 'multiSelections'] };
-    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+const preloadPath = app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'preload.cjs')
+  : path.join(currentDirectory, 'runtime', 'preload.cjs');
+const temporaryChats = createWorkspaceTemporaryChat({
+  scope: options.scope, getParent: () => mainWindow, createWindow: configuration => new BrowserWindow(configuration),
+  workspaceRoot, userName: currentUserName(), createClient: createChatClient, shell,
+  preload: preloadPath, appearanceFile: path.join(userDataDirectory, 'appearance.json'),
+  selectFiles: async window => {
+    const selection: OpenDialogOptions = { title: 'Attach files to temporary chat', buttonLabel: 'Attach', properties: ['openFile', 'multiSelections'] };
+    const result = await dialog.showOpenDialog(window, selection);
     return result.canceled ? [] : result.filePaths;
   },
-  onCleanupError: (error) => chatServiceOptions.log('temporary-chat-cleanup-failed', { message: String(error) }),
+  onCleanupError: error => chatServiceOptions.log('temporary-chat-cleanup-failed', { message: String(error) }),
 });
 const codexAccountService = new CodexAccountService({
   client: codexAppServerClient,
@@ -808,18 +810,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
     minWidth: 1280,
     minHeight: 750,
     title: product.displayName,
-    backgroundColor: INITIAL_WINDOW_BACKGROUND_COLORS.dark,
-    transparent: process.platform === 'darwin',
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 15, y: 14 },
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: app.isPackaged
-        ? path.join(process.resourcesPath, 'runtime', 'preload.cjs')
-        : path.join(currentDirectory, 'runtime', 'preload.cjs'),
-      sandbox: true,
-    },
+    ...chatWindowOptions(preloadPath),
   });
   logStartup('window created');
   registerWorkspaceWindowCloseConfirmation(window, dialog);

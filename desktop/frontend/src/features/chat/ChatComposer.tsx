@@ -1,7 +1,8 @@
+import { ChatComposerSurface, ChatComposerInput, ChatComposerDisclaimer } from './ChatComposerSurface';
 import { useId, useMemo, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 
-import { ContentCard, LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
+import { ContentCard, NeumorphicButton } from '../../shared/ui';
 import { ChatErrorNotice } from './ChatErrorNotice';
 import { ChatCommandMenu } from './ChatCommandMenu';
 import { ChatConfigurationMenu } from './ChatConfigurationMenu';
@@ -130,53 +131,47 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
 
       <ChatMessageQueue controller={controller} open={queueOpen} panelId={queuePanelId} />
       <ChatInputHistoryPanel history={history} />
-      <div className={styles.composerAnchor} data-queue-open={queueOpen ? 'true' : 'false'}>
-        <LiquidGlassPanel className={styles.composerSurface} data-liquid-glass-backdrop="true">
-          <form className={styles.composer} onSubmit={submit}>
-            <ChatComposerAttachments attachments={attachments} removeAttachment={removeAttachment} />
-            {!commandMenuOpen && <GithubLinkChips draft={draft} />}
-            <textarea
-              aria-label={goalEditorOpen ? 'Persistent goal objective' : 'Message Codex'}
-              disabled={loading}
-              aria-controls={history.open ? history.listId : commandMenuOpen ? controller.commandMenuId : undefined}
-              aria-expanded={history.open || commandMenuOpen}
-              aria-activedescendant={history.open ? `${history.listId}-${history.state.selected}` : undefined}
-              placeholder={skillPickerOpen
-                ? 'Search installed skills'
-                : agentPickerOpen
-                  ? 'Search agent threads'
-                  : modelPickerOpen
-                    ? 'Search available models'
-                    : reasoningPickerOpen
-                      ? 'Search reasoning levels'
-                      : permissionsPickerOpen
-                        ? 'Search permission modes'
-                        : commandMenuMode === 'status'
-                          ? 'Current chat status'
-                          : mcpStatusOpen
-                            ? 'Filter connected MCP servers'
-                            : goalEditorOpen
-                              ? goal ? 'Replace the persistent goal' : 'Set a persistent goal for this chat'
-                              : selectedSkill
-                                ? `Ask with ${selectedSkill.displayName}`
-                                : streaming ? 'Queue a message for after the current response' : 'Ask Codex about this workspace'}
-              ref={textareaRef}
-              rows={1}
-              value={draft}
-              onChange={(event) => { history.close(); handleDraftChange(event.target.value); }}
-              onPaste={controller.attachmentTransfer.onPaste}
-              onKeyDown={history.onKeyDown}
-            />
-            <ChatComposerToolbar controller={controller} chatController={chatController} />
-            <ChatQueueToggle controller={controller} open={queueOpen} panelId={queuePanelId}
-              leading={<ChatPlanToggle controller={controller} pending={chatController.configurationPending} />}
-              onToggle={() => setQueueVisible((visible) => !visible)} />
-          </form>
-        </LiquidGlassPanel>
-      </div>
-      <div className={styles.disclaimerRow}>
-        <p className={styles.disclaimer}>codex can make mistakes. check important answers.</p>
-      </div>
+      <ChatComposerSurface queueOpen={queueOpen} onSubmit={submit}>
+        <ChatComposerAttachments attachments={attachments} removeAttachment={removeAttachment} />
+        {!commandMenuOpen && <GithubLinkChips draft={draft} />}
+        <ChatComposerInput
+          aria-label={goalEditorOpen ? 'Persistent goal objective' : 'Message Codex'}
+          disabled={loading}
+          aria-controls={history.open ? history.listId : commandMenuOpen ? controller.commandMenuId : undefined}
+          aria-expanded={history.open || commandMenuOpen}
+          aria-activedescendant={history.open ? `${history.listId}-${history.state.selected}` : undefined}
+          placeholder={skillPickerOpen
+            ? 'Search installed skills'
+            : agentPickerOpen
+              ? 'Search agent threads'
+              : modelPickerOpen
+                ? 'Search available models'
+                : reasoningPickerOpen
+                  ? 'Search reasoning levels'
+                  : permissionsPickerOpen
+                    ? 'Search permission modes'
+                    : commandMenuMode === 'status'
+                      ? 'Current chat status'
+                      : mcpStatusOpen
+                        ? 'Filter connected MCP servers'
+                        : goalEditorOpen
+                          ? goal ? 'Replace the persistent goal' : 'Set a persistent goal for this chat'
+                          : selectedSkill
+                            ? `Ask with ${selectedSkill.displayName}`
+                            : streaming ? 'Queue a message for after the current response' : 'Ask Codex about this workspace'}
+          ref={textareaRef}
+          rows={1}
+          value={draft}
+          onChange={(event) => { history.close(); handleDraftChange(event.target.value); }}
+          onPaste={controller.attachmentTransfer.onPaste}
+          onKeyDown={history.onKeyDown}
+        />
+        <ChatComposerToolbar controller={controller} chatController={chatController} />
+        <ChatQueueToggle controller={controller} open={queueOpen} panelId={queuePanelId}
+          leading={<ChatPlanToggle controller={controller} pending={chatController.configurationPending} />}
+          onToggle={() => setQueueVisible((visible) => !visible)} />
+      </ChatComposerSurface>
+      <ChatComposerDisclaimer />
     </footer>
   );
 }

@@ -3,13 +3,20 @@ import type { CheshiDesktopApi } from '../frontend/src/cheshiDesktop.ts';
 import { readTemporaryChatReply } from '../shared/temporary-chat.ts';
 
 export function createTemporaryChatApi(
-  ipc: Pick<IpcRenderer, 'invoke'>,
+  ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>,
   getPathForFile: (file: File) => string,
 ): CheshiDesktopApi['temporaryChat'] {
   const invoke = async <T,>(channel: string, ...args: unknown[]): Promise<T> => (
     readTemporaryChatReply<T>(await ipc.invoke(channel, ...args))
   );
   return {
+    openWindow: () => ipc.invoke('cheshi:temporary-chat-open-window'),
+    isWindowOpen: () => ipc.invoke('cheshi:temporary-chat-window-state'),
+    onWindowChanged: listener => {
+      const handler = (_event: unknown, open: unknown) => listener(open === true);
+      ipc.on('cheshi:temporary-chat-window-changed', handler);
+      return () => { ipc.removeListener('cheshi:temporary-chat-window-changed', handler); };
+    },
     models: sessionId => invoke('cheshi:temporary-chat-models', sessionId),
     send: (sessionId, request) => invoke('cheshi:temporary-chat-send', sessionId, request),
     selectAttachments: sessionId => invoke('cheshi:temporary-chat-attachments', sessionId),

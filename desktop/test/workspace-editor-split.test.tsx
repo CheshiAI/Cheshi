@@ -137,6 +137,7 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
       readSidebarPanel: () => preference.panel,
       saveSidebarPanel: (panel: SidebarPanel) => { preference.panel = panel; },
     },
+    '../../cheshiDesktop': { cheshiDesktop: undefined },
     '../chat/HistoryRecallActivity': { HistoryRecallNavigation: { Provider: 'HistoryRecallNavigation' } },
     '../chat/chatDraftAttachments': { ...draftAttachmentModule, createChatDraftAttachments: () => attachments },
     '../notes/appleNotesModel': { appleNoteAttachment },

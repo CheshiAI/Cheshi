@@ -4,6 +4,8 @@ import vm from 'node:vm';
 import { expect, test } from 'bun:test';
 import ts from 'typescript';
 import { TemporaryChatSession, initialTemporaryChatState, type TemporaryChatApi } from '../frontend/src/features/chat/temporaryChatSession';
+import { INITIAL_CHAT_STATE } from '../frontend/src/features/chat/model';
+import { temporaryChatItems } from '../frontend/src/features/chat/temporaryChatTimeline';
 import * as transfer from '../frontend/src/features/chat/attachmentTransferModel';
 import { WORKSPACE_FILE_TRANSFER_TYPE } from '../frontend/src/shared/workspaceFileTransfer';
 
@@ -50,6 +52,8 @@ function harness() {
       },
       useRef(initial: unknown) { const index = refCursor++; return refs[index] ??= { current: initial }; },
       useEffect(effect: () => (() => void) | undefined) { if (!mounted) effects.push(effect); },
+      useLayoutEffect: () => {},
+      useMemo: (compute: () => unknown) => compute(),
       useCallback: (callback: unknown) => callback,
       useId: () => 'temporary-id',
     },
@@ -66,6 +70,17 @@ function harness() {
     './TemporaryChatPanel.module.css': { default: {} },
     './TemporaryChatConfigurationMenu': { TemporaryChatConfigurationMenu: 'TemporaryChatConfigurationMenu' },
     './attachmentTransferModel': transfer,
+    '../../shared/useAutoHideScrollbars': { useAutoHideScrollbars: () => () => {} },
+    './ChatTimeline': { ChatTimeline: 'ChatTimeline' },
+    './ChatViewSurface': { ChatViewSurface: 'ChatViewSurface' },
+    './ChatComposerSurface': { ChatComposerSurface: 'ChatComposerSurface', ChatComposerInput: 'ChatComposerInput', ChatComposerDisclaimer: 'ChatComposerDisclaimer' },
+    './ChatComposerAttachments': { ChatComposerAttachments: 'ChatComposerAttachments' },
+    './ChatSubmitButton': { ChatSubmitButton: 'ChatSubmitButton' },
+    './ChatErrorNotice': { ChatErrorNotice: 'ChatErrorNotice' },
+    './model': { INITIAL_CHAT_STATE },
+    './chatComposerOverlay': { syncChatComposerOverlayHeight: () => false },
+    './temporaryChatTimeline': { temporaryChatItems },
+    './ChatComposer.module.css': { default: {} },
   };
   const source = readFileSync(new URL('../frontend/src/features/chat/TemporaryChatPanel.tsx', import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: {
@@ -74,7 +89,7 @@ function harness() {
   const exports: Record<string, unknown> = {};
   vm.runInNewContext(compiled.outputText, {
     exports, document: { activeElement: null, body: {} }, crypto: { randomUUID: () => 'drop-session' }, console,
-    HTMLElement: class {},
+    HTMLElement: class {}, window: { dispatchEvent() {} }, Event: class {},
     require(name: string) { assert.ok(Object.hasOwn(modules, name), `Unexpected dependency: ${name}`); return modules[name]; },
   });
   const component = exports.TemporaryChatPanel;
@@ -86,7 +101,7 @@ function harness() {
       const tree = (component as (props: { onClose(): void }) => unknown)({ onClose() {} });
       if (!mounted) for (const effect of effects) { const cleanup = effect(); if (cleanup) cleanups.push(cleanup); }
       mounted = true;
-      const form = elements(tree).find(element => element.type === 'form');
+      const form = elements(tree).find(element => element.type === 'ChatViewSurface');
       assert.ok(form);
       return form;
     },

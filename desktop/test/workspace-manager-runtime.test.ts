@@ -69,6 +69,7 @@ async function fixture() {
     workspaceRoot: root, managementOnly: true, initial: true,
     scope: {
       ipc: scope.ipc,
+      fork: () => scope.fork(),
       addOwner: (contents, managementOnly) => {
         owners.push({ contents, managementOnly });
         scope.addOwner(contents, managementOnly);

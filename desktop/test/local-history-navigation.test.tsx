@@ -67,6 +67,7 @@ function createHarness() {
       SidebarToggleVisibility: { Provider: 'SidebarToggleVisibility' },
     },
     '../chat': { ChatSessionList: 'ChatSessionList' },
+    '../../cheshiDesktop': { cheshiDesktop: undefined },
     '../chat/HistoryRecallActivity': { HistoryRecallNavigation: { Provider: 'HistoryRecallNavigation' } },
     '../chat/ChatWorkspace': { ChatWorkspace: 'ChatWorkspace' },
     '../chat/chatDraftAttachments': {

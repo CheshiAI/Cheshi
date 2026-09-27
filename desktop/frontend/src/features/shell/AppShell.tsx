@@ -7,7 +7,7 @@ import {
   type ChatActivityItem,
 } from '../chat';
 import { ChatWorkspace } from '../chat/ChatWorkspace';
-import { TemporaryChatPanel } from '../chat/TemporaryChatPanel';
+import { cheshiDesktop } from '../../cheshiDesktop';
 import { ChatDeleteSessionDialog } from '../chat/ChatDeleteSessionDialog';
 import { ChatHistoryOpenDialog } from '../chat/ChatHistoryOpenDialog';
 import { ChatHistorySearchBar } from '../chat/ChatHistorySearchBar';
@@ -54,6 +54,14 @@ const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'notes', 'ca
 export function AppShell() {
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [temporaryChatOpen, setTemporaryChatOpen] = useState(false);
+  useEffect(() => {
+    const api = cheshiDesktop?.temporaryChat;
+    if (!api) return;
+    let active = true, changed = false;
+    const unsubscribe = api.onWindowChanged(open => { changed = true; setTemporaryChatOpen(open); });
+    void api.isWindowOpen().then(open => { if (active && !changed) setTemporaryChatOpen(open); }).catch(console.error);
+    return () => { active = false; unsubscribe(); };
+  }, []);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [submittedSearchQuery, setSubmittedSearchQuery] = useState('');
@@ -296,7 +304,7 @@ export function AppShell() {
                 selectionDisabled={chatSessionSelectionDisabled}
                 sessions={workspace.sessionHistory.sessions}
                 onNew={newChat}
-                onTemporaryChat={() => { if (!workspace.accountSwitchPending) setTemporaryChatOpen(true); }}
+                onTemporaryChat={() => { if (!workspace.accountSwitchPending) void cheshiDesktop?.temporaryChat.openWindow().catch(error => window.alert(String(error))); }}
                 temporaryChatOpen={temporaryChatOpen}
                 onOpen={openChat}
                 deleteReason={workspace.deleteSessionReason}
@@ -412,7 +420,6 @@ export function AppShell() {
       <WorkspaceStatusBar onAccountInitialLoad={accountReady} onIndexInitialLoad={indexReady}
         selectionDisabledReason={accountSwitchReason}
         onBeforeSelect={beforeAccountSelect} onSelectionFinished={accountSelectionFinished} />
-      {temporaryChatOpen && <TemporaryChatPanel onClose={() => setTemporaryChatOpen(false)} />}
       {fileSearchOpen && <WorkspaceFileSearch onOpenFile={openWorkspaceFile} onClose={() => setFileSearchOpen(false)} />}
       {deleteChoice && <ChatDeleteSessionDialog sessionTitle={deleteChoice.title}
         reason={workspace.deletePending ? null : workspace.deleteSessionReason(deleteChoice.sessionId)}
