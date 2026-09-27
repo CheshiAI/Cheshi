@@ -1,7 +1,7 @@
 import { createContext, useContext, useState } from 'react';
 import { Search, ExternalLink, ChevronDown } from 'lucide-react';
 import { sumRecallLunaUsage, type RecallMetrics, type RecallSource } from '../../../../shared/history-recall';
-import { LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
+import { ContentCard, NeumorphicButton } from '../../shared/ui';
 import type { ChatActivityItem, ChatTimelineItem } from './model';
 import { MessageContent } from './MessageContent';
 import styles from './HistoryRecallActivity.module.css';
@@ -47,11 +47,9 @@ export function HistoryRecallActivity({ item }: { item: ChatActivityItem }) {
     catch { setError('The source could not be opened. Try again.'); }
     finally { setPending(false); }
   };
-  return <LiquidGlassPanel as="article" className={styles.card} data-liquid-glass-backdrop="true">
-    <div className={styles.heading}><Search aria-hidden="true" />
-      <strong>{recall.operation === 'search' ? 'History search' : 'History source'}</strong>
-      <span>{recall.status === 'error' ? 'Failed' : recall.partial ? 'Partial search' : recall.operation === 'read' ? 'Original message' : 'Searched selected scope'}</span>
-    </div>
+  return <ContentCard className={styles.card} icon={<Search aria-hidden="true" />}
+    title={recall.operation === 'search' ? 'History search' : 'History source'}
+    description={recall.status === 'error' ? 'Failed' : recall.partial ? 'Partial search' : recall.operation === 'read' ? 'Original message' : 'Searched selected scope'}>
     {recall.query && <p>{recall.query}</p>}
     {recall.metrics && <RecallMetricsView metrics={recall.metrics} />}
     {recall.error && <p role="status">{recall.error}</p>}
@@ -63,7 +61,7 @@ export function HistoryRecallActivity({ item }: { item: ChatActivityItem }) {
         key={`${source.threadId}:${source.turnId}:${source.itemId}`}>
         <strong>{source.title || 'Conversation'}</strong>
         <div className={styles.preview}><MessageContent text={source.text} /></div>
-        <NeumorphicButton size="standard" disabled={!navigation || navigation.disabled || pending} onClick={() => void open(source)}>
+        <NeumorphicButton variant="ghost" size="standard" disabled={!navigation || navigation.disabled || pending} onClick={() => void open(source)}>
           <ExternalLink aria-hidden="true" />Open original message
         </NeumorphicButton>
         <details className={styles.sourceIds}><summary className={styles.disclosureSummary}><ChevronDown className={styles.chevron} aria-hidden="true" />
@@ -71,7 +69,7 @@ export function HistoryRecallActivity({ item }: { item: ChatActivityItem }) {
       </div>)}</div>
     </details>}
     {error && <p role="status">{error}</p>}
-  </LiquidGlassPanel>;
+  </ContentCard>;
 }
 
 /** Sum each tool item once; saved history may contain repeated completion updates. */

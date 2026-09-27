@@ -44,12 +44,12 @@ describe('chat Markdown rendering', () => {
 
   test('keeps fenced, indented and inline code literal and preserves JSON presentation', () => {
     const html = render('Use `a | b`.\n\n```ts\nconst value = "**literal**";\n```\n\n    | not a table |');
-    expect(html.match(/<pre>/g)).toHaveLength(2);
+    expect(html.match(/<pre\b/g)).toHaveLength(2);
     expect(html).toContain('**literal**');
     expect(html).not.toContain('<strong>literal</strong>');
     expect(html).toContain('Copy');
-    expect(render('{"ok":true}')).toContain('<pre>');
-    expect(render('```ts\nconst incomplete = 1')).toContain('<pre>');
+    expect(render('{"ok":true}')).toMatch(/<pre\b/);
+    expect(render('```ts\nconst incomplete = 1')).toMatch(/<pre\b/);
   });
 
   test('supports escaped table separators and column alignment', () => {

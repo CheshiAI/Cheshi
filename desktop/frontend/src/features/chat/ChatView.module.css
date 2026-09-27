@@ -171,16 +171,6 @@
 .inlineCode { border: 1px solid rgba(255, 255, 255, .07); border-radius: 5px; background: rgba(0, 0, 0, .22); color: #d6dddd; font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; padding: 1px 4px; margin-inline: 3px; }
 .assistantMessage .inlineCode { background: var(--divider); color: var(--sidebar-section-label-color); }
 
-.codeBlock { --liquid-glass-radius: 11px; width: 100%; min-width: 0; max-width: 100%; overflow: hidden; margin: 10px 0; background: transparent; }
-.codeBlock header { display: flex; min-height: 32px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--divider); background: transparent; color: var(--sidebar-section-label-color); padding: 0 10px 0 12px; }
-.codeBlock header > span { font-size: 10px; text-transform: lowercase; }
-.copyButton { display: flex; height: 22px; align-items: center; gap: 6px; border: 0; border-radius: 999px; background: transparent; color: var(--sub-text); cursor: pointer; font-size: 10px; line-height: 1; padding: 0 8px; text-transform: lowercase; transition: background-color .16s ease, color .16s ease, transform .16s ease; }
-.copyButton:hover { background: var(--dropdown-selection-bg); color: var(--dropdown-selection-text); }
-.copyButton:active { transform: scale(.97); }
-.copyButton svg { width: 12px; height: 12px; }
-.codeBlock pre { width: 100%; min-width: 0; max-width: 100%; margin: 0; overflow-x: auto; overflow-y: hidden; background: transparent; padding: 14px; }
-.codeBlock pre code { color: var(--text); font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; line-height: 17px; white-space: pre; }
-
 .reasoning { margin-left: 40px; border-left: 1px solid rgba(133, 201, 192, .2); color: #92999a; padding-left: 12px; }
 .reasoning summary { display: inline-flex; align-items: center; gap: 7px; color: #9aa2a3; cursor: pointer; font-size: 11px; list-style: none; user-select: none; }
 .reasoning summary::-webkit-details-marker { display: none; }

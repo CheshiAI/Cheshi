@@ -13,7 +13,7 @@ import { memo, type ReactNode } from 'react';
 
 import { parseChatRelayMessage } from '../../../../shared/chat-relay';
 import { parseSavedChatTurnPrompt } from '../../../../shared/chat-saved-turn-continuation';
-import { LiquidGlassPanel } from '../../shared/ui';
+import { ContentCard, LiquidGlassPanel } from '../../shared/ui';
 import { ChatMessageLabel } from './ChatMessageLabel';
 import { relayAssistantDisplayText, relayDisplayText } from './chatRelayMessageView';
 import { FileChangesActivity } from './FileChangesActivity';
@@ -103,10 +103,17 @@ function TimelineItemContent({
   }
   if (item.kind === 'activity' && item.activity === 'agent') return <AgentActivity item={item} />;
   if (item.kind === 'activity' && item.recall) return <HistoryRecallActivity item={item} />;
+  if (item.kind === 'activity' && item.activity === 'search') {
+    return <ContentCard icon={<Search aria-hidden="true" />} title={item.label} description={item.detail}
+      data-activity={item.activity} data-status={item.status}
+      status={item.status === 'inProgress' ? <span role="status">In progress</span>
+        : item.status === 'failed' ? 'Failed' : item.status === 'declined' ? 'Declined'
+          : item.status === 'interrupted' ? 'Response stopped' : undefined} />;
+  }
   if (item.kind === 'activity') {
     return (
       <LiquidGlassPanel as="article" className={styles.activity} data-activity={item.activity} data-status={item.status}
-        data-liquid-glass-backdrop={item.activity === 'search' || item.activity === 'context' || item.activity === 'error' || item.activity === 'agent' || item.activity === 'tool' ? 'true' : undefined}>
+        data-liquid-glass-backdrop={item.activity === 'context' || item.activity === 'error' || item.activity === 'agent' || item.activity === 'tool' ? 'true' : undefined}>
         <ActivityIcon item={item} />
         <div>
           <strong>{item.label}</strong>

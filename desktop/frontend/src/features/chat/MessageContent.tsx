@@ -1,11 +1,11 @@
-import { Check, Copy, Image as ImageIcon } from 'lucide-react';
+import { Image as ImageIcon } from 'lucide-react';
 import { Children, useEffect, useState, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { localFileLinkPath } from '../../../../shared/local-file-link';
-import { LiquidGlassPanel } from '../../shared/ui';
+import { CodePanel, LiquidGlassPanel } from '../../shared/ui';
 import styles from './ChatView.module.css';
 import markdownStyles from './MessageContent.module.css';
 
@@ -167,10 +167,10 @@ const markdownComponents: Components = {
     const language = Array.isArray(classNames)
       ? classNames.find((name) => typeof name === 'string' && name.startsWith('language-'))
       : undefined;
-    return <CodeBlock code={value.replace(/\n$/, '')} language={typeof language === 'string' ? language.slice(9) : undefined} />;
+    return <CodePanel code={value.replace(/\n$/, '')} language={typeof language === 'string' ? language.slice(9) : undefined} />;
   },
   table: ({ children }) => (
-    <LiquidGlassPanel className={markdownStyles.tableScroll} data-liquid-glass-backdrop="true" role="region" aria-label="Table" tabIndex={0}>
+    <LiquidGlassPanel className={markdownStyles.tableScroll} role="region" aria-label="Table" tabIndex={0}>
       <table>{children}</table>
     </LiquidGlassPanel>
   ),
@@ -181,32 +181,9 @@ const localImageComponents: Components = {
   p: LocalImageParagraph,
 };
 
-function CodeBlock({ code, language }: { code: string; language?: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const copy = async () => {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1_500);
-  };
-
-  return (
-    <LiquidGlassPanel as="section" className={styles.codeBlock} data-liquid-glass-backdrop="true">
-      <header>
-        <span>{language || 'code'}</span>
-        <button className={styles.copyButton} type="button" onClick={() => void copy()}>
-          {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </header>
-      <pre><code>{code}</code></pre>
-    </LiquidGlassPanel>
-  );
-}
-
 export function MessageContent({ renderLocalImages = false, text }: MessageContentProps) {
   const jsonSegment = jsonSegmentFromText(text);
-  if (jsonSegment) return <CodeBlock code={jsonSegment.value} language={jsonSegment.language} />;
+  if (jsonSegment) return <CodePanel code={jsonSegment.value} language={jsonSegment.language} />;
   return (
     <div className={markdownStyles.markdown}>
       <ReactMarkdown
