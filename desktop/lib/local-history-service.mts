@@ -80,6 +80,7 @@ export class LocalHistoryService {
   private readonly store: LocalHistoryStore;
   private readonly onError: (error: Error) => void;
   private queue: Promise<void> = Promise.resolve();
+  private mutations: Promise<void> = Promise.resolve();
   private closed = false;
   private pendingPaths = new Set<string>();
   private overflow = false;
@@ -96,6 +97,12 @@ export class LocalHistoryService {
     if (this.closed) return Promise.reject(new Error('Local history has been closed.'));
     const result = this.queue.then(operation);
     this.queue = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  private enqueueMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.enqueue(operation);
+    this.mutations = result.then(() => undefined, () => undefined);
     return result;
   }
 
@@ -136,11 +143,14 @@ export class LocalHistoryService {
   }
 
   readFile(filePath: string): Promise<WorkspaceFileReadResult> {
-    return this.enqueue(async () => {
-      const result = await this.stableRead(filePath);
-      await this.capture(asCapture(result, 'opened'));
-      return result;
-    });
+    if (this.closed) return Promise.reject(new Error('Local history has been closed.'));
+    // Respect earlier saves/restores, but do not make opening a file wait for history I/O.
+    const result = this.mutations.then(() => this.stableRead(filePath));
+    // Reserve this snapshot's place before a later save, list, or shutdown can run.
+    const snapshot = result.then(value => asCapture(value, 'opened'), () => null);
+    void this.enqueue(async () => this.capture(await snapshot))
+      .catch((error: unknown) => { this.report(error, filePath); });
+    return result;
   }
 
   writeFile(request: WorkspaceFileWriteRequest): Promise<WorkspaceFileWriteResult> {
@@ -148,7 +158,7 @@ export class LocalHistoryService {
   }
 
   writeFiles(value: WorkspaceFilesWriteRequest): Promise<WorkspaceFilesWriteResult> {
-    return this.enqueue(async () => {
+    return this.enqueueMutation(async () => {
       assertWriteBatch(value);
       const originals = await Promise.all(value.files.map((request) => this.stableRead(request.path)));
       for (const original of originals) await this.capture(asCapture(original, 'opened'));
@@ -178,7 +188,7 @@ export class LocalHistoryService {
   }
 
   restore(request: LocalHistoryRestoreRequest): Promise<WorkspaceFileWriteResult> {
-    return this.enqueue(() => this.store.transaction(async () => {
+    return this.enqueueMutation(() => this.store.transaction(async () => {
       assertRestoreRequest(request);
       const snapshot = await this.store.read(localHistoryPath(request.path), request.id);
       const current = await this.stableRead(request.path);

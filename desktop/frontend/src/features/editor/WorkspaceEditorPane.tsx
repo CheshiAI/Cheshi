@@ -14,6 +14,7 @@ import {
   draggableWindowRegionStyle,
   FlatTab,
   FlatTabList,
+  LoadingState,
   NeumorphicButton,
   nonDraggableWindowRegionStyle,
   TieredHeader,
@@ -108,6 +109,7 @@ export function WorkspaceEditorPane({
     findNextMatch,
     findPreviousMatch,
     languageServerConfiguring,
+    loading,
     openReference,
     problemsRatio,
     problemsVisible,
@@ -137,7 +139,7 @@ export function WorkspaceEditorPane({
   if (!active) return explanationToast;
 
   return (
-    <main className="workspace-editor" aria-label="Workspace editor"
+    <main className="workspace-editor" aria-label="Workspace editor" aria-busy={loading || !pane.ready}
       onFocusCapture={() => pane.store.activate(pane.id)}
       onPointerDownCapture={() => pane.store.activate(pane.id)}>
       <TieredHeader
@@ -226,6 +228,8 @@ export function WorkspaceEditorPane({
         </div>
       )}
 
+      {loading && currentFile && <LoadingState label="Opening file…" />}
+
       <section
         ref={problemsLayout.stageRef}
         className="workspace-editor-stage"
@@ -275,6 +279,10 @@ export function WorkspaceEditorPane({
             </span>
             <strong>{currentFile.fileKind === 'too_large' ? 'File is too large to edit' : 'Binary file'}</strong>
             <p>{currentFile.path} · {formatBytes(currentFile.size)}</p>
+          </div>
+        ) : loading || !pane.ready ? (
+          <div className="workspace-editor-empty">
+            <LoadingState label={pane.ready ? 'Opening file…' : 'Restoring files…'} />
           </div>
         ) : (
           <div className="workspace-editor-empty">

@@ -15,6 +15,7 @@ import type { Sidebar } from '../frontend/src/features/navigation/Sidebar';
 import type { SidebarPanel } from '../frontend/src/features/navigation/sidebarPanel';
 import type { SidebarRail } from '../frontend/src/features/navigation/SidebarRail';
 import type { WorkspaceEditor } from '../frontend/src/features/editor/WorkspaceEditor';
+import type { WorkspaceEditorPane } from '../frontend/src/features/editor/WorkspaceEditorPane';
 import type { ChatWorkspace } from '../frontend/src/features/chat/ChatWorkspace';
 import type { WorkspaceFileSearch } from '../frontend/src/features/navigation/WorkspaceFileSearch';
 import type { CodeGraphView } from '../frontend/src/features/graph/CodeGraphView';
@@ -84,6 +85,44 @@ function props<T>(tree: ReactNode, name: string): T {
   if (!node) throw new Error(`Missing component: ${name}`);
   return node.props as T;
 }
+
+function renderFilePane(loading: boolean, ready = true, existingFile = false) {
+  const modules: Record<string, unknown> = {};
+  for (const path of ['lucide-react', '../shell/WorkspaceLayoutControls', './editorFileDrop',
+    '../../shared/file-icons/FileTypeIcon', '../../shared/ui', '../../shared/ui/TooltipButton',
+    './WorkspaceEditorFileToolbar', './WorkspaceCodeExplanationMenu', './WorkspaceCodeExplanationToast',
+    './WorkspaceEditorAssistPanel', './WorkspaceEditorSearchPanel', './WorkspaceProblemsPanel',
+    './WorkspaceProblemsResizer', './workspaceEditorModel']) {
+    modules[path] = new Proxy({}, { get: (_target, name) => String(name) });
+  }
+  modules.react = { useContext: () => true };
+  modules['./workspaceProblemsLayout'] = { useWorkspaceProblemsLayout: () => ({ stageRef: null }) };
+  modules['./useWorkspaceEditorController'] = { useWorkspaceEditorController: () => ({
+    loading, tabs: [], codeExplanation: {},
+    currentFile: existingFile ? { path: 'preview.png', fileKind: 'image' } : null,
+    activeTab: existingFile ? { previewDataUrl: 'data:image/png;base64,test' } : null,
+  }) };
+  const Pane = load<typeof WorkspaceEditorPane>('features/editor/WorkspaceEditorPane.tsx', 'WorkspaceEditorPane', modules);
+  return Pane({ active: true, pane: { id: 'editor-main', ready, store: {} } } as ComponentProps<typeof WorkspaceEditorPane>);
+}
+
+test('file pane shows shared loading instead of the empty prompt during opening and session recovery', () => {
+  for (const [loading, ready, label] of [[true, true, 'Opening file…'], [false, false, 'Restoring files…']] as const) {
+    const tree = renderFilePane(loading, ready);
+    expect(props<{ label: string }>(tree, 'LoadingState').label).toBe(label);
+    expect(elements(tree).some(node => node.props.children === 'Choose a file')).toBe(false);
+    expect(props<HTMLAttributes<HTMLElement>>(tree, 'main')['aria-busy']).toBe(true);
+  }
+  const idle = renderFilePane(false);
+  expect(elements(idle).some(node => node.props.children === 'Choose a file')).toBe(true);
+  expect(elements(idle).some(node => node.type === 'LoadingState')).toBe(false);
+});
+
+test('file pane retains the current preview while another file is opening', () => {
+  const tree = renderFilePane(true, true, true);
+  expect(props<{ label: string }>(tree, 'LoadingState').label).toBe('Opening file…');
+  expect(props<{ alt: string }>(tree, 'img').alt).toBe('preview.png');
+});
 
 function shellHarness(initialHistoryLoading = false, preference: { panel: SidebarPanel } = { panel: 'files' }) {
   const app = hooks();
