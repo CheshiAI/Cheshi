@@ -303,6 +303,14 @@ exceptions to the defaults below.
 
 ## Computer Use with Electron
 
+- For authorized development-app interaction checks, prefer
+  [desktop-ui-check](.agents/skills/desktop-ui-check/SKILL.md): its reusable
+  Inspector/CDP runner reads rendered state and sends input to this checkout's
+  running app. Requests such as "개발앱에서 확인해줘" select this workflow within
+  the requested scope. Read the linked skill directly if it is not in the session
+  catalog. Use screenshots or Computer Use as needed for visual appearance;
+  DOM assertions alone do not establish visual correctness. The authorization
+  and app-targeting rules below also apply to this runner.
 - The user owns rendered UI review. Do not launch, screenshot, or control the
   app for visual verification unless the user explicitly delegates it. Requests
   to launch the app and check its screen, verify rendered layout or interactions,
