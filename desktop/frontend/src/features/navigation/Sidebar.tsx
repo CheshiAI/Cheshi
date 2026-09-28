@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 
 import { SidebarTabs } from '../../shared/ui';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
@@ -10,6 +10,7 @@ export type WorkspaceView = 'chat' | 'notes' | 'calendar' | 'mail' | 'blank' | '
 
 interface SidebarProps {
   chatPanel?: ReactNode;
+  memoPanelRef?: Ref<HTMLDivElement>;
   activePanel?: SidebarPanel;
   onPanelChange?: (panel: SidebarPanel) => void;
   selectedFilePath: string | null;
@@ -20,6 +21,7 @@ interface SidebarProps {
 
 export function Sidebar({
   chatPanel,
+  memoPanelRef,
   activePanel = 'files',
   onPanelChange,
   selectedFilePath,
@@ -39,7 +41,7 @@ export function Sidebar({
             tabs={[
               { id: 'chats', label: 'SESSION', content: chatPanel },
               { id: 'files', label: 'EXPLORER', content: files },
-              { id: 'memos', label: 'MEMO', content: null },
+              { id: 'memos', label: 'MEMO', content: <div ref={memoPanelRef} className="sidebar-content-primary" /> },
             ]} /> : files}
         </div>
 

@@ -22,7 +22,7 @@ test('checks every Apple Notes IPC sender before touching Notes', async () => {
   });
   const event = { sender: { id: 1 } } as IpcMainInvokeEvent;
   for (const handler of handlers.values()) expect(() => handler(event, 'id')).toThrow('Untrusted sender');
-  expect(handlers.size).toBe(7);
+  expect(handlers.size).toBe(8);
   expect(executions).toBe(0);
   allowed = true;
   expect(await handlers.get('cheshi:apple-notes-folders')?.(event)).toEqual({ ok: true, value: [] });
@@ -61,6 +61,27 @@ test('a malformed note response cannot be attached as an unlocked note', () => {
   expect(() => readAppleNotesReply({ ok: true, value: { id: 'id', title: 'Title', modifiedAt: '2026-09-16', locked: 'false', plaintext: 'text' } }, appleNote)).toThrow(/flag/);
 });
 
+test('open validates identifiers and accepts only a literal successful acknowledgement', async () => {
+  const handlers = new Map<string, Parameters<IpcMain['handle']>[1]>();
+  const invocations: unknown[][] = [];
+  const service = new AppleNotesService({ platform: 'darwin', execute: async () => '{"ok":true,"value":true}' });
+  const event = { sender: { id: 1 } } as IpcMainInvokeEvent;
+  registerAppleNotesIpc({ ipcMain: { handle: (channel, handler) => { handlers.set(channel, handler); } },
+    assertSender() {}, service });
+  const api = createAppleNotesApi({ invoke: async (channel, ...args: unknown[]) => {
+    invocations.push([channel, ...args]);
+    return handlers.get(channel)?.(event, ...args);
+  } }, 'darwin');
+  await expectFailure(api.open(''), /identifier/);
+  expect(invocations).toHaveLength(0);
+  await api.open('chosen');
+  expect(invocations).toEqual([['cheshi:apple-notes-open', 'chosen']]);
+  for (const value of [false, 'true', null, {}]) {
+    await expectFailure(createAppleNotesApi({ invoke: async () => ({ ok: true, value }) }, 'darwin').open('chosen'), /acknowledgement/);
+  }
+  await expectFailure(createAppleNotesApi({ invoke: async () => ({ ok: false, error: { code: 'permission', message: 'Allow Notes automation.' } }) }, 'darwin').open('chosen'), /Allow Notes automation/);
+});
+
 test('a lost IPC reply after creating a note is returned as an uncertain save', async () => {
   const api = createAppleNotesApi({ invoke: async () => { throw new Error('Renderer connection closed'); } }, 'darwin');
   expect(await api.create({ folderId: 'folder', title: 'Title', body: 'Body' })).toMatchObject({ ok: false, error: { code: 'save-unknown' } });
@@ -71,6 +92,7 @@ test('delete validates the target and requires a matching acknowledgement across
   const targets: unknown[] = [];
   registerAppleNotesIpc({ ipcMain: { handle: (channel, handler) => { handlers.set(channel, handler); } },
     assertSender() {}, service: {
+      open: async () => ({ ok: true, value: true }),
       folders: async () => ({ ok: true, value: [] }), list: async () => ({ ok: true, value: { notes: [], nextOffset: null } }),
       document: async () => ({ ok: false, error: { code: 'not-found', message: 'Missing' } }),
       update: async () => ({ ok: false, error: { code: 'not-found', message: 'Missing' } }),

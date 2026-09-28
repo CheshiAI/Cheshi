@@ -3,7 +3,7 @@ import type { AppleNoteCreateInput } from '../shared/apple-notes.ts';
 import type { AppleNoteUpdateInput } from '../shared/apple-notes-document.ts';
 
 export type AppleNotesCommand = { action: 'folders' } | { action: 'list'; folderId: string; offset: number }
-  | { action: 'read' | 'delete' | 'document'; noteId: string } | ({ action: 'create' } & AppleNoteCreateInput)
+  | { action: 'read' | 'delete' | 'document' | 'open'; noteId: string } | ({ action: 'create' } & AppleNoteCreateInput)
   | ({ action: 'update' } & AppleNoteUpdateInput);
 
 // Static JXA program: only JSON-encoded data crosses into the script. The script
@@ -50,6 +50,12 @@ const SCRIPT = String.raw`(function (request) {
         });
       }
       accounts.forEach(function (account) { walk(account.folders(), account.name(), '', 0); });
+    } else if (request.action === 'open') {
+      var target = app.notes.byId(request.noteId);
+      if (!target.exists()) fail('not-found');
+      app.show(target);
+      app.activate();
+      result = true;
     } else if (request.action === 'read' || request.action === 'delete' || request.action === 'document' || request.action === 'update') {
       var note = app.notes.byId(request.noteId);
       if (!note.exists()) fail('not-found');

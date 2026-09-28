@@ -146,11 +146,11 @@ function LoadedNoteEditor({ api, document, children, disabled, onSaved, onBusyCh
   }}>
     <NoteEditorHeader note={state.original} label={composeDraft ? `New memo · ${composeDraft.folder.account} / ${composeDraft.folder.path}` : undefined}>
       <span className={styles.status} role="status">{state.saving ? 'Saving…' : state.blocked ? (composeDraft ? 'Check Apple Notes' : 'Review original') : state.dirty ? 'Edited' : state.saved ? 'Saved' : reason ? 'Read only' : ''}</span>
-      <NeumorphicButton raised size="icon" aria-label="Discard changes" title="Discard changes" disabled={(!composeDraft && !state.dirty) || state.saving || disabled} onClick={() => {
+      <NeumorphicButton variant="ghost" size="icon" aria-label="Discard changes" title="Discard changes" disabled={(!composeDraft && !state.dirty) || state.saving || disabled} onClick={() => {
         if (composeDraft) { onDiscard?.(); return; }
         draft.discard?.(); editor?.commands.setContent(draft.getSnapshot().html, { emitUpdate: false });
       }}><RotateCcw aria-hidden="true" /></NeumorphicButton>
-      <NeumorphicButton raised size="icon" aria-label="Save to Apple Notes" title="Save (⌘S)" disabled={saveDisabled} onClick={() => saveRef.current()}><Save aria-hidden="true" /></NeumorphicButton>
+      <NeumorphicButton variant="ghost" size="icon" aria-label="Save to Apple Notes" title="Save (⌘S)" disabled={saveDisabled} onClick={() => saveRef.current()}><Save aria-hidden="true" /></NeumorphicButton>
       {children}
     </NoteEditorHeader>
     {!reason && <div className={styles.toolbar} role="toolbar" aria-label="메모 서식">

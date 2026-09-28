@@ -18,6 +18,7 @@ const second: AppleNote = { ...first, id: 'second', title: 'Another', plaintext:
 
 function api(overrides: Partial<AppleNotesApi> = {}): AppleNotesApi {
   return { available: true,
+    open: async () => {},
     folders: async () => [{ id: 'folder', name: 'Notes', account: 'iCloud', path: 'Notes', isDefault: true }],
     list: async () => ({ notes: [first, second], nextOffset: null }),
     read: async id => id === first.id ? first : second,

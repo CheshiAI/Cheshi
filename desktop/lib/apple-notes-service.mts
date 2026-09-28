@@ -1,5 +1,5 @@
 import {
-  appleNote, appleNoteCreated, appleNoteCreateInput, appleNoteDeleted, appleNotesFolders, appleNotesId, appleNotesOffset, appleNotesPage, appleNotesForceRefresh, APPLE_NOTES_SAVE_UNKNOWN_MESSAGE, APPLE_NOTES_DELETE_UNKNOWN_MESSAGE,
+  appleNote, appleNoteCreated, appleNoteCreateInput, appleNoteDeleted, appleNotesFolders, appleNotesId, appleNotesOffset, appleNotesPage, appleNotesForceRefresh, appleNotesOpenResult, APPLE_NOTES_SAVE_UNKNOWN_MESSAGE, APPLE_NOTES_DELETE_UNKNOWN_MESSAGE,
 } from '../shared/apple-notes.ts';
 import type { AppleNotesErrorCode, AppleNotesReply } from '../shared/apple-notes.ts';
 import { appleNotesScript, type AppleNotesCommand } from './apple-notes-script.mts';
@@ -54,6 +54,7 @@ export class AppleNotesService {
     return this.request(() => ({ action: 'list', folderId: appleNotesId(folderId), offset: appleNotesOffset(offset) }), appleNotesPage);
   }
   read(noteId: unknown) { return this.request(() => ({ action: 'read', noteId: appleNotesId(noteId) }), appleNote); }
+  open(noteId: unknown) { return this.request(() => ({ action: 'open', noteId: appleNotesId(noteId) }), appleNotesOpenResult); }
   document(noteId: unknown) { return this.request(() => ({ action: 'document', noteId: appleNotesId(noteId) }), appleNoteDocument); }
   async update(input: unknown) {
     let request: ReturnType<typeof appleNoteUpdateInput>;
@@ -83,7 +84,7 @@ export class AppleNotesService {
     let request: AppleNotesCommand;
     try { request = command(); }
     catch { return failure('invalid'); }
-    if (request.action === 'document') return this.executeRequest(request, parse);
+    if (request.action === 'document' || request.action === 'open') return this.executeRequest(request, parse);
     if (request.action !== 'create' && request.action !== 'delete' && request.action !== 'update') {
       return this.cache.read(JSON.stringify(request), () => this.executeRequest(request, parse));
     }

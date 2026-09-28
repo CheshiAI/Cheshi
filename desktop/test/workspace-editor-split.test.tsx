@@ -611,6 +611,22 @@ for (const view of ['git', 'plugins'] as const) {
 
 const appleNote: AppleNote = { id: 'note', title: 'Meeting', plaintext: 'Agenda', locked: false, modifiedAt: '2026-09-16T00:00:00Z' };
 
+test('Memo tab browses alongside the current scene and opening a note activates the Memo page', () => {
+  const app = shellHarness();
+  const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
+  const notes = () => props<ComponentProps<typeof NotesView>>(app.render(), 'NotesView');
+  sidebar().onPanelChange!('memos');
+  expect(notes().sidebarActive).toBe(true);
+  expect(notes().active).toBe(false);
+  expect(props<ComponentProps<typeof ChatWorkspace>>(app.render(), 'ChatWorkspace').active).toBe(true);
+  notes().onOpen!();
+  expect(notes().active).toBe(true);
+  expect(sidebar().activePanel).toBe('memos');
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
+  expect(notes().active).toBe(false);
+  expect(sidebar().activePanel).toBe('chats');
+});
+
 test('Notes uses a full page while preserving the mounted chat and attaches to its selected draft', async () => {
   const app = shellHarness();
   const imports: (File | string)[][] = [];
@@ -618,6 +634,7 @@ test('Notes uses a full page while preserving the mounted chat and attaches to i
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('draft.ts');
   props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('notes');
   const tree = app.render();
+  expect(props<ComponentProps<typeof Sidebar>>(tree, 'Sidebar').activePanel).toBe('memos');
   expect(props<ComponentProps<typeof WorkspaceEditorSplit>>(tree, 'WorkspaceEditorSplit').mode).toBe('page');
   expect(props<ComponentProps<typeof ChatWorkspace>>(tree, 'ChatWorkspace').active).toBe(false);
   expect(await props<ComponentProps<typeof NotesView>>(tree, 'NotesView').onAttach(appleNote)).toBe(true);

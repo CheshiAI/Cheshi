@@ -30,7 +30,11 @@ function fixture() {
   const account = { name: () => 'iCloud', folders: () => folders, defaultFolder: () => root };
   const creations: { new: string; at: typeof root | typeof child; withProperties: { body: string } }[] = [];
   const deletions: string[] = [];
+  const opened: string[] = [];
+  let activations = 0;
   const app = {
+    show: (target: ReturnType<typeof note>) => { opened.push(target.id()); },
+    activate: () => { activations++; },
     accounts: () => [account], defaultAccount: () => account,
     folders: Object.assign(() => folders, { byId: (id: string) => folders.find(folder => folder.id() === id)
       ?? { ...root, exists: () => false } }),
@@ -46,11 +50,26 @@ function fixture() {
       return app;
     } }) as string;
   } });
-  return { service, app, first, locked, notes, creations, deletions, child,
+  return { service, app, first, locked, notes, creations, deletions, opened, get activations() { return activations; }, child,
     advance: (ms: number) => { now += ms; }, get executions() { return executions; } };
 }
 
 describe('Apple Notes automation contract', () => {
+  test('opens the exact locked note in Apple Notes on every request without reading or modifying it', async () => {
+    const data = fixture();
+    expect(await data.service.open('locked')).toEqual({ ok: true, value: true });
+    expect(await data.service.open('locked')).toEqual({ ok: true, value: true });
+    expect(data.opened).toEqual(['locked', 'locked']);
+    expect(data.activations).toBe(2);
+    expect(data.locked.reads).toBe(0);
+    expect(data.deletions).toEqual([]);
+    expect(await data.service.open('missing')).toMatchObject({ ok: false, error: { code: 'not-found' } });
+    expect(await data.service.open('')).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    expect(data.activations).toBe(2);
+    data.app.show = () => { throw Object.assign(new Error('private diagnostic'), { errorNumber: -1743 }); };
+    expect(await data.service.open('locked')).toMatchObject({ ok: false, error: { code: 'permission' } });
+    expect(data.activations).toBe(2);
+  });
   test('deletion retains cached folder metadata and unrelated bodies without reading lists automatically', async () => {
     const data = fixture();
     const { service, notes } = data;

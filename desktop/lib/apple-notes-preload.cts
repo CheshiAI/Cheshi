@@ -1,7 +1,7 @@
 import type { IpcRenderer } from 'electron';
 import {
   appleNote, appleNoteCreated, appleNoteCreateInput, appleNotesFolders, appleNotesId, appleNotesOffset, appleNotesPage, readAppleNotesReply,
-  appleNotesReply, appleNoteDeleted, appleNotesForceRefresh, APPLE_NOTES_SAVE_UNKNOWN_MESSAGE, APPLE_NOTES_DELETE_UNKNOWN_MESSAGE,
+  appleNotesReply, appleNoteDeleted, appleNotesForceRefresh, appleNotesOpenResult, APPLE_NOTES_SAVE_UNKNOWN_MESSAGE, APPLE_NOTES_DELETE_UNKNOWN_MESSAGE,
 } from '../shared/apple-notes.ts';
 import type { AppleNotesApi } from '../shared/apple-notes.ts';
 import { appleNoteDocument, appleNoteUpdateInput, APPLE_NOTES_UPDATE_UNKNOWN_MESSAGE } from '../shared/apple-notes-document.ts';
@@ -14,6 +14,9 @@ export function createAppleNotesApi(ipc: Pick<IpcRenderer, 'invoke'>, platform: 
     list: async (folderId, offset = 0) => readAppleNotesReply(
       await ipc.invoke('cheshi:apple-notes-list', appleNotesId(folderId), appleNotesOffset(offset)), appleNotesPage),
     read: async (noteId) => readAppleNotesReply(await ipc.invoke('cheshi:apple-notes-read', appleNotesId(noteId)), appleNote),
+    open: async (noteId) => {
+      readAppleNotesReply(await ipc.invoke('cheshi:apple-notes-open', appleNotesId(noteId)), appleNotesOpenResult);
+    },
     document: async (noteId) => readAppleNotesReply(await ipc.invoke('cheshi:apple-notes-document', appleNotesId(noteId)), appleNoteDocument),
     update: async (input) => {
       const request = appleNoteUpdateInput(input);

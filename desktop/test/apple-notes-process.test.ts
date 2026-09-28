@@ -43,6 +43,25 @@ async function expectProcessFailure(operation: Promise<string>, reason: string) 
   throw new Error('Expected automation to fail.');
 }
 
+test.skipIf(process.platform !== 'darwin')('native JXA opens the chosen fake note without reading its protected body', async () => {
+  const stub = String.raw`function fakeNotesApplication(id) {
+    if (id !== 'com.apple.Notes') throw new Error('Unexpected application');
+    var shown = false;
+    var target = { exists: function () { return true; } };
+    return { notes: { byId: function (noteId) {
+      if (noteId !== 'locked') throw new Error('Unexpected target');
+      return target;
+    } }, show: function (note) {
+      if (note !== target) throw new Error('Unexpected note');
+      shown = true;
+    }, activate: function () { if (!shown) throw new Error('Note was not shown'); } };
+  }`;
+  const program = appleNotesScript({ action: 'open', noteId: 'locked' })
+    .replace("Application('com.apple.Notes')", "fakeNotesApplication('com.apple.Notes')");
+  expect(program).not.toMatch(/\bApplication\s*\(/);
+  expect(JSON.parse(await runAppleNotesScript(`${stub}\n${program}`))).toEqual({ ok: true, value: true });
+});
+
 test.skipIf(process.platform !== 'darwin')('runs stdin through native JXA with a fake target and no access to personal Notes', async () => {
   // JXA reserves Application and does not allow it to be shadowed. Replace its
   // one call site with a differently named fake before invoking the interpreter.

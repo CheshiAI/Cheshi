@@ -85,6 +85,7 @@ export function AppShell() {
   const closeReview = useCallback(() => { setFileReview(null); setLineCommitTarget(null); setLocalHistoryPath(null); }, []);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
+  const [memoSidebarTarget, setMemoSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
   useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
   const [sidebarPanel, setSidebarPanel] = useState(() => sidebarPanelForWorkspace(activeView,
@@ -299,6 +300,7 @@ export function AppShell() {
           id="workspace-sidebar" className={`sidebar-column ${styles.sidebarPanel}`}
           inert={workspace.accountSwitchPending}>
             <Sidebar
+              memoPanelRef={setMemoSidebarTarget}
               activePanel={sidebarPanel}
               onPanelChange={setSidebarPanel}
               chatPanel={<ChatSessionList
@@ -370,10 +372,11 @@ export function AppShell() {
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
           {activeView === 'calendar' && <CalendarView rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
-          {activeView === 'notes' && <NotesView onAttach={attachNote}
+          <NotesView onAttach={attachNote} active={activeView === 'notes'} sidebarActive={sidebarPanel === 'memos'}
+            sidebarTarget={memoSidebarTarget} onOpen={() => navigate('notes')}
             attachmentDisabled={chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running}
             rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
+            onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />
           <HistoryRecallNavigation.Provider value={{ open: openHistorySearchHit,
             disabled: chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running || workspace.responseThreadIds.length > 0 }}>
             <ChatWorkspace

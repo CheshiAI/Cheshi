@@ -4,7 +4,7 @@ export const APPLE_NOTES_MAX_BODY_LENGTH = 500_000;
 export const APPLE_NOTES_MAX_TITLE_LENGTH = 200;
 export const APPLE_NOTES_PAGE_SIZE = 100;
 export const APPLE_NOTES_SAVE_UNKNOWN_MESSAGE = 'The save could not be confirmed. Check Apple Notes before saving again to avoid a duplicate.';
-export const APPLE_NOTES_DELETE_UNKNOWN_MESSAGE = '삭제 결과를 확인할 수 없습니다. Apple 메모에서 상태를 확인한 뒤 목록을 새로고침하세요.';
+export const APPLE_NOTES_DELETE_UNKNOWN_MESSAGE = 'The deletion could not be confirmed. Check Apple Notes, then refresh the list.';
 
 export interface AppleNotesFolder {
   id: string;
@@ -53,6 +53,7 @@ export interface AppleNotesApi {
   folders(forceRefresh?: boolean): Promise<AppleNotesFolder[]>;
   list(folderId: string, offset?: number): Promise<AppleNotesPage>;
   read(noteId: string): Promise<AppleNote>;
+  open(noteId: string): Promise<void>;
   document(noteId: string): Promise<AppleNoteDocument>;
   update(input: AppleNoteUpdateInput): Promise<AppleNotesReply<AppleNoteDocument>>;
   create(input: AppleNoteCreateInput): Promise<AppleNotesReply<AppleNoteCreated>>;
@@ -78,6 +79,11 @@ function literalBoolean(value: unknown): boolean {
 
 export function appleNotesId(value: unknown): string {
   return text(value, 'Apple Notes identifier', 2_048);
+}
+
+export function appleNotesOpenResult(value: unknown): true {
+  if (value !== true) throw new TypeError('Invalid Apple Notes open acknowledgement.');
+  return true;
 }
 
 export function appleNotesForceRefresh(value: unknown): boolean {

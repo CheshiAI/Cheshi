@@ -40,15 +40,16 @@ export function AppleNotesDeleteDialog({ api, note, onClose, onDeleted }: {
     }
   };
 
-  return <Modal title="메모 삭제" titleIcon={<Trash2 aria-hidden="true" />} onClose={onClose} closeDisabled={deleting}>
+  return <Modal title="DELETE NOTE" headerVariant="section" closeButtonVariant="ghost" className={styles.deleteDialog}
+    titleIcon={<Trash2 aria-hidden="true" />} onClose={onClose} closeDisabled={deleting}>
     <div className={styles.content}>
-      <p><strong>{note.title || '제목 없는 메모'}</strong> 메모를 삭제할까요?</p>
-      <p className={styles.hint}>Apple 메모 앱의 원본 메모가 삭제됩니다.</p>
-      {error && <p className={styles.error} role="alert">{error}</p>}
+      <p className={styles.deleteTitle}><strong>{note.title || 'Untitled note'}</strong></p>
+      <p className={styles.description}>This deletes the original note from Apple Notes.</p>
+      {error && <p className={styles.description} role="alert">{error}</p>}
       <div className={styles.actions}>
-        <NeumorphicButton raised size="standard" disabled={deleting} onClick={onClose}>취소</NeumorphicButton>
-        <NeumorphicButton raised size="standard" disabled={deleting || unknownResult || note.locked !== false}
-          onClick={() => void remove()}>{deleting ? '삭제 중…' : '삭제'}</NeumorphicButton>
+        <NeumorphicButton variant="standard" autoFocus disabled={deleting} onClick={onClose}>Cancel</NeumorphicButton>
+        <NeumorphicButton variant="standard" disabled={deleting || unknownResult || note.locked !== false} aria-busy={deleting}
+          onClick={() => void remove()}>{deleting ? 'Deleting…' : 'Delete note'}</NeumorphicButton>
       </div>
     </div>
   </Modal>;

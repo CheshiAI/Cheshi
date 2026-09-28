@@ -41,6 +41,7 @@ async function withEditor(run: (view: {
     unmount = async () => { await act(async () => root.unmount()); };
     const api: AppleNotesApi = {
       available: true, folders: async () => [], list: async () => ({ notes: [], nextOffset: null }),
+      open: async () => {},
       read: async () => document, document: async () => document,
       create: async () => { throw new Error('Unexpected create'); },
       update: async () => { throw new Error('Unexpected update'); },

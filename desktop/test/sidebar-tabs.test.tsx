@@ -102,7 +102,7 @@ async function withTabs(run: (h: {
   }
 }
 
-test('sidebar exposes SESSION, EXPLORER and an empty MEMO panel in that order', () => {
+test('sidebar exposes SESSION, EXPLORER and a MEMO mount in that order', () => {
   const html = renderToStaticMarkup(<Sidebar activePanel="memos" onPanelChange={() => {}}
     chatPanel={<div>Session list</div>} selectedFilePath={null} onWorkspaceEntryMutation={() => {}}
     onOpenWorkspaceFile={() => {}} />);
@@ -113,7 +113,7 @@ test('sidebar exposes SESSION, EXPLORER and an empty MEMO panel in that order', 
   const selected = window.document.querySelector('[role="tab"][aria-selected="true"]')!;
   expect(selected.textContent).toBe('MEMO');
   const panel = window.document.getElementById(selected.getAttribute('aria-controls')!)!;
-  expect(panel.childNodes).toHaveLength(0);
+  expect(panel.querySelector('.sidebar-content-primary')).not.toBeNull();
   expect(panel.hasAttribute('inert')).toBe(false);
   expect(window.document.querySelector('[aria-roledescription="carousel"]')).toBeNull();
 });

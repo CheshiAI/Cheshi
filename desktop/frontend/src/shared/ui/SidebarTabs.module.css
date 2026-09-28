@@ -55,7 +55,7 @@
   font-weight: 600;
   letter-spacing: normal;
   color: var(--text);
-  background: var(--control-surface-ghost);
+  background: transparent;
 }
 
 .tabs .tab:hover,

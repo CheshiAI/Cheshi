@@ -6,7 +6,7 @@ import * as jsx from 'react/jsx-runtime';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
 import * as contract from '../shared/apple-notes';
-import type { AppleNotesBrowserState } from '../frontend/src/features/notes/appleNotesModel';
+import { LOCKED_NOTE_MESSAGE, type AppleNotesBrowserState } from '../frontend/src/features/notes/appleNotesModel';
 import type { AppleNotesDeleteDialog } from '../frontend/src/features/notes/AppleNotesDeleteDialog';
 import type { AppleNotesSaveDialog } from '../frontend/src/features/notes/AppleNotesSaveDialog';
 import type { AppleNotesNewDialog } from '../frontend/src/features/notes/AppleNotesNewDialog';
@@ -25,10 +25,11 @@ const note: contract.AppleNote = { id: 'note', title: '<script>title</script>', 
 function state(): AppleNotesBrowserState {
   return { folders: [{ id: 'folder', name: 'Notes', account: 'iCloud', path: 'Notes', isDefault: true }],
     folderId: 'folder', notes: [note], selectedId: note.id, note, nextOffset: null,
-    loadingFolders: false, loadingNotes: false, refreshingNotes: false, loadingNote: false, error: null };
+    loadingFolders: false, loadingNotes: false, refreshingNotes: false, loadingNote: false, error: null,
+    searchQuery: '', searchResults: [], searching: false, searchError: null };
 }
 function api(create: contract.AppleNotesApi['create']): contract.AppleNotesApi {
-  return { available: true, folders: async () => [], list: async () => ({ notes: [], nextOffset: null }), read: async () => note, document: async () => ({ ...note, html: '<p>Text</p>', attachmentCount: 0 }), update: async () => ({ ok: false, error: { code: 'unavailable', message: 'Unavailable' } }), delete: async id => ({ ok: true, value: { id } }), create };
+  return { available: true, open: async () => {}, folders: async () => [], list: async () => ({ notes: [], nextOffset: null }), read: async () => note, document: async () => ({ ...note, html: '<p>Text</p>', attachmentCount: 0 }), update: async () => ({ ok: false, error: { code: 'unavailable', message: 'Unavailable' } }), delete: async id => ({ ok: true, value: { id } }), create };
 }
 
 function harness<T>(file: string, symbol: string, browserState = state()) {
@@ -37,6 +38,7 @@ function harness<T>(file: string, symbol: string, browserState = state()) {
   let pendingDraft: ReturnType<typeof createNewNoteDraft> | null = null;
   const reloadedFolders: string[] = [];
   const selectedNotes: string[] = [];
+  const selectedNoteFolders: (string | undefined)[] = [];
   const removedNotes: { folderId: string; noteId: string }[] = [];
   const refreshes: boolean[] = [];
   const slots: unknown[] = [];
@@ -57,12 +59,19 @@ function harness<T>(file: string, symbol: string, browserState = state()) {
       },
     },
     'react/jsx-runtime': jsx,
+    'react-dom': { createPortal: (children: ReactNode) => <section data-memo-portal>{children}</section> },
+    '../../shared/ui/TooltipButton': { TooltipButton: 'button' },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
+    '../../shared/ui/OverlayScrollArea': { OverlayScrollArea: 'scroll-area' },
     'lucide-react': { Trash2: 'trash-icon', Paperclip: 'paperclip-icon', Plus: 'plus-icon', Check: 'check-icon', StickyNote: 'note-icon', RefreshCw: 'refresh-icon', LockKeyhole: 'lock-icon',
-      Search: 'search-icon', ChevronRight: 'chevron-icon', Folder: 'folder-icon', FolderOpen: 'open-folder-icon' },
+      Search: 'search-icon', ChevronRight: 'chevron-icon' },
     '../../../../shared/apple-notes': contract,
     '../../cheshiDesktop': { cheshiDesktop: undefined },
-    '../../shared/ui': { EmptyState, LiquidGlassPanel: 'section', Modal: 'modal', NeumorphicButton: 'button', NeumorphicTextField: 'input', Tooltip: 'tooltip', SearchClearButton: 'clear-button' },
+    '../../shared/ui': { EmptyState, LiquidGlassPanel: 'section', Modal: 'modal', NeumorphicButton: 'button', NeumorphicTextField: 'input', Tooltip: 'tooltip', SearchClearButton: 'clear-button', SidebarPanelHeader: 'sidebar-header' },
     './AppleNotesEditor': { AppleNotesEditor: 'note-editor', AppleNotesNewEditor: 'new-editor' },
+    './MemoFolderContents': { MemoFolderContents: 'memo-folder-contents' },
+    './LockedNoteState': { LockedNoteState: 'locked-note-state' },
+    './appleNotesModel': { LOCKED_NOTE_MESSAGE },
     './AppleNotesDeleteDialog': { AppleNotesDeleteDialog: 'delete-dialog' },
     './AppleNotesNewDialog': { AppleNotesNewDialog: 'new-dialog' },
     './appleNotesNewDraft': { getNewNoteDraft: () => pendingDraft,
@@ -73,6 +82,11 @@ function harness<T>(file: string, symbol: string, browserState = state()) {
     './AppleNotes.module.css': { default: {} },
     './AppleNotesNewDialog.module.css': { default: {} },
     './useAppleNotesBrowser': { useAppleNotesBrowser: () => ({ state: browserState, browser: {
+      search: async (query: string) => {
+        browserState.searchQuery = query;
+        const notes = browserState.notes.filter(note => note.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+        browserState.searchResults = query.trim() && notes.length ? [{ folderId: browserState.folderId, notes }] : [];
+      },
       applyUpdated: () => {},
       applyCreated: (folderId: string, note: contract.AppleNote) => { createdNotes.push({ folderId, note }); },
       removeDeleted: (folderId: string, noteId: string) => { removedNotes.push({ folderId, noteId }); },
@@ -81,7 +95,7 @@ function harness<T>(file: string, symbol: string, browserState = state()) {
         selectedFolders.push(id);
         if (options?.forceRefresh === true) reloadedFolders.push(id);
       }, loadMore: async () => {},
-      selectNote: async (id: string) => { selectedNotes.push(id); },
+      selectNote: async (id: string, folderId?: string) => { selectedNotes.push(id); selectedNoteFolders.push(folderId); },
     } }) },
   };
   const source = readFileSync(new URL(`../frontend/src/features/notes/${file}`, import.meta.url), 'utf8');
@@ -98,6 +112,7 @@ function harness<T>(file: string, symbol: string, browserState = state()) {
     createdNotes,
     reloadedFolders,
     selectedNotes,
+    selectedNoteFolders,
     removedNotes,
     refreshes,
     render(run: (component: T) => ReactNode) { cursor = 0; return run(exports[symbol] as T); },
@@ -108,7 +123,7 @@ function harness<T>(file: string, symbol: string, browserState = state()) {
 function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
   return Children.toArray(node).flatMap(child => {
     if (!isValidElement<Record<string, unknown>>(child)) return [];
-    return [child, ...elements(child.props.children as ReactNode)];
+    return [child, ...elements(child.props.children as ReactNode), ...elements(child.props.actions as ReactNode)];
   });
 }
 function find(node: ReactNode, predicate: (element: ReactElement<Record<string, unknown>>) => boolean) {
@@ -142,7 +157,7 @@ test('background revalidation keeps cached rows and empty-folder messages visibl
   browserState.refreshingNotes = true;
   const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser', browserState);
   const render = () => app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })), onAttach: async () => true }));
-  expect(find(render(), element => element.props.title === note.title).type).toBe('button');
+  expect(find(render(), element => element.props.content === note.title).type).toBe('tooltip-target');
   expect(elements(render()).some(element => element.props.children === 'Loading notes…')).toBe(false);
   browserState.notes = [];
   expect(find(render(), element => element.props.children === 'This folder has no notes.')).toBeDefined();
@@ -156,11 +171,33 @@ test('note actions are provided to the editor header and are disabled without a 
   const tree = render();
   const editor = find(tree, element => element.type === 'note-editor');
   expect(find(editor.props.children as ReactNode, element => element.props['aria-label'] === 'Delete note').props.disabled).toBe(false);
-  expect(find(editor.props.children as ReactNode, element => element.props['aria-label'] === 'Attach to conversation').props.disabled).toBe(false);
-  expect(elements(find(tree, element => element.type === 'footer')).some(element => element.type === 'button')).toBe(false);
+  const attachButton = find(editor.props.children as ReactNode, element => element.props['aria-label'] === 'Attach to conversation');
+  expect(attachButton.props.disabled).toBe(false);
+  expect(attachButton.props.title).toContain('Only the saved note’s text is attached to the conversation.');
+  expect(elements(tree).some(element => element.type === 'footer')).toBe(false);
   browserState.note = null;
   expect(find(render(), element => element.props['aria-label'] === 'Delete note').props.disabled).toBe(true);
   expect(find(render(), element => element.props['aria-label'] === 'Attach to conversation').props.disabled).toBe(true);
+});
+
+test('locked note guidance appears only in the document while other sidebar errors remain visible', () => {
+  const browserState = state();
+  browserState.note = null;
+  browserState.notes = [{ ...note, locked: true }];
+  browserState.error = LOCKED_NOTE_MESSAGE;
+  const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser', browserState);
+  const render = () => app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })), onAttach: async () => true }));
+  const tree = render();
+  const sidebar = find(tree, element => element.props['aria-label'] === 'Memo folders');
+  expect(elements(sidebar).some(element => element.type === 'lock-icon')).toBe(true);
+  expect(elements(sidebar).some(element => element.props.children === LOCKED_NOTE_MESSAGE)).toBe(false);
+  expect(find(tree, element => element.type === 'locked-note-state').props.noteId).toBe(note.id);
+  expect(elements(tree).some(element => element.type === 'footer')).toBe(false);
+  browserState.error = 'Apple Notes permission is required.';
+  const errorSidebar = find(render(), element => element.props['aria-label'] === 'Memo folders');
+  expect(find(errorSidebar, element => element.props.role === 'alert').props.children).toBe(browserState.error);
+  browserState.notes = [note];
+  expect(elements(render()).some(element => element.type === 'lock-icon')).toBe(false);
 });
 
 test('keeps the same editor mounted from the initial note read through document preparation', () => {
@@ -204,7 +241,7 @@ test('a failed note read removes the loading editor and exposes the read error',
 test('unsaved editor changes disable folder navigation, refresh, deletion and attachment', () => {
   const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser');
   const render = () => app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })),
-    onAttach: async () => true, renderHeader: (refresh, create, search) => <header>{search}{refresh}{create}</header> }));
+    onAttach: async () => true, renderHeader: () => <header>Memo</header> }));
   const editor = find(render(), element => element.type === 'note-editor');
   if (typeof editor.props.onBusyChange !== 'function') throw new Error('Missing editor state callback');
   editor.props.onBusyChange(true);
@@ -234,27 +271,67 @@ test('folder accordion collapses and reopens without fetching or losing search a
   expect(find(render(), element => element.props.type === 'search').props.value).toBe('title');
   expect(app.selectedFolders).toEqual([]);
   expect(app.refreshes).toEqual([]);
-  click(find(render(), notesRegion), element => element.type === 'button' && element.props.title === note.title);
+  click(find(render(), notesRegion), element => element.type === 'button' && 'aria-pressed' in element.props);
   expect(app.selectedNotes).toEqual([note.id]);
 });
 
-test('folder accordion switches by id, resets search and only shows the selected folder notes', () => {
+test('clearing search restores the folders and allows switching by id', () => {
   const browserState = state();
   browserState.folders.push({ id: 'local', name: 'Notes', path: 'Notes', account: 'On My Mac', isDefault: false });
   const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser', browserState);
   const render = () => app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })), onAttach: async () => true }));
   const localFolder = (element: ReactElement<Record<string, unknown>>) => element.props['aria-label'] === 'On My Mac / Notes';
   change(render(), element => element.props.type === 'search', 'title');
+  expect(elements(render()).some(localFolder)).toBe(false);
+  change(render(), element => element.props.type === 'search', '');
   click(render(), localFolder);
   expect(app.selectedFolders).toEqual(['local']);
   expect(find(render(), element => element.props.type === 'search').props.value).toBe('');
   Object.assign(browserState, { folderId: 'local', notes: [], note: null, selectedId: '', loadingNotes: true });
   expect(find(render(), localFolder).props['aria-expanded']).toBe(true);
   expect(find(render(), element => element.props['aria-label'] === 'iCloud / Notes').props['aria-expanded']).toBe(false);
-  expect(elements(render()).some(element => element.props.title === note.title)).toBe(false);
+  expect(elements(render()).some(element => element.props.content === note.title)).toBe(false);
   expect(find(render(), element => element.props.role === 'status').props.children).toBe('Loading notes…');
   browserState.loadingNotes = false;
   expect(elements(render()).some(element => element.props.children === 'This folder has no notes.')).toBe(true);
+});
+
+test('global search expands matching folders and opens results with their folder identity', () => {
+  const browserState = state();
+  const local = { id: 'local', name: 'Notes', path: 'Notes', account: 'On My Mac', isDefault: false };
+  browserState.folders.push(local, { ...local, id: 'empty', path: 'Empty' });
+  browserState.searchQuery = 'title';
+  browserState.searchResults = [{ folderId: 'folder', notes: [note] },
+    { folderId: 'local', notes: [{ ...note, id: 'local-note', title: 'Another title' }] }];
+  const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser', browserState);
+  const render = () => app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })), onAttach: async () => true }));
+  const tree = render();
+  const folders = elements(tree).filter(element => element.type === 'button' && 'aria-expanded' in element.props);
+  expect(folders.map(folder => folder.props['aria-label'])).toEqual(['iCloud / Notes', 'On My Mac / Notes']);
+  expect(folders.every(folder => folder.props['aria-expanded'] === true)).toBe(true);
+  const localButton = find(tree, element => element.props['aria-label'] === 'On My Mac / Notes');
+  const localRegion = find(tree, element => element.props.id === localButton.props['aria-controls']);
+  click(localRegion, element => element.type === 'button' && 'aria-pressed' in element.props);
+  expect(app.selectedNotes).toEqual(['local-note']);
+  expect(app.selectedNoteFolders).toEqual(['local']);
+  expect(find(render(), element => element.props.type === 'search').props.value).toBe('title');
+  change(render(), element => element.props.type === 'search', '');
+  expect(elements(render()).filter(element => element.type === 'button' && 'aria-expanded' in element.props)).toHaveLength(3);
+});
+
+test('search distinguishes loading, incomplete results and a completed empty result', () => {
+  const browserState = state();
+  Object.assign(browserState, { searchQuery: 'missing', searching: true });
+  const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser', browserState);
+  const render = () => app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })), onAttach: async () => true }));
+  expect(find(render(), element => element.props.role === 'status').props.children).toBe('Searching all notes…');
+  browserState.searching = false;
+  browserState.searchError = 'Search incomplete.';
+  expect(find(render(), element => element.props.role === 'alert').props.children).toBe('Search incomplete.');
+  expect(elements(render()).some(element => element.props.children === 'No matching notes.')).toBe(false);
+  browserState.searchError = null;
+  browserState.error = LOCKED_NOTE_MESSAGE;
+  expect(find(render(), element => element.props.role === 'status').props.children).toBe('No matching notes.');
 });
 
 test('header refresh uses the current browser and stays disabled while loading or attaching', async () => {
@@ -262,9 +339,9 @@ test('header refresh uses the current browser and stays disabled while loading o
   const pending = createDeferred<boolean>();
   const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser', browserState);
   const render = () => app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })),
-    onAttach: async () => pending.promise, renderHeader: (refresh, create, search) => <header>{search}{refresh}{create}</header> }));
+    onAttach: async () => pending.promise, renderHeader: () => <header>Memo</header> }));
   const refreshButton = (element: ReactElement<Record<string, unknown>>) => element.props['aria-label'] === 'Refresh Apple Notes';
-  const header = find(render(), element => element.type === 'header');
+  const header = find(render(), element => element.type === 'sidebar-header');
   expect(find(header, refreshButton).props.disabled).toBe(false);
   click(header, refreshButton);
   expect(app.refreshes).toEqual([true]);
@@ -295,12 +372,12 @@ test('delete confirmation escapes the title, supports cancellation, and waits fo
   const render = () => app.render(component => component({ api: notesApi, note, onClose() { cancelled += 1; }, onDeleted() { deleted += 1; } }));
   expect(renderToStaticMarkup(find(render(), element => element.type === 'strong'))).toContain('&lt;script&gt;title&lt;/script&gt;');
   expect(calls).toEqual([]);
-  click(render(), element => element.props.children === '취소');
+  click(render(), element => element.props.children === 'Cancel');
   expect(cancelled).toBe(1);
   expect(calls).toEqual([]);
   const tree = render();
-  click(tree, element => element.props.children === '삭제');
-  click(tree, element => element.props.children === '삭제');
+  click(tree, element => element.props.children === 'Delete note');
+  click(tree, element => element.props.children === 'Delete note');
   expect(calls).toEqual([note.id]);
   expect(deleted).toBe(0);
   expect(find(render(), element => element.type === 'modal').props.closeDisabled).toBe(true);
@@ -319,14 +396,14 @@ test('delete errors keep the confirmation open and an uncertain result blocks fu
   };
   const app = harness<typeof AppleNotesDeleteDialog>('AppleNotesDeleteDialog.tsx', 'AppleNotesDeleteDialog');
   const render = () => app.render(component => component({ api: notesApi, note, onClose() {}, onDeleted() { throw new Error('Unexpected success'); } }));
-  click(render(), element => element.props.children === '삭제');
+  click(render(), element => element.props.children === 'Delete note');
   await flush();
   expect(find(render(), element => element.props.role === 'alert').props.children).toBe('Allow Notes automation.');
   expect(find(render(), element => element.type === 'strong').props.children).toBe(note.title);
-  click(render(), element => element.props.children === '삭제');
+  click(render(), element => element.props.children === 'Delete note');
   await flush();
-  expect(find(render(), element => element.props.children === '삭제').props.disabled).toBe(true);
-  click(render(), element => element.props.children === '삭제');
+  expect(find(render(), element => element.props.children === 'Delete note').props.disabled).toBe(true);
+  click(render(), element => element.props.children === 'Delete note');
   expect(calls).toBe(2);
 });
 
@@ -337,7 +414,7 @@ test('late delete acknowledgement does not update a view after unmount', async (
   let deleted = 0;
   const app = harness<typeof AppleNotesDeleteDialog>('AppleNotesDeleteDialog.tsx', 'AppleNotesDeleteDialog');
   click(app.render(component => component({ api: notesApi, note, onClose() {}, onDeleted() { deleted += 1; } })),
-    element => element.props.children === '삭제');
+    element => element.props.children === 'Delete note');
   app.unmount();
   pending.resolve({ ok: true, value: { id: note.id } });
   await flush();
@@ -439,7 +516,7 @@ test('folder selection opens a blank right-hand editor; discard closes it and sa
   let creates = 0;
   const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser');
   const render = () => app.render(component => component({ api: api(async () => { creates += 1; return { ok: true, value: { id: 'new', title: 'Title' } }; }),
-    onAttach: async () => true, renderHeader: (refresh, create, search) => <header>{search}{refresh}{create}</header> }));
+    onAttach: async () => true, renderHeader: () => <header>Memo</header> }));
   const begin = () => {
     click(render(), element => element.props['aria-label'] === '새 메모');
     const dialog = find(render(), element => element.type === 'new-dialog');
