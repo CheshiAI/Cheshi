@@ -116,3 +116,50 @@ test('open tooltips follow added and removed background roots and refresh their 
     expect(second.style.filter).toBe('');
   });
 });
+
+test('tooltip blur clamps every source edge and corner without duplicating its interior, including after resize', async () => {
+  await withScene(async s => {
+    const app = s.element();
+    const tooltip = s.tooltip(s.document.body, 610);
+    const filter = s.filterFor(app);
+    const rectangle = (element: { getAttribute(name: string): string | null }) => ['x', 'y', 'width', 'height'].map(name => Number(element.getAttribute(name)));
+    const checkPadding = (width: number, height: number) => {
+      expect(rectangle(filter)).toEqual([-48, -48, width + 96, height + 96]);
+      const blur = filter.querySelector('feGaussianBlur')!;
+      const merge = filter.querySelector('feMerge')!;
+      expect(blur.getAttribute('in')).toBe(merge.getAttribute('result'));
+      expect(merge.querySelectorAll('feMergeNode[in="SourceGraphic"]').length).toBe(1);
+      expect(merge.children.length).toBe(9);
+      const tiles = [...filter.querySelectorAll('feTile')];
+      expect(tiles.length).toBe(8);
+      for (const tile of tiles) {
+        const [x, y, w, h] = rectangle(tile) as [number, number, number, number];
+        expect(x + w <= 0 || y + h <= 0 || x >= width || y >= height).toBe(true);
+        const crop = filter.querySelector(`feOffset[result="${tile.getAttribute('in')}"]`)!;
+        expect(crop.getAttribute('in')).toBe('SourceGraphic');
+        expect(rectangle(crop)).toEqual([
+          x >= width ? width - 1 : 0, y >= height ? height - 1 : 0,
+          x === 0 ? width : 1, y === 0 ? height : 1,
+        ]);
+      }
+      expect(tiles.map(tile => rectangle(tile))).toEqual([
+        [-48, -48, 48, 48], [0, -48, width, 48], [width, -48, 48, 48],
+        [-48, 0, 48, height], [width, 0, 48, height],
+        [-48, height, 48, 48], [0, height, width, 48], [width, height, 48, 48],
+      ]);
+      // The replacement mask still covers only the original source coordinates.
+      expect(rectangle(filter.querySelector('feImage')!)).toEqual([0, 0, width, height]);
+    };
+    checkPadding(800, 600);
+    Object.defineProperties(app, {
+      offsetWidth: { configurable: true, value: 720 }, offsetHeight: { configurable: true, value: 480 },
+      getBoundingClientRect: { configurable: true, value: () => new s.window.DOMRect(0, 0, 720, 480) },
+    });
+    s.window.dispatchEvent(new s.window.Event('resize'));
+    await s.flush();
+    checkPadding(720, 480);
+    tooltip.close();
+    expect(app.style.filter).toBe('');
+    expect(s.document.querySelector('feTile')).toBeNull();
+  });
+});

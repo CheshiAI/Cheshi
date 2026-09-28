@@ -51,8 +51,8 @@ function createTooltipBlur(document: Document) {
       let entry = sources.get(source);
       if (!entry) {
         const controller = createRegionalBlurController({ preserveFilter: true });
-        const effect = createRegionalBlurFilter(defs);
-        const disconnect = controller.connect(source, effect.filter, effect.mask);
+        const effect = createRegionalBlurFilter(defs, { extendEdges: true });
+        const disconnect = controller.connect(source, effect.filter, effect.mask, effect.resize);
         const registrations = new Map<HTMLElement, () => void>();
         entry = { register: controller.register, registrations, dispose: () => {
           for (const release of registrations.values()) release();

@@ -56,7 +56,8 @@ export function createRegionalBlurController({ preserveFilter = false } = {}) {
     };
   };
 
-  const connect = (source: HTMLElement, filter: SVGFilterElement, mask: SVGFEImageElement) => {
+  const connect = (source: HTMLElement, filter: SVGFilterElement, mask: SVGFEImageElement,
+    resizeFilter?: (width: number, height: number) => void) => {
     const document = source.ownerDocument;
     const window = document.defaultView;
     if (!window) return () => {};
@@ -94,6 +95,7 @@ export function createRegionalBlurController({ preserveFilter = false } = {}) {
       if (!nextMask) { restoreSource(); mask.removeAttribute('href'); return; }
       filter.setAttribute('width', String(width));
       filter.setAttribute('height', String(height));
+      resizeFilter?.(width, height);
       mask.setAttribute('width', String(width));
       mask.setAttribute('height', String(height));
       mask.setAttribute('href', `data:image/svg+xml,${encodeURIComponent(nextMask)}`);

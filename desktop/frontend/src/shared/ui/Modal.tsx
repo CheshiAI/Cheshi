@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { LiquidGlassPanel } from './LiquidGlassPanel';
 import { NeumorphicButton } from './NeumorphicButton';
 import { SidebarPanelTitle } from './SidebarPanelHeader';
+import { RegionalBlur } from './RegionalBlur';
 import { registerModalBlur } from './modalBlur';
 import styles from './Modal.module.css';
 
@@ -25,6 +26,7 @@ export function Modal({ title, titleIcon, headerVariant = 'default', leadingActi
   const titleId = useId();
   const closeVariant = closeButtonVariant ?? (headerVariant === 'section' ? 'standard' : undefined);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const pointerStartedOutside = useRef(false);
   const restoreFocusRef = useRef(restoreFocus);
   restoreFocusRef.current = restoreFocus;
@@ -68,26 +70,28 @@ export function Modal({ title, titleIcon, headerVariant = 'default', leadingActi
         pointerStartedOutside.current = false;
       }}
     >
-      <div className={styles.surface}>
-        <LiquidGlassPanel className={styles.panel}>
-          <header className={styles.header}>
-            <div className={styles.heading}>
-              {leadingAction}
-              {headerVariant === 'section'
-                ? <SidebarPanelTitle as="h2" id={titleId} icon={titleIcon} title={title} />
-                : <h2 id={titleId} className={styles.title}>{titleIcon}{title}</h2>}
-            </div>
-            <NeumorphicButton
-              variant={closeVariant}
-              size={closeVariant ? 'icon' : undefined}
-              raised={!closeVariant} className={!closeVariant ? 'theme-toggle' : undefined}
-              aria-label="Close dialog" title="Close dialog" disabled={closeDisabled} onClick={onClose}>
-              <X size={11} strokeWidth={1.7} aria-hidden="true" />
-            </NeumorphicButton>
-          </header>
-          <div className={styles.content}>{children}</div>
-        </LiquidGlassPanel>
-      </div>
+      <RegionalBlur sourceRef={surfaceRef}>
+        <div ref={surfaceRef} className={styles.surface}>
+          <LiquidGlassPanel className={styles.panel}>
+            <header className={styles.header}>
+              <div className={styles.heading}>
+                {leadingAction}
+                {headerVariant === 'section'
+                  ? <SidebarPanelTitle as="h2" id={titleId} icon={titleIcon} title={title} />
+                  : <h2 id={titleId} className={styles.title}>{titleIcon}{title}</h2>}
+              </div>
+              <NeumorphicButton
+                variant={closeVariant}
+                size={closeVariant ? 'icon' : undefined}
+                raised={!closeVariant} className={!closeVariant ? 'theme-toggle' : undefined}
+                aria-label="Close dialog" title="Close dialog" disabled={closeDisabled} onClick={onClose}>
+                <X size={11} strokeWidth={1.7} aria-hidden="true" />
+              </NeumorphicButton>
+            </header>
+            <div className={styles.content}>{children}</div>
+          </LiquidGlassPanel>
+        </div>
+      </RegionalBlur>
     </dialog>,
     document.body,
   );

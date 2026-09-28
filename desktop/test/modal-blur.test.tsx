@@ -5,6 +5,14 @@ import { Window } from 'happy-dom';
 import { Modal } from '../frontend/src/shared/ui/Modal';
 import { registerModalBlur } from '../frontend/src/shared/ui/modalBlur';
 
+function sceneFilter(document: Document, app: HTMLElement) {
+  const id = app.style.filter.match(/url\(["']?#([^"')]+)["']?\)/)?.[1];
+  if (!id) throw new Error('Expected a scene blur filter.');
+  const filter = document.getElementById(id);
+  if (!filter) throw new Error('Scene blur filter is missing.');
+  return filter;
+}
+
 async function withDOM(run: (h: {
   document: Document; app: HTMLElement;
   render: (props?: { first?: boolean; second?: boolean; disabled?: boolean }) => Promise<void>;
@@ -49,7 +57,7 @@ test('modal blurs the original scene, leaves foreground sharp, and restores styl
     expect(dialog.style.filter).toBe('');
     expect(dialog.querySelector('[data-liquid-glass-backdrop="true"]')).toBeNull();
     expect(h.app.style.filter).toContain('opacity(0.9) url(');
-    expect(h.document.querySelectorAll('feGaussianBlur').length).toBe(2);
+    expect(sceneFilter(h.document, h.app).querySelectorAll('feGaussianBlur').length).toBe(2);
     await h.render({ first: false });
     expect(h.app.style.filter).toBe('opacity(0.9)');
     expect(h.app.style.getPropertyPriority('filter')).toBe('important');
@@ -95,10 +103,10 @@ test('extra blur follows the rounded modal region while the outside scene retain
     Object.defineProperty(dialog, 'getBoundingClientRect', { value: () => rect(dialogX, 100, 200, 100) });
     dialog.style.borderRadius = '16px';
     const refresh = () => h.document.defaultView!.dispatchEvent(new Event('resize'));
-    const mask = () => decodeURIComponent(h.document.querySelector('feImage')?.getAttribute('href')?.split(',').slice(1).join(',') ?? '');
+    const mask = () => decodeURIComponent(sceneFilter(h.document, h.app).querySelector('feImage')?.getAttribute('href')?.split(',').slice(1).join(',') ?? '');
     refresh();
     expect(mask()).toContain('M116 100');
-    const filter = h.document.querySelector('filter')!;
+    const filter = sceneFilter(h.document, h.app);
     expect(filter.querySelector('feGaussianBlur[in="scene"]')?.getAttribute('stdDeviation')).toBe('16');
     expect(filter.querySelector('feComposite[in="scene"]')?.getAttribute('operator')).toBe('out');
     expect(dialog.style.filter).toBe('');
