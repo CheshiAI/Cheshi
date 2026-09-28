@@ -13,33 +13,32 @@ function renderSessions(timestamps: number[], loading = false) {
     onOpen={() => {}} onNew={() => {}} onDelete={() => {}} deleteReason={() => null} />);
 }
 
-test('groups today separately and combines all earlier chats under Previous in their existing order', () => {
+test('combines all sessions in newest activity order with invalid timestamps last', () => {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1_000;
-  const html = renderSessions([today, today - 1, today - 30 * 24 * 60 * 60, NaN]);
-  expect([...html.matchAll(/<h2>(.*?)<\/h2>/g)].map(match => match[1])).toEqual(['Today', 'Previous']);
-  const boundary = html.indexOf('<h2>Previous</h2>');
-  expect(html.indexOf('aria-label="Chat 0"')).toBeLessThan(boundary);
-  let previous = boundary;
-  for (const index of [1, 2, 3]) {
+  const html = renderSessions([today - 1, NaN, today, today - 30 * 24 * 60 * 60, today]);
+  expect(html).not.toContain('<h2>');
+  let previous = -1;
+  for (const index of [2, 4, 0, 3, 1]) {
     const position = html.indexOf(`aria-label="Chat ${index}"`);
     expect(position).toBeGreaterThan(previous);
     previous = position;
   }
 });
 
-test('omits empty groups', () => {
+test('shows session ids and elapsed time without group headings', () => {
   expect(renderSessions([])).not.toContain('<h2>');
   const html = renderSessions([0]);
-  expect(html).toContain('<h2>Previous</h2>');
-  expect(html).not.toContain('<h2>Today</h2>');
+  expect(html).not.toContain('<h2>');
+  expect(html).toContain('title="session-0">session-0</span>');
+  expect(html).toContain('aria-label="Last updated ');
 });
 
-test('places conversation search below the header and above session groups', () => {
+test('places conversation search below the header and above the session list', () => {
   const html = renderSessions([Date.now() / 1_000]);
   const search = html.indexOf('aria-label="Conversation search"');
   expect(search).toBeGreaterThan(html.indexOf('</header>'));
-  expect(search).toBeLessThan(html.indexOf('<h2>Today</h2>'));
+  expect(search).toBeLessThan(html.indexOf('aria-label="Chat 0"'));
 });
 
 test('hides only the search when there are no sessions, including while loading', () => {

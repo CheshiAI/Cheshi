@@ -67,7 +67,7 @@ test('ref-backed deletion restrictions stay fresh without rerendering session co
   expect(harness.rowRenders).toBe(2);
 });
 
-test('active sessions and live responses replace the leading icon and restore it when finished', () => {
+test('active sessions and live responses retain their indicator without a decorative conversation icon', () => {
   const initial = props();
   const runningStates: Props[] = [
     { ...initial, sessions: initial.sessions.map(session =>
@@ -79,15 +79,45 @@ test('active sessions and live responses replace the leading icon and restore it
     const idle = harness.render(initial);
     const responding = harness.render(running);
     const children = sessionListElements(row(responding, 'two').props.children);
-    expect(children.map(child => child.type)).toEqual(['loading-indicator', 'span']);
-    expect(children[0]?.props['aria-label']).toBe('Active response');
-    expect(children[1]?.props.children).toBe('two');
+    expect(children.some(child => child.props['aria-label'] === 'Active response')).toBe(true);
+    expect(children.some(child => child.type === 'MessageSquareText')).toBe(false);
+    expect(children.some(child => child.props.title === 'two' && child.props.children === 'two')).toBe(true);
     expect(row(responding, 'one')).toBe(row(idle, 'one'));
 
     const completed = harness.render(initial);
     const restored = sessionListElements(row(completed, 'two').props.children);
-    expect(restored.map(child => child.type)).toEqual(['MessageSquareText', 'span']);
-    expect(restored[1]?.props.children).toBe('two');
+    expect(restored.some(child => child.type === 'loading-indicator' || child.type === 'MessageSquareText')).toBe(false);
+    expect(restored.some(child => child.props.title === 'two' && child.props.children === 'two')).toBe(true);
     expect(harness.rowRenders).toBe(4);
   }
+});
+
+test('clock ticks only rerender rows whose displayed elapsed time changes', () => {
+  const harness = createSessionListHarness();
+  const now = 1_000_000;
+  harness.setTime(now);
+  const initial = props();
+  initial.sessions[0]!.updatedAt = now / 1_000 - 1;
+  initial.sessions[1]!.updatedAt = now / 1_000 - 300;
+  harness.render(initial);
+  harness.setTime(now + 1_000);
+  const updated = harness.render(initial);
+  expect(harness.rowRenders).toBe(3);
+  expect(updated.some(node => node.props['aria-label'] === 'Last updated 2s ago')).toBe(true);
+  expect(updated.some(node => node.props['aria-label'] === 'Last updated 5m ago')).toBe(true);
+});
+
+test('new activity moves a session to the top without mutating the source order', () => {
+  const harness = createSessionListHarness();
+  const initial = props();
+  initial.sessions[0]!.updatedAt = 10;
+  initial.sessions[1]!.updatedAt = 20;
+  const ordered = (nodes: SessionListElement[]) => nodes
+    .filter(node => node.type === 'button' && ['one', 'two'].includes(String(node.props['aria-label'])))
+    .map(node => node.props['aria-label']);
+  expect(ordered(harness.render(initial))).toEqual(['two', 'one']);
+  expect(initial.sessions.map(session => session.id)).toEqual(['one', 'two']);
+  const updated = { ...initial, sessions: initial.sessions.map(session =>
+    session.id === 'one' ? { ...session, updatedAt: 30 } : session) };
+  expect(ordered(harness.render(updated))).toEqual(['one', 'two']);
 });

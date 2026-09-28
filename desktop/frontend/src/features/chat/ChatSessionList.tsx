@@ -4,6 +4,7 @@ import { MessageCircleDashed, MessageSquareText, Plus, Trash2 } from 'lucide-rea
 import { LoadingIndicator, LoadingState, NeumorphicButton, SidebarPanelHeader } from '../../shared/ui';
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
 import type { ChatSession } from './model';
+import { formatSessionElapsedTime, useChatSessionClock } from './chatSessionTime';
 import styles from './ChatSessionList.module.css';
 
 interface ChatSessionListProps {
@@ -22,25 +23,25 @@ interface ChatSessionListProps {
   deleteReason: (sessionId: string) => string | null;
 }
 
-type SessionGroup = 'Today' | 'Previous';
-
-function sessionGroup(updatedAt: number): SessionGroup {
-  const updated = new Date(updatedAt * 1_000);
-  if (Number.isNaN(updated.getTime())) return 'Previous';
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  if (updated.getTime() >= today) return 'Today';
-  return 'Previous';
+function sessionTimestamp(session: ChatSession): number {
+  return Number.isFinite(session.updatedAt) ? session.updatedAt : -Infinity;
 }
 
 const ChatSessionButton = memo(function ChatSessionButton({
-  id, title, active, responding, onOpen,
-}: { id: string; title: string; active: boolean; responding: boolean; onOpen: (id: string) => void }) {
+  id, title, elapsed, active, responding, onOpen,
+}: { id: string; title: string; elapsed: string; active: boolean; responding: boolean; onOpen: (id: string) => void }) {
   return (
     <NeumorphicButton variant="ghost" className={styles.session} aria-current={active ? 'page' : undefined}
       aria-label={title} type="button" aria-haspopup="dialog" onClick={() => onOpen(id)}>
-      {responding ? <LoadingIndicator label="Active response" /> : <MessageSquareText aria-hidden="true" />}
-      <span className={styles.sessionTitle}>{title}</span>
+      <span className={styles.sessionTitleRow}>
+        <span className={styles.sessionTitle} title={title}>{title}</span>
+        {responding && <LoadingIndicator label="Active response" />}
+      </span>
+      <span className={styles.sessionMetadata}>
+        <span className={styles.sessionId} title={id}>{id}</span>
+        <span className={styles.sessionTime}
+          aria-label={elapsed === '—' ? 'Last updated time unavailable' : `Last updated ${elapsed} ago`}>{elapsed}</span>
+      </span>
     </NeumorphicButton>
   );
 });
@@ -67,12 +68,8 @@ export function ChatSessionList({
     if (!interaction.current.selectionDisabled) interaction.current.onOpen(id);
   }, []);
   const respondingSessions = new Set(responseThreadIds);
-  const today = new Date().toDateString();
-  const groups = useMemo(() => {
-    const grouped = new Map<SessionGroup, ChatSession[]>([['Today', []], ['Previous', []]]);
-    for (const session of sessions) grouped.get(sessionGroup(session.updatedAt))?.push(session);
-    return [...grouped.entries()];
-  }, [sessions, today]);
+  const now = useChatSessionClock(sessions.length > 0);
+  const sortedSessions = useMemo(() => [...sessions].sort((a, b) => sessionTimestamp(b) - sessionTimestamp(a)), [sessions]);
 
   return (
     <section className={styles.root} aria-label="Chat history">
@@ -112,31 +109,25 @@ export function ChatSessionList({
               <span>Your workspace chats will appear here.</span>
             </div>
           )}
-          {groups.map(([label, entries]) => entries.length > 0 && (
-            <section className={styles.group} key={label}>
-              <h2>{label}</h2>
-              <div className={styles.groupItems}>
-                {entries.map((session) => {
-                  const reason = deleteReason(session.id);
-                  return (
-                  <div className={styles.sessionRow} key={session.id}>
-                    <ChatSessionButton id={session.id} title={session.title}
-                      active={session.id === activeSessionId}
-                      responding={session.status === 'active' || respondingSessions.has(session.id)}
-                      onOpen={openSession} />
-                    <NeumorphicButton variant="ghost" size="icon" className={styles.deleteButton}
-                      type="button" aria-label={`Delete chat: ${session.title}`} aria-haspopup="dialog"
-                      title={reason ?? 'Delete chat'}
-                      disabled={reason !== null}
-                      onClick={() => onDelete(session.id)}>
-                      <Trash2 size={11} strokeWidth={1.7} aria-hidden="true" />
-                    </NeumorphicButton>
-                  </div>
-                  );
-                })}
+          {sortedSessions.map((session) => {
+            const reason = deleteReason(session.id);
+            return (
+              <div className={styles.sessionRow} key={session.id}>
+                <ChatSessionButton id={session.id} title={session.title}
+                  elapsed={formatSessionElapsedTime(session.updatedAt, now)}
+                  active={session.id === activeSessionId}
+                  responding={session.status === 'active' || respondingSessions.has(session.id)}
+                  onOpen={openSession} />
+                <NeumorphicButton variant="ghost" size="icon" className={styles.deleteButton}
+                  type="button" aria-label={`Delete chat: ${session.title}`} aria-haspopup="dialog"
+                  title={reason ?? 'Delete chat'}
+                  disabled={reason !== null}
+                  onClick={() => onDelete(session.id)}>
+                  <Trash2 size={11} strokeWidth={1.7} aria-hidden="true" />
+                </NeumorphicButton>
               </div>
-            </section>
-          ))}
+            );
+          })}
         </fieldset>
         </OverlayScrollArea>
       </div>

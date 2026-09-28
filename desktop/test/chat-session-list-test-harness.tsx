@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import type { ComponentProps } from 'react';
 import type { ChatSessionList } from '../frontend/src/features/chat/ChatSessionList';
+import { formatSessionElapsedTime } from '../frontend/src/features/chat/chatSessionTime';
 
 export interface SessionListElement { type: unknown; props: Record<string, unknown> }
 export function sessionListElements(value: unknown): SessionListElement[] {
@@ -17,6 +18,7 @@ export function sessionListElements(value: unknown): SessionListElement[] {
 export function createSessionListHarness() {
   let cursor = 0;
   let rowRenders = 0;
+  let now = Date.now();
   const slots: unknown[] = [];
   let effects: (() => void)[] = [];
   const sameProps = (left: Record<string, unknown>, right: Record<string, unknown>) =>
@@ -61,6 +63,7 @@ export function createSessionListHarness() {
     },
     '../../shared/ui/OverlayScrollArea': { OverlayScrollArea: 'overlay-scroll-area' },
     './ChatSessionList.module.css': { default: {} },
+    './chatSessionTime': { formatSessionElapsedTime, useChatSessionClock: () => now },
   };
   const source = readFileSync(new URL('../frontend/src/features/chat/ChatSessionList.tsx', import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: {
@@ -82,5 +85,6 @@ export function createSessionListHarness() {
       return sessionListElements(result);
     },
     get rowRenders() { return rowRenders; },
+    setTime(value: number) { now = value; },
   };
 }
