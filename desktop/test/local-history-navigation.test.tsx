@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { createChatDraftAttachments } from '../frontend/src/features/chat/chatDraftAttachments';
-import { appleNoteAttachment } from '../frontend/src/features/notes/appleNotesModel';
+import { appleNoteDraftText } from '../frontend/src/features/notes/appleNotesModel';
 
 interface TestElement {
   type: string;
@@ -98,7 +98,7 @@ function createHarness() {
     '../navigation/WorkspaceFileSearch': { WorkspaceFileSearch: 'WorkspaceFileSearch' },
     '../navigation/fileSearchShortcut': { installFileSearchShortcut() { return () => {}; } },
     '../notes/NotesView': { NotesView: 'NotesView' },
-    '../notes/appleNotesModel': { appleNoteAttachment },
+    '../notes/appleNotesModel': { appleNoteDraftText },
     '../mail/MailView': { MailView: 'MailView' },
     '../calendar/CalendarView': { CalendarView: 'CalendarView' },
     '../plugins': { PluginsView: 'PluginsView' },

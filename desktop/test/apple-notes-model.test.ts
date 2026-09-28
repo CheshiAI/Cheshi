@@ -1,11 +1,6 @@
 import { expect, test } from 'bun:test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import type { AppleNote, AppleNotesApi, AppleNotesPage } from '../shared/apple-notes.ts';
-import { appleNoteAttachment, createAppleNotesBrowser } from '../frontend/src/features/notes/appleNotesModel';
-import { prepareChatAttachmentTransfers } from '../shared/chat-attachment-import.ts';
-import { ChatAttachmentStore } from '../lib/chat-attachment-store.mts';
+import { appleNoteDraftText, createAppleNotesBrowser } from '../frontend/src/features/notes/appleNotesModel';
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -323,22 +318,11 @@ test('deleting the final row leaves an empty completed list without loading', as
   expect(calls).toBe(1);
 });
 
-test('attaches the preview snapshot through the existing byte transfer and private attachment store', async () => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), 'cheshi-apple-note-'));
-  try {
-    const file = appleNoteAttachment(first);
-    expect(file.name).not.toMatch(/[\/\\<>]/);
-    expect(file.name.endsWith('.txt')).toBe(true);
-    const transfers = await prepareChatAttachmentTransfers([file], () => '');
-    const store = new ChatAttachmentStore({ directory });
-    const attachments = await store.importTransferredFiles(transfers);
-    expect(attachments).toHaveLength(1);
-    expect(attachments[0]?.kind).toBe('file');
-    expect(await readFile(attachments[0]!.path, 'utf8')).toBe(first.plaintext);
-    expect(() => appleNoteAttachment({ ...first, locked: true })).toThrow('Password-protected');
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
+test('provides the exact saved note text without creating a file or duplicating the title', () => {
+  expect(appleNoteDraftText(first)).toBe(first.plaintext);
+  const plaintext = 'Title\n\n  한글\t😀\n';
+  expect(appleNoteDraftText({ ...first, title: 'Title', plaintext })).toBe(plaintext);
+  expect(() => appleNoteDraftText({ ...first, locked: true })).toThrow('Password-protected');
 });
 
 test('created notes become selected immediately and invalidate late folder loads', async () => {

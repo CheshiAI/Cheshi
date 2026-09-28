@@ -94,8 +94,9 @@ test('saves font-size spans and permits another edit of the returned Apple Notes
   expect(f.writes).toBe(2);
 });
 
-test('updates native monospace notes and accepts a subsequent edit without bypassing conflicts', async () => {
-  const nativeHtml = '<div>Title</div><div><tt>one</tt></div><div><tt>two</tt></div>';
+test.each(['<tt>one</tt>', '<font face="Courier"><tt>one</tt></font>'])(
+  'updates native monospace notes and accepts a subsequent edit without bypassing conflicts: %s', async line => {
+  const nativeHtml = `<div>Title</div><div>${line}</div><div><tt>two</tt></div>`;
   const f = fixture(original.modifiedAt, nativeHtml);
   const html = '<p>Title</p><pre><code>one\ntwo edited</code></pre>';
   const saved = await f.service.update({ ...input(), expectedHtml: nativeHtml, html, htmlIncludesTitle: true });
@@ -107,6 +108,22 @@ test('updates native monospace notes and accepts a subsequent edit without bypas
   expect(f.writes).toBe(2);
   expect(await f.service.update({ ...input(), expectedHtml: nativeHtml, html })).toMatchObject({ ok: false, error: { code: 'conflict' } });
   expect(f.writes).toBe(2);
+});
+
+test('Courier support rejects unpreservable fonts and unsafe attributes before native writes', async () => {
+  for (const html of ['<font>Text</font>', '<font face="">Text</font>', '<font face="Arial">Text</font>',
+    '<font face="Courier New">Text</font>', '<font face="Courier, serif">Text</font>',
+    '<font face="Courier" color="red">Text</font>', '<font face="Courier" size="4">Text</font>',
+    '<font face="Courier" style="color:red">Text</font>', '<font face="Courier" onclick="evil()">Text</font>',
+    '<font face="Courier" face="Arial">Text</font>', '<font face="Courier"><img src="x"></font>',
+    '<font face="Courier"><script>evil()</script></font>', '<font face="Courier"><tt>Text</font></tt>']) {
+    expect(isEditableNoteHtml(html)).toBe(false);
+    expect(() => appleNoteUpdateInput({ ...input(), html })).toThrow();
+    const f = fixture(original.modifiedAt, html);
+    expect(await f.service.update({ ...input(), expectedHtml: html })).toMatchObject({ ok: false, error: { code: 'read-only' } });
+    expect(f.writes).toBe(0);
+    expect(f.executions).toBe(0);
+  }
 });
 
 test('font-size support does not admit other styles or invalid size values', () => {

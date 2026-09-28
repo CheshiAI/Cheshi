@@ -2,6 +2,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { APPLE_NOTES_MAX_TITLE_LENGTH } from '../../../../shared/apple-notes';
 import type { AppleNoteDocument } from '../../../../shared/apple-notes-document';
 import { isEditableNoteHtml } from '../../../../shared/apple-notes-document';
+import { restoreNativeHeadings, restoreQuotedMarkdown } from './appleNotesFormatting';
 
 const headingSelector = 'h1,h2,h3,h4,h5,h6';
 
@@ -38,6 +39,19 @@ function mergeHeadingLine(div: Element): Element | null {
   // An empty native heading line is one blank paragraph, not a large heading.
   if (!line.childNodes.length) return div.ownerDocument.createElement('p');
   return line;
+}
+
+function normalizeMonospaceFonts(document: Document) {
+  // Validation admits only Courier font wrappers. Map their meaning to the
+  // editor's existing mark before recognizing whole native monospace lines.
+  for (const font of [...document.body.querySelectorAll('font')].reverse()) {
+    const monospace = document.createElement('tt');
+    monospace.append(...font.childNodes);
+    for (const nested of [...monospace.querySelectorAll('tt')].reverse()) {
+      nested.replaceWith(...nested.childNodes);
+    }
+    font.replaceWith(monospace);
+  }
 }
 
 function normalizeMonospaceLines(document: Document) {
@@ -81,6 +95,7 @@ function normalizeMonospaceLines(document: Document) {
 export function noteEditorHtml(note: AppleNoteDocument): string {
   if (!isEditableNoteHtml(note.html)) return '';
   const document = new DOMParser().parseFromString(note.html, 'text/html');
+  normalizeMonospaceFonts(document);
   normalizeMonospaceLines(document);
   // Keep the first line in the document: it is editable content, not a separate field.
   // Notes uses divs for paragraphs. Normalize leaf divs explicitly; ProseMirror
@@ -100,6 +115,13 @@ export function noteEditorHtml(note: AppleNoteDocument): string {
       div.replaceWith(paragraph);
     }
   }
+  // Notes terminates bare list-item lines with br just like div lines. Keep
+  // internal hard breaks and nested block/list boundaries, removing only the terminator.
+  for (const item of document.body.querySelectorAll('li')) {
+    if (!item.querySelector('p,div,ul,ol,blockquote,pre')) removeLineTerminator(item);
+  }
+  restoreNativeHeadings(document);
+  restoreQuotedMarkdown(document);
   return document.body.innerHTML || '<p></p>';
 }
 

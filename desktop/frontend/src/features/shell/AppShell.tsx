@@ -48,7 +48,7 @@ import { ChatDraftAttachmentsContext, createChatDraftAttachments } from '../chat
 import { NotesView } from '../notes/NotesView';
 import { MailView } from '../mail/MailView';
 import { CalendarView } from '../calendar/CalendarView';
-import { appleNoteAttachment } from '../notes/appleNotesModel';
+import { appleNoteDraftText } from '../notes/appleNotesModel';
 import type { AppleNote } from '../../../../shared/apple-notes';
 
 const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'notes', 'calendar', 'mail', 'settings'];
@@ -206,7 +206,7 @@ export function AppShell() {
     if (chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running) return false;
     const destination = attachmentDestination.current;
     const requestId = historyRequestId.current;
-    const attached = await draftAttachments.attach(destination.paneId, [appleNoteAttachment(note)]);
+    const attached = await draftAttachments.appendText(destination.paneId, appleNoteDraftText(note));
     if (attached && historyRequestId.current === requestId && attachmentDestination.current.activeView === 'notes'
       && attachmentDestination.current.paneId === destination.paneId) navigate('chat');
     return attached;

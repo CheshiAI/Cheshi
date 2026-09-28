@@ -22,7 +22,7 @@ import type { ChatWorkspace } from '../frontend/src/features/chat/ChatWorkspace'
 import type { WorkspaceFileSearch } from '../frontend/src/features/navigation/WorkspaceFileSearch';
 import type { CodeGraphView } from '../frontend/src/features/graph/CodeGraphView';
 import * as draftAttachmentModule from '../frontend/src/features/chat/chatDraftAttachments';
-import { appleNoteAttachment } from '../frontend/src/features/notes/appleNotesModel';
+import { appleNoteDraftText } from '../frontend/src/features/notes/appleNotesModel';
 import type { NotesView } from '../frontend/src/features/notes/NotesView';
 import type { AppleNote } from '../shared/apple-notes';
 import type { TerminalWorkspace } from '../frontend/src/features/terminal/TerminalWorkspace';
@@ -146,7 +146,7 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
     '../../cheshiDesktop': { cheshiDesktop: undefined },
     '../chat/HistoryRecallActivity': { HistoryRecallNavigation: { Provider: 'HistoryRecallNavigation' } },
     '../chat/chatDraftAttachments': { ...draftAttachmentModule, createChatDraftAttachments: () => attachments },
-    '../notes/appleNotesModel': { appleNoteAttachment },
+    '../notes/appleNotesModel': { appleNoteDraftText },
     '../chat/useChatWorkspace': { useChatWorkspace: () => ({ activePaneId: 'chat-a', controllers: {}, activeController: { state: { phase: 'ready' } }, relay: { running: false },
       sessionHistory: { loading: historyLoading, sessions: [] }, responseThreadIds: [], accountSwitchPending: false }) },
     '../chat/useChatHistorySearch': { useChatHistorySearch: () => ({ clear() {} }) },
@@ -627,10 +627,11 @@ test('Memo tab browses alongside the current scene and opening a note activates 
   expect(sidebar().activePanel).toBe('chats');
 });
 
-test('Notes uses a full page while preserving the mounted chat and attaches to its selected draft', async () => {
+test('Notes uses a full page while preserving the mounted chat and adds text to its selected draft', async () => {
   const app = shellHarness();
   const imports: (File | string)[][] = [];
-  app.attachments.register('chat-a', async files => { imports.push(files); return true; });
+  const texts: string[] = [];
+  app.attachments.register('chat-a', async files => { imports.push(files); return true; }, text => { texts.push(text); return true; });
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('draft.ts');
   props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('notes');
   const tree = app.render();
@@ -638,9 +639,8 @@ test('Notes uses a full page while preserving the mounted chat and attaches to i
   expect(props<ComponentProps<typeof WorkspaceEditorSplit>>(tree, 'WorkspaceEditorSplit').mode).toBe('page');
   expect(props<ComponentProps<typeof ChatWorkspace>>(tree, 'ChatWorkspace').active).toBe(false);
   expect(await props<ComponentProps<typeof NotesView>>(tree, 'NotesView').onAttach(appleNote)).toBe(true);
-  const file = imports[0]?.[0];
-  expect(file).toBeInstanceOf(File);
-  expect(await (file as File).text()).toBe('Agenda');
+  expect(texts).toEqual(['Agenda']);
+  expect(imports).toEqual([]);
   expect(props<ComponentProps<typeof ChatWorkspace>>(app.render(), 'ChatWorkspace').active).toBe(true);
 });
 
@@ -650,7 +650,7 @@ test('failed Notes attachment keeps the Notes page and late success does not ove
   expect(await props<ComponentProps<typeof NotesView>>(app.render(), 'NotesView').onAttach(appleNote)).toBe(false);
   expect(props<ComponentProps<typeof NotesView>>(app.render(), 'NotesView')).toBeDefined();
   let complete!: (value: boolean) => void;
-  app.attachments.register('chat-a', () => new Promise<boolean>(resolve => { complete = resolve; }));
+  app.attachments.register('chat-a', async () => false, () => new Promise<boolean>(resolve => { complete = resolve; }));
   const attaching = props<ComponentProps<typeof NotesView>>(app.render(), 'NotesView').onAttach(appleNote);
   props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('git');
   app.render();

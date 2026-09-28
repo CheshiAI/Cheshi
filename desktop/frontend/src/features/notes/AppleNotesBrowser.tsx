@@ -79,9 +79,9 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
     try {
       const attached = await onAttach(state.note);
       if (!mounted.current) return;
-      if (!attached) setAttachmentError('Could not attach this note. Check the conversation attachment limit and try again.');
+      if (!attached) setAttachmentError('Could not add this note as text. Check that the conversation is ready and the note is not empty, then try again.');
     } catch (error) {
-      if (mounted.current) setAttachmentError(error instanceof Error ? error.message : 'Could not attach this note.');
+      if (mounted.current) setAttachmentError(error instanceof Error ? error.message : 'Could not add this note as text.');
     } finally {
       pending.current = false;
       if (mounted.current) setAttaching(false);
@@ -105,7 +105,7 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
         setDeleteTarget({ note: state.note, folderId: state.folderId });
       }}><Trash2 aria-hidden="true" /></NeumorphicButton>
     <TooltipButton variant="ghost" size="icon" aria-label="Attach to conversation"
-      title={attaching ? 'Attaching…' : 'Attach to conversation · Only the saved note’s text is attached to the conversation.'}
+      title={attaching ? 'Adding…' : 'Add to conversation as text · Appends the saved note to your message.'}
       aria-busy={attaching} disabled={!state.note || state.loadingNote || navigationDisabled || attachmentDisabled}
       onClick={() => void attach()}><Paperclip aria-hidden="true" /></TooltipButton>
   </>;
@@ -115,7 +115,7 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
             <TooltipButton size="icon" aria-label="Refresh Apple Notes" title="Refresh Apple Notes"
               disabled={state.loadingFolders || navigationDisabled}
               onClick={() => { if (!navigationDisabled) void browser.refresh(); }}><RefreshCw aria-hidden="true" /></TooltipButton>
-            <TooltipButton size="icon" aria-label="새 메모" title="새 메모" disabled={navigationDisabled}
+            <TooltipButton size="icon" aria-label="New memo" title="New memo" disabled={navigationDisabled}
               onClick={() => { if (!navigationDisabled) { onOpen?.(); setCreated(false); setDeleted(false); setCreating(true); } }}><Plus aria-hidden="true" /></TooltipButton>
           </>} />
           <div className={styles.sidebarBody}>

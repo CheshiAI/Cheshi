@@ -27,7 +27,7 @@ export function NotesView({ onAttach, attachmentDisabled, rightSidebarOpen, onTo
       aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
       aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></SidebarToggle>
   } />;
-  const unavailable = <p className={styles.unavailable}>Apple 메모 연동은 macOS용 Cheshi에서 사용할 수 있습니다.</p>;
+  const unavailable = <p className={styles.unavailable}>Apple Notes integration is available in Cheshi for macOS.</p>;
   return <main className={styles.workspace} aria-label="Memo" hidden={!active}>
     {api?.available ? <AppleNotesBrowser api={api} onAttach={onAttach} attachmentDisabled={attachmentDisabled}
       renderHeader={renderHeader} sidebarTarget={sidebarTarget} onOpen={onOpen} />

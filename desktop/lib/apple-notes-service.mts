@@ -16,8 +16,8 @@ const ERROR_MESSAGES: Record<AppleNotesErrorCode, string> = {
   'save-unknown': APPLE_NOTES_SAVE_UNKNOWN_MESSAGE,
   'delete-unknown': APPLE_NOTES_DELETE_UNKNOWN_MESSAGE,
   'update-unknown': APPLE_NOTES_UPDATE_UNKNOWN_MESSAGE,
-  conflict: 'Apple 메모에서 원본이 변경되었습니다. 초안을 유지한 채 원본을 확인하세요.',
-  'read-only': '첨부파일 또는 지원하지 않는 서식이 있어 원본을 수정할 수 없습니다.',
+  conflict: 'The original changed in Apple Notes. Review it before saving your draft.',
+  'read-only': 'The original cannot be edited because it contains attachments or unsupported formatting.',
   invalid: 'The Apple Notes data is invalid or too large. Choose a smaller note or folder.',
   unavailable: 'Apple Notes is unavailable. Open Notes to check your accounts and permissions, then try again.',
 };

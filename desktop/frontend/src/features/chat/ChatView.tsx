@@ -43,9 +43,15 @@ export function ChatView({
 }: ChatViewProps) {
   const viewController = useChatViewController({ controller, onNewSession, initialDraft, onOpenTemporaryChat, active, interactionsLocked });
   useChatNotificationVisibility(viewController.rootRef, controller.contextId ?? 'main', controller.state.activeSessionId, visible);
-  useChatDraftAttachmentTarget(controller.contextId, viewController.attachmentTransfer.attachFilesToDraft);
   const latest = useRef(viewController);
   latest.current = viewController;
+  useChatDraftAttachmentTarget(controller.contextId, viewController.attachmentTransfer.attachFilesToDraft, text => {
+    const current = latest.current;
+    if (!text.trim() || current.interactionsLocked || current.loading || current.sendPending || current.configurationLoading
+      || current.commandLoading || current.commandMenuOpen || current.attachmentPickerOpen || current.attachmentTransfer.isTransferring()) return false;
+    current.setDraft(draft => draft ? `${draft}\n\n${text}` : text);
+    return true;
+  });
   const hasDraft = Boolean(viewController.messageQueue.total || viewController.draft || viewController.selectedSkill || viewController.attachments.length
     || (viewController.sendRecovery && viewController.sendRecovery.status !== 'restored'));
   const busy = viewController.sendPending || viewController.commandLoading || viewController.configurationLoading

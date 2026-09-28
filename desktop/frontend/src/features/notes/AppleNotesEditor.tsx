@@ -5,9 +5,11 @@ import type { AppleNote, AppleNoteSummary, AppleNotesApi } from '../../../../sha
 import { APPLE_NOTES_MAX_BODY_LENGTH } from '../../../../shared/apple-notes';
 import { noteDocumentReadOnlyReason, type AppleNoteDocument } from '../../../../shared/apple-notes-document';
 import { LoadingState, Modal, NeumorphicButton, TwoTierHeader } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { retainedNoteDraft, protectNoteDraftsOnClose, type NoteEditorDraft } from './appleNotesDraft';
 import type { createNewNoteDraft } from './appleNotesNewDraft';
 import { noteEditorHtml, noteEditorTitle } from './appleNotesEditorContent';
+import { noteEditorSaveHtml } from './appleNotesFormatting';
 import { noteEditorExtensions } from './appleNotesEditorExtensions';
 import { noteTimestamp } from './appleNotesTimestamp';
 import styles from './AppleNotesEditor.module.css';
@@ -36,7 +38,7 @@ export function AppleNotesEditor(props: Props) {
     props.api.document(props.note.id).then(value => {
       if (value.id !== props.note.id) throw new Error('Unexpected note');
       if (active) setDocument(value);
-    }).catch(() => { if (active) setError('편집할 메모를 불러오지 못했습니다.'); });
+    }).catch(() => { if (active) setError('Could not load this note for editing.'); });
     return () => { active = false; };
   }, [props.api, props.note.id, props.loadingNote, retry]);
   if (props.loadingNote || !document) return <div className={styles.editor}>
@@ -44,7 +46,7 @@ export function AppleNotesEditor(props: Props) {
     <div className={styles.loading}>
       {!props.loadingNote && error ? <>
         <p role="alert">{error}</p>
-        <NeumorphicButton onClick={() => { setError(''); setRetry(value => value + 1); }}>다시 시도</NeumorphicButton>
+        <NeumorphicButton onClick={() => { setError(''); setRetry(value => value + 1); }}>Retry</NeumorphicButton>
       </> : <LoadingState />}
     </div>
   </div>;
@@ -90,7 +92,7 @@ function LoadedNoteEditor({ api, document, children, disabled, onSaved, onBusyCh
     parseOptions: { preserveWhitespace: 'full' },
     editable: !reason && !contentDisabled,
     editorProps: {
-      attributes: { class: styles.body!, 'aria-label': '메모', role: 'textbox', 'aria-multiline': 'true' },
+      attributes: { class: styles.body!, 'aria-label': 'Memo', role: 'textbox', 'aria-multiline': 'true' },
       handleKeyDown: (_view, event) => {
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
           event.preventDefault(); saveRef.current(); return true;
@@ -110,8 +112,14 @@ function LoadedNoteEditor({ api, document, children, disabled, onSaved, onBusyCh
   const tooLarge = state.html.length > APPLE_NOTES_MAX_BODY_LENGTH;
   const saveDisabled = disabled || !!reason || state.saving || state.blocked || (!state.dirty && !state.createdId) || !state.title.trim() || tooLarge;
   saveRef.current = () => {
-    if (saveDisabled) return;
-    void draft.save(api).then(note => { if (note && live.current) onSaved(note); });
+    if (saveDisabled || !editor) return;
+    const html = noteEditorSaveHtml(editor);
+    // Keep the editable draft rich; only the Notes payload uses quote markers
+    // and list separators, so undo/discard still compare the same representation.
+    void draft.save({ ...api,
+      create: request => api.create({ ...request, html }),
+      update: request => api.update({ ...request, html }),
+    }).then(note => { if (note && live.current) onSaved(note); });
   };
   useEffect(() => {
     protectNoteDraftsOnClose();
@@ -125,20 +133,20 @@ function LoadedNoteEditor({ api, document, children, disabled, onSaved, onBusyCh
     if (checking || state.saving) return;
     setChecking(true); setCheckError('');
     try { const note = await api.document(state.original.id); if (live.current) setLatest(note); }
-    catch { if (live.current) setCheckError('원본을 불러오지 못했습니다. 초안은 유지됩니다.'); }
+    catch { if (live.current) setCheckError('Could not load the original. Your draft is preserved.'); }
     finally { if (live.current) setChecking(false); }
   };
 
   const toolbar = [
-    { label: '제목', icon: Heading2, run: () => editor?.chain().focus().toggleHeading({ level: 2 }).run() },
-    { label: '굵게', icon: Bold, run: () => editor?.chain().focus().toggleBold().run() },
-    { label: '기울임', icon: Italic, run: () => editor?.chain().focus().toggleItalic().run() },
-    { label: '글머리 목록', icon: List, run: () => editor?.chain().focus().toggleBulletList().run() },
-    { label: '번호 목록', icon: ListOrdered, run: () => editor?.chain().focus().toggleOrderedList().run() },
-    { label: '인용', icon: Quote, run: () => editor?.chain().focus().toggleBlockquote().run() },
-    { label: '코드 블록', icon: Code, run: () => editor?.chain().focus().toggleCodeBlock().run() },
-    { label: '실행 취소', icon: Undo2, run: () => editor?.chain().focus().undo().run() },
-    { label: '다시 실행', icon: Redo2, run: () => editor?.chain().focus().redo().run() },
+    { label: 'Heading', icon: Heading2, run: () => editor?.chain().focus().toggleHeading({ level: 2 }).run() },
+    { label: 'Bold', icon: Bold, run: () => editor?.chain().focus().toggleBold().run() },
+    { label: 'Italic', icon: Italic, run: () => editor?.chain().focus().toggleItalic().run() },
+    { label: 'Bullet list', icon: List, run: () => editor?.chain().focus().toggleBulletList().run() },
+    { label: 'Numbered list', icon: ListOrdered, run: () => editor?.chain().focus().toggleOrderedList().run() },
+    { label: 'Quote', icon: Quote, run: () => editor?.chain().focus().toggleBlockquote().run() },
+    { label: 'Code block', icon: Code, run: () => editor?.chain().focus().toggleCodeBlock().run() },
+    { label: 'Undo', icon: Undo2, run: () => editor?.chain().focus().undo().run() },
+    { label: 'Redo', icon: Redo2, run: () => editor?.chain().focus().redo().run() },
   ];
 
   return <div className={styles.editor} onKeyDown={event => {
@@ -146,34 +154,34 @@ function LoadedNoteEditor({ api, document, children, disabled, onSaved, onBusyCh
   }}>
     <NoteEditorHeader note={state.original} label={composeDraft ? `New memo · ${composeDraft.folder.account} / ${composeDraft.folder.path}` : undefined}>
       <span className={styles.status} role="status">{state.saving ? 'Saving…' : state.blocked ? (composeDraft ? 'Check Apple Notes' : 'Review original') : state.dirty ? 'Edited' : state.saved ? 'Saved' : reason ? 'Read only' : ''}</span>
-      <NeumorphicButton variant="ghost" size="icon" aria-label="Discard changes" title="Discard changes" disabled={(!composeDraft && !state.dirty) || state.saving || disabled} onClick={() => {
+      <TooltipButton variant="ghost" size="icon" aria-label="Discard changes" title="Discard changes" disabled={(!composeDraft && !state.dirty) || state.saving || disabled} onClick={() => {
         if (composeDraft) { onDiscard?.(); return; }
         draft.discard?.(); editor?.commands.setContent(draft.getSnapshot().html, { emitUpdate: false });
-      }}><RotateCcw aria-hidden="true" /></NeumorphicButton>
-      <NeumorphicButton variant="ghost" size="icon" aria-label="Save to Apple Notes" title="Save (⌘S)" disabled={saveDisabled} onClick={() => saveRef.current()}><Save aria-hidden="true" /></NeumorphicButton>
+      }}><RotateCcw aria-hidden="true" /></TooltipButton>
+      <TooltipButton variant="ghost" size="icon" aria-label="Save to Apple Notes" title="Save (⌘S)" disabled={saveDisabled} onClick={() => saveRef.current()}><Save aria-hidden="true" /></TooltipButton>
       {children}
     </NoteEditorHeader>
-    {!reason && <div className={styles.toolbar} role="toolbar" aria-label="메모 서식">
-      {toolbar.map(({ label, icon: Icon, run }) => <NeumorphicButton key={label} size="icon" aria-label={label} title={label}
-        disabled={contentDisabled || !editor} onMouseDown={event => event.preventDefault()} onClick={run}><Icon aria-hidden="true" /></NeumorphicButton>)}
+    {!reason && <div className={styles.toolbar} role="toolbar" aria-label="Memo formatting">
+      {toolbar.map(({ label, icon: Icon, run }) => <TooltipButton key={label} variant="ghost" size="icon" aria-label={label} title={label}
+        disabled={contentDisabled || !editor} onMouseDown={event => event.preventDefault()} onClick={run}><Icon aria-hidden="true" /></TooltipButton>)}
     </div>}
     {(reason || state.error || checkError || tooLarge) && <div className={styles.notice}
       data-read-only={!!reason && !state.error && !checkError && !tooLarge && !state.blocked}>
-      <p role={state.error || checkError || tooLarge ? 'alert' : undefined}>{checkError || state.error || (tooLarge ? '메모가 너무 큽니다. 내용을 줄여 주세요.' : reason)}</p>
-      {state.blocked && !composeDraft && <NeumorphicButton disabled={checking || state.saving} onClick={() => void checkOriginal()}>{checking ? '확인 중…' : '최신 원본 확인'}</NeumorphicButton>}
+      <p role={state.error || checkError || tooLarge ? 'alert' : undefined}>{checkError || state.error || (tooLarge ? 'This note is too large. Reduce its content.' : reason)}</p>
+      {state.blocked && !composeDraft && <NeumorphicButton disabled={checking || state.saving} onClick={() => void checkOriginal()}>{checking ? 'Checking…' : 'Review latest original'}</NeumorphicButton>}
     </div>}
     <div className={styles.scroll}>
       <article className={styles.page}>
         {reason ? <pre>{state.original.plaintext}</pre> : <EditorContent editor={editor} />}
       </article>
     </div>
-    {latest && <Modal title="최신 Apple 메모 원본" titleIcon={<StickyNote aria-hidden="true" />} onClose={() => setLatest(null)}>
-      <p>아래 원본을 확인하세요. 초안을 유지해 다시 저장하면 이 원본의 본문을 바꿉니다.</p>
+    {latest && <Modal title="LATEST APPLE NOTES ORIGINAL" headerVariant="section" closeButtonVariant="ghost" titleIcon={<StickyNote aria-hidden="true" />} onClose={() => setLatest(null)}>
+      <p>Review the original below. Saving your draft again will replace its content.</p>
       <pre className={styles.latest}>{latest.plaintext}</pre>
       {noteDocumentReadOnlyReason(latest) && <p>{noteDocumentReadOnlyReason(latest)}</p>}
       <div className={styles.headerActions}>
-        <NeumorphicButton onClick={() => setLatest(null)}>닫기</NeumorphicButton>
-        <NeumorphicButton disabled={!!noteDocumentReadOnlyReason(latest)} onClick={() => { draft.rebase?.(latest, noteEditorHtml(latest)); setLatest(null); }}>초안 유지하고 저장 재개</NeumorphicButton>
+        <NeumorphicButton onClick={() => setLatest(null)}>Close</NeumorphicButton>
+        <NeumorphicButton disabled={!!noteDocumentReadOnlyReason(latest)} onClick={() => { draft.rebase?.(latest, noteEditorHtml(latest)); setLatest(null); }}>Keep draft and resume saving</NeumorphicButton>
       </div>
     </Modal>}
   </div>;

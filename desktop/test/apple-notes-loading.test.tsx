@@ -111,9 +111,9 @@ test('document errors replace loading with a retry action and retry restores one
     const initial = loading(view.container);
     await act(async () => failed.reject(new Error('Unavailable')));
     expect(view.container.contains(initial)).toBe(false);
-    expect(view.container.querySelector('[role="alert"]')?.textContent).toBe('편집할 메모를 불러오지 못했습니다.');
+    expect(view.container.querySelector('[role="alert"]')?.textContent).toBe('Could not load this note for editing.');
     const button = view.container.querySelector('button');
-    expect(button?.textContent).toBe('다시 시도');
+    expect(button?.textContent).toBe('Retry');
     await act(async () => button?.click());
     expect(reads).toBe(2);
     loading(view.container);

@@ -9,6 +9,7 @@ import * as contract from '../shared/apple-notes';
 import { LOCKED_NOTE_MESSAGE, type AppleNotesBrowserState } from '../frontend/src/features/notes/appleNotesModel';
 import type { AppleNotesDeleteDialog } from '../frontend/src/features/notes/AppleNotesDeleteDialog';
 import type { AppleNotesSaveDialog } from '../frontend/src/features/notes/AppleNotesSaveDialog';
+import { appleNotesTextExport } from '../frontend/src/features/notes/appleNotesTextExport';
 import type { AppleNotesNewDialog } from '../frontend/src/features/notes/AppleNotesNewDialog';
 import { createNewNoteDraft } from '../frontend/src/features/notes/appleNotesNewDraft';
 import type { AppleNotesBrowser } from '../frontend/src/features/notes/AppleNotesBrowser';
@@ -53,6 +54,7 @@ function harness<T>(file: string, symbol: string, browserState = state()) {
         return [slots[index], (value: unknown) => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; }];
       },
       useId() { return 'test-id'; },
+      useMemo<T>(compute: () => T) { return compute(); },
       useEffect(effect: () => () => void) {
         const index = cursor++;
         if (!(index in slots)) { slots[index] = true; effects.push(effect()); }
@@ -78,6 +80,7 @@ function harness<T>(file: string, symbol: string, browserState = state()) {
       startNewNoteDraft: (folder: contract.AppleNotesFolder) => pendingDraft ??= createNewNoteDraft(folder),
       releaseNewNoteDraft: () => { pendingDraft = null; } },
     './AppleNotesSaveDialog': { AppleNotesSaveDialog: 'save-dialog' },
+    './appleNotesTextExport': { appleNotesTextExport },
     './AppleNotesFolderField': { AppleNotesFolderField: 'folder-field' },
     './AppleNotes.module.css': { default: {} },
     './AppleNotesNewDialog.module.css': { default: {} },
@@ -173,7 +176,7 @@ test('note actions are provided to the editor header and are disabled without a 
   expect(find(editor.props.children as ReactNode, element => element.props['aria-label'] === 'Delete note').props.disabled).toBe(false);
   const attachButton = find(editor.props.children as ReactNode, element => element.props['aria-label'] === 'Attach to conversation');
   expect(attachButton.props.disabled).toBe(false);
-  expect(attachButton.props.title).toContain('Only the saved note’s text is attached to the conversation.');
+  expect(attachButton.props.title).toContain('Appends the saved note to your message.');
   expect(elements(tree).some(element => element.type === 'footer')).toBe(false);
   browserState.note = null;
   expect(find(render(), element => element.props['aria-label'] === 'Delete note').props.disabled).toBe(true);
@@ -350,7 +353,7 @@ test('header refresh uses the current browser and stays disabled while loading o
   browserState.loadingFolders = false;
   click(render(), element => element.props['aria-label'] === 'Attach to conversation');
   expect(find(render(), refreshButton).props.disabled).toBe(true);
-  expect(find(render(), element => element.props['aria-label'] === '새 메모').props.disabled).toBe(true);
+  expect(find(render(), element => element.props['aria-label'] === 'New memo').props.disabled).toBe(true);
   const folderButton = (element: ReactElement<Record<string, unknown>>) => element.props['aria-label'] === 'iCloud / Notes';
   expect(find(render(), folderButton).props.disabled).toBe(true);
   click(render(), folderButton);
@@ -358,7 +361,7 @@ test('header refresh uses the current browser and stays disabled while loading o
   pending.resolve(true);
   await flush();
   expect(find(render(), refreshButton).props.disabled).toBe(false);
-  expect(find(render(), element => element.props['aria-label'] === '새 메모').props.disabled).toBe(false);
+  expect(find(render(), element => element.props['aria-label'] === 'New memo').props.disabled).toBe(false);
 });
 
 test('delete confirmation escapes the title, supports cancellation, and waits for one acknowledged request', async () => {
@@ -518,7 +521,7 @@ test('folder selection opens a blank right-hand editor; discard closes it and sa
   const render = () => app.render(component => component({ api: api(async () => { creates += 1; return { ok: true, value: { id: 'new', title: 'Title' } }; }),
     onAttach: async () => true, renderHeader: () => <header>Memo</header> }));
   const begin = () => {
-    click(render(), element => element.props['aria-label'] === '새 메모');
+    click(render(), element => element.props['aria-label'] === 'New memo');
     const dialog = find(render(), element => element.type === 'new-dialog');
     expect(dialog.props.initialFolderId).toBe('folder');
     if (typeof dialog.props.onContinue !== 'function') throw new Error('Missing folder callback');
@@ -552,12 +555,12 @@ test('saving a response submits exactly once and waits for acknowledgement befor
   const calls: contract.AppleNoteCreateInput[] = [];
   let saved = 0;
   const props = { api: api(async input => { calls.push(input); return pending.promise; }),
-    initialTitle: 'Conversation', body: 'Answer', onClose() {}, onSaved() { saved += 1; } };
+    body: 'Answer', onClose() {}, onSaved() { saved += 1; } };
   const app = harness<typeof AppleNotesSaveDialog>('AppleNotesSaveDialog.tsx', 'AppleNotesSaveDialog');
   const render = () => app.render(component => component(props));
   const tree = render();
   submit(tree); submit(tree);
-  expect(calls).toEqual([{ folderId: 'folder', title: 'Conversation', body: 'Answer' }]);
+  expect(calls).toEqual([{ folderId: 'folder', title: 'Answer', body: 'Answer', html: '<pre><code>Answer</code></pre>', htmlIncludesTitle: true }]);
   expect(saved).toBe(0);
   expect(find(render(), element => element.type === 'modal').props.closeDisabled).toBe(true);
   pending.resolve({ ok: true, value: { id: 'created', title: 'Conversation' } });
@@ -565,22 +568,23 @@ test('saving a response submits exactly once and waits for acknowledgement befor
   expect(saved).toBe(1);
 });
 
-test('clearing the response title prevents saving until a title is entered again', () => {
+test('response saving has no title input and blocks empty or oversized encoded content', () => {
   let creates = 0;
+  let body = 'First line\nSecond line';
   const app = harness<typeof AppleNotesSaveDialog>('AppleNotesSaveDialog.tsx', 'AppleNotesSaveDialog');
   const render = () => app.render(component => component({
-    api: api(async () => { creates++; return { ok: true, value: { id: 'new', title: 'Title' } }; }),
-    initialTitle: 'Conversation', body: 'Answer', onClose() {}, onSaved() {},
+    api: api(async () => { creates++; return { ok: true, value: { id: 'new', title: 'First line' } }; }),
+    body, onClose() {}, onSaved() {},
   }));
-  const title = find(render(), element => element.props.clearLabel === 'Clear title');
-  if (typeof title.props.onClear !== 'function') throw new Error('Missing title clear action.');
-  title.props.onClear();
-  expect(find(render(), element => element.props.clearLabel === 'Clear title').props.value).toBe('');
-  expect(find(render(), element => element.props.type === 'submit').props.disabled).toBe(true);
-  submit(render());
-  expect(creates).toBe(0);
-  change(render(), element => element.props.clearLabel === 'Clear title', 'New title');
+  expect(elements(render()).some(element => element.type === 'input')).toBe(false);
   expect(find(render(), element => element.props.type === 'submit').props.disabled).toBe(false);
+  for (const invalid of ['', ' \n ', 'x'.repeat(contract.APPLE_NOTES_MAX_BODY_LENGTH + 1),
+    '&'.repeat(Math.floor(contract.APPLE_NOTES_MAX_BODY_LENGTH / 5))]) {
+    body = invalid;
+    expect(find(render(), element => element.props.type === 'submit').props.disabled).toBe(true);
+    submit(render());
+    expect(creates).toBe(0);
+  }
 });
 
 test('an uncertain save shows its message and prevents an immediate duplicate retry', async () => {
@@ -588,7 +592,7 @@ test('an uncertain save shows its message and prevents an immediate duplicate re
   let calls = 0;
   const app = harness<typeof AppleNotesSaveDialog>('AppleNotesSaveDialog.tsx', 'AppleNotesSaveDialog');
   const render = () => app.render(component => component({ api: api(async () => { calls += 1; return pending.promise; }),
-    initialTitle: 'Conversation', body: 'Answer', onClose() {}, onSaved() { throw new Error('Unexpected success'); } }));
+    body: 'Answer', onClose() {}, onSaved() { throw new Error('Unexpected success'); } }));
   submit(render());
   pending.resolve({ ok: false, error: { code: 'save-unknown', message: 'Check Notes before saving again.' } });
   await flush();
@@ -603,7 +607,7 @@ test('saving does not close a different view after its dialog unmounts', async (
   const pending = createDeferred<contract.AppleNotesReply<contract.AppleNoteCreated>>();
   let saved = 0;
   const app = harness<typeof AppleNotesSaveDialog>('AppleNotesSaveDialog.tsx', 'AppleNotesSaveDialog');
-  submit(app.render(component => component({ api: api(async () => pending.promise), initialTitle: 'Conversation', body: 'Answer',
+  submit(app.render(component => component({ api: api(async () => pending.promise), body: 'Answer',
     onClose() {}, onSaved() { saved += 1; } })));
   app.unmount();
   pending.resolve({ ok: true, value: { id: 'created', title: 'Conversation' } });
@@ -647,6 +651,6 @@ test('notes page keeps the preview and shows an error when attachment is refused
   enabled.props.onClick();
   await flush();
   expect(calls).toBe(1);
-  expect(find(render(), element => element.props.role === 'alert').props.children).toContain('Could not attach');
+  expect(find(render(), element => element.props.role === 'alert').props.children).toContain('Could not add this note as text');
   expect(find(render(), element => element.type === 'note-editor').props.note).toBe(note);
 });

@@ -16,7 +16,7 @@ export function useChatDraft(sessionRevision: number, send: (input: ChatDraftSna
   }, [sessionRevision, store, initialDraft]);
   return {
     ...state,
-    setDraft: (value: string) => store.edit('draft', value),
+    setDraft: (value: string | ((current: string) => string)) => store.edit('draft', value),
     setSelectedSkill: (value: ChatDraftSnapshot['selectedSkill']) => store.edit('selectedSkill', value),
     setAttachments: (value: ChatDraftSnapshot['attachments'] | ((current: ChatDraftSnapshot['attachments']) => ChatDraftSnapshot['attachments'])) => store.edit('attachments', value),
     submitDraft: store.submit,

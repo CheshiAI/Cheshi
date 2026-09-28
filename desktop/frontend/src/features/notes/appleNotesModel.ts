@@ -2,10 +2,9 @@ import type { AppleNote, AppleNoteSummary, AppleNotesApi, AppleNotesFolder } fro
 
 export const LOCKED_NOTE_MESSAGE = 'This note is password protected. Choose an unlocked note.';
 
-export function appleNoteAttachment(note: AppleNote): File {
-  if (note.locked) throw new Error('Password-protected notes cannot be attached.');
-  const name = note.title.replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, ' ').trim().slice(0, 120) || 'Apple Note';
-  return new File([note.plaintext], `${name}.txt`, { type: 'text/plain' });
+export function appleNoteDraftText(note: AppleNote): string {
+  if (note.locked !== false) throw new Error('Password-protected notes cannot be added to a conversation.');
+  return note.plaintext;
 }
 
 function summarizeNote(note: AppleNote): AppleNoteSummary {

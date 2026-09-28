@@ -3,6 +3,7 @@ import { Window } from 'happy-dom';
 import { Editor } from '@tiptap/core';
 import { noteEditorExtensions } from '../frontend/src/features/notes/appleNotesEditorExtensions';
 import { noteEditorHtml, noteEditorTitle } from '../frontend/src/features/notes/appleNotesEditorContent';
+import { noteEditorSaveHtml } from '../frontend/src/features/notes/appleNotesFormatting';
 import { noteTimestamp } from '../frontend/src/features/notes/appleNotesTimestamp';
 import { appleNoteUpdateInput, isEditableNoteHtml, noteDocumentReadOnlyReason, type AppleNoteDocument } from '../shared/apple-notes-document';
 
@@ -61,12 +62,11 @@ test('Apple Notes font-size spans remain editable and keep body sizes when saved
   try {
     const blocks = editor.getJSON().content!.slice(1);
     expect<unknown>(blocks[0]).toEqual({ type: 'paragraph' });
-    expect(blocks[1]?.content?.[0]?.marks).toContainEqual({ type: 'noteFontSize', attrs: { fontSize: '24px' } });
-    expect(blocks[1]?.content?.[0]?.marks).toContainEqual({ type: 'bold' });
+    expect(blocks[1]).toMatchObject({ type: 'heading', attrs: { level: 1 } });
     expect(blocks[2]?.content?.[0]?.marks).toContainEqual({ type: 'noteFontSize', attrs: { fontSize: '13.5px' } });
     editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' edited');
     const html = editor.getHTML();
-    expect(html).toContain('font-size: 24px');
+    expect(html).toContain('<h1>Large text</h1>');
     expect(html).toContain('font-size: 13.5px');
     expect(editor.getText()).toContain('Plain text edited');
     expect(editor.getMarkdown()).toContain('Large text');
@@ -237,6 +237,58 @@ test('monospace import preserves inline marks, blank lines, hard breaks and code
   } finally { editor.destroy(); }
 }));
 
+test('chat exports returned as Courier preserve title, whitespace and blank lines across repeated edits', () => withDom(() => {
+  // Shape returned by Notes for a chat response saved as <h1> + <pre>.
+  const original = { ...note, html: '<div><b><span style="font-size: 24px">Title</span></b></div>\n'
+    + '<div><font face="Courier"><tt>  a &lt; b &amp; c\t😀</tt></font></div>\n'
+    + '<div><font face="Courier"><tt>한글\u00a0  text</tt></font></div>\n'
+    + '<div><font face="Courier"><tt><br></tt></font></div>\n'
+    + '<div><font face="Courier"><tt><br></tt></font></div>\n'
+    + '<div><font face="Courier"><tt>Last line</tt></font></div>\n'
+    + '<div><font face="Courier"><tt><br></tt></font></div>\n' };
+  expect(noteDocumentReadOnlyReason(original)).toBeNull();
+  const editor = new Editor({ extensions: noteEditorExtensions(), content: noteEditorHtml(original),
+    parseOptions: { preserveWhitespace: 'full' } });
+  try {
+    const blocks = editor.getJSON().content!;
+    expect(blocks.map(block => block.type)).toEqual(['heading', 'codeBlock']);
+    expect(blocks[0]?.attrs).toEqual({ level: 1 });
+    const body = '  a < b & c\t😀\n한글\u00a0  text\n\n\nLast line\n';
+    expect(editor.state.doc.child(1).textContent).toBe(body);
+    for (let edit = 1; edit <= 2; edit++) {
+      editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' edited');
+      expect(editor.state.doc.child(1).textContent).toBe(body + ' edited'.repeat(edit));
+      expect(noteEditorTitle(editor.state.doc)).toBe('Title');
+      const html = editor.getHTML();
+      expect(isEditableNoteHtml(html)).toBe(true);
+      const before = editor.getJSON();
+      editor.commands.setContent(noteEditorHtml({ ...original, html }), { parseOptions: { preserveWhitespace: 'full' } });
+      expect(editor.getJSON()).toEqual(before);
+      expect(noteDocumentReadOnlyReason({ ...original, html })).toBeNull();
+    }
+  } finally { editor.destroy(); }
+}));
+
+test('Courier-only, nested and mixed inline text retain monospace and other marks', () => withDom(() => {
+  const original = { ...note, html: '<div>Title</div>'
+    + '<div><font face="courier">one</font></div><div><font face="Courier"><font face="Courier"><tt>two</tt></font></font></div>'
+    + '<div>Run <font face="Courier"><b>x</b></font> now</div>'
+    + '<div><font face="Courier"><tt><i>styled</i></tt></font></div>' };
+  const editor = new Editor({ extensions: noteEditorExtensions(), content: noteEditorHtml(original),
+    parseOptions: { preserveWhitespace: 'full' } });
+  try {
+    const blocks = editor.getJSON().content!;
+    expect(blocks[1]).toMatchObject({ type: 'codeBlock', content: [{ type: 'text', text: 'one\ntwo' }] });
+    expect(blocks[2]?.content?.[1]?.marks).toContainEqual({ type: 'noteMonospace' });
+    expect(blocks[2]?.content?.[1]?.marks).toContainEqual({ type: 'bold' });
+    expect(blocks[3]?.content?.[0]?.marks).toContainEqual({ type: 'noteMonospace' });
+    expect(blocks[3]?.content?.[0]?.marks).toContainEqual({ type: 'italic' });
+    const before = editor.getJSON();
+    editor.commands.setContent(noteEditorHtml({ ...original, html: editor.getHTML() }), { parseOptions: { preserveWhitespace: 'full' } });
+    expect(editor.getJSON()).toEqual(before);
+  } finally { editor.destroy(); }
+}));
+
 test('native monospace support still rejects unsupported attributes and nested unsafe content', () => {
   for (const html of ['<tt style="color:red">Text</tt>', '<tt onclick="alert(1)">Text</tt>',
     '<tt><img src="x"></tt>', '<tt><script>alert(1)</script></tt>']) {
@@ -295,5 +347,75 @@ test('editing and undoing the first line updates title metadata together with th
     expect(noteEditorTitle(editor.state.doc)).toBe('New title');
     expect(editor.commands.redo()).toBe(true);
     expect(noteEditorTitle(editor.state.doc)).toBe('Changed');
+  } finally { editor.destroy(); }
+}));
+
+test('native heading sizes restore heading structure without promoting mixed or unbolded body text', () => withDom(() => {
+  const html = '<div><b><span style="font-size: 18px">Section <i>two</i></span></b><br></div>'
+    + '<div><span style="font-size: 18px">Unbolded</span></div>'
+    + '<div><b><span style="font-size: 18px">Large</span></b> normal</div>';
+  const editor = new Editor({ extensions: noteEditorExtensions(), content: noteEditorHtml({ ...note, html }) });
+  try {
+    expect(editor.getJSON().content?.map(node => node.type)).toEqual(['heading', 'paragraph', 'paragraph']);
+    expect(editor.getJSON().content?.[0]?.attrs).toEqual({ level: 2 });
+    expect(editor.getHTML()).toContain('<h2>Section <em>two</em></h2>');
+  } finally { editor.destroy(); }
+}));
+
+test('quote markers retain nested quotes, inline marks, lists and code through repeated Notes imports', () => withDom(() => {
+  const editor = new Editor({ extensions: noteEditorExtensions(), content: '<p>Title</p>'
+    + '<blockquote><p>Quote <strong>bold</strong> &amp; 한글</p><p>Second paragraph</p>'
+    + '<blockquote><p>Nested</p></blockquote><ul><li><p>Item</p></li></ul>'
+    + '<pre><code>a &gt; b</code></pre></blockquote><p>After</p>' });
+  try {
+    const before = editor.getJSON();
+    for (let round = 0; round < 2; round++) {
+      const payload = noteEditorSaveHtml(editor);
+      expect(payload).not.toContain('<blockquote>');
+      expect(payload).toContain('&gt;');
+      expect(isEditableNoteHtml(payload)).toBe(true);
+      // Native Notes changes plain paragraphs to divs, leaving quote markers intact.
+      const native = payload.replaceAll('<p>', '<div>').replaceAll('</p>', '</div>\n');
+      editor.commands.setContent(noteEditorHtml({ ...note, html: native }), { parseOptions: { preserveWhitespace: 'full' } });
+      expect(editor.getJSON()).toEqual(before);
+    }
+  } finally { editor.destroy(); }
+}));
+
+test('adjacent list styles are separated once while existing blank paragraphs and nesting remain intact', () => withDom(() => {
+  const editor = new Editor({ extensions: noteEditorExtensions(), content: '<p>Title</p><ul><li><p>Bullet</p></li></ul>'
+    + '<ol><li><p>Number</p></li></ol><p></p><ul><li><p>Next</p></li></ul>' });
+  try {
+    const payload = noteEditorSaveHtml(editor);
+    expect(payload).toContain('</ul><div><br></div><ol>');
+    const reopened = noteEditorHtml({ ...note, html: payload });
+    editor.commands.setContent(reopened);
+    expect(editor.getJSON().content?.map(node => node.type)).toEqual(['paragraph', 'bulletList', 'paragraph', 'orderedList', 'paragraph', 'bulletList']);
+    const second = noteEditorSaveHtml(editor);
+    editor.commands.setContent(noteEditorHtml({ ...note, html: second }));
+    expect(noteEditorSaveHtml(editor)).toBe(second);
+  } finally { editor.destroy(); }
+}));
+
+test('quote import leaves code and mid-line greater-than literal and rejects unsafe generated markup', () => withDom(() => {
+  const html = '<div>Title</div><pre><code>&gt; literal code</code></pre><div>a &gt; b</div>'
+    + '<div>&gt; ![image](https://example.com/image.png)</div>';
+  const imported = noteEditorHtml({ ...note, html });
+  expect(imported).toContain('&gt; literal code');
+  expect(imported).toContain('a &gt; b');
+  expect(imported).not.toContain('<img');
+  expect(imported).not.toContain('<blockquote>');
+  expect(isEditableNoteHtml(imported)).toBe(true);
+}));
+
+test('native list terminators do not become extra hard breaks on each save', () => withDom(() => {
+  const html = '<div>Title</div><ul><li>Bullet<br></li><li>First<br>Second<br></li></ul>'
+    + '<div><br></div><ol><li>Number</li></ol>';
+  const imported = noteEditorHtml({ ...note, html });
+  const editor = new Editor({ extensions: noteEditorExtensions(), content: imported });
+  try {
+    expect(editor.getHTML()).toContain('<li><p>Bullet</p></li>');
+    expect(editor.getHTML()).toContain('<li><p>First<br>Second</p></li>');
+    expect(editor.getJSON().content?.map(node => node.type)).toEqual(['paragraph', 'bulletList', 'paragraph', 'orderedList']);
   } finally { editor.destroy(); }
 }));

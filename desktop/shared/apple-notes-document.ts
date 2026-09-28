@@ -15,7 +15,7 @@ export interface AppleNoteUpdateInput {
   htmlIncludesTitle?: boolean;
 }
 
-export const APPLE_NOTES_UPDATE_UNKNOWN_MESSAGE = '저장 결과를 확인할 수 없습니다. 초안은 유지됩니다. Apple 메모를 확인하고 원본을 다시 불러오세요.';
+export const APPLE_NOTES_UPDATE_UNKNOWN_MESSAGE = 'The save could not be confirmed. Your draft is preserved. Check Apple Notes and reload the original.';
 
 function htmlText(value: unknown): string {
   if (typeof value !== 'string' || value.length > APPLE_NOTES_MAX_BODY_LENGTH || value.includes('\0')) {
@@ -63,7 +63,7 @@ export function appleNoteFontSize(style: string): string | null {
 // of silently dropping Apple Notes content when round-tripping through the editor.
 // This is not a general-purpose HTML sanitizer; unsupported documents stay read-only.
 export function isEditableNoteHtml(html: string): boolean {
-  const tags = new Set(['div', 'p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'b', 'strong', 'i', 'em', 'u', 's', 'strike', 'del', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'tt', 'hr', 'a', 'span']);
+  const tags = new Set(['div', 'p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'b', 'strong', 'i', 'em', 'u', 's', 'strike', 'del', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'tt', 'font', 'hr', 'a', 'span']);
   const stack: string[] = [];
   const tokens = html.match(/<[^>]*>|[^<]+/g) ?? [];
   if (tokens.join('') !== html) return false;
@@ -92,11 +92,15 @@ export function isEditableNoteHtml(html: string): boolean {
         || (tag === 'a' && name === 'rel' && /^(?:noopener|noreferrer|nofollow)(?: (?:noopener|noreferrer|nofollow))*$/.test(value))
         || (tag === 'ol' && name === 'start' && /^[1-9]\d{0,5}$/.test(value))
         || (tag === 'code' && name === 'class' && /^language-[\w+-]+$/.test(value))
+        || (tag === 'font' && name === 'face' && /^Courier$/i.test(value))
         || (tag === 'span' && name === 'style' && appleNoteFontSize(value) !== null)
         || (['div', 'span', 'p', 'pre'].includes(tag) && name === 'style' && /^\s*white-space\s*:\s*pre-wrap\s*;?\s*$/i.test(value));
       if (!allowed) return false;
       rest = rest.slice(attribute[0].length);
     }
+    // Notes exports saved <pre> text as Courier wrappers. Other font faces,
+    // colors and sizes are not representable by the editor's monospace mark.
+    if (tag === 'font' && !seen.has('face')) return false;
     if (!['br', 'hr'].includes(tag)) {
       if (selfClosing || stack.length >= 64) return false;
       stack.push(tag);
@@ -106,8 +110,8 @@ export function isEditableNoteHtml(html: string): boolean {
 }
 
 export function noteDocumentReadOnlyReason(document: AppleNoteDocument): string | null {
-  if (document.locked) return '잠긴 메모는 수정할 수 없습니다.';
-  if (document.attachmentCount > 0) return '이미지·첨부파일이 있는 메모는 원본 보호를 위해 읽기 전용입니다.';
-  if (!isEditableNoteHtml(document.html)) return '보존할 수 없는 서식이 있어 읽기 전용입니다. Apple 메모에서 수정하세요.';
+  if (document.locked) return 'Locked notes cannot be edited.';
+  if (document.attachmentCount > 0) return 'Notes with images or attachments are read-only to preserve the original.';
+  if (!isEditableNoteHtml(document.html)) return 'This note is read-only because its formatting cannot be preserved. Edit it in Apple Notes.';
   return null;
 }
