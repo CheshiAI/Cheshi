@@ -36,7 +36,7 @@
   overflow: hidden;
   margin: 0;
   color: var(--sidebar-section-label-color);
-  font-size: 11px;
+  font-size: var(--font-size-section-title);
   font-weight: 600;
   line-height: 15px;
   text-overflow: ellipsis;

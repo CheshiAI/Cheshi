@@ -99,7 +99,7 @@ test('extra blur follows the rounded modal region while the outside scene retain
     refresh();
     expect(mask()).toContain('M116 100');
     const filter = h.document.querySelector('filter')!;
-    expect(filter.querySelector('feGaussianBlur[in="scene"]')?.getAttribute('stdDeviation')).toBe('4');
+    expect(filter.querySelector('feGaussianBlur[in="scene"]')?.getAttribute('stdDeviation')).toBe('16');
     expect(filter.querySelector('feComposite[in="scene"]')?.getAttribute('operator')).toBe('out');
     expect(dialog.style.filter).toBe('');
     dialogX = 200; sourceWidth = 700; refresh();

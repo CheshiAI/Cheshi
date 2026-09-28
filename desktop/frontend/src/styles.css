@@ -550,6 +550,7 @@ h1, h2, h3, h4, h5, h6, p {
 }
 
 .liquid-glass-context-menu, .workspace-file-context-menu {
+    background: var(--overlay-surface);
     display: grid;
     width: 100%;
     gap: 4px;

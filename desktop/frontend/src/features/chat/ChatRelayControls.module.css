@@ -22,10 +22,10 @@
 .field { gap: var(--icon-default); }
 .field strong, .peers legend {
   color: var(--sidebar-section-label-color);
-  font-size: var(--font-size-label);
+  font-size: var(--font-size-section-title);
   font-weight: 600;
 }
-label.field strong { color: var(--text); font-weight: 400; }
+label.field strong { color: var(--text); font-size: var(--font-size-label); font-weight: 400; }
 .thread { overflow-wrap: anywhere; font-size: var(--font-size-label); }
 .peers { margin: 0; padding: 0; border: 0; min-width: 0; }
 .peers legend { margin-bottom: var(--icon-default); }
@@ -74,7 +74,7 @@ label.field strong { color: var(--text); font-weight: 400; }
 }
 .resultLabel, .resultHeading {
   color: var(--sidebar-section-label-color);
-  font-size: var(--font-size-label); font-weight: 600; text-transform: uppercase;
+  font-size: var(--font-size-section-title); font-weight: 600; text-transform: uppercase;
 }
 .resultLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result > summary > svg {

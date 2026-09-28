@@ -51,7 +51,7 @@
 .destination h2 {
   margin: 0;
   color: var(--sidebar-section-label-color);
-  font-size: var(--font-size-label);
+  font-size: var(--font-size-section-title);
   font-weight: 600;
   letter-spacing: normal;
   text-transform: uppercase;

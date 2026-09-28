@@ -21,7 +21,7 @@
 .title { display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px; }
 .titleMark { cursor: default; pointer-events: none; }
 .titleMark svg { width: 11px; height: 11px; stroke-width: 1.7; }
-.title h2 { margin: 0; font-family: var(--font-ui), sans-serif; font-size: var(--font-size-label); font-weight: 600; letter-spacing: normal; line-height: 1.5; color: var(--sidebar-section-label-color); }
+.title h2 { margin: 0; font-family: var(--font-ui), sans-serif; font-size: var(--font-size-section-title); font-weight: 600; letter-spacing: normal; line-height: 1.5; color: var(--sidebar-section-label-color); }
 .body { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: var(--space-default); padding: var(--space-default); overflow: auto; }
 .body p { margin: 0; }
 .origin { overflow-wrap: anywhere; color: var(--sub-text); }

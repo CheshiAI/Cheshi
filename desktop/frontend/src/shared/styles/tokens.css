@@ -10,6 +10,7 @@
   --active-text: var(--title);
   --control-surface-ghost: rgba(41, 52, 61, 0.05);
   --control-surface: rgba(41, 52, 61, 0.4);
+  --overlay-surface: transparent;
   --control-surface-interactive: rgba(41, 52, 61, 0.8);
   --control-thumb-color: #FFFFFF;
   --control-track-color: #A6A6A6;
@@ -33,6 +34,7 @@
   --font-mono: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
   --font-size-default: 12px;
   --font-size-label: 11px;
+  --font-size-section-title: 10px;
   --font-size-small: 10px;
   --font-size-caption: 9px;
   --space-2: 2px;

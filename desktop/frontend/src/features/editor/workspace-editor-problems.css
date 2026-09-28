@@ -171,7 +171,7 @@
   overflow: hidden;
   color: var(--sidebar-section-label-color);
   font-family: var(--font-ui), sans-serif;
-  font-size: var(--font-size-label);
+  font-size: var(--font-size-section-title);
   font-weight: 600;
   letter-spacing: normal;
   line-height: 1.5;

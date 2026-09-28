@@ -50,7 +50,7 @@
 
 .git-line-blame-tooltip-heading > span {
   color: var(--sidebar-section-label-color);
-  font-size: var(--font-size-label);
+  font-size: var(--font-size-section-title);
   font-weight: 600;
 }
 

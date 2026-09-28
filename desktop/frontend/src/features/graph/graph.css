@@ -43,7 +43,7 @@
 .codegraph-section-heading strong {
   color: var(--sidebar-section-label-color);
   font-family: var(--font-ui), sans-serif;
-  font-size: var(--font-size-label);
+  font-size: var(--font-size-section-title);
   font-weight: 600;
   letter-spacing: normal;
   line-height: 14px;
@@ -187,7 +187,7 @@
   letter-spacing: normal;
 }
 .codegraph-workspace .codegraph-empty-state > strong {
-  font-size: var(--font-size-label);
+  font-size: var(--font-size-section-title);
   font-weight: 600;
 }
 .codegraph-workspace .codegraph-empty-state > p {
@@ -462,7 +462,7 @@
 .codegraph-relations header strong {
   color: var(--sidebar-section-label-color);
   font-family: var(--font-ui), sans-serif;
-  font-size: var(--font-size-label);
+  font-size: var(--font-size-section-title);
   font-weight: 600;
   letter-spacing: normal;
   line-height: 14px;

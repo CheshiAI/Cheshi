@@ -33,6 +33,11 @@
   background: var(--control-surface-interactive);
 }
 
+.field[data-variant='standard'][data-multiline='true'] {
+  height: auto;
+  border-radius: var(--field-radius);
+}
+
 .field[data-variant='standard'] .control {
   cursor: text;
 }

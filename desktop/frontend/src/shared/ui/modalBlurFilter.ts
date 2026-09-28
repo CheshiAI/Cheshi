@@ -15,8 +15,8 @@ export function createModalBlurFilter(defs: SVGDefsElement) {
     'color-interpolation-filters': 'sRGB' });
   const mask = node('feImage', { x: '0', y: '0', result: 'region' });
   filter.append(
-    node('feGaussianBlur', { in: 'SourceGraphic', stdDeviation: '4', edgeMode: 'duplicate', result: 'scene' }),
-    node('feGaussianBlur', { in: 'scene', stdDeviation: '4', edgeMode: 'duplicate', result: 'panel' }),
+    node('feGaussianBlur', { in: 'SourceGraphic', stdDeviation: '16', edgeMode: 'duplicate', result: 'scene' }),
+    node('feGaussianBlur', { in: 'scene', stdDeviation: '16', edgeMode: 'duplicate', result: 'panel' }),
     mask,
     node('feComposite', { in: 'scene', in2: 'region', operator: 'out', result: 'outside' }),
     node('feComposite', { in: 'panel', in2: 'region', operator: 'in', result: 'inside' }),

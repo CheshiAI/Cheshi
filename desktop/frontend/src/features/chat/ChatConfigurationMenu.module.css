@@ -1,7 +1,7 @@
 .configurationPopoverAnchor {
   composes: anchor from '../../shared/ui/PopupSurface.module.css';
   --popup-rear-background: transparent;
-  --popup-surface-background: transparent;
+  --popup-surface-background: var(--overlay-surface);
   --liquid-glass-radius: 12px;
   position: fixed;
   z-index: 110;

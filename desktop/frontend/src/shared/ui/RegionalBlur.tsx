@@ -23,7 +23,7 @@ export function RegionalBlur({ sourceRef, children }: { sourceRef: RefObject<HTM
       <defs>
         <filter ref={filterRef} id={id} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse"
           x="0" y="0" colorInterpolationFilters="sRGB">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blurred" />
+          <feGaussianBlur in="SourceGraphic" stdDeviation="16" result="blurred" />
           <feImage ref={maskRef} x="0" y="0" result="region" />
           <feComposite in="SourceGraphic" in2="region" operator="out" result="sharp" />
           <feComposite in="blurred" in2="region" operator="in" result="soft" />

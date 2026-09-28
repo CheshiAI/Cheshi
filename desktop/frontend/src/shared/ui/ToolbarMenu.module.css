@@ -17,7 +17,7 @@
   padding: var(--space-default);
   color: var(--text);
 }
-.title { color: var(--sidebar-section-label-color); font-size: var(--font-size-label); font-weight: 600; padding-bottom: var(--space-8); }
+.title { color: var(--sidebar-section-label-color); font-size: var(--font-size-section-title); font-weight: 600; padding-bottom: var(--space-8); }
 .menu .item {
   box-sizing: border-box;
   min-height: 32px;

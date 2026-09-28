@@ -43,7 +43,7 @@ export function ChatHistoryOpenDialog({ workspace, sessionId, sessionTitle, pane
   };
   return (
     <Modal className={styles.historyDialog} title="OPEN CONVERSATION" headerVariant="section" titleIcon={<MessageSquareText aria-hidden="true" />}
-      closeDisabled={busy} restoreFocus={() => !completed.current} onClose={close}>
+      closeButtonVariant="ghost" closeDisabled={busy} restoreFocus={() => !completed.current} onClose={close}>
       <form className={styles.form} onSubmit={(event) => { event.preventDefault(); void open(); }}>
         <p className={styles.sessionTitle} title={sessionTitle}>{sessionTitle}</p>
         <fieldset className={styles.options} disabled={busy}>

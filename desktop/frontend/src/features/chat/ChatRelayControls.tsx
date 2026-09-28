@@ -70,7 +70,7 @@ function ChatRelayDialog({ workspace, source, onClose }: {
   };
 
   return (
-    <Modal className={styles.dialog} headerVariant="section" title="CONNECT CONVERSATIONS" titleIcon={<Link2 aria-hidden="true" />} onClose={onClose}>
+    <Modal className={styles.dialog} headerVariant="section" closeButtonVariant="ghost" title="CONNECT CONVERSATIONS" titleIcon={<Link2 aria-hidden="true" />} onClose={onClose}>
       <form className={styles.form} onSubmit={(event) => { event.preventDefault(); void start(); }}>
         <fieldset className={styles.peers} disabled={busy}>
           <legend>Conversation mode</legend>
@@ -138,7 +138,7 @@ function ChatRelayDialog({ workspace, source, onClose }: {
         {mode === 'debate' && <p className={styles.description}>C receives the full A/B debate and separates common ground, remaining differences, supporting evidence, and further validation. C’s recommendations do not establish agreement between A and B.</p>}
         <label className={styles.field}>
           <strong>What should they work on?</strong>
-          <NeumorphicTextField multiline autoFocus rows={3} maxLength={8000} value={objective} disabled={busy}
+          <NeumorphicTextField variant="standard" multiline rows={3} maxLength={8000} value={objective} disabled={busy}
             placeholder="Describe the question or proposal to discuss…" onChange={(event) => setObjective(event.target.value)} />
         </label>
         <p className={styles.description}>Each response is shared with the other conversation. Existing model and permission settings apply.</p>

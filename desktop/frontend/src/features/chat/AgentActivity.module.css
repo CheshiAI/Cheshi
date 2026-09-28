@@ -5,7 +5,7 @@
   --content-card-title-weight: 400;
   --content-card-description-size: 9px;
 }
-.sectionTitle { color: var(--sidebar-section-label-color); font-size: var(--font-size-label); font-weight: 600; }
+.sectionTitle { color: var(--sidebar-section-label-color); font-size: var(--font-size-section-title); font-weight: 600; }
 .prompt { margin: var(--space-default) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
 .muted { margin: 0; color: var(--sidebar-section-label-color); overflow-wrap: anywhere; }
 .refresh, .metadata { display: flex; align-items: center; gap: var(--space-default); flex-wrap: wrap; }

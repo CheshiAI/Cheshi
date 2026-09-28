@@ -15,7 +15,7 @@ interface TextFieldLayoutProps {
 
 type NeumorphicTextFieldProps = TextFieldLayoutProps & (
   | (Omit<InputHTMLAttributes<HTMLInputElement>, 'children'> & { multiline?: false; variant?: 'standard'; ref?: Ref<HTMLInputElement> })
-  | (Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'children'> & { multiline: true; variant?: never; ref?: Ref<HTMLTextAreaElement> })
+  | (Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'children'> & { multiline: true; variant?: 'standard'; ref?: Ref<HTMLTextAreaElement> })
 );
 
 export function NeumorphicTextField({ className, fitPlaceholder = false, trailingAction, onClear, clearLabel = 'Clear input', variant, ...props }: NeumorphicTextFieldProps) {

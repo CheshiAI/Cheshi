@@ -91,33 +91,69 @@ switches and tab-close buttons, follow their own standards.
 
 ## Shared popup backgrounds
 
-Use this default background for all popups, including dropdown menus,
-autocomplete popups, Git line-change information cards, and tooltips.
-These rules describe the popup surface; item hover, selection, and pressed
-backgrounds follow their control-specific rules independently.
+Reuse [PopupSurface styles](frontend/src/shared/ui/PopupSurface.module.css)
+and [LiquidGlassPanel](frontend/src/shared/ui/LiquidGlassPanel.tsx) for layered
+popup surfaces. Item hover, selection, and pressed backgrounds follow their
+control-specific rules independently.
 Modal dialogs use the separate [shared modal](#shared-modal) rules below.
 
 ### Layered background
 
 - Keep two layers: a rear decorative background and the foreground popup panel.
-- Apply `rgba(0, 0, 0, 0.01)` to each layer independently.
-- Apply `backdrop-filter: blur(16px) saturate(var(--panel-backdrop-saturation))`
-  and its `-webkit-` equivalent to both layers. Set `--panel-backdrop-blur: 16px`
-  on the popup anchor; retain the shared saturation token (currently `88%`).
-- Use the anchor's `::before` for the rear layer, normally with `inset: 0`,
-  `z-index: -1`, and `pointer-events: none`. Keep it behind the foreground
-  panel while allowing both layers to sample the page independently.
+- Compose `PopupSurface.module.css`'s `anchor` on the positioning wrapper and
+  `surface` on the panel, directly or through `ToolbarMenu.module.css`.
+  The anchor owns `::before` with `inset: 0`, `z-index: -1`, and
+  `pointer-events: none`; consumers own placement, dimensions, and stacking.
+- Use the implemented surface properties: `--popup-rear-background` defaults
+  to `transparent` and `--popup-surface-background` defaults to
+  `var(--overlay-surface)` (`transparent`). Keep both layers transparent.
+  The composer, modal, shared menus, and default select popup use the same token.
+  Do not restore the removed `rgba(41, 52, 61, 0.2)` tint or obsolete black
+  `0.01` fills.
 - Use `LiquidGlassPanel` for the foreground panel. Its `role="menu"`,
-  `role="listbox"`, or `data-liquid-glass-backdrop="true"` enables the shared
-  backdrop effect. Preserve the correct accessibility role for each popup;
-  use the data attribute for tooltips. Retain the shared
-  `1px solid var(--divider)` border.
+  `role="listbox"`, or `data-liquid-glass-backdrop="true"` enables participation
+  in the shared blur system. Preserve the correct accessibility role; use the
+  data attribute for a surface that needs blur without menu/listbox semantics.
+  Retain the shared `1px solid var(--divider)` border.
 - Match both layers' radius with
   `var(--liquid-glass-radius, var(--panel-radius))`.
 - Apply translucency to background colors, not the entire popup's `opacity`.
   Keep text and icons sharp; do not apply `filter: blur()` to popup contents.
 - Keep the overlay in the existing HTML portal. Do not introduce a separate
   native window for this effect.
+
+### Transparent SVG blur in chat
+
+- Follow [ChatConfigurationMenu styles](frontend/src/features/chat/ChatConfigurationMenu.module.css)
+  for the model, reasoning, and service-tier menu and its submenus. Set
+  `--popup-rear-background: transparent` and
+  `--popup-surface-background: var(--overlay-surface)` on the anchor. Submenu anchors
+  inherit these properties. The temporary-chat configuration menu shares these
+  styles. Keep item hover/selection backgrounds independent of panel transparency.
+- [ChatViewSurface](frontend/src/features/chat/ChatViewSurface.tsx) supplies
+  [RegionalBlur](frontend/src/shared/ui/RegionalBlur.tsx) with the timeline's
+  `sourceRef`. React context crosses portals, so the composer and floating menus
+  use the same source. Keep foreground panels outside that source's DOM subtree
+  and inside the provider's React tree.
+- `RegionalBlur` applies SVG `feGaussianBlur` with `stdDeviation="16"` to the
+  source only within the registered panels' rounded footprints. Its masked
+  arithmetic composition replaces scene pixels rather than drawing a second
+  translucent copy. Reuse this implementation instead of copying the scene or
+  adding a separate blur filter per menu.
+- [regionalBlurController](frontend/src/shared/ui/regionalBlurController.ts)
+  manages registration, geometry updates, and restoration. It owns
+  `data-regional-blur-surface="true"`; do not set this attribute manually.
+  [LiquidGlassPanel styles](frontend/src/shared/ui/LiquidGlassPanel.module.css)
+  disable native backdrop filtering on both layers of registered panels.
+  Keep both panel layers free of tint. Do not reintroduce native
+  `backdrop-filter` or saturation: native backdrop filtering previously darkened the
+  transparent Electron window.
+- SVG blur covers only the supplied source, not arbitrary content behind the
+  window. Outside a connected `RegionalBlur` provider, existing popup styles
+  retain their native backdrop fallback (the shared anchor defaults to `16px`
+  plus the saturation token). Transparent CSS alone does not establish SVG blur.
+  Extending this treatment to another scene requires connecting its background
+  source and verifying the overlay; do not assume all app menus are migrated.
 
 CodeMirror popups retain their existing DOM and positioning. Reuse the shared
 panel CSS through the foreground surface installed by
@@ -136,12 +172,14 @@ creating another dialog shell, dimming overlay, or blur implementation.
 ### Background and blur
 
 - `Modal` renders a native `<dialog>` through a portal to `document.body`.
-  Its foreground is a transparent `LiquidGlassPanel`; retain the shared border
+  Its foreground is a `LiquidGlassPanel` with `var(--overlay-surface)`
+  (`transparent`); the dialog shell and decorative rear layer remain
+  transparent. Retain the shared border
   and rounded corners from [Modal styles](frontend/src/shared/ui/Modal.module.css).
 - [modalBlur](frontend/src/shared/ui/modalBlur.ts) manages the background sources
   and modal stack. [modalBlurFilter](frontend/src/shared/ui/modalBlurFilter.ts)
-  applies an SVG blur of `4px` to the scene behind the active modal, then an
-  additional `4px` only within the modal's rounded footprint. The region mask
+  applies an SVG blur of `16px` to the scene behind the active modal, then an
+  additional `16px` only within the modal's rounded footprint. The region mask
   follows the modal and source dimensions.
 - The regional result replaces the corresponding scene pixels. Do not layer
   another blurred copy over them: duplicate background composition previously
@@ -179,9 +217,23 @@ creating another dialog shell, dimming overlay, or blur implementation.
 ## Dropdown menu styles
 
 Use a dropdown menu for actions such as File actions. A Select chooses a value;
-keep its selection semantics separate from action menus (`menu` / `menuitem`).
-Reuse [ToolbarMenu](frontend/src/shared/ui/ToolbarMenu.tsx) and its
-[styles](frontend/src/shared/ui/ToolbarMenu.module.css) for toolbar action menus.
+keep its selection semantics separate from action menus.
+
+### Shared modules
+
+| Purpose | Module and usage |
+| --- | --- |
+| Action menu | [ToolbarMenu](frontend/src/shared/ui/ToolbarMenu.tsx): pass `label` and `items` (`id`, `label`, `icon`, `onSelect`, optional `disabled`, `shortcut`, `separatorBefore`). Import directly from its module. It owns the trigger, portal, placement, dismissal, keyboard navigation, and focus restoration. |
+| Value dropdown | [LiquidGlassSelect](frontend/src/shared/ui/LiquidGlassSelect.tsx), exported from `shared/ui`: pass `ariaLabel`, `value`, `options`, and `onChange`. Use `menuAppearance="toolbar"` for shared toolbar menu styling; choose `triggerAppearance`, `menuPlacement`, and `menuWidth` through its existing props. Preserve its `menuitemradio` / `aria-checked` selection semantics. |
+| Dropdown trigger only | [PillDropdownButton](frontend/src/shared/ui/PillDropdownButton.tsx), exported from `shared/ui`: a pill button with a chevron. It does not provide a popup, positioning, or menu interactions. |
+| Specialized nested chat menu | [ChatConfigurationMenu](frontend/src/features/chat/ChatConfigurationMenu.tsx) and [TemporaryChatConfigurationMenu](frontend/src/features/chat/TemporaryChatConfigurationMenu.tsx): feature-owned contents and state using the shared panel and menu styles. Preserve root `menuitem` and submenu `listbox` / `option` semantics. |
+
+Reuse these components rather than building another dropdown shell. For specialized
+menus, compose [ToolbarMenu styles](frontend/src/shared/ui/ToolbarMenu.module.css)
+and use `LiquidGlassPanel`; keep feature-specific layout and state in the consumer.
+`LiquidGlassSelect` retains its existing default appearance unless
+`menuAppearance="toolbar"` is selected. Its portal stays inside the nearest native
+dialog when present; preserve that behavior so modal selects remain interactive.
 Apply the [shared popup backgrounds](#shared-popup-backgrounds) above.
 
 ### Menu contents
@@ -194,6 +246,11 @@ Apply the [shared popup backgrounds](#shared-popup-backgrounds) above.
   focus states. Preserve shared disabled behavior.
 - Retain shared menu keyboard navigation, Escape/outside-click dismissal, and
   focus restoration to the trigger.
+- For behavior changes, run the affected [toolbar menu](test/toolbar-menu.test.tsx)
+  or [select](test/liquid-glass-select.test.tsx) tests. For SVG blur integration,
+  include [regional blur](test/regional-blur.test.tsx) and affected feature tests.
+  Rendered review follows the repository's UI authorization rules; check open
+  menus and submenus, background transparency, sharp text, placement, and cleanup.
 
 ## Text styles
 
@@ -201,11 +258,13 @@ Text uses one of the following three styles according to its role.
 
 | Style | Size | Weight | Color |
 | --- | --- | --- | --- |
-| `section-title` | `var(--font-size-label)` (`11px`) | `600` | `var(--sidebar-section-label-color)` |
+| `section-title` | `var(--font-size-section-title)` (`10px`) | `600` | `var(--sidebar-section-label-color)` |
 | `description` | `var(--font-size-small)` (`10px`) | `400` | `var(--sidebar-section-label-color)` |
 | `setting-label` | `var(--font-size-label)` (`11px`) | `400` | `var(--text)` |
 
-- Use `section-title` for setting groups and section titles.
+- Use `section-title` for setting groups and section titles. Reuse
+  `--font-size-section-title` for their size; keep `--font-size-label` at `11px`
+  for controls and setting labels.
 - Use `description` for descriptions below titles, help text, and status
   guidance.
 - Use `setting-label` for the names of settings such as switches and sliders.
