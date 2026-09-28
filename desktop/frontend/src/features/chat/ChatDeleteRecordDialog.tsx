@@ -19,7 +19,7 @@ export function ChatDeleteRecordForm({ recordTitle, kind, pending, error, onDele
   }}>
     <p className={styles.sessionTitle} title={recordTitle}>{recordTitle}</p>
     <p>{kind === 'history' ? 'This deletes only the saved conversation history record.' : 'This deletes only the saved turn.'}
-      {' '}Your original chat sessions are unaffected. This cannot be undone.</p>
+      {kind === 'history' ? <br /> : ' '}Your original chat sessions are unaffected.<br />This cannot be undone.</p>
     {error && <p role="alert">{error}</p>}
     <div className={styles.deletionActions}>
       {pending && <LoadingState type="processing" label="Deleting saved record…" className={styles.deletionProgress} />}
@@ -57,7 +57,7 @@ export function ChatDeleteRecordDialog({ onDelete, ...props }: DeleteRecordProps
       setSubmitting(false);
     }
   };
-  return <Modal className={styles.recordDeletionDialog} headerVariant="section"
+  return <Modal className={styles.recordDeletionDialog} headerVariant="section" closeButtonVariant="ghost"
     title={props.kind === 'history' ? 'DELETE CONVERSATION HISTORY' : 'DELETE SAVED TURN'}
     titleIcon={<Trash2 aria-hidden="true" />} closeDisabled={busy} onClose={close}>
     <ChatDeleteRecordForm {...props} formRef={formRef} pending={busy} error={failure ? props.error || failure : null}

@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type RefObject,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -13,6 +14,7 @@ import { createPortal } from 'react-dom';
 import { LiquidGlassPanel } from './LiquidGlassPanel';
 import { NeumorphicButton } from './NeumorphicButton';
 import { PillDropdownButton } from './PillDropdownButton';
+import { RegionalBlur } from './RegionalBlur';
 import styles from './LiquidGlassSelect.module.css';
 import menuStyles from './ToolbarMenu.module.css';
 
@@ -34,6 +36,7 @@ interface LiquidGlassSelectProps<Value extends string> {
   menuAppearance?: 'default' | 'toolbar';
   menuPlacement?: 'auto' | 'left';
   menuWidth?: number;
+  menuBlurSourceRef?: RefObject<HTMLElement | null>;
   onChange: (value: Value) => void;
   options: readonly LiquidGlassSelectOption<Value>[];
   triggerAppearance?: 'flat' | 'raised' | 'pill' | 'standard';
@@ -82,6 +85,7 @@ export function LiquidGlassSelect<Value extends string>({
   menuAppearance = 'default',
   menuPlacement = 'auto',
   menuWidth,
+  menuBlurSourceRef,
   onChange,
   options,
   triggerAppearance = 'raised',
@@ -178,6 +182,47 @@ export function LiquidGlassSelect<Value extends string>({
   const Trigger = triggerAppearance === 'pill' ? PillDropdownButton : NeumorphicButton;
   const toolbarMenu = menuAppearance === 'toolbar';
   const Option = toolbarMenu ? NeumorphicButton : 'button';
+  const menu = open && menuPosition ? (
+    <div
+      ref={menuRef}
+      className={toolbarMenu ? menuStyles.menuAnchor : styles.popoverAnchor}
+      data-placement={menuPlacement}
+      style={menuPosition}
+    >
+      <LiquidGlassPanel
+        id={menuId}
+        className={toolbarMenu ? menuStyles.menu : styles.popover}
+        data-liquid-glass-surface={toolbarMenu ? undefined : 'side-panel'}
+        role="menu"
+        aria-label={menuLabel}
+        onKeyDown={focusAdjacentOption}
+      >
+        {options.map((option) => {
+          const selected = option.value === value;
+          return (
+            <Option
+              {...(toolbarMenu ? { size: 'standard' as const } : {})}
+              className={toolbarMenu ? `${menuStyles.item} ${styles.toolbarOption}` : `liquid-glass-menu-item ${styles.option}`}
+              key={option.value}
+              type="button"
+              role="menuitemradio"
+              aria-checked={selected}
+              disabled={option.disabled}
+              title={option.description}
+              onClick={() => {
+                setOpen(false);
+                rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+                onChange(option.value);
+              }}
+            >
+              <span>{option.label}</span>
+              {selected && <Check aria-hidden="true" />}
+            </Option>
+          );
+        })}
+      </LiquidGlassPanel>
+    </div>
+  ) : null;
 
   return (
     <div className={rootClassName} ref={rootRef}>
@@ -204,46 +249,8 @@ export function LiquidGlassSelect<Value extends string>({
         {triggerAppearance !== 'pill' && <ChevronDown className={styles.chevron} aria-hidden="true" />}
       </Trigger>
 
-      {open && menuPosition && createPortal(
-        <div
-          ref={menuRef}
-          className={toolbarMenu ? menuStyles.menuAnchor : styles.popoverAnchor}
-          data-placement={menuPlacement}
-          style={menuPosition}
-        >
-          <LiquidGlassPanel
-            id={menuId}
-            className={toolbarMenu ? menuStyles.menu : styles.popover}
-            data-liquid-glass-surface={toolbarMenu ? undefined : 'side-panel'}
-            role="menu"
-            aria-label={menuLabel}
-            onKeyDown={focusAdjacentOption}
-          >
-            {options.map((option) => {
-              const selected = option.value === value;
-              return (
-                <Option
-                  {...(toolbarMenu ? { size: 'standard' as const } : {})}
-                  className={toolbarMenu ? `${menuStyles.item} ${styles.toolbarOption}` : `liquid-glass-menu-item ${styles.option}`}
-                  key={option.value}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={selected}
-                  disabled={option.disabled}
-                  title={option.description}
-                  onClick={() => {
-                    setOpen(false);
-                    rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
-                    onChange(option.value);
-                  }}
-                >
-                  <span>{option.label}</span>
-                  {selected && <Check aria-hidden="true" />}
-                </Option>
-              );
-            })}
-          </LiquidGlassPanel>
-        </div>,
+      {menu && createPortal(
+        menuBlurSourceRef ? <RegionalBlur sourceRef={menuBlurSourceRef}>{menu}</RegionalBlur> : menu,
         rootRef.current?.closest('dialog') ?? document.body,
       )}
     </div>

@@ -50,6 +50,8 @@
   transform: none;
 }
 .hint > .planToggle { margin-left: 0; font-size: var(--font-size-small); font-weight: 400; }
+.hint > .planToggle:disabled { opacity: 1; }
+.planToggle:disabled .switchTrack { opacity: .5; }
 .switchTrack {
   position: relative;
   width: 36px;

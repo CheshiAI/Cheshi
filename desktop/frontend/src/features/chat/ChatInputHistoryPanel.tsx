@@ -1,4 +1,4 @@
-import { MessageSquareText, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { LiquidGlassPanel, NeumorphicButton, SidebarPanelHeader } from '../../shared/ui';
 import type { useChatInputHistory } from './useChatInputHistory';
 import styles from './ChatView.module.css';
@@ -23,7 +23,6 @@ export function ChatInputHistoryPanel({ history }: { history: ReturnType<typeof 
           className={`${styles.commandOption} ${historyStyles.option}`} title={entry.text}
           onMouseEnter={() => history.highlight(index)} onMouseDown={event => event.preventDefault()}
           onClick={() => history.select(index)}>
-          <span className={styles.commandIcon}><MessageSquareText aria-hidden="true" /></span>
           <span className={historyStyles.text}>{entry.text}</span>
         </NeumorphicButton>)}
       </div>

@@ -49,6 +49,7 @@ export function ChatComposerToolbar({ controller, chatController }: {
             : <Paperclip aria-hidden="true" />}
         </NeumorphicButton>
         <ChatPermissionSelect controller={chatController} disabled={configurationControlsDisabled}
+          menuBlurSourceRef={controller.composerAreaRef}
           permissionPending={chatController.configurationPending} />
         {controller.attachmentTransfer.loading && <span role="status">Adding attachments…</span>}
         {attachmentError && (

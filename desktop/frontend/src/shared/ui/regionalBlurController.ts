@@ -2,10 +2,27 @@ import { regionalBlurMask, type BlurSurface } from './regionalBlurGeometry';
 
 const SURFACE_ATTRIBUTE = 'data-regional-blur-surface';
 const SOURCE_ATTRIBUTE = 'data-regional-blur-source';
+const surfaceOwners = new WeakMap<HTMLElement, { previous: string | null; owners: Set<object> }>();
 
 function restoreAttribute(element: Element, name: string, value: string | null) {
   if (value === null) element.removeAttribute(name);
   else element.setAttribute(name, value);
+}
+
+/** Nested source controllers share the native-backdrop override until the last one releases it. */
+function setSurfaceOwner(panel: HTMLElement, owner: object, active: boolean) {
+  let state = surfaceOwners.get(panel);
+  if (active) {
+    if (!state) {
+      state = { previous: panel.getAttribute(SURFACE_ATTRIBUTE), owners: new Set() };
+      surfaceOwners.set(panel, state);
+    }
+    state.owners.add(owner);
+    if (panel.getAttribute(SURFACE_ATTRIBUTE) !== 'true') panel.setAttribute(SURFACE_ATTRIBUTE, 'true');
+  } else if (state?.owners.delete(owner) && !state.owners.size) {
+    restoreAttribute(panel, SURFACE_ATTRIBUTE, state.previous);
+    surfaceOwners.delete(panel);
+  }
 }
 
 function ancestors(element: HTMLElement) {
@@ -25,14 +42,15 @@ function visibleSurface(element: HTMLElement): BlurSurface | null {
 
 /** One filtered source image replaces its covered pixels; it never paints a second backdrop. */
 export function createRegionalBlurController() {
-  const panels = new Map<HTMLElement, string | null>();
+  const panels = new Set<HTMLElement>();
+  const owner = {};
   let refresh: (() => void) | undefined;
 
   const register = (panel: HTMLElement) => {
-    panels.set(panel, panel.getAttribute(SURFACE_ATTRIBUTE));
+    panels.add(panel);
     refresh?.();
     return () => {
-      restoreAttribute(panel, SURFACE_ATTRIBUTE, panels.get(panel) ?? null);
+      setSurfaceOwner(panel, owner, false);
       panels.delete(panel);
       refresh?.();
     };
@@ -61,10 +79,10 @@ export function createRegionalBlurController() {
       if (disposed) return;
       const rect = source.getBoundingClientRect();
       const surfaces: BlurSurface[] = [];
-      for (const [panel, previous] of panels) {
+      for (const panel of panels) {
         // A panel inside SourceGraphic would blur its own foreground. Keep its existing behavior.
-        if (source.contains(panel)) { restoreAttribute(panel, SURFACE_ATTRIBUTE, previous); continue; }
-        if (panel.getAttribute(SURFACE_ATTRIBUTE) !== 'true') panel.setAttribute(SURFACE_ATTRIBUTE, 'true');
+        if (source.contains(panel)) { setSurfaceOwner(panel, owner, false); continue; }
+        setSurfaceOwner(panel, owner, true);
         const surface = visibleSurface(panel);
         if (surface) surfaces.push(surface);
       }
@@ -133,7 +151,7 @@ export function createRegionalBlurController() {
       window.visualViewport?.removeEventListener('resize', schedule);
       window.visualViewport?.removeEventListener('scroll', schedule);
       for (const event of motionEvents) document.removeEventListener(event, motion, true);
-      for (const [panel, previous] of panels) restoreAttribute(panel, SURFACE_ATTRIBUTE, previous);
+      for (const panel of panels) setSurfaceOwner(panel, owner, false);
       restoreSource();
       mask.removeAttribute('href');
     };

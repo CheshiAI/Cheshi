@@ -1,7 +1,7 @@
 import { AlertCircle, Check, ChevronRight } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
-import { LiquidGlassPanel, LoadingIndicator, NeumorphicButton } from '../../shared/ui';
+import { LiquidGlassPanel, LoadingIndicator, NeumorphicButton, RegionalBlur } from '../../shared/ui';
 import { formatReasoningEffort } from './chatViewModel';
 import styles from './ChatConfigurationMenu.module.css';
 import type { ChatViewController } from './useChatViewController';
@@ -12,9 +12,13 @@ type ConfigurationMenuController = Pick<ChatViewController,
   | 'fastTier' | 'models' | 'selectComposerModel' | 'selectComposerReasoningEffort'
   | 'selectComposerServiceTier' | 'setConfigurationMenuView'>;
 
-export function ChatConfigurationMenu({ controller }: { controller: ConfigurationMenuController }) {
+export function ChatConfigurationMenu({ controller }: {
+  controller: ConfigurationMenuController & Pick<ChatViewController, 'composerAreaRef'>;
+}) {
   if (!controller.configurationMenuOpen || !controller.configurationMenuPosition) return null;
-  return createPortal(<ChatConfigurationMenuContent controller={controller} />, document.body);
+  return createPortal(<RegionalBlur sourceRef={controller.composerAreaRef}>
+    <ChatConfigurationMenuContent controller={controller} />
+  </RegionalBlur>, document.body);
 }
 
 export function ChatConfigurationMenuContent({ controller }: { controller: ConfigurationMenuController }) {

@@ -1,7 +1,7 @@
 import { CornerDownRight, ListEnd, MessageCirclePlus, MoreHorizontal, Pause, Pencil, Play, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { LiquidGlassPanel, NeumorphicButton, NeumorphicSurface } from '../../shared/ui';
+import { LiquidGlassPanel, NeumorphicButton, NeumorphicSurface, RegionalBlur } from '../../shared/ui';
 import { focusAdjacentMenuItem, useContextMenuInteractions } from '../../shared/ui/contextMenuInteractions';
 import { useHelpLanguage } from '../../shared/useHelpLanguage';
 import type { ChatViewController } from './useChatViewController';
@@ -22,7 +22,7 @@ const labels = {
     hint: 'Enter / Tab: queue message', show: 'Show message queue', hide: 'Hide message queue' },
 };
 export type ChatQueueController = Pick<ChatViewController,
-  'streaming' | 'loading' | 'queueBlocked' | 'interactionsLocked' | 'commandMenuOpen' | 'canOpenTemporaryChat'
+  'streaming' | 'loading' | 'queueBlocked' | 'interactionsLocked' | 'commandMenuOpen' | 'canOpenTemporaryChat' | 'composerAreaRef'
   | 'draft' | 'attachments' | 'selectedSkill' | 'sendRecovery' | 'editQueuedMessage' | 'openQueuedTemporaryChat'> & {
     messageQueue: Pick<ChatViewController['messageQueue'], 'paused' | 'entries' | 'steer' | 'remove' | 'toggleCurrent'>;
   };
@@ -44,23 +44,25 @@ function QueueMenu({ target, controller, onClose }: {
     left: Math.max(8, Math.min(rect.right - 280, window.innerWidth - 288)),
     top: Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - 208)),
   }}>
-    <LiquidGlassPanel role="menu" aria-label={copy.more} className={styles.menu}
-      onKeyDown={event => { focusAdjacentMenuItem(event); if (event.key === 'Tab') onClose(); }}>
-      <div className={styles.menuTitle}>{copy.more}</div>
-      <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={disabled || !canEdit}
-        title={!canEdit ? copy.clearDraft : undefined} onClick={() => action(() => controller.editQueuedMessage(target.id))}>
-        <Pencil aria-hidden="true" /><span>{copy.edit}</span>
-      </NeumorphicButton>
-      <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={disabled || !controller.canOpenTemporaryChat}
-        onClick={() => action(() => controller.openQueuedTemporaryChat(target.id))}>
-        <MessageCirclePlus aria-hidden="true" /><span>{copy.side}</span>
-      </NeumorphicButton>
-      <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={controller.interactionsLocked}
-        onClick={() => action(controller.messageQueue.toggleCurrent)}>
-        {controller.messageQueue.paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
-        <span>{controller.messageQueue.paused ? copy.enable : copy.disable}</span>
-      </NeumorphicButton>
-    </LiquidGlassPanel>
+    <RegionalBlur sourceRef={controller.composerAreaRef}>
+      <LiquidGlassPanel role="menu" aria-label={copy.more} className={styles.menu}
+        onKeyDown={event => { focusAdjacentMenuItem(event); if (event.key === 'Tab') onClose(); }}>
+        <div className={styles.menuTitle}>{copy.more}</div>
+        <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={disabled || !canEdit}
+          title={!canEdit ? copy.clearDraft : undefined} onClick={() => action(() => controller.editQueuedMessage(target.id))}>
+          <Pencil aria-hidden="true" /><span>{copy.edit}</span>
+        </NeumorphicButton>
+        <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={disabled || !controller.canOpenTemporaryChat}
+          onClick={() => action(() => controller.openQueuedTemporaryChat(target.id))}>
+          <MessageCirclePlus aria-hidden="true" /><span>{copy.side}</span>
+        </NeumorphicButton>
+        <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={controller.interactionsLocked}
+          onClick={() => action(controller.messageQueue.toggleCurrent)}>
+          {controller.messageQueue.paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
+          <span>{controller.messageQueue.paused ? copy.enable : copy.disable}</span>
+        </NeumorphicButton>
+      </LiquidGlassPanel>
+    </RegionalBlur>
   </div>, document.body);
 }
 

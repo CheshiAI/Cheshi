@@ -1,5 +1,5 @@
 .panel { font-size: var(--font-size-label); }
-.panel .options .option { grid-template-columns: var(--icon-size-default) minmax(0, 1fr); }
+.panel .options .option { grid-template-columns: minmax(0, 1fr); }
 .text {
   display: -webkit-box;
   overflow: hidden;

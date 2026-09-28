@@ -18,7 +18,7 @@ function harness() {
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-dom': { createPortal: (element: Element) => element },
     'lucide-react': Object.fromEntries(['CornerDownRight', 'ListEnd', 'MessageCirclePlus', 'MoreHorizontal', 'Pause', 'Pencil', 'Play', 'Trash2'].map(name => [name, name])),
-    '../../shared/ui': { LiquidGlassPanel: 'section', NeumorphicButton: 'button', NeumorphicSurface: 'span' },
+    '../../shared/ui': { LiquidGlassPanel: 'section', NeumorphicButton: 'button', NeumorphicSurface: 'span', RegionalBlur: 'regional-blur' },
     '../../shared/ui/contextMenuInteractions': { focusAdjacentMenuItem() {}, useContextMenuInteractions() {} },
     '../../shared/useHelpLanguage': { useHelpLanguage: () => ['ko'] },
     './ChatMessageQueue.module.css': { default: {} },
@@ -32,6 +32,7 @@ function harness() {
     require(name: string) { assert.ok(Object.hasOwn(modules, name), `Unexpected dependency: ${name}`); return modules[name]; } });
   // This rendering boundary supplies only fields used by the queue controls.
   const controller: ChatQueueController = { streaming: true, loading: false, queueBlocked: false, interactionsLocked: false,
+    composerAreaRef: { current: null },
     commandMenuOpen: false, canOpenTemporaryChat: true, draft: '', attachments: [], selectedSkill: null, sendRecovery: null,
     editQueuedMessage: (id: string) => { calls.push(`edit:${id}`); },
     openQueuedTemporaryChat: (id: string) => { calls.push(`side:${id}`); },
@@ -77,6 +78,7 @@ test('queue card and more menu invoke steer, delete, edit, temporary chat, and q
   for (const label of ['메시지 편집', 'Open in temporary chat', '대기열 끄기']) {
     app.click('대기 메시지 더보기');
     expect(app.button('대기 메시지 더보기').props['aria-expanded']).toBe(true);
+    expect(app.render().find(element => element.type === 'regional-blur')?.props.sourceRef).toBe(app.controller.composerAreaRef);
     app.click(label);
   }
   expect(app.calls).toEqual(['steer:one', 'remove:one', 'edit:one', 'side:one', 'toggle']);

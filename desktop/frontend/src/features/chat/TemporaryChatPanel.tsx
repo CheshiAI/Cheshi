@@ -1,7 +1,7 @@
 import { Bot, ChevronDown, MessageCircleDashed, Paperclip } from 'lucide-react';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { LoadingIndicator, NeumorphicButton, SidebarPanelHeader, draggableWindowRegionStyle } from '../../shared/ui';
+import { LoadingIndicator, NeumorphicButton, RegionalBlur, SidebarPanelHeader, draggableWindowRegionStyle } from '../../shared/ui';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import { syncChatComposerOverlayHeight } from './chatComposerOverlay';
 import { ChatTimeline } from './ChatTimeline';
@@ -173,10 +173,12 @@ export function TemporaryChatPanel() {
           </ChatComposerSurface>
           <ChatComposerDisclaimer />
         </footer>
-        {configurationOpen && <TemporaryChatConfigurationMenu id={configurationId} trigger={configurationRef}
-          models={state.models} model={state.model} effort={state.effort} disabled={locked || state.picking}
-          onModelChange={value => session.current?.selectModel(value)} onEffortChange={value => session.current?.selectEffort(value)}
-          onClose={closeConfiguration} />}
+        {configurationOpen && <RegionalBlur sourceRef={composerRef}>
+          <TemporaryChatConfigurationMenu id={configurationId} trigger={configurationRef}
+            models={state.models} model={state.model} effort={state.effort} disabled={locked || state.picking}
+            onModelChange={value => session.current?.selectModel(value)} onEffortChange={value => session.current?.selectEffort(value)}
+            onClose={closeConfiguration} />
+        </RegionalBlur>}
       </ChatViewSurface>
     </main>
   </div>;
