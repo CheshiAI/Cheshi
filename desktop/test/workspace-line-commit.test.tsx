@@ -183,7 +183,7 @@ for (const panel of ['line commit', 'local history'] as const) {
         await act(async () => root.render(render(true)));
         const slot = document.querySelector<HTMLElement>('[aria-label="Review sidebar"]')!;
         const close = slot.querySelector<HTMLButtonElement>(`[aria-label="Close ${panel}"]`)!;
-        close.focus();
+        await act(async () => { close.focus(); });
         expect(document.activeElement).toBe(close);
         const setAttribute = slot.setAttribute.bind(slot);
         let checkedHiddenCommit = false;

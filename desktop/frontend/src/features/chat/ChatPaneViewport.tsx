@@ -92,7 +92,8 @@ export function ChatPaneViewport({ activePaneId, onSelectPane, ...layoutProps }:
 
   return <div className={styles.split} ref={scrollbarsRef}>
     <div className={styles.paneViewport} ref={viewportRef} aria-label="Chat panes">
-      <div className={styles.paneTrack} style={{ minWidth: splitPaneMinimumWidth(layoutProps.layout, CHAT_PANE_MIN_WIDTH) }}>
+      <div className={styles.paneTrack} style={{ minWidth: layoutProps.layout.type === 'pane'
+        ? 0 : splitPaneMinimumWidth(layoutProps.layout, CHAT_PANE_MIN_WIDTH) }}>
         <SplitPaneLayout {...layoutProps} minimumPaneWidth={CHAT_PANE_MIN_WIDTH} resizeLabel="Resize chat panes" />
       </div>
     </div>
