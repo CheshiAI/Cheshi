@@ -87,7 +87,7 @@ describe('saved turn presentation', () => {
     const html = renderToStaticMarkup(<SavedChatTurnsPanel savedTurns={fixture()} onClose={() => {}}
       onContinue={async () => true} continuationDisabledReason="Wait for the current operation to finish." />);
     expect(html).toContain('Continue in new session');
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*title="Wait for the current operation to finish\."/);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-description="Wait for the current operation to finish\."/);
   });
 });
 

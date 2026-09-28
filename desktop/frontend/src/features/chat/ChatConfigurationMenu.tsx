@@ -1,3 +1,4 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { AlertCircle, Check, ChevronRight } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
@@ -91,7 +92,7 @@ export function ChatConfigurationMenuContent({ controller }: { controller: Confi
                 </NeumorphicButton>
               ))}
               {configurationMenuView === 'reasoning' && chatConfiguration?.supportedReasoningEfforts.map((option) => (
-                <NeumorphicButton variant="ghost"
+                <TooltipButton variant="ghost"
                   aria-selected={chatConfiguration.reasoningEffort === option.effort}
                   className={styles.configurationOption}
                   disabled={configurationLoading}
@@ -106,7 +107,7 @@ export function ChatConfigurationMenuContent({ controller }: { controller: Confi
                     <span>{option.description}</span>
                   </span>
                   {chatConfiguration.reasoningEffort === option.effort && <Check aria-hidden="true" />}
-                </NeumorphicButton>
+                </TooltipButton>
               ))}
               {configurationMenuView === 'service-tier' && (
                 <>
@@ -124,7 +125,7 @@ export function ChatConfigurationMenuContent({ controller }: { controller: Confi
                     </span>
                     {!chatConfiguration?.fastModeEnabled && <Check aria-hidden="true" />}
                   </NeumorphicButton>
-                  <NeumorphicButton variant="ghost"
+                  <TooltipButton variant="ghost"
                     aria-disabled={!chatConfiguration?.fastModeAvailable}
                     data-unavailable={!chatConfiguration?.fastModeAvailable}
                     aria-selected={chatConfiguration?.fastModeEnabled === true}
@@ -140,7 +141,7 @@ export function ChatConfigurationMenuContent({ controller }: { controller: Confi
                       <span>{fastTier?.description ?? 'Unavailable for this model'}</span>
                     </span>
                     {chatConfiguration?.fastModeEnabled && <Check aria-hidden="true" />}
-                  </NeumorphicButton>
+                  </TooltipButton>
                 </>
               )}
             </div>

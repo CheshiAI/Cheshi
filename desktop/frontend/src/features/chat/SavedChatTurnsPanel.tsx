@@ -1,3 +1,4 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { ChevronRight, MessageSquarePlus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import type { ChatSavedTurn } from '../../../../shared/chat-saved-turns';
@@ -41,8 +42,8 @@ export function SavedChatTurnsPanel({ savedTurns, onClose, onContinue, continuat
     <header className={styles.heading}>
       <SidebarPanelTitle title="SAVED TURNS" />
       <div className={styles.actions}>
-        <NeumorphicButton variant="ghost" size="icon" aria-label="Refresh saved turns" title="Refresh saved turns"
-          disabled={savedTurns.loading || savedTurns.deleting} onClick={() => void savedTurns.refresh()}><RefreshCw aria-hidden="true" /></NeumorphicButton>
+        <TooltipButton variant="ghost" size="icon" aria-label="Refresh saved turns" title="Refresh saved turns"
+          disabled={savedTurns.loading || savedTurns.deleting} onClick={() => void savedTurns.refresh()}><RefreshCw aria-hidden="true" /></TooltipButton>
         <NeumorphicButton variant="ghost" size="icon" aria-label="Close saved turns panel"
           onClick={onClose}><X aria-hidden="true" /></NeumorphicButton>
       </div>
@@ -69,20 +70,20 @@ export function SavedChatTurnsPanel({ savedTurns, onClose, onContinue, continuat
           <div className={styles.body}>
             <small className={styles.source}>Session · {record.threadId}</small>
             <SavedChatTurnContent record={record} />
-            <NeumorphicButton variant="standard" size="standard" className={styles.continueButton}
+            <TooltipButton variant="standard" size="standard" className={styles.continueButton}
               disabled={!onContinue || Boolean(continuationDisabledReason) || continuingId !== null || savedTurns.deleting}
               title={continuationDisabledReason ?? 'Start a new session with this saved question and answer'}
               onClick={() => void continueTurn(record)}>
               <MessageSquarePlus aria-hidden="true" />
               <span>{continuingId === record.id ? 'Starting new session…' : 'Continue in new session'}</span>
-            </NeumorphicButton>
+            </TooltipButton>
             {continuationError?.id === record.id && <p className={styles.notice} role="alert">{continuationError.message}</p>}
           </div>
         </details>
-        <NeumorphicButton variant="ghost" size="icon" className={styles.deleteButton}
+        <TooltipButton variant="ghost" size="icon" className={styles.deleteButton}
           aria-label={`Delete saved turn: ${record.sessionTitle || 'Untitled conversation'}`} title="Delete saved turn"
           disabled={savedTurns.deleting || savedTurns.loading || continuingId !== null}
-          onClick={() => setDeleteRecord(record)}><Trash2 aria-hidden="true" /></NeumorphicButton>
+          onClick={() => setDeleteRecord(record)}><Trash2 aria-hidden="true" /></TooltipButton>
       </div>)}
     </div>
     {deleteRecord && <ChatDeleteRecordDialog recordTitle={deleteRecord.sessionTitle || 'Untitled conversation'} kind="turn"

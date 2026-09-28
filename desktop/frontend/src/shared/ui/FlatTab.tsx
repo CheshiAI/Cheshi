@@ -1,3 +1,4 @@
+import { TooltipTarget } from './TooltipTarget';
 import { X } from 'lucide-react';
 import {
   createContext,
@@ -108,27 +109,28 @@ export function FlatTab({
         showMenu(event.clientX, event.clientY);
       }}
     >
-      <button
-        ref={triggerRef}
-        className={styles.trigger}
-        type="button"
-        role="tab"
-        aria-selected={active}
-        title={title}
-        draggable={canReorder}
-        onDragStart={canReorder ? event => reorder?.start(event, tabId!) : undefined}
-        onClick={onActivate}
-        onKeyDown={(event) => {
-          if (!openMenu || (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10'))) return;
-          event.preventDefault();
-          const bounds = event.currentTarget.getBoundingClientRect();
-          showMenu(bounds.left, bounds.bottom);
-        }}
-      >
-        {leading}
-        <span className={styles.label}>{label}</span>
-        {trailing}
-      </button>
+      <TooltipTarget content={title}>
+        <button
+          ref={triggerRef}
+          className={styles.trigger}
+          type="button"
+          role="tab"
+          aria-selected={active}
+          draggable={canReorder}
+          onDragStart={canReorder ? event => reorder?.start(event, tabId!) : undefined}
+          onClick={onActivate}
+          onKeyDown={(event) => {
+            if (!openMenu || (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10'))) return;
+            event.preventDefault();
+            const bounds = event.currentTarget.getBoundingClientRect();
+            showMenu(bounds.left, bounds.bottom);
+          }}
+        >
+          {leading}
+          <span className={styles.label}>{label}</span>
+          {trailing}
+        </button>
+      </TooltipTarget>
       <NeumorphicButton
         raised
         className={styles.close}

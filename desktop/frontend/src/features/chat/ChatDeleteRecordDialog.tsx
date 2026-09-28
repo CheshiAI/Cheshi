@@ -1,3 +1,4 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { LoadingState, Modal, NeumorphicButton } from '../../shared/ui';
@@ -17,7 +18,7 @@ export function ChatDeleteRecordForm({ recordTitle, kind, pending, error, onDele
     event.preventDefault();
     if (!pending) onDelete();
   }}>
-    <p className={styles.sessionTitle} title={recordTitle}>{recordTitle}</p>
+    <TooltipTarget content={recordTitle}><p className={styles.sessionTitle}>{recordTitle}</p></TooltipTarget>
     <p>{kind === 'history' ? 'This deletes only the saved conversation history record.' : 'This deletes only the saved turn.'}
       {kind === 'history' ? <br /> : ' '}Your original chat sessions are unaffected.<br />This cannot be undone.</p>
     {error && <p role="alert">{error}</p>}

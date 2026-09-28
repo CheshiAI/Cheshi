@@ -1,3 +1,4 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { Bot, Speech, Users } from 'lucide-react';
 
 import type { ChatRelayMessageProvenance } from '../../../../shared/chat-relay';
@@ -27,9 +28,11 @@ export function ChatMessageLabel({ author, createdAt = 0, relay }: {
       >
         <Icon aria-hidden="true" />
       </NeumorphicButton>
-      <strong title={relay ? `From ${relaySources.join(' + ')} · ${relay.role}` : undefined}>
-        {relay ? `${relay.mode === 'debate' ? 'DEBATE' : relay.mode === 'consensus' ? 'CONSENSUS' : 'RELAY'} · ${relaySource}` : isUser ? 'YOU' : 'ASSISTANT'}
-      </strong>
+      <TooltipTarget content={relay ? `From ${relaySources.join(' + ')} · ${relay.role}` : undefined}>
+        <strong >
+          {relay ? `${relay.mode === 'debate' ? 'DEBATE' : relay.mode === 'consensus' ? 'CONSENSUS' : 'RELAY'} · ${relaySource}` : isUser ? 'YOU' : 'ASSISTANT'}
+        </strong>
+      </TooltipTarget>
       {date && (
         <time className={styles.messageTimestamp} dateTime={date.toISOString()}>
           {formatMessageTimestamp(date)}

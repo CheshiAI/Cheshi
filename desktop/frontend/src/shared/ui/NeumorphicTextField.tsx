@@ -22,7 +22,7 @@ export function NeumorphicTextField({ className, fitPlaceholder = false, trailin
   const action = trailingAction ?? (onClear && String(props.value ?? '').length > 0
     ? <SearchClearButton variant="ghost" aria-label={clearLabel} disabled={props.disabled || props.readOnly}
       onClick={event => {
-        const input = event.currentTarget.parentElement?.querySelector<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
+        const input = event.currentTarget.closest('[data-trailing-action]')?.querySelector<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
         onClear();
         input?.focus();
       }} />

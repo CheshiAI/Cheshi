@@ -13,6 +13,8 @@ import type { SplitPaneLayout } from '../frontend/src/shared/ui/SplitPaneLayout'
 import type { SlidingSidePanel } from '../frontend/src/shared/ui/SlidingSidePanel';
 import type { Sidebar } from '../frontend/src/features/navigation/Sidebar';
 import type { SidebarPanel } from '../frontend/src/features/navigation/sidebarPanel';
+import { sidebarPanelForWorkspace } from '../frontend/src/features/navigation/sidebarPanel';
+import type { useAppUpdateResume } from '../frontend/src/features/shell/useAppUpdateResume';
 import type { SidebarRail } from '../frontend/src/features/navigation/SidebarRail';
 import type { WorkspaceEditor } from '../frontend/src/features/editor/WorkspaceEditor';
 import type { WorkspaceEditorPane } from '../frontend/src/features/editor/WorkspaceEditorPane';
@@ -124,16 +126,20 @@ test('file pane retains the current preview while another file is opening', () =
   expect(props<{ alt: string }>(tree, 'img').alt).toBe('preview.png');
 });
 
-function shellHarness(initialHistoryLoading = false, preference: { panel: SidebarPanel } = { panel: 'files' }) {
+function shellHarness(initialHistoryLoading = false, preference: { panel: SidebarPanel } = { panel: 'files' },
+  initialLayout: splitModel.SplitLayoutNode | null = null) {
   const app = hooks();
   let historyLoading = initialHistoryLoading;
   let openSearch = () => {};
+  let resumeOptions: Parameters<typeof useAppUpdateResume>[0];
+  let editorSessionMode: ReturnType<typeof useAppUpdateResume>['editorSessionMode'] = 'restore';
   const attachments = draftAttachmentModule.createChatDraftAttachments();
   const modules: Record<string, unknown> = {
-    './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => null, saveWorkspaceLayout() {} },
+    './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => initialLayout, saveWorkspaceLayout() {} },
     '../../shared/ui/splitPaneModel': splitModel,
     react: app.react,
     '../navigation/sidebarPanel': {
+      sidebarPanelForWorkspace,
       readSidebarPanel: () => preference.panel,
       saveSidebarPanel: (panel: SidebarPanel) => { preference.panel = panel; },
     },
@@ -144,7 +150,11 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
     '../chat/useChatWorkspace': { useChatWorkspace: () => ({ activePaneId: 'chat-a', controllers: {}, activeController: { state: { phase: 'ready' } }, relay: { running: false },
       sessionHistory: { loading: historyLoading, sessions: [] }, responseThreadIds: [], accountSwitchPending: false }) },
     '../chat/useChatHistorySearch': { useChatHistorySearch: () => ({ clear() {} }) },
-    './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
+    './useAppUpdateResume': { useAppUpdateResume: (options: typeof resumeOptions) => {
+      resumeOptions = options;
+      return { busy: editorSessionMode === 'waiting', error: null, editorSessionMode };
+    } },
+    './useWorkflowChatNavigation': { useWorkflowChatNavigation: () => async () => false },
     '../navigation/fileSearchShortcut': { installFileSearchShortcut: (_document: unknown, open: () => void) => {
       openSearch = open; return () => {};
     } },
@@ -159,6 +169,7 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
     '../plugins': ['PluginsView'],
     '../terminal': ['TerminalWorkspace'],
     '../settings/SettingsView': ['SettingsView'],
+    '../settings/DiscordSetupConfirmation': ['DiscordSetupConfirmation'],
     '../mail/MailView': ['MailView'], '../calendar/CalendarView': ['CalendarView'],
     './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],
     '../editor/LocalHistoryPage': ['LocalHistoryPage'], './WorkspaceEditorSplit': ['WorkspaceEditorSplit'],
@@ -167,7 +178,16 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
   modules['../../shared/ui'] = { LiquidGlassPanel: 'LiquidGlassPanel', SlidingSidePanel: 'SlidingSidePanel',
     SidebarToggleVisibility: { Provider: 'SidebarToggleVisibility' } };
   const Shell = load<typeof AppShell>('features/shell/AppShell.tsx', 'AppShell', modules, { document: {} });
-  return { attachments, render: () => app.render(() => Shell()), openSearch: () => openSearch(),
+  return { attachments, render: () => {
+    app.render(() => Shell());
+    return app.render(() => Shell());
+  }, openSearch: () => openSearch(),
+    beginRestore: () => { editorSessionMode = 'waiting'; },
+    restoreShell: (view: Parameters<typeof resumeOptions.setActiveView>[0], panel: SidebarPanel) => {
+      resumeOptions.setActiveView(view);
+      resumeOptions.setSidebarPanel(panel);
+    },
+    finishRestore: () => { editorSessionMode = 'preserve'; },
     finishInitialHistory: () => { historyLoading = false; } };
 }
 
@@ -176,10 +196,11 @@ test('sidebar tabs retain navigation and load initial chats before limiting refr
   const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
   const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
   const chat = () => props<ComponentProps<typeof ChatWorkspace>>(app.render(), 'ChatWorkspace');
-  expect(sidebar().activePanel).toBe('files');
+  expect(sidebar().activePanel).toBe('chats');
   expect(chat().sessionSyncEnabled).toBe(true);
   expect(sidebar().chatPanel).toBeDefined();
   expect(props<{ value: boolean }>(app.render(), 'SidebarToggleVisibility').value).toBe(false);
+  sidebar().onPanelChange!('files');
   app.finishInitialHistory();
   expect(chat().sessionSyncEnabled).toBe(false);
   sidebar().onPanelChange!('chats');
@@ -195,14 +216,54 @@ test('sidebar tabs retain navigation and load initial chats before limiting refr
   expect(chat().sessionSyncEnabled).toBe(false);
 });
 
-test('shell saves and restores the last selected sidebar tab', () => {
+test('shell saves manual tab selections but prioritizes the visible scene when reopened', () => {
   const preference: { panel: SidebarPanel } = { panel: 'chats' };
   const app = shellHarness(false, preference);
   expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('chats');
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onPanelChange!('memos');
   app.render();
   expect(preference.panel).toBe('memos');
-  expect(props<ComponentProps<typeof Sidebar>>(shellHarness(false, preference).render(), 'Sidebar').activePanel).toBe('memos');
+  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('memos');
+  expect(props<ComponentProps<typeof Sidebar>>(shellHarness(false, preference).render(), 'Sidebar').activePanel).toBe('chats');
+});
+
+test.each(['editor', 'split'] as const)('saved %s layouts open the explorer before restoring editor files', mode => {
+  const app = shellHarness(false, { panel: 'memos' }, layoutModel.visibleWorkspaceLayout(mode, false));
+  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('files');
+});
+
+test('sidebar follows opening, closing and restoring editor panes while preserving manual choices within a scene', () => {
+  const app = shellHarness();
+  const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  const editor = () => props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
+  expect(sidebar().activePanel).toBe('chats');
+  sidebar().onOpenWorkspaceFile('first.ts');
+  expect(split().mode).toBe('split');
+  expect(sidebar().activePanel).toBe('files');
+  sidebar().onPanelChange!('memos');
+  sidebar().onOpenWorkspaceFile('second.ts');
+  expect(sidebar().activePanel).toBe('memos');
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('editor');
+  expect(split().mode).toBe('editor');
+  expect(sidebar().activePanel).toBe('files');
+  sidebar().onPanelChange!('chats');
+  editor().onDirtyPathsChange?.(['second.ts']);
+  expect(sidebar().activePanel).toBe('chats');
+  editor().onAllTabsClosed();
+  expect(sidebar().activePanel).toBe('chats');
+  editor().onSessionRestored?.();
+  expect(sidebar().activePanel).toBe('files');
+});
+
+test.each(['chat', 'editor'] as const)('update recovery resolves the %s scene before overriding a saved manual tab', view => {
+  const app = shellHarness();
+  app.beginRestore();
+  app.render();
+  app.restoreShell(view, 'memos');
+  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('memos');
+  app.finishRestore();
+  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe(view === 'chat' ? 'chats' : 'files');
 });
 
 test('the fixed navigation rail precedes the left sidebar', () => {

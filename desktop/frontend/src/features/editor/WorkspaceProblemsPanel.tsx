@@ -1,3 +1,5 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { AlertTriangle, FileCode2, FolderOpen, Wrench } from 'lucide-react';
 import { useMemo } from 'react';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
@@ -6,7 +8,6 @@ import {
   LiquidGlassPanel,
   LiquidGlassSelect,
   LoadingIndicator,
-  NeumorphicButton,
 } from '../../shared/ui';
 import badgeStyles from '../../shared/ui/Badge.module.css';
 import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
@@ -89,44 +90,46 @@ export function WorkspaceProblemsPanel({
           )}
         </div>
         {(languageServer || status === 'checking') && (
-          <div className="workspace-editor-language-server" title={languageServer?.message}>
-            {(languageServerConfiguring || status === 'checking') && (
-              <LoadingIndicator label={languageServerConfiguring && languageServer
-                ? `Configuring ${languageServer.serverName}`
-                : `Checking ${fileName}`} />
-            )}
-            {languageServer && (
-              <>
-                {!languageServerConfiguring && languageServer.state !== 'disabled' && (
-                  <small data-state={languageServer.state}>{languageServerStateLabel(languageServer)}</small>
-                )}
-                <LiquidGlassSelect
-                  ariaLabel={`${languageServer.displayName} language server mode`}
-                  className="workspace-editor-language-server-select"
-                  disabled={languageServerConfiguring || !open}
-                  menuLabel={`${languageServer.displayName} language server mode`}
-                  menuAppearance="toolbar"
-                  options={languageServerModeOptions}
-                  triggerAppearance="flat"
-                  value={languageServer.mode}
-                  onChange={onConfigureLanguageServer}
-                />
-                {languageServer.mode === 'custom' && (
-                  <NeumorphicButton
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Choose ${languageServer.serverName} executable`}
-                    disabled={languageServerConfiguring}
-                    title={`Choose ${languageServer.serverName} executable`}
-                    type="button"
-                    onClick={() => onConfigureLanguageServer('custom')}
-                  >
-                    <FolderOpen aria-hidden="true" />
-                  </NeumorphicButton>
-                )}
-              </>
-            )}
-          </div>
+          <TooltipTarget content={languageServer?.message}>
+            <div className="workspace-editor-language-server" >
+              {(languageServerConfiguring || status === 'checking') && (
+                <LoadingIndicator label={languageServerConfiguring && languageServer
+                  ? `Configuring ${languageServer.serverName}`
+                  : `Checking ${fileName}`} />
+              )}
+              {languageServer && (
+                <>
+                  {!languageServerConfiguring && languageServer.state !== 'disabled' && (
+                    <small data-state={languageServer.state}>{languageServerStateLabel(languageServer)}</small>
+                  )}
+                  <LiquidGlassSelect
+                    ariaLabel={`${languageServer.displayName} language server mode`}
+                    className="workspace-editor-language-server-select"
+                    disabled={languageServerConfiguring || !open}
+                    menuLabel={`${languageServer.displayName} language server mode`}
+                    menuAppearance="toolbar"
+                    options={languageServerModeOptions}
+                    triggerAppearance="flat"
+                    value={languageServer.mode}
+                    onChange={onConfigureLanguageServer}
+                  />
+                  {languageServer.mode === 'custom' && (
+                    <TooltipButton
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Choose ${languageServer.serverName} executable`}
+                      disabled={languageServerConfiguring}
+                      title={`Choose ${languageServer.serverName} executable`}
+                      type="button"
+                      onClick={() => onConfigureLanguageServer('custom')}
+                    >
+                      <FolderOpen aria-hidden="true" />
+                    </TooltipButton>
+                  )}
+                </>
+              )}
+            </div>
+          </TooltipTarget>
         )}
       </LiquidGlassPanel>
 
@@ -152,18 +155,19 @@ export function WorkspaceProblemsPanel({
             ))}
             {refactoringRecommendation && (
               <li>
-                <div
-                  className="workspace-editor-problem-row"
-                  data-kind="refactor"
-                  role="note"
-                  title={refactoringRecommendation}
-                >
-                  <Wrench aria-hidden="true" />
-                  <span className="workspace-editor-problem-message">
-                    <strong>Refactoring recommended</strong>
-                    <small>{refactoringRecommendation}</small>
-                  </span>
-                </div>
+                <TooltipTarget content={refactoringRecommendation}>
+                  <div
+                    className="workspace-editor-problem-row"
+                    data-kind="refactor"
+                    role="note"
+                  >
+                    <Wrench aria-hidden="true" />
+                    <span className="workspace-editor-problem-message">
+                      <strong>Refactoring recommended</strong>
+                      <small>{refactoringRecommendation}</small>
+                    </span>
+                  </div>
+                </TooltipTarget>
               </li>
             )}
           </ul>

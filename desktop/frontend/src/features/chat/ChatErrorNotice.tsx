@@ -1,6 +1,7 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { AlertCircle, X } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { ContentCard, NeumorphicButton } from '../../shared/ui';
+import { ContentCard } from '../../shared/ui';
 import styles from './ChatErrorNotice.module.css';
 
 export function ChatErrorNotice({ children, className, onDismiss, dismissLabel = 'Dismiss error', action }: {
@@ -14,9 +15,9 @@ export function ChatErrorNotice({ children, className, onDismiss, dismissLabel =
     role="alert" icon={<AlertCircle aria-hidden="true" />} title={children}
     actions={(action || onDismiss) ? <>
       {action}
-      {onDismiss && <NeumorphicButton variant="ghost" size="icon" onClick={onDismiss}
+      {onDismiss && <TooltipButton variant="ghost" size="icon" onClick={onDismiss}
         aria-label={dismissLabel} title={dismissLabel}>
         <X aria-hidden="true" />
-      </NeumorphicButton>}
+      </TooltipButton>}
     </> : undefined} />;
 }

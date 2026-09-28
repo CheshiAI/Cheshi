@@ -1,3 +1,4 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import {
   CaseSensitive,
   ChevronDown,
@@ -89,27 +90,27 @@ export function WorkspaceEditorSearchPanel({
             />
           ) : undefined}
         />
-        <NeumorphicButton variant="ghost" size="icon" active={controls.caseSensitive} aria-label="Match case" title="Match case" aria-pressed={controls.caseSensitive} onClick={() => onChange({ caseSensitive: !controls.caseSensitive })}>
+        <TooltipButton variant="ghost" size="icon" active={controls.caseSensitive} aria-label="Match case" title="Match case" aria-pressed={controls.caseSensitive} onClick={() => onChange({ caseSensitive: !controls.caseSensitive })}>
           <CaseSensitive aria-hidden="true" />
-        </NeumorphicButton>
-        <NeumorphicButton variant="ghost" size="icon" active={controls.wholeWord} aria-label="Match whole word" title="Match whole word" aria-pressed={controls.wholeWord} onClick={() => onChange({ wholeWord: !controls.wholeWord })}>
+        </TooltipButton>
+        <TooltipButton variant="ghost" size="icon" active={controls.wholeWord} aria-label="Match whole word" title="Match whole word" aria-pressed={controls.wholeWord} onClick={() => onChange({ wholeWord: !controls.wholeWord })}>
           <WholeWord aria-hidden="true" />
-        </NeumorphicButton>
-        <NeumorphicButton variant="ghost" size="icon" active={controls.regexp} aria-label="Use regular expression" title="Use regular expression" aria-pressed={controls.regexp} onClick={() => onChange({ regexp: !controls.regexp })}>
+        </TooltipButton>
+        <TooltipButton variant="ghost" size="icon" active={controls.regexp} aria-label="Use regular expression" title="Use regular expression" aria-pressed={controls.regexp} onClick={() => onChange({ regexp: !controls.regexp })}>
           <Regex aria-hidden="true" />
-        </NeumorphicButton>
-        <NeumorphicButton variant="ghost" size="icon" aria-label="Previous match" title="Previous match" disabled={!queryValid} onClick={onPrevious}>
+        </TooltipButton>
+        <TooltipButton variant="ghost" size="icon" aria-label="Previous match" title="Previous match" disabled={!queryValid} onClick={onPrevious}>
           <ChevronUp aria-hidden="true" />
-        </NeumorphicButton>
-        <NeumorphicButton variant="ghost" size="icon" aria-label="Next match" title="Next match" disabled={!queryValid} onClick={onNext}>
+        </TooltipButton>
+        <TooltipButton variant="ghost" size="icon" aria-label="Next match" title="Next match" disabled={!queryValid} onClick={onNext}>
           <ChevronDown aria-hidden="true" />
-        </NeumorphicButton>
+        </TooltipButton>
         <NeumorphicButton variant="ghost" aria-label="Select all matches" disabled={!queryValid} onClick={onSelectAll}>
           <span aria-hidden="true">All</span>
         </NeumorphicButton>
-        <NeumorphicButton variant="ghost" size="icon" className="workspace-editor-search-close" aria-label="Close find and replace" title="Close find and replace" onClick={onClose}>
+        <TooltipButton variant="ghost" size="icon" className="workspace-editor-search-close" aria-label="Close find and replace" title="Close find and replace" onClick={onClose}>
           <X aria-hidden="true" />
-        </NeumorphicButton>
+        </TooltipButton>
       </div>
       <div className="workspace-editor-search-row">
         <Replace aria-hidden="true" />

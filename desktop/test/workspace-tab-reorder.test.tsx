@@ -89,7 +89,7 @@ async function withDOM(run: (h: {
 }
 
 function trigger(path: string) {
-  const element = document.querySelector<HTMLButtonElement>(`[role="tab"][title="${path}"]`);
+  const element = document.querySelector<HTMLButtonElement>(`[role="tab"][aria-description="${path}"]`);
   if (!element) throw new Error(`Missing tab ${path}`);
   return element;
 }

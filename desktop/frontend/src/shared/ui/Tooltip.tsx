@@ -6,12 +6,20 @@ import { LiquidGlassPanel } from './LiquidGlassPanel';
 import styles from './Tooltip.module.css';
 
 type TooltipTriggerProps<T extends Element> = Pick<HTMLAttributes<T>,
-  'aria-describedby' | 'onPointerEnter' | 'onPointerLeave' | 'onFocus' | 'onBlur'>;
+  'aria-describedby' | 'onPointerEnter' | 'onPointerOver' | 'onPointerLeave' | 'onFocus' | 'onBlur'> & {
+    'data-tooltip-trigger'?: string;
+  };
+
+function isNearestTrigger(target: EventTarget, current: Element): boolean {
+  return 'closest' in target && typeof target.closest === 'function'
+    && target.closest('[data-tooltip-trigger]') === current;
+}
 
 interface TooltipProps<T extends Element> {
-  content: string;
+  content?: string;
   delay?: number;
   blurSourceRef?: RefObject<HTMLElement | null>;
+  resolveAnchor?: (element: T) => Element;
   children: (props: TooltipTriggerProps<T>) => ReactNode;
 }
 
@@ -50,13 +58,13 @@ function TooltipContent({ anchor, content, id, blurSourceRef }: {
   );
 }
 
-export function Tooltip<T extends Element = HTMLElement>({ content, delay = 1000, blurSourceRef, children }: TooltipProps<T>) {
+export function Tooltip<T extends Element = HTMLElement>({ content, delay = 1000, blurSourceRef, resolveAnchor, children }: TooltipProps<T>) {
   const id = useId();
   const [anchor, setAnchor] = useState<Element | null>(null);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!anchor) return;
+    if (!anchor || !content) return;
     const dismiss = () => {
       setVisible(false);
       setAnchor(null);
@@ -89,16 +97,24 @@ export function Tooltip<T extends Element = HTMLElement>({ content, delay = 1000
     setAnchor(null);
   };
 
-  const tooltip = visible && anchor ? <TooltipContent anchor={anchor} content={content} id={id} blurSourceRef={blurSourceRef} /> : null;
+  const tooltip = visible && anchor && content ? <TooltipContent anchor={anchor} content={content} id={id} blurSourceRef={blurSourceRef} /> : null;
   return <>
     {children({
-      'aria-describedby': visible && anchor ? id : undefined,
+      'data-tooltip-trigger': content ? id : undefined,
+      'aria-describedby': visible && anchor && content ? id : undefined,
       onPointerEnter: (event) => {
-        if (event.pointerType !== 'touch') setAnchor(event.currentTarget);
+        if (content && event.pointerType !== 'touch' && isNearestTrigger(event.target, event.currentTarget)) {
+          setAnchor(resolveAnchor?.(event.currentTarget) ?? event.currentTarget);
+        }
+      },
+      onPointerOver: (event) => {
+        if (!isNearestTrigger(event.target, event.currentTarget)) dismiss();
+        else if (content && event.pointerType !== 'touch') setAnchor(resolveAnchor?.(event.currentTarget) ?? event.currentTarget);
       },
       onPointerLeave: dismiss,
       onFocus: (event) => {
-        if (event.currentTarget.matches(':focus-visible')) setAnchor(event.currentTarget);
+        const target = resolveAnchor?.(event.currentTarget) ?? event.currentTarget;
+        if (content && isNearestTrigger(event.target, event.currentTarget) && event.target.matches(':focus-visible')) setAnchor(target);
       },
       onBlur: dismiss,
     })}

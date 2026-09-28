@@ -81,7 +81,10 @@ function createHarness<Args extends unknown[], Result>(filename: string, exportN
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023, jsx: ts.JsxEmit.ReactJSX,
   } });
   const exports: Record<string, unknown> = {};
-  const modules: Record<string, unknown> = { ...dependencies, react };
+  const modules: Record<string, unknown> = { ...dependencies, react,
+    '../../shared/ui/TooltipButton': { TooltipButton: NeumorphicButton },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
+  };
   vm.runInNewContext(compiled.outputText, {
     exports, Error,
     Date: class extends Date { static now() { return now; } },
@@ -578,7 +581,8 @@ function timelineProps(): HistoryProps {
 function historyHarness() {
   return createHarness<[HistoryProps], ReactNode>('ChatTimelineHistory.tsx', 'ChatTimelineHistory', {
     'react/jsx-runtime': jsxRuntime,
-    '../../shared/ui': { NeumorphicButton: 'button' },
+    'lucide-react': { History: 'svg' },
+    '../../shared/ui': { NeumorphicButton: 'button', ContentCard: 'content-card' },
     './ChatTimelineItem': { ChatTimelineItem: 'timeline-item' },
     './HistoryRecallActivity': { HistoryRecallTotals: 'history-recall-totals', recallTurnMetrics: () => new Map() },
     './chatHistoryWindow': { captureChatHistoryAnchor, previousChatHistoryStart },

@@ -52,6 +52,8 @@ function harness(kind: Kind) {
   const jsx = (type: string | ((props: Record<string, unknown>) => unknown), props: Record<string, unknown>): unknown =>
     typeof type === 'function' ? type(props) : { type, props };
   const modules: Record<string, unknown> = {
+    '../../shared/ui/TooltipButton': { TooltipButton: 'button' },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
     react: {
       useEffect() {},
       useState(initial: unknown) {

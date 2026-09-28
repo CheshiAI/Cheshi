@@ -1,7 +1,8 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { useContext } from 'react';
 import { SidebarToggleVisibility } from '../../shared/ui/SidebarToggle';
 import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, FileSearch, History, Lightbulb, PanelRight, PencilLine, RotateCw, Save, Search } from 'lucide-react';
-import { NeumorphicButton } from '../../shared/ui/NeumorphicButton';
 import { ToolbarMenu, type ToolbarMenuItem } from '../../shared/ui/ToolbarMenu';
 import { nonDraggableWindowRegionStyle } from '../../shared/ui/electronStyles';
 import { canUseLanguageServer, formatBytes } from './workspaceEditorModel';
@@ -52,9 +53,11 @@ export function WorkspaceEditorFileToolbar({ controller, onOpenLocalHistory, rig
   });
   return <>
     <div className="workspace-editor-file-info">
-      <strong title={`${currentFile.path}\n${currentFile.lineEnding.toUpperCase()} · ${formatBytes(currentFile.size)} · rev ${currentFile.revision}`}>
-        {currentFile.path.split('/').at(-1) ?? currentFile.path}
-      </strong>
+      <TooltipTarget content={`${currentFile.path}\n${currentFile.lineEnding.toUpperCase()} · ${formatBytes(currentFile.size)} · rev ${currentFile.revision}`}>
+        <strong >
+          {currentFile.path.split('/').at(-1) ?? currentFile.path}
+        </strong>
+      </TooltipTarget>
       <div className="workspace-editor-file-meta">
         {activeTab?.sourceExcerpt ? <span className="workspace-editor-readonly-label">Read only</span>
           : conflictMessage ? <span className="workspace-editor-conflict-label">Conflict</span>
@@ -63,20 +66,20 @@ export function WorkspaceEditorFileToolbar({ controller, onOpenLocalHistory, rig
     </div>
     <div className="workspace-editor-actions" style={nonDraggableWindowRegionStyle}>
       {textFile && <>
-        <NeumorphicButton variant="ghost" size="icon" active={controller.editorSearchOpen}
+        <TooltipButton variant="ghost" size="icon" active={controller.editorSearchOpen}
           aria-controls="workspace-editor-search" aria-expanded={controller.editorSearchOpen}
           aria-label="Find and replace" title="Find and replace (⌘F / Ctrl+F)" onClick={controller.toggleEditorSearch}>
           <Search aria-hidden="true" />
-        </NeumorphicButton>
-        <NeumorphicButton variant="ghost" size="icon" aria-controls="workspace-editor-problems" aria-expanded={controller.problemsVisible}
+        </TooltipButton>
+        <TooltipButton variant="ghost" size="icon" aria-controls="workspace-editor-problems" aria-expanded={controller.problemsVisible}
           aria-label={controller.problemsVisible ? 'Close problems panel' : 'Open problems panel'} title="Problems"
           onClick={() => controller.setProblemsOpen(open => !open)}>
           <AlertTriangle aria-hidden="true" />
-        </NeumorphicButton>
-        {(isDirty || saving) && <NeumorphicButton variant="ghost" size="icon" aria-label="Save file" title="Save (⌘S / Ctrl+S)"
+        </TooltipButton>
+        {(isDirty || saving) && <TooltipButton variant="ghost" size="icon" aria-label="Save file" title="Save (⌘S / Ctrl+S)"
           disabled={!isDirty || saving || Boolean(conflictMessage)} onClick={() => { void controller.saveFile(); }}>
           {saving ? <RotateCw className="workspace-editor-spinner" aria-hidden="true" /> : <Save aria-hidden="true" />}
-        </NeumorphicButton>}
+        </TooltipButton>}
       </>}
       <ToolbarMenu label="File actions" items={items} />
     </div>

@@ -28,7 +28,7 @@ import { GitWorkspace } from '../git';
 import { CodeGraphView } from '../graph';
 import { BlankView } from '../home/BlankView';
 import { Sidebar, type WorkspaceView } from '../navigation/Sidebar';
-import { readSidebarPanel, saveSidebarPanel } from '../navigation/sidebarPanel';
+import { readSidebarPanel, saveSidebarPanel, sidebarPanelForWorkspace } from '../navigation/sidebarPanel';
 import { SidebarRail } from '../navigation/SidebarRail';
 import { PluginsView } from '../plugins';
 import { TerminalWorkspace } from '../terminal';
@@ -85,7 +85,10 @@ export function AppShell() {
   const closeReview = useCallback(() => { setFileReview(null); setLineCommitTarget(null); setLocalHistoryPath(null); }, []);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
-  const [sidebarPanel, setSidebarPanel] = useState(readSidebarPanel);
+  const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
+  useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
+  const [sidebarPanel, setSidebarPanel] = useState(() => sidebarPanelForWorkspace(activeView,
+    splitPaneIds(customLayout ?? visibleWorkspaceLayout('primary', false))) ?? readSidebarPanel());
   useEffect(() => { saveSidebarPanel(sidebarPanel); }, [sidebarPanel]);
   const openFileReview = useCallback((paneId: string, itemId: string, path?: string) => {
     setLineCommitTarget(null);
@@ -102,8 +105,6 @@ export function AppShell() {
   const [editorTarget, setEditorTarget] = useState<WorkspaceEditorTarget | null>(null);
   const [editorSplitOpen, setEditorSplitOpen] = useState(false);
   const [primaryPaneClosed, setPrimaryPaneClosed] = useState(false);
-  const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
-  useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
   const editorReturnView = useRef<WorkspaceView>('chat');
   const [editorMutation, setEditorMutation] = useState<WorkspaceEditorMutation | null>(null);
   const [editorSelectedPath, setEditorSelectedPath] = useState<string | null>(null);
@@ -265,6 +266,13 @@ export function AppShell() {
         : primaryPaneClosed ? 'editor' : 'split';
 
   const visiblePanes = splitPaneIds(customLayout ?? visibleWorkspaceLayout(editorLayoutMode, activeView === 'terminal'));
+  const visiblePaneKey = [...visiblePanes].sort().join(':');
+  const automaticSidebarPanel = sidebarPanelForWorkspace(activeView, visiblePanes);
+  useEffect(() => {
+    // Restore the main scene first; later manual tab choices survive ordinary rerenders.
+    if (updateResume.editorSessionMode === 'waiting' || !automaticSidebarPanel) return;
+    setSidebarPanel(automaticSidebarPanel);
+  }, [activeView, visiblePaneKey, automaticSidebarPanel, updateResume.editorSessionMode]);
   const closePane = (pane: 'primary' | 'terminal') => {
     if (customLayout) setCustomLayout(current => removeSplitPane(current, pane));
     else setPrimaryPaneClosed(true);

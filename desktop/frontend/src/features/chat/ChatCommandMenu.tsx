@@ -1,3 +1,5 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import {
   Bot,
   Brain,
@@ -69,8 +71,8 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
       id={controller.commandMenuId}
     >
       <SidebarPanelHeader title={commandMenuTitle.toUpperCase()} actions={
-        <NeumorphicButton variant="ghost" size="icon" aria-label="Close command menu" title="Close command menu"
-          onClick={closeCommandMenu}><X aria-hidden="true" /></NeumorphicButton>
+        <TooltipButton variant="ghost" size="icon" aria-label="Close command menu" title="Close command menu"
+          onClick={closeCommandMenu}><X aria-hidden="true" /></TooltipButton>
       } />
       <p className={styles.commandMenuSubtitle}>{commandMenuSubtitle}</p>
       <div
@@ -96,7 +98,7 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
             {filteredAgents.map((agent, index) => {
               const Icon = agent.kind === 'main' ? Bot : Users;
               return (
-                <NeumorphicButton variant="ghost"
+                <TooltipButton variant="ghost"
                   aria-selected={index === highlightedIndex}
                   className={styles.commandOption}
                   data-active={index === highlightedIndex ? 'true' : undefined}
@@ -115,7 +117,7 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
                     <span>{agent.description}</span>
                   </span>
                   <span className={styles.commandMeta}>{agent.current ? 'current' : agent.status}</span>
-                </NeumorphicButton>
+                </TooltipButton>
               );
             })}
           </>
@@ -129,7 +131,7 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
               </div>
             )}
             {filteredSkills.map((skill, index) => (
-              <NeumorphicButton variant="ghost"
+              <TooltipButton variant="ghost"
                 aria-selected={index === highlightedIndex}
                 className={styles.commandOption}
                 data-active={index === highlightedIndex ? 'true' : undefined}
@@ -146,7 +148,7 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
                   <span>{skill.description || skill.name}</span>
                 </span>
                 <span className={styles.commandMeta}>{skill.scope}</span>
-              </NeumorphicButton>
+              </TooltipButton>
             ))}
           </>
         )}
@@ -256,7 +258,7 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
         )}
         {!commandLoading && commandMenuMode === 'status' && commandStatus && (
           <dl className={styles.commandStatus}>
-            <div><dt>Chat ID</dt><dd title={commandStatus.threadId ?? undefined}>{commandStatus.threadId ?? 'Not started'}</dd></div>
+            <div><dt>Chat ID</dt><TooltipTarget content={commandStatus.threadId ?? undefined}><dd>{commandStatus.threadId ?? 'Not started'}</dd></TooltipTarget></div>
             <div><dt>Model</dt><dd>{commandStatus.modelDisplayName}</dd></div>
             <div><dt>Reasoning</dt><dd>{commandStatus.reasoningEffort}</dd></div>
             <div><dt>Service tier</dt><dd>{commandStatus.serviceTierDisplayName}</dd></div>
@@ -278,13 +280,15 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
                 <span className={styles.commandCopy}>
                   <strong>{server.displayName}</strong>
                   <span>{formatMcpServerDetail(server)}</span>
-                  {server.toolsError && <span role="status" title={server.toolsError}>Tool discovery failed: {server.toolsError}</span>}
+                  {server.toolsError && <TooltipTarget content={server.toolsError}><span role="status">Tool discovery failed: {server.toolsError}</span></TooltipTarget>}
                 </span>
                 <span className={styles.mcpStatus} data-connected={server.runtimeStatus === 'connected'}>
                   <strong aria-label={`Connection: ${formatMcpConnectionStatus(server)}`}>{formatMcpConnectionStatus(server)}</strong>
-                  <span title={server.authStatus === 'unsupported'
+                  <TooltipTarget content={server.authStatus === 'unsupported'
                     ? 'MCP sign-in is not supported for this connection. This does not indicate a connection failure.'
-                    : undefined}>{formatMcpAuthStatus(server)}</span>
+                    : undefined}>
+                    <span >{formatMcpAuthStatus(server)}</span>
+                  </TooltipTarget>
                 </span>
               </div>
             ))}

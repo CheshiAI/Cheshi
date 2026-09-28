@@ -6,10 +6,10 @@ test('record deletion explains the scope and keeps original conversations intact
   for (const kind of ['history', 'turn'] as const) {
     const html = renderToStaticMarkup(<ChatDeleteRecordForm recordTitle="Saved discussion" kind={kind}
       pending={false} error="Storage failed." onDelete={() => {}} onClose={() => {}} />);
-    expect(html).toContain('title="Saved discussion"');
-    expect(html).toContain('Your original chat sessions are unaffected. This cannot be undone.');
+    expect(html).toContain('aria-description="Saved discussion"');
+    expect(html).toContain('Your original chat sessions are unaffected.<br/>This cannot be undone.');
     expect(html).toContain('role="alert">Storage failed.');
-    expect(html).toContain('autofocus=""');
+    expect(html).toContain('name="cancel"');
     expect(html).toContain(kind === 'history' ? 'Delete history' : 'Delete saved turn');
     expect(html).not.toContain('aria-label="Deleting saved record…"');
   }

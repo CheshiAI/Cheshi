@@ -1,3 +1,4 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { ExternalLink, Ghost, X } from 'lucide-react';
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../../../shared/chat-user-input';
@@ -59,7 +60,7 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
     status={resolutionLabel ? <span role="status">{resolutionLabel}</span> : undefined}
     actions={!resolution && <NeumorphicButton variant="ghost" size="icon" disabled={busy}
       aria-label={korean ? '질문 닫기' : 'Close question'} onClick={() => void send({ action: 'cancel' })}><X aria-hidden="true" /></NeumorphicButton>}>
-    {otherThread && <p className={styles.message} title={request.threadId}>From another conversation · {request.threadId.slice(0, 8)}…{request.threadId.slice(-4)}</p>}
+    {otherThread && <TooltipTarget content={request.threadId}><p className={styles.message}>From another conversation · {request.threadId.slice(0, 8)}…{request.threadId.slice(-4)}</p></TooltipTarget>}
     <form onSubmit={(event) => { event.preventDefault(); submit(); }}>
       <fieldset className={styles.question} disabled={busy || Boolean(resolution)}>
         <div className={styles.fields}>

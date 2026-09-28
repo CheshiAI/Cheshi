@@ -1,3 +1,4 @@
+import { sidebarPanelForWorkspace } from '../frontend/src/features/navigation/sidebarPanel';
 import * as layoutModel from '../frontend/src/features/shell/workspaceLayoutModel';
 import * as splitModel from '../frontend/src/shared/ui/splitPaneModel';
 import { expect, test } from 'bun:test';
@@ -47,6 +48,8 @@ function createHarness() {
   const slots: unknown[] = [];
   const jsx = (type: string, props: Record<string, unknown>, key?: string): TestElement => ({ type, props, key });
   const modules: Record<string, unknown> = {
+    '../settings/DiscordSetupConfirmation': { DiscordSetupConfirmation: 'DiscordSetupConfirmation' },
+    './useWorkflowChatNavigation': { useWorkflowChatNavigation: () => async () => false },
     './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => null, saveWorkspaceLayout() {} },
     '../../shared/ui/splitPaneModel': splitModel,
     react: {
@@ -89,7 +92,7 @@ function createHarness() {
     '../git': { GitWorkspace: 'GitWorkspace' },
     '../graph': { CodeGraphView: 'CodeGraphView' },
     '../home/BlankView': { BlankView: 'BlankView' },
-    '../navigation/sidebarPanel': { readSidebarPanel: () => 'files', saveSidebarPanel() {} },
+    '../navigation/sidebarPanel': { sidebarPanelForWorkspace, readSidebarPanel: () => 'files', saveSidebarPanel() {} },
     '../navigation/Sidebar': { Sidebar: 'Sidebar' },
     '../navigation/SidebarRail': { SidebarRail: 'SidebarRail' },
     '../navigation/WorkspaceFileSearch': { WorkspaceFileSearch: 'WorkspaceFileSearch' },

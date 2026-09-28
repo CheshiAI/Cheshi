@@ -53,7 +53,7 @@ export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, o
   return (
     <>
       <section className="workspace-file-tree" aria-label="File explorer">
-        <SidebarPanelHeader title="FILES" icon={<Folder aria-hidden="true" />} actions={<>
+        <SidebarPanelHeader title="EXPLORER" icon={<Folder aria-hidden="true" />} actions={<>
           <NeumorphicButton
             size="icon"
             aria-label={showHiddenFiles ? 'Hide hidden files' : 'Show hidden files'}

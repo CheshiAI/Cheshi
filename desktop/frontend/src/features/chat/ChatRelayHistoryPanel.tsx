@@ -1,3 +1,5 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { ClipboardClock, History, RefreshCw, Trash2, X } from 'lucide-react';
 import { useId, useRef, useState, type RefObject } from 'react';
 import type { ChatRelayHistoryRecord, ChatRelayState } from '../../../../shared/chat-relay';
@@ -15,10 +17,12 @@ const statusLabels = { running: 'In progress', stopping: 'Stopping', stopped: 'S
 const shortThread = (id: string) => `${id.slice(0, 8)}…${id.slice(-4)}`;
 
 function Participants({ state }: { state: ChatRelayState }) {
-  return <small title={`A · ${state.sourceThreadId} ↔ B · ${state.targetThreadId}${state.moderatorThreadId ? ` → C · ${state.moderatorThreadId}` : ''}`}>
-    A · {shortThread(state.sourceThreadId)}<br />B · {shortThread(state.targetThreadId)}
-    {state.moderatorThreadId && <><br />C · {shortThread(state.moderatorThreadId)}</>}
-  </small>;
+  return <TooltipTarget content={`A · ${state.sourceThreadId} ↔ B · ${state.targetThreadId}${state.moderatorThreadId ? ` → C · ${state.moderatorThreadId}` : ''}`}>
+    <small >
+      A · {shortThread(state.sourceThreadId)}<br />B · {shortThread(state.targetThreadId)}
+      {state.moderatorThreadId && <><br />C · {shortThread(state.moderatorThreadId)}</>}
+    </small>
+  </TooltipTarget>;
 }
 
 export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, continuationDisabledReason, blurSourceRef }: {
@@ -55,8 +59,8 @@ export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, 
             <header className={styles.heading}>
               <SidebarPanelTitle title="CONVERSATION HISTORY" />
               <div className={styles.actions}>
-                <NeumorphicButton variant="ghost" size="icon" aria-label="Refresh conversation history" title="Refresh history"
-                  disabled={relay.historyLoading || relay.historyDeleting} onClick={() => void relay.refreshHistory()}><RefreshCw aria-hidden="true" /></NeumorphicButton>
+                <TooltipButton variant="ghost" size="icon" aria-label="Refresh conversation history" title="Refresh history"
+                  disabled={relay.historyLoading || relay.historyDeleting} onClick={() => void relay.refreshHistory()}><RefreshCw aria-hidden="true" /></TooltipButton>
                 <NeumorphicButton variant="ghost" size="icon" aria-label="Close conversation history panel"
                   onClick={close}><X aria-hidden="true" /></NeumorphicButton>
               </div>
@@ -89,10 +93,10 @@ export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, 
                     <time dateTime={record.finishedAt ?? record.updatedAt}>{new Date(record.finishedAt ?? record.updatedAt).toLocaleString()}</time>
                     <Participants state={record.state} />
                   </button>
-                  <NeumorphicButton variant="ghost" size="icon" className={styles.deleteButton}
+                  <TooltipButton variant="ghost" size="icon" className={styles.deleteButton}
                     aria-label={`Delete conversation history: ${record.objective}`} title="Delete conversation history"
                     disabled={relay.historyDeleting || relay.historyLoading}
-                    onClick={() => setDeleteRecord(record)}><Trash2 aria-hidden="true" /></NeumorphicButton>
+                    onClick={() => setDeleteRecord(record)}><Trash2 aria-hidden="true" /></TooltipButton>
                 </div>
               ))}
             </div>

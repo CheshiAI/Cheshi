@@ -39,7 +39,7 @@ test('clear action empties a controlled input, restores focus and respects field
   try {
     await act(async () => root.render(<Fixture />));
     const input = container.querySelector('input')!;
-    expect(clearButton()?.title).toBe('Clear title');
+    expect(clearButton()?.getAttribute('aria-description')).toBe('Clear title');
     expect(container.querySelectorAll('button')).toHaveLength(1);
     await act(async () => { clearButton()!.focus(); clearButton()!.click(); });
     expect(input.value).toBe('');

@@ -1,3 +1,4 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { LoadingState, Modal, NeumorphicButton } from '../../shared/ui';
@@ -14,7 +15,7 @@ interface ChatDeleteSessionProps {
 
 export function ChatDeleteSessionForm({ sessionTitle, reason, pending, error, onDelete, onClose }: ChatDeleteSessionProps) {
   return <form className={`${styles.form} ${styles.sessionDeletionForm}`} onSubmit={(event) => { event.preventDefault(); if (!pending && !reason) onDelete(); }}>
-    <p className={styles.sessionTitle} title={sessionTitle}>{sessionTitle}</p>
+    <TooltipTarget content={sessionTitle}><p className={styles.sessionTitle}>{sessionTitle}</p></TooltipTarget>
     <p>This permanently deletes this conversation and its child agent conversations.<br />This cannot be undone.</p>
     {(error || reason) && <p role="alert">{error || reason}</p>}
     <div className={styles.deletionActions}>

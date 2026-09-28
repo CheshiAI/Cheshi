@@ -1,7 +1,7 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
-import { NeumorphicButton } from '../../shared/ui';
 import { cheshiDesktop as desktopApi } from '../../cheshiDesktop';
 import styles from './CodeGraphIndexPanel.module.css';
 
@@ -170,7 +170,7 @@ export function CodeGraphIndexPanel({ onInitialLoad, onStatusChange }: {
     <section className={styles.panel} aria-label="CodeGraph index status">
       <header className={styles.heading}>
         <span className={styles.headingLabel}>CODEGRAPH INDEX</span>
-        <NeumorphicButton
+        <TooltipButton
           raised
           className={`sidebar-heading-action ${styles.refreshButton}`}
           aria-label="Reindex CodeGraph"
@@ -179,7 +179,7 @@ export function CodeGraphIndexPanel({ onInitialLoad, onStatusChange }: {
           onClick={() => void reindex()}
         >
           <RefreshCw className={reindexing ? styles.spinning : undefined} aria-hidden="true" />
-        </NeumorphicButton>
+        </TooltipButton>
       </header>
       <div className={styles.rows} aria-busy={busy}>
         <div className={styles.row}>

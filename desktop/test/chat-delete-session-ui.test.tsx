@@ -39,7 +39,7 @@ test('deletion restriction disables only the delete action and exposes its reaso
     responseThreadIds={['thread']} newChatDisabled={false} selectionDisabled={false}
     onOpen={() => {}} onNew={() => {}} onDelete={() => {}} deleteReason={() => 'Stop the active response first.'} />);
   expect(html).toMatch(/<button[^>]*aria-label="Delete chat: A long conversation"[^>]*disabled=""/);
-  expect(html).toContain('title="Stop the active response first."');
+  expect(html).toContain('aria-description="Stop the active response first."');
   expect(html).toContain('aria-current="page"');
 });
 
@@ -49,7 +49,7 @@ test('delete confirmation names the irreversible child deletion and preserves er
   expect(html).toContain('child agent conversations');
   expect(html).toContain('This cannot be undone.');
   expect(html).toContain('role="alert">Codex refused deletion.');
-  expect(html).toContain('title="A long conversation"');
+  expect(html).toContain('aria-description="A long conversation"');
   expect(html).toContain('autofocus=""');
   expect(html).not.toContain('aria-label="Deleting chat…"');
 });

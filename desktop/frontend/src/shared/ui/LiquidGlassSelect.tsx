@@ -1,3 +1,4 @@
+import { TooltipTarget } from './TooltipTarget';
 import { Check, ChevronDown } from 'lucide-react';
 import {
   useEffect,
@@ -200,24 +201,24 @@ export function LiquidGlassSelect<Value extends string>({
         {options.map((option) => {
           const selected = option.value === value;
           return (
-            <Option
-              {...(toolbarMenu ? { size: 'standard' as const } : {})}
-              className={toolbarMenu ? `${menuStyles.item} ${styles.toolbarOption}` : `liquid-glass-menu-item ${styles.option}`}
-              key={option.value}
-              type="button"
-              role="menuitemradio"
-              aria-checked={selected}
-              disabled={option.disabled}
-              title={option.description}
-              onClick={() => {
-                setOpen(false);
-                rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
-                onChange(option.value);
-              }}
-            >
-              <span>{option.label}</span>
-              {selected && <Check aria-hidden="true" />}
-            </Option>
+            <TooltipTarget key={option.value} content={option.description}>
+              <Option
+                {...(toolbarMenu ? { size: 'standard' as const } : {})}
+                className={toolbarMenu ? `${menuStyles.item} ${styles.toolbarOption}` : `liquid-glass-menu-item ${styles.option}`}
+                type="button"
+                role="menuitemradio"
+                aria-checked={selected}
+                disabled={option.disabled}
+                onClick={() => {
+                  setOpen(false);
+                  rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+                  onChange(option.value);
+                }}
+              >
+                <span>{option.label}</span>
+                {selected && <Check aria-hidden="true" />}
+              </Option>
+            </TooltipTarget>
           );
         })}
       </LiquidGlassPanel>
@@ -226,28 +227,29 @@ export function LiquidGlassSelect<Value extends string>({
 
   return (
     <div className={rootClassName} ref={rootRef}>
-      <Trigger
-        variant={triggerAppearance === 'standard' ? 'standard' : undefined}
-        raised={triggerAppearance !== 'flat'}
-        className={triggerAppearance === 'pill' ? undefined : triggerClassName}
-        data-appearance={triggerAppearance}
-        aria-busy={busy}
-        title={title ?? selectedOption?.description}
-        aria-label={ariaLabel}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={menuId}
-        disabled={disabled}
-        onClick={() => setOpen((currentOpen) => !currentOpen)}
-        onKeyDown={(event) => {
-          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-          event.preventDefault();
-          setOpen(true);
-        }}
-      >
-        <span>{selectedOption?.label ?? placeholder ?? value}</span>
-        {triggerAppearance !== 'pill' && <ChevronDown className={styles.chevron} aria-hidden="true" />}
-      </Trigger>
+      <TooltipTarget content={title ?? selectedOption?.description}>
+        <Trigger
+          variant={triggerAppearance === 'standard' ? 'standard' : undefined}
+          raised={triggerAppearance !== 'flat'}
+          className={triggerAppearance === 'pill' ? undefined : triggerClassName}
+          data-appearance={triggerAppearance}
+          aria-busy={busy}
+          aria-label={ariaLabel}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={menuId}
+          disabled={disabled}
+          onClick={() => setOpen((currentOpen) => !currentOpen)}
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+            event.preventDefault();
+            setOpen(true);
+          }}
+        >
+          <span>{selectedOption?.label ?? placeholder ?? value}</span>
+          {triggerAppearance !== 'pill' && <ChevronDown className={styles.chevron} aria-hidden="true" />}
+        </Trigger>
+      </TooltipTarget>
 
       {menu && createPortal(
         menuBlurSourceRef ? <RegionalBlur sourceRef={menuBlurSourceRef}>{menu}</RegionalBlur> : menu,

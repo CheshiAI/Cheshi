@@ -1,3 +1,4 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { Image as ImageIcon } from 'lucide-react';
 import { Children, useEffect, useState, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
@@ -51,10 +52,12 @@ function LocalFileAnchor({ href, children }: { href: string; children: ReactNode
     catch { setError('Could not open this file. It may have been moved or deleted.'); }
   };
   return <>
-    <a href={href} title={localFileLinkPath(href) ?? href} onClick={event => {
-      event.preventDefault();
-      void openFile();
-    }} onAuxClick={event => event.preventDefault()}>{children}</a>
+    <TooltipTarget content={localFileLinkPath(href) ?? href}>
+      <a href={href}  onClick={event => {
+        event.preventDefault();
+        void openFile();
+      }} onAuxClick={event => event.preventDefault()}>{children}</a>
+    </TooltipTarget>
     {error && <span role="alert"> {error}</span>}
   </>;
 }

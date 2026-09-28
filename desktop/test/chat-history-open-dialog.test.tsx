@@ -57,6 +57,8 @@ function harness() {
   };
   const jsx = (type: string, props: Record<string, unknown>): Element => ({ type, props });
   const modules: Record<string, unknown> = {
+    '../../shared/ui/TooltipButton': { TooltipButton: 'button' },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
     react: {
       useState(initial: unknown) {
         const index = hookIndex++;

@@ -1,3 +1,5 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { History, RotateCcw, RotateCw, X } from 'lucide-react';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 
@@ -73,19 +75,21 @@ export function LocalHistoryPage({
       onKeyDown={event => { if (event.key === 'Escape' && !restoring) { event.stopPropagation(); onClose(); } }}>
       <header className={styles.header}>
         <SidebarPanelTitle as="h2" title="LOCAL HISTORY" icon={<History aria-hidden="true" />} />
-        <span className={styles.path} title={path}>
-          <FileTypeIcon className={styles.fileIcon} name={fileName} path={path} />
-          <span className={styles.fileName}>{fileName}</span>
-        </span>
+        <TooltipTarget content={path}>
+          <span className={styles.path} >
+            <FileTypeIcon className={styles.fileIcon} name={fileName} path={path} />
+            <span className={styles.fileName}>{fileName}</span>
+          </span>
+        </TooltipTarget>
         <div className={styles.headerActions}>
-          <NeumorphicButton variant="ghost" size="icon" aria-label="Refresh local history" aria-busy={loading}
+          <TooltipButton variant="ghost" size="icon" aria-label="Refresh local history" aria-busy={loading}
             title="Refresh local history" disabled={loading || restoring} onClick={() => void model.refresh()}>
             <RotateCw aria-hidden="true" />
-          </NeumorphicButton>
-          <NeumorphicButton variant="ghost" size="icon" onClick={onClose} disabled={restoring}
+          </TooltipButton>
+          <TooltipButton variant="ghost" size="icon" onClick={onClose} disabled={restoring}
             aria-label="Close local history" title="Close local history">
             <X aria-hidden="true" />
-          </NeumorphicButton>
+          </TooltipButton>
         </div>
       </header>
       <div className={styles.layout}>
@@ -149,11 +153,11 @@ export function LocalHistoryPage({
         <footer className={styles.footer}>
           <p>Stored on this device · Up to {LOCAL_HISTORY_RETENTION_DAYS} days / {LOCAL_HISTORY_MAX_BYTES / 1024 / 1024}
             {' '}MiB per workspace. Git commits stay unchanged.</p>
-          <NeumorphicButton variant="standard" disabled={!canRestore} aria-busy={restoring}
+          <TooltipButton variant="standard" disabled={!canRestore} aria-busy={restoring}
             title={draftDirty ? 'Save your edits before restoring' : 'Restore this version and keep the current contents in history'}
             onClick={() => void restore()}>
             <RotateCcw aria-hidden="true" />{restoring ? 'Restoring…' : 'Restore this version'}
-          </NeumorphicButton>
+          </TooltipButton>
         </footer>
       </div>
     </LiquidGlassPanel>

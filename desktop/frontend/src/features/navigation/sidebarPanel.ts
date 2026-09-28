@@ -1,6 +1,12 @@
 import { cheshiDesktop } from '../../cheshiDesktop';
+import type { WorkspaceView } from './Sidebar';
 
 export type SidebarPanel = 'chats' | 'files' | 'memos';
+
+export function sidebarPanelForWorkspace(view: WorkspaceView, visiblePanes: readonly string[]): SidebarPanel | null {
+  if (visiblePanes.includes('editor')) return 'files';
+  return view === 'chat' && visiblePanes.includes('primary') ? 'chats' : null;
+}
 
 export function normalizeSidebarPanel(value: unknown): SidebarPanel {
   return value === 'chats' || value === 'memos' ? value : 'files';

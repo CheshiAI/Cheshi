@@ -30,7 +30,7 @@ test('shows session ids and elapsed time without group headings', () => {
   expect(renderSessions([])).not.toContain('<h2>');
   const html = renderSessions([0]);
   expect(html).not.toContain('<h2>');
-  expect(html).toContain('title="session-0">session-0</span>');
+  expect(html).toContain('aria-description="session-0">session-0</span>');
   expect(html).toContain('aria-label="Last updated ');
 });
 
@@ -45,7 +45,7 @@ test('hides only the search when there are no sessions, including while loading'
   for (const loading of [false, true]) {
     const html = renderSessions([], loading);
     expect(html).not.toContain('aria-label="Conversation search"');
-    expect(html).toContain('SESSIONS');
+    expect(html).toContain('SESSION');
     expect(html).toContain('aria-label="New chat"');
   }
   expect(renderSessions([0], true)).toContain('aria-label="Conversation search"');

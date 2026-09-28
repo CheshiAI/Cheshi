@@ -184,9 +184,9 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
             >
               <PanelRight aria-hidden="true" />
             </SidebarToggle>
-            {props.onCloseWorkspace && <NeumorphicButton raised size="icon"
+            {props.onCloseWorkspace && <TooltipButton raised size="icon"
               aria-label="Close Codex workspace" title="Close Codex workspace"
-              onClick={props.onCloseWorkspace}><X aria-hidden="true" /></NeumorphicButton>}
+              onClick={props.onCloseWorkspace}><X aria-hidden="true" /></TooltipButton>}
           </div>
         </>}
       />

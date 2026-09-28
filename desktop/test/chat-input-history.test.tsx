@@ -174,6 +174,8 @@ test('the panel exposes selectable questions, a close action and keyboard help',
   const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
   const component = load<typeof ChatInputHistoryPanel>('ChatInputHistoryPanel.tsx', 'ChatInputHistoryPanel', {
     'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react': { MessageSquareText: 'Message', X: 'X' },
+    '../../shared/ui/TooltipButton': { TooltipButton: 'Button' },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
     '../../shared/ui': { LiquidGlassPanel: 'Panel', NeumorphicButton: 'Button', SidebarPanelHeader: 'Header' },
     './ChatView.module.css': { default: {} }, './ChatInputHistory.module.css': { default: {} },
   });

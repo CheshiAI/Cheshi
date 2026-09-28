@@ -53,6 +53,8 @@ function harness(draft: TemporaryChatDraft | null = null, overrides: Partial<Tem
   };
   const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
   const modules: Record<string, unknown> = {
+    '../../shared/ui/TooltipButton': { TooltipButton: 'button' },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
     react: {
       useState(initial: unknown) {
         const index = cursor++;

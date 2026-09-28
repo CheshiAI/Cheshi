@@ -1,3 +1,5 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { MessageCircleDashed, MessageSquareText, Plus, Trash2 } from 'lucide-react';
 
@@ -34,11 +36,11 @@ const ChatSessionButton = memo(function ChatSessionButton({
     <NeumorphicButton variant="ghost" className={styles.session} aria-current={active ? 'page' : undefined}
       aria-label={title} type="button" aria-haspopup="dialog" onClick={() => onOpen(id)}>
       <span className={styles.sessionTitleRow}>
-        <span className={styles.sessionTitle} title={title}>{title}</span>
+        <TooltipTarget content={title}><span className={styles.sessionTitle}>{title}</span></TooltipTarget>
         {responding && <LoadingIndicator label="Active response" />}
       </span>
       <span className={styles.sessionMetadata}>
-        <span className={styles.sessionId} title={id}>{id}</span>
+        <TooltipTarget content={id}><span className={styles.sessionId}>{id}</span></TooltipTarget>
         <span className={styles.sessionTime}
           aria-label={elapsed === '—' ? 'Last updated time unavailable' : `Last updated ${elapsed} ago`}>{elapsed}</span>
       </span>
@@ -73,8 +75,8 @@ export function ChatSessionList({
 
   return (
     <section className={styles.root} aria-label="Chat history">
-      <SidebarPanelHeader title="SESSIONS" icon={<MessageSquareText aria-hidden="true" />} actions={<>
-        {onTemporaryChat && <NeumorphicButton
+      <SidebarPanelHeader title="SESSION" icon={<MessageSquareText aria-hidden="true" />} actions={<>
+        {onTemporaryChat && <TooltipButton
           size="icon"
           aria-label="Open temporary chat"
           title="Temporary chat · Not saved to chat history"
@@ -83,8 +85,8 @@ export function ChatSessionList({
           onClick={onTemporaryChat}
         >
           <MessageCircleDashed aria-hidden="true" />
-        </NeumorphicButton>}
-        <NeumorphicButton
+        </TooltipButton>}
+        <TooltipButton
           size="icon"
           aria-label="New chat"
           title="New chat"
@@ -92,7 +94,7 @@ export function ChatSessionList({
           onClick={onNew}
         >
           <Plus aria-hidden="true" />
-        </NeumorphicButton>
+        </TooltipButton>
       </>} />
 
       <div className={styles.body}>
@@ -118,13 +120,13 @@ export function ChatSessionList({
                   active={session.id === activeSessionId}
                   responding={session.status === 'active' || respondingSessions.has(session.id)}
                   onOpen={openSession} />
-                <NeumorphicButton variant="ghost" size="icon" className={styles.deleteButton}
+                <TooltipButton variant="ghost" size="icon" className={styles.deleteButton}
                   type="button" aria-label={`Delete chat: ${session.title}`} aria-haspopup="dialog"
                   title={reason ?? 'Delete chat'}
                   disabled={reason !== null}
                   onClick={() => onDelete(session.id)}>
                   <Trash2 size={11} strokeWidth={1.7} aria-hidden="true" />
-                </NeumorphicButton>
+                </TooltipButton>
               </div>
             );
           })}

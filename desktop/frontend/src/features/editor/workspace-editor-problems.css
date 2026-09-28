@@ -181,14 +181,14 @@
   flex: 0 0 108px;
 }
 
-.workspace-editor-language-server-select > button[data-appearance='flat'] {
+.workspace-editor-language-server-select button[data-appearance='flat'] {
   box-sizing: border-box;
   border: none;
   background: var(--control-surface);
   color: var(--text);
 }
 
-.workspace-editor-language-server-select > button[data-appearance='flat']:not(:disabled):is(:hover, :active, [aria-expanded='true']) {
+.workspace-editor-language-server-select button[data-appearance='flat']:not(:disabled):is(:hover, :active, [aria-expanded='true']) {
   background: var(--control-surface-interactive);
   color: var(--text);
 }

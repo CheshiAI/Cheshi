@@ -1,3 +1,5 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { ChevronRight, Link2, Square, X } from 'lucide-react';
 import { useState } from 'react';
 import { CHAT_RELAY_MAX_ROUNDS, type ChatRelayMode } from '../../../../shared/chat-relay';
@@ -160,10 +162,10 @@ export function ChatRelayButton({ workspace }: { workspace: ChatWorkspaceControl
   const disabled = !pane?.ready || workspace.relay.running || workspace.relay.pending;
   return (
     <>
-      <NeumorphicButton variant="ghost" size="icon" aria-label="Connect conversations" title={pane ? 'Connect conversations' : 'Send a message to create a thread before connecting'}
+      <TooltipButton variant="ghost" size="icon" aria-label="Connect conversations" title={pane ? 'Connect conversations' : 'Send a message to create a thread before connecting'}
         disabled={disabled} onClick={() => { workspace.relay.dismissError(); setSource(pane); }}>
         <Link2 aria-hidden="true" />
-      </NeumorphicButton>
+      </TooltipButton>
       {source && <ChatRelayDialog workspace={workspace} source={source} onClose={() => setSource(null)} />}
     </>
   );
@@ -193,11 +195,13 @@ export function ChatRelayStatus({ workspace }: { workspace: ChatWorkspaceControl
           <div className={styles.statusMetadata}>
             {state && <span className={styles.participants}>{relayModes.find((option) => option.value === state.mode)?.label}</span>}
             {state?.proposalVersion != null && <span className={styles.participants}>Proposal v{state.proposalVersion}</span>}
-            {state && <span className={styles.participantThreads} title={`A · ${state.sourceThreadId} ↔ B · ${state.targetThreadId}${state.moderatorThreadId ? ` → C · ${state.moderatorThreadId}` : ''}`}>
-              A · {state.sourceThreadId.slice(0, 8)}…{state.sourceThreadId.slice(-4)} ↔ B · {state.targetThreadId.slice(0, 8)}…{state.targetThreadId.slice(-4)}
-              {state.moderatorThreadId && <> → C · {state.moderatorThreadId.slice(0, 8)}…{state.moderatorThreadId.slice(-4)}</>}
-            </span>}
-            {(relay.error || state?.historyError || state?.message) && <span className={styles.statusMessage} title={relay.error ?? state?.historyError ?? state?.message ?? undefined}>{relay.error ?? state?.historyError ?? state?.message}</span>}
+            {state && <TooltipTarget content={`A · ${state.sourceThreadId} ↔ B · ${state.targetThreadId}${state.moderatorThreadId ? ` → C · ${state.moderatorThreadId}` : ''}`}>
+              <span className={styles.participantThreads} >
+                A · {state.sourceThreadId.slice(0, 8)}…{state.sourceThreadId.slice(-4)} ↔ B · {state.targetThreadId.slice(0, 8)}…{state.targetThreadId.slice(-4)}
+                {state.moderatorThreadId && <> → C · {state.moderatorThreadId.slice(0, 8)}…{state.moderatorThreadId.slice(-4)}</>}
+              </span>
+            </TooltipTarget>}
+            {(relay.error || state?.historyError || state?.message) && <TooltipTarget content={relay.error ?? state?.historyError ?? state?.message ?? undefined}><span className={styles.statusMessage}>{relay.error ?? state?.historyError ?? state?.message}</span></TooltipTarget>}
           </div>
         </div>
         {relay.running && showingLive ? (
@@ -205,8 +209,8 @@ export function ChatRelayStatus({ workspace }: { workspace: ChatWorkspaceControl
             <Square aria-hidden="true" />{relay.pending || state?.status === 'stopping' ? 'Stopping…' : 'Stop all'}
           </NeumorphicButton>
         ) : (
-          <NeumorphicButton variant="ghost" size="icon" aria-label="Dismiss conversation status" title="Dismiss conversation status"
-            onClick={() => { relay.dismissResult(); relay.dismissError(); }}><X size={11} strokeWidth={1.7} aria-hidden="true" /></NeumorphicButton>
+          <TooltipButton variant="ghost" size="icon" aria-label="Dismiss conversation status" title="Dismiss conversation status"
+            onClick={() => { relay.dismissResult(); relay.dismissError(); }}><X size={11} strokeWidth={1.7} aria-hidden="true" /></TooltipButton>
         )}
       </header>
       {relay.selectedResult && <div className={styles.savedObjective}>{relay.selectedResult.objective}</div>}

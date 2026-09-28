@@ -1,17 +1,10 @@
 import type { ComponentProps } from 'react';
 
 import { NeumorphicButton } from './NeumorphicButton';
-import { Tooltip } from './Tooltip';
+import { TooltipTarget } from './TooltipTarget';
 
-type TooltipButtonProps = Omit<ComponentProps<typeof NeumorphicButton>, 'title'> & { title: string };
+type TooltipButtonProps = Omit<ComponentProps<typeof NeumorphicButton>, 'title'> & { title?: string };
 
-export function TooltipButton({ title, onPointerEnter, onPointerLeave, onFocus, onBlur, ...props }: TooltipButtonProps) {
-  return <Tooltip<HTMLButtonElement> content={title}>
-    {trigger => <NeumorphicButton {...props} {...trigger}
-      onPointerEnter={event => { trigger.onPointerEnter?.(event); onPointerEnter?.(event); }}
-      onPointerLeave={event => { trigger.onPointerLeave?.(event); onPointerLeave?.(event); }}
-      onFocus={event => { trigger.onFocus?.(event); onFocus?.(event); }}
-      onBlur={event => { trigger.onBlur?.(event); onBlur?.(event); }}
-    />}
-  </Tooltip>;
+export function TooltipButton({ title, ...props }: TooltipButtonProps) {
+  return <TooltipTarget content={title}><NeumorphicButton {...props} /></TooltipTarget>;
 }

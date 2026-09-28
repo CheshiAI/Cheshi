@@ -1,3 +1,4 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { Bot, ChevronDown, MessageCircleDashed, Paperclip } from 'lucide-react';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
@@ -150,10 +151,10 @@ export function TemporaryChatPanel() {
               }} />
             <div className={composer.composerFooter}>
               <div className={composer.composerMeta}>
-                <NeumorphicButton variant="standard" size="icon" className={composer.attachmentButton} disabled={locked || state.picking}
+                <TooltipButton variant="standard" size="icon" className={composer.attachmentButton} disabled={locked || state.picking}
                   title="Attach files" aria-label="Attach files" onClick={() => void session.current?.selectAttachments()}>
                   {state.picking ? <LoadingIndicator label="Opening attachment picker" /> : <Paperclip aria-hidden="true" />}
-                </NeumorphicButton>
+                </TooltipButton>
               </div>
               <div className={composer.composerActions}>
                 <div className={composer.configurationTriggerAnchor} ref={configurationRef}>

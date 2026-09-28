@@ -1,7 +1,8 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { ArrowDown } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 
-import { LoadingState, NeumorphicButton } from '../../shared/ui';
+import { LoadingState } from '../../shared/ui';
 import { ChatTimelineHistory } from './ChatTimelineHistory';
 import { ChatErrorNotice } from './ChatErrorNotice';
 import { ChatWelcome } from './ChatWelcome';
@@ -76,7 +77,7 @@ export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, hist
 
       {showScrollToBottom && state.items.length > 0 && (
         <div className={styles.scrollToBottomControl}>
-          <NeumorphicButton
+          <TooltipButton
             variant="standard"
             size="icon"
             aria-label="Scroll to latest message"
@@ -84,7 +85,7 @@ export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, hist
             onClick={scrollToBottom}
           >
             <ArrowDown aria-hidden="true" />
-          </NeumorphicButton>
+          </TooltipButton>
         </div>
       )}
     </>

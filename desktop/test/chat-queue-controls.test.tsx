@@ -12,6 +12,8 @@ function harness() {
   const calls: string[] = [];
   const jsx = (type: unknown, props: Record<string, unknown>): Element => ({ type, props });
   const modules: Record<string, unknown> = {
+    '../../shared/ui/TooltipButton': { TooltipButton: 'button' },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
     react: { useState: () => [menuTarget, (value: unknown) => { menuTarget = value; }],
       useEffect: (effect: () => void) => effect(),
       useCallback: (callback: unknown) => callback, useRef: () => ({ current: null }) },
@@ -123,7 +125,7 @@ test('turning visibility off retains messages and automatic sending while making
   app.click('대기열');
   expect(app.button('대기열').props['aria-expanded']).toBe(false);
   expect(app.render()[0]!.props).toMatchObject({ id: 'queue-panel', 'data-open': 'false', 'aria-hidden': true, inert: true });
-  expect(app.render().some(element => element.props.title === '다음 요청')).toBe(true);
+  expect(app.render().some(element => element.props.content === '다음 요청')).toBe(true);
   expect(app.controller.messageQueue.entries).toHaveLength(1);
   expect(app.controller.messageQueue.paused).toBe(false);
   expect(app.calls).toEqual([]);

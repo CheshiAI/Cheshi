@@ -1,3 +1,5 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import {
   ArrowRight,
   Check,
@@ -87,7 +89,7 @@ export function WorkspaceEditorAssistPanel({
       <header className="workspace-editor-assist-header">
         <AssistIcon state={state} />
         <strong>{assistTitle(state)}</strong>
-        <NeumorphicButton
+        <TooltipButton
           variant="ghost"
           size="icon"
           aria-label="Close editor assistant"
@@ -95,7 +97,7 @@ export function WorkspaceEditorAssistPanel({
           onClick={onClose}
         >
           <X aria-hidden="true" />
-        </NeumorphicButton>
+        </TooltipButton>
       </header>
 
       {state.kind === 'references' && (
@@ -165,19 +167,20 @@ export function WorkspaceEditorAssistPanel({
               <li className="workspace-editor-assist-empty" role="alert">{state.error}</li>
             ) : state.actions.length > 0 ? state.actions.map((action, index) => (
               <li key={`${action.title}:${index}`}>
-                <button
-                  disabled={Boolean(action.disabledReason) || !action.edit}
-                  title={action.disabledReason ?? action.kind ?? action.title}
-                  type="button"
-                  onClick={() => onChooseAction(action)}
-                >
-                  <Lightbulb aria-hidden="true" />
-                  <span>
-                    <strong>{action.title}</strong>
-                    <small>{action.disabledReason ?? action.kind ?? 'code action'}</small>
-                  </span>
-                  {action.preferred && <em>Preferred</em>}
-                </button>
+                <TooltipTarget content={action.disabledReason ?? action.kind ?? action.title}>
+                  <button
+                    disabled={Boolean(action.disabledReason) || !action.edit}
+                    type="button"
+                    onClick={() => onChooseAction(action)}
+                  >
+                    <Lightbulb aria-hidden="true" />
+                    <span>
+                      <strong>{action.title}</strong>
+                      <small>{action.disabledReason ?? action.kind ?? 'code action'}</small>
+                    </span>
+                    {action.preferred && <em>Preferred</em>}
+                  </button>
+                </TooltipTarget>
               </li>
             )) : (
               <li className="workspace-editor-assist-empty">No code actions are available here.</li>

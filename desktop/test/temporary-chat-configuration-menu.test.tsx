@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { isValidElement, type ComponentProps, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { TooltipButton } from '../frontend/src/shared/ui/TooltipButton';
 import { NeumorphicButton } from '../frontend/src/shared/ui/NeumorphicButton';
 import { TemporaryChatConfigurationMenuContent, temporaryConfigurationPosition } from '../frontend/src/features/chat/TemporaryChatConfigurationMenu';
 
@@ -21,7 +22,7 @@ function props(overrides: Partial<Props> = {}): Props {
 function buttons(node: ReactNode): ComponentProps<'button'>[] {
   if (Array.isArray(node)) return node.flatMap(buttons);
   if (!isValidElement<{ children?: ReactNode }>(node)) return [];
-  return [...(node.type === 'button' || node.type === NeumorphicButton ? [node.props as ComponentProps<'button'>] : []), ...buttons(node.props.children)];
+  return [...(node.type === 'button' || node.type === NeumorphicButton || node.type === TooltipButton ? [node.props as ComponentProps<'button'>] : []), ...buttons(node.props.children)];
 }
 
 test('temporary menu routes model and reasoning selections using their original values', () => {

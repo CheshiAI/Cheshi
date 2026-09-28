@@ -131,14 +131,17 @@ function toolbarController(calls: string[]): Controller {
 }
 
 test('file toolbar retains direct search and problems while grouping file operations and showing save only for changes', async () => {
-  await withDOM(async ({ render, click }) => {
+  await withDOM(async ({ window, render, click }) => {
     const calls: string[] = [];
     const controller = toolbarController(calls);
     const show = () => render(<WorkspaceEditorFileToolbar controller={controller} onOpenLocalHistory={path => calls.push(path)} />);
     await show();
     expect([...document.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toEqual(['Find and replace', 'Open problems panel', 'File actions']);
-    expect(document.querySelector('strong')?.title).toContain('revision-123');
+    expect(document.querySelector('strong')?.hasAttribute('title')).toBe(false);
     expect(document.body.textContent).not.toContain('revision-123');
+    await act(async () => { document.querySelector('strong')!.dispatchEvent(new window.PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }) as unknown as Event); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1050)); });
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain('revision-123');
     await click('Find and replace');
     await click('Open problems panel');
     expect(calls).toEqual(['search', 'true']);

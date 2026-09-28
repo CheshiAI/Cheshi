@@ -81,13 +81,13 @@ test('active sessions and live responses retain their indicator without a decora
     const children = sessionListElements(row(responding, 'two').props.children);
     expect(children.some(child => child.props['aria-label'] === 'Active response')).toBe(true);
     expect(children.some(child => child.type === 'MessageSquareText')).toBe(false);
-    expect(children.some(child => child.props.title === 'two' && child.props.children === 'two')).toBe(true);
+    expect(children.some(child => child.props.content === 'two')).toBe(true);
     expect(row(responding, 'one')).toBe(row(idle, 'one'));
 
     const completed = harness.render(initial);
     const restored = sessionListElements(row(completed, 'two').props.children);
     expect(restored.some(child => child.type === 'loading-indicator' || child.type === 'MessageSquareText')).toBe(false);
-    expect(restored.some(child => child.props.title === 'two' && child.props.children === 'two')).toBe(true);
+    expect(restored.some(child => child.props.content === 'two')).toBe(true);
     expect(harness.rowRenders).toBe(4);
   }
 });

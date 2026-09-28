@@ -1,3 +1,4 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { FileCode2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -158,7 +159,7 @@ function FileRow({ change, onClick, selected = false }: { change: ChatFileChange
       <NeumorphicSurface as="span" raised className={styles.changeKind} data-kind={change.kind} aria-hidden="true">
         {change.kind === 'add' ? 'A' : change.kind === 'delete' ? 'D' : 'M'}
       </NeumorphicSurface>
-      <span className={styles.path} title={path}>{path}</span>
+      <TooltipTarget content={path}><span className={styles.path}>{path}</span></TooltipTarget>
       <ChangeStats additions={metrics.additions} deletions={metrics.deletions} />
     </button>
   );

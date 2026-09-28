@@ -1,3 +1,4 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { GitFork, History, MessageSquareText } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { LoadingState, Modal, NeumorphicButton } from '../../shared/ui';
@@ -45,17 +46,19 @@ export function ChatHistoryOpenDialog({ workspace, sessionId, sessionTitle, pane
     <Modal className={styles.historyDialog} title="OPEN CONVERSATION" headerVariant="section" titleIcon={<MessageSquareText aria-hidden="true" />}
       closeButtonVariant="ghost" closeDisabled={busy} restoreFocus={() => !completed.current} onClose={close}>
       <form className={styles.form} onSubmit={(event) => { event.preventDefault(); void open(); }}>
-        <p className={styles.sessionTitle} title={sessionTitle}>{sessionTitle}</p>
+        <TooltipTarget content={sessionTitle}><p className={styles.sessionTitle}>{sessionTitle}</p></TooltipTarget>
         <fieldset className={styles.options} disabled={busy}>
           <legend>How would you like to continue?</legend>
           <label className={styles.option} data-selected={mode === 'resume' ? 'true' : undefined}>
             <input autoFocus type="radio" name="chat-history-mode" value="resume" checked={mode === 'resume'} onChange={() => setMode('resume')} />
             <History aria-hidden="true" /><span><strong>Resume</strong><small>Continue the existing conversation.</small></span>
           </label>
-          <label className={styles.option} data-selected={mode === 'fork' ? 'true' : undefined} title={forkReason ?? undefined}>
-            <input type="radio" name="chat-history-mode" value="fork" checked={mode === 'fork'} disabled={forkReason !== null} onChange={() => setMode('fork')} />
-            <GitFork aria-hidden="true" /><span><strong>Fork</strong><small>{forkReason ?? 'Copy this conversation and continue independently in the current pane.'}</small></span>
-          </label>
+          <TooltipTarget content={forkReason ?? undefined}>
+            <label className={styles.option} data-selected={mode === 'fork' ? 'true' : undefined} >
+              <input type="radio" name="chat-history-mode" value="fork" checked={mode === 'fork'} disabled={forkReason !== null} onChange={() => setMode('fork')} />
+              <GitFork aria-hidden="true" /><span><strong>Fork</strong><small>{forkReason ?? 'Copy this conversation and continue independently in the current pane.'}</small></span>
+            </label>
+          </TooltipTarget>
         </fieldset>
         {(workspace.error || error) && <p role="alert">{workspace.error || error}</p>}
         {busy && <LoadingState type={mode === 'fork' ? 'processing' : 'preparing'}

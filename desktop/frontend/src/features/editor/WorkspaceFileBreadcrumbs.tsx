@@ -1,3 +1,4 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { ChevronRight } from 'lucide-react';
 
 import { LiquidGlassPanel } from '../../shared/ui';
@@ -15,21 +16,22 @@ export function WorkspaceFileBreadcrumbs({ filePath }: WorkspaceFileBreadcrumbsP
     : filePath;
 
   return (
-    <LiquidGlassPanel
-      className={styles.bar}
-      role="navigation"
-      aria-label="Current file path"
-      tabIndex={0}
-      title={fullPath}
-    >
-      <ol className={styles.list}>
-        {segments.map((segment, index) => (
-          <li key={index} aria-current={index === segments.length - 1 ? 'location' : undefined}>
-            {index > 0 && <ChevronRight aria-hidden="true" />}
-            <span>{segment}</span>
-          </li>
-        ))}
-      </ol>
-    </LiquidGlassPanel>
+    <TooltipTarget content={fullPath}>
+      <LiquidGlassPanel
+        className={styles.bar}
+        role="navigation"
+        aria-label="Current file path"
+        tabIndex={0}
+      >
+        <ol className={styles.list}>
+          {segments.map((segment, index) => (
+            <li key={index} aria-current={index === segments.length - 1 ? 'location' : undefined}>
+              {index > 0 && <ChevronRight aria-hidden="true" />}
+              <span>{segment}</span>
+            </li>
+          ))}
+        </ol>
+      </LiquidGlassPanel>
+    </TooltipTarget>
   );
 }

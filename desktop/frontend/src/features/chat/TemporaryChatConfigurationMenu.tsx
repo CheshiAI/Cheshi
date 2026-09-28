@@ -1,3 +1,4 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { Check, ChevronRight } from 'lucide-react';
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
@@ -101,7 +102,7 @@ export function TemporaryChatConfigurationMenuContent({
       <div className={menuStyles.configurationOptions} role="listbox" aria-label={view === 'models' ? 'Model' : 'Reasoning effort'}>
         {options.map(option => {
           const selected = option.value === (view === 'models' ? model : effort);
-          return <NeumorphicButton variant="ghost" type="button" role="option" key={option.value} aria-selected={selected}
+          return <TooltipButton variant="ghost" type="button" role="option" key={option.value} aria-selected={selected}
             className={menuStyles.configurationOption} title={option.description} disabled={disabled}
             onClick={() => {
               if (view === 'models') onModelChange(option.value);
@@ -110,7 +111,7 @@ export function TemporaryChatConfigurationMenuContent({
             }}>
             <span className={menuStyles.configurationOptionCopy}><strong>{option.label}</strong><span>{option.description}</span></span>
             {selected && <Check aria-hidden="true" />}
-          </NeumorphicButton>;
+          </TooltipButton>;
         })}
       </div>
     </LiquidGlassPanel></div>}

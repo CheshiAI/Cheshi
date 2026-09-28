@@ -1,3 +1,4 @@
+import { TooltipButton } from './TooltipButton';
 import { X } from 'lucide-react';
 import type { ButtonHTMLAttributes, ComponentProps } from 'react';
 
@@ -13,9 +14,9 @@ export function SearchClearButton({ className, variant, ...props }: SearchClearB
   const buttonClassName = className ? `${styles.button} ${className}` : styles.button;
 
   return (
-    <NeumorphicButton {...props} variant={variant} size={variant ? 'icon' : undefined}
+    <TooltipButton {...props} variant={variant} size={variant ? 'icon' : undefined}
       raised={!variant} title={props.title ?? (variant ? props['aria-label'] : undefined)} className={buttonClassName} type="button">
       <X aria-hidden="true" />
-    </NeumorphicButton>
+    </TooltipButton>
   );
 }

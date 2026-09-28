@@ -1,6 +1,8 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { RefreshCw } from 'lucide-react';
 import type { RefObject } from 'react';
-import { LiquidGlassSelect, NeumorphicButton } from '../../shared/ui';
+import { LiquidGlassSelect } from '../../shared/ui';
 import { useChatPermissions, type ChatPermissionController } from './useChatPermissions';
 import type { ChatPermissionMode } from './model';
 import styles from './ChatPermissionSelect.module.css';
@@ -28,9 +30,9 @@ export function ChatPermissionSelectView({ choices, selected, busy, disabled, er
           disabled: !mode.allowed, description: mode.description }))}
         onChange={onChange} />
       {error && <>
-        <span className={styles.error} role="alert" title={error}>{error}</span>
-        <NeumorphicButton variant="standard" size="icon" aria-label="Retry permission options" title="Retry permission options"
-          disabled={disabled || busy} onClick={onRetry}><RefreshCw aria-hidden="true" /></NeumorphicButton>
+        <TooltipTarget content={error}><span className={styles.error} role="alert">{error}</span></TooltipTarget>
+        <TooltipButton variant="standard" size="icon" aria-label="Retry permission options" title="Retry permission options"
+          disabled={disabled || busy} onClick={onRetry}><RefreshCw aria-hidden="true" /></TooltipButton>
       </>}
     </div>
   );

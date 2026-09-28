@@ -65,7 +65,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.footer > button[data-size='standard'] {
+.footer button[data-size='standard'] {
   white-space: nowrap;
 }
 .path {

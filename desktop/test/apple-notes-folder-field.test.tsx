@@ -65,7 +65,7 @@ test.each([true, false])('folder dropdown in a modal handles selection and unava
       expect(changes).toEqual([]);
       return;
     }
-    trigger.focus();
+    await act(async () => { trigger.focus(); });
     await key('ArrowDown');
     await flushFrames();
     const menu = document.querySelector('[role="menu"]')!;
@@ -77,7 +77,7 @@ test.each([true, false])('folder dropdown in a modal handles selection and unava
     await act(async () => { (document.activeElement as HTMLButtonElement).click(); });
     expect(changes).toEqual(['work']);
     expect(trigger.textContent).toBe('Work / Projects / Notes');
-    expect(trigger.title).toBe('Work / Projects / Notes');
+    expect(trigger.getAttribute('aria-description')).toBe('Work / Projects / Notes');
     expect(document.activeElement).toBe(trigger);
     await act(async () => { trigger.click(); });
     await flushFrames();

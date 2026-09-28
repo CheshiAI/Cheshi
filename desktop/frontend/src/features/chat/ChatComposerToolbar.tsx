@@ -1,5 +1,7 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { Bot, ChevronDown, Paperclip, Sparkles, X, Zap } from 'lucide-react';
-import { LoadingIndicator, NeumorphicButton } from '../../shared/ui';
+import { LoadingIndicator } from '../../shared/ui';
 import { ChatPermissionSelect } from './ChatPermissionSelect';
 import { ChatSubmitButton } from './ChatSubmitButton';
 import { formatReasoningEffort } from './chatViewModel';
@@ -35,7 +37,7 @@ export function ChatComposerToolbar({ controller, chatController }: {
   return (
     <div className={styles.composerFooter} data-configuration-pending={chatController.configurationPending || undefined}>
       <div className={styles.composerMeta}>
-        <NeumorphicButton
+        <TooltipButton
           variant="standard"
           size="icon"
           aria-label="Attach files"
@@ -47,18 +49,20 @@ export function ChatComposerToolbar({ controller, chatController }: {
           {attachmentPickerOpen
             ? <LoadingIndicator label="Opening attachment picker" />
             : <Paperclip aria-hidden="true" />}
-        </NeumorphicButton>
+        </TooltipButton>
         <ChatPermissionSelect controller={chatController} disabled={configurationControlsDisabled}
           menuBlurSourceRef={controller.composerAreaRef}
           permissionPending={chatController.configurationPending} />
         {controller.attachmentTransfer.loading && <span role="status">Adding attachments…</span>}
         {attachmentError && (
-          <span className={styles.attachmentError} role="alert" title={attachmentError}>
-            {attachmentError}
-          </span>
+          <TooltipTarget content={attachmentError}>
+            <span className={styles.attachmentError} role="alert" >
+              {attachmentError}
+            </span>
+          </TooltipTarget>
         )}
         {selectedSkill && (
-          <NeumorphicButton variant="standard"
+          <TooltipButton variant="standard"
             aria-label={`Remove ${selectedSkill.displayName} skill`}
             className={styles.skillChip}
             title={selectedSkill.path}
@@ -68,12 +72,12 @@ export function ChatComposerToolbar({ controller, chatController }: {
             <Sparkles aria-hidden="true" />
             <span>{selectedSkill.displayName}</span>
             <X aria-hidden="true" />
-          </NeumorphicButton>
+          </TooltipButton>
         )}
       </div>
       <div className={styles.composerActions}>
         <div className={styles.configurationTriggerAnchor} ref={configurationTriggerRef}>
-          <NeumorphicButton
+          <TooltipButton
             active={configurationMenuOpen}
             variant="standard"
             aria-controls={configurationMenuOpen ? controller.configurationMenuId : undefined}
@@ -100,7 +104,7 @@ export function ChatComposerToolbar({ controller, chatController }: {
               {chatConfiguration ? formatReasoningEffort(chatConfiguration.reasoningEffort) : 'Default'}
             </span>
             <ChevronDown aria-hidden="true" className={styles.configurationChevron} />
-          </NeumorphicButton>
+          </TooltipButton>
         </div>
         <ChatSubmitButton
           streaming={streaming}

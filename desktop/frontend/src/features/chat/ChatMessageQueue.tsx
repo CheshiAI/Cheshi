@@ -1,3 +1,5 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { CornerDownRight, ListEnd, MessageCirclePlus, MoreHorizontal, Pause, Pencil, Play, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -48,10 +50,10 @@ function QueueMenu({ target, controller, onClose }: {
       <LiquidGlassPanel role="menu" aria-label={copy.more} className={styles.menu}
         onKeyDown={event => { focusAdjacentMenuItem(event); if (event.key === 'Tab') onClose(); }}>
         <div className={styles.menuTitle}>{copy.more}</div>
-        <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={disabled || !canEdit}
+        <TooltipButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={disabled || !canEdit}
           title={!canEdit ? copy.clearDraft : undefined} onClick={() => action(() => controller.editQueuedMessage(target.id))}>
           <Pencil aria-hidden="true" /><span>{copy.edit}</span>
-        </NeumorphicButton>
+        </TooltipButton>
         <NeumorphicButton variant="ghost" type="button" role="menuitem" className={styles.menuItem} disabled={disabled || !controller.canOpenTemporaryChat}
           onClick={() => action(() => controller.openQueuedTemporaryChat(target.id))}>
           <MessageCirclePlus aria-hidden="true" /><span>{copy.side}</span>
@@ -87,9 +89,9 @@ export function ChatMessageQueue({ controller, open, panelId }: {
       <LiquidGlassPanel as="section" aria-label={copy.queue} className={styles.queue} data-liquid-glass-backdrop="true">
         <div className={styles.status}>
           <span>{queue.paused ? copy.paused : copy.waiting}</span>
-          <NeumorphicButton variant="ghost" size="icon" disabled={controller.interactionsLocked} aria-pressed={!queue.paused}
+          <TooltipButton variant="ghost" size="icon" disabled={controller.interactionsLocked} aria-pressed={!queue.paused}
             title={queue.paused ? copy.enable : copy.disable} aria-label={queue.paused ? copy.enable : copy.disable}
-            onClick={queue.toggleCurrent}>{queue.paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}</NeumorphicButton>
+            onClick={queue.toggleCurrent}>{queue.paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}</TooltipButton>
         </div>
         <ol className={styles.entries}>
           {queue.entries.map((entry) => {
@@ -101,20 +103,20 @@ export function ChatMessageQueue({ controller, open, panelId }: {
                   <ListEnd />
                 </NeumorphicSurface>
                 <div className={styles.preview}>
-                  <span title={entry.input.draft}>{entry.input.draft}</span>
+                  <TooltipTarget content={entry.input.draft}><span>{entry.input.draft}</span></TooltipTarget>
                   {(entry.input.selectedSkill || entry.input.attachments.length > 0) && <small>
                     {[entry.input.selectedSkill ? `$${entry.input.selectedSkill.name}` : '', ...entry.input.attachments.map((item) => item.name)].filter(Boolean).join(' · ')}
                   </small>}
                 </div>
-                <NeumorphicButton variant="ghost" className={styles.steer} disabled={disabled || !controller.streaming || entry.status === 'unknown'}
+                <TooltipButton variant="ghost" className={styles.steer} disabled={disabled || !controller.streaming || entry.status === 'unknown'}
                   title={copy.steer} aria-label={copy.steer} onClick={() => { void queue.steer(entry.id); }}>
                   <CornerDownRight aria-hidden="true" /><span>{copy.steer}</span>
-                </NeumorphicButton>
-                <NeumorphicButton variant="ghost" size="icon" disabled={sending || controller.interactionsLocked}
-                  title={copy.remove} aria-label={copy.remove} onClick={() => queue.remove(entry.id)}><Trash2 aria-hidden="true" /></NeumorphicButton>
-                <NeumorphicButton variant="ghost" size="icon" disabled={sending || controller.interactionsLocked} aria-haspopup="menu"
+                </TooltipButton>
+                <TooltipButton variant="ghost" size="icon" disabled={sending || controller.interactionsLocked}
+                  title={copy.remove} aria-label={copy.remove} onClick={() => queue.remove(entry.id)}><Trash2 aria-hidden="true" /></TooltipButton>
+                <TooltipButton variant="ghost" size="icon" disabled={sending || controller.interactionsLocked} aria-haspopup="menu"
                   aria-expanded={visibleTarget?.id === entry.id} title={copy.more} aria-label={copy.more}
-                  onClick={(event) => setTarget({ id: entry.id, trigger: event.currentTarget })}><MoreHorizontal aria-hidden="true" /></NeumorphicButton>
+                  onClick={(event) => setTarget({ id: entry.id, trigger: event.currentTarget })}><MoreHorizontal aria-hidden="true" /></TooltipButton>
               </div>
               {sending && <span className={styles.notice} role="status">{entry.status === 'transferring' ? 'Opening temporary chat…' : copy.sending}</span>}
               {entry.error && <span className={styles.notice} role="status">{entry.status === 'unknown' ? copy.unknown : entry.error}</span>}
@@ -137,10 +139,10 @@ export function ChatQueueToggle({ controller, open, panelId, onToggle, leading }
   return <div className={styles.hint}>
     {leading}
     {controller.streaming && !controller.commandMenuOpen && <span>{copy.hint}</span>}
-    <NeumorphicButton className={styles.toggle} title={expanded ? copy.hide : copy.show}
+    <TooltipButton className={styles.toggle} title={expanded ? copy.hide : copy.show}
       aria-label={copy.queue} aria-pressed={expanded} aria-expanded={expanded} aria-controls={panelId}
       disabled={!available} onClick={onToggle}>
       <ListEnd aria-hidden="true" /><span>{copy.queue}</span><span className={styles.switchTrack} aria-hidden="true" />
-    </NeumorphicButton>
+    </TooltipButton>
   </div>;
 }
