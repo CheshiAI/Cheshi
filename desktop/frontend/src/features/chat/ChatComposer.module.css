@@ -34,6 +34,10 @@
 
 .composerAnchor {
   composes: anchor from '../../shared/ui/PopupSurface.module.css';
+  --panel-backdrop-filter: none;
+  --popup-rear-background: transparent;
+  --popup-rear-backdrop-filter: blur(4px);
+  --popup-surface-background: transparent;
   --liquid-glass-radius: 16px;
   position: relative;
   z-index: 0;

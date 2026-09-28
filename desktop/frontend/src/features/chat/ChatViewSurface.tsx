@@ -1,4 +1,5 @@
 import { useLayoutEffect, type HTMLAttributes, type RefObject } from 'react';
+import { RegionalBlur } from '../../shared/ui';
 import styles from './ChatView.module.css';
 
 /** Keeps message and input edges aligned, including the native scrollbar gutter. */
@@ -14,5 +15,7 @@ export function ChatViewSurface({ rootRef, timelineRef, children, ...props }: HT
     observer.observe(timeline);
     return () => { observer.disconnect(); root.style.removeProperty('--chat-scrollbar-width'); };
   }, [rootRef, timelineRef]);
-  return <section {...props} ref={rootRef} className={styles.root}>{children}</section>;
+  return <section {...props} ref={rootRef} className={styles.root}>
+    <RegionalBlur sourceRef={timelineRef}>{children}</RegionalBlur>
+  </section>;
 }
