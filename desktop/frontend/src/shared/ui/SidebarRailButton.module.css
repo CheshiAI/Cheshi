@@ -12,13 +12,14 @@
   left: 0;
   z-index: 1;
   display: flex;
+  box-sizing: border-box;
   width: 42px;
   min-width: 42px;
   height: 42px;
   align-items: center;
   justify-content: flex-start;
   gap: 0;
-  overflow: visible;
+  overflow: hidden;
   border: 0;
   border-radius: 8px;
   background: var(--control-surface-ghost);
@@ -26,15 +27,14 @@
   cursor: pointer;
   padding: 0;
   white-space: nowrap;
-  transition: background-color .16s ease, color .16s ease;
+  transition: width var(--motion-panel-duration) ease, background-color .16s ease, color .16s ease;
 }
 
 .button[data-active='true'] { background: var(--control-surface); }
 
 .button:not(:disabled):is(:hover, :active, :focus-visible) {
   z-index: 2;
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
+  width: calc(42px + var(--rail-label-width, 0px));
   background: var(--control-surface-interactive);
   color: var(--text);
 }
@@ -63,32 +63,18 @@
 .icon svg { stroke-width: 1.65; }
 
 .label {
-  position: absolute;
-  top: 0;
-  left: 100%;
   display: flex;
   width: max-content;
   height: 100%;
+  flex: 0 0 auto;
   align-items: center;
-  border-radius: 0 8px 8px 0;
-  background: var(--control-surface-interactive);
-  visibility: hidden;
-  pointer-events: none;
-  opacity: 0;
   color: var(--text);
   font-size: 11px;
   font-weight: 400;
   line-height: 15px;
   padding-right: 13px;
-  transition: opacity var(--motion-panel-duration) ease;
-}
-
-.button:not(:disabled):is(:hover, :active, :focus-visible) .label {
-  visibility: visible;
-  pointer-events: auto;
-  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .button, .label { transition: none; }
+  .button { transition: none; }
 }
