@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { LiquidGlassPanel } from './LiquidGlassPanel';
 import { NeumorphicButton } from './NeumorphicButton';
+import { RegionalBlur } from './RegionalBlur';
 import { beginSplitPreview } from './splitPreviewState';
 import styles from './SplitPreview.module.css';
 
@@ -14,7 +15,7 @@ export interface SplitPreviewChoice {
   disabledReason?: string;
 }
 
-export function SplitPreview({ target, direction, title, choices, onChoose, onClose, onCommitted, minimumTargetWidth = 560 }: {
+export function SplitPreview({ target, direction, title, choices, onChoose, onClose, onCommitted, minimumTargetWidth = 560, backdrop = 'native' }: {
   target: HTMLElement;
   direction: SplitPreviewDirection;
   title: string;
@@ -23,7 +24,10 @@ export function SplitPreview({ target, direction, title, choices, onChoose, onCl
   onClose(): void;
   onCommitted?(): void;
   minimumTargetWidth?: number;
+  backdrop?: 'native' | 'regional';
 }) {
+  // The target shrinks; sample the unscaled scene behind the destination instead.
+  const blurSourceRef = useMemo(() => ({ current: target.closest<HTMLElement>('.app-shell') ?? target }), [target]);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const busyRef = useRef(false);
   const completed = useRef(false);
@@ -83,8 +87,8 @@ export function SplitPreview({ target, direction, title, choices, onChoose, onCl
     }
   };
 
-  return createPortal(<dialog ref={dialogRef} className={styles.dialog} aria-label={title}
-    data-direction={direction} aria-busy={busy}
+  const preview = createPortal(<dialog ref={dialogRef} className={styles.dialog} aria-label={title}
+    data-direction={direction} data-backdrop={backdrop} aria-busy={busy}
     onCancel={event => { event.preventDefault(); if (!busyRef.current) onClose(); }}>
     <div className={styles.existing} aria-hidden="true"><span>Current layout</span></div>
     <div className={styles.destinationAnchor}>
@@ -107,4 +111,5 @@ export function SplitPreview({ target, direction, title, choices, onChoose, onCl
       </LiquidGlassPanel>
     </div>
   </dialog>, target.ownerDocument.body);
+  return backdrop === 'regional' ? <RegionalBlur sourceRef={blurSourceRef}>{preview}</RegionalBlur> : preview;
 }

@@ -20,7 +20,7 @@ function QuestionAnswerField({ question, value, selected, onChange }: {
     {question.isSecret ? <NeumorphicTextField variant="standard" aria-label={label} ref={inputRef} type="password" value={value}
       autoComplete="off" required={!selected} placeholder={label}
       onChange={event => onChange(question.id, event.target.value)} trailingAction={trailingAction} />
-      : <NeumorphicTextField aria-label={label} className={styles.answerInput} ref={textareaRef} multiline rows={1} value={value}
+      : <NeumorphicTextField variant="standard" aria-label={label} className={styles.answerInput} ref={textareaRef} multiline rows={1} value={value}
         autoComplete="off" required={!selected} placeholder={label}
         onChange={event => onChange(question.id, event.target.value)} trailingAction={trailingAction} />}
   </div>;

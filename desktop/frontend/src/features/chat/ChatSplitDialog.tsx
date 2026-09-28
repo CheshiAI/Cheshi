@@ -18,7 +18,7 @@ export function ChatSplitDialog({ workspace, paneId, sourceThreadId, target, onC
     : chatForkUnavailableReason(source, locked);
   const unavailable = workspace.splitPending || !workspace.paneIds.includes(paneId) || workspace.paneIds.length >= CHAT_PANE_LIMIT;
   return <SplitPreview target={target} direction="right" minimumTargetWidth={CHAT_PANE_MIN_WIDTH}
-    title="Split chat right" onClose={onClose}
+    title="Split chat right" onClose={onClose} backdrop="regional"
     onCommitted={() => requestAnimationFrame(() => {
       target.closest('main')?.querySelector<HTMLElement>('[data-chat-pane][data-active="true"]')?.focus({ preventScroll: true });
     })}

@@ -19,7 +19,8 @@ const { useSplitPreviewActive } = await import('../frontend/src/shared/ui/splitP
 
 async function withDOM(run: (h: { window: Window; render(node: ReactNode): Promise<void>; click(label: string): Promise<void> }) => Promise<void>) {
   const window = new Window();
-  const globals = { Node: window.Node, requestAnimationFrame: window.requestAnimationFrame.bind(window),
+  const globals = { Node: window.Node, HTMLElement: window.HTMLElement, MutationObserver: window.MutationObserver,
+    getComputedStyle: window.getComputedStyle.bind(window), requestAnimationFrame: window.requestAnimationFrame.bind(window),
     cancelAnimationFrame: window.cancelAnimationFrame.bind(window), window, document: window.document, navigator: window.navigator, IS_REACT_ACT_ENVIRONMENT: true,
     ResizeObserver: class { observe() {} disconnect() {} unobserve() {} } };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -72,6 +73,8 @@ test.each(['right', 'down'] as const)('pane %s preview cancels without opening o
     await click(`Split area ${direction}`);
     expect(opened).toEqual([]);
     expect(document.querySelector('dialog[open]')).not.toBeNull();
+    expect(document.querySelector('dialog')?.getAttribute('data-backdrop')).toBe('regional');
+    expect(document.querySelector('dialog [data-liquid-glass-backdrop]')?.getAttribute('data-regional-blur-surface')).toBe('true');
     expect(editorHost.parentElement?.parentElement?.getAttribute('style')).toBe(initialStyle);
     await act(async () => document.querySelector('dialog')!.dispatchEvent(new window.Event('cancel', { cancelable: true }) as unknown as Event));
     expect(document.querySelector('dialog')).toBeNull();
@@ -281,6 +284,63 @@ test('chat split chooser preserves the new-session and fork operations and block
     await click('New session');
     await click('Fork current conversation');
     expect(calls).toHaveLength(4);
+  });
+});
+
+test.each(['chat', 'right', 'down'] as const)('%s split blurs only the destination footprint and restores the scene on cancel', async mode => {
+  const { ChatSplitDialog } = await import('../frontend/src/features/chat/ChatSplitDialog');
+  await withDOM(async ({ render, click, window }) => {
+    const scene = document.createElement('div'), target = document.createElement('section');
+    scene.className = 'app-shell';
+    scene.style.filter = 'brightness(1)';
+    scene.append(target);
+    document.body.append(scene);
+    Object.defineProperties(scene, { offsetWidth: { value: 1200 }, offsetHeight: { value: 800 } });
+    const draft = document.createElement('textarea');
+    draft.value = 'Preserve my draft';
+    target.append(draft);
+    const workspace = {
+      splitPending: false, paneIds: ['chat'], relay: { running: false, state: null }, controllers: {},
+      async splitPane() { return true; },
+    };
+    function Preview() {
+      const [open, setOpen] = useState(true);
+      if (!open) return null;
+      if (mode !== 'chat') return <SplitPreview target={target} direction={mode} title="Split" backdrop="regional"
+        choices={[{ id: 'editor', label: 'Editor', icon: null }]} onChoose={() => true} onClose={() => setOpen(false)} />;
+      return <ChatSplitDialog
+        workspace={workspace as unknown as import('../frontend/src/features/chat/useChatWorkspace').ChatWorkspaceController}
+        paneId="chat" sourceThreadId={null} target={target} onClose={() => setOpen(false)} />;
+    }
+    await render(<Preview />);
+    const panel = document.querySelector<HTMLElement>('dialog [data-liquid-glass-backdrop]')!;
+    expect(scene.contains(panel)).toBe(false);
+    expect(panel.getAttribute('data-regional-blur-surface')).toBe('true');
+    const bounds = mode === 'down'
+      ? { x: 40, y: 420, width: 1120, height: 340, top: 420, left: 40, right: 1160, bottom: 760, toJSON() { return {}; } }
+      : { x: 620, y: 40, width: 540, height: 720, top: 40, left: 620, right: 1160, bottom: 760, toJSON() { return {}; } };
+    panel.getBoundingClientRect = () => bounds;
+    panel.getClientRects = () => ({ 0: bounds, length: 1, item: () => bounds, [Symbol.iterator]: () => [bounds][Symbol.iterator]() });
+    panel.style.cssText = 'display:flex;visibility:visible;opacity:1;border-radius:16px';
+    await act(async () => {
+      window.dispatchEvent(new window.Event('resize'));
+      await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()));
+    });
+    expect(scene.style.filter).toContain('url(');
+    expect(target.style.filter).toBe('');
+    expect(panel.style.filter).toBe('');
+    const filter = document.getElementById(scene.getAttribute('data-regional-blur-source')!)!;
+    const mask = decodeURIComponent(filter.querySelector('feImage')!.getAttribute('href')!.split(',').slice(1).join(','));
+    expect(mask.match(/<path /g)).toHaveLength(1);
+    expect(mask).toContain(mode === 'down' ? 'M56 420H1144' : 'M636 40H1144');
+    expect(filter.querySelector('feGaussianBlur')?.getAttribute('stdDeviation')).toBe('16');
+    await click('Cancel');
+    expect(document.querySelector('dialog')).toBeNull();
+    expect(scene.style.filter).toBe('brightness(1)');
+    expect(scene.hasAttribute('data-regional-blur-source')).toBe(false);
+    expect(target.className).toBe('');
+    expect(draft.isConnected).toBe(true);
+    expect(draft.value).toBe('Preserve my draft');
   });
 });
 

@@ -161,7 +161,6 @@
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  background: rgba(10, 12, 13, .22);
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 10px;
   isolation: isolate;

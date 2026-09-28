@@ -17,7 +17,7 @@
 .choiceText { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
 .choiceText strong { font-weight: 400; }
 .choiceText small { color: var(--sidebar-section-label-color); font-size: 9px; line-height: 1.5; }
-.answerInput { --field-font-size: 10px; --field-multiline-min-height: calc(var(--field-height) - 2px); --field-multiline-padding-block: 8px; --neumorphic-button-surface: var(--control-surface); --neumorphic-button-hover-background: var(--control-surface-interactive); }
+.answerInput { --field-radius: 999px; --field-multiline-min-height: var(--field-height); --field-multiline-padding-block: 8px; }
 .answerInput textarea { resize: vertical; }
 .fields { display: flex; flex-direction: column; gap: var(--space-default); max-height: min(320px, 40vh); overflow: auto; min-width: 0; }
 .question { display: flex; flex-direction: column; gap: var(--icon-default); border: 0; margin: 0; padding: 0; min-width: 0; }

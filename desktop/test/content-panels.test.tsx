@@ -8,6 +8,7 @@ import { CodePanel } from '../frontend/src/shared/ui/CodePanel';
 import { ContentCard } from '../frontend/src/shared/ui/ContentCard';
 import { ChatTimelineItem } from '../frontend/src/features/chat/ChatTimelineItem';
 import { CommandActivity } from '../frontend/src/features/chat/CommandActivity';
+import { ChatTimelineHistory } from '../frontend/src/features/chat/ChatTimelineHistory';
 import type { ChatActivityItem } from '../frontend/src/features/chat/model';
 
 async function withDom(run: (container: HTMLElement, root: ReturnType<typeof createRoot>) => Promise<void>) {
@@ -30,6 +31,33 @@ async function withDom(run: (container: HTMLElement, root: ReturnType<typeof cre
     }
   }
 }
+
+test('history action card loads previous rows without replacing retained messages and respects loading', async () => {
+  await withDom(async (container, root) => {
+    const items = Array.from({ length: 65 }, (_, index) => ({
+      id: `history-${index}`, kind: 'assistant' as const, text: `Message ${index}`, createdAt: 1,
+    }));
+    const timelineRef = { current: container };
+    const render = (loading: boolean) => <ChatTimelineHistory items={items} timelineRef={timelineRef}
+      loading={loading} streaming={false} completedTurns={new Map()} onReviewFileChanges={() => {}} />;
+    const trigger = () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Show earlier messages');
+    await act(async () => root.render(render(true)));
+    expect(trigger()?.disabled).toBe(true);
+    await act(async () => trigger()?.click());
+    expect(container.querySelectorAll('[data-chat-item-id]')).toHaveLength(30);
+    await act(async () => root.render(render(false)));
+    const retained = container.querySelector('[data-chat-item-id="history-35"]');
+    expect(trigger()?.type).toBe('button');
+    expect(trigger()?.closest('article')).not.toBeNull();
+    expect(trigger()?.closest('details')).toBeNull();
+    await act(async () => trigger()?.click());
+    expect(container.querySelectorAll('[data-chat-item-id]')).toHaveLength(60);
+    expect(container.querySelector('[data-chat-item-id="history-35"]')).toBe(retained);
+    await act(async () => trigger()?.click());
+    expect(container.querySelectorAll('[data-chat-item-id]')).toHaveLength(65);
+    expect(trigger()).toBeUndefined();
+  });
+});
 
 test.each([false, true])('code panels preserve copying and retry behavior (nested: %s)', async (nested) => {
   await withDom(async (container, root) => {

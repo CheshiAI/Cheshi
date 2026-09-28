@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { History } from 'lucide-react';
 import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
-import { NeumorphicButton } from '../../shared/ui';
+import { ContentCard } from '../../shared/ui';
 import { ChatTimelineItem } from './ChatTimelineItem';
 import { HistoryRecallTotals, recallTurnMetrics } from './HistoryRecallActivity';
 import { captureChatHistoryAnchor, previousChatHistoryStart } from './chatHistoryWindow';
@@ -108,9 +109,8 @@ export const ChatTimelineHistory = memo(function ChatTimelineHistory({
     />;
 
   return <>
-    {start > 0 && <NeumorphicButton size="standard" disabled={loading} onClick={revealEarlier}>
-      Show earlier messages
-    </NeumorphicButton>}
+    {start > 0 && <ContentCard className={styles.activity} title="Show earlier messages"
+      icon={<History aria-hidden="true" />} disabled={loading} onActivate={revealEarlier} />}
     {groupReasoningItems(visibleItems).map(group => group[0].kind === 'reasoning'
       ? <div key={group[0].id} className={styles.reasoningGroup} data-reasoning-group="true">{group.map(renderItem)}</div>
       : renderItem(group[0]))}

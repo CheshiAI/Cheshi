@@ -24,7 +24,13 @@
 }
 .dialog[open] { display: grid; gap: var(--space-default); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .dialog[data-direction='down'] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
-.dialog::backdrop { background: rgb(0 0 0 / .3); }
+.dialog::backdrop { background: var(--split-preview-backdrop, rgb(0 0 0 / .3)); }
+.dialog[data-backdrop='regional'] {
+  --popup-surface-background: rgba(41, 52, 61, 0.1);
+  --split-preview-backdrop: transparent;
+  --panel-backdrop-filter: none;
+  --popup-rear-backdrop-filter: none;
+}
 .existing { display: flex; align-items: flex-end; justify-content: center; min-height: 0; }
 .destinationAnchor {
   composes: anchor from './PopupSurface.module.css';

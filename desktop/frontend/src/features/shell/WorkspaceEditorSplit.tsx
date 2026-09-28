@@ -171,7 +171,7 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, termina
       {Object.entries(contents).map(([id, content]) => createPortal(
         <WorkspacePaneContext.Provider value={id as WorkspacePaneId}><WorkspacePaneVisibilityContext.Provider value={shownIds.includes(id)}>{content}</WorkspacePaneVisibilityContext.Provider></WorkspacePaneContext.Provider>, hosts[id as WorkspacePaneId], `workspace-${id}`))}
     </div>
-    {preview && <SplitPreview target={preview.target} direction={preview.direction}
+    {preview && <SplitPreview target={preview.target} direction={preview.direction} backdrop="regional"
       title={preview.direction === 'right' ? 'Split right' : 'Split down'} onClose={() => setPreview(null)} onCommitted={focusDestination}
       choices={[
         { id: 'editor', label: 'Editor', icon: <FileCode2 aria-hidden="true" /> },
