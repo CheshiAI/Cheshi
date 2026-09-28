@@ -95,6 +95,7 @@ Use this default background for all popups, including dropdown menus,
 autocomplete popups, Git line-change information cards, and tooltips.
 These rules describe the popup surface; item hover, selection, and pressed
 backgrounds follow their control-specific rules independently.
+Modal dialogs use the separate [shared modal](#shared-modal) rules below.
 
 ### Layered background
 
@@ -124,6 +125,56 @@ panel CSS through the foreground surface installed by
 Preserve its border-aligned `inset: -1px` layers and rear/foreground z-indexes
 of `-2`/`-1`, defined in
 [workspaceEditorTheme](frontend/src/features/editor/workspaceEditorTheme.ts).
+
+## Shared modal
+
+Use [Modal](frontend/src/shared/ui/Modal.tsx), exported from
+`frontend/src/shared/ui`, for application modal dialogs. Keep feature-specific
+content, actions, and sizing in the consumer. Reuse the common module instead of
+creating another dialog shell, dimming overlay, or blur implementation.
+
+### Background and blur
+
+- `Modal` renders a native `<dialog>` through a portal to `document.body`.
+  Its foreground is a transparent `LiquidGlassPanel`; retain the shared border
+  and rounded corners from [Modal styles](frontend/src/shared/ui/Modal.module.css).
+- [modalBlur](frontend/src/shared/ui/modalBlur.ts) manages the background sources
+  and modal stack. [modalBlurFilter](frontend/src/shared/ui/modalBlurFilter.ts)
+  applies an SVG blur of `4px` to the scene behind the active modal, then an
+  additional `4px` only within the modal's rounded footprint. The region mask
+  follows the modal and source dimensions.
+- The regional result replaces the corresponding scene pixels. Do not layer
+  another blurred copy over them: duplicate background composition previously
+  caused unwanted darkening in the transparent Electron window.
+- Keep modal content, text, and buttons sharp. Do not add `backdrop-filter`,
+  saturation filters, opaque fills, or `data-liquid-glass-backdrop="true"` to
+  the modal panel or its decorative rear layer. Do not apply the popup background
+  recipe above to modals.
+- Keep the separate native `::backdrop` dimming color at
+  `rgba(0, 0, 0, 0.16)`. Only the active modal owns this dimming layer; lower
+  modal backdrops are transparent. Let the shared controller handle nesting,
+  source restoration, and filter cleanup.
+
+### Content and controls
+
+- For new confirmation dialogs, explicitly pass `headerVariant="section"` and
+  `closeButtonVariant="ghost"`. This uses the shared section title and ghost
+  circle X button; the component's existing defaults do not imply a ghost button.
+- Use left-aligned body text and the shared description typography. In the
+  delete-chat confirmation, place the deletion description and
+  `This cannot be undone.` on separate lines; allow further wrapping in narrow
+  windows. Keep the action buttons right-aligned.
+- Follow [ChatDeleteSessionDialog](frontend/src/features/chat/ChatDeleteSessionDialog.tsx)
+  and [its styles](frontend/src/features/chat/ChatSplitDialog.module.css) for this
+  confirmation layout. Use the existing `--modal-width`, `--modal-header-height`,
+  `--modal-header-padding`, and `--modal-content-padding` properties for layout.
+- Preserve native modal focus containment, Escape/outside-click dismissal, and
+  focus restoration. Pass `closeDisabled` while dismissal is blocked, and keep
+  feature actions guarded during pending operations.
+- Validate shared modal changes with
+  [modal blur tests](test/modal-blur.test.tsx) and the affected dialog tests.
+  Follow the repository's authorization rules for rendered development-app review;
+  check foreground sharpness, background color, resizing, nesting, and restoration.
 
 ## Dropdown menu styles
 

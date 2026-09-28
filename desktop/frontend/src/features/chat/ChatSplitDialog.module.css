@@ -11,6 +11,7 @@
 .option small { overflow: hidden; color: inherit; font-size: 10px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
 .form p { margin: 0; line-height: 1.5; }
 .sessionTitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sessionDeletionForm > p { text-align: left; }
 .buttons { display: flex; justify-content: flex-end; gap: var(--icon-default); }
 .deletionActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-default); }
 .deletionProgress { margin-right: auto; justify-content: flex-start; }

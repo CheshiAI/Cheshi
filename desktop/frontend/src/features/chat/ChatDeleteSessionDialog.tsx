@@ -13,9 +13,9 @@ interface ChatDeleteSessionProps {
 }
 
 export function ChatDeleteSessionForm({ sessionTitle, reason, pending, error, onDelete, onClose }: ChatDeleteSessionProps) {
-  return <form className={styles.form} onSubmit={(event) => { event.preventDefault(); if (!pending && !reason) onDelete(); }}>
+  return <form className={`${styles.form} ${styles.sessionDeletionForm}`} onSubmit={(event) => { event.preventDefault(); if (!pending && !reason) onDelete(); }}>
     <p className={styles.sessionTitle} title={sessionTitle}>{sessionTitle}</p>
-    <p>This permanently deletes this conversation and its child agent conversations. This cannot be undone.</p>
+    <p>This permanently deletes this conversation and its child agent conversations.<br />This cannot be undone.</p>
     {(error || reason) && <p role="alert">{error || reason}</p>}
     <div className={styles.deletionActions}>
       {pending && <LoadingState type="processing" label="Deleting chat…" className={styles.deletionProgress} />}
@@ -56,7 +56,7 @@ export function ChatDeleteSessionDialog({ sessionTitle, reason, pending, error, 
       setSubmitting(false);
     }
   };
-  return <Modal title="DELETE CHAT" headerVariant="section" className={styles.recordDeletionDialog}
+  return <Modal title="DELETE CHAT" headerVariant="section" closeButtonVariant="ghost" className={styles.recordDeletionDialog}
     titleIcon={<Trash2 aria-hidden="true" />} closeDisabled={busy} onClose={close}>
     <ChatDeleteSessionForm sessionTitle={sessionTitle} reason={reason} pending={busy} error={error || failure}
       onDelete={() => { void remove(); }} onClose={close} />

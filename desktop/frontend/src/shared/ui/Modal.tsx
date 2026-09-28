@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { LiquidGlassPanel } from './LiquidGlassPanel';
 import { NeumorphicButton } from './NeumorphicButton';
 import { SidebarPanelTitle } from './SidebarPanelHeader';
+import { registerModalBlur } from './modalBlur';
 import styles from './Modal.module.css';
 
 interface ModalProps {
@@ -17,10 +18,12 @@ interface ModalProps {
   onClose: () => void;
   restoreFocus?: () => boolean;
   closeDisabled?: boolean;
+  closeButtonVariant?: 'standard' | 'ghost';
 }
 
-export function Modal({ title, titleIcon, headerVariant = 'default', leadingAction, className, children, onClose, restoreFocus, closeDisabled = false }: ModalProps) {
+export function Modal({ title, titleIcon, headerVariant = 'default', leadingAction, className, children, onClose, restoreFocus, closeDisabled = false, closeButtonVariant }: ModalProps) {
   const titleId = useId();
+  const closeVariant = closeButtonVariant ?? (headerVariant === 'section' ? 'standard' : undefined);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const pointerStartedOutside = useRef(false);
   const restoreFocusRef = useRef(restoreFocus);
@@ -31,7 +34,9 @@ export function Modal({ title, titleIcon, headerVariant = 'default', leadingActi
     if (!dialog) return;
     const previousFocus = document.activeElement;
     dialog.showModal();
+    const releaseBlur = registerModalBlur(dialog);
     return () => {
+      releaseBlur();
       dialog.close();
       if (restoreFocusRef.current?.() !== false && previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
     };
@@ -64,7 +69,7 @@ export function Modal({ title, titleIcon, headerVariant = 'default', leadingActi
       }}
     >
       <div className={styles.surface}>
-        <LiquidGlassPanel className={styles.panel} data-liquid-glass-backdrop="true">
+        <LiquidGlassPanel className={styles.panel}>
           <header className={styles.header}>
             <div className={styles.heading}>
               {leadingAction}
@@ -73,9 +78,9 @@ export function Modal({ title, titleIcon, headerVariant = 'default', leadingActi
                 : <h2 id={titleId} className={styles.title}>{titleIcon}{title}</h2>}
             </div>
             <NeumorphicButton
-              variant={headerVariant === 'section' ? 'standard' : undefined}
-              size={headerVariant === 'section' ? 'icon' : undefined}
-              raised={headerVariant === 'default'} className={headerVariant === 'default' ? 'theme-toggle' : undefined}
+              variant={closeVariant}
+              size={closeVariant ? 'icon' : undefined}
+              raised={!closeVariant} className={!closeVariant ? 'theme-toggle' : undefined}
               aria-label="Close dialog" title="Close dialog" disabled={closeDisabled} onClick={onClose}>
               <X size={11} strokeWidth={1.7} aria-hidden="true" />
             </NeumorphicButton>
