@@ -9,7 +9,7 @@
   display: grid;
   gap: 8px;
   color: var(--plugin-label-color);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   line-height: 15px;
 }
@@ -24,7 +24,7 @@
 .message,
 .error {
   margin: 0;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 17px;
   overflow-wrap: anywhere;
 }

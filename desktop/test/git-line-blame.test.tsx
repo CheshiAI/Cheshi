@@ -93,6 +93,7 @@ test('blame tooltip stays on screen, allows hovering its contents, and cleans up
     await tick(280);
     expect(card()?.getAttribute('style')).toContain('left: 192px');
     expect(card()?.getAttribute('style')).toContain('top: 382px');
+    expect(card()?.querySelector('[role="tooltip"]')?.getAttribute('data-regional-blur-surface')).toBe('true');
     anchor.dispatchEvent(new window.PointerEvent('pointerleave'));
     card()!.dispatchEvent(new window.PointerEvent('pointerenter'));
     await tick(150);

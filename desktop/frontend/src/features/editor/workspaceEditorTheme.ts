@@ -81,7 +81,7 @@ export const workspaceEditorTheme = EditorView.theme({
     display: 'none',
   },
   '.cm-tooltip': {
-    '--panel-backdrop-blur': '16px',
+    '--panel-backdrop-filter': 'none',
     '--scrollbar-size': 'var(--auto-hide-scrollbar-size)',
     scrollbarColor: 'auto',
     scrollbarWidth: 'auto',
@@ -96,9 +96,7 @@ export const workspaceEditorTheme = EditorView.theme({
     inset: '-1px',
     zIndex: '-2',
     borderRadius: 'inherit',
-    background: 'rgba(0, 0, 0, 0.01)',
-    backdropFilter: 'blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation))',
-    WebkitBackdropFilter: 'blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation))',
+    background: 'transparent',
     pointerEvents: 'none',
   },
   '.cm-tooltip > .workspace-editor-tooltip-surface': {
@@ -106,7 +104,7 @@ export const workspaceEditorTheme = EditorView.theme({
     inset: '-1px',
     zIndex: '-1',
     borderRadius: 'inherit',
-    background: 'rgba(0, 0, 0, 0.01)',
+    background: 'transparent',
     pointerEvents: 'none',
   },
   '.cm-tooltip.cm-tooltip-autocomplete': {

@@ -8,7 +8,7 @@
   flex: 1 1 auto;
   flex-direction: column;
   color: var(--text);
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .header {
@@ -190,7 +190,7 @@
 
 .panelTitle strong {
   overflow: hidden;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;

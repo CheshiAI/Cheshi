@@ -40,14 +40,14 @@
 
 .option strong {
   color: var(--plugin-label-color);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   line-height: 15px;
 }
 
 .option > span > span {
   color: var(--plugin-description-color);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 400;
   line-height: 17px;
 }

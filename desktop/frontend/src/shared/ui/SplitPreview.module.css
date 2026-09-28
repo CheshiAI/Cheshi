@@ -19,7 +19,7 @@
   border: 0;
   background: transparent;
   color: var(--text);
-  font: 12px var(--font-ui), sans-serif;
+  font: 10px var(--font-ui), sans-serif;
   -webkit-app-region: no-drag;
 }
 .dialog[open] { display: grid; gap: var(--space-default); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }

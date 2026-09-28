@@ -47,7 +47,7 @@
 .pullRequestBranchActions > strong {
   max-width: 100%;
   overflow: hidden;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   line-height: 15px;
   text-overflow: ellipsis;
@@ -87,7 +87,7 @@
 
 .unavailable span {
   max-width: 520px;
-  font-size: 11px;
+  font-size: 10px;
   text-align: center;
 }
 

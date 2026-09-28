@@ -3,7 +3,7 @@
   --modal-title-color: var(--active-text);
 }
 
-.content { display: flex; flex-direction: column; gap: var(--space-default); min-width: 0; font-size: 12px; }
+.content { display: flex; flex-direction: column; gap: var(--space-default); min-width: 0; font-size: 10px; }
 .content p { margin: 0; color: var(--sidebar-section-label-color); line-height: 1.5; }
 .content .error { color: var(--text); overflow-wrap: anywhere; }
 .folders {
@@ -39,6 +39,6 @@
 .folder > svg { width: var(--icon-size-default); height: var(--icon-size-default); stroke-width: 1.7; }
 .label { display: flex; flex-direction: column; min-width: 0; }
 .label strong, .label small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.label strong { font-size: 12px; font-weight: 600; line-height: 18px; }
+.label strong { font-size: 10px; font-weight: 600; line-height: 18px; }
 .label small { color: var(--sidebar-section-label-color); font-size: 10px; line-height: 15px; }
 .actions { display: flex; justify-content: flex-end; }

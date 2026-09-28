@@ -7,7 +7,7 @@
   background: var(--control-surface);
   color: var(--text);
   font-family: var(--font-ui), sans-serif;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 18px;
 }
 
@@ -34,7 +34,7 @@ summary.header:focus-visible, .headerButton:focus-visible { outline: 1px solid v
 .header .title {
   overflow: hidden;
   color: var(--sidebar-section-label-color);
-  font-size: var(--content-card-title-size, 11px);
+  font-size: var(--content-card-title-size, 10px);
   font-weight: var(--content-card-title-weight, 600);
   text-overflow: ellipsis;
   white-space: nowrap;

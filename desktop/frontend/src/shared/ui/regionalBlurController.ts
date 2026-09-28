@@ -33,7 +33,7 @@ function ancestors(element: HTMLElement) {
 
 function visibleSurface(element: HTMLElement): BlurSurface | null {
   if (!element.isConnected || !element.getClientRects().length || element.closest('[hidden], [inert]')) return null;
-  const style = getComputedStyle(element);
+  const style = element.ownerDocument.defaultView!.getComputedStyle(element);
   if (style.visibility !== 'visible' || style.display === 'none' || style.opacity === '0') return null;
   const r = element.getBoundingClientRect();
   return { x: r.x, y: r.y, width: r.width, height: r.height,
@@ -41,7 +41,7 @@ function visibleSurface(element: HTMLElement): BlurSurface | null {
 }
 
 /** One filtered source image replaces its covered pixels; it never paints a second backdrop. */
-export function createRegionalBlurController() {
+export function createRegionalBlurController({ preserveFilter = false } = {}) {
   const panels = new Set<HTMLElement>();
   const owner = {};
   let refresh: (() => void) | undefined;
@@ -63,7 +63,8 @@ export function createRegionalBlurController() {
     const previousFilter = source.style.getPropertyValue('filter');
     const previousPriority = source.style.getPropertyPriority('filter');
     const previousAttribute = source.getAttribute(SOURCE_ATTRIBUTE);
-    const appliedFilter = `url("#${filter.id}")`;
+    const inheritedFilter = preserveFilter ? window.getComputedStyle(source).filter : '';
+    const appliedFilter = `${inheritedFilter && inheritedFilter !== 'none' ? `${inheritedFilter} ` : ''}url("#${filter.id}")`;
     let disposed = false, frame: number | null = null, lastMask: string | null = null;
     let watched = new Set<HTMLElement>();
     const moving = new Map<EventTarget, Set<string>>();
@@ -107,8 +108,8 @@ export function createRegionalBlurController() {
         if (moving.size) schedule();
       });
     };
-    const resize = new ResizeObserver(schedule);
-    const mutation = new MutationObserver(schedule);
+    const resize = new window.ResizeObserver(schedule);
+    const mutation = new window.MutationObserver(schedule);
     const refreshTargets = () => {
       resize.disconnect(); mutation.disconnect(); watched = ancestors(source);
       resize.observe(source);
@@ -117,14 +118,14 @@ export function createRegionalBlurController() {
         for (const ancestor of ancestors(panel)) watched.add(ancestor);
       }
       for (const target of moving.keys()) {
-        if (!(target instanceof HTMLElement) || !target.isConnected || !watched.has(target)) moving.delete(target);
+        if (!(target instanceof window.HTMLElement) || !target.isConnected || !watched.has(target)) moving.delete(target);
       }
       // Observe only geometry/theme ancestors, not every streamed message or character.
       for (const element of watched) mutation.observe(element, { attributes: true });
       update();
     };
     const motion = (event: Event) => {
-      if (!(event.target instanceof HTMLElement) || !watched.has(event.target)) return;
+      if (!(event.target instanceof window.HTMLElement) || !watched.has(event.target)) return;
       const name = 'propertyName' in event ? String(event.propertyName) : 'animationName' in event ? String(event.animationName) : '';
       const starting = event.type === 'transitionrun' || event.type === 'animationstart';
       const names = moving.get(event.target) ?? new Set<string>();

@@ -89,7 +89,7 @@
 .diffLines {
   min-width: max-content;
   padding: 8px 0;
-  font: 11px/18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font: 10px/18px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .diffLineGroup {

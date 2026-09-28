@@ -1,4 +1,5 @@
 import type { GitLineBlame } from '../../../../shared/git-line-blame';
+import { registerTooltipBlur } from '../../shared/ui/tooltipBlur';
 import panelStyles from '../../shared/ui/LiquidGlassPanel.module.css';
 import { beginSplitPreview } from '../../shared/ui/splitPreviewState';
 import './git-line-blame-tooltip.css';
@@ -12,10 +13,13 @@ export function attachGitLineBlameTooltip(anchor: HTMLElement, blame: Extract<Gi
   const id = `git-line-blame-tooltip-${++nextTooltipId}`;
   let tooltip: HTMLDivElement | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let releaseBlur: (() => void) | undefined;
   let restoreNativeSurfaces: (() => void) | undefined;
 
   const close = () => {
     clearTimeout(timer);
+    releaseBlur?.();
+    releaseBlur = undefined;
     tooltip?.remove();
     tooltip = null;
     anchor.removeAttribute('aria-describedby');
@@ -40,6 +44,7 @@ export function attachGitLineBlameTooltip(anchor: HTMLElement, blame: Extract<Gi
     if (tooltip || !anchor.isConnected) return;
     tooltip = document.createElement('div');
     tooltip.className = 'git-line-blame-tooltip-anchor';
+    tooltip.dataset.tooltipBlurPortal = 'true';
     const panel = document.createElement('div');
     panel.className = `${panelStyles.panel} git-line-blame-tooltip`;
     panel.id = id;
@@ -83,6 +88,7 @@ export function attachGitLineBlameTooltip(anchor: HTMLElement, blame: Extract<Gi
       below + size.height <= window.innerHeight - gap ? below : bounds.top - size.height - gap,
       window.innerHeight - size.height - gap,
     ))}px`;
+    releaseBlur = registerTooltipBlur(panel);
     window.addEventListener('resize', close);
     window.addEventListener('blur', close);
     window.addEventListener('scroll', onScroll, true);

@@ -8,7 +8,7 @@
   min-width: 0;
   color: var(--text);
   background: var(--app-bg);
-  font: 12px/1.5 var(--font-ui), sans-serif;
+  font: 10px/1.5 var(--font-ui), sans-serif;
 }
 
 .titlebar {
@@ -63,13 +63,13 @@
 .project:focus-visible { outline: 1px solid var(--title); outline-offset: -1px; }
 .project:disabled { opacity: .5; cursor: not-allowed; }
 .projectCopy { display: flex; align-items: baseline; flex: 1; min-width: 0; gap: var(--space-default); }
-.projectCopy strong { max-width: 40%; flex: 0 1 auto; color: var(--title); font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.projectCopy > span { flex: 1; min-width: 0; color: var(--sub-text); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.projectCopy strong { max-width: 40%; flex: 0 1 auto; color: var(--title); font-size: 10px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.projectCopy > span { flex: 1; min-width: 0; color: var(--sub-text); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .projectCopy small { flex-shrink: 0; color: var(--sub-text); font-size: 10px; white-space: nowrap; }
 .empty { display: grid; justify-items: center; gap: var(--space-default); padding: 64px 24px; margin: 0; color: var(--sub-text); text-align: center; }
 .empty > svg { width: 32px; height: 32px; stroke-width: 1.25; }
 .empty h2 { margin: 0; color: var(--title); font-size: 16px; font-weight: 500; }
-.empty p { max-width: 340px; margin: 0; font-size: 12px; }
+.empty p { max-width: 340px; margin: 0; font-size: 10px; }
 .errorBox { padding-bottom: var(--space-default); }
 .errorBox p,
 .error { margin: 0 0 var(--space-default); color: var(--error, #e99b9b); overflow-wrap: anywhere; }

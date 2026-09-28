@@ -198,7 +198,7 @@
 
 .sectionHeading h2 {
   margin: 0;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 650;
   line-height: 18px;
 }
@@ -271,7 +271,7 @@
   height: 32px;
   flex-basis: 32px;
   border-radius: 10px;
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .pluginMark[data-has-logo='true'] {
@@ -318,7 +318,7 @@
 }
 
 .pluginCardTitle strong {
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 650;
   line-height: 16px;
 }
@@ -346,7 +346,7 @@
   display: block;
   align-self: start;
   color: var(--text);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 16px;
 }
 
@@ -445,7 +445,7 @@
 
 .emptyState strong {
   color: #cbd0d1;
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .emptyState span {
@@ -565,7 +565,7 @@
 .detailsDescription {
   margin: 0 0 var(--space-default);
   color: var(--text);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 17px;
 }
 
@@ -622,7 +622,7 @@
 }
 
 .capabilitySummary strong {
-  font-size: 12px;
+  font-size: 10px;
   line-height: 14px;
 }
 

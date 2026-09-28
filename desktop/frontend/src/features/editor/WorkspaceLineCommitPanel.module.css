@@ -39,4 +39,4 @@
   flex: 0 0 42px;
   background: var(--control-surface-interactive);
 }
-.diff > section > header strong { font-size: 11px; }
+.diff > section > header strong { font-size: 10px; }

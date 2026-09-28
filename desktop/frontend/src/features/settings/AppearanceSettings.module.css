@@ -6,7 +6,7 @@
   min-height: 32px;
   padding: 0 var(--space-default);
   border: none;
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .form .resetButton[data-size='standard']:not(:disabled):is(:hover, :active, [data-active='true']) {

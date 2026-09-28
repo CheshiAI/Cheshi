@@ -5,7 +5,7 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .heading, .actions, .toolbar, .monthHeader {
@@ -16,7 +16,7 @@
 
 .heading h1, .monthHeader h2, .agenda h2 {
   margin: 0;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
 }
 

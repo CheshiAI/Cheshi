@@ -9,14 +9,14 @@
   composes: neumorphic-surface-tokens from global;
   display: grid;
   font-family: var(--font-ui), sans-serif;
-  font-size: 12px;
+  font-size: 10px;
   line-height: 16px;
 }
 
 .form { gap: var(--space-default); padding: 8px; }
 .creationForm { display: grid; gap: var(--space-default); }
 .fields { display: grid; gap: var(--space-default); min-width: 0; padding: 0; margin: 0; border: 0; }
-.fields label { display: grid; gap: 8px; color: var(--text); font-size: 11px; font-weight: 600; line-height: 15px; }
+.fields label { display: grid; gap: 8px; color: var(--text); font-size: 10px; font-weight: 600; line-height: 15px; }
 .fieldLabel { color: var(--sidebar-section-label-color); }
 .fields:disabled { opacity: .55; }
 .sourceChoices { display: flex; flex-wrap: wrap; gap: var(--icon-default); }
@@ -31,7 +31,7 @@
 
 .fields legend,
 .worktrees h3,
-.sectionLabel { color: var(--sidebar-section-label-color); font-size: 11px; font-weight: 500; line-height: 15px; }
+.sectionLabel { color: var(--sidebar-section-label-color); font-size: 10px; font-weight: 500; line-height: 15px; }
 .fields legend,
 .worktrees h3 { margin: 0 0 var(--space-default); padding: 0; }
 
@@ -62,7 +62,7 @@
   white-space: nowrap;
 }
 
-.error { color: var(--error, #e99b9b); margin: 8px 0; font-size: 11px; line-height: 17px; overflow-wrap: anywhere; }
+.error { color: var(--error, #e99b9b); margin: 8px 0; font-size: 10px; line-height: 17px; overflow-wrap: anywhere; }
 .repository { justify-content: space-between; }
 .repository > div,
 .worktree > div { min-width: 0; flex: 1; }
@@ -71,7 +71,7 @@
 .worktree { min-height: 44px; padding: 8px 0; }
 .worktree + .worktree { border-top: 1px solid var(--divider); }
 .worktree > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex: 0 0 auto; stroke-width: 1.7; }
-.worktree strong { color: var(--text); font-size: 11px; font-weight: 500; }
+.worktree strong { color: var(--text); font-size: 10px; font-weight: 500; }
 .worktree .path { margin-top: 4px; }
 .badge { font-size: 10px; color: var(--sub-text); margin-left: 8px; }
 

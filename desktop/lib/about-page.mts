@@ -41,7 +41,7 @@ export function aboutPage(metadata: AboutMetadata): string {
     html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
     body {
       background: var(--app-bg); color: #dedede;
-      font: 12px -apple-system, BlinkMacSystemFont, sans-serif;
+      font: 10px -apple-system, BlinkMacSystemFont, sans-serif;
       -webkit-app-region: drag; user-select: none;
     }
     main { height: 100%; display: flex; flex-direction: column; align-items: center; padding: 48px 24px 24px; }

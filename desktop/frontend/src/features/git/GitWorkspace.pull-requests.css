@@ -59,7 +59,7 @@
   align-items: center;
   gap: var(--space-default);
   color: #fff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   line-height: 15px;
 }
@@ -404,7 +404,7 @@
 }
 
 .pullRequestActivityTitle strong {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -584,7 +584,7 @@
 
 .pullRequestComment p {
   margin: 0;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 17px;
   overflow-wrap: anywhere;
   padding: 12px;
@@ -747,7 +747,7 @@
 }
 
 .mergeConfirmation > strong {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
 }
 

@@ -30,7 +30,7 @@ export function startupPage(name: string, version: string): string {
     body {
       background: #101419;
       color: var(--text);
-      font: 12px -apple-system, BlinkMacSystemFont, sans-serif;
+      font: 10px -apple-system, BlinkMacSystemFont, sans-serif;
       user-select: none;
       -webkit-app-region: drag;
       isolation: isolate;

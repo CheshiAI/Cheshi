@@ -60,6 +60,7 @@ test('editor tooltips use independent body portals and clean up when dismissed o
       expect(tooltip.querySelectorAll(':scope > .workspace-editor-tooltip-surface')).toHaveLength(1);
       expect(tooltip.querySelector('.workspace-editor-tooltip-surface')?.getAttribute('aria-hidden')).toBe('true');
       expect(tooltip.querySelector('.cm-tooltip-arrow')).not.toBeNull();
+      expect(tooltip.querySelector('.workspace-editor-tooltip-surface')?.getAttribute('data-regional-blur-surface')).toBe('true');
     }
     expect(first.dom.querySelector('.cm-tooltip')).toBeNull();
     first.dispatch({ effects: compartment.reconfigure([]) });

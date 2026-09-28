@@ -18,7 +18,8 @@ async function withGraph(run: (h: {
   const window = new Window();
   const globals = { window, document: window.document, navigator: window.navigator, Node: window.Node,
     HTMLElement: window.HTMLElement, HTMLInputElement: window.HTMLInputElement,
-    Element: window.Element, IS_REACT_ACT_ENVIRONMENT: true,
+    Element: window.Element, MutationObserver: window.MutationObserver,
+    getComputedStyle: window.getComputedStyle.bind(window), IS_REACT_ACT_ENVIRONMENT: true,
     requestAnimationFrame: window.requestAnimationFrame.bind(window), cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
     ResizeObserver: class { observe() {} disconnect() {} unobserve() {} },
   };
@@ -222,4 +223,66 @@ test('zoom entry applies at the viewport center, clamps values and cancels inval
     await enter('75', null);
     expect(field.value).toBe('75%');
   }, { loaded: true });
+});
+
+
+test.each([false, true])('group menu uses workspace SVG blur and restores the source with loaded=%s', async loaded => {
+  await withGraph(async h => {
+    const workspace = document.querySelector<HTMLElement>('.codegraph-workspace')!;
+    workspace.style.filter = 'brightness(1)';
+    Object.defineProperties(workspace, {
+      offsetWidth: { configurable: true, value: 1200 },
+      offsetHeight: { configurable: true, value: 800 },
+    });
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    Object.defineProperties(h.window, {
+      requestAnimationFrame: { configurable: true, value: (callback: FrameRequestCallback) => {
+        frames.set(++nextFrame, callback); return nextFrame;
+      } },
+      cancelAnimationFrame: { configurable: true, value: (id: number) => { frames.delete(id); } },
+    });
+    const flush = async () => {
+      await act(async () => {
+        const pending = [...frames.values()]; frames.clear();
+        for (const callback of pending) callback(0);
+      });
+    };
+    const trigger = document.querySelector<HTMLButtonElement>('[aria-label="Group graph by"]')!;
+    const open = async () => {
+      await h.click('Group graph by');
+      const menu = document.querySelector<HTMLElement>('[role="menu"]')!;
+      menu.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:16px';
+      Object.defineProperties(menu, {
+        getBoundingClientRect: { configurable: true, value: () => new h.window.DOMRect(100, 100, 180, 160) },
+        getClientRects: { configurable: true, value: () => [new h.window.DOMRect(100, 100, 180, 160)] },
+      });
+      await act(async () => { h.window.dispatchEvent(new h.window.Event('resize')); });
+      await flush();
+      expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
+      expect(workspace.style.filter).toContain('url(');
+      expect(workspace.contains(menu)).toBe(false);
+      expect(menu.style.filter).toBe('');
+      const filter = document.getElementById(workspace.getAttribute('data-regional-blur-source')!)!;
+      expect(filter.querySelector('feGaussianBlur')?.getAttribute('stdDeviation')).toBe('16');
+      const mask = decodeURIComponent(filter.querySelector('feImage')!.getAttribute('href')!.split(',').slice(1).join(','));
+      expect(mask).toContain('M116 100');
+      expect(document.querySelector<HTMLElement>('.codegraph-stage')?.style.filter ?? '').toBe('');
+      return menu;
+    };
+    const menu = await open();
+    await h.click('Language');
+    expect(trigger.textContent).toBe('Language');
+    expect(workspace.style.filter).toBe('brightness(1)');
+    expect(menu.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(document.activeElement).toBe(trigger);
+    await open();
+    await act(async () => document.dispatchEvent(new h.window.KeyboardEvent('keydown', {
+      key: 'Escape', bubbles: true,
+    }) as unknown as Event));
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(workspace.style.filter).toBe('brightness(1)');
+    expect(workspace.hasAttribute('data-regional-blur-source')).toBe(false);
+    expect(document.activeElement).toBe(trigger);
+  }, { loaded });
 });

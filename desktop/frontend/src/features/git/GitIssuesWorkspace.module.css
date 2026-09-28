@@ -4,7 +4,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  font-size: 12px;
+  font-size: 10px;
 }
 .toolbar, .search, .detailHeader {
   display: flex;
@@ -68,7 +68,7 @@
 .row:focus-visible { outline: 1px solid var(--active-text); outline-offset: -1px; }
 .row > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; }
 .rowContent { display: flex; flex-direction: column; gap: var(--icon-default); min-width: 0; overflow-wrap: anywhere; }
-.rowContent > strong { font-size: 11px; }
+.rowContent > strong { font-size: 10px; }
 .meta { color: var(--sub-text); overflow-wrap: anywhere; }
 .issueMeta {
   display: flex;
@@ -91,8 +91,8 @@
 .detailHeader { justify-content: space-between; align-items: flex-start; }
 .detailHeader h2 { margin: 0; font-size: 14px; color: var(--active-text); overflow-wrap: anywhere; }
 .detailHeader button { flex-shrink: 0; }
-.detail h3 { font-size: 12px; margin: var(--space-default) 0; }
-.body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; line-height: 1.6; user-select: text; }
+.detail h3 { font-size: 10px; margin: var(--space-default) 0; }
+.body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; line-height: 1.6; user-select: text; }
 .comment { border-top: 1px solid var(--divider); padding-block: var(--space-default); }
 .comment .meta { margin-top: 0; }
 @media (max-width: 700px) {

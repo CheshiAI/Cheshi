@@ -75,7 +75,7 @@
   background: var(--app-bg);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: 10px;
   -webkit-app-region: no-drag;
 }
 
@@ -107,7 +107,7 @@
 
 .title {
   margin: 0;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
   line-height: 18px;
 }
@@ -115,7 +115,7 @@
 .description {
   margin-top: 4px;
   color: var(--sidebar-section-label-color);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 16px;
 }
 

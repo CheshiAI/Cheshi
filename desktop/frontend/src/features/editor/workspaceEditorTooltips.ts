@@ -1,5 +1,6 @@
 import { type Extension } from '@codemirror/state';
 import { tooltips, ViewPlugin } from '@codemirror/view';
+import { registerTooltipBlur } from '../../shared/ui/tooltipBlur';
 import panelStyles from '../../shared/ui/LiquidGlassPanel.module.css';
 import { beginSplitPreview } from '../../shared/ui/splitPreviewState';
 import { installAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
@@ -8,9 +9,11 @@ import { installAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 export function workspaceEditorTooltips(document: Document): Extension {
   const portal = document.createElement('div');
   portal.className = 'workspace-editor-tooltip-portal';
+  portal.dataset.tooltipBlurPortal = 'true';
   Object.assign(portal.style, { position: 'fixed', inset: '0', zIndex: '120', pointerEvents: 'none' });
 
   const surfaces = ViewPlugin.fromClass(class {
+    private readonly blurSurfaces = new Map<HTMLElement, () => void>();
     private readonly observer: MutationObserver;
     private restoreNativeSurfaces: (() => void) | undefined;
     private readonly cleanupScrollbars: () => void;
@@ -25,15 +28,18 @@ export function workspaceEditorTooltips(document: Document): Extension {
 
     private sync(): void {
       const tooltips = portal.querySelectorAll<HTMLElement>('.cm-tooltip');
+      for (const [panel, release] of this.blurSurfaces) {
+        if (!portal.contains(panel)) { release(); this.blurSurfaces.delete(panel); }
+      }
       for (const tooltip of tooltips) {
         if (tooltip.querySelector(':scope > .workspace-editor-tooltip-surface')) continue;
-        // A separate foreground panel leaves the outer tooltip free of backdrop filters.
-        // Its ::before and this panel can then sample the page as independent layers.
+        // Keep CodeMirror content outside the shared background-only SVG filter.
         const panel = document.createElement('div');
         panel.className = `${panelStyles.panel} workspace-editor-tooltip-surface`;
         panel.dataset.liquidGlassBackdrop = 'true';
         panel.setAttribute('aria-hidden', 'true');
         tooltip.append(panel);
+        this.blurSurfaces.set(panel, registerTooltipBlur(panel));
       }
       if (tooltips.length && !this.restoreNativeSurfaces) this.restoreNativeSurfaces = beginSplitPreview();
       if (!tooltips.length) {
@@ -45,6 +51,8 @@ export function workspaceEditorTooltips(document: Document): Extension {
     destroy(): void {
       this.observer.disconnect();
       this.cleanupScrollbars();
+      for (const release of this.blurSurfaces.values()) release();
+      this.blurSurfaces.clear();
       this.restoreNativeSurfaces?.();
       portal.remove();
     }

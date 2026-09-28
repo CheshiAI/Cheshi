@@ -67,6 +67,10 @@ async function withDOM(run: (h: {
     observe() { this.active = true; }
     disconnect() { this.active = false; }
   }
+  Object.defineProperties(window, {
+    ResizeObserver: { configurable: true, value: Observer },
+    MutationObserver: { configurable: true, value: Observer },
+  });
   const globals = { window, document: window.document, navigator: window.navigator, HTMLElement: window.HTMLElement, Node: window.Node,
     requestAnimationFrame: window.requestAnimationFrame.bind(window), cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
     ResizeObserver: Observer, MutationObserver: Observer, getComputedStyle: window.getComputedStyle.bind(window), IS_REACT_ACT_ENVIRONMENT: true };

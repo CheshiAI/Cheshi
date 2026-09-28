@@ -13,7 +13,7 @@
   );
   background-clip: padding-box;
   color: var(--neumorphic-input-color, inherit);
-  font-size: var(--neumorphic-input-font-size, 12px);
+  font-size: var(--neumorphic-input-font-size, 10px);
   font-weight: 400;
   line-height: 16px;
   padding: 0 10px;

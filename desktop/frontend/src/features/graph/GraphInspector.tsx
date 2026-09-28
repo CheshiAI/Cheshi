@@ -67,7 +67,7 @@ export function GraphInspector({ graph, openWorkspaceFile }: GraphInspectorProps
               <header className={styles.heading}>
                 <span>{item.label}</span>
                 <TooltipButton
-                  variant="standard"
+                  variant="ghost"
                   size="icon"
                   aria-label={`Close ${item.label} panel`}
                   title={`Close ${item.label} panel`}
@@ -89,7 +89,7 @@ export function GraphInspector({ graph, openWorkspaceFile }: GraphInspectorProps
             {(triggerProps) => (
               <NeumorphicButton
                 {...triggerProps}
-                variant="standard"
+                variant="ghost"
                 size="icon"
                 active={open && panel === key}
                 id={`${id}-${key}-button`}

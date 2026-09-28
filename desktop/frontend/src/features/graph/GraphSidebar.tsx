@@ -1,5 +1,5 @@
 import { ListChecks } from 'lucide-react';
-import { useRef, type SubmitEvent } from 'react';
+import { useCallback, useRef, type SubmitEvent } from 'react';
 
 import { LiquidGlassSelect, LoadingIndicator, NeumorphicCheckbox, NeumorphicTextField, SearchClearButton } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
@@ -39,6 +39,7 @@ export function GraphSearch({ graph }: { graph: GraphController }) {
             autoComplete="off"
             trailingAction={graph.query ? (
               <SearchClearButton
+                variant="ghost"
                 aria-label="Clear symbol search"
                 onClick={() => {
                   graph.setQuery('');
@@ -72,8 +73,13 @@ export function GraphSearch({ graph }: { graph: GraphController }) {
 }
 
 export function GraphSettings({ graph }: { graph: GraphController }) {
+  const menuBlurSourceRef = useRef<HTMLElement | null>(null);
+  const connectMenuBackdrop = useCallback((element: HTMLDivElement | null) => {
+    // Sample the unscaled workspace, including the graph and inspector borders.
+    menuBlurSourceRef.current = element?.closest<HTMLElement>('.codegraph-workspace') ?? null;
+  }, []);
   return (
-    <div className="codegraph-controls codegraph-settings" aria-label="Graph settings">
+    <div ref={connectMenuBackdrop} className="codegraph-controls codegraph-settings" aria-label="Graph settings">
       <section className="codegraph-control-section">
         <div className="codegraph-section-heading">
           <strong>Graph</strong>
@@ -82,6 +88,7 @@ export function GraphSettings({ graph }: { graph: GraphController }) {
           <span>Group by</span>
           <LiquidGlassSelect
             ariaLabel="Group graph by"
+            menuBlurSourceRef={menuBlurSourceRef}
             triggerAppearance="standard"
             menuAppearance="toolbar"
             menuPlacement="left"
@@ -92,7 +99,7 @@ export function GraphSettings({ graph }: { graph: GraphController }) {
           />
         </div>
         <label className="codegraph-range">
-          <span>Traversal depth <output>{graph.depth}</output></span>
+          <span>Traversal depth <output className={badgeStyles.badge}>{graph.depth}</output></span>
           <input
             value={graph.depth}
             onChange={(event) => graph.setDepth(Number(event.target.value))}
@@ -103,7 +110,7 @@ export function GraphSettings({ graph }: { graph: GraphController }) {
           />
         </label>
         <label className="codegraph-range">
-          <span>Node limit <output>{graph.limit}</output></span>
+          <span>Node limit <output className={badgeStyles.badge}>{graph.limit}</output></span>
           <input
             value={graph.limit}
             onChange={(event) => graph.setLimit(Number(event.target.value))}

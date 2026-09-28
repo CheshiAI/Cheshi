@@ -1,4 +1,4 @@
-.form { display: flex; flex-direction: column; gap: var(--space-default); font-size: 12px; }
+.form { display: flex; flex-direction: column; gap: var(--space-default); font-size: 10px; }
 .options { display: flex; flex-direction: column; gap: var(--icon-default); min-width: 0; margin: 0; padding: 0; border: 0; }
 .options legend { padding: 0; margin-bottom: var(--space-default); font-weight: 600; }
 .option { display: flex; align-items: center; gap: var(--icon-default); box-sizing: border-box; height: auto; min-height: var(--field-height); flex: 0 0 auto; padding: var(--space-8) var(--space-default); border: 1px solid var(--divider); border-radius: var(--button-radius); color: var(--text); font-size: 10px; font-weight: 400; line-height: 16px; cursor: pointer; }

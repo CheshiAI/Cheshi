@@ -32,8 +32,8 @@
   --dropdown-selection-bg: #29414A;
   --dropdown-selection-text: var(--active-text);
   --font-mono: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
-  --font-size-default: 12px;
-  --font-size-label: 11px;
+  --font-size-default: 10px;
+  --font-size-label: 10px;
   --font-size-section-title: 10px;
   --font-size-small: 10px;
   --font-size-caption: 9px;

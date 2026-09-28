@@ -1,8 +1,8 @@
-.workspace { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; font-size: 12px; }
+.workspace { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; font-size: 10px; }
 .header { flex-shrink: 0; }
 .heading, .actions { display: flex; align-items: center; }
 .heading { gap: var(--space-default); }
-.heading h1 { margin: 0; font-size: 12px; font-weight: 600; }
+.heading h1 { margin: 0; font-size: 10px; font-weight: 600; }
 .heading > svg, .mailbox > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; }
 .actions { gap: var(--icon-default); }
 .connect { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-default); padding: var(--space-default); text-align: center; }
@@ -12,7 +12,7 @@
 .mailboxes, .messages, .body { --liquid-glass-radius: 0; min-width: 0; min-height: 0; border-width: 0 1px 0 0; }
 .mailboxes { overflow: auto; padding: var(--space-default); }
 .mailboxes section + section { margin-top: var(--space-default); }
-.mailboxes h2, .listTitle { margin: 0 0 var(--space-default); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.mailboxes h2, .listTitle { margin: 0 0 var(--space-default); font-size: 10px; font-weight: 600; overflow-wrap: anywhere; }
 .mailbox { display: flex; width: 100%; align-items: center; gap: var(--icon-default); padding: 8px; border: 0; border-radius: var(--panel-radius); background: transparent; color: var(--text); text-align: left; font: inherit; }
 .mailbox > span:first-of-type { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .count { composes: neumorphic-surface-tokens from global; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; height: 14px; min-width: 18px; padding: 0 5px; border-radius: 10px; border: 1px solid var(--divider); background: var(--neumorphic-button-surface); color: #929b9e; font-size: 8px; font-weight: 400; font-style: normal; line-height: 12px; font-variant-numeric: tabular-nums; }
@@ -44,7 +44,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-default);
-  font-size: 12px;
+  font-size: 10px;
 }
 .form p { margin: 0; }
 .field { display: grid; gap: 8px; }

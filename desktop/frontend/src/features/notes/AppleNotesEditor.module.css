@@ -8,7 +8,7 @@
 .toolbar { display: flex; flex-wrap: wrap; gap: var(--icon-default); padding: var(--icon-default) var(--space-default); border-bottom: 1px solid var(--divider); }
 .scroll { flex: 1; min-height: 0; overflow: auto; }
 .page { max-width: 800px; margin: 0 auto; padding: 32px clamp(16px, 4vw, 64px); }
-.body { outline: none; min-height: 240px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
+.body { outline: none; min-height: 240px; font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
 .body p { margin: 0; }
 .body h1, .body h2, .body h3 { margin: 0; line-height: 1.4; }
 .body h1 { font-size: 24px; }
@@ -27,7 +27,7 @@
 .loading p { margin: 0; }
 .notice { border-bottom: 1px solid var(--divider); }
 .notice p { margin: 0 0 var(--icon-default); }
-.notice[data-read-only='true'] { box-sizing: border-box; height: 42px; flex: 0 0 42px; display: flex; align-items: center; padding: 0 var(--space-default); font-size: 11px; color: var(--sidebar-section-label-color); }
+.notice[data-read-only='true'] { box-sizing: border-box; height: 42px; flex: 0 0 42px; display: flex; align-items: center; padding: 0 var(--space-default); font-size: 10px; color: var(--sidebar-section-label-color); }
 .notice[data-read-only='true'] p { margin: 0; }
 .page > pre, .latest { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.8; }
 .latest { max-height: 300px; overflow: auto; }

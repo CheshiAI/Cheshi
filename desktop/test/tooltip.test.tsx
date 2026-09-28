@@ -59,6 +59,7 @@ test.each(['button', 'svg'] as const)('shared tooltip supports %s anchors, delay
     await act(async () => { advance(1); });
     const tooltip = document.querySelector('[role="tooltip"]')!;
     expect(tooltip.textContent).toBe(content);
+    expect(tooltip.getAttribute('data-regional-blur-surface')).toBe('true');
     expect(tooltip.namespaceURI).toBe('http://www.w3.org/1999/xhtml');
     expect(container.contains(tooltip)).toBe(false);
     expect(anchor.getAttribute('aria-describedby')).toBe(tooltip.id);
