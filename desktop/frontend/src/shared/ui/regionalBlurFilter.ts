@@ -12,7 +12,7 @@ export function createRegionalBlurFilter(defs: SVGDefsElement) {
     primitiveUnits: 'userSpaceOnUse', x: '0', y: '0', 'color-interpolation-filters': 'sRGB' });
   const mask = node('feImage', { x: '0', y: '0', result: 'region' });
   filter.append(
-    node('feGaussianBlur', { in: 'SourceGraphic', stdDeviation: '16', result: 'blurred' }),
+    node('feGaussianBlur', { in: 'SourceGraphic', stdDeviation: '16', edgeMode: 'duplicate', result: 'blurred' }),
     mask,
     node('feComposite', { in: 'SourceGraphic', in2: 'region', operator: 'out', result: 'sharp' }),
     node('feComposite', { in: 'blurred', in2: 'region', operator: 'in', result: 'soft' }),
