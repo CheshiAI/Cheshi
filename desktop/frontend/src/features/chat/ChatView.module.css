@@ -196,7 +196,7 @@
   position: absolute;
   z-index: 3;
   bottom: calc(var(--composer-overlay-height) + 20px - var(--composer-overlay-top-padding));
-  left: calc((100% - var(--chat-scrollbar-width, 0px)) / 2);
+  left: calc(min(100%, var(--chat-viewport-width, 100%)) / 2);
   transform: translateX(-50%);
 }
 
