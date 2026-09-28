@@ -1,35 +1,40 @@
-import { ArrowLeft, PanelRight, RefreshCw, Search } from 'lucide-react';
+import { PanelRight, RefreshCw, Search, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import type { ChatHistorySearchHit, ChatHistorySearchResponse } from '../../../../shared/chat-history-search';
 import { errorMessage } from '../../shared/errorMessage';
 import { SidebarToggle, LoadingState, NeumorphicButton, TieredHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import styles from './ChatHistorySearch.module.css';
 
 const kindLabels = { user: 'You', assistant: 'Assistant', activity: 'Tool activity', plan: 'Plan' };
 const fileLabels = { mentioned: 'Mentioned', changed: 'Changed', read: 'Read' };
 const FILE_PREVIEW_LIMIT = 5;
 
-export function ChatHistorySearchResults({ result, disabled, onOpen }: {
+export function ChatHistorySearchResults({ query, result, disabled, onOpen }: {
+  query: string;
   result: ChatHistorySearchResponse;
   disabled: boolean;
   onOpen: (hit: ChatHistorySearchHit) => void;
 }) {
   const partial = result.unavailableSessions.length > 0;
+  const hasMatches = result.hits.length > 0;
 
-  return <section className={styles.results} aria-label="Chat search results">
-    <p className={styles.status} role="status">
-      {result.hits.length} of {result.total} matches · {result.indexedSessions} conversations searched
-    </p>
+  return <section className={styles.results} data-has-matches={hasMatches} aria-label="Chat search results">
+    {hasMatches && <TieredHeader className={styles.header} primary={<div className={styles.resultsSummary}>
+      <h2 className={styles.query} title={`Results for ${query.trim()}`}>Results for <span className={styles.queryText}>{query.trim()}</span></h2>
+      <p className={styles.status} role="status">
+        {result.hits.length} of {result.total} matches · {result.indexedSessions} conversations searched
+      </p>
+    </div>} />}
     {partial && <p className={styles.notice} role="status">
       {result.unavailableSessions.length} conversations could not be searched. Refresh to retry.
     </p>}
-    {result.hits.length === 0 && <div className={styles.emptyState}>
-      <Search aria-hidden="true" />
-      <h2>{partial ? 'No matches in the available conversations.' : 'No matching messages or file references.'}</h2>
+    {!hasMatches && <div className={styles.emptyState} role="status">
+      <h2>{partial ? `${query.trim()} No matches in the available conversations.` : `No results for “${query.trim()}”`}</h2>
       <p>Try another word, filename, or file path.</p>
     </div>}
-    {result.hits.length > 0 && <ul className={styles.resultList}>
+    {hasMatches && <ul className={styles.resultList}>
       {result.hits.map((hit) => <li key={JSON.stringify([hit.threadId, hit.turnId, hit.itemId])}>
         <button type="button" className={styles.hit} disabled={disabled}
           onClick={() => onOpen(hit)} aria-label={`Open original message: ${hit.title}`}>
@@ -99,15 +104,15 @@ export function ChatHistorySearchPage({ query, result, loading, error, selection
 
   return <main className={styles.page} aria-label="Conversation search page">
     <TieredHeader className={styles.header} style={draggableWindowRegionStyle} primary={<>
-      <div className={styles.title}><Search aria-hidden="true" /><h1>Search</h1></div>
+      <SidebarPanelTitle as="h2" title="SEARCH" icon={<Search aria-hidden="true" />} />
       <div className={styles.headerActions} style={nonDraggableWindowRegionStyle}>
-        <NeumorphicButton raised size="icon" aria-label="Refresh chat search" title="Refresh conversation history"
+        <NeumorphicButton variant="ghost" size="icon" aria-label="Refresh chat search" title="Refresh conversation history"
           disabled={!query.trim() || opening || loading} onClick={onRefresh}>
           <RefreshCw aria-hidden="true" />
         </NeumorphicButton>
-        <NeumorphicButton raised size="icon" aria-label="Back to workspace" title="Back to workspace"
+        <NeumorphicButton variant="ghost" size="icon" aria-label="Close search" title="Close search"
           disabled={opening} onClick={() => { if (!pending.current) onClose(); }}>
-          <ArrowLeft aria-hidden="true" />
+          <X aria-hidden="true" />
         </NeumorphicButton>
         <SidebarToggle raised size="icon" aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
           aria-expanded={rightSidebarOpen} onClick={onToggleRightSidebar}>
@@ -115,17 +120,15 @@ export function ChatHistorySearchPage({ query, result, loading, error, selection
         </SidebarToggle>
       </div>
     </>} />
-    <div className={styles.content} aria-busy={loading || opening}>
-      {query.trim() && <p className={styles.query}>Results for <strong>{query.trim()}</strong></p>}
-      {loading && <LoadingState type="processing" label="Searching conversation history…" />}
+    <div className={styles.content} data-has-results={Boolean(result?.hits.length)} aria-busy={loading || opening}>
+      {loading && <LoadingState className={styles.searchLoading} type="processing" label="Searching conversation history…" />}
       {opening && <LoadingState type="preparing" label="Opening original message…" />}
       {(error || openError) && <p className={styles.notice} role="alert">{error || openError}</p>}
-      {!result && !loading && !error && <div className={`${styles.emptyState} ${styles.searchIntroduction}`}>
+      {!result && !loading && !error && <div className={styles.emptyState}>
         <h2>Search conversations</h2>
         <p>Find messages, tool activity, and file paths from this workspace.</p>
-        <p>Enter a search in the sidebar, then press Enter.</p>
       </div>}
-      {result && <ChatHistorySearchResults result={result} disabled={opening || selectionDisabled || loading}
+      {result && <ChatHistorySearchResults query={query} result={result} disabled={opening || selectionDisabled || loading}
         onOpen={(hit) => { void open(hit); }} />}
     </div>
   </main>;

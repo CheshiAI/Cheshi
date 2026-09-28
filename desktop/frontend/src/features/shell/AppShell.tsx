@@ -114,7 +114,7 @@ export function AppShell() {
   const [draftAttachments] = useState(createChatDraftAttachments);
   const attachmentDestination = useRef({ activeView, paneId: workspace.activePaneId });
   attachmentDestination.current = { activeView, paneId: workspace.activePaneId };
-  const historySearch = useChatHistorySearch(workspace.activePaneId);
+  const historySearch = useChatHistorySearch(workspace.activePaneId, workspace.paneIds);
   const updateResume = useAppUpdateResume({ activeView, rightSidebarOpen, setActiveView, setRightSidebarOpen, sidebarPanel, setSidebarPanel,
     blockedReason: temporaryChatOpen ? 'Close the temporary chat before updating.'
       : historyChoice || deleteChoice ? 'Close the conversation dialog before updating.' : null });
@@ -126,7 +126,7 @@ export function AppShell() {
     workspace.completeAccountSwitch(changed, preserveConversation);
     if (changed) {
       historyRequestId.current += 1;
-      historySearch.clear();
+      historySearch.reset();
       setSubmittedSearchQuery('');
       closeReview(); setHistoryChoice(null); setDeleteChoice(null); setHistoryTarget(null);
     }

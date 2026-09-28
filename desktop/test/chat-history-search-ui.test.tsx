@@ -6,7 +6,10 @@ import ts from 'typescript';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { isValidElement, type ComponentProps, type ReactElement, type ReactNode } from 'react';
 import * as jsxRuntime from 'react/jsx-runtime';
-import type { ChatHistorySearchHit, ChatHistorySearchResponse } from '../shared/chat-history-search';
+import { NeumorphicButton } from '../frontend/src/shared/ui/NeumorphicButton';
+import { SidebarPanelTitle } from '../frontend/src/shared/ui/SidebarPanelHeader';
+import { chatHistorySearchRequest, type ChatHistorySearchHit, type ChatHistorySearchResponse } from '../shared/chat-history-search';
+import { normalizeChatEvent } from '../frontend/src/features/chat/model';
 import type { CheshiDesktopApi } from '../frontend/src/cheshiDesktop';
 import type { useChatHistorySearch } from '../frontend/src/features/chat/useChatHistorySearch';
 import type { ChatHistorySearchBar } from '../frontend/src/features/chat/ChatHistorySearchBar';
@@ -81,6 +84,7 @@ function createHarness<Args extends unknown[], Result>(filename: string, exportN
   const modules: Record<string, unknown> = { ...dependencies, react };
   vm.runInNewContext(compiled.outputText, {
     exports, Error,
+    Date: class extends Date { static now() { return now; } },
     require(name: string) { assert.ok(Object.hasOwn(modules, name), `Unexpected dependency: ${name}`); return modules[name]; },
     window: { requestAnimationFrame(callback: () => void) { frames.set(++frameId, callback); return frameId; },
       cancelAnimationFrame(id: number) { frames.delete(id); },
@@ -105,13 +109,236 @@ function createHarness<Args extends unknown[], Result>(filename: string, exportN
 }
 
 function searchHarness(searchCodexChatHistory: CheshiDesktopApi['searchCodexChatHistory']) {
-  return createHarness<[string], ReturnType<typeof useChatHistorySearch>>('useChatHistorySearch.ts', 'useChatHistorySearch', {
-    '../../cheshiDesktop': { cheshiDesktop: { searchCodexChatHistory } },
+  const listeners = new Map<string | undefined, Set<(value: unknown) => void>>();
+  const onCodexChatEvent: CheshiDesktopApi['onCodexChatEvent'] = (listener, contextId) => {
+    const entries = listeners.get(contextId) ?? new Set();
+    entries.add(listener);
+    listeners.set(contextId, entries);
+    return () => { entries.delete(listener); };
+  };
+  const harness = createHarness<[contextId: string, workspaceContextIds?: readonly string[]], ReturnType<typeof useChatHistorySearch>>('useChatHistorySearch.ts', 'useChatHistorySearch', {
+    '../../cheshiDesktop': { cheshiDesktop: { searchCodexChatHistory, onCodexChatEvent } },
     '../../shared/errorMessage': { errorMessage: (reason: unknown) => reason instanceof Error ? reason.message : String(reason) },
+    '../../../../shared/chat-history-search': { chatHistorySearchRequest },
+    './model': { normalizeChatEvent },
   });
+  return { ...harness,
+    emit(value: unknown, contextId = 'pane') { listeners.get(contextId)?.forEach(listener => listener(value)); },
+    listenerCount() { return [...listeners.values()].reduce((count, entries) => count + entries.size, 0); },
+  };
 }
 
 describe('chat search requests', () => {
+  test('reuses normalized search results immediately for at most 300 seconds without extending expiry on hits', async () => {
+    let calls = 0;
+    const harness = searchHarness(async () => { calls += 1; return response(); });
+    harness.render('pane'); harness.flushEffects();
+    await harness.render('pane').search({ query: '  HELLO   한글  ' });
+    harness.render('pane').clear();
+    harness.advanceTime(299_999);
+    const cached = harness.render('pane').search({ query: 'hello 한글'.normalize('NFD'), refresh: false, limit: 50 });
+    expect(harness.render('pane').loading).toBe(false);
+    expect(harness.render('pane').result?.hits).toEqual([hit]);
+    await cached;
+    expect(calls).toBe(1);
+    harness.advanceTime(1);
+    await harness.render('pane').search({ query: 'hello 한글' });
+    expect(calls).toBe(2);
+    harness.dispose();
+  });
+
+  test('keeps query, file filter and result limit separate and caches empty results', async () => {
+    let calls = 0;
+    const harness = searchHarness(async () => { calls += 1; return response([]); });
+    harness.render('pane'); harness.flushEffects();
+    const requests = [{ query: 'first' }, { query: 'second' }, { query: 'first', filePath: 'README.md' }, { query: 'first', limit: 1 }];
+    for (const request of requests) await harness.render('pane').search(request);
+    for (const request of requests) {
+      harness.render('pane').clear();
+      await harness.render('pane').search(request);
+      expect(harness.render('pane').result?.total).toBe(0);
+    }
+    expect(calls).toBe(4);
+    harness.dispose();
+  });
+
+  test('shares an in-flight request across repeated submissions and input edits', async () => {
+    let calls = 0;
+    const pending = createDeferred<ChatHistorySearchResponse>();
+    const harness = searchHarness(async () => { calls += 1; return pending.promise; });
+    harness.render('pane'); harness.flushEffects();
+    const first = harness.render('pane').search({ query: 'same' });
+    harness.render('pane').clear();
+    const second = harness.render('pane').search({ query: ' same ', limit: 50 });
+    expect(calls).toBe(1);
+    expect(harness.render('pane').loading).toBe(true);
+    pending.resolve(response());
+    await Promise.all([first, second]);
+    expect(harness.render('pane').result?.hits).toEqual([hit]);
+    expect(harness.render('pane').loading).toBe(false);
+    harness.dispose();
+  });
+
+  test('refresh bypasses cached results and normal pending work, but concurrent refreshes share a request', async () => {
+    const old = createDeferred<ChatHistorySearchResponse>();
+    const fresh = createDeferred<ChatHistorySearchResponse>();
+    let calls = 0;
+    const harness = searchHarness(async request => { calls += 1; return request.refresh ? fresh.promise : old.promise; });
+    harness.render('pane'); harness.flushEffects();
+    const first = harness.render('pane').search({ query: 'same' });
+    const refresh = harness.render('pane').search({ query: 'same', refresh: true });
+    const repeated = harness.render('pane').search({ query: 'same', refresh: true });
+    const joined = harness.render('pane').search({ query: 'same' });
+    expect(calls).toBe(2);
+    fresh.resolve(response([{ ...hit, snippet: 'fresh' }]));
+    await Promise.all([refresh, repeated, joined]);
+    old.resolve(response([{ ...hit, snippet: 'old' }]));
+    await first;
+    await harness.render('pane').search({ query: 'same' });
+    expect(calls).toBe(2);
+    expect(harness.render('pane').result?.hits[0]?.snippet).toBe('fresh');
+    await harness.render('pane').search({ query: 'same', refresh: true });
+    expect(calls).toBe(3);
+    harness.dispose();
+  });
+
+  test('a failed refresh cannot fall back to the old cached response', async () => {
+    let calls = 0;
+    const harness = searchHarness(async request => {
+      calls += 1;
+      if (request.refresh) throw new Error('Refresh failed');
+      return response();
+    });
+    harness.render('pane'); harness.flushEffects();
+    await harness.render('pane').search({ query: 'same' });
+    await harness.render('pane').search({ query: 'same', refresh: true });
+    expect(harness.render('pane').result).toBeNull();
+    expect(harness.render('pane').error).toBe('Refresh failed');
+    await harness.render('pane').search({ query: 'same' });
+    expect(calls).toBe(3);
+    expect(harness.render('pane').error).toBeNull();
+    harness.dispose();
+  });
+
+  test('partial results remain retryable instead of being cached for five minutes', async () => {
+    let calls = 0;
+    const harness = searchHarness(async () => { calls += 1; return { ...response(), unavailableSessions: ['missing'] }; });
+    harness.render('pane'); harness.flushEffects();
+    await harness.render('pane').search({ query: 'same' });
+    await harness.render('pane').search({ query: 'same' });
+    expect(calls).toBe(2);
+    harness.dispose();
+  });
+
+  test.each([
+    { type: 'sessions-changed' },
+    { type: 'session-created', session: { id: 'thread-new', title: 'New conversation' } },
+    { type: 'sessions-deleted', threadIds: ['thread-one'] },
+    { type: 'session-title', threadId: 'thread-one', title: 'renamed' },
+    { type: 'turn-started', threadId: 'thread-one' },
+    { type: 'turn-completed', threadId: 'thread-one', status: 'completed' },
+    { type: 'assistant-delta', threadId: 'thread-one', itemId: 'item-one', text: 'new text' },
+    { type: 'user-message', threadId: 'thread-one', clientMessageId: 'client-one', text: 'new prompt' },
+  ])('invalidates results on history mutation: $type', async event => {
+    let calls = 0;
+    const harness = searchHarness(async () => { calls += 1; return response(); });
+    harness.render('pane'); harness.flushEffects();
+    await harness.render('pane').search({ query: 'same' });
+    harness.emit(event);
+    await harness.render('pane').search({ query: 'same' });
+    expect(calls).toBe(2);
+    harness.dispose();
+  });
+
+  test('observes all workspace panes, ignores unrelated events, and removes event subscriptions', async () => {
+    let calls = 0;
+    const contexts = ['pane', 'other-pane'];
+    const harness = searchHarness(async () => { calls += 1; return response(); });
+    harness.render('pane', contexts); harness.flushEffects();
+    expect(harness.listenerCount()).toBe(2);
+    await harness.render('pane', contexts).search({ query: 'same' });
+    harness.emit({ type: 'session-selected', threadId: 'thread-one' });
+    harness.emit({ type: 'permission-mode-changed', mode: 'unknown' });
+    harness.emit({ type: 'sessions-deleted', threadIds: [] });
+    await harness.render('pane', contexts).search({ query: 'same' });
+    expect(calls).toBe(1);
+    harness.emit({ type: 'sessions-changed' }, 'other-pane');
+    await harness.render('pane', contexts).search({ query: 'same' });
+    expect(calls).toBe(2);
+    harness.dispose();
+    expect(harness.listenerCount()).toBe(0);
+  });
+
+  test('a history change during a request prevents the response from repopulating the cache', async () => {
+    let calls = 0;
+    const old = createDeferred<ChatHistorySearchResponse>();
+    const harness = searchHarness(async () => { calls += 1; return calls === 1 ? old.promise : response([]); });
+    harness.render('pane'); harness.flushEffects();
+    const first = harness.render('pane').search({ query: 'same' });
+    harness.emit({ type: 'sessions-changed' });
+    old.resolve(response()); await first;
+    await harness.render('pane').search({ query: 'same' });
+    expect(calls).toBe(2);
+    expect(harness.render('pane').result?.hits).toEqual([]);
+    harness.dispose();
+  });
+
+  test('deletion invalidates pending searches and cannot resurrect deleted visible results', async () => {
+    let calls = 0;
+    const old = createDeferred<ChatHistorySearchResponse>();
+    const harness = searchHarness(async () => { calls += 1; return calls === 1 ? old.promise : response([]); });
+    harness.render('pane'); harness.flushEffects();
+    const first = harness.render('pane').search({ query: 'same' });
+    harness.emit({ type: 'sessions-deleted', threadIds: ['thread-one'] });
+    old.resolve(response()); await first;
+    expect(harness.render('pane').result).toBeNull();
+    expect(harness.render('pane').loading).toBe(false);
+    await harness.render('pane').search({ query: 'same' });
+    expect(calls).toBe(2);
+    harness.dispose();
+  });
+
+  test('account reset drops cached and pending searches even when the pane id stays the same', async () => {
+    let calls = 0;
+    const old = createDeferred<ChatHistorySearchResponse>();
+    const harness = searchHarness(async () => { calls += 1; return calls === 2 ? old.promise : response(); });
+    harness.render('pane'); harness.flushEffects();
+    await harness.render('pane').search({ query: 'cached' });
+    const first = harness.render('pane').search({ query: 'pending' });
+    harness.render('pane').reset();
+    old.resolve(response()); await first;
+    expect(harness.render('pane').result).toBeNull();
+    await harness.render('pane').search({ query: 'cached' });
+    await harness.render('pane').search({ query: 'pending' });
+    expect(calls).toBe(4);
+    harness.dispose();
+  });
+
+  test('switching context and returning to the original pane does not reuse its cached results', async () => {
+    let calls = 0;
+    const harness = searchHarness(async () => { calls += 1; return response(); });
+    for (const context of ['pane', 'other-pane', 'pane']) {
+      harness.render(context); harness.flushEffects();
+      await harness.render(context).search({ query: 'same' });
+    }
+    expect(calls).toBe(3);
+    harness.dispose();
+  });
+
+  test('bounds cache memory and evicts the least recently used result', async () => {
+    let calls = 0;
+    const harness = searchHarness(async () => { calls += 1; return response(); });
+    harness.render('pane'); harness.flushEffects();
+    for (let index = 0; index < 50; index += 1) await harness.render('pane').search({ query: String(index) });
+    await harness.render('pane').search({ query: '0' });
+    await harness.render('pane').search({ query: '50' });
+    await harness.render('pane').search({ query: '0' });
+    expect(calls).toBe(51);
+    await harness.render('pane').search({ query: '1' });
+    expect(calls).toBe(52);
+    harness.dispose();
+  });
+
   test('does not read histories before submit and forwards file-only searches to the selected context', async () => {
     const requests: Parameters<CheshiDesktopApi['searchCodexChatHistory']>[] = [];
     const harness = searchHarness(async (...args) => { requests.push(args); return response(); });
@@ -197,9 +424,10 @@ function searchElement(node: ReactNode, label: string): ReactElement<SearchEleme
 }
 const searchUiDependencies = {
   'react/jsx-runtime': jsxRuntime,
-  'lucide-react': { Search: 'svg', ArrowLeft: 'svg', PanelRight: 'svg', RefreshCw: 'svg' },
-  '../../shared/ui': { NeumorphicButton: 'button', SidebarToggle: 'button', NeumorphicTextField: 'input', SearchClearButton: 'button',
-    TieredHeader: 'header', LoadingState: 'progress' },
+  'lucide-react': { Search: 'svg', X: 'svg', PanelRight: 'svg', RefreshCw: 'svg' },
+  '../../shared/ui': { NeumorphicButton, SidebarToggle: NeumorphicButton, NeumorphicTextField: 'input', SearchClearButton: 'button',
+    TieredHeader: ({ primary }: { primary: ReactNode }) => jsxRuntime.jsx('header', { children: primary }), LoadingState: 'progress' },
+  '../../shared/ui/SidebarPanelHeader': { SidebarPanelTitle },
   '../../shared/errorMessage': { errorMessage: (reason: unknown) => reason instanceof Error ? reason.message : String(reason) },
   './ChatHistorySearch.module.css': { default: {} },
 };
@@ -292,8 +520,41 @@ describe('search page original navigation', () => {
 });
 
 describe('chat search result presentation', () => {
+  test('matching results group the escaped query and match count in one header', () => {
+    const html = renderToStaticMarkup(<ChatHistorySearchResults query="  <오잉?>  " result={response()} disabled={false} onOpen={() => {}} />);
+    const header = html.match(/<header\b[^>]*>[\s\S]*?<\/header>/)?.[0];
+    expect(header).toBeDefined();
+    expect(header).toContain('Results for &lt;오잉?&gt;');
+    expect(header).toContain('1 of 1 matches · 2 conversations searched');
+    expect(html.match(/<header\b/g)).toHaveLength(1);
+  });
+
+  test('empty results show the escaped query and retry guidance without a summary or icon', () => {
+    const html = renderToStaticMarkup(<ChatHistorySearchResults query="  <오잉?>  " result={response([])} disabled={false} onOpen={() => {}} />);
+    expect(html).toContain('No results for “&lt;오잉?&gt;”');
+    expect(html).toContain('Try another word, filename, or file path.');
+    expect(html).not.toContain('conversations searched');
+    expect(html).not.toContain('<header');
+    expect(html).not.toContain('<svg');
+  });
+
+  test('the page hides the query summary while loading and for empty results, then restores it for matches', () => {
+    const harness = createHarness<[SearchPageProps], ReactElement>('ChatHistorySearchPage.tsx', 'ChatHistorySearchPage', searchUiDependencies);
+    const props = pageProps(async () => true);
+    const loading = renderToStaticMarkup(harness.render({ ...props, result: null, loading: true }));
+    expect(loading).not.toContain('Results for');
+    const empty = renderToStaticMarkup(harness.render({ ...props, result: response([]) }));
+    expect(empty).not.toContain('Results for');
+    expect(empty).not.toContain('conversations searched');
+    expect(empty).toContain('No results for “session”');
+    const matches = renderToStaticMarkup(harness.render(props));
+    expect(matches).toContain('Results for');
+    expect(matches).toContain('1 of 1 matches');
+    harness.dispose();
+  });
+
   test('shows escaped source text, distinct file evidence and additional fork copies', () => {
-    const html = renderToStaticMarkup(<ChatHistorySearchResults result={response()} disabled={false} onOpen={() => {}} />);
+    const html = renderToStaticMarkup(<ChatHistorySearchResults query="session" result={response()} disabled={false} onOpen={() => {}} />);
     expect(html).toContain('원문 기록과 &lt;script&gt;literal source&lt;/script&gt;');
     expect(html).toContain('Mentioned · desktop/lib/chat.mts');
     expect(html).toContain('Changed · README.md');
@@ -302,10 +563,10 @@ describe('chat search result presentation', () => {
   });
 
   test('partial empty results explicitly distinguish unavailable conversations', () => {
-    const html = renderToStaticMarkup(<ChatHistorySearchResults result={{ ...response([]), unavailableSessions: ['unread'] }} disabled onOpen={() => {}} />);
+    const html = renderToStaticMarkup(<ChatHistorySearchResults query="session" result={{ ...response([]), unavailableSessions: ['unread'] }} disabled onOpen={() => {}} />);
     expect(html).toContain('1 conversations could not be searched');
     expect(html).toContain('No matches in the available conversations.');
-    expect(html).not.toContain('No matching messages or file references.');
+    expect(html).not.toContain('No results for');
   });
 });
 
