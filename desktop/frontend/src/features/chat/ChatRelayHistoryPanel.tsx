@@ -1,5 +1,5 @@
 import { ClipboardClock, History, RefreshCw, Trash2, X } from 'lucide-react';
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type RefObject } from 'react';
 import type { ChatRelayHistoryRecord, ChatRelayState } from '../../../../shared/chat-relay';
 import { LoadingState, NeumorphicButton, SlidingSidePanel, Tooltip } from '../../shared/ui';
 import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
@@ -21,8 +21,9 @@ function Participants({ state }: { state: ChatRelayState }) {
   </small>;
 }
 
-export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, continuationDisabledReason }: {
+export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, continuationDisabledReason, blurSourceRef }: {
   relay: ChatRelayController;
+  blurSourceRef?: RefObject<HTMLElement | null>;
   savedTurns?: SavedChatTurnsController;
   onContinueSavedTurn?: (record: ChatSavedTurn) => Promise<boolean>;
   continuationDisabledReason?: string | null;
@@ -102,13 +103,13 @@ export function ChatRelayHistoryPanel({ relay, savedTurns, onContinueSavedTurn, 
           </section>}
       </SlidingSidePanel>
       <div ref={railRef} className={styles.rail} role="group" aria-label="Conversation panels">
-        <Tooltip content="Conversation history">{(triggerProps) => (
+        <Tooltip content="Conversation history" blurSourceRef={blurSourceRef}>{(triggerProps) => (
           <NeumorphicButton {...triggerProps} variant="ghost" size="icon" active={activePanel === 'history'}
             id={`${id}-button`} aria-label="Conversation history" aria-controls={id} aria-expanded={activePanel === 'history'} onClick={toggle}>
             <History aria-hidden="true" />
           </NeumorphicButton>
         )}</Tooltip>
-        {savedTurns && <Tooltip content="Saved turns">{(triggerProps) => (
+        {savedTurns && <Tooltip content="Saved turns" blurSourceRef={blurSourceRef}>{(triggerProps) => (
           <NeumorphicButton {...triggerProps} variant="ghost" size="icon" active={activePanel === 'saved'}
             id={`${id}-saved-button`} aria-label="Saved turns" aria-controls={`${id}-saved`} aria-expanded={activePanel === 'saved'}
             onClick={() => {

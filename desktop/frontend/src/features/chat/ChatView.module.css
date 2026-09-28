@@ -147,6 +147,9 @@
   cursor: default;
   pointer-events: none;
 }
+.messageAvatar[data-raised='true'] {
+  --neumorphic-button-surface: var(--control-surface);
+}
 .assistantMessage { width: 100%; min-width: 0; max-width: 100%; overflow: hidden; color: var(--text); }
 
 .externalLinkIcon {
@@ -165,10 +168,10 @@
   height: 72px;
   place-items: center;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, .1);
+  border: 1px solid var(--divider);
   border-radius: 12px;
-  background: rgba(255, 255, 255, .045);
-  color: #8fbdb7;
+  background: var(--control-surface);
+  color: var(--text);
 }
 .messageImageAttachment img { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; }
 .messageImageAttachment > svg { width: 20px; height: 20px; stroke-width: 1.5; }

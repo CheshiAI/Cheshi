@@ -36,7 +36,7 @@
   composes: anchor from '../../shared/ui/PopupSurface.module.css';
   --panel-backdrop-filter: none;
   --popup-rear-background: transparent;
-  --popup-rear-backdrop-filter: blur(4px);
+  --popup-rear-backdrop-filter: blur(var(--panel-backdrop-blur));
   --popup-surface-background: var(--overlay-surface);
   --liquid-glass-radius: 16px;
   position: relative;

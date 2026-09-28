@@ -15,7 +15,10 @@
   color: var(--text);
 }
 
-.chip[data-raised='true'] { --neumorphic-button-surface: rgba(41, 52, 61, 0.9); }
+.chip[data-raised='true'] {
+  --neumorphic-button-surface: rgba(41, 52, 61, 0.9);
+  --neumorphic-button-hover-background: var(--neumorphic-button-surface);
+}
 
 .chip > a {
   display: flex;

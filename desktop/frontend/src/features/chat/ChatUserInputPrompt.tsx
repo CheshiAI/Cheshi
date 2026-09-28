@@ -1,5 +1,5 @@
 import { ExternalLink, Ghost, X } from 'lucide-react';
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../../../shared/chat-user-input';
 import { ContentCard, NeumorphicButton } from '../../shared/ui';
 import { ChatMcpFields, ChatQuestionFields } from './ChatUserInputFields';
@@ -10,7 +10,7 @@ import styles from './ChatUserInputPrompt.module.css';
 import { ChatErrorNotice } from './ChatErrorNotice';
 import type { ChatQuestionDismissal } from '../../../../shared/chat-question-dismissals';
 
-export function ChatUserInputPrompt({ request, respond, pending, error, otherThread = false, answerDisabled = false, resolution }: {
+export function ChatUserInputPrompt({ request, respond, pending, error, otherThread = false, answerDisabled = false, resolution, menuBlurSourceRef }: {
   request: ChatUserInputRequest;
   respond: (id: string, response: ChatUserInputResponse) => Promise<boolean>;
   pending: boolean;
@@ -18,6 +18,7 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
   otherThread?: boolean;
   answerDisabled?: boolean;
   resolution?: ChatQuestionDismissal;
+  menuBlurSourceRef?: RefObject<HTMLElement | null>;
 }) {
   const [language] = useHelpLanguage();
   const korean = language === 'ko';
@@ -65,7 +66,7 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
           {request.kind === 'questions' && <ChatQuestionFields questions={request.questions} draft={completed?.draft ?? draft} onChange={onChange}
             notes={completed?.notes ?? notes} onNotesChange={onNotesChange} />}
           {request.kind !== 'questions' && <p className={styles.message}>{request.message}</p>}
-          {request.kind === 'form' && !unsupported && <ChatMcpFields fields={request.fields} draft={draft}
+          {request.kind === 'form' && !unsupported && <ChatMcpFields menuBlurSourceRef={menuBlurSourceRef} fields={request.fields} draft={draft}
             disabled={busy || Boolean(resolution)} onChange={onChange} />}
           {unsupported && <p className={styles.message}>{unsupported}</p>}
           {request.kind === 'url' && (link
@@ -88,14 +89,15 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
   </ContentCard>;
 }
 
-export function ChatUserInputRequests({ contextId, activeThreadId, fallback, fallbackId }: {
+export function ChatUserInputRequests({ contextId, activeThreadId, fallback, fallbackId, menuBlurSourceRef }: {
+  menuBlurSourceRef?: RefObject<HTMLElement | null>;
   contextId?: string; activeThreadId: string | null; fallback?: ReactNode; fallbackId?: string;
 }) {
   const input = useChatUserInputs(contextId);
   const handledFallbacks = useRef(new Set<string>());
   const request = input.requests.find((item) => item.threadId === activeThreadId) ?? input.requests[0];
   if (request?.threadId === activeThreadId && fallbackId) handledFallbacks.current.add(fallbackId);
-  if (request) return <ChatUserInputPrompt key={request.id} request={request} respond={input.respond}
+  if (request) return <ChatUserInputPrompt menuBlurSourceRef={menuBlurSourceRef} key={request.id} request={request} respond={input.respond}
     pending={input.loadingId === request.id} error={input.error} otherThread={request.threadId !== activeThreadId} />;
   if (!input.error) return fallbackId && handledFallbacks.current.has(fallbackId) ? null : fallback ?? null;
   return <ChatErrorNotice action={<NeumorphicButton variant="standard" size="standard" onClick={input.refresh}>Retry</NeumorphicButton>}>{input.error}</ChatErrorNotice>;

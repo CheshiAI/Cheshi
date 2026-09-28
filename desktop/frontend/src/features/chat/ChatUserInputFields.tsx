@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, type RefObject } from 'react';
 import { LiquidGlassSelect, NeumorphicButton, NeumorphicCheckbox, NeumorphicTextField, SearchClearButton } from '../../shared/ui';
 import { useHelpLanguage } from '../../shared/useHelpLanguage';
 import type { ChatInputField, ChatInputQuestion } from '../../../../shared/chat-user-input';
@@ -48,7 +48,9 @@ export function ChatQuestionFields({ questions, draft, onChange, notes = {}, onN
   })}</>;
 }
 
-export function ChatMcpFields({ fields, draft, onChange, disabled = false }: DraftProps & { fields: ChatInputField[]; disabled?: boolean }) {
+export function ChatMcpFields({ fields, draft, onChange, disabled = false, menuBlurSourceRef }: DraftProps & {
+  fields: ChatInputField[]; disabled?: boolean; menuBlurSourceRef?: RefObject<HTMLElement | null>;
+}) {
   return <div className={styles.mcpFields}>{fields.map((field) => {
     const value = draft[field.name];
     const text = typeof value === 'string' ? value : '';
@@ -65,7 +67,7 @@ export function ChatMcpFields({ fields, draft, onChange, disabled = false }: Dra
     if (field.type === 'boolean' || field.options) return <div key={field.name} className={styles.field}>
       <span>{field.title}{field.required ? ' *' : ''}</span>
       {field.description && <small>{field.description}</small>}
-      <LiquidGlassSelect ariaLabel={field.title} value={text} disabled={disabled}
+      <LiquidGlassSelect menuBlurSourceRef={menuBlurSourceRef} ariaLabel={field.title} value={text} disabled={disabled}
         triggerAppearance="standard" menuAppearance="toolbar" placeholder="Choose an option"
         options={[{ value: '', label: 'Choose an option' }, ...(field.type === 'boolean'
           ? [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }] : field.options ?? [])]}

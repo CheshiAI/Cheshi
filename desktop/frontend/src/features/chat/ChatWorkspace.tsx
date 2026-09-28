@@ -147,6 +147,7 @@ function ChatPane({
 
 export function ChatWorkspace(props: ChatWorkspaceProps) {
   const { workspace, rightSidebarOpen, onToggleRightSidebar } = props;
+  const blurSourceRef = useRef<HTMLElement>(null);
   const paneVisible = useContext(WorkspacePaneVisibilityContext);
   const active = props.active && paneVisible;
   // Keep pane portals stable while recursive split branches are replaced.
@@ -163,7 +164,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
     }
   }, [workspace.paneIds]);
   return (
-    <main className={styles.root} hidden={!active} inert={!active} aria-label="Codex workspace">
+    <main ref={blurSourceRef} className={styles.root} hidden={!active} inert={!active} aria-label="Codex workspace">
       <TwoTierHeader
         className={viewStyles.header}
         style={draggableWindowRegionStyle}
@@ -197,7 +198,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
             onSelectPane={workspace.selectPane} onResizeSplit={workspace.resizeSplit}
             renderPane={(id) => <PaneMount paneId={id} host={hosts.current.get(id)!} />} />
         </div>
-        <ChatRelayHistoryPanel relay={workspace.relay} savedTurns={workspace.savedTurns}
+        <ChatRelayHistoryPanel blurSourceRef={blurSourceRef} relay={workspace.relay} savedTurns={workspace.savedTurns}
           onContinueSavedTurn={workspace.continueSavedTurn} continuationDisabledReason={workspace.savedTurnContinuationReason} />
       </div>
       {workspace.paneIds.map((paneId) => (

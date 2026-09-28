@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, mock, test } from 'bun:test';
 import { act, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
@@ -6,10 +6,16 @@ import { Window, type HTMLElement as TestElement } from 'happy-dom';
 import { RegionalBlur } from '../frontend/src/shared/ui/RegionalBlur';
 import { LiquidGlassPanel } from '../frontend/src/shared/ui/LiquidGlassPanel';
 import { LiquidGlassSelect } from '../frontend/src/shared/ui/LiquidGlassSelect';
+import { Tooltip } from '../frontend/src/shared/ui/Tooltip';
+import { ChatUserInputPrompt } from '../frontend/src/features/chat/ChatUserInputPrompt';
 import { regionalBlurMask } from '../frontend/src/shared/ui/regionalBlurGeometry';
 
-function Fixture({ portal, thread = 'one', menu = true, composer = true, nested = false, layered = false, select = false }: {
-  portal: HTMLElement; thread?: string; menu?: boolean; composer?: boolean; nested?: boolean; layered?: boolean; select?: boolean;
+mock.module('../frontend/src/shared/ui/Tooltip.module.css', () => ({
+  default: { anchor: 'tooltip-anchor', content: 'tooltip-content' },
+}));
+
+function Fixture({ portal, thread = 'one', menu = true, composer = true, nested = false, layered = false, select = false, mcp = false, tooltip = false }: {
+  portal: HTMLElement; thread?: string; menu?: boolean; composer?: boolean; nested?: boolean; layered?: boolean; select?: boolean; mcp?: boolean; tooltip?: boolean;
 }) {
   const sourceRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -18,20 +24,28 @@ function Fixture({ portal, thread = 'one', menu = true, composer = true, nested 
     data-box={layered ? '350,470,200,60' : '350,250,200,180'} style={panelStyle}>
     <button role="menuitem">Model</button>
   </LiquidGlassPanel></div>, portal);
-  return <RegionalBlur sourceRef={sourceRef}>
+  const scene = <>
     <section key={thread} ref={sourceRef} data-source="true" data-box="100,50,600,500">
       <p>Conversation stays sharp outside the surface.</p>
+      {tooltip && <Tooltip content="Conversation history" delay={0} blurSourceRef={sourceRef}>
+        {trigger => <button {...trigger} aria-label="History">History</button>}
+      </Tooltip>}
       {nested && <LiquidGlassPanel role="listbox" data-box="120,70,100,50" style={panelStyle}>Inline options</LiquidGlassPanel>}
     </section>
     {composer && <div ref={composerRef} data-composer-layer="true" data-box="120,450,550,80" style={{ filter: 'brightness(1)' }}>
       <LiquidGlassPanel data-liquid-glass-backdrop="true" data-composer="true"
       data-box="120,450,550,80" style={panelStyle}><textarea defaultValue="Keep this draft" />
+        {mcp && <ChatUserInputPrompt menuBlurSourceRef={composerRef} pending={false} error={null}
+          respond={async () => true} request={{ kind: 'form', id: 'request', threadId: 'thread', turnId: null,
+            serverName: 'Test', message: 'Choose whether to proceed', fields: [{ name: 'proceed', title: 'Proceed',
+              description: '', type: 'boolean', required: true }] }} />}
         {select && <LiquidGlassSelect ariaLabel="Permissions" menuAppearance="toolbar" triggerAppearance="standard"
           menuBlurSourceRef={composerRef} value="read-only" options={[{ value: 'read-only', label: 'Read only' }]}
           onChange={() => {}} />}
       </LiquidGlassPanel></div>}
     {menu && (layered ? <RegionalBlur sourceRef={composerRef}>{popup}</RegionalBlur> : popup)}
-  </RegionalBlur>;
+  </>;
+  return tooltip ? scene : <RegionalBlur sourceRef={sourceRef}>{scene}</RegionalBlur>;
 }
 
 async function withDOM(run: (h: {
@@ -240,4 +254,69 @@ test('mask clips offscreen surfaces and maps scaled coordinates with independent
   expect(svg).toContain('A16 16');
   expect(regionalBlurMask(bounds, 200, 200, [{ ...surface, x: 500 }])).toBeNull();
   expect(regionalBlurMask({ ...bounds, width: 0 }, 0, 200, [surface])).toBeNull();
+});
+
+
+test('an explicitly connected tooltip blurs its workspace and restores it on dismissal and unmount', async () => {
+  await withDOM(async h => {
+    await h.render({ menu: false, composer: false, tooltip: true });
+    const source = h.document.querySelector<HTMLElement>('[data-source]')!;
+    const trigger = h.document.querySelector<HTMLButtonElement>('[aria-label="History"]')!;
+    const open = async () => {
+      await act(async () => trigger.dispatchEvent(new h.document.defaultView!.PointerEvent('pointerover', {
+        bubbles: true, pointerType: 'mouse',
+      })));
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
+      const tooltip = h.document.querySelector<HTMLElement>('[role="tooltip"]')!;
+      tooltip.dataset.box = '350,250,200,60';
+      tooltip.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:8px';
+      h.invalidate(); await h.flush();
+      expect(source.contains(tooltip)).toBe(false);
+      expect(source.style.filter).toContain('url(');
+      expect(tooltip.getAttribute('data-regional-blur-surface')).toBe('true');
+      expect(tooltip.style.filter).toBe('');
+      expect(tooltip.textContent).toBe('Conversation history');
+      return tooltip;
+    };
+    expect(source.style.filter).toBe('');
+    const tooltip = await open();
+    await act(async () => h.document.dispatchEvent(new h.document.defaultView!.KeyboardEvent('keydown', {
+      key: 'Escape', bubbles: true,
+    })));
+    expect(h.document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(source.style.filter).toBe('');
+    expect(tooltip.hasAttribute('data-regional-blur-surface')).toBe(false);
+    await open();
+    await h.unmount();
+    expect(source.style.filter).toBe('');
+    expect(h.observerCount()).toBe(0);
+  });
+});
+
+test('MCP form menus include the composer backdrop and preserve answers and drafts after closing', async () => {
+  await withDOM(async h => {
+    await h.render({ menu: false, mcp: true });
+    const composer = h.document.querySelector<HTMLElement>('[data-composer-layer]')!;
+    const trigger = h.document.querySelector<HTMLButtonElement>('[aria-label="Proceed"]')!;
+    expect(composer.style.filter).toBe('brightness(1)');
+    await act(async () => trigger.click());
+    const menu = h.document.querySelector<HTMLElement>('[role="menu"]')!;
+    menu.dataset.box = '350,470,200,60';
+    menu.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:16px';
+    h.invalidate(); await h.flush();
+    expect(composer.style.filter).toContain('url(');
+    expect(h.document.querySelector<HTMLElement>('[data-source]')!.style.filter).toContain('url(');
+    expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
+    expect(menu.style.filter).toBe('');
+    const yes = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(button => button.textContent === 'Yes')!;
+    await act(async () => yes.click());
+    expect(h.document.querySelector('[role="menu"]')).toBeNull();
+    expect(trigger.textContent).toBe('Yes');
+    expect(h.document.activeElement).toBe(trigger);
+    expect(composer.style.filter).toBe('brightness(1)');
+    expect(menu.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(h.document.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe('Keep this draft');
+    await h.unmount();
+    expect(h.observerCount()).toBe(0);
+  });
 });

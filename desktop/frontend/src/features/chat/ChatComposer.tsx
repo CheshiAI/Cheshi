@@ -65,7 +65,7 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
 
   return (
     <footer className={styles.composerArea} ref={composerAreaRef} onKeyUp={history.onKeyUp}>
-      <ChatUserInputRequests contextId={userInputContextId} activeThreadId={state.activeSessionId}
+      <ChatUserInputRequests menuBlurSourceRef={composerAreaRef} contextId={userInputContextId} activeThreadId={state.activeSessionId}
         fallbackId={fallbackRequest?.id}
         fallback={<ChatFallbackQuestion candidate={fallbackRequest} controller={controller} chatController={chatController} active={active} />} />
       {state.error && (

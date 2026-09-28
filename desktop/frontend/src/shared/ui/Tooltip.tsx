@@ -1,6 +1,7 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
+import { RegionalBlur } from './RegionalBlur';
 import { LiquidGlassPanel } from './LiquidGlassPanel';
 import styles from './Tooltip.module.css';
 
@@ -10,6 +11,7 @@ type TooltipTriggerProps<T extends Element> = Pick<HTMLAttributes<T>,
 interface TooltipProps<T extends Element> {
   content: string;
   delay?: number;
+  blurSourceRef?: RefObject<HTMLElement | null>;
   children: (props: TooltipTriggerProps<T>) => ReactNode;
 }
 
@@ -40,7 +42,7 @@ function TooltipContent({ anchor, content, id }: { anchor: Element; content: str
   );
 }
 
-export function Tooltip<T extends Element = HTMLElement>({ content, delay = 1000, children }: TooltipProps<T>) {
+export function Tooltip<T extends Element = HTMLElement>({ content, delay = 1000, blurSourceRef, children }: TooltipProps<T>) {
   const id = useId();
   const [anchor, setAnchor] = useState<Element | null>(null);
   const [visible, setVisible] = useState(false);
@@ -79,6 +81,7 @@ export function Tooltip<T extends Element = HTMLElement>({ content, delay = 1000
     setAnchor(null);
   };
 
+  const tooltip = visible && anchor ? <TooltipContent anchor={anchor} content={content} id={id} /> : null;
   return <>
     {children({
       'aria-describedby': visible && anchor ? id : undefined,
@@ -91,6 +94,6 @@ export function Tooltip<T extends Element = HTMLElement>({ content, delay = 1000
       },
       onBlur: dismiss,
     })}
-    {visible && anchor && <TooltipContent anchor={anchor} content={content} id={id} />}
+    {tooltip && (blurSourceRef ? <RegionalBlur sourceRef={blurSourceRef}>{tooltip}</RegionalBlur> : tooltip)}
   </>;
 }
