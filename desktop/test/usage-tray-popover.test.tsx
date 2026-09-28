@@ -4,9 +4,12 @@ import { createRoot } from 'react-dom/client';
 import { Window } from 'happy-dom';
 import { UsageTrayPopover } from '../frontend/src/features/account/UsageTrayPopover';
 import type { UsagePopoverApi, UsagePopoverState } from '../shared/account-usage-popover';
+import { DEFAULT_WINDOW_APPEARANCE } from '../shared/window-appearance';
 
 function state(revision: number, remaining = 91): UsagePopoverState {
-  return { revision, dark: true, snapshot: { activeId: 'b', profiles: [0, remaining].map((value, index) => ({
+  return { revision, dark: true,
+    appearance: { preferences: { ...DEFAULT_WINDOW_APPEARANCE }, supported: true, active: true, error: null },
+    snapshot: { activeId: 'b', profiles: [0, remaining].map((value, index) => ({
     id: index ? 'b' : 'a', email: `${index}@example.com`, label: `Account ${index}`,
     login: { state: 'signed_in', error: null }, usage: { state: 'ready', authenticated: true, plan: 'pro', error: null,
       rateLimits: [{ limitId: 'codex', limitName: null, plan: 'pro', primary: null,
@@ -26,6 +29,7 @@ test('shares account details, updates usage and theme, ignores stale reads and e
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value, writable: true });
   const container = window.document.createElement('div'); window.document.body.append(container);
+  const summaryLines = () => [...container.querySelectorAll('p > span')].map(row => row.textContent);
   const root = createRoot(container as unknown as HTMLElement);
   let receive: (value: UsagePopoverState) => void = () => {};
   let resolve!: (value: UsagePopoverState) => void;
@@ -38,34 +42,48 @@ test('shares account details, updates usage and theme, ignores stale reads and e
     async resize(height) { sizes.push(height); }, async action(action) { actions.push(action); } };
   try {
     await act(async () => root.render(<UsageTrayPopover api={api} />));
+    expect(window.document.documentElement.hasAttribute('data-window-glass')).toBe(false);
     await act(async () => receive(state(2)));
     await act(async () => resolve(state(1, 10)));
     expect(container.textContent).toContain('91% remaining');
-    expect(container.textContent).toContain('91% remaining · 200% total capacity · 2 accounts');
+    expect(summaryLines())
+      .toEqual(['91% remaining', '200% total capacity', '2 accounts']);
     expect(container.textContent).toContain('0% remaining');
     expect(container.textContent).toContain('Pro plan');
     expect(container.textContent).toContain('Resets');
     expect(container.querySelectorAll('[role="progressbar"]')).toHaveLength(2);
     expect(container.querySelectorAll('[data-active="true"]')).toHaveLength(1);
     expect(container.querySelector('[aria-label="Use account"]')).toBeNull();
-    const next = state(3, 80); next.dark = false;
+    expect(window.document.documentElement.hasAttribute('data-window-glass')).toBe(true);
+    expect(window.document.documentElement.style.getPropertyValue('--window-glass-opacity')).toBe('0.75');
+    const next = state(3, 80); next.dark = false; next.appearance!.active = false;
     await act(async () => receive(next));
     expect(container.textContent).toContain('80% remaining');
-    expect(container.textContent).toContain('80% remaining · 200% total capacity · 2 accounts');
+    expect(summaryLines())
+      .toEqual(['80% remaining', '200% total capacity', '2 accounts']);
     expect(window.document.documentElement.dataset.theme).toBe('light');
+    expect(window.document.documentElement.hasAttribute('data-window-glass')).toBe(false);
     await act(async () => { for (const button of container.querySelectorAll('button')) button.click(); });
     expect(actions).toEqual(['show', 'quit']);
     await act(async () => measure?.()); expect(sizes.length).toBeGreaterThan(0);
     const added = state(4, 80);
+    added.appearance!.preferences.opacity = 0.6;
     added.snapshot!.profiles.push({ ...added.snapshot!.profiles[1]!, id: 'c', email: 'c@example.com' });
     await act(async () => receive(added));
-    expect(container.textContent).toContain('160% remaining · 300% total capacity · 3 accounts');
+    expect(summaryLines())
+      .toEqual(['160% remaining', '300% total capacity', '3 accounts']);
+    expect(window.document.documentElement.style.getPropertyValue('--window-glass-opacity')).toBe('0.6');
+    await act(async () => receive(state(3)));
+    expect(window.document.documentElement.style.getPropertyValue('--window-glass-opacity')).toBe('0.6');
     const unavailable = state(5);
+    unavailable.appearance!.active = false;
+    unavailable.appearance!.error = 'Could not apply native window transparency.';
     unavailable.snapshot!.profiles[1]!.usage.rateLimits = [];
     await act(async () => receive(unavailable));
     expect(container.textContent).toContain('Usage unavailable');
     expect(container.textContent).not.toContain('total capacity');
-    await act(async () => receive({ revision: 6, dark: true, snapshot: null }));
+    expect(window.document.documentElement.hasAttribute('data-window-glass')).toBe(false);
+    await act(async () => receive({ revision: 6, dark: true, snapshot: null, appearance: null }));
     expect(container.textContent).toContain('Usage unavailable');
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
   } finally {

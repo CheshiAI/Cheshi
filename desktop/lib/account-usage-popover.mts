@@ -1,9 +1,12 @@
 import type { BrowserWindow, BrowserWindowConstructorOptions, IpcMain, IpcMainInvokeEvent, Rectangle } from 'electron';
 import { USAGE_POPOVER_CHANNEL as channel, type UsagePopoverState } from '../shared/account-usage-popover.ts';
 import type { CodexAccountsSnapshot } from '../shared/codex-accounts.ts';
+import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS, type WindowGlassBinding } from './window-appearance.mts';
+
+const POPOVER_WINDOW_WIDTH = 240;
 
 type PopoverWindow = Pick<BrowserWindow, 'isDestroyed' | 'isVisible' | 'show' | 'hide' | 'focus' | 'destroy'
-  | 'setBounds' | 'loadURL' | 'on' | 'webContents'>;
+  | 'setBounds' | 'loadURL' | 'on' | 'off' | 'webContents' | 'setBackgroundColor' | 'getNativeWindowHandle'>;
 
 export interface UsagePopover {
   update(snapshot: CodexAccountsSnapshot | null, dark: boolean): void;
@@ -12,7 +15,7 @@ export interface UsagePopover {
 }
 
 export function usagePopoverBounds(anchor: Rectangle, area: Rectangle, height: number): Rectangle {
-  const width = Math.min(360, area.width);
+  const width = Math.min(POPOVER_WINDOW_WIDTH, area.width);
   const boundedHeight = Math.min(height, area.height);
   return {
     x: Math.round(Math.max(area.x, Math.min(anchor.x + anchor.width / 2 - width / 2, area.x + area.width - width))),
@@ -28,13 +31,16 @@ export function createAccountUsagePopover(options: {
   getWorkArea(anchor: Rectangle): Rectangle;
   rendererUrl: string;
   preload: string;
+  appearanceFile: string;
+  appearanceBinding?: WindowGlassBinding | null;
   showApp(): void;
   quit(): void;
   onError(error: unknown): void;
   now?: () => number;
 }): UsagePopover {
   let view: PopoverWindow | null = null;
-  let state: UsagePopoverState = { snapshot: null, dark: true, revision: 0 };
+  let state: UsagePopoverState = { snapshot: null, dark: true, revision: 0, appearance: null };
+  let appearance: ReturnType<typeof createWindowAppearance> | null = null;
   let disposed = false;
   let ready = false;
   let wantsOpen = false;
@@ -63,6 +69,8 @@ export function createAccountUsagePopover(options: {
     view.focus();
   }
   function destroy() {
+    appearance?.dispose();
+    appearance = null;
     const old = view;
     view = null;
     ready = false;
@@ -90,7 +98,8 @@ export function createAccountUsagePopover(options: {
   return {
     update(snapshot, dark) {
       if (disposed) return;
-      state = { snapshot, dark, revision: state.revision + 1 };
+      state = { ...state, snapshot, dark, revision: state.revision + 1 };
+      appearance?.setTheme(dark ? 'dark' : 'light');
       if (view && !view.isDestroyed()) view.webContents.send(`${channel}:changed`, state);
     },
     toggle() {
@@ -101,15 +110,36 @@ export function createAccountUsagePopover(options: {
       if (view && !view.isDestroyed()) { reveal(); return; }
       try {
         const window = options.createWindow({
-          width: 360, height, show: false, frame: false, transparent: true,
+          width: POPOVER_WINDOW_WIDTH, height, show: false, frame: false, transparent: true,
+          backgroundColor: INITIAL_WINDOW_BACKGROUND_COLORS[state.dark ? 'dark' : 'light'],
           resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
           skipTaskbar: true, alwaysOnTop: true, title: 'Cheshi · Account & Usage',
           webPreferences: { preload: options.preload, contextIsolation: true, sandbox: true, nodeIntegration: false },
         });
         view = window;
-        window.on('ready-to-show', () => { if (view === window) { ready = true; reveal(); } });
+        appearance = createWindowAppearance({
+          window, filename: options.appearanceFile, backgrounds: INITIAL_WINDOW_BACKGROUND_COLORS,
+          binding: options.appearanceBinding,
+          onChanged(value) {
+            if (disposed || view !== window) return;
+            state = { ...state, appearance: value, revision: state.revision + 1 };
+            window.webContents.send(`${channel}:changed`, state);
+          },
+        });
+        state = { ...state, appearance: appearance.getState(), revision: state.revision + 1 };
+        window.on('ready-to-show', () => {
+          if (view !== window) return;
+          appearance?.ready(state.dark ? 'dark' : 'light');
+          ready = true;
+          reveal();
+        });
         window.on('blur', () => { if (view === window) { blurredAt = now(); hide(); } });
-        window.on('closed', () => { if (view === window) { view = null; ready = false; wantsOpen = false; } });
+        window.on('closed', () => {
+          if (view !== window) return;
+          appearance?.dispose();
+          appearance = null;
+          view = null; ready = false; wantsOpen = false;
+        });
         window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
         window.webContents.on('will-navigate', event => event.preventDefault());
         window.webContents.on('will-redirect', event => event.preventDefault());

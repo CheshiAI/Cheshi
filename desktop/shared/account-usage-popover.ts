@@ -1,4 +1,5 @@
 import type { CodexAccountsSnapshot } from './codex-accounts.ts';
+import type { WindowAppearanceState } from './window-appearance.ts';
 
 export const USAGE_POPOVER_CHANNEL = 'cheshi:usage-popover';
 
@@ -6,6 +7,7 @@ export interface UsagePopoverState {
   revision: number;
   snapshot: CodexAccountsSnapshot | null;
   dark: boolean;
+  appearance: WindowAppearanceState | null;
 }
 
 export interface UsagePopoverApi {

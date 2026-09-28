@@ -23,8 +23,10 @@ function loadWindowGlass(): WindowGlassBinding | null {
 }
 
 export function createWindowAppearance(options: {
-  window: BrowserWindow;
-  ipc: Pick<IpcMain, 'handle' | 'removeHandler'>;
+  window: Pick<BrowserWindow, 'webContents' | 'isDestroyed' | 'setBackgroundColor' | 'getNativeWindowHandle' | 'on' | 'off'>;
+  // Secondary windows observe the shared settings without exposing a settings writer.
+  ipc?: Pick<IpcMain, 'handle' | 'removeHandler'>;
+  onChanged?(state: WindowAppearanceState): void;
   filename: string;
   backgrounds: Record<'dark' | 'light', string>;
   binding?: WindowGlassBinding | null;
@@ -39,7 +41,9 @@ export function createWindowAppearance(options: {
     preferences: { ...DEFAULT_WINDOW_APPEARANCE }, supported: binding !== null, active: false, error: null,
   };
   const publish = () => {
-    if (!disposed && !window.webContents.isDestroyed()) window.webContents.send(APPEARANCE_CHANNELS.changed, state);
+    if (disposed || window.webContents.isDestroyed()) return;
+    if (ipc) window.webContents.send(APPEARANCE_CHANNELS.changed, state);
+    options.onChanged?.(state);
   };
   const apply = (force = false) => {
     if (disposed || window.isDestroyed()) return;
@@ -82,8 +86,8 @@ export function createWindowAppearance(options: {
       throw new Error('Appearance settings are only available to their workspace window.');
     }
   };
-  ipc.handle(APPEARANCE_CHANNELS.get, event => { assertOwner(event); return state; });
-  ipc.handle(APPEARANCE_CHANNELS.set, (event, value: unknown) => {
+  ipc?.handle(APPEARANCE_CHANNELS.get, event => { assertOwner(event); return state; });
+  ipc?.handle(APPEARANCE_CHANNELS.set, (event, value: unknown) => {
     assertOwner(event);
     store.save(value);
     return state;
@@ -96,13 +100,14 @@ export function createWindowAppearance(options: {
     unsubscribe();
     window.off('focus', refreshAccessibility);
     window.off('closed', dispose);
-    ipc.removeHandler(APPEARANCE_CHANNELS.get);
-    ipc.removeHandler(APPEARANCE_CHANNELS.set);
+    ipc?.removeHandler(APPEARANCE_CHANNELS.get);
+    ipc?.removeHandler(APPEARANCE_CHANNELS.set);
   };
   window.on('focus', refreshAccessibility);
   window.on('closed', dispose);
   apply();
   return {
+    getState: () => state,
     ready(value: 'dark' | 'light') { theme = value; ready = true; apply(); },
     setTheme(value: 'dark' | 'light') { if (theme !== value) { theme = value; apply(); } },
     dispose,

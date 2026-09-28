@@ -276,6 +276,7 @@ app.whenReady().then(async () => {
           ? path.join(process.resourcesPath, 'dist', 'index.html')
           : path.join(import.meta.dirname, 'frontend', 'dist', 'index.html')).href,
         preload: usagePopoverPreload,
+        appearanceFile: path.join(app.getPath('userData'), 'appearance.json'),
         showApp, quit: () => app.quit(), onError: reportTrayError,
       }),
       images: nativeImage, theme: nativeTheme,
