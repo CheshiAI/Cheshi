@@ -16,6 +16,7 @@ export interface DismissibleToastProps {
   footer?: ReactNode;
   onDismiss: () => void;
   dismissLabel?: string;
+  closeButtonVariant?: 'standard' | 'ghost';
 }
 
 export function DismissibleToast({
@@ -27,6 +28,7 @@ export function DismissibleToast({
   footer,
   onDismiss,
   dismissLabel = 'Close notification',
+  closeButtonVariant = 'standard',
 }: DismissibleToastProps) {
   const titleId = useId();
   const scrollbarSurface = useAutoHideScrollbars<HTMLDivElement>();
@@ -47,7 +49,7 @@ export function DismissibleToast({
             {description && <div className={styles.description}>{description}</div>}
           </div>
           <NeumorphicButton
-            variant="standard"
+            variant={closeButtonVariant}
             size="icon"
             aria-label={dismissLabel}
             title={dismissLabel}

@@ -88,6 +88,16 @@ test('blocks duplicate submissions and dismissal until Trash completes', async (
   });
 });
 
+test('omits the repeated relative path for root entries while keeping the Trash explanation', async () => {
+  await withDialog(async () => {
+    const paragraphs = [...document.querySelectorAll('form p')].map(p => p.textContent);
+    expect(paragraphs).toEqual([
+      entry.name,
+      'This file will be moved to Trash. You can restore it from Trash.',
+    ]);
+  }, { ...entry, path: entry.name });
+});
+
 test.each(['busy', 'error'] as const)('keeps the dialog open after %s and allows retry', async failure => {
   await withDialog(async h => {
     await act(async () => h.submit());

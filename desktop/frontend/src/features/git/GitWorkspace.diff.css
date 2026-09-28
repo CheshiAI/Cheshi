@@ -107,8 +107,8 @@
   grid-template-columns: 24px 46px 46px 20px minmax(max-content, 1fr);
 }
 
-.diffLine[data-kind='addition'] { background: rgba(74, 151, 96, .15); }
-.diffLine[data-kind='deletion'] { background: rgba(190, 70, 67, .15); }
+.diffLine[data-kind='addition'] { background: var(--git-diff-addition-background, rgba(74, 151, 96, .15)); }
+.diffLine[data-kind='deletion'] { background: var(--git-diff-deletion-background, rgba(190, 70, 67, .15)); }
 .diffLine[data-kind='meta'] { color: #7da0c4; }
 .diffLine[data-line-target='true'] { box-shadow: inset 3px 0 var(--editor-accent); outline: 1px solid var(--editor-accent); outline-offset: -1px; }
 
@@ -157,8 +157,8 @@
   user-select: none;
 }
 
-.diffLine[data-kind='addition'] .lineMarker { color: #83b99b; }
-.diffLine[data-kind='deletion'] .lineMarker { color: #e08c84; }
+.diffLine[data-kind='addition'] .lineMarker { color: var(--git-diff-addition-color, #83b99b); }
+.diffLine[data-kind='deletion'] .lineMarker { color: var(--git-diff-deletion-color, #e08c84); }
 
 .diffLine code {
   white-space: pre;

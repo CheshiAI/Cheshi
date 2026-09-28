@@ -18,19 +18,24 @@
   padding: 0 var(--space-default);
   border-bottom: 1px solid var(--divider);
 }
-.title { display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px; }
-.titleMark { cursor: default; pointer-events: none; }
-.titleMark svg { width: 11px; height: 11px; stroke-width: 1.7; }
-.title h2 { margin: 0; font-family: var(--font-ui), sans-serif; font-size: var(--font-size-section-title); font-weight: 600; letter-spacing: normal; line-height: 1.5; color: var(--sidebar-section-label-color); }
-.body { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: var(--space-default); padding: var(--space-default); overflow: auto; }
+.header > h2 { flex: 1; }
+.body { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: var(--space-default); padding: var(--space-default) 0 0; overflow: auto; }
 .body p { margin: 0; }
+.body > :not(.diff) { margin-inline: var(--space-default); }
 .origin { overflow-wrap: anywhere; color: var(--sub-text); }
 .metadata { display: grid; gap: var(--space-default); overflow-wrap: anywhere; flex-shrink: 0; max-height: 40%; overflow: auto; }
 .metadata pre { margin: 0; max-height: 160px; overflow: auto; white-space: pre-wrap; font: inherit; }
 .metadata code { font-size: inherit; user-select: text; }
-.diff { display: flex; flex: 1; min-height: 180px; overflow: hidden; }
+.diff { display: flex; flex: 1; width: 100%; min-height: 180px; overflow: hidden; }
 .diff > section { flex: 1; min-width: 0; min-height: 0; }
-.panel .diff { font-size: 10px; }
+.panel .diff {
+  --git-diff-background: var(--control-surface);
+  --git-diff-addition-background: var(--editor-diff-added-background);
+  --git-diff-deletion-background: var(--editor-diff-removed-background);
+  --git-diff-addition-color: var(--editor-success-color);
+  --git-diff-deletion-color: var(--editor-problem-syntax);
+  font-size: 10px;
+}
 .panel .diff > section > header {
   box-sizing: border-box;
   height: 42px;

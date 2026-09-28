@@ -128,6 +128,7 @@ export const workspaceEditorTheme = EditorView.theme({
     display: 'flex',
     minWidth: '0',
     minHeight: '28px',
+    background: 'var(--control-surface-ghost)',
     alignItems: 'center',
     borderRadius: '6px',
     color: 'var(--text)',
@@ -135,8 +136,12 @@ export const workspaceEditorTheme = EditorView.theme({
     lineHeight: '16px',
     padding: 'var(--space-6) var(--space-10)',
   },
-  '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected="true"], .cm-tooltip.cm-tooltip-autocomplete > ul > li:hover': {
-    background: 'var(--dropdown-selection-bg)',
+  '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected="true"]': {
+    background: 'var(--control-surface)',
+    color: 'var(--active-text)',
+  },
+  '.cm-tooltip.cm-tooltip-autocomplete > ul > li:is(:hover, :active)': {
+    background: 'var(--control-surface-interactive)',
     color: 'var(--active-text)',
   },
   '.cm-tooltip.cm-tooltip-autocomplete::after': {
@@ -293,7 +298,7 @@ export const workspaceEditorTheme = EditorView.theme({
   },
   '.workspace-editor-signature-help code strong': {
     borderRadius: 'var(--radius-small)',
-    background: 'var(--dropdown-selection-bg)',
+    background: 'var(--control-surface)',
     color: 'var(--dropdown-selection-text)',
     fontWeight: '700',
     padding: '1px var(--space-2)',
@@ -330,12 +335,12 @@ export const workspaceEditorTheme = EditorView.theme({
     borderTopColor: 'var(--divider)',
   },
   '.cm-tooltip-above > .cm-tooltip-arrow::after': {
-    borderTopColor: 'rgba(0, 0, 0, 0.01)',
+    borderTopColor: 'transparent',
   },
   '.cm-tooltip-below > .cm-tooltip-arrow::before': {
     borderBottomColor: 'var(--divider)',
   },
   '.cm-tooltip-below > .cm-tooltip-arrow::after': {
-    borderBottomColor: 'rgba(0, 0, 0, 0.01)',
+    borderBottomColor: 'transparent',
   },
 });

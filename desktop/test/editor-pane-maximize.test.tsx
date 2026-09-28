@@ -15,9 +15,16 @@ import * as layoutControls from '../frontend/src/features/shell/WorkspaceLayoutC
 import type { WorkspaceEditor } from '../frontend/src/features/editor/WorkspaceEditor';
 import type { WorkspaceEditorPane } from '../frontend/src/features/editor/WorkspaceEditorPane';
 import type { WorkspaceTab } from '../frontend/src/features/editor/workspaceEditorModel';
+import { RegionalBlur } from '../frontend/src/shared/ui/RegionalBlur';
+import { FlatTab, FlatTabList } from '../frontend/src/shared/ui/FlatTab';
+import { ToolbarMenu } from '../frontend/src/shared/ui/ToolbarMenu';
+import { WorkspaceProblemsPanel } from '../frontend/src/features/editor/WorkspaceProblemsPanel';
 
 mock.module('../frontend/src/shared/ui/SplitPaneLayout.module.css', () => ({
   default: { split: 'split', region: 'region', separator: 'separator' },
+}));
+mock.module('../frontend/src/shared/ui/ContextMenu.module.css', () => ({
+  default: { anchor: 'context-menu-anchor', menu: 'context-menu', item: 'context-menu-item' },
 }));
 const { SplitPaneLayout } = await import('../frontend/src/shared/ui/SplitPaneLayout');
 const { WorkspaceEditorSplit } = await import('../frontend/src/features/shell/WorkspaceEditorSplit');
@@ -35,13 +42,17 @@ async function withEditor(run: (h: {
   toggle(id: string, restore?: boolean): Promise<void>;
   closed: string[];
   outerMaximized: string[];
-}) => Promise<void>, singlePane = false, mixedWorkspace = false) {
+  window: Window;
+}) => Promise<void>, singlePane = false, mixedWorkspace = false, menus?: (id: string) => React.ReactNode) {
   const window = new Window();
   const globals = { window, document: window.document, navigator: window.navigator, Node: window.Node,
-    HTMLElement: window.HTMLElement, Element: window.Element, IS_REACT_ACT_ENVIRONMENT: true };
+    HTMLElement: window.HTMLElement, Element: window.Element, MutationObserver: window.MutationObserver,
+    requestAnimationFrame: window.requestAnimationFrame.bind(window), cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
+    IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
   const container = document.createElement('div');
+  container.id = 'app';
   document.body.append(container);
   const root = createRoot(container);
   const store = createEditorPaneStore();
@@ -60,12 +71,14 @@ async function withEditor(run: (h: {
     return <section data-content={pane.id} data-active={String(active)}>
       <layoutControls.WorkspaceLayoutControls maximizeControl={maximizeControl} />
       <textarea aria-label={`${pane.id} draft`} defaultValue="unsaved text" />
+      {menus?.(pane.id)}
     </section>;
   }
   const modules: Record<string, unknown> = {
     react: React, 'react/jsx-runtime': jsxRuntime, 'react-dom': { createPortal },
     '../../cheshiDesktop': { cheshiDesktop: null },
     '../../shared/ui/SplitPaneLayout': { SplitPaneLayout },
+    '../../shared/ui/RegionalBlur': { RegionalBlur },
     '../shell/WorkspaceLayoutControls': layoutControls,
     './WorkspaceEditorPane': { WorkspaceEditorPane: Pane },
     './useEditorPanes': { useEditorPanes: () => ({ store,
@@ -105,7 +118,7 @@ async function withEditor(run: (h: {
           {editor}
         </layoutControls.WorkspacePaneContext.Provider>
       </layoutControls.WorkspaceLayoutContext.Provider>));
-    await run({ store, ids, closed, outerMaximized,
+    await run({ store, ids, closed, outerMaximized, window,
       visible: () => [...container.querySelectorAll<HTMLElement>('[data-editor-pane]')]
         .filter(element => !element.closest('[hidden]')).map(element => element.dataset.editorPane!),
       toggle: async (id, restore = false) => {
@@ -226,4 +239,77 @@ test('closing the maximized file restores the outer workspace too', async () => 
     expect(visibleWorkspacePanes()).toEqual(['editor', 'primary', 'terminal']);
     expect(h.visible().sort()).toEqual(h.ids.filter(other => other !== id).sort());
   }, false, true);
+});
+
+test.each([true, false])('editor tab, diagnostics and file menus share SVG blur with singlePane=%s', async singlePane => {
+  const actions: string[] = [];
+  const menus = (id: string) => <>
+    <FlatTabList onCloseAll={() => actions.push(`close:${id}`)}>
+      <FlatTab active closeLabel={`Close ${id}`} label={id} title={id} onActivate={() => {}} onClose={() => {}}
+        onCopyFullPath={() => actions.push(`copy:${id}`)} onOpenLocalHistory={() => actions.push(`history:${id}`)} />
+    </FlatTabList>
+    <ToolbarMenu label="File actions" items={[
+      { id: 'history', label: 'Local history', icon: null, onSelect: () => actions.push(`history:${id}`) },
+    ]} />
+    <WorkspaceProblemsPanel open content="" diagnostics={[]} filePath={`${id}.ts`} languageServerConfiguring={false}
+      status="ready" onSelectDiagnostic={() => {}} onConfigureLanguageServer={mode => actions.push(`${mode}:${id}`)}
+      languageServer={{ language: 'typescript', displayName: 'TypeScript', serverName: 'ts', mode: 'auto',
+        state: 'running', executable: null, message: '' }} />
+  </>;
+  await withEditor(async h => {
+    const source = document.getElementById('app')!;
+    Object.defineProperties(source, {
+      offsetWidth: { value: 1200 }, offsetHeight: { value: 800 },
+      getBoundingClientRect: { value: () => new h.window.DOMRect(0, 0, 1200, 800) },
+    });
+    let filterId: string | null = null;
+    const flush = async () => { await React.act(async () => { await new Promise(resolve => setTimeout(resolve, 40)); }); };
+    for (const id of h.ids) {
+      const pane = document.querySelector<HTMLElement>(`[data-content="${id}"]`)!;
+      for (const kind of ['tab', 'diagnostics', 'file']) {
+        const trigger = pane.querySelector<HTMLButtonElement>(kind === 'tab' ? '[role="tab"]'
+          : `[aria-label="${kind === 'file' ? 'File actions' : 'TypeScript language server mode'}"]`)!;
+        const open = async () => {
+          await React.act(async () => {
+            if (kind === 'tab') trigger.dispatchEvent(new h.window.MouseEvent('contextmenu', {
+              bubbles: true, cancelable: true, clientX: 200, clientY: 100,
+            }) as unknown as Event);
+            else trigger.click();
+          });
+          const menu = document.querySelector<HTMLElement>('[role="menu"]')!;
+          menu.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:12px';
+          Object.defineProperties(menu, {
+            getBoundingClientRect: { value: () => new h.window.DOMRect(200, 100, 180, 200) },
+            getClientRects: { value: () => [new h.window.DOMRect(200, 100, 180, 200)] },
+          });
+          await flush();
+          expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
+          expect(source.contains(menu)).toBe(false);
+          expect(menu.style.filter).toBe('');
+          const currentId = source.getAttribute('data-regional-blur-source');
+          filterId ??= currentId;
+          expect(currentId).toBe(filterId);
+          expect(source.style.filter).toContain('url(');
+          const filter = document.getElementById(currentId!)!;
+          expect(filter.querySelector('feGaussianBlur')?.getAttribute('stdDeviation')).toBe('16');
+          const mask = decodeURIComponent(filter.querySelector('feImage')!.getAttribute('href')!.split(',').slice(1).join(','));
+          expect(mask).toContain('M212 100');
+          return menu;
+        };
+        await open();
+        await React.act(async () => document.dispatchEvent(new h.window.KeyboardEvent('keydown', {
+          key: 'Escape', bubbles: true,
+        }) as unknown as Event));
+        expect(document.querySelector('[role="menu"]')).toBeNull();
+        expect(source.style.filter).toBe('');
+        expect(document.activeElement).toBe(trigger);
+        const menu = await open();
+        await React.act(async () => menu.querySelector<HTMLButtonElement>(kind === 'diagnostics'
+          ? '[role="menuitemradio"]' : '[role="menuitem"]')!.click());
+        expect(actions.at(-1)).toBe(`${kind === 'diagnostics' ? 'disabled' : 'history'}:${id}`);
+        expect(source.style.filter).toBe('');
+        expect(pane.querySelector('textarea')?.value).toBe('unsaved text');
+      }
+    }
+  }, singlePane, false, menus);
 });

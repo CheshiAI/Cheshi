@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from 'bun:test';
+import { expect, mock, spyOn, test } from 'bun:test';
 import { act, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Window } from 'happy-dom';
@@ -10,6 +10,10 @@ import { WorkspaceCodeExplanationToast } from '../frontend/src/features/editor/W
 import { WorkspaceLineCommitPanel } from '../frontend/src/features/editor/WorkspaceLineCommitPanel';
 import { ReviewSidebar } from '../frontend/src/features/shell/ReviewSidebar';
 import type { GitLineBlameRequest, GitLineCommit } from '../shared/git-line-blame';
+
+mock.module('../frontend/src/shared/ui/ContextMenu.module.css', () => ({
+  default: { anchor: 'context-menu-anchor', menu: 'context-menu', item: 'context-menu-item' },
+}));
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;

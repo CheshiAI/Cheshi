@@ -22,25 +22,13 @@
   border-bottom: 1px solid var(--divider);
 }
 
-.title,
 .headerActions {
   display: flex;
   min-width: 0;
   align-items: center;
 }
 
-.title { flex: 0 0 auto; gap: 10px; }
-.titleMark { cursor: default; pointer-events: none; }
-.title h2 {
-  margin: 0;
-  color: var(--sidebar-section-label-color);
-  font-family: var(--font-ui), sans-serif;
-  font-size: var(--font-size-section-title);
-  font-weight: 600;
-  letter-spacing: normal;
-  line-height: 1.5;
-  white-space: nowrap;
-}
+.header > h2 { flex: 0 0 auto; }
 .headerActions { flex: 0 0 auto; gap: var(--icon-default); }
 
 .layout {
@@ -114,12 +102,11 @@
 
 .history {
   min-width: 0;
-  overflow: auto;
   padding: 0;
   border-right: 1px solid var(--divider);
 }
 
-.history > p { color: var(--sub-text); }
+.history p { color: var(--sub-text); }
 
 .history .entry[data-size='standard'] {
   flex-direction: column;
@@ -200,10 +187,10 @@
 .cell code { font: inherit; white-space: pre; tab-size: 2; }
 .lineNumber { text-align: right; padding-right: var(--icon-default); color: var(--editor-muted); font-variant-numeric: tabular-nums; user-select: none; }
 .marker { text-align: center; user-select: none; }
-.cell[data-kind='removed'] { background: color-mix(in srgb, #e08080 14%, transparent); }
-.cell[data-kind='added'] { background: color-mix(in srgb, #73c991 14%, transparent); }
-.cell[data-kind='removed'] .marker { color: #e08080; }
-.cell[data-kind='added'] .marker { color: #73c991; }
+.cell[data-kind='removed'] { background: var(--editor-diff-removed-background); }
+.cell[data-kind='added'] { background: var(--editor-diff-added-background); }
+.cell[data-kind='removed'] .marker { color: var(--editor-problem-syntax); }
+.cell[data-kind='added'] .marker { color: var(--editor-success-color); }
 .empty { margin: auto; padding: var(--space-default); color: var(--sub-text); text-align: center; line-height: 1.6; }
 .empty svg { width: var(--icon-size-default); height: var(--icon-size-default); }
 .notice,

@@ -4,6 +4,7 @@ import type { GitLineBlameRequest, GitLineCommit } from '../../../../shared/git-
 import { cheshiDesktop as workspace } from '../../cheshiDesktop';
 import { errorMessage } from '../../shared/errorMessage';
 import { LiquidGlassPanel, LoadingState, NeumorphicButton } from '../../shared/ui';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { GitDiffViewer } from '../git/GitDiffViewer';
 import { parseUnifiedDiff } from '../git/unifiedDiff';
 import gitStyles from '../git/GitWorkspace.module.css';
@@ -37,13 +38,8 @@ export function WorkspaceLineCommitPanel({ request, onClose, read = readLineComm
     <LiquidGlassPanel as="section" aria-label="Line commit" className={styles.panel}
       onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } }}>
       <header className={styles.header}>
-        <div className={styles.title}>
-          <NeumorphicButton raised className={`theme-toggle ${styles.titleMark}`} disabled aria-hidden="true">
-            <GitCommitHorizontal aria-hidden="true" />
-          </NeumorphicButton>
-          <h2>LINE COMMIT</h2>
-        </div>
-        <NeumorphicButton variant="standard" size="icon" aria-label="Close line commit" onClick={onClose}><X aria-hidden="true" /></NeumorphicButton>
+        <SidebarPanelTitle as="h2" title="LINE COMMIT" icon={<GitCommitHorizontal aria-hidden="true" />} />
+        <NeumorphicButton variant="ghost" size="icon" aria-label="Close line commit" onClick={onClose}><X aria-hidden="true" /></NeumorphicButton>
       </header>
       <div className={styles.body}>
         <p className={styles.origin}>{request.path}:{request.line} · Last change</p>

@@ -1,5 +1,6 @@
 /* Editor palette and metrics, shared by DOM panels and CodeMirror. */
 :root {
+  --editor-background: rgb(41, 52, 61);
   --editor-text: #e7e7e7;
   --editor-muted: #929497;
   --editor-accent: #3d5569;
@@ -21,7 +22,6 @@
   --editor-problem-syntax: #dc8e8e;
   --editor-problem-deprecated: #d5ad65;
   --editor-problem-dead-code: #8ca5b0;
-  --editor-completion-surface: #25282c;
   --editor-completion-border: rgba(255, 255, 255, .16);
   --editor-completion-detail: #8f969a;
   --editor-bracket-guide-0: rgba(133, 201, 192, .28);
@@ -33,6 +33,8 @@
   --editor-line-padding: var(--space-default);
   --editor-modified-color: #dfb96f;
   --editor-success-color: #75ad91;
+  --editor-diff-added-background: color-mix(in srgb, var(--editor-success-color) 15%, transparent);
+  --editor-diff-removed-background: color-mix(in srgb, var(--editor-problem-syntax) 15%, transparent);
   --editor-error-color: #e1a5a5;
   --editor-error-border: rgba(220, 142, 142, .22);
   --editor-error-surface: rgba(118, 47, 47, .16);

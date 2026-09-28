@@ -36,16 +36,18 @@ export function WorkspaceDeleteEntryDialog({ entry, onDelete, onClose }: {
   };
 
   return <Modal title="MOVE TO TRASH" titleIcon={<Trash2 aria-hidden="true" />} headerVariant="section"
-    className={styles.dialog} closeDisabled={pending} onClose={close}>
+    className={styles.dialog} closeButtonVariant="ghost" closeDisabled={pending} onClose={close}>
     <form ref={formRef} className={styles.form} aria-busy={pending} onSubmit={(event) => {
       event.preventDefault();
       void remove();
     }}>
       <p className={styles.name}>{entry.name}</p>
-      <p className={styles.description}>{entry.path}</p>
-      <p className={styles.description}>{entry.kind === 'directory'
-        ? 'This folder and its contents will be moved to Trash.'
-        : 'This file will be moved to Trash.'} You can restore it from Trash.</p>
+      <div>
+        {entry.path !== entry.name && <p className={styles.description}>{entry.path}</p>}
+        <p className={styles.description}>{entry.kind === 'directory'
+          ? 'This folder and its contents will be moved to Trash.'
+          : 'This file will be moved to Trash.'} You can restore it from Trash.</p>
+      </div>
       {error && <p className={styles.description} role="alert">{error}</p>}
       {pending && <LoadingState type="processing" label="Moving to Trash…" />}
       <div className={styles.actions}>

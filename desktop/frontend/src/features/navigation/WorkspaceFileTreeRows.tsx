@@ -127,6 +127,7 @@ function WorkspaceFileTreeEditRow({
         onChange={(event) => onChange(event.target.value)}
         trailingAction={value ? (
           <SearchClearButton
+            variant="ghost"
             aria-label="Clear name"
             disabled={busy}
             onMouseDown={(event) => event.preventDefault()}

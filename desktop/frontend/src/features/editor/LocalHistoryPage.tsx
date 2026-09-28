@@ -7,6 +7,8 @@ import {
 import { cheshiDesktop, type WorkspaceFileWriteResult } from '../../cheshiDesktop';
 import { FileTypeIcon } from '../../shared/file-icons/FileTypeIcon';
 import { LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
+import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { localHistoryDiff } from './localHistoryDiff';
 import { LocalHistoryModel } from './localHistoryModel';
 import styles from './LocalHistoryPage.module.css';
@@ -70,12 +72,7 @@ export function LocalHistoryPage({
     <LiquidGlassPanel as="section" className={styles.workspace} aria-label="Local history"
       onKeyDown={event => { if (event.key === 'Escape' && !restoring) { event.stopPropagation(); onClose(); } }}>
       <header className={styles.header}>
-        <div className={styles.title}>
-          <NeumorphicButton variant="standard" size="icon" className={styles.titleMark} disabled aria-hidden="true">
-            <History aria-hidden="true" />
-          </NeumorphicButton>
-          <h2>LOCAL HISTORY</h2>
-        </div>
+        <SidebarPanelTitle as="h2" title="LOCAL HISTORY" icon={<History aria-hidden="true" />} />
         <span className={styles.path} title={path}>
           <FileTypeIcon className={styles.fileIcon} name={fileName} path={path} />
           <span className={styles.fileName}>{fileName}</span>
@@ -98,7 +95,7 @@ export function LocalHistoryPage({
           This file has unsaved edits. Save it before restoring. The comparison shows the saved file on disk.
         </p>}
         <div className={styles.body} aria-busy={loading || loadingSnapshot}>
-          <nav className={styles.history} aria-label="Saved file versions">
+          <OverlayScrollArea className={styles.history} label="Saved file versions">
             {loading && entries.length === 0 ? <p role="status">Loading history…</p>
               : entries.length === 0 ? <p>No saved versions yet.</p> : entries.map((entry) => (
                 <NeumorphicButton key={entry.id} variant="ghost" className={styles.entry}
@@ -108,7 +105,7 @@ export function LocalHistoryPage({
                   <time dateTime={new Date(entry.createdAt).toISOString()}>{formatDate(entry.createdAt)}</time>
                 </NeumorphicButton>
               ))}
-          </nav>
+          </OverlayScrollArea>
           <section className={styles.comparison} aria-label="Version comparison">
             {loadingSnapshot ? <p className={styles.empty} role="status">Loading version…</p>
               : comparison && snapshot && current ? <div className={styles.comparisonContent}>

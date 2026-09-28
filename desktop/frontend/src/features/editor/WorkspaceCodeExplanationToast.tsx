@@ -21,6 +21,7 @@ export function WorkspaceCodeExplanationToast({ state, selectionError, onDismiss
       description={selection ? `${selection.path} · ${selection.startLine}–${selection.endLine}` : undefined}
       onDismiss={onDismiss}
       dismissLabel="Close code explanation"
+      closeButtonVariant="ghost"
     >
       {error
         ? <p className={styles.message} role="alert">{error}</p>

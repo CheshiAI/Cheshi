@@ -30,7 +30,7 @@ async function withScrollbars(run: (h: {
   const window = new Window();
   const globals = {
     window, Window: window.Window, document: window.document, navigator: window.navigator,
-    MutationObserver: window.MutationObserver,
+    MutationObserver: window.MutationObserver, ResizeObserver: window.ResizeObserver,
     requestAnimationFrame: window.requestAnimationFrame.bind(window),
     cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
     IS_REACT_ACT_ENVIRONMENT: true,
@@ -228,21 +228,21 @@ test.each([false, true])('editor scrollbars handle both axes and restored tabs (
 });
 
 test('assistant lists and source previews share scrollbar activity and clean up on close', async () => {
-  await withScrollbars(async ({ container, renderAssist, scroll, advance, pending }) => {
+  await withScrollbars(async ({ renderAssist, scroll, advance, pending }) => {
     await renderAssist({ kind: 'references', locations: [], selectedIndex: 0,
       preview: { content: 'example', startLine: 1, targetLine: 1 }, previewLoading: false });
-    const surface = container.querySelector('.workspace-editor-assist-popup-anchor')!;
-    const list = container.querySelector<HTMLElement>('.workspace-editor-reference-list')!;
-    const preview = container.querySelector<HTMLElement>('.workspace-editor-reference-preview')!;
+    const surface = document.querySelector('.workspace-editor-assist-popup-anchor')!;
+    const list = document.querySelector<HTMLElement>('[role="region"][aria-label="References"]')!;
+    const preview = document.querySelector<HTMLElement>('.workspace-editor-reference-preview')!;
     expect(surface.hasAttribute('data-auto-hide-scrollbars')).toBe(true);
     scroll(list);
     scroll(preview);
-    expect(pending()).toBe(2);
+    expect(pending()).toBe(3);
     advance(700);
     expect(list.getAttribute('data-scrollbar-active')).toBe('false');
     expect(preview.getAttribute('data-scrollbar-active')).toBe('false');
     await renderAssist({ kind: 'edit-preview', title: 'Edits', files: [], applying: false });
-    const edits = container.querySelector<HTMLElement>('.workspace-editor-edit-preview ul')!;
+    const edits = document.querySelector<HTMLElement>('.workspace-editor-edit-preview ul')!;
     scroll(edits);
     expect(edits.getAttribute('data-scrollbar-active')).toBe('true');
     await renderAssist(null);

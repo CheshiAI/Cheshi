@@ -9,6 +9,7 @@ import {
   NeumorphicButton,
 } from '../../shared/ui';
 import badgeStyles from '../../shared/ui/Badge.module.css';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import type { LanguageServerMode, LanguageServerStatus } from '../../cheshiDesktop';
 import type {
   WorkspaceDiagnostic,
@@ -82,16 +83,7 @@ export function WorkspaceProblemsPanel({
         data-liquid-glass-surface="side-panel"
       >
         <div className="workspace-editor-problems-title">
-          <NeumorphicButton
-            raised
-            size="icon"
-            disabled
-            aria-hidden="true"
-            className="workspace-editor-problems-icon"
-          >
-            <AlertTriangle aria-hidden="true" />
-          </NeumorphicButton>
-          <strong>PROBLEMS</strong>
+          <SidebarPanelTitle as="h2" title="PROBLEMS" icon={<AlertTriangle aria-hidden="true" />} />
           {problemCount > 0 && (
             <span className={badgeStyles.badge}>{problemCount}</span>
           )}

@@ -1,0 +1,8 @@
+.anchor {
+  composes: anchor from '../../shared/ui/PopupSurface.module.css';
+  --liquid-glass-radius: 12px;
+}
+
+.surface {
+  composes: surface from '../../shared/ui/PopupSurface.module.css';
+}

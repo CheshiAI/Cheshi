@@ -2,6 +2,7 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState }
 import { createPortal } from 'react-dom';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { SplitPaneLayout } from '../../shared/ui/SplitPaneLayout';
+import { RegionalBlur } from '../../shared/ui/RegionalBlur';
 import type { SplitLayoutNode, SplitPaneDirection } from '../../shared/ui/splitPaneModel';
 import { WorkspaceLayoutContext, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
 import { WorkspaceEditorPane, type WorkspaceEditorProps } from './WorkspaceEditorPane';
@@ -19,6 +20,8 @@ const ignoreSelection = () => {};
 
 /** Pane controllers remain mounted in stable portals as the split tree changes. */
 export function WorkspaceEditor(props: WorkspaceEditorProps) {
+  // Portaled menus can overlap adjacent panes and sidebar borders.
+  const menuBlurSourceRef = useRef(document.getElementById('app'));
   const visible = useContext(WorkspacePaneVisibilityContext);
   const workspaceLayout = useContext(WorkspaceLayoutContext);
   const active = props.active && visible;
@@ -109,7 +112,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
       if (sequence === dropSequence.current) setError(String(reason));
     }).finally(() => store.setBusy(busyId, false));
   }, [store, setError]);
-  return <div className={styles.root} style={!active ? { display: 'none' } : undefined}>
+  return <RegionalBlur sourceRef={menuBlurSourceRef}><div className={styles.root} style={!active ? { display: 'none' } : undefined}>
     {error && <p role="alert">{error}</p>}
     <SplitPaneLayout layout={shownLayout} onResizeSplit={store.resize} resizeLabel="Resize editor panes"
       renderPane={id => <EditorPaneHost host={hosts.get(id)!} id={id} onDetach={onDetach} onDrop={receive} />} />
@@ -131,5 +134,5 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           if (store.allTabs().length === 0) props.onAllTabsClosed();
         }} />,
       hosts.get(id)!, id))}
-  </div>;
+  </div></RegionalBlur>;
 }

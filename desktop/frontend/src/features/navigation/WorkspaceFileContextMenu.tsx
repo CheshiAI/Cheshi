@@ -5,9 +5,11 @@ import { createPortal } from 'react-dom';
 import {
   focusAdjacentMenuItem,
   LiquidGlassPanel,
+  RegionalBlur,
   useContextMenuInteractions,
 } from '../../shared/ui';
 import type { CheshiWorkspaceEntry } from '../../cheshiDesktop';
+import styles from './WorkspaceFileContextMenu.module.css';
 
 const contextMenuWidth = 180;
 const contextMenuViewportGap = 8;
@@ -54,6 +56,8 @@ export function WorkspaceFileContextMenu({
   onOpenLocalHistory,
 }: WorkspaceFileContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  // The menu can cross the sidebar boundary, so include the editor and its borders.
+  const sourceRef = useRef(document.getElementById('app'));
   useContextMenuInteractions(menuRef, onClose);
 
   const canCreate = entry === null || entry.kind === 'directory';
@@ -68,14 +72,14 @@ export function WorkspaceFileContextMenu({
   const left = clampedCoordinate(x, window.innerWidth, contextMenuWidth);
   const top = clampedCoordinate(y, window.innerHeight, contextMenuHeight);
 
-  return createPortal(
+  return <RegionalBlur sourceRef={sourceRef}>{createPortal(
     <div
       ref={menuRef}
-      className="workspace-file-context-menu-anchor"
+      className={`${styles.anchor} workspace-file-context-menu-anchor`}
       style={{ left, top, width: contextMenuWidth }}
     >
       <LiquidGlassPanel
-        className="workspace-file-context-menu"
+        className={`${styles.surface} workspace-file-context-menu`}
         role="menu"
         aria-label={entry ? `Actions for ${entry.name}` : 'Workspace actions'}
         onContextMenu={(event) => event.preventDefault()}
@@ -121,5 +125,5 @@ export function WorkspaceFileContextMenu({
       </LiquidGlassPanel>
     </div>,
     document.body,
-  );
+  )}</RegionalBlur>;
 }

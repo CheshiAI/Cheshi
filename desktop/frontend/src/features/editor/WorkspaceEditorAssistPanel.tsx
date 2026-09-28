@@ -16,6 +16,9 @@ import type {
   LanguageServerLocation,
 } from '../../cheshiDesktop';
 import type { WorkspaceEditorAssistState } from './workspaceEditorAssistState';
+import { WorkspaceEditorAssistPortal } from './WorkspaceEditorAssistPortal';
+import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
+import styles from './WorkspaceEditorAssistPanel.module.css';
 
 export type { ReferenceSourcePreview, WorkspaceEditFilePreview, WorkspaceEditorAssistState } from './workspaceEditorAssistState';
 
@@ -71,7 +74,7 @@ export function WorkspaceEditorAssistPanel({
     <LiquidGlassPanel
       as="section"
       aria-label={assistTitle(state)}
-      className="workspace-editor-assist"
+      className={`workspace-editor-assist ${styles.surface}`}
       data-kind={state.kind}
       data-liquid-glass-backdrop="true"
       role="dialog"
@@ -85,7 +88,7 @@ export function WorkspaceEditorAssistPanel({
         <AssistIcon state={state} />
         <strong>{assistTitle(state)}</strong>
         <NeumorphicButton
-          variant="standard"
+          variant="ghost"
           size="icon"
           aria-label="Close editor assistant"
           title="Close editor assistant"
@@ -97,21 +100,23 @@ export function WorkspaceEditorAssistPanel({
 
       {state.kind === 'references' && (
         <div className="workspace-editor-reference-layout">
-          <ol className="workspace-editor-reference-list">
-            {state.locations.map((location, index) => (
-              <li key={`${location.path}:${location.range.start.line}:${location.range.start.character}`}>
-                <button
-                  data-active={index === state.selectedIndex ? 'true' : undefined}
-                  type="button"
-                  onClick={() => onSelectReference(index)}
-                  onDoubleClick={() => onOpenReference(location)}
-                >
-                  <span>{location.path}</span>
-                  <small>{location.range.start.line + 1}:{location.range.start.character + 1}</small>
-                </button>
-              </li>
-            ))}
-          </ol>
+          <OverlayScrollArea className="workspace-editor-reference-scroll" label="References">
+            <ol className="workspace-editor-reference-list">
+              {state.locations.map((location, index) => (
+                <li key={`${location.path}:${location.range.start.line}:${location.range.start.character}`}>
+                  <button
+                    data-active={index === state.selectedIndex ? 'true' : undefined}
+                    type="button"
+                    onClick={() => onSelectReference(index)}
+                    onDoubleClick={() => onOpenReference(location)}
+                  >
+                    <span>{location.path}</span>
+                    <small>{location.range.start.line + 1}:{location.range.start.character + 1}</small>
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </OverlayScrollArea>
           <div className="workspace-editor-reference-preview"
             data-empty={!state.previewLoading && !state.preview ? 'true' : undefined}>
             {state.previewLoading ? (
@@ -150,33 +155,35 @@ export function WorkspaceEditorAssistPanel({
       )}
 
       {state.kind === 'actions' && (
-        <ul className="workspace-editor-action-list" aria-busy={state.loading}>
-          {state.loading ? (
-            <li className="workspace-editor-assist-empty">
-              <LoadingState type="processing" />
-            </li>
-          ) : state.error ? (
-            <li className="workspace-editor-assist-empty" role="alert">{state.error}</li>
-          ) : state.actions.length > 0 ? state.actions.map((action, index) => (
-            <li key={`${action.title}:${index}`}>
-              <button
-                disabled={Boolean(action.disabledReason) || !action.edit}
-                title={action.disabledReason ?? action.kind ?? action.title}
-                type="button"
-                onClick={() => onChooseAction(action)}
-              >
-                <Lightbulb aria-hidden="true" />
-                <span>
-                  <strong>{action.title}</strong>
-                  <small>{action.disabledReason ?? action.kind ?? 'code action'}</small>
-                </span>
-                {action.preferred && <em>Preferred</em>}
-              </button>
-            </li>
-          )) : (
-            <li className="workspace-editor-assist-empty">No code actions are available here.</li>
-          )}
-        </ul>
+        <OverlayScrollArea className="workspace-editor-action-scroll" label="Quick fixes and refactorings">
+          <ul className="workspace-editor-action-list" aria-busy={state.loading}>
+            {state.loading ? (
+              <li className="workspace-editor-assist-empty">
+                <LoadingState type="processing" />
+              </li>
+            ) : state.error ? (
+              <li className="workspace-editor-assist-empty" role="alert">{state.error}</li>
+            ) : state.actions.length > 0 ? state.actions.map((action, index) => (
+              <li key={`${action.title}:${index}`}>
+                <button
+                  disabled={Boolean(action.disabledReason) || !action.edit}
+                  title={action.disabledReason ?? action.kind ?? action.title}
+                  type="button"
+                  onClick={() => onChooseAction(action)}
+                >
+                  <Lightbulb aria-hidden="true" />
+                  <span>
+                    <strong>{action.title}</strong>
+                    <small>{action.disabledReason ?? action.kind ?? 'code action'}</small>
+                  </span>
+                  {action.preferred && <em>Preferred</em>}
+                </button>
+              </li>
+            )) : (
+              <li className="workspace-editor-assist-empty">No code actions are available here.</li>
+            )}
+          </ul>
+        </OverlayScrollArea>
       )}
 
       {state.kind === 'rename' && (
@@ -236,7 +243,7 @@ export function WorkspaceEditorAssistPanel({
             ))}
           </ul>
           <div className="workspace-editor-assist-footer">
-            <NeumorphicButton variant="ghost" type="button" onClick={onClose}>Cancel</NeumorphicButton>
+            <NeumorphicButton variant="standard" type="button" onClick={onClose}>Cancel</NeumorphicButton>
             <NeumorphicButton
               variant="standard"
               disabled={state.applying}
@@ -251,5 +258,7 @@ export function WorkspaceEditorAssistPanel({
       )}
     </LiquidGlassPanel>
   );
-  return <div ref={scrollbarSurface} className="workspace-editor-assist-popup-anchor">{panel}</div>;
+  return <WorkspaceEditorAssistPortal>
+    <div ref={scrollbarSurface} className={`workspace-editor-assist-popup-anchor ${styles.anchor}`}>{panel}</div>
+  </WorkspaceEditorAssistPortal>;
 }

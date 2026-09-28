@@ -1,6 +1,5 @@
 /* Shared editor control geometry; consumers retain state and placement styles. */
-.workspace-editor-action,
-.workspace-editor-problems-icon {
+.workspace-editor-action {
   --neumorphic-button-radius: 50%;
   display: inline-grid;
   width: var(--icon-button-size);

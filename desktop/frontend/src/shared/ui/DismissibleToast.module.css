@@ -61,24 +61,6 @@
   scrollbar-color: auto;
 }
 
-.card {
-  --liquid-glass-radius: 12px;
-  position: fixed;
-  right: var(--space-default);
-  bottom: var(--space-default);
-  z-index: 105;
-  display: flex;
-  flex-direction: column;
-  width: min(400px, calc(100vw - 2 * var(--space-default)));
-  max-height: min(520px, calc(100dvh - 2 * var(--space-default)));
-  overflow: hidden;
-  background: var(--app-bg);
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-size: 10px;
-  -webkit-app-region: no-drag;
-}
-
 .header {
   display: flex;
   flex: 0 0 auto;
@@ -117,28 +99,6 @@
   color: var(--sidebar-section-label-color);
   font-size: 10px;
   line-height: 16px;
-}
-
-.close[data-raised='true'] {
-  --neumorphic-button-radius: 50%;
-  display: grid;
-  flex: 0 0 auto;
-  width: var(--compact-icon-button-size);
-  height: var(--compact-icon-button-size);
-  padding: 0;
-  place-items: center;
-  cursor: pointer;
-}
-
-.close svg {
-  width: var(--compact-icon-size);
-  height: var(--compact-icon-size);
-  stroke-width: var(--compact-icon-stroke-width);
-}
-
-.close:focus-visible {
-  outline: 2px solid var(--dropdown-selection-text);
-  outline-offset: -3px;
 }
 
 .body {
