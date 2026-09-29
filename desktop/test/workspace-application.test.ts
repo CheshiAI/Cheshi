@@ -32,6 +32,7 @@ function fixture() {
       isDestroyed: () => state.destroyed,
       getNormalBounds: () => ({ x: 120, y: 80, width: 1500, height: 950 }),
       isMaximized: () => false, isFullScreen: () => false,
+      isFocused: () => state.shown, isMinimized: () => false, restore() {}, show() { state.shown = true; }, focus() { eventsLog.push(`focused:${options.workspaceRoot}`); },
       close() {
         state.closeCalls += 1;
         if (state.blocked) {
@@ -435,5 +436,23 @@ test('a replacement lost during source close restores the original workspace', a
   assert.equal(f.instances[2]!.options.workspaceRoot, '/one');
   assert.equal(f.instances[2]!.state.shown, true);
   assert.equal(f.application.lastWorkspaceRoot, '/one');
+  await f.application.closeAll();
+});
+
+test('scheduled task review reuses its workspace and concurrent clicks share one pending opening', async () => {
+  const f = fixture();
+  await f.application.open('/one');
+  await f.application.reveal('/one');
+  assert.equal(f.instances.length, 1);
+  assert.ok(f.eventsLog.includes('focused:/one'));
+  assert.equal(f.application.hasFocusedWorkspace('/one'), true);
+  assert.equal(f.application.hasFocusedWorkspace('/missing'), false);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  f.gateNextStart(gate);
+  const first = f.application.reveal('/two');
+  const second = f.application.reveal('/two');
+  assert.equal(f.instances.length, 2);
+  release(); await Promise.all([first, second]);
   await f.application.closeAll();
 });

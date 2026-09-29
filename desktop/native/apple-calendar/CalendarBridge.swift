@@ -2,6 +2,17 @@ import Foundation
 import EventKit
 import CryptoKit
 
+func calendarKind(_ type: EKCalendarType) -> String {
+    switch type {
+    case .local: return "local"
+    case .calDAV: return "caldav"
+    case .exchange: return "exchange"
+    case .subscription: return "subscription"
+    case .birthday: return "birthday"
+    @unknown default: return "unknown"
+    }
+}
+
 func accessStatus() -> String {
     let status = EKEventStore.authorizationStatus(for: .event)
     if #available(macOS 14.0, *) {
@@ -26,6 +37,8 @@ func eventValue(_ event: EKEvent) throws -> [String: Any] {
         "start": dates.start, "end": dates.end,
         "allDay": event.isAllDay, "timeZone": zone.identifier,
         "location": event.location ?? "", "notes": event.notes ?? "",
+        "url": event.url?.absoluteString ?? "",
+        "occurrenceId": event.calendarItemIdentifier + (recurring ? ":\(event.occurrenceDate?.timeIntervalSince1970 ?? start.timeIntervalSince1970)" : ""),
         "recurring": recurring, "readOnly": !calendar.allowsContentModifications || recurring || event.hasAttendees,
     ]
     var revisionValue = value
@@ -63,7 +76,8 @@ func perform(_ command: CalendarCommand, store: EKEventStore) throws -> Any {
         let defaultId = store.defaultCalendarForNewEvents?.calendarIdentifier
         return store.calendars(for: .event).map { calendar -> [String: Any] in
             ["id": calendar.calendarIdentifier, "title": calendar.title, "source": calendar.source.title,
-             "writable": calendar.allowsContentModifications, "isDefault": calendar.calendarIdentifier == defaultId]
+             "writable": calendar.allowsContentModifications, "isDefault": calendar.calendarIdentifier == defaultId,
+             "kind": calendarKind(calendar.type), "isSubscribed": calendar.isSubscribed]
         }
     case "events":
         guard let start = command.start, let end = command.end, let calendarId = command.calendarId else { throw CalendarFailure.invalid }
@@ -96,6 +110,10 @@ func perform(_ command: CalendarCommand, store: EKEventStore) throws -> Any {
         if event.endDate != dates.1 { event.endDate = dates.1 }
         event.location = input.location
         event.notes = input.notes
+        if let url = input.url { event.url = url.isEmpty ? nil : URL(string: url) }
+        if command.action == "create", let frequency = input.repeat, frequency != "once" {
+            event.recurrenceRules = [EKRecurrenceRule(recurrenceWith: frequency == "daily" ? .daily : .weekly, interval: 1, end: nil)]
+        }
         do { try store.save(event, span: .thisEvent, commit: true) }
         catch { throw CalendarFailure.writeUnknown }
         // A lost acknowledgement must never be reported as a definite failed write.
@@ -119,6 +137,9 @@ struct CalendarBridge {
     }
 
     static func main() async {
+        if CommandLine.arguments.dropFirst() == ["--watch"] {
+            await watchCalendarChanges(); return
+        }
         do {
             let data = FileHandle.standardInput.readDataToEndOfFile()
             guard data.count <= 500_000 else { throw CalendarFailure.invalid }

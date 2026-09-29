@@ -62,6 +62,16 @@ struct CalendarValuesTests {
                                allDay: true, timeZone: "Asia/Seoul", location: "", notes: "")
         let dates = try input.validatedDates()
         precondition(dates.1 > dates.0)
+        var task = EventInput(calendarId: "id", title: "[task] Review", start: "2026-09-22", end: "2026-09-23",
+                              allDay: true, timeZone: "Asia/Seoul", location: "", notes: "Inspect the workspace")
+        task.url = "file:///Users/example/My%20Project"
+        task.repeat = "weekly"
+        _ = try task.validatedDates()
+        task.repeat = "invalid"
+        rejects(.invalid) { _ = try task.validatedDates() }
+        task.repeat = "once"
+        task.url = "relative-path"
+        rejects(.invalid) { _ = try task.validatedDates() }
         // Foundation emits these identifiers for fixed-offset calendar events.
         // They must remain usable on save, including exclusive all-day endings.
         for identifier in ["GMT+0900", "GMT-0330", "GMT+0530", "GMT+05:45", "GMT+0000", "GMT-1800", "GMT+1800"] {

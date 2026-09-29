@@ -1,12 +1,13 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { useAutoHideScrollbars } from '../useAutoHideScrollbars';
 import styles from './OverlayScrollArea.module.css';
 
 /** Keep a native draggable scrollbar over the content instead of reserving a gutter. */
-export function OverlayScrollArea({ children, className, label }: {
-  children: ReactNode; className?: string; label: string;
+export function OverlayScrollArea({ children, className, label, viewportRef: providedViewportRef }: {
+  children: ReactNode; className?: string; label: string; viewportRef?: RefObject<HTMLDivElement | null>;
 }) {
-  const viewportRef = useRef<HTMLDivElement>(null);
+  const localViewportRef = useRef<HTMLDivElement>(null);
+  const viewportRef = providedViewportRef ?? localViewportRef;
   const contentRef = useRef<HTMLDivElement>(null);
   const scrollbarRef = useRef<HTMLDivElement>(null);
   const extentRef = useRef<HTMLDivElement>(null);
@@ -41,7 +42,7 @@ export function OverlayScrollArea({ children, className, label }: {
       viewport.removeEventListener('scroll', syncFromViewport);
       scrollbar.removeEventListener('scroll', syncFromScrollbar);
     };
-  }, []);
+  }, [viewportRef]);
 
   return <div ref={autoHideRef} className={`${styles.root} ${className ?? ''}`}>
     <div ref={viewportRef} className={styles.viewport} role="region" aria-label={label} tabIndex={0}>

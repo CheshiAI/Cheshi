@@ -1,0 +1,25 @@
+.switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: var(--control-track-color);
+  outline: none;
+  cursor: pointer;
+}
+.switch[aria-checked='true'] { background: var(--toggle-track-on-color); }
+.switch > span {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--control-thumb-color);
+  transition: transform 160ms ease;
+}
+.switch[aria-checked='true'] > span { transform: translateX(16px); }
+.switch:disabled { cursor: not-allowed; opacity: .5; }
+@media (prefers-reduced-motion: reduce) {
+  .switch > span { transition: none; }
+}

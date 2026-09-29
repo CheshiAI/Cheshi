@@ -17,13 +17,20 @@ struct EventInput: Codable {
     let timeZone: String
     let location: String
     let notes: String
+    var url: String? = nil
+    var `repeat`: String? = nil
 
     func validatedDates() throws -> (Date, Date, TimeZone) {
         guard !calendarId.isEmpty, calendarId.count <= 4096,
               !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, title.count <= 1000,
               location.count <= 4000, notes.count <= 100_000,
+              (url?.count ?? 0) <= 16_384,
+              [nil, "once", "daily", "weekly"].contains(`repeat`),
               let zone = TimeZone(identifier: timeZone) else { throw CalendarFailure.invalid }
         let startDate = try parseCalendarDate(start, allDay: allDay, zone: zone)
+        if let url = url, !url.isEmpty {
+            guard let parsed = URL(string: url), parsed.scheme != nil else { throw CalendarFailure.invalid }
+        }
         let endDate = try parseCalendarDate(end, allDay: allDay, zone: zone)
         guard endDate > startDate else { throw CalendarFailure.invalid }
         return (startDate, endDate, zone)

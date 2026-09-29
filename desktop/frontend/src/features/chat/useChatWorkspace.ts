@@ -1,3 +1,4 @@
+import { useSchedulerSessionSync } from '../scheduler/useSchedulerSessionSync';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { chatRelayContextIds } from '../../../../shared/chat-relay';
 import { cheshiDesktop } from '../../cheshiDesktop';
@@ -20,6 +21,7 @@ import { parseChatUpdateSnapshot, reopenUpdateConversations, type ChatUpdateSnap
 
 export function useChatWorkspace() {
   const [sessionCache, setSessionCache] = useState(createChatSessionCache);
+  useSchedulerSessionSync(sessionCache);
   const sessionHistory = useSyncExternalStore(sessionCache.subscribe, sessionCache.getSnapshot);
   const relay = useChatRelay();
   const savedTurns = useSavedChatTurns();

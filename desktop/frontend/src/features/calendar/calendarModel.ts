@@ -1,5 +1,6 @@
 import type { AppleCalendar, AppleCalendarApi, CalendarAccess, CalendarEvent, CalendarQuery } from '../../../../shared/apple-calendar';
 import { CALENDAR_ERRORS } from '../../../../shared/apple-calendar';
+import { hiddenHolidayCalendarIds } from './calendarHolidays';
 
 export interface CalendarState {
   access: CalendarAccess | null; calendars: AppleCalendar[]; events: CalendarEvent[];
@@ -26,10 +27,11 @@ export function createCalendarModel(api: AppleCalendarApi) {
         const calendars = await api.calendars();
         if (request !== generation) return;
         if (!calendars.ok) { patch({ error: calendars.error.message, calendars: [], ...(calendars.error.code === 'permission' ? { access: 'denied' as const } : {}) }); return; }
-        patch({ calendars: calendars.value });
-        const events = await api.events(query);
+        const hidden = hiddenHolidayCalendarIds(calendars.value);
+        patch({ calendars: calendars.value.filter(calendar => !hidden.has(calendar.id)) });
+        const events = await api.events(hidden.has(query.calendarId) ? { ...query, calendarId: '' } : query);
         if (request !== generation) return;
-        if (events.ok) patch({ events: events.value });
+        if (events.ok) patch({ events: events.value.filter(event => !hidden.has(event.calendarId)) });
         else patch({ error: events.error.message, ...(events.error.code === 'permission' ? { access: 'denied' as const } : {}) });
       } catch { if (request === generation) patch({ error: CALENDAR_ERRORS.unavailable }); }
       finally { if (request === generation) patch({ loading: false }); }

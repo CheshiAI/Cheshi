@@ -328,3 +328,16 @@ test('settings disclose recall providers, data scope and separate CLI skill exec
     expect(container.textContent).not.toContain('Autopilot');
   });
 });
+
+test('Scheduler category opens the moved settings with the existing settings navigation', async () => {
+  await withSettings(async ({ container }) => {
+    const item = [...container.querySelectorAll('button')].find(button => button.textContent === 'Scheduler')!;
+    expect(item).toBeDefined();
+    await act(async () => item.click());
+    expect(item.getAttribute('aria-current')).toBe('page');
+    expect(container.querySelector('[aria-labelledby="scheduler-heading"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Automatically run scheduled tasks"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Launch Cheshi at login"]')).not.toBeNull();
+    expect(container.querySelector('[aria-labelledby="typesafe-heading"]')).toBeNull();
+  });
+});

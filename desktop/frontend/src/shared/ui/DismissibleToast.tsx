@@ -9,6 +9,7 @@ import styles from './DismissibleToast.module.css';
 
 export interface DismissibleToastProps {
   className?: string;
+  placement?: 'left' | 'right' | 'bottom-left' | 'bottom-right' | 'top-right';
   title: ReactNode;
   icon?: ReactNode;
   description?: ReactNode;
@@ -29,12 +30,13 @@ export function DismissibleToast({
   onDismiss,
   dismissLabel = 'Close notification',
   closeButtonVariant = 'standard',
+  placement = 'right',
 }: DismissibleToastProps) {
   const titleId = useId();
   const scrollbarSurface = useAutoHideScrollbars<HTMLDivElement>();
 
   return createPortal(
-    <div ref={scrollbarSurface} className={styles.popupAnchor}>
+    <div ref={scrollbarSurface} className={`${styles.popupAnchor} ${placement === 'left' || placement === 'bottom-left' ? styles.anchorLeft : placement === 'top-right' ? styles.anchorTopRight : ''}`}>
       <LiquidGlassPanel
         as="aside"
         role="region"

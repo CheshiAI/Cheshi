@@ -1,6 +1,7 @@
+import { SchedulerNotifications } from '../scheduler/SchedulerNotifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { LiquidGlassPanel, SidebarToggleVisibility, SlidingSidePanel } from '../../shared/ui';
+import { RegionalBlur, LiquidGlassPanel, SidebarToggleVisibility, SlidingSidePanel } from '../../shared/ui';
 import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import {
   ChatSessionList,
@@ -54,6 +55,7 @@ import type { AppleNote } from '../../../../shared/apple-notes';
 const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'notes', 'calendar', 'mail', 'settings'];
 
 export function AppShell() {
+  const notificationSceneRef = useRef<HTMLDivElement>(null);
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [temporaryChatOpen, setTemporaryChatOpen] = useState(false);
   useEffect(() => {
@@ -160,6 +162,7 @@ export function AppShell() {
 
   const openWorkflowChat = useWorkflowChatNavigation(workspace, () => {
     historyRequestId.current += 1;
+    setHistoryTarget(null);
     closeReview();
     setActiveView('chat');
     setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
@@ -282,7 +285,7 @@ export function AppShell() {
   return (
     <ChatDraftAttachmentsContext.Provider value={draftAttachments}>
     <SidebarToggleVisibility.Provider value={reviewing}>
-    <div className={`app-shell ${styles.shell}`}>
+    <div ref={notificationSceneRef} className={`app-shell ${styles.shell}`}>
       {updateResume.error && <div role="alert">{updateResume.error}</div>}
       <div
         inert={updateResume.busy}
@@ -314,6 +317,9 @@ export function AppShell() {
                 selectionDisabled={chatSessionSelectionDisabled}
                 sessions={workspace.sessionHistory.sessions}
                 onNew={newChat}
+                onRefresh={chat?.refreshSessions}
+                refreshDisabled={workspace.accountSwitchPending || workspace.deletePending}
+                refreshError={workspace.sessionHistory.error}
                 onTemporaryChat={() => { if (!workspace.accountSwitchPending) void cheshiDesktop?.temporaryChat.openWindow().catch(error => window.alert(String(error))); }}
                 temporaryChatOpen={temporaryChatOpen}
                 onOpen={openChat}
@@ -445,6 +451,11 @@ export function AppShell() {
         onOpened={() => { setHistoryChoice(null); closeReview(); setActiveView('chat'); setPrimaryPaneClosed(false); }}
         onClose={() => setHistoryChoice(null)} />}
     </div>
+      <RegionalBlur sourceRef={notificationSceneRef}>
+        <SchedulerNotifications onOpenThread={id => {
+          if (!chatSessionSelectionDisabled && !updateResume.busy && !workspace.relay.running) void openWorkflowChat(id);
+        }} />
+      </RegionalBlur>
     </SidebarToggleVisibility.Provider>
     </ChatDraftAttachmentsContext.Provider>
   );

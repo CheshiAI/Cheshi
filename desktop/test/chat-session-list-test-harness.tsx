@@ -64,6 +64,9 @@ export function createSessionListHarness() {
       LoadingState: 'loading-state', NeumorphicButton: 'button', SidebarPanelHeader: 'sidebar-panel-header',
     },
     '../../shared/ui/OverlayScrollArea': { OverlayScrollArea: 'overlay-scroll-area' },
+    './useSessionListRefresh': { useSessionListRefresh: (refresh?: () => Promise<void>) => ({
+      viewportRef: { current: null }, refresh, refreshing: false, pullHeight: 0, ready: false, error: '',
+    }) },
     './ChatSessionList.module.css': { default: {} },
     './chatSessionTime': { formatSessionElapsedTime, useChatSessionClock: () => now },
   };

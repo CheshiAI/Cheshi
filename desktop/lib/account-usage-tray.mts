@@ -5,6 +5,7 @@ import { renderAccountUsageTrayIcon } from './account-usage-tray-icon.mts';
 import type { MenuBarFont } from './menu-bar-font.mts';
 import type { MenuBarLogo } from './menu-bar-logo.mts';
 import type { UsagePopover } from './account-usage-popover.mts';
+import type { SchedulerSummary } from '../shared/scheduler.ts';
 
 type TrayHandle = Pick<Tray, 'setImage' | 'setToolTip' | 'setContextMenu' | 'destroy' | 'getBounds'> & {
   on(event: 'click' | 'right-click', listener: () => void): unknown;
@@ -36,6 +37,7 @@ export function createAccountUsageTray(options: {
   let disposed = false;
   let iconKey = '';
   let font: MenuBarFont | undefined;
+  let scheduler: SchedulerSummary | undefined;
   const icon = (percent: number | null) => {
     const image = options.images.createEmpty();
     for (const scaleFactor of [1, 2]) {
@@ -72,7 +74,7 @@ export function createAccountUsageTray(options: {
       ? `${totals.remaining}% remaining · ${totals.capacity}% total capacity · ${totals.accountCount} accounts`
       : 'Usage unavailable';
     const activeSummary = active ? `\n${active.email ?? active.label} · Ring: ${activeUsage ? `${activeUsage.remaining}% remaining` : 'Unavailable'}` : '';
-    tray.setToolTip(`Cheshi · ${summary}${activeSummary}`);
+    tray.setToolTip(`Cheshi · ${summary}${activeSummary}${scheduler ? `\nScheduled tasks: ${scheduler.running} running · ${scheduler.pending} awaiting confirmation` : ''}`);
     if (popover) { popover.update(snapshot, options.theme.shouldUseDarkColors); return; }
     const menu: MenuItemConstructorOptions[] = [{ label: 'Cheshi · Weekly usage', enabled: false },
       { label: summary, enabled: false }, { type: 'separator' }];
@@ -100,6 +102,7 @@ export function createAccountUsageTray(options: {
   }).catch(options.onError);
 
   return {
+    updateScheduler(summary: SchedulerSummary) { scheduler = summary; popover?.updateScheduler?.(summary); render(); },
     updateBackground(snapshot: CodexAccountsSnapshot) {
       if (disposed) return;
       // Registry snapshots use the default account; preserve the last workspace selection.

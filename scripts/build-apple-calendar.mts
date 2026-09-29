@@ -13,7 +13,7 @@ export async function buildAppleCalendar(): Promise<void> {
   const target = `${process.arch === 'arm64' ? 'arm64' : 'x86_64'}-apple-macos12.0`;
   const result = Bun.spawnSync(['/usr/bin/xcrun', 'swiftc', '-swift-version', '5', '-O', '-parse-as-library', '-target', target,
     '-module-cache-path', path.join(tmpdir(), 'cheshi-calendar-swift-cache'),
-    path.join(source, 'CalendarValues.swift'), path.join(source, 'CalendarBridge.swift'),
+    path.join(source, 'CalendarValues.swift'), path.join(source, 'CalendarBridge.swift'), path.join(source, 'CalendarWatch.swift'),
     '-framework', 'EventKit', '-Xlinker', '-sectcreate', '-Xlinker', '__TEXT', '-Xlinker', '__info_plist',
     '-Xlinker', path.join(source, 'Info.plist'), '-o', executable], { stdout: 'inherit', stderr: 'inherit' });
   if (result.exitCode !== 0) throw new Error('Failed to build Apple Calendar bridge. Install Xcode Command Line Tools.');

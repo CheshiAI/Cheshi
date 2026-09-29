@@ -5,6 +5,7 @@ import type { CodexChatService } from './codex-chat-service.mts';
 import type { CodexChatClient, JsonObject } from './codex-chat-types.mts';
 import { recordValue, stringValue } from './codex-service-utils.mts';
 import { requiredString } from './codex-chat-values.mts';
+import { codexWorkspaceActivity } from './codex-workspace-activity.mts';
 
 const deletionSourceKinds = ['cli', 'vscode', 'exec', 'appServer', 'subAgent', 'subAgentReview', 'subAgentCompact', 'subAgentThreadSpawn', 'subAgentOther', 'unknown'];
 
@@ -128,28 +129,27 @@ async function requestThreadDeletion(client: DeletionAccess['client'], threadId:
 
 /** A short workspace-wide gate prevents selection, send and relay-start races during deletion. */
 export class CodexChatSessionDeletion {
-  private deleting = false;
-  private pendingMutations = 0;
+  private get activity() { return codexWorkspaceActivity(this.options.service.cwd); }
   private readonly confirmedDeletions = new Map<string, ConfirmedDeletion>();
   private readonly options: { contexts: CodexChatContexts; service: CodexChatService; relays: Pick<CodexChatRelays, 'get'> };
   constructor(options: CodexChatSessionDeletion['options']) { this.options = options; }
 
   async exclusive<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.deleting || this.pendingMutations) throw new Error('Wait for the current chat action to finish.');
-    this.deleting = true;
-    try { return await operation(); } finally { this.deleting = false; }
+    if (this.activity.deleting || this.activity.pendingMutations) throw new Error('Wait for the current chat action to finish.');
+    this.activity.deleting = true;
+    try { return await operation(); } finally { this.activity.deleting = false; }
   }
 
   async mutation<T>(operation: () => Promise<T> | T): Promise<T> {
-    if (this.deleting) throw new Error('Wait for the conversation deletion to finish.');
-    this.pendingMutations += 1;
-    try { return await operation(); } finally { this.pendingMutations -= 1; }
+    if (this.activity.deleting) throw new Error('Wait for the conversation deletion to finish.');
+    this.activity.pendingMutations += 1;
+    try { return await operation(); } finally { this.activity.pendingMutations -= 1; }
   }
 
   private assertAvailable(ids: readonly string[]): void {
     const targets = new Set(ids);
     const entries = this.options.contexts.allServices();
-    for (const service of [this.options.service, ...entries.map(entry => entry.service)]) {
+    for (const service of [this.options.service, ...entries.map(entry => entry.service), ...[...this.activity.services].flatMap(source => source())]) {
       if ([...service.activeTurns.keys(), ...service.pendingTurnStarts].some(id => id && targets.has(id))) {
         throw new Error('Stop the session in every chat pane before deleting it.');
       }
@@ -165,8 +165,8 @@ export class CodexChatSessionDeletion {
 
   async deleteSession(service: CodexChatService, value: unknown): Promise<{ threadIds: string[] }> {
     const threadId = requiredString(value, 'Chat session id');
-    if (this.deleting || this.pendingMutations) throw new Error('Wait for the current chat action before deleting a session.');
-    this.deleting = true;
+    if (this.activity.deleting || this.activity.pendingMutations) throw new Error('Wait for the current chat action before deleting a session.');
+    this.activity.deleting = true;
     try {
       this.assertAvailable([threadId]);
       if (service.conversations) return await this.deleteConversation(service, threadId);
@@ -175,7 +175,7 @@ export class CodexChatSessionDeletion {
       await requestThreadDeletion(service.client, threadId);
       this.forgetDeletedSessions(threadIds);
       return { threadIds };
-    } finally { this.deleting = false; }
+    } finally { this.activity.deleting = false; }
   }
 
   private async deleteConversation(service: CodexChatService, threadId: string): Promise<{ threadIds: string[] }> {

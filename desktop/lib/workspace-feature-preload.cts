@@ -1,3 +1,4 @@
+import { createSchedulerApi } from './scheduler-preload.cts';
 import { createDiscordApi } from './discord-preload.cts';
 import { createNotificationEventsApi } from './notification-events-preload.cts';
 import { createWindowAppearanceApi } from './window-appearance-preload.cts';
@@ -9,7 +10,7 @@ import { createAppleCalendarApi } from './apple-calendar-preload.cts';
 
 export function createWorkspaceFeatureApis(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>) {
   return {
-    appearance: createWindowAppearanceApi(ipc), discord: createDiscordApi(ipc),
+    scheduler: createSchedulerApi(ipc), appearance: createWindowAppearanceApi(ipc), discord: createDiscordApi(ipc),
     notificationEvents: createNotificationEventsApi(ipc),
     ...createGitLineBlameApi(ipc), settings: createSettingsApi(ipc),
     appleMail: createAppleMailApi(ipc, process.platform),

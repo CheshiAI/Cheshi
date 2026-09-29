@@ -1,4 +1,4 @@
-import { Bell, Info, Palette, KeyRound, Link, Save, Settings, Trash2 } from 'lucide-react';
+import { Bell, Clock, Info, Palette, KeyRound, Link, Save, Settings, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { SettingsApi, TypeSafeSettings } from '../../../../shared/settings';
@@ -8,9 +8,10 @@ import styles from './SettingsView.module.css';
 import { AppearanceSettings } from './AppearanceSettings';
 import { AboutSettings } from './AboutSettings';
 import { NotificationSettings } from './NotificationSettings';
+import { SchedulerSettings } from './SchedulerSettings';
 
 export function SettingsView({ api = cheshiDesktop?.settings, contextId, onOpenChat }: { api?: SettingsApi; contextId?: string; onOpenChat?(thread: string): void }) {
-  const [category, setCategory] = useState<'typesafe' | 'appearance' | 'notifications' | 'about'>('typesafe');
+  const [category, setCategory] = useState<'typesafe' | 'appearance' | 'notifications' | 'scheduler' | 'about'>('typesafe');
   const [state, setState] = useState<TypeSafeSettings | null>(null);
   const [key, setKey] = useState('');
   const [keyBusy, setKeyBusy] = useState(false);
@@ -82,9 +83,10 @@ export function SettingsView({ api = cheshiDesktop?.settings, contextId, onOpenC
         <button type="button" className={styles.item} aria-current={category === 'typesafe' ? 'page' : undefined} onClick={() => setCategory('typesafe')}><KeyRound aria-hidden="true" />TypeSafe API</button>
         <button type="button" className={styles.item} aria-current={category === 'appearance' ? 'page' : undefined} onClick={() => setCategory('appearance')}><Palette aria-hidden="true" />Appearance</button>
         <button type="button" className={styles.item} aria-current={category === 'notifications' ? 'page' : undefined} onClick={() => setCategory('notifications')}><Bell aria-hidden="true" />Notifications</button>
+        <button type="button" className={styles.item} aria-current={category === 'scheduler' ? 'page' : undefined} onClick={() => setCategory('scheduler')}><Clock aria-hidden="true" />Scheduler</button>
         <button type="button" className={styles.item} aria-current={category === 'about' ? 'page' : undefined} onClick={() => setCategory('about')}><Info aria-hidden="true" />About</button>
       </LiquidGlassPanel>
-      {category === 'notifications' ? <NotificationSettings contextId={contextId} onStarted={onOpenChat} /> : category === 'about' ? <AboutSettings /> : category === 'appearance' ? <AppearanceSettings /> : <section className={styles.detail} aria-labelledby="typesafe-heading">
+      {category === 'scheduler' ? <SchedulerSettings /> : category === 'notifications' ? <NotificationSettings contextId={contextId} onStarted={onOpenChat} /> : category === 'about' ? <AboutSettings /> : category === 'appearance' ? <AppearanceSettings /> : <section className={styles.detail} aria-labelledby="typesafe-heading">
         <div className={styles.scroll}>
           <form className={styles.form} onSubmit={event => { event.preventDefault(); void execute('save'); }}>
             <div className={styles.titleRow}>

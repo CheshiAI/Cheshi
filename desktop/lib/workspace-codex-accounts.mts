@@ -69,9 +69,10 @@ export function createWorkspaceCodexAccounts(options: {
     service: CodexChatService;
     contexts: CodexChatContexts;
     deletion: CodexChatSessionDeletion;
-    relays: CodexChatRelays;
-    accountUsage: CodexAccountService;
+    relays: Pick<CodexChatRelays, 'get'>;
+    accountUsage: Pick<CodexAccountService, 'stop'>;
     temporaryBusy(): boolean;
+    schedulerBusy?(): boolean;
     resetTemporary(): void;
   }) => selection = registerCodexAccountsIpc({
     ...configuration, clients, profiles, accountSelection: options.accountSelection,
@@ -83,6 +84,7 @@ export function createWorkspaceCodexAccounts(options: {
       }
     },
     assertIdle: () => {
+      if (configuration.schedulerBusy?.()) throw new Error('Wait for the scheduled task to finish before switching accounts.');
       if (configuration.temporaryBusy()) throw new Error('Close temporary chat and wait for code explanations before switching accounts.');
       const entries = configuration.contexts.allServices();
       for (const service of [configuration.service, ...entries.map(entry => entry.service)]) {

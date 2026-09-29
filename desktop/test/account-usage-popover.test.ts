@@ -25,6 +25,7 @@ function fixture(appearanceBinding: WindowGlassBinding | null = null) {
   const configurations: Parameters<Options['createWindow']>[0][] = [];
   const errors: unknown[] = [];
   let shown = 0;
+  let schedulerOpened = 0;
   let quit = 0;
   let time = 1000;
   let failLoading = false;
@@ -54,7 +55,7 @@ function fixture(appearanceBinding: WindowGlassBinding | null = null) {
     getWorkArea: () => ({ x: 0, y: 24, width: 1024, height: 700 }),
     rendererUrl: 'file:///app/index.html', preload: '/runtime/account-usage-preload.cjs',
     appearanceFile, appearanceBinding,
-    showApp() { shown++; }, quit() { quit++; }, onError(error) { errors.push(error); }, now: () => time,
+    openScheduler() { schedulerOpened++; }, showApp() { shown++; }, quit() { quit++; }, onError(error) { errors.push(error); }, now: () => time,
   });
   function invoke(method: string, value?: unknown, event?: IpcMainInvokeEvent) {
     const window = windows.at(-1)!;
@@ -64,7 +65,7 @@ function fixture(appearanceBinding: WindowGlassBinding | null = null) {
   }
   return { popover, windows, handlers, configurations, errors, invoke, appearanceFile,
     advance() { time += 250; }, failLoading() { failLoading = true; },
-    get shown() { return shown; }, get quit() { return quit; } };
+    get schedulerOpened() { return schedulerOpened; }, get shown() { return shown; }, get quit() { return quit; } };
 }
 
 test('creates one sandboxed popover lazily, toggles it and hides on blur or Escape', () => {
@@ -213,3 +214,14 @@ test.each(['unavailable', 'failure', 'reduced-transparency'] as const)(
     f.popover.dispose();
   },
 );
+
+
+test('scheduler status reaches the menu bar and review action opens the app without approving a task', () => {
+  const f = fixture();
+  f.popover.updateScheduler?.({ pending: 2, running: 1, next: '2026-10-01T09:00:00.000Z' });
+  f.popover.toggle(); f.windows[0]!.emit('ready-to-show');
+  expect(f.invoke('read').scheduler).toMatchObject({ pending: 2, running: 1 });
+  f.invoke('action', 'scheduler');
+  expect(f.schedulerOpened).toBe(1); expect(f.windows[0]!.visible).toBe(false);
+  f.popover.dispose();
+});

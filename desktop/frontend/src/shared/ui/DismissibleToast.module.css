@@ -120,3 +120,7 @@
   padding: var(--space-default);
   border-top: 1px solid var(--divider);
 }
+
+.anchorLeft { left: var(--space-default); right: auto; }
+
+.anchorTopRight { top: var(--space-default); bottom: auto; }

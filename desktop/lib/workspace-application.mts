@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { WorkspaceIpcRouter } from './workspace-ipc-router.mts';
 import type { HistoryRecallAccess } from './workspace-history-mcp.mts';
 import type { WorkspaceAccountSelection } from './settings-service.mts';
+import { withWorkspaceFolderDeletion } from './codex-workspace-activity.mts';
 
 export interface WorkspaceWindowState { bounds: Rectangle; maximized: boolean; fullscreen: boolean; }
 export interface WorkspaceRuntimeOptions {
@@ -117,6 +118,7 @@ export class WorkspaceApplication {
   private shutdownVersion = 0;
   private firstWindow = true;
   private transitions = 0;
+  private readonly reveals = new Map<string, Promise<void>>();
   lastWorkspaceRoot: string;
 
   constructor(options: { router: WorkspaceIpcRouter; createRuntime: (options: WorkspaceRuntimeOptions) => WorkspaceRuntime; initialRoot: string }) {
@@ -127,9 +129,28 @@ export class WorkspaceApplication {
 
   get hasWorkspaces(): boolean { return this.entries.size > 0; }
   get isTransitioning(): boolean { return this.transitions > 0; }
+  hasFocusedWorkspace(root?: string): boolean {
+    return [...this.entries].some(entry => !entry.managementOnly && !entry.closing && entry.window && !entry.window.isDestroyed()
+      && entry.window.isFocused() && (root === undefined || workspacePath(entry.root) === workspacePath(root)));
+  }
 
   async open(root: string, windowState?: WorkspaceWindowState): Promise<void> {
     await this.openRuntime(root, false, windowState);
+  }
+
+  reveal(root: string): Promise<void> {
+    const key = workspacePath(root);
+    const existing = [...this.entries].find(entry => !entry.managementOnly && !entry.closing && entry.window
+      && !entry.window.isDestroyed() && workspacePath(entry.root) === key);
+    if (existing?.window) {
+      if (existing.window.isMinimized()) existing.window.restore();
+      existing.window.show(); existing.window.focus();
+      return Promise.resolve();
+    }
+    const pending = this.reveals.get(key);
+    if (pending) return pending;
+    const opening = this.open(root).finally(() => { this.reveals.delete(key); });
+    this.reveals.set(key, opening); return opening;
   }
 
   async openManager(): Promise<void> {
@@ -201,7 +222,7 @@ export class WorkspaceApplication {
       throw new Error('Close all workspace windows using this folder before deleting it.');
     }
     this.deletingRoots.add(candidate);
-    try { return await operation(); }
+    try { return await withWorkspaceFolderDeletion(root, operation); }
     finally { this.deletingRoots.delete(candidate); }
   }
 

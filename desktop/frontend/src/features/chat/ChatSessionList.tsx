@@ -1,13 +1,14 @@
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
-import { MessageCircleDashed, MessageSquareText, Plus, Trash2 } from 'lucide-react';
+import { MessageCircleDashed, MessageSquareText, Plus, RefreshCw, Trash2 } from 'lucide-react';
 
 import { LoadingIndicator, LoadingState, NeumorphicButton, SidebarPanelHeader } from '../../shared/ui';
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
 import type { ChatSession } from './model';
 import { formatSessionElapsedTime, useChatSessionClock } from './chatSessionTime';
 import styles from './ChatSessionList.module.css';
+import { useSessionListRefresh } from './useSessionListRefresh';
 
 interface ChatSessionListProps {
   search?: ReactNode;
@@ -19,6 +20,9 @@ interface ChatSessionListProps {
   selectionDisabled: boolean;
   onOpen: (sessionId: string) => void;
   onNew: () => void;
+  onRefresh?: () => Promise<void>;
+  refreshDisabled?: boolean;
+  refreshError?: string | null;
   onTemporaryChat?: () => void;
   temporaryChatOpen?: boolean;
   onDelete: (sessionId: string) => void;
@@ -58,11 +62,15 @@ export function ChatSessionList({
   selectionDisabled,
   onOpen,
   onNew,
+  onRefresh,
+  refreshDisabled = false,
+  refreshError,
   onTemporaryChat,
   temporaryChatOpen = false,
   onDelete,
   deleteReason,
 }: ChatSessionListProps) {
+  const refresh = useSessionListRefresh(onRefresh, loading || refreshDisabled);
   // Keep the row callback stable while invoking only the latest committed pane handlers.
   const interaction = useRef({ onOpen, selectionDisabled });
   useLayoutEffect(() => { interaction.current = { onOpen, selectionDisabled }; }, [onOpen, selectionDisabled]);
@@ -76,6 +84,10 @@ export function ChatSessionList({
   return (
     <section className={styles.root} aria-label="Chat history">
       <SidebarPanelHeader title="SESSION" icon={<MessageSquareText aria-hidden="true" />} actions={<>
+        {onRefresh && <TooltipButton size="icon" aria-label="Refresh sessions" title="Refresh sessions"
+          disabled={loading || refreshDisabled || refresh.refreshing} onClick={() => void refresh.refresh()}>
+          <RefreshCw aria-hidden="true" />
+        </TooltipButton>}
         {onTemporaryChat && <TooltipButton
           size="icon"
           aria-label="Open temporary chat"
@@ -100,8 +112,14 @@ export function ChatSessionList({
       <div className={styles.body}>
         {sessions.length > 0 && search}
 
-        <OverlayScrollArea className={styles.listScroll} label="Conversation list">
-        <fieldset className={styles.list} aria-label="Conversations" aria-busy={loading} disabled={selectionDisabled}>
+        {(refresh.error || refreshError) && <p className={styles.refreshError} role="alert">{refresh.error || refreshError}</p>}
+        <OverlayScrollArea className={styles.listScroll} label="Conversation list" viewportRef={refresh.viewportRef}>
+        {(refresh.refreshing || refresh.pullHeight > 0) && <div className={styles.pullStatus} role="status"
+          style={{ height: refresh.pullHeight }}>
+          <LoadingIndicator />
+          <span>{refresh.refreshing || refresh.ready ? 'Release to refresh' : 'Pull to refresh'}</span>
+        </div>}
+        <fieldset className={styles.list} aria-label="Conversations" aria-busy={loading || refresh.refreshing} disabled={selectionDisabled}>
           {loading && sessions.length === 0 && (
             <LoadingState className={styles.loading} />
           )}

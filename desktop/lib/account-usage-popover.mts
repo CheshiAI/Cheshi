@@ -9,6 +9,7 @@ type PopoverWindow = Pick<BrowserWindow, 'isDestroyed' | 'isVisible' | 'show' | 
   | 'setBounds' | 'loadURL' | 'on' | 'off' | 'webContents' | 'setBackgroundColor' | 'getNativeWindowHandle'>;
 
 export interface UsagePopover {
+  updateScheduler?(summary: NonNullable<UsagePopoverState['scheduler']>): void;
   update(snapshot: CodexAccountsSnapshot | null, dark: boolean): void;
   toggle(): void;
   dispose(): void;
@@ -34,6 +35,7 @@ export function createAccountUsagePopover(options: {
   appearanceFile: string;
   appearanceBinding?: WindowGlassBinding | null;
   showApp(): void;
+  openScheduler?(): void;
   quit(): void;
   onError(error: unknown): void;
   now?: () => number;
@@ -89,13 +91,19 @@ export function createAccountUsagePopover(options: {
   });
   options.ipc.handle(`${channel}:action`, (event, action: unknown) => {
     assertSender(event);
-    if (action !== 'show' && action !== 'quit' && action !== 'close') throw new Error('Invalid account usage popover action.');
+    if (action !== 'show' && action !== 'quit' && action !== 'close' && action !== 'scheduler') throw new Error('Invalid account usage popover action.');
     hide();
     if (action === 'show') options.showApp();
     if (action === 'quit') options.quit();
+    if (action === 'scheduler') options.openScheduler?.();
   });
 
   return {
+    updateScheduler(summary) {
+      if (disposed) return;
+      state = { ...state, scheduler: summary, revision: state.revision + 1 };
+      if (view && !view.isDestroyed()) view.webContents.send(`${channel}:changed`, state);
+    },
     update(snapshot, dark) {
       if (disposed) return;
       state = { ...state, snapshot, dark, revision: state.revision + 1 };

@@ -4,6 +4,7 @@ import {
 } from '../shared/apple-calendar.ts';
 import type { CalendarReply } from '../shared/apple-calendar.ts';
 import { runCalendarCommand } from './apple-calendar-process.mts';
+import { appleCalendarChanged } from './apple-calendar-changes.mts';
 
 export class AppleCalendarService {
   private readonly platform: string;
@@ -15,14 +16,13 @@ export class AppleCalendarService {
     this.execute = options.execute ?? runCalendarCommand;
   }
   status() { return this.request(() => ({ action: 'status' }), calendarAccess); }
-  connect() { return this.request(() => ({ action: 'connect' }), calendarAccess); }
+  async connect() {
+    const result = await this.request(() => ({ action: 'connect' }), calendarAccess);
+    appleCalendarChanged(); return result;
+  }
   calendars() { return this.request(() => ({ action: 'calendars' }), appleCalendars); }
   async events(value: unknown) {
-    const result = await this.request(() => ({ action: 'events', ...calendarQuery(value) }), calendarEvents);
-    if (result.ok && typeof process.env.CHESHI_DEV_SHUTDOWN_DIRECTORY === 'string') {
-      console.info(`[cheshi:calendar] Events validated: ${result.value.length}`);
-    }
-    return result;
+    return this.request(() => ({ action: 'events', ...calendarQuery(value) }), calendarEvents);
   }
   create(value: unknown) { return this.request(() => ({ action: 'create', event: calendarEventInput(value) }), calendarEvent, true); }
   update(value: unknown) {
@@ -62,7 +62,7 @@ export class AppleCalendarService {
     };
     // Serialize writes across windows so the next write checks the latest revision.
     if (!mutation) return run();
-    const operation = this.queue.then(run);
+    const operation = this.queue.then(async () => { const result = await run(); appleCalendarChanged(); return result; });
     this.queue = operation;
     return operation;
   }

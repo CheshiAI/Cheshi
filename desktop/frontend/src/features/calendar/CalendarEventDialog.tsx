@@ -1,9 +1,12 @@
 import { CalendarDays, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { AppleCalendar, AppleCalendarApi, CalendarEvent } from '../../../../shared/apple-calendar';
-import { Modal, NeumorphicButton, NeumorphicSurface, NeumorphicTextField } from '../../shared/ui';
+import { Modal, NeumorphicButton, LiquidGlassSelect, NeumorphicTextField } from '../../shared/ui';
+import { ToggleSwitch } from '../../shared/ui/ToggleSwitch';
+import { CalendarDateTimeField } from './CalendarDateTimeField';
 import { createCalendarDraft } from './calendarDraft';
 import styles from './Calendar.module.css';
+import { isCalendarTask } from '../../../../shared/calendar-task';
 
 export function CalendarEventDialog({ api, event, day, calendarId, calendars, onClose, onSaved }: {
   api: AppleCalendarApi; event: CalendarEvent | null; day: string; calendarId: string;
@@ -13,6 +16,7 @@ export function CalendarEventDialog({ api, event, day, calendarId, calendars, on
   const state = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
   const [confirm, setConfirm] = useState<'discard' | 'delete' | null>(null);
   const alive = useRef(true);
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => {
     const preventClose = (close: BeforeUnloadEvent) => {
@@ -24,53 +28,79 @@ export function CalendarEventDialog({ api, event, day, calendarId, calendars, on
   const readOnly = event?.readOnly === true;
   const disabled = state.busy || state.blocked || readOnly;
   const submit = async (remove = false) => {
-    if (await draft.submit(api, remove)) { if (alive.current) onSaved(); }
+    if (await draft.submit(api, remove)) { if (alive.current) { setConfirm(null); onSaved(); } }
   };
-  const close = () => { if (!state.busy) { if (state.dirty) setConfirm('discard'); else onClose(); } };
-  return <Modal title={event ? '일정' : '새 일정'} titleIcon={<CalendarDays aria-hidden="true" />}
-    onClose={close} closeDisabled={state.busy}>
-    <form className={styles.form} onSubmit={e => { e.preventDefault(); void submit(); }}>
-      {readOnly && <p>반복 일정·초대 일정 또는 읽기 전용 캘린더입니다. Apple 캘린더에서 편집해 주세요.</p>}
-      {state.error && <p role="alert">{state.error}</p>}
-      <label className={styles.field}>캘린더
-        <NeumorphicSurface raised highlightFocus className={styles.selectSurface}>
-          <select aria-label="일정 캘린더" value={state.form.calendarId} disabled={disabled || !!event}
-            onChange={e => draft.edit({ calendarId: e.target.value })}>
-            {calendars.filter(calendar => calendar.writable || calendar.id === event?.calendarId).map(calendar =>
-              <option key={calendar.id} value={calendar.id}>{calendar.source} / {calendar.title}</option>)}
-          </select>
-        </NeumorphicSurface>
-      </label>
-      <label className={styles.field}>제목<NeumorphicTextField aria-label="일정 제목" value={state.form.title}
-        required maxLength={1000} disabled={disabled} onChange={e => draft.edit({ title: e.target.value })} /></label>
-      <label className={styles.checkbox}><input type="checkbox" checked={state.form.allDay} disabled={disabled}
-        onChange={e => draft.toggleAllDay(e.target.checked)} />종일</label>
-      <div className={styles.dateFields}>
-        <label className={styles.field}>시작<NeumorphicTextField aria-label="시작" type={state.form.allDay ? 'date' : 'datetime-local'}
-          required value={state.form.start} disabled={disabled} onChange={e => draft.edit({ start: e.target.value })} /></label>
-        <label className={styles.field}>{state.form.allDay ? '마지막 날짜' : '종료'}<NeumorphicTextField aria-label="종료" type={state.form.allDay ? 'date' : 'datetime-local'}
-          required value={state.form.end} disabled={disabled} onChange={e => draft.edit({ end: e.target.value })} /></label>
+  const close = () => { if (!state.busy && confirm !== 'delete') { if (state.dirty) setConfirm('discard'); else onClose(); } };
+  const cancelDelete = () => { if (!draft.getSnapshot().busy) setConfirm(null); };
+  return <><Modal title={event ? 'EVENT' : 'NEW EVENT'} headerVariant="section" closeButtonVariant="ghost" titleIcon={<CalendarDays aria-hidden="true" />}
+    onClose={close} closeDisabled={state.busy || confirm === 'delete'}>
+    <form className={styles.form} onSubmit={e => { e.preventDefault(); if (!confirm) void submit(); }}>
+      {readOnly && <p className={styles.hint}>Recurring events, invitations and read-only calendars must be edited in Apple Calendar.</p>}
+      {state.error && confirm !== 'delete' && <p className={styles.hint} role="alert">{state.error}</p>}
+      <div className={styles.field}><span>Calendar</span>
+        <LiquidGlassSelect ariaLabel="Event calendar" triggerAppearance="standard" menuAppearance="toolbar"
+          value={state.form.calendarId} disabled={disabled || !!event} placeholder="No calendars available"
+          onChange={value => draft.edit({ calendarId: value })}
+          options={calendars.filter(calendar => calendar.writable || calendar.id === event?.calendarId).map(calendar => ({
+            value: calendar.id, label: `${calendar.source} / ${calendar.title}`,
+          }))} />
       </div>
-      {!state.form.allDay && <p className={styles.hint}>시간 표시: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>}
-      <label className={styles.field}>장소<NeumorphicTextField aria-label="장소" value={state.form.location}
+      <label className={styles.field}>Title<NeumorphicTextField variant="standard" aria-label="Event title" value={state.form.title}
+        required maxLength={1000} disabled={disabled} onChange={e => draft.edit({ title: e.target.value })} /></label>
+      <div className={styles.switchField}><span>All day</span>
+        <ToggleSwitch aria-label="All day" checked={state.form.allDay} disabled={disabled}
+          onChange={value => draft.toggleAllDay(value)} />
+      </div>
+      <div className={styles.dateFields}>
+        <CalendarDateTimeField label="Start" value={state.form.start} allDay={state.form.allDay}
+          disabled={disabled} onChange={start => draft.editStart(start)} />
+        <CalendarDateTimeField label={state.form.allDay ? 'Last day' : 'End'} value={state.form.end} allDay={state.form.allDay}
+          disabled={disabled} onChange={end => draft.edit({ end })} />
+      </div>
+      {!state.form.allDay && <p className={styles.hint}>Times shown in: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>}
+      <label className={styles.field}>Location<NeumorphicTextField variant="standard" aria-label="Location" value={state.form.location}
         maxLength={4000} disabled={disabled} onChange={e => draft.edit({ location: e.target.value })} /></label>
-      <label className={styles.field}>메모<NeumorphicTextField aria-label="일정 메모" multiline rows={5} value={state.form.notes}
+      <label className={styles.field}>Notes<NeumorphicTextField variant="standard" aria-label="Event notes" multiline rows={5} value={state.form.notes}
         maxLength={100_000} disabled={disabled} onChange={e => draft.edit({ notes: e.target.value })} /></label>
-      {confirm ? <div className={styles.confirm}>
-        <p>{confirm === 'delete' ? '이 일정을 Apple 캘린더에서 삭제할까요?' : '저장하지 않은 변경을 버리고 닫을까요?'}</p>
+      <label className={styles.field}>URL<NeumorphicTextField variant="standard" aria-label="Event URL" value={state.form.url ?? ''}
+        maxLength={16_384} disabled={disabled} onChange={e => draft.edit({ url: e.target.value })} /></label>
+      {isCalendarTask(state.form.title) && <p className={styles.hint}>Notes are the task instructions. URL is the workspace folder (file:///…). Cheshi runs the task at Start.</p>}
+      {!event && isCalendarTask(state.form.title) && <div className={styles.field}><span>Repeat</span>
+        <LiquidGlassSelect ariaLabel="Repeat task" triggerAppearance="standard" menuAppearance="toolbar" value={state.form.repeat ?? 'once'}
+          onChange={value => draft.edit({ repeat: value as 'once' | 'daily' | 'weekly' })}
+          options={[{ value: 'once', label: 'Once' }, { value: 'daily', label: 'Every day' }, { value: 'weekly', label: 'Every week' }]} />
+      </div>}
+      {confirm === 'discard' ? <div className={styles.confirm}>
+        <p>Discard unsaved changes and close?</p>
         <div className={styles.actions}>
-          <NeumorphicButton type="button" disabled={state.busy} onClick={() => setConfirm(null)}>취소</NeumorphicButton>
-          <NeumorphicButton type="button" disabled={state.busy || (confirm === 'delete' && disabled)}
-            onClick={() => { if (confirm === 'delete') void submit(true); else onClose(); }}>
-            {confirm === 'delete' ? '삭제' : '버리고 닫기'}</NeumorphicButton>
+          <NeumorphicButton variant="standard" type="button" disabled={state.busy} onClick={() => setConfirm(null)}>Cancel</NeumorphicButton>
+          <NeumorphicButton variant="standard" type="button" disabled={state.busy}
+            onClick={onClose}>Discard and close</NeumorphicButton>
         </div>
       </div> : <div className={styles.actions}>
-        {event && !readOnly && <NeumorphicButton type="button" disabled={disabled} onClick={() => setConfirm('delete')}>
-          <Trash2 aria-hidden="true" />삭제</NeumorphicButton>}
-        <NeumorphicButton type="button" disabled={state.busy} onClick={close}>닫기</NeumorphicButton>
-        {!readOnly && <NeumorphicButton type="submit" disabled={disabled || !state.form.title.trim() || (!!event && !state.dirty)}>
-          {state.busy ? '저장 중…' : '저장'}</NeumorphicButton>}
+        {event && !readOnly && <NeumorphicButton variant="standard" type="button" disabled={disabled || confirm === 'delete'}
+          onClick={click => { deleteTriggerRef.current = click.currentTarget; setConfirm('delete'); }}>
+          <Trash2 aria-hidden="true" />Delete</NeumorphicButton>}
+        <NeumorphicButton variant="standard" type="button" disabled={state.busy || confirm === 'delete'} onClick={close}>Close</NeumorphicButton>
+        {!readOnly && <NeumorphicButton variant="standard" type="submit" disabled={disabled || confirm === 'delete' || !state.form.title.trim() || (!!event && !state.dirty)}>
+          {state.busy ? 'Saving…' : 'Save'}</NeumorphicButton>}
       </div>}
     </form>
-  </Modal>;
+  </Modal>
+    {confirm === 'delete' && event && <Modal title="DELETE EVENT" titleIcon={<Trash2 aria-hidden="true" />}
+      headerVariant="section" closeButtonVariant="ghost" className={styles.deleteDialog}
+      onClose={cancelDelete} closeDisabled={state.busy}
+      restoreFocus={() => { deleteTriggerRef.current?.focus(); return false; }}>
+      <form className={styles.deleteConfirm} onSubmit={e => { e.preventDefault(); void submit(true); }}>
+        <p className={styles.deleteEventTitle}>{event.title}</p>
+        <p>Delete this event from Apple Calendar?</p>
+        {state.error && <p role="alert">{state.error}</p>}
+        <div className={styles.actions}>
+          <NeumorphicButton variant="standard" type="button" autoFocus disabled={state.busy} onClick={cancelDelete}>Cancel</NeumorphicButton>
+          <NeumorphicButton variant="standard" type="submit" disabled={disabled} aria-busy={state.busy}>
+            {state.busy ? 'Deleting…' : 'Delete'}</NeumorphicButton>
+        </div>
+      </form>
+    </Modal>}
+  </>;
 }

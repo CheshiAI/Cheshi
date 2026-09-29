@@ -1,5 +1,6 @@
 import { chatMessageFailure, codexCollaborationOverride, setCodexCollaborationMode, steerCodexMessage } from './codex-chat-turn-controls.mts';
 import { historyTurnContext } from './codex-chat-history-tools.mts';
+import { assertWorkspaceThreadIdle } from './codex-workspace-activity.mts';
 import { closeDiscordSetup, discordSetupThreadOptions, handleDiscordSetupRequest } from './discord-setup-tools.mts';
 import { CodexChatUserInputs } from './codex-chat-user-input.mts';
 import { CodexAgentTokenUsage } from './codex-agent-token-usage.mts';
@@ -628,6 +629,7 @@ export class CodexChatService {
             : requiredString(targetThreadId, "Chat session id");
       assertChatTurnAvailable(this.isThreadActive(requestedThreadId) || this.pendingTurnStarts.has(requestedThreadId),
         requestedThreadId === null ? this.pendingNewTurnClientMessageId : null);
+      if (requestedThreadId) assertWorkspaceThreadIdle(this.cwd, requestedThreadId);
       const skillReference =
         selectedSkill === null ? null : recordValue(selectedSkill);
       const skillName =

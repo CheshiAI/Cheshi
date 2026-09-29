@@ -1,3 +1,4 @@
+import { createWorkspaceScheduler } from './lib/scheduler/workspace.mts';
 import { createWorkspaceNotifications } from './lib/workspace-notifications.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
 import { chatWindowOptions } from './lib/chat-window-options.mts';
@@ -37,7 +38,7 @@ import { createWorkspaceSessionStores } from './lib/workspace-session-stores.mts
 import { CodexChatContexts } from './lib/codex-chat-contexts.mts';
 import { CodexChatSessionDeletion } from './lib/codex-chat-session-deletion.mts';
 import { CodexChatService } from './lib/codex-chat-service.mts';
-import { workspaceChatInstructions } from './lib/workspace-chat-instructions.mts';
+import { workspaceChatServiceOptions } from './lib/workspace-chat-service-options.mts';
 import { GhosttySurfaceHost } from './lib/ghostty-surface-host.mts';
 import { GitService } from './lib/git-service.mts';
 import { LanguageServerManager } from './lib/language-server-manager.mts';
@@ -211,17 +212,7 @@ const codexAccountService = new CodexAccountService({
     process.stderr.write(`[cheshi] ${event} ${JSON.stringify(details)}\n`);
   },
 });
-const chatServiceOptions = {
-  conversations: workspaceAccounts.conversations,
-  createMcpProbeClient: createChatClient,
-  cwd: workspaceRoot,
-  serviceName: product.internalName,
-  historyToolsEnabled: true,
-  developerInstructions: workspaceChatInstructions(product.displayName),
-  log: (event: string, details: Record<string, unknown>) => {
-    process.stderr.write(`[cheshi] ${event} ${JSON.stringify(details)}\n`);
-  },
-};
+const chatServiceOptions = workspaceChatServiceOptions(workspaceRoot, workspaceAccounts.conversations, createChatClient);
 
 const codexChatService = new CodexChatService({ ...chatServiceOptions, client: codexAppServerClient });
 const codexChatContexts = new CodexChatContexts({
@@ -250,11 +241,18 @@ const accountSwitch = workspaceAccounts.register({
   service: codexChatService, contexts: codexChatContexts, deletion: codexChatSessionDeletion,
   relays: codexChatRelays, accountUsage: codexAccountService,
   temporaryBusy: () => temporaryChats.hasSessions || codeExplanation.busy,
+  schedulerBusy: () => workspaceScheduler.busy,
   resetTemporary: () => codeExplanation.reset(),
   emit: snapshot => {
     onAccountsChanged?.(snapshot);
     for (const window of workspaceWindows()) rendererEvents.send(window, 'cheshi:codex-accounts-changed', snapshot);
   },
+});
+const workspaceScheduler = createWorkspaceScheduler({
+  ipc: ipcMain, assertSender: assertCheshiSender, workspace: workspaceRoot, dataDirectory: userDataDirectory,
+  contexts: codexChatContexts, deletion: codexChatSessionDeletion,
+  beforeMessage: workspaceAccounts.beforeMessage, profileId: () => accountSwitch.activeId,
+  primary: codexChatService,
 });
 const chatContextOwners = new WeakSet<Electron.WebContents>();
 function isCrossDocumentMainFrameNavigation(details: { isMainFrame: unknown; isSameDocument: unknown }): boolean {
@@ -974,6 +972,9 @@ function dispose(): Promise<void> {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
     disposeTerminal();
     codeExplanation.stop();
+    await workspaceScheduler.dispose().catch(error => {
+      process.stderr.write(`[cheshi] Scheduler cleanup failed: ${String(error)}\n`);
+    });
     const results = await Promise.allSettled([
       codexChatService.stop(),
       historyMcp.stop(), chatHistorySearch.stop(),

@@ -851,6 +851,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   appleNotes?: import('../../shared/apple-notes').AppleNotesApi;
   appleMail?: import('../../shared/apple-mail').AppleMailApi;
   appleCalendar?: import('../../shared/apple-calendar').AppleCalendarApi;
+  scheduler?: import('../../shared/scheduler').SchedulerApi;
   importCodexChatAttachments: (files: (File | string)[]) => Promise<CodexChatAttachment[]>;
   getCodexChatAttachmentPreview: (attachmentPath: string) => Promise<string | null>;
   sendCodexChatMessage: (

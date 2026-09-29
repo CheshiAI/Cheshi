@@ -38,13 +38,19 @@ function shouldIgnore(packagePath: string): boolean {
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
-    const packagedSharedFiles = new Set(['notification-events.ts', 'discord.ts', 'imessage-commands.ts', 'imessage-notifications.ts', 'account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-notes.ts', 'apple-notes-document.ts', 'apple-calendar.ts', 'apple-mail.ts', 'keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'settings.ts', 'window-appearance.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'history-recall.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'git-line-blame.ts', 'local-history.ts', 'local-file-link.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
+    const packagedSharedFiles = new Set(['calendar-task.ts', 'scheduler.ts', 'scheduler-time.ts', 'notification-events.ts', 'discord.ts', 'imessage-commands.ts', 'imessage-notifications.ts', 'account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-notes.ts', 'apple-notes-document.ts', 'apple-calendar.ts', 'apple-mail.ts', 'keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'settings.ts', 'window-appearance.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'history-recall.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'git-line-blame.ts', 'local-history.ts', 'local-file-link.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
     return grandchildEntry === undefined || !packagedSharedFiles.has(grandchildEntry) || segments.length > 3;
   }
   if (childEntry !== 'lib') return true;
   if (segments.length === 2) return false;
   if (grandchildEntry === 'electron-libghostty') return false;
+  if (grandchildEntry === 'scheduler') {
+    const schedulerFiles = new Set(['store.mts', 'engine.mts', 'codex-runner.mts', 'application.mts', 'workspace.mts', 'calendar.mts', 'subscriptions.mts', 'calendar-tasks.mts', 'background.mts', 'desktop.mts', 'notifications.mts', 'migration.mts']);
+    return segments.length > 3 && (segments.length !== 4 || !schedulerFiles.has(segments[3] ?? ''));
+  }
   const packagedLibraryFiles = new Set([
+    'workspace-chat-service-options.mts',
+    'codex-workspace-activity.mts',
     'notification-events.mts',
     'notification-events-ipc.mts',
     'notification-visibility.mts',
@@ -74,6 +80,8 @@ function shouldIgnore(packagePath: string): boolean {
     'apple-mail-ipc.mts',
     'apple-calendar-service.mts',
     'apple-calendar-process.mts',
+    'apple-calendar-watch.mts',
+    'apple-calendar-changes.mts',
     'apple-calendar-ipc.mts',
     'typesafe-key.mts',
     'typesafe-connection.mts',

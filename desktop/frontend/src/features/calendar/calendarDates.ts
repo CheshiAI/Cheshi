@@ -41,6 +41,6 @@ export function localDateTime(value: string): string {
 }
 export function dateTimeInstant(value: string): string {
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime()) || localDateTime(date.toISOString()) !== value) throw new Error('유효한 날짜와 시간을 입력해 주세요.');
+  if (!Number.isFinite(date.getTime()) || localDateTime(date.toISOString()) !== value) throw new Error('Enter a valid date and time.');
   return date.toISOString();
 }

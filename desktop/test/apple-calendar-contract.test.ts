@@ -12,8 +12,8 @@ test('calendar input requires literal booleans and real dates, ordered times and
   expect(() => calendarEventInput({ ...event, timeZone: 'invalid/zone' })).toThrow();
   expect(() => calendarEventInput({ ...event, title: '   ' })).toThrow();
   expect(() => calendarEvent({ ...event, recurring: 'false' })).toThrow();
-  expect(calendarEvent({ ...event, title: '' }).title).toBe('(제목 없음)');
-  expect(calendarEvent({ ...event, title: '   ', end: event.start }).title).toBe('(제목 없음)');
+  expect(calendarEvent({ ...event, title: '' }).title).toBe('(Untitled)');
+  expect(calendarEvent({ ...event, title: '   ', end: event.start }).title).toBe('(Untitled)');
   expect(calendarEvent({ ...event, recurring: true, readOnly: false }).readOnly).toBe(true);
 });
 
@@ -29,6 +29,19 @@ test('calendar reads are limited to a bounded date window', () => {
   expect(calendarQuery({ start: event.start, end: event.end, calendarId: '' }).calendarId).toBe('');
   expect(() => calendarQuery({ start: event.start, end: '2027-01-01T00:00:00Z', calendarId: '' })).toThrow();
   expect(calendarEventInput({ ...event, allDay: true, start: '2026-09-22', end: '2026-09-23' })).toMatchObject({ allDay: true });
+});
+
+test('calendar provenance survives parsing and rejects malformed metadata without guessing legacy values', () => {
+  const calendar = { id: 'holiday', title: '대한민국 공휴일', source: 'Subscribed Calendars', writable: false, isDefault: false };
+  expect(appleCalendars([calendar])).toEqual([calendar]);
+  for (const kind of ['local', 'caldav', 'exchange', 'subscription', 'birthday', 'unknown']) {
+    expect(appleCalendars([{ ...calendar, kind, isSubscribed: true }])[0]).toMatchObject({ kind, isSubscribed: true });
+  }
+  expect(appleCalendars([{ ...calendar, isSubscribed: false }])[0]?.isSubscribed).toBe(false);
+  for (const isSubscribed of ['true', 1, null]) {
+    expect(() => appleCalendars([{ ...calendar, isSubscribed }])).toThrow();
+  }
+  for (const kind of ['apple', '', 1, null]) expect(() => appleCalendars([{ ...calendar, kind }])).toThrow();
 });
 
 test('Apple fixed-offset zones survive event reads and edits without changing dates or zone identifiers', () => {

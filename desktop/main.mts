@@ -1,7 +1,14 @@
+import { startScheduler, resumeScheduler, stopScheduler, suspendScheduler } from './lib/scheduler/application.mts';
+import { configureSchedulerDesktop } from './lib/scheduler/desktop.mts';
+import { createSchedulerNotifications } from './lib/scheduler/notifications.mts';
+import type { SchedulerEngine } from './lib/scheduler/engine.mts';
+import type { ScheduleRun } from './shared/scheduler.ts';
+import { createCodeGraphCommands } from './lib/codegraph-service.mts';
+import { codeGraphStorageDirectory, resolveCodeGraphDataRoot } from '../config/workspace-storage.mts';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, safeStorage, shell, Tray } from 'electron';
+import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, screen, safeStorage, shell, Tray } from 'electron';
 import { product } from '../config/product.mts';
 import { aboutBackgroundColor, aboutPage } from './lib/about-page.mts';
 import { registerSelectionCopy } from './lib/selection-copy.mts';
@@ -100,6 +107,8 @@ const updates = createAppUpdateService({
       report({ phase: 'restarting' });
       quitting = true;
       await workspaces.closeAll();
+      schedulerNotifications?.dispose();
+      await stopScheduler();
       await keepAwake.dispose();
       await discord.dispose(); await messageCommands.dispose(); await notifications.dispose();
       await backgroundUsage.dispose().catch(reportTrayError);
@@ -117,6 +126,27 @@ const updates = createAppUpdateService({
   ...updatePreview,
 });
 let usageTray: ReturnType<typeof createAccountUsageTray> | undefined;
+let scheduler: SchedulerEngine | undefined;
+let schedulerNotifications: ReturnType<typeof createSchedulerNotifications> | undefined;
+async function openScheduledRun(run?: ScheduleRun): Promise<void> {
+  if (!run) { await openStartupWindow(); return; }
+  if (run.workspace === '*') {
+    const result = await dialog.showMessageBox({ type: 'info', title: 'Upcoming event', message: run.title,
+      detail: new Date(run.plannedAt).toLocaleString(), buttons: ['Got it', 'Later'], defaultId: 0, cancelId: 1 });
+    const current = scheduler?.store.run(run.id);
+    if (result.response === 0 && current?.status === 'pending' && Date.parse(current.plannedAt) > Date.now()) await scheduler?.act('*', run.id, 'acknowledge');
+    return;
+  }
+  scheduler?.review(run.workspace, run.id);
+  await workspaces.reveal(run.workspace);
+}
+function openSchedulerReview(): void {
+  const runs = scheduler?.allRuns() ?? [];
+  const input = scheduler?.allAttention().find(item => item.approvals.length || item.inputs.length);
+  const run = runs.find(item => item.id === input?.runId) ?? runs.find(item => item.status === 'pending')
+    ?? runs.find(item => item.kind === 'task');
+  void openScheduledRun(run).catch(reportStartupError);
+}
 let usagePopoverWindow: BrowserWindow | null = null;
 const backgroundUsage = createAccountUsageBackground({
   acquire: () => getCodexAccountProfiles({
@@ -252,6 +282,16 @@ function reportTrayError(error: unknown): void {
 }
 
 app.whenReady().then(async () => {
+  configureSchedulerDesktop({
+    startup: () => ({ enabled: process.platform === 'darwin' && app.getLoginItemSettings().openAtLogin,
+      available: process.platform === 'darwin' && app.isPackaged }),
+    setStartup(enabled) {
+      if (process.platform !== 'darwin' || !app.isPackaged) throw new Error('Login startup is available in the installed macOS app.');
+      app.setLoginItemSettings({ openAtLogin: enabled });
+    },
+  });
+  powerMonitor.on('suspend', suspendScheduler);
+  powerMonitor.on('resume', resumeScheduler);
   updates.start();
   powerMonitor.on('resume', () => { void updates.resume(); });
   autoUpdater.on('error', error => process.stderr.write(`[cheshi] Update installation failed: ${String(error)}\n`));
@@ -277,7 +317,7 @@ app.whenReady().then(async () => {
           : path.join(import.meta.dirname, 'frontend', 'dist', 'index.html')).href,
         preload: usagePopoverPreload,
         appearanceFile: path.join(app.getPath('userData'), 'appearance.json'),
-        showApp, quit: () => app.quit(), onError: reportTrayError,
+        showApp, openScheduler: openSchedulerReview, quit: () => app.quit(), onError: reportTrayError,
       }),
       images: nativeImage, theme: nativeTheme,
       loadFont: loadMenuBarFont,
@@ -293,6 +333,26 @@ app.whenReady().then(async () => {
     }); } catch (error) { reportTrayError(error); }
   }
   if (usageTray) backgroundUsage.start();
+  const dataRoot = resolveCodeGraphDataRoot() ?? app.getPath('userData');
+  const commands = createCodeGraphCommands({ packaged: app.isPackaged, resourcesPath: process.resourcesPath,
+    rootDirectory: path.resolve(import.meta.dirname, '..'), bunExecutable: process.env.CHESHI_BUN });
+  scheduler = await startScheduler({ userDataDirectory: app.getPath('userData'), home: app.getPath('home'),
+    openExternal: url => shell.openExternal(url), codeGraph: { cli: commands.cli(), dataRoot },
+    historyDirectory: workspace => path.join(path.dirname(codeGraphStorageDirectory(dataRoot, workspace)), 'chat-history-index'),
+    accountSelection: apiSettings.workspaceAccountSelection, getKey: apiSettings.getKey,
+    access: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) } });
+  schedulerNotifications = createSchedulerNotifications({ engine: scheduler,
+    shouldNotify: run => !workspaces.hasFocusedWorkspace(run.workspace === '*' ? undefined : run.workspace),
+    open: run => { void openScheduledRun(run).catch(reportStartupError); },
+    summary: value => usageTray?.updateScheduler(value),
+    notify(title, body, open) {
+      if (!Notification.isSupported()) return () => {};
+      const notification = new Notification({ title, body, silent: false });
+      notification.on('click', open); notification.on('failed', (_event, error) => reportTrayError(error)); notification.show();
+      return () => { notification.removeAllListeners(); notification.close(); };
+    },
+  });
+  if (process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAtLogin) { startupScreen.close(); return; }
   const resumeWindows = await updateResume.load().catch(error => {
     process.stderr.write(`[cheshi] Could not load update recovery: ${String(error)}\n`);
     return [];
@@ -316,6 +376,8 @@ app.on('before-quit', (event) => {
   if (quitting) return;
   quitting = true;
   void workspaces.closeAll().then(async () => {
+    schedulerNotifications?.dispose();
+    await stopScheduler();
     await keepAwake.dispose();
     await discord.dispose(); await messageCommands.dispose(); await notifications.dispose();
     await backgroundUsage.dispose().catch(reportTrayError);
