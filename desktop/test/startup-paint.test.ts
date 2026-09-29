@@ -1,11 +1,20 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { installRendererReadiness } from '../lib/renderer-readiness.mts';
 
 const bootstrapSource = readFileSync(new URL('../bootstrap.mts', import.meta.url), 'utf8');
 const runtimeSource = readFileSync(new URL('../workspace-runtime.mts', import.meta.url), 'utf8');
 const rendererHtml = readFileSync(new URL('../frontend/index.html', import.meta.url), 'utf8');
+const mainSource = readFileSync(new URL('../main.mts', import.meta.url), 'utf8');
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(complete => { resolve = complete; });
+  return { promise, resolve };
+}
 
 test('registers settings IPC before the renderer can request its initial menu state', () => {
   const createWindow = runtimeSource.indexOf('function createMainWindow(');
@@ -14,8 +23,9 @@ test('registers settings IPC before the renderer can request its initial menu st
   const loadRenderer = runtimeSource.indexOf('window.loadURL(rendererUrl)', createWindow);
   assert.ok(owner > createWindow);
   assert.ok(settingsReady > owner && settingsReady < loadRenderer);
-  const mainSource = readFileSync(new URL('../main.mts', import.meta.url), 'utf8');
-  assert.match(mainSource, /createWorkspaceRuntime\(\{\s*\.\.\.options,\s*getTypeSafeKey: apiSettings\.getKey\s*\},[\s\S]*?window => \{\s*settingsIpc = registerSettingsIpc\(/u);
+  const trackedWorkspace = mainSource.slice(mainSource.indexOf('function createTrackedWorkspace('),
+    mainSource.indexOf('async function openStartupWindow('));
+  assert.match(trackedWorkspace, /createWorkspaceRuntime\(\{[\s\S]*?getTypeSafeKey: apiSettings\.getKey\b[\s\S]*?\},[^;]*?window => \{\s*settingsIpc = registerSettingsIpc\(/u);
   const start = mainSource.indexOf('const window = await runtime.start();', mainSource.indexOf('function createTrackedWorkspace('));
   assert.equal(mainSource.indexOf('registerSettingsIpc(', start), -1);
 });
@@ -166,7 +176,7 @@ for (const [theme, expected] of [['light', 'light'], ['dark', 'dark'], ['invalid
 
 test('starts in dark mode without restoring a persisted light theme', () => {
   assert.match(rendererHtml, /<html[^>]+data-theme="dark"/u);
-  assert.match(rendererHtml, /<meta name="theme-color" content="#171717"/u);
+  assert.match(rendererHtml, /<meta name="theme-color" content="#000000"/u);
   assert.doesNotMatch(rendererHtml, /localStorage|data-cheshi-theme-bootstrap/u);
 });
 
@@ -180,6 +190,39 @@ test('defers desktop service imports until the startup screen is visible', () =>
   assert.ok(initializeMain > cancellationGuard);
   assert.doesNotMatch(bootstrapSource, /import\s+[^;]*from ['"]\.\/main\.mts['"]/u);
 });
+
+for (const restore of [true, false]) {
+  test(`opens the ${restore ? 'workspace' : 'manager'} after setup completes without a minimum delay`, async () => {
+    const start = mainSource.indexOf('async function openStartupWindow(');
+    const end = mainSource.indexOf('function reportStartupError(', start);
+    assert.ok(start >= 0 && end > start);
+    const source = stripTypeScriptTypes(mainSource.slice(start, end));
+    const setup = createDeferred<boolean>();
+    const started = createDeferred<void>();
+    const opened: string[] = [];
+    const opening = runInNewContext(`${source}\nopenStartupWindow();`, {
+      openingStartupWindow: false, quitting: false,
+      app: { isPackaged: true, getPath: () => '/data' },
+      process: { env: {} },
+      resolveStartupWorkspace: () => '/workspace',
+      getWorkspaceToolStatus: () => {},
+      canRestoreStartupWorkspace: () => { started.resolve(); return setup.promise; },
+      startupScreen: { setStatus: async () => {}, remainingMinimumDisplayMs: 2_000 },
+      // Fail immediately if a fixed delay is reintroduced; never launch Electron.
+      delay: () => assert.fail('Startup must advance on readiness without a fixed delay'),
+      workspaces: {
+        lastWorkspaceRoot: '/workspace',
+        open: async (root: string) => { opened.push(root); },
+        openManager: async () => { opened.push('manager'); },
+      },
+    }) as Promise<void>;
+    await started.promise;
+    assert.deepEqual(opened, []);
+    setup.resolve(restore);
+    await opening;
+    assert.deepEqual(opened, [restore ? '/workspace' : 'manager']);
+  });
+}
 
 test('keeps the startup screen until the main window is revealed', () => {
   const createWindow = runtimeSource.indexOf('function createMainWindow(');

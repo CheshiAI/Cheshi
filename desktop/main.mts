@@ -7,7 +7,6 @@ import { createCodeGraphCommands } from './lib/codegraph-service.mts';
 import { codeGraphStorageDirectory, resolveCodeGraphDataRoot } from '../config/workspace-storage.mts';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { setTimeout as delay } from 'node:timers/promises';
 import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, screen, safeStorage, shell, Tray } from 'electron';
 import { product } from '../config/product.mts';
 import { aboutBackgroundColor, aboutPage } from './lib/about-page.mts';
@@ -263,8 +262,6 @@ async function openStartupWindow(): Promise<void> {
         cwd: app.getPath('userData'), openExternal: (url) => shell.openExternal(url),
       }),
     });
-    const remainingDisplayMs = startupScreen.remainingMinimumDisplayMs;
-    if (!quitting && remainingDisplayMs > 0) await delay(remainingDisplayMs);
     if (quitting) return;
     if (root && restore) await workspaces.open(root);
     else await workspaces.openManager();
