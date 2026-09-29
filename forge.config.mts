@@ -245,6 +245,7 @@ function shouldIgnore(packagePath: string): boolean {
     'workspace-ipc-router.mts',
     'workspace-renderer-events.mts',
     'workspace-window-readiness.mts',
+    'workspace-account-startup.mts',
   ]);
   return grandchildEntry === undefined || !packagedLibraryFiles.has(grandchildEntry) || segments.length > 3;
 }

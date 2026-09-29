@@ -14,9 +14,28 @@ import { registerAppleMailIpc } from './apple-mail-ipc.mts';
 import { AppleCalendarService } from './apple-calendar-service.mts';
 import { registerAppleCalendarIpc } from './apple-calendar-ipc.mts';
 import { readCodexTurnMetrics } from './codex-chat-turn-metrics.mts';
+import { pluginLogoDataUrl } from './plugin-logo-service.mts';
+
+export function registerCodexPluginIpc({ ipc, service }: {
+  ipc: Pick<IpcMain, 'handle'>;
+  service: Pick<CodexChatService, 'listPlugins' | 'addMarketplace' | 'getPluginLogoSources' | 'readPlugin' | 'installPlugin' | 'uninstallPlugin'>;
+}) {
+  ipc.handle('cheshi:list-codex-plugins', (_event, forceRefetch) => service.listPlugins(forceRefetch));
+  ipc.handle('cheshi:add-codex-marketplace', (_event, request) => service.addMarketplace(request));
+  ipc.handle('cheshi:get-codex-plugin-logo', async (_event, pluginId) => {
+    const sources = service.getPluginLogoSources(pluginId);
+    if (!sources) return { light: null, dark: null };
+    const [light, dark] = await Promise.all([pluginLogoDataUrl(sources.light), pluginLogoDataUrl(sources.dark)]);
+    return { light, dark };
+  });
+  ipc.handle('cheshi:read-codex-plugin', (_event, reference) => service.readPlugin(reference));
+  ipc.handle('cheshi:install-codex-plugin', (_event, reference) => service.installPlugin(reference));
+  ipc.handle('cheshi:uninstall-codex-plugin', (_event, pluginId) => service.uninstallPlugin(pluginId));
+}
 
 type ChatIpcOptions = {
   ipc: Pick<IpcMain, 'handle'>;
+  accountIpc?: Pick<IpcMain, 'handle'>;
   service(event: IpcMainInvokeEvent, contextId: unknown): CodexChatService;
   relays: CodexChatRelays;
   deletion?: CodexChatSessionDeletion;
@@ -27,10 +46,11 @@ type ChatIpcOptions = {
   prepareMessage(value: unknown): Promise<{ text: string; clientMessageId: string; skill: unknown; attachments: ChatAttachment[]; threadId?: string | null }>;
 };
 
-export function registerCodexChatIpc({ ipc, service, relays, deletion, savedTurns, historySearch, assertSender, prepareMessage, beforeMessage }: ChatIpcOptions) {
+export function registerCodexChatIpc({ ipc, accountIpc, service, relays, deletion, savedTurns, historySearch, assertSender, prepareMessage, beforeMessage }: ChatIpcOptions) {
   registerAppleNotesIpc({ ipcMain: ipc, service: new AppleNotesService(), assertSender });
   registerAppleMailIpc({ ipcMain: ipc, service: new AppleMailService(), assertSender });
   registerAppleCalendarIpc({ ipcMain: ipc, service: new AppleCalendarService(), assertSender });
+  ipc = accountIpc ?? ipc;
   const mutation = <T,>(event: IpcMainInvokeEvent, contextId: unknown, operation: () => Promise<T> | T) => {
     assertSender(event);
     const run = () => relays.mutation(event.sender.id, contextId, operation);

@@ -30,7 +30,7 @@ import { CodeGraphIndexer, CodeGraphService, createCodeGraphCommands } from './l
 import { hasReadyCodeGraphIndex, prepareInitialCodeGraph } from './lib/codegraph-initial-index.mts';
 import { CodexAccountService } from './lib/codex-account-service.mts';
 import { createWorkspaceChatHistory } from './lib/workspace-chat-history.mts';
-import { registerCodexChatIpc } from './lib/codex-chat-ipc.mts';
+import { registerCodexChatIpc, registerCodexPluginIpc } from './lib/codex-chat-ipc.mts';
 import { CodexChatRelays } from './lib/codex-chat-relay.mts';
 import { CodexChatRelayHistory } from './lib/codex-chat-relay-history.mts';
 import { CodexChatSavedTurns } from './lib/codex-chat-saved-turns.mts';
@@ -43,7 +43,6 @@ import { GhosttySurfaceHost } from './lib/ghostty-surface-host.mts';
 import { GitService } from './lib/git-service.mts';
 import { LanguageServerManager } from './lib/language-server-manager.mts';
 import { createBundledLanguageServerCommands } from './lib/language-server-runtime.mts';
-import { pluginLogoDataUrl } from './lib/plugin-logo-service.mts';
 import { SkillRecordingStore } from './lib/skill-recording-store.mts';
 import { TerminalController } from './lib/terminal-controller.mts';
 import { startupScreen } from './lib/startup-screen.mts';
@@ -55,6 +54,7 @@ import type { CodexAccountsSnapshot } from './shared/codex-accounts.ts';
 export function createWorkspaceRuntime(options: WorkspaceRuntimeOptions,
   onAccountsChanged?: (snapshot: CodexAccountsSnapshot) => void, onWindowCreated?: (window: BrowserWindow) => void) {
 const ipcMain = options.scope.ipc;
+const initialIndexAbort = new AbortController();
 const rendererEvents = createWorkspaceRendererEvents();
 function workspaceWindows(): BrowserWindow[] { return mainWindow && !mainWindow.isDestroyed() ? [mainWindow] : []; }
 
@@ -237,6 +237,8 @@ const codexChatSavedTurns = new CodexChatSavedTurns(path.join(path.dirname(codeG
 const codexChatSessionDeletion = new CodexChatSessionDeletion({ contexts: codexChatContexts, service: codexChatService, relays: codexChatRelays });
 const accountSwitch = workspaceAccounts.register({
   ipc: ipcMain, assertSender: assertCheshiSender,
+  startup: { signal: initialIndexAbort.signal, onPhase: logStartup,
+    onError: error => chatServiceOptions.log('codex-account-initialization-failed', { message: String(error) }) },
   retained: [codexAppServerClient, ephemeralSessionClient],
   service: codexChatService, contexts: codexChatContexts, deletion: codexChatSessionDeletion,
   relays: codexChatRelays, accountUsage: codexAccountService,
@@ -248,6 +250,7 @@ const accountSwitch = workspaceAccounts.register({
     for (const window of workspaceWindows()) rendererEvents.send(window, 'cheshi:codex-accounts-changed', snapshot);
   },
 });
+const accountIpc = accountSwitch.ipc;
 const workspaceScheduler = createWorkspaceScheduler({
   ipc: ipcMain, assertSender: assertCheshiSender, workspace: workspaceRoot, dataDirectory: userDataDirectory,
   contexts: codexChatContexts, deletion: codexChatSessionDeletion,
@@ -471,35 +474,19 @@ ipcMain.handle('cheshi:close-terminal-pane', (event, sessionId, paneId) => {
 });
 ipcMain.handle('cheshi:is-codegraph-indexed', () => hasReadyCodeGraphIndex(codeGraphDatabasePath));
 ipcMain.handle('cheshi:reindex-codegraph', () => reindexCodeGraph());
-ipcMain.handle('cheshi:get-codex-account-usage', () => codexAccountService.getStatus());
-ipcMain.handle('cheshi:list-codex-plugins', (_event, forceRefetch) => codexChatService.listPlugins(forceRefetch));
-ipcMain.handle('cheshi:add-codex-marketplace', (event, request) => {
-  assertCheshiSender(event, 'Marketplace');
-  return codexChatService.addMarketplace(request);
-});
+accountIpc.handle('cheshi:get-codex-account-usage', () => codexAccountService.getStatus());
+registerCodexPluginIpc({ ipc: accountIpc, service: codexChatService });
 ipcMain.handle('cheshi:save-skill-recording', (event, recording) => {
   assertCheshiSender(event, 'Skill recording');
   return skillRecordingStore.save(recording);
 });
-ipcMain.handle('cheshi:start-plugin-workflow', async (event, value, contextId) => {
+accountIpc.handle('cheshi:start-plugin-workflow', async (event, value, contextId) => {
   assertCheshiSender(event, 'Plugin workflow');
   const request = pluginWorkflowRequest(value);
   const attachments = request.recordingId ? await skillRecordingStore.attachments(request.recordingId) : [];
   return codexChatRelays.mutation(event.sender.id, contextId, () => chatServiceFor(event, contextId).startPluginWorkflow(request, attachments));
 });
-ipcMain.handle('cheshi:get-codex-plugin-logo', async (_event, pluginId) => {
-  const sources = codexChatService.getPluginLogoSources(pluginId);
-  if (!sources) return { light: null, dark: null };
-  const [light, dark] = await Promise.all([
-    pluginLogoDataUrl(sources.light),
-    pluginLogoDataUrl(sources.dark),
-  ]);
-  return { light, dark };
-});
-ipcMain.handle('cheshi:read-codex-plugin', (_event, reference) => codexChatService.readPlugin(reference));
-ipcMain.handle('cheshi:install-codex-plugin', (_event, reference) => codexChatService.installPlugin(reference));
-ipcMain.handle('cheshi:uninstall-codex-plugin', (_event, pluginId) => codexChatService.uninstallPlugin(pluginId));
-ipcMain.handle('cheshi:explain-code', (event, request) => {
+accountIpc.handle('cheshi:explain-code', (event, request) => {
   assertCheshiSender(event);
   return codeExplanation.explain(request);
 });
@@ -521,7 +508,7 @@ ipcMain.handle(
 );
 const sessionStores = createWorkspaceSessionStores(ipcMain, codeGraphDirectory, assertCheshiSender);
 registerCodexChatIpc({
-  ipc: ipcMain, service: chatServiceFor, relays: codexChatRelays, assertSender: assertCheshiSender,
+  ipc: ipcMain, accountIpc, service: chatServiceFor, relays: codexChatRelays, assertSender: assertCheshiSender,
   savedTurns: codexChatSavedTurns,
   historySearch: chatHistorySearch,
   beforeMessage: workspaceAccounts.beforeMessage,
@@ -532,7 +519,7 @@ registerCodexChatIpc({
     return { ...request, attachments };
   },
 });
-ipcMain.handle('cheshi:dispose-codex-chat-context', (event, contextId) => {
+accountIpc.handle('cheshi:dispose-codex-chat-context', (event, contextId) => {
   assertCheshiSender(event, 'Chat');
   return codexChatSessionDeletion.mutation(() => codexChatContexts.dispose(event.sender.id, contextId));
 });
@@ -555,7 +542,6 @@ ipcMain.on('cheshi:get-workspace-metadata', (event) => {
 let mainWindow: BrowserWindow | null = null;
 let windowAppearance: ReturnType<typeof createWindowAppearance> | null = null;
 let codeGraphService: CodeGraphService | null = null;
-const initialIndexAbort = new AbortController();
 let codeGraphIndexer: CodeGraphIndexer | null = null;
 let codeGraphReindexPromise: Promise<{ reindexed: true }> | null = null;
 let appQuitting = false;
@@ -918,12 +904,16 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
       : window.loadFile(path.join(frontendAssetsDirectory(), 'index.html'));
   void loading.then(() => readiness.loaded(), (error: unknown) => readiness.fail(error));
   await readiness.ready;
+  await accountSwitch.ready();
   if (!options.deferShow) revealWindow();
   return window;
 }
 
 async function initialize(): Promise<BrowserWindow> {
   logStartup('electron ready');
+  void accountSwitch.ready().catch(error => {
+    if (!initialIndexAbort.signal.aborted) chatServiceOptions.log('codex-account-initialization-failed', { message: String(error) });
+  });
   if (options.initial) await startupScreen.setStatus('Preparing workspace…');
   if (!options.deferShow) registerWorkspace(userDataDirectory, workspaceRoot, { setCurrent: true });
   const index = await prepareInitialCodeGraph({
@@ -942,7 +932,6 @@ async function initialize(): Promise<BrowserWindow> {
   logStartup('git watcher ready');
   if (options.initial) await startupScreen.setStatus('Loading workspace information…');
   pendingIndexWarning = index.error ? String(index.error) : null;
-  await accountSwitch.initialize(error => chatServiceOptions.log('codex-account-initialization-failed', { message: String(error) }));
   return await createMainWindow(codeGraphUrl);
 }
 

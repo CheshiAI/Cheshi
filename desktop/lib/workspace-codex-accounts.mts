@@ -15,6 +15,7 @@ import type { CodexChatClient } from './codex-chat-types.mts';
 import { CodexConversationAgents } from './codex-conversation-agents.mts';
 import { createWorkspaceCodeGraphMcp } from './workspace-codegraph-mcp.mts';
 import type { WorkspaceAccountSelection } from './settings-service.mts';
+import { createWorkspaceAccountStartup } from './workspace-account-startup.mts';
 
 export function createWorkspaceCodexAccounts(options: {
   cwd: string; userDataDirectory: string; home: string; openExternal(url: string): Promise<unknown>;
@@ -35,6 +36,7 @@ export function createWorkspaceCodexAccounts(options: {
     defaultHome, cwd: options.home, openExternal: options.openExternal,
   });
   let selection: ReturnType<typeof registerCodexAccountsIpc> | undefined;
+  let startup: ReturnType<typeof createWorkspaceAccountStartup> | undefined;
   let loaded = new WeakMap<CodexChatClient, Set<string>>();
   const request = (id: string, method: string, params?: unknown) => profiles.historyRequest(id, method, params);
   const catalog = new CodexConversationCatalog({
@@ -74,44 +76,58 @@ export function createWorkspaceCodexAccounts(options: {
     temporaryBusy(): boolean;
     schedulerBusy?(): boolean;
     resetTemporary(): void;
-  }) => selection = registerCodexAccountsIpc({
-    ...configuration, clients, profiles, accountSelection: options.accountSelection,
-    exclusive: operation => configuration.deletion.exclusive(operation),
-    assertCanLogin: () => {
-      const services = [configuration.service, ...configuration.contexts.allServices().map(entry => entry.service)];
-      if (services.some(service => service.viewedThreadId !== null)) {
-        throw new Error('Close the open conversations before signing in to the active account.');
-      }
-    },
-    assertIdle: () => {
-      if (configuration.schedulerBusy?.()) throw new Error('Wait for the scheduled task to finish before switching accounts.');
-      if (configuration.temporaryBusy()) throw new Error('Close temporary chat and wait for code explanations before switching accounts.');
-      const entries = configuration.contexts.allServices();
-      for (const service of [configuration.service, ...entries.map(entry => entry.service)]) {
-        if (service.viewedThreadIsSubagent) throw new Error('Open the main conversation before switching accounts.');
-        if (service.activeTurns.size || service.pendingTurnStarts.size || service.pendingNewTurnClientMessageId) {
-          throw new Error('Wait for all chat responses to finish before switching accounts.');
+    startup?: { signal: AbortSignal; onPhase(phase: string): void; onError(error: unknown): void };
+  }) => {
+    const startupOptions = configuration.startup;
+    startup = startupOptions ? createWorkspaceAccountStartup({
+      ipc: configuration.ipc, signal: startupOptions.signal, assertSender: configuration.assertSender,
+      initialize: async () => {
+        startupOptions.onPhase('account selection started');
+        await selection!.initialize(startupOptions.onError);
+        startupOptions.onPhase('account selection ready');
+      },
+    }) : undefined;
+    selection = registerCodexAccountsIpc({
+      ...configuration, ipc: startup?.ipc ?? configuration.ipc, clients, profiles, accountSelection: options.accountSelection,
+      exclusive: operation => configuration.deletion.exclusive(operation),
+      assertCanLogin: () => {
+        const services = [configuration.service, ...configuration.contexts.allServices().map(entry => entry.service)];
+        if (services.some(service => service.viewedThreadId !== null)) {
+          throw new Error('Close the open conversations before signing in to the active account.');
         }
-      }
-      for (const ownerId of new Set(entries.map(entry => entry.ownerId))) {
-        const relay = configuration.relays.get(ownerId);
-        if (relay?.status === 'running' || relay?.status === 'stopping') throw new Error('Stop the linked conversation before switching accounts.');
-      }
-    },
-    reset: async (preserveConversation = false) => {
-      loaded = new WeakMap();
-      // Logout retires pane IDs; selection keeps their history and user choices.
-      for (const { ownerId, contextId } of configuration.contexts.allServices()) {
-        if (preserveConversation) await configuration.contexts.existing(ownerId, contextId)?.resetForAccount(true);
-        else await configuration.contexts.dispose(ownerId, contextId);
-      }
-      await configuration.service.resetForAccount(preserveConversation);
-      await configuration.accountUsage.stop();
-      configuration.resetTemporary();
-    },
-  });
+      },
+      assertIdle: () => {
+        if (configuration.schedulerBusy?.()) throw new Error('Wait for the scheduled task to finish before switching accounts.');
+        if (configuration.temporaryBusy()) throw new Error('Close temporary chat and wait for code explanations before switching accounts.');
+        const entries = configuration.contexts.allServices();
+        for (const service of [configuration.service, ...entries.map(entry => entry.service)]) {
+          if (service.viewedThreadIsSubagent) throw new Error('Open the main conversation before switching accounts.');
+          if (service.activeTurns.size || service.pendingTurnStarts.size || service.pendingNewTurnClientMessageId) {
+            throw new Error('Wait for all chat responses to finish before switching accounts.');
+          }
+        }
+        for (const ownerId of new Set(entries.map(entry => entry.ownerId))) {
+          const relay = configuration.relays.get(ownerId);
+          if (relay?.status === 'running' || relay?.status === 'stopping') throw new Error('Stop the linked conversation before switching accounts.');
+        }
+      },
+      reset: async (preserveConversation = false) => {
+        loaded = new WeakMap();
+        // Logout retires pane IDs; selection keeps their history and user choices.
+        for (const { ownerId, contextId } of configuration.contexts.allServices()) {
+          if (preserveConversation) await configuration.contexts.existing(ownerId, contextId)?.resetForAccount(true);
+          else await configuration.contexts.dispose(ownerId, contextId);
+        }
+        await configuration.service.resetForAccount(preserveConversation);
+        await configuration.accountUsage.stop();
+        configuration.resetTemporary();
+      },
+    });
+    return Object.assign(selection, { ipc: startup?.ipc ?? configuration.ipc, ready: startup?.ready ?? (async () => {}) });
+  };
   const beforeMessage = async () => {
     if (!selection) throw new Error('Account selection is not ready.');
+    await startup?.ready();
     const snapshot = { ...await profiles.list(), activeId: selection.activeId };
     const availability = chooseCodexAccount(snapshot);
     if (!availability.accountId) throw new Error(availability.message ?? 'No Codex account is available.');
