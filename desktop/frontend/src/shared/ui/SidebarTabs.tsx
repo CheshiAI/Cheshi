@@ -2,6 +2,7 @@ import { useId, type CSSProperties, type ReactNode } from 'react';
 
 import { FilterTab, FilterTabList } from './FilterTab';
 import { useScrollSnapTabs } from './useScrollSnapTabs';
+import { useSidebarTabStrip } from './useSidebarTabStrip';
 import styles from './SidebarTabs.module.css';
 
 export interface SidebarTab {
@@ -17,17 +18,21 @@ export function SidebarTabs({ tabs, activeId, onSelect }: {
 }) {
   const id = useId();
   const activeIndex = Math.max(0, tabs.findIndex(tab => tab.id === activeId));
-  const viewportRef = useScrollSnapTabs(activeIndex, index => {
+  const visibleCount = Math.min(3, tabs.length);
+  const selectScrolledTab = (index: number) => {
     const next = tabs[index];
     if (!next) return;
     const viewport = viewportRef.current;
     const document = viewport?.ownerDocument;
-    if (document && viewport?.contains(document.activeElement)) {
+    if (document && (viewport?.contains(document.activeElement) || stripRef.current?.contains(document.activeElement))) {
       document.getElementById(`${id}-tab-${next.id}`)?.focus({ preventScroll: true });
     }
     onSelect(next.id);
-  });
-  return <div className={styles.root} style={{ '--sidebar-tab-count': tabs.length } as CSSProperties}>
+  };
+  const viewportRef = useScrollSnapTabs(activeIndex, selectScrolledTab);
+  const stripRef = useSidebarTabStrip(activeIndex, tabs.length, visibleCount, selectScrolledTab);
+  return <div className={styles.root} style={{ '--sidebar-tab-count': tabs.length, '--sidebar-visible-tabs': visibleCount } as CSSProperties}>
+    <div ref={stripRef} className={styles.tabViewport}>
     <FilterTabList className={styles.tabs} role="tablist" aria-label="Sidebar panels">
       {tabs.map((tab, index) => <FilterTab key={tab.id} className={styles.tab}
         id={`${id}-tab-${tab.id}`} role="tab" active={index === activeIndex}
@@ -48,9 +53,10 @@ export function SidebarTabs({ tabs, activeId, onSelect }: {
           event.preventDefault();
           event.stopPropagation();
           onSelect(tabs[next]!.id);
-          event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+          event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus({ preventScroll: true });
         }}>{tab.label}</FilterTab>)}
     </FilterTabList>
+    </div>
     <div ref={viewportRef} className={styles.panels}>
       <div className={styles.track}>
         {tabs.map((tab, index) => <div key={tab.id} id={`${id}-panel-${tab.id}`}

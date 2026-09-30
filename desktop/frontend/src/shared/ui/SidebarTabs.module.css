@@ -9,16 +9,28 @@
   -webkit-app-region: no-drag;
 }
 
+.tabViewport {
+  flex: 0 0 var(--header-height);
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--icon-default);
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--divider);
+  box-sizing: border-box;
+}
+
 .root .tabs {
   position: relative;
   isolation: isolate;
   box-sizing: border-box;
-  height: var(--header-height);
-  min-height: var(--header-height);
-  flex: 0 0 var(--header-height);
+  height: 100%;
+  width: calc((100% - 2 * var(--icon-default) + var(--sidebar-tab-gap)) * var(--sidebar-tab-count) / var(--sidebar-visible-tabs) - var(--sidebar-tab-gap) + 2 * var(--icon-default));
+  overflow: visible;
   gap: var(--sidebar-tab-gap);
   padding: 0 var(--icon-default);
-  border-bottom: 1px solid var(--divider);
 }
 
 .root .tabs::before {
@@ -56,6 +68,8 @@
   letter-spacing: normal;
   color: var(--text);
   background: transparent;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
 .tabs .tab:hover,
@@ -82,7 +96,8 @@
 }
 
 /* This is a paged navigation viewport; lists inside retain their normal scrollbars. */
-.panels::-webkit-scrollbar {
+.panels::-webkit-scrollbar,
+.tabViewport::-webkit-scrollbar {
   display: none;
 }
 

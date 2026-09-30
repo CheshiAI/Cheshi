@@ -7,12 +7,14 @@ import { normalizeSidebarPanel, readSidebarPanel, saveSidebarPanel } from '../fr
 import { SidebarTabs } from '../frontend/src/shared/ui/SidebarTabs';
 import { SidebarToggle, SidebarToggleVisibility } from '../frontend/src/shared/ui/SidebarToggle';
 
-function Fixture() {
+function Fixture({ five = false }: { five?: boolean }) {
   const [active, setActive] = useState('files');
   return <SidebarTabs activeId={active} onSelect={setActive} tabs={[
     { id: 'chats', label: 'Sessions', content: <input aria-label="Session search" /> },
     { id: 'files', label: 'Files', content: <div data-scroll><input aria-label="File search" /></div> },
     { id: 'memos', label: 'Memos', content: null },
+    ...(five ? [{ id: 'mail', label: 'Mail', content: <input aria-label="Mail search" /> },
+      { id: 'github', label: 'GitHub', content: null }] : []),
   ]} />;
 }
 
@@ -23,6 +25,8 @@ async function withTabs(run: (h: {
   panel(label: string): HTMLElement;
   viewport: HTMLElement;
   scrolls: ScrollToOptions[];
+  strip: HTMLElement;
+  settleStrip(left: number): Promise<void>;
   settle(left: number, target?: Element): Promise<void>;
   resize(width: number): Promise<void>;
   reduceMotion(): void;
@@ -31,25 +35,29 @@ async function withTabs(run: (h: {
   key(label: string, key: string): Promise<void>;
   wheel(target: Element, options: WheelEventInit): Promise<Event>;
   clear(): Promise<void>;
-}) => Promise<void>) {
+}) => Promise<void>, five = false) {
   const window = new Window();
   let width = 320;
   let reduceMotion = false;
-  let resize = () => {};
-  let connected = false;
+  const observers = new Set<() => void>();
   const scrolls: ScrollToOptions[] = [];
   Object.defineProperty(window.HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => width });
   Object.defineProperty(window.HTMLElement.prototype, 'scrollTo', { configurable: true,
     value(this: HTMLElement, options: ScrollToOptions) {
-      scrolls.push(options);
+      if (this.querySelector('[role="tabpanel"]')) scrolls.push(options);
       if (options.behavior === 'instant') this.scrollLeft = options.left ?? 0;
     },
   });
+  Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', { configurable: true, value(this: HTMLElement) {
+    const left = this.getAttribute('role') === 'tab' ? [...this.parentElement!.children].indexOf(this) * 100 : 0;
+    return new window.DOMRect(left, 0, 96, 32);
+  } });
   Object.defineProperty(window, 'matchMedia', { value: () => ({ matches: reduceMotion }) });
   Object.defineProperty(window, 'ResizeObserver', { value: class {
-    constructor(callback: () => void) { resize = callback; }
-    observe() { connected = true; }
-    disconnect() { connected = false; }
+    private readonly callback: () => void;
+    constructor(callback: () => void) { this.callback = callback; }
+    observe() { observers.add(this.callback); }
+    disconnect() { observers.delete(this.callback); }
   } });
   const globals = { window, document: window.document, navigator: window.navigator, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -62,18 +70,25 @@ async function withTabs(run: (h: {
     .find(button => button.textContent === label)!;
   const panel = (label: string) => document.getElementById(tab(label).getAttribute('aria-controls')!)!;
   try {
-    await act(async () => root.render(<Fixture />));
+    await act(async () => root.render(<Fixture five={five} />));
     const viewport = panel('Files').parentElement!.parentElement!;
-    await run({ container, window, tab, panel, viewport, scrolls,
+    const strip = tab('Files').parentElement!.parentElement!;
+    await run({ container, window, tab, panel, viewport, scrolls, strip,
+      settleStrip: async left => {
+        await act(async () => {
+          strip.scrollLeft = left;
+          strip.dispatchEvent(new window.Event('scrollend') as unknown as Event);
+        });
+      },
       settle: async (left, target = viewport) => {
         await act(async () => {
           viewport.scrollLeft = left;
           target.dispatchEvent(new window.Event('scrollend', { bubbles: true }) as unknown as Event);
         });
       },
-      resize: async next => { width = next; await act(async () => { resize(); }); },
+      resize: async next => { width = next; await act(async () => { observers.forEach(callback => callback()); }); },
       reduceMotion: () => { reduceMotion = true; },
-      observerConnected: () => connected,
+      observerConnected: () => observers.size > 0,
       clear: async () => { await act(async () => root.render(null)); },
       wheel: async (target, options) => {
         const event = new window.WheelEvent('wheel', { bubbles: true, cancelable: options.cancelable ?? true,
@@ -102,14 +117,14 @@ async function withTabs(run: (h: {
   }
 }
 
-test('sidebar exposes SESSION, EXPLORER and a MEMO mount in that order', () => {
+test('sidebar exposes five ordered tabs with an empty GitHub placeholder', () => {
   const html = renderToStaticMarkup(<Sidebar activePanel="memos" onPanelChange={() => {}}
     chatPanel={<div>Session list</div>} selectedFilePath={null} onWorkspaceEntryMutation={() => {}}
     onOpenWorkspaceFile={() => {}} />);
   const window = new Window();
   window.document.body.innerHTML = html;
   const tabs = [...window.document.querySelectorAll('[role="tab"]')];
-  expect(tabs.map(tab => tab.textContent)).toEqual(['SESSION', 'EXPLORER', 'MEMO']);
+  expect(tabs.map(tab => tab.textContent)).toEqual(['SESSION', 'EXPLORER', 'MEMO', 'MAIL', 'GITHUB']);
   const selected = window.document.querySelector('[role="tab"][aria-selected="true"]')!;
   expect(selected.textContent).toBe('MEMO');
   const panel = window.document.getElementById(selected.getAttribute('aria-controls')!)!;
@@ -302,7 +317,7 @@ test('reduced motion tab clicks align immediately and unmount releases observers
 test('last selected tab is stored separately per workspace and invalid values fall back to Files', async () => {
   await withTabs(async ({ window }) => {
     expect(readSidebarPanel('/one')).toBe('files');
-    for (const panel of ['chats', 'memos', 'files'] as const) {
+    for (const panel of ['chats', 'memos', 'files', 'mail', 'github'] as const) {
       saveSidebarPanel(panel, '/one');
       expect(readSidebarPanel('/one')).toBe(panel);
     }
@@ -326,4 +341,47 @@ test('right sidebar toggles are absent until a review is available', () => {
   </SidebarToggleVisibility.Provider>);
   expect(markup(false)).toBe('');
   expect(markup(true)).toContain('aria-label="Open right sidebar"');
+});
+
+test('five tabs reveal Mail and GitHub on selection and preserve the mounted mailbox panel', async () => {
+  await withTabs(async ({ tab, panel, click, key, strip, scrolls }) => {
+    const mail = panel('Mail');
+    const input = mail.querySelector('input')!;
+    input.value = 'retained mailbox filter';
+    await click('Mail');
+    expect(strip.scrollLeft).toBe(100);
+    expect(scrolls.at(-1)?.left).toBe(960);
+    await key('Mail', 'End');
+    expect(strip.scrollLeft).toBe(200);
+    expect(tab('GitHub').getAttribute('aria-selected')).toBe('true');
+    expect(panel('GitHub').childNodes).toHaveLength(0);
+    await key('GitHub', 'ArrowRight');
+    expect(strip.scrollLeft).toBe(0);
+    expect(tab('Sessions').getAttribute('aria-selected')).toBe('true');
+    await click('Mail');
+    expect(mail.querySelector('input')).toBe(input);
+    expect(input.value).toBe('retained mailbox filter');
+  }, true);
+});
+
+test('header swipes reveal three labels and select the nearest visible tab if selection scrolls out', async () => {
+  await withTabs(async ({ tab, panel, wheel, strip, settleStrip, click, settle }) => {
+    await click('Sessions');
+    await settle(0);
+    expect((await wheel(strip, { deltaX: 100 })).defaultPrevented).toBe(false);
+    await settleStrip(100);
+    expect(tab('Files').getAttribute('aria-selected')).toBe('true');
+    await wheel(strip, { deltaX: 100 });
+    await settleStrip(200);
+    expect(tab('Memos').getAttribute('aria-selected')).toBe('true');
+    // Swiping the content also brings its selected header label into view.
+    await wheel(panel('Memos'), { deltaX: 100 });
+    await settle(1280);
+    expect(tab('GitHub').getAttribute('aria-selected')).toBe('true');
+    expect(strip.scrollLeft).toBe(200);
+    await wheel(panel('GitHub'), { deltaX: -100 });
+    await settle(0);
+    expect(tab('Sessions').getAttribute('aria-selected')).toBe('true');
+    expect(strip.scrollLeft).toBe(0);
+  }, true);
 });

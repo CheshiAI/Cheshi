@@ -24,6 +24,7 @@ import type { CodeGraphView } from '../frontend/src/features/graph/CodeGraphView
 import * as draftAttachmentModule from '../frontend/src/features/chat/chatDraftAttachments';
 import { appleNoteDraftText } from '../frontend/src/features/notes/appleNotesModel';
 import type { NotesView } from '../frontend/src/features/notes/NotesView';
+import type { MailView } from '../frontend/src/features/mail/MailView';
 import type { AppleNote } from '../shared/apple-notes';
 import type { TerminalWorkspace } from '../frontend/src/features/terminal/TerminalWorkspace';
 import type { ReviewSidebar } from '../frontend/src/features/shell/ReviewSidebar';
@@ -612,12 +613,34 @@ for (const view of ['git', 'plugins'] as const) {
 
 const appleNote: AppleNote = { id: 'note', title: 'Meeting', plaintext: 'Agenda', locked: false, modifiedAt: '2026-09-16T00:00:00Z' };
 
+test('Mail mounts at startup and sidebar mailbox selection opens its retained center workspace', () => {
+  const app = shellHarness();
+  const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
+  const mail = () => props<ComponentProps<typeof MailView>>(app.render(), 'MailView');
+  expect(mail().active).toBe(false);
+  sidebar().onPanelChange!('mail');
+  expect(mail().active).toBe(false);
+  expect(props<ComponentProps<typeof ChatWorkspace>>(app.render(), 'ChatWorkspace').active).toBe(true);
+  mail().onOpen!();
+  expect(mail().active).toBe(true);
+  expect(sidebar().activePanel).toBe('mail');
+  sidebar().onPanelChange!('github');
+  expect(sidebar().activePanel).toBe('github');
+  expect(mail().active).toBe(true);
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
+  expect(mail().active).toBe(false);
+  expect(sidebar().activePanel).toBe('chats');
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('mail');
+  expect(sidebar().activePanel).toBe('mail');
+});
+
 test('Memo tab browses alongside the current scene and opening a note activates the Memo page', () => {
   const app = shellHarness();
   const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
   const notes = () => props<ComponentProps<typeof NotesView>>(app.render(), 'NotesView');
+  expect(notes().active).toBe(false);
   sidebar().onPanelChange!('memos');
-  expect(notes().sidebarActive).toBe(true);
+  expect(sidebar().activePanel).toBe('memos');
   expect(notes().active).toBe(false);
   expect(props<ComponentProps<typeof ChatWorkspace>>(app.render(), 'ChatWorkspace').active).toBe(true);
   notes().onOpen!();

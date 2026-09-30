@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
-import { act, type ReactNode } from 'react';
+import { act, StrictMode, type ReactNode } from 'react';
 import { MailBrowser } from '../frontend/src/features/mail/MailView';
 import { MAIL_ERRORS, mailFailure } from '../shared/apple-mail';
 import { createMailDeferred, mailApiFixture, mailMessageFixture, mailSuccess, mailBox } from './apple-mail-fixtures';
@@ -16,6 +16,9 @@ async function withMailDOM(run: (render: (node: ReactNode) => Promise<void>, doc
   const { createRoot } = await import('react-dom/client');
   const container = globalThis.document.createElement('div');
   globalThis.document.body.append(container);
+  const sidebar = globalThis.document.createElement('aside');
+  sidebar.id = 'mail-sidebar';
+  globalThis.document.body.append(sidebar);
   const root = createRoot(container);
   try { await run(async node => { await act(async () => root.render(node)); }, globalThis.document); }
   finally {
@@ -28,7 +31,7 @@ async function withMailDOM(run: (render: (node: ReactNode) => Promise<void>, doc
   }
 }
 
-test('Mail connects only on request and renders selected messages as inert plain text', async () => {
+test('Mail preloads mailboxes and the first page without reading message bodies', async () => {
   let connections = 0;
   let reads = 0;
   const api = mailApiFixture({ mailboxes: async () => { connections++; return mailSuccess([
@@ -36,10 +39,7 @@ test('Mail connects only on request and renders selected messages as inert plain
     { accountId: 'b', accountName: 'Work', path: ['INBOX'], unread: 0 },
   ]); }, read: async () => { reads++; return mailSuccess({ ...mailMessageFixture, body: '<img src="https://example.test/pixel"><script>alert(1)</script>' }); } });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    expect(connections).toBe(0); expect(reads).toBe(0);
-    const connect = [...document.querySelectorAll('button')].find(button => button.textContent === 'Connect Apple Mail')!;
-    await act(async () => connect.click());
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
     expect(connections).toBe(1); expect(reads).toBe(0);
     expect(document.querySelector('[aria-label="메일함"]')?.textContent).toContain('Personal');
     expect(document.querySelector('[aria-label="메일함"]')?.textContent).toContain('Work');
@@ -51,9 +51,56 @@ test('Mail connects only on request and renders selected messages as inert plain
     expect(document.querySelector('img, script, iframe')).toBeNull();
     const labels = [...document.querySelectorAll('button')].map(button => button.textContent);
     expect(labels).not.toContain('보내기'); expect(labels).not.toContain('삭제');
-    const otherBox = document.querySelectorAll<HTMLButtonElement>('[aria-label="메일함"] button')[1]!;
+    const otherBox = document.querySelectorAll<HTMLButtonElement>('[aria-label="메일함"] section button')[1]!;
     await act(async () => otherBox.click());
     expect(document.querySelector('[aria-label="메일 본문"] pre')).toBeNull();
+  });
+});
+
+test('hidden Mail preloads once in Strict Mode and preserves its page, body and draft across tab changes', async () => {
+  let connections = 0;
+  let lists = 0;
+  let reads = 0;
+  let opens = 0;
+  const api = mailApiFixture({
+    mailboxes: async () => { connections++; return mailSuccess([mailBox]); },
+    list: async () => { lists++; return mailSuccess({ messages: [mailMessageFixture], offset: 0, nextOffset: null }); },
+    read: async () => { reads++; return mailSuccess(mailMessageFixture); },
+  });
+  await withMailDOM(async (render, document) => {
+    const scene = (active: boolean) => <StrictMode><MailBrowser api={api} active={active}
+      sidebarTarget={document.getElementById('mail-sidebar')} onOpen={() => { opens++; }}
+      rightSidebarOpen={false} onToggleRightSidebar={() => {}} /></StrictMode>;
+    await render(scene(false));
+    expect(connections).toBe(1);
+    expect(lists).toBe(1);
+    expect(reads).toBe(0);
+    const main = document.querySelector('main')!;
+    expect(main.hidden).toBe(true);
+    expect(main.querySelector('[aria-label="메일함"]')).toBeNull();
+    const mailbox = document.querySelector<HTMLButtonElement>('#mail-sidebar button[aria-current="page"]')!;
+    expect(mailbox).not.toBeNull();
+    await act(async () => mailbox.click());
+    expect(opens).toBe(1);
+    expect(lists).toBe(1);
+    await render(scene(true));
+    expect(main.hidden).toBe(false);
+    const row = document.querySelector<HTMLButtonElement>('[aria-label="메일 목록"] button[aria-pressed]')!;
+    await act(async () => row.click());
+    expect(reads).toBe(1);
+    await act(async () => button(document, '새 메일 작성').click());
+    await act(async () => mailComposer(api).edit({ subject: 'Keep this draft', body: 'Do not reset' }));
+    await act(async () => button(document, '내용 유지하고 닫기').click());
+    await render(scene(false));
+    await render(scene(true));
+    expect(document.querySelector('[aria-label="메일 목록"] button[aria-pressed]')).toBe(row);
+    expect(row.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('[aria-label="메일 본문"] pre')?.textContent).toBe(mailMessageFixture.body);
+    expect(connections).toBe(1);
+    expect(lists).toBe(1);
+    expect(reads).toBe(1);
+    await act(async () => button(document, '작성 중인 메일').click());
+    expect(document.querySelector<HTMLInputElement>('[aria-label="메일 제목"]')?.value).toBe('Keep this draft');
   });
 });
 
@@ -62,8 +109,7 @@ test('Mail shows retrieval failures separately from an empty mailbox and can rec
   const api = mailApiFixture({ list: async () => fail ? mailFailure('invalid-response')
     : mailSuccess({ messages: [], offset: 0, nextOffset: null }) });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === 'Connect Apple Mail')!.click());
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS['invalid-response']);
     expect(document.body.textContent).not.toContain('메일이 없습니다.');
     fail = false;
@@ -82,14 +128,13 @@ test('Mail keeps its header usable through connection, permission failure and su
     return connections === 1 ? pending.promise : Promise.resolve(mailSuccess([mailBox]));
   } });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => { toggles++; }} />);
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => { toggles++; }} />);
     const header = document.querySelector('header')!;
     expect(header.textContent).toContain('MAIL');
     expect(button(document, '새 메일 작성').disabled).toBe(true);
     expect(button(document, '메일 새로고침').disabled).toBe(true);
-    expect(connections).toBe(0);
-    const connect = button(document, 'Connect Apple Mail');
-    await act(async () => connect.click());
+    expect(connections).toBe(1);
+    const connect = button(document, 'Connecting…');
     expect(connect.disabled).toBe(true);
     expect(connect.textContent).toBe('Connecting…');
     await act(async () => connect.click());
@@ -99,7 +144,6 @@ test('Mail keeps its header usable through connection, permission failure and su
     await act(async () => pending.resolve(mailFailure('permission')));
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS.permission);
     expect(document.querySelector('[aria-label="메일 목록"]')).toBeNull();
-    expect(button(document, 'Connect Apple Mail')).toBe(connect);
     expect(connect.disabled).toBe(false);
     await act(async () => connect.click());
     expect(connections).toBe(2);
@@ -124,8 +168,7 @@ test('composer shows sender, cc and bcc review and requires an explicit second c
   const sends: MailSend[] = [];
   const api = mailApiFixture({ send: async input => { sends.push(input); return mailSuccess({ operationId: input.operationId, accepted: true }); } });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    await act(async () => button(document, 'Connect Apple Mail').click());
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
     await act(async () => button(document, '새 메일 작성').click());
     await act(async () => mailComposer(api).edit({ to: 'friend@example.test', cc: 'cc@example.test', bcc: 'private@example.test', body: 'Hello', subject: 'Review me' }));
     expect(document.querySelector<HTMLInputElement>('[aria-label="메일 제목"]')?.value).toBe('Review me');
@@ -143,8 +186,7 @@ test('composer shows sender, cc and bcc review and requires an explicit second c
 test('failed sends preserve displayed text after closing and reopening the composer', async () => {
   const api = mailApiFixture({ send: async () => mailFailure('send-unknown') });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    await act(async () => button(document, 'Connect Apple Mail').click());
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
     await act(async () => button(document, '새 메일 작성').click());
     await act(async () => mailComposer(api).edit({ to: 'friend@example.test', body: 'Retain this text' }));
     await act(async () => button(document, '보내기').click());
@@ -163,8 +205,7 @@ test('trash action requires a destination confirmation and reply-all opens a dra
   const api = mailApiFixture({ mailboxes: async () => mailSuccess([mailBox, { ...mailBox, path: ['Trash'] }]),
     change: async input => { changes.push(input); return mailSuccess(input.target); } });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    await act(async () => button(document, 'Connect Apple Mail').click());
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
     await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="메일 목록"] button[aria-pressed]')!.click());
     expect(document.body.textContent).toContain('받는 사람: me@example.test');
     await act(async () => button(document, '전체 답장').click());

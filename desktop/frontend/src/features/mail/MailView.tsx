@@ -1,22 +1,28 @@
-import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, Folder, Mail, PanelRight, RefreshCw, SquarePen, Flag } from 'lucide-react';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronLeft, ChevronRight, Mail, PanelRight, Flag } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { EmptyState, SidebarPanelHeader, SidebarToggle, LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
-import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { mailboxKey } from '../../../../shared/apple-mail';
-import type { AppleMailApi, Mailbox } from '../../../../shared/apple-mail';
+import type { AppleMailApi } from '../../../../shared/apple-mail';
 import { MailModel } from './mailModel';
 import { mailComposer } from './mailComposer';
 import { MailComposerDialog } from './MailComposerDialog';
 import { MailActions } from './MailActions';
+import { MailSidebar } from './MailSidebar';
 import styles from './Mail.module.css';
 
-interface MailViewProps { rightSidebarOpen: boolean; onToggleRightSidebar: () => void }
+interface MailViewProps {
+  rightSidebarOpen: boolean;
+  onToggleRightSidebar: () => void;
+  active?: boolean;
+  sidebarTarget?: HTMLElement | null;
+  onOpen?: () => void;
+}
 function received(date: string | null) { return date ? new Date(date).toLocaleString() : '날짜 없음'; }
 
-function MailHeader({ rightSidebarOpen, onToggleRightSidebar, actions }: MailViewProps & { actions?: ReactNode }) {
+function MailHeader({ rightSidebarOpen, onToggleRightSidebar }: MailViewProps) {
   return <SidebarPanelHeader title="MAIL" icon={<Mail aria-hidden="true" />} actions={<>
-    {actions}
     <SidebarToggle raised size="icon" aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
       aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></SidebarToggle>
   </>} />;
@@ -25,34 +31,37 @@ function MailHeader({ rightSidebarOpen, onToggleRightSidebar, actions }: MailVie
 export function MailView(props: MailViewProps) {
   const api = cheshiDesktop?.appleMail;
   return api?.available ? <MailBrowser api={api} {...props} />
-    : <main className={styles.workspace} aria-label="Mail">
+    : <main className={styles.workspace} aria-label="Mail" hidden={props.active === false}>
       <MailHeader {...props} />
       <div className={styles.connect}><EmptyState className={styles.emptyState} title="Mail"
         description="Apple Mail integration is available in Cheshi for macOS." /></div>
+      {props.sidebarTarget && createPortal(<>
+        <SidebarPanelHeader title="MAIL" icon={<Mail aria-hidden="true" />} />
+        <p className={styles.notice}>Apple Mail integration is available in Cheshi for macOS.</p>
+      </>, props.sidebarTarget)}
     </main>;
 }
 
-export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar }: MailViewProps & { api: AppleMailApi }) {
+export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, active = true, sidebarTarget, onOpen }: MailViewProps & { api: AppleMailApi }) {
   const model = useMemo(() => new MailModel(api), [api]);
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const composer = useMemo(() => mailComposer(api), [api]);
   const composition = useSyncExternalStore(composer.subscribe, composer.getSnapshot);
-  useEffect(() => () => model.cancelPending(), [model]);
-  const groups = new Map<string | null, Mailbox[]>();
-  for (const box of state.boxes) {
-    const group = groups.get(box.accountId) ?? [];
-    group.push(box);
-    groups.set(box.accountId, group);
-  }
+  useEffect(() => {
+    let disposed = false;
+    // Defer past Strict Mode's setup/cleanup replay so startup issues a single request.
+    queueMicrotask(() => { if (!disposed) void model.connect(); });
+    return () => { disposed = true; model.cancelPending(); };
+  }, [model]);
   const busy = state.loadingBoxes || state.loadingPage || state.changing;
-  return <main className={styles.workspace} aria-label="Mail">
-    <MailHeader rightSidebarOpen={rightSidebarOpen} onToggleRightSidebar={onToggleRightSidebar} actions={<>
-      <TooltipButton size="icon" aria-label={composition.form ? '작성 중인 메일' : '새 메일 작성'}
-        title={composition.form ? '작성 중인 메일' : '새 메일 작성'} disabled={!state.connected}
-        onClick={() => void composer.start()}><SquarePen aria-hidden="true" /></TooltipButton>
-      <TooltipButton size="icon" aria-label="메일 새로고침" title="메일 새로고침" disabled={!state.connected || busy}
-        onClick={() => void model.connect()}><RefreshCw aria-hidden="true" /></TooltipButton>
-    </>} />
+  return <main className={styles.workspace} aria-label="Mail" hidden={!active}>
+    <MailHeader rightSidebarOpen={rightSidebarOpen} onToggleRightSidebar={onToggleRightSidebar} />
+    {sidebarTarget && createPortal(<MailSidebar state={state} composing={composition.form !== null}
+      onRefresh={() => void model.connect()} onCompose={() => void composer.start()}
+      onSelect={box => {
+        onOpen?.();
+        if (!state.selectedBox || mailboxKey(box) !== mailboxKey(state.selectedBox)) void model.selectMailbox(box);
+      }} />, sidebarTarget)}
     {composition.notice && <p className={styles.notice} role="status">{composition.notice}</p>}
     {state.changeError && <p className={styles.notice} role="alert">{state.changeError}</p>}
     {!state.connected ? <div className={styles.connect}>
@@ -62,19 +71,6 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar }: Mai
         {state.loadingBoxes ? 'Connecting…' : 'Connect Apple Mail'}
       </NeumorphicButton>
     </div> : <div className={styles.browser}>
-      <LiquidGlassPanel as="aside" className={styles.mailboxes} aria-label="메일함">
-        {state.loadingBoxes ? <p role="status">메일함을 불러오는 중…</p>
-          : state.boxes.length === 0 ? <p role="status">메일함이 없습니다. Apple Mail에 계정을 추가한 뒤 새로고침해 주세요.</p>
-          : [...groups].map(([accountId, boxes]) => <section key={accountId ?? 'local'}>
-            <h2>{boxes[0]?.accountName || '계정'}</h2>
-            {boxes.map(box => <button type="button" key={mailboxKey(box)} className={styles.mailbox}
-              aria-pressed={state.selectedBox !== null && mailboxKey(box) === mailboxKey(state.selectedBox)}
-              disabled={state.loadingBoxes || state.changing} onClick={() => void model.selectMailbox(box)}>
-              <Folder aria-hidden="true" /><span>{box.path.join(' / ')}</span>
-              {box.unread > 0 && <span className={styles.count} aria-label={`읽지 않음 ${box.unread}개`}>{box.unread}</span>}
-            </button>)}
-          </section>)}
-      </LiquidGlassPanel>
       <LiquidGlassPanel as="section" className={styles.messages} aria-label="메일 목록" aria-busy={busy}>
         <h2 className={styles.listTitle}>{state.selectedBox?.path.at(-1) ?? '메일'}</h2>
         <div className={styles.messageList}>

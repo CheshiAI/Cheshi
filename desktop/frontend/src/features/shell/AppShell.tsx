@@ -88,6 +88,7 @@ export function AppShell() {
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [memoSidebarTarget, setMemoSidebarTarget] = useState<HTMLDivElement | null>(null);
+  const [mailSidebarTarget, setMailSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
   useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
   const [sidebarPanel, setSidebarPanel] = useState(() => sidebarPanelForWorkspace(activeView,
@@ -304,6 +305,7 @@ export function AppShell() {
           inert={workspace.accountSwitchPending}>
             <Sidebar
               memoPanelRef={setMemoSidebarTarget}
+              mailPanelRef={setMailSidebarTarget}
               activePanel={sidebarPanel}
               onPanelChange={setSidebarPanel}
               chatPanel={<ChatSessionList
@@ -375,11 +377,12 @@ export function AppShell() {
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />}
           {activeView === 'blank' && <WindowTabs />}
-          {activeView === 'mail' && <MailView rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
+          <MailView active={activeView === 'mail'} sidebarTarget={mailSidebarTarget} onOpen={() => navigate('mail')}
+            rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />
           {activeView === 'calendar' && <CalendarView rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
-          <NotesView onAttach={attachNote} active={activeView === 'notes'} sidebarActive={sidebarPanel === 'memos'}
+          <NotesView onAttach={attachNote} active={activeView === 'notes'}
             sidebarTarget={memoSidebarTarget} onOpen={() => navigate('notes')}
             attachmentDisabled={chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running}
             rightSidebarOpen={rightSidebarOpen}
