@@ -38,7 +38,10 @@
 .folderScroll { flex: 1 1 auto; }
 .folderTree { padding: 0; }
 .folderList { margin: 0; padding: 0; list-style: none; }
-.folderSection + .folderSection { border-top: 1px solid var(--divider); }
+.folderSection { border-bottom: 1px solid var(--divider); }
+.folderSection:first-child { border-top: 1px solid var(--divider); }
+/* Preserve the measured height when the final border is hidden, as in Calendar. */
+.folderScroll [data-overflowing='true'] .folderSection:last-child { border-bottom-color: transparent; }
 .folderReveal {
   display: grid;
   grid-template-rows: 0fr;
@@ -107,6 +110,7 @@
 .folderNotes > .treeMessage, .folderNotes > .loadMore { padding-inline: var(--space-default); }
 .noteRow > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .treeMessage { margin: 0; padding: var(--icon-default); color: var(--sidebar-section-label-color); line-height: 1.5; }
+.treeLoading { box-sizing: border-box; height: 36px; flex: 0 0 auto; padding-inline: var(--space-default); }
 .loadMore { color: var(--sidebar-section-label-color); }
 .documentPane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .emptyEditorHeader { justify-content: space-between; gap: var(--space-default); }

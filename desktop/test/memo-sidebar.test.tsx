@@ -48,6 +48,7 @@ test('Memo sidebar portals the search and folders while retaining the selected e
     expect(content.querySelector('[role="search"]')).toBeNull();
     expect(content.querySelector('[aria-label="Memo folders"]')).toBeNull();
     expect(sidebar.querySelector('[aria-label="Refresh Apple Notes"]')).not.toBeNull();
+    await act(async () => sidebar.querySelector<HTMLButtonElement>('[aria-label="iCloud / Notes"]')!.click());
     const row = sidebar.querySelector<HTMLButtonElement>('button[aria-pressed]')!;
     expect(row.hasAttribute('title')).toBe(false);
     await act(async () => row.click());

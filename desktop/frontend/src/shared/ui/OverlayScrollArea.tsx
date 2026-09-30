@@ -27,8 +27,10 @@ export function OverlayScrollArea({ children, className, label, viewportRef: pro
       if (viewport.scrollTop !== scrollbar.scrollTop) viewport.scrollTop = scrollbar.scrollTop;
     };
     const measure = () => {
+      const overflowing = viewport.scrollHeight > viewport.clientHeight;
+      viewport.dataset.overflowing = String(overflowing);
       extent.style.height = `${viewport.scrollHeight}px`;
-      scrollbar.hidden = viewport.scrollHeight <= viewport.clientHeight;
+      scrollbar.hidden = !overflowing;
       syncFromViewport();
     };
     const observer = new ResizeObserver(measure);

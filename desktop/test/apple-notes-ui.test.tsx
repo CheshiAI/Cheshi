@@ -65,11 +65,15 @@ function harness<T>(file: string, symbol: string, browserState = state()) {
     '../../shared/ui/TooltipButton': { TooltipButton: 'button' },
     '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
     '../../shared/ui/OverlayScrollArea': { OverlayScrollArea: 'scroll-area' },
+    '../../shared/ui/PullToRefreshStatus': { PullToRefreshStatus: 'pull-to-refresh-status' },
+    '../../shared/usePullToRefresh': { usePullToRefresh: (refresh: () => Promise<void>) => ({
+      viewportRef: { current: null }, refresh, refreshing: false, pullHeight: 0, ready: false, error: '',
+    }) },
     'lucide-react': { Trash2: 'trash-icon', Paperclip: 'paperclip-icon', Plus: 'plus-icon', Check: 'check-icon', StickyNote: 'note-icon', RefreshCw: 'refresh-icon', LockKeyhole: 'lock-icon',
       Search: 'search-icon', ChevronRight: 'chevron-icon' },
     '../../../../shared/apple-notes': contract,
     '../../cheshiDesktop': { cheshiDesktop: undefined },
-    '../../shared/ui': { EmptyState, LiquidGlassPanel: 'section', Modal: 'modal', NeumorphicButton: 'button', NeumorphicTextField: 'input', Tooltip: 'tooltip', SearchClearButton: 'clear-button', SidebarPanelHeader: 'sidebar-header' },
+    '../../shared/ui': { EmptyState, LoadingState: 'loading-state', LiquidGlassPanel: 'section', Modal: 'modal', NeumorphicButton: 'button', NeumorphicTextField: 'input', Tooltip: 'tooltip', SearchClearButton: 'clear-button', SidebarPanelHeader: 'sidebar-header' },
     './AppleNotesEditor': { AppleNotesEditor: 'note-editor', AppleNotesNewEditor: 'new-editor' },
     './MemoFolderContents': { MemoFolderContents: 'memo-folder-contents' },
     './LockedNoteState': { LockedNoteState: 'locked-note-state' },
@@ -160,11 +164,12 @@ test('background revalidation keeps cached rows and empty-folder messages visibl
   browserState.refreshingNotes = true;
   const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser', browserState);
   const render = () => app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })), onAttach: async () => true }));
+  click(render(), element => element.props['aria-label'] === 'iCloud / Notes');
   expect(find(render(), element => element.props.content === note.title).type).toBe('tooltip-target');
-  expect(elements(render()).some(element => element.props.children === 'Loading notes…')).toBe(false);
+  expect(elements(render()).some(element => element.type === 'loading-state')).toBe(false);
   browserState.notes = [];
   expect(find(render(), element => element.props.children === 'This folder has no notes.')).toBeDefined();
-  expect(elements(render()).some(element => element.props.children === 'Loading notes…')).toBe(false);
+  expect(elements(render()).some(element => element.type === 'loading-state')).toBe(false);
 });
 
 test('note actions are provided to the editor header and are disabled without a selected note', () => {
@@ -190,6 +195,7 @@ test('locked note guidance appears only in the document while other sidebar erro
   browserState.error = LOCKED_NOTE_MESSAGE;
   const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser', browserState);
   const render = () => app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })), onAttach: async () => true }));
+  click(render(), element => element.props['aria-label'] === 'iCloud / Notes');
   const tree = render();
   const sidebar = find(tree, element => element.props['aria-label'] === 'Memo folders');
   expect(elements(sidebar).some(element => element.type === 'lock-icon')).toBe(true);
@@ -294,7 +300,7 @@ test('clearing search restores the folders and allows switching by id', () => {
   expect(find(render(), localFolder).props['aria-expanded']).toBe(true);
   expect(find(render(), element => element.props['aria-label'] === 'iCloud / Notes').props['aria-expanded']).toBe(false);
   expect(elements(render()).some(element => element.props.content === note.title)).toBe(false);
-  expect(find(render(), element => element.props.role === 'status').props.children).toBe('Loading notes…');
+  expect(find(render(), element => element.type === 'loading-state').props.label).toBe('Loading notes…');
   browserState.loadingNotes = false;
   expect(elements(render()).some(element => element.props.children === 'This folder has no notes.')).toBe(true);
 });
@@ -327,7 +333,7 @@ test('search distinguishes loading, incomplete results and a completed empty res
   Object.assign(browserState, { searchQuery: 'missing', searching: true });
   const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser', browserState);
   const render = () => app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })), onAttach: async () => true }));
-  expect(find(render(), element => element.props.role === 'status').props.children).toBe('Searching all notes…');
+  expect(find(render(), element => element.type === 'loading-state').props.label).toBe('Searching all notes…');
   browserState.searching = false;
   browserState.searchError = 'Search incomplete.';
   expect(find(render(), element => element.props.role === 'alert').props.children).toBe('Search incomplete.');
@@ -335,6 +341,27 @@ test('search distinguishes loading, incomplete results and a completed empty res
   browserState.searchError = null;
   browserState.error = LOCKED_NOTE_MESSAGE;
   expect(find(render(), element => element.props.role === 'status').props.children).toBe('No matching notes.');
+});
+
+test('search and refresh share one loader above the folders regardless of expanded results', () => {
+  const browserState = state();
+  browserState.folders.push({ id: 'local', name: 'Notes', path: 'Notes', account: 'On My Mac', isDefault: false });
+  Object.assign(browserState, { searchQuery: 'title', searching: true, loadingNotes: true,
+    searchResults: [{ folderId: 'folder', notes: [note] }, { folderId: 'local', notes: [note] }] });
+  const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser', browserState);
+  const render = () => app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })), onAttach: async () => true }));
+  const loaders = (tree: ReactNode) => elements(tree).filter(element => element.type === 'loading-state');
+  expect(loaders(render())).toHaveLength(1);
+  expect(loaders(find(render(), element => element.props.role === 'region'))).toHaveLength(0);
+  click(render(), element => element.props['aria-label'] === 'iCloud / Notes');
+  expect(loaders(render())).toHaveLength(1);
+  expect(loaders(find(render(), element => element.props.role === 'region'))).toHaveLength(0);
+  click(render(), element => element.props['aria-label'] === 'On My Mac / Notes');
+  expect(elements(render()).filter(element => element.props.role === 'region')).toHaveLength(0);
+  expect(loaders(render())).toHaveLength(1);
+  Object.assign(browserState, { loadingFolders: true, searchResults: [] });
+  expect(loaders(render())).toHaveLength(1);
+  expect(elements(render()).some(element => element.props.children === 'No matching notes.')).toBe(false);
 });
 
 test('header refresh uses the current browser and stays disabled while loading or attaching', async () => {
@@ -351,13 +378,18 @@ test('header refresh uses the current browser and stays disabled while loading o
   browserState.loadingFolders = true;
   expect(find(render(), refreshButton).props.disabled).toBe(true);
   browserState.loadingFolders = false;
+  browserState.loadingNotes = true;
+  expect(find(render(), refreshButton).props.disabled).toBe(true);
+  click(render(), refreshButton);
+  expect(app.refreshes).toEqual([true]);
+  browserState.loadingNotes = false;
   click(render(), element => element.props['aria-label'] === 'Attach to conversation');
   expect(find(render(), refreshButton).props.disabled).toBe(true);
   expect(find(render(), element => element.props['aria-label'] === 'New memo').props.disabled).toBe(true);
   const folderButton = (element: ReactElement<Record<string, unknown>>) => element.props['aria-label'] === 'iCloud / Notes';
   expect(find(render(), folderButton).props.disabled).toBe(true);
   click(render(), folderButton);
-  expect(find(render(), folderButton).props['aria-expanded']).toBe(true);
+  expect(find(render(), folderButton).props['aria-expanded']).toBe(false);
   pending.resolve(true);
   await flush();
   expect(find(render(), refreshButton).props.disabled).toBe(false);

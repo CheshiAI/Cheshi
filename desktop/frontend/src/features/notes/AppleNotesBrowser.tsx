@@ -2,7 +2,7 @@ import { ChevronRight, LockKeyhole, Paperclip, Plus, RefreshCw, Search, StickyNo
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { AppleNote, AppleNotesApi } from '../../../../shared/apple-notes';
-import { EmptyState, LiquidGlassPanel, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader } from '../../shared/ui';
+import { EmptyState, LiquidGlassPanel, LoadingState, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader } from '../../shared/ui';
 import { AppleNotesNewDialog } from './AppleNotesNewDialog';
 import { getNewNoteDraft, startNewNoteDraft, releaseNewNoteDraft } from './appleNotesNewDraft';
 import { AppleNotesDeleteDialog } from './AppleNotesDeleteDialog';
@@ -11,6 +11,8 @@ import { useAppleNotesBrowser } from './useAppleNotesBrowser';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
+import { usePullToRefresh } from '../../shared/usePullToRefresh';
+import { PullToRefreshStatus } from '../../shared/ui/PullToRefreshStatus';
 import { MemoFolderContents } from './MemoFolderContents';
 import { LOCKED_NOTE_MESSAGE } from './appleNotesModel';
 import { LockedNoteState } from './LockedNoteState';
@@ -39,13 +41,19 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
   const [created, setCreated] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ note: AppleNote; folderId: string } | null>(null);
   const [deleted, setDeleted] = useState(false);
-  const [collapsedFolderId, setCollapsedFolderId] = useState<string | null>(null);
+  const [expandedFolderId, setExpandedFolderId] = useState<string | null>(null);
   const folderContentId = useId();
   const pending = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const searchResults = new Map(state.searchResults.map(group => [group.folderId, group.notes]));
   const visibleFolders = searching ? state.folders.filter(folder => searchResults.has(folder.id)) : state.folders;
+  const isFolderExpanded = (folderId: string) => searching ? !collapsedSearchFolders.has(folderId)
+    : folderId === state.folderId && folderId === expandedFolderId;
+  const loading = state.loadingFolders || state.loadingNotes || (searching && state.searching);
+  const refresh = usePullToRefresh(() => browser.refresh(), loading || navigationDisabled);
+  const loadingIndicator = loading ? <LoadingState className={styles.treeLoading}
+    label={searching ? 'Searching all notes…' : 'Loading notes…'} /> : null;
   const selectedFolder = state.folders.find(folder => folder.id === state.folderId);
   const editorNote = state.loadingNote ? state.notes.find(note => note.id === state.selectedId) : state.note;
   const lockedNotice = state.error === LOCKED_NOTE_MESSAGE;
@@ -61,10 +69,10 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
       return;
     }
     if (folderId === state.folderId) {
-      setCollapsedFolderId(current => current === folderId ? null : folderId);
+      setExpandedFolderId(current => current === folderId ? null : folderId);
       return;
     }
-    setCollapsedFolderId(null);
+    setExpandedFolderId(folderId);
     setQuery('');
     setAttachmentError(null);
     setCreated(false);
@@ -113,19 +121,20 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
   const sidebar = <LiquidGlassPanel as="aside" className={styles.folderPanel} aria-label="Memo folders">
           <SidebarPanelHeader title="MEMO" icon={<StickyNote aria-hidden="true" />} actions={<>
             <TooltipButton size="icon" aria-label="Refresh Apple Notes" title="Refresh Apple Notes"
-              disabled={state.loadingFolders || navigationDisabled}
-              onClick={() => { if (!navigationDisabled) void browser.refresh(); }}><RefreshCw aria-hidden="true" /></TooltipButton>
+              disabled={loading || navigationDisabled || refresh.refreshing}
+              onClick={() => { if (!loading && !navigationDisabled) void refresh.refresh(); }}><RefreshCw aria-hidden="true" /></TooltipButton>
             <TooltipButton size="icon" aria-label="New memo" title="New memo" disabled={navigationDisabled}
               onClick={() => { if (!navigationDisabled) { onOpen?.(); setCreated(false); setDeleted(false); setCreating(true); } }}><Plus aria-hidden="true" /></TooltipButton>
           </>} />
           <div className={styles.sidebarBody}>
           {search}
-          <OverlayScrollArea className={styles.folderScroll} label="Memo folder list">
+          <OverlayScrollArea className={styles.folderScroll} label="Memo folder list" viewportRef={refresh.viewportRef}>
+          <PullToRefreshStatus {...refresh} />
+          {!refresh.refreshing && refresh.pullHeight === 0 && loadingIndicator}
           <nav className={styles.folderTree} aria-label="Folders and notes">
             <ul className={styles.folderList}>
               {visibleFolders.map(folder => {
-                const expanded = searching ? !collapsedSearchFolders.has(folder.id)
-                  : folder.id === state.folderId && folder.id !== collapsedFolderId;
+                const expanded = isFolderExpanded(folder.id);
                 const notes = searching ? searchResults.get(folder.id) ?? [] : state.notes;
                 const contentId = `${folderContentId}-${encodeURIComponent(folder.id)}`;
                 return <li key={folder.id} className={styles.folderSection}>
@@ -142,7 +151,7 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
                       data-locked={note.locked} aria-pressed={!newDraft && state.selectedId === note.id} disabled={navigationDisabled}
                       onClick={() => { if (!navigationDisabled) {
                         onOpen?.();
-                        if (searching) setCollapsedFolderId(null);
+                        if (searching) setExpandedFolderId(folder.id);
                         void browser.selectNote(note.id, searching ? folder.id : undefined);
                       } }}>
                       {note.locked && <LockKeyhole className={styles.noteLock} aria-hidden="true" />}
@@ -153,17 +162,14 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
                     </p>}
                     {!searching && state.nextOffset !== null && <button type="button" className={styles.loadMore} disabled={state.loadingNotes || state.refreshingNotes || navigationDisabled}
                       onClick={() => void browser.loadMore()}>Load more notes</button>}
-                    {!searching && state.loadingNotes && <p className={styles.treeMessage} role="status">Loading notes…</p>}
                   </div>}
                   </MemoFolderContents>
                 </li>;
               })}
             </ul>
-            {searching && state.searching && <p className={styles.treeMessage} role="status">Searching all notes…</p>}
             {searching && state.searchError && <p className={styles.treeMessage} role="alert">{state.searchError}</p>}
-            {searching && !state.searching && !state.loadingFolders && !state.searchError && state.folders.length > 0 && visibleFolders.length === 0
+            {searching && !loading && !state.searchError && state.folders.length > 0 && visibleFolders.length === 0
               && <p className={styles.treeMessage} role="status">No matching notes.</p>}
-            {state.loadingFolders && <p className={styles.treeMessage} role="status">Loading folders…</p>}
             {!state.loadingFolders && state.folders.length === 0 && <p className={styles.treeMessage}>Open Notes and add an account to get started.</p>}
             {state.error && !lockedNotice && <p className={styles.treeMessage} role="alert">{state.error}</p>}
           </nav>
@@ -186,7 +192,7 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
         onClose={() => setCreating(false)} onContinue={folder => {
           setCreating(false);
           setQuery('');
-          setCollapsedFolderId(null);
+          setExpandedFolderId(folder.id);
           setAttachmentError(null);
           setNewDraft(startNewNoteDraft(folder));
           void browser.selectFolder(folder.id);

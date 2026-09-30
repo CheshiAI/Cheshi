@@ -35,14 +35,16 @@ test('overlay scrollbar follows content scrolling, drives scrolling, and remeasu
     const extent = scrollbar.firstElementChild as HTMLElement;
     const observer = observers[0]!;
     let contentHeight = 900;
+    let viewportHeight = 300;
     Object.defineProperties(viewport, {
-      clientHeight: { get: () => 300 },
+      clientHeight: { get: () => viewportHeight },
       scrollHeight: { get: () => contentHeight },
     });
     observer.resize();
     expect(observer.targets.has(viewport)).toBe(true);
     expect(observer.targets.has(viewport.firstElementChild!)).toBe(true);
     expect(scrollbar.hidden).toBe(false);
+    expect(viewport.dataset.overflowing).toBe('true');
     expect(extent.style.height).toBe('900px');
 
     viewport.scrollTop = 140;
@@ -62,7 +64,17 @@ test('overlay scrollbar follows content scrolling, drives scrolling, and remeasu
     viewport.scrollTop = 0;
     observer.resize();
     expect(scrollbar.hidden).toBe(true);
+    expect(viewport.dataset.overflowing).toBe('false');
     expect(scrollbar.scrollTop).toBe(0);
+
+    // Resizing a panel must update its border state even if the list does not change.
+    viewportHeight = 150;
+    observer.resize();
+    expect(viewport.dataset.overflowing).toBe('true');
+    viewportHeight = contentHeight;
+    observer.resize();
+    expect(viewport.dataset.overflowing).toBe('false');
+    expect(scrollbar.hidden).toBe(true);
 
     await act(async () => { root.unmount(); });
     unmounted = true;
