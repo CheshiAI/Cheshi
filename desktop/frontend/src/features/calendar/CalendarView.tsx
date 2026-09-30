@@ -44,7 +44,6 @@ export function CalendarBrowser({ api, ...props }: ViewProps & { api: AppleCalen
   const [month, setMonth] = useState(() => localDay(new Date()));
   const [calendarId, setCalendarId] = useState('');
   const [dialog, setDialog] = useState<{ event: CalendarEvent | null } | null>(null);
-  const [message, setMessage] = useState('');
   const scheduler = useScheduler();
   const [taskDialog, setTaskDialog] = useState<{ schedule: Schedule | null } | null>(null);
   const query = useMemo(() => monthQuery(month, calendarId), [month, calendarId]);
@@ -73,17 +72,17 @@ export function CalendarBrowser({ api, ...props }: ViewProps & { api: AppleCalen
   const writable = state.calendars.filter(calendar => calendar.writable);
   const defaultCalendar = calendarId ? writable.find(calendar => calendar.id === calendarId)
     : writable.find(calendar => calendar.isDefault) ?? writable[0];
-  const refresh = () => { setMessage(''); return model.refresh(query); };
+  const refresh = () => model.refresh(query);
   const moveMonth = (offset: number) => {
     const date = dayDate(`${month.slice(0, 7)}-01`);
     date.setMonth(date.getMonth() + offset);
-    setMonth(localDay(date)); setDay(localDay(date)); setMessage('');
+    setMonth(localDay(date)); setDay(localDay(date));
   };
   return <main ref={workspaceRef} className={styles.workspace} aria-label="Calendar">
     <CalendarHeader {...props} />
     {state.access === 'full' && state.error && <p className={styles.notice} role="alert">{state.error}</p>}
     {state.access !== 'full' && !scheduler.api ? <CalendarAccessState state={state} onRetry={refresh}
-      onConnect={() => { setMessage(''); void model.refresh(query, true); }} /> : <div className={styles.content}>
+      onConnect={() => void model.refresh(query, true)} /> : <div className={styles.content}>
       <section className={styles.month} aria-label="Monthly calendar" aria-busy={state.loading}>
         <div className={styles.monthHeader}>
           <h2>{dayDate(month).toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}</h2>
@@ -121,7 +120,7 @@ export function CalendarBrowser({ api, ...props }: ViewProps & { api: AppleCalen
           })}
         </div>
       </section>
-      <CalendarAgenda api={api} state={state} calendarId={calendarId} day={day} message={message}
+      <CalendarAgenda api={api} state={state} calendarId={calendarId} day={day}
         scheduler={scheduler.state} onRefresh={refresh}
         panel={state.access !== 'full' ? <CalendarAccessState state={state} onRetry={refresh} onConnect={() => void model.refresh(query, true)} /> : undefined}
         onOpen={event => setDialog({ event })} options={<div className={styles.options} aria-label="Calendar options" role="group">
@@ -138,7 +137,7 @@ export function CalendarBrowser({ api, ...props }: ViewProps & { api: AppleCalen
             <LiquidGlassSelect ariaLabel="Displayed calendar" value={calendarId}
               triggerAppearance="standard" menuAppearance="toolbar" menuBlurSourceRef={workspaceRef}
               disabled={state.loading || state.access !== 'full'}
-              onChange={value => { setCalendarId(value); setMessage(''); }}
+              onChange={setCalendarId}
               options={[{ value: '', label: 'All calendars' }, ...state.calendars.map(calendar => ({
                 value: calendar.id, label: `${calendar.source} / ${calendar.title}${calendar.writable ? '' : ' (Read only)'}`,
               }))]} />
@@ -148,6 +147,6 @@ export function CalendarBrowser({ api, ...props }: ViewProps & { api: AppleCalen
     {taskDialog && scheduler.api && <ScheduleDialog api={scheduler.api} schedule={taskDialog.schedule}
       onClose={() => setTaskDialog(null)} onSaved={() => { setTaskDialog(null); void scheduler.refresh(); }} />}
     {dialog && <CalendarEventDialog api={api} event={dialog.event} day={day} calendarId={defaultCalendar?.id ?? ''} calendars={state.calendars}
-      onClose={() => setDialog(null)} onSaved={() => { setDialog(null); setMessage('Saved to Apple Calendar.'); void model.refresh(query); }} />}
+      onClose={() => setDialog(null)} onChanged={() => { setDialog(null); void model.refresh(query); }} />}
   </main>;
 }

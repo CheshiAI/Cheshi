@@ -307,6 +307,63 @@ function deletionDialog(document: Document) {
   return [...document.querySelectorAll('dialog')].find(dialog => dialog.querySelector('h2')?.textContent === 'DELETE EVENT')!;
 }
 
+test.each([0, 1])('creating, updating and deleting an event restores agenda counts with %i remaining events', async remaining => {
+  const today = localDay(new Date());
+  let events = Array.from({ length: remaining }, (_, index) => ({ ...event, id: `remaining-${index}`,
+    title: 'Remaining event', allDay: true, start: today, end: addDays(today, 1) }));
+  const api = calendarApiFixture({
+    events: async () => ({ ok: true, value: events }),
+    create: async input => {
+      const created = { ...event, ...input };
+      events = [...events, created];
+      return { ok: true, value: created };
+    },
+    update: async input => {
+      const updated = { ...event, ...input.event };
+      events = events.map(item => item.id === input.target.id ? updated : item);
+      return { ok: true, value: updated };
+    },
+    delete: async target => {
+      events = events.filter(item => item.id !== target.id);
+      return { ok: true, value: target };
+    },
+  });
+  await withCalendarDOM(async (render, document) => {
+    await render(<CalendarBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    const agenda = document.querySelector('[aria-label="Events for selected date"]')!;
+    const assertCount = (count: number) => {
+      expect(agenda.querySelector('[role="status"]')?.textContent).toBe(count ? `${count} events` : 'No events.');
+      expect(document.querySelector(`[aria-label="${today}, ${count} events"]`)).not.toBeNull();
+      expect(document.querySelector('dialog')).toBeNull();
+    };
+    const enterTitle = async (value: string) => { await act(async () => {
+      const title = document.querySelector<HTMLInputElement>('[aria-label="Event title"]')!;
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(title, value);
+      title.dispatchEvent(new window.Event('input', { bubbles: true }));
+    }); };
+    const submit = async () => { await act(async () => document.querySelector('form')!
+      .dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }))); };
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="New event"]')!.click());
+    await enterTitle('Created event');
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="All day"]')!.click());
+    await submit();
+    assertCount(remaining + 1);
+    await act(async () => [...agenda.querySelectorAll('button')]
+      .find(button => button.querySelector('strong')?.textContent === 'Created event')!.click());
+    await enterTitle('Updated event');
+    await submit();
+    assertCount(remaining + 1);
+    await act(async () => [...agenda.querySelectorAll('button')]
+      .find(button => button.querySelector('strong')?.textContent === 'Updated event')!.click());
+    await act(async () => [...document.querySelector('dialog')!.querySelectorAll('button')]
+      .find(button => button.textContent === 'Delete')!.click());
+    await act(async () => deletionDialog(document).querySelector('form')!
+      .dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
+    assertCount(remaining);
+    expect(agenda.textContent).not.toContain('Updated event');
+  });
+});
+
 test('deletion confirmation preserves edits on cancel and Escape, guards pending writes and closes after acknowledgement', async () => {
   const pending = createCalendarDeferred<CalendarReply<{ id: string; revision: string }>>();
   let deleted = 0;
@@ -316,7 +373,7 @@ test('deletion confirmation preserves edits on cancel and Escape, guards pending
   await withCalendarDOM(async (render, document) => {
     await render(<CalendarEventDialog api={api} event={event} day="2026-09-22" calendarId="calendar-1"
       calendars={[{ id: 'calendar-1', title: 'Work', source: 'iCloud', writable: true, isDefault: true }]}
-      onClose={() => { ++closed; }} onSaved={() => { ++saved; }} />);
+      onClose={() => { ++closed; }} onChanged={() => { ++saved; }} />);
     const editDialog = document.querySelector('dialog')!;
     const originalDelete = [...editDialog.querySelectorAll('button')].find(button => button.textContent === 'Delete')!;
     const title = document.querySelector<HTMLInputElement>('[aria-label="Event title"]')!;
@@ -368,7 +425,7 @@ test.each(['unavailable', 'write-unknown'] as const)('deletion error %s stays in
   });
   await withCalendarDOM(async (render, document) => {
     await render(<CalendarEventDialog api={api} event={event} day="2026-09-22" calendarId="calendar-1"
-      calendars={[]} onClose={() => {}} onSaved={() => { ++saved; }} />);
+      calendars={[]} onClose={() => {}} onChanged={() => { ++saved; }} />);
     await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === 'Delete')!.click());
     const confirmation = deletionDialog(document);
     const submit = () => confirmation.querySelector('form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
@@ -392,7 +449,7 @@ test.each(['unavailable', 'write-unknown'] as const)('deletion error %s stays in
 test('recurring events expose their details with no save or delete actions', async () => {
   await withCalendarDOM(async (render, document) => {
     await render(<CalendarEventDialog api={calendarApiFixture()} event={{ ...event, recurring: true, readOnly: true }}
-      day="2026-09-22" calendarId="calendar-1" calendars={[]} onClose={() => {}} onSaved={() => {}} />);
+      day="2026-09-22" calendarId="calendar-1" calendars={[]} onClose={() => {}} onChanged={() => {}} />);
     expect(document.querySelector<HTMLInputElement>('[aria-label="Event title"]')?.disabled).toBe(true);
     const labels = [...document.querySelectorAll('button')].map(button => button.textContent);
     expect(labels).not.toContain('Save'); expect(labels).not.toContain('Delete');
@@ -650,7 +707,7 @@ test('applying start in the event picker advances end by one hour and allows a m
   const api = calendarApiFixture({ update: async input => { saved.push(input.event); return { ok: true, value: original }; } });
   await withCalendarDOM(async (render, document) => {
     await render(<CalendarEventDialog api={api} event={original} day="2026-09-30" calendarId="calendar-1"
-      calendars={[]} onClose={() => {}} onSaved={() => {}} />);
+      calendars={[]} onClose={() => {}} onChanged={() => {}} />);
     const click = async (label: string) => { await act(async () => {
       const button = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)
         ?? [...document.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === label)!;
@@ -684,7 +741,7 @@ test('event modal shared menu and all-day switch preserve creation payload and d
     const calendars = [{ id: 'calendar-1', title: 'Work', source: 'iCloud', writable: true, isDefault: true },
       { id: 'calendar-2', title: 'Personal', source: 'iCloud', writable: true, isDefault: false }];
     await render(<CalendarEventDialog api={api} event={null} day="2026-09-22" calendarId="calendar-1"
-      calendars={calendars} onClose={() => {}} onSaved={() => {}} />);
+      calendars={calendars} onClose={() => {}} onChanged={() => {}} />);
     const title = document.querySelector<HTMLInputElement>('[aria-label="Event title"]')!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(title, 'All-day meeting');
@@ -711,7 +768,7 @@ test('the shared event form creates a task from title, notes, workspace URL and 
   const api = calendarApiFixture({ async create(input) { writes++; saved = input; return { ok: true, value: { ...event, ...input } }; } });
   await withCalendarDOM(async (render, document) => {
     await render(<CalendarEventDialog api={api} event={null} day="2026-10-01" calendarId="calendar-1" calendars={[]}
-      onClose={() => {}} onSaved={() => {}} />);
+      onClose={() => {}} onChanged={() => {}} />);
     const enter = async (label: string, text: string, multiline = false) => {
       const input = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[aria-label="${label}"]`)!;
       await act(async () => {

@@ -14,7 +14,7 @@ import type { SchedulerSnapshot } from '../../../../shared/scheduler';
 
 interface Props {
   api: AppleCalendarApi; state: CalendarState; calendarId: string; day: string;
-  message: string; onOpen: (event: CalendarEvent) => void;
+  onOpen: (event: CalendarEvent) => void;
   onRefresh: () => Promise<void>;
   options: ReactNode; panel?: ReactNode;
   scheduler?: SchedulerSnapshot;
@@ -27,7 +27,7 @@ export function CalendarAgenda(props: Props) {
   return <CalendarAgendaContent {...props} />;
 }
 
-function CalendarAgendaContent({ api, state, calendarId, day, message, onOpen, onRefresh, options, scheduler }: Props) {
+function CalendarAgendaContent({ api, state, calendarId, day, onOpen, onRefresh, options, scheduler }: Props) {
   const [query, setQuery] = useState('');
   const searching = query.trim().length > 0;
   const [year, setYear] = useState(() => Number(day.slice(0, 4)));
@@ -74,7 +74,7 @@ function CalendarAgendaContent({ api, state, calendarId, day, message, onOpen, o
       </> : <h2>{dayDate(day).toLocaleDateString('en-US', { month: 'long', day: 'numeric', weekday: 'short' })}</h2>}
       {(!loading || loaded) && <p role={loading ? undefined : 'status'}>{error ? 'Could not load events.'
         : searching ? events.length + historyCount ? `${events.length + historyCount} ${events.length + historyCount === 1 ? 'result' : 'results'}` : 'No matching events.'
-          : message || (events.length + historyCount === 0 ? 'No events.' : `${events.length} events${historyCount ? ` · ${historyCount} executions` : ''}`)}</p>}
+          : (events.length + historyCount === 0 ? 'No events.' : `${events.length} events${historyCount ? ` · ${historyCount} executions` : ''}`)}</p>}
       {searching && search.error && !state.error && <>
         <p role="alert">{search.error}</p>
         <NeumorphicButton variant="ghost" onClick={() => setRetry(value => value + 1)}>Retry search</NeumorphicButton>

@@ -8,9 +8,9 @@ import { createCalendarDraft } from './calendarDraft';
 import styles from './Calendar.module.css';
 import { isCalendarTask } from '../../../../shared/calendar-task';
 
-export function CalendarEventDialog({ api, event, day, calendarId, calendars, onClose, onSaved }: {
+export function CalendarEventDialog({ api, event, day, calendarId, calendars, onClose, onChanged }: {
   api: AppleCalendarApi; event: CalendarEvent | null; day: string; calendarId: string;
-  calendars: AppleCalendar[]; onClose: () => void; onSaved: () => void;
+  calendars: AppleCalendar[]; onClose: () => void; onChanged: () => void;
 }) {
   const [draft] = useState(() => createCalendarDraft(event, day, calendarId));
   const state = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
@@ -28,7 +28,7 @@ export function CalendarEventDialog({ api, event, day, calendarId, calendars, on
   const readOnly = event?.readOnly === true;
   const disabled = state.busy || state.blocked || readOnly;
   const submit = async (remove = false) => {
-    if (await draft.submit(api, remove)) { if (alive.current) { setConfirm(null); onSaved(); } }
+    if (await draft.submit(api, remove)) { if (alive.current) { setConfirm(null); onChanged(); } }
   };
   const close = () => { if (!state.busy && confirm !== 'delete') { if (state.dirty) setConfirm('discard'); else onClose(); } };
   const cancelDelete = () => { if (!draft.getSnapshot().busy) setConfirm(null); };
