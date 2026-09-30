@@ -87,6 +87,7 @@
 }
 
 .agendaContent { display: flex; flex-shrink: 0; flex-direction: column; gap: var(--space-default); padding: var(--space-default); }
+.agendaLoading { box-sizing: border-box; height: 36px; flex: 0 0 auto; }
 .content > .agenda { border-width: 0 0 0 1px; }
 .agenda p, .form p { margin: 0; }
 .searchField { flex-shrink: 0; }

@@ -67,7 +67,7 @@ test('search cancellation and year changes stop subsequent windows and ignore la
   pending.resolve({ ok: true, value: [event] });
   await old;
   expect(reads).toBe(7);
-  expect(model.getSnapshot()).toEqual({ events: [], loading: false, error: '' });
+  expect(model.getSnapshot()).toEqual({ events: [], loading: false, loaded: true, error: '' });
   const abandoned = createCalendarDeferred<CalendarReply<CalendarEvent[]>>();
   api.events = () => { ++reads; return abandoned.promise; };
   const loading = model.load(2027, '', calendars);
@@ -75,7 +75,7 @@ test('search cancellation and year changes stop subsequent windows and ignore la
   abandoned.resolve({ ok: true, value: [event] });
   await loading;
   expect(reads).toBe(8);
-  expect(model.getSnapshot()).toEqual({ events: [], loading: false, error: '' });
+  expect(model.getSnapshot()).toEqual({ events: [], loading: false, loaded: false, error: '' });
 });
 
 test('failed search windows discard partial results and preserve an error instead of claiming no matches', async () => {
@@ -171,6 +171,54 @@ test('late reads cannot replace another month, calendar, or a disposed view', as
   next.resolve({ ok: true, value: [event] });
   await abandoned;
   expect(model.getSnapshot().events).toEqual([]);
+});
+
+test('same-scope refresh retains the completed snapshot while new month and calendar scopes start empty', async () => {
+  const api = calendarApiFixture();
+  const model = createCalendarModel(api);
+  const query = monthQuery('2026-09-22', '');
+  await model.refresh(query);
+  const snapshot = model.getSnapshot();
+  const pending = createCalendarDeferred<CalendarReply<CalendarEvent[]>>();
+  const requested = createCalendarDeferred<void>();
+  api.events = () => { requested.resolve(); return pending.promise; };
+  const refreshing = model.refresh({ ...query });
+  expect(model.getSnapshot().events).toBe(snapshot.events);
+  expect(model.getSnapshot()).toMatchObject({ loaded: true, loading: true });
+  await requested.promise;
+  expect(model.getSnapshot().calendars).toBe(snapshot.calendars);
+  expect(model.getSnapshot().events).toBe(snapshot.events);
+  pending.resolve({ ok: true, value: [{ ...event, title: 'Updated' }] });
+  await refreshing;
+  expect(model.getSnapshot().events[0]?.title).toBe('Updated');
+  for (const next of [monthQuery('2026-10-22', ''), monthQuery('2026-10-22', 'calendar-1')]) {
+    const changing = model.refresh(next);
+    expect(model.getSnapshot()).toMatchObject({ events: [], loaded: false, loading: true });
+    await changing;
+  }
+});
+
+test('annual revalidation retains results across cancellation but clears them for a different year or calendar', async () => {
+  const api = calendarApiFixture();
+  const calendars = [{ ...appleHolidays, id: event.calendarId }];
+  const model = createCalendarSearchModel(api);
+  await model.load(2026, '', calendars);
+  const snapshot = model.getSnapshot();
+  const pending = createCalendarDeferred<CalendarReply<CalendarEvent[]>>();
+  api.events = () => pending.promise;
+  const abandoned = model.load(2026, '', calendars);
+  expect(model.getSnapshot().events).toBe(snapshot.events);
+  model.cancel();
+  expect(model.getSnapshot()).toMatchObject({ loaded: true, loading: false });
+  expect(model.getSnapshot().events).toBe(snapshot.events);
+  pending.resolve({ ok: true, value: [{ ...event, title: 'Abandoned' }] });
+  await abandoned;
+  expect(model.getSnapshot().events).toBe(snapshot.events);
+  for (const [year, calendarId] of [[2027, ''], [2027, event.calendarId]] as const) {
+    const changing = model.load(year, calendarId, calendars);
+    expect(model.getSnapshot()).toMatchObject({ events: [], loaded: false, loading: true });
+    await changing;
+  }
 });
 
 test('refresh clears stale private data after permission revocation', async () => {

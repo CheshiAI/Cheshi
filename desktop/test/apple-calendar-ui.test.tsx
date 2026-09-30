@@ -38,6 +38,107 @@ async function enterEventSearch(document: Document, value: string) {
   });
 }
 
+function calendarRefreshGesture(document: Document) {
+  const viewport = () => document.querySelector<HTMLElement>('[aria-label="Event list"]')!;
+  return {
+    viewport,
+    pointer: async (type: string, y: number) => { await act(async () => {
+      const event = new window.PointerEvent(type, { pointerId: 1, pointerType: 'mouse', isPrimary: true,
+        clientX: 10, clientY: y, button: 0, bubbles: true, cancelable: true });
+      (type === 'pointerdown' ? viewport() : window).dispatchEvent(event);
+    }); },
+    wheel: async (deltaY: number) => { await act(async () => {
+      viewport().dispatchEvent(new window.WheelEvent('wheel', { deltaY, bubbles: true, cancelable: true }));
+    }); },
+    idle: async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 220)); }); },
+  };
+}
+
+test('calendar pull refresh starts on release and keeps one 36px indicator below search until completion', async () => {
+  let pending: ReturnType<typeof createCalendarDeferred<CalendarReply<typeof event[]>>> | null = null;
+  let reads = 0;
+  const api = calendarApiFixture({ events: async () => { reads++; return pending ? pending.promise : { ok: true, value: [] }; } });
+  await withCalendarDOM(async (render, document) => {
+    await render(<CalendarBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    const gesture = calendarRefreshGesture(document);
+    pending = createCalendarDeferred<CalendarReply<typeof event[]>>();
+    await gesture.pointer('pointerdown', 10);
+    await gesture.pointer('pointermove', 40);
+    expect(document.querySelector('[role="status"]')?.textContent).toBe('Pull to refresh');
+    await gesture.pointer('pointermove', 110);
+    const status = document.querySelector<HTMLElement>('[role="status"]')!;
+    expect(status.textContent).toBe('Release to refresh');
+    expect(status.style.height).toBe('36px');
+    expect(status.previousElementSibling?.querySelector('[aria-label="Search events"]')).not.toBeNull();
+    expect(reads).toBe(1);
+    await gesture.pointer('pointerup', 110);
+    expect(reads).toBe(2);
+    expect(document.querySelectorAll('[role="status"]')).toHaveLength(1);
+    expect(document.querySelector('[role="status"]')).toBe(status);
+    const refresh = document.querySelector<HTMLButtonElement>('[aria-label="Refresh calendars"]')!;
+    expect(refresh.disabled).toBe(true);
+    await act(async () => refresh.click());
+    await gesture.pointer('pointerdown', 10);
+    await gesture.pointer('pointermove', 110);
+    await gesture.pointer('pointerup', 110);
+    expect(reads).toBe(2);
+    await act(async () => pending!.resolve({ ok: true, value: [] }));
+    expect(status.isConnected).toBe(false);
+    expect(refresh.disabled).toBe(false);
+    expect(document.querySelector('[role="status"]')?.textContent).toBe('No events.');
+  });
+});
+
+test('calendar ignores short and scrolled pulls, handles trackpad refresh failure and allows retry', async () => {
+  let reads = 0;
+  let failing = false;
+  const api = calendarApiFixture({ events: async () => { reads++; return failing ? calendarFailure('unavailable') : { ok: true, value: [] }; } });
+  await withCalendarDOM(async (render, document) => {
+    await render(<CalendarBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    const gesture = calendarRefreshGesture(document);
+    await gesture.pointer('pointerdown', 10);
+    await gesture.pointer('pointermove', 35);
+    await gesture.pointer('pointerup', 35);
+    expect(reads).toBe(1);
+    gesture.viewport().scrollTop = 100;
+    await gesture.pointer('pointerdown', 10);
+    await gesture.pointer('pointermove', 110);
+    await gesture.pointer('pointerup', 110);
+    await gesture.wheel(-80);
+    gesture.viewport().scrollTop = 0;
+    await gesture.wheel(-80);
+    await gesture.idle();
+    expect(reads).toBe(1);
+    failing = true;
+    await gesture.wheel(-80);
+    await gesture.idle();
+    expect(reads).toBe(2);
+    expect(document.querySelector('[role="status"]')?.textContent).toBe('Could not load events.');
+    failing = false;
+    await gesture.wheel(-80);
+    await gesture.idle();
+    expect(reads).toBe(3);
+    expect(document.querySelector('[role="status"]')?.textContent).toBe('No events.');
+  });
+});
+
+test('pull refresh preserves the calendar search and reloads its annual results', async () => {
+  let reads = 0;
+  const api = calendarApiFixture({ events: async () => { reads++; return { ok: true, value: [event] }; } });
+  await withCalendarDOM(async (render, document) => {
+    await render(<CalendarBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await enterEventSearch(document, 'meeting');
+    expect(reads).toBe(7);
+    const gesture = calendarRefreshGesture(document);
+    await gesture.pointer('pointerdown', 10);
+    await gesture.pointer('pointermove', 110);
+    await gesture.pointer('pointerup', 110);
+    expect(reads).toBe(14);
+    expect(document.querySelector<HTMLInputElement>('[aria-label="Search events"]')?.value).toBe('meeting');
+    expect(document.querySelector('[aria-label="Event search results"] [role="status"]')?.textContent).toBe('1 result');
+  });
+});
+
 test('event list tracks overflow on viewport and content resize, restores the last line and cleans up observers', async () => {
   const callbacks = new Set<() => void>();
   const observed = new Set<Element>();
@@ -296,6 +397,120 @@ test('recurring events expose their details with no save or delete actions', asy
     const labels = [...document.querySelectorAll('button')].map(button => button.textContent);
     expect(labels).not.toContain('Save'); expect(labels).not.toContain('Delete');
     expect(document.body.textContent).toContain('Recurring events');
+  });
+});
+
+test('calendar initial load, refresh and search show one shared loader directly below the search field', async () => {
+  let pending = createCalendarDeferred<CalendarReply<typeof event[]>>();
+  const api = calendarApiFixture({ events: () => pending.promise });
+  await withCalendarDOM(async (render, document) => {
+    await render(<CalendarBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    const assertLoading = (searching = false, retained = false) => {
+      const panel = document.querySelector(searching ? '[aria-label="Event search results"]' : '[aria-label="Events for selected date"]')!;
+      const statuses = panel.querySelectorAll('[role="status"]');
+      expect(statuses).toHaveLength(1);
+      const indicator = statuses[0]!;
+      expect(indicator.getAttribute('aria-label')).toBe(searching ? 'Searching events…' : 'Loading events…');
+      expect(indicator.firstElementChild?.children).toHaveLength(9);
+      expect(indicator.previousElementSibling?.querySelector('[aria-label="Search events"]')).not.toBeNull();
+      if (!retained) {
+        expect(panel.textContent).not.toContain('No events.');
+        expect(panel.textContent).not.toContain('No matching events.');
+      }
+    };
+    assertLoading();
+    await act(async () => pending.resolve({ ok: true, value: [] }));
+    expect(document.querySelector('[role="status"]')?.textContent).toBe('No events.');
+    pending = createCalendarDeferred<CalendarReply<typeof event[]>>();
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refresh calendars"]')!.click());
+    assertLoading(false, true);
+    await act(async () => pending.resolve(calendarFailure('unavailable')));
+    expect(document.querySelector('[aria-label="Loading events…"]')).toBeNull();
+    expect(document.querySelector('[role="status"]')?.textContent).toBe('Could not load events.');
+    pending = createCalendarDeferred<CalendarReply<typeof event[]>>();
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refresh calendars"]')!.click());
+    await act(async () => pending.resolve({ ok: true, value: [] }));
+    pending = createCalendarDeferred<CalendarReply<typeof event[]>>();
+    await enterEventSearch(document, 'meeting');
+    assertLoading(true);
+    await act(async () => pending.resolve({ ok: true, value: [] }));
+    expect(document.querySelector('[aria-label="Searching events…"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Event search results"] [role="status"]')?.textContent).toBe('No matching events.');
+  });
+});
+
+test.each(['button', 'pull'] as const)('calendar %s refresh retains event rows, month labels and counts until replacement data arrives', async trigger => {
+  const today = localDay(new Date());
+  const original = { ...event, title: 'Retained meeting', allDay: true, start: today, end: addDays(today, 1) };
+  const replacement = { ...original, title: 'Updated meeting' };
+  let pending: ReturnType<typeof createCalendarDeferred<CalendarReply<typeof event[]>>> | null = null;
+  const api = calendarApiFixture({ events: async () => pending ? pending.promise : { ok: true, value: [original] } });
+  await withCalendarDOM(async (render, document) => {
+    await render(<CalendarBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    const panel = document.querySelector('[aria-label="Events for selected date"]')!;
+    const row = panel.querySelector('[aria-label="Event list"] button')!;
+    const count = panel.querySelector('[role="status"]')!;
+    const day = document.querySelector(`[aria-label="${today}, 1 events"]`)!;
+    const title = [...day.querySelectorAll('span')].find(node => node.textContent === original.title)!;
+    const viewport = panel.querySelector<HTMLElement>('[aria-label="Event list"]')!;
+    const assertRetained = () => {
+      expect(panel.querySelector('[aria-label="Event list"] button')).toBe(row);
+      expect(row.textContent).toContain(original.title);
+      expect(title.isConnected).toBe(true);
+      expect(title.textContent).toBe(original.title);
+      expect(day.getAttribute('aria-label')).toBe(`${today}, 1 events`);
+      expect(count.isConnected).toBe(true);
+      expect(count.textContent).toBe('1 events');
+    };
+    pending = createCalendarDeferred<CalendarReply<typeof event[]>>();
+    if (trigger === 'button') {
+      viewport.scrollTop = 40;
+      await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refresh calendars"]')!.click());
+      expect(viewport.scrollTop).toBe(40);
+    } else {
+      const gesture = calendarRefreshGesture(document);
+      await gesture.pointer('pointerdown', 10);
+      await gesture.pointer('pointermove', 110);
+      await gesture.pointer('pointerup', 110);
+    }
+    assertRetained();
+    expect(panel.querySelectorAll('[role="status"]')).toHaveLength(1);
+    await act(async () => pending!.resolve({ ok: true, value: [replacement] }));
+    expect(panel.querySelector('[aria-label="Event list"] button')).toBe(row);
+    expect(row.textContent).toContain(replacement.title);
+    expect(title.isConnected).toBe(true);
+    expect(title.textContent).toBe(replacement.title);
+    expect(count.isConnected).toBe(true);
+    expect(count.getAttribute('role')).toBe('status');
+  });
+});
+
+test('refresh preserves search rows through the month request and every annual search window', async () => {
+  let reads = 0;
+  const month = createCalendarDeferred<CalendarReply<typeof event[]>>();
+  const annual = createCalendarDeferred<CalendarReply<typeof event[]>>();
+  const api = calendarApiFixture({ events: async () => {
+    reads++;
+    return reads <= 7 ? { ok: true, value: [event] } : reads === 8 ? month.promise : annual.promise;
+  } });
+  await withCalendarDOM(async (render, document) => {
+    await render(<CalendarBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await enterEventSearch(document, 'meeting');
+    const panel = document.querySelector('[aria-label="Event search results"]')!;
+    const row = panel.querySelector('[aria-label="Event list"] button')!;
+    const count = panel.querySelector('[role="status"]')!;
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refresh calendars"]')!.click());
+    expect(panel.querySelector('[aria-label="Event list"] button')).toBe(row);
+    expect(count.isConnected).toBe(true);
+    expect(count.textContent).toBe('1 result');
+    await act(async () => month.resolve({ ok: true, value: [event] }));
+    expect(reads).toBe(9);
+    expect(panel.querySelector('[aria-label="Event list"] button')).toBe(row);
+    expect(count.isConnected).toBe(true);
+    await act(async () => annual.resolve({ ok: true, value: [{ ...event, title: 'Meeting updated' }] }));
+    expect(reads).toBe(14);
+    expect(panel.querySelector('[aria-label="Event list"] button')).toBe(row);
+    expect(row.textContent).toContain('Meeting updated');
   });
 });
 

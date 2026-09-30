@@ -22,41 +22,46 @@ export function calendarSearchQueries(year: number, calendarId: string): Calenda
   }));
 }
 
-interface SearchState { events: CalendarEvent[]; loading: boolean; error: string }
-const emptyState = (): SearchState => ({ events: [], loading: false, error: '' });
+interface SearchState { events: CalendarEvent[]; loading: boolean; loaded: boolean; error: string }
+const emptyState = (): SearchState => ({ events: [], loading: false, loaded: false, error: '' });
 const eventStart = (event: CalendarEvent) => event.allDay
   ? dayDate(event.start).setHours(0, 0, 0, 0) : Date.parse(event.start);
 
 export function createCalendarSearchModel(api: AppleCalendarApi) {
   let state = emptyState();
   let generation = 0;
+  let loadedScope = '';
   const listeners = new Set<() => void>();
   const patch = (update: Partial<SearchState>) => { state = { ...state, ...update }; listeners.forEach(listener => listener()); };
   return {
     getSnapshot: () => state,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     clear() { ++generation; patch(emptyState()); },
+    cancel() { ++generation; if (state.loading) patch({ loading: false }); },
     async load(year: number, calendarId: string, calendars: AppleCalendar[]) {
       const request = ++generation;
-      patch({ events: [], loading: true, error: '' });
       const hidden = hiddenHolidayCalendarIds(calendars);
       const visibleIds = new Set(calendars.filter(calendar => !hidden.has(calendar.id)).map(calendar => calendar.id));
+      const scope = JSON.stringify([year, calendarId, [...visibleIds].sort()]);
+      const retain = state.loaded && loadedScope === scope;
+      patch({ loading: true, error: '', ...(!retain ? { events: [], loaded: false } : {}) });
       const entries = new Map<string, CalendarEvent>();
       try {
         for (const query of calendarSearchQueries(year, calendarId)) {
           const reply = await api.events(query);
           if (request !== generation) return;
-          if (!reply.ok) { patch({ error: reply.error.message }); return; }
+          if (!reply.ok) { patch({ error: reply.error.message, events: [], loaded: false }); return; }
           for (const event of reply.value) {
             if (!visibleIds.has(event.calendarId) || (calendarId && event.calendarId !== calendarId)) continue;
             // Long events can appear in adjacent windows; recurring occurrences
             // share an identifier but retain their separate start dates.
             entries.set(JSON.stringify([event.id, event.start]), event);
           }
-          if (entries.size > 10_000) { patch({ error: CALENDAR_ERRORS['too-many'] }); return; }
+          if (entries.size > 10_000) { patch({ error: CALENDAR_ERRORS['too-many'], events: [], loaded: false }); return; }
         }
-        patch({ events: [...entries.values()].sort((a, b) => eventStart(a) - eventStart(b) || a.title.localeCompare(b.title)) });
-      } catch { if (request === generation) patch({ error: CALENDAR_ERRORS.unavailable }); }
+        loadedScope = scope;
+        patch({ events: [...entries.values()].sort((a, b) => eventStart(a) - eventStart(b) || a.title.localeCompare(b.title)), loaded: true });
+      } catch { if (request === generation) patch({ error: CALENDAR_ERRORS.unavailable, events: [], loaded: false }); }
       finally { if (request === generation) patch({ loading: false }); }
     },
   };

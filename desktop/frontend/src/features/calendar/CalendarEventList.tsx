@@ -1,5 +1,5 @@
 import { LockKeyhole } from 'lucide-react';
-import { useCallback, useLayoutEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef, type RefObject } from 'react';
 import type { AppleCalendar, CalendarEvent } from '../../../../shared/apple-calendar';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import { addDays, dayDate } from './calendarDates';
@@ -32,17 +32,19 @@ export function calendarRunHistory(scheduler: SchedulerSnapshot | undefined, eve
   }) ?? [];
 }
 
-export function CalendarEventList({ events, calendars, searching, onOpen, scheduler, day, query = '', year, calendarId }: {
+export function CalendarEventList({ events, calendars, searching, onOpen, scheduler, day, query = '', year, calendarId, viewportRef: providedViewportRef }: {
   events: CalendarEvent[]; calendars: AppleCalendar[]; searching: boolean; onOpen: (event: CalendarEvent) => void;
   scheduler?: SchedulerSnapshot; day?: string; query?: string; year?: number; calendarId?: string;
+  viewportRef?: RefObject<HTMLDivElement | null>;
 }) {
-  const viewportRef = useRef<HTMLDivElement>(null);
+  const localViewportRef = useRef<HTMLDivElement>(null);
+  const viewportRef = providedViewportRef ?? localViewportRef;
   const contentRef = useRef<HTMLDivElement>(null);
   const scrollbarRef = useAutoHideScrollbars<HTMLDivElement>();
   const attach = useCallback((element: HTMLDivElement | null) => {
     viewportRef.current = element;
     return scrollbarRef(element);
-  }, [scrollbarRef]);
+  }, [scrollbarRef, viewportRef]);
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     const content = contentRef.current;
@@ -60,7 +62,7 @@ export function CalendarEventList({ events, calendars, searching, onOpen, schedu
     observer.observe(viewport);
     observer.observe(content);
     return () => observer.disconnect();
-  }, [events, scheduler?.runs, day, query, year, calendarId]);
+  }, [events, scheduler?.runs, day, query, year, calendarId, viewportRef]);
 
   return <div ref={attach} className={styles.eventViewport} role="region" aria-label="Event list" tabIndex={0}>
     <div ref={contentRef}>

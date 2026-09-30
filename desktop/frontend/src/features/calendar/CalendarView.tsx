@@ -73,7 +73,7 @@ export function CalendarBrowser({ api, ...props }: ViewProps & { api: AppleCalen
   const writable = state.calendars.filter(calendar => calendar.writable);
   const defaultCalendar = calendarId ? writable.find(calendar => calendar.id === calendarId)
     : writable.find(calendar => calendar.isDefault) ?? writable[0];
-  const refresh = () => { setMessage(''); void model.refresh(query); };
+  const refresh = () => { setMessage(''); return model.refresh(query); };
   const moveMonth = (offset: number) => {
     const date = dayDate(`${month.slice(0, 7)}-01`);
     date.setMonth(date.getMonth() + offset);
@@ -99,7 +99,7 @@ export function CalendarBrowser({ api, ...props }: ViewProps & { api: AppleCalen
             const events = eventsByDay.get(date) ?? [];
             const scheduled = [...(tasksByDay.get(date)?.values() ?? [])];
             return <button key={date} type="button" className={styles.day}
-              aria-label={`${date}, ${state.loading ? 'Loading events' : state.error ? 'Could not load events' : `${events.length} events`}${scheduler.api ? `, ${scheduled.length} tasks` : ''}`} aria-pressed={date === day}
+              aria-label={`${date}, ${state.loading && !state.loaded ? 'Loading events' : state.error ? 'Could not load events' : `${events.length} events`}${scheduler.api ? `, ${scheduled.length} tasks` : ''}`} aria-pressed={date === day}
               aria-current={date === localDay(new Date()) ? 'date' : undefined} data-outside={date.slice(0, 7) !== month.slice(0, 7)}
               onClick={() => setDay(date)} onKeyDown={e => {
                 const offset = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
@@ -122,7 +122,7 @@ export function CalendarBrowser({ api, ...props }: ViewProps & { api: AppleCalen
         </div>
       </section>
       <CalendarAgenda api={api} state={state} calendarId={calendarId} day={day} message={message}
-        scheduler={scheduler.state}
+        scheduler={scheduler.state} onRefresh={refresh}
         panel={state.access !== 'full' ? <CalendarAccessState state={state} onRetry={refresh} onConnect={() => void model.refresh(query, true)} /> : undefined}
         onOpen={event => setDialog({ event })} options={<div className={styles.options} aria-label="Calendar options" role="group">
           <SidebarPanelHeader title="OPTION" actions={<>
