@@ -33,6 +33,7 @@ import {
 } from '../../cheshiDesktop';
 import { isJavaScriptOrTypeScriptPath } from './languageServerDiagnostics';
 import { applyLanguageServerTextEdits } from './workspaceTextEdits';
+import { fitWorkspaceEditorHover } from './workspaceEditorHoverSizing';
 
 export interface WorkspaceTab {
   path: string;
@@ -337,7 +338,11 @@ export function languageServerHoverTooltip(
         content.textContent = block;
         dom.append(content);
       }
-      return { dom };
+      return {
+        dom,
+        mount: () => fitWorkspaceEditorHover(dom),
+        positioned: () => fitWorkspaceEditorHover(dom),
+      };
     },
   };
 }
