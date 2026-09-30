@@ -98,6 +98,7 @@ export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, o
         </>} />
 
         <div className="workspace-file-tree-body">
+          <PullToRefreshStatus {...refresh} />
           <button
             className="workspace-file-tree-root"
             type="button"
@@ -113,7 +114,7 @@ export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, o
           </button>
 
           <WorkspaceFileTreeRows controller={controller} selectedPath={selectedPath}
-            viewportRef={refresh.viewportRef} refreshStatus={<PullToRefreshStatus {...refresh} />} />
+            viewportRef={refresh.viewportRef} />
         </div>
       </section>
 

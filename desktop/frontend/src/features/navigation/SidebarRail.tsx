@@ -19,12 +19,12 @@ import { WorkspaceSelector } from './WorkspaceSelector';
 import styles from './SidebarRail.module.css';
 
 const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceView }> = [
-  { label: 'Relationship Graph', icon: <Crosshair aria-hidden="true" />, view: 'codegraph' },
   { label: 'Codex', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
+  { label: 'Terminal', icon: <SquareTerminal aria-hidden="true" />, view: 'terminal' },
+  { label: 'Relationship Graph', icon: <Crosshair aria-hidden="true" />, view: 'codegraph' },
   { label: 'Memo', icon: <StickyNote aria-hidden="true" />, view: 'notes' },
   { label: 'Calendar', icon: <CalendarDays aria-hidden="true" />, view: 'calendar' },
   { label: 'Mail', icon: <Mail aria-hidden="true" />, view: 'mail' },
-  { label: 'Terminal', icon: <SquareTerminal aria-hidden="true" />, view: 'terminal' },
   { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
   { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },
   { label: 'Settings', icon: <Settings aria-hidden="true" />, view: 'settings' },

@@ -3,6 +3,10 @@
   min-height: var(--header-height);
   max-height: var(--header-height);
   flex: 0 0 var(--header-height);
+}
+
+/* Offscreen tabs stay mounted; their native drag regions can overlap the rail. */
+.header:not(:global([inert]) *) {
   -webkit-app-region: drag;
 }
 

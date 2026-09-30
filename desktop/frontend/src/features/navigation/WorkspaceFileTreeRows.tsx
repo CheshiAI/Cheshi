@@ -55,7 +55,6 @@ interface WorkspaceFileTreeRowsProps {
   controller: WorkspaceFileTreeController;
   selectedPath: string | null;
   viewportRef?: RefObject<HTMLDivElement | null>;
-  refreshStatus?: ReactNode;
 }
 
 function WorkspaceFileTreeName({ name, changed }: { name: string; changed: boolean }) {
@@ -145,7 +144,7 @@ function WorkspaceFileTreeEditRow({
   );
 }
 
-export function WorkspaceFileTreeRows({ controller, selectedPath, viewportRef, refreshStatus }: WorkspaceFileTreeRowsProps) {
+export function WorkspaceFileTreeRows({ controller, selectedPath, viewportRef }: WorkspaceFileTreeRowsProps) {
   const {
     activateEntry,
     announcement,
@@ -196,7 +195,6 @@ export function WorkspaceFileTreeRows({ controller, selectedPath, viewportRef, r
 
   return (
     <OverlayScrollArea className="workspace-file-tree-list" label="Workspace files" viewportRef={viewportRef}>
-      {refreshStatus}
       <div className="workspace-file-tree-list-content" role="tree">
         {entryEdit?.mode === 'create' && entryEdit.directoryPath === '.' && renderCreateEditRow(0)}
         {visibleEntries.map(({ entry, depth }) => {

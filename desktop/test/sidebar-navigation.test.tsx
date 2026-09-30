@@ -44,11 +44,11 @@ test('rail management items retain their order and destinations', () => {
     onNavigate: view => destinations.push(view), onToggleSidebar() {} });
   const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 9);
   expect(navigation.map(element => element.props.label)).toEqual([
-      'Relationship Graph', 'Codex', 'Memo', 'Calendar', 'Mail',
-      'Terminal', 'Github', 'Plugins', 'Settings',
+      'Codex', 'Terminal', 'Relationship Graph', 'Memo', 'Calendar',
+      'Mail', 'Github', 'Plugins', 'Settings',
     ]);
   for (const element of navigation) if (element.props.label !== 'Codex') element.props.onClick?.();
-  expect(destinations).toEqual(['codegraph', 'notes', 'calendar', 'mail', 'terminal', 'git', 'plugins', 'settings']);
+  expect(destinations).toEqual(['terminal', 'codegraph', 'notes', 'calendar', 'mail', 'git', 'plugins', 'settings']);
 });
 
 test('rail bottom controls expose caffeine, help, sidebar and project actions', () => {
