@@ -5,11 +5,14 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
-  RotateCw,
+  RefreshCw,
 } from 'lucide-react';
 import { useState } from 'react';
 
-import { NeumorphicButton, SidebarPanelHeader } from '../../shared/ui';
+import { SidebarPanelHeader } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { PullToRefreshStatus } from '../../shared/ui/PullToRefreshStatus';
+import { usePullToRefresh } from '../../shared/usePullToRefresh';
 import {
   cheshiDesktop as workspace,
   type CheshiWorkspaceEntry,
@@ -49,12 +52,15 @@ export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, o
     showHiddenFiles,
     toggleDirectory,
   } = controller;
+  const refreshDisabled = refreshing || loadingDirectory !== null
+    || controller.entryEdit !== null || controller.mutatingPath !== null;
+  const refresh = usePullToRefresh(refreshWorkspaceFiles, refreshDisabled);
 
   return (
     <>
       <section className="workspace-file-tree" aria-label="File explorer">
         <SidebarPanelHeader title="EXPLORER" icon={<Folder aria-hidden="true" />} actions={<>
-          <NeumorphicButton
+          <TooltipButton
             size="icon"
             aria-label={showHiddenFiles ? 'Hide hidden files' : 'Show hidden files'}
             aria-pressed={showHiddenFiles}
@@ -62,36 +68,33 @@ export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, o
             onClick={() => setShowHiddenFiles((currentValue) => !currentValue)}
           >
             {showHiddenFiles ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
-          </NeumorphicButton>
-          <NeumorphicButton
+          </TooltipButton>
+          <TooltipButton
             size="icon"
-            aria-busy={refreshing || loadingDirectory !== null}
-            aria-label={refreshing ? 'Refreshing project explorer' : 'Refresh project explorer'}
-            disabled={refreshing}
+            aria-busy={refreshing || refresh.refreshing || loadingDirectory !== null}
+            aria-label={refreshing || refresh.refreshing ? 'Refreshing project explorer' : 'Refresh project explorer'}
+            disabled={refreshDisabled || refresh.refreshing}
             title="Refresh project explorer"
-            onClick={() => void refreshWorkspaceFiles()}
+            onClick={() => void refresh.refresh()}
           >
-            <RotateCw
-              className={refreshing || loadingDirectory !== null ? 'workspace-file-tree-spinner' : undefined}
-              aria-hidden="true"
-            />
-          </NeumorphicButton>
-          <NeumorphicButton
+            <RefreshCw aria-hidden="true" />
+          </TooltipButton>
+          <TooltipButton
             size="icon"
             aria-label="New file in Workspace root"
             title="New file"
             onClick={() => beginCreate('.', 'file')}
           >
             <FilePlus2 aria-hidden="true" />
-          </NeumorphicButton>
-          <NeumorphicButton
+          </TooltipButton>
+          <TooltipButton
             size="icon"
             aria-label="New folder in Workspace root"
             title="New folder"
             onClick={() => beginCreate('.', 'directory')}
           >
             <FolderPlus aria-hidden="true" />
-          </NeumorphicButton>
+          </TooltipButton>
         </>} />
 
         <div className="workspace-file-tree-body">
@@ -109,7 +112,8 @@ export function WorkspaceFileTree({ selectedPath, onEntryMutation, onOpenFile, o
             <strong>{workspaceName}</strong>
           </button>
 
-          <WorkspaceFileTreeRows controller={controller} selectedPath={selectedPath} />
+          <WorkspaceFileTreeRows controller={controller} selectedPath={selectedPath}
+            viewportRef={refresh.viewportRef} refreshStatus={<PullToRefreshStatus {...refresh} />} />
         </div>
       </section>
 

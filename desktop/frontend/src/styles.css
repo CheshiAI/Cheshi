@@ -346,12 +346,6 @@ h1, h2, h3, h4, h5, h6, p {
     padding: var(--space-default) 0 0;
 }
 
-.workspace-file-tree-spinner {
-    width: var(--icon-size-default);
-    height: var(--icon-size-default);
-    animation: workspace-file-tree-spin .8s linear infinite;
-}
-
 .workspace-file-tree-root, .workspace-file-tree-entry {
     display: flex;
     width: 100%;

@@ -22,7 +22,8 @@ async function withList(run: (h: {
   const document = window.document as unknown as Document;
   const host = document.createElement('div'); document.body.append(host);
   const root = createRoot(host); let mounted = true; const opened: string[] = [];
-  const props: Props = { sessions: [{ id: 'one', title: 'Saved session', updatedAt: 1 }], loading: false,
+  const props: Props = { sessions: [{ id: 'one', title: 'Saved session', updatedAt: 1,
+    preview: '', createdAt: 1, status: 'idle' }], loading: false,
     activeSessionId: 'one', responseThreadIds: [], newChatDisabled: false, selectionDisabled: false,
     onOpen: id => opened.push(id), onNew() {}, onDelete() {}, deleteReason: () => null, onRefresh: async () => {} };
   const viewport = () => document.querySelector<HTMLElement>('[aria-label="Conversation list"]')!;

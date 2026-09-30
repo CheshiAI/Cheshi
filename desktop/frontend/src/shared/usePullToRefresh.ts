@@ -4,7 +4,7 @@ const PULL_THRESHOLD = 72;
 const WHEEL_IDLE_MS = 180;
 
 /** A refresh gesture starts at the top; reaching the top during ordinary scrolling is not enough. */
-export function useSessionListRefresh(onRefresh?: () => Promise<void>, disabled = false) {
+export function usePullToRefresh(onRefresh?: () => Promise<void>, disabled = false) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const latest = useRef({ onRefresh, disabled });
   useLayoutEffect(() => { latest.current = { onRefresh, disabled }; }, [onRefresh, disabled]);
@@ -67,7 +67,8 @@ export function useSessionListRefresh(onRefresh?: () => Promise<void>, disabled 
       if (unavailable() || viewport.scrollTop > 1 || event.button !== 0 || !event.isPrimary
         || event.pointerType === 'touch' || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       const target = event.target;
-      if (target instanceof view.Element && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (target instanceof view.Element
+        && target.closest('input, textarea, select, [contenteditable="true"], [draggable="true"]')) return;
       clearTimeout(wheelTimer); wheelTimer = undefined; wheelBlocked = false;
       display(0);
       pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, captured: false };

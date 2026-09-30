@@ -8,7 +8,8 @@ import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
 import type { ChatSession } from './model';
 import { formatSessionElapsedTime, useChatSessionClock } from './chatSessionTime';
 import styles from './ChatSessionList.module.css';
-import { useSessionListRefresh } from './useSessionListRefresh';
+import { usePullToRefresh } from '../../shared/usePullToRefresh';
+import { PullToRefreshStatus } from '../../shared/ui/PullToRefreshStatus';
 
 interface ChatSessionListProps {
   search?: ReactNode;
@@ -70,7 +71,7 @@ export function ChatSessionList({
   onDelete,
   deleteReason,
 }: ChatSessionListProps) {
-  const refresh = useSessionListRefresh(onRefresh, loading || refreshDisabled);
+  const refresh = usePullToRefresh(onRefresh, loading || refreshDisabled);
   // Keep the row callback stable while invoking only the latest committed pane handlers.
   const interaction = useRef({ onOpen, selectionDisabled });
   useLayoutEffect(() => { interaction.current = { onOpen, selectionDisabled }; }, [onOpen, selectionDisabled]);
@@ -114,11 +115,7 @@ export function ChatSessionList({
 
         {(refresh.error || refreshError) && <p className={styles.refreshError} role="alert">{refresh.error || refreshError}</p>}
         <OverlayScrollArea className={styles.listScroll} label="Conversation list" viewportRef={refresh.viewportRef}>
-        {(refresh.refreshing || refresh.pullHeight > 0) && <div className={styles.pullStatus} role="status"
-          style={{ height: refresh.pullHeight }}>
-          <LoadingIndicator />
-          <span>{refresh.refreshing || refresh.ready ? 'Release to refresh' : 'Pull to refresh'}</span>
-        </div>}
+        <PullToRefreshStatus {...refresh} />
         <fieldset className={styles.list} aria-label="Conversations" aria-busy={loading || refresh.refreshing} disabled={selectionDisabled}>
           {loading && sessions.length === 0 && (
             <LoadingState className={styles.loading} />
