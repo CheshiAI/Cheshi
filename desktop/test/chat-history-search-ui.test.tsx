@@ -132,6 +132,24 @@ function searchHarness(searchCodexChatHistory: CheshiDesktopApi['searchCodexChat
 }
 
 describe('chat search requests', () => {
+  test('resubmitting indexed results reaches the current index instead of the renderer result cache', async () => {
+    let calls = 0;
+    const harness = searchHarness(async () => { calls++; return { ...response(), indexState: 'ready' }; });
+    harness.render('pane'); harness.flushEffects();
+    await harness.render('pane').search({ query: 'same' });
+    await harness.render('pane').search({ query: 'same' });
+    expect(calls).toBe(2);
+    harness.dispose();
+  });
+
+  test('indexed results disclose background updates and failed synchronization', () => {
+    for (const indexState of ['updating', 'error'] as const) {
+      const html = renderToStaticMarkup(<ChatHistorySearchResults query="수정" result={{ ...response(), indexState }} disabled={false} onOpen={() => {}} />);
+      expect(html).toContain(indexState === 'updating' ? 'recent changes are being indexed' : 'search index could not be updated');
+      expect(html).toContain('Open original message');
+    }
+  });
+
   test('reuses normalized search results immediately for at most 300 seconds without extending expiry on hits', async () => {
     let calls = 0;
     const harness = searchHarness(async () => { calls += 1; return response(); });
@@ -710,5 +728,116 @@ describe('chat search original message navigation', () => {
     harness.render({ ...props, historyTarget: { threadId: 'thread', itemId: 'item-8', requestId: 2 } }); harness.flushEffects();
     harness.flushFrames();
     expect(revealed).toEqual(['item-8']);
+  });
+});
+
+describe('chat search pagination', () => {
+  const firstPage = (): ChatHistorySearchResponse => ({ ...response(), total: 3, nextCursor: 'snapshot:1' });
+  const nextHit = { ...hit, itemId: 'item-two' };
+
+  test('keeps existing rows while loading, coalesces duplicate loads and appends through the final page', async () => {
+    const pending = createDeferred<ChatHistorySearchResponse>();
+    const requests: unknown[] = [];
+    const harness = searchHarness(async request => {
+      requests.push(request);
+      if (request.cursor === 'snapshot:1') return pending.promise;
+      if (request.cursor === 'snapshot:2') return { ...response([{ ...hit, itemId: 'item-three' }]), total: 3 };
+      return firstPage();
+    });
+    harness.render('pane'); harness.flushEffects();
+    await harness.render('pane').search({ query: 'needle' });
+    const loading = harness.render('pane').loadMore();
+    await harness.render('pane').loadMore();
+    expect(requests).toHaveLength(2);
+    expect(harness.render('pane').result?.hits).toEqual([hit]);
+    expect(harness.render('pane').loading).toBe(false);
+    expect(harness.render('pane').loadingMore).toBe(true);
+    pending.resolve({ ...response([nextHit]), total: 3, nextCursor: 'snapshot:2' });
+    await loading;
+    expect(harness.render('pane').result?.hits).toEqual([hit, nextHit]);
+    expect(harness.render('pane').loadingMore).toBe(false);
+    await harness.render('pane').loadMore();
+    await harness.render('pane').loadMore();
+    expect(requests).toHaveLength(3);
+    expect(harness.render('pane').result?.hits).toHaveLength(3);
+    expect(harness.render('pane').result?.nextCursor).toBeUndefined();
+    harness.dispose();
+  });
+
+  test.each(['query', 'clear', 'deletion', 'account', 'unmount'])('ignores a late page after %s changes', async action => {
+    const pending = createDeferred<ChatHistorySearchResponse>();
+    const harness = searchHarness(async request => request.cursor ? pending.promise : firstPage());
+    harness.render('pane'); harness.flushEffects();
+    await harness.render('pane').search({ query: 'needle' });
+    const loading = harness.render('pane').loadMore();
+    if (action === 'query') await harness.render('pane').search({ query: 'different' });
+    if (action === 'clear') harness.render('pane').clear();
+    if (action === 'deletion') harness.emit({ type: 'sessions-deleted', threadIds: [hit.threadId] });
+    if (action === 'account') harness.render('pane').reset();
+    if (action === 'unmount') harness.dispose();
+    const previous = harness.render('pane').result;
+    pending.resolve(response([nextHit]));
+    await loading;
+    expect(harness.render('pane').result).toBe(previous);
+    harness.dispose();
+  });
+
+  test('a failed continuation preserves rows and permits retry without repeating the first page', async () => {
+    let tries = 0;
+    const harness = searchHarness(async request => {
+      if (!request.cursor) return firstPage();
+      if (++tries === 1) throw new Error('Search results have expired. Refresh the search to continue.');
+      return { ...response([nextHit]), total: 2 };
+    });
+    harness.render('pane'); harness.flushEffects();
+    await harness.render('pane').search({ query: 'needle' });
+    await harness.render('pane').loadMore();
+    expect(harness.render('pane').result?.hits).toEqual([hit]);
+    expect(harness.render('pane').moreError).toContain('Refresh the search');
+    expect(harness.render('pane').loadingMore).toBe(false);
+    await harness.render('pane').loadMore();
+    expect(harness.render('pane').result?.hits).toEqual([hit, nextHit]);
+    expect(harness.render('pane').moreError).toBeNull();
+    harness.dispose();
+  });
+
+  test('submitting a pageable search again never restores an evicted server cursor from the result cache', async () => {
+    let calls = 0;
+    const harness = searchHarness(async () => { calls++; return firstPage(); });
+    harness.render('pane'); harness.flushEffects();
+    await harness.render('pane').search({ query: 'needle' });
+    harness.render('pane').clear();
+    await harness.render('pane').search({ query: 'needle' });
+    expect(calls).toBe(2);
+    harness.dispose();
+  });
+
+  test('reaching the page sentinel loads more and disconnects while loading or after an error', () => {
+    const callbacks: Array<(entries: Array<{ isIntersecting: boolean }>) => void> = [];
+    let disconnected = 0;
+    let loads = 0;
+    class Observer {
+      constructor(callback: (entries: Array<{ isIntersecting: boolean }>) => void) { callbacks.push(callback); }
+      observe() {}
+      disconnect() { disconnected++; }
+    }
+    const harness = createHarness<[SearchPageProps], ReactElement>('ChatHistorySearchPage.tsx', 'ChatHistorySearchPage', searchUiDependencies);
+    const props: SearchPageProps = { ...pageProps(async () => true), result: firstPage(), onLoadMore: async () => { loads++; } };
+    const tree = harness.render(props);
+    const refs = searchElements(tree).flatMap(element => element.props.ref ? [element.props.ref] : []);
+    expect(refs).toHaveLength(2);
+    Object.assign(refs[0]!, { current: { scrollTop: 40, ownerDocument: { defaultView: { IntersectionObserver: Observer } } } });
+    Object.assign(refs[1]!, { current: {} });
+    harness.flushEffects();
+    callbacks[0]!([{ isIntersecting: false }]);
+    expect(loads).toBe(0);
+    callbacks[0]!([{ isIntersecting: true }]);
+    expect(loads).toBe(1);
+    harness.render({ ...props, loadingMore: true }); harness.flushEffects();
+    expect(disconnected).toBe(1);
+    harness.render({ ...props, moreError: 'Refresh the search.' }); harness.flushEffects();
+    expect(callbacks).toHaveLength(1);
+    expect(renderToStaticMarkup(harness.render({ ...props, moreError: 'Refresh the search.' }))).toContain('Refresh search');
+    harness.dispose();
   });
 });

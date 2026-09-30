@@ -1,13 +1,18 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ChatHistorySearch } from '../lib/chat-history-search.mts';
-import { CHAT_HISTORY_INDEX_VERSION } from '../lib/chat-history-index-store.mts';
 import { chatHistorySearchRequest, chatHistorySearchResponse } from '../shared/chat-history-search.ts';
 
 const directories: string[] = [];
-afterEach(async () => { for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
+const searches: ChatHistorySearch[] = [];
+function createSearch(options: ConstructorParameters<typeof ChatHistorySearch>[0]) {
+  const search = new ChatHistorySearch(options);
+  searches.push(search);
+  return search;
+}
+afterEach(async () => { await Promise.all(searches.splice(0).map(search => search.stop())); for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -59,7 +64,7 @@ async function fixture() {
   };
   const options = { directory, cwd, source, now: () => now };
   return { directory, threads, versions, active, failed, reads, ownerReads, source, options,
-    advance: (ms: number) => { now += ms; }, search: new ChatHistorySearch(options) };
+    advance: (ms: number) => { now += ms; }, search: createSearch(options) };
 }
 
 test('indexes Korean source text with exact source ids and workspace file filtering', async () => {
@@ -116,25 +121,35 @@ test('keeps natural language and paths outside the workspace as query text witho
   await failure(() => f.search.search({ query: '외부', filePath: '/another/workspace/logs' }), /workspace/);
 });
 
-test('reuses persisted histories and refreshes changed, active, expired and explicitly refreshed sessions', async () => {
+test('reuses the persistent index and synchronizes changed and active sources separately from queries', async () => {
   const f = await fixture();
   f.threads.set('one', thread('one', 'original'));
   await f.search.search({ query: 'original' });
-  const restarted = new ChatHistorySearch(f.options);
+  await f.search.stop();
+  const restarted = createSearch(f.options);
   await restarted.search({ query: 'original' });
+  await restarted.synchronize();
   expect(f.reads).toEqual(['one']);
   f.threads.set('one', thread('one', 'updated'));
   f.versions.set('one', 2);
+  expect((await restarted.search({ query: 'updated' })).total).toBe(0);
+  await restarted.synchronize();
   expect((await restarted.search({ query: 'updated' })).total).toBe(1);
   f.active.add('one');
-  await restarted.search({ query: 'updated' });
-  await restarted.search({ query: 'updated' });
+  await restarted.synchronize();
+  await restarted.synchronize();
   expect(f.reads).toHaveLength(4);
   f.active.clear();
-  await restarted.search({ query: 'updated' });
+  await restarted.synchronize();
+  expect(f.reads).toHaveLength(5);
   await restarted.search({ query: 'updated', refresh: true });
+  expect(f.reads).toHaveLength(6);
   f.advance(30_000);
-  await restarted.search({ query: 'updated' });
+  await restarted.synchronize();
+  expect(f.reads).toHaveLength(6);
+  // Providers without a file fingerprint are checked periodically, not on every search.
+  f.advance(300_000);
+  await restarted.synchronize();
   expect(f.reads).toHaveLength(7);
 });
 
@@ -157,36 +172,34 @@ test('prunes missing sessions and removes derived copies even when the catalog b
   f.threads.set('one', thread('one', 'keep'));
   f.threads.set('two', thread('two', 'remove'));
   await f.search.search({ query: 'keep' });
-  expect(await readdir(f.directory)).toHaveLength(2);
   f.threads.delete('two');
+  await f.search.synchronize();
   expect((await f.search.search({ query: 'remove' })).total).toBe(0);
-  expect(await readdir(f.directory)).toHaveLength(1);
   const originalList = f.source.list;
   f.source.list = async () => { throw new Error('Catalog unavailable after deletion.'); };
   await f.search.remove(['one']);
-  expect(await readdir(f.directory)).toHaveLength(0);
   f.source.list = originalList;
   expect((await f.search.search({ query: 'keep' })).total).toBe(0);
 });
 
-test('does not return stale matches after a failed refresh; rebuilds a corrupt cache', async () => {
+test('preserves legacy JSON during migration and removes stale indexed matches after a failed refresh', async () => {
   const f = await fixture();
   f.threads.set('one', thread('one', 'needle'));
-  await f.search.search({ query: 'needle' });
+  await f.search.readRecords();
   const [name] = await readdir(f.directory);
-  await writeFile(join(f.directory, name!), '{broken');
+  const original = await readFile(join(f.directory, name!), 'utf8');
   expect((await f.search.search({ query: 'needle' })).total).toBe(1);
-  expect(f.reads).toHaveLength(2);
+  expect(f.reads).toHaveLength(1);
+  expect(await readFile(join(f.directory, name!), 'utf8')).toBe(original);
   f.failed.add('one');
   const result = await f.search.search({ query: 'needle', refresh: true });
-  expect(result).toEqual({ hits: [], total: 0, indexedSessions: 0, unavailableSessions: ['one'] });
-  expect(await readdir(f.directory)).toHaveLength(0);
+  expect(result).toMatchObject({ hits: [], total: 0, indexedSessions: 0, unavailableSessions: ['one'] });
 });
 
 test.each([1, 2, 3])('recompiles cache version %i before returning stale file references without requiring refresh', async (version) => {
   const f = await fixture();
   f.threads.set('one', thread('one', 'needle "Use the model APIs/pricing", Array.isArray and `src/정상 파일.ts`'));
-  await f.search.search({ query: 'needle' });
+  await f.search.readRecords();
   const [name] = await readdir(f.directory);
   const cachePath = join(f.directory, name!);
   const oldRecord = JSON.parse(await readFile(cachePath, 'utf8'));
@@ -194,11 +207,11 @@ test.each([1, 2, 3])('recompiles cache version %i before returning stale file re
   oldRecord.thread.entries[0].files = [{ path: 'Array.isArray', kind: 'mentioned' }];
   await writeFile(cachePath, JSON.stringify(oldRecord));
 
-  const restarted = new ChatHistorySearch(f.options);
+  const restarted = createSearch(f.options);
   const result = await restarted.search({ query: 'needle' });
   expect(result.hits[0]?.files).toEqual([{ path: 'src/정상 파일.ts', kind: 'mentioned' }]);
   expect(f.reads).toEqual(['one', 'one']);
-  expect(JSON.parse(await readFile(cachePath, 'utf8')).version).toBe(CHAT_HISTORY_INDEX_VERSION);
+  expect(JSON.parse(await readFile(cachePath, 'utf8')).version).toBe(oldRecord.version);
   expect((await restarted.search({ query: 'needle', filePath: 'Array.isArray' })).total).toBe(0);
   expect(f.reads).toHaveLength(2);
 });
@@ -208,7 +221,7 @@ test('deletion during indexing cannot resurrect a cached item or return its matc
   f.threads.set('one', thread('one', 'needle'));
   const entered = createDeferred<void>();
   const finish = createDeferred<void>();
-  const search = new ChatHistorySearch({ ...f.options, source: {
+  const search = createSearch({ ...f.options, source: {
     list: f.source.list,
     async read(id: string) { entered.resolve(); await finish.promise; return f.source.read(id); },
   } });
@@ -218,13 +231,13 @@ test('deletion during indexing cannot resurrect a cached item or return its matc
   finish.resolve();
   expect((await pending).total).toBe(0);
   await removal;
-  expect(await readdir(f.directory).catch(() => [])).toHaveLength(0);
+  expect((await search.search({ query: 'needle' })).total).toBe(0);
 });
 
 test('recompiles older spaced-path references before unified search can return a fabricated filename', async () => {
   const f = await fixture();
   f.threads.set('one', changedFileThread('one', '검색 파일.ts', '- old\n+ fixed'));
-  await f.search.search({ query: 'fixed' });
+  await f.search.readRecords();
   const [name] = await readdir(f.directory);
   const cachePath = join(f.directory, name!);
   const oldRecord = JSON.parse(await readFile(cachePath, 'utf8'));
@@ -232,7 +245,7 @@ test('recompiles older spaced-path references before unified search can return a
   oldRecord.thread.entries[0].files.push({ path: 'src/파일.ts', kind: 'mentioned' });
   await writeFile(cachePath, JSON.stringify(oldRecord));
 
-  const restarted = new ChatHistorySearch(f.options);
+  const restarted = createSearch(f.options);
   expect((await restarted.search({ query: 'src/파일.ts' })).total).toBe(0);
   expect((await restarted.search({ query: 'src/검색 파일.ts' })).total).toBe(1);
   expect(f.reads).toEqual(['one', 'one']);
@@ -242,7 +255,7 @@ test('rebuilds version four command references and retains command text and actu
   const f = await fixture();
   const command = 'wc -l src/first.ts src/second.ts';
   f.threads.set('one', thread('one', `Count lines with \`${command}\`.`));
-  await f.search.search({ query: 'Count' });
+  await f.search.readRecords();
   const [name] = await readdir(f.directory);
   const cachePath = join(f.directory, name!);
   const oldRecord = JSON.parse(await readFile(cachePath, 'utf8'));
@@ -250,7 +263,7 @@ test('rebuilds version four command references and retains command text and actu
   oldRecord.thread.entries[0].files = [{ path: command, kind: 'mentioned' }];
   await writeFile(cachePath, JSON.stringify(oldRecord));
 
-  const restarted = new ChatHistorySearch(f.options);
+  const restarted = createSearch(f.options);
   const result = await restarted.search({ query: 'wc -l', filePath: 'src/first.ts' });
   expect(result.total).toBe(1);
   expect(result.hits[0]?.snippet).toContain(command);
@@ -260,7 +273,7 @@ test('rebuilds version four command references and retains command text and actu
   expect((await restarted.search({ query: '', filePath: command })).total).toBe(0);
   expect((await restarted.search({ query: `${cwd}/src/second.ts` })).total).toBe(1);
   expect(f.reads).toEqual(['one', 'one']);
-  expect(JSON.parse(await readFile(cachePath, 'utf8')).version).toBe(CHAT_HISTORY_INDEX_VERSION);
+  expect(JSON.parse(await readFile(cachePath, 'utf8')).version).toBe(oldRecord.version);
 });
 
 test('rejects a thread from another workspace and exposes partial indexing', async () => {
@@ -279,10 +292,8 @@ test('limits results and stores only deterministic source entries in the private
   const result = await f.search.search({ query: 'needle', limit: 1 });
   expect(result.total).toBe(2);
   expect(result.hits).toHaveLength(1);
-  const [name] = await readdir(f.directory);
-  const data = JSON.parse(await readFile(join(f.directory, name!), 'utf8'));
-  expect(data.cwd).toBe(cwd);
-  expect(data.thread.entries[0].text).toBe('needle');
+  expect((await stat(join(f.directory, 'search.sqlite'))).mode & 0o777).toBe(0o600);
+  expect((await readdir(f.directory)).some(name => name.endsWith('.json'))).toBe(false);
   await f.search.stop();
   await failure(() => f.search.search({ query: 'needle' }), /closed/);
 });
@@ -294,4 +305,94 @@ test('validates search request and response at both bridge boundaries', () => {
   }
   expect(chatHistorySearchRequest({ query: ' x ', refresh: false })).toEqual({ query: 'x', filePath: '', refresh: false, limit: 50 });
   expect(() => chatHistorySearchResponse({ hits: [], total: -1, indexedSessions: 0, unavailableSessions: [] })).toThrow();
+});
+
+test('pages every match in a stable snapshot without rereading histories, including repeat page requests', async () => {
+  const f = await fixture();
+  for (let index = 0; index < 123; index++) {
+    const id = `thread-${index}`;
+    f.threads.set(id, thread(id, 'needle'));
+    f.versions.set(id, 123 - index);
+  }
+  const first = await f.search.search({ query: 'needle' });
+  expect(first.hits).toHaveLength(50);
+  expect(first.total).toBe(123);
+  expect(first.nextCursor).toBeDefined();
+  const reads = f.reads.length;
+  // Later changes belong to a fresh search; they must not move rows between these pages.
+  f.threads.set('new', thread('new', 'needle'));
+  f.versions.set('new', 999);
+  const second = await f.search.search({ query: 'needle', cursor: first.nextCursor });
+  expect(second.hits).toHaveLength(50);
+  expect(await f.search.search({ query: 'needle', cursor: first.nextCursor })).toEqual(second);
+  const last = await f.search.search({ query: 'needle', cursor: second.nextCursor });
+  expect(last.hits).toHaveLength(23);
+  expect(last.nextCursor).toBeUndefined();
+  expect([...first.hits, ...second.hits, ...last.hits].map(hit => hit.threadId))
+    .toEqual(Array.from({ length: 123 }, (_, index) => `thread-${index}`));
+  expect(f.reads).toHaveLength(reads);
+  expect(chatHistorySearchResponse(second)).toEqual(second);
+  const refreshed = await f.search.search({ query: 'needle', refresh: true });
+  expect(refreshed.total).toBe(124);
+  expect(refreshed.hits[0]?.threadId).toBe('new');
+  await failure(() => f.search.search({ query: 'needle', cursor: first.nextCursor }), /expired or changed/);
+});
+
+test('deletion and expiry invalidate continuation instead of appending stale or reordered hits', async () => {
+  const f = await fixture();
+  for (const id of ['one', 'two', 'three']) f.threads.set(id, thread(id, 'needle'));
+  const first = await f.search.search({ query: 'needle', limit: 1 });
+  await failure(() => f.search.search({ query: 'other', limit: 1, cursor: first.nextCursor }), /expired or changed/);
+  await failure(() => f.search.search({ query: 'needle', limit: 2, cursor: first.nextCursor }), /expired or changed/);
+  f.advance(300_000);
+  await failure(() => f.search.search({ query: 'needle', limit: 1, cursor: first.nextCursor }), /expired or changed/);
+  const fresh = await f.search.search({ query: 'needle', limit: 1 });
+  await f.search.remove(['three']);
+  await failure(() => f.search.search({ query: 'needle', limit: 1, cursor: fresh.nextCursor }), /expired or changed/);
+});
+
+test('history reads run at most four at a time and completion order cannot reorder results', async () => {
+  const f = await fixture();
+  const gates = Array.from({ length: 9 }, () => createDeferred<void>());
+  const started = new Set<number>();
+  const firstBatch = createDeferred<void>();
+  let inFlight = 0;
+  let peak = 0;
+  for (let index = 0; index < gates.length; index++) {
+    f.threads.set(String(index), thread(String(index), 'needle'));
+    f.versions.set(String(index), gates.length - index);
+  }
+  const search = createSearch({ ...f.options, source: { ...f.source,
+    async read(id: string, profileId?: string) {
+      started.add(Number(id));
+      peak = Math.max(peak, ++inFlight);
+      if (started.size === 4) firstBatch.resolve();
+      try { await gates[Number(id)]!.promise; return await f.source.read(id, profileId); }
+      finally { inFlight--; }
+    },
+  } });
+  const result = search.search({ query: 'needle' });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([firstBatch.promise, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Four concurrent reads did not start')), 2000);
+    })]);
+    expect(peak).toBe(4);
+    expect([...started].sort()).toEqual([0, 1, 2, 3]);
+  } finally {
+    clearTimeout(timer);
+    for (const gate of [...gates].reverse()) gate.resolve();
+  }
+  const response = await result;
+  expect(peak).toBe(4);
+  expect(response.hits.map(hit => hit.threadId)).toEqual(Array.from({ length: 9 }, (_, index) => String(index)));
+  expect(inFlight).toBe(0);
+});
+
+test('pagination boundary rejects malformed cursors and empty continuation pages', () => {
+  for (const cursor of ['', false, 5, 'x'.repeat(201)]) {
+    expect(() => chatHistorySearchRequest({ query: 'needle', cursor })).toThrow();
+  }
+  expect(() => chatHistorySearchRequest({ query: 'needle', cursor: 'page', refresh: true })).toThrow();
+  expect(() => chatHistorySearchResponse({ hits: [], total: 1, indexedSessions: 1, unavailableSessions: [], nextCursor: 'page' })).toThrow();
 });

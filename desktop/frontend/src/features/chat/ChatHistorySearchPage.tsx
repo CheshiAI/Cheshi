@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { ChatHistorySearchHit, ChatHistorySearchResponse } from '../../../../shared/chat-history-search';
 import { errorMessage } from '../../shared/errorMessage';
-import { SidebarToggle, LoadingState, TieredHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
+import { NeumorphicButton, SidebarToggle, LoadingState, TieredHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
 import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import styles from './ChatHistorySearch.module.css';
 
@@ -29,6 +29,12 @@ export function ChatHistorySearchResults({ query, result, disabled, onOpen }: {
         {result.hits.length} of {result.total} matches · {result.indexedSessions} conversations searched
       </p>
     </div>} />}
+    {result.indexState === 'updating' && <p className={styles.notice} role="status">
+      Showing indexed history while recent changes are being indexed. Refresh for the latest results.
+    </p>}
+    {result.indexState === 'error' && <p className={styles.notice} role="status">
+      The search index could not be updated. Showing previously indexed history. Refresh to retry.
+    </p>}
     {partial && <p className={styles.notice} role="status">
       {result.unavailableSessions.length} conversations could not be searched. Refresh to retry.
     </p>}
@@ -63,6 +69,9 @@ interface ChatHistorySearchPageProps {
   result: ChatHistorySearchResponse | null;
   loading: boolean;
   error: string | null;
+  loadingMore?: boolean;
+  moreError?: string | null;
+  onLoadMore?: () => Promise<void>;
   selectionDisabled: boolean;
   onOpen: (hit: ChatHistorySearchHit) => Promise<boolean>;
   onRefresh: () => void;
@@ -71,20 +80,34 @@ interface ChatHistorySearchPageProps {
   onToggleRightSidebar: () => void;
 }
 
-export function ChatHistorySearchPage({ query, result, loading, error, selectionDisabled, onOpen, onRefresh,
+export function ChatHistorySearchPage({ query, result, loading, error, loadingMore = false, moreError = null, onLoadMore, selectionDisabled, onOpen, onRefresh,
   onClose, rightSidebarOpen, onToggleRightSidebar }: ChatHistorySearchPageProps) {
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
   const pending = useRef(false);
   const requestId = useRef(0);
   const mounted = useRef(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = contentRef.current;
+    const target = moreRef.current;
+    const Observer = root?.ownerDocument.defaultView?.IntersectionObserver;
+    if (!root || !target || !Observer || !result?.nextCursor || !onLoadMore || loading || loadingMore || moreError || opening || selectionDisabled) return;
+    const observer = new Observer(entries => {
+      if (entries.some(entry => entry.isIntersecting)) void onLoadMore();
+    }, { root, rootMargin: '240px 0px' });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [result?.nextCursor, onLoadMore, loading, loadingMore, moreError, opening, selectionDisabled]);
+  useEffect(() => { if (contentRef.current) contentRef.current.scrollTop = 0; }, [query, loading]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     requestId.current += 1;
     pending.current = false;
     setOpening(false);
     setOpenError(null);
-  }, [query, result]);
+  }, [query, result?.hits[0], loading]);
 
   const open = async (hit: ChatHistorySearchHit) => {
     if (pending.current || selectionDisabled || loading) return;
@@ -124,7 +147,7 @@ export function ChatHistorySearchPage({ query, result, loading, error, selection
         </SidebarToggle>
       </div>
     </>} />
-    <div className={styles.content} data-has-results={Boolean(result?.hits.length)} aria-busy={loading || opening}>
+    <div ref={contentRef} className={styles.content} data-has-results={Boolean(result?.hits.length)} aria-busy={loading || opening || loadingMore}>
       {loading && <LoadingState className={styles.searchLoading} type="processing" label="Searching conversation history…" />}
       {opening && <LoadingState type="preparing" label="Opening original message…" />}
       {(error || openError) && <p className={styles.notice} role="alert">{error || openError}</p>}
@@ -134,6 +157,14 @@ export function ChatHistorySearchPage({ query, result, loading, error, selection
       </div>}
       {result && <ChatHistorySearchResults query={query} result={result} disabled={opening || selectionDisabled || loading}
         onOpen={(hit) => { void open(hit); }} />}
+      {result?.nextCursor && onLoadMore && <div ref={moreRef} className={styles.more}>
+        {loadingMore && <LoadingState type="processing" label="Loading more results…" />}
+        {moreError && <p className={styles.notice} role="alert">{moreError}</p>}
+        {!loadingMore && <NeumorphicButton variant="ghost" disabled={loading || opening || selectionDisabled}
+          onClick={() => { if (moreError) onRefresh(); else void onLoadMore(); }}>
+          {moreError ? 'Refresh search' : 'Load more results'}
+        </NeumorphicButton>}
+      </div>}
     </div>
   </main>;
 }

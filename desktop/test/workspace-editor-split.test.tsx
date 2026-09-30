@@ -169,6 +169,7 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
     '../plugins': ['PluginsView'],
     '../terminal': ['TerminalWorkspace'],
     '../settings/SettingsView': ['SettingsView'],
+    '../scheduler/SchedulerNotifications': ['SchedulerNotifications'],
     '../settings/DiscordSetupConfirmation': ['DiscordSetupConfirmation'],
     '../mail/MailView': ['MailView'], '../calendar/CalendarView': ['CalendarView'],
     './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],

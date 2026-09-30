@@ -60,6 +60,14 @@
   flex: 1 1 auto;
 }
 
+.more {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-default);
+}
+
 .content[data-has-results='true'] {
   gap: 0;
   padding: 0;

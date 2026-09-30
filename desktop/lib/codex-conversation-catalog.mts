@@ -377,7 +377,8 @@ export class CodexConversationCatalog {
         const chain = chainFor(ledger, entry.location.threadId);
         if (chain?.deleted || chain?.confirmedDeletions?.length || (chain && !sameLocation(chain.current, entry.location))) continue;
         const session = conversationSession(entry, chain, entries);
-        if (session) sessions.set(entry.location.threadId, { ...session, profileId: entry.location.profileId });
+        if (session) sessions.set(entry.location.threadId, { ...session, profileId: entry.location.profileId,
+          ...(typeof entry.thread.path === 'string' ? { historyPath: entry.thread.path } : {}) });
       }
       for (const chain of ledger.chains) {
         if (chain.deleted || !chain.confirmedDeletions?.length || chain.deletionCwd !== resolve(this.options.cwd)) continue;

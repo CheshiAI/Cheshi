@@ -13,6 +13,10 @@ export function useChatHistorySearch(contextId: string, workspaceContextIds?: re
   const [result, setResult] = useState<ChatHistorySearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
+  const active = useRef<{ request: ChatHistorySearchRequest; response: ChatHistorySearchResponse; sequence: number } | null>(null);
+  const morePending = useRef<object | null>(null);
   const sequence = useRef(0);
   const mounted = useRef(false);
   const scope = useRef(contextId);
@@ -32,6 +36,10 @@ export function useChatHistorySearch(contextId: string, workspaceContextIds?: re
     setResult(null);
     setError(null);
     setLoading(false);
+    active.current = null;
+    morePending.current = null;
+    setLoadingMore(false);
+    setMoreError(null);
   }, []);
 
   const reset = useCallback(() => {
@@ -46,6 +54,8 @@ export function useChatHistorySearch(contextId: string, workspaceContextIds?: re
     return () => {
       mounted.current = false;
       sequence.current += 1;
+      active.current = null;
+      morePending.current = null;
       invalidateCache();
     };
   }, [contextId, reset, invalidateCache]);
@@ -70,6 +80,10 @@ export function useChatHistorySearch(contextId: string, workspaceContextIds?: re
   const search = useCallback(async (request: ChatHistorySearchRequest): Promise<void> => {
     if (!mounted.current || scope.current !== contextId) return;
     const current = ++sequence.current;
+    active.current = null;
+    morePending.current = null;
+    setLoadingMore(false);
+    setMoreError(null);
     setError(null);
     try {
       const normalized = chatHistorySearchRequest(request);
@@ -89,6 +103,7 @@ export function useChatHistorySearch(contextId: string, workspaceContextIds?: re
         cache.current.delete(key);
         cache.current.set(key, cached);
         setResult(cached.response);
+        active.current = { request: normalized, response: cached.response, sequence: current };
         setLoading(false);
         return;
       }
@@ -103,7 +118,8 @@ export function useChatHistorySearch(contextId: string, workspaceContextIds?: re
         };
         entry.promise = entry.promise.then(response => {
           // Display an already requested snapshot, but never cache it across a history change.
-          if (mounted.current && revision.current === requestRevision && response.unavailableSessions.length === 0) {
+          // Pageable results belong to a bounded server snapshot; never revive an evicted cursor from the UI cache.
+          if (mounted.current && revision.current === requestRevision && response.unavailableSessions.length === 0 && !response.nextCursor && !response.indexState) {
             cache.current.delete(key);
             cache.current.set(key, { response, storedAt: Date.now() });
             if (cache.current.size > RESULT_CACHE_LIMIT) {
@@ -119,7 +135,10 @@ export function useChatHistorySearch(contextId: string, workspaceContextIds?: re
         task = entry;
       }
       const response = await task.promise;
-      if (mounted.current && sequence.current === current) setResult(response);
+      if (mounted.current && sequence.current === current) {
+        active.current = { request: normalized, response, sequence: current };
+        setResult(response);
+      }
     } catch (reason) {
       if (mounted.current && sequence.current === current) {
         setResult(null);
@@ -130,5 +149,31 @@ export function useChatHistorySearch(contextId: string, workspaceContextIds?: re
     }
   }, [contextId, invalidateCache]);
 
-  return { result, loading, error, search, clear, reset };
+  const loadMore = useCallback(async (): Promise<void> => {
+    const snapshot = active.current;
+    if (!mounted.current || scope.current !== contextId || morePending.current || !snapshot?.response.nextCursor) return;
+    const token = {};
+    morePending.current = token;
+    setLoadingMore(true);
+    setMoreError(null);
+    const isCurrent = () => mounted.current && sequence.current === snapshot.sequence && active.current === snapshot;
+    try {
+      if (!cheshiDesktop?.searchCodexChatHistory) throw new Error('Restart Cheshi to search chat history.');
+      const page = await cheshiDesktop.searchCodexChatHistory({ ...snapshot.request, refresh: false,
+        cursor: snapshot.response.nextCursor }, contextId);
+      if (!isCurrent()) return;
+      const response = { ...page, hits: [...snapshot.response.hits, ...page.hits] };
+      active.current = { ...snapshot, response };
+      setResult(response);
+    } catch (reason) {
+      if (isCurrent()) setMoreError(errorMessage(reason));
+    } finally {
+      if (morePending.current === token) {
+        morePending.current = null;
+        setLoadingMore(false);
+      }
+    }
+  }, [contextId]);
+
+  return { result, loading, error, loadingMore, moreError, search, loadMore, clear, reset };
 }

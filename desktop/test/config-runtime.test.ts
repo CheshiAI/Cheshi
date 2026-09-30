@@ -231,7 +231,7 @@ test('packages every relative runtime import reachable from the Electron entrypo
   if (typeof shouldIgnore !== 'function') throw new Error('Forge ignore configuration is unavailable.');
 
   const { main } = JSON.parse(readFileSync(path.join(rootDirectory, 'package.json'), 'utf8'));
-  const pending = [path.join(rootDirectory, main)];
+  const pending = [path.join(rootDirectory, main), path.join(rootDirectory, 'desktop/lib/chat-search-worker.mts')];
   const visited = new Set<string>();
   while (pending.length > 0) {
     const sourcePath = pending.pop();

@@ -219,6 +219,7 @@ const codexChatContexts = new CodexChatContexts({
   createClient: createChatClient,
   service: chatServiceOptions,
   emit: (ownerId, event) => {
+    chatHistorySearch.changed(event);
     notifications.event(String(event.contextId ?? 'main'), event);
     const window = workspaceWindows().find((candidate) => candidate.webContents.id === ownerId);
     rendererEvents.send(window ?? null, CODEX_CHAT_EVENT_CHANNEL, event);
@@ -246,6 +247,7 @@ const accountSwitch = workspaceAccounts.register({
   schedulerBusy: () => workspaceScheduler.busy,
   resetTemporary: () => codeExplanation.reset(),
   emit: snapshot => {
+    chatHistorySearch.changed({ type: 'sessions-changed' });
     onAccountsChanged?.(snapshot);
     for (const window of workspaceWindows()) rendererEvents.send(window, 'cheshi:codex-accounts-changed', snapshot);
   },
@@ -289,6 +291,7 @@ const unsubscribeAccount = codexAccountService.onDidChange((status) => {
 });
 
 const unsubscribeChat = codexChatService.onEvent((event) => {
+  chatHistorySearch.changed(event);
   notifications.event('main', event);
   for (const window of workspaceWindows()) {
     rendererEvents.send(window, CODEX_CHAT_EVENT_CHANNEL, event);
@@ -911,7 +914,11 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
 
 async function initialize(): Promise<BrowserWindow> {
   logStartup('electron ready');
-  void accountSwitch.ready().catch(error => {
+  void accountSwitch.ready().then(() => {
+    void chatHistorySearch.start().catch(error => {
+      if (!initialIndexAbort.signal.aborted) chatServiceOptions.log('chat-history-index-initialization-failed', { message: String(error) });
+    });
+  }).catch(error => {
     if (!initialIndexAbort.signal.aborted) chatServiceOptions.log('codex-account-initialization-failed', { message: String(error) });
   });
   if (options.initial) await startupScreen.setStatus('Preparing workspace…');

@@ -369,6 +369,7 @@ export function AppShell() {
           }>
           {activeView === 'search' && <ChatHistorySearchPage query={submittedSearchQuery}
             result={historySearch.result} loading={historySearch.loading} error={historySearch.error}
+            loadingMore={historySearch.loadingMore} moreError={historySearch.moreError} onLoadMore={historySearch.loadMore}
             selectionDisabled={chatSessionSelectionDisabled} onOpen={openHistorySearchHit}
             onRefresh={() => submitHistorySearch(true)} onClose={() => navigate('chat')}
             rightSidebarOpen={rightSidebarOpen}

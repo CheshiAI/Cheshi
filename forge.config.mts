@@ -49,6 +49,9 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 3 && (segments.length !== 4 || !schedulerFiles.has(segments[3] ?? ''));
   }
   const packagedLibraryFiles = new Set([
+    'chat-search-grams.mts', 'chat-search-database.mts', 'chat-search-index.mts', 'chat-search-query.mts',
+    'chat-search-source.mts', 'chat-search-worker.mts', 'chat-search-worker-client.mts', 'chat-search-service.mts',
+    'chat-history-search-pages.mts',
     'workspace-chat-service-options.mts',
     'codex-workspace-activity.mts',
     'notification-events.mts',

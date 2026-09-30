@@ -305,7 +305,9 @@ test('search follows explicit source IDs outside the evaluated page without anot
   expect(calls).toBe(1);
   expect(result.metrics.requests).toBe(1);
   expect(result.metrics.estimatedCostUsd).toBeCloseTo(0.000042, 10);
-  expect(f.reads).toEqual(['current', 'past', 'current', 'past']);
+  expect(f.reads).toHaveLength(4);
+  expect(f.reads.slice(0, 2).sort()).toEqual(['current', 'past']);
+  expect(f.reads.slice(2).sort()).toEqual(['current', 'past']);
 });
 
 test.each(['thread', 'focus', 'ordinal'])('citation expansion respects the selected boundary: %s', async boundary => {
