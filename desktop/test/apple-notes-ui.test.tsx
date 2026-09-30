@@ -343,6 +343,24 @@ test('search distinguishes loading, incomplete results and a completed empty res
   expect(find(render(), element => element.props.role === 'status').props.children).toBe('No matching notes.');
 });
 
+test('indexed body previews render as text without duplicating footer index progress', () => {
+  const browserState = state();
+  Object.assign(browserState, { searchQuery: 'body', searching: true, searchStatus: 'Preparing note search… 2/10',
+    searchResults: [{ folderId: 'folder', notes: [{ ...note, snippet: '<img src=x onerror=alert(1)>' }] }],
+    searchNextOffset: 100, searchTotal: 125 });
+  const app = harness<typeof AppleNotesBrowser>('AppleNotesBrowser.tsx', 'AppleNotesBrowser', browserState);
+  const tree = app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })), onAttach: async () => true }));
+  expect(find(tree, element => element.type === 'loading-state').props.label).toBe('Searching all notes…');
+  expect(renderToStaticMarkup(tree)).not.toContain('Preparing note search');
+  const preview = find(tree, element => element.type === 'small' && element.props.children === '<img src=x onerror=alert(1)>');
+  expect(renderToStaticMarkup(preview)).toContain('&lt;img');
+  expect(renderToStaticMarkup(preview)).not.toContain('<img');
+  expect(renderToStaticMarkup(tree)).toContain('Load more results');
+  browserState.searchQuery = '';
+  const idleTree = app.render(component => component({ api: api(async () => ({ ok: true, value: { id: 'new', title: 'New' } })), onAttach: async () => true }));
+  expect(renderToStaticMarkup(idleTree)).not.toContain('Preparing note search');
+});
+
 test('search and refresh share one loader above the folders regardless of expanded results', () => {
   const browserState = state();
   browserState.folders.push({ id: 'local', name: 'Notes', path: 'Notes', account: 'On My Mac', isDefault: false });

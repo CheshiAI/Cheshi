@@ -1,3 +1,4 @@
+import { notesSearchRequest, notesSearchResponse, notesSearchStatus } from '../shared/apple-notes-search.ts';
 import type { IpcRenderer } from 'electron';
 import {
   appleNote, appleNoteCreated, appleNoteCreateInput, appleNotesFolders, appleNotesId, appleNotesOffset, appleNotesPage, readAppleNotesReply,
@@ -9,6 +10,8 @@ import { appleNoteDocument, appleNoteUpdateInput, APPLE_NOTES_UPDATE_UNKNOWN_MES
 export function createAppleNotesApi(ipc: Pick<IpcRenderer, 'invoke'>, platform: string): AppleNotesApi {
   return {
     available: platform === 'darwin',
+    searchStatus: async () => readAppleNotesReply(await ipc.invoke('cheshi:apple-notes-search-status'), notesSearchStatus),
+    search: async request => readAppleNotesReply(await ipc.invoke('cheshi:apple-notes-search', notesSearchRequest(request)), notesSearchResponse),
     folders: async (forceRefresh) => readAppleNotesReply(
       await ipc.invoke('cheshi:apple-notes-folders', ...appleNotesForceRefresh(forceRefresh) ? [true] : []), appleNotesFolders),
     list: async (folderId, offset = 0) => readAppleNotesReply(

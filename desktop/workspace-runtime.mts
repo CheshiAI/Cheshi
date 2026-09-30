@@ -1,3 +1,4 @@
+import { AppleNotesService } from './lib/apple-notes-service.mts';
 import { createWorkspaceScheduler } from './lib/scheduler/workspace.mts';
 import { createWorkspaceNotifications } from './lib/workspace-notifications.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
@@ -510,7 +511,9 @@ ipcMain.handle(
   (_event, attachmentPath) => codexChatAttachmentPreviewUrl(attachmentPath),
 );
 const sessionStores = createWorkspaceSessionStores(ipcMain, codeGraphDirectory, assertCheshiSender);
+const appleNotesService = new AppleNotesService({ activationEvents: app, searchFilename: path.join(userDataDirectory, 'apple-notes', 'search.sqlite') });
 registerCodexChatIpc({
+  notesService: appleNotesService,
   ipc: ipcMain, accountIpc, service: chatServiceFor, relays: codexChatRelays, assertSender: assertCheshiSender,
   savedTurns: codexChatSavedTurns,
   historySearch: chatHistorySearch,
@@ -914,6 +917,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
 
 async function initialize(): Promise<BrowserWindow> {
   logStartup('electron ready');
+  void appleNotesService.start().catch(error => chatServiceOptions.log('memo-search-start-failed', { message: String(error) }));
   void accountSwitch.ready().then(() => {
     void chatHistorySearch.start().catch(error => {
       if (!initialIndexAbort.signal.aborted) chatServiceOptions.log('chat-history-index-initialization-failed', { message: String(error) });
@@ -973,7 +977,7 @@ function dispose(): Promise<void> {
     });
     const results = await Promise.allSettled([
       codexChatService.stop(),
-      historyMcp.stop(), chatHistorySearch.stop(),
+      historyMcp.stop(), chatHistorySearch.stop(), appleNotesService.stop(),
       temporaryChats.stop(),
       localHistory.dispose(),
       managementDisposal,

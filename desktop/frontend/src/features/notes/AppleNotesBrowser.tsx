@@ -148,14 +148,14 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
                   <MemoFolderContents expanded={expanded}>
                   {expanded && <div id={contentId} className={styles.folderNotes} role="region" aria-label="Notes">
                     {notes.map(note => <TooltipTarget key={note.id} content={note.locked ? `${note.title || 'Untitled note'} · Password protected` : note.title}><button type="button" className={styles.noteRow}
-                      data-locked={note.locked} aria-pressed={!newDraft && state.selectedId === note.id} disabled={navigationDisabled}
+                      data-search-result={searching && 'snippet' in note && !!note.snippet} data-locked={note.locked} aria-pressed={!newDraft && state.selectedId === note.id} disabled={navigationDisabled}
                       onClick={() => { if (!navigationDisabled) {
                         onOpen?.();
                         if (searching) setExpandedFolderId(folder.id);
                         void browser.selectNote(note.id, searching ? folder.id : undefined);
                       } }}>
                       {note.locked && <LockKeyhole className={styles.noteLock} aria-hidden="true" />}
-                      <span>{note.title || 'Untitled note'}</span>
+                      <span>{note.title || 'Untitled note'}{searching && 'snippet' in note && typeof note.snippet === 'string' && <small className={styles.searchSnippet}>{note.snippet}</small>}</span>
                     </button></TooltipTarget>)}
                     {!searching && !state.loadingFolders && !state.loadingNotes && notes.length === 0 && <p className={styles.treeMessage}>
                       This folder has no notes.
@@ -167,6 +167,8 @@ export function AppleNotesBrowser({ api, onAttach, attachmentDisabled = false, r
                 </li>;
               })}
             </ul>
+            {searching && state.searchNextOffset != null && <button type="button" className={styles.loadMore}
+              disabled={state.searching} onClick={() => void browser.loadMoreSearch()}>Load more results ({state.searchNextOffset} of {state.searchTotal})</button>}
             {searching && state.searchError && <p className={styles.treeMessage} role="alert">{state.searchError}</p>}
             {searching && !loading && !state.searchError && state.folders.length > 0 && visibleFolders.length === 0
               && <p className={styles.treeMessage} role="status">No matching notes.</p>}

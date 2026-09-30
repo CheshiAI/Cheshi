@@ -1,0 +1,15 @@
+.status {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding-inline: var(--space-10);
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}

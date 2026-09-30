@@ -3,9 +3,11 @@ import type { AppleNotesService } from './apple-notes-service.mts';
 
 export function registerAppleNotesIpc({ ipcMain, service, assertSender }: {
   ipcMain: Pick<IpcMain, 'handle'>;
-  service: Pick<AppleNotesService, 'folders' | 'list' | 'read' | 'open' | 'create' | 'delete' | 'document' | 'update'>;
+  service: Pick<AppleNotesService, 'searchStatus' | 'search' | 'folders' | 'list' | 'read' | 'open' | 'create' | 'delete' | 'document' | 'update'>;
   assertSender: (event: IpcMainInvokeEvent) => void;
 }): void {
+  ipcMain.handle('cheshi:apple-notes-search-status', event => { assertSender(event); return service.searchStatus(); });
+  ipcMain.handle('cheshi:apple-notes-search', (event, request) => { assertSender(event); return service.search(request); });
   ipcMain.handle('cheshi:apple-notes-folders', (event, forceRefresh) => { assertSender(event); return service.folders(forceRefresh); });
   ipcMain.handle('cheshi:apple-notes-list', (event, folderId, offset) => { assertSender(event); return service.list(folderId, offset); });
   ipcMain.handle('cheshi:apple-notes-read', (event, noteId) => { assertSender(event); return service.read(noteId); });

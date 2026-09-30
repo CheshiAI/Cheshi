@@ -42,12 +42,13 @@ type ChatIpcOptions = {
   historySearch?: Pick<ChatHistorySearch, 'search' | 'remove'>;
   savedTurns: Pick<CodexChatSavedTurns, 'list' | 'save' | 'delete'>;
   assertSender(event: IpcMainInvokeEvent): void;
+  notesService?: AppleNotesService;
   beforeMessage?(): Promise<void>;
   prepareMessage(value: unknown): Promise<{ text: string; clientMessageId: string; skill: unknown; attachments: ChatAttachment[]; threadId?: string | null }>;
 };
 
-export function registerCodexChatIpc({ ipc, accountIpc, service, relays, deletion, savedTurns, historySearch, assertSender, prepareMessage, beforeMessage }: ChatIpcOptions) {
-  registerAppleNotesIpc({ ipcMain: ipc, service: new AppleNotesService(), assertSender });
+export function registerCodexChatIpc({ ipc, accountIpc, service, relays, deletion, savedTurns, historySearch, assertSender, prepareMessage, beforeMessage, notesService }: ChatIpcOptions) {
+  registerAppleNotesIpc({ ipcMain: ipc, service: notesService ?? new AppleNotesService(), assertSender });
   registerAppleMailIpc({ ipcMain: ipc, service: new AppleMailService(), assertSender });
   registerAppleCalendarIpc({ ipcMain: ipc, service: new AppleCalendarService(), assertSender });
   ipc = accountIpc ?? ipc;

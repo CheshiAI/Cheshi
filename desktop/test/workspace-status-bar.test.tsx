@@ -67,6 +67,7 @@ function harness(props: ComponentProps<typeof WorkspaceStatusBar>) {
     '../updates/AppUpdateIndicator': { AppUpdateIndicator: 'AppUpdateIndicator' },
     './WorkspaceStorageUsage': { WorkspaceStorageUsage: 'WorkspaceStorageUsage' },
     './WorkspaceGitBranch': { WorkspaceGitBranch: 'WorkspaceGitBranch' },
+    '../notes/NotesSearchStatus': { NotesSearchStatus: 'NotesSearchStatus' },
     './LanguageSelector': { LanguageSelector: 'LanguageSelector' },
     './statusBarModel': { accountStatusSummary, accountUsageTotals },
     './WorkspaceStatusBar.module.css': { default: {} },
@@ -111,6 +112,7 @@ test('connects initially closed native popovers and keeps their startup panels m
   const tree = harness({ onAccountInitialLoad: () => { accountReady++; }, onIndexInitialLoad: () => { indexReady++; } }).render();
   const footerItems = elements(tree).map(element => element.type);
   expect(footerItems.indexOf('WorkspaceGitBranch')).toBe(footerItems.indexOf('WorkspaceStorageUsage') + 1);
+  expect(footerItems.indexOf('NotesSearchStatus')).toBe(footerItems.indexOf('WorkspaceGitBranch') + 1);
   const triggers = elements(tree).filter(element => element.type === 'button');
   const popovers = elements(tree).filter(element => element.props.popover === 'auto');
   expect(triggers).toHaveLength(2);

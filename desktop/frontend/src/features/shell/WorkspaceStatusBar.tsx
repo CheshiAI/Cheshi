@@ -10,6 +10,7 @@ import { AppUpdateIndicator } from '../updates/AppUpdateIndicator';
 import { accountStatusSummary, accountUsageTotals } from './statusBarModel';
 import { WorkspaceStorageUsage } from './WorkspaceStorageUsage';
 import { WorkspaceGitBranch } from './WorkspaceGitBranch';
+import { NotesSearchStatus } from '../notes/NotesSearchStatus';
 import styles from './WorkspaceStatusBar.module.css';
 
 interface WorkspaceStatusBarProps extends Pick<NonNullable<ComponentProps<typeof AccountUsagePanel>>,
@@ -55,6 +56,7 @@ export function WorkspaceStatusBar({ onAccountInitialLoad, onIndexInitialLoad, .
     <footer className={styles.bar} aria-label="Workspace status">
       <WorkspaceStorageUsage />
       <WorkspaceGitBranch />
+      <NotesSearchStatus />
       <AppUpdateIndicator />
       <button type="button" className={`${styles.item} ${styles.index}`} popoverTarget={indexId}
         aria-haspopup="dialog" aria-expanded={indexOpen} aria-controls={indexId}

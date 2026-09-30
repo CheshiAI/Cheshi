@@ -4,6 +4,10 @@ import {
 import type { AppleNotesErrorCode, AppleNotesReply } from '../shared/apple-notes.ts';
 import { appleNotesScript, type AppleNotesCommand } from './apple-notes-script.mts';
 import { AppleNotesProcessError, runAppleNotesScript } from './apple-notes-process.mts';
+import { AppleNotesSearch } from './apple-notes-search.mts';
+import { notesSearchRequest } from '../shared/apple-notes-search.ts';
+import type { NotesSearchResponse, NotesSearchStatus } from '../shared/apple-notes-search.ts';
+import { readAppleNotesReply } from '../shared/apple-notes.ts';
 import { AppleNotesCache, type AppleNotesCacheOptions } from './apple-notes-cache.mts';
 import { appleNoteDocument, appleNoteUpdateInput, isEditableNoteHtml, APPLE_NOTES_UPDATE_UNKNOWN_MESSAGE } from '../shared/apple-notes-document.ts';
 
@@ -30,18 +34,83 @@ interface AppleNotesServiceOptions {
   platform?: NodeJS.Platform;
   execute?: (source: string) => Promise<string>;
   cache?: AppleNotesCacheOptions;
+  searchFilename?: string;
+  activationEvents?: {
+    on(event: 'did-become-active' | 'did-resign-active', listener: () => void): unknown;
+    off(event: 'did-become-active' | 'did-resign-active', listener: () => void): unknown;
+  };
 }
 
 export class AppleNotesService {
   private readonly platform: NodeJS.Platform;
   private readonly execute: (source: string) => Promise<string>;
   private readonly cache: AppleNotesCache;
+  private readonly searchFilename: string | undefined;
+  private searchIndex: AppleNotesSearch | null = null;
+  private readonly activationEvents: AppleNotesServiceOptions['activationEvents'];
+  private activationTimer: ReturnType<typeof setTimeout> | null = null;
+  private watchingActivation = false;
+  private inactive = false;
+  private stopped = false;
+  private readonly onInactive = () => {
+    this.inactive = true;
+    if (this.activationTimer) clearTimeout(this.activationTimer);
+    this.activationTimer = null;
+  };
+  private readonly onActive = () => {
+    if (this.stopped || !this.inactive) return;
+    this.inactive = false;
+    // Coalesce rapid app switches; this one-shot timer never schedules another scan.
+    this.activationTimer = setTimeout(() => {
+      this.activationTimer = null;
+      if (!this.stopped) this.searchIndex?.refresh();
+    }, 250);
+  };
   private readonly updates = new Map<string, Promise<unknown>>();
 
   constructor(options: AppleNotesServiceOptions = {}) {
     this.platform = options.platform ?? process.platform;
     this.execute = options.execute ?? runAppleNotesScript;
     this.cache = new AppleNotesCache(options.cache);
+    this.searchFilename = options.searchFilename;
+    this.activationEvents = options.activationEvents;
+  }
+
+  async search(value: unknown): Promise<AppleNotesReply<NotesSearchResponse>> {
+    if (this.platform !== 'darwin') return failure('unsupported');
+    let request: ReturnType<typeof notesSearchRequest>;
+    try { request = notesSearchRequest(value); } catch { return failure('invalid'); }
+    if (!this.searchFilename) return failure('unavailable');
+    try { return { ok: true, value: await this.ensureSearch().search(request) }; }
+    catch { return failure('unavailable'); }
+  }
+  private ensureSearch() {
+    if (!this.searchFilename) throw new Error('Note search storage is unavailable.');
+    return this.searchIndex ??= new AppleNotesSearch(this.searchFilename, {
+      folders: async () => readAppleNotesReply(await this.executeRequest({ action: 'folders' }, appleNotesFolders), appleNotesFolders),
+      list: async (folderId, offset) => readAppleNotesReply(await this.executeRequest({ action: 'list', folderId, offset }, appleNotesPage), appleNotesPage),
+      read: async noteId => readAppleNotesReply(await this.executeRequest({ action: 'read', noteId }, appleNote), appleNote),
+    });
+  }
+  async start() {
+    if (this.stopped || this.platform !== 'darwin' || !this.searchFilename) return;
+    if (!this.watchingActivation) {
+      this.activationEvents?.on('did-resign-active', this.onInactive);
+      this.activationEvents?.on('did-become-active', this.onActive);
+      this.watchingActivation = true;
+    }
+    await this.ensureSearch().start();
+  }
+  searchStatus(): AppleNotesReply<NotesSearchStatus> {
+    return { ok: true, value: this.searchIndex?.status() ?? { state: 'idle', completed: 0, pending: 0, error: null } };
+  }
+  async stop() {
+    this.stopped = true;
+    if (this.activationTimer) clearTimeout(this.activationTimer);
+    this.activationTimer = null;
+    this.activationEvents?.off('did-resign-active', this.onInactive);
+    this.activationEvents?.off('did-become-active', this.onActive);
+    await this.searchIndex?.stop();
   }
 
   folders(forceRefresh: unknown = false) {
@@ -101,8 +170,11 @@ export class AppleNotesService {
       }
     };
     invalidate();
+    const changedId = request.action === 'create' ? undefined : request.noteId;
+    // Search failures must not turn a confirmed native mutation into an uncertain save.
+    await this.searchIndex?.invalidate(changedId).catch(() => undefined);
     try { return await this.executeRequest(request, parse); }
-    finally { invalidate(); }
+    finally { invalidate(); await this.searchIndex?.invalidate(changedId).catch(() => undefined); }
   }
 
   private async executeRequest<T>(request: AppleNotesCommand, parse: (value: unknown) => T): Promise<AppleNotesReply<T>> {

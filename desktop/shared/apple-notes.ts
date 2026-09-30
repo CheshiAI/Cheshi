@@ -50,6 +50,8 @@ export type AppleNotesReply<T> = { ok: true; value: T }
 
 export interface AppleNotesApi {
   available: boolean;
+  searchStatus?(): Promise<import('./apple-notes-search.ts').NotesSearchStatus>;
+  search?(request: import('./apple-notes-search.ts').NotesSearchRequest): Promise<import('./apple-notes-search.ts').NotesSearchResponse>;
   folders(forceRefresh?: boolean): Promise<AppleNotesFolder[]>;
   list(folderId: string, offset?: number): Promise<AppleNotesPage>;
   read(noteId: string): Promise<AppleNote>;

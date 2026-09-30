@@ -163,3 +163,6 @@
   .folderChevron { transition: none; }
   .folderReveal { transition: none; }
 }
+
+.noteRow[data-search-result='true'] { height: auto; min-height: 42px; padding-block: var(--icon-default); }
+.searchSnippet { display: block; margin-top: 4px; color: var(--sidebar-section-label-color); font-size: var(--font-size-small); line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }

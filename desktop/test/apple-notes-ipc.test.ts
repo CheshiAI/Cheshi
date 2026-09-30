@@ -4,12 +4,39 @@ import { registerAppleNotesIpc } from '../lib/apple-notes-ipc.mts';
 import { createAppleNotesApi } from '../lib/apple-notes-preload.cts';
 import { AppleNotesService } from '../lib/apple-notes-service.mts';
 import { appleNote, readAppleNotesReply } from '../shared/apple-notes.ts';
+import type { NotesSearchResponse } from '../shared/apple-notes-search.ts';
 
 async function expectFailure(operation: Promise<unknown>, message: RegExp) {
   try { await operation; }
   catch (error) { expect(error instanceof Error ? error.message : String(error)).toMatch(message); return; }
   throw new Error('Expected the operation to fail.');
 }
+
+test('search validates requests before IPC and rejects malformed indexed hits', async () => {
+  const calls: unknown[][] = [];
+  const result: NotesSearchResponse = { hits: [], folders: [], total: 0, nextOffset: null, version: '1',
+    state: 'ready', completed: 0, pending: 0, error: null };
+  let reply: unknown = { ok: true, value: result };
+  const api = createAppleNotesApi({ invoke: async (...args: unknown[]) => { calls.push(args); return reply; } }, 'darwin');
+  for (const request of [{ query: 'word', refresh: 'true' }, { query: 'word', offset: -1 }, { query: '\0' }]) {
+    await expectFailure(api.search!(request as Parameters<NonNullable<typeof api.search>>[0]), /Invalid note search/);
+  }
+  expect(calls).toHaveLength(0);
+  expect(await api.search!({ query: ' 읽기 ' })).toEqual(result);
+  expect(calls[0]).toEqual(['cheshi:apple-notes-search', { query: '읽기', offset: 0, version: '', refresh: false }]);
+  reply = { ok: true, value: { ...result, hits: [{ id: 'one', title: 'Title', modifiedAt: '', locked: 'false', folderId: 'folder' }] } };
+  await expectFailure(api.search!({ query: 'Title' }), /flag/);
+});
+
+test('search status uses its read-only channel and validates progress', async () => {
+  const channels: string[] = [];
+  let reply: unknown = { ok: true, value: { state: 'building', completed: 19, pending: 102, error: null } };
+  const api = createAppleNotesApi({ invoke: async channel => { channels.push(channel); return reply; } }, 'darwin');
+  expect(await api.searchStatus!()).toMatchObject({ state: 'building', completed: 19, pending: 102 });
+  expect(channels).toEqual(['cheshi:apple-notes-search-status']);
+  reply = { ok: true, value: { state: 'building', completed: '19', pending: 102, error: null } };
+  await expectFailure(api.searchStatus!(), /Invalid note search status/);
+});
 
 test('checks every Apple Notes IPC sender before touching Notes', async () => {
   const handlers = new Map<string, Parameters<IpcMain['handle']>[1]>();
@@ -22,7 +49,7 @@ test('checks every Apple Notes IPC sender before touching Notes', async () => {
   });
   const event = { sender: { id: 1 } } as IpcMainInvokeEvent;
   for (const handler of handlers.values()) expect(() => handler(event, 'id')).toThrow('Untrusted sender');
-  expect(handlers.size).toBe(8);
+  expect(handlers.size).toBe(10);
   expect(executions).toBe(0);
   allowed = true;
   expect(await handlers.get('cheshi:apple-notes-folders')?.(event)).toEqual({ ok: true, value: [] });
@@ -92,6 +119,8 @@ test('delete validates the target and requires a matching acknowledgement across
   const targets: unknown[] = [];
   registerAppleNotesIpc({ ipcMain: { handle: (channel, handler) => { handlers.set(channel, handler); } },
     assertSender() {}, service: {
+      searchStatus: () => ({ ok: true, value: { state: 'idle', completed: 0, pending: 0, error: null } }),
+      search: async () => ({ ok: false, error: { code: 'unavailable', message: 'Unavailable' } }),
       open: async () => ({ ok: true, value: true }),
       folders: async () => ({ ok: true, value: [] }), list: async () => ({ ok: true, value: { notes: [], nextOffset: null } }),
       document: async () => ({ ok: false, error: { code: 'not-found', message: 'Missing' } }),

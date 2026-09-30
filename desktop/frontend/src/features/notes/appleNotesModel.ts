@@ -25,7 +25,10 @@ export interface AppleNotesBrowserState {
   loadingNote: boolean;
   error: string | null;
   searchQuery: string;
-  searchResults: { folderId: string; notes: AppleNoteSummary[] }[];
+  searchResults: { folderId: string; notes: (AppleNoteSummary & { snippet?: string })[] }[];
+  searchStatus?: string;
+  searchNextOffset?: number | null;
+  searchTotal?: number;
   searching: boolean;
   searchError: string | null;
 }
@@ -44,7 +47,9 @@ export function createAppleNotesBrowser(api: AppleNotesApi, browse: boolean, now
     nextOffset: null, loadingFolders: false, loadingNotes: false, refreshingNotes: false, loadingNote: false, error: null,
     searchQuery: '', searchResults: [], searching: false, searchError: null };
   const folderCache = new Map<string, FolderNotesCache>();
-  const searchFolders = new Map<string, FolderNotesCache>();
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  let searchVersion = '';
+  const cancelSearchTimer = () => { if (searchTimer) clearTimeout(searchTimer); searchTimer = null; };
   const cacheTtlMs = 30_000;
   const listeners = new Set<() => void>();
   let active = true;
@@ -63,50 +68,55 @@ export function createAppleNotesBrowser(api: AppleNotesApi, browse: boolean, now
     folderCache.set(id, entry);
     if (folderCache.size > 128) folderCache.delete(folderCache.keys().next().value!);
   };
-  const publishSearch = () => {
-    const query = state.searchQuery.trim().toLocaleLowerCase();
-    update({ searchResults: query ? state.folders.flatMap(folder => {
-      const notes = searchFolders.get(folder.id)?.notes.filter(note => note.title.toLocaleLowerCase().includes(query)) ?? [];
-      return notes.length ? [{ folderId: folder.id, notes }] : [];
-    }) : [] });
-  };
-  const search = async (query: string, options: { debounce?: boolean } = {}) => {
+  const search = async (query: string, options: { debounce?: boolean; refresh?: boolean; more?: boolean } = {}) => {
     if (!active) return;
     const request = ++searchRequest;
-    searchFolders.clear();
-    update({ searchQuery: query, searchResults: [], searching: !!query.trim(), searchError: null });
-    if (!query.trim()) return;
-    if (options.debounce === true) {
+    cancelSearchTimer();
+    const more = options.more === true;
+    const offset = more ? state.searchNextOffset : 0;
+    if (more && offset == null) return;
+    update({ searchQuery: query, ...(more ? {} : { searchResults: [], searchNextOffset: null }),
+      searching: !!query.trim(), searchError: null });
+    if (options.debounce === true && query.trim()) {
       await new Promise<void>(resolve => setTimeout(resolve, 250));
       if (!active || request !== searchRequest) return;
     }
-    let failures = 0;
-    for (const folder of state.folders) {
-      if (!active || request !== searchRequest) return;
-      const cached = folderCache.get(folder.id);
-      let entry: FolderNotesCache = cached && cached.expiresAt > now()
-        ? cached : { notes: [], nextOffset: 0, pages: 0, expiresAt: now() + cacheTtlMs };
-      searchFolders.set(folder.id, entry);
-      publishSearch();
+    if (!api.search) {
+      update({ searching: false, searchStatus: '', searchError: query.trim() ? 'Note search is unavailable. Restart Cheshi.' : null });
+      return;
+    }
+    const load = async (first: boolean) => {
       try {
-        while (entry.nextOffset !== null) {
-          const offset = entry.nextOffset;
-          const page = await api.list(folder.id, offset);
+        let result = await api.search!({ query, offset: first && more ? offset! : 0,
+          ...(first && more ? { version: searchVersion } : {}), refresh: first && options.refresh === true });
+        if (!active || request !== searchRequest) return;
+        // Keep already expanded pages when background indexing refreshes the results.
+        const retainedCount = state.searchResults.reduce((count, group) => count + group.notes.length, 0);
+        while (!first && result.nextOffset !== null && result.hits.length < retainedCount) {
+          const page = await api.search!({ query, offset: result.nextOffset, version: result.version });
           if (!active || request !== searchRequest) return;
-          if (page.nextOffset !== null && page.nextOffset <= offset) throw new Error('Apple Notes returned an invalid page.');
-          entry = { ...entry, notes: [...new Map([...entry.notes, ...page.notes].map(note => [note.id, note])).values()],
-            nextOffset: page.nextOffset, pages: entry.pages + 1 };
-          searchFolders.set(folder.id, entry);
-          cacheFolder(folder.id, entry);
-          publishSearch();
+          result = { ...page, hits: [...result.hits, ...page.hits] };
+        }
+        searchVersion = result.version;
+        const groups = new Map((first && more ? state.searchResults : []).map(group => [group.folderId, group.notes]));
+        for (const hit of result.hits) {
+          const notes = groups.get(hit.folderId) ?? [];
+          groups.set(hit.folderId, [...notes.filter(note => note.id !== hit.id), hit]);
+        }
+        const updating = result.state === 'building' || result.state === 'updating';
+        update({ searchResults: [...groups].map(([folderId, notes]) => ({ folderId, notes })),
+          ...(result.folders.length ? { folders: result.folders } : {}),
+          searching: !!query.trim() && updating, searchNextOffset: result.nextOffset, searchTotal: result.total,
+          searchStatus: updating ? `${result.state === 'building' ? 'Preparing note search' : 'Updating note search'}… ${result.completed}/${result.pending}` : '',
+          searchError: result.error });
+        if (updating || query.trim()) {
+          searchTimer = setTimeout(() => { searchTimer = null; if (active && request === searchRequest) void load(false); }, updating ? 500 : 30_000);
         }
       } catch (error) {
-        if (!active || request !== searchRequest) return;
-        failures += 1;
-        update({ searchError: `Search incomplete (${failures} folders). ${folder.account} / ${folder.path}: ${report(error)}` });
+        if (active && request === searchRequest) update({ searching: false, searchStatus: '', searchError: report(error) });
       }
-    }
-    if (active && request === searchRequest) update({ searching: false });
+    };
+    await load(true);
   };
   const restartSearch = () => { if (state.searchQuery.trim()) void search(state.searchQuery); };
 
@@ -156,7 +166,7 @@ export function createAppleNotesBrowser(api: AppleNotesApi, browse: boolean, now
     active = true;
     const request = ++folderRequest;
     ++searchRequest;
-    searchFolders.clear();
+    cancelSearchTimer();
     ++listRequest;
     ++noteRequest;
     if (forceRefresh === true) folderCache.clear();
@@ -172,7 +182,7 @@ export function createAppleNotesBrowser(api: AppleNotesApi, browse: boolean, now
         ?? folders.find(folder => folder.isDefault) ?? folders[0];
       update({ folders, loadingFolders: false });
       await selectFolder(selected?.id ?? '');
-      if (active && request === folderRequest) await search(state.searchQuery);
+      if (active && request === folderRequest) await search(state.searchQuery, { refresh: forceRefresh });
     } catch (error) {
       if (active && request === folderRequest) update({ error: report(error), folders: [], folderId: '', searching: false });
     } finally {
@@ -185,6 +195,7 @@ export function createAppleNotesBrowser(api: AppleNotesApi, browse: boolean, now
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     refresh,
     search,
+    loadMoreSearch: () => search(state.searchQuery, { more: true }),
     selectFolder,
     applyCreated: (folderId: string, note: AppleNote) => {
       if (!active) return;
@@ -252,10 +263,12 @@ export function createAppleNotesBrowser(api: AppleNotesApi, browse: boolean, now
       if (!active) return;
       if (folderId !== undefined) {
         const result = state.searchResults.find(group => group.folderId === folderId)?.notes.find(note => note.id === id);
-        const entry = searchFolders.get(folderId);
-        if (!result || !entry) return;
-        ++listRequest;
-        update({ folderId, notes: entry.notes, nextOffset: entry.nextOffset, loadingNotes: false, refreshingNotes: false });
+        if (!result) return;
+        const selection = selectFolder(folderId);
+        const selectionRequest = noteRequest;
+        await selection;
+        if (!active || selectionRequest !== noteRequest) return;
+        if (!state.notes.some(note => note.id === id)) update({ notes: [...state.notes, result] });
       }
       const request = ++noteRequest;
       const selected = state.notes.find(note => note.id === id);
@@ -274,6 +287,6 @@ export function createAppleNotesBrowser(api: AppleNotesApi, browse: boolean, now
         if (active && request === noteRequest) update({ loadingNote: false });
       }
     },
-    dispose: () => { active = false; folderCache.clear(); searchFolders.clear(); ++searchRequest; ++folderRequest; ++listRequest; ++noteRequest; },
+    dispose: () => { active = false; folderCache.clear(); cancelSearchTimer(); ++searchRequest; ++folderRequest; ++listRequest; ++noteRequest; },
   };
 }
