@@ -262,10 +262,14 @@ function SessionSync({ cache, api, load }: { cache: ChatSessionCache; api: Sched
   return null;
 }
 
+function sessionFixture(title: string, updatedAt: number): ChatSession {
+  return { id: 'background-thread', title, preview: '', createdAt: 1, updatedAt, status: 'idle' };
+}
+
 test('background run changes refresh the shared session list immediately, without polling or preference-triggered reads', async () => {
   await withDOM(async render => {
     const value = fixture(); const cache = createChatSessionCache(); let reads = 0;
-    const load = async (): Promise<ChatSession[]> => { reads++; return [{ id: 'background-thread', title: 'Scheduled result', updatedAt: reads }]; };
+    const load = async (): Promise<ChatSession[]> => { reads++; return [sessionFixture('Scheduled result', reads)]; };
     const snapshot: SchedulerSnapshot = { auto: false, schedules: [], runs: [value.run], attention: [], error: '' };
     value.setState(snapshot);
     await render(<SessionSync cache={cache} api={value.api} load={load} />);
@@ -289,13 +293,13 @@ test('completion during a pending session load invalidates the stale response', 
   await withDOM(async render => {
     const value = fixture(); const cache = createChatSessionCache();
     const gate = createSchedulerDeferred<ChatSession[]>(); let reads = 0;
-    const load = async (): Promise<ChatSession[]> => ++reads === 1 ? gate.promise : [{ id: 'background-thread', title: 'Completed result', updatedAt: 2 }];
+    const load = async (): Promise<ChatSession[]> => ++reads === 1 ? gate.promise : [sessionFixture('Completed result', 2)];
     const run = { ...value.run, threadId: 'background-thread', status: 'running' as const };
     const state: SchedulerSnapshot = { auto: false, schedules: [], runs: [run], attention: [], error: '' };
     value.setState(state);
     await render(<SessionSync cache={cache} api={value.api} load={load} />);
     await act(async () => value.setState({ ...state, runs: [{ ...run, status: 'completed', finishedAt: new Date().toISOString() }] }));
-    await act(async () => gate.resolve([{ id: 'background-thread', title: 'Old result', updatedAt: 1 }]));
+    await act(async () => gate.resolve([sessionFixture('Old result', 1)]));
     expect(reads).toBe(2); expect(cache.getSnapshot().sessions[0]?.title).toBe('Completed result');
   });
 });
