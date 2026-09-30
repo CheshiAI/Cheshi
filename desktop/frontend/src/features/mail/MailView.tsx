@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight, Folder, Mail, PanelRight, RefreshCw, SquarePen, Flag } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { SidebarToggle, LiquidGlassPanel, NeumorphicButton, TwoTierHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle } from '../../shared/ui';
+import { EmptyState, SidebarPanelHeader, SidebarToggle, LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { mailboxKey } from '../../../../shared/apple-mail';
 import type { AppleMailApi, Mailbox } from '../../../../shared/apple-mail';
 import { MailModel } from './mailModel';
@@ -13,10 +14,22 @@ import styles from './Mail.module.css';
 interface MailViewProps { rightSidebarOpen: boolean; onToggleRightSidebar: () => void }
 function received(date: string | null) { return date ? new Date(date).toLocaleString() : '날짜 없음'; }
 
+function MailHeader({ rightSidebarOpen, onToggleRightSidebar, actions }: MailViewProps & { actions?: ReactNode }) {
+  return <SidebarPanelHeader title="MAIL" icon={<Mail aria-hidden="true" />} actions={<>
+    {actions}
+    <SidebarToggle raised size="icon" aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
+      aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></SidebarToggle>
+  </>} />;
+}
+
 export function MailView(props: MailViewProps) {
   const api = cheshiDesktop?.appleMail;
   return api?.available ? <MailBrowser api={api} {...props} />
-    : <main className={styles.workspace}><p className={styles.notice}>Apple Mail 연동은 macOS용 Cheshi에서 사용할 수 있습니다.</p></main>;
+    : <main className={styles.workspace} aria-label="Mail">
+      <MailHeader {...props} />
+      <div className={styles.connect}><EmptyState className={styles.emptyState} title="Mail"
+        description="Apple Mail integration is available in Cheshi for macOS." /></div>
+    </main>;
 }
 
 export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar }: MailViewProps & { api: AppleMailApi }) {
@@ -33,25 +46,20 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar }: Mai
   }
   const busy = state.loadingBoxes || state.loadingPage || state.changing;
   return <main className={styles.workspace} aria-label="Mail">
-    <TwoTierHeader className={styles.header} style={draggableWindowRegionStyle} primary={<>
-      <div className={styles.heading}><Mail aria-hidden="true" /><h1>Mail</h1></div>
-      <div className={styles.actions} style={nonDraggableWindowRegionStyle}>
-        <NeumorphicButton raised size="icon" aria-label={composition.form ? '작성 중인 메일' : '새 메일 작성'} disabled={!state.connected}
-          onClick={() => void composer.start()}><SquarePen aria-hidden="true" /></NeumorphicButton>
-        <NeumorphicButton raised size="icon" aria-label="메일 새로고침" disabled={!state.connected || busy}
-          onClick={() => void model.connect()}><RefreshCw aria-hidden="true" /></NeumorphicButton>
-        <SidebarToggle raised size="icon" aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-          aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></SidebarToggle>
-      </div>
+    <MailHeader rightSidebarOpen={rightSidebarOpen} onToggleRightSidebar={onToggleRightSidebar} actions={<>
+      <TooltipButton size="icon" aria-label={composition.form ? '작성 중인 메일' : '새 메일 작성'}
+        title={composition.form ? '작성 중인 메일' : '새 메일 작성'} disabled={!state.connected}
+        onClick={() => void composer.start()}><SquarePen aria-hidden="true" /></TooltipButton>
+      <TooltipButton size="icon" aria-label="메일 새로고침" title="메일 새로고침" disabled={!state.connected || busy}
+        onClick={() => void model.connect()}><RefreshCw aria-hidden="true" /></TooltipButton>
     </>} />
     {composition.notice && <p className={styles.notice} role="status">{composition.notice}</p>}
     {state.changeError && <p className={styles.notice} role="alert">{state.changeError}</p>}
     {!state.connected ? <div className={styles.connect}>
-      <Mail aria-hidden="true" />
-      <p>Apple Mail의 메일함과 메일 본문을 확인할 수 있습니다.</p>
+      <EmptyState className={styles.emptyState} title="Mail" description="Browse your mailboxes and messages from Apple Mail." />
       {state.boxesError && <p role="alert">{state.boxesError}</p>}
-      <NeumorphicButton raised size="standard" disabled={state.loadingBoxes} onClick={() => void model.connect()}>
-        {state.loadingBoxes ? '연결 확인 중…' : 'Apple Mail 연결'}
+      <NeumorphicButton variant="standard" disabled={state.loadingBoxes} onClick={() => void model.connect()}>
+        {state.loadingBoxes ? 'Connecting…' : 'Connect Apple Mail'}
       </NeumorphicButton>
     </div> : <div className={styles.browser}>
       <LiquidGlassPanel as="aside" className={styles.mailboxes} aria-label="메일함">

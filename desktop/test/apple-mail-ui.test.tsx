@@ -3,9 +3,9 @@ import { Window } from 'happy-dom';
 import { act, type ReactNode } from 'react';
 import { MailBrowser } from '../frontend/src/features/mail/MailView';
 import { MAIL_ERRORS, mailFailure } from '../shared/apple-mail';
-import { mailApiFixture, mailMessageFixture, mailSuccess, mailBox } from './apple-mail-fixtures';
+import { createMailDeferred, mailApiFixture, mailMessageFixture, mailSuccess, mailBox } from './apple-mail-fixtures';
 import { mailComposer } from '../frontend/src/features/mail/mailComposer';
-import type { MailChange, MailSend } from '../shared/apple-mail';
+import type { Mailbox, MailChange, MailReply, MailSend } from '../shared/apple-mail';
 
 async function withMailDOM(run: (render: (node: ReactNode) => Promise<void>, document: Document) => Promise<void>) {
   const window = new Window();
@@ -38,7 +38,7 @@ test('Mail connects only on request and renders selected messages as inert plain
   await withMailDOM(async (render, document) => {
     await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
     expect(connections).toBe(0); expect(reads).toBe(0);
-    const connect = [...document.querySelectorAll('button')].find(button => button.textContent === 'Apple Mail 연결')!;
+    const connect = [...document.querySelectorAll('button')].find(button => button.textContent === 'Connect Apple Mail')!;
     await act(async () => connect.click());
     expect(connections).toBe(1); expect(reads).toBe(0);
     expect(document.querySelector('[aria-label="메일함"]')?.textContent).toContain('Personal');
@@ -63,7 +63,7 @@ test('Mail shows retrieval failures separately from an empty mailbox and can rec
     : mailSuccess({ messages: [], offset: 0, nextOffset: null }) });
   await withMailDOM(async (render, document) => {
     await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === 'Apple Mail 연결')!.click());
+    await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === 'Connect Apple Mail')!.click());
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS['invalid-response']);
     expect(document.body.textContent).not.toContain('메일이 없습니다.');
     fail = false;
@@ -73,14 +73,44 @@ test('Mail shows retrieval failures separately from an empty mailbox and can rec
   });
 });
 
-test('Mail permission denial keeps a reconnect action and does not show a false empty list', async () => {
+test('Mail keeps its header usable through connection, permission failure and successful retry', async () => {
+  const pending = createMailDeferred<MailReply<Mailbox[]>>();
+  let connections = 0;
+  let toggles = 0;
+  const api = mailApiFixture({ mailboxes: () => {
+    connections++;
+    return connections === 1 ? pending.promise : Promise.resolve(mailSuccess([mailBox]));
+  } });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser api={mailApiFixture({ mailboxes: async () => mailFailure('permission') })}
-      rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === 'Apple Mail 연결')!.click());
+    await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => { toggles++; }} />);
+    const header = document.querySelector('header')!;
+    expect(header.textContent).toContain('MAIL');
+    expect(button(document, '새 메일 작성').disabled).toBe(true);
+    expect(button(document, '메일 새로고침').disabled).toBe(true);
+    expect(connections).toBe(0);
+    const connect = button(document, 'Connect Apple Mail');
+    await act(async () => connect.click());
+    expect(connect.disabled).toBe(true);
+    expect(connect.textContent).toBe('Connecting…');
+    await act(async () => connect.click());
+    expect(connections).toBe(1);
+    await act(async () => button(document, 'Open right sidebar').click());
+    expect(toggles).toBe(1);
+    await act(async () => pending.resolve(mailFailure('permission')));
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS.permission);
     expect(document.querySelector('[aria-label="메일 목록"]')).toBeNull();
-    expect([...document.querySelectorAll('button')].find(button => button.textContent === 'Apple Mail 연결')?.disabled).toBe(false);
+    expect(button(document, 'Connect Apple Mail')).toBe(connect);
+    expect(connect.disabled).toBe(false);
+    await act(async () => connect.click());
+    expect(connections).toBe(2);
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(document.querySelector('[aria-label="메일 목록"]')).not.toBeNull();
+    expect(document.querySelector('header')).toBe(header);
+    expect(connect.isConnected).toBe(false);
+    expect(button(document, '새 메일 작성').disabled).toBe(false);
+    expect(button(document, '메일 새로고침').disabled).toBe(false);
+    await act(async () => button(document, '메일 새로고침').click());
+    expect(connections).toBe(3);
   });
 });
 
@@ -95,7 +125,7 @@ test('composer shows sender, cc and bcc review and requires an explicit second c
   const api = mailApiFixture({ send: async input => { sends.push(input); return mailSuccess({ operationId: input.operationId, accepted: true }); } });
   await withMailDOM(async (render, document) => {
     await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    await act(async () => button(document, 'Apple Mail 연결').click());
+    await act(async () => button(document, 'Connect Apple Mail').click());
     await act(async () => button(document, '새 메일 작성').click());
     await act(async () => mailComposer(api).edit({ to: 'friend@example.test', cc: 'cc@example.test', bcc: 'private@example.test', body: 'Hello', subject: 'Review me' }));
     expect(document.querySelector<HTMLInputElement>('[aria-label="메일 제목"]')?.value).toBe('Review me');
@@ -114,7 +144,7 @@ test('failed sends preserve displayed text after closing and reopening the compo
   const api = mailApiFixture({ send: async () => mailFailure('send-unknown') });
   await withMailDOM(async (render, document) => {
     await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    await act(async () => button(document, 'Apple Mail 연결').click());
+    await act(async () => button(document, 'Connect Apple Mail').click());
     await act(async () => button(document, '새 메일 작성').click());
     await act(async () => mailComposer(api).edit({ to: 'friend@example.test', body: 'Retain this text' }));
     await act(async () => button(document, '보내기').click());
@@ -134,7 +164,7 @@ test('trash action requires a destination confirmation and reply-all opens a dra
     change: async input => { changes.push(input); return mailSuccess(input.target); } });
   await withMailDOM(async (render, document) => {
     await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    await act(async () => button(document, 'Apple Mail 연결').click());
+    await act(async () => button(document, 'Connect Apple Mail').click());
     await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="메일 목록"] button[aria-pressed]')!.click());
     expect(document.body.textContent).toContain('받는 사람: me@example.test');
     await act(async () => button(document, '전체 답장').click());
