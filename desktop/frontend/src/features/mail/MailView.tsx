@@ -8,6 +8,7 @@ import type { AppleMailApi } from '../../../../shared/apple-mail';
 import { MailModel } from './mailModel';
 import { mailComposer } from './mailComposer';
 import { MailComposerDialog } from './MailComposerDialog';
+import { MailInlineReply } from './MailInlineReply';
 import { MailActions } from './MailActions';
 import { MailHtmlBody } from './MailHtmlBody';
 import { MailSidebar } from './MailSidebar';
@@ -50,6 +51,8 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, activ
   const { viewportRef, moreRef } = useMailInfiniteScroll(model, state, active);
   const composer = useMemo(() => mailComposer(api), [api]);
   const composition = useSyncExternalStore(composer.subscribe, composer.getSnapshot);
+  const inlineReply = composition.visible && composition.reply !== null;
+  const replyLocked = inlineReply && (composition.busy || composition.loading);
   useEffect(() => {
     let disposed = false;
     // Defer past Strict Mode's setup/cleanup replay so startup issues a single request.
@@ -64,8 +67,12 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, activ
     {sidebarTarget && createPortal(<MailSidebar state={state} composing={composition.form !== null}
       onRefresh={() => model.connect()} onCompose={() => void composer.start()}
       onSelect={box => {
+        if (replyLocked) return;
         onOpen?.();
-        if (!state.selectedBox || mailboxKey(box) !== mailboxKey(state.selectedBox)) void model.selectMailbox(box);
+        if (!state.selectedBox || mailboxKey(box) !== mailboxKey(state.selectedBox)) {
+          if (inlineReply) composer.hide();
+          void model.selectMailbox(box);
+        }
       }} />, sidebarTarget)}
     {composition.notice && <p className={styles.notice} role="status">{composition.notice}</p>}
     {state.changeError && <p className={styles.notice} role="alert">{state.changeError}</p>}
@@ -86,9 +93,12 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, activ
                 <NeumorphicButton size="standard" onClick={() => state.selectedBox && void model.selectMailbox(state.selectedBox)}>Retry</NeumorphicButton></div>
               : state.page?.messages.length === 0 ? <p className={`${styles.emptyMessage} ${styles.description}`} role="status">No messages.</p>
               : state.page?.messages.map(message => <button key={message.id} type="button" className={styles.messageRow}
-                disabled={state.changing} aria-disabled={state.loadingBoxes || undefined}
+                disabled={state.changing || replyLocked} aria-disabled={state.loadingBoxes || undefined}
                 data-unread={!message.read} aria-description={message.read ? undefined : 'Unread'}
-                aria-pressed={state.selectedId === message.id} onClick={() => void model.selectMessage(message.id)}>
+                aria-pressed={state.selectedId === message.id} onClick={() => {
+                  if (inlineReply) composer.hide();
+                  void model.selectMessage(message.id);
+                }}>
                 <span className={styles.sender}>{message.sender || 'Unknown sender'}</span>
                 {message.flagged && <Flag className={styles.flag} aria-label="Flagged" />}
                 <span className={styles.subject}>{message.subject || '(No subject)'}</span>
@@ -103,8 +113,13 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, activ
           {listLoadingLabel && <LoadingState className={`${styles.loadingOverlay} ${styles.descriptionLoading}`} label={listLoadingLabel} />}
         </div>
       </LiquidGlassPanel>
-      <LiquidGlassPanel as="article" className={`${styles.body} ${state.message?.html ? styles.htmlBody : ''}`} aria-label="Message body" aria-busy={state.loadingBody}>
-        {state.loadingBody ? <LoadingState className={`${styles.loadingOverlay} ${styles.descriptionLoading}`} label="Loading message…" />
+      <LiquidGlassPanel as="article" className={`${styles.body} ${inlineReply || state.message?.html ? styles.htmlBody : ''}`} aria-label="Message body" aria-busy={!inlineReply && state.loadingBody}>
+        {inlineReply ? <MailInlineReply composer={composer} active={active} onLoadImages={() => {
+          composer.allowRemoteImages();
+          const target = composition.reply?.target;
+          if (target && target.id === state.message?.id && state.selectedBox
+            && mailboxKey(target.mailbox) === mailboxKey(state.selectedBox)) model.allowRemoteImages();
+        }} /> : state.loadingBody ? <LoadingState className={`${styles.loadingOverlay} ${styles.descriptionLoading}`} label="Loading message…" />
           : state.bodyError ? <><p role="alert">{state.bodyError}</p><NeumorphicButton size="standard"
             onClick={() => state.selectedId !== null && void model.selectMessage(state.selectedId)}>Retry loading message</NeumorphicButton></>
           : state.message ? <>
@@ -112,7 +127,7 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, activ
               {state.selectedBox && <MailActions key={`${mailboxKey(state.selectedBox)}:${state.message.id}`} message={state.message}
                 target={{ mailbox: state.selectedBox, id: state.message.id }} boxes={state.boxes} disabled={busy || state.changeBlocked}
                 onChange={input => model.change(input)} onReply={all => void composer.start(state.message!,
-                  { mailbox: state.selectedBox!, id: state.message!.id }, all)} />}
+                  { mailbox: state.selectedBox!, id: state.message!.id }, all, state.remoteImagesAllowed)} />}
               <h2 className={styles.bodyTitle}>{state.message.subject || '(No subject)'}</h2>
               <p>{state.message.sender || 'Unknown sender'}</p>
               <p>To: {state.message.to.join(', ') || 'None'}</p>

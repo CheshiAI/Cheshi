@@ -54,7 +54,10 @@ app.whenReady().then(async () => {
   const switched = await window.webContents.executeJavaScript('mailChecks.switchMessage()');
   const afterSwitch = requests.splice(0);
   const reselected = await window.webContents.executeJavaScript('mailChecks.reselectMessage()');
-  process.stdout.write('MAIL_HTML_RESULT ' + JSON.stringify({prepared,blocked,allowed,loaded,switched,afterSwitch,reselected,links}) + '\\n');
+  const reply = await window.webContents.executeJavaScript('mailChecks.prepareReply()');
+  await window.webContents.insertText('Inline reply text');
+  const editedReply = await window.webContents.executeJavaScript('mailChecks.finishReply()');
+  process.stdout.write('MAIL_HTML_RESULT ' + JSON.stringify({prepared,blocked,allowed,loaded,switched,afterSwitch,reselected,links,reply,editedReply}) + '\\n');
   window.destroy(); app.quit();
 }).catch(error => { process.stderr.write(String(error.stack)); app.exit(1); });
 setTimeout(() => app.exit(2), 20000).unref();
@@ -90,5 +93,20 @@ setTimeout(() => app.exit(2), 20000).unref();
     assert.ok(result.allowed.widths.layout > 600);
     assert.ok(result.reselected.narrow.layout < 600);
     assert.deepEqual(result.links, ['https://example.test/docs']);
+    assert.equal(result.editedReply.typed, 'Inline reply text');
+    assert.equal(result.editedReply.retained, 'Inline reply text');
+    assert.equal(result.editedReply.reviewed, true);
+    assert.equal(result.editedReply.bold, '700');
+    assert.equal(result.editedReply.deleted, true);
+    assert.deepEqual(result.editedReply.payload, { text: true, title: 'Edited original', bold: true, quote: true, image: true, editable: false });
+    for (const layout of [result.reply, result.editedReply.narrow]) {
+      assert.ok(Math.abs(layout.width - layout.available) <= 1, JSON.stringify(layout));
+      assert.equal(layout.below, true);
+      assert.equal(layout.focused, true);
+      assert.equal(layout.modal, false);
+      assert.equal(layout.originalTitle, layout === result.reply ? 'Newsletter' : 'Edited original');
+      assert.equal(layout.consent, true);
+      assert.equal(layout.overflow, false);
+    }
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

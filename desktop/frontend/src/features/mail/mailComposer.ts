@@ -1,13 +1,16 @@
 import { MAIL_ERRORS, mailAddress, mailSend } from '../../../../shared/apple-mail';
+import { mailReplyDocument } from './mailReplyDocument';
 import type { AppleMailApi, MailAccount, MailMessage, MailSend, MailTarget } from '../../../../shared/apple-mail';
 
 export interface MailForm {
-  accountId: string; sender: string; to: string; cc: string; bcc: string; subject: string; body: string;
+  accountId: string; sender: string; to: string; cc: string; bcc: string; subject: string; body: string; html?: string;
 }
 interface ComposerState {
   visible: boolean; form: MailForm | null; accounts: MailAccount[]; loading: boolean; busy: boolean;
   error: string | null; notice: string | null; blocked: boolean; confirmation: MailSend | null;
   reply: MailSend['reply'];
+  original: MailMessage | null;
+  remoteImagesAllowed: boolean;
 }
 function address(value: string): string {
   const trimmed = value.trim();
@@ -24,15 +27,16 @@ function unique(values: string[]): string[] {
 export class MailComposer {
   private readonly api: AppleMailApi;
   private state: ComposerState = { visible: false, form: null, accounts: [], loading: false, busy: false,
-    error: null, notice: null, blocked: false, confirmation: null, reply: null };
+    error: null, notice: null, blocked: false, confirmation: null, reply: null, original: null, remoteImagesAllowed: false };
   private readonly listeners = new Set<() => void>();
   constructor(api: AppleMailApi) { this.api = api; }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private update(patch: Partial<ComposerState>) { this.state = { ...this.state, ...patch }; this.listeners.forEach(listener => listener()); }
-  async start(message?: MailMessage, target?: MailTarget, all = false) {
+  async start(message?: MailMessage, target?: MailTarget, all = false, remoteImagesAllowed = false) {
     if (this.state.form || this.state.loading) { this.update({ visible: true }); return; }
-    this.update({ visible: true, loading: true, error: null, notice: null });
+    this.update({ visible: true, loading: true, error: null, notice: null,
+      reply: target ? { target, all } : null, original: message ?? null, remoteImagesAllowed });
     try {
       const response = await this.api.accounts();
       if (!response.ok) { this.update({ loading: false, error: response.error.message }); return; }
@@ -46,7 +50,8 @@ export class MailComposer {
       const cc = message && all ? unique(message.cc.map(address)).filter(value => value && !own.has(value.toLowerCase()) && !included.has(value.toLowerCase())) : [];
       this.update({ loading: false, accounts, reply: target ? { target, all } : null,
         form: { accountId: account.id, sender: account.addresses[0]!, to: to.join(', '), cc: cc.join(', '), bcc: '',
-          subject: message ? (/^re:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`) : '', body: '' } });
+          subject: message ? (/^re:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`) : '', body: message ? `${message.sender} wrote:\n${message.body}` : '',
+          ...(message && target && typeof window !== 'undefined' ? { html: mailReplyDocument(message, window) } : {}) } });
     } catch { this.update({ loading: false, error: MAIL_ERRORS.unavailable }); }
   }
   edit(patch: Partial<MailForm>) {
@@ -63,9 +68,10 @@ export class MailComposer {
     } catch { this.update({ error: 'Check the sending account and recipient addresses. Separate addresses with commas and keep the subject within 1,000 characters.' }); }
   }
   back() { if (!this.state.busy) this.update({ confirmation: null }); }
+  allowRemoteImages() { this.update({ remoteImagesAllowed: true }); }
   hide() { if (!this.state.busy && !this.state.loading) this.update({ visible: false, confirmation: null }); }
   discard() {
-    if (!this.state.busy && !this.state.loading) this.update({ visible: false, form: null, reply: null,
+    if (!this.state.busy && !this.state.loading) this.update({ visible: false, form: null, reply: null, original: null, remoteImagesAllowed: false,
       confirmation: null, error: null, blocked: false });
   }
   async send() {
@@ -74,7 +80,7 @@ export class MailComposer {
     this.update({ busy: true, error: null });
     try {
       const result = await this.api.send(input);
-      if (result.ok) this.update({ busy: false, visible: false, form: null, reply: null, confirmation: null,
+      if (result.ok) this.update({ busy: false, visible: false, form: null, reply: null, original: null, remoteImagesAllowed: false, confirmation: null,
         notice: 'Mail has been asked to send your message. Check Outbox and Sent for its status.' });
       else this.update({ busy: false, confirmation: null, error: result.error.message, blocked: result.error.code === 'send-unknown' });
     } catch { this.update({ busy: false, confirmation: null, error: MAIL_ERRORS['send-unknown'], blocked: true }); }

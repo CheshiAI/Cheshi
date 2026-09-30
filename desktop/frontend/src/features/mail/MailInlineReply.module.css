@@ -1,0 +1,35 @@
+.root { width: 100%; min-width: 0; }
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-default) var(--space-default);
+}
+.heading h2 {
+  margin: 0;
+  font-size: var(--font-size-section-title);
+  font-weight: 600;
+  color: var(--sidebar-section-label-color);
+}
+.form { display: flex; flex-direction: column; min-width: 0; }
+.row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-default);
+  min-height: 42px;
+  padding: 4px var(--space-default);
+  border-bottom: 1px solid var(--divider);
+  font-size: var(--font-size-label);
+  color: var(--sidebar-section-label-color);
+}
+.row > span { color: var(--text); }
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--icon-default);
+  padding: var(--space-default);
+}
+.hint, .form > p { margin: 0; padding: var(--space-default); font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
+.form > section, .form > div[role='alert'] { padding: var(--space-default); }

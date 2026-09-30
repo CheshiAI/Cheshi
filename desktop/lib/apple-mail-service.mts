@@ -22,6 +22,8 @@ export class AppleMailService {
   send(value: unknown): Promise<MailReply<MailSent>> {
     let input: MailSend;
     try { input = mailSend(value); } catch { return Promise.resolve(mailFailure('invalid')); }
+    // Never silently downgrade an edited HTML reply through Mail's plain-text scripting API.
+    if (input.html !== undefined) return Promise.resolve(mailFailure('rich-send-unavailable'));
     const fingerprint = createHash('sha256').update(JSON.stringify(input)).digest('hex');
     const previous = this.sends.get(input.operationId);
     if (previous) return previous.fingerprint === fingerprint ? previous.result : Promise.resolve(mailFailure('invalid'));

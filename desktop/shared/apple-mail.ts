@@ -13,6 +13,7 @@ export const MAIL_ERRORS = {
   invalid: 'The mail request is invalid.',
   'invalid-response': 'Could not process the data from Mail. Please refresh.',
   'too-large': 'The mail data is too large. Select another mailbox.',
+  'rich-send-unavailable': 'Formatted mail sending is not connected yet. Your draft has been kept.',
   'send-unknown': 'The send result could not be confirmed. Sending again is disabled to prevent duplicates. Check Sent and Outbox in Apple Mail.',
   'change-unknown': 'The change could not be confirmed. Refresh and check the message status.',
   'ambiguous-mailbox': 'Multiple mailboxes have the same name. Select the full path, including parent mailboxes.',
@@ -33,7 +34,7 @@ export interface MailAccount { id: string; name: string; addresses: string[] }
 export type MailChange = { target: MailTarget } & ({ action: 'read' | 'flag'; value: boolean } | { action: 'move'; destination: MailboxRef });
 export interface MailSend {
   operationId: string; accountId: string; sender: string; to: string[]; cc: string[]; bcc: string[];
-  subject: string; body: string; reply: { target: MailTarget; all: boolean } | null;
+  subject: string; body: string; html?: string; reply: { target: MailTarget; all: boolean } | null;
 }
 export interface MailSent { operationId: string; accepted: true }
 export interface AppleMailApi {
@@ -175,7 +176,8 @@ export function mailSend(value: unknown): MailSend {
   if (/[\r\n]/.test(subject)) throw new TypeError('Invalid subject');
   const reply = item.reply === null ? null : record(item.reply);
   return { operationId, accountId: text(item.accountId, 4096), sender: mailAddress(item.sender), to, cc, bcc, subject,
-    body: text(item.body, MAIL_BODY_LIMIT, true), reply: reply ? { target: mailTarget(reply.target), all: flag(reply.all) } : null };
+    body: text(item.body, MAIL_BODY_LIMIT, true),
+    ...(item.html === undefined ? {} : { html: text(item.html, MAIL_SOURCE_LIMIT + MAIL_INLINE_IMAGE_LIMIT, true) }), reply: reply ? { target: mailTarget(reply.target), all: flag(reply.all) } : null };
 }
 export function mailSent(value: unknown, operationId: string): MailSent {
   const item = record(value);

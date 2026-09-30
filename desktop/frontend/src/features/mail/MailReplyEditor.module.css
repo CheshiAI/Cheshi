@@ -1,0 +1,10 @@
+.root { width: 100%; min-width: 0; }
+.toolbar {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--icon-default); padding: var(--space-default);
+  border-bottom: 1px solid var(--divider);
+}
+.toolbar select { height: 32px; max-width: 140px; padding: 0 8px; border: 0; background: transparent; color: var(--text); font-size: 11px; cursor: pointer; }
+.toolbar input[type='color'] { width: 28px; height: 28px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.frame { display: block; width: 100%; min-height: 240px; border: 0; background: white; }
+.images { display: flex; align-items: center; gap: var(--space-default); padding: 0 var(--space-default) var(--space-default); font-size: 10px; color: var(--sidebar-section-label-color); }

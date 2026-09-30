@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { MailComposer, mailComposer } from '../frontend/src/features/mail/mailComposer';
 import { mailFailure, mailTarget } from '../shared/apple-mail';
-import type { MailReply, MailSent } from '../shared/apple-mail';
+import type { MailAccount, MailReply, MailSent } from '../shared/apple-mail';
 import { mailApiFixture, mailBox, mailMessageFixture as message, mailSuccess, createMailDeferred } from './apple-mail-fixtures';
 
 test('drafts survive closing and navigation and require a separate confirmation before sending', async () => {
@@ -72,4 +72,27 @@ test('known pre-send failures retain an editable draft and allow a new reviewed 
   await composer.send(); expect(composer.getSnapshot().blocked).toBe(false); expect(composer.getSnapshot().form?.body).toBe('Keep');
   denied = false; composer.review(); expect(composer.getSnapshot().confirmation?.operationId).not.toBe(firstId);
   await composer.send(); expect(composer.getSnapshot().form).toBeNull();
+});
+
+test('reply loading and retained drafts keep their original message, target and image consent', async () => {
+  const accounts = createMailDeferred<MailReply<MailAccount[]>>();
+  const composer = new MailComposer(mailApiFixture({ accounts: () => accounts.promise }));
+  const target = { mailbox: mailBox, id: 1 };
+  const loading = composer.start(message, target, true, true);
+  expect(composer.getSnapshot().reply).toEqual({ target, all: true });
+  expect(composer.getSnapshot().original).toBe(message);
+  expect(composer.getSnapshot().remoteImagesAllowed).toBe(true);
+  await composer.start({ ...message, id: 2 }, { ...target, id: 2 });
+  accounts.resolve(mailSuccess([{ id: 'account-a', name: 'Personal', addresses: ['me@example.test'] }]));
+  await loading;
+  composer.edit({ body: 'Keep this reply' }); composer.hide();
+  await composer.start({ ...message, id: 2 }, { ...target, id: 2 });
+  expect(composer.getSnapshot().original).toBe(message);
+  expect(composer.getSnapshot().reply).toEqual({ target, all: true });
+  expect(composer.getSnapshot().form?.body).toBe('Keep this reply');
+  composer.discard();
+  expect(composer.getSnapshot().original).toBeNull();
+  expect(composer.getSnapshot().remoteImagesAllowed).toBe(false);
+  await composer.start();
+  expect(composer.getSnapshot().reply).toBeNull();
 });

@@ -9,6 +9,11 @@ import type { Mailbox, MailChange, MailPage, MailReply, MailSend } from '../shar
 
 async function withMailDOM(run: (render: (node: ReactNode) => Promise<void>, document: Document) => Promise<void>) {
   const window = new Window();
+  // DOMPurify uses Node.prototype's native getter. Happy DOM's base getter
+  // returns an empty name instead of dispatching to Element/Text as Chromium does.
+  Object.defineProperty(window.Node.prototype, 'nodeName', { configurable: true, get(this: Node) {
+    return (this as Element).tagName ?? ({ 3: '#text', 8: '#comment', 9: '#document', 10: 'html', 11: '#document-fragment' } as Record<number, string>)[this.nodeType] ?? '';
+  } });
   const globals: Record<string, unknown> = { window, document: window.document, navigator: window.navigator,
     Node: window.Node, Element: window.Element, HTMLElement: window.HTMLElement,
     ResizeObserver: window.ResizeObserver, IS_REACT_ACT_ENVIRONMENT: true };
@@ -448,5 +453,84 @@ test('trash action requires a destination confirmation and reply-all opens a dra
     const readBox = { ...mailBox, unread: 0 };
     expect(changes).toEqual([automaticRead, { action: 'move', target: { mailbox: readBox, id: 1 },
       destination: { ...mailBox, path: ['Trash'] } }]);
+  });
+});
+
+test('reply opens above the original inside the message pane and preserves draft identity across navigation', async () => {
+  const sends: MailSend[] = [];
+  const api = mailApiFixture({
+    list: async () => mailSuccess({ offset: 0, nextOffset: null, messages: [mailMessageFixture, { ...mailMessageFixture, id: 2 }] }),
+    read: async target => mailSuccess({ ...mailMessageFixture, id: target.id, body: `Original ${target.id}` }),
+    send: async input => { sends.push(input); return mailSuccess({ operationId: input.operationId, accepted: true }); },
+  });
+  await withMailDOM(async (render, document) => {
+    const scene = (active = true) => <MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api}
+      active={active} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />;
+    await render(scene());
+    const rows = () => document.querySelectorAll<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]');
+    await act(async () => rows()[0]!.click());
+    await act(async () => button(document, 'Reply').click());
+    expect(document.querySelector('dialog')).toBeNull();
+    const pane = document.querySelector('[aria-label="Message body"]')!;
+    const editor = pane.querySelector<HTMLIFrameElement>('[title="Reply message editor"]')!;
+    expect(editor.srcdoc).toContain('Original 1');
+    expect(editor.srcdoc).toContain('blockquote');
+    expect(document.querySelector<HTMLInputElement>('[aria-label="To"]')?.value).toBe('sender@example.test');
+    await act(async () => mailComposer(api).edit({ body: 'Inline response', html: '<p>Inline response</p><blockquote>Original 1</blockquote>' }));
+    await render(scene(false)); await render(scene());
+    expect(mailComposer(api).getSnapshot().form?.body).toBe('Inline response');
+    await act(async () => rows()[1]!.click());
+    expect(document.querySelector('[title="Reply message editor"]')).toBeNull();
+    expect(pane.textContent).toContain('Original 2');
+    await act(async () => button(document, 'Resume draft').click());
+    expect(pane.querySelector<HTMLIFrameElement>('iframe')?.srcdoc).toContain('Inline response');
+    expect(mailComposer(api).getSnapshot().original?.body).toBe('Original 1');
+    await act(async () => button(document, 'Send').click());
+    expect(sends).toHaveLength(0);
+    expect(pane.querySelector<HTMLIFrameElement>('iframe')?.srcdoc).toContain('Inline response');
+    await act(async () => button(document, 'Continue editing').click());
+    expect(pane.querySelector('[title="Reply message editor"]') !== null).toBe(true);
+    await act(async () => button(document, 'Send').click());
+    await act(async () => button(document, 'Confirm and send').click());
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.reply?.target.id).toBe(1);
+    expect(sends[0]?.body).toBe('Inline response');
+    expect(pane.querySelector('[aria-label="Original message"]')).toBeNull();
+    expect(pane.textContent).toContain('Original 2');
+  });
+});
+
+test('inline reply keeps its source through account errors and preserves text after an uncertain send', async () => {
+  let denied = true;
+  let sends = 0;
+  const api = mailApiFixture({
+    accounts: async () => denied ? mailFailure('permission') : mailSuccess([{ id: 'account-a', name: 'Personal', addresses: ['me@example.test'] }]),
+    send: async () => { sends++; return mailFailure('send-unknown'); },
+  });
+  await withMailDOM(async (render, document) => {
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!.click());
+    await act(async () => button(document, 'Reply all').click());
+    expect(document.querySelector('dialog')).toBeNull();
+    expect(mailComposer(api).getSnapshot().original?.body).toBe(mailMessageFixture.body);
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS.permission);
+    denied = false;
+    await act(async () => button(document, 'Retry sending accounts').click());
+    await act(async () => mailComposer(api).edit({ body: 'Do not lose this reply' }));
+    await act(async () => button(document, 'Send').click());
+    await act(async () => button(document, 'Confirm and send').click());
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS['send-unknown']);
+    await act(async () => button(document, 'Close reply').click());
+    await act(async () => button(document, 'Resume draft').click());
+    expect(mailComposer(api).getSnapshot().form?.body).toBe('Do not lose this reply');
+    expect(button(document, 'Send').disabled).toBe(true);
+    expect(sends).toBe(1);
+    await act(async () => button(document, 'Discard draft').click());
+    await act(async () => button(document, 'Keep editing').click());
+    expect(document.querySelector('[title="Reply message editor"]') !== null).toBe(true);
+    await act(async () => button(document, 'Discard draft').click());
+    await act(async () => button(document, 'Discard').click());
+    expect(document.querySelector('[title="Reply message editor"]')).toBeNull();
+    expect(mailComposer(api).getSnapshot().original).toBeNull();
   });
 });

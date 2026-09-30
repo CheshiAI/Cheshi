@@ -1,6 +1,8 @@
 // Browser fixture bundled only by apple-mail-html-electron.test.ts.
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
+import type { MailSend } from '../shared/apple-mail';
+import { mailComposer } from '../frontend/src/features/mail/mailComposer';
 import { MailBrowser } from '../frontend/src/features/mail/MailView';
 import { mailHtmlDocument, mailLink } from '../frontend/src/features/mail/mailHtmlDocument';
 import { mailApiFixture, mailMessageFixture, mailSuccess } from './apple-mail-fixtures';
@@ -23,7 +25,9 @@ const html = `<html><head><style>@import url(https://mail-fixture.invalid/styles
   </td></tr><tr><td><table id="columns" width="240"><tr><td width="80">A</td><td>B</td></tr></table></td></tr>
   </table></td></tr></table></body></html>`;
 const message = { ...mailMessageFixture, html, inlineImages: [image] };
+let sent: MailSend | undefined;
 const api = mailApiFixture({
+  send: async input => { sent = input; return mailSuccess({ operationId: input.operationId, accepted: true }); },
   list: async () => mailSuccess({ offset: 0, nextOffset: null, messages: [message, { ...message, id: 2 }] }),
   read: async target => mailSuccess({ ...message, id: target.id }),
 });
@@ -119,8 +123,79 @@ async function reselectMessage() {
   document.getElementById('root')!.style.width = '700px';
   await pause();
   const narrow = widths();
-  flushSync(() => root.unmount());
   return { first, repeated, narrow };
 }
 
-Object.assign(window, { mailChecks: { prepare, allowImages, switchMessage, reselectMessage } });
+function action(label: string) {
+  return [...document.querySelectorAll<HTMLButtonElement>('button')].find(item => item.getAttribute('aria-label') === label || item.textContent === label)!;
+}
+
+function replyLayout() {
+  const editor = frame();
+  const doc = editor.contentDocument!;
+  const article = editor.closest('article')!;
+  return { width: editor.getBoundingClientRect().width, available: article.clientWidth,
+    below: doc.querySelector('blockquote')!.getBoundingClientRect().top >= doc.body.firstElementChild!.getBoundingClientRect().bottom,
+    focused: document.activeElement === editor && doc.activeElement === doc.body, modal: document.querySelector('dialog') !== null,
+    originalTitle: doc.querySelector('h1')?.textContent,
+    consent: button() === undefined, overflow: article.scrollWidth > article.clientWidth };
+}
+
+async function editorReady(title: string) {
+  await waitFor(() => frame()?.title === 'Reply message editor' && frame().contentDocument?.body?.isContentEditable === true
+    && frame().contentDocument?.querySelector('h1')?.textContent === title);
+  await pause();
+}
+
+async function prepareReply() {
+  document.getElementById('root')!.style.width = '1200px';
+  flushSync(() => action('Reply').click());
+  await editorReady('Newsletter');
+  return replyLayout();
+}
+
+async function finishReply() {
+  const doc = frame().contentDocument!;
+  const typed = doc.body.firstElementChild!.textContent;
+  function select(node: Node) {
+    const range = doc.createRange(); range.selectNodeContents(node);
+    doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+    doc.dispatchEvent(new Event('selectionchange'));
+  }
+  select(doc.body.firstElementChild!);
+  flushSync(() => action('Bold').click());
+  const bold = frame().contentWindow!.getComputedStyle(doc.body.firstElementChild!.firstElementChild!).fontWeight;
+  select(doc.querySelector('h1')!);
+  doc.execCommand('insertText', false, 'Edited original');
+  const quote = doc.querySelector('blockquote')!;
+  const range = doc.createRange(); range.selectNode(quote);
+  doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(range);
+  doc.execCommand('delete');
+  const deleted = !doc.querySelector('blockquote');
+  doc.execCommand('undo');
+  doc.dispatchEvent(new Event('input'));
+  flushSync(() => action('Send').click());
+  await waitFor(() => frame()?.contentDocument?.querySelector('h1')?.textContent === 'Edited original');
+  const reviewed = !!document.querySelector('[aria-label="Review before sending"]') && frame().contentDocument!.body.textContent!.includes(typed!);
+  flushSync(() => action('Continue editing').click());
+  await editorReady('Edited original');
+  document.getElementById('root')!.style.width = '700px';
+  await pause();
+  const narrow = replyLayout();
+  flushSync(() => action('Close reply').click());
+  flushSync(() => action('Reply').click());
+  await editorReady('Edited original');
+  const retained = frame().contentDocument!.body.firstElementChild!.textContent;
+  flushSync(() => action('Send').click());
+  flushSync(() => action('Confirm and send').click());
+  await waitFor(() => !!sent && !mailComposer(api).getSnapshot().busy);
+  const sentDocument = new DOMParser().parseFromString(sent!.html!, 'text/html');
+  const payload = { text: sent!.body.includes('Inline reply text'), title: sentDocument.querySelector('h1')?.textContent,
+    bold: sentDocument.body.firstElementChild?.innerHTML.includes('font-weight: bold'),
+    quote: !!sentDocument.querySelector('blockquote'), image: !!sentDocument.querySelector('img[src^="data:image/"]'),
+    editable: !!sentDocument.querySelector('[contenteditable]') };
+  flushSync(() => root.unmount());
+  return { typed, bold, deleted, reviewed, retained, narrow, payload };
+}
+
+Object.assign(window, { mailChecks: { prepare, allowImages, switchMessage, reselectMessage, prepareReply, finishReply } });
