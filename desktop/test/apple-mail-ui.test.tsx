@@ -5,12 +5,13 @@ import { MailBrowser } from '../frontend/src/features/mail/MailView';
 import { MAIL_ERRORS, mailFailure } from '../shared/apple-mail';
 import { createMailDeferred, mailApiFixture, mailMessageFixture, mailSuccess, mailBox } from './apple-mail-fixtures';
 import { mailComposer } from '../frontend/src/features/mail/mailComposer';
-import type { Mailbox, MailChange, MailReply, MailSend } from '../shared/apple-mail';
+import type { Mailbox, MailChange, MailPage, MailReply, MailSend } from '../shared/apple-mail';
 
 async function withMailDOM(run: (render: (node: ReactNode) => Promise<void>, document: Document) => Promise<void>) {
   const window = new Window();
   const globals: Record<string, unknown> = { window, document: window.document, navigator: window.navigator,
-    Node: window.Node, Element: window.Element, HTMLElement: window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true };
+    Node: window.Node, Element: window.Element, HTMLElement: window.HTMLElement,
+    ResizeObserver: window.ResizeObserver, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   const { createRoot } = await import('react-dom/client');
@@ -54,6 +55,105 @@ test('Mail preloads mailboxes and the first page without reading message bodies'
     const otherBox = document.querySelectorAll<HTMLButtonElement>('[aria-label="메일함"] section button')[1]!;
     await act(async () => otherBox.click());
     expect(document.querySelector('[aria-label="메일 본문"] pre')).toBeNull();
+  });
+});
+
+test('mailbox scrolling shares overlay dragging and activity tracking while preserving selection', async () => {
+  const api = mailApiFixture();
+  await withMailDOM(async (render, document) => {
+    const scene = (active: boolean) => <MailBrowser api={api} active={active}
+      sidebarTarget={document.getElementById('mail-sidebar')} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />;
+    await render(scene(true));
+    const viewport = document.querySelector<HTMLElement>('[role="region"][aria-label="Mailboxes"]')!;
+    expect(viewport).not.toBeNull();
+    const surface = viewport.parentElement!;
+    const scrollbar = surface.querySelector<HTMLElement>(':scope > [aria-hidden="true"]')!;
+    expect(surface.dataset.autoHideScrollbars).toBe('true');
+    expect(scrollbar.dataset.scrollbarActive).toBeUndefined();
+    const selected = viewport.querySelector('[aria-current="page"]');
+    expect(selected?.textContent).toContain('INBOX');
+    const Event = document.defaultView!.Event;
+    viewport.scrollTop = 120;
+    viewport.dispatchEvent(new Event('scroll'));
+    expect(scrollbar.scrollTop).toBe(120);
+    // Native scrollTop writes generate this event in Chromium.
+    scrollbar.dispatchEvent(new Event('scroll'));
+    expect(scrollbar.dataset.scrollbarActive).toBe('true');
+    scrollbar.scrollTop = 240;
+    scrollbar.dispatchEvent(new Event('scroll'));
+    expect(viewport.scrollTop).toBe(240);
+    await render(scene(false));
+    await render(scene(true));
+    expect(document.querySelector('[role="region"][aria-label="Mailboxes"]')).toBe(viewport);
+    expect(viewport.scrollTop).toBe(240);
+    expect(viewport.querySelector('[aria-current="page"]')).toBe(selected);
+  });
+});
+
+test('Mail pull refresh waits for mailboxes and messages without duplicate loading or requests', async () => {
+  const boxes = createMailDeferred<MailReply<Mailbox[]>>();
+  const page = createMailDeferred<MailReply<MailPage>>();
+  let connections = 0;
+  let lists = 0;
+  const api = mailApiFixture({
+    mailboxes: async () => ++connections === 1 ? mailSuccess([mailBox]) : boxes.promise,
+    list: async () => ++lists === 1 ? mailSuccess({ messages: [mailMessageFixture], offset: 0, nextOffset: null }) : page.promise,
+  });
+  await withMailDOM(async (render, document) => {
+    await render(<MailBrowser api={api} sidebarTarget={document.getElementById('mail-sidebar')}
+      rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    const messageRow = document.querySelector<HTMLButtonElement>('[aria-label="메일 목록"] button[aria-pressed]')!;
+    await act(async () => messageRow.click());
+    const body = document.querySelector('[aria-label="메일 본문"] pre')!;
+    const retainedContent = () => {
+      expect(document.querySelector('[aria-label="메일 목록"] button[aria-pressed]')).toBe(messageRow);
+      expect(document.querySelector('[aria-label="메일 본문"] pre')).toBe(body);
+      expect(body.textContent).toBe(mailMessageFixture.body);
+      expect(messageRow.getAttribute('aria-pressed')).toBe('true');
+    };
+    const viewport = document.querySelector<HTMLElement>('[role="region"][aria-label="Mailboxes"]')!;
+    const row = viewport.querySelector('[aria-current="page"]')!;
+    const view = document.defaultView!;
+    const pointer = async (type: string, y: number) => {
+      await act(async () => {
+        const event = new view.PointerEvent(type, { pointerId: 1, pointerType: 'mouse', isPrimary: true,
+          clientX: 10, clientY: y, button: 0, bubbles: true, cancelable: true });
+        (type === 'pointerdown' ? row : view).dispatchEvent(event);
+      });
+    };
+    viewport.scrollTop = 100;
+    await pointer('pointerdown', 10); await pointer('pointermove', 110); await pointer('pointerup', 110);
+    expect(connections).toBe(1);
+    viewport.scrollTop = 0;
+    await pointer('pointerdown', 10); await pointer('pointermove', 30); await pointer('pointerup', 30);
+    expect(connections).toBe(1);
+    await pointer('pointerdown', 10); await pointer('pointermove', 110);
+    const status = viewport.querySelector<HTMLElement>('[role="status"]')!;
+    expect(status.style.height).toBe('36px');
+    await pointer('pointerup', 110);
+    expect(connections).toBe(2);
+    expect(viewport.querySelector('[aria-current="page"]')).toBe(row);
+    expect(viewport.querySelectorAll('[role="status"]')).toHaveLength(1);
+    expect(viewport.querySelector('[role="status"]')).toBe(status);
+    expect(document.querySelectorAll('[role="status"]')).toHaveLength(1);
+    expect(row.hasAttribute('disabled')).toBe(false);
+    expect(row.getAttribute('aria-disabled')).toBe('true');
+    retainedContent();
+    await act(async () => button(document, '메일 새로고침').click());
+    await pointer('pointerdown', 10); await pointer('pointermove', 110); await pointer('pointerup', 110);
+    expect(connections).toBe(2);
+    await act(async () => boxes.resolve(mailSuccess([mailBox])));
+    expect(lists).toBe(2);
+    expect(viewport.querySelector('[role="status"]')).toBe(status);
+    expect(document.querySelectorAll('[role="status"]')).toHaveLength(1);
+    retainedContent();
+    expect(button(document, '메일 새로고침').disabled).toBe(true);
+    await act(async () => page.resolve(mailSuccess({ messages: [mailMessageFixture], offset: 0, nextOffset: null })));
+    expect(viewport.querySelector('[role="status"]')).toBeNull();
+    expect(button(document, '메일 새로고침').disabled).toBe(false);
+    retainedContent();
+    await act(async () => button(document, '메일 새로고침').click());
+    expect(connections).toBe(3);
   });
 });
 

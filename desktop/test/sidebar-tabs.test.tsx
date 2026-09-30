@@ -27,6 +27,7 @@ async function withTabs(run: (h: {
   scrolls: ScrollToOptions[];
   strip: HTMLElement;
   settleStrip(left: number): Promise<void>;
+  scroll(left: number, target?: Element): Promise<void>;
   settle(left: number, target?: Element): Promise<void>;
   resize(width: number): Promise<void>;
   reduceMotion(): void;
@@ -74,6 +75,12 @@ async function withTabs(run: (h: {
     const viewport = panel('Files').parentElement!.parentElement!;
     const strip = tab('Files').parentElement!.parentElement!;
     await run({ container, window, tab, panel, viewport, scrolls, strip,
+      scroll: async (left, target = viewport) => {
+        await act(async () => {
+          viewport.scrollLeft = left;
+          target.dispatchEvent(new window.Event('scroll', { bubbles: true }) as unknown as Event);
+        });
+      },
       settleStrip: async left => {
         await act(async () => {
           strip.scrollLeft = left;
@@ -131,6 +138,92 @@ test('sidebar exposes five ordered tabs with an empty GitHub placeholder', () =>
   expect(panel.querySelector('.sidebar-content-primary')).not.toBeNull();
   expect(panel.hasAttribute('inert')).toBe(false);
   expect(window.document.querySelector('[aria-roledescription="carousel"]')).toBeNull();
+});
+
+test('Mail appears progressively during the content swipe before selection settles', async () => {
+  await withTabs(async ({ click, settle, wheel, panel, scroll, strip, tab, settleStrip, scrolls }) => {
+    await click('Memos');
+    await settle(640);
+    const commands = scrolls.length;
+    await wheel(panel('Memos'), { deltaX: 12 });
+    await scroll(720);
+    expect(strip.scrollLeft).toBeCloseTo(25);
+    expect(strip.dataset.followingContent).toBe('true');
+    await scroll(800);
+    expect(strip.scrollLeft).toBeCloseTo(50);
+    // Programmatic header scroll completion must not select or redirect a content page.
+    await settleStrip(50);
+    expect(tab('Memos').getAttribute('aria-selected')).toBe('true');
+    expect(scrolls).toHaveLength(commands);
+    await scroll(960);
+    expect(strip.scrollLeft).toBeCloseTo(100);
+    await settle(960);
+    expect(tab('Mail').getAttribute('aria-selected')).toBe('true');
+    expect(strip.dataset.followingContent).toBeUndefined();
+  }, true);
+});
+
+test('reversing and canceling a content swipe restores the header without changing selection', async () => {
+  await withTabs(async ({ click, settle, wheel, panel, scroll, strip, tab }) => {
+    await click('Memos');
+    await settle(640);
+    await wheel(panel('Memos'), { deltaX: 12 });
+    for (const [left, header] of [[832, 60], [704, 20], [640, 0]]) {
+      await scroll(left!);
+      expect(strip.scrollLeft).toBeCloseTo(header!);
+      expect(tab('Memos').getAttribute('aria-selected')).toBe('true');
+    }
+    await settle(640);
+    expect(strip.dataset.followingContent).toBeUndefined();
+    // The mirrored boundary reveals Sessions while moving left from the second header window.
+    await click('Mail');
+    await settle(960);
+    await click('Files');
+    await settle(320);
+    expect(strip.scrollLeft).toBe(100);
+    await wheel(panel('Files'), { deltaX: -12 });
+    await scroll(160);
+    expect(strip.scrollLeft).toBeCloseTo(50);
+    await scroll(0);
+    await settle(0);
+    expect(strip.scrollLeft).toBe(0);
+    expect(tab('Sessions').getAttribute('aria-selected')).toBe('true');
+  }, true);
+});
+
+test('GitHub follows content progress while nested list scrolling leaves the header alone', async () => {
+  await withTabs(async ({ click, settle, scroll, wheel, panel, strip, tab, clear, viewport, window }) => {
+    await click('Mail');
+    await settle(960);
+    await scroll(1120, panel('Files').querySelector('[data-scroll]')!);
+    expect(strip.scrollLeft).toBe(100);
+    await wheel(panel('Mail'), { deltaX: 10 });
+    await scroll(1120);
+    expect(strip.scrollLeft).toBeCloseTo(150);
+    expect(tab('Mail').getAttribute('aria-selected')).toBe('true');
+    await scroll(1280);
+    await settle(1280);
+    expect(strip.scrollLeft).toBe(200);
+    expect(tab('GitHub').getAttribute('aria-selected')).toBe('true');
+    await clear();
+    viewport.scrollLeft = 0;
+    viewport.dispatchEvent(new window.Event('scroll') as unknown as Event);
+    expect(strip.scrollLeft).toBe(200);
+    expect(strip.dataset.followingContent).toBeUndefined();
+  }, true);
+});
+
+test('native header gestures retain control while their selected content page catches up', async () => {
+  await withTabs(async ({ wheel, strip, settleStrip, scroll, settle, tab }) => {
+    await wheel(strip, { deltaX: 12 });
+    await settleStrip(200);
+    expect(tab('Memos').getAttribute('aria-selected')).toBe('true');
+    await scroll(480);
+    expect(strip.scrollLeft).toBe(200);
+    await scroll(640);
+    await settle(640);
+    expect(strip.scrollLeft).toBe(200);
+  }, true);
 });
 
 test('clicking tabs preserves mounted inputs and scroll positions while making inactive panels inert', async () => {

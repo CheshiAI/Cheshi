@@ -57,7 +57,7 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, activ
   return <main className={styles.workspace} aria-label="Mail" hidden={!active}>
     <MailHeader rightSidebarOpen={rightSidebarOpen} onToggleRightSidebar={onToggleRightSidebar} />
     {sidebarTarget && createPortal(<MailSidebar state={state} composing={composition.form !== null}
-      onRefresh={() => void model.connect()} onCompose={() => void composer.start()}
+      onRefresh={() => model.connect()} onCompose={() => void composer.start()}
       onSelect={box => {
         onOpen?.();
         if (!state.selectedBox || mailboxKey(box) !== mailboxKey(state.selectedBox)) void model.selectMailbox(box);
@@ -74,12 +74,15 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, activ
       <LiquidGlassPanel as="section" className={styles.messages} aria-label="메일 목록" aria-busy={busy}>
         <h2 className={styles.listTitle}>{state.selectedBox?.path.at(-1) ?? '메일'}</h2>
         <div className={styles.messageList}>
-          {busy ? <p className={styles.notice} role="status">메일을 불러오는 중…</p>
-            : state.pageError ? <div className={styles.notice}><p role="alert">{state.pageError}</p>
+          {state.pageError && state.page && <p className={styles.notice} role="alert">{state.pageError}</p>}
+          {state.loadingBoxes && !state.page ? null
+            : busy && !state.page ? <p className={styles.notice} role="status">메일을 불러오는 중…</p>
+            : state.pageError && !state.page ? <div className={styles.notice}><p role="alert">{state.pageError}</p>
               <NeumorphicButton size="standard" onClick={() => state.selectedBox && void model.selectMailbox(state.selectedBox)}>다시 시도</NeumorphicButton></div>
             : state.page?.messages.length === 0 ? <p className={styles.notice} role="status">메일이 없습니다.</p>
             : state.page?.messages.map(message => <button key={message.id} type="button" className={styles.messageRow}
-              disabled={state.changing} aria-pressed={state.selectedId === message.id} onClick={() => void model.selectMessage(message.id)}>
+              disabled={state.changing} aria-disabled={state.loadingBoxes || undefined}
+              aria-pressed={state.selectedId === message.id} onClick={() => void model.selectMessage(message.id)}>
               <span className={styles.sender}>{!message.read && <span className={styles.unread} aria-label="읽지 않음">●</span>}{message.sender || '발신자 없음'}</span>
               {message.flagged && <Flag className={styles.flag} aria-label="깃발 있음" />}
               <span className={styles.subject}>{message.subject || '(제목 없음)'}</span>

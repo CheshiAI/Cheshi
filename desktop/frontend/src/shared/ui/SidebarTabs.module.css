@@ -22,6 +22,11 @@
   box-sizing: border-box;
 }
 
+/* The content owns intermediate positions; header snap resumes when that gesture settles. */
+.tabViewport[data-following-content='true'] {
+  scroll-snap-type: none;
+}
+
 .root .tabs {
   position: relative;
   isolation: isolate;

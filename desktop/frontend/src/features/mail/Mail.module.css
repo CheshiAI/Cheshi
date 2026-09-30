@@ -16,8 +16,22 @@
 .browser { display: grid; flex: 1; min-height: 0; overflow: auto; grid-template-columns: minmax(220px, var(--sidebar-width)) minmax(280px, 1fr); }
 .messages, .body { --liquid-glass-radius: 0; min-width: 0; min-height: 0; border-width: 0 1px 0 0; }
 .mailSidebar { --liquid-glass-radius: 0; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; border: 0; font-size: var(--font-size-default); }
-.mailboxes { flex: 1; min-height: 0; overflow: auto; padding: var(--space-default); }
-.mailboxLoading { min-height: 48px; }
+.searchBar { flex: 0 0 auto; min-width: 0; padding: var(--space-default); border-bottom: 1px solid var(--divider); }
+.sidebarSearch { position: relative; min-width: 0; }
+.searchField > input { padding-left: calc(var(--icon-button-size) + var(--icon-default) * 2); }
+.searchIcon {
+  position: absolute;
+  left: calc(var(--icon-default) + (var(--icon-button-size) - var(--icon-button-icon-size)) / 2);
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  color: var(--sidebar-section-label-color);
+  pointer-events: none;
+}
+.mailboxScroll { flex: 1 1 0; }
+.mailboxes { padding: var(--space-default); }
+.mailboxLoading { box-sizing: border-box; height: 36px; flex: 0 0 auto; padding-inline: var(--space-default); }
 .mailboxes section + section { margin-top: var(--space-default); }
 .mailboxes h2, .listTitle { margin: 0 0 var(--space-default); font-size: var(--font-size-section-title); font-weight: 600; overflow-wrap: anywhere; }
 .mailboxes h2 { color: var(--sidebar-section-label-color); }

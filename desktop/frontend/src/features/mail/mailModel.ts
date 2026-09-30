@@ -43,22 +43,33 @@ export class MailModel {
     if (this.state.changing) return;
     this.cancelPending();
     const version = this.boxesVersion;
-    const previous = this.state.selectedBox;
+    const previous = this.state;
     this.update({ loadingBoxes: true, loadingPage: false, loadingBody: false, boxesError: null, pageError: null,
-      bodyError: null, page: null, message: null, selectedId: null, changeError: null, changeBlocked: false });
+      bodyError: null, changeError: null });
     const result = await this.request(() => this.api.mailboxes());
     if (version !== this.boxesVersion) return;
     if (!result.ok) {
-      this.update({ connected: false, boxes: [], selectedBox: null, loadingBoxes: false, boxesError: result.error.message });
+      this.update({ loadingBoxes: false, boxesError: result.error.message });
       return;
     }
-    const selected = result.value.find(box => previous && mailboxKey(box) === mailboxKey(previous))
+    const selected = result.value.find(box => previous.selectedBox && mailboxKey(box) === mailboxKey(previous.selectedBox))
       ?? result.value.find(box => /^(inbox|받은 편지함)$/i.test(box.path.at(-1) ?? '')) ?? result.value[0] ?? null;
-    this.update({ connected: true, boxes: result.value, selectedBox: selected, loadingBoxes: false });
-    if (selected) await this.selectMailbox(selected);
+    const sameBox = selected !== null && previous.selectedBox !== null
+      && mailboxKey(selected) === mailboxKey(previous.selectedBox);
+    const resultPage = selected
+      ? await this.request(() => this.api.list(selected, sameBox ? previous.page?.offset ?? 0 : 0)) : null;
+    if (version !== this.boxesVersion) return;
+    const page = resultPage?.ok ? resultPage.value : sameBox ? previous.page : null;
+    const selectedMessage = sameBox ? page?.messages.find(message => message.id === previous.selectedId) : undefined;
+    // Publish both stages together so refresh never clears the retained view between requests.
+    this.update({ connected: true, boxes: result.value, selectedBox: selected, loadingBoxes: false,
+      page, pageError: resultPage && !resultPage.ok ? resultPage.error.message : null,
+      selectedId: selectedMessage?.id ?? null,
+      message: selectedMessage && previous.message ? { ...previous.message, ...selectedMessage } : null,
+      changeBlocked: resultPage && !resultPage.ok ? previous.changeBlocked : false });
   }
   async selectMailbox(box: Mailbox, offset = 0) {
-    if (this.state.changing) return;
+    if (this.state.changing || this.state.loadingBoxes) return;
     const version = ++this.pageVersion;
     ++this.bodyVersion;
     this.update({ selectedBox: box, page: null, selectedId: null, message: null,
@@ -69,7 +80,7 @@ export class MailModel {
       : { pageError: result.error.message, loadingPage: false });
   }
   async selectMessage(id: number) {
-    if (this.state.changing) return;
+    if (this.state.changing || this.state.loadingBoxes) return;
     const box = this.state.selectedBox;
     if (!box || !this.state.page?.messages.some(message => message.id === id)) return;
     const version = ++this.bodyVersion;
@@ -89,7 +100,7 @@ export class MailModel {
   }
   async change(input: MailChange) {
     const { selectedBox, message, page } = this.state;
-    if (this.state.changing || this.state.changeBlocked || !selectedBox || !message
+    if (this.state.changing || this.state.loadingBoxes || this.state.changeBlocked || !selectedBox || !message
       || message.id !== input.target.id || mailboxKey(selectedBox) !== mailboxKey(input.target.mailbox)) return;
     this.update({ changing: true, changeError: null });
     let result: MailReply<unknown>;

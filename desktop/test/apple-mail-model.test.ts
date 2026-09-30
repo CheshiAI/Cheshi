@@ -51,7 +51,64 @@ test('permission and page failures are distinct from empty mailboxes and refresh
   expect(model.getSnapshot().pageError).toBeNull(); expect(model.getSnapshot().page?.messages).toEqual([]);
   denied = true; await model.connect();
   expect(model.getSnapshot().boxesError).toBe(MAIL_ERRORS.permission);
-  expect(model.getSnapshot().connected).toBe(false); expect(model.getSnapshot().boxes).toEqual([]);
+  expect(model.getSnapshot().connected).toBe(true); expect(model.getSnapshot().boxes).toEqual([mailBox]);
+  expect(model.getSnapshot().page?.messages).toEqual([]);
+});
+
+test('refresh retains the current page and body on failure and reconciles removed messages on success', async () => {
+  let fail = false;
+  let removed = false;
+  const offsets: number[] = [];
+  const model = new MailModel(mailApiFixture({ list: async (_box, offset = 0) => {
+    offsets.push(offset);
+    return fail ? mailFailure('unavailable') : mailSuccess({ offset, nextOffset: null, messages: removed ? [] : [message] });
+  } }));
+  await model.connect();
+  await model.selectMailbox(mailBox, 50);
+  await model.selectMessage(1);
+  const previous = model.getSnapshot();
+  fail = true;
+  await model.connect();
+  expect(model.getSnapshot().page).toBe(previous.page);
+  expect(model.getSnapshot().message).toEqual(previous.message);
+  expect(model.getSnapshot().selectedId).toBe(1);
+  expect(model.getSnapshot().pageError).toBe(MAIL_ERRORS.unavailable);
+  expect(offsets).toEqual([0, 50, 50]);
+  fail = false; removed = true;
+  await model.connect();
+  expect(model.getSnapshot().page?.messages).toEqual([]);
+  expect(model.getSnapshot().message).toBeNull();
+  expect(model.getSnapshot().selectedId).toBeNull();
+  expect(model.getSnapshot().pageError).toBeNull();
+});
+
+test('refresh replaces a removed mailbox and discards a cancelled second-stage response', async () => {
+  const page = createMailDeferred<MailReply<MailPage>>();
+  const pageStarted = createMailDeferred<void>();
+  const other = { ...mailBox, path: ['Archive'] };
+  let replace = false;
+  const model = new MailModel(mailApiFixture({
+    mailboxes: async () => mailSuccess([replace ? other : mailBox]),
+    list: async () => {
+      if (!replace) return mailSuccess({ offset: 0, nextOffset: null, messages: [message] });
+      pageStarted.resolve();
+      return page.promise;
+    },
+  }));
+  await model.connect(); await model.selectMessage(1);
+  replace = true;
+  const pending = model.connect();
+  await pageStarted.promise;
+  expect(model.getSnapshot().selectedBox).toEqual(mailBox);
+  expect(model.getSnapshot().message?.body).toBe(message.body);
+  model.cancelPending();
+  page.resolve(mailSuccess({ offset: 0, nextOffset: null, messages: [] }));
+  await pending;
+  expect(model.getSnapshot().selectedBox).toEqual(mailBox);
+  await model.connect();
+  expect(model.getSnapshot().selectedBox).toEqual(other);
+  expect(model.getSnapshot().message).toBeNull();
+  expect(model.getSnapshot().selectedId).toBeNull();
 });
 
 test('unmount cancellation ignores pending reads and refresh preserves mailbox identity', async () => {

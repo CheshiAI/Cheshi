@@ -30,7 +30,7 @@ export function SidebarTabs({ tabs, activeId, onSelect }: {
     onSelect(next.id);
   };
   const viewportRef = useScrollSnapTabs(activeIndex, selectScrolledTab);
-  const stripRef = useSidebarTabStrip(activeIndex, tabs.length, visibleCount, selectScrolledTab);
+  const stripRef = useSidebarTabStrip(activeIndex, tabs.length, visibleCount, selectScrolledTab, viewportRef);
   return <div className={styles.root} style={{ '--sidebar-tab-count': tabs.length, '--sidebar-visible-tabs': visibleCount } as CSSProperties}>
     <div ref={stripRef} className={styles.tabViewport}>
     <FilterTabList className={styles.tabs} role="tablist" aria-label="Sidebar panels">
