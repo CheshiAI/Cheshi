@@ -231,11 +231,3 @@ export function logDebug(message: string, context?: Record<string, unknown>): vo
 export function logWarn(message: string, context?: Record<string, unknown>): void {
   currentLogger.warn(message, context);
 }
-
-/**
- * Log an error message
- */
-//noinspection JSUnusedGlobalSymbols
-export function logError(message: string, context?: Record<string, unknown>): void {
-  currentLogger.error(message, context);
-}

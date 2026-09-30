@@ -199,15 +199,6 @@ export function runMigrations(db: SqliteDatabase, fromVersion: number): void {
 }
 
 /**
- * Check if the database needs migration
- */
-//noinspection JSUnusedGlobalSymbols
-export function needsMigration(db: SqliteDatabase): boolean {
-  const current = getCurrentVersion(db);
-  return current < CURRENT_SCHEMA_VERSION;
-}
-
-/**
  * Get list of pending migrations
  */
 export function getPendingMigrations(db: SqliteDatabase): Migration[] {
@@ -215,22 +206,4 @@ export function getPendingMigrations(db: SqliteDatabase): Migration[] {
   return migrations
     .filter((m) => m.version > current)
     .sort((a, b) => a.version - b.version);
-}
-
-/**
- * Get migration history from database
- */
-//noinspection JSUnusedGlobalSymbols
-export function getMigrationHistory(
-  db: SqliteDatabase
-): Array<{ version: number; appliedAt: number; description: string | null }> {
-  const rows = db
-    .prepare('SELECT version, applied_at, description FROM schema_versions ORDER BY version')
-    .all() as Array<{ version: number; applied_at: number; description: string | null }>;
-
-  return rows.map((row) => ({
-    version: row.version,
-    appliedAt: row.applied_at,
-    description: row.description,
-  }));
 }

@@ -31,10 +31,6 @@ export function getCodexAccountProfiles(options: CodexAccountProfilesOptions): C
   return service;
 }
 
-export async function disposeCodexAccountProfiles(): Promise<void> {
-  await Promise.all([...registries.values()].map((service) => service.dispose()));
-}
-
 /** Profile metadata and account-only processes; selecting a profile belongs to each workspace. */
 export class CodexAccountProfiles {
   private readonly options: CodexAccountProfilesOptions;

@@ -86,14 +86,6 @@ export function getAllFrameworkResolvers(): FrameworkResolver[] {
 }
 
 /**
- * Get a resolver by name
- */
-//noinspection JSUnusedGlobalSymbols
-export function getFrameworkResolver(name: string): FrameworkResolver | undefined {
-  return FRAMEWORK_RESOLVERS.find((r) => r.name === name);
-}
-
-/**
  * Detect which frameworks are used in a project
  */
 export function detectFrameworks(context: ResolutionContext): FrameworkResolver[] {
@@ -117,19 +109,6 @@ export function getApplicableFrameworks(
   return detected.filter(
     (fw) => !fw.languages || fw.languages.includes(language)
   );
-}
-
-/**
- * Register a custom framework resolver
- */
-//noinspection JSUnusedGlobalSymbols
-export function registerFrameworkResolver(resolver: FrameworkResolver): void {
-  // Remove existing resolver with same name
-  const index = FRAMEWORK_RESOLVERS.findIndex((r) => r.name === resolver.name);
-  if (index !== -1) {
-    FRAMEWORK_RESOLVERS.splice(index, 1);
-  }
-  FRAMEWORK_RESOLVERS.push(resolver);
 }
 
 // Re-export framework resolvers

@@ -452,31 +452,6 @@ export class Mutex {
 }
 
 /**
- * Chunked file reader for large files
- *
- * Reads a file in chunks to avoid loading entire file into memory.
- */
-//noinspection JSUnusedGlobalSymbols
-export async function* readFileInChunks(
-  filePath: string,
-  chunkSize: number = 64 * 1024
-): AsyncGenerator<string, void, undefined> {
-  const fs = await import('fs');
-
-  const fd = fs.openSync(filePath, 'r');
-  const buffer = Buffer.alloc(chunkSize);
-
-  try {
-    let bytesRead: number;
-    while ((bytesRead = fs.readSync(fd, buffer, 0, chunkSize, null)) > 0) {
-      yield buffer.toString('utf-8', 0, bytesRead);
-    }
-  } finally {
-    fs.closeSync(fd);
-  }
-}
-
-/**
  * Debounce a function
  *
  * @param fn - Function to debounce
@@ -533,50 +508,6 @@ export function throttle<T extends (...args: unknown[]) => unknown>(
       }, remaining);
     }
   };
-}
-
-/**
- * Estimate memory usage of an object (rough approximation)
- *
- * @param obj - Object to measure
- * @returns Approximate size in bytes
- */
-//noinspection JSUnusedGlobalSymbols
-export function estimateSize(obj: unknown): number {
-  const seen = new WeakSet();
-
-  function sizeOf(value: unknown): number {
-    if (value === null || value === undefined) {
-      return 0;
-    }
-
-    switch (typeof value) {
-      case 'boolean':
-        return 4;
-      case 'number':
-        return 8;
-      case 'string':
-        return 2 * (value as string).length;
-      case 'object':
-        if (seen.has(value as object)) {
-          return 0;
-        }
-        seen.add(value as object);
-
-        if (Array.isArray(value)) {
-          return value.reduce((acc: number, item) => acc + sizeOf(item), 0);
-        }
-
-        return Object.entries(value as object).reduce(
-          (acc, [key, val]) => acc + sizeOf(key) + sizeOf(val),
-          0
-        );
-      default:
-        return 0;
-    }
-  }
-
-  return sizeOf(obj);
 }
 
 /**

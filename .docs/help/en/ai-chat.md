@@ -41,10 +41,3 @@ Turning the switch off cancels pending recall in all workspaces and blocks searc
 calls immediately, including from existing connections. It cannot retract text
 already sent. You can continue to browse history locally. Jev usage and fixed-sample
 connection checks use your TypeSafe allowance; Luna uses your Codex account.
-
-## Jev in executable skills
-
-Explicitly invoked skills can use Jev to choose yes/no branches, with Luna low
-fallback when Jev is unavailable. They send the judgment input provided by the
-skill, independently of the history recall switch. The runner currently requires
-a source checkout and CLI invocation; see [executable skills](../../skill-flow/en/guide.md).

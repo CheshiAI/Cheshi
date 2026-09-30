@@ -62,7 +62,6 @@ export function MailComposerContent({ composer, inline = false, active = true, o
             remoteImages={state.remoteImagesAllowed} onLoadImages={onLoadImages} onChange={(html, body) => composer.edit({ html, body })} />
             : <label className={styles.field}>Body<NeumorphicTextField ref={bodyRef} aria-label="Compose message body" multiline rows={12} value={form.body} disabled={disabled}
               maxLength={MAIL_BODY_LIMIT} onChange={event => composer.edit({ body: event.target.value })} /></label>}
-          {state.reply && !inline && <p>This will be sent as a reply to the original message.</p>}
           <div className={inline ? replyStyles.actions : styles.toolbar}>
             <NeumorphicButton variant="ghost" size="standard" disabled={state.busy} onClick={() => composer.hide()}>Close and keep draft</NeumorphicButton>
             <NeumorphicButton size="standard" disabled={state.busy} onClick={() => setDiscard(true)}>Discard draft</NeumorphicButton>

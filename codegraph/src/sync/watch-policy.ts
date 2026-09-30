@@ -96,10 +96,3 @@ export function watchDisabledReason(projectRoot: string, probe: WatchProbe = {})
 
   return null;
 }
-
-/** Test-only: reset the cached WSL detection. */
-//noinspection JSUnusedGlobalSymbols
-export function __resetWslCacheForTests(): void {
-  wslChecked = false;
-  wslValue = false;
-}
