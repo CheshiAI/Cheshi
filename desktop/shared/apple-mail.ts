@@ -1,17 +1,17 @@
-export const MAIL_PAGE_SIZE = 50;
+export const MAIL_PAGE_SIZE = 25;
 export const MAIL_BODY_LIMIT = 500_000;
 export const MAIL_ERRORS = {
-  unsupported: 'Apple Mail 연동은 macOS에서 사용할 수 있습니다.',
-  permission: '시스템 설정 → 개인정보 보호 및 보안 → 자동화에서 Cheshi의 Mail 접근을 허용해 주세요.',
-  unavailable: 'Mail에 연결하지 못했습니다. Apple Mail의 계정 상태를 확인한 뒤 다시 시도해 주세요.',
-  timeout: 'Mail 응답이 지연되고 있습니다. 권한 요청 창을 확인한 뒤 다시 시도해 주세요.',
-  'not-found': '메일 또는 메일함이 이동되거나 없어졌습니다. 새로고침해 주세요.',
-  invalid: '메일 조회 요청이 올바르지 않습니다.',
-  'invalid-response': 'Mail에서 받은 데이터를 처리하지 못했습니다. 새로고침해 주세요.',
-  'too-large': '메일 데이터가 너무 큽니다. 다른 메일함을 선택해 주세요.',
-  'send-unknown': '발송 결과를 확인하지 못했습니다. 중복 발송을 막기 위해 다시 보내기를 중지했습니다. Apple Mail의 보낸 편지함과 보낼 편지함을 확인해 주세요.',
-  'change-unknown': '변경 결과를 확인하지 못했습니다. 새로고침 후 메일 상태를 확인해 주세요.',
-  'ambiguous-mailbox': '같은 이름의 메일함이 여러 개 있습니다. 상위 메일함이 포함된 전체 경로를 선택해 주세요.',
+  unsupported: 'Apple Mail integration is available on macOS.',
+  permission: 'Allow Cheshi to access Mail in System Settings → Privacy & Security → Automation.',
+  unavailable: 'Could not connect to Mail. Check your accounts in Apple Mail and try again.',
+  timeout: 'Mail is taking too long to respond. Check for a permission prompt and try again.',
+  'not-found': 'The message or mailbox was moved or no longer exists. Please refresh.',
+  invalid: 'The mail request is invalid.',
+  'invalid-response': 'Could not process the data from Mail. Please refresh.',
+  'too-large': 'The mail data is too large. Select another mailbox.',
+  'send-unknown': 'The send result could not be confirmed. Sending again is disabled to prevent duplicates. Check Sent and Outbox in Apple Mail.',
+  'change-unknown': 'The change could not be confirmed. Refresh and check the message status.',
+  'ambiguous-mailbox': 'Multiple mailboxes have the same name. Select the full path, including parent mailboxes.',
 } as const;
 export type MailErrorCode = keyof typeof MAIL_ERRORS;
 export type MailReply<T> = { ok: true; value: T } | { ok: false; error: { code: MailErrorCode; message: string } };

@@ -16,7 +16,7 @@
 .browser { display: grid; flex: 1; min-height: 0; overflow: auto; grid-template-columns: minmax(220px, var(--sidebar-width)) minmax(280px, 1fr); }
 .messages, .body { --liquid-glass-radius: 0; min-width: 0; min-height: 0; border-width: 0 1px 0 0; }
 .mailSidebar { --liquid-glass-radius: 0; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; border: 0; font-size: var(--font-size-default); }
-.searchBar { flex: 0 0 auto; min-width: 0; padding: var(--space-default); border-bottom: 1px solid var(--divider); }
+.searchBar { flex: 0 0 auto; min-width: 0; padding: var(--space-default); }
 .sidebarSearch { position: relative; min-width: 0; }
 .searchField > input { padding-left: calc(var(--icon-button-size) + var(--icon-default) * 2); }
 .searchIcon {
@@ -30,33 +30,90 @@
   pointer-events: none;
 }
 .mailboxScroll { flex: 1 1 0; }
-.mailboxes { padding: var(--space-default); }
-.mailboxLoading { box-sizing: border-box; height: 36px; flex: 0 0 auto; padding-inline: var(--space-default); }
-.mailboxes section + section { margin-top: var(--space-default); }
-.mailboxes h2, .listTitle { margin: 0 0 var(--space-default); font-size: var(--font-size-section-title); font-weight: 600; overflow-wrap: anywhere; }
-.mailboxes h2 { color: var(--sidebar-section-label-color); }
-.mailbox { display: flex; width: 100%; align-items: center; gap: var(--icon-default); padding: 8px; border: 0; border-radius: var(--panel-radius); background: transparent; color: var(--text); text-align: left; font: inherit; }
+.mailboxes { padding: 0; }
+.mailboxes > p, .mailboxes > button { margin: var(--space-default); }
+.accountGroup { border-bottom: 1px solid var(--divider); }
+.accountGroup:first-child { border-top: 1px solid var(--divider); }
+.mailboxScroll [data-overflowing='true'] .accountGroup:last-child { border-bottom-color: transparent; }
+.accountHeading { margin: 0; font: inherit; }
+.accountToggle {
+  display: grid; grid-template-columns: minmax(0, 1fr) var(--icon-button-size); align-items: center;
+  box-sizing: border-box; width: 100%; height: 42px; gap: var(--icon-default);
+  padding: 0 var(--space-default); border: 0; border-radius: 0;
+  background: transparent; color: var(--text); font: inherit;
+  font-size: var(--font-size-label); font-weight: 600; text-align: left; cursor: pointer;
+}
+.accountToggle > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.accountToggle:is(:hover, :active, :focus-visible) { background: var(--control-surface-interactive); }
+.accountChevronSlot { display: grid; place-items: center; width: var(--icon-button-size); height: var(--icon-button-size); }
+.accountChevron { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); stroke-width: var(--icon-button-stroke-width); transition: transform 160ms ease; }
+.accountToggle[aria-expanded='true'] .accountChevron { transform: rotate(90deg); }
+.listTitle {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  box-sizing: border-box;
+  height: 42px;
+  padding: 0 var(--space-default);
+  margin: 0;
+  border-bottom: 1px solid var(--divider);
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-section-title);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.mailbox { display: flex; box-sizing: border-box; width: 100%; min-height: 42px; align-items: center; gap: var(--icon-default); padding: 0 var(--space-default); border: 0; border-radius: 0; background: transparent; color: var(--text); text-align: left; font: inherit; font-size: var(--font-size-label); }
 .mailbox > span:first-of-type { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .count { composes: badge from '../../shared/ui/Badge.module.css'; }
 .mailbox:not(:disabled), .messageRow { cursor: pointer; }
 .mailbox[aria-current='page'] { background: var(--control-surface); }
 .mailbox:hover:not(:disabled), .mailbox:active:not(:disabled) { background: var(--control-surface-interactive); }
 .mailbox:disabled { opacity: .5; cursor: not-allowed; }
-.messageRow:hover, .messageRow[aria-pressed='true'] { background: var(--dropdown-selection-bg); }
+@media (prefers-reduced-motion: reduce) {
+  .accountChevron { transition: none; }
+}
+.messageRow[data-unread='true'] { background: var(--control-surface); }
+.messageRow:is(:hover, :active, [aria-pressed='true']) { background: var(--control-surface-interactive); }
 .mailbox:focus-visible, .messageRow:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
 .messages { display: flex; flex-direction: column; overflow: hidden; }
-.listTitle { padding: var(--space-default); margin: 0; border-bottom: 1px solid var(--divider); }
+.messageViewport { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .messageList { flex: 1; min-height: 0; overflow: auto; }
 .messageRow { display: flex; width: 100%; flex-direction: column; gap: 8px; padding: var(--space-default); border: 0; border-bottom: 1px solid var(--divider); background: transparent; color: var(--text); text-align: left; font: inherit; }
 .sender, .subject { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sender { font-weight: 600; }
-.unread { margin-right: 8px; }
 .messageRow time, .body time { opacity: .7; }
-.pagination { display: flex; align-items: center; justify-content: space-between; gap: var(--space-default); padding: var(--space-default); border-top: 1px solid var(--divider); }
-.body { overflow: auto; padding: var(--space-default); border-right: 0; overflow-wrap: anywhere; }
+.moreSentinel { height: 1px; }
+.body { position: relative; overflow: auto; padding: var(--space-default); border-right: 0; overflow-wrap: anywhere; }
 .bodyTitle { margin: 0; font-size: 16px; }
 .body p { margin: var(--space-default) 0; }
+.messageList:has(> .emptyMessage), .body:has(> .emptyMessage) { display: flex; flex-direction: column; }
+.emptyMessage {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-default);
+  margin: 0;
+  text-align: center;
+}
+.body > .emptyMessage { margin: 0; padding: 0; }
 .bodyText { margin: var(--space-default) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.6; }
+.description, .descriptionLoading > span:not([aria-hidden='true']) {
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
+}
+.descriptionLoading > span:not([aria-hidden='true']) { background: none; animation: none; }
+.loadingOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  padding: var(--space-default);
+  pointer-events: none;
+}
 .notice { padding: var(--space-default); margin: 0; }
 .toolbar {
   display: flex;

@@ -11,15 +11,15 @@ export function MailActions({ message, target, boxes, disabled, onChange, onRepl
 }) {
   const [move, setMove] = useState<'move' | 'trash' | null>(null);
   return <>
-    <div className={styles.toolbar} aria-label="메일 작업">
-      <NeumorphicButton raised size="icon" disabled={disabled} aria-label={message.read ? '안 읽음으로 표시' : '읽음으로 표시'}
+    <div className={styles.toolbar} aria-label="Mail actions">
+      <NeumorphicButton raised size="icon" disabled={disabled} aria-label={message.read ? 'Mark as unread' : 'Mark as read'}
         onClick={() => void onChange({ action: 'read', target, value: !message.read })}><MailOpen aria-hidden="true" /></NeumorphicButton>
-      <NeumorphicButton raised size="icon" disabled={disabled} aria-label={message.flagged ? '깃발 해제' : '깃발 표시'} aria-pressed={message.flagged}
+      <NeumorphicButton raised size="icon" disabled={disabled} aria-label={message.flagged ? 'Remove flag' : 'Flag message'} aria-pressed={message.flagged}
         onClick={() => void onChange({ action: 'flag', target, value: !message.flagged })}><Flag aria-hidden="true" /></NeumorphicButton>
-      <NeumorphicButton raised size="icon" disabled={disabled} aria-label="메일함으로 이동" onClick={() => setMove('move')}><FolderInput aria-hidden="true" /></NeumorphicButton>
-      <NeumorphicButton raised size="icon" disabled={disabled} aria-label="휴지통으로 이동" onClick={() => setMove('trash')}><Trash2 aria-hidden="true" /></NeumorphicButton>
-      <NeumorphicButton raised size="icon" disabled={disabled} aria-label="답장" onClick={() => onReply(false)}><Reply aria-hidden="true" /></NeumorphicButton>
-      <NeumorphicButton raised size="icon" disabled={disabled} aria-label="전체 답장" onClick={() => onReply(true)}><ReplyAll aria-hidden="true" /></NeumorphicButton>
+      <NeumorphicButton raised size="icon" disabled={disabled} aria-label="Move to mailbox" onClick={() => setMove('move')}><FolderInput aria-hidden="true" /></NeumorphicButton>
+      <NeumorphicButton raised size="icon" disabled={disabled} aria-label="Move to Trash" onClick={() => setMove('trash')}><Trash2 aria-hidden="true" /></NeumorphicButton>
+      <NeumorphicButton raised size="icon" disabled={disabled} aria-label="Reply" onClick={() => onReply(false)}><Reply aria-hidden="true" /></NeumorphicButton>
+      <NeumorphicButton raised size="icon" disabled={disabled} aria-label="Reply all" onClick={() => onReply(true)}><ReplyAll aria-hidden="true" /></NeumorphicButton>
     </div>
     {move && <MailMoveDialog boxes={boxes} target={target} trash={move === 'trash'} subject={message.subject}
       onClose={() => setMove(null)} onMove={destination => { setMove(null); void onChange({ action: 'move', target, destination }); }} />}
@@ -36,16 +36,16 @@ function MailMoveDialog({ boxes, target, trash, subject, onClose, onMove }: {
     return candidate ? mailboxKey(candidate) : '';
   });
   const destination = destinations.find(box => mailboxKey(box) === selected);
-  return <Modal title={trash ? '휴지통으로 이동' : '메일함으로 이동'} onClose={onClose}>
+  return <Modal title={trash ? 'Move to Trash' : 'Move to mailbox'} onClose={onClose}>
     <div className={styles.form}>
-      <p>{subject || '(제목 없음)'}</p>
-      <p>{trash ? '이 계정의 휴지통 메일함을 확인하고 이동해 주세요.' : '이동할 메일함을 선택해 주세요.'}</p>
-      <NeumorphicSurface raised highlightFocus className={styles.selectSurface}><select aria-label="이동할 메일함" value={selected}
-        onChange={event => setSelected(event.target.value)}><option value="">메일함 선택</option>
+      <p>{subject || '(No subject)'}</p>
+      <p>{trash ? 'Confirm the Trash mailbox for this account before moving the message.' : 'Select a destination mailbox.'}</p>
+      <NeumorphicSurface raised highlightFocus className={styles.selectSurface}><select aria-label="Destination mailbox" value={selected}
+        onChange={event => setSelected(event.target.value)}><option value="">Choose a mailbox</option>
         {destinations.map(box => <option key={mailboxKey(box)} value={mailboxKey(box)}>{box.accountName} / {box.path.join(' / ')}</option>)}
       </select></NeumorphicSurface>
-      <div className={styles.toolbar}><NeumorphicButton size="standard" onClick={onClose}>취소</NeumorphicButton>
-        <NeumorphicButton raised size="standard" disabled={!destination} onClick={() => destination && onMove(destination)}>이동 확인</NeumorphicButton></div>
+      <div className={styles.toolbar}><NeumorphicButton size="standard" onClick={onClose}>Cancel</NeumorphicButton>
+        <NeumorphicButton raised size="standard" disabled={!destination} onClick={() => destination && onMove(destination)}>Confirm move</NeumorphicButton></div>
     </div>
   </Modal>;
 }

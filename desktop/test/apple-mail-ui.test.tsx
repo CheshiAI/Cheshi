@@ -32,6 +32,12 @@ async function withMailDOM(run: (render: (node: ReactNode) => Promise<void>, doc
   }
 }
 
+async function expandMailAccount(document: Document, name = 'Personal') {
+  const toggle = [...document.querySelectorAll<HTMLButtonElement>('#mail-sidebar button[aria-expanded]')]
+    .find(button => button.textContent === name)!;
+  if (toggle.getAttribute('aria-expanded') === 'false') await act(async () => toggle.click());
+}
+
 test('Mail preloads mailboxes and the first page without reading message bodies', async () => {
   let connections = 0;
   let reads = 0;
@@ -42,19 +48,68 @@ test('Mail preloads mailboxes and the first page without reading message bodies'
   await withMailDOM(async (render, document) => {
     await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
     expect(connections).toBe(1); expect(reads).toBe(0);
-    expect(document.querySelector('[aria-label="메일함"]')?.textContent).toContain('Personal');
-    expect(document.querySelector('[aria-label="메일함"]')?.textContent).toContain('Work');
-    expect(document.querySelectorAll('[aria-label^="읽지 않음 "]')).toHaveLength(1);
-    const row = document.querySelector<HTMLButtonElement>('[aria-label="메일 목록"] button[aria-pressed]')!;
+    expect(document.querySelector('[aria-label="Mailboxes"]')?.textContent).toContain('Personal');
+    expect(document.querySelector('[aria-label="Mailboxes"]')?.textContent).toContain('Work');
+    await expandMailAccount(document);
+    expect(document.querySelectorAll('[aria-label$=" unread messages"]')).toHaveLength(1);
+    const row = document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!;
     await act(async () => row.click());
     expect(reads).toBe(1);
-    expect(document.querySelector('[aria-label="메일 본문"] pre')?.textContent).toContain('<script>alert(1)</script>');
+    expect(document.querySelector('[aria-label="Message body"] pre')?.textContent).toContain('<script>alert(1)</script>');
     expect(document.querySelector('img, script, iframe')).toBeNull();
     const labels = [...document.querySelectorAll('button')].map(button => button.textContent);
-    expect(labels).not.toContain('보내기'); expect(labels).not.toContain('삭제');
-    const otherBox = document.querySelectorAll<HTMLButtonElement>('[aria-label="메일함"] section button')[1]!;
+    expect(labels).not.toContain('Send'); expect(labels).not.toContain('Delete');
+    await expandMailAccount(document, 'Work');
+    const otherBox = document.querySelector<HTMLButtonElement>('[aria-label="Work mailboxes"] button')!;
     await act(async () => otherBox.click());
-    expect(document.querySelector('[aria-label="메일 본문"] pre')).toBeNull();
+    expect(document.querySelector('[aria-label="Message body"] pre')).toBeNull();
+  });
+});
+
+test('account accordions start closed, retain closing rows and preserve selection across toggles and refresh', async () => {
+  let connections = 0;
+  let lists = 0;
+  const work = { ...mailBox, accountId: 'work', accountName: 'Work' };
+  const api = mailApiFixture({
+    mailboxes: async () => { connections++; return mailSuccess([mailBox, work]); },
+    list: async () => { lists++; return mailSuccess({ messages: [mailMessageFixture], offset: 0, nextOffset: null }); },
+  });
+  await withMailDOM(async (render, document) => {
+    await render(<MailBrowser api={api} sidebarTarget={document.getElementById('mail-sidebar')}
+      rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    const toggles = [...document.querySelectorAll<HTMLButtonElement>('#mail-sidebar button[aria-expanded]')];
+    expect(toggles.map(toggle => toggle.getAttribute('aria-expanded'))).toEqual(['false', 'false']);
+    expect(document.querySelector('[aria-label="Personal mailboxes"]')).toBeNull();
+    expect(lists).toBe(1);
+    await expandMailAccount(document);
+    const region = document.querySelector('[aria-label="Personal mailboxes"]')!;
+    const row = region.querySelector('[aria-current="page"]')!;
+    const reveal = region.parentElement!;
+    expect(toggles[0]!.getAttribute('aria-controls')).toBe(region.id);
+    await act(async () => toggles[0]!.click());
+    expect(reveal.getAttribute('data-expanded')).toBe('false');
+    expect(reveal.hasAttribute('inert')).toBe(true);
+    expect(reveal.getAttribute('aria-hidden')).toBe('true');
+    expect(region.querySelector('[aria-current="page"]')).toBe(row);
+    await expandMailAccount(document);
+    expect(region.parentElement).toBe(reveal);
+    expect(reveal.hasAttribute('inert')).toBe(false);
+    await expandMailAccount(document, 'Work');
+    expect(toggles.map(toggle => toggle.getAttribute('aria-expanded'))).toEqual(['false', 'true']);
+    await act(async () => {
+      const event = new document.defaultView!.Event('transitionend', { bubbles: true });
+      Object.defineProperty(event, 'propertyName', { value: 'grid-template-rows' });
+      reveal.dispatchEvent(event);
+    });
+    expect(document.querySelector('[aria-label="Personal mailboxes"]')).toBeNull();
+    expect(connections).toBe(1);
+    expect(lists).toBe(1);
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Work mailboxes"] button')!.click());
+    expect(lists).toBe(2);
+    await act(async () => button(document, 'Refresh mail').click());
+    expect(toggles[1]!.getAttribute('aria-expanded')).toBe('true');
+    expect(document.querySelector('[aria-label="Work mailboxes"] [aria-current="page"]')).not.toBeNull();
+    expect(connections).toBe(2);
   });
 });
 
@@ -64,6 +119,7 @@ test('mailbox scrolling shares overlay dragging and activity tracking while pres
     const scene = (active: boolean) => <MailBrowser api={api} active={active}
       sidebarTarget={document.getElementById('mail-sidebar')} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />;
     await render(scene(true));
+    await expandMailAccount(document);
     const viewport = document.querySelector<HTMLElement>('[role="region"][aria-label="Mailboxes"]')!;
     expect(viewport).not.toBeNull();
     const surface = viewport.parentElement!;
@@ -102,12 +158,13 @@ test('Mail pull refresh waits for mailboxes and messages without duplicate loadi
   await withMailDOM(async (render, document) => {
     await render(<MailBrowser api={api} sidebarTarget={document.getElementById('mail-sidebar')}
       rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    const messageRow = document.querySelector<HTMLButtonElement>('[aria-label="메일 목록"] button[aria-pressed]')!;
+    await expandMailAccount(document);
+    const messageRow = document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!;
     await act(async () => messageRow.click());
-    const body = document.querySelector('[aria-label="메일 본문"] pre')!;
+    const body = document.querySelector('[aria-label="Message body"] pre')!;
     const retainedContent = () => {
-      expect(document.querySelector('[aria-label="메일 목록"] button[aria-pressed]')).toBe(messageRow);
-      expect(document.querySelector('[aria-label="메일 본문"] pre')).toBe(body);
+      expect(document.querySelector('[aria-label="Message list"] button[aria-pressed]')).toBe(messageRow);
+      expect(document.querySelector('[aria-label="Message body"] pre')).toBe(body);
       expect(body.textContent).toBe(mailMessageFixture.body);
       expect(messageRow.getAttribute('aria-pressed')).toBe('true');
     };
@@ -139,7 +196,7 @@ test('Mail pull refresh waits for mailboxes and messages without duplicate loadi
     expect(row.hasAttribute('disabled')).toBe(false);
     expect(row.getAttribute('aria-disabled')).toBe('true');
     retainedContent();
-    await act(async () => button(document, '메일 새로고침').click());
+    await act(async () => button(document, 'Refresh mail').click());
     await pointer('pointerdown', 10); await pointer('pointermove', 110); await pointer('pointerup', 110);
     expect(connections).toBe(2);
     await act(async () => boxes.resolve(mailSuccess([mailBox])));
@@ -147,12 +204,12 @@ test('Mail pull refresh waits for mailboxes and messages without duplicate loadi
     expect(viewport.querySelector('[role="status"]')).toBe(status);
     expect(document.querySelectorAll('[role="status"]')).toHaveLength(1);
     retainedContent();
-    expect(button(document, '메일 새로고침').disabled).toBe(true);
+    expect(button(document, 'Refresh mail').disabled).toBe(true);
     await act(async () => page.resolve(mailSuccess({ messages: [mailMessageFixture], offset: 0, nextOffset: null })));
     expect(viewport.querySelector('[role="status"]')).toBeNull();
-    expect(button(document, '메일 새로고침').disabled).toBe(false);
+    expect(button(document, 'Refresh mail').disabled).toBe(false);
     retainedContent();
-    await act(async () => button(document, '메일 새로고침').click());
+    await act(async () => button(document, 'Refresh mail').click());
     expect(connections).toBe(3);
   });
 });
@@ -177,7 +234,8 @@ test('hidden Mail preloads once in Strict Mode and preserves its page, body and 
     expect(reads).toBe(0);
     const main = document.querySelector('main')!;
     expect(main.hidden).toBe(true);
-    expect(main.querySelector('[aria-label="메일함"]')).toBeNull();
+    expect(main.querySelector('[aria-label="Mailboxes"]')).toBeNull();
+    await expandMailAccount(document);
     const mailbox = document.querySelector<HTMLButtonElement>('#mail-sidebar button[aria-current="page"]')!;
     expect(mailbox).not.toBeNull();
     await act(async () => mailbox.click());
@@ -185,22 +243,89 @@ test('hidden Mail preloads once in Strict Mode and preserves its page, body and 
     expect(lists).toBe(1);
     await render(scene(true));
     expect(main.hidden).toBe(false);
-    const row = document.querySelector<HTMLButtonElement>('[aria-label="메일 목록"] button[aria-pressed]')!;
+    const row = document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!;
     await act(async () => row.click());
     expect(reads).toBe(1);
-    await act(async () => button(document, '새 메일 작성').click());
+    await act(async () => button(document, 'Compose mail').click());
     await act(async () => mailComposer(api).edit({ subject: 'Keep this draft', body: 'Do not reset' }));
-    await act(async () => button(document, '내용 유지하고 닫기').click());
+    await act(async () => button(document, 'Close and keep draft').click());
     await render(scene(false));
     await render(scene(true));
-    expect(document.querySelector('[aria-label="메일 목록"] button[aria-pressed]')).toBe(row);
+    expect(document.querySelector('[aria-label="Message list"] button[aria-pressed]')).toBe(row);
     expect(row.getAttribute('aria-pressed')).toBe('true');
-    expect(document.querySelector('[aria-label="메일 본문"] pre')?.textContent).toBe(mailMessageFixture.body);
+    expect(document.querySelector('[aria-label="Message body"] pre')?.textContent).toBe(mailMessageFixture.body);
     expect(connections).toBe(1);
     expect(lists).toBe(1);
     expect(reads).toBe(1);
-    await act(async () => button(document, '작성 중인 메일').click());
-    expect(document.querySelector<HTMLInputElement>('[aria-label="메일 제목"]')?.value).toBe('Keep this draft');
+    await act(async () => button(document, 'Resume draft').click());
+    expect(document.querySelector<HTMLInputElement>('[aria-label="Message subject"]')?.value).toBe('Keep this draft');
+  });
+});
+
+test('infinite mail loading appends on intersection, preserves content, retries failures and stops when hidden or complete', async () => {
+  const pending = createMailDeferred<MailReply<MailPage>>();
+  const offsets: number[] = [];
+  let additionalRequests = 0;
+  const api = mailApiFixture({ list: async (_box, offset = 0) => {
+    offsets.push(offset);
+    if (offset === 25 && ++additionalRequests === 1) return pending.promise;
+    return mailSuccess({ offset, nextOffset: offset < 50 ? offset + 25 : null,
+      messages: Array.from({ length: offset === 50 ? 1 : 25 }, (_, index) => ({ ...mailMessageFixture, id: offset + index + 1 })) });
+  } });
+  await withMailDOM(async (render, document) => {
+    const observers = new Set<() => void>();
+    const observedRoots: Element[] = [];
+    Object.defineProperty(document.defaultView!, 'IntersectionObserver', { configurable: true, value: class {
+      private readonly notify: () => void;
+      constructor(callback: (entries: { isIntersecting: boolean }[]) => void, options: { root: Element }) {
+        observedRoots.push(options.root);
+        this.notify = () => callback([{ isIntersecting: true }]);
+      }
+      observe() { observers.add(this.notify); }
+      disconnect() { observers.delete(this.notify); }
+    } });
+    const scene = (active: boolean) => <MailBrowser api={api} active={active}
+      sidebarTarget={document.getElementById('mail-sidebar')} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />;
+    const intersect = async () => { await act(async () => { for (const notify of [...observers]) notify(); }); };
+    const rows = () => document.querySelectorAll<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]');
+    await render(scene(false));
+    expect(observers.size).toBe(0);
+    expect(rows()).toHaveLength(25);
+    await render(scene(true));
+    expect(observers.size).toBe(1);
+    const first = rows()[0]!;
+    const viewport = first.parentElement!;
+    expect(observedRoots.at(-1)).toBe(viewport);
+    viewport.scrollTop = 100;
+    await act(async () => first.click());
+    const body = document.querySelector('[aria-label="Message body"] pre')!;
+    await intersect();
+    await intersect();
+    expect(offsets).toEqual([0, 25]);
+    expect(rows()).toHaveLength(25);
+    expect(rows()[0]).toBe(first);
+    expect(document.querySelector('[aria-label="Loading more messages…"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Message body"] pre')).toBe(body);
+    await act(async () => pending.resolve(mailFailure('unavailable')));
+    await intersect();
+    expect(offsets).toEqual([0, 25]);
+    expect(observers.size).toBe(0);
+    await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === 'Retry loading more')!.click());
+    expect(rows()).toHaveLength(50);
+    expect(rows()[0]).toBe(first);
+    expect(first.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('[aria-label="Message body"] pre')).toBe(body);
+    expect(viewport.scrollTop).toBe(100);
+    await render(scene(false));
+    await intersect();
+    expect(offsets).toEqual([0, 25, 25]);
+    await render(scene(true));
+    await intersect();
+    expect(rows()).toHaveLength(51);
+    expect(offsets).toEqual([0, 25, 25, 50]);
+    expect(observers.size).toBe(0);
+    expect(document.querySelector('[aria-label="Previous mail page"], [aria-label="Next mail page"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Loading more messages…"]')).toBeNull();
   });
 });
 
@@ -211,11 +336,12 @@ test('Mail shows retrieval failures separately from an empty mailbox and can rec
   await withMailDOM(async (render, document) => {
     await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS['invalid-response']);
-    expect(document.body.textContent).not.toContain('메일이 없습니다.');
+    expect(document.body.textContent).not.toContain('No messages.');
     fail = false;
-    await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === '다시 시도')!.click());
+    await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === 'Retry')!.click());
     expect(document.querySelector('[role="alert"]')).toBeNull();
-    expect(document.body.textContent).toContain('메일이 없습니다.');
+    expect(document.body.textContent).toContain('No messages.');
+    expect(document.querySelector('[aria-label="Message body"]')?.textContent).toContain('Select a message to view its content.');
   });
 });
 
@@ -231,8 +357,8 @@ test('Mail keeps its header usable through connection, permission failure and su
     await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => { toggles++; }} />);
     const header = document.querySelector('header')!;
     expect(header.textContent).toContain('MAIL');
-    expect(button(document, '새 메일 작성').disabled).toBe(true);
-    expect(button(document, '메일 새로고침').disabled).toBe(true);
+    expect(button(document, 'Compose mail').disabled).toBe(true);
+    expect(button(document, 'Refresh mail').disabled).toBe(true);
     expect(connections).toBe(1);
     const connect = button(document, 'Connecting…');
     expect(connect.disabled).toBe(true);
@@ -243,17 +369,17 @@ test('Mail keeps its header usable through connection, permission failure and su
     expect(toggles).toBe(1);
     await act(async () => pending.resolve(mailFailure('permission')));
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS.permission);
-    expect(document.querySelector('[aria-label="메일 목록"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Message list"]')).toBeNull();
     expect(connect.disabled).toBe(false);
     await act(async () => connect.click());
     expect(connections).toBe(2);
     expect(document.querySelector('[role="alert"]')).toBeNull();
-    expect(document.querySelector('[aria-label="메일 목록"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Message list"]')).not.toBeNull();
     expect(document.querySelector('header')).toBe(header);
     expect(connect.isConnected).toBe(false);
-    expect(button(document, '새 메일 작성').disabled).toBe(false);
-    expect(button(document, '메일 새로고침').disabled).toBe(false);
-    await act(async () => button(document, '메일 새로고침').click());
+    expect(button(document, 'Compose mail').disabled).toBe(false);
+    expect(button(document, 'Refresh mail').disabled).toBe(false);
+    await act(async () => button(document, 'Refresh mail').click());
     expect(connections).toBe(3);
   });
 });
@@ -269,17 +395,17 @@ test('composer shows sender, cc and bcc review and requires an explicit second c
   const api = mailApiFixture({ send: async input => { sends.push(input); return mailSuccess({ operationId: input.operationId, accepted: true }); } });
   await withMailDOM(async (render, document) => {
     await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    await act(async () => button(document, '새 메일 작성').click());
+    await act(async () => button(document, 'Compose mail').click());
     await act(async () => mailComposer(api).edit({ to: 'friend@example.test', cc: 'cc@example.test', bcc: 'private@example.test', body: 'Hello', subject: 'Review me' }));
-    expect(document.querySelector<HTMLInputElement>('[aria-label="메일 제목"]')?.value).toBe('Review me');
-    await act(async () => button(document, '보내기').click());
+    expect(document.querySelector<HTMLInputElement>('[aria-label="Message subject"]')?.value).toBe('Review me');
+    await act(async () => button(document, 'Send').click());
     expect(sends).toHaveLength(0);
-    const review = document.querySelector('[aria-label="발송 전 확인"]');
+    const review = document.querySelector('[aria-label="Review before sending"]');
     expect(review?.textContent).toContain('me@example.test'); expect(review?.textContent).toContain('private@example.test');
     expect(review?.textContent).toContain('Hello');
-    await act(async () => button(document, '확인하고 보내기').click());
+    await act(async () => button(document, 'Confirm and send').click());
     expect(sends).toHaveLength(1); expect(document.querySelector('dialog')).toBeNull();
-    expect(document.body.textContent).toContain('Mail에 발송을 요청했습니다');
+    expect(document.body.textContent).toContain('Mail has been asked to send your message');
   });
 });
 
@@ -287,16 +413,16 @@ test('failed sends preserve displayed text after closing and reopening the compo
   const api = mailApiFixture({ send: async () => mailFailure('send-unknown') });
   await withMailDOM(async (render, document) => {
     await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    await act(async () => button(document, '새 메일 작성').click());
+    await act(async () => button(document, 'Compose mail').click());
     await act(async () => mailComposer(api).edit({ to: 'friend@example.test', body: 'Retain this text' }));
-    await act(async () => button(document, '보내기').click());
-    await act(async () => button(document, '확인하고 보내기').click());
+    await act(async () => button(document, 'Send').click());
+    await act(async () => button(document, 'Confirm and send').click());
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS['send-unknown']);
-    expect(button(document, '보내기').disabled).toBe(true);
-    await act(async () => button(document, '내용 유지하고 닫기').click());
-    await act(async () => button(document, '작성 중인 메일').click());
-    expect(document.querySelector<HTMLTextAreaElement>('[aria-label="작성 본문"]')?.value).toBe('Retain this text');
-    expect(button(document, '보내기').disabled).toBe(true);
+    expect(button(document, 'Send').disabled).toBe(true);
+    await act(async () => button(document, 'Close and keep draft').click());
+    await act(async () => button(document, 'Resume draft').click());
+    expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Compose message body"]')?.value).toBe('Retain this text');
+    expect(button(document, 'Send').disabled).toBe(true);
   });
 });
 
@@ -306,15 +432,15 @@ test('trash action requires a destination confirmation and reply-all opens a dra
     change: async input => { changes.push(input); return mailSuccess(input.target); } });
   await withMailDOM(async (render, document) => {
     await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
-    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="메일 목록"] button[aria-pressed]')!.click());
-    expect(document.body.textContent).toContain('받는 사람: me@example.test');
-    await act(async () => button(document, '전체 답장').click());
-    expect(document.querySelector<HTMLInputElement>('[aria-label="받는 사람"]')?.value).toBe('sender@example.test');
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!.click());
+    expect(document.body.textContent).toContain('To: me@example.test');
+    await act(async () => button(document, 'Reply all').click());
+    expect(document.querySelector<HTMLInputElement>('[aria-label="To"]')?.value).toBe('sender@example.test');
     expect(mailComposer(api).getSnapshot().reply?.all).toBe(true);
-    await act(async () => button(document, '내용 유지하고 닫기').click());
-    await act(async () => button(document, '휴지통으로 이동').click());
+    await act(async () => button(document, 'Close and keep draft').click());
+    await act(async () => button(document, 'Move to Trash').click());
     expect(changes).toEqual([]);
-    await act(async () => button(document, '이동 확인').click());
+    await act(async () => button(document, 'Confirm move').click());
     expect(changes).toEqual([{ action: 'move', target: { mailbox: mailBox, id: 1 }, destination: { ...mailBox, path: ['Trash'] } }]);
   });
 });

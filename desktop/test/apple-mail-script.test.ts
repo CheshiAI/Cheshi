@@ -55,9 +55,13 @@ test('JXA lists only the requested page and fetches selected body separately', (
   const data = fixture();
   const mailbox = { accountId: 'b', path: ['INBOX'] };
   const first = mailReply(data.run({ action: 'list', mailbox, offset: 0 }), value => mailPage(value, 0));
-  expect(first.ok && first.value.messages.length).toBe(50);
-  expect(first.ok && first.value.nextOffset).toBe(50);
-  expect(data.summaryReads()).toBe(50); expect(data.contentReads()).toBe(0);
+  expect(first.ok && first.value.messages.length).toBe(25);
+  expect(first.ok && first.value.nextOffset).toBe(25);
+  expect(data.summaryReads()).toBe(25); expect(data.contentReads()).toBe(0);
+  const second = mailReply(data.run({ action: 'list', mailbox, offset: 25 }), value => mailPage(value, 25));
+  expect(second.ok && second.value.messages.length).toBe(25);
+  expect(second.ok && second.value.nextOffset).toBe(50);
+  expect(second.ok && second.value.messages[0]?.id).toBe(26);
   const last = mailReply(data.run({ action: 'list', mailbox, offset: 50 }), value => mailPage(value, 50));
   expect(last.ok && last.value.nextOffset).toBeNull();
   expect(last.ok && last.value.messages[0]?.id).toBe(51);
@@ -85,7 +89,7 @@ test('enumerated account, nested and local mailboxes remain readable when Mail r
   if (!listed.ok) throw new Error('Expected mailboxes');
   for (const mailbox of listed.value) {
     const page = mailReply(data.run({ action: 'list', mailbox, offset: 0 }), value => mailPage(value, 0));
-    expect(page.ok && page.value.messages.length).toBe(50);
+    expect(page.ok && page.value.messages.length).toBe(25);
     const body = mailReply(data.run({ action: 'read', target: { mailbox, id: 1 } }), value => mailMessage(value, 1));
     expect(body.ok && body.value.body).toBe('<script>private</script>');
   }

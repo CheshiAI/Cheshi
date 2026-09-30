@@ -162,7 +162,7 @@ const SCRIPT = String.raw`(function(request) {
       accounts.forEach(function(account) {
         if (account.enabled() === true) walk(account.mailboxes, account.id(), account.name(), []);
       });
-      walk(app.mailboxes, null, '나의 Mac', []);
+      walk(app.mailboxes, null, 'On My Mac', []);
     } else if (request.action === 'list') {
       var messages = mailbox(request.mailbox).messages;
       var count = messages.length;

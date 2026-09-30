@@ -38,7 +38,7 @@ export class MailComposer {
       if (!response.ok) { this.update({ loading: false, error: response.error.message }); return; }
       const accounts = response.value.filter(account => account.addresses.length > 0);
       const account = accounts.find(account => account.id === target?.mailbox.accountId) ?? accounts[0];
-      if (!account) { this.update({ loading: false, error: '발신 가능한 계정이 없습니다. Apple Mail의 계정을 확인해 주세요.' }); return; }
+      if (!account) { this.update({ loading: false, error: 'No sending accounts are available. Check your accounts in Apple Mail.' }); return; }
       const own = new Set(accounts.flatMap(account => account.addresses).map(value => value.toLowerCase()));
       const replyTo = message ? address(message.replyTo || message.sender) : '';
       const to = message ? unique([replyTo, ...(all ? message.to.map(address) : [])]).filter(value => value && (!all || !own.has(value.toLowerCase()))) : [];
@@ -60,7 +60,7 @@ export class MailComposer {
       const input = mailSend({ ...form, operationId: crypto.randomUUID(), to: recipients(form.to), cc: recipients(form.cc),
         bcc: recipients(form.bcc), reply: this.state.reply });
       this.update({ confirmation: input, error: null });
-    } catch { this.update({ error: '발신 계정과 받는 사람 주소를 확인해 주세요. 주소는 쉼표로 구분하고 제목은 1,000자 이내로 입력해 주세요.' }); }
+    } catch { this.update({ error: 'Check the sending account and recipient addresses. Separate addresses with commas and keep the subject within 1,000 characters.' }); }
   }
   back() { if (!this.state.busy) this.update({ confirmation: null }); }
   hide() { if (!this.state.busy && !this.state.loading) this.update({ visible: false, confirmation: null }); }
@@ -75,7 +75,7 @@ export class MailComposer {
     try {
       const result = await this.api.send(input);
       if (result.ok) this.update({ busy: false, visible: false, form: null, reply: null, confirmation: null,
-        notice: 'Mail에 발송을 요청했습니다. 전송 상태는 보낼 편지함·보낸 편지함에서 확인할 수 있습니다.' });
+        notice: 'Mail has been asked to send your message. Check Outbox and Sent for its status.' });
       else this.update({ busy: false, confirmation: null, error: result.error.message, blocked: result.error.code === 'send-unknown' });
     } catch { this.update({ busy: false, confirmation: null, error: MAIL_ERRORS['send-unknown'], blocked: true }); }
   }

@@ -4,20 +4,71 @@ import { MAIL_ERRORS, mailFailure } from '../shared/apple-mail';
 import type { MailMessage, MailPage, MailReply } from '../shared/apple-mail';
 import { mailApiFixture, mailBox, mailMessageFixture as message, mailSuccess, createMailDeferred } from './apple-mail-fixtures';
 
-test('connection is explicit; pagination scopes reads and clears selected body', async () => {
+test('load more appends 25 messages, preserves selection and stops at the end', async () => {
   const offsets: number[] = [];
   const model = new MailModel(mailApiFixture({ list: async (_box, offset = 0) => {
     offsets.push(offset);
-    return mailSuccess({ offset, nextOffset: offset === 0 ? 50 : null, messages: [message] });
+    return mailSuccess({ offset, nextOffset: offset === 0 ? 25 : null,
+      messages: Array.from({ length: 25 }, (_, i) => ({ ...message, id: offset + i + 1 })) });
   } }));
   expect(offsets).toEqual([]);
   await model.connect();
   await model.selectMessage(1);
   expect(model.getSnapshot().message?.body).toBe(message.body);
-  await model.nextPage();
-  expect(model.getSnapshot().message).toBeNull();
-  await model.previousPage();
-  expect(offsets).toEqual([0, 50, 0]);
+  const body = model.getSnapshot().message;
+  await model.loadMore();
+  expect(model.getSnapshot().page?.messages).toHaveLength(50);
+  expect(model.getSnapshot().message).toBe(body);
+  expect(model.getSnapshot().selectedId).toBe(1);
+  await model.loadMore();
+  expect(offsets).toEqual([0, 25]);
+  await model.connect();
+  expect(offsets).toEqual([0, 25, 0, 25]);
+  expect(model.getSnapshot().page?.messages).toHaveLength(50);
+  expect(model.getSnapshot().message?.body).toBe(message.body);
+});
+
+test('load more coalesces requests, retains failed pages for retry and deduplicates overlapping rows', async () => {
+  const pending = createMailDeferred<MailReply<MailPage>>();
+  let calls = 0;
+  let retry = false;
+  const first = Array.from({ length: 25 }, (_, i) => ({ ...message, id: i + 1 }));
+  const model = new MailModel(mailApiFixture({ list: async (_box, offset = 0) => {
+    if (!offset) return mailSuccess({ offset, messages: first, nextOffset: 25 });
+    calls++;
+    return retry ? mailSuccess({ offset, messages: [{ ...message, id: 25 }, { ...message, id: 26 }], nextOffset: null }) : pending.promise;
+  } }));
+  await model.connect(); await model.selectMessage(1);
+  const page = model.getSnapshot().page;
+  const loading = model.loadMore();
+  await model.loadMore();
+  expect(calls).toBe(1);
+  expect(model.getSnapshot().page).toBe(page);
+  expect(model.getSnapshot().loadingMore).toBe(true);
+  pending.resolve(mailFailure('unavailable')); await loading;
+  expect(model.getSnapshot().page).toBe(page);
+  expect(model.getSnapshot().moreError).toBe(MAIL_ERRORS.unavailable);
+  expect(model.getSnapshot().message?.body).toBe(message.body);
+  retry = true; await model.loadMore();
+  expect(calls).toBe(2);
+  expect(model.getSnapshot().page?.messages).toHaveLength(26);
+  expect(model.getSnapshot().moreError).toBeNull();
+});
+
+test.each(['switch', 'refresh', 'cancel'] as const)('late additional mail cannot overwrite a newer %s', async action => {
+  const pending = createMailDeferred<MailReply<MailPage>>();
+  const other = { ...mailBox, path: ['Archive'] };
+  const model = new MailModel(mailApiFixture({ list: async (_box, offset = 0) => offset ? pending.promise
+    : mailSuccess({ offset, messages: [message], nextOffset: 25 }) }));
+  await model.connect();
+  const loading = model.loadMore();
+  if (action === 'switch') await model.selectMailbox(other);
+  else if (action === 'refresh') await model.connect();
+  else model.cancelPending();
+  pending.resolve(mailSuccess({ offset: 25, messages: [{ ...message, id: 26 }], nextOffset: null }));
+  await loading;
+  expect(model.getSnapshot().page?.messages.map(row => row.id)).toEqual([1]);
+  if (action === 'switch') expect(model.getSnapshot().selectedBox).toEqual(other);
 });
 
 test('stale mailbox pages and message bodies never replace a newer selection', async () => {

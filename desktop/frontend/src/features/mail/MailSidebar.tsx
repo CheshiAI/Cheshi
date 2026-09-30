@@ -1,12 +1,13 @@
-import { Folder, Mail, RefreshCw, Search, SquarePen } from 'lucide-react';
+import { Mail, RefreshCw, Search, SquarePen } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { mailboxKey, type Mailbox } from '../../../../shared/apple-mail';
+import type { Mailbox } from '../../../../shared/apple-mail';
 import { LiquidGlassPanel, LoadingState, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader } from '../../shared/ui';
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { PullToRefreshStatus } from '../../shared/ui/PullToRefreshStatus';
 import { usePullToRefresh } from '../../shared/usePullToRefresh';
 import type { MailState } from './mailModel';
+import { MailAccountGroup } from './MailAccountGroup';
 import styles from './Mail.module.css';
 
 export function MailSidebar({ state, composing, onRefresh, onCompose, onSelect }: {
@@ -17,6 +18,7 @@ export function MailSidebar({ state, composing, onRefresh, onCompose, onSelect }
   onSelect(box: Mailbox): void;
 }) {
   const [query, setQuery] = useState('');
+  const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
   const groups = new Map<string | null, Mailbox[]>();
   for (const box of state.boxes) {
     const group = groups.get(box.accountId) ?? [];
@@ -34,22 +36,18 @@ export function MailSidebar({ state, composing, onRefresh, onCompose, onSelect }
   } else if (state.boxes.length === 0) {
     content = <p role="status">No mailboxes. Add an account in Apple Mail, then refresh.</p>;
   } else {
-    content = [...groups].map(([accountId, boxes]) => <section key={accountId ?? 'local'}>
-      <h2>{boxes[0]?.accountName || 'Account'}</h2>
-      {boxes.map(box => <button type="button" key={mailboxKey(box)} className={styles.mailbox}
-        aria-current={state.selectedBox && mailboxKey(box) === mailboxKey(state.selectedBox) ? 'page' : undefined}
-        disabled={state.changing} aria-disabled={state.loadingBoxes || undefined}
-        onClick={() => { if (!state.loadingBoxes) onSelect(box); }}>
-        <Folder aria-hidden="true" /><span>{box.path.join(' / ')}</span>
-        {box.unread > 0 && <span className={styles.count} aria-label={`읽지 않음 ${box.unread}개`}>{box.unread}</span>}
-      </button>)}
-    </section>);
+    content = [...groups].map(([accountId, boxes]) => {
+      const key = JSON.stringify(accountId);
+      return <MailAccountGroup key={key} boxes={boxes} selectedBox={state.selectedBox}
+        expanded={expandedAccount === key} loading={state.loadingBoxes} changing={state.changing}
+        onToggle={() => setExpandedAccount(current => current === key ? null : key)} onSelect={onSelect} />;
+    });
   }
-  return <LiquidGlassPanel as="aside" className={styles.mailSidebar} aria-label="메일함">
+  return <LiquidGlassPanel as="aside" className={styles.mailSidebar} aria-label="Mailboxes">
     <SidebarPanelHeader title="MAIL" icon={<Mail aria-hidden="true" />} actions={<>
-      <TooltipButton size="icon" aria-label="메일 새로고침" title="Refresh mail" disabled={busy || refresh.refreshing}
+      <TooltipButton size="icon" aria-label="Refresh mail" title="Refresh mail" disabled={busy || refresh.refreshing}
         onClick={() => void refresh.refresh()}><RefreshCw aria-hidden="true" /></TooltipButton>
-      <TooltipButton size="icon" aria-label={composing ? '작성 중인 메일' : '새 메일 작성'}
+      <TooltipButton size="icon" aria-label={composing ? 'Resume draft' : 'Compose mail'}
         title={composing ? 'Resume draft' : 'Compose mail'} disabled={!state.connected}
         onClick={onCompose}><SquarePen aria-hidden="true" /></TooltipButton>
     </>} />
@@ -65,7 +63,7 @@ export function MailSidebar({ state, composing, onRefresh, onCompose, onSelect }
     <OverlayScrollArea className={styles.mailboxScroll} label="Mailboxes" viewportRef={refresh.viewportRef}>
       <PullToRefreshStatus {...refresh} />
       {!refresh.refreshing && refresh.pullHeight === 0 && state.loadingBoxes
-        && <LoadingState className={styles.mailboxLoading} label="Loading mailboxes…" />}
+        && <LoadingState className={styles.loadingOverlay} label="Loading mailboxes…" />}
       <div className={styles.mailboxes} aria-busy={state.loadingBoxes}>
         {state.connected && state.boxesError && <p role="alert">{state.boxesError}</p>}
         {content}

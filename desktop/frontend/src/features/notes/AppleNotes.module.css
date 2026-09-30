@@ -42,16 +42,7 @@
 .folderSection:first-child { border-top: 1px solid var(--divider); }
 /* Preserve the measured height when the final border is hidden, as in Calendar. */
 .folderScroll [data-overflowing='true'] .folderSection:last-child { border-bottom-color: transparent; }
-.folderReveal {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows var(--memo-folder-duration) ease;
-}
-.folderReveal[data-expanded='true'] { grid-template-rows: 1fr; }
 .folderNotes { min-height: 0; overflow: hidden; }
-@starting-style {
-  .folderReveal[data-expanded='true'] { grid-template-rows: 0fr; }
-}
 .folderRow, .noteRow, .loadMore {
   display: flex;
   align-items: center;
@@ -161,7 +152,6 @@
 .unavailable { padding: var(--space-default); margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .folderChevron { transition: none; }
-  .folderReveal { transition: none; }
 }
 
 .noteRow[data-search-result='true'] { height: auto; min-height: 42px; padding-block: var(--icon-default); }
