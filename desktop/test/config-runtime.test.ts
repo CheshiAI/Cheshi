@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { cp, mkdtemp, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -41,6 +44,45 @@ const desktopScriptNames = [
   'start-desktop-dev',
   'watch-file-contents',
 ] as const;
+
+test('packaged Mail service resolves its MIME parser and decodes HTML under native Node', async () => {
+  const configuration = await createForgeConfiguration();
+  const shouldIgnore = configuration.packagerConfig?.ignore;
+  if (typeof shouldIgnore !== 'function') throw new Error('Forge ignore configuration is unavailable.');
+  const directory = await mkdtemp(path.join(tmpdir(), 'cheshi-mail-package-'));
+  try {
+    const files = ['package.json', 'desktop/shared/apple-mail.ts', 'desktop/lib/apple-mail-service.mts',
+      'desktop/lib/apple-mail-process.mts', 'desktop/lib/apple-mail-script.mts', 'desktop/lib/apple-mail-mime.mts'];
+    for (const file of files) {
+      const segments = file.split('/');
+      for (let depth = 1; depth <= segments.length; depth++) {
+        assert.equal(shouldIgnore(`/${segments.slice(0, depth).join('/')}`), false, file);
+      }
+      await cp(path.join(rootDirectory, file), path.join(directory, file), { recursive: true });
+    }
+    assert.equal(shouldIgnore('/node_modules/electron'), true);
+    assert.equal(shouldIgnore('/node_modules/dompurify'), true);
+    assert.equal(shouldIgnore('/node_modules'), false);
+    await cp(path.join(rootDirectory, 'node_modules/postal-mime'), path.join(directory, 'node_modules/postal-mime'), {
+      recursive: true, dereference: true, filter: source => {
+        assert.equal(shouldIgnore(`/${path.relative(rootDirectory, source)}`), false);
+        return true;
+      },
+    });
+    const source = `
+      import assert from 'node:assert/strict';
+      import { AppleMailService } from './desktop/lib/apple-mail-service.mts';
+      const raw = {id:1, subject:'HTML', sender:'sender@example.test', date:null, read:false, flagged:false,
+        body:'Plain text', bodyTruncated:false, to:[], cc:[], replyTo:'', source:'Content-Type: text/html\\r\\n\\r\\n<h1>Newsletter</h1>'};
+      const service = new AppleMailService({platform:'darwin',execute:async()=>JSON.stringify({ok:true,value:raw})});
+      const reply = await service.read({mailbox:{accountId:'a',path:['INBOX']},id:1});
+      assert.equal(reply.ok,true);
+      assert.equal(reply.value.html.trim(),'<h1>Newsletter</h1>');
+    `;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', source], { cwd: directory, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 function runtimeImportSpecifiers(sourcePath: string): string[] {
   const { outputText } = ts.transpileModule(readFileSync(sourcePath, 'utf8'), {

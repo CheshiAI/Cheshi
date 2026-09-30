@@ -17,13 +17,14 @@ function inlineScriptHashes(html: string): string[] {
   });
 }
 
-function contentSecurityPolicy(html: string): string {
+export function contentSecurityPolicy(html: string): string {
   const scriptSources = ["'self'", ...new Set(inlineScriptHashes(html))].join(' ');
   return [
     "default-src 'self'",
     `script-src ${scriptSources}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    // srcdoc inherits this policy; the Mail frame separately blocks remote images until opt-in.
+    "img-src 'self' data: blob: https: http:",
     "media-src 'self' blob:",
     "font-src 'self' data:",
     "connect-src 'self' ws://127.0.0.1:*",

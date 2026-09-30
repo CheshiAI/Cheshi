@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
-import { act } from 'react';
+import { act, Fragment, StrictMode } from 'react';
 import type { AppleNotesApi, AppleNotesFolder, AppleNotesPage } from '../shared/apple-notes';
 
 function createDeferred<T>() {
@@ -16,9 +16,10 @@ async function withBrowser(run: (context: {
   notes: ReturnType<typeof createDeferred<AppleNotesPage>>;
   folderReads: () => number;
   pointer: (type: string, y: number) => Promise<void>;
-  wheel: (deltaY: number) => Promise<void>;
+  wheel: (deltaY: number, target?: Element) => Promise<void>;
   restart: () => Promise<void>;
-}) => Promise<void>) {
+  attachSidebar: () => Promise<void>;
+}) => Promise<void>, { delayedSidebar = false, strict = false } = {}) {
   const window = new Window();
   const globals = { window, document: window.document, navigator: window.navigator,
     Node: window.Node, Element: window.Element, HTMLElement: window.HTMLElement,
@@ -32,7 +33,10 @@ async function withBrowser(run: (context: {
   const { AppleNotesBrowser } = await import('../frontend/src/features/notes/AppleNotesBrowser');
   const container = document.createElement('div');
   document.body.append(container);
-  const root = createRoot(container);
+  const mount = document.createElement('div');
+  container.append(mount);
+  const root = createRoot(mount);
+  let sidebarTarget: HTMLDivElement | null | undefined = delayedSidebar ? null : undefined;
   let instance = 0;
   const folders = createDeferred<AppleNotesFolder[]>();
   const notes = createDeferred<AppleNotesPage>();
@@ -46,18 +50,28 @@ async function withBrowser(run: (context: {
     delete: async () => { throw new Error('Unexpected delete'); },
   };
   try {
-    const render = async () => { await act(async () => root.render(<AppleNotesBrowser key={instance} api={api} onAttach={async () => false} />)); };
+    const Boundary = strict ? StrictMode : Fragment;
+    const render = async () => { await act(async () => root.render(<Boundary>
+      <AppleNotesBrowser key={instance} api={api} sidebarTarget={sidebarTarget} onAttach={async () => false} />
+    </Boundary>)); };
     await render();
     await run({ container, folders, notes, folderReads: () => folderReads,
       restart: async () => { instance++; await render(); },
+      attachSidebar: async () => {
+        const previousTarget = sidebarTarget;
+        sidebarTarget = document.createElement('div');
+        container.append(sidebarTarget);
+        await render();
+        previousTarget?.remove();
+      },
       pointer: async (type, y) => { await act(async () => {
         const event = new window.PointerEvent(type, { pointerId: 1, pointerType: 'mouse', isPrimary: true,
           clientY: y, clientX: 10, button: 0, bubbles: true, cancelable: true });
         if (type === 'pointerdown') container.querySelector('[aria-label="iCloud / Notes"]')!.dispatchEvent(event as unknown as Event);
         else window.dispatchEvent(event);
       }); },
-      wheel: async deltaY => { await act(async () => {
-        container.querySelector('[aria-label="Memo folder list"]')!.dispatchEvent(
+      wheel: async (deltaY, target) => { await act(async () => {
+        (target ?? container.querySelector('[aria-label="Memo folder list"]')!).dispatchEvent(
           new window.WheelEvent('wheel', { deltaY, bubbles: true, cancelable: true }) as unknown as Event);
       }); },
     });
@@ -74,6 +88,68 @@ async function withBrowser(run: (context: {
 const folder: AppleNotesFolder = { id: 'folder', name: 'Notes', path: 'Notes', account: 'iCloud', isDefault: true };
 const emptyPage: AppleNotesPage = { notes: [], nextOffset: null };
 const loaderSelector = '[aria-label="Memo folders"] [role="status"]';
+
+async function finishWheelGesture() {
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 220)); });
+}
+
+for (const strict of [false, true]) {
+  for (const gesture of ['pointer', 'wheel']) {
+    test(`Memo supports ${gesture} refresh when its sidebar portal mounts later (strict: ${strict})`, async () => {
+      await withBrowser(async ({ container, folders, notes, folderReads, attachSidebar, pointer, wheel }) => {
+        await act(async () => { folders.resolve([folder]); notes.resolve(emptyPage); });
+        expect(container.querySelector('[aria-label="Memo folder list"]')).toBeNull();
+        const initialReads = folderReads();
+        await attachSidebar();
+        const nextFolders = createDeferred<AppleNotesFolder[]>();
+        folders.promise = nextFolders.promise;
+        if (gesture === 'pointer') {
+          await pointer('pointerdown', 10);
+          await pointer('pointermove', 110);
+        } else await wheel(-100);
+        const indicator = container.querySelector<HTMLElement>(loaderSelector)!;
+        expect(indicator.textContent).toBe('Release to refresh');
+        expect(indicator.style.height).toBe('36px');
+        expect(folderReads()).toBe(initialReads);
+        if (gesture === 'pointer') await pointer('pointerup', 110);
+        else await finishWheelGesture();
+        expect(folderReads()).toBe(initialReads + 1);
+        expect(container.querySelectorAll(loaderSelector)).toHaveLength(1);
+        await act(async () => nextFolders.resolve([folder]));
+        expect(container.querySelector(loaderSelector)).toBeNull();
+      }, { delayedSidebar: true, strict });
+    });
+  }
+}
+
+test('Memo cancels a detached viewport gesture and binds refresh to its replacement', async () => {
+  await withBrowser(async ({ container, folders, notes, folderReads, attachSidebar, wheel }) => {
+    await act(async () => { folders.resolve([folder]); notes.resolve(emptyPage); });
+    await attachSidebar();
+    const oldViewport = container.querySelector('[aria-label="Memo folder list"]')!;
+    await wheel(-100);
+    expect(container.querySelector(loaderSelector)?.textContent).toBe('Release to refresh');
+    await attachSidebar();
+    expect(container.querySelector(loaderSelector)).toBeNull();
+    await wheel(-100, oldViewport);
+    await finishWheelGesture();
+    expect(folderReads()).toBe(1);
+    const nextFolders = createDeferred<AppleNotesFolder[]>();
+    folders.promise = nextFolders.promise;
+    await wheel(-100);
+    await finishWheelGesture();
+    expect(folderReads()).toBe(2);
+    // Replacing the viewport during a request must keep one indicator until completion.
+    await attachSidebar();
+    expect(container.querySelectorAll(loaderSelector)).toHaveLength(1);
+    await wheel(-100);
+    await finishWheelGesture();
+    expect(folderReads()).toBe(2);
+    await act(async () => nextFolders.resolve([folder]));
+    expect(container.querySelector(loaderSelector)).toBeNull();
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Refresh Apple Notes"]')!.disabled).toBe(false);
+  }, { delayedSidebar: true });
+});
 
 test('a new Memo instance starts with every folder collapsed even if the previous instance had an open folder', async () => {
   await withBrowser(async ({ container, folders, notes, restart }) => {

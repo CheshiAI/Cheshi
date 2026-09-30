@@ -4,6 +4,7 @@ import { mailboxes, mailboxRef, mailOffset, mailPage, mailTarget, mailMessage, m
 import type { MailReply, MailSend, MailSent, MailErrorCode } from '../shared/apple-mail.ts';
 import { appleMailScript, type MailCommand } from './apple-mail-script.mts';
 import { MailProcessError, runMailScript } from './apple-mail-process.mts';
+import { mailSource, withMailHtml } from './apple-mail-mime.mts';
 
 export class AppleMailService {
   private readonly platform: string;
@@ -33,8 +34,12 @@ export class AppleMailService {
   list(mailbox: unknown, offset: unknown = 0) {
     return this.request(() => ({ action: 'list', mailbox: mailboxRef(mailbox), offset: mailOffset(offset) }), value => mailPage(value, mailOffset(offset)));
   }
-  read(target: unknown) {
-    return this.request(() => ({ action: 'read', target: mailTarget(target) }), value => mailMessage(value, mailTarget(target).id));
+  async read(target: unknown) {
+    const result = await this.request(() => ({ action: 'read', target: mailTarget(target) }), value => ({
+      message: mailMessage(value, mailTarget(target).id), source: mailSource(value),
+    }));
+    if (!result.ok) return result;
+    return { ok: true as const, value: await withMailHtml(result.value.message, result.value.source) };
   }
   private async request<T>(build: () => MailCommand, parse: (value: unknown) => T, uncertain?: MailErrorCode): Promise<MailReply<T>> {
     if (this.platform !== 'darwin') return mailFailure('unsupported');

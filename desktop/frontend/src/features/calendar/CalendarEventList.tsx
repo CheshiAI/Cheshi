@@ -1,7 +1,8 @@
 import { LockKeyhole } from 'lucide-react';
-import { useCallback, useLayoutEffect, useRef, type RefObject } from 'react';
+import { useCallback, useLayoutEffect, useRef, type Ref } from 'react';
 import type { AppleCalendar, CalendarEvent } from '../../../../shared/apple-calendar';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
+import { attachElementRef } from '../../shared/attachElementRef';
 import { addDays, dayDate } from './calendarDates';
 import styles from './Calendar.module.css';
 import type { SchedulerSnapshot } from '../../../../shared/scheduler';
@@ -35,16 +36,18 @@ export function calendarRunHistory(scheduler: SchedulerSnapshot | undefined, eve
 export function CalendarEventList({ events, calendars, searching, onOpen, scheduler, day, query = '', year, calendarId, viewportRef: providedViewportRef }: {
   events: CalendarEvent[]; calendars: AppleCalendar[]; searching: boolean; onOpen: (event: CalendarEvent) => void;
   scheduler?: SchedulerSnapshot; day?: string; query?: string; year?: number; calendarId?: string;
-  viewportRef?: RefObject<HTMLDivElement | null>;
+  viewportRef?: Ref<HTMLDivElement>;
 }) {
-  const localViewportRef = useRef<HTMLDivElement>(null);
-  const viewportRef = providedViewportRef ?? localViewportRef;
+  const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const scrollbarRef = useAutoHideScrollbars<HTMLDivElement>();
   const attach = useCallback((element: HTMLDivElement | null) => {
     viewportRef.current = element;
-    return scrollbarRef(element);
-  }, [scrollbarRef, viewportRef]);
+    if (!element) return;
+    const detach = attachElementRef(providedViewportRef, element);
+    const cleanupScrollbar = scrollbarRef(element);
+    return () => { viewportRef.current = null; detach(); cleanupScrollbar?.(); };
+  }, [scrollbarRef, providedViewportRef]);
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     const content = contentRef.current;

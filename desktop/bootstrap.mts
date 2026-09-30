@@ -6,6 +6,7 @@ import { product } from '../config/product.mts';
 import { CODEGRAPH_DATA_ROOT_ENV, resolveCheshiUserDataDirectory } from '../config/workspace-storage.mts';
 import { shouldShowStartupScreen, startupScreen } from './lib/startup-screen.mts';
 import { DEVELOPMENT_SHUTDOWN_DIRECTORY, watchDevelopmentShutdown } from './lib/development-shutdown.mts';
+import { installDevelopmentDevTools } from './lib/development-devtools.mts';
 
 // Configure storage before any BrowserWindow creates its Chromium session.
 app.setName(product.displayName);
@@ -19,6 +20,7 @@ const userDataDirectory = commandLineUserDataDirectory
 app.setPath('userData', userDataDirectory);
 mkdirSync(userDataDirectory, { recursive: true });
 process.env[CODEGRAPH_DATA_ROOT_ENV] = userDataDirectory;
+installDevelopmentDevTools(app);
 
 let quitting = false;
 app.on('before-quit', () => {

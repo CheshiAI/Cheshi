@@ -434,13 +434,19 @@ test('trash action requires a destination confirmation and reply-all opens a dra
     await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
     await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!.click());
     expect(document.body.textContent).toContain('To: me@example.test');
+    const automaticRead: MailChange = { action: 'read', target: { mailbox: mailBox, id: 1 }, value: true };
+    expect(changes).toEqual([automaticRead]);
+    expect(document.querySelector('[aria-label="Message list"] button[aria-pressed]')?.getAttribute('data-unread')).toBe('false');
+    expect(button(document, 'Mark as unread')).toBeDefined();
     await act(async () => button(document, 'Reply all').click());
     expect(document.querySelector<HTMLInputElement>('[aria-label="To"]')?.value).toBe('sender@example.test');
     expect(mailComposer(api).getSnapshot().reply?.all).toBe(true);
     await act(async () => button(document, 'Close and keep draft').click());
     await act(async () => button(document, 'Move to Trash').click());
-    expect(changes).toEqual([]);
+    expect(changes).toEqual([automaticRead]);
     await act(async () => button(document, 'Confirm move').click());
-    expect(changes).toEqual([{ action: 'move', target: { mailbox: mailBox, id: 1 }, destination: { ...mailBox, path: ['Trash'] } }]);
+    const readBox = { ...mailBox, unread: 0 };
+    expect(changes).toEqual([automaticRead, { action: 'move', target: { mailbox: readBox, id: 1 },
+      destination: { ...mailBox, path: ['Trash'] } }]);
   });
 });

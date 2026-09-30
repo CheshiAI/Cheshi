@@ -9,6 +9,7 @@ import { MailModel } from './mailModel';
 import { mailComposer } from './mailComposer';
 import { MailComposerDialog } from './MailComposerDialog';
 import { MailActions } from './MailActions';
+import { MailHtmlBody } from './MailHtmlBody';
 import { MailSidebar } from './MailSidebar';
 import { useMailInfiniteScroll } from './useMailInfiniteScroll';
 import styles from './Mail.module.css';
@@ -102,22 +103,26 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, activ
           {listLoadingLabel && <LoadingState className={`${styles.loadingOverlay} ${styles.descriptionLoading}`} label={listLoadingLabel} />}
         </div>
       </LiquidGlassPanel>
-      <LiquidGlassPanel as="article" className={styles.body} aria-label="Message body" aria-busy={state.loadingBody}>
+      <LiquidGlassPanel as="article" className={`${styles.body} ${state.message?.html ? styles.htmlBody : ''}`} aria-label="Message body" aria-busy={state.loadingBody}>
         {state.loadingBody ? <LoadingState className={`${styles.loadingOverlay} ${styles.descriptionLoading}`} label="Loading message…" />
           : state.bodyError ? <><p role="alert">{state.bodyError}</p><NeumorphicButton size="standard"
             onClick={() => state.selectedId !== null && void model.selectMessage(state.selectedId)}>Retry loading message</NeumorphicButton></>
           : state.message ? <>
-            {state.selectedBox && <MailActions key={`${mailboxKey(state.selectedBox)}:${state.message.id}`} message={state.message}
-              target={{ mailbox: state.selectedBox, id: state.message.id }} boxes={state.boxes} disabled={busy || state.changeBlocked}
-              onChange={input => model.change(input)} onReply={all => void composer.start(state.message!,
-                { mailbox: state.selectedBox!, id: state.message!.id }, all)} />}
-            <h2 className={styles.bodyTitle}>{state.message.subject || '(No subject)'}</h2>
-            <p>{state.message.sender || 'Unknown sender'}</p>
-            <p>To: {state.message.to.join(', ') || 'None'}</p>
-            {state.message.cc.length > 0 && <p>Cc: {state.message.cc.join(', ')}</p>}
-            <time dateTime={state.message.date ?? undefined}>{received(state.message.date)}</time>
-            {state.message.bodyTruncated && <p role="status">Only part of this long message is shown. Open Apple Mail to view the full content.</p>}
-            <pre className={state.message.body ? styles.bodyText : `${styles.bodyText} ${styles.description}`}>{state.message.body || '(No content)'}</pre>
+            <div className={state.message.html ? styles.bodyHeader : undefined}>
+              {state.selectedBox && <MailActions key={`${mailboxKey(state.selectedBox)}:${state.message.id}`} message={state.message}
+                target={{ mailbox: state.selectedBox, id: state.message.id }} boxes={state.boxes} disabled={busy || state.changeBlocked}
+                onChange={input => model.change(input)} onReply={all => void composer.start(state.message!,
+                  { mailbox: state.selectedBox!, id: state.message!.id }, all)} />}
+              <h2 className={styles.bodyTitle}>{state.message.subject || '(No subject)'}</h2>
+              <p>{state.message.sender || 'Unknown sender'}</p>
+              <p>To: {state.message.to.join(', ') || 'None'}</p>
+              {state.message.cc.length > 0 && <p>Cc: {state.message.cc.join(', ')}</p>}
+              <time dateTime={state.message.date ?? undefined}>{received(state.message.date)}</time>
+              {state.message.bodyTruncated && !state.message.html && <p role="status">Only part of this long message is shown. Open Apple Mail to view the full content.</p>}
+            </div>
+            {state.message.html ? <MailHtmlBody key={`${state.selectedBox ? mailboxKey(state.selectedBox) : ''}:${state.message.id}`} message={state.message}
+              remoteImages={state.remoteImagesAllowed} onLoadImages={model.allowRemoteImages} />
+              : <pre className={state.message.body ? styles.bodyText : `${styles.bodyText} ${styles.description}`}>{state.message.body || '(No content)'}</pre>}
           </> : <p className={`${styles.emptyMessage} ${styles.description}`} role="status">Select a message to view its content.</p>}
       </LiquidGlassPanel>
     </div>}

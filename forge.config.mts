@@ -14,6 +14,7 @@ function shouldIgnore(packagePath: string): boolean {
   const [rootEntry, childEntry, grandchildEntry] = segments;
 
   if (rootEntry === '.env.product' || rootEntry === 'package.json') return segments.length > 1;
+  if (rootEntry === 'node_modules') return segments.length > 1 && childEntry !== 'postal-mime';
   if (rootEntry === 'config') {
     if (segments.length === 1) return false;
     const packagedConfigFiles = new Set(['product.mts', 'workspace-storage.mts']);
@@ -78,6 +79,7 @@ function shouldIgnore(packagePath: string): boolean {
     'chat-notifications.mts',
     'workspace-notifications.mts',
     'apple-mail-service.mts',
+    'apple-mail-mime.mts',
     'apple-mail-script.mts',
     'apple-mail-process.mts',
     'apple-mail-ipc.mts',
@@ -123,6 +125,7 @@ function shouldIgnore(packagePath: string): boolean {
     'local-history-runtime.mts',
     'local-file-link.mts',
     'development-shutdown.mts',
+    'development-devtools.mts',
     'chat-attachment-store.mts',
     'chat-attachment-transfer.mts',
     'chat-history-compiler.mts',

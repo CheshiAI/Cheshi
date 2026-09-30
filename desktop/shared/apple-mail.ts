@@ -1,5 +1,9 @@
 export const MAIL_PAGE_SIZE = 25;
 export const MAIL_BODY_LIMIT = 500_000;
+export const MAIL_SOURCE_LIMIT = 2_000_000;
+export const MAIL_INLINE_IMAGE_LIMIT = 2_000_000;
+export const MAIL_INLINE_IMAGE_COUNT = 32;
+export const MAIL_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'] as const;
 export const MAIL_ERRORS = {
   unsupported: 'Apple Mail integration is available on macOS.',
   permission: 'Allow Cheshi to access Mail in System Settings → Privacy & Security → Automation.',
@@ -20,7 +24,11 @@ export interface Mailbox extends MailboxRef { accountName: string; unread: numbe
 export interface MailSummary { id: number; subject: string; sender: string; date: string | null; read: boolean; flagged: boolean }
 export interface MailPage { messages: MailSummary[]; offset: number; nextOffset: number | null }
 export interface MailTarget { mailbox: MailboxRef; id: number }
-export interface MailMessage extends MailSummary { body: string; bodyTruncated: boolean; to: string[]; cc: string[]; replyTo: string }
+export interface MailInlineImage { contentId: string; mimeType: string; base64: string }
+export interface MailMessage extends MailSummary {
+  body: string; bodyTruncated: boolean; to: string[]; cc: string[]; replyTo: string;
+  html?: string; inlineImages?: MailInlineImage[];
+}
 export interface MailAccount { id: string; name: string; addresses: string[] }
 export type MailChange = { target: MailTarget } & ({ action: 'read' | 'flag'; value: boolean } | { action: 'move'; destination: MailboxRef });
 export interface MailSend {
@@ -109,7 +117,28 @@ export function mailMessage(value: unknown, expectedId: number): MailMessage {
   const summary = mailSummary(item);
   if (summary.id !== expectedId) throw new TypeError('Unexpected Mail message');
   return { ...summary, body: text(item.body, MAIL_BODY_LIMIT, true), bodyTruncated: flag(item.bodyTruncated),
-    to: mailAddresses(item.to), cc: mailAddresses(item.cc), replyTo: text(item.replyTo, 4096, true) };
+    to: mailAddresses(item.to), cc: mailAddresses(item.cc), replyTo: text(item.replyTo, 4096, true),
+    ...(item.html === undefined ? {} : { html: text(item.html, MAIL_BODY_LIMIT, true) }),
+    ...(item.inlineImages === undefined ? {} : { inlineImages: mailInlineImages(item.inlineImages) }) };
+}
+function mailInlineImages(value: unknown): MailInlineImage[] {
+  if (!Array.isArray(value) || value.length > MAIL_INLINE_IMAGE_COUNT) throw new TypeError('Invalid inline images');
+  const seen = new Set<string>();
+  let size = 0;
+  return value.map(entry => {
+    const item = record(entry);
+    const contentId = text(item.contentId, 4096);
+    const mimeType = text(item.mimeType, 64);
+    const base64 = text(item.base64, MAIL_INLINE_IMAGE_LIMIT);
+    size += base64.length;
+    if (seen.has(contentId) || size > MAIL_INLINE_IMAGE_LIMIT
+      || !MAIL_IMAGE_TYPES.some(type => type === mimeType)
+      || base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+      throw new TypeError('Invalid inline image');
+    }
+    seen.add(contentId);
+    return { contentId, mimeType, base64 };
+  });
 }
 export function mailAddress(value: unknown): string {
   const address = text(value, 320).trim();

@@ -9,6 +9,7 @@ import {
   Fragment,
   type CSSProperties,
   type ReactNode,
+  type Ref,
   type RefObject,
   type SubmitEvent as ReactSubmitEvent,
 } from 'react';
@@ -54,7 +55,7 @@ interface WorkspaceFileTreeEditRowProps {
 interface WorkspaceFileTreeRowsProps {
   controller: WorkspaceFileTreeController;
   selectedPath: string | null;
-  viewportRef?: RefObject<HTMLDivElement | null>;
+  viewportRef?: Ref<HTMLDivElement>;
 }
 
 function WorkspaceFileTreeName({ name, changed }: { name: string; changed: boolean }) {

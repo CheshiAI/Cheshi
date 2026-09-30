@@ -3,6 +3,7 @@ import { Flag, MailOpen, Reply, ReplyAll, FolderInput, Trash2 } from 'lucide-rea
 import { mailboxKey } from '../../../../shared/apple-mail';
 import type { Mailbox, MailChange, MailMessage, MailTarget } from '../../../../shared/apple-mail';
 import { Modal, NeumorphicButton, NeumorphicSurface } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import styles from './Mail.module.css';
 
 export function MailActions({ message, target, boxes, disabled, onChange, onReply }: {
@@ -10,16 +11,22 @@ export function MailActions({ message, target, boxes, disabled, onChange, onRepl
   onChange: (input: MailChange) => Promise<void>; onReply: (all: boolean) => void;
 }) {
   const [move, setMove] = useState<'move' | 'trash' | null>(null);
+  const readLabel = message.read ? 'Mark as unread' : 'Mark as read';
+  const flagLabel = message.flagged ? 'Remove flag' : 'Flag message';
   return <>
     <div className={styles.toolbar} aria-label="Mail actions">
-      <NeumorphicButton raised size="icon" disabled={disabled} aria-label={message.read ? 'Mark as unread' : 'Mark as read'}
-        onClick={() => void onChange({ action: 'read', target, value: !message.read })}><MailOpen aria-hidden="true" /></NeumorphicButton>
-      <NeumorphicButton raised size="icon" disabled={disabled} aria-label={message.flagged ? 'Remove flag' : 'Flag message'} aria-pressed={message.flagged}
-        onClick={() => void onChange({ action: 'flag', target, value: !message.flagged })}><Flag aria-hidden="true" /></NeumorphicButton>
-      <NeumorphicButton raised size="icon" disabled={disabled} aria-label="Move to mailbox" onClick={() => setMove('move')}><FolderInput aria-hidden="true" /></NeumorphicButton>
-      <NeumorphicButton raised size="icon" disabled={disabled} aria-label="Move to Trash" onClick={() => setMove('trash')}><Trash2 aria-hidden="true" /></NeumorphicButton>
-      <NeumorphicButton raised size="icon" disabled={disabled} aria-label="Reply" onClick={() => onReply(false)}><Reply aria-hidden="true" /></NeumorphicButton>
-      <NeumorphicButton raised size="icon" disabled={disabled} aria-label="Reply all" onClick={() => onReply(true)}><ReplyAll aria-hidden="true" /></NeumorphicButton>
+      <TooltipButton variant="ghost" size="icon" disabled={disabled} aria-label={readLabel} title={readLabel}
+        onClick={() => void onChange({ action: 'read', target, value: !message.read })}><MailOpen aria-hidden="true" /></TooltipButton>
+      <TooltipButton variant="ghost" size="icon" disabled={disabled} aria-label={flagLabel} title={flagLabel} aria-pressed={message.flagged}
+        onClick={() => void onChange({ action: 'flag', target, value: !message.flagged })}><Flag aria-hidden="true" /></TooltipButton>
+      <TooltipButton variant="ghost" size="icon" disabled={disabled} aria-label="Move to mailbox" title="Move to mailbox"
+        onClick={() => setMove('move')}><FolderInput aria-hidden="true" /></TooltipButton>
+      <TooltipButton variant="ghost" size="icon" disabled={disabled} aria-label="Move to Trash" title="Move to Trash"
+        onClick={() => setMove('trash')}><Trash2 aria-hidden="true" /></TooltipButton>
+      <TooltipButton variant="ghost" size="icon" disabled={disabled} aria-label="Reply" title="Reply"
+        onClick={() => onReply(false)}><Reply aria-hidden="true" /></TooltipButton>
+      <TooltipButton variant="ghost" size="icon" disabled={disabled} aria-label="Reply all" title="Reply all"
+        onClick={() => onReply(true)}><ReplyAll aria-hidden="true" /></TooltipButton>
     </div>
     {move && <MailMoveDialog boxes={boxes} target={target} trash={move === 'trash'} subject={message.subject}
       onClose={() => setMove(null)} onMove={destination => { setMove(null); void onChange({ action: 'move', target, destination }); }} />}

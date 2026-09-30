@@ -1,8 +1,41 @@
 import { expect, test } from 'bun:test';
 import { MailModel } from '../frontend/src/features/mail/mailModel';
 import { MAIL_ERRORS, mailFailure } from '../shared/apple-mail';
-import type { MailMessage, MailPage, MailReply } from '../shared/apple-mail';
+import type { MailChange, MailMessage, MailPage, MailReply, MailTarget } from '../shared/apple-mail';
 import { mailApiFixture, mailBox, mailMessageFixture as message, mailSuccess, createMailDeferred } from './apple-mail-fixtures';
+
+test('image consent survives reselection and refresh but stays scoped to the account, mailbox and message', async () => {
+  const api = mailApiFixture({
+    list: async () => mailSuccess({ offset: 0, nextOffset: null, messages: [message, { ...message, id: 2 }] }),
+    read: async target => mailSuccess({ ...message, id: target.id, html: '<img src="https://example.test/logo.png">' }),
+  });
+  const model = new MailModel(api);
+  await model.connect();
+  model.allowRemoteImages();
+  expect(model.getSnapshot().remoteImagesAllowed).toBe(false);
+  await model.selectMessage(1);
+  expect(model.getSnapshot().remoteImagesAllowed).toBe(false);
+  model.allowRemoteImages();
+  expect(model.getSnapshot().remoteImagesAllowed).toBe(true);
+  await model.selectMessage(1);
+  expect(model.getSnapshot().remoteImagesAllowed).toBe(true);
+  await model.connect();
+  expect(model.getSnapshot().remoteImagesAllowed).toBe(true);
+  await model.selectMessage(2);
+  expect(model.getSnapshot().remoteImagesAllowed).toBe(false);
+  for (const box of [{ ...mailBox, accountId: 'another-account' }, { ...mailBox, path: ['Archive'] }]) {
+    await model.selectMailbox(box);
+    await model.selectMessage(1);
+    expect(model.getSnapshot().remoteImagesAllowed).toBe(false);
+  }
+  await model.selectMailbox(mailBox);
+  await model.selectMessage(1);
+  expect(model.getSnapshot().remoteImagesAllowed).toBe(true);
+  const fresh = new MailModel(api);
+  await fresh.connect();
+  await fresh.selectMessage(1);
+  expect(fresh.getSnapshot().remoteImagesAllowed).toBe(false);
+});
 
 test('load more appends 25 messages, preserves selection and stops at the end', async () => {
   const offsets: number[] = [];
@@ -148,14 +181,15 @@ test('refresh replaces a removed mailbox and discards a cancelled second-stage r
   }));
   await model.connect(); await model.selectMessage(1);
   replace = true;
+  const retainedBox = model.getSnapshot().selectedBox;
   const pending = model.connect();
   await pageStarted.promise;
-  expect(model.getSnapshot().selectedBox).toEqual(mailBox);
+  expect(model.getSnapshot().selectedBox).toBe(retainedBox);
   expect(model.getSnapshot().message?.body).toBe(message.body);
   model.cancelPending();
   page.resolve(mailSuccess({ offset: 0, nextOffset: null, messages: [] }));
   await pending;
-  expect(model.getSnapshot().selectedBox).toEqual(mailBox);
+  expect(model.getSnapshot().selectedBox).toBe(retainedBox);
   await model.connect();
   expect(model.getSnapshot().selectedBox).toEqual(other);
   expect(model.getSnapshot().message).toBeNull();
@@ -175,26 +209,175 @@ test('unmount cancellation ignores pending reads and refresh preserves mailbox i
 
 test('management prevents concurrent mutations and refreshes read state after acknowledgement', async () => {
   const pending = createMailDeferred<MailReply<{ mailbox: typeof mailBox; id: number }>>();
-  let read = false;
+  let read = true;
   let writes = 0;
   const model = new MailModel(mailApiFixture({ read: async () => mailSuccess({ ...message, read }),
     change: async () => { writes++; return pending.promise; } }));
   await model.connect(); await model.selectMessage(1);
-  const input = { action: 'read' as const, target: { mailbox: mailBox, id: 1 }, value: true };
+  const input = { action: 'read' as const, target: { mailbox: mailBox, id: 1 }, value: false };
   const changing = model.change(input); await model.change(input);
   await model.selectMailbox({ ...mailBox, path: ['Other'] });
   expect(writes).toBe(1); expect(model.getSnapshot().selectedBox?.path).toEqual(['INBOX']);
-  read = true; pending.resolve(mailSuccess(input.target)); await changing;
-  expect(model.getSnapshot().message?.read).toBe(true);
+  read = false; pending.resolve(mailSuccess(input.target)); await changing;
+  expect(model.getSnapshot().message?.read).toBe(false);
   expect(model.getSnapshot().changing).toBe(false);
 });
 
 test('uncertain changes block repeated actions until the user refreshes', async () => {
   let writes = 0;
-  const model = new MailModel(mailApiFixture({ change: async () => { writes++; return mailFailure('change-unknown'); } }));
+  const model = new MailModel(mailApiFixture({ read: async () => mailSuccess({ ...message, read: true }),
+    change: async () => { writes++; return mailFailure('change-unknown'); } }));
   await model.connect(); await model.selectMessage(1);
   const input = { action: 'flag' as const, target: { mailbox: mailBox, id: 1 }, value: true };
   await model.change(input); await model.change(input);
   expect(writes).toBe(1); expect(model.getSnapshot().changeBlocked).toBe(true);
   await model.connect(); expect(model.getSnapshot().changeBlocked).toBe(false);
+});
+
+test('opening unread mail writes its exact target and updates counts only after acknowledgement without reloading', async () => {
+  const pending = createMailDeferred<MailReply<MailTarget>>();
+  const started = createMailDeferred<void>();
+  const writes: MailChange[] = [];
+  let reads = 0;
+  let lists = 0;
+  const other = { ...mailBox, accountId: 'other', unread: 7 };
+  const model = new MailModel(mailApiFixture({
+    mailboxes: async () => mailSuccess([mailBox, other]),
+    list: async () => { lists++; return mailSuccess({ messages: [message], offset: 0, nextOffset: null }); },
+    read: async () => { reads++; return mailSuccess({ ...message, html: '<p>Hello</p>' }); },
+    change: async input => { writes.push(input); started.resolve(); return pending.promise; },
+  }));
+  await model.connect();
+  expect(writes).toEqual([]);
+  const opening = model.selectMessage(1);
+  await started.promise;
+  expect(writes).toEqual([{ action: 'read', target: { mailbox: mailBox, id: 1 }, value: true }]);
+  expect(model.getSnapshot().message?.body).toBe(message.body);
+  expect(model.getSnapshot().loadingBody).toBe(false);
+  expect(model.getSnapshot().page?.messages[0]?.read).toBe(false);
+  expect(model.getSnapshot().boxes[0]?.unread).toBe(1);
+  model.allowRemoteImages();
+  await model.selectMessage(1);
+  await model.change({ action: 'read', target: { mailbox: mailBox, id: 1 }, value: false });
+  expect(writes).toHaveLength(1);
+  pending.resolve(mailSuccess({ mailbox: mailBox, id: 1 }));
+  await opening;
+  expect(model.getSnapshot().message?.read).toBe(true);
+  expect(model.getSnapshot().page?.messages[0]?.read).toBe(true);
+  expect(model.getSnapshot().selectedBox?.unread).toBe(0);
+  expect(model.getSnapshot().boxes.map(box => box.unread)).toEqual([0, 7]);
+  expect(model.getSnapshot().remoteImagesAllowed).toBe(true);
+  expect(model.getSnapshot().changing).toBe(false);
+  expect({ reads, lists }).toEqual({ reads: 1, lists: 1 });
+});
+
+test.each(['failure', 'throw'] as const)('automatic read %s retains unread content and reports an uncertain change', async mode => {
+  let writes = 0;
+  const model = new MailModel(mailApiFixture({ change: async () => {
+    writes++;
+    if (mode === 'throw') throw new Error('IPC disconnected');
+    return mailFailure('change-unknown');
+  } }));
+  await model.connect(); await model.selectMessage(1);
+  expect(model.getSnapshot().message).toEqual(message);
+  expect(model.getSnapshot().page?.messages[0]?.read).toBe(false);
+  expect(model.getSnapshot().boxes[0]?.unread).toBe(1);
+  expect(model.getSnapshot().selectedBox?.unread).toBe(1);
+  expect(model.getSnapshot().bodyError).toBeNull();
+  expect(model.getSnapshot().changeError).toBe(MAIL_ERRORS['change-unknown']);
+  expect(model.getSnapshot().changeBlocked).toBe(true);
+  expect(model.getSnapshot().changing).toBe(false);
+  await model.selectMessage(1);
+  expect(writes).toBe(1);
+});
+
+test.each(['read', 'failure'] as const)('an already %s body does not trigger a read mutation', async state => {
+  let writes = 0;
+  const model = new MailModel(mailApiFixture({
+    read: async () => state === 'read' ? mailSuccess({ ...message, read: true }) : mailFailure('unavailable'),
+    change: async input => { writes++; return mailSuccess(input.target); },
+  }));
+  await model.connect(); await model.selectMessage(1);
+  expect(writes).toBe(0);
+  expect(model.getSnapshot().bodyError).toBe(state === 'failure' ? MAIL_ERRORS.unavailable : null);
+});
+
+test.each(['message', 'mailbox', 'refresh', 'cancel'] as const)('a body superseded by %s is never marked read', async action => {
+  const body = createMailDeferred<MailReply<MailMessage>>();
+  const writes: number[] = [];
+  const model = new MailModel(mailApiFixture({
+    list: async () => mailSuccess({ messages: [message, { ...message, id: 2 }], offset: 0, nextOffset: null }),
+    read: async target => target.id === 1 ? body.promise : mailSuccess({ ...message, id: 2 }),
+    change: async input => { writes.push(input.target.id); return mailSuccess(input.target); },
+  }));
+  await model.connect();
+  const opening = model.selectMessage(1);
+  if (action === 'message') await model.selectMessage(2);
+  else if (action === 'mailbox') await model.selectMailbox({ ...mailBox, accountId: 'other' });
+  else if (action === 'refresh') await model.connect();
+  else model.cancelPending();
+  body.resolve(mailSuccess(message)); await opening;
+  expect(writes).toEqual(action === 'message' ? [2] : []);
+  expect(model.getSnapshot().page?.messages.find(row => row.id === 1)?.read).toBe(false);
+});
+
+test('manual unread survives its body reload, flagging and refresh until the user opens it again', async () => {
+  let read = false;
+  const writes: MailChange[] = [];
+  const model = new MailModel(mailApiFixture({
+    mailboxes: async () => mailSuccess([{ ...mailBox, unread: read ? 0 : 1 }]),
+    list: async () => mailSuccess({ messages: [{ ...message, read }], offset: 0, nextOffset: null }),
+    read: async () => mailSuccess({ ...message, read }),
+    change: async input => {
+      writes.push(input);
+      if (input.action === 'read') read = input.value;
+      return mailSuccess(input.target);
+    },
+  }));
+  await model.connect(); await model.selectMessage(1);
+  const target = { mailbox: mailBox, id: 1 };
+  await model.change({ action: 'read', target, value: false });
+  await model.change({ action: 'flag', target, value: true });
+  await model.connect();
+  expect(writes.map(input => [input.action, input.action === 'move' ? null : input.value]))
+    .toEqual([['read', true], ['read', false], ['flag', true]]);
+  expect(model.getSnapshot().message?.read).toBe(false);
+  expect(model.getSnapshot().page?.messages[0]?.read).toBe(false);
+  expect(model.getSnapshot().boxes[0]?.unread).toBe(1);
+  await model.selectMessage(1);
+  expect(read).toBe(true);
+  expect(writes).toHaveLength(4);
+  await model.selectMessage(1);
+  expect(writes).toHaveLength(4);
+  expect(model.getSnapshot().boxes[0]?.unread).toBe(0);
+});
+
+test('a late overlapping next page preserves newly acknowledged read state', async () => {
+  const next = createMailDeferred<MailReply<MailPage>>();
+  const model = new MailModel(mailApiFixture({ list: async (_box, offset = 0) => offset ? next.promise
+    : mailSuccess({ messages: [message], offset: 0, nextOffset: 25 }) }));
+  await model.connect();
+  const loading = model.loadMore();
+  await model.selectMessage(1);
+  next.resolve(mailSuccess({ messages: [message, { ...message, id: 26 }], offset: 25, nextOffset: null }));
+  await loading;
+  expect(model.getSnapshot().page?.messages.map(row => [row.id, row.read])).toEqual([[1, true], [26, false]]);
+  expect(model.getSnapshot().message?.read).toBe(true);
+  expect(model.getSnapshot().boxes[0]?.unread).toBe(0);
+});
+
+test('cancelling during a read write releases the mutation lock without publishing stale content', async () => {
+  const pending = createMailDeferred<MailReply<MailTarget>>();
+  const started = createMailDeferred<void>();
+  const model = new MailModel(mailApiFixture({ change: async () => { started.resolve(); return pending.promise; } }));
+  await model.connect();
+  const opening = model.selectMessage(1);
+  await started.promise;
+  model.cancelPending();
+  const retained = model.getSnapshot().message;
+  pending.resolve(mailSuccess({ mailbox: mailBox, id: 1 })); await opening;
+  expect(model.getSnapshot().changing).toBe(false);
+  expect(model.getSnapshot().message).toBe(retained);
+  await model.connect();
+  expect(model.getSnapshot().loadingBoxes).toBe(false);
 });

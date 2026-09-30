@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { appleMailScript, type MailCommand } from '../lib/apple-mail-script.mts';
-import { MAIL_BODY_LIMIT, mailboxes, mailMessage, mailPage, mailReply } from '../shared/apple-mail';
+import { MAIL_BODY_LIMIT, MAIL_SOURCE_LIMIT, mailboxes, mailMessage, mailPage, mailReply } from '../shared/apple-mail';
 
 interface Named { name(): string; id(): string | number; exists(): boolean }
 function collection<T extends Named>(items: T[], rejectsName = false) {
@@ -15,8 +15,9 @@ function collection<T extends Named>(items: T[], rejectsName = false) {
     byId: (id: string | number) => items.find(item => item.id() === id) ?? missing,
   });
 }
-function fixture(rejectsName = false) {
+function fixture(rejectsName = false, source?: string) {
   let contentReads = 0;
+  let sourceReads = 0;
   let summaryReads = 0;
   const messages = collection(Array.from({ length: 51 }, (_, i) => ({
     id: () => i + 1, name: () => `Message ${i + 1}`, exists: () => true,
@@ -25,6 +26,7 @@ function fixture(rejectsName = false) {
     toRecipients: () => [{ address: () => 'me@example.test' }], ccRecipients: () => [], replyTo: () => 'sender@example.test',
     dateReceived: () => new Date('2026-09-22T00:00:00Z'), dateSent: () => new Date(NaN),
     content: () => { contentReads++; return i === 0 ? '<script>private</script>' : 'x'.repeat(MAIL_BODY_LIMIT + 1); },
+    source: () => { sourceReads++; if (source === undefined) throw new Error('Not downloaded'); return source; },
   })));
   const child = { name: () => 'Nested " / \\ box', id: () => 'child', exists: () => true, unreadCount: () => 0,
     mailboxes: collection<Named>([]), messages };
@@ -36,8 +38,24 @@ function fixture(rejectsName = false) {
   const run = (command: MailCommand): unknown => JSON.parse(vm.runInNewContext(appleMailScript(command), {
     Application: (id: string) => { expect(id).toBe('com.apple.mail'); return app; }, Date,
   }));
-  return { run, contentReads: () => contentReads, summaryReads: () => summaryReads };
+  return { run, contentReads: () => contentReads, summaryReads: () => summaryReads, sourceReads: () => sourceReads };
 }
+
+test('JXA reads bounded raw MIME only for the selected message and falls back when unavailable', () => {
+  for (const source of [undefined, 'Content-Type: text/html\r\n\r\n<h1>Hello</h1>', 'x'.repeat(MAIL_SOURCE_LIMIT + 1), '한'.repeat(MAIL_SOURCE_LIMIT / 2)]) {
+    const data = fixture(false, source);
+    const mailbox = { accountId: 'a', path: ['INBOX'] };
+    data.run({ action: 'mailboxes' });
+    data.run({ action: 'list', mailbox, offset: 0 });
+    expect(data.sourceReads()).toBe(0);
+    const result = mailReply(data.run({ action: 'read', target: { mailbox, id: 1 } }), value => value as Record<string, unknown>);
+    expect(result.ok).toBe(true);
+    expect(data.sourceReads()).toBe(1);
+    if (!result.ok) throw new Error('Expected selected message');
+    expect(result.value.body).toBe('<script>private</script>');
+    expect(result.value.source).toBe(source && Buffer.byteLength(source) <= MAIL_SOURCE_LIMIT ? source : undefined);
+  }
+});
 
 test('JXA enumerates account and nested mailboxes without opening messages', () => {
   const data = fixture();

@@ -27,10 +27,12 @@ test('overlay scrollbar follows content scrolling, drives scrolling, and remeasu
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
+  const objectRef = { current: null as HTMLDivElement | null };
   let unmounted = false;
   try {
-    await act(async () => { root.render(<OverlayScrollArea label="Conversations"><button>First chat</button></OverlayScrollArea>); });
+    await act(async () => { root.render(<OverlayScrollArea label="Conversations" viewportRef={objectRef}><button>First chat</button></OverlayScrollArea>); });
     const viewport = container.querySelector<HTMLDivElement>('[role="region"]')!;
+    expect(objectRef.current).toBe(viewport);
     const scrollbar = container.querySelector<HTMLDivElement>('[aria-hidden="true"]')!;
     const extent = scrollbar.firstElementChild as HTMLElement;
     const observer = observers[0]!;
@@ -76,8 +78,23 @@ test('overlay scrollbar follows content scrolling, drives scrolling, and remeasu
     expect(viewport.dataset.overflowing).toBe('false');
     expect(scrollbar.hidden).toBe(true);
 
+    const attached: Array<HTMLDivElement | null> = [];
+    const callbackRef = (element: HTMLDivElement | null) => { attached.push(element); };
+    await act(async () => root.render(<OverlayScrollArea label="Conversations" viewportRef={callbackRef}><button>First chat</button></OverlayScrollArea>));
+    expect(objectRef.current).toBeNull();
+    expect(attached).toEqual([viewport]);
+    let cleanupCalls = 0;
+    const cleanupRef = (element: HTMLDivElement | null) => {
+      expect(element).toBe(viewport);
+      return () => { cleanupCalls++; };
+    };
+    await act(async () => root.render(<OverlayScrollArea label="Conversations" viewportRef={cleanupRef}><button>First chat</button></OverlayScrollArea>));
+    expect(attached).toEqual([viewport, null]);
+    expect(observer.disconnected).toBe(false);
+    expect(cleanupCalls).toBe(0);
     await act(async () => { root.unmount(); });
     unmounted = true;
+    expect(cleanupCalls).toBe(1);
     expect(observer.disconnected).toBe(true);
     viewport.scrollTop = 50;
     viewport.dispatchEvent(new window.Event('scroll') as unknown as Event);

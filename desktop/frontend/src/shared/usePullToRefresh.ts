@@ -5,7 +5,7 @@ const WHEEL_IDLE_MS = 180;
 
 /** A refresh gesture starts at the top; reaching the top during ordinary scrolling is not enough. */
 export function usePullToRefresh(onRefresh?: () => Promise<void>, disabled = false) {
-  const viewportRef = useRef<HTMLDivElement>(null);
+  const [viewport, viewportRef] = useState<HTMLDivElement | null>(null);
   const latest = useRef({ onRefresh, disabled });
   useLayoutEffect(() => { latest.current = { onRefresh, disabled }; }, [onRefresh, disabled]);
   const mounted = useRef(false);
@@ -24,9 +24,13 @@ export function usePullToRefresh(onRefresh?: () => Promise<void>, disabled = fal
 
   useEffect(() => {
     mounted.current = true;
-    const viewport = viewportRef.current;
+    return () => { mounted.current = false; };
+  }, []);
+
+  useEffect(() => {
+    setPull(0);
     const view = viewport?.ownerDocument.defaultView;
-    if (!viewport || !view) return () => { mounted.current = false; };
+    if (!viewport || !view) return;
     let pointer: { id: number; x: number; y: number; captured: boolean } | undefined;
     let distance = 0;
     let suppressClickUntil = 0;
@@ -109,7 +113,7 @@ export function usePullToRefresh(onRefresh?: () => Promise<void>, disabled = fal
     view.addEventListener('pointercancel', pointerCancel);
     view.addEventListener('blur', blur);
     return () => {
-      mounted.current = false; clearTimeout(wheelTimer); release();
+      clearTimeout(wheelTimer); release();
       viewport.removeEventListener('wheel', wheel);
       viewport.removeEventListener('pointerdown', down);
       viewport.removeEventListener('click', click, true);
@@ -119,7 +123,7 @@ export function usePullToRefresh(onRefresh?: () => Promise<void>, disabled = fal
       view.removeEventListener('pointercancel', pointerCancel);
       view.removeEventListener('blur', blur);
     };
-  }, [refresh]);
+  }, [refresh, viewport]);
   // Once armed, keep the revealed space unchanged when the gesture becomes a request.
   const pullHeight = (refreshing ? PULL_THRESHOLD : Math.min(pull, PULL_THRESHOLD)) / 2;
   return { viewportRef, refresh, refreshing, pullHeight, ready: pull >= PULL_THRESHOLD, error };

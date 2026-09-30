@@ -84,6 +84,8 @@
 .messageRow time, .body time { opacity: .7; }
 .moreSentinel { height: 1px; }
 .body { position: relative; overflow: auto; padding: var(--space-default); border-right: 0; overflow-wrap: anywhere; }
+.htmlBody { padding-inline: 0; }
+.bodyHeader { padding-inline: var(--space-default); }
 .bodyTitle { margin: 0; font-size: 16px; }
 .body p { margin: var(--space-default) 0; }
 .messageList:has(> .emptyMessage), .body:has(> .emptyMessage) { display: flex; flex-direction: column; }

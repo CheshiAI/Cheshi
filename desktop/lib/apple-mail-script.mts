@@ -1,4 +1,4 @@
-import { MAIL_BODY_LIMIT, MAIL_PAGE_SIZE } from '../shared/apple-mail.ts';
+import { MAIL_BODY_LIMIT, MAIL_PAGE_SIZE, MAIL_SOURCE_LIMIT } from '../shared/apple-mail.ts';
 import type { MailboxRef, MailTarget, MailChange, MailSend } from '../shared/apple-mail.ts';
 
 export type MailCommand = { action: 'mailboxes' } | { action: 'list'; mailbox: MailboxRef; offset: number }
@@ -176,6 +176,12 @@ const SCRIPT = String.raw`(function(request) {
       var body = string(message.content());
       result.body = body.slice(0, BODY_LIMIT);
       result.bodyTruncated = body.length > BODY_LIMIT;
+      // Raw MIME is fetched only for the selected message. Keep text if source is unavailable or too large.
+      try {
+        var source = string(message.source());
+        if (source.length <= SOURCE_LIMIT && JSON.stringify(source).length <= SOURCE_LIMIT
+          && unescape(encodeURIComponent(source)).length <= SOURCE_LIMIT) result.source = source;
+      } catch (_) { /* Some messages have no downloaded source yet. */ }
       result.to = addresses(message.toRecipients);
       result.cc = addresses(message.ccRecipients);
       result.replyTo = string(message.replyTo()) || string(app.extractAddressFrom(message.sender()));
@@ -192,5 +198,6 @@ const SCRIPT = String.raw`(function(request) {
 
 export function appleMailScript(command: MailCommand): string {
   const payload = JSON.stringify(command).replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
-  return `${SCRIPT.replaceAll('PAGE_SIZE', String(MAIL_PAGE_SIZE)).replaceAll('BODY_LIMIT', String(MAIL_BODY_LIMIT))}(${payload});\n`;
+  return `${SCRIPT.replaceAll('PAGE_SIZE', String(MAIL_PAGE_SIZE)).replaceAll('BODY_LIMIT', String(MAIL_BODY_LIMIT))
+    .replaceAll('SOURCE_LIMIT', String(MAIL_SOURCE_LIMIT))}(${payload});\n`;
 }
