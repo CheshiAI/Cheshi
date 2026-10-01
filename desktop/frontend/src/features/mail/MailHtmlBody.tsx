@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { MailMessage } from '../../../../shared/apple-mail';
 import { NeumorphicButton } from '../../shared/ui';
 import { mailHtmlDocument, mailLink } from './mailHtmlDocument';
+import { applyMailReadBodyPadding } from './mailReadBodyPadding';
 import styles from './MailHtmlBody.module.css';
 
 export function MailHtmlBody({ message, remoteImages, onLoadImages }: {
@@ -18,6 +19,7 @@ export function MailHtmlBody({ message, remoteImages, onLoadImages }: {
     const frame = frameRef.current;
     const doc = frame?.contentDocument;
     if (!frame || !doc?.body) return;
+    applyMailReadBodyPadding(doc.body);
     const measure = () => {
       const height = Math.ceil(doc.body.getBoundingClientRect().height);
       frame.style.height = `${Math.max(200, Math.min(50_000, height))}px`;

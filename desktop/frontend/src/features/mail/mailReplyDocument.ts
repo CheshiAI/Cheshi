@@ -1,7 +1,9 @@
 import type { MailMessage } from '../../../../shared/apple-mail';
 import { mailHtmlDocument } from './mailHtmlDocument';
+import { MAIL_DEFAULT_BACKGROUND_COLOR, MAIL_DEFAULT_TEXT_COLOR } from './mailDocumentColors';
+import { MAIL_DEFAULT_FONT_SIZE, retainMailFontSizes } from './mailDocumentTypography';
 
-const EDITOR_STYLE = 'body{padding:16px!important;min-height:240px!important;outline:none;font:12px Helvetica,Arial,sans-serif;color:#18212a;background:white}blockquote[type="cite"]{margin:16px 0 0;padding:0 0 0 12px;border-left:2px solid #7564da}blockquote[type="cite"]>p:first-child{color:#7564da}';
+const EDITOR_STYLE = `body{padding:16px!important;min-height:240px!important;outline:none;font:${MAIL_DEFAULT_FONT_SIZE} Helvetica,Arial,sans-serif;color:${MAIL_DEFAULT_TEXT_COLOR};background:${MAIL_DEFAULT_BACKGROUND_COLOR}}blockquote[type="cite"]{margin:16px 0 0;padding:0 0 0 12px;border-left:2px solid #7564da}blockquote[type="cite"]>p:first-child{color:#7564da}`;
 
 /** Keep resource URLs for outgoing HTML while the preview CSP controls fetching. */
 export function mailReplyDocument(message: MailMessage, view: Window & typeof globalThis) {
@@ -31,6 +33,7 @@ export function mailReplyDocument(message: MailMessage, view: Window & typeof gl
 
 export function serializeReplyDocument(doc: Document) {
   const clone = doc.documentElement.cloneNode(true) as HTMLElement;
+  retainMailFontSizes(doc, clone);
   clone.querySelectorAll('meta').forEach(element => element.remove());
   clone.querySelectorAll('[contenteditable]').forEach(element => element.removeAttribute('contenteditable'));
   const body = clone.querySelector('body')!;

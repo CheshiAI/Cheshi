@@ -72,7 +72,7 @@ export function mailMutationFixture(options: MutationOptions = {}) {
   const account = { id: () => 'account-a', name: () => 'Personal', exists: () => true, enabled: () => true,
     emailAddresses: () => ['me@example.test'], mailboxes: collection(boxes) };
   const app = {
-    activate: () => {},
+    activate: () => { actions.push('activate'); },
     accounts: collection([account]), mailboxes: collection([]),
     OutgoingMessage: () => { actions.push('create'); outgoing = makeOutgoing(); return outgoing; },
     outgoingMessages: { push: () => { actions.push('insert'); }, byId: (id: number) => id === 42 && outgoing ? outgoing : { exists: () => false } },

@@ -57,7 +57,10 @@ app.whenReady().then(async () => {
   const reply = await window.webContents.executeJavaScript('mailChecks.prepareReply()');
   await window.webContents.insertText('Inline reply text');
   const editedReply = await window.webContents.executeJavaScript('mailChecks.finishReply()');
-  process.stdout.write('MAIL_HTML_RESULT ' + JSON.stringify({prepared,blocked,allowed,loaded,switched,afterSwitch,reselected,links,reply,editedReply}) + '\\n');
+  const colors = await window.webContents.executeJavaScript('mailChecks.colorDefaults()');
+  const fonts = await window.webContents.executeJavaScript('mailChecks.fontSizes()');
+  const spacing = await window.webContents.executeJavaScript('mailChecks.readBodyPadding()');
+  process.stdout.write('MAIL_HTML_RESULT ' + JSON.stringify({prepared,blocked,allowed,loaded,switched,afterSwitch,reselected,links,reply,editedReply,colors,fonts,spacing}) + '\\n');
   window.destroy(); app.quit();
 }).catch(error => { process.stderr.write(String(error.stack)); app.exit(1); });
 setTimeout(() => app.exit(2), 20000).unref();
@@ -98,6 +101,38 @@ setTimeout(() => app.exit(2), 20000).unref();
     assert.equal(result.editedReply.bold, '700');
     assert.equal(result.editedReply.deleted, true);
     assert.deepEqual(result.editedReply.payload, { text: true, title: 'Edited original', bold: true, quote: true, image: true, editable: false });
+    assert.deepEqual(result.fonts, {
+      before: ['12px', '12px', '12px', '12px', '12px', '24px', '12px', '37px'],
+      after: ['12px', '12px', '12px', '12px', '12px', '24px', '12px', '37px'],
+      points: ['9pt', '9pt', '9pt', '9pt', '9pt', '9pt'], bare: '9pt', unchanged: true,
+      freshDefault: '12px', plainDefault: '12px',
+    });
+    assert.equal(result.spacing.length, 4);
+    for (const spacing of result.spacing) {
+      assert.equal(spacing.after.reply.left - spacing.before.reply.left, 16);
+      assert.equal(spacing.before.reply.width - spacing.after.reply.width, 32);
+      assert.equal(spacing.after.reply.font, spacing.before.reply.font);
+      assert.equal(spacing.after.reply.color, spacing.before.reply.color);
+      assert.deepEqual(spacing.after.quote, spacing.before.quote);
+      assert.deepEqual(spacing.after.nested, spacing.before.nested);
+      assert.equal(spacing.quoteUnchanged, true);
+      assert.equal(spacing.overflow, false);
+    }
+    assert.deepEqual(result.colors.cases, [
+      { name: 'missing', color: 'rgb(24, 33, 42)', background: 'rgb(255, 255, 255)', sample: 'rgb(192, 32, 48)' },
+      { name: 'stylesheet', color: 'rgb(36, 104, 172)', background: 'rgb(244, 229, 154)', sample: 'rgb(36, 104, 172)' },
+      { name: 'inline', color: 'rgb(171, 205, 239)', background: 'rgb(18, 52, 86)', sample: 'rgb(192, 32, 48)' },
+      { name: 'root', color: 'rgb(238, 238, 238)', background: 'rgb(32, 48, 64)', sample: 'rgb(238, 238, 238)' },
+      { name: 'legacy', color: 'rgb(101, 67, 33)', background: 'rgb(254, 220, 186)', sample: 'rgb(101, 67, 33)' },
+      { name: 'plain', color: 'rgb(24, 33, 42)', background: 'rgb(255, 255, 255)', sample: 'rgb(24, 33, 42)' },
+    ]);
+    assert.equal(result.colors.references.length, 5);
+    for (const reference of result.colors.references) {
+      assert.equal(reference.width, 0, reference.name);
+      assert.equal(reference.height, 0, reference.name);
+      assert.equal(reference.color, 'rgb(24, 33, 42)', reference.name);
+      assert.equal(reference.stable, true, reference.name);
+    }
     for (const layout of [result.reply, result.editedReply.narrow]) {
       assert.ok(Math.abs(layout.width - layout.available) <= 1, JSON.stringify(layout));
       assert.equal(layout.below, true);

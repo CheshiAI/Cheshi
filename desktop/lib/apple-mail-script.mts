@@ -148,7 +148,6 @@ const SCRIPT = String.raw`(function(request) {
         replaceRecipients(outgoing.bccRecipients, [], app.BccRecipient);
         if (addresses(outgoing.toRecipients).length || addresses(outgoing.ccRecipients).length || addresses(outgoing.bccRecipients).length) fail('preparation-failed');
         outgoing.visible = true;
-        app.activate();
         return JSON.stringify({ok: true, value: {id: outgoing.id(), title: marker}});
       }
       replaceRecipients(outgoing.toRecipients, input.to, app.ToRecipient);

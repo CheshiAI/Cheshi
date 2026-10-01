@@ -3,6 +3,7 @@ import { AlignCenter, AlignLeft, AlignRight, Bold, IndentDecrease, IndentIncreas
 import { NeumorphicButton, NeumorphicSurface } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { replyPreviewDocument, serializeReplyDocument } from './mailReplyDocument';
+import { MAIL_DEFAULT_TEXT_COLOR } from './mailDocumentColors';
 import styles from './MailReplyEditor.module.css';
 
 const commands = [
@@ -108,7 +109,7 @@ export function MailReplyEditor({ html, disabled, active, remoteImages, onLoadIm
       <NeumorphicSurface><select aria-label="Font size" disabled={disabled} defaultValue="2" onChange={event => command('fontSize', event.target.value)}>
         {[['1', '10'], ['2', '12'], ['3', '16'], ['4', '18'], ['5', '24'], ['6', '32'], ['7', '48']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></NeumorphicSurface>
-      <input type="color" aria-label="Text color" defaultValue="#18212a" disabled={disabled} onChange={event => command('foreColor', event.target.value)} />
+      <input type="color" aria-label="Text color" defaultValue={MAIL_DEFAULT_TEXT_COLOR} disabled={disabled} onChange={event => command('foreColor', event.target.value)} />
       {commands.map(([name, label, Icon]) => <TooltipButton key={name} variant="ghost" size="icon" title={label} aria-label={label}
         aria-pressed={pressed.includes(name)} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => command(name)}><Icon aria-hidden="true" /></TooltipButton>)}
     </div>

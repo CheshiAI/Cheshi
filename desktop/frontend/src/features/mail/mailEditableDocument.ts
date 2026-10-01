@@ -1,5 +1,7 @@
 import { mailEditedReply } from '../../../../shared/mail-reply';
 import type { MailReplyEditingRequest, MailReplyEditingResult } from '../../../../shared/mail-reply';
+import { applyMailDocumentColors, MAIL_DEFAULT_BACKGROUND_COLOR, MAIL_DEFAULT_TEXT_COLOR } from './mailDocumentColors';
+import { MAIL_DEFAULT_FONT_SIZE } from './mailDocumentTypography';
 
 /** Keep quoted mail, signatures, markup, links and image data outside model output. */
 export function mailEditableDocument(html: string | undefined, body: string, requestId: string, originalMessage: string) {
@@ -22,10 +24,12 @@ export function mailEditableDocument(html: string | undefined, body: string, req
     if (!document) {
       const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
       const text = edited.segments[0]!.text;
-      return { html: `<html><body><div style="font-family:Helvetica,Arial,sans-serif;white-space:pre-wrap">${escape(text)}</div></body></html>`, body: text };
+      return { html: `<html><body><div style="font-family:Helvetica,Arial,sans-serif;font-size:${MAIL_DEFAULT_FONT_SIZE};white-space:pre-wrap;color:${MAIL_DEFAULT_TEXT_COLOR};background-color:${MAIL_DEFAULT_BACKGROUND_COLOR}">${escape(text)}</div></body></html>`, body: text };
     }
     nodes.forEach((node, index) => { node.data = edited.segments[index]!.text; });
+    const outgoing = document.cloneNode(true) as Document;
+    applyMailDocumentColors(outgoing);
     // Body is only a plain-text fallback for the clipboard; native HTML owns layout.
-    return { html: `<!DOCTYPE html>${document.documentElement.outerHTML}`, body: document.body.textContent ?? '' };
+    return { html: `<!DOCTYPE html>${outgoing.documentElement.outerHTML}`, body: document.body.textContent ?? '' };
   } };
 }

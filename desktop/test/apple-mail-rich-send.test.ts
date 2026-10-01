@@ -5,6 +5,19 @@ import { mailMutationFixture } from './apple-mail-mutation-fixture';
 import { mailSendFixture, mailBox, createMailDeferred } from './apple-mail-fixtures';
 
 const input = { ...mailSendFixture, html: '<p>Message</p>', reply: { target: { mailbox: mailBox, id: 1 }, all: false } };
+test('rich preparation never activates Mail for new messages, replies, or reply-all', () => {
+  for (const reply of [null, input.reply, { ...input.reply, all: true }]) {
+    const fixture = mailMutationFixture();
+    expect(fixture.run({ action: 'prepare-rich', input: { ...input, reply } })).toEqual({
+      ok: true, value: { id: 42, title: `Cheshi-${input.operationId}` },
+    });
+    expect(fixture.actions).not.toContain('activate');
+    expect(fixture.actions).not.toContain('send');
+    expect(fixture.outgoing()!.toRecipients()).toHaveLength(0);
+    expect(fixture.outgoing()!.ccRecipients()).toHaveLength(0);
+    expect(fixture.outgoing()!.bccRecipients()).toHaveLength(0);
+  }
+});
 test('rich reply preparation clears all recipients and retains the native reply target', () => {
   const fixture = mailMutationFixture();
   expect(fixture.run({ action: 'prepare-rich', input })).toEqual({ ok: true, value: { id: 42, title: `Cheshi-${input.operationId}` } });

@@ -5,6 +5,9 @@ import type { MailSend } from '../shared/apple-mail';
 import { mailComposer } from '../frontend/src/features/mail/mailComposer';
 import { MailBrowser } from '../frontend/src/features/mail/MailView';
 import { mailHtmlDocument, mailLink } from '../frontend/src/features/mail/mailHtmlDocument';
+import { mailEditableDocument } from '../frontend/src/features/mail/mailEditableDocument';
+import { mailReplyDocument, serializeReplyDocument } from '../frontend/src/features/mail/mailReplyDocument';
+import { applyMailReadBodyPadding } from '../frontend/src/features/mail/mailReadBodyPadding';
 import { mailApiFixture, mailMessageFixture, mailSuccess } from './apple-mail-fixtures';
 
 const image = { contentId: 'logo@test', mimeType: 'image/png', base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=' };
@@ -192,4 +195,124 @@ async function finishReply() {
   return { typed, bold, deleted, retained, narrow, payload };
 }
 
-Object.assign(window, { mailChecks: { prepare, allowImages, switchMessage, reselectMessage, prepareReply, finishReply } });
+async function colorDefaults() {
+  const colorFrame = document.createElement('iframe');
+  colorFrame.style.cssText = 'position:absolute;left:-10000px;width:800px;height:600px;visibility:hidden';
+  colorFrame.setAttribute('sandbox', 'allow-same-origin');
+  document.body.append(colorFrame);
+  const fixtures = [
+    { name: 'missing', html: '<p id="sample" style="color:#c02030">Exact red</p>' },
+    { name: 'stylesheet', html: '<style>:where(body){color:#2468ac;background:#f4e59a}span{font-size:32px!important;padding:10px!important;color:white!important;background:black!important}</style><p id="sample">CSS colors</p>' },
+    { name: 'inline', html: '<body style="color:#abcdef;background:#123456"><p id="sample" style="color:#c02030">Inline colors</p></body>' },
+    { name: 'root', html: '<html style="color:#eeeeee;background:#203040"><body><p id="sample">Inherited colors</p></body></html>' },
+    { name: 'legacy', html: '<body text="#654321" bgcolor="#fedcba"><p id="sample">Legacy colors</p></body>' },
+    { name: 'plain', html: undefined },
+  ];
+  const results = [];
+  const references = [];
+  try {
+    for (const fixture of fixtures) {
+      const editable = mailEditableDocument(fixture.html, 'Plain text', `color-${fixture.name}`, '');
+      const output = editable.apply({ ...editable.request, model: 'fixture' });
+      await new Promise<void>(resolve => {
+        colorFrame.onload = () => resolve();
+        colorFrame.srcdoc = output.html;
+      });
+      const view = colorFrame.contentWindow!;
+      const doc = colorFrame.contentDocument!;
+      const body = fixture.name === 'plain' ? doc.querySelector('div')! : doc.body;
+      const sample = doc.getElementById('sample') ?? body;
+      results.push({ name: fixture.name, color: view.getComputedStyle(body).color,
+        background: view.getComputedStyle(body).backgroundColor, sample: view.getComputedStyle(sample).color });
+      const reference = doc.querySelector('[data-cheshi-mail-color-reference]');
+      if (reference) {
+        const size = reference.getBoundingClientRect();
+        const before = sample.getBoundingClientRect();
+        const color = view.getComputedStyle(reference).color;
+        reference.remove();
+        const after = sample.getBoundingClientRect();
+        references.push({ name: fixture.name, width: size.width, height: size.height, color,
+          stable: before.x === after.x && before.y === after.y && before.width === after.width && before.height === after.height });
+      }
+    }
+    return { cases: results, references };
+  } finally { colorFrame.remove(); }
+}
+
+async function fontSizes() {
+  const fontFrame = document.createElement('iframe');
+  fontFrame.style.cssText = 'position:absolute;left:-10000px;width:800px;height:600px;visibility:hidden';
+  fontFrame.setAttribute('sandbox', 'allow-same-origin');
+  document.body.append(fontFrame);
+  const load = (html: string) => new Promise<void>(resolve => {
+    fontFrame.onload = () => resolve(); fontFrame.srcdoc = html;
+  });
+  const ids = ['default', 'explicit', 'rule', 'relative', 'formatted', 'large', 'quote', 'heading'];
+  const sizes = () => ids.map(id => fontFrame.contentWindow!.getComputedStyle(fontFrame.contentDocument!.getElementById(id)!).fontSize);
+  try {
+    await load('<html><head><style>body{font:12px Helvetica}#rule{font-size:12px!important}h1{font-size:37px}</style></head>'
+      + '<body>Bare text<p id="default">Default</p><p id="explicit" style="font-size:12px">Explicit</p>'
+      + '<p id="rule">Stylesheet</p><div style="font-size:24px"><span id="relative" style="font-size:50%">Relative</span></div>'
+      + '<p id="formatted"><b><i><u>Formatted</u></i></b></p>'
+      + '<p id="large" style="font-size:24px">Large</p><blockquote><p id="quote">Quoted</p><h1 id="heading">Heading</h1></blockquote></body></html>');
+    const before = sizes();
+    const live = fontFrame.contentDocument!;
+    const original = live.documentElement.outerHTML;
+    const serialized = serializeReplyDocument(live);
+    const unchanged = live.documentElement.outerHTML === original;
+    const editable = mailEditableDocument(serialized, '', 'font-sizes', '');
+    const outgoing = editable.apply({ ...editable.request, model: 'fixture' });
+    const snapshot = new DOMParser().parseFromString(outgoing.html, 'text/html');
+    const points = ['default', 'explicit', 'rule', 'relative', 'formatted', 'quote'].map(id => (snapshot.getElementById(id) as HTMLElement).style.fontSize);
+    const bare = (snapshot.body.firstElementChild as HTMLElement).style.fontSize;
+    await load(outgoing.html);
+    const after = sizes();
+    const fresh = mailReplyDocument({ ...message, html: '<p>Original</p>' }, window);
+    await load(fresh);
+    const freshDefault = fontFrame.contentWindow!.getComputedStyle(fontFrame.contentDocument!.body.firstElementChild!).fontSize;
+    const plain = mailEditableDocument(undefined, 'Plain text', 'plain-font', '');
+    await load(plain.apply({ ...plain.request, model: 'fixture' }).html);
+    const plainDefault = fontFrame.contentWindow!.getComputedStyle(fontFrame.contentDocument!.querySelector('div')!).fontSize;
+    return { before, after, points, bare, unchanged, freshDefault, plainDefault };
+  } finally { fontFrame.remove(); }
+}
+
+async function readBodyPadding() {
+  const preview = document.createElement('iframe');
+  preview.style.cssText = 'position:absolute;left:-10000px;width:550px;height:600px;visibility:hidden;border:0';
+  preview.setAttribute('sandbox', 'allow-same-origin');
+  document.body.append(preview);
+  const results = [];
+  try {
+    for (const nested of [false, true]) {
+      for (const width of [550, 320]) {
+        preview.style.width = `${width}px`;
+        const reply = '<p id="reply" style="font-size:18px;color:#c02030">Reply text</p>';
+        const quote = '<blockquote type="cite" style="margin:16px 0 0;padding-left:12px;font-size:12px">'
+          + '<p id="quote">Original</p><blockquote type="cite" style="margin:inherit;padding:inherit"><p id="nested">Earlier reply</p></blockquote></blockquote>';
+        const source = nested ? `<div><div>${reply}${quote}</div></div>` : reply + quote;
+        await new Promise<void>(resolve => {
+          preview.onload = () => resolve();
+          preview.srcdoc = mailHtmlDocument(source, [], false, window).srcDoc;
+        });
+        const doc = preview.contentDocument!;
+        const view = preview.contentWindow!;
+        const sample = (id: string) => {
+          const element = doc.getElementById(id)!;
+          const box = element.getBoundingClientRect();
+          const style = view.getComputedStyle(element);
+          return { left: box.left, width: box.width, font: style.fontSize, color: style.color };
+        };
+        const before = { reply: sample('reply'), quote: sample('quote'), nested: sample('nested') };
+        const quoteHtml = doc.querySelector('blockquote')!.outerHTML;
+        applyMailReadBodyPadding(doc.body);
+        const after = { reply: sample('reply'), quote: sample('quote'), nested: sample('nested') };
+        results.push({ nested, width, before, after, quoteUnchanged: quoteHtml === doc.querySelector('blockquote')!.outerHTML,
+          overflow: doc.documentElement.scrollWidth > doc.documentElement.clientWidth });
+      }
+    }
+    return results;
+  } finally { preview.remove(); }
+}
+
+Object.assign(window, { mailChecks: { prepare, allowImages, switchMessage, reselectMessage, prepareReply, finishReply, colorDefaults, fontSizes, readBodyPadding } });
