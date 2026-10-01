@@ -83,9 +83,43 @@
 .sender { font-weight: 600; }
 .messageRow time, .body time { opacity: .7; }
 .moreSentinel { height: 1px; }
-.body { position: relative; overflow: auto; padding: var(--space-default); border-right: 0; overflow-wrap: anywhere; }
+.body { position: relative; overflow: auto; padding: 0 var(--space-default) var(--space-default); border-right: 0; overflow-wrap: anywhere; }
 .htmlBody { padding-inline: 0; }
 .bodyHeader { padding-inline: var(--space-default); }
+.conversation { display: flex; flex-direction: column; gap: 0; }
+.conversationMessage { border-top: 1px solid var(--divider); padding-block: 0; min-width: 0; }
+.conversationMessage:first-child { border-top: 0; }
+.messageToolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  height: 42px;
+  gap: var(--icon-default);
+  padding: 0 var(--space-default);
+}
+.body > .messageToolbar { padding-inline: 0; }
+.htmlBody > .messageToolbar { padding-inline: var(--space-default); }
+.body > .loadingOverlay { top: 42px; }
+.messageMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-default);
+}
+.remoteImages {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-default);
+  margin-left: auto;
+  min-width: 0;
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+  font-weight: 400;
+}
 .bodyTitle { margin: 0; font-size: 16px; }
 .body p { margin: var(--space-default) 0; }
 .messageList:has(> .emptyMessage), .body:has(> .emptyMessage) { display: flex; flex-direction: column; }

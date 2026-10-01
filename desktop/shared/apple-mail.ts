@@ -1,4 +1,5 @@
 import type { MailReplyEditingRequest, MailReplyEditingResult } from './mail-reply.ts';
+import type { MailConversation } from './mail-conversation.ts';
 
 export const MAIL_PAGE_SIZE = 25;
 export const MAIL_BODY_LIMIT = 500_000;
@@ -47,6 +48,7 @@ export interface AppleMailApi {
   mailboxes(): Promise<MailReply<Mailbox[]>>;
   list(mailbox: MailboxRef, offset?: number): Promise<MailReply<MailPage>>;
   read(target: MailTarget): Promise<MailReply<MailMessage>>;
+  conversation(target: MailTarget): Promise<MailReply<MailConversation>>;
   accounts(): Promise<MailReply<MailAccount[]>>;
   change(input: MailChange): Promise<MailReply<MailTarget>>;
   polish(input: MailReplyEditingRequest): Promise<MailReply<MailReplyEditingResult>>;

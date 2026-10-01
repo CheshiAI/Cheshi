@@ -23,7 +23,7 @@ test('HTML mail preserves formatting and isolates scripts, resources, links and 
     const htmlPath = path.join(directory, 'index.html');
     await writeFile(htmlPath, `<meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy('')}">
       <link rel="stylesheet" href="apple-mail-html-renderer.css">
-      <style>:root{--space-default:16px;--sidebar-width:320px}*{box-sizing:border-box}#root{width:1200px;height:700px}</style>
+      <style>:root{--space-default:16px;--sidebar-width:320px;--text:#d3e2de}*{box-sizing:border-box}#root{width:1200px;height:700px}</style>
       <h1 id="host-title">Host</h1><div id="root"></div>`);
     const mainPath = path.join(directory, 'main.cjs');
     await writeFile(mainPath, `
@@ -60,7 +60,11 @@ app.whenReady().then(async () => {
   const colors = await window.webContents.executeJavaScript('mailChecks.colorDefaults()');
   const fonts = await window.webContents.executeJavaScript('mailChecks.fontSizes()');
   const spacing = await window.webContents.executeJavaScript('mailChecks.readBodyPadding()');
-  process.stdout.write('MAIL_HTML_RESULT ' + JSON.stringify({prepared,blocked,allowed,loaded,switched,afterSwitch,reselected,links,reply,editedReply,colors,fonts,spacing}) + '\\n');
+  const backgrounds = await window.webContents.executeJavaScript('mailChecks.readBackgrounds()');
+  requests.splice(0);
+  const shadow = await window.webContents.executeJavaScript('mailChecks.shadowReading()');
+  const shadowRequests = requests.splice(0);
+  process.stdout.write('MAIL_HTML_RESULT ' + JSON.stringify({prepared,blocked,allowed,loaded,switched,afterSwitch,reselected,links,reply,editedReply,colors,fonts,spacing,backgrounds,shadow,shadowRequests}) + '\\n');
   window.destroy(); app.quit();
 }).catch(error => { process.stderr.write(String(error.stack)); app.exit(1); });
 setTimeout(() => app.exit(2), 20000).unref();
@@ -75,7 +79,7 @@ setTimeout(() => app.exit(2), 20000).unref();
     assert.deepEqual(result.prepared.formatting, { title: 'Newsletter', padding: '16', margin: 'margin:24px', active: 0,
       links: 1, refresh: false, cid: true, unsafeLinks: [null, null, null, null, null], remote: true });
     assert.deepEqual(result.prepared.display, { title: 'Newsletter', font: '37px', background: 'rgb(238, 238, 255)', loadedImage: 1,
-      sandbox: 'allow-same-origin', button: 'Load images', hostFont: '32px' });
+      iframes: 0, button: 'Load images', hostFont: '32px' });
     assert.equal(result.prepared.compromised, false);
     assert.deepEqual(result.blocked, []);
     assert.equal(result.allowed.button, null);
@@ -87,7 +91,7 @@ setTimeout(() => app.exit(2), 20000).unref();
     assert.deepEqual(result.reselected.first, { button: null, naturalWidth: 1 });
     assert.deepEqual(result.reselected.repeated, { button: null, remoteSources: 1 });
     for (const widths of [result.allowed.widths, result.reselected.narrow]) {
-      assert.ok(Math.abs(widths.article - widths.frame) <= 1, JSON.stringify(widths));
+      assert.ok(Math.abs(widths.article - widths.host - 32) <= 1, JSON.stringify(widths));
       assert.ok(Math.abs(widths.available - widths.layout) <= 1, JSON.stringify(widths));
       assert.equal(widths.logo, 160);
       assert.equal(widths.columns, 240);
@@ -107,15 +111,18 @@ setTimeout(() => app.exit(2), 20000).unref();
       points: ['9pt', '9pt', '9pt', '9pt', '9pt', '9pt'], bare: '9pt', unchanged: true,
       freshDefault: '12px', plainDefault: '12px',
     });
-    assert.equal(result.spacing.length, 4);
+    assert.equal(result.spacing.length, 8);
     for (const spacing of result.spacing) {
-      assert.equal(spacing.after.reply.left - spacing.before.reply.left, 16);
-      assert.equal(spacing.before.reply.width - spacing.after.reply.width, 32);
-      assert.equal(spacing.after.reply.font, spacing.before.reply.font);
-      assert.equal(spacing.after.reply.color, spacing.before.reply.color);
-      assert.deepEqual(spacing.after.quote, spacing.before.quote);
-      assert.deepEqual(spacing.after.nested, spacing.before.nested);
+      for (const key of ['reply', 'quote', 'nested']) {
+        if (!spacing.before[key]) continue;
+        assert.equal(spacing.after[key].left - spacing.before[key].left, 16);
+        assert.equal(spacing.before[key].width - spacing.after[key].width, 32);
+        assert.equal(spacing.after[key].font, spacing.before[key].font);
+        assert.equal(spacing.after[key].color, spacing.before[key].color);
+      }
+      assert.deepEqual(spacing.padding, ['16px', '16px']);
       assert.equal(spacing.quoteUnchanged, true);
+      assert.equal(spacing.outgoingClean, true);
       assert.equal(spacing.overflow, false);
     }
     assert.deepEqual(result.colors.cases, [
@@ -127,12 +134,32 @@ setTimeout(() => app.exit(2), 20000).unref();
       { name: 'plain', color: 'rgb(24, 33, 42)', background: 'rgb(255, 255, 255)', sample: 'rgb(24, 33, 42)' },
     ]);
     assert.equal(result.colors.references.length, 5);
+    assert.equal(result.backgrounds.length, 8);
+    for (const background of result.backgrounds) {
+      const transparent = 'rgba(0, 0, 0, 0)';
+      const gray = 'rgb(240, 240, 240)';
+      const expected = ['legacy', 'stylesheet', 'root'].includes(background.name)
+        ? [background.name === 'root' ? gray : transparent, background.name === 'root' ? transparent : gray,
+          gray, 'rgb(255, 255, 255)', gray, gray]
+        : [transparent, background.name === 'single' ? 'rgb(18, 52, 86)'
+          : background.name === 'white' ? 'rgb(255, 255, 255)' : transparent, null, null, null, null];
+      assert.deepEqual(background.colors, expected, background.name);
+      const themed = ['transparent', 'default'].includes(background.name);
+      const textColor = background.name === 'single' ? 'rgb(255, 255, 255)'
+        : background.name === 'authored-text' ? 'rgb(52, 86, 120)' : 'rgb(0, 0, 0)';
+      assert.equal(background.textColor, themed ? 'rgb(211, 226, 222)' : textColor, JSON.stringify(background));
+      assert.equal(background.themedColor, themed ? 'rgb(171, 205, 239)' : textColor, background.name);
+    }
     for (const reference of result.colors.references) {
       assert.equal(reference.width, 0, reference.name);
       assert.equal(reference.height, 0, reference.name);
       assert.equal(reference.color, 'rgb(24, 33, 42)', reference.name);
       assert.equal(reference.stable, true, reference.name);
     }
+    assert.deepEqual(result.shadowRequests, []);
+    assert.deepEqual(result.shadow, { iframes: 0, active: 0, compromised: false, hostStable: true, hostWidth: 368,
+      naturalHeight: true, outerScroll: true, innerScroll: false, font: '18px', color: 'rgb(200, 30, 40)',
+      lastLineVisible: true, leakedRules: false });
     for (const layout of [result.reply, result.editedReply.narrow]) {
       assert.ok(Math.abs(layout.width - layout.available) <= 1, JSON.stringify(layout));
       assert.equal(layout.below, true);

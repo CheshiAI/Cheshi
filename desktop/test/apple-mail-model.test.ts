@@ -253,7 +253,7 @@ test('opening unread mail writes its exact target and updates counts only after 
   await started.promise;
   expect(writes).toEqual([{ action: 'read', target: { mailbox: mailBox, id: 1 }, value: true }]);
   expect(model.getSnapshot().message?.body).toBe(message.body);
-  expect(model.getSnapshot().loadingBody).toBe(false);
+  expect(model.getSnapshot().loadingBody).toBe(true);
   expect(model.getSnapshot().page?.messages[0]?.read).toBe(false);
   expect(model.getSnapshot().boxes[0]?.unread).toBe(1);
   model.allowRemoteImages();

@@ -1,5 +1,7 @@
 import { MAIL_PAGE_SIZE, mailFailure, mailboxKey } from '../../../../shared/apple-mail';
-import type { AppleMailApi, Mailbox, MailMessage, MailPage, MailReply, MailChange } from '../../../../shared/apple-mail';
+import type { AppleMailApi, Mailbox, MailMessage, MailPage, MailReply, MailChange, MailTarget } from '../../../../shared/apple-mail';
+import { mailTargetKey } from '../../../../shared/mail-conversation';
+import type { MailConversation } from '../../../../shared/mail-conversation';
 
 export interface MailState {
   connected: boolean;
@@ -20,22 +22,28 @@ export interface MailState {
   changing: boolean;
   changeError: string | null;
   changeBlocked: boolean;
+  conversation: MailConversation | null;
+  conversationMessages: Record<string, MailReply<MailMessage>>;
+  loadingConversation: boolean;
+  conversationError: string | null;
 }
 
 export class MailModel {
   private state: MailState = { connected: false, boxes: [], selectedBox: null, page: null, selectedId: null,
     message: null, remoteImagesAllowed: false, loadingBoxes: false, loadingPage: false, loadingMore: false, loadingBody: false,
-    boxesError: null, pageError: null, moreError: null, bodyError: null, changing: false, changeError: null, changeBlocked: false };
+    boxesError: null, pageError: null, moreError: null, bodyError: null, changing: false, changeError: null, changeBlocked: false,
+    conversation: null, conversationMessages: {}, loadingConversation: false, conversationError: null };
   private readonly listeners = new Set<() => void>();
   private readonly api: AppleMailApi;
   private readonly imagePermissions = new Set<string>();
   private boxesVersion = 0;
   private pageVersion = 0;
   private bodyVersion = 0;
+  private conversationVersion = 0;
   constructor(api: AppleMailApi) { this.api = api; }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
-  cancelPending = () => { ++this.boxesVersion; ++this.pageVersion; ++this.bodyVersion; };
+  cancelPending = () => { ++this.boxesVersion; ++this.pageVersion; ++this.bodyVersion; ++this.conversationVersion; };
   private update(patch: Partial<MailState>) {
     this.state = { ...this.state, ...patch };
     this.listeners.forEach(listener => listener());
@@ -49,6 +57,32 @@ export class MailModel {
     if (!selectedBox || !message?.html || message.id !== selectedId) return;
     this.imagePermissions.add(this.imageKey(selectedBox, message.id));
     this.update({ remoteImagesAllowed: true });
+  };
+  remoteImagesFor = (target: MailTarget) => this.imagePermissions.has(mailTargetKey(target));
+  allowConversationImages = (target: MailTarget) => {
+    if (!this.state.conversation?.messages.some(entry => mailTargetKey(entry.target) === mailTargetKey(target))) return;
+    this.imagePermissions.add(mailTargetKey(target));
+    this.update({});
+  };
+  refreshConversation = async () => {
+    const { selectedBox, selectedId, message } = this.state;
+    if (!selectedBox || selectedId === null || !message) return;
+    const version = ++this.conversationVersion;
+    this.update({ loadingConversation: true, conversationError: null });
+    const result = await this.request(() => this.api.conversation({ mailbox: selectedBox, id: selectedId }));
+    if (version !== this.conversationVersion) return;
+    if (!result.ok) {
+      this.update({ conversationError: result.error.message, loadingConversation: false, loadingBody: false });
+      return;
+    }
+    const anchor = mailTargetKey({ mailbox: selectedBox, id: selectedId });
+    // Fetch previews without changing read status, then publish the entire
+    // conversation together. Keep the current content visible while fetching.
+    const messages = await Promise.all(result.value.messages
+      .filter(entry => mailTargetKey(entry.target) !== anchor)
+      .map(async entry => [mailTargetKey(entry.target), await this.request(() => this.api.read(entry.target))] as const));
+    if (version !== this.conversationVersion) return;
+    this.update({ conversation: result.value, conversationMessages: Object.fromEntries(messages), loadingConversation: false, loadingBody: false });
   };
   private async listWindow(box: Mailbox, offset: number, count: number, current: () => boolean): Promise<MailReply<MailPage> | null> {
     const messages = new Map<number, MailPage['messages'][number]>();
@@ -68,7 +102,7 @@ export class MailModel {
     const version = this.boxesVersion;
     const previous = this.state;
     this.update({ loadingBoxes: true, loadingPage: false, loadingMore: false, moreError: null, loadingBody: false, boxesError: null, pageError: null,
-      bodyError: null, changeError: null });
+      bodyError: null, changeError: null, loadingConversation: false });
     const result = await this.request(() => this.api.mailboxes());
     if (version !== this.boxesVersion) return;
     if (!result.ok) {
@@ -91,14 +125,19 @@ export class MailModel {
       selectedId: selectedMessage?.id ?? null,
       remoteImagesAllowed: !!selected && !!selectedMessage && this.imagePermissions.has(this.imageKey(selected, selectedMessage.id)),
       message: selectedMessage && previous.message ? { ...previous.message, ...selectedMessage } : null,
+      conversation: selectedMessage ? previous.conversation : null,
+      conversationMessages: selectedMessage ? previous.conversationMessages : {}, conversationError: null,
       changeBlocked: resultPage && !resultPage.ok ? previous.changeBlocked : false });
+    if (selectedMessage && previous.message) void this.refreshConversation();
   }
   async selectMailbox(box: Mailbox, offset = 0, count = MAIL_PAGE_SIZE) {
     if (this.state.changing || this.state.loadingBoxes) return;
     const version = ++this.pageVersion;
     ++this.bodyVersion;
+    ++this.conversationVersion;
     this.update({ selectedBox: box, page: null, selectedId: null, message: null, remoteImagesAllowed: false,
-      loadingPage: true, loadingMore: false, moreError: null, loadingBody: false, pageError: null, bodyError: null });
+      loadingPage: true, loadingMore: false, moreError: null, loadingBody: false, pageError: null, bodyError: null,
+      conversation: null, conversationMessages: {}, loadingConversation: false, conversationError: null });
     const result = await this.listWindow(box, offset, count, () => version === this.pageVersion);
     if (!result || version !== this.pageVersion) return;
     this.update(result.ok ? { page: result.value, loadingPage: false }
@@ -112,15 +151,18 @@ export class MailModel {
     const box = this.state.selectedBox;
     if (!box || !this.state.page?.messages.some(message => message.id === id)) return;
     const version = ++this.bodyVersion;
+    ++this.conversationVersion;
     this.update({ selectedId: id, message: null, loadingBody: true, bodyError: null,
-      remoteImagesAllowed: this.imagePermissions.has(this.imageKey(box, id)) });
+      remoteImagesAllowed: this.imagePermissions.has(this.imageKey(box, id)),
+      conversation: null, conversationMessages: {}, loadingConversation: false, conversationError: null });
     const result = await this.request(() => this.api.read({ mailbox: box, id }));
     if (version !== this.bodyVersion) return;
-    this.update(result.ok ? { message: result.value, loadingBody: false }
+    this.update(result.ok ? { message: result.value }
       : { bodyError: result.error.message, loadingBody: false });
     if (result.ok && !result.value.read && markAsRead && version === this.bodyVersion) {
       await this.markOpenedMessageRead(box, id, version);
     }
+    if (result.ok && version === this.bodyVersion) void this.refreshConversation();
   }
   private async markOpenedMessageRead(box: Mailbox, id: number, version: number) {
     if (this.state.changing || this.state.changeBlocked) return;
@@ -167,8 +209,10 @@ export class MailModel {
   }
   async change(input: MailChange) {
     const { selectedBox, message, page } = this.state;
+    const related = this.state.conversation?.messages.some(entry => mailTargetKey(entry.target) === mailTargetKey(input.target)) === true;
     if (this.state.changing || this.state.loadingBoxes || this.state.changeBlocked || !selectedBox || !message
-      || message.id !== input.target.id || mailboxKey(selectedBox) !== mailboxKey(input.target.mailbox)) return;
+      || (!related && (message.id !== input.target.id || mailboxKey(selectedBox) !== mailboxKey(input.target.mailbox)))) return;
+    const changesAnchor = input.target.id === message.id && mailboxKey(input.target.mailbox) === mailboxKey(selectedBox);
     this.update({ changing: true, changeError: null });
     let result: MailReply<unknown>;
     try { result = await this.api.change(input); } catch { result = mailFailure('change-unknown'); }
@@ -180,7 +224,7 @@ export class MailModel {
     const offset = page?.offset ?? 0;
     await this.selectMailbox(selectedBox, offset, page?.messages.length ?? MAIL_PAGE_SIZE);
     if (this.state.page?.messages.length === 0 && offset > 0) await this.selectMailbox(selectedBox, Math.max(0, offset - MAIL_PAGE_SIZE));
-    if (input.action !== 'move') await this.loadMessage(input.target.id, false);
+    if (!changesAnchor || input.action !== 'move') await this.loadMessage(message.id, false);
     const boxes = await this.request(() => this.api.mailboxes());
     if (boxes.ok) this.update({ boxes: boxes.value });
   }

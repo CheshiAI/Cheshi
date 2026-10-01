@@ -1,21 +1,7 @@
-.root { margin-top: var(--space-default); min-width: 0; width: 100%; }
-.remoteImages {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-default);
-  margin-bottom: var(--space-default);
-  padding-inline: var(--space-default);
-  color: var(--sidebar-section-label-color);
-  font-size: var(--font-size-small);
-  font-weight: 400;
-}
-.frame {
-  display: block;
+.root {
   box-sizing: border-box;
+  margin-top: var(--space-default);
+  padding-inline: var(--space-default);
+  min-width: 0;
   width: 100%;
-  height: 600px;
-  border: 0;
-  background: white;
-  color-scheme: light;
 }

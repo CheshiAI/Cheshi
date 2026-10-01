@@ -10,6 +10,7 @@ export function mailApiFixture(overrides: Partial<AppleMailApi> = {}): AppleMail
   return { available: true, mailboxes: async () => mailSuccess([mailBox]),
     list: async (_box, offset = 0) => mailSuccess({ messages: [mailMessageFixture], offset, nextOffset: null }),
     read: async target => mailSuccess({ ...mailMessageFixture, id: target.id }),
+    conversation: async target => mailSuccess({ messages: [{ target, summary: { ...mailMessageFixture, id: target.id } }], incomplete: false }),
     accounts: async () => mailSuccess([{ id: 'account-a', name: 'Personal', addresses: ['me@example.test'] }]),
     change: async input => mailSuccess(input.target),
     polish: async input => mailSuccess({ ...input, model: 'test' }),

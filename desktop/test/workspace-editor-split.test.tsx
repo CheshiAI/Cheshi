@@ -634,6 +634,44 @@ test('Mail mounts at startup and sidebar mailbox selection opens its retained ce
   expect(sidebar().activePanel).toBe('mail');
 });
 
+test('Mail close restores the last non-mail scene even after repeated mailbox navigation', () => {
+  const app = shellHarness();
+  const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
+  const mail = () => props<ComponentProps<typeof MailView>>(app.render(), 'MailView');
+  for (const view of ['chat', 'git', 'plugins', 'notes', 'calendar', 'settings', 'terminal', 'search', 'codegraph'] as const) {
+    rail().onNavigate(view);
+    mail().onOpen!();
+    expect(mail().active).toBe(true);
+    mail().onOpen!();
+    rail().onNavigate('mail');
+    mail().onClose!();
+    expect(mail().active).toBe(false);
+    expect(rail().activeView).toBe(view);
+  }
+});
+
+test('Mail close falls back to Codex when restored without history or after its previous editor closes', () => {
+  const app = shellHarness();
+  const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
+  const mail = () => props<ComponentProps<typeof MailView>>(app.render(), 'MailView');
+  app.render();
+  app.restoreShell('mail', 'mail');
+  mail().onClose!();
+  expect(rail().activeView).toBe('chat');
+  rail().onNavigate('git');
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
+  expect(rail().activeView).toBe('editor');
+  mail().onOpen!();
+  mail().onClose!();
+  expect(rail().activeView).toBe('editor');
+  mail().onOpen!();
+  const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  props<ComponentProps<typeof WorkspaceEditor>>(split.editor, 'WorkspaceEditor').onAllTabsClosed();
+  mail().onClose!();
+  expect(rail().activeView).toBe('chat');
+  expect(props<ComponentProps<typeof ChatWorkspace>>(app.render(), 'ChatWorkspace').active).toBe(true);
+});
+
 test('Memo tab browses alongside the current scene and opening a note activates the Memo page', () => {
   const app = shellHarness();
   const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');

@@ -1,8 +1,10 @@
 import { MAIL_BODY_LIMIT, MAIL_PAGE_SIZE, MAIL_SOURCE_LIMIT } from '../shared/apple-mail.ts';
 import type { MailboxRef, MailTarget, MailChange, MailSend } from '../shared/apple-mail.ts';
+import { MAIL_CONVERSATION_LIMIT } from '../shared/mail-conversation.ts';
+import { MAIL_CONVERSATION_SCRIPT } from './apple-mail-conversation-script.mts';
 
 export type MailCommand = { action: 'mailboxes' } | { action: 'list'; mailbox: MailboxRef; offset: number }
-  | { action: 'read'; target: MailTarget } | { action: 'accounts' }
+  | { action: 'read' | 'conversation'; target: MailTarget } | { action: 'accounts' }
   | { action: 'change'; input: MailChange } | { action: 'send'; input: MailSend }
   | { action: 'prepare-rich'; input: MailSend }
   | { action: 'send-rich'; input: MailSend; outgoingId: number };
@@ -94,8 +96,11 @@ const SCRIPT = String.raw`(function(request) {
       }
       return box;
     }
+    CONVERSATION_HELPER
     var result;
-    if (request.action === 'accounts') {
+    if (request.action === 'conversation') {
+      result = conversation(request.target);
+    } else if (request.action === 'accounts') {
       result = app.accounts().filter(function(account) { return account.enabled() === true; }).map(function(account) {
         return { id: account.id(), name: account.name(), addresses: account.emailAddresses() };
       });
@@ -217,6 +222,7 @@ const SCRIPT = String.raw`(function(request) {
 
 export function appleMailScript(command: MailCommand): string {
   const payload = JSON.stringify(command).replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
-  return `${SCRIPT.replaceAll('PAGE_SIZE', String(MAIL_PAGE_SIZE)).replaceAll('BODY_LIMIT', String(MAIL_BODY_LIMIT))
+  return `${SCRIPT.replace('CONVERSATION_HELPER', MAIL_CONVERSATION_SCRIPT).replaceAll('CONVERSATION_LIMIT', String(MAIL_CONVERSATION_LIMIT))
+    .replaceAll('PAGE_SIZE', String(MAIL_PAGE_SIZE)).replaceAll('BODY_LIMIT', String(MAIL_BODY_LIMIT))
     .replaceAll('SOURCE_LIMIT', String(MAIL_SOURCE_LIMIT))}(${payload});\n`;
 }

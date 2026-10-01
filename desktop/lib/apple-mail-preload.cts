@@ -3,6 +3,7 @@ import { mailboxes, mailboxRef, mailOffset, mailPage, mailTarget, mailMessage, m
   mailAccounts, mailChange, mailChanged, mailSend, mailSent } from '../shared/apple-mail.ts';
 import type { AppleMailApi, MailReply, MailErrorCode } from '../shared/apple-mail.ts';
 import { mailEditedReply } from '../shared/mail-reply.ts';
+import { mailConversation } from '../shared/mail-conversation.ts';
 
 export function createAppleMailApi(ipc: Pick<IpcRenderer, 'invoke'>, platform: string): AppleMailApi {
   const invoke = async <T,>(action: string, args: unknown[], parse: (value: unknown) => T, uncertain?: MailErrorCode): Promise<MailReply<T>> => {
@@ -29,6 +30,10 @@ export function createAppleMailApi(ipc: Pick<IpcRenderer, 'invoke'>, platform: s
     read: async value => {
       const target = mailTarget(value);
       return invoke('read', [target], result => mailMessage(result, target.id));
+    },
+    conversation: async value => {
+      const target = mailTarget(value);
+      return invoke('conversation', [target], result => mailConversation(result, target));
     },
   };
 }

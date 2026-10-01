@@ -6,6 +6,7 @@ import { appleMailScript, type MailCommand } from './apple-mail-script.mts';
 import { MailProcessError, runMailScript } from './apple-mail-process.mts';
 import { mailSource, withMailHtml } from './apple-mail-mime.mts';
 import { sendRichMail } from './apple-mail-rich-send.mts';
+import { mailConversation } from '../shared/mail-conversation.ts';
 
 export class AppleMailService {
   private readonly platform: string;
@@ -43,6 +44,9 @@ export class AppleMailService {
     }));
     if (!result.ok) return result;
     return { ok: true as const, value: await withMailHtml(result.value.message, result.value.source) };
+  }
+  conversation(target: unknown) {
+    return this.request(() => ({ action: 'conversation', target: mailTarget(target) }), value => mailConversation(value, mailTarget(target)));
   }
   private async request<T>(build: () => MailCommand, parse: (value: unknown) => T, uncertain?: MailErrorCode): Promise<MailReply<T>> {
     if (this.platform !== 'darwin') return mailFailure('unsupported');

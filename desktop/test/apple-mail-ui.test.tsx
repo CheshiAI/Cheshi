@@ -6,6 +6,7 @@ import { MAIL_ERRORS, mailFailure } from '../shared/apple-mail';
 import { createMailDeferred, mailApiFixture, mailMessageFixture, mailSuccess, mailBox } from './apple-mail-fixtures';
 import { mailComposer } from '../frontend/src/features/mail/mailComposer';
 import type { Mailbox, MailChange, MailPage, MailReply, MailSend } from '../shared/apple-mail';
+import type { MailConversation } from '../shared/mail-conversation';
 
 async function withMailDOM(run: (render: (node: ReactNode) => Promise<void>, document: Document) => Promise<void>) {
   const window = new Window();
@@ -51,7 +52,7 @@ test('Mail preloads mailboxes and the first page without reading message bodies'
     { accountId: 'b', accountName: 'Work', path: ['INBOX'], unread: 0 },
   ]); }, read: async () => { reads++; return mailSuccess({ ...mailMessageFixture, body: '<img src="https://example.test/pixel"><script>alert(1)</script>' }); } });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} />);
     expect(connections).toBe(1); expect(reads).toBe(0);
     expect(document.querySelector('[aria-label="Mailboxes"]')?.textContent).toContain('Personal');
     expect(document.querySelector('[aria-label="Mailboxes"]')?.textContent).toContain('Work');
@@ -71,6 +72,49 @@ test('Mail preloads mailboxes and the first page without reading message bodies'
   });
 });
 
+test('Mail close remains available while connection is pending or fails', async () => {
+  const pending = createMailDeferred<MailReply<Mailbox[]>>();
+  const api = mailApiFixture({ mailboxes: () => pending.promise });
+  let closes = 0;
+  await withMailDOM(async (render, document) => {
+    await render(<MailBrowser api={api} onClose={() => { closes++; }} />);
+    expect(button(document, 'Reply').disabled).toBe(true);
+    expect(button(document, 'Close mail').disabled).toBe(false);
+    await act(async () => button(document, 'Close mail').click());
+    expect(closes).toBe(1);
+    await act(async () => pending.resolve(mailFailure('permission')));
+    await act(async () => button(document, 'Close mail').click());
+    expect(closes).toBe(2);
+  });
+});
+
+test('Mail close preserves selected mail and an inline reply when reopened', async () => {
+  const api = mailApiFixture();
+  let active = true;
+  await withMailDOM(async (render, document) => {
+    const scene = () => <MailBrowser api={api} active={active} onClose={() => { active = false; }} />;
+    await render(scene());
+    const row = document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!;
+    await act(async () => row.click());
+    const actionLabels = [...document.querySelectorAll('[aria-label="Mail actions"] button')]
+      .map(control => control.getAttribute('aria-label'));
+    expect(actionLabels).toEqual(['Reply', 'Reply all', 'Move to Trash', 'Close mail']);
+    await act(async () => button(document, 'Reply').click());
+    await act(async () => mailComposer(api).edit({ body: 'Keep this reply' }));
+    const originalForm = mailComposer(api).getSnapshot().form;
+    await act(async () => button(document, 'Close mail').click());
+    await render(scene());
+    expect(document.querySelector('main')?.hidden).toBe(true);
+    active = true;
+    await render(scene());
+    expect(document.querySelector('main')?.hidden).toBe(false);
+    expect(row.getAttribute('aria-pressed')).toBe('true');
+    expect(mailComposer(api).getSnapshot().form).toBe(originalForm);
+    expect(mailComposer(api).getSnapshot().form?.body).toBe('Keep this reply');
+    expect(document.querySelector('section[aria-label="Reply"]')).not.toBeNull();
+  });
+});
+
 test('account accordions start closed, retain closing rows and preserve selection across toggles and refresh', async () => {
   let connections = 0;
   let lists = 0;
@@ -80,8 +124,7 @@ test('account accordions start closed, retain closing rows and preserve selectio
     list: async () => { lists++; return mailSuccess({ messages: [mailMessageFixture], offset: 0, nextOffset: null }); },
   });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser api={api} sidebarTarget={document.getElementById('mail-sidebar')}
-      rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await render(<MailBrowser api={api} sidebarTarget={document.getElementById('mail-sidebar')} />);
     const toggles = [...document.querySelectorAll<HTMLButtonElement>('#mail-sidebar button[aria-expanded]')];
     expect(toggles.map(toggle => toggle.getAttribute('aria-expanded'))).toEqual(['false', 'false']);
     expect(document.querySelector('[aria-label="Personal mailboxes"]')).toBeNull();
@@ -122,7 +165,7 @@ test('mailbox scrolling shares overlay dragging and activity tracking while pres
   const api = mailApiFixture();
   await withMailDOM(async (render, document) => {
     const scene = (active: boolean) => <MailBrowser api={api} active={active}
-      sidebarTarget={document.getElementById('mail-sidebar')} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />;
+      sidebarTarget={document.getElementById('mail-sidebar')} />;
     await render(scene(true));
     await expandMailAccount(document);
     const viewport = document.querySelector<HTMLElement>('[role="region"][aria-label="Mailboxes"]')!;
@@ -161,8 +204,7 @@ test('Mail pull refresh waits for mailboxes and messages without duplicate loadi
     list: async () => ++lists === 1 ? mailSuccess({ messages: [mailMessageFixture], offset: 0, nextOffset: null }) : page.promise,
   });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser api={api} sidebarTarget={document.getElementById('mail-sidebar')}
-      rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await render(<MailBrowser api={api} sidebarTarget={document.getElementById('mail-sidebar')} />);
     await expandMailAccount(document);
     const messageRow = document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!;
     await act(async () => messageRow.click());
@@ -231,8 +273,7 @@ test('hidden Mail preloads once in Strict Mode and preserves its page, body and 
   });
   await withMailDOM(async (render, document) => {
     const scene = (active: boolean) => <StrictMode><MailBrowser api={api} active={active}
-      sidebarTarget={document.getElementById('mail-sidebar')} onOpen={() => { opens++; }}
-      rightSidebarOpen={false} onToggleRightSidebar={() => {}} /></StrictMode>;
+      sidebarTarget={document.getElementById('mail-sidebar')} onOpen={() => { opens++; }} /></StrictMode>;
     await render(scene(false));
     expect(connections).toBe(1);
     expect(lists).toBe(1);
@@ -290,7 +331,7 @@ test('infinite mail loading appends on intersection, preserves content, retries 
       disconnect() { observers.delete(this.notify); }
     } });
     const scene = (active: boolean) => <MailBrowser api={api} active={active}
-      sidebarTarget={document.getElementById('mail-sidebar')} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />;
+      sidebarTarget={document.getElementById('mail-sidebar')} />;
     const intersect = async () => { await act(async () => { for (const notify of [...observers]) notify(); }); };
     const rows = () => document.querySelectorAll<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]');
     await render(scene(false));
@@ -339,7 +380,7 @@ test('Mail shows retrieval failures separately from an empty mailbox and can rec
   const api = mailApiFixture({ list: async () => fail ? mailFailure('invalid-response')
     : mailSuccess({ messages: [], offset: 0, nextOffset: null }) });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} />);
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS['invalid-response']);
     expect(document.body.textContent).not.toContain('No messages.');
     fail = false;
@@ -350,18 +391,15 @@ test('Mail shows retrieval failures separately from an empty mailbox and can rec
   });
 });
 
-test('Mail keeps its header usable through connection, permission failure and successful retry', async () => {
+test('Mail keeps sidebar actions available through connection, permission failure and successful retry', async () => {
   const pending = createMailDeferred<MailReply<Mailbox[]>>();
   let connections = 0;
-  let toggles = 0;
   const api = mailApiFixture({ mailboxes: () => {
     connections++;
     return connections === 1 ? pending.promise : Promise.resolve(mailSuccess([mailBox]));
   } });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => { toggles++; }} />);
-    const header = document.querySelector('header')!;
-    expect(header.textContent).toContain('MAIL');
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} />);
     expect(button(document, 'Compose mail').disabled).toBe(true);
     expect(button(document, 'Refresh mail').disabled).toBe(true);
     expect(connections).toBe(1);
@@ -370,8 +408,6 @@ test('Mail keeps its header usable through connection, permission failure and su
     expect(connect.textContent).toBe('Connecting…');
     await act(async () => connect.click());
     expect(connections).toBe(1);
-    await act(async () => button(document, 'Open right sidebar').click());
-    expect(toggles).toBe(1);
     await act(async () => pending.resolve(mailFailure('permission')));
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS.permission);
     expect(document.querySelector('[aria-label="Message list"]')).toBeNull();
@@ -380,7 +416,6 @@ test('Mail keeps its header usable through connection, permission failure and su
     expect(connections).toBe(2);
     expect(document.querySelector('[role="alert"]')).toBeNull();
     expect(document.querySelector('[aria-label="Message list"]')).not.toBeNull();
-    expect(document.querySelector('header')).toBe(header);
     expect(connect.isConnected).toBe(false);
     expect(button(document, 'Compose mail').disabled).toBe(false);
     expect(button(document, 'Refresh mail').disabled).toBe(false);
@@ -399,7 +434,7 @@ test('one Send click polishes and sends with the chosen sender, cc and bcc', asy
   const sends: MailSend[] = [];
   const api = mailApiFixture({ send: async input => { sends.push(input); return mailSuccess({ operationId: input.operationId, accepted: true }); } });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} />);
     await act(async () => button(document, 'Compose mail').click());
     await act(async () => mailComposer(api).edit({ to: 'friend@example.test', cc: 'cc@example.test', bcc: 'private@example.test', body: 'Hello', subject: 'Review me' }));
     expect(document.querySelector<HTMLInputElement>('[aria-label="Message subject"]')?.value).toBe('Review me');
@@ -412,7 +447,7 @@ test('one Send click polishes and sends with the chosen sender, cc and bcc', asy
     expect(document.body.textContent).not.toContain('Mail has been asked to send your message');
     expect(document.querySelector('[aria-label="Dismiss send notification"]')).toBeNull();
     await render(null);
-    await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await render(<MailBrowser api={api} />);
     expect(mailComposer(api).getSnapshot().notice).toBeNull();
     expect(document.body.textContent).not.toContain('Mail has been asked to send your message');
     expect(sends).toHaveLength(1);
@@ -422,7 +457,7 @@ test('one Send click polishes and sends with the chosen sender, cc and bcc', asy
 test('failed sends preserve displayed text after closing and reopening the composer', async () => {
   const api = mailApiFixture({ send: async () => mailFailure('send-unknown') });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} />);
     await act(async () => button(document, 'Compose mail').click());
     await act(async () => mailComposer(api).edit({ to: 'friend@example.test', body: 'Retain this text' }));
     await act(async () => button(document, 'Send').click());
@@ -440,13 +475,12 @@ test('trash action requires a destination confirmation and reply-all opens a dra
   const api = mailApiFixture({ mailboxes: async () => mailSuccess([mailBox, { ...mailBox, path: ['Trash'] }]),
     change: async input => { changes.push(input); return mailSuccess(input.target); } });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} />);
     await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!.click());
     expect(document.body.textContent).toContain('To: me@example.test');
     const automaticRead: MailChange = { action: 'read', target: { mailbox: mailBox, id: 1 }, value: true };
     expect(changes).toEqual([automaticRead]);
     expect(document.querySelector('[aria-label="Message list"] button[aria-pressed]')?.getAttribute('data-unread')).toBe('false');
-    expect(button(document, 'Mark as unread')).toBeDefined();
     await act(async () => button(document, 'Reply all').click());
     expect(document.querySelector<HTMLInputElement>('[aria-label="To"]')?.value).toBe('sender@example.test');
     expect(mailComposer(api).getSnapshot().reply?.all).toBe(true);
@@ -469,7 +503,7 @@ test('reply opens above the original inside the message pane and preserves draft
   });
   await withMailDOM(async (render, document) => {
     const scene = (active = true) => <MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api}
-      active={active} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />;
+      active={active} />;
     await render(scene());
     const rows = () => document.querySelectorAll<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]');
     await act(async () => rows()[0]!.click());
@@ -507,7 +541,7 @@ test('inline reply keeps its source through account errors and preserves text af
     send: async () => { sends++; return mailFailure('send-unknown'); },
   });
   await withMailDOM(async (render, document) => {
-    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await render(<MailBrowser sidebarTarget={document.getElementById('mail-sidebar')} api={api} />);
     await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!.click());
     await act(async () => button(document, 'Reply all').click());
     expect(document.querySelector('dialog')).toBeNull();
@@ -530,5 +564,153 @@ test('inline reply keeps its source through account errors and preserves text af
     await act(async () => button(document, 'Discard').click());
     expect(document.querySelector('[title="Reply message editor"]')).toBeNull();
     expect(mailComposer(api).getSnapshot().original).toBeNull();
+  });
+});
+
+test('conversation shows received and sent bodies with isolated image consent and exact reply targets', async () => {
+  const sentBox = { ...mailBox, path: ['Sent'], unread: 0 };
+  const original = { ...mailMessageFixture, read: true, html: '<p>Original</p><img src="https://example.test/original.png">' };
+  const reply = { ...mailMessageFixture, id: 2, subject: 'Re: Hello', body: 'Sent reply',
+    html: '<p>Reply</p><img src="https://example.test/reply.png">', date: '2026-09-23T01:00:00Z' };
+  const changes: MailChange[] = [];
+  const api = mailApiFixture({
+    mailboxes: async () => mailSuccess([mailBox, sentBox]),
+    read: async target => mailSuccess(target.id === 1 ? original : reply),
+    change: async input => { changes.push(input); return mailSuccess(input.target); },
+    conversation: async target => mailSuccess({ incomplete: false, messages: [
+      { target, summary: original }, { target: { mailbox: sentBox, id: 2 }, summary: reply },
+    ] }),
+  });
+  await withMailDOM(async (render, document) => {
+    await render(<MailBrowser api={api} onClose={() => {}} />);
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!.click());
+    const conversation = document.querySelector('[aria-label="Mail conversation"]')!;
+    expect(conversation).not.toBeNull();
+    expect(conversation.querySelectorAll('iframe')).toHaveLength(0);
+    expect(conversation.querySelectorAll('[aria-label="HTML message content"]')).toHaveLength(2);
+    expect(conversation.querySelectorAll('section')[0]?.getAttribute('aria-label')).toBe('Selected message');
+    expect(changes).toHaveLength(0);
+    const related = document.querySelector('[aria-label="Related message: Re: Hello"]')!;
+    const load = [...related.querySelectorAll<HTMLButtonElement>('button')].find(control => control.textContent === 'Load images')!;
+    await act(async () => load.click());
+    expect(related.querySelector('[aria-label="HTML message content"]')?.shadowRoot?.innerHTML).toContain('src="https://example.test/reply.png"');
+    expect(document.querySelector('[aria-label="Selected message"] [aria-label="HTML message content"]')?.shadowRoot?.innerHTML).not.toContain('src="https://example.test/original.png"');
+    expect(document.querySelectorAll('[aria-label="Close mail"]')).toHaveLength(1);
+    await act(async () => related.querySelector<HTMLButtonElement>('[aria-label="Reply all"]')!.click());
+    expect(mailComposer(api).getSnapshot().reply).toEqual({ target: { mailbox: sentBox, id: 2 }, all: true });
+    expect(mailComposer(api).getSnapshot().remoteImagesAllowed).toBe(true);
+    expect(document.querySelector('[aria-label="Message list"] button[aria-pressed="true"]')).not.toBeNull();
+  });
+});
+
+test('conversation failure preserves the selected body and retry recovers without another read mutation', async () => {
+  let failed = true;
+  const api = mailApiFixture({ conversation: async target => failed ? mailFailure('timeout')
+    : mailSuccess({ incomplete: false, messages: [{ target, summary: mailMessageFixture }] }) });
+  await withMailDOM(async (render, document) => {
+    await render(<MailBrowser api={api} />);
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!.click());
+    expect(document.querySelector('[aria-label="Message body"] pre')?.textContent).toBe(mailMessageFixture.body);
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('Could not load the conversation');
+    failed = false;
+    const retry = [...document.querySelectorAll<HTMLButtonElement>('button')].find(control => control.textContent === 'Retry conversation')!;
+    await act(async () => retry.click());
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Message body"] pre')?.textContent).toBe(mailMessageFixture.body);
+  });
+});
+
+
+test('long conversations show every body together after discovery without expansion', async () => {
+  const pending = createMailDeferred<MailReply<MailConversation>>();
+  const sentBox = { ...mailBox, path: ['Sent'], unread: 0 };
+  const messages = Array.from({ length: 7 }, (_, index) => ({ ...mailMessageFixture,
+    id: index + 1, read: true, subject: `Conversation ${index + 1}`, body: `Body ${index + 1}` }));
+  const reads: number[] = [];
+  const api = mailApiFixture({
+    list: async () => mailSuccess({ messages: [messages[0]!], offset: 0, nextOffset: null }),
+    read: async target => { reads.push(target.id); return mailSuccess(messages[target.id - 1]!); },
+    conversation: () => pending.promise,
+  });
+  await withMailDOM(async (render, document) => {
+    await render(<MailBrowser api={api} />);
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!.click());
+    const pane = document.querySelector('[aria-label="Message body"]')!;
+    expect(pane.querySelector('pre')).toBeNull();
+    expect(pane.textContent).toContain('Loading message');
+    expect(pane.getAttribute('aria-busy')).toBe('true');
+    expect(pane.textContent).not.toContain('Looking for related messages');
+    await act(async () => pending.resolve(mailSuccess({ incomplete: false,
+      messages: messages.map((summary, index) => ({ summary, target: { id: summary.id, mailbox: index === 0 ? mailBox : sentBox } })) })));
+    expect([...reads].sort((left, right) => left - right)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect([...pane.querySelectorAll('pre')].map(body => body.textContent)).toEqual(messages.map(message => message.body));
+    expect(pane.getAttribute('aria-busy')).toBe('false');
+    expect(pane.querySelector('button[aria-expanded]')).toBeNull();
+    expect(pane.textContent).not.toContain('Selected message');
+    expect(pane.textContent).not.toContain('Sent ·');
+    const third = pane.querySelector('[aria-label="Related message: Conversation 3"]')!;
+    await act(async () => third.querySelector<HTMLButtonElement>('[aria-label="Reply"]')!.click());
+    expect(mailComposer(api).getSnapshot().reply?.target).toEqual({ mailbox: sentBox, id: 3 });
+  });
+});
+
+test('one loading state spans the selected message and every related body', async () => {
+  const first = createMailDeferred<MailReply<typeof mailMessageFixture>>();
+  const second = createMailDeferred<MailReply<typeof mailMessageFixture>>();
+  const third = createMailDeferred<MailReply<typeof mailMessageFixture>>();
+  const original = { ...mailMessageFixture, read: true, body: 'Original body' };
+  const api = mailApiFixture({
+    read: target => target.id === 1 ? first.promise : target.id === 2 ? second.promise : third.promise,
+    conversation: async target => mailSuccess({ incomplete: false, messages: [1, 2, 3].map(id => ({
+      target: { ...target, id }, summary: { ...original, id, subject: `Message ${id}` },
+    })) }),
+  });
+  await withMailDOM(async (render, document) => {
+    await render(<MailBrowser api={api} />);
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!.click());
+    const pane = document.querySelector('[aria-label="Message body"]')!;
+    const loader = pane.querySelector('[role="status"][aria-label="Loading message…"]');
+    expect(loader).not.toBeNull();
+    await act(async () => first.resolve(mailSuccess(original)));
+    expect(pane.querySelector('[role="status"][aria-label="Loading message…"]')).toBe(loader);
+    expect(pane.getAttribute('aria-busy')).toBe('true');
+    expect(pane.textContent).not.toContain('Loading related message');
+    expect(pane.querySelector('[aria-label="Mail conversation"]')).toBeNull();
+    await act(async () => second.resolve(mailSuccess({ ...original, id: 2, body: 'Second body' })));
+    expect(pane.querySelector('[role="status"][aria-label="Loading message…"]')).toBe(loader);
+    expect(pane.querySelector('pre')).toBeNull();
+    expect(pane.textContent).toContain('Loading message');
+    expect(pane.querySelector('[aria-label="Mail conversation"]')).toBeNull();
+    await act(async () => third.resolve(mailSuccess({ ...original, id: 3, body: 'Third body' })));
+    expect([...pane.querySelectorAll('pre')].map(body => body.textContent)).toEqual(['Original body', 'Second body', 'Third body']);
+    expect(pane.querySelectorAll('[aria-label^="Related message:"]')).toHaveLength(2);
+    expect(pane.getAttribute('aria-busy')).toBe('false');
+    expect(pane.querySelector('[role="status"][aria-label="Loading message…"]')).toBeNull();
+    expect(pane.textContent).not.toContain('Loading related message');
+  });
+});
+
+test('failed related bodies remain retryable while successfully loaded content stays visible', async () => {
+  let failed = true;
+  const original = { ...mailMessageFixture, read: true, body: 'Original body' };
+  const api = mailApiFixture({
+    read: async target => target.id === 2 && failed ? mailFailure('timeout')
+      : mailSuccess({ ...original, id: target.id, body: `Body ${target.id}` }),
+    conversation: async target => mailSuccess({ incomplete: false, messages: [1, 2, 3].map(id => ({
+      target: { ...target, id }, summary: { ...original, id, subject: `Message ${id}` },
+    })) }),
+  });
+  await withMailDOM(async (render, document) => {
+    await render(<MailBrowser api={api} />);
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Message list"] button[aria-pressed]')!.click());
+    const pane = document.querySelector('[aria-label="Message body"]')!;
+    expect([...pane.querySelectorAll('pre')].map(body => body.textContent)).toEqual(['Body 1', 'Body 3']);
+    const failedCard = pane.querySelector('[aria-label="Related message: Message 2"]')!;
+    expect(failedCard.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS.timeout);
+    failed = false;
+    const retry = [...failedCard.querySelectorAll<HTMLButtonElement>('button')].find(control => control.textContent === 'Retry related message')!;
+    await act(async () => retry.click());
+    expect([...pane.querySelectorAll('pre')].map(body => body.textContent)).toEqual(['Body 1', 'Body 2', 'Body 3']);
+    expect(pane.querySelector('[role="alert"]')).toBeNull();
   });
 });

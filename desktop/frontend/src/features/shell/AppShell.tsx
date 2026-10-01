@@ -79,6 +79,7 @@ export function AppShell() {
   const indexReady = useCallback(() => setIndexLoaded(true), []);
   const startupReported = useRef(false);
   const [activeView, setActiveView] = useState<WorkspaceView>('chat');
+  const mailReturnView = useRef<WorkspaceView>('chat');
   const [historyChoice, setHistoryChoice] = useState<{ sessionId: string; title: string; paneId: string } | null>(null);
   const [deleteChoice, setDeleteChoice] = useState<{ sessionId: string; title: string } | null>(null);
   const [fileReview, setFileReview] = useState<{ paneId: string; itemId: string; path: string | null } | null>(null);
@@ -195,6 +196,7 @@ export function AppShell() {
   };
 
   const navigate = (view: WorkspaceView): void => {
+    if (view === 'mail' && activeView !== 'mail') mailReturnView.current = activeView;
     historyRequestId.current += 1;
     closeReview();
     if (customLayout) {
@@ -204,6 +206,15 @@ export function AppShell() {
     }
     setActiveView(view);
     setPrimaryPaneClosed(false);
+  };
+
+  const closeMail = (): void => {
+    const previous = mailReturnView.current;
+    const unavailable = previous === 'mail' || previous === 'blank' || previous === 'local-history'
+      || (previous === 'editor' && !editorSplitOpen && !customLayout);
+    const destination = unavailable ? 'chat' : previous;
+    navigate(destination);
+    if (destination === 'terminal' && customLayout) setActiveView('chat');
   };
 
   const attachNote = async (note: AppleNote): Promise<boolean> => {
@@ -377,9 +388,7 @@ export function AppShell() {
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />}
           {activeView === 'blank' && <WindowTabs />}
-          <MailView active={activeView === 'mail'} sidebarTarget={mailSidebarTarget} onOpen={() => navigate('mail')}
-            rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />
+          <MailView active={activeView === 'mail'} sidebarTarget={mailSidebarTarget} onOpen={() => navigate('mail')} onClose={closeMail} />
           {activeView === 'calendar' && <CalendarView rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
           <NotesView onAttach={attachNote} active={activeView === 'notes'}

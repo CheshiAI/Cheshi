@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { Mail, PanelRight, Flag, X } from 'lucide-react';
+import { Mail, Flag, X } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { EmptyState, SidebarPanelHeader, SidebarToggle, LiquidGlassPanel, LoadingState, NeumorphicButton } from '../../shared/ui';
+import { EmptyState, SidebarPanelHeader, LiquidGlassPanel, LoadingState, NeumorphicButton } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { mailboxKey } from '../../../../shared/apple-mail';
 import type { AppleMailApi } from '../../../../shared/apple-mail';
@@ -11,32 +11,29 @@ import { mailComposer } from './mailComposer';
 import { MailComposerDialog } from './MailComposerDialog';
 import { MailInlineReply } from './MailInlineReply';
 import { MailActions } from './MailActions';
-import { MailHtmlBody } from './MailHtmlBody';
+import { MailMessageContent } from './MailMessageContent';
+import { MailConversationView } from './MailConversationView';
 import { MailSidebar } from './MailSidebar';
 import { useMailInfiniteScroll } from './useMailInfiniteScroll';
 import styles from './Mail.module.css';
 
 interface MailViewProps {
-  rightSidebarOpen: boolean;
-  onToggleRightSidebar: () => void;
   active?: boolean;
   sidebarTarget?: HTMLElement | null;
   onOpen?: () => void;
+  onClose?: () => void;
 }
 function received(date: string | null) { return date ? new Date(date).toLocaleString() : 'Date unavailable'; }
-
-function MailHeader({ rightSidebarOpen, onToggleRightSidebar }: MailViewProps) {
-  return <SidebarPanelHeader title="MAIL" icon={<Mail aria-hidden="true" />} actions={<>
-    <SidebarToggle raised size="icon" aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-      aria-pressed={rightSidebarOpen} onClick={onToggleRightSidebar}><PanelRight aria-hidden="true" /></SidebarToggle>
-  </>} />;
-}
 
 export function MailView(props: MailViewProps) {
   const api = cheshiDesktop?.appleMail;
   return api?.available ? <MailBrowser api={api} {...props} />
     : <main className={styles.workspace} aria-label="Mail" hidden={props.active === false}>
-      <MailHeader {...props} />
+      {props.onClose && <div className={styles.messageToolbar}>
+        <TooltipButton variant="ghost" size="icon" aria-label="Close mail" title="Close mail" onClick={props.onClose}>
+          <X aria-hidden="true" />
+        </TooltipButton>
+      </div>}
       <div className={styles.connect}><EmptyState className={styles.emptyState} title="Mail"
         description="Apple Mail integration is available in Cheshi for macOS." /></div>
       {props.sidebarTarget && createPortal(<>
@@ -46,7 +43,7 @@ export function MailView(props: MailViewProps) {
     </main>;
 }
 
-export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, active = true, sidebarTarget, onOpen }: MailViewProps & { api: AppleMailApi }) {
+export function MailBrowser({ api, active = true, sidebarTarget, onOpen, onClose }: MailViewProps & { api: AppleMailApi }) {
   const model = useMemo(() => new MailModel(api), [api]);
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const { viewportRef, moreRef } = useMailInfiniteScroll(model, state, active);
@@ -60,11 +57,20 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, activ
     queueMicrotask(() => { if (!disposed) void model.connect(); });
     return () => { disposed = true; model.cancelPending(); };
   }, [model]);
+  useEffect(() => {
+    if (composition.notice) void model.refreshConversation();
+  }, [composition.notice, model]);
   const busy = state.loadingBoxes || state.loadingPage || state.changing;
   const listLoadingLabel = state.loadingMore ? 'Loading more messages…'
     : busy && !state.loadingBoxes && !state.page ? 'Loading messages…' : null;
+  const actions = <MailActions key={`${state.selectedBox ? mailboxKey(state.selectedBox) : ''}:${state.message?.id ?? ''}`}
+    message={state.message} target={state.selectedBox && state.message ? { mailbox: state.selectedBox, id: state.message.id } : null}
+    boxes={state.boxes} disabled={busy || state.loadingBody || state.changeBlocked || inlineReply} onClose={onClose}
+    onChange={input => model.change(input)} onReply={all => {
+      if (state.message && state.selectedBox) void composer.start(state.message,
+        { mailbox: state.selectedBox, id: state.message.id }, all, state.remoteImagesAllowed);
+    }} />;
   return <main className={styles.workspace} aria-label="Mail" hidden={!active}>
-    <MailHeader rightSidebarOpen={rightSidebarOpen} onToggleRightSidebar={onToggleRightSidebar} />
     {sidebarTarget && createPortal(<MailSidebar state={state} composing={composition.form !== null}
       onRefresh={() => model.connect()} onCompose={() => void composer.start()}
       onSelect={box => {
@@ -82,13 +88,13 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, activ
       </TooltipButton>
     </div>}
     {state.changeError && <p className={styles.notice} role="alert">{state.changeError}</p>}
-    {!state.connected ? <div className={styles.connect}>
+    {!state.connected ? <>{actions}<div className={styles.connect}>
       <EmptyState className={styles.emptyState} title="Mail" description="Browse your mailboxes and messages from Apple Mail." />
       {state.boxesError && <p role="alert">{state.boxesError}</p>}
       <NeumorphicButton variant="standard" disabled={state.loadingBoxes} onClick={() => void model.connect()}>
         {state.loadingBoxes ? 'Connecting…' : 'Connect Apple Mail'}
       </NeumorphicButton>
-    </div> : <div className={styles.browser}>
+    </div></> : <div className={styles.browser}>
       <LiquidGlassPanel as="section" className={styles.messages} aria-label="Message list" aria-busy={busy || state.loadingMore}>
         <h2 className={styles.listTitle}>{state.selectedBox?.path.at(-1) ?? 'Mail'}</h2>
         <div className={styles.messageViewport}>
@@ -119,32 +125,22 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, activ
           {listLoadingLabel && <LoadingState className={`${styles.loadingOverlay} ${styles.descriptionLoading}`} label={listLoadingLabel} />}
         </div>
       </LiquidGlassPanel>
-      <LiquidGlassPanel as="article" className={`${styles.body} ${inlineReply || state.message?.html ? styles.htmlBody : ''}`} aria-label="Message body" aria-busy={!inlineReply && state.loadingBody}>
+      <LiquidGlassPanel as="article" className={`${styles.body} ${inlineReply || state.message?.html || (state.conversation?.messages.length ?? 0) > 1 ? styles.htmlBody : ''}`} aria-label="Message body" aria-busy={!inlineReply && (state.loadingBody || state.loadingConversation)}>
+        {actions}
         {inlineReply ? <MailInlineReply composer={composer} active={active} onLoadImages={() => {
           composer.allowRemoteImages();
           const target = composition.reply?.target;
           if (target && target.id === state.message?.id && state.selectedBox
             && mailboxKey(target.mailbox) === mailboxKey(state.selectedBox)) model.allowRemoteImages();
+          else if (target) model.allowConversationImages(target);
         }} /> : state.loadingBody ? <LoadingState className={`${styles.loadingOverlay} ${styles.descriptionLoading}`} label="Loading message…" />
           : state.bodyError ? <><p role="alert">{state.bodyError}</p><NeumorphicButton size="standard"
             onClick={() => state.selectedId !== null && void model.selectMessage(state.selectedId)}>Retry loading message</NeumorphicButton></>
-          : state.message ? <>
-            <div className={state.message.html ? styles.bodyHeader : undefined}>
-              {state.selectedBox && <MailActions key={`${mailboxKey(state.selectedBox)}:${state.message.id}`} message={state.message}
-                target={{ mailbox: state.selectedBox, id: state.message.id }} boxes={state.boxes} disabled={busy || state.changeBlocked}
-                onChange={input => model.change(input)} onReply={all => void composer.start(state.message!,
-                  { mailbox: state.selectedBox!, id: state.message!.id }, all, state.remoteImagesAllowed)} />}
-              <h2 className={styles.bodyTitle}>{state.message.subject || '(No subject)'}</h2>
-              <p>{state.message.sender || 'Unknown sender'}</p>
-              <p>To: {state.message.to.join(', ') || 'None'}</p>
-              {state.message.cc.length > 0 && <p>Cc: {state.message.cc.join(', ')}</p>}
-              <time dateTime={state.message.date ?? undefined}>{received(state.message.date)}</time>
-              {state.message.bodyTruncated && !state.message.html && <p role="status">Only part of this long message is shown. Open Apple Mail to view the full content.</p>}
-            </div>
-            {state.message.html ? <MailHtmlBody key={`${state.selectedBox ? mailboxKey(state.selectedBox) : ''}:${state.message.id}`} message={state.message}
-              remoteImages={state.remoteImagesAllowed} onLoadImages={model.allowRemoteImages} />
-              : <pre className={state.message.body ? styles.bodyText : `${styles.bodyText} ${styles.description}`}>{state.message.body || '(No content)'}</pre>}
-          </> : <p className={`${styles.emptyMessage} ${styles.description}`} role="status">Select a message to view its content.</p>}
+          : state.message ? <MailConversationView model={model} state={state} composer={composer}>
+            <MailMessageContent key={`${state.selectedBox ? mailboxKey(state.selectedBox) : ''}:${state.message.id}`}
+              message={state.message} remoteImagesAllowed={state.remoteImagesAllowed}
+              padded={(state.conversation?.messages.length ?? 0) > 1} onLoadImages={model.allowRemoteImages} />
+          </MailConversationView> : <p className={`${styles.emptyMessage} ${styles.description}`} role="status">Select a message to view its content.</p>}
       </LiquidGlassPanel>
     </div>}
     <MailComposerDialog composer={composer} />

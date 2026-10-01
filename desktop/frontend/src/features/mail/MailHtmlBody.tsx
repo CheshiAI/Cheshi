@@ -1,55 +1,50 @@
-import { useEffect, useMemo, useRef } from 'react';
-import type { MailMessage } from '../../../../shared/apple-mail';
-import { NeumorphicButton } from '../../shared/ui';
-import { mailHtmlDocument, mailLink } from './mailHtmlDocument';
-import { applyMailReadBodyPadding } from './mailReadBodyPadding';
+import { useLayoutEffect, useRef } from 'react';
+import { mailLink } from './mailHtmlDocument';
+import { mailReadDocument } from './mailReadDocument';
 import styles from './MailHtmlBody.module.css';
 
-export function MailHtmlBody({ message, remoteImages, onLoadImages }: {
-  message: MailMessage; remoteImages: boolean; onLoadImages: () => void;
-}) {
-  const frameRef = useRef<HTMLIFrameElement>(null);
-  const cleanup = useRef<(() => void) | null>(null);
-  const document = useMemo(() => mailHtmlDocument(message.html ?? '', message.inlineImages ?? [], remoteImages, window),
-    [message.html, message.inlineImages, remoteImages]);
-  useEffect(() => () => cleanup.current?.(), []);
+const READING_STYLE = `:host{all:initial;display:block;min-width:0;max-width:100%;isolation:isolate;contain:content}
+html,body{display:block;width:100%!important;max-width:100%!important;min-width:0!important;margin:0!important;box-sizing:border-box;color-scheme:light}
+html{font:16px "Times New Roman",serif;line-height:normal}
+:where(html){color:var(--cheshi-mail-read-text,var(--text,black))}
+:where(table){color:inherit}
+*:not(img){height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}
+body{display:flow-root;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap;overflow-wrap:anywhere}`;
 
-  const loaded = () => {
-    cleanup.current?.();
-    const frame = frameRef.current;
-    const doc = frame?.contentDocument;
-    if (!frame || !doc?.body) return;
-    applyMailReadBodyPadding(doc.body);
-    const measure = () => {
-      const height = Math.ceil(doc.body.getBoundingClientRect().height);
-      frame.style.height = `${Math.max(200, Math.min(50_000, height))}px`;
-    };
-    const observer = new ResizeObserver(measure);
-    observer.observe(doc.body);
-    const openLink = (event: MouseEvent) => {
+export function MailHtmlBody({ srcDoc, remoteImagesAllowed = false }: { srcDoc: string; remoteImagesAllowed?: boolean }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const shadow = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
+    const content = mailReadDocument(srcDoc, remoteImagesAllowed, window);
+    const style = document.createElement('style');
+    style.textContent = READING_STYLE;
+    shadow.replaceChildren(style, content.html);
+    // Preserve the light-document default on authored backgrounds. Only an
+    // unpainted reading canvas inherits the app theme; authored colors still win.
+    const painted = [content.html, content.body].some(element => {
+      const computed = window.getComputedStyle(element);
+      return !['transparent', 'rgba(0, 0, 0, 0)'].includes(computed.backgroundColor)
+        || computed.backgroundImage !== 'none';
+    });
+    content.html.style.setProperty('--cheshi-mail-read-text', painted ? 'black' : 'var(--text,black)');
+    const openLink = (event: Event) => {
+      const mouse = event as MouseEvent;
       const anchor = (event.target as Element | null)?.closest?.('a[href]');
       if (!anchor) return;
       event.preventDefault();
-      if (event.button !== 0 && event.button !== 1) return;
+      if (mouse.button !== 0 && mouse.button !== 1) return;
       const href = mailLink(anchor.getAttribute('href') ?? '');
       if (href) window.open(href, '_blank', 'noopener,noreferrer');
     };
-    doc.addEventListener('click', openLink);
-    doc.addEventListener('auxclick', openLink);
-    measure();
-    cleanup.current = () => {
-      observer.disconnect();
-      doc.removeEventListener('click', openLink);
-      doc.removeEventListener('auxclick', openLink);
+    shadow.addEventListener('click', openLink);
+    shadow.addEventListener('auxclick', openLink);
+    return () => {
+      shadow.removeEventListener('click', openLink);
+      shadow.removeEventListener('auxclick', openLink);
+      shadow.replaceChildren();
     };
-  };
-
-  return <div className={styles.root}>
-    {document.hasRemoteImages && !remoteImages && <div className={styles.remoteImages}>
-      <span>Remote images are hidden.</span>
-      <NeumorphicButton variant="ghost" onClick={onLoadImages}>Load images</NeumorphicButton>
-    </div>}
-    <iframe ref={frameRef} className={styles.frame} title="HTML message content"
-      sandbox="allow-same-origin" referrerPolicy="no-referrer" srcDoc={document.srcDoc} onLoad={loaded} />
-  </div>;
+  }, [srcDoc, remoteImagesAllowed]);
+  return <div className={styles.root}><div ref={hostRef} role="document" aria-label="HTML message content" /></div>;
 }
