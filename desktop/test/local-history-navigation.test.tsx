@@ -48,6 +48,7 @@ function createHarness() {
   const slots: unknown[] = [];
   const jsx = (type: string, props: Record<string, unknown>, key?: string): TestElement => ({ type, props, key });
   const modules: Record<string, unknown> = {
+    '../scheduler/SchedulerNotifications': { SchedulerNotifications: 'SchedulerNotifications' },
     '../settings/DiscordSetupConfirmation': { DiscordSetupConfirmation: 'DiscordSetupConfirmation' },
     './useWorkflowChatNavigation': { useWorkflowChatNavigation: () => async () => false },
     './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => null, saveWorkspaceLayout() {} },
