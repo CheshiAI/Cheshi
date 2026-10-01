@@ -2,26 +2,25 @@ import { expect, test } from 'bun:test';
 import { MailComposer, mailComposer } from '../frontend/src/features/mail/mailComposer';
 import { mailFailure, mailTarget } from '../shared/apple-mail';
 import type { MailAccount, MailReply, MailSent } from '../shared/apple-mail';
+import type { MailReplyEditingResult } from '../shared/mail-reply';
 import { mailApiFixture, mailBox, mailMessageFixture as message, mailSuccess, createMailDeferred } from './apple-mail-fixtures';
 
-test('drafts survive closing and navigation and require a separate confirmation before sending', async () => {
+test('drafts survive closing and navigation and one send action polishes before sending', async () => {
   let sends = 0;
   const api = mailApiFixture({ send: async input => { sends++; return mailSuccess({ operationId: input.operationId, accepted: true }); } });
   const composer = mailComposer(api);
   await composer.start(); composer.edit({ to: 'someone@example.test', subject: 'Test', body: 'Keep me' });
   composer.hide(); expect(mailComposer(api)).toBe(composer);
   await composer.start(); expect(composer.getSnapshot().form?.body).toBe('Keep me');
-  await composer.send(); expect(sends).toBe(0);
   composer.review(); expect(sends).toBe(0);
   expect(composer.getSnapshot().confirmation?.to).toEqual(['someone@example.test']);
   await composer.send(); expect(sends).toBe(1); expect(composer.getSnapshot().form).toBeNull();
 });
 
-test('editing invalidates the confirmed snapshot and malformed recipients never reach the service', async () => {
+test('malformed recipients never reach the editor or service', async () => {
   let sends = 0;
   const composer = new MailComposer(mailApiFixture({ send: async input => { sends++; return mailSuccess({ operationId: input.operationId, accepted: true }); } }));
   await composer.start(); composer.edit({ to: 'someone@example.test' }); composer.review();
-  composer.edit({ body: 'Changed after confirmation' }); await composer.send(); expect(sends).toBe(0);
   composer.edit({ to: 'invalid' }); composer.review(); await composer.send();
   expect(sends).toBe(0); expect(composer.getSnapshot().error).toBeTruthy();
 });
@@ -56,6 +55,7 @@ test('double clicks send once; uncertain results retain text and remain blocked 
   await composer.start(); composer.edit({ to: 'someone@example.test', body: 'Do not lose me' }); composer.review();
   const pending = composer.send(); await composer.send();
   composer.edit({ body: 'Wrong' }); composer.discard(); composer.hide();
+  await Promise.resolve();
   expect(composer.getSnapshot().visible).toBe(true); expect(sends).toBe(1);
   deferred.resolve(mailFailure('send-unknown')); await pending;
   expect(composer.getSnapshot().form?.body).toBe('Do not lose me');
@@ -95,4 +95,38 @@ test('reply loading and retained drafts keep their original message, target and 
   expect(composer.getSnapshot().remoteImagesAllowed).toBe(false);
   await composer.start();
   expect(composer.getSnapshot().reply).toBeNull();
+});
+
+test('Send locks the original envelope during polishing and sends escaped edited HTML exactly once', async () => {
+  const editing = createMailDeferred<MailReply<MailReplyEditingResult>>();
+  let requestId = '';
+  const sent: import('../shared/apple-mail').MailSend[] = [];
+  let edits = 0;
+  const composer = new MailComposer(mailApiFixture({
+    polish: input => { edits++; requestId = input.requestId; return editing.promise; },
+    send: async input => { sent.push(input); return mailSuccess({ operationId: input.operationId, accepted: true }); },
+  }));
+  await composer.start(); composer.edit({ to: 'recipient@example.test', body: 'rough', subject: 'Keep subject' });
+  const pending = composer.send();
+  await composer.send(); composer.edit({ to: 'wrong@example.test', body: 'Changed' }); composer.discard();
+  expect(composer.getSnapshot().phase).toBe('editing');
+  expect(sent).toHaveLength(0); expect(edits).toBe(1);
+  editing.resolve(mailSuccess({ requestId, model: 'test', segments: [{ id: 'body', text: 'Edited <text>' }] }));
+  await pending;
+  expect(sent).toHaveLength(1);
+  expect(sent[0]!.to).toEqual(['recipient@example.test']);
+  expect(sent[0]!.subject).toBe('Keep subject');
+  expect(sent[0]!.html).toContain('Edited &lt;text&gt;');
+});
+
+test('editing failures retain the rough draft and never reach Mail', async () => {
+  let sends = 0;
+  const composer = new MailComposer(mailApiFixture({ polish: async () => mailFailure('editing-failed'),
+    send: async input => { sends++; return mailSuccess({ operationId: input.operationId, accepted: true }); } }));
+  await composer.start(); composer.edit({ to: 'recipient@example.test', body: 'Keep my rough draft' });
+  await composer.send();
+  expect(sends).toBe(0);
+  expect(composer.getSnapshot().form?.body).toBe('Keep my rough draft');
+  expect(composer.getSnapshot().busy).toBe(false);
+  expect(composer.getSnapshot().blocked).toBe(false);
 });

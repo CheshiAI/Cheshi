@@ -174,11 +174,6 @@ async function finishReply() {
   const deleted = !doc.querySelector('blockquote');
   doc.execCommand('undo');
   doc.dispatchEvent(new Event('input'));
-  flushSync(() => action('Send').click());
-  await waitFor(() => frame()?.contentDocument?.querySelector('h1')?.textContent === 'Edited original');
-  const reviewed = !!document.querySelector('[aria-label="Review before sending"]') && frame().contentDocument!.body.textContent!.includes(typed!);
-  flushSync(() => action('Continue editing').click());
-  await editorReady('Edited original');
   document.getElementById('root')!.style.width = '700px';
   await pause();
   const narrow = replyLayout();
@@ -187,7 +182,6 @@ async function finishReply() {
   await editorReady('Edited original');
   const retained = frame().contentDocument!.body.firstElementChild!.textContent;
   flushSync(() => action('Send').click());
-  flushSync(() => action('Confirm and send').click());
   await waitFor(() => !!sent && !mailComposer(api).getSnapshot().busy);
   const sentDocument = new DOMParser().parseFromString(sent!.html!, 'text/html');
   const payload = { text: sent!.body.includes('Inline reply text'), title: sentDocument.querySelector('h1')?.textContent,
@@ -195,7 +189,7 @@ async function finishReply() {
     quote: !!sentDocument.querySelector('blockquote'), image: !!sentDocument.querySelector('img[src^="data:image/"]'),
     editable: !!sentDocument.querySelector('[contenteditable]') };
   flushSync(() => root.unmount());
-  return { typed, bold, deleted, reviewed, retained, narrow, payload };
+  return { typed, bold, deleted, retained, narrow, payload };
 }
 
 Object.assign(window, { mailChecks: { prepare, allowImages, switchMessage, reselectMessage, prepareReply, finishReply } });

@@ -152,8 +152,10 @@ export class EphemeralSessionService {
         const effective = recordValue(response?.config);
         assertAvailable(effective, 'Could not read configuration for isolated history classification.');
         const servers = recordValue(effective.mcp_servers) ?? {};
+        // config/read includes null optional fields. Omit them before converting
+        // back to TOML; otherwise numeric timeouts become invalid empty strings.
         config = { mcp_servers: Object.fromEntries(Object.entries(servers).map(([name, value]) =>
-          [name, { ...recordValue(value), enabled: false }])),
+          [name, { ...Object.fromEntries(Object.entries(recordValue(value) ?? {}).filter(([, field]) => field !== null)), enabled: false }])),
           'features.shell_tool': false, 'features.multi_agent': false,
           'web_search': options.disableTools ? 'disabled' : 'live' };
       }

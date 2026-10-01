@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { BUNDLED_LANGUAGE_SERVER_PACKAGES } from '../desktop/lib/language-server-runtime.mts';
 import { buildDesktopPreload } from './build-desktop-preload.mts';
 import { buildAppleCalendar } from './build-apple-calendar.mts';
+import { buildAppleMail } from './build-apple-mail.mts';
 import { normalizeBunMachO } from './normalize-bun-macho.mts';
 
 const rootDirectory = fileURLToPath(new URL('..', import.meta.url));
@@ -68,6 +69,7 @@ removeBunBuildArtifacts();
 try {
   await buildDesktopPreload();
   await buildAppleCalendar();
+  await buildAppleMail();
 
   for (const runtime of runtimeEntries) {
     const result = Bun.spawnSync([

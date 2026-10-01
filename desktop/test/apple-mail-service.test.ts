@@ -54,7 +54,7 @@ test('preload, IPC and service roundtrip scopes messages to their mailbox and re
   } });
   registerAppleMailIpc({ ipcMain, service, assertSender: () => { if (!allowed) throw new Error('Untrusted'); } });
   const api = createAppleMailApi({ invoke: async (channel: string, ...args: unknown[]) => handlers.get(channel)!({} as IpcMainInvokeEvent, ...args) }, 'darwin');
-  expect(Object.keys(api).sort()).toEqual(['accounts', 'available', 'change', 'list', 'mailboxes', 'read', 'send']);
+  expect(Object.keys(api).sort()).toEqual(['accounts', 'available', 'change', 'list', 'mailboxes', 'polish', 'read', 'send']);
   expect(await api.read({ mailbox: mailBox, id: 1 })).toEqual(mailSuccess(message));
   allowed = false;
   expect(await api.read({ mailbox: mailBox, id: 1 })).toEqual(mailFailure('unavailable'));

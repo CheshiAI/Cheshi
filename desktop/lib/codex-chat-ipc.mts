@@ -34,6 +34,7 @@ export function registerCodexPluginIpc({ ipc, service }: {
 }
 
 type ChatIpcOptions = {
+  mailAssistant?: import('./mail-reply-assistant.mts').MailReplyAssistant;
   ipc: Pick<IpcMain, 'handle'>;
   accountIpc?: Pick<IpcMain, 'handle'>;
   service(event: IpcMainInvokeEvent, contextId: unknown): CodexChatService;
@@ -47,9 +48,9 @@ type ChatIpcOptions = {
   prepareMessage(value: unknown): Promise<{ text: string; clientMessageId: string; skill: unknown; attachments: ChatAttachment[]; threadId?: string | null }>;
 };
 
-export function registerCodexChatIpc({ ipc, accountIpc, service, relays, deletion, savedTurns, historySearch, assertSender, prepareMessage, beforeMessage, notesService }: ChatIpcOptions) {
+export function registerCodexChatIpc({ ipc, accountIpc, service, relays, deletion, savedTurns, historySearch, assertSender, prepareMessage, beforeMessage, notesService, mailAssistant }: ChatIpcOptions) {
   registerAppleNotesIpc({ ipcMain: ipc, service: notesService ?? new AppleNotesService(), assertSender });
-  registerAppleMailIpc({ ipcMain: ipc, service: new AppleMailService(), assertSender });
+  registerAppleMailIpc({ ipcMain: ipc, service: new AppleMailService(), assertSender, assistant: mailAssistant, beforePolish: beforeMessage });
   registerAppleCalendarIpc({ ipcMain: ipc, service: new AppleCalendarService(), assertSender });
   ipc = accountIpc ?? ipc;
   const mutation = <T,>(event: IpcMainInvokeEvent, contextId: unknown, operation: () => Promise<T> | T) => {

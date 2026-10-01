@@ -2,6 +2,7 @@ import type { IpcRenderer } from 'electron';
 import { mailboxes, mailboxRef, mailOffset, mailPage, mailTarget, mailMessage, mailReply, mailFailure,
   mailAccounts, mailChange, mailChanged, mailSend, mailSent } from '../shared/apple-mail.ts';
 import type { AppleMailApi, MailReply, MailErrorCode } from '../shared/apple-mail.ts';
+import { mailEditedReply } from '../shared/mail-reply.ts';
 
 export function createAppleMailApi(ipc: Pick<IpcRenderer, 'invoke'>, platform: string): AppleMailApi {
   const invoke = async <T,>(action: string, args: unknown[], parse: (value: unknown) => T, uncertain?: MailErrorCode): Promise<MailReply<T>> => {
@@ -15,6 +16,7 @@ export function createAppleMailApi(ipc: Pick<IpcRenderer, 'invoke'>, platform: s
     available: platform === 'darwin',
     mailboxes: () => invoke('mailboxes', [], mailboxes),
     accounts: () => invoke('accounts', [], mailAccounts),
+    polish: input => invoke('polish', [input], result => mailEditedReply(result, input)),
     change: async value => {
       const input = mailChange(value);
       return invoke('change', [input], result => mailChanged(result, input.target), 'change-unknown');

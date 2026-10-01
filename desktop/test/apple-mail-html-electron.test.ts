@@ -95,7 +95,6 @@ setTimeout(() => app.exit(2), 20000).unref();
     assert.deepEqual(result.links, ['https://example.test/docs']);
     assert.equal(result.editedReply.typed, 'Inline reply text');
     assert.equal(result.editedReply.retained, 'Inline reply text');
-    assert.equal(result.editedReply.reviewed, true);
     assert.equal(result.editedReply.bold, '700');
     assert.equal(result.editedReply.deleted, true);
     assert.deepEqual(result.editedReply.payload, { text: true, title: 'Edited original', bold: true, quote: true, image: true, editable: false });

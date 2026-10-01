@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { MailReplyEditor } from './MailReplyEditor';
-import { MailHtmlBody } from './MailHtmlBody';
 import { MAIL_BODY_LIMIT } from '../../../../shared/apple-mail';
 import { NeumorphicButton, NeumorphicSurface, NeumorphicTextField } from '../../shared/ui';
 import type { MailComposer } from './mailComposer';
@@ -15,8 +14,7 @@ export function MailComposerContent({ composer, inline = false, active = true, o
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const form = state.form;
   const disabled = state.busy || state.blocked;
-  const review = state.confirmation;
-  const ready = !!form && !review && !disabled;
+  const ready = !!form && !disabled;
   useEffect(() => {
     if (!inline || !active || !ready) return;
     bodyRef.current?.focus();
@@ -36,20 +34,6 @@ export function MailComposerContent({ composer, inline = false, active = true, o
       {state.loading && <p role="status">Checking sending accounts…</p>}
       {state.error && <p role="alert">{state.error}</p>}
       {form && <>
-        {review ? <section className={styles.review} aria-label="Review before sending">
-          <h3>Send this message?</h3>
-          <dl><dt>From</dt><dd>{review.sender}</dd><dt>To</dt><dd>{review.to.join(', ') || 'None'}</dd>
-            <dt>Cc</dt><dd>{review.cc.join(', ') || 'None'}</dd><dt>Bcc</dt><dd>{review.bcc.join(', ') || 'None'}</dd>
-            <dt>Subject</dt><dd>{review.subject || '(No subject)'}</dd></dl>
-          {review.html && state.original ? <MailHtmlBody message={{ ...state.original, html: review.html, inlineImages: [] }}
-            remoteImages={state.remoteImagesAllowed} onLoadImages={onLoadImages} />
-            : <pre className={styles.bodyText}>{review.body || '(No content)'}</pre>}
-          <div className={styles.toolbar}>
-            <NeumorphicButton size="standard" disabled={state.busy} onClick={() => composer.back()}>Continue editing</NeumorphicButton>
-            <NeumorphicButton raised size="standard" disabled={state.busy} onClick={() => void composer.send()}>
-              {state.busy ? 'Sending…' : 'Confirm and send'}</NeumorphicButton>
-          </div>
-        </section> : <>
           {!inline && senderField}
           {(['to', 'cc', 'bcc'] as const).map((field, index) => <label key={field} className={fieldClass}>{['To', 'Cc', 'Bcc'][index]}
             <NeumorphicTextField aria-label={['To', 'Cc', 'Bcc'][index]} value={form[field]} disabled={disabled}
@@ -65,14 +49,13 @@ export function MailComposerContent({ composer, inline = false, active = true, o
           <div className={inline ? replyStyles.actions : styles.toolbar}>
             <NeumorphicButton variant="ghost" size="standard" disabled={state.busy} onClick={() => composer.hide()}>Close and keep draft</NeumorphicButton>
             <NeumorphicButton size="standard" disabled={state.busy} onClick={() => setDiscard(true)}>Discard draft</NeumorphicButton>
-            <NeumorphicButton raised size="standard" disabled={disabled} onClick={() => composer.review()}>Send</NeumorphicButton>
+            <NeumorphicButton raised size="standard" disabled={disabled} onClick={() => void composer.send()}>{state.phase === 'editing' ? 'Polishing…' : state.phase === 'sending' ? 'Sending…' : 'Send'}</NeumorphicButton>
           </div>
-          <p className={inline ? replyStyles.hint : undefined}>Your draft is kept for the current app session.</p>
+          <p className={inline ? replyStyles.hint : undefined}>Send polishes your text and sends it through Apple Mail. Your draft is kept for the current app session.</p>
           {discard && <div role="alert"><p>Discard this draft?</p><div className={styles.toolbar}>
             <NeumorphicButton size="standard" onClick={() => setDiscard(false)}>Keep editing</NeumorphicButton>
             <NeumorphicButton size="standard" onClick={() => composer.discard()}>Discard</NeumorphicButton>
           </div></div>}
-        </>}
       </>}
     </div>
   );

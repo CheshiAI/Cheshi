@@ -5,6 +5,7 @@ import type { MailReply, MailSend, MailSent, MailErrorCode } from '../shared/app
 import { appleMailScript, type MailCommand } from './apple-mail-script.mts';
 import { MailProcessError, runMailScript } from './apple-mail-process.mts';
 import { mailSource, withMailHtml } from './apple-mail-mime.mts';
+import { sendRichMail } from './apple-mail-rich-send.mts';
 
 export class AppleMailService {
   private readonly platform: string;
@@ -22,14 +23,14 @@ export class AppleMailService {
   send(value: unknown): Promise<MailReply<MailSent>> {
     let input: MailSend;
     try { input = mailSend(value); } catch { return Promise.resolve(mailFailure('invalid')); }
-    // Never silently downgrade an edited HTML reply through Mail's plain-text scripting API.
-    if (input.html !== undefined) return Promise.resolve(mailFailure('rich-send-unavailable'));
+    if (this.platform !== 'darwin') return Promise.resolve(mailFailure('unsupported'));
     const fingerprint = createHash('sha256').update(JSON.stringify(input)).digest('hex');
     const previous = this.sends.get(input.operationId);
     if (previous) return previous.fingerprint === fingerprint ? previous.result : Promise.resolve(mailFailure('invalid'));
     // Keep acknowledgements for this app session; never evict and accidentally resend an old request.
     if (this.sends.size >= 200) return Promise.resolve(mailFailure('unavailable'));
-    const result = this.request(() => ({ action: 'send', input }), result => mailSent(result, input.operationId), 'send-unknown');
+    const result = input.html !== undefined ? sendRichMail(input, this.execute)
+      : this.request(() => ({ action: 'send', input }), result => mailSent(result, input.operationId), 'send-unknown');
     this.sends.set(input.operationId, { fingerprint, result });
     return result;
   }

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { forwardDesktopDevOutput } from './forward-desktop-dev-output.mts';
 import { buildDesktopPreload } from './build-desktop-preload.mts';
 import { buildAppleCalendar } from './build-apple-calendar.mts';
+import { buildAppleMail } from './build-apple-mail.mts';
 import { prepareCalendarDevelopment } from './prepare-calendar-development.mts';
 import { launchDevelopmentApp } from './launch-development-app.mts';
 import { watchFileContents } from './watch-file-contents.mts';
@@ -186,6 +187,7 @@ function handleMainSourceChange(changedPath: string): void {
     path.join(rootDirectory, 'desktop', 'shared', 'window-appearance.ts'),
     path.join(rootDirectory, 'desktop', 'lib', 'apple-mail-preload.cts'),
     path.join(rootDirectory, 'desktop', 'shared', 'apple-mail.ts'),
+    path.join(rootDirectory, 'desktop', 'shared', 'mail-reply.ts'),
     path.join(rootDirectory, 'desktop', 'lib', 'apple-calendar-preload.cts'),
     path.join(rootDirectory, 'desktop', 'shared', 'apple-calendar.ts'),
     path.join(rootDirectory, 'desktop', 'lib', 'settings-preload.cts'),
@@ -232,9 +234,10 @@ function watchMainSources(): FSWatcher[] {
     ...['window-appearance.mts', 'window-appearance-store.mts', 'window-appearance-preload.cts']
       .map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
     path.join(rootDirectory, 'desktop', 'shared', 'window-appearance.ts'),
-    ...['apple-mail-service.mts', 'apple-mail-script.mts', 'apple-mail-process.mts', 'apple-mail-ipc.mts', 'apple-mail-preload.cts']
+    ...['apple-mail-service.mts', 'apple-mail-script.mts', 'apple-mail-process.mts', 'apple-mail-ipc.mts', 'apple-mail-preload.cts', 'apple-mail-rich-process.mts', 'apple-mail-rich-send.mts', 'mail-reply-assistant.mts', 'mail-reply-instructions.mts']
       .map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
     path.join(rootDirectory, 'desktop', 'shared', 'apple-mail.ts'),
+    path.join(rootDirectory, 'desktop', 'shared', 'mail-reply.ts'),
     ...['apple-calendar-service.mts', 'apple-calendar-process.mts', 'apple-calendar-ipc.mts', 'apple-calendar-preload.cts']
       .map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
     path.join(rootDirectory, 'desktop', 'shared', 'apple-calendar.ts'),
@@ -361,6 +364,7 @@ async function startDevelopment(): Promise<void> {
   await buildDesktopPreload();
   if (shuttingDown) return;
   await buildAppleCalendar();
+  await buildAppleMail();
   if (shuttingDown) return;
   developmentBundle = prepareCalendarDevelopment();
   if (shuttingDown) return;

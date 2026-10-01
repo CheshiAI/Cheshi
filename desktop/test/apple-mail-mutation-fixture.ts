@@ -18,6 +18,7 @@ function property<T>(value: T) {
 }
 interface Recipient extends Reference { address(): string }
 interface Outgoing {
+  id(): number; exists(): boolean;
   sender(): string; subject(): string; content(): string;
   toRecipients: ReturnType<typeof collection<Recipient>>;
   ccRecipients: ReturnType<typeof collection<Recipient>>;
@@ -45,6 +46,7 @@ export function mailMutationFixture(options: MutationOptions = {}) {
   };
   function makeOutgoing(replyAll = false): Outgoing {
     return Object.defineProperties({
+      id: () => 42, exists: () => true,
       toRecipients: recipientList(replyAll ? ['native-reply@example.test', 'second@example.test', 'third@example.test'] : ['native-reply@example.test']),
       ccRecipients: recipientList(replyAll ? ['old-cc1@example.test', 'old-cc2@example.test'] : []),
       bccRecipients: recipientList(replyAll ? ['old-bcc1@example.test', 'old-bcc2@example.test'] : []),
@@ -70,9 +72,10 @@ export function mailMutationFixture(options: MutationOptions = {}) {
   const account = { id: () => 'account-a', name: () => 'Personal', exists: () => true, enabled: () => true,
     emailAddresses: () => ['me@example.test'], mailboxes: collection(boxes) };
   const app = {
+    activate: () => {},
     accounts: collection([account]), mailboxes: collection([]),
     OutgoingMessage: () => { actions.push('create'); outgoing = makeOutgoing(); return outgoing; },
-    outgoingMessages: { push: () => { actions.push('insert'); } },
+    outgoingMessages: { push: () => { actions.push('insert'); }, byId: (id: number) => id === 42 && outgoing ? outgoing : { exists: () => false } },
     ToRecipient: (input: { address: string }) => ({ address: () => input.address }),
     CcRecipient: (input: { address: string }) => ({ address: () => input.address }),
     BccRecipient: (input: { address: string }) => ({ address: () => input.address }),
@@ -84,7 +87,7 @@ export function mailMutationFixture(options: MutationOptions = {}) {
       if (!options.recipientDeleteIgnored) position.entries.splice(position.index, 1);
     },
     reply: (original: unknown, settings: { openingWindow: boolean; replyToAll: boolean }) => {
-      if (original !== message || settings.openingWindow !== false) throw new Error('Wrong reply target');
+      if (original !== message || typeof settings.openingWindow !== 'boolean') throw new Error('Wrong reply target');
       actions.push(settings.replyToAll ? 'reply-all' : 'reply'); outgoing = makeOutgoing(settings.replyToAll); return outgoing;
     },
     send: (value: Outgoing) => {
@@ -106,6 +109,7 @@ export function mailMutationFixture(options: MutationOptions = {}) {
     },
   };
   return { actions, message, outgoing: () => outgoing, trashMessages,
+    paste: (body: string) => { if (outgoing) Reflect.set(outgoing, 'content', body); },
     run: (command: MailCommand): unknown => JSON.parse(vm.runInNewContext(appleMailScript(command), {
       Application: () => app, delay: () => { pendingMove?.(); pendingMove = undefined; },
     })) };

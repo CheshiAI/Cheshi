@@ -1,5 +1,6 @@
 import { MAIL_ERRORS, mailAddress, mailSend } from '../../../../shared/apple-mail';
 import { mailReplyDocument } from './mailReplyDocument';
+import { mailEditableDocument } from './mailEditableDocument';
 import type { AppleMailApi, MailAccount, MailMessage, MailSend, MailTarget } from '../../../../shared/apple-mail';
 
 export interface MailForm {
@@ -11,6 +12,7 @@ interface ComposerState {
   reply: MailSend['reply'];
   original: MailMessage | null;
   remoteImagesAllowed: boolean;
+  phase: 'editing' | 'sending' | null;
 }
 function address(value: string): string {
   const trimmed = value.trim();
@@ -27,7 +29,7 @@ function unique(values: string[]): string[] {
 export class MailComposer {
   private readonly api: AppleMailApi;
   private state: ComposerState = { visible: false, form: null, accounts: [], loading: false, busy: false,
-    error: null, notice: null, blocked: false, confirmation: null, reply: null, original: null, remoteImagesAllowed: false };
+    error: null, notice: null, blocked: false, confirmation: null, reply: null, original: null, remoteImagesAllowed: false, phase: null };
   private readonly listeners = new Set<() => void>();
   constructor(api: AppleMailApi) { this.api = api; }
   getSnapshot = () => this.state;
@@ -67,7 +69,6 @@ export class MailComposer {
       this.update({ confirmation: input, error: null });
     } catch { this.update({ error: 'Check the sending account and recipient addresses. Separate addresses with commas and keep the subject within 1,000 characters.' }); }
   }
-  back() { if (!this.state.busy) this.update({ confirmation: null }); }
   allowRemoteImages() { this.update({ remoteImagesAllowed: true }); }
   hide() { if (!this.state.busy && !this.state.loading) this.update({ visible: false, confirmation: null }); }
   discard() {
@@ -75,15 +76,26 @@ export class MailComposer {
       confirmation: null, error: null, blocked: false });
   }
   async send() {
+    if (this.state.busy || this.state.blocked) return;
+    this.review();
     const input = this.state.confirmation;
-    if (!input || this.state.busy || this.state.blocked) return;
-    this.update({ busy: true, error: null });
+    if (!input) return;
+    this.update({ busy: true, phase: 'editing', error: null });
+    let sending = false;
     try {
-      const result = await this.api.send(input);
+      const document = mailEditableDocument(input.html, input.body, input.operationId, this.state.original?.body ?? '');
+      const edited = await this.api.polish(document.request);
+      if (!edited.ok) { this.update({ error: edited.error.message }); return; }
+      const prepared = mailSend({ ...input, ...document.apply(edited.value) });
+      this.update({ phase: 'sending' });
+      sending = true;
+      const result = await this.api.send(prepared);
       if (result.ok) this.update({ busy: false, visible: false, form: null, reply: null, original: null, remoteImagesAllowed: false, confirmation: null,
         notice: 'Mail has been asked to send your message. Check Outbox and Sent for its status.' });
       else this.update({ busy: false, confirmation: null, error: result.error.message, blocked: result.error.code === 'send-unknown' });
-    } catch { this.update({ busy: false, confirmation: null, error: MAIL_ERRORS['send-unknown'], blocked: true }); }
+    } catch (error) {
+      this.update({ error: sending ? MAIL_ERRORS['send-unknown'] : error instanceof Error ? error.message : MAIL_ERRORS['editing-failed'], blocked: sending });
+    } finally { this.update({ busy: false, phase: null, confirmation: null }); }
   }
 }
 

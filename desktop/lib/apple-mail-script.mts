@@ -3,7 +3,9 @@ import type { MailboxRef, MailTarget, MailChange, MailSend } from '../shared/app
 
 export type MailCommand = { action: 'mailboxes' } | { action: 'list'; mailbox: MailboxRef; offset: number }
   | { action: 'read'; target: MailTarget } | { action: 'accounts' }
-  | { action: 'change'; input: MailChange } | { action: 'send'; input: MailSend };
+  | { action: 'change'; input: MailChange } | { action: 'send'; input: MailSend }
+  | { action: 'prepare-rich'; input: MailSend }
+  | { action: 'send-rich'; input: MailSend; outgoingId: number };
 
 // Values enter through JSON, never executable script interpolation.
 const SCRIPT = String.raw`(function(request) {
@@ -118,19 +120,37 @@ const SCRIPT = String.raw`(function(request) {
       // Acknowledge the requested operation, not a reusable destination reference.
       // The renderer refreshes its mailbox after this acknowledgement.
       result = input.target;
-    } else if (request.action === 'send') {
+    } else if (request.action === 'send' || request.action === 'prepare-rich' || request.action === 'send-rich') {
       var input = request.input;
       var account = app.accounts.byId(input.accountId);
       if (!account.exists() || account.enabled() !== true) fail('invalid');
       var allowed = account.emailAddresses().some(function(address) { return address.toLowerCase() === input.sender.toLowerCase(); });
       if (!allowed) fail('invalid');
-      var original = input.reply ? selectedMessage(input.reply.target) : null;
       var outgoing;
-      if (original) outgoing = app.reply(original, {openingWindow: false, replyToAll: input.reply.all});
-      else { outgoing = app.OutgoingMessage({visible: false}); app.outgoingMessages.push(outgoing); }
+      var marker = 'Cheshi-' + input.operationId;
+      if (request.action === 'send-rich') {
+        outgoing = app.outgoingMessages.byId(request.outgoingId);
+        if (!outgoing.exists() || outgoing.subject() !== marker) fail('preparation-failed');
+        // The native helper verified the rendered document. Mail's scripting
+        // content property is stale after WebKit edits and must not replace it.
+      } else {
+        var original = input.reply ? selectedMessage(input.reply.target) : null;
+        if (original) outgoing = app.reply(original, {openingWindow: request.action === 'prepare-rich', replyToAll: input.reply.all});
+        else { outgoing = app.OutgoingMessage({visible: request.action === 'prepare-rich'}); app.outgoingMessages.push(outgoing); }
+      }
       outgoing.sender = input.sender;
-      outgoing.subject = input.subject;
-      outgoing.content = input.body;
+      outgoing.subject = request.action === 'prepare-rich' ? marker : input.subject;
+      if (request.action === 'send') outgoing.content = input.body;
+      if (request.action === 'prepare-rich') {
+        // No recipients while native HTML is inserted. Only the final verified stage can send.
+        replaceRecipients(outgoing.toRecipients, [], app.ToRecipient);
+        replaceRecipients(outgoing.ccRecipients, [], app.CcRecipient);
+        replaceRecipients(outgoing.bccRecipients, [], app.BccRecipient);
+        if (addresses(outgoing.toRecipients).length || addresses(outgoing.ccRecipients).length || addresses(outgoing.bccRecipients).length) fail('preparation-failed');
+        outgoing.visible = true;
+        app.activate();
+        return JSON.stringify({ok: true, value: {id: outgoing.id(), title: marker}});
+      }
       replaceRecipients(outgoing.toRecipients, input.to, app.ToRecipient);
       replaceRecipients(outgoing.ccRecipients, input.cc, app.CcRecipient);
       replaceRecipients(outgoing.bccRecipients, input.bcc, app.BccRecipient);

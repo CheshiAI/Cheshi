@@ -12,6 +12,7 @@ export function mailApiFixture(overrides: Partial<AppleMailApi> = {}): AppleMail
     read: async target => mailSuccess({ ...mailMessageFixture, id: target.id }),
     accounts: async () => mailSuccess([{ id: 'account-a', name: 'Personal', addresses: ['me@example.test'] }]),
     change: async input => mailSuccess(input.target),
+    polish: async input => mailSuccess({ ...input, model: 'test' }),
     send: async input => mailSuccess({ operationId: input.operationId, accepted: true }), ...overrides };
 }
 export function createMailDeferred<T>() {

@@ -52,7 +52,8 @@ test('packaged Mail service resolves its MIME parser and decodes HTML under nati
   const directory = await mkdtemp(path.join(tmpdir(), 'cheshi-mail-package-'));
   try {
     const files = ['package.json', 'desktop/shared/apple-mail.ts', 'desktop/lib/apple-mail-service.mts',
-      'desktop/lib/apple-mail-process.mts', 'desktop/lib/apple-mail-script.mts', 'desktop/lib/apple-mail-mime.mts'];
+      'desktop/lib/apple-mail-process.mts', 'desktop/lib/apple-mail-script.mts', 'desktop/lib/apple-mail-mime.mts',
+      'desktop/lib/apple-mail-rich-send.mts', 'desktop/lib/apple-mail-rich-process.mts'];
     for (const file of files) {
       const segments = file.split('/');
       for (let depth = 1; depth <= segments.length; depth++) {

@@ -395,7 +395,7 @@ function button(document: Document, label: string) {
   return found;
 }
 
-test('composer shows sender, cc and bcc review and requires an explicit second click to send', async () => {
+test('one Send click polishes and sends with the chosen sender, cc and bcc', async () => {
   const sends: MailSend[] = [];
   const api = mailApiFixture({ send: async input => { sends.push(input); return mailSuccess({ operationId: input.operationId, accepted: true }); } });
   await withMailDOM(async (render, document) => {
@@ -404,11 +404,8 @@ test('composer shows sender, cc and bcc review and requires an explicit second c
     await act(async () => mailComposer(api).edit({ to: 'friend@example.test', cc: 'cc@example.test', bcc: 'private@example.test', body: 'Hello', subject: 'Review me' }));
     expect(document.querySelector<HTMLInputElement>('[aria-label="Message subject"]')?.value).toBe('Review me');
     await act(async () => button(document, 'Send').click());
-    expect(sends).toHaveLength(0);
-    const review = document.querySelector('[aria-label="Review before sending"]');
-    expect(review?.textContent).toContain('me@example.test'); expect(review?.textContent).toContain('private@example.test');
-    expect(review?.textContent).toContain('Hello');
-    await act(async () => button(document, 'Confirm and send').click());
+    expect(sends[0]?.sender).toBe('me@example.test');
+    expect(sends[0]?.bcc).toEqual(['private@example.test']);
     expect(sends).toHaveLength(1); expect(document.querySelector('dialog')).toBeNull();
     expect(document.body.textContent).toContain('Mail has been asked to send your message');
   });
@@ -421,7 +418,6 @@ test('failed sends preserve displayed text after closing and reopening the compo
     await act(async () => button(document, 'Compose mail').click());
     await act(async () => mailComposer(api).edit({ to: 'friend@example.test', body: 'Retain this text' }));
     await act(async () => button(document, 'Send').click());
-    await act(async () => button(document, 'Confirm and send').click());
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS['send-unknown']);
     expect(button(document, 'Send').disabled).toBe(true);
     await act(async () => button(document, 'Close and keep draft').click());
@@ -486,15 +482,9 @@ test('reply opens above the original inside the message pane and preserves draft
     expect(pane.querySelector<HTMLIFrameElement>('iframe')?.srcdoc).toContain('Inline response');
     expect(mailComposer(api).getSnapshot().original?.body).toBe('Original 1');
     await act(async () => button(document, 'Send').click());
-    expect(sends).toHaveLength(0);
-    expect(pane.querySelector<HTMLIFrameElement>('iframe')?.srcdoc).toContain('Inline response');
-    await act(async () => button(document, 'Continue editing').click());
-    expect(pane.querySelector('[title="Reply message editor"]') !== null).toBe(true);
-    await act(async () => button(document, 'Send').click());
-    await act(async () => button(document, 'Confirm and send').click());
     expect(sends).toHaveLength(1);
     expect(sends[0]?.reply?.target.id).toBe(1);
-    expect(sends[0]?.body).toBe('Inline response');
+    expect(sends[0]?.body).toContain('Inline response');
     expect(pane.querySelector('[aria-label="Original message"]')).toBeNull();
     expect(pane.textContent).toContain('Original 2');
   });
@@ -516,9 +506,8 @@ test('inline reply keeps its source through account errors and preserves text af
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS.permission);
     denied = false;
     await act(async () => button(document, 'Retry sending accounts').click());
-    await act(async () => mailComposer(api).edit({ body: 'Do not lose this reply' }));
+    await act(async () => mailComposer(api).edit({ body: 'Do not lose this reply', html: '<p>Do not lose this reply</p><blockquote>Original</blockquote>' }));
     await act(async () => button(document, 'Send').click());
-    await act(async () => button(document, 'Confirm and send').click());
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(MAIL_ERRORS['send-unknown']);
     await act(async () => button(document, 'Close reply').click());
     await act(async () => button(document, 'Resume draft').click());

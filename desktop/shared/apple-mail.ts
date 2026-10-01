@@ -1,3 +1,5 @@
+import type { MailReplyEditingRequest, MailReplyEditingResult } from './mail-reply.ts';
+
 export const MAIL_PAGE_SIZE = 25;
 export const MAIL_BODY_LIMIT = 500_000;
 export const MAIL_SOURCE_LIMIT = 2_000_000;
@@ -13,7 +15,10 @@ export const MAIL_ERRORS = {
   invalid: 'The mail request is invalid.',
   'invalid-response': 'Could not process the data from Mail. Please refresh.',
   'too-large': 'The mail data is too large. Select another mailbox.',
-  'rich-send-unavailable': 'Formatted mail sending is not connected yet. Your draft has been kept.',
+  accessibility: 'Allow Cheshi in System Settings → Privacy & Security → Accessibility, then try again.',
+  'editing-failed': 'The mail assistant could not finish editing. Your draft has been kept. Check your Codex account and try again.',
+  'preparation-failed': 'Mail could not prepare the formatted message. Your draft has been kept. Check the open Mail window before trying again.',
+  busy: 'Another formatted message is being prepared. Please try again when it finishes.',
   'send-unknown': 'The send result could not be confirmed. Sending again is disabled to prevent duplicates. Check Sent and Outbox in Apple Mail.',
   'change-unknown': 'The change could not be confirmed. Refresh and check the message status.',
   'ambiguous-mailbox': 'Multiple mailboxes have the same name. Select the full path, including parent mailboxes.',
@@ -44,6 +49,7 @@ export interface AppleMailApi {
   read(target: MailTarget): Promise<MailReply<MailMessage>>;
   accounts(): Promise<MailReply<MailAccount[]>>;
   change(input: MailChange): Promise<MailReply<MailTarget>>;
+  polish(input: MailReplyEditingRequest): Promise<MailReply<MailReplyEditingResult>>;
   send(input: MailSend): Promise<MailReply<MailSent>>;
 }
 export function mailFailure<T>(code: MailErrorCode): MailReply<T> {

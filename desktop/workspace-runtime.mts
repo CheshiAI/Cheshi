@@ -1,4 +1,5 @@
 import { AppleNotesService } from './lib/apple-notes-service.mts';
+import { MailReplyAssistant } from './lib/mail-reply-assistant.mts';
 import { createWorkspaceScheduler } from './lib/scheduler/workspace.mts';
 import { createWorkspaceNotifications } from './lib/workspace-notifications.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
@@ -8,7 +9,7 @@ import { createWorkspaceWindowReadiness } from './lib/workspace-window-readiness
 import { createWorkspaceRendererEvents } from './lib/workspace-renderer-events.mts';
 import { createWorkspaceCodeExplanation } from './lib/workspace-code-explanation.mts';
 import path from 'node:path';
-import { userInfo } from 'node:os';
+import { currentUserName } from './lib/workspace-user.mts';
 import { fileURLToPath } from 'node:url';
 import { registerGitIpcHandlers } from './lib/git-ipc.mts';
 import { registerLanguageServerIpcHandlers } from './lib/language-server-ipc.mts';
@@ -188,6 +189,7 @@ const { accounts: workspaceAccounts, search: chatHistorySearch, mcp: historyMcp 
   accountSelection: options.accountSelection,
 });
 const createChatClient = workspaceAccounts.createClient;
+const mailAssistant = new MailReplyAssistant({ cwd: workspaceRoot, model: 'gpt-5.6-luna', effort: 'low', createClient: createChatClient });
 const codexAppServerClient = createChatClient();
 const ephemeralSessionClient = createChatClient();
 const codeExplanation = createWorkspaceCodeExplanation(ephemeralSessionClient, workspaceRoot);
@@ -244,7 +246,7 @@ const accountSwitch = workspaceAccounts.register({
   retained: [codexAppServerClient, ephemeralSessionClient],
   service: codexChatService, contexts: codexChatContexts, deletion: codexChatSessionDeletion,
   relays: codexChatRelays, accountUsage: codexAccountService,
-  temporaryBusy: () => temporaryChats.hasSessions || codeExplanation.busy,
+  temporaryBusy: () => temporaryChats.hasSessions || codeExplanation.busy || mailAssistant.busy,
   schedulerBusy: () => workspaceScheduler.busy,
   resetTemporary: () => codeExplanation.reset(),
   emit: snapshot => {
@@ -513,6 +515,7 @@ ipcMain.handle(
 const sessionStores = createWorkspaceSessionStores(ipcMain, codeGraphDirectory, assertCheshiSender);
 const appleNotesService = new AppleNotesService({ activationEvents: app, searchFilename: path.join(userDataDirectory, 'apple-notes', 'search.sqlite') });
 registerCodexChatIpc({
+  mailAssistant,
   notesService: appleNotesService,
   ipc: ipcMain, accountIpc, service: chatServiceFor, relays: codexChatRelays, assertSender: assertCheshiSender,
   savedTurns: codexChatSavedTurns,
@@ -529,14 +532,6 @@ accountIpc.handle('cheshi:dispose-codex-chat-context', (event, contextId) => {
   assertCheshiSender(event, 'Chat');
   return codexChatSessionDeletion.mutation(() => codexChatContexts.dispose(event.sender.id, contextId));
 });
-function currentUserName(): string {
-  try {
-    return userInfo().username.trim();
-  } catch {
-    return '';
-  }
-}
-
 ipcMain.on('cheshi:get-workspace-metadata', (event) => {
   event.returnValue = {
     userName: currentUserName(),
@@ -972,6 +967,7 @@ function dispose(): Promise<void> {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
     disposeTerminal();
     codeExplanation.stop();
+    mailAssistant.stop();
     await workspaceScheduler.dispose().catch(error => {
       process.stderr.write(`[cheshi] Scheduler cleanup failed: ${String(error)}\n`);
     });
