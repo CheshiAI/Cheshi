@@ -117,7 +117,16 @@
   pointer-events: none;
 }
 .notice { padding: var(--space-default); margin: 0; }
-.sendNotice { display: flex; flex: 0 0 auto; align-items: center; gap: var(--space-default); border-bottom: 1px solid var(--divider); }
+.sendNotice {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  box-sizing: border-box;
+  height: 42px;
+  gap: var(--space-default);
+  padding: 0 var(--space-default);
+  border-bottom: 1px solid var(--divider);
+}
 .sendNotice > p { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .toolbar {
   display: flex;
