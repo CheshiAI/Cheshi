@@ -23,7 +23,6 @@ export function contentSecurityPolicy(html: string): string {
     "default-src 'self'",
     `script-src ${scriptSources}`,
     "style-src 'self' 'unsafe-inline'",
-    // srcdoc inherits this policy; the Mail frame separately blocks remote images until opt-in.
     "img-src 'self' data: blob: https: http:",
     "media-src 'self' blob:",
     "font-src 'self' data:",

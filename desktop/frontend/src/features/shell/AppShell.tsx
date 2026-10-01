@@ -47,12 +47,11 @@ import { WorkspaceFileSearch } from '../navigation/WorkspaceFileSearch';
 import { installFileSearchShortcut } from '../navigation/fileSearchShortcut';
 import { ChatDraftAttachmentsContext, createChatDraftAttachments } from '../chat/chatDraftAttachments';
 import { NotesView } from '../notes/NotesView';
-import { MailView } from '../mail/MailView';
 import { CalendarView } from '../calendar/CalendarView';
 import { appleNoteDraftText } from '../notes/appleNotesModel';
 import type { AppleNote } from '../../../../shared/apple-notes';
 
-const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'notes', 'calendar', 'mail', 'settings'];
+const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'notes', 'calendar', 'settings'];
 
 export function AppShell() {
   const notificationSceneRef = useRef<HTMLDivElement>(null);
@@ -79,7 +78,6 @@ export function AppShell() {
   const indexReady = useCallback(() => setIndexLoaded(true), []);
   const startupReported = useRef(false);
   const [activeView, setActiveView] = useState<WorkspaceView>('chat');
-  const mailReturnView = useRef<WorkspaceView>('chat');
   const [historyChoice, setHistoryChoice] = useState<{ sessionId: string; title: string; paneId: string } | null>(null);
   const [deleteChoice, setDeleteChoice] = useState<{ sessionId: string; title: string } | null>(null);
   const [fileReview, setFileReview] = useState<{ paneId: string; itemId: string; path: string | null } | null>(null);
@@ -89,7 +87,6 @@ export function AppShell() {
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [memoSidebarTarget, setMemoSidebarTarget] = useState<HTMLDivElement | null>(null);
-  const [mailSidebarTarget, setMailSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
   useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
   const [sidebarPanel, setSidebarPanel] = useState(() => sidebarPanelForWorkspace(activeView,
@@ -196,7 +193,6 @@ export function AppShell() {
   };
 
   const navigate = (view: WorkspaceView): void => {
-    if (view === 'mail' && activeView !== 'mail') mailReturnView.current = activeView;
     historyRequestId.current += 1;
     closeReview();
     if (customLayout) {
@@ -206,15 +202,6 @@ export function AppShell() {
     }
     setActiveView(view);
     setPrimaryPaneClosed(false);
-  };
-
-  const closeMail = (): void => {
-    const previous = mailReturnView.current;
-    const unavailable = previous === 'mail' || previous === 'blank' || previous === 'local-history'
-      || (previous === 'editor' && !editorSplitOpen && !customLayout);
-    const destination = unavailable ? 'chat' : previous;
-    navigate(destination);
-    if (destination === 'terminal' && customLayout) setActiveView('chat');
   };
 
   const attachNote = async (note: AppleNote): Promise<boolean> => {
@@ -316,7 +303,6 @@ export function AppShell() {
           inert={workspace.accountSwitchPending}>
             <Sidebar
               memoPanelRef={setMemoSidebarTarget}
-              mailPanelRef={setMailSidebarTarget}
               activePanel={sidebarPanel}
               onPanelChange={setSidebarPanel}
               chatPanel={<ChatSessionList
@@ -388,7 +374,6 @@ export function AppShell() {
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />}
           {activeView === 'blank' && <WindowTabs />}
-          <MailView active={activeView === 'mail'} sidebarTarget={mailSidebarTarget} onOpen={() => navigate('mail')} onClose={closeMail} />
           {activeView === 'calendar' && <CalendarView rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
           <NotesView onAttach={attachNote} active={activeView === 'notes'}

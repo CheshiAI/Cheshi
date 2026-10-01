@@ -100,7 +100,6 @@ function createHarness() {
     '../navigation/fileSearchShortcut': { installFileSearchShortcut() { return () => {}; } },
     '../notes/NotesView': { NotesView: 'NotesView' },
     '../notes/appleNotesModel': { appleNoteDraftText },
-    '../mail/MailView': { MailView: 'MailView' },
     '../calendar/CalendarView': { CalendarView: 'CalendarView' },
     '../plugins': { PluginsView: 'PluginsView' },
     '../terminal': { TerminalWorkspace: 'TerminalWorkspace' },

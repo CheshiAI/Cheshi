@@ -115,16 +115,6 @@ test('agent detail reads carry the parent, target ids and pane without invoking 
   assert.equal(bridge.calls.length, 1);
 });
 
-test('Apple Mail exposes explicit message operations without startup automation', async () => {
-  const bridge = createHarness('Alex', { ok: true, value: [] });
-  const api = bridge.read('appleMail') as NonNullable<CheshiDesktopApi['appleMail']>;
-  assert.equal(api.available, process.platform === 'darwin');
-  assert.deepEqual(Object.keys(api).sort(), ['accounts', 'available', 'change', 'list', 'mailboxes', 'read', 'send']);
-  assert.deepEqual(bridge.calls, []);
-  assert.deepEqual(structuredClone(await api.mailboxes()), { ok: true, value: [] });
-  assert.deepEqual(bridge.calls, [['cheshi:mail-mailboxes']]);
-});
-
 test('Apple Notes uses the built preload and carries save outcomes as plain data', async () => {
   const input = { folderId: 'folder', title: 'Title', body: 'Answer' };
   const success = { ok: true, value: { id: 'created', title: 'Title' } };

@@ -24,7 +24,6 @@ import type { CodeGraphView } from '../frontend/src/features/graph/CodeGraphView
 import * as draftAttachmentModule from '../frontend/src/features/chat/chatDraftAttachments';
 import { appleNoteDraftText } from '../frontend/src/features/notes/appleNotesModel';
 import type { NotesView } from '../frontend/src/features/notes/NotesView';
-import type { MailView } from '../frontend/src/features/mail/MailView';
 import type { AppleNote } from '../shared/apple-notes';
 import type { TerminalWorkspace } from '../frontend/src/features/terminal/TerminalWorkspace';
 import type { ReviewSidebar } from '../frontend/src/features/shell/ReviewSidebar';
@@ -172,7 +171,7 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
     '../settings/SettingsView': ['SettingsView'],
     '../scheduler/SchedulerNotifications': ['SchedulerNotifications'],
     '../settings/DiscordSetupConfirmation': ['DiscordSetupConfirmation'],
-    '../mail/MailView': ['MailView'], '../calendar/CalendarView': ['CalendarView'],
+    '../calendar/CalendarView': ['CalendarView'],
     './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],
     '../editor/LocalHistoryPage': ['LocalHistoryPage'], './WorkspaceEditorSplit': ['WorkspaceEditorSplit'],
     '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'], '../notes/NotesView': ['NotesView'],
@@ -612,65 +611,6 @@ for (const view of ['git', 'plugins'] as const) {
 }
 
 const appleNote: AppleNote = { id: 'note', title: 'Meeting', plaintext: 'Agenda', locked: false, modifiedAt: '2026-09-16T00:00:00Z' };
-
-test('Mail mounts at startup and sidebar mailbox selection opens its retained center workspace', () => {
-  const app = shellHarness();
-  const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
-  const mail = () => props<ComponentProps<typeof MailView>>(app.render(), 'MailView');
-  expect(mail().active).toBe(false);
-  sidebar().onPanelChange!('mail');
-  expect(mail().active).toBe(false);
-  expect(props<ComponentProps<typeof ChatWorkspace>>(app.render(), 'ChatWorkspace').active).toBe(true);
-  mail().onOpen!();
-  expect(mail().active).toBe(true);
-  expect(sidebar().activePanel).toBe('mail');
-  sidebar().onPanelChange!('github');
-  expect(sidebar().activePanel).toBe('github');
-  expect(mail().active).toBe(true);
-  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
-  expect(mail().active).toBe(false);
-  expect(sidebar().activePanel).toBe('chats');
-  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('mail');
-  expect(sidebar().activePanel).toBe('mail');
-});
-
-test('Mail close restores the last non-mail scene even after repeated mailbox navigation', () => {
-  const app = shellHarness();
-  const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
-  const mail = () => props<ComponentProps<typeof MailView>>(app.render(), 'MailView');
-  for (const view of ['chat', 'git', 'plugins', 'notes', 'calendar', 'settings', 'terminal', 'search', 'codegraph'] as const) {
-    rail().onNavigate(view);
-    mail().onOpen!();
-    expect(mail().active).toBe(true);
-    mail().onOpen!();
-    rail().onNavigate('mail');
-    mail().onClose!();
-    expect(mail().active).toBe(false);
-    expect(rail().activeView).toBe(view);
-  }
-});
-
-test('Mail close falls back to Codex when restored without history or after its previous editor closes', () => {
-  const app = shellHarness();
-  const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
-  const mail = () => props<ComponentProps<typeof MailView>>(app.render(), 'MailView');
-  app.render();
-  app.restoreShell('mail', 'mail');
-  mail().onClose!();
-  expect(rail().activeView).toBe('chat');
-  rail().onNavigate('git');
-  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
-  expect(rail().activeView).toBe('editor');
-  mail().onOpen!();
-  mail().onClose!();
-  expect(rail().activeView).toBe('editor');
-  mail().onOpen!();
-  const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
-  props<ComponentProps<typeof WorkspaceEditor>>(split.editor, 'WorkspaceEditor').onAllTabsClosed();
-  mail().onClose!();
-  expect(rail().activeView).toBe('chat');
-  expect(props<ComponentProps<typeof ChatWorkspace>>(app.render(), 'ChatWorkspace').active).toBe(true);
-});
 
 test('Memo tab browses alongside the current scene and opening a note activates the Memo page', () => {
   const app = shellHarness();

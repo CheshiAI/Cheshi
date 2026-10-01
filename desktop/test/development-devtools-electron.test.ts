@@ -8,7 +8,7 @@ import test from 'node:test';
 
 const electronPath = createRequire(import.meta.url)('electron') as string;
 const adapterUrl = new URL('../lib/development-devtools.mts', import.meta.url).href;
-const frameDocument = `<meta http-equiv="Content-Security-Policy" content="script-src 'none'"><p>Mail body</p>`;
+const frameDocument = `<meta http-equiv="Content-Security-Policy" content="script-src 'none'"><p>Sandboxed document</p>`;
 const displayScript = `(() => {
   const frame = document.createElement('iframe');
   frame.sandbox = 'allow-same-origin';
@@ -16,8 +16,8 @@ const displayScript = `(() => {
   document.getElementById('root').replaceChildren(frame);
 })()`;
 
-// Standalone hidden windows; no access to the user's running app or mail.
-test('development DevTools keeps sandboxed mail quiet across opening, reload and reopening', async () => {
+// Standalone hidden windows; no access to the user's running app or data.
+test('development DevTools keeps sandboxed frames quiet across opening, reload and reopening', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'cheshi-devtools-'));
   try {
     const htmlPath = path.join(directory, 'index.html');

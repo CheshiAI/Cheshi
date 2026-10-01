@@ -14,7 +14,6 @@ function shouldIgnore(packagePath: string): boolean {
   const [rootEntry, childEntry, grandchildEntry] = segments;
 
   if (rootEntry === '.env.product' || rootEntry === 'package.json') return segments.length > 1;
-  if (rootEntry === 'node_modules') return segments.length > 1 && childEntry !== 'postal-mime';
   if (rootEntry === 'config') {
     if (segments.length === 1) return false;
     const packagedConfigFiles = new Set(['product.mts', 'workspace-storage.mts']);
@@ -39,7 +38,7 @@ function shouldIgnore(packagePath: string): boolean {
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
-    const packagedSharedFiles = new Set(['calendar-task.ts', 'scheduler.ts', 'scheduler-time.ts', 'notification-events.ts', 'discord.ts', 'imessage-commands.ts', 'imessage-notifications.ts', 'account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-notes.ts', 'apple-notes-search.ts', 'apple-notes-document.ts', 'apple-calendar.ts', 'apple-mail.ts', 'mail-reply.ts', 'keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'settings.ts', 'window-appearance.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'history-recall.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'git-line-blame.ts', 'local-history.ts', 'local-file-link.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
+    const packagedSharedFiles = new Set(['calendar-task.ts', 'scheduler.ts', 'scheduler-time.ts', 'notification-events.ts', 'discord.ts', 'imessage-commands.ts', 'imessage-notifications.ts', 'account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-notes.ts', 'apple-notes-search.ts', 'apple-notes-document.ts', 'apple-calendar.ts', 'keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'settings.ts', 'window-appearance.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'history-recall.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'git-line-blame.ts', 'local-history.ts', 'local-file-link.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
     return grandchildEntry === undefined || !packagedSharedFiles.has(grandchildEntry) || segments.length > 3;
   }
   if (childEntry !== 'lib') return true;
@@ -78,15 +77,6 @@ function shouldIgnore(packagePath: string): boolean {
     'imessage-ipc.mts',
     'chat-notifications.mts',
     'workspace-notifications.mts',
-    'apple-mail-service.mts',
-    'apple-mail-mime.mts',
-    'apple-mail-script.mts',
-    'apple-mail-process.mts',
-    'apple-mail-ipc.mts',
-    'apple-mail-rich-process.mts',
-    'apple-mail-rich-send.mts',
-    'mail-reply-assistant.mts',
-    'mail-reply-instructions.mts',
     'workspace-user.mts',
     'apple-calendar-service.mts',
     'apple-calendar-process.mts',
@@ -279,7 +269,7 @@ export default async function createForgeConfiguration(): Promise<ForgeConfig> {
       buildVersion: product.buildNumber,
       extendInfo: {
         NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
-        NSAppleEventsUsageDescription: 'Cheshi reads and manages your Mail messages, sends mail you confirm, reads or saves Apple Notes when you ask, and sends iMessage notifications you enable or test.',
+        NSAppleEventsUsageDescription: 'Cheshi reads or saves Apple Notes when you ask and sends iMessage notifications you enable or test.',
         NSCalendarsFullAccessUsageDescription: 'Cheshi displays your calendars and creates, edits, or deletes the events you choose.',
         NSCalendarsUsageDescription: 'Cheshi displays your calendars and creates, edits, or deletes the events you choose.',
       },

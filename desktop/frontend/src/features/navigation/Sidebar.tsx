@@ -6,12 +6,11 @@ import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import { WorkspaceFileTree } from './WorkspaceFileTree';
 import { normalizeSidebarPanel, type SidebarPanel } from './sidebarPanel';
 
-export type WorkspaceView = 'chat' | 'notes' | 'calendar' | 'mail' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'local-history' | 'settings';
+export type WorkspaceView = 'chat' | 'notes' | 'calendar' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'local-history' | 'settings';
 
 interface SidebarProps {
   chatPanel?: ReactNode;
   memoPanelRef?: Ref<HTMLDivElement>;
-  mailPanelRef?: Ref<HTMLDivElement>;
   activePanel?: SidebarPanel;
   onPanelChange?: (panel: SidebarPanel) => void;
   selectedFilePath: string | null;
@@ -23,7 +22,6 @@ interface SidebarProps {
 export function Sidebar({
   chatPanel,
   memoPanelRef,
-  mailPanelRef,
   activePanel = 'files',
   onPanelChange,
   selectedFilePath,
@@ -44,7 +42,6 @@ export function Sidebar({
               { id: 'chats', label: 'SESSION', content: chatPanel },
               { id: 'files', label: 'EXPLORER', content: files },
               { id: 'memos', label: 'MEMO', content: <div ref={memoPanelRef} className="sidebar-content-primary" /> },
-              { id: 'mail', label: 'MAIL', content: <div ref={mailPanelRef} className="sidebar-content-primary" /> },
               { id: 'github', label: 'GITHUB', content: null },
             ]} /> : files}
         </div>

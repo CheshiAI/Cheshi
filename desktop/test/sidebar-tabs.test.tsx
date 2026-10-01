@@ -13,7 +13,7 @@ function Fixture({ five = false }: { five?: boolean }) {
     { id: 'chats', label: 'Sessions', content: <input aria-label="Session search" /> },
     { id: 'files', label: 'Files', content: <div data-scroll><input aria-label="File search" /></div> },
     { id: 'memos', label: 'Memos', content: null },
-    ...(five ? [{ id: 'mail', label: 'Mail', content: <input aria-label="Mail search" /> },
+    ...(five ? [{ id: 'activity', label: 'Activity', content: <input aria-label="Activity search" /> },
       { id: 'github', label: 'GitHub', content: null }] : []),
   ]} />;
 }
@@ -124,14 +124,14 @@ async function withTabs(run: (h: {
   }
 }
 
-test('sidebar exposes five ordered tabs with an empty GitHub placeholder', () => {
+test('sidebar exposes four ordered tabs with an empty GitHub placeholder', () => {
   const html = renderToStaticMarkup(<Sidebar activePanel="memos" onPanelChange={() => {}}
     chatPanel={<div>Session list</div>} selectedFilePath={null} onWorkspaceEntryMutation={() => {}}
     onOpenWorkspaceFile={() => {}} />);
   const window = new Window();
   window.document.body.innerHTML = html;
   const tabs = [...window.document.querySelectorAll('[role="tab"]')];
-  expect(tabs.map(tab => tab.textContent)).toEqual(['SESSION', 'EXPLORER', 'MEMO', 'MAIL', 'GITHUB']);
+  expect(tabs.map(tab => tab.textContent)).toEqual(['SESSION', 'EXPLORER', 'MEMO', 'GITHUB']);
   const selected = window.document.querySelector('[role="tab"][aria-selected="true"]')!;
   expect(selected.textContent).toBe('MEMO');
   const panel = window.document.getElementById(selected.getAttribute('aria-controls')!)!;
@@ -140,7 +140,7 @@ test('sidebar exposes five ordered tabs with an empty GitHub placeholder', () =>
   expect(window.document.querySelector('[aria-roledescription="carousel"]')).toBeNull();
 });
 
-test('Mail appears progressively during the content swipe before selection settles', async () => {
+test('Activity appears progressively during the content swipe before selection settles', async () => {
   await withTabs(async ({ click, settle, wheel, panel, scroll, strip, tab, settleStrip, scrolls }) => {
     await click('Memos');
     await settle(640);
@@ -158,7 +158,7 @@ test('Mail appears progressively during the content swipe before selection settl
     await scroll(960);
     expect(strip.scrollLeft).toBeCloseTo(100);
     await settle(960);
-    expect(tab('Mail').getAttribute('aria-selected')).toBe('true');
+    expect(tab('Activity').getAttribute('aria-selected')).toBe('true');
     expect(strip.dataset.followingContent).toBeUndefined();
   }, true);
 });
@@ -176,7 +176,7 @@ test('reversing and canceling a content swipe restores the header without changi
     await settle(640);
     expect(strip.dataset.followingContent).toBeUndefined();
     // The mirrored boundary reveals Sessions while moving left from the second header window.
-    await click('Mail');
+    await click('Activity');
     await settle(960);
     await click('Files');
     await settle(320);
@@ -193,14 +193,14 @@ test('reversing and canceling a content swipe restores the header without changi
 
 test('GitHub follows content progress while nested list scrolling leaves the header alone', async () => {
   await withTabs(async ({ click, settle, scroll, wheel, panel, strip, tab, clear, viewport, window }) => {
-    await click('Mail');
+    await click('Activity');
     await settle(960);
     await scroll(1120, panel('Files').querySelector('[data-scroll]')!);
     expect(strip.scrollLeft).toBe(100);
-    await wheel(panel('Mail'), { deltaX: 10 });
+    await wheel(panel('Activity'), { deltaX: 10 });
     await scroll(1120);
     expect(strip.scrollLeft).toBeCloseTo(150);
-    expect(tab('Mail').getAttribute('aria-selected')).toBe('true');
+    expect(tab('Activity').getAttribute('aria-selected')).toBe('true');
     await scroll(1280);
     await settle(1280);
     expect(strip.scrollLeft).toBe(200);
@@ -410,7 +410,7 @@ test('reduced motion tab clicks align immediately and unmount releases observers
 test('last selected tab is stored separately per workspace and invalid values fall back to Files', async () => {
   await withTabs(async ({ window }) => {
     expect(readSidebarPanel('/one')).toBe('files');
-    for (const panel of ['chats', 'memos', 'files', 'mail', 'github'] as const) {
+    for (const panel of ['chats', 'memos', 'files', 'github'] as const) {
       saveSidebarPanel(panel, '/one');
       expect(readSidebarPanel('/one')).toBe(panel);
     }
@@ -436,24 +436,24 @@ test('right sidebar toggles are absent until a review is available', () => {
   expect(markup(true)).toContain('aria-label="Open right sidebar"');
 });
 
-test('five tabs reveal Mail and GitHub on selection and preserve the mounted mailbox panel', async () => {
+test('five tabs reveal Activity and GitHub on selection and preserve the mounted activity panel', async () => {
   await withTabs(async ({ tab, panel, click, key, strip, scrolls }) => {
-    const mail = panel('Mail');
-    const input = mail.querySelector('input')!;
-    input.value = 'retained mailbox filter';
-    await click('Mail');
+    const activity = panel('Activity');
+    const input = activity.querySelector('input')!;
+    input.value = 'retained activity filter';
+    await click('Activity');
     expect(strip.scrollLeft).toBe(100);
     expect(scrolls.at(-1)?.left).toBe(960);
-    await key('Mail', 'End');
+    await key('Activity', 'End');
     expect(strip.scrollLeft).toBe(200);
     expect(tab('GitHub').getAttribute('aria-selected')).toBe('true');
     expect(panel('GitHub').childNodes).toHaveLength(0);
     await key('GitHub', 'ArrowRight');
     expect(strip.scrollLeft).toBe(0);
     expect(tab('Sessions').getAttribute('aria-selected')).toBe('true');
-    await click('Mail');
-    expect(mail.querySelector('input')).toBe(input);
-    expect(input.value).toBe('retained mailbox filter');
+    await click('Activity');
+    expect(activity.querySelector('input')).toBe(input);
+    expect(input.value).toBe('retained activity filter');
   }, true);
 });
 

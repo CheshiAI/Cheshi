@@ -58,7 +58,7 @@ test.skipIf(process.platform !== 'darwin')('built native helper runs from packag
     expect(first).toContain('NSCalendarsFullAccessUsageDescription');
     expect(first).toContain('NSCalendarsUsageDescription');
     expect(first).toContain('NSAppleEventsUsageDescription');
-    expect(first).toContain('manages your Mail messages');
+    expect(first).toContain('reads or saves Apple Notes');
     expect(first).toContain(developmentAppIdentity(process.cwd()).bundleId);
     expect(first).toContain('Cheshi Development');
     prepareCalendarDevelopmentBundle(bundle);
@@ -77,7 +77,7 @@ test.skipIf(process.platform !== 'darwin')('built native helper runs from packag
     const config = await createForgeConfiguration();
     expect(config.packagerConfig?.extendInfo).toMatchObject({
       NSCalendarsFullAccessUsageDescription: expect.any(String), NSCalendarsUsageDescription: expect.any(String),
-      NSAppleEventsUsageDescription: expect.stringContaining('manages your Mail messages'),
+      NSAppleEventsUsageDescription: expect.stringContaining('reads or saves Apple Notes'),
     });
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }, 60_000);

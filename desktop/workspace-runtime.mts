@@ -1,5 +1,4 @@
 import { AppleNotesService } from './lib/apple-notes-service.mts';
-import { MailReplyAssistant } from './lib/mail-reply-assistant.mts';
 import { createWorkspaceScheduler } from './lib/scheduler/workspace.mts';
 import { createWorkspaceNotifications } from './lib/workspace-notifications.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
@@ -189,7 +188,6 @@ const { accounts: workspaceAccounts, search: chatHistorySearch, mcp: historyMcp 
   accountSelection: options.accountSelection,
 });
 const createChatClient = workspaceAccounts.createClient;
-const mailAssistant = new MailReplyAssistant({ cwd: workspaceRoot, model: 'gpt-5.6-luna', effort: 'low', createClient: createChatClient });
 const codexAppServerClient = createChatClient();
 const ephemeralSessionClient = createChatClient();
 const codeExplanation = createWorkspaceCodeExplanation(ephemeralSessionClient, workspaceRoot);
@@ -246,7 +244,7 @@ const accountSwitch = workspaceAccounts.register({
   retained: [codexAppServerClient, ephemeralSessionClient],
   service: codexChatService, contexts: codexChatContexts, deletion: codexChatSessionDeletion,
   relays: codexChatRelays, accountUsage: codexAccountService,
-  temporaryBusy: () => temporaryChats.hasSessions || codeExplanation.busy || mailAssistant.busy,
+  temporaryBusy: () => temporaryChats.hasSessions || codeExplanation.busy,
   schedulerBusy: () => workspaceScheduler.busy,
   resetTemporary: () => codeExplanation.reset(),
   emit: snapshot => {
@@ -515,7 +513,6 @@ ipcMain.handle(
 const sessionStores = createWorkspaceSessionStores(ipcMain, codeGraphDirectory, assertCheshiSender);
 const appleNotesService = new AppleNotesService({ activationEvents: app, searchFilename: path.join(userDataDirectory, 'apple-notes', 'search.sqlite') });
 registerCodexChatIpc({
-  mailAssistant,
   notesService: appleNotesService,
   ipc: ipcMain, accountIpc, service: chatServiceFor, relays: codexChatRelays, assertSender: assertCheshiSender,
   savedTurns: codexChatSavedTurns,
@@ -967,7 +964,6 @@ function dispose(): Promise<void> {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
     disposeTerminal();
     codeExplanation.stop();
-    mailAssistant.stop();
     await workspaceScheduler.dispose().catch(error => {
       process.stderr.write(`[cheshi] Scheduler cleanup failed: ${String(error)}\n`);
     });

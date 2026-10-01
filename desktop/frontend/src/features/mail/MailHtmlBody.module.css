@@ -1,7 +1,0 @@
-.root {
-  box-sizing: border-box;
-  margin-top: var(--space-default);
-  padding-inline: var(--space-default);
-  min-width: 0;
-  width: 100%;
-}

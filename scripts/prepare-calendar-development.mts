@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { product } from '../config/product.mts';
 
 const usage = 'Cheshi displays your calendars and creates, edits, or deletes the events you choose.';
-const automationUsage = 'Cheshi reads and manages your Mail messages, sends mail you confirm, and reads or saves Apple Notes when you ask.';
+const automationUsage = 'Cheshi reads or saves Apple Notes when you ask.';
 const rootDirectory = fileURLToPath(new URL('..', import.meta.url));
 
 export function developmentAppIdentity(root: string) {

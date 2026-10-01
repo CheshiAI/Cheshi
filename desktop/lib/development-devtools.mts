@@ -1,6 +1,6 @@
 import type { App, WebContents } from 'electron';
 
-// Electron 41's DevTools inject live metrics into every frame, including mail frames
+// Electron 41's DevTools inject live metrics into every frame, including frames
 // that deliberately forbid scripts. Run inside DevTools before its models start.
 // Keep this internal API adapter isolated and covered by an actual Electron test.
 export const DISABLE_DEVTOOLS_LIVE_METRICS = `

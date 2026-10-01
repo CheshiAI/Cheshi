@@ -9,8 +9,6 @@ import { CodexAppServerStoppedError } from './codex-app-server-client.mts';
 import type { ChatHistorySearch } from './chat-history-search.mts';
 import { AppleNotesService } from './apple-notes-service.mts';
 import { registerAppleNotesIpc } from './apple-notes-ipc.mts';
-import { AppleMailService } from './apple-mail-service.mts';
-import { registerAppleMailIpc } from './apple-mail-ipc.mts';
 import { AppleCalendarService } from './apple-calendar-service.mts';
 import { registerAppleCalendarIpc } from './apple-calendar-ipc.mts';
 import { readCodexTurnMetrics } from './codex-chat-turn-metrics.mts';
@@ -34,7 +32,6 @@ export function registerCodexPluginIpc({ ipc, service }: {
 }
 
 type ChatIpcOptions = {
-  mailAssistant?: import('./mail-reply-assistant.mts').MailReplyAssistant;
   ipc: Pick<IpcMain, 'handle'>;
   accountIpc?: Pick<IpcMain, 'handle'>;
   service(event: IpcMainInvokeEvent, contextId: unknown): CodexChatService;
@@ -48,9 +45,8 @@ type ChatIpcOptions = {
   prepareMessage(value: unknown): Promise<{ text: string; clientMessageId: string; skill: unknown; attachments: ChatAttachment[]; threadId?: string | null }>;
 };
 
-export function registerCodexChatIpc({ ipc, accountIpc, service, relays, deletion, savedTurns, historySearch, assertSender, prepareMessage, beforeMessage, notesService, mailAssistant }: ChatIpcOptions) {
+export function registerCodexChatIpc({ ipc, accountIpc, service, relays, deletion, savedTurns, historySearch, assertSender, prepareMessage, beforeMessage, notesService }: ChatIpcOptions) {
   registerAppleNotesIpc({ ipcMain: ipc, service: notesService ?? new AppleNotesService(), assertSender });
-  registerAppleMailIpc({ ipcMain: ipc, service: new AppleMailService(), assertSender, assistant: mailAssistant, beforePolish: beforeMessage });
   registerAppleCalendarIpc({ ipcMain: ipc, service: new AppleCalendarService(), assertSender });
   ipc = accountIpc ?? ipc;
   const mutation = <T,>(event: IpcMainInvokeEvent, contextId: unknown, operation: () => Promise<T> | T) => {
