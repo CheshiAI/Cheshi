@@ -31,12 +31,22 @@ export class MailComposer {
   private state: ComposerState = { visible: false, form: null, accounts: [], loading: false, busy: false,
     error: null, notice: null, blocked: false, confirmation: null, reply: null, original: null, remoteImagesAllowed: false, phase: null };
   private readonly listeners = new Set<() => void>();
+  private noticeTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(api: AppleMailApi) { this.api = api; }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private update(patch: Partial<ComposerState>) { this.state = { ...this.state, ...patch }; this.listeners.forEach(listener => listener()); }
+  private clearNoticeTimer() {
+    if (this.noticeTimer !== null) clearTimeout(this.noticeTimer);
+    this.noticeTimer = null;
+  }
+  dismissNotice = () => {
+    this.clearNoticeTimer();
+    if (this.state.notice !== null) this.update({ notice: null });
+  };
   async start(message?: MailMessage, target?: MailTarget, all = false, remoteImagesAllowed = false) {
     if (this.state.form || this.state.loading) { this.update({ visible: true }); return; }
+    this.clearNoticeTimer();
     this.update({ visible: true, loading: true, error: null, notice: null,
       reply: target ? { target, all } : null, original: message ?? null, remoteImagesAllowed });
     try {
@@ -90,8 +100,12 @@ export class MailComposer {
       this.update({ phase: 'sending' });
       sending = true;
       const result = await this.api.send(prepared);
-      if (result.ok) this.update({ busy: false, visible: false, form: null, reply: null, original: null, remoteImagesAllowed: false, confirmation: null,
-        notice: 'Mail has been asked to send your message. Check Outbox and Sent for its status.' });
+      if (result.ok) {
+        this.clearNoticeTimer();
+        this.noticeTimer = setTimeout(this.dismissNotice, 10_000);
+        this.update({ busy: false, visible: false, form: null, reply: null, original: null, remoteImagesAllowed: false, confirmation: null,
+          notice: 'Mail has been asked to send your message. Check Outbox and Sent for its status.' });
+      }
       else this.update({ busy: false, confirmation: null, error: result.error.message, blocked: result.error.code === 'send-unknown' });
     } catch (error) {
       this.update({ error: sending ? MAIL_ERRORS['send-unknown'] : error instanceof Error ? error.message : MAIL_ERRORS['editing-failed'], blocked: sending });

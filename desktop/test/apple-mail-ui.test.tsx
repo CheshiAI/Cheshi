@@ -408,6 +408,14 @@ test('one Send click polishes and sends with the chosen sender, cc and bcc', asy
     expect(sends[0]?.bcc).toEqual(['private@example.test']);
     expect(sends).toHaveLength(1); expect(document.querySelector('dialog')).toBeNull();
     expect(document.body.textContent).toContain('Mail has been asked to send your message');
+    await act(async () => button(document, 'Dismiss send notification').click());
+    expect(document.body.textContent).not.toContain('Mail has been asked to send your message');
+    expect(document.querySelector('[aria-label="Dismiss send notification"]')).toBeNull();
+    await render(null);
+    await render(<MailBrowser api={api} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    expect(mailComposer(api).getSnapshot().notice).toBeNull();
+    expect(document.body.textContent).not.toContain('Mail has been asked to send your message');
+    expect(sends).toHaveLength(1);
   });
 });
 
@@ -487,6 +495,7 @@ test('reply opens above the original inside the message pane and preserves draft
     expect(sends[0]?.body).toContain('Inline response');
     expect(pane.querySelector('[aria-label="Original message"]')).toBeNull();
     expect(pane.textContent).toContain('Original 2');
+    await act(async () => button(document, 'Dismiss send notification').click());
   });
 });
 

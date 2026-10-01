@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { Mail, PanelRight, Flag } from 'lucide-react';
+import { Mail, PanelRight, Flag, X } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { EmptyState, SidebarPanelHeader, SidebarToggle, LiquidGlassPanel, LoadingState, NeumorphicButton } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { mailboxKey } from '../../../../shared/apple-mail';
 import type { AppleMailApi } from '../../../../shared/apple-mail';
 import { MailModel } from './mailModel';
@@ -74,7 +75,12 @@ export function MailBrowser({ api, rightSidebarOpen, onToggleRightSidebar, activ
           void model.selectMailbox(box);
         }
       }} />, sidebarTarget)}
-    {composition.notice && <p className={styles.notice} role="status">{composition.notice}</p>}
+    {composition.notice && <div className={`${styles.notice} ${styles.sendNotice}`}>
+      <p className={styles.description} role="status">{composition.notice}</p>
+      <TooltipButton size="icon" title="Dismiss send notification" aria-label="Dismiss send notification" onClick={composer.dismissNotice}>
+        <X aria-hidden="true" />
+      </TooltipButton>
+    </div>}
     {state.changeError && <p className={styles.notice} role="alert">{state.changeError}</p>}
     {!state.connected ? <div className={styles.connect}>
       <EmptyState className={styles.emptyState} title="Mail" description="Browse your mailboxes and messages from Apple Mail." />
