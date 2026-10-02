@@ -40,3 +40,76 @@ individually prevented sandbox startup:
 
 These removal checks used disposable containers without network or host/auth
 volumes. Keep the final profile's generated content in sync with `profile.ts`.
+
+## Colima AppArmor
+
+Colima's Ubuntu VM also enforces AppArmor. The default Docker profile denies
+mounts even when seccomp permits the system call. The failure is
+`bwrap: Failed to make / slave: Permission denied`; the audit log records a
+denied mount. This is independent of ChatGPT authentication.
+
+`cheshi-codex-bwrap.apparmor` adapts `apparmor/template.go` from the same pinned
+Moby commit listed above, under `vendor/LICENSE`. It retains the network-family,
+procfs, sysfs, signal and ptrace restrictions. The profile uses ABI 3.0, global
+tunables and base abstractions from the VM; dockerd is unconfined on this VM.
+Revalidate before using a different daemon confinement configuration.
+
+Instead of `deny mount`, it permits bwrap's bind mounts, private/slave propagation,
+specific read-only remount flag combinations, tmpfs/proc/devpts mounts, and
+`pivot_root`. Non-filesystem-specific mount rules match exact flag combinations. These rules
+still broaden the container's available operations; keep all base Compose
+restrictions. Kernel capability checks still apply, and the new user namespace
+does not grant capabilities in the outer container or VM namespace.
+
+Install from the experiment directory while the `cheshi` Colima VM is running:
+
+```sh
+colima -p cheshi ssh -- sudo tee /etc/apparmor.d/cheshi-codex-bwrap \
+  < security/cheshi-codex-bwrap.apparmor > /dev/null
+colima -p cheshi ssh -- sudo apparmor_parser -r -W /etc/apparmor.d/cheshi-codex-bwrap
+```
+
+The VM's enabled `apparmor.service` loads this file at boot. No global sysctl,
+Docker default profile, or daemon setting is changed. The Compose override
+selects the new profile only for `verifier`; Compose merges it with the base
+seccomp and `no-new-privileges` entries. Do not replace that security option list.
+See Docker's [custom profile instructions](https://docs.docker.com/engine/security/apparmor/).
+
+Use the explicit Colima Docker endpoint and client configuration documented in
+the main README, then:
+
+```sh
+docker compose -f compose.yaml -f compose.colima.yaml config --quiet
+docker compose -f compose.yaml -f compose.colima.yaml up -d --wait
+docker compose -f compose.yaml -f compose.colima.yaml exec -T verifier bun src/verify-sandbox.ts
+```
+
+Validated on Colima 0.10.3 / VZ arm64 / Docker Engine 29.5.2 / kernel
+6.8.0-117-generic / Codex 0.159.3 on 2026-10-02:
+
+- Native Codex sandbox command completes with source read access.
+- Inner source and state writes fail with `EROFS`; network fails with `EPERM`.
+- All five outer capability masks remain zero; `NoNewPrivs` remains 1.
+- The dedicated profile and `docker-default` are both in enforce mode;
+  `kernel.apparmor_restrict_unprivileged_userns` remains 1.
+- The merged Compose configuration retains seccomp, read-only root/source,
+  non-root user and capability removal.
+- A full Colima stop/start automatically reloads the profile in enforce mode;
+  after starting the container, the same sandbox checks pass again.
+
+The sandbox checks above do not require authentication or call a model. After
+logging in to the Colima volume, a live model task also read the fixture and ran
+Bun successfully (both native tool exit codes were 0). Container recreation
+preserved authentication and the same native thread; a follow-up task recalled
+the prior identifier and results. See the main README for task identifiers.
+
+Mount flags can change with
+kernel/runtime versions: inspect AppArmor audit records and rerun the sandbox
+verification rather than switching to `privileged` or an unconfined profile.
+
+To stop, use both Compose files with `down` (without `-v`) to preserve the volume.
+To uninstall this policy after its containers have stopped, run
+`colima -p cheshi ssh -- sudo apparmor_parser -R /etc/apparmor.d/cheshi-codex-bwrap`,
+then remove only `/etc/apparmor.d/cheshi-codex-bwrap` inside that VM. Using the
+base Compose alone restores Docker's default policy and its original bwrap
+limitation on this engine.

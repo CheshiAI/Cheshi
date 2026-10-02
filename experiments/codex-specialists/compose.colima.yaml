@@ -1,0 +1,6 @@
+# Load security/cheshi-codex-bwrap.apparmor into the Colima VM first.
+# Compose merges this entry with the base seccomp and no-new-privileges options.
+services:
+  verifier:
+    security_opt:
+      - apparmor=cheshi-codex-bwrap

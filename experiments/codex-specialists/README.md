@@ -1,6 +1,6 @@
 # Codex 전문 에이전트 Docker 실험
 
-OrbStack에서 검증 전문 에이전트 한 개를 실행하는 독립 실험이다.
+Docker 엔진에서 검증 전문 에이전트 한 개를 실행하는 독립 실험이다.
 Cheshi 운영 코드나 UI와는 아직 연결하지 않는다. Codex 0.159.3의
 App Server를 표준 입출력으로 제어하며, Bun 1.3.14로 HTTP 작업 API를 제공한다.
 
@@ -26,6 +26,32 @@ curl --fail http://127.0.0.1:47831/account
 호스트 포트는 `CHESHI_SPECIALIST_PORT`로 변경할 수 있다. 기본 주소는
 `127.0.0.1:47831`이며, 브라우저 Origin 헤더가 있는 요청은 거부한다.
 인증 토큰을 사용하는 서비스가 아니므로 로컬 테스트 용도로만 사용한다.
+
+### Colima
+
+Colima의 AppArmor가 활성화된 VM에서는 기본 Compose에 전용 override를
+추가한다. 먼저 [AppArmor 설치 절차](security/README.md#colima-apparmor)를
+따라 VM에 프로필을 설치한다. 아래 명령은 이미 실행 중인 `cheshi` 프로필과
+Homebrew Docker CLI를 사용한다. Docker 기본 context를 변경하지 않는다.
+
+```sh
+export DOCKER_HOST="unix://$HOME/.colima/cheshi/docker.sock"
+export DOCKER_CONFIG="$HOME/.colima/cheshi/docker-client"
+export CHESHI_SPECIALIST_PORT=47832
+docker compose -f compose.yaml -f compose.colima.yaml up -d --build --wait
+docker compose -f compose.yaml -f compose.colima.yaml exec -T verifier bun src/verify-sandbox.ts
+curl --fail http://127.0.0.1:47832/health
+```
+
+`docker-client/config.json`에는 Homebrew 플러그인 경로
+`{"cliPluginsExtraDirs":["/opt/homebrew/lib/docker/cli-plugins"]}`를 설정한다.
+`brew install docker docker-compose docker-buildx`로 설치한 플러그인을 사용한다.
+기존 설정이나 자격 증명을 덮어쓰지 말고 전용 클라이언트 디렉터리를 사용한다.
+이 환경에서 로그인·재생성·종료할 때에도 두 `-f` 옵션을 함께 사용한다.
+
+엔진을 바꾸면 named volume도 별개다. Colima 전용 볼륨에서는 처음 한 번
+로그인하고, 이후 같은 볼륨을 유지하면 인증과 대화 기록을 재사용한다.
+로그아웃·인증 만료/철회·볼륨 삭제 시에는 재인증이 필요할 수 있다.
 
 ## 작업 요청과 확인
 
@@ -95,8 +121,10 @@ Codex 작업은 읽기 전용이고 명령의 네트워크 접근은 금지한�
 네임스페이스 플래그로 제한한다. 컨테이너 capability를 추가하지 않았으며,
 Codex 내부의 읽기 전용 샌드박스와 네트워크 차단도 유지한다.
 
-검증 범위는 OrbStack의 Docker 29.4.0 arm64와 Codex 0.159.3이다. 다른
-호스트나 버전에서는 아래 검사로 동작과 차단 경계를 다시 확인해야 한다.
+실제 모델 작업까지 검증한 환경은 OrbStack의 Docker 29.4.0 arm64와
+Colima의 Docker 29.5.2 arm64이며, Codex 버전은 0.159.3이다. Colima에서는
+전용 AppArmor 프로필을 함께 사용한다. 다른 호스트나 버전에서는 아래 검사로
+동작과 차단 경계를 다시 확인해야 한다.
 캐시나 임시 파일 쓰기를 요구하는 프로젝트 테스트는 읽기 전용 정책에
 맞는 별도 작업 경로를 설계해야 한다.
 
@@ -124,6 +152,13 @@ Codex 내부의 읽기 전용 샌드박스와 네트워크 차단도 유지한�
 네이티브 도구 기록에서 소스 읽기와 Bun 실행의 종료 코드 0을 확인했다.
 실행 출력은 `(0,0): NaN`, `(1,10): 0.1111111111111111`, `(10,10): Infinity`다.
 이 결과는 의도적으로 잘못 작성한 fixture를 실행한 증거이며, 함수는 수정하지 않았다.
+
+2026-10-02 Colima에서도 `colima-apparmor-review-20261002` 작업으로
+파일 읽기와 Bun 실행을 확인했다. 네이티브 도구 기록에서 두 명령의 종료 코드
+0과 위의 동일한 출력을 확인했다. 컨테이너를 강제 재생성한 후에도 ChatGPT
+인증과 기존 작업이 유지됐으며, `colima-resume-review-20261002` 후속 작업이
+같은 대화 ID를 사용해 이전 식별자와 세 실행 결과를 정확히 회상했다.
+이는 해당 대화의 복원 검증이며 장기 기억의 일반적인 정확도 평가는 아니다.
 
 저장소 루트의 설치된 Bun/TypeScript 도구로 검사한다.
 
