@@ -1,8 +1,56 @@
 # Codex 전문 에이전트 Docker 실험
 
-Docker 엔진에서 검증 전문 에이전트 한 개를 실행하는 독립 실험이다.
-Cheshi 운영 코드나 UI와는 아직 연결하지 않는다. Codex 0.159.3의
-App Server를 표준 입출력으로 제어하며, Bun 1.3.14로 HTTP 작업 API를 제공한다.
+Docker 엔진에서 전문 에이전트를 실행하는 워커다. 독립 Compose 실험과
+Cheshi의 프로젝트별 등록 에이전트가 같은 워커 소스를 사용한다. Codex
+0.159.3의 App Server를 표준 입출력으로 제어하며, Bun 1.3.14로 HTTP 작업
+API를 제공한다. 아래 Compose 명령은 독립 검증 에이전트 실험용이다.
+
+## Cheshi 에이전트 간 협업: 첫 단계
+
+Cheshi에서 같은 프로젝트와 Docker 엔진에 배정한 에이전트들을 각각
+`Start agent`로 시작하면 중앙 전달 서비스에 등록된다. 기존 워커도 새
+프로토콜을 적용하려면 다시 `Start agent`해야 한다. 중앙 서비스는 Cheshi가
+실행되는 동안 메시지를 전달하며, 상대 컨테이너를 자동으로 시작하지 않는다.
+
+모델에는 `list_agents`, `ask_agent`, `reply_agent`, `collaboration_status`를
+제공한다. 모델이 상대와 질문을 선택하고, `ask_agent`는 로컬 저장 직후
+반환하므로 답변을 기다리기 전에 독립 작업을 계속할 수 있다. 모델이 턴을
+끝내면 미해결 질문이 있는 작업은 `waiting`이 된다. 실행 슬롯을 반환하므로
+다른 질문을 처리할 수 있고, 답변이 도착하면 같은 작업과 네이티브 대화를
+재개한다. 답변 대기 중에는 모델을 반복 호출하지 않는다.
+
+각 새 사용자 작업은 별도 네이티브 대화를 사용한다. 질문에 답하는 상담도
+별도 대화를 사용하므로 원래 작업을 덮어쓰지 않는다. 이전 작업 기록은
+볼륨에 보존하고 마지막 성공 요약을 새 작업에 전달한다. 다른 과거 대화의
+전체 내용을 자동으로 검색하는 Jev 연동은 아직 추가하지 않았다.
+
+중앙 기록은 런타임 디렉터리의 `collaboration.json`, 워커의 받은 질문·발신
+메시지·수신 확인·대기 상태는 `/agent/state/agent.json`에 저장한다. 저장을
+완료한 뒤 수신을 확인하고 동일 ID의 재전달은 중복 처리하지 않는다. 워커의
+named volume과 중앙 기록을 유지하면 컨테이너를 재생성해도 대기 중인 질문과
+답변 재개가 이어진다. 실행 도중 중단된 작업은 기존처럼 `unknown`으로
+격리하고 자동 재실행하지 않는다.
+
+첫 단계의 상담은 읽기 전용이며 명령 실행과 재위임을 허용하지 않는다.
+원래 작업의 파일·명령 권한은 기존 설정을 따른다. 작업당 질문은 최대 16개다.
+작업 위임, 검토 요청, 목표 완료 기준 검사, Jev를 이용한 판단, 질문 만료와
+`unknown` 복구는 후속 범위다. 상대가 중단되어 있으면 질문을 보관하고,
+사용자는 대기 중인 원래 작업을 취소할 수 있다. 취소 뒤 늦게 도착한 답변은
+보관하되 해당 작업을 자동 재개하지 않는다.
+
+검증 명령은 저장소 루트에서 실행한다.
+
+```sh
+bun test desktop/test/agent-orchestration.test.ts experiments/codex-specialists/src/collaboration.test.ts
+bun test desktop/test/agent-orchestration-process.test.ts
+CHESHI_ORCHESTRATION_DOCKER_CONTEXT=colima-cheshi bun test desktop/test/agent-orchestration-docker.test.ts
+```
+
+Docker 검증은 로컬 `cheshi-specialist:1` 이미지를 기반으로 임시 이미지,
+컨테이너 2개, 전용 볼륨을 만들고 정리한다. 실제 워커·HTTP·표준 입출력·
+컨테이너 재생성을 사용하며, 모델 응답만 fixture로 대체한다. 기존 프로젝트,
+에이전트 볼륨, 계정 인증을 사용하지 않는다. 실제 모델이 자율적으로 적절한
+상대를 선택하는 품질이나 Jev 기억 조회까지 검증한 테스트는 아니다.
 
 ## 실행
 

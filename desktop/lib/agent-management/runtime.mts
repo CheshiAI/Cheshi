@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { mkdir, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SpecialistAgent } from '../../shared/agent-registry.ts';
@@ -11,6 +12,8 @@ import { parseDockerAgent, runDocker, type DockerCommand } from './docker.mts';
 import { assertAgentModelSelection, type AgentModel } from '../../shared/agent-models.ts';
 import { workerOperations } from './operations.mts';
 import { resolveAgentInstructions } from './instruction-files.mts';
+import { createAgentOrchestration, type exchangeWorker } from '../agent-orchestration/service.mts';
+import { bindingFor } from '../agent-orchestration/mailbox.mts';
 
 export interface RuntimeAccount { home: string; models: AgentModel[]; }
 interface RuntimeOptions {
@@ -18,12 +21,21 @@ interface RuntimeOptions {
   registry: ReturnType<typeof createAgentRegistry>; management: AgentManagementApi;
   account(id: string): Promise<RuntimeAccount>;
   run?: DockerCommand;
+  collaborationExchange?: typeof exchangeWorker;
 }
 const image = 'cheshi-specialist:1';
 const marker = 'ai.cheshi.worker';
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const installAuth = "const fs=require('node:fs');const v=JSON.parse(await Bun.stdin.text());fs.mkdirSync('/agent/codex',{recursive:true});fs.writeFileSync('/agent/codex/auth.json',v.auth,{mode:0o600});if(v.configuration){fs.writeFileSync('/agent/runtime.json.tmp',JSON.stringify(v.configuration),{mode:0o600});fs.renameSync('/agent/runtime.json.tmp','/agent/runtime.json');}";
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+function projectAssignment(agent: SpecialistAgent, workspace: string) {
+  return agent.assignments.find(assignment => {
+    if (assignment.workspaceRoot === workspace) return true;
+    try { return realpathSync(assignment.workspaceRoot) === workspace; }
+    catch { return false; }
+  });
+}
 
 function serializeRuntimeAuth(value: unknown): string {
   const raw = agentRecord(value), tokens = agentRecord(raw.tokens);
@@ -50,6 +62,31 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   const run = options.run ?? runDocker;
   const pending = new Set<string>();
   const builds = new Map<string, Promise<void>>();
+  const orchestration = createAgentOrchestration({ filename: join(options.directory, 'collaboration.json'),
+    exchange: options.collaborationExchange,
+    peer: binding => {
+      const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId && a.accountId === binding.accountId
+        && projectAssignment(a, binding.workspace));
+      return agent ? { id: agent.id, name: agent.name, role: agent.role } : null;
+    },
+    connect: async binding => {
+      const key = `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`;
+      const prefix = await local(binding.engineId);
+      const worker = await find(prefix, key);
+      if (!worker || worker.state !== 'running' || !worker.endpoint) return null;
+      const saved = agentRecord(JSON.parse(await readFile(join(options.directory, digest(binding.engineId), key, 'runtime.json'), 'utf8')));
+      if (saved.accountId !== binding.accountId || saved.profileId !== binding.agentId || saved.revision !== worker.fingerprint
+        || saved.collaborationProtocol !== 1 || typeof saved.token !== 'string' || !/^[a-f0-9]{64}$/.test(saved.token)) {
+        throw new Error('Start the agent to reconnect collaboration with its current settings.');
+      }
+      const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId);
+      const assignment = agent && projectAssignment(agent, binding.workspace);
+      if (!agent || !assignment || saved.settingsFingerprint !== settingsDigest(agent, binding.workspace, assignment)) {
+        throw new Error('Settings changed. Start the agent to resume collaboration.');
+      }
+      return { endpoint: worker.endpoint, token: saved.token };
+    },
+  });
   async function local(engineId: string) {
     if (!engineId.startsWith('docker:')) throw new Error('This execution engine cannot create specialist workers.');
     const contexts: unknown = JSON.parse(await run(['context', 'inspect', engineId.slice(7)]));
@@ -130,8 +167,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     try {
       const directory = join(options.directory, digest(request.engineId), key);
       const configPath = join(directory, 'runtime.json');
-      const settingsFingerprint = digest(JSON.stringify({ agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
-        ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
+      const settingsFingerprint = settingsDigest(agent, workspace, assignment);
       const instructions = request.action === 'start' ? await resolveAgentInstructions(agent, assignment) : null;
       const hasFiles = Boolean(agent.instructionFiles?.length || assignment.instructionFiles?.length);
       const fingerprint = hasFiles && instructions !== null ? digest(`${settingsFingerprint}\n${instructions}`) : settingsFingerprint;
@@ -146,6 +182,8 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       if (request.action === 'status') {
         const details = worker ? await options.management.details(request.engineId, worker.id) : null;
         if (details && settingsChanged) details.error = 'Settings changed. Start the agent to apply them.';
+        const collaborationError = orchestration.error(bindingFor(workspace, request.engineId, agent.id, agent.accountId ?? '').id);
+        if (details && collaborationError && !details.error) details.error = collaborationError;
         return { details };
       }
       if (request.action === 'cancel') {
@@ -192,7 +230,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint,
-            ...profileConfiguration(agent), profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+            ...profileConfiguration(agent), collaborationProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [workspace];
@@ -229,7 +267,10 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
             if (!bootstrapPending) await run([...prefix, 'container', 'restart', '--time', '15', worker.id]);
           }
         }
-        return { details: await waitReady(request.engineId, worker.id) };
+        const details = await waitReady(request.engineId, worker.id);
+        orchestration.register(bindingFor(workspace, request.engineId, agent.id, agent.accountId));
+        await orchestration.tick();
+        return { details };
       }
       if (!worker || worker.state !== 'running' || !worker.endpoint) throw new Error('Start this agent first.');
       if (settingsChanged) throw new Error('Settings changed. Start the agent to apply them.');
@@ -241,9 +282,15 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     } finally { if (request.action !== 'status') pending.delete(key); }
   }
   return {
+    start: orchestration.start,
+    dispose: orchestration.dispose,
     request: (workspaceRoot: string, input: AgentRuntimeRequest) => input.action === 'status'
       ? request(workspaceRoot, input) : workerOperations.run(() => request(workspaceRoot, input)),
   };
+}
+function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number]) {
+  return digest(JSON.stringify({ collaborationProtocol: 1, agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
+    ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
 }
 function profileConfiguration(agent: SpecialistAgent) {
   return { role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,

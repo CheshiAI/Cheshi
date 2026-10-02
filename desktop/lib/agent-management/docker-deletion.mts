@@ -42,7 +42,7 @@ export function createDockerDeletion(run: DockerCommand = runDocker, read: ReadW
       const health = agentRecord(await read(worker.endpoint, '/health'));
       const tasks = parseAgentTasks(agentRecord(await read(worker.endpoint, '/activity')).tasks);
       if (!agentBoolean(health.ready) || agentBoolean(health.busy)
-        || tasks.some(task => ['accepted', 'running', 'unknown'].includes(task.status))) {
+        || tasks.some(task => ['accepted', 'running', 'waiting', 'unknown'].includes(task.status))) {
         throw new Error('The worker has an active or unconfirmed task. Resolve it before deleting.');
       }
     } else if (!['created', 'exited', 'dead'].includes(worker.state)) throw new Error('The worker is changing state. Stop it before deleting.');

@@ -90,7 +90,7 @@ export function parseAgentTasks(value: unknown): AgentTask[] {
   return items(value, 10_000).map(raw => {
     const t = agentRecord(raw);
     const status = agentText(t.status, 30);
-    if (!['accepted', 'running', 'completed', 'interrupted', 'failed', 'unknown'].includes(status)) throw new TypeError('Invalid task status.');
+    if (!['accepted', 'running', 'waiting', 'completed', 'interrupted', 'failed', 'unknown'].includes(status)) throw new TypeError('Invalid task status.');
     return { id: parseAgentId(t.id), prompt: agentText(t.prompt, 20_000), status,
       createdAt: agentText(t.createdAt, 100), output: agentText(t.output, 500_000), error: agentNullableText(t.error, 20_000) };
   });

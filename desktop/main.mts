@@ -100,6 +100,8 @@ const specialistRuntime = createSpecialistRuntime({
     finally { await profiles.release(); }
   },
 });
+void app.whenReady().then(() => specialistRuntime.start());
+app.on('will-quit', () => { void specialistRuntime.dispose(); });
 const apiSettings = createSettingsService({
   directory: path.join(app.getPath('userData'), 'api-keys'),
   settingsPath: path.join(app.getPath('userData'), 'settings.json'),

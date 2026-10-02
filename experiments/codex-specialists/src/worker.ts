@@ -6,6 +6,7 @@ import { SpecialistAgent, TaskConflict } from './agent.ts';
 import { AppServerClient } from './app-server-client.ts';
 import { record, textValue } from './protocol.ts';
 import { AgentStore, validateTaskId } from './store.ts';
+import { WorkerCollaboration } from './collaboration.ts';
 
 const workspace = process.env.AGENT_WORKSPACE ?? '/workspace';
 const store = new AgentStore(process.env.AGENT_DATA_DIRECTORY ?? '/agent');
@@ -21,7 +22,11 @@ const client = new AppServerClient();
 await client.initialize();
 let transportError: string | null = null;
 client.onFailure(error => { transportError = error.message; });
-const agent = new SpecialistAgent({ client, store, workspace, profile, configuration });
+const collaboration = configuration ? new WorkerCollaboration(store, configuration.profileId) : undefined;
+const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration });
+const pump = setInterval(() => {
+  try { agent.pump(); } catch { transportError = 'Could not persist collaboration state.'; }
+}, 1000);
 const port = Number(process.env.AGENT_PORT ?? 8787);
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('Invalid agent port.');
 
@@ -37,6 +42,12 @@ const server = Bun.serve({
     }
     try {
       const error = transportError ?? agent.error;
+      if (path === '/collaboration/exchange' && request.method === 'POST' && collaboration) {
+        if (!request.headers.get('content-type')?.startsWith('application/json')) throw new TypeError('Use application/json.');
+        const body = await request.text();
+        if (body.length > 2 * 1024 * 1024) throw new TypeError('Request is too large.');
+        return Response.json(collaboration.exchange(JSON.parse(body)));
+      }
       if (path === '/health' && request.method === 'GET') {
         return Response.json({ ready: error === null, role: configuration?.role ?? 'verifier', busy: agent.busy,
           threadId: store.snapshot().threadId, deniedRequests: client.deniedRequests, error },
@@ -83,6 +94,7 @@ let stopping = false;
 const shutdown = async () => {
   if (stopping) return;
   stopping = true;
+  clearInterval(pump);
   server.stop(true);
   const tasks = store.snapshot().tasks.filter(task => ['accepted', 'running'].includes(task.status));
   await Promise.allSettled(tasks.map(task => agent.stop(task.id)));

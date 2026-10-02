@@ -482,6 +482,32 @@ test('registered runtime starts explicitly and shows acknowledged tasks without 
   } finally { registry.dispose(); }
 });
 
+test('waiting collaboration is visible and can be stopped while the worker is idle', async () => {
+  const { SpecialistRuntimePanel } = await import('../frontend/src/features/agents/SpecialistRuntimePanel');
+  const { AgentRegistryModel } = await import('../frontend/src/features/agents/agentRegistryModel');
+  const agent = specialistAgent();
+  const details = { agent: { id: 'worker', name: agent.name, image: 'worker', state: 'running' }, ready: true, busy: false,
+    authenticated: true, threadId: 'thread', error: null, logs: '',
+    tasks: [{ id: 'waiting', prompt: 'Complete login', status: 'waiting', createdAt: '2026-10-03', output: 'Waiting for policy', error: null }] };
+  const registry = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [agent] }), models: async () => [],
+    save: async () => { throw Error('unused'); }, onDidChange: () => () => {}, runtime: async request => {
+      if (request.action === 'cancel') {
+        expect(request.taskId).toBe('waiting'); details.tasks[0]!.status = 'interrupted';
+      }
+      return { details: structuredClone(details) };
+    } });
+  try {
+    await withDOM(async ui => {
+      await ui.render(<SpecialistRuntimePanel agent={agent} model={registry} engineId="docker:local"
+        engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} onSettings={() => {}} />);
+      expect(document.body.textContent).toContain('Waiting for reply');
+      await ui.click('Stop task');
+      expect(document.body.textContent).toContain('interrupted');
+      expect(document.querySelector('[aria-label="Stop task"]')).toBeNull();
+    });
+  } finally { registry.dispose(); }
+});
+
 test('settings back returns to the default agent screen while its worker task continues', async () => {
   const agent = specialistAgent();
   const actions: string[] = [];

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync as createSymbolicLink, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createSpecialistRuntime, readRuntimeAuth } from '../lib/agent-management/runtime.mts';
@@ -17,10 +17,12 @@ async function fails(operation: Promise<unknown>, message: string) {
   try { await operation; } catch (reason) { error = reason; }
   expect(error).toBeInstanceOf(Error); expect((error as Error).message).toContain(message);
 }
-function fixture() {
+function fixture(linkedWorkspace = false) {
   const directory = mkdtempSync(join(tmpdir(), 'cheshi-runtime-')); directories.push(directory);
-  const workspace = join(directory, 'project'), home = join(directory, 'account');
-  mkdirSync(workspace); mkdirSync(home);
+  const project = join(directory, 'project'), home = join(directory, 'account');
+  mkdirSync(project); mkdirSync(home);
+  const workspace = linkedWorkspace ? join(directory, 'project-link') : project;
+  if (linkedWorkspace) createSymbolicLink(project, workspace);
   writeFileSync(join(home, 'auth.json'), JSON.stringify({ tokens: { access_token: 'fixture-access', refresh_token: 'fixture-refresh', id_token: 'fixture-id', account_id: 'fixture-account' }, secret_extra: 'exclude' }));
   const registry = createAgentRegistry(join(directory, 'registry.json'));
   const input = specialistInput(); input.profile.accountId = 'default';
@@ -56,11 +58,13 @@ function fixture() {
   };
   const details = (): AgentDetails => ({ agent: { id, name: 'worker', image: 'worker', state: 'running' },
     ready: seeded, busy, authenticated: true, threadId: null, error: null, logs: '', tasks: [] });
+  const exchanges: unknown[] = [];
   const runtime = createSpecialistRuntime({ directory: join(directory, 'runtime'), buildContext: '/build', registry, run,
+    collaborationExchange: async (_connection, body) => { exchanges.push(body); return { protocol: 1, received: [], outgoing: [] }; },
     account: async () => ({ home, models: [] }), management: { details: async () => details(),
       engines: async () => ({ engines: [], error: null }), snapshot: async engineId => ({ engineId, online: true, error: null, agents: [] }),
       control: async () => { throw new Error('unused'); } } });
-  return { runtime, registry, workspace, home, runtimePath, agentId, calls, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
+  return { runtime, registry, workspace, home, runtimePath, agentId, calls, exchanges, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
     request: () => ({ agentId, engineId: 'docker:colima-cheshi', action: 'start' as const }) };
 }
 test('starts one project worker with isolated storage, readonly mount, private auth input and persisted settings', async () => {
@@ -85,6 +89,15 @@ test('rejects unassigned profiles and remote engines before provisioning', async
   f.setRemote(); await fails(f.runtime.request(f.workspace, f.request()), 'Only local');
   expect(f.calls.some(call => call.args.includes('create'))).toBe(false);
   await fails(f.runtime.request(f.home, f.request()), 'Assign this agent');
+});
+
+test('collaboration resolves a project registered through a symbolic link', async () => {
+  const f = fixture(true);
+  await f.runtime.request(f.workspace, f.request());
+  expect(f.exchanges).toHaveLength(1);
+  expect(f.exchanges[0]).toMatchObject({ peers: [{ id: f.agentId }] });
+  expect((await f.runtime.request(f.workspace, { ...f.request(), action: 'status' })).details?.error).toBeNull();
+  await f.runtime.dispose();
 });
 test('changed settings cannot replace a busy worker or accidentally submit under old permissions', async () => {
   const f = fixture(); await f.runtime.request(f.workspace, f.request());

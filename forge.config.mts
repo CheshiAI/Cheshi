@@ -49,6 +49,10 @@ function shouldIgnore(packagePath: string): boolean {
     const agentFiles = new Set(['engine.mts', 'docker.mts', 'service.mts', 'ipc.mts', 'terminal.mts', 'registry.mts', 'registry-ipc.mts', 'runtime.mts', 'instruction-files.mts', 'operations.mts', 'docker-deletion.mts', 'deletion.mts']);
     return segments.length > 3 && (segments.length !== 4 || !agentFiles.has(segments[3] ?? ''));
   }
+  if (grandchildEntry === 'agent-orchestration') {
+    const files = new Set(['mailbox.mts', 'service.mts']);
+    return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
+  }
   if (grandchildEntry === 'scheduler') {
     const schedulerFiles = new Set(['store.mts', 'engine.mts', 'codex-runner.mts', 'application.mts', 'workspace.mts', 'calendar.mts', 'subscriptions.mts', 'calendar-tasks.mts', 'background.mts', 'desktop.mts', 'notifications.mts', 'migration.mts']);
     return segments.length > 3 && (segments.length !== 4 || !schedulerFiles.has(segments[3] ?? ''));

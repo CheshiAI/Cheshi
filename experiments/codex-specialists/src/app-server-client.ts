@@ -6,6 +6,7 @@ export interface RpcClient {
   request(method: string, params: JsonRecord): Promise<JsonRecord>;
   subscribe(listener: (event: Notification) => void): () => void;
   onFailure(listener: (error: Error) => void): () => void;
+  handleTools?(handler: (params: JsonRecord) => Promise<JsonRecord>): void;
 }
 
 export class AppServerClient implements RpcClient {
@@ -16,6 +17,8 @@ export class AppServerClient implements RpcClient {
   private readonly notifications = new Set<(event: Notification) => void>();
   private readonly failures = new Set<(error: Error) => void>();
   deniedRequests = 0;
+  private toolHandler: ((params: JsonRecord) => Promise<JsonRecord>) | undefined;
+  handleTools(handler: (params: JsonRecord) => Promise<JsonRecord>): void { this.toolHandler = handler; }
 
   constructor(command = 'codex') {
     this.child = spawn(command, ['app-server', '--listen', 'stdio://', '-c', 'cli_auth_credentials_store="file"'], {
@@ -36,7 +39,7 @@ export class AppServerClient implements RpcClient {
   async initialize(): Promise<void> {
     await this.request('initialize', {
       clientInfo: { name: 'cheshi_specialist_experiment', title: 'Cheshi specialist experiment', version: '0.1.0' },
-      capabilities: { experimentalApi: false },
+      capabilities: { experimentalApi: true },
     });
     this.send({ method: 'initialized' });
   }
@@ -73,6 +76,10 @@ export class AppServerClient implements RpcClient {
 
   private receive(message: JsonRecord): void {
     if (typeof message.method === 'string' && message.id !== undefined) {
+      if (message.method === 'item/tool/call' && this.toolHandler) {
+        void this.answerTool(message);
+        return;
+      }
       this.deniedRequests++;
       const result = deniedServerRequest(message.method);
       this.send(result === null
@@ -94,6 +101,17 @@ export class AppServerClient implements RpcClient {
       const event = { method: message.method, params: record(message.params ?? {}) };
       for (const listener of this.notifications) listener(event);
     }
+  }
+
+  private async answerTool(message: JsonRecord): Promise<void> {
+    let result: JsonRecord;
+    try {
+      const output = await this.toolHandler!(record(message.params));
+      result = { success: true, contentItems: [{ type: 'inputText', text: JSON.stringify(output) }] };
+    } catch (error) {
+      result = { success: false, contentItems: [{ type: 'inputText', text: error instanceof Error ? error.message : 'Tool failed.' }] };
+    }
+    if (!this.failure) this.send({ id: message.id, result });
   }
 
   private fail(error: Error): void {

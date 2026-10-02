@@ -6,6 +6,7 @@ export const SPECIALIST_WORKER_FILES = [
   'Dockerfile', 'package.json', 'tsconfig.json', 'profiles/verifier/AGENTS.md',
   'src/worker.ts', 'src/agent.ts', 'src/app-server-client.ts', 'src/protocol.ts',
   'src/store.ts', 'src/turn.ts', 'src/runtime-config.ts',
+  'src/collaboration-contract.ts', 'src/collaboration-tools.ts', 'src/collaboration.ts',
   'security/codex-bwrap.json', 'security/cheshi-codex-bwrap.apparmor', 'security/vendor/LICENSE',
 ] as const;
 export async function prepareSpecialistWorker(source: string, target: string): Promise<void> {
