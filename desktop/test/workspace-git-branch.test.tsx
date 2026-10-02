@@ -211,9 +211,15 @@ test('renders branch updates with a full tooltip and cleans up its subscription'
   } });
   const component = exports.WorkspaceGitBranch;
   assert.ok(typeof component === 'function');
+  type RenderedChild = { props: Record<string, unknown> } | false;
   const render = () => {
     cursor = 0;
-    return component() as { props: { title: string; 'aria-busy': boolean; children: { props: Record<string, unknown> }[] } };
+    return component() as { props: { title: string; 'aria-busy': boolean; children: RenderedChild[] } };
+  };
+  const childProps = (tree: ReturnType<typeof render>, index: number) => {
+    const child = tree.props.children[index];
+    assert.ok(typeof child === 'object' && child !== null, 'Expected a rendered child element.');
+    return child.props;
   };
   expect(render().props['aria-busy']).toBe(true);
   const cleanup = effect?.();
@@ -222,14 +228,14 @@ test('renders branch updates with a full tooltip and cleans up its subscription'
   const tree = render();
   expect(tree.props.title).toBe('Current Git branch: feature/a-very-long-branch-name');
   expect(tree.props['aria-busy']).toBe(false);
-  expect(tree.props.children[1]!.props.children).toBe('feature/a-very-long-branch-name');
-  expect(tree.props.children[1]!.props['aria-live']).toBe('polite');
+  expect(childProps(tree, 1).children).toBe('feature/a-very-long-branch-name');
+  expect(childProps(tree, 1)['aria-live']).toBe('polite');
   receive({ ...branch('main'), changes: [fileChange('one.ts'), fileChange('removed.ts', 'D', ' ')] });
   const changedTree = render();
-  expect(changedTree.props.children[2]!.props['aria-label']).toBe('1 added or modified files, 1 deleted files');
+  expect(childProps(changedTree, 2)['aria-label']).toBe('1 added or modified files, 1 deleted files');
   expect(changedTree.props.title).toContain('1 added or modified files, 1 deleted files');
   receive(branch('main'));
-  expect(render().props.children[1]!.props.children).toBe('main');
+  expect(childProps(render(), 1).children).toBe('main');
   expect(render().props.children[2]).toBe(false);
   assert.ok(cleanup);
   cleanup();
