@@ -13,6 +13,8 @@ import { AgentTaskResults } from './AgentTaskResults';
 import { SpecialistAgentForm } from './SpecialistAgentForm';
 import type { AgentRegistryModel, AgentRegistryState } from './agentRegistryModel';
 import type { CodexAccountsApi } from '../../../../shared/codex-accounts';
+import type { ManagedAgent } from '../../../../shared/agent-management';
+import { workerDisplayName } from '../../shared/agent-management/workerDisplayName';
 
 const emptyRegistry: AgentRegistryState = { data: null, selection: null, loading: false, saving: false, error: null };
 const emptySnapshot = () => emptyRegistry;
@@ -28,6 +30,7 @@ export function AgentsView({ model, state, registry, accountsApi }: AgentScreenP
   const listScrollbar = useAutoHideScrollbars<HTMLElement>();
   const { snapshot, details, changing, loading } = state;
   const agent = snapshot?.agents.find(item => item.id === state.agentId);
+  const workerName = (worker: ManagedAgent) => workerDisplayName(worker, registered.data?.agents);
   return <AgentManagementFrame title="Agents" icon={<Bot aria-hidden="true" />} bodyLayout="fill" actions={
     <TooltipButton variant="ghost" size="icon" aria-label="Refresh" title="Refresh agents"
       disabled={registered.saving || (registry ? registered.loading : changing || loading || !state.engineId)}
@@ -51,10 +54,10 @@ export function AgentsView({ model, state, registry, accountsApi }: AgentScreenP
         {registry && Boolean(snapshot?.agents.length) && <h3 className={`${styles.sectionTitle} ${viewStyles.workerHeading}`}>CONNECTED WORKER CONTAINERS</h3>}
         <div className={viewStyles.notice}><AgentManagementNotice state={state} /></div>
         {snapshot?.agents.map(worker => <TooltipButton key={worker.id} variant="ghost"
-          className={viewStyles.agent} aria-label={worker.name} title={worker.name}
+          className={viewStyles.agent} aria-label={workerName(worker)} title={worker.name}
           aria-current={!editing && worker.id === state.agentId ? 'page' : undefined} disabled={changing || registered.saving}
           onClick={() => { registry?.select(null); void model.select(worker.id); }}>
-          <Bot aria-hidden="true" /><span className={viewStyles.agentName}>{worker.name}</span>
+          <Bot aria-hidden="true" /><span className={viewStyles.agentName}>{workerName(worker)}</span>
         </TooltipButton>)}
       </nav>
     </LiquidGlassPanel>
@@ -62,7 +65,7 @@ export function AgentsView({ model, state, registry, accountsApi }: AgentScreenP
       {editing && registry && profile && runtimeId === profile.id ? <SpecialistRuntimePanel key={profile.id} agent={profile} model={registry}
         engines={state.catalog.engines} engineId={state.engineId} onSettings={() => setRuntimeId(null)} /> : editing && registry ? <SpecialistAgentForm key={registered.selection} agent={profile} model={registry} state={registered} accountsApi={accountsApi} onOpen={profile ? () => setRuntimeId(profile.id) : undefined} /> : agent ? <>
         <div className={viewStyles.detailHeader} aria-label="Agent status">
-          <TooltipTarget content={agent.name}><h2 className={viewStyles.name}>{agent.name}</h2></TooltipTarget>
+          <TooltipTarget content={agent.name}><h2 className={viewStyles.name}>{workerName(agent)}</h2></TooltipTarget>
           <span className={styles.description}>{details?.busy ? 'Working' : details?.ready ? 'Ready' : 'Unavailable'}</span>
           <div className={`${viewStyles.sessionMeta} ${styles.description}`}>
             <span className={viewStyles.login}>{details?.authenticated === true ? 'Signed' : details?.authenticated === false ? 'Not signed in' : 'Login unavailable'}</span>

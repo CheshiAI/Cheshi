@@ -6,7 +6,7 @@ export const AGENT_ACTIONS = ['start', 'stop', 'restart'] as const;
 export type AgentAction = typeof AGENT_ACTIONS[number];
 export interface AgentEngineInfo { id: string; name: string; supported: boolean; reason: string | null }
 export interface AgentCatalog { engines: AgentEngineInfo[]; error: string | null }
-export interface ManagedAgent { id: string; name: string; state: string; image: string }
+export interface ManagedAgent { id: string; name: string; state: string; image: string; profileId?: string }
 export interface AgentSnapshot { engineId: string; online: boolean; error: string | null; agents: ManagedAgent[] }
 export interface AgentTask {
   id: string; prompt: string; status: string; createdAt: string; output: string; error: string | null;
@@ -58,7 +58,8 @@ export function parseAgentAction(value: unknown): AgentAction {
 }
 export function parseManagedAgent(value: unknown): ManagedAgent {
   const v = agentRecord(value);
-  return { id: parseAgentId(v.id), name: agentText(v.name), state: agentText(v.state, 100), image: agentText(v.image) };
+  return { id: parseAgentId(v.id), name: agentText(v.name), state: agentText(v.state, 100), image: agentText(v.image),
+    ...(v.profileId === undefined ? {} : { profileId: parseAgentId(v.profileId) }) };
 }
 export function parseAgentCatalog(value: unknown): AgentCatalog {
   const v = agentRecord(value);

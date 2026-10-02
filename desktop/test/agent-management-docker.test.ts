@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { createDockerAgentEngine, parseDockerAgent, redactAgentLogs } from '../lib/agent-management/docker.mts';
 import type { DockerCommand } from '../lib/agent-management/docker.mts';
+import { parseManagedAgent } from '../shared/agent-management.ts';
 
 const id = 'a'.repeat(64);
 function container() {
@@ -41,6 +42,20 @@ test('adopts only the labelled verifier and discovers only loopback worker APIs'
   raw.Config.Labels['com.docker.compose.project'] = 'cheshi-codex-specialists-test';
   raw.Config.Labels['com.docker.compose.oneoff'] = 'True';
   expect(() => parseDockerAgent(raw)).toThrow('not a managed');
+});
+
+test('carries a specialist label through the public contract without deriving identity from its name', async () => {
+  const f = fixture();
+  const profileId = 'a1234567-1234-1234-1234-123456789abc';
+  f.raw().Name = `/cheshi-agent-${profileId}-project`;
+  Object.assign(f.raw().Config.Labels, { 'ai.cheshi.agent': profileId });
+  expect(parseManagedAgent(parseDockerAgent(f.raw()))).not.toHaveProperty('profileId');
+  Object.assign(f.raw().Config.Labels, { 'ai.cheshi.worker': 'specialist-v1' });
+  f.raw().Config.Labels['com.docker.compose.project'] = 'not-compose';
+  const workers = await f.engine.list('docker:colima-cheshi');
+  expect(workers).toHaveLength(1);
+  expect(parseManagedAgent(workers[0])).toMatchObject({ id, profileId, name: f.raw().Name.slice(1) });
+  expect(() => parseManagedAgent({ ...workers[0], profileId: '../invalid' })).toThrow('Invalid agent ID');
 });
 
 test('pins every engine command to its context and never deletes containers or volumes', async () => {

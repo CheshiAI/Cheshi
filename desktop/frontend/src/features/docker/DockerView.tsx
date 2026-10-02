@@ -10,8 +10,11 @@ import type { AgentScreenProps } from '../../shared/agent-management/AgentManage
 import styles from '../../shared/agent-management/agentManagement.module.css';
 import viewStyles from './DockerView.module.css';
 import { ContainerTerminal } from './ContainerTerminal';
+import { workerDisplayName } from '../../shared/agent-management/workerDisplayName';
 
-export function DockerView({ model, state }: AgentScreenProps) {
+export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentScreenProps & {
+  profiles?: readonly { id: string; name: string }[]; onRefreshProfiles?: () => void;
+}) {
   const listScrollbar = useAutoHideScrollbars<HTMLElement>();
   const logScrollbar = useAutoHideScrollbars<HTMLPreElement>();
   const [mode, setMode] = useState<'logs' | 'terminal'>('logs');
@@ -36,7 +39,7 @@ export function DockerView({ model, state }: AgentScreenProps) {
           disabled: !engine.supported, description: engine.reason ?? undefined }))}
         onChange={id => { void model.connect(id); }} />
       <TooltipButton variant="ghost" size="icon" aria-label="Refresh" title="Refresh engines"
-        disabled={changing || loading} onClick={() => { void model.discover(); }}>
+        disabled={changing || loading} onClick={() => { onRefreshProfiles?.(); void model.discover(); }}>
         <RefreshCw aria-hidden="true" />
       </TooltipButton>
     </>}>
@@ -54,10 +57,10 @@ export function DockerView({ model, state }: AgentScreenProps) {
       <nav ref={listScrollbar} className={viewStyles.containerList} aria-label="Container selection">
         <div className={viewStyles.notice}><AgentManagementNotice state={state} /></div>
         {snapshot?.agents.map(container => <TooltipButton key={container.id} variant="ghost"
-          className={viewStyles.container} aria-label={container.name} title={`${container.name} · ${container.state}`}
+          className={viewStyles.container} aria-label={workerDisplayName(container, profiles)} title={`${container.name} · ${container.state}`}
           aria-current={container.id === state.agentId ? 'page' : undefined} disabled={changing}
           onClick={() => { void model.select(container.id); }}>
-          <Box aria-hidden="true" /><span className={viewStyles.containerName}>{container.name}</span>
+          <Box aria-hidden="true" /><span className={viewStyles.containerName}>{workerDisplayName(container, profiles)}</span>
         </TooltipButton>)}
       </nav>
     </LiquidGlassPanel>
@@ -66,7 +69,7 @@ export function DockerView({ model, state }: AgentScreenProps) {
         <div className={viewStyles.logHeader} aria-label="Container status">
           <div className={viewStyles.identity}>
             <TooltipTarget content={`${agent.name}\nImage: ${agent.image}`}>
-              <h2 className={viewStyles.name}>{agent.name}</h2>
+              <h2 className={viewStyles.name}>{workerDisplayName(agent, profiles)}</h2>
             </TooltipTarget>
             <span className={styles.description}>{agent.state}</span>
           </div>

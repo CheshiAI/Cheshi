@@ -68,7 +68,8 @@ export function parseDockerAgent(value: unknown): RuntimeAgent {
     }
   }
   return { id: containerId(agentText(raw.Id)), name: agentText(raw.Name).replace(/^\//, ''),
-    image: agentText(config.Image), state: agentText(state.Status, 100), endpoint };
+    image: agentText(config.Image), state: agentText(state.Status, 100), endpoint,
+    ...(specialist ? { profileId: parseAgentId(metadata['ai.cheshi.agent']) } : {}) };
 }
 
 export function createDockerAgentEngine(run: DockerCommand = runDocker): AgentEngine {

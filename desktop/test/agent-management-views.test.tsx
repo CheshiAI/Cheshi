@@ -141,6 +141,71 @@ test('Docker and Agents separate controls and preserve engine/worker selection a
   });
 });
 
+test('worker labels follow registered names and renames while retaining container tooltips and fallbacks', async () => {
+  const profile = { ...specialistAgent(), name: 'Cheshi Development Specialist' };
+  let stored: AgentRegistrySnapshot = { workspaceRoot: '/project', agents: [profile] };
+  let publish: (snapshot: AgentRegistrySnapshot) => void = () => {};
+  const registryApi: AgentRegistryApi = {
+    list: async () => stored, models: async () => [], save: async () => { throw new Error('unused'); },
+    onDidChange: listener => { publish = listener; return () => {}; },
+  };
+  const workers = [
+    { id: 'worker', name: 'cheshi-agent-internal-project', profileId: profile.id, state: 'running', image: 'fixture' },
+    { id: 'legacy', name: `cheshi-agent-${profile.id}-legacy`, state: 'running', image: 'fixture' },
+  ];
+  const api: AgentManagementApi = {
+    engines: async () => ({ error: null, engines: [{ id: 'test:local', name: 'local', supported: true, reason: null }] }),
+    snapshot: async engineId => ({ engineId, online: true, error: null, agents: workers }),
+    details: async (_engineId, id) => ({ agent: workers.find(item => item.id === id)!, ready: true, busy: false,
+      authenticated: true, threadId: null, error: null, logs: '', tasks: [] }),
+    control: async () => { throw new Error('Display changes must not mutate containers'); },
+  };
+  await withDOM(async ({ render, click }) => {
+    const screen = (view: 'docker' | 'agents') => <AgentManagementViews api={api} registryApi={registryApi} view={view} />;
+    const containerRow = () => document.querySelector('[aria-label="Container selection"] [aria-current="page"]');
+    const containerHeader = () => document.querySelector('[aria-label="Container status"] h2');
+    await render(screen('docker'));
+    expect(containerRow()?.textContent).toBe(profile.name);
+    expect(containerRow()?.getAttribute('aria-description')).toBe(`${workers[0]!.name} · running`);
+    expect(containerHeader()?.textContent).toBe(profile.name);
+    expect(containerHeader()?.getAttribute('aria-description')).toBe(`${workers[0]!.name}\nImage: fixture`);
+    stored = { ...stored, agents: [{ ...profile, name: 'Updated from another window', revision: 2 }] };
+    await act(async () => publish(stored));
+    expect(containerRow()?.textContent).toBe('Updated from another window');
+    expect(containerHeader()?.textContent).toBe('Updated from another window');
+    stored = { ...stored, agents: [profile] };
+    await click('Refresh');
+    expect(containerRow()?.textContent).toBe(profile.name);
+    await render(screen('agents'));
+    const selected = () => document.querySelector('[aria-label="Agent selection"] [aria-current="page"]');
+    const header = () => document.querySelector('[aria-label="Agent status"] h2');
+    expect(selected()?.textContent).toBe(profile.name);
+    expect(selected()?.getAttribute('aria-description')).toBe(workers[0]!.name);
+    expect(header()?.textContent).toBe(profile.name);
+    expect(header()?.getAttribute('aria-description')).toBe(workers[0]!.name);
+    stored = { ...stored, agents: [{ ...profile, name: 'Renamed Specialist', revision: 2 }] };
+    await act(async () => publish(stored));
+    expect(selected()?.textContent).toBe('Renamed Specialist');
+    expect(header()?.textContent).toBe('Renamed Specialist');
+    expect(selected()?.getAttribute('aria-description')).toBe(workers[0]!.name);
+    await render(screen('docker'));
+    expect(containerRow()?.textContent).toBe('Renamed Specialist');
+    expect(containerHeader()?.textContent).toBe('Renamed Specialist');
+    await click(workers[1]!.name);
+    expect(containerHeader()?.textContent).toBe(workers[1]!.name);
+    await render(screen('agents'));
+    expect(header()?.textContent).toBe(workers[1]!.name);
+    stored = { ...stored, agents: [] };
+    await act(async () => publish(stored));
+    await click(workers[0]!.name);
+    expect(selected()?.textContent).toBe(workers[0]!.name);
+    expect(header()?.textContent).toBe(workers[0]!.name);
+    await render(screen('docker'));
+    expect(containerRow()?.textContent).toBe(workers[0]!.name);
+    expect(containerHeader()?.textContent).toBe(workers[0]!.name);
+  });
+});
+
 test('task list restores its position and keeps the opened result through refreshes', async () => {
   const task = (id: string, output = `output:${id}`): AgentTask => ({
     id, prompt: `Review ${id}\nAdditional context`, status: 'completed',

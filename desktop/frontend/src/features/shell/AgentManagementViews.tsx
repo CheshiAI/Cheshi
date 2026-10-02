@@ -10,6 +10,8 @@ import type { AgentRegistryApi } from '../../../../shared/agent-registry';
 import type { CodexAccountsApi } from '../../../../shared/codex-accounts';
 
 type ManagementView = 'docker' | 'agents' | null;
+const emptyRegistrySnapshot = () => null;
+const emptyRegistrySubscribe = () => () => {};
 
 /** Remains mounted in the workspace shell so navigation preserves engine/worker selection. */
 export function AgentManagementViews({ view, api = cheshiDesktop?.agentManagement, registryApi = cheshiDesktop?.agentRegistry,
@@ -40,7 +42,8 @@ function ManagementScreens({ model, view, registry, accountsApi }: {
   accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
   const state = useSyncExternalStore(model.subscribe, model.snapshot);
-  useEffect(() => { if (view === 'agents') void registry?.refresh(); }, [registry, view]);
+  const registered = useSyncExternalStore(registry?.subscribe ?? emptyRegistrySubscribe, registry?.snapshot ?? emptyRegistrySnapshot);
+  useEffect(() => { if (view) void registry?.refresh(); }, [registry, view]);
   useEffect(() => {
     if (!view) return;
     if (model.snapshot().engineId) void model.refresh();
@@ -48,7 +51,8 @@ function ManagementScreens({ model, view, registry, accountsApi }: {
     const timer = setInterval(() => { void model.refresh({ background: true }); }, 10_000);
     return () => { clearInterval(timer); };
   }, [model, view]);
-  if (view === 'docker') return <DockerView model={model} state={state} />;
+  if (view === 'docker') return <DockerView model={model} state={state} profiles={registered?.data?.agents}
+    onRefreshProfiles={() => { void registry?.refresh(); }} />;
   if (view === 'agents') return <AgentsView model={model} state={state} registry={registry} accountsApi={accountsApi} />;
   return null;
 }
