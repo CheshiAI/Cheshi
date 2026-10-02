@@ -8,6 +8,7 @@ import {
   type ChatActivityItem,
 } from '../chat';
 import { ChatWorkspace } from '../chat/ChatWorkspace';
+import { CHAT_PANE_MIN_WIDTH } from '../chat/chatWorkspaceModel';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { ChatDeleteSessionDialog } from '../chat/ChatDeleteSessionDialog';
 import { ChatHistoryOpenDialog } from '../chat/ChatHistoryOpenDialog';
@@ -338,6 +339,7 @@ export function AppShell() {
         </SlidingSidePanel>
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
           <WorkspaceEditorSplit mode={editorLayoutMode} layout={customLayout} onLayoutChange={setCustomLayout}
+            minimumPrimaryWidth={activeView === 'chat' ? CHAT_PANE_MIN_WIDTH : undefined}
             terminalPrimary={activeView === 'terminal'} disabled={updateResume.busy || workspace.accountSwitchPending}
             onOpenPane={pane => {
               if (pane === 'editor') setEditorSplitOpen(true);

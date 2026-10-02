@@ -7,6 +7,7 @@ import { resizeSplitPane, splitPaneIds, type SplitLayoutNode, type SplitPaneDire
 import { placeWorkspacePane, visibleWorkspaceLayout, workspaceDropDirection, type LayoutMode, type WorkspacePaneId } from './workspaceLayoutModel';
 import { WorkspaceLayoutContext, WorkspacePaneContext, WorkspacePaneVisibilityContext, workspacePaneDragType } from './WorkspaceLayoutControls';
 import { beginSplitPreview } from '../../shared/ui/splitPreviewState';
+import { SPLIT_PANE_MIN_SIZE, splitPaneMinimumWidth } from '../../shared/ui/splitPaneSizing';
 import styles from './WorkspaceEditorSplit.module.css';
 
 function PaneHost({ host, paneId, onMove, onDetach, dragSource }: {
@@ -72,12 +73,13 @@ function PaneHost({ host, paneId, onMove, onDetach, dragSource }: {
 
 /** Persistent portal hosts keep drafts, editor controllers and terminal sessions alive during rearrangement. */
 export function WorkspaceEditorSplit({ mode, children, editor, terminal, terminalPrimary = false,
-  layout: customLayout, onLayoutChange, onOpenPane, disabled = false }: {
+  layout: customLayout, onLayoutChange, onOpenPane, minimumPrimaryWidth, disabled = false }: {
   mode: LayoutMode;
   children: ReactNode;
   editor: ReactNode;
   terminal?: ReactNode;
   terminalPrimary?: boolean;
+  minimumPrimaryWidth?: number;
   layout?: SplitLayoutNode | null;
   onLayoutChange?: (layout: SplitLayoutNode) => void;
   onOpenPane?: (pane: WorkspacePaneId) => void;
@@ -159,9 +161,13 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, termina
   });
   const contents = { primary: children, editor, terminal };
   const shownIds = splitPaneIds(shownLayout);
+  const minimumPaneWidth = minimumPrimaryWidth && shownIds.includes('primary')
+    ? (paneId: string) => paneId === 'primary' ? minimumPrimaryWidth : SPLIT_PANE_MIN_SIZE
+    : undefined;
   return <WorkspaceLayoutContext.Provider value={onLayoutChange && !disabled ? controls : null}>
-    <div className={styles.root}>
+    <div className={styles.root} style={minimumPaneWidth ? { minWidth: splitPaneMinimumWidth(shownLayout, minimumPaneWidth) } : undefined}>
       <SplitPaneLayout layout={shownLayout} resizeLabel="Resize workspace panes"
+        minimumPaneWidth={minimumPaneWidth}
         onResizeSplit={(id, value) => {
           if (onLayoutChange) onLayoutChange(resizeSplitPane(layout, id, value));
           else setRatio(value);

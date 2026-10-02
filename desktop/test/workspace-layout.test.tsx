@@ -74,6 +74,45 @@ function Fixture({ opened }: { opened: string[] }) {
     editor={area('editor')} terminal={area('terminal')}>{area('primary')}</WorkspaceEditorSplit>;
 }
 
+test('workspace reserves the Codex minimum through nested rows and restored split ratios', async () => {
+  await withDOM(async ({ render, window }) => {
+    const changes: SplitLayoutNode[] = [];
+    const layout: SplitLayoutNode = { type: 'split', id: 'outer', axis: 'columns', ratio: .9,
+      first: { type: 'pane', paneId: 'editor' },
+      second: { type: 'split', id: 'stack', axis: 'rows', ratio: .5,
+        first: { type: 'pane', paneId: 'primary' }, second: { type: 'pane', paneId: 'terminal' } } };
+    const show = (minimumPrimaryWidth: number | undefined, current: SplitLayoutNode = layout) => render(
+      <WorkspaceEditorSplit mode="split" layout={current} minimumPrimaryWidth={minimumPrimaryWidth}
+        onLayoutChange={value => changes.push(value)} editor={<input aria-label="File draft" defaultValue="unsaved" />}
+        terminal={<div>Terminal</div>}><input aria-label="Chat draft" defaultValue="unsent" /></WorkspaceEditorSplit>);
+    await show(475);
+    const chat = document.querySelector<HTMLInputElement>('[aria-label="Chat draft"]')!;
+    chat.value = 'keep draft';
+    const outer = document.querySelector<HTMLElement>('[data-axis="columns"]')!;
+    expect(outer.style.gridTemplateColumns).toBe('minmax(120px, 90fr) 1px minmax(475px, 10fr)');
+    expect(outer.style.minWidth).toBe('596px');
+    expect(outer.parentElement?.style.minWidth).toBe('596px');
+    const stack = outer.querySelector<HTMLElement>('[data-axis="rows"]')!;
+    expect(stack.style.minWidth).toBe('475px');
+    expect(stack.style.gridTemplateRows).toBe('minmax(0px, 50fr) 1px minmax(0px, 50fr)');
+    const separator = outer.querySelector(':scope > [role="separator"]')!;
+    await act(async () => { separator.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'End', bubbles: true }) as unknown as Event); });
+    const changed = changes.at(-1)!;
+    if (changed.type !== 'split') throw new Error('Expected resized workspace split');
+    expect((1 - changed.ratio) * 1199).toBeCloseTo(475);
+    await show(undefined);
+    expect(outer.style.minWidth).toBe('');
+    expect(outer.parentElement?.style.minWidth).toBe('');
+    expect(document.querySelector('[aria-label="Chat draft"]')).toBe(chat);
+    expect(chat.value).toBe('keep draft');
+    await show(475, { type: 'pane', paneId: 'primary' });
+    expect(document.querySelector<HTMLElement>('[data-workspace-pane="primary"]')?.parentElement?.style.minWidth).toBe('475px');
+    expect(document.querySelector('[aria-label="Chat draft"]')).toBe(chat);
+    await show(475, { type: 'pane', paneId: 'editor' });
+    expect(document.querySelector<HTMLElement>('[data-workspace-pane="editor"]')?.parentElement?.style.minWidth).toBe('');
+  });
+});
+
 test.each(['right', 'down'] as const)('pane %s preview cancels without opening or resizing and commits the selected area', async direction => {
   await withDOM(async ({ render, click, window }) => {
     const opened: string[] = [];

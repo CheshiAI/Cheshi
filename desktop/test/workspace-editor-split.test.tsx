@@ -1,6 +1,7 @@
 import * as layoutModel from '../frontend/src/features/shell/workspaceLayoutModel';
 import * as splitModel from '../frontend/src/shared/ui/splitPaneModel';
 import * as splitSizing from '../frontend/src/shared/ui/splitPaneSizing';
+import { CHAT_PANE_MIN_WIDTH } from '../frontend/src/features/chat/chatWorkspaceModel';
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -136,6 +137,7 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
   const attachments = draftAttachmentModule.createChatDraftAttachments();
   const modules: Record<string, unknown> = {
     './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => initialLayout, saveWorkspaceLayout() {} },
+    '../chat/chatWorkspaceModel': { CHAT_PANE_MIN_WIDTH },
     '../../shared/ui/splitPaneModel': splitModel,
     react: app.react,
     '../navigation/sidebarPanel': {
@@ -328,6 +330,7 @@ test('Explorer file opening keeps the chat visible and reuses the same editor fo
   tree = app.render();
   const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(tree, 'WorkspaceEditorSplit');
   expect(split.mode).toBe('split');
+  expect(split.minimumPrimaryWidth).toBe(475);
   expect(props<ComponentProps<typeof ChatWorkspace>>(split.children, 'ChatWorkspace').active).toBe(true);
   expect(props<ComponentProps<typeof WorkspaceEditor>>(split.editor, 'WorkspaceEditor')).toMatchObject({
     active: true, target: { path: 'first.ts', requestId: 1 },
@@ -348,6 +351,7 @@ test('closing the final tab restores the current page and does not reopen the cl
   props<ComponentProps<typeof WorkspaceEditor>>(split.editor, 'WorkspaceEditor').onAllTabsClosed();
   const closed = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   expect(closed.mode).toBe('primary');
+  expect(closed.minimumPrimaryWidth).toBeUndefined();
   expect(elements(closed.children).some(element => element.type === 'GitWorkspace')).toBe(true);
   expect(props<ComponentProps<typeof WorkspaceEditor>>(closed.editor, 'WorkspaceEditor')).toMatchObject({ active: false, target: null });
 });
@@ -356,6 +360,8 @@ test.each([
   { minimumPaneWidth: undefined, pointerX: 700.5, expected: 0.7 },
   { minimumPaneWidth: 475, pointerX: 900.5, expected: 0.525 },
   { minimumPaneWidth: 475, pointerX: 100.5, expected: 0.475 },
+  { minimumPaneWidth: (id: string) => id === 'primary' ? 475 : 120, pointerX: 900.5, expected: 0.525 },
+  { minimumPaneWidth: (id: string) => id === 'primary' ? 475 : 120, pointerX: 100.5, expected: 0.12 },
 ])('the shared separator respects $minimumPaneWidth minimum width and commits $expected on release', ({ minimumPaneWidth, pointerX, expected }) => {
   const app = hooks();
   const Layout = load<typeof SplitPaneLayout>('shared/ui/SplitPaneLayout.tsx', 'SplitPaneLayout', { react: app.react, './splitPaneSizing': splitSizing });
@@ -386,7 +392,7 @@ test.each([
   }) as unknown as PointerEvent<HTMLDivElement>;
   separator(first).onPointerDown?.(pointer(500.5));
   separator(render()).onPointerMove?.(pointer(pointerX));
-  expect((render().props as { style: CSSProperties }).style.gridTemplateColumns).toContain(`${expected}fr`);
+  expect((render().props as { style: CSSProperties }).style.gridTemplateColumns).toContain(`${expected * 100}fr`);
   expect(committed).toEqual([]);
   separator(render()).onPointerUp?.(pointer(pointerX));
   expect(committed).toEqual([expected]);
@@ -453,7 +459,7 @@ test('collapsed split keeps both panes mounted while hiding the separator and re
   expect(elements(tree).filter(node => node.type === Layout)).toHaveLength(2);
   const reopened = app.render(() => Component({ ...options, collapsedPane: null }));
   const reopenedAttrs = elements(reopened).map(node => node.props as HTMLAttributes<HTMLDivElement>);
-  expect(reopenedAttrs[0]!.style?.gridTemplateColumns).toContain('0.7fr');
+  expect(reopenedAttrs[0]!.style?.gridTemplateColumns).toContain('70fr');
   expect(reopenedAttrs.find(node => node.role === 'separator')?.hidden).toBe(false);
 });
 

@@ -11,12 +11,11 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { SplitLayoutNode } from './splitPaneModel';
-import { SPLIT_SEPARATOR_TRACK_SIZE, splitPaneMinimumWidth } from './splitPaneSizing';
+import { SPLIT_PANE_MIN_SIZE, SPLIT_SEPARATOR_TRACK_SIZE, splitPaneMinimumWidth, type SplitPaneMinimumWidth } from './splitPaneSizing';
 import styles from './SplitPaneLayout.module.css';
 
 const MIN_SPLIT_RATIO = 0.1;
 const MAX_SPLIT_RATIO = 0.9;
-const MIN_PANE_SIZE = 120;
 const KEYBOARD_RATIO_STEP = 0.05;
 
 type SplitLayout = Extract<SplitLayoutNode, { type: 'split' }>;
@@ -27,15 +26,15 @@ export interface SplitPaneLayoutProps {
   onResizeSplit: (splitId: string, ratio: number) => void;
   resizeLabel?: string;
   collapsedPane?: 'first' | 'second' | null;
-  minimumPaneWidth?: number;
+  minimumPaneWidth?: SplitPaneMinimumWidth;
 }
 
 interface SplitProps extends Omit<SplitPaneLayoutProps, 'layout'> {
   layout: SplitLayout;
 }
 
-function clampSplitRatio(ratio: number, availableSize: number, firstWidth = MIN_PANE_SIZE, secondWidth = MIN_PANE_SIZE): number {
-  if (availableSize > 0 && (firstWidth !== MIN_PANE_SIZE || secondWidth !== MIN_PANE_SIZE)) {
+function clampSplitRatio(ratio: number, availableSize: number, firstWidth = SPLIT_PANE_MIN_SIZE, secondWidth = SPLIT_PANE_MIN_SIZE): number {
+  if (availableSize > 0 && (firstWidth !== SPLIT_PANE_MIN_SIZE || secondWidth !== SPLIT_PANE_MIN_SIZE)) {
     const minimum = Math.max(MIN_SPLIT_RATIO, firstWidth / availableSize);
     const maximum = Math.min(MAX_SPLIT_RATIO, 1 - secondWidth / availableSize);
     // CSS minimum tracks remain authoritative when the branch cannot shrink further.
@@ -43,14 +42,17 @@ function clampSplitRatio(ratio: number, availableSize: number, firstWidth = MIN_
       minimum > maximum ? firstWidth / (firstWidth + secondWidth) : Math.min(maximum, Math.max(minimum, ratio))));
   }
   const minimum = availableSize > 0
-    ? Math.min(0.5, Math.max(MIN_SPLIT_RATIO, MIN_PANE_SIZE / availableSize))
+    ? Math.min(0.5, Math.max(MIN_SPLIT_RATIO, SPLIT_PANE_MIN_SIZE / availableSize))
     : MIN_SPLIT_RATIO;
   return Math.min(1 - minimum, Math.max(minimum, ratio));
 }
 
 function splitGridStyle(axis: SplitLayout['axis'], ratio: number, firstWidth = 0, secondWidth = 0): CSSProperties {
-  const first = `minmax(${firstWidth}px, ${ratio}fr)`;
-  const second = `minmax(${secondWidth}px, ${1 - ratio}fr)`;
+  // Sub-1fr tracks can leave space unused after a sibling reaches its minimum.
+  // Stored ratios are 0.1–0.9; scaling both weights preserves the ratio and fills the grid.
+  const firstWeight = ratio * 100;
+  const first = `minmax(${firstWidth}px, ${firstWeight}fr)`;
+  const second = `minmax(${secondWidth}px, ${100 - firstWeight}fr)`;
   return axis === 'columns'
     ? { gridTemplateColumns: `${first} ${SPLIT_SEPARATOR_TRACK_SIZE}px ${second}` }
     : { gridTemplateRows: `${first} ${SPLIT_SEPARATOR_TRACK_SIZE}px ${second}` };
