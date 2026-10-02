@@ -288,7 +288,7 @@ test('agents can be created and assigned without an engine, edited, and recovere
     expect(modelAccounts).toContain('fixture-account');
     expect(document.querySelector('[aria-label="Agent selection"] [aria-current="page"]')?.getAttribute('aria-label')).toBe('Cheshi developer');
     expect(document.querySelector('form')?.getAttribute('aria-label')).toBe('Agent settings');
-    expect(document.querySelector('form')?.textContent).toContain('Execution is not configured yet');
+    expect(document.querySelector('form')?.textContent).toContain('Open agent');
     await fill('Agent name', 'Updated developer');
     failSave = true;
     await click('Save agent');
@@ -341,4 +341,36 @@ test('model catalogs ignore late account responses and recover from a failed loa
     await render(<Catalog accountId={null} />);
     expect(document.querySelector('output')?.textContent).not.toContain('small-fixture');
   });
+});
+
+test('registered runtime starts explicitly and shows acknowledged tasks without replacing them during refresh', async () => {
+  const { SpecialistRuntimePanel } = await import('../frontend/src/features/agents/SpecialistRuntimePanel');
+  const { AgentRegistryModel } = await import('../frontend/src/features/agents/agentRegistryModel');
+  const actions: string[] = [];
+  const agent = specialistAgent();
+  const ready = { agent: { id: 'worker', name: agent.name, image: 'worker', state: 'running' }, ready: true, busy: false,
+    authenticated: true, threadId: 'thread', error: null, logs: '', tasks: [] };
+  let started = false;
+  const pending = registryDeferred<{ details: typeof ready }>();
+  const registry = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [agent] }), models: async () => [],
+    save: async () => { throw Error('unused'); }, onDidChange: () => () => {}, runtime: async request => {
+      actions.push(request.action);
+      if (request.action === 'start') { started = true; return pending.promise; }
+      return { details: started ? ready : null };
+    } });
+  try {
+    await withDOM(async ui => {
+      await ui.render(<SpecialistRuntimePanel agent={agent} model={registry} engineId="docker:local"
+        engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} onSettings={() => {}} />);
+      expect(actions).toEqual(['status']);
+      await ui.click('Start agent');
+      expect(document.body.textContent).toContain('Processing…');
+      expect((document.querySelector('[aria-label="Start agent"]') as HTMLButtonElement).disabled).toBe(true);
+      await act(async () => pending.resolve({ details: ready }));
+      expect(document.body.textContent).toContain('Ready'); expect(document.body.textContent).toContain('Signed');
+      await ui.click('Refresh agent');
+      expect(actions).toEqual(['status', 'start', 'status']);
+      expect(document.body.textContent).toContain('Ready');
+    });
+  } finally { registry.dispose(); }
 });

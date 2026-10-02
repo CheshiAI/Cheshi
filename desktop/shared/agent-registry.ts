@@ -22,6 +22,7 @@ export interface SaveSpecialistAgent {
   assignment: { assigned: boolean; instructions: string };
 }
 export interface AgentRegistryApi {
+  runtime?(request: import('./agent-runtime.ts').AgentRuntimeRequest): Promise<import('./agent-runtime.ts').AgentRuntimeState>;
   models(accountId: string): Promise<AgentModel[]>;
   list(): Promise<AgentRegistrySnapshot>;
   save(input: SaveSpecialistAgent): Promise<{ agentId: string; snapshot: AgentRegistrySnapshot }>;

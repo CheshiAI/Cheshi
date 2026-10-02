@@ -1,3 +1,4 @@
+import { createSpecialistRuntime } from './lib/agent-management/runtime.mts';
 import { startScheduler, resumeScheduler, stopScheduler, suspendScheduler } from './lib/scheduler/application.mts';
 import { configureSchedulerDesktop } from './lib/scheduler/desktop.mts';
 import { createSchedulerNotifications } from './lib/scheduler/notifications.mts';
@@ -86,6 +87,15 @@ const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'u
 const agentEngines = [createDockerAgentEngine()];
 const agentManagement = createAgentManagementService({ engines: agentEngines });
 const agentRegistry = createAgentRegistry(path.join(app.getPath('userData'), 'agents', 'registry.json'));
+const specialistRuntime = createSpecialistRuntime({
+  directory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement,
+  buildContext: app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'specialist-worker') : path.join(app.getAppPath(), 'experiments', 'codex-specialists'),
+  account: async id => {
+    const profiles = acquireAccountProfiles();
+    try { return { home: (await profiles.environment(id)).CODEX_HOME!, models: await profiles.models(id) }; }
+    finally { await profiles.release(); }
+  },
+});
 const apiSettings = createSettingsService({
   directory: path.join(app.getPath('userData'), 'api-keys'),
   settingsPath: path.join(app.getPath('userData'), 'settings.json'),
@@ -250,6 +260,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
       agentRegistryIpc = registerAgentRegistryIpc({ window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot,
+        runtime: request => specialistRuntime.request(options.workspaceRoot, request),
         models: async accountId => {
           const profiles = acquireAccountProfiles();
           try { return await profiles.models(accountId); }

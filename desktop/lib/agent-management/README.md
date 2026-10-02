@@ -1,12 +1,41 @@
 # Agent management
 
-The Docker page manages engines, container lifecycle, logs and interactive shells. The Agents page
-shows agent readiness, sign-in, conversations and task results. Both pages share
-engine and worker selection within a workspace window. The manager does not install an engine,
-start a provider VM, build images, create workers, delete volumes, or submit model
-tasks. The current adapter adopts the verifier from
-`experiments/codex-specialists/compose.yaml` using its exact Compose project and
-service labels. One-off login containers are excluded.
+The Docker page manages local engines, containers, logs and native shells. The Agents page
+registers global specialist profiles, assigns projects, and opens their runtime controls.
+Start builds the bundled worker image on the selected local engine, creates a dedicated
+container and volume, and connects the profile's selected ChatGPT account. Run task submits
+one task; task IDs make retries idempotent. Results and native conversations persist in the
+worker volume. Background status refresh retains the displayed result.
+
+Legacy Compose verifier containers remain discoverable. Registered workers use separate
+`ai.cheshi.*` ownership labels; engine, profile, project and configuration are verified before
+mutation. Settings changes require Start and cannot replace a busy worker. Selecting a different account profile
+uses a separate volume, keeping conversations and credentials separate. Volumes are never deleted.
+
+`runtime.mts` orchestrates provisioning independently of the renderer. The bundled build
+context is prepared with an explicit file allowlist by `scripts/prepare-specialist-worker.mts`.
+The worker implementation is shared with the existing `experiments/codex-specialists` harness.
+The app never installs/starts the engine VM or installs host security profiles. Colima requires
+the documented `cheshi-codex-bwrap` AppArmor profile to be installed already.
+
+Only the assigned project is mounted, read-only unless its saved file-write permission is
+literally true. Command tools are disabled when command execution is false. Codex network
+access is disabled and additional approval requests are declined. Model, effort and service
+tier are applied on thread creation/resume and every turn. macOS-only build/testing still
+requires the host environment.
+
+Selected account credentials must be available in that account's `auth.json` file. Keychain-only
+accounts are reported as requiring file credential storage; no other account is substituted.
+The host validates the account/model catalog, sends the allowlisted auth fields through Docker
+stdin and writes them to the worker's own volume. No token crosses renderer IPC, command-line
+arguments or logs. Each worker manages its own copied login; later host logout does not erase
+that copy. New task submission still checks the selected host account. Use the worker shell
+for an explicit worker logout when revocation is required.
+
+Runtime configuration is delivered through the same Docker connection, so the VM does not
+need access to Cheshi's host application-data directory. Mutating worker HTTP requests require
+a per-worker bearer token and reject browser Origin headers. Unknown execution outcomes block
+further tasks until inspected; a timed-out request is never automatically resubmitted.
 
 ## Boundaries
 
@@ -31,7 +60,7 @@ silently redirect the selected engine. The initial selection prefers
 `colima-cheshi`, then another supported context. Navigation and refresh preserve
 the chosen engine and worker while they remain available.
 
-Start/stop/restart only target existing, labelled containers by their full IDs.
+Docker-page start/stop/restart target existing, labelled containers by their full IDs.
 The adapter rechecks identity before actions. The service serializes actions for
 the same engine/container across windows and refuses stop/restart if worker
 activity cannot be verified or is busy. This health check is not an atomic lock
@@ -53,9 +82,9 @@ existing logs and selection remain in place during background reads.
 
 Worker reads use the inspected container's single published `127.0.0.1` port.
 Remote contexts and redirects are rejected. Responses have deadlines and size
-limits. Only account sign-in status is exposed; authentication files are never
-read. Logs are limited to the last 200 lines, with common token forms redacted.
-Task output is rendered as text. History shows up to the latest 100 tasks within
+limits. Inspection exposes only account sign-in status; credential transfer is confined to
+the specialist provisioning service. Logs are limited to the last 200 lines, with common token forms redacted.
+Task output is rendered as Markdown. History shows up to the latest 100 tasks within
 the 2 MiB API response limit; stopped workers retain data but must start before
 their HTTP task history can be read. Switching engines does not migrate volumes.
 
@@ -63,7 +92,8 @@ their HTTP task history can be read. Switching engines does not migrate volumes.
 
 ```sh
 bun test desktop/test/agent-management-docker.test.ts desktop/test/agent-management-service.test.ts desktop/test/agent-management-model.test.ts desktop/test/agent-management-ipc.test.ts
-bun test desktop/test/agent-management-views.test.tsx
+bun test desktop/test/agent-management-views.test.tsx desktop/test/agent-runtime.test.ts
+bun test experiments/codex-specialists/src
 bun test desktop/test/agent-terminal.test.ts
 node --test desktop/test/agent-terminal-electron.test.ts desktop/test/ghostty-surface-host.test.ts
 bun run desktop:typecheck
@@ -84,3 +114,9 @@ The verifier was left running. Other Docker-compatible providers share the
 adapter contract but have not been exercised by this validation.
 The terminal path also ran a real PTY command in that Colima worker as UID 1000;
 the temporary verification file was removed afterward.
+
+The registered development specialist was provisioned on Colima with Astra / High / Standard.
+A real task completed with `CHESHI_SPECIALIST_READY`; the saved native model was `gpt-6-astra`.
+The project mount remained read-only. Unauthorized task requests returned 401 and browser
+Origin requests returned 403 without creating a task. This check did not exercise file-writing
+permissions or macOS-specific development tasks.

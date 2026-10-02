@@ -19,6 +19,10 @@ export class AgentRegistryModel {
     });
   }
   snapshot = () => this.state;
+  runtime = (request: import('../../../../shared/agent-runtime').AgentRuntimeRequest) => {
+    if (!this.api.runtime) return Promise.reject(new Error('Agent runtime is unavailable. Restart Cheshi.'));
+    return this.api.runtime(request);
+  };
   models = (accountId: string) => this.api.models(accountId);
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<AgentRegistryState>) {

@@ -31,7 +31,7 @@ export const readWorker: ReadWorker = async (endpoint, path) => {
 
 function health(value: unknown) {
   const data = agentRecord(value);
-  if (data.role !== 'verifier') throw new Error('Unexpected worker role.');
+  if (!['verifier', 'planning', 'research', 'frontend', 'development', 'verification', 'custom'].includes(String(data.role))) throw new Error('Unexpected worker role.');
   return { ready: agentBoolean(data.ready), busy: agentBoolean(data.busy),
     threadId: agentNullableText(data.threadId), error: agentNullableText(data.error, 20_000) };
 }

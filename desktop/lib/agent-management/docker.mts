@@ -6,23 +6,25 @@ import { agentRecord, agentText, parseAgentAction, parseAgentEngineId, parseAgen
 import type { AgentAction, AgentEngineInfo } from '../../shared/agent-management.ts';
 import type { AgentEngine, RuntimeAgent } from './engine.mts';
 
-export type DockerCommand = (args: string[]) => Promise<string>;
+export type DockerCommand = (args: string[], input?: string) => Promise<string>;
 const project = 'cheshi-codex-specialists-test';
 const service = 'verifier';
 const labels = { project: 'com.docker.compose.project', service: 'com.docker.compose.service' };
 function dockerExecutable() { return ['/opt/homebrew/bin/docker', '/usr/local/bin/docker'].find(existsSync) ?? 'docker'; }
 
-export const runDocker: DockerCommand = args => new Promise((resolve, reject) => {
+export const runDocker: DockerCommand = (args, input) => new Promise((resolve, reject) => {
   const executable = dockerExecutable();
   const env = { ...process.env };
   for (const key of Object.keys(env)) if (key.startsWith('DOCKER_')) delete env[key];
-  execFile(executable, ['--config', join(homedir(), '.docker'), ...args], {
-    env, timeout: 30_000, maxBuffer: 2 * 1024 * 1024, encoding: 'utf8',
+  const child = execFile(executable, ['--config', join(homedir(), '.docker'), ...args], {
+    env, timeout: args.includes('build') ? 600_000 : 30_000, maxBuffer: 2 * 1024 * 1024, encoding: 'utf8',
   }, (error, stdout, stderr) => {
     if (error) { reject(new Error('Docker command failed. Check that Docker CLI is installed and the selected engine is running.')); return; }
     // Docker sends container stderr through its own stderr for `logs`.
     resolve(args.includes('logs') ? `${stdout}${stderr}` : stdout);
   });
+  child.stdin?.on('error', () => {});
+  child.stdin?.end(input);
 });
 
 function dockerContext(engineId: string): string {
@@ -47,11 +49,13 @@ export function redactAgentLogs(value: string): string {
     .slice(-256_000);
 }
 
-/** Only the existing Compose verifier is adopted. Names alone never authorize actions. */
+/** Adopt labelled specialists and the legacy Compose verifier. Names alone never authorize actions. */
 export function parseDockerAgent(value: unknown): RuntimeAgent {
   const raw = agentRecord(value), config = agentRecord(raw.Config), state = agentRecord(raw.State);
   const metadata = agentRecord(config.Labels);
-  if (metadata[labels.project] !== project || metadata[labels.service] !== service
+  const specialist = metadata['ai.cheshi.worker'] === 'specialist-v1'
+    && typeof metadata['ai.cheshi.agent'] === 'string' && /^[a-f0-9-]{36}$/.test(metadata['ai.cheshi.agent']);
+  if ((!specialist && (metadata[labels.project] !== project || metadata[labels.service] !== service))
     || metadata['com.docker.compose.oneoff'] === 'True') throw new Error('This container is not a managed Cheshi worker.');
   const ports = agentRecord(agentRecord(raw.NetworkSettings).Ports);
   const bindings = ports['8787/tcp'];
@@ -100,10 +104,11 @@ export function createDockerAgentEngine(run: DockerCommand = runDocker): AgentEn
       const prefix = await ensureLocal(engineId);
       const output = await run([...prefix, 'container', 'ls', '--all', '--no-trunc', '--filter', `label=${labels.project}=${project}`,
         '--filter', `label=${labels.service}=${service}`, '--format', '{{json .}}']);
-      const ids = output.split(/\r?\n/).filter(Boolean).map(line => containerId(agentText(agentRecord(JSON.parse(line)).ID)));
+      const specialists = await run([...prefix, 'container', 'ls', '--all', '--no-trunc', '--filter', 'label=ai.cheshi.worker=specialist-v1', '--format', '{{json .}}']);
+      const ids = `${output}\n${specialists}`.split(/\r?\n/).filter(Boolean).map(line => containerId(agentText(agentRecord(JSON.parse(line)).ID)));
       // Inspect again so filters and display names cannot stand in for ownership verification.
       const agents: RuntimeAgent[] = [];
-      for (const id of ids) {
+      for (const id of new Set(ids)) {
         const values = array(JSON.parse(await run([...prefix, 'container', 'inspect', id])));
         const raw = agentRecord(values[0]);
         const metadata = agentRecord(agentRecord(raw.Config).Labels);

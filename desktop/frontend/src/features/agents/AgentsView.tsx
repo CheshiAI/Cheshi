@@ -1,5 +1,6 @@
+import { SpecialistRuntimePanel } from './SpecialistRuntimePanel';
 import { Bot, Plus, RefreshCw } from 'lucide-react';
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { LiquidGlassPanel } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
@@ -20,6 +21,7 @@ const emptySubscribe = () => () => {};
 export function AgentsView({ model, state, registry, accountsApi }: AgentScreenProps & {
   registry?: AgentRegistryModel | null; accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
+  const [runtimeId, setRuntimeId] = useState<string | null>(null);
   const registered = useSyncExternalStore(registry?.subscribe ?? emptySubscribe, registry?.snapshot ?? emptySnapshot);
   const profile = registered.data?.agents.find(item => item.id === registered.selection);
   const editing = Boolean(registry && registered.data && (registered.selection === 'new' || profile));
@@ -46,7 +48,7 @@ export function AgentsView({ model, state, registry, accountsApi }: AgentScreenP
           aria-current={registered.selection === item.id ? 'page' : undefined} onClick={() => registry?.select(item.id)}>
           <Bot aria-hidden="true" /><span className={viewStyles.agentName}>{item.name}</span>
         </TooltipButton>)}
-        {registry && Boolean(snapshot?.agents.length) && <h3 className={`${styles.sectionTitle} ${viewStyles.workerHeading}`}>CONNECTED WORKERS</h3>}
+        {registry && Boolean(snapshot?.agents.length) && <h3 className={`${styles.sectionTitle} ${viewStyles.workerHeading}`}>CONNECTED WORKER CONTAINERS</h3>}
         <div className={viewStyles.notice}><AgentManagementNotice state={state} /></div>
         {snapshot?.agents.map(worker => <TooltipButton key={worker.id} variant="ghost"
           className={viewStyles.agent} aria-label={worker.name} title={worker.name}
@@ -57,7 +59,8 @@ export function AgentsView({ model, state, registry, accountsApi }: AgentScreenP
       </nav>
     </LiquidGlassPanel>
     <section className={viewStyles.detailsPane} aria-label="Agent details">
-      {editing && registry ? <SpecialistAgentForm key={registered.selection} agent={profile} model={registry} state={registered} accountsApi={accountsApi} /> : agent ? <>
+      {editing && registry && profile && runtimeId === profile.id ? <SpecialistRuntimePanel key={profile.id} agent={profile} model={registry}
+        engines={state.catalog.engines} engineId={state.engineId} onSettings={() => setRuntimeId(null)} /> : editing && registry ? <SpecialistAgentForm key={registered.selection} agent={profile} model={registry} state={registered} accountsApi={accountsApi} onOpen={profile ? () => setRuntimeId(profile.id) : undefined} /> : agent ? <>
         <div className={viewStyles.detailHeader} aria-label="Agent status">
           <TooltipTarget content={agent.name}><h2 className={viewStyles.name}>{agent.name}</h2></TooltipTarget>
           <span className={styles.description}>{details?.busy ? 'Working' : details?.ready ? 'Ready' : 'Unavailable'}</span>

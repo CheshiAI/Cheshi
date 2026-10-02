@@ -1,3 +1,4 @@
+import { prepareSpecialistWorker } from './prepare-specialist-worker.mts';
 import { chmodSync, copyFileSync, cpSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -66,6 +67,7 @@ mkdirSync(outputDirectory, { recursive: true });
 removeBunBuildArtifacts();
 
 try {
+  await prepareSpecialistWorker(path.join(rootDirectory, 'experiments', 'codex-specialists'), path.join(rootDirectory, 'desktop', 'runtime', 'specialist-worker'));
   await buildDesktopPreload();
   await buildAppleCalendar();
 

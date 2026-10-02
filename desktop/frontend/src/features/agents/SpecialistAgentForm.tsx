@@ -20,7 +20,8 @@ function initialProfile(agent?: SpecialistAgent): SpecialistProfile {
   };
 }
 
-export function SpecialistAgentForm({ agent, model, state, accountsApi }: {
+export function SpecialistAgentForm({ agent, model, state, accountsApi, onOpen }: {
+  onOpen?: () => void;
   agent?: SpecialistAgent; model: AgentRegistryModel; state: AgentRegistryState;
   accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
@@ -70,7 +71,7 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi }: {
     }, () => { /* The model exposes the error without discarding the draft. */ });
   }}>
     <div className={styles.heading}><h2>{agent ? agent.name : 'Create agent'}</h2>
-      <span>{agent ? 'Registered' : 'Cheshi-wide agent'}</span></div>
+      {onOpen ? <NeumorphicButton type="button" variant="ghost" disabled={state.saving} onClick={onOpen}>Open agent</NeumorphicButton> : <span>Cheshi-wide agent</span>}</div>
     <fieldset disabled={state.saving} className={styles.fields}>
       <label className={styles.field}>Name<NeumorphicTextField variant="standard" aria-label="Agent name" required maxLength={100}
         value={profile.name} onChange={event => patch({ name: event.target.value })} /></label>
@@ -87,7 +88,7 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi }: {
       <SpecialistModelSettings selection={profile} catalog={catalog} disabled={state.saving} onChange={patch} />
       {modelError && !catalog.loading && !catalog.error && <p className={styles.description} role="alert">{modelError}</p>}
       <div className={styles.field}><h3>Execution permissions</h3>
-        <p className={styles.description}>Saved policy for this agent's future execution environment.</p>
+        <p className={styles.description}>Applied when this agent starts its project worker.</p>
         <div className={styles.switchRow}><span>Modify project files</span><ToggleSwitch aria-label="Allow agent file changes" checked={profile.permissions.fileWrite}
           disabled={state.saving} onChange={fileWrite => patch({ permissions: { ...profile.permissions, fileWrite } })} /></div>
         <div className={styles.switchRow}><span>Run commands</span><ToggleSwitch aria-label="Allow agent commands" checked={profile.permissions.commandExecution}
@@ -100,7 +101,7 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi }: {
         {assigned && <label className={styles.field}>Project instructions<NeumorphicTextField variant="standard" multiline rows={3}
           aria-label="Project instructions" maxLength={20_000} placeholder="Additional instructions for this project"
           value={instructions} onChange={event => { setInstructions(event.target.value); setSaved(false); }} /></label>}
-        <p className={styles.description}>Execution is not configured yet. This step saves the agent and its project assignment.</p>
+        <p className={styles.description}>Save settings, then open the agent to start its project worker.</p>
       </div>
     </fieldset>
     {outdated && <p className={styles.description} role="status">This agent changed in another window. Reopen its settings to load the latest version; your current draft is preserved.</p>}

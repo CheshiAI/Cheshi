@@ -1,3 +1,5 @@
+import { AGENT_RUNTIME_CHANNEL, parseAgentRuntimeRequest } from '../../shared/agent-runtime.ts';
+import type { AgentRuntimeRequest, AgentRuntimeState } from '../../shared/agent-runtime.ts';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 import { AGENT_REGISTRY_CHANNELS, parseSaveSpecialistAgent } from '../../shared/agent-registry.ts';
 import { onWindowClosed } from '../window-close-cleanup.mts';
@@ -9,6 +11,7 @@ import type { AgentModel } from '../../shared/agent-models.ts';
 export function registerAgentRegistryIpc(options: {
   window: BrowserWindow; workspaceRoot: string; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>;
   registry: ReturnType<typeof createAgentRegistry>;
+  runtime?: (request: AgentRuntimeRequest) => Promise<AgentRuntimeState>;
   models?: (accountId: string) => Promise<AgentModel[]>;
 }) {
   const owner = options.window.webContents, channels: string[] = [];
@@ -38,6 +41,7 @@ export function registerAgentRegistryIpc(options: {
     return parseAgentModels(await options.models(accountId));
   };
   try {
+    if (options.runtime) handle(AGENT_RUNTIME_CHANNEL, value => options.runtime!(parseAgentRuntimeRequest(value)));
     handle(AGENT_REGISTRY_CHANNELS.list, () => options.registry.snapshot(options.workspaceRoot));
     handle(AGENT_REGISTRY_CHANNELS.models, models);
     handle(AGENT_REGISTRY_CHANNELS.save, async value => {

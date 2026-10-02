@@ -59,10 +59,24 @@ test('packaged runtime includes all agent modules and native Node can load them'
   const ignore = (await config()).packagerConfig?.ignore;
   if (typeof ignore !== 'function') throw new Error('Expected package filter');
   const paths = ['desktop/shared/agent-management.ts', 'desktop/shared/agent-terminal.ts', 'desktop/lib/window-close-cleanup.mts',
-    'desktop/shared/agent-registry.ts', 'desktop/shared/agent-models.ts', 'desktop/shared/codex-accounts.ts',
-    ...['engine', 'docker', 'service', 'ipc', 'terminal', 'registry', 'registry-ipc'].map(name => `desktop/lib/agent-management/${name}.mts`)];
+    'desktop/shared/agent-registry.ts', 'desktop/shared/agent-models.ts', 'desktop/shared/agent-runtime.ts', 'desktop/shared/codex-accounts.ts',
+    ...['engine', 'docker', 'service', 'ipc', 'terminal', 'registry', 'registry-ipc', 'runtime'].map(name => `desktop/lib/agent-management/${name}.mts`)];
   for (const path of paths) expect(ignore(`/${path}`)).toBe(false);
   expect(ignore('/desktop/lib/agent-management/local-secret.json')).toBe(true);
   const source = paths.map(path => `await import(${JSON.stringify(`./${path}`)});`).join('\n');
   execFileSync('node', ['--input-type=module', '-e', source], { cwd: fileURLToPath(new URL('../../', import.meta.url)), timeout: 15_000 });
+});
+
+test('packaged specialist context includes its runtime dependencies without experiment fixtures', async () => {
+  const { prepareSpecialistWorker, SPECIALIST_WORKER_FILES } = await import('../../scripts/prepare-specialist-worker.mts');
+  const { mkdtemp, readFile, rm, readdir } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const directory = await mkdtemp(join(tmpdir(), 'cheshi-worker-assets-'));
+  try {
+    await prepareSpecialistWorker(fileURLToPath(new URL('../../experiments/codex-specialists', import.meta.url)), directory);
+    for (const filename of SPECIALIST_WORKER_FILES) expect((await readFile(join(directory, filename))).byteLength).toBeGreaterThan(0);
+    expect(await readdir(directory)).not.toContain('fixtures');
+    expect((await readdir(join(directory, 'src'))).some(name => name.endsWith('.test.ts'))).toBe(false);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

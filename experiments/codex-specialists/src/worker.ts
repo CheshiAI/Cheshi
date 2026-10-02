@@ -1,5 +1,7 @@
+import { timingSafeEqual } from 'node:crypto';
+import { parseRuntimeConfiguration } from './runtime-config.ts';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { SpecialistAgent, TaskConflict } from './agent.ts';
 import { AppServerClient } from './app-server-client.ts';
 import { record, textValue } from './protocol.ts';
@@ -7,12 +9,19 @@ import { AgentStore, validateTaskId } from './store.ts';
 
 const workspace = process.env.AGENT_WORKSPACE ?? '/workspace';
 const store = new AgentStore(process.env.AGENT_DATA_DIRECTORY ?? '/agent');
-const profile = readFileSync(process.env.AGENT_PROFILE ?? '/app/profiles/verifier/AGENTS.md', 'utf8');
+const configurationPath = process.env.AGENT_RUNTIME_CONFIG;
+if (configurationPath) {
+  while (!existsSync(configurationPath) || JSON.parse(readFileSync(configurationPath, 'utf8')).revision !== process.env.AGENT_RUNTIME_REVISION) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+}
+const configuration = configurationPath ? parseRuntimeConfiguration(JSON.parse(readFileSync(configurationPath, 'utf8'))) : undefined;
+const profile = configuration?.instructions ?? readFileSync(process.env.AGENT_PROFILE ?? '/app/profiles/verifier/AGENTS.md', 'utf8');
 const client = new AppServerClient();
 await client.initialize();
 let transportError: string | null = null;
 client.onFailure(error => { transportError = error.message; });
-const agent = new SpecialistAgent({ client, store, workspace, profile });
+const agent = new SpecialistAgent({ client, store, workspace, profile, configuration });
 const port = Number(process.env.AGENT_PORT ?? 8787);
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('Invalid agent port.');
 
@@ -21,10 +30,15 @@ const server = Bun.serve({
   async fetch(request) {
     if (request.headers.has('origin')) return Response.json({ error: 'Browser-origin requests are disabled.' }, { status: 403 });
     const path = new URL(request.url).pathname;
+    if (configuration && request.method !== 'GET') {
+      const actual = Buffer.from(request.headers.get('authorization') ?? '');
+      const expected = Buffer.from(`Bearer ${configuration.token}`);
+      if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return Response.json({ error: 'Unauthorized.' }, { status: 401 });
+    }
     try {
       const error = transportError ?? agent.error;
       if (path === '/health' && request.method === 'GET') {
-        return Response.json({ ready: error === null, role: 'verifier', busy: agent.busy,
+        return Response.json({ ready: error === null, role: configuration?.role ?? 'verifier', busy: agent.busy,
           threadId: store.snapshot().threadId, deniedRequests: client.deniedRequests, error },
         { status: error === null ? 200 : 503 });
       }
@@ -64,7 +78,7 @@ const server = Bun.serve({
   },
 });
 
-console.log(JSON.stringify({ type: 'ready', role: 'verifier', port, workspace, persistedThread: store.snapshot().threadId }));
+console.log(JSON.stringify({ type: 'ready', role: configuration?.role ?? 'verifier', port, workspace, persistedThread: store.snapshot().threadId }));
 let stopping = false;
 const shutdown = async () => {
   if (stopping) return;

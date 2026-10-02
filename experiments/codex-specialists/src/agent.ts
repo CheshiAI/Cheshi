@@ -1,3 +1,4 @@
+import type { RuntimeConfiguration } from './runtime-config.ts';
 import type { RpcClient } from './app-server-client.ts';
 import { record, textValue, type JsonRecord } from './protocol.ts';
 import { AgentStore, validateTaskId, type Task } from './store.ts';
@@ -25,12 +26,14 @@ export class SpecialistAgent {
   private readonly store: AgentStore;
   private readonly profile: string;
   private readonly workspace: string;
+  private readonly configuration: RuntimeConfiguration | undefined;
   private readonly timeoutMs: number;
   private loadedThread: string | null = null;
   private active: ActiveTask | null = null;
   private failure: string | null = null;
 
-  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; timeoutMs?: number }) {
+  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; timeoutMs?: number; configuration?: RuntimeConfiguration }) {
+    this.configuration = options.configuration;
     this.client = options.client; this.store = options.store; this.profile = options.profile;
     this.workspace = options.workspace; this.timeoutMs = options.timeoutMs ?? 180_000;
   }
@@ -64,8 +67,15 @@ export class SpecialistAgent {
   private async thread(): Promise<string> {
     const saved = this.store.snapshot();
     if (this.loadedThread) return this.loadedThread;
-    const params: JsonRecord = { cwd: this.workspace, sandbox: 'read-only', approvalPolicy: 'on-request',
-      approvalsReviewer: 'user', developerInstructions: this.profile };
+    const settings = this.configuration;
+    const params: JsonRecord = { cwd: this.workspace, sandbox: settings?.permissions.fileWrite ? 'workspace-write' : 'read-only', approvalPolicy: 'on-request',
+      approvalsReviewer: 'user', developerInstructions: this.profile,
+      ...(settings ? { model: settings.model, serviceTier: settings.serviceTier, config: {
+        ...(settings.reasoningEffort ? { model_reasoning_effort: settings.reasoningEffort } : {}),
+        'features.shell_tool': settings.permissions.commandExecution,
+        'features.unified_exec': settings.permissions.commandExecution,
+        'features.multi_agent': false,
+      } } : {}) };
     const result = saved.threadId
       ? await this.client.request('thread/resume', { ...params, threadId: saved.threadId })
       : await this.client.request('thread/start', params);
@@ -94,7 +104,11 @@ export class SpecialistAgent {
       submitted = true;
       const response = await this.client.request('turn/start', {
         threadId: active.threadId, input: [{ type: 'text', text: input }], cwd: this.workspace,
-        approvalPolicy: 'on-request', approvalsReviewer: 'user', sandboxPolicy: { type: 'readOnly', networkAccess: false },
+        approvalPolicy: 'on-request', approvalsReviewer: 'user',
+        sandboxPolicy: this.configuration?.permissions.fileWrite
+          ? { type: 'workspaceWrite', writableRoots: [this.workspace], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true }
+          : { type: 'readOnly', networkAccess: false },
+        ...(this.configuration ? { model: this.configuration.model, effort: this.configuration.reasoningEffort, serviceTier: this.configuration.serviceTier } : {}),
       });
       active.turnId = textValue(record(response.turn).id, 'turn id');
       this.store.update(task.id, { threadId: active.threadId, turnId: active.turnId, status: 'running' });
