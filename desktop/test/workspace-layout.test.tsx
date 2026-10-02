@@ -12,17 +12,26 @@ import { splitPaneIds, type SplitLayoutNode } from '../frontend/src/shared/ui/sp
 import { beginSplitPreview } from '../frontend/src/shared/ui/splitPreviewState';
 
 mock.module('../frontend/src/shared/ui/SplitPaneLayout.module.css', () => ({ default: { split: 'split', region: 'region', separator: 'separator' } }));
+mock.module('../frontend/src/shared/ui/Tooltip.module.css', () => ({ default: { anchor: 'tooltip-anchor', content: 'tooltip-content' } }));
 const { WorkspaceEditorSplit } = await import('../frontend/src/features/shell/WorkspaceEditorSplit');
 const { WorkspaceLayoutControls, workspacePaneDragType } = await import('../frontend/src/features/shell/WorkspaceLayoutControls');
 const { SplitPreview } = await import('../frontend/src/shared/ui/SplitPreview');
 const { useSplitPreviewActive } = await import('../frontend/src/shared/ui/splitPreviewState');
 
-async function withDOM(run: (h: { window: Window; render(node: ReactNode): Promise<void>; click(label: string): Promise<void> }) => Promise<void>) {
+async function withDOM(run: (h: { window: Window; render(node: ReactNode): Promise<void>; click(label: string): Promise<void>; resize(target: Element): Promise<void> }) => Promise<void>) {
   const window = new Window();
+  const observers = new Set<{ targets: Set<Element>; notify(): void }>();
   const globals = { Node: window.Node, HTMLElement: window.HTMLElement, MutationObserver: window.MutationObserver,
     getComputedStyle: window.getComputedStyle.bind(window), requestAnimationFrame: window.requestAnimationFrame.bind(window),
     cancelAnimationFrame: window.cancelAnimationFrame.bind(window), window, document: window.document, navigator: window.navigator, IS_REACT_ACT_ENVIRONMENT: true,
-    ResizeObserver: class { observe() {} disconnect() {} unobserve() {} } };
+    ResizeObserver: class {
+      readonly targets = new Set<Element>();
+      readonly notify: () => void;
+      constructor(notify: () => void) { this.notify = notify; }
+      observe(target: Element) { this.targets.add(target); observers.add(this); }
+      disconnect() { this.targets.clear(); observers.delete(this); }
+      unobserve(target: Element) { this.targets.delete(target); }
+    } };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
   const bounds = new window.DOMRect(0, 0, 1200, 800);
@@ -35,6 +44,9 @@ async function withDOM(run: (h: { window: Window; render(node: ReactNode): Promi
   const root = createRoot(container);
   try {
     await run({ window, render: async node => { await act(async () => root.render(node)); },
+      resize: async target => { await act(async () => {
+        for (const observer of [...observers]) if (observer.targets.has(target)) observer.notify();
+      }); },
       click: async label => {
         const button = [...document.querySelectorAll<HTMLButtonElement>('button')]
           .find(candidate => candidate.getAttribute('aria-label') === label || candidate.textContent?.startsWith(label));
@@ -215,10 +227,75 @@ test('terminal preview hides native surfaces without sending transformed bounds 
   });
 });
 
-test('terminal pane creates a shell only after choosing Terminal and keeps the original host mounted', async () => {
+test('editor hover and blame tooltips leave native terminal visibility unchanged', async () => {
+  const { Compartment, EditorState } = await import('@codemirror/state');
+  const { EditorView, showTooltip } = await import('@codemirror/view');
+  const { workspaceEditorTooltips } = await import('../frontend/src/features/editor/workspaceEditorTooltips');
+  const { attachGitLineBlameTooltip } = await import('../frontend/src/features/editor/gitLineBlameTooltip');
+  await withDOM(async ({ render, window }) => {
+    const hiddenStates: boolean[] = [];
+    function Capture() {
+      hiddenStates.push(useSplitPreviewActive());
+      return null;
+    }
+    await render(<Capture />);
+    const host = document.createElement('div');
+    const anchor = document.createElement('span');
+    document.body.append(host, anchor);
+    const slot = new Compartment();
+    const view = new EditorView({ parent: host, state: EditorState.create({
+      doc: 'const child: string', extensions: [workspaceEditorTooltips(document), slot.of([])],
+    }) });
+    const cleanupBlame = attachGitLineBlameTooltip(anchor, {
+      status: 'committed', hash: 'a'.repeat(40), author: 'Author', authoredAt: '2026-09-19T00:00:00.000Z',
+      summary: 'Change', originalLine: 1, originalPath: 'sample.ts',
+    });
+    let releasePreview: (() => void) | undefined;
+    const show = async () => {
+      await act(async () => {
+        view.dispatch({ effects: slot.reconfigure(showTooltip.of({ pos: 0, arrow: true, create() {
+          const dom = document.createElement('div');
+          dom.textContent = 'const child: string';
+          return { dom };
+        } })) });
+        anchor.dispatchEvent(new window.FocusEvent('focus') as unknown as Event);
+        await new Promise(resolve => setTimeout(resolve, 50));
+      });
+      expect(document.querySelector('.cm-tooltip')?.textContent).toContain('const child: string');
+      expect(document.querySelector('.git-line-blame-tooltip')).not.toBeNull();
+    };
+    const dismiss = async () => {
+      await act(async () => {
+        view.dispatch({ effects: slot.reconfigure([]) });
+        anchor.dispatchEvent(new window.FocusEvent('blur') as unknown as Event);
+        await new Promise(resolve => setTimeout(resolve, 50));
+      });
+    };
+    try {
+      await show();
+      expect(hiddenStates).toEqual([false]);
+      await dismiss();
+      expect(hiddenStates).toEqual([false]);
+      await act(async () => { releasePreview = beginSplitPreview(); });
+      await show();
+      await dismiss();
+      expect(hiddenStates.at(-1)).toBe(true);
+      await act(async () => { releasePreview?.(); releasePreview = undefined; });
+      expect(hiddenStates.at(-1)).toBe(false);
+      await show();
+      hiddenStates.length = 0;
+      await act(async () => { cleanupBlame(); view.destroy(); });
+      expect(hiddenStates).toEqual([]);
+    } finally {
+      await act(async () => { cleanupBlame(); view.destroy(); releasePreview?.(); });
+    }
+  });
+});
+
+test.each(['right', 'down'] as const)('terminal %s split explains size limits before opening, rechecks the preview and restores on cancel', async direction => {
   const { TerminalPaneLayout } = await import('../frontend/src/features/terminal/TerminalPaneLayout');
   const { insertSplitPane } = await import('../frontend/src/shared/ui/splitPaneModel');
-  await withDOM(async ({ render, click }) => {
+  await withDOM(async ({ render, click, window, resize }) => {
     const hosts = new Map<string, HTMLElement>();
     const removals: string[] = [];
     let created = 0;
@@ -229,18 +306,67 @@ test('terminal pane creates a shell only after choosing Terminal and keeps the o
     function TerminalFixture() {
       const [layout, setLayout] = useState<SplitLayoutNode>({ type: 'pane', paneId: 'first' });
       const panes = splitPaneIds(layout).map(id => ({ id, title: '/workspace', running: true }));
-      return <TerminalPaneLayout layout={layout} panes={panes} activePaneId="first" registerHost={registerHost}
+      return <div className="app-shell"><TerminalPaneLayout layout={layout} panes={panes} activePaneId="first" registerHost={registerHost}
         onSelectPane={() => {}} onResizeSplit={() => {}} onClosePane={() => {}}
         onSplitPane={async (id, direction) => {
           created++;
           setLayout(current => insertSplitPane(current, id, 'second', direction, 'split'));
           return true;
-        }} />;
+        }} /></div>;
     }
     await render(<TerminalFixture />);
     const original = hosts.get('first');
-    await click('Split pane right');
+    const pane = document.querySelector<HTMLElement>('.terminal-pane')!;
+    const originalClass = pane.className;
+    const scene = document.querySelector<HTMLElement>('.app-shell')!;
+    scene.style.filter = 'brightness(1)';
+    let width = direction === 'right' ? 474 : 280;
+    let height = direction === 'right' ? 800 : 399;
+    pane.getBoundingClientRect = () => new window.DOMRect(0, 0, width, height);
+    const choice = () => [...document.querySelectorAll<HTMLButtonElement>('dialog button')]
+      .find(button => button.textContent?.startsWith('Terminal'))!;
+    const trigger = pane.querySelector<HTMLButtonElement>(`[aria-label="Split pane ${direction}"]`)!;
+    await resize(pane);
+    expect(trigger.disabled).toBe(true);
+    const reason = direction === 'right'
+      ? 'Split pane right requires an area at least 475px wide and 240px high.'
+      : 'Split pane down requires an area at least 280px wide and 400px high.';
+    expect(trigger.getAttribute('aria-description')).toBe(reason);
+    await click(`Split pane ${direction}`);
+    expect(document.querySelector('dialog')).toBeNull();
     expect(created).toBe(0);
+    await act(async () => { trigger.dispatchEvent(new window.PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }) as unknown as Event); });
+    await act(async () => { await new Promise<void>(resolve => window.setTimeout(resolve, 1000)); });
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(reason);
+    await act(async () => { trigger.dispatchEvent(new window.PointerEvent('pointerout', { bubbles: true }) as unknown as Event); });
+    width = direction === 'right' ? 475 : 280;
+    height = direction === 'right' ? 800 : 400;
+    await resize(pane);
+    expect(trigger.disabled).toBe(false);
+    expect(trigger.getAttribute('aria-description')).toBe(`Split pane ${direction}`);
+    await click(`Split pane ${direction}`);
+    expect(choice().disabled).toBe(false);
+    width = direction === 'right' ? 474 : 280;
+    height = direction === 'right' ? 800 : 399;
+    await resize(pane);
+    expect(choice().disabled).toBe(true);
+    expect(document.querySelector('[role="status"]')?.textContent).toContain('larger');
+    await click('Terminal');
+    expect(created).toBe(0);
+    width = direction === 'right' ? 475 : 280;
+    height = direction === 'right' ? 800 : 400;
+    await act(async () => window.dispatchEvent(new window.Event('resize')));
+    expect(choice().disabled).toBe(false);
+    expect(document.querySelector('dialog')?.getAttribute('data-backdrop')).toBe('regional');
+    expect(document.querySelector('dialog [data-liquid-glass-backdrop]')?.getAttribute('data-regional-blur-surface')).toBe('true');
+    await click('Cancel');
+    expect(created).toBe(0);
+    expect(document.querySelector('dialog')).toBeNull();
+    expect(scene.style.filter).toBe('brightness(1)');
+    expect(scene.hasAttribute('data-regional-blur-source')).toBe(false);
+    expect(pane.className).toBe(originalClass);
+    expect(hosts.get('first')).toBe(original);
+    await click(`Split pane ${direction}`);
     await click('Terminal');
     expect(created).toBe(1);
     expect(hosts.get('first')).toBe(original);

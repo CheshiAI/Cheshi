@@ -2,7 +2,6 @@ import { type Extension } from '@codemirror/state';
 import { tooltips, ViewPlugin } from '@codemirror/view';
 import { registerTooltipBlur } from '../../shared/ui/tooltipBlur';
 import panelStyles from '../../shared/ui/LiquidGlassPanel.module.css';
-import { beginSplitPreview } from '../../shared/ui/splitPreviewState';
 import { installAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 
 /** Keep CodeMirror's tooltip DOM and positioning, but render above the editor's clipping layers. */
@@ -15,7 +14,6 @@ export function workspaceEditorTooltips(document: Document): Extension {
   const surfaces = ViewPlugin.fromClass(class {
     private readonly blurSurfaces = new Map<HTMLElement, () => void>();
     private readonly observer: MutationObserver;
-    private restoreNativeSurfaces: (() => void) | undefined;
     private readonly cleanupScrollbars: () => void;
 
     constructor() {
@@ -41,11 +39,6 @@ export function workspaceEditorTooltips(document: Document): Extension {
         tooltip.append(panel);
         this.blurSurfaces.set(panel, registerTooltipBlur(panel));
       }
-      if (tooltips.length && !this.restoreNativeSurfaces) this.restoreNativeSurfaces = beginSplitPreview();
-      if (!tooltips.length) {
-        this.restoreNativeSurfaces?.();
-        this.restoreNativeSurfaces = undefined;
-      }
     }
 
     destroy(): void {
@@ -53,7 +46,6 @@ export function workspaceEditorTooltips(document: Document): Extension {
       this.cleanupScrollbars();
       for (const release of this.blurSurfaces.values()) release();
       this.blurSurfaces.clear();
-      this.restoreNativeSurfaces?.();
       portal.remove();
     }
   });

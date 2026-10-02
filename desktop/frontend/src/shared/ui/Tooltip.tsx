@@ -17,17 +17,19 @@ function isNearestTrigger(target: EventTarget, current: Element): boolean {
 
 interface TooltipProps<T extends Element> {
   content?: string;
+  placement?: 'above' | 'below';
   delay?: number;
   blurSourceRef?: RefObject<HTMLElement | null>;
   resolveAnchor?: (element: T) => Element;
   children: (props: TooltipTriggerProps<T>) => ReactNode;
 }
 
-function TooltipContent({ anchor, content, id, blurSourceRef }: {
+function TooltipContent({ anchor, content, id, blurSourceRef, placement }: {
   anchor: Element; content: string; id: string; blurSourceRef?: RefObject<HTMLElement | null>;
+  placement: 'above' | 'below';
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+  const [position, setPosition] = useState<{ left: number; top: number; above: boolean; arrowLeft: number } | null>(null);
 
   useLayoutEffect(() => {
     const tooltip = ref.current;
@@ -36,11 +38,16 @@ function TooltipContent({ anchor, content, id, blurSourceRef }: {
     const { width, height } = tooltip.getBoundingClientRect();
     const gap = 8;
     const below = bounds.bottom + gap;
+    const aboveTop = bounds.top - height - gap;
+    const above = placement === 'above' ? aboveTop >= gap : below + height > window.innerHeight - gap;
+    const left = Math.max(gap, Math.min(bounds.left, window.innerWidth - width - gap));
     setPosition({
-      left: Math.max(gap, Math.min(bounds.left, window.innerWidth - width - gap)),
-      top: Math.max(gap, below + height <= window.innerHeight - gap ? below : bounds.top - height - gap),
+      left,
+      top: Math.max(gap, above ? aboveTop : below),
+      above,
+      arrowLeft: Math.max(12, Math.min(bounds.left + bounds.width / 2 - left, width - 12)),
     });
-  }, [anchor, content]);
+  }, [anchor, content, placement]);
 
   useLayoutEffect(() => {
     const panel = ref.current?.firstElementChild as HTMLElement | null;
@@ -49,16 +56,18 @@ function TooltipContent({ anchor, content, id, blurSourceRef }: {
   }, [blurSourceRef]);
 
   return createPortal(
-    <div ref={ref} data-tooltip-blur-portal="true" className={styles.anchor} style={position ?? { visibility: 'hidden' }}>
+    <div ref={ref} data-tooltip-blur-portal="true" data-placement={position?.above ? 'above' : 'below'}
+      className={styles.anchor} style={position ? { left: position.left, top: position.top } : { visibility: 'hidden' }}>
       <LiquidGlassPanel id={id} role="tooltip" className={styles.content} data-liquid-glass-backdrop="false">
         {content}
       </LiquidGlassPanel>
+      <span aria-hidden="true" className={styles.arrow} style={{ left: position?.arrowLeft }} />
     </div>,
     anchor.closest('dialog') ?? anchor.ownerDocument.body,
   );
 }
 
-export function Tooltip<T extends Element = HTMLElement>({ content, delay = 1000, blurSourceRef, resolveAnchor, children }: TooltipProps<T>) {
+export function Tooltip<T extends Element = HTMLElement>({ content, placement = 'below', delay = 1000, blurSourceRef, resolveAnchor, children }: TooltipProps<T>) {
   const id = useId();
   const [anchor, setAnchor] = useState<Element | null>(null);
   const [visible, setVisible] = useState(false);
@@ -97,7 +106,7 @@ export function Tooltip<T extends Element = HTMLElement>({ content, delay = 1000
     setAnchor(null);
   };
 
-  const tooltip = visible && anchor && content ? <TooltipContent anchor={anchor} content={content} id={id} blurSourceRef={blurSourceRef} /> : null;
+  const tooltip = visible && anchor && content ? <TooltipContent anchor={anchor} content={content} id={id} blurSourceRef={blurSourceRef} placement={placement} /> : null;
   return <>
     {children({
       'data-tooltip-trigger': content ? id : undefined,

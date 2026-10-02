@@ -1,7 +1,6 @@
 import type { GitLineBlame } from '../../../../shared/git-line-blame';
 import { registerTooltipBlur } from '../../shared/ui/tooltipBlur';
 import panelStyles from '../../shared/ui/LiquidGlassPanel.module.css';
-import { beginSplitPreview } from '../../shared/ui/splitPreviewState';
 import './git-line-blame-tooltip.css';
 
 let nextTooltipId = 0;
@@ -14,7 +13,6 @@ export function attachGitLineBlameTooltip(anchor: HTMLElement, blame: Extract<Gi
   let tooltip: HTMLDivElement | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let releaseBlur: (() => void) | undefined;
-  let restoreNativeSurfaces: (() => void) | undefined;
 
   const close = () => {
     clearTimeout(timer);
@@ -23,8 +21,6 @@ export function attachGitLineBlameTooltip(anchor: HTMLElement, blame: Extract<Gi
     tooltip?.remove();
     tooltip = null;
     anchor.removeAttribute('aria-describedby');
-    restoreNativeSurfaces?.();
-    restoreNativeSurfaces = undefined;
     window.removeEventListener('resize', close);
     window.removeEventListener('blur', close);
     window.removeEventListener('scroll', onScroll, true);
@@ -77,7 +73,6 @@ export function attachGitLineBlameTooltip(anchor: HTMLElement, blame: Extract<Gi
     tooltip.addEventListener('pointerleave', leave);
     document.body.append(tooltip);
     anchor.setAttribute('aria-describedby', id);
-    restoreNativeSurfaces = beginSplitPreview();
 
     const bounds = anchor.getBoundingClientRect();
     const size = tooltip.getBoundingClientRect();

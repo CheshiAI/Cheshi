@@ -4,9 +4,10 @@ import { LiquidGlassPanel } from './LiquidGlassPanel';
 import { NeumorphicButton } from './NeumorphicButton';
 import { RegionalBlur } from './RegionalBlur';
 import { beginSplitPreview } from './splitPreviewState';
+import { splitPreviewSizeIssue, type SplitPreviewDirection } from './splitPreviewSize';
 import styles from './SplitPreview.module.css';
 
-export type SplitPreviewDirection = 'right' | 'down';
+export type { SplitPreviewDirection } from './splitPreviewSize';
 export interface SplitPreviewChoice {
   id: string;
   label: string;
@@ -15,7 +16,7 @@ export interface SplitPreviewChoice {
   disabledReason?: string;
 }
 
-export function SplitPreview({ target, direction, title, choices, onChoose, onClose, onCommitted, minimumTargetWidth = 560, backdrop = 'native' }: {
+export function SplitPreview({ target, direction, title, choices, onChoose, onClose, onCommitted, minimumTargetWidth, backdrop = 'native' }: {
   target: HTMLElement;
   direction: SplitPreviewDirection;
   title: string;
@@ -50,7 +51,7 @@ export function SplitPreview({ target, direction, title, choices, onChoose, onCl
       Object.assign(dialog.style, {
         left: `${bounds.left}px`, top: `${bounds.top}px`, width: `${bounds.width}px`, height: `${bounds.height}px`,
       });
-      setFits(direction === 'right' ? bounds.width >= minimumTargetWidth && bounds.height >= 240 : bounds.height >= 400 && bounds.width >= 280);
+      setFits(splitPreviewSizeIssue(bounds, direction, minimumTargetWidth) === null);
       target.classList.add(previewClass);
     };
     measure();

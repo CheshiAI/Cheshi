@@ -11,8 +11,11 @@ import type {
 import { SplitPaneLayout } from '../../shared/ui/SplitPaneLayout';
 import { LiquidGlassPanel } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { splitPreviewSizeIssue } from '../../shared/ui/splitPreviewSize';
 import { paneDisplayPath } from './paneTitle';
 import { TerminalPaneIcon } from './TerminalPaneIcon';
+
+const TERMINAL_SPLIT_MIN_WIDTH = 475;
 
 interface TerminalPaneLayoutProps {
   layout: TerminalPaneLayoutState;
@@ -50,6 +53,28 @@ function TerminalPane({
   const displayPath = paneDisplayPath(pane.title);
   const paneRef = useRef<HTMLElement>(null);
   const [splitChoice, setSplitChoice] = useState<SplitPreviewDirection | null>(null);
+  const [splitIssues, setSplitIssues] = useState<Record<SplitPreviewDirection, string | null>>({ right: null, down: null });
+
+  useLayoutEffect(() => {
+    const pane = paneRef.current;
+    // The preview scales this pane. Resume measuring after it restores the original layout.
+    if (!pane || splitChoice) return;
+    const view = pane.ownerDocument.defaultView!;
+    const measure = () => {
+      const bounds = pane.getBoundingClientRect();
+      const right = splitPreviewSizeIssue(bounds, 'right', TERMINAL_SPLIT_MIN_WIDTH);
+      const down = splitPreviewSizeIssue(bounds, 'down', TERMINAL_SPLIT_MIN_WIDTH);
+      setSplitIssues(previous => previous.right === right && previous.down === down ? previous : { right, down });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(pane);
+    view.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      view.removeEventListener('resize', measure);
+    };
+  }, [splitChoice]);
 
   return createPortal(
     <section
@@ -77,7 +102,9 @@ function TerminalPane({
             size="icon"
             type="button"
             aria-label="Split pane right"
-            title="Split pane right"
+            tooltipPlacement="above"
+            title={splitIssues.right ?? 'Split pane right'}
+            disabled={splitIssues.right !== null}
             onClick={(event) => {
               event.stopPropagation();
               setSplitChoice('right');
@@ -90,7 +117,9 @@ function TerminalPane({
             size="icon"
             type="button"
             aria-label="Split pane down"
-            title="Split pane down"
+            tooltipPlacement="above"
+            title={splitIssues.down ?? 'Split pane down'}
+            disabled={splitIssues.down !== null}
             onClick={(event) => {
               event.stopPropagation();
               setSplitChoice('down');
@@ -103,6 +132,7 @@ function TerminalPane({
             size="icon"
             type="button"
             aria-label="Close pane"
+            tooltipPlacement="above"
             title="Close pane"
             onClick={(event) => {
               event.stopPropagation();
@@ -119,6 +149,7 @@ function TerminalPane({
         aria-label="Interactive project terminal"
       />
       {splitChoice && paneRef.current && <SplitPreview target={paneRef.current} direction={splitChoice}
+        minimumTargetWidth={TERMINAL_SPLIT_MIN_WIDTH} backdrop="regional"
         title={splitChoice === 'right' ? 'Split terminal right' : 'Split terminal down'}
         choices={[{ id: 'terminal', label: 'Terminal', icon: <SquareTerminal aria-hidden="true" />, description: 'Start a new shell.' }]}
         onChoose={async () => (await onSplitPane(pane.id, splitChoice)) !== false}
