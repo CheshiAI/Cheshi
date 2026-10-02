@@ -158,6 +158,7 @@ export function WorkspaceEditorPane({
                   <FlatTab
                     active={selected}
                     closeLabel={`Close ${tab.path}`}
+                    closeVariant="ghost"
                     key={tab.path}
                     tabId={tab.path}
                     label={tabLabel(tab)}

@@ -10,6 +10,7 @@ import type {
 } from '../../cheshiDesktop';
 import { SplitPaneLayout } from '../../shared/ui/SplitPaneLayout';
 import { LiquidGlassPanel } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { paneDisplayPath } from './paneTitle';
 import { TerminalPaneIcon } from './TerminalPaneIcon';
 
@@ -59,7 +60,7 @@ function TerminalPane({
       aria-label={displayPath}
       onPointerDown={() => onSelectPane(pane.id)}
     >
-      <LiquidGlassPanel as="header" className="terminal-pane-header" data-liquid-glass-backdrop={active ? 'true' : undefined}>
+      <LiquidGlassPanel as="header" className="terminal-pane-header">
         <button
           className="terminal-pane-title"
           type="button"
@@ -71,8 +72,9 @@ function TerminalPane({
           <span>{displayPath}</span>
         </button>
         <div className="terminal-pane-actions">
-          <button
-            className="terminal-pane-action"
+          <TooltipButton
+            variant="ghost"
+            size="icon"
             type="button"
             aria-label="Split pane right"
             title="Split pane right"
@@ -82,9 +84,10 @@ function TerminalPane({
             }}
           >
             <Columns2 aria-hidden="true" />
-          </button>
-          <button
-            className="terminal-pane-action"
+          </TooltipButton>
+          <TooltipButton
+            variant="ghost"
+            size="icon"
             type="button"
             aria-label="Split pane down"
             title="Split pane down"
@@ -94,9 +97,10 @@ function TerminalPane({
             }}
           >
             <Rows2 aria-hidden="true" />
-          </button>
-          <button
-            className="terminal-pane-action"
+          </TooltipButton>
+          <TooltipButton
+            variant="ghost"
+            size="icon"
             type="button"
             aria-label="Close pane"
             title="Close pane"
@@ -106,7 +110,7 @@ function TerminalPane({
             }}
           >
             <X aria-hidden="true" />
-          </button>
+          </TooltipButton>
         </div>
       </LiquidGlassPanel>
       <div

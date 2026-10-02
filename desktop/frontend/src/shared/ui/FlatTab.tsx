@@ -30,6 +30,7 @@ const TabReorderContext = createContext<ReturnType<typeof useFlatTabReorder> | n
 interface FlatTabProps {
   active: boolean;
   closeLabel: string;
+  closeVariant?: 'standard' | 'ghost';
   label: ReactNode;
   leading?: ReactNode;
   onActivate: () => void;
@@ -74,6 +75,7 @@ export function FlatTabList({ className, children, onCloseAll, onReorder, onTabD
 export function FlatTab({
   active,
   closeLabel,
+  closeVariant,
   label,
   leading,
   onActivate,
@@ -132,7 +134,9 @@ export function FlatTab({
         </button>
       </TooltipTarget>
       <NeumorphicButton
-        raised
+        raised={closeVariant === undefined}
+        size={closeVariant ? 'icon' : undefined}
+        variant={closeVariant}
         className={styles.close}
         type="button"
         aria-label={closeLabel}

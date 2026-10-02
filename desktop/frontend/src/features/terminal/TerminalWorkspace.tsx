@@ -12,6 +12,7 @@ import {
   nonDraggableWindowRegionStyle,
   TieredHeader,
 } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TerminalPaneLayout } from './TerminalPaneLayout';
 import { TerminalTabIcon } from './TerminalTabIcon';
 import { useTerminalController } from './useTerminalController';
@@ -68,6 +69,7 @@ export function TerminalWorkspace({
                     <FlatTab
                       active={selected}
                       closeLabel={`Close ${session.title}`}
+                      closeVariant="ghost"
                       key={session.id}
                       label={session.title}
                       leading={<TerminalTabIcon />}
@@ -81,17 +83,18 @@ export function TerminalWorkspace({
               </FlatTabList>
             )}
             <div className="terminal-header-actions" style={nonDraggableWindowRegionStyle}>
-              <WorkspaceLayoutControls />
-              <NeumorphicButton
-                raised
-                className="neumorphic-surface terminal-action"
+              <TooltipButton
+                size="icon"
+                variant="ghost"
                 aria-label="New terminal session"
                 title="New terminal session"
                 disabled={!state.available}
                 onClick={terminal.newSession}
               >
                 <Plus aria-hidden="true" />
-              </NeumorphicButton>
+              </TooltipButton>
+              <span className="terminal-header-divider" aria-hidden="true" />
+              <WorkspaceLayoutControls />
               <SidebarToggle
                 raised
                 type="button"
@@ -102,9 +105,9 @@ export function TerminalWorkspace({
               >
                 <PanelRight aria-hidden="true" />
               </SidebarToggle>
-              {onCloseWorkspace && <NeumorphicButton raised size="icon"
+              {onCloseWorkspace && <TooltipButton variant="ghost" size="icon"
                 aria-label="Close Terminal workspace" title="Close Terminal workspace"
-                onClick={onCloseWorkspace}><X aria-hidden="true" /></NeumorphicButton>}
+                onClick={onCloseWorkspace}><X aria-hidden="true" /></TooltipButton>}
             </div>
           </>
         )}
