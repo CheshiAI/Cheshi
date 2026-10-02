@@ -1,0 +1,15 @@
+.field { display: flex; flex-direction: column; align-items: flex-start; gap: var(--icon-default); font-size: var(--font-size-label); }
+.trigger[data-variant] { height: 48px; gap: var(--icon-default); }
+.dialog { --modal-width: 384px; }
+.content { display: flex; flex-direction: column; gap: var(--space-default); }
+.preview { display: flex; align-items: center; gap: var(--icon-default); font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
+.preview > button { margin-left: auto; }
+.preview > button > svg { width: var(--icon-size-default); height: var(--icon-size-default); }
+.characters { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--icon-default); }
+.choice[data-variant] { height: 40px; min-width: 0; padding: 0; }
+.colors { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: var(--icon-default); }
+.color[data-variant] { min-width: 0; padding: 0; }
+.color > span { display: block; width: 16px; height: 16px; border-radius: 50%; }
+.choice[aria-pressed='true'], .color[aria-pressed='true'] { background: var(--control-surface); outline: 1px solid var(--text); outline-offset: -1px; }
+.choice:focus-visible, .color:focus-visible { outline: 1px solid var(--text); outline-offset: -1px; }
+.actions { display: flex; justify-content: flex-end; gap: var(--icon-default); }

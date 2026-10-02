@@ -1,0 +1,7 @@
+.files { display: flex; flex-direction: column; gap: var(--icon-default); min-width: 0; }
+.heading, .file { display: flex; align-items: center; gap: var(--icon-default); min-width: 0; }
+.heading { justify-content: space-between; font-size: var(--font-size-label); color: var(--text); }
+.file > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; }
+.identity { display: flex; flex: 1; flex-direction: column; min-width: 0; font-size: var(--font-size-label); overflow-wrap: anywhere; }
+.path, .description { font-size: var(--font-size-small); color: var(--sidebar-section-label-color); line-height: 1.6; }
+.description { margin: 0; overflow-wrap: anywhere; }

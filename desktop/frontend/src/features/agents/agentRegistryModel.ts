@@ -24,6 +24,14 @@ export class AgentRegistryModel {
     return this.api.runtime(request);
   };
   models = (accountId: string) => this.api.models(accountId);
+  selectInstructionFiles = () => {
+    if (!this.api.selectInstructionFiles) return Promise.reject(new Error('Instruction file selection is unavailable. Restart Cheshi.'));
+    return this.api.selectInstructionFiles();
+  };
+  openInstructionFile = (path: string) => {
+    if (!this.api.openInstructionFile) return Promise.reject(new Error('Opening instruction files is unavailable. Restart Cheshi.'));
+    return this.api.openInstructionFile(path);
+  };
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<AgentRegistryState>) {
     if (!this.active) return;

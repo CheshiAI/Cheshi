@@ -1,3 +1,5 @@
+import { defaultAgentAvatar } from '../shared/agent-avatar';
+import { specialistAgent } from './agent-registry-fixtures';
 import { expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -136,4 +138,90 @@ test('registry IPC binds assignment to its owner workspace and broadcasts across
     unsubscribe();
     expect(b.window.listenerCount('closed')).toBe(1);
   } finally { a.registration.dispose(); b.registration.dispose(); f.close(); }
+});
+
+test('avatar selections persist across restarts and older clients preserve them when editing', () => {
+  const f = fixture();
+  try {
+    const input = specialistInput();
+    const created = f.registry.save(input, '/project').snapshot.agents[0]!;
+    expect(created.avatar).toBeDefined();
+    const avatar = { character: 'crab', color: 'pink' } as const;
+    const saved = f.registry.save({ ...input, id: created.id, revision: created.revision,
+      profile: { ...input.profile, avatar } }, '/project').snapshot.agents[0]!;
+    const reopened = createAgentRegistry(f.filename);
+    expect(reopened.snapshot('/project').agents[0]!.avatar).toEqual(avatar);
+    expect(reopened.save({ ...input, id: saved.id, revision: saved.revision }, '/project').snapshot.agents[0]!.avatar).toEqual(avatar);
+    const before = readFileSync(f.filename, 'utf8');
+    expect(() => reopened.save({ ...input, profile: { ...input.profile, avatar: { character: 'invalid', color: 'pink' } } }, '/project')).toThrow('icon');
+    expect(readFileSync(f.filename, 'utf8')).toBe(before);
+  } finally { f.close(); }
+});
+test('legacy agent icons are derived from identity without rewriting existing registrations', () => {
+  const f = fixture();
+  try {
+    const agent = specialistAgent();
+    writeFileSync(f.filename, JSON.stringify({ version: 1, agents: [agent] }));
+    const before = readFileSync(f.filename, 'utf8');
+    expect(f.registry.snapshot('/project').agents[0]!.avatar).toEqual(defaultAgentAvatar(agent.id));
+    expect(createAgentRegistry(f.filename).snapshot('/another').agents[0]!.avatar).toEqual(defaultAgentAvatar(agent.id));
+    expect(readFileSync(f.filename, 'utf8')).toBe(before);
+  } finally { f.close(); }
+});
+
+test('instruction file links persist separately per project and unlinking preserves originals', () => {
+  const f = fixture();
+  try {
+    const original = path.join(f.directory, 'AGENTS.md'); writeFileSync(original, 'original contents');
+    const input = specialistInput();
+    let agent = f.registry.save({ ...input, profile: { ...input.profile, instructionFiles: ['/common/rules.md'] },
+      assignment: { assigned: true, instructions: '', instructionFiles: [original] } }, '/one').snapshot.agents[0]!;
+    agent = f.registry.save({ ...input, id: agent.id, revision: agent.revision,
+      assignment: { assigned: true, instructions: '', instructionFiles: ['/two/AGENTS.md'] } }, '/two').snapshot.agents[0]!;
+    expect(agent.instructionFiles).toEqual(['/common/rules.md']);
+    const reopened = createAgentRegistry(f.filename);
+    agent = reopened.save({ ...input, id: agent.id, revision: agent.revision }, '/one').snapshot.agents[0]!;
+    expect(agent.assignments.find(item => item.workspaceRoot === '/one')?.instructionFiles).toEqual([original]);
+    agent = reopened.save({ ...input, id: agent.id, revision: agent.revision, profile: { ...input.profile, instructionFiles: [] },
+      assignment: { assigned: true, instructions: '', instructionFiles: [] } }, '/one').snapshot.agents[0]!;
+    expect(agent.instructionFiles).toEqual([]);
+    expect(agent.assignments.find(item => item.workspaceRoot === '/one')?.instructionFiles).toEqual([]);
+    expect(agent.assignments.find(item => item.workspaceRoot === '/two')?.instructionFiles).toEqual(['/two/AGENTS.md']);
+    expect(readFileSync(original, 'utf8')).toBe('original contents');
+    expect(readFileSync(f.filename, 'utf8')).not.toContain('original contents');
+  } finally { f.close(); }
+});
+
+test('file IPC validates ownership and only opens selected or linked Markdown files', async () => {
+  const f = fixture(), file = path.join(f.directory, 'AGENTS.md'), opened: string[] = [];
+  writeFileSync(file, 'rules');
+  const owner = { mainFrame: {}, isDestroyed: () => false, send() {} };
+  const window = Object.assign(new EventEmitter(), { webContents: owner }) as unknown as BrowserWindow;
+  const event = { sender: owner, senderFrame: owner.mainFrame } as unknown as IpcMainInvokeEvent;
+  const handlers = new Map<string, Parameters<IpcMain['handle']>[1]>();
+  let selection: string[] = [];
+  const registration = registerAgentRegistryIpc({ window, workspaceRoot: f.directory, registry: f.registry,
+    selectInstructionFiles: async () => selection, openInstructionFile: async value => { opened.push(value); },
+    ipc: { handle: (channel, handler) => { handlers.set(channel, handler); }, removeHandler: channel => { handlers.delete(channel); } } });
+  const renderer = new EventEmitter();
+  const api = createAgentRegistryApi(Object.assign(renderer, {
+    invoke: async (channel: string, value?: unknown) => handlers.get(channel)!(event, value),
+  }) as unknown as Parameters<typeof createAgentRegistryApi>[0]);
+  const fails = async (operation: Promise<unknown>, message: string) => {
+    let error: unknown;
+    try { await operation; } catch (reason) { error = reason; }
+    expect(error).toBeInstanceOf(Error); expect((error as Error).message).toContain(message);
+  };
+  try {
+    const select = handlers.get(AGENT_REGISTRY_CHANNELS.selectInstructionFiles)!;
+    expect(() => select({ ...event, senderFrame: {} } as IpcMainInvokeEvent)).toThrow('workspace window');
+    expect(await api.selectInstructionFiles!()).toEqual([]);
+    await fails(api.openInstructionFile!(file), 'Select or link');
+    selection = [file]; expect(await api.selectInstructionFiles!()).toEqual([file]);
+    await api.openInstructionFile!(file); expect(opened).toEqual([file]);
+    await fails(api.openInstructionFile!('/tmp/script.sh'), 'Markdown');
+    rmSync(file); await fails(api.openInstructionFile!(file), 'Cannot read'); expect(opened).toHaveLength(1);
+    window.emit('closed'); expect(handlers.size).toBe(0);
+    expect(() => select(event)).toThrow('workspace window');
+  } finally { registration.dispose(); f.close(); }
 });

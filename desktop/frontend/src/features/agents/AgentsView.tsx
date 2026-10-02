@@ -1,5 +1,6 @@
+import { AgentAvatar } from '../../shared/agent-management/AgentAvatar';
 import { SpecialistRuntimePanel } from './SpecialistRuntimePanel';
-import { Bot, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Bot, Container, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { LiquidGlassPanel } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
@@ -9,12 +10,9 @@ import { AgentManagementFrame, AgentManagementNotice } from '../../shared/agent-
 import type { AgentScreenProps } from '../../shared/agent-management/AgentManagementFrame';
 import styles from '../../shared/agent-management/agentManagement.module.css';
 import viewStyles from './AgentsView.module.css';
-import { AgentTaskResults } from './AgentTaskResults';
 import { SpecialistAgentForm } from './SpecialistAgentForm';
 import type { AgentRegistryModel, AgentRegistryState } from './agentRegistryModel';
 import type { CodexAccountsApi } from '../../../../shared/codex-accounts';
-import type { ManagedAgent } from '../../../../shared/agent-management';
-import { workerDisplayName } from '../../shared/agent-management/workerDisplayName';
 import { WorkerDeleteDialog } from '../../shared/agent-management/WorkerDeleteDialog';
 import type { SpecialistAgent } from '../../../../shared/agent-registry';
 
@@ -25,15 +23,14 @@ const emptySubscribe = () => () => {};
 export function AgentsView({ model, state, registry, accountsApi }: AgentScreenProps & {
   registry?: AgentRegistryModel | null; accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
-  const [runtimeId, setRuntimeId] = useState<string | null>(null);
+  const [settingsId, setSettingsId] = useState<string | null>(null);
   const [deletion, setDeletion] = useState<SpecialistAgent | null>(null);
   const registered = useSyncExternalStore(registry?.subscribe ?? emptySubscribe, registry?.snapshot ?? emptySnapshot);
-  const profile = registered.data?.agents.find(item => item.id === registered.selection);
-  const editing = Boolean(registry && registered.data && (registered.selection === 'new' || profile));
+  const creating = registered.selection === 'new';
+  const profile = creating ? undefined : registered.data?.agents.find(item => item.id === registered.selection) ?? registered.data?.agents[0];
+  const editing = creating || Boolean(profile && settingsId === profile.id);
   const listScrollbar = useAutoHideScrollbars<HTMLElement>();
-  const { snapshot, details, changing, loading } = state;
-  const agent = snapshot?.agents.find(item => item.id === state.agentId);
-  const workerName = (worker: ManagedAgent) => workerDisplayName(worker, registered.data?.agents);
+  const { snapshot, changing, loading } = state;
   return <AgentManagementFrame title="Agents" icon={<Bot aria-hidden="true" />} bodyLayout="fill" actions={
     <TooltipButton variant="ghost" size="icon" aria-label="Refresh" title="Refresh agents"
       disabled={registered.saving || (registry ? registered.loading : changing || loading || !state.engineId)}
@@ -43,57 +40,47 @@ export function AgentsView({ model, state, registry, accountsApi }: AgentScreenP
   }>
     <LiquidGlassPanel as="aside" className={viewStyles.sidebar} aria-label="Agents">
       <div className={viewStyles.sidebarHeading}><h2 className={styles.sectionTitle}>AGENTS</h2>
-        {profile && <TooltipButton variant="ghost" size="icon" aria-label="Delete selected agent" title="Delete agent"
-          disabled={registered.saving} onClick={() => setDeletion(profile)}><Trash2 aria-hidden="true" /></TooltipButton>}
         {registry && <TooltipButton className={viewStyles.createButton} variant="ghost" size="icon" aria-label="New agent" title="New agent"
-          disabled={!registered.data || registered.saving} onClick={() => registry.select('new')}><Plus aria-hidden="true" /></TooltipButton>}
+          disabled={!registered.data || registered.saving} onClick={() => { setSettingsId(null); registry.select('new'); }}><Plus aria-hidden="true" /></TooltipButton>}
       </div>
       <nav ref={listScrollbar} className={viewStyles.agentList} aria-label="Agent selection">
         {registered.loading && !registered.data && <p className={viewStyles.empty}>Loading agents…</p>}
         {registered.error && !editing && <p className={viewStyles.empty} role="alert">{registered.error}</p>}
-        {registered.data?.agents.map(item => <TooltipButton key={item.id} variant="ghost" className={viewStyles.agent}
-          aria-label={item.name} title={item.name} disabled={registered.saving}
-          aria-current={registered.selection === item.id ? 'page' : undefined} onClick={() => registry?.select(item.id)}>
-          <Bot aria-hidden="true" /><span className={viewStyles.agentName}>{item.name}</span>
-        </TooltipButton>)}
-        {registry && Boolean(snapshot?.agents.length) && <h3 className={`${styles.sectionTitle} ${viewStyles.workerHeading}`}>CONNECTED WORKER CONTAINERS</h3>}
+        {registered.data?.agents.map(item => {
+          const workers = snapshot?.agents.filter(worker => worker.profileId === item.id) ?? [];
+          const selected = profile?.id === item.id;
+          return <div key={item.id} className={viewStyles.agentRow} data-selected={selected ? 'true' : undefined}>
+            <TooltipButton variant="ghost" className={viewStyles.agent}
+              aria-label={item.name} title={item.name} disabled={registered.saving}
+              aria-current={selected ? 'page' : undefined} onClick={() => { setSettingsId(null); registry?.select(item.id); }}>
+              <AgentAvatar avatar={item.avatar} id={item.id} /><span className={viewStyles.agentName}>{item.name}</span>
+            </TooltipButton>
+            <div className={viewStyles.workerActions}>
+              {workers.map(worker => <TooltipTarget key={worker.id} content={`${worker.name} · ${worker.state}`}>
+                <span className={viewStyles.containerIndicator} role="img" aria-label={`Container connection: ${worker.name}`}>
+                  <Container aria-hidden="true" />
+                </span>
+              </TooltipTarget>)}
+              <TooltipButton variant="ghost" size="icon" aria-label={`Delete agent: ${item.name}`} title={`Delete ${item.name}`}
+                disabled={registered.saving} onClick={() => setDeletion(item)}><Trash2 aria-hidden="true" /></TooltipButton>
+            </div>
+          </div>;
+        })}
         <div className={viewStyles.notice}><AgentManagementNotice state={state} /></div>
-        {snapshot?.agents.map(worker => <TooltipButton key={worker.id} variant="ghost"
-          className={viewStyles.agent} aria-label={workerName(worker)} title={worker.name}
-          aria-current={!editing && worker.id === state.agentId ? 'page' : undefined} disabled={changing || registered.saving}
-          onClick={() => { registry?.select(null); void model.select(worker.id); }}>
-          <Bot aria-hidden="true" /><span className={viewStyles.agentName}>{workerName(worker)}</span>
-        </TooltipButton>)}
+
       </nav>
     </LiquidGlassPanel>
     <section className={viewStyles.detailsPane} aria-label="Agent details">
-      {editing && registry && profile && runtimeId === profile.id ? <SpecialistRuntimePanel key={profile.id} agent={profile} model={registry}
-        engines={state.catalog.engines} engineId={state.engineId} onSettings={() => setRuntimeId(null)} /> : editing && registry ? <SpecialistAgentForm key={registered.selection} agent={profile} model={registry} state={registered} accountsApi={accountsApi} onOpen={profile ? () => setRuntimeId(profile.id) : undefined} /> : agent ? <>
-        <div className={viewStyles.detailHeader} aria-label="Agent status">
-          <TooltipTarget content={agent.name}><h2 className={viewStyles.name}>{workerName(agent)}</h2></TooltipTarget>
-          <span className={styles.description}>{details?.busy ? 'Working' : details?.ready ? 'Ready' : 'Unavailable'}</span>
-          <div className={`${viewStyles.sessionMeta} ${styles.description}`}>
-            <span className={viewStyles.login}>{details?.authenticated === true ? 'Signed' : details?.authenticated === false ? 'Not signed in' : 'Login unavailable'}</span>
-            <span aria-hidden="true">·</span>
-            <TooltipTarget content={details?.threadId ?? 'No active conversation'}>
-              <span className={viewStyles.conversation} aria-label="Conversation">{details?.threadId ?? 'No active conversation'}</span>
-            </TooltipTarget>
-          </div>
-        </div>
-        <div className={viewStyles.detailBody}>
-          {(agent.state !== 'running' || details?.error) && <div className={viewStyles.section}>
-            {agent.state !== 'running' && <p className={styles.description}>Start this agent's container in Docker to read its saved conversation and task results.</p>}
-            {details?.error && <p role="alert" className={styles.description}>{details.error}</p>}
-          </div>}
-          <AgentTaskResults key={`${state.engineId}/${agent.id}`} tasks={details?.tasks ?? []}
-            loading={loading} running={agent.state === 'running'} />
-        </div>
-      </> : <p className={viewStyles.empty}>Select an agent to view its status and task results.</p>}
+      {registry && registered.data && editing ? <SpecialistAgentForm key={profile?.id ?? 'new'} agent={profile}
+        model={registry} state={registered} accountsApi={accountsApi} onBack={profile ? () => setSettingsId(null) : undefined} />
+        : registry && profile ? <SpecialistRuntimePanel key={profile.id} agent={profile} model={registry}
+          engines={state.catalog.engines} engineId={state.engineId} onSettings={() => setSettingsId(profile.id)} />
+        : <p className={viewStyles.empty}>Select an agent to view its status and task results.</p>}
     </section>
     {deletion && registry && <WorkerDeleteDialog kind="agent" name={deletion.name} onClose={() => setDeletion(null)}
       onDelete={async deleteData => {
         await registry.remove({ id: deletion.id, revision: deletion.revision, deleteData });
-        setRuntimeId(null); await model.refresh();
+        setSettingsId(current => current === deletion.id ? null : current); await model.refresh();
       }} />}
   </AgentManagementFrame>;
 }

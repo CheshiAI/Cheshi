@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { defaultAgentAvatar } from '../shared/agent-avatar';
 import { EventEmitter } from 'node:events';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 import { assertAgentModelSelection, parseAgentModels, selectAgentModel } from '../shared/agent-models';
@@ -29,7 +30,7 @@ test('model selection retains supported effort and resets incompatible effort an
 
 test('saved model settings round trip and legacy profiles receive compatible defaults', () => {
   const agent = { ...specialistAgent(), model: 'model-fixture', reasoningEffort: 'high', serviceTier: 'priority' };
-  expect(parseSpecialistAgents(JSON.parse(JSON.stringify([agent])))).toEqual([agent]);
+  expect(parseSpecialistAgents(JSON.parse(JSON.stringify([agent])))).toEqual([{ ...agent, avatar: defaultAgentAvatar(agent.id) }]);
   const { reasoningEffort: _effort, serviceTier: _tier, ...legacy } = agent;
   expect(parseSpecialistAgents([legacy])[0]).toMatchObject({ model: 'model-fixture', reasoningEffort: null, serviceTier: null });
   expect(() => parseSaveSpecialistAgent({ ...specialistInput(), profile: { ...agent, reasoningEffort: true } })).toThrow();

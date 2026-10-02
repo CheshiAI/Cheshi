@@ -1,3 +1,4 @@
+import { defaultAgentAvatar, parseAgentAvatar, type AgentAvatarValue } from './agent-avatar.ts';
 import { isCodexAccountId } from './codex-accounts.ts';
 import type { AgentModel, AgentModelSelection } from './agent-models.ts';
 
@@ -5,24 +6,30 @@ export const AGENT_REGISTRY_CHANNELS = {
   list: 'cheshi:agent-registry:list', save: 'cheshi:agent-registry:save', changed: 'cheshi:agent-registry:changed',
   models: 'cheshi:agent-registry:models',
   remove: 'cheshi:agent-registry:remove',
+  selectInstructionFiles: 'cheshi:agent-registry:select-instruction-files',
+  openInstructionFile: 'cheshi:agent-registry:open-instruction-file',
 } as const;
 export const SPECIALIST_ROLES = ['planning', 'research', 'frontend', 'development', 'verification', 'custom'] as const;
 export type SpecialistRole = typeof SPECIALIST_ROLES[number];
 export interface SpecialistProfile extends AgentModelSelection {
   name: string; role: SpecialistRole; instructions: string;
   accountId: string | null;
+  avatar?: AgentAvatarValue;
+  instructionFiles?: string[];
   permissions: { fileWrite: boolean; commandExecution: boolean };
 }
-export interface SpecialistAssignment { workspaceRoot: string; instructions: string; }
+export interface SpecialistAssignment { workspaceRoot: string; instructions: string; instructionFiles?: string[]; }
 export interface SpecialistAgent extends SpecialistProfile {
   id: string; revision: number; createdAt: string; updatedAt: string; assignments: SpecialistAssignment[];
 }
 export interface AgentRegistrySnapshot { agents: SpecialistAgent[]; workspaceRoot: string; }
 export interface SaveSpecialistAgent {
   id: string | null; revision: number | null; profile: SpecialistProfile;
-  assignment: { assigned: boolean; instructions: string };
+  assignment: { assigned: boolean; instructions: string; instructionFiles?: string[] };
 }
 export interface AgentRegistryApi {
+  selectInstructionFiles?(): Promise<string[]>;
+  openInstructionFile?(path: string): Promise<void>;
   remove?(request: DeleteSpecialistAgent): Promise<AgentRegistrySnapshot>;
   runtime?(request: import('./agent-runtime.ts').AgentRuntimeRequest): Promise<import('./agent-runtime.ts').AgentRuntimeState>;
   models(accountId: string): Promise<AgentModel[]>;
@@ -60,11 +67,25 @@ function revision(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) throw new TypeError('Invalid agent revision.');
   return value;
 }
+export function parseInstructionFilePath(value: unknown): string {
+  const path = text(value, 4096, true);
+  if (!/^(?:\/|[a-z]:[\\/]|\\\\)/i.test(path) || !/\.md$/i.test(path) || /[\r\n]/.test(path)) {
+    throw new TypeError('Instruction files must be absolute Markdown (.md) paths.');
+  }
+  return path;
+}
+export function parseInstructionFiles(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 16) throw new TypeError('Select up to 16 Markdown instruction files.');
+  return [...new Set(value.map(parseInstructionFilePath))];
+}
+function instructionFiles(data: Record<string, unknown>): { instructionFiles?: string[] } {
+  return data.instructionFiles === undefined ? {} : { instructionFiles: parseInstructionFiles(data.instructionFiles) };
+}
 function profile(value: unknown): SpecialistProfile {
   const data = record(value), permissions = record(data.permissions);
   if (!SPECIALIST_ROLES.some(role => role === data.role)) throw new TypeError('Invalid specialist role.');
   if (data.accountId !== null && !isCodexAccountId(data.accountId)) throw new TypeError('Invalid agent account.');
-  return { name: text(data.name, 100, true).trim(), role: data.role as SpecialistRole,
+  return { ...instructionFiles(data), ...(data.avatar === undefined ? {} : { avatar: parseAgentAvatar(data.avatar) }), name: text(data.name, 100, true).trim(), role: data.role as SpecialistRole,
     instructions: text(data.instructions, 20_000, true), accountId: data.accountId as string | null,
     model: data.model === null ? null : text(data.model, 200, true).trim(),
     reasoningEffort: data.reasoningEffort == null ? null : text(data.reasoningEffort, 100, true).trim(),
@@ -75,7 +96,7 @@ export function parseSaveSpecialistAgent(value: unknown): SaveSpecialistAgent {
   const data = record(value), assignment = record(data.assignment);
   if ((data.id === null) !== (data.revision === null)) throw new TypeError('Agent ID and revision must be supplied together.');
   return { id: data.id === null ? null : agentId(data.id), revision: data.revision === null ? null : revision(data.revision),
-    profile: profile(data.profile), assignment: { assigned: flag(assignment.assigned), instructions: text(assignment.instructions, 20_000) } };
+    profile: profile(data.profile), assignment: { ...instructionFiles(assignment), assigned: flag(assignment.assigned), instructions: text(assignment.instructions, 20_000) } };
 }
 export function parseSpecialistAgents(value: unknown): SpecialistAgent[] {
   if (!Array.isArray(value) || value.length > 1000) throw new TypeError('Invalid specialist agent registry.');
@@ -90,11 +111,12 @@ export function parseSpecialistAgents(value: unknown): SpecialistAgent[] {
       const assignment = record(rawAssignment), workspaceRoot = text(assignment.workspaceRoot, 4096, true);
       if (roots.has(workspaceRoot)) throw new TypeError('Duplicate agent assignment.');
       roots.add(workspaceRoot);
-      return { workspaceRoot, instructions: text(assignment.instructions, 20_000) };
+      return { workspaceRoot, instructions: text(assignment.instructions, 20_000), ...instructionFiles(assignment) };
     });
     const createdAt = text(data.createdAt, 40, true), updatedAt = text(data.updatedAt, 40, true);
     if (!Number.isFinite(Date.parse(createdAt)) || !Number.isFinite(Date.parse(updatedAt))) throw new TypeError('Invalid agent timestamp.');
-    return { ...profile(data), id, revision: revision(data.revision), createdAt, updatedAt, assignments };
+    const configured = profile(data);
+    return { ...configured, avatar: configured.avatar ?? defaultAgentAvatar(id), id, revision: revision(data.revision), createdAt, updatedAt, assignments };
   });
 }
 export function parseAgentRegistrySnapshot(value: unknown): AgentRegistrySnapshot {

@@ -264,6 +264,15 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
       agentRegistryIpc = registerAgentRegistryIpc({ window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot,
+        selectInstructionFiles: async () => {
+          const result = await dialog.showOpenDialog(window, { title: 'Link instruction files', defaultPath: options.workspaceRoot,
+            properties: ['openFile', 'multiSelections'], filters: [{ name: 'Markdown', extensions: ['md'] }] });
+          return result.canceled ? [] : result.filePaths;
+        },
+        openInstructionFile: async filename => {
+          const error = await shell.openPath(filename);
+          if (error) throw new Error(`Could not open instruction file: ${error}`);
+        },
         remove: request => agentDeletion.agent(options.workspaceRoot, request),
         runtime: request => specialistRuntime.request(options.workspaceRoot, request),
         models: async accountId => {

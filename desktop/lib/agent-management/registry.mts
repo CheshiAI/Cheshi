@@ -1,3 +1,4 @@
+import { randomAgentAvatar } from '../../shared/agent-avatar.ts';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -67,8 +68,11 @@ export function createAgentRegistry(filename: string) {
       }
       const now = new Date().toISOString();
       const assignments = (previous?.assignments ?? []).filter(item => item.workspaceRoot !== workspace);
-      if (input.assignment.assigned) assignments.push({ workspaceRoot: workspace, instructions: input.assignment.instructions });
-      const agent: SpecialistAgent = { ...input.profile, id: previous?.id ?? randomUUID(), revision: (previous?.revision ?? 0) + 1,
+      const projectFiles = input.assignment.instructionFiles ?? previous?.assignments.find(item => item.workspaceRoot === workspace)?.instructionFiles;
+      if (input.assignment.assigned) assignments.push({ workspaceRoot: workspace, instructions: input.assignment.instructions,
+        ...(projectFiles === undefined ? {} : { instructionFiles: projectFiles }) });
+      const agent: SpecialistAgent = { ...input.profile, instructionFiles: input.profile.instructionFiles ?? previous?.instructionFiles,
+        avatar: input.profile.avatar ?? previous?.avatar ?? randomAgentAvatar(), id: previous?.id ?? randomUUID(), revision: (previous?.revision ?? 0) + 1,
         createdAt: previous?.createdAt ?? now, updatedAt: now, assignments };
       const next = parseSpecialistAgents([...agents.filter(item => item.id !== agent.id), agent]);
       write(next);

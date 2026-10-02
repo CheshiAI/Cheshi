@@ -122,3 +122,61 @@ test('a previously used engine cannot be silently rebound to a different socket'
   await fails(f.runtime.request(f.workspace, f.request()), 'original connection');
   expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(1);
 });
+
+test('changing only the avatar does not invalidate or recreate a running worker', async () => {
+  const f = fixture(); await f.runtime.request(f.workspace, f.request());
+  const agent = f.registry.snapshot(f.workspace).agents[0]!;
+  f.registry.save({ id: agent.id, revision: agent.revision, profile: { ...agent, avatar: { character: 'crab', color: 'pink' } },
+    assignment: { assigned: true, instructions: 'Follow this project’s AGENTS.md.' } }, f.workspace);
+  expect((await f.runtime.request(f.workspace, { ...f.request(), action: 'status' })).details?.error).toBeNull();
+  await f.runtime.request(f.workspace, f.request());
+  expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(1);
+  expect(f.calls.some(call => call.args.includes('rm'))).toBe(false);
+});
+
+test('Start rereads linked instructions and refreshes the worker without rewriting source files', async () => {
+  const f = fixture(), common = join(f.home, 'common.md'), project = join(f.workspace, 'AGENTS.md');
+  writeFileSync(common, 'Common rules'); writeFileSync(project, 'Project first');
+  const agent = f.registry.snapshot(f.workspace).agents[0]!;
+  f.registry.save({ id: agent.id, revision: agent.revision, profile: { ...agent, instructionFiles: [common] },
+    assignment: { assigned: true, instructions: 'Project text', instructionFiles: [project] } }, f.workspace);
+  await f.runtime.request(f.workspace, f.request());
+  const installed = () => JSON.parse(f.calls.filter(call => call.input).at(-1)!.input!).configuration;
+  expect(installed().instructions).toContain('Common rules'); expect(installed().instructions).toContain('Project first');
+  const previous = installed().revision;
+  await f.runtime.request(f.workspace, f.request());
+  expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(1);
+  writeFileSync(project, 'Project second');
+  expect((await f.runtime.request(f.workspace, { ...f.request(), action: 'status' })).details?.error).toBeNull();
+  expect(installed().instructions).not.toContain('Project second');
+  await f.runtime.request(f.workspace, f.request());
+  expect(installed().revision).not.toBe(previous); expect(installed().instructions).toContain('Project second');
+  expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(2);
+  expect(readFileSync(common, 'utf8')).toBe('Common rules'); expect(readFileSync(project, 'utf8')).toBe('Project second');
+  const calls = f.calls.length;
+  rmSync(project);
+  await fails(f.runtime.request(f.workspace, f.request()), project);
+  expect(f.calls).toHaveLength(calls); // Read failure precedes even Docker discovery, let alone stop/remove.
+  expect((await f.runtime.request(f.workspace, { ...f.request(), action: 'status' })).details?.ready).toBe(true);
+});
+
+test('unreadable files block first startup and changed instruction files cannot replace a busy worker', async () => {
+  const f = fixture(), path = join(f.workspace, 'AGENTS.md');
+  const agent = f.registry.snapshot(f.workspace).agents[0]!;
+  f.registry.save({ id: agent.id, revision: agent.revision, profile: agent,
+    assignment: { assigned: true, instructions: '', instructionFiles: [path] } }, f.workspace);
+  await fails(f.runtime.request(f.workspace, f.request()), path); expect(f.calls).toHaveLength(0);
+  writeFileSync(path, 'first'); await f.runtime.request(f.workspace, f.request());
+  f.setBusy(); writeFileSync(path, 'second');
+  await fails(f.runtime.request(f.workspace, f.request()), 'Wait for this worker');
+  expect(f.calls.some(call => call.args.includes('stop') || call.args.includes('rm'))).toBe(false);
+});
+
+test('status and submission reject a saved configuration that does not match the actual worker', async () => {
+  const f = fixture(); await f.runtime.request(f.workspace, f.request());
+  const path = join(f.runtimePath, 'runtime.json');
+  const configuration = JSON.parse(readFileSync(path, 'utf8'));
+  writeFileSync(path, JSON.stringify({ ...configuration, revision: 'different-container-configuration' }));
+  expect((await f.runtime.request(f.workspace, { ...f.request(), action: 'status' })).details?.error).toContain('Settings changed');
+  await fails(f.runtime.request(f.workspace, { ...f.request(), action: 'submit', taskId: 'task', prompt: 'work' }), 'Settings changed');
+});

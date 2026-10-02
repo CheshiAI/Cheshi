@@ -1,3 +1,8 @@
+import { ArrowLeft } from 'lucide-react';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { defaultAgentAvatar, randomAgentAvatar } from '../../../../shared/agent-avatar';
+import { AgentAvatarPicker } from './AgentAvatarPicker';
+import { InstructionFiles } from './InstructionFiles';
 import { useEffect, useRef, useState } from 'react';
 import type { AgentRegistryState, AgentRegistryModel } from './agentRegistryModel';
 import type { SpecialistAgent, SpecialistProfile } from '../../../../shared/agent-registry';
@@ -12,16 +17,16 @@ import { SpecialistModelSettings, useSpecialistModels } from './SpecialistModelS
 import { assertAgentModelSelection } from '../../../../shared/agent-models';
 
 function initialProfile(agent?: SpecialistAgent): SpecialistProfile {
-  return agent ? { name: agent.name, role: agent.role, instructions: agent.instructions,
-    accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort, serviceTier: agent.serviceTier,
+  return agent ? { avatar: agent.avatar ?? defaultAgentAvatar(agent.id), name: agent.name, role: agent.role, instructions: agent.instructions,
+    instructionFiles: agent.instructionFiles ?? [], accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort, serviceTier: agent.serviceTier,
     permissions: { ...agent.permissions } } : {
-    name: '', role: 'development', instructions: specialistTemplates.development.instructions,
+    avatar: randomAgentAvatar(), name: '', role: 'development', instructions: specialistTemplates.development.instructions,
     accountId: null, model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: false, commandExecution: false },
   };
 }
 
-export function SpecialistAgentForm({ agent, model, state, accountsApi, onOpen }: {
-  onOpen?: () => void;
+export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack }: {
+  onBack?: () => void;
   agent?: SpecialistAgent; model: AgentRegistryModel; state: AgentRegistryState;
   accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
@@ -31,6 +36,9 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onOpen }
   const [revision, setRevision] = useState(agent?.revision ?? null);
   const [assigned, setAssigned] = useState(agent ? Boolean(assignment) : true);
   const [instructions, setInstructions] = useState(assignment?.instructions ?? '');
+  const [instructionFiles, setInstructionFiles] = useState(assignment?.instructionFiles ?? []);
+  const [filePending, setFilePending] = useState(false);
+  const disabled = state.saving || filePending;
   const [accounts, setAccounts] = useState<CodexAccountProfile[]>([]);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -64,15 +72,20 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onOpen }
   const outdated = agent && revision !== agent.revision;
   return <form ref={scrollbar} className={styles.form} aria-label={agent ? 'Agent settings' : 'Create agent'} onSubmit={event => {
     event.preventDefault();
-    if (modelBlocked) return;
+    if (modelBlocked || disabled) return;
     void model.save({ id: agent?.id ?? null, revision, profile,
-      assignment: { assigned, instructions } }).then(result => {
+      assignment: { assigned, instructions, instructionFiles } }).then(result => {
       if (active.current) { setRevision(result.revision); setSaved(true); }
     }, () => { /* The model exposes the error without discarding the draft. */ });
   }}>
-    <div className={styles.heading}><h2>{agent ? agent.name : 'Create agent'}</h2>
-      {onOpen ? <NeumorphicButton type="button" variant="ghost" disabled={state.saving} onClick={onOpen}>Open agent</NeumorphicButton> : <span>Cheshi-wide agent</span>}</div>
-    <fieldset disabled={state.saving} className={styles.fields}>
+    <div className={styles.heading}>
+      {onBack && <TooltipButton variant="ghost" size="icon" aria-label="Back to agent" title="Back to agent"
+        disabled={disabled} onClick={onBack}><ArrowLeft aria-hidden="true" /></TooltipButton>}
+      <h2>{agent ? agent.name : 'Create agent'}</h2>
+      {!agent && <span>Cheshi-wide agent</span>}
+    </div>
+    <fieldset disabled={disabled} className={styles.fields}>
+      <AgentAvatarPicker value={profile.avatar!} disabled={state.saving} onChange={avatar => patch({ avatar })} />
       <label className={styles.field}>Name<NeumorphicTextField variant="standard" aria-label="Agent name" required maxLength={100}
         value={profile.name} onChange={event => patch({ name: event.target.value })} /></label>
       <div className={styles.field}><span>Specialty</span><LiquidGlassSelect ariaLabel="Agent specialty" menuAppearance="toolbar" triggerAppearance="standard"
@@ -81,6 +94,8 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onOpen }
           ? specialistTemplates[role].instructions : profile.instructions })} /></div>
       <label className={styles.field}>Instructions<NeumorphicTextField variant="standard" multiline rows={5} aria-label="Agent instructions"
         required maxLength={20_000} value={profile.instructions} onChange={event => patch({ instructions: event.target.value })} /></label>
+      <InstructionFiles label="Common instruction files" paths={profile.instructionFiles ?? []} model={model} disabled={disabled}
+        onBusy={setFilePending} onChange={instructionFiles => patch({ instructionFiles })} />
       <div className={styles.field}><span>Account</span><LiquidGlassSelect ariaLabel="Agent account" menuAppearance="toolbar" triggerAppearance="standard"
         options={accountOptions} value={profile.accountId ?? ''} disabled={state.saving}
         onChange={accountId => patch({ accountId: accountId || null, model: null, reasoningEffort: null, serviceTier: null })} /></div>
@@ -101,15 +116,17 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onOpen }
         {assigned && <label className={styles.field}>Project instructions<NeumorphicTextField variant="standard" multiline rows={3}
           aria-label="Project instructions" maxLength={20_000} placeholder="Additional instructions for this project"
           value={instructions} onChange={event => { setInstructions(event.target.value); setSaved(false); }} /></label>}
-        <p className={styles.description}>Save settings, then open the agent to start its project worker.</p>
+        {assigned && <InstructionFiles label="Project instruction files" paths={instructionFiles} model={model} disabled={disabled}
+          onBusy={setFilePending} onChange={paths => { setInstructionFiles(paths); setSaved(false); }} />}
+        <p className={styles.description}>Save settings, then return to the agent to start its project worker.</p>
       </div>
     </fieldset>
     {outdated && <p className={styles.description} role="status">This agent changed in another window. Reopen its settings to load the latest version; your current draft is preserved.</p>}
     {state.error && <p role="alert" className={styles.description}>{state.error}</p>}
     {saved && !outdated && <p role="status" className={styles.description}>Agent saved.</p>}
     <div className={styles.actions}>
-      <NeumorphicButton type="button" variant="ghost" disabled={state.saving} onClick={() => model.select(null)}>Cancel</NeumorphicButton>
-      <NeumorphicButton type="submit" disabled={state.saving || modelBlocked || !profile.name.trim() || !profile.instructions.trim() || Boolean(outdated)}>
+      <NeumorphicButton type="button" variant="ghost" disabled={disabled} onClick={() => { if (onBack) onBack(); else model.select(null); }}>Cancel</NeumorphicButton>
+      <NeumorphicButton type="submit" disabled={disabled || modelBlocked || !profile.name.trim() || !profile.instructions.trim() || Boolean(outdated)}>
         {state.saving ? 'Saving…' : agent ? 'Save agent' : 'Create agent'}</NeumorphicButton>
     </div>
   </form>;

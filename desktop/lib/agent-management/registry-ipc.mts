@@ -7,6 +7,8 @@ import type { createAgentRegistry } from './registry.mts';
 import { isCodexAccountId } from '../../shared/codex-accounts.ts';
 import { assertAgentModelSelection, parseAgentModels } from '../../shared/agent-models.ts';
 import type { AgentModel } from '../../shared/agent-models.ts';
+import { parseInstructionFiles, parseInstructionFilePath } from '../../shared/agent-registry.ts';
+import { readInstructionFile } from './instruction-files.mts';
 
 export function registerAgentRegistryIpc(options: {
   window: BrowserWindow; workspaceRoot: string; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>;
@@ -14,9 +16,12 @@ export function registerAgentRegistryIpc(options: {
   remove?: (request: import('../../shared/agent-registry.ts').DeleteSpecialistAgent) => Promise<import('../../shared/agent-registry.ts').AgentRegistrySnapshot>;
   runtime?: (request: AgentRuntimeRequest) => Promise<AgentRuntimeState>;
   models?: (accountId: string) => Promise<AgentModel[]>;
+  selectInstructionFiles?: () => Promise<string[]>;
+  openInstructionFile?: (path: string) => Promise<void>;
 }) {
   const owner = options.window.webContents, channels: string[] = [];
   let disposed = false;
+  const selectedPaths = new Set<string>();
   const assertOwner = (event: IpcMainInvokeEvent) => {
     if (disposed || owner.isDestroyed() || event.sender !== owner || event.senderFrame !== owner.mainFrame) {
       throw new Error('Agent configuration is only available to its workspace window.');
@@ -30,6 +35,7 @@ export function registerAgentRegistryIpc(options: {
     if (disposed) return;
     disposed = true;
     unsubscribeClosed(); unsubscribe();
+    selectedPaths.clear();
     for (const channel of channels) options.ipc.removeHandler(channel);
   };
   const handle = (channel: string, action: (value: unknown) => unknown) => {
@@ -42,6 +48,22 @@ export function registerAgentRegistryIpc(options: {
     return parseAgentModels(await options.models(accountId));
   };
   try {
+    if (options.selectInstructionFiles) handle(AGENT_REGISTRY_CHANNELS.selectInstructionFiles, async () => {
+      const paths = parseInstructionFiles(await options.selectInstructionFiles!());
+      if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
+      for (const path of paths) selectedPaths.add(path);
+      return paths;
+    });
+    if (options.openInstructionFile) handle(AGENT_REGISTRY_CHANNELS.openInstructionFile, async value => {
+      const path = parseInstructionFilePath(value);
+      const linked = options.registry.snapshot(options.workspaceRoot).agents.some(agent =>
+        agent.instructionFiles?.includes(path) || agent.assignments.some(assignment =>
+          assignment.workspaceRoot === options.workspaceRoot && assignment.instructionFiles?.includes(path)));
+      if (!linked && !selectedPaths.has(path)) throw new Error('Select or link this instruction file before opening it.');
+      await readInstructionFile(path);
+      if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
+      await options.openInstructionFile!(path);
+    });
     if (options.remove) handle(AGENT_REGISTRY_CHANNELS.remove, value => options.remove!(parseDeleteSpecialistAgent(value)));
     if (options.runtime) handle(AGENT_RUNTIME_CHANNEL, value => options.runtime!(parseAgentRuntimeRequest(value)));
     handle(AGENT_REGISTRY_CHANNELS.list, () => options.registry.snapshot(options.workspaceRoot));

@@ -10,6 +10,7 @@ import type { createAgentRegistry } from './registry.mts';
 import { parseDockerAgent, runDocker, type DockerCommand } from './docker.mts';
 import { assertAgentModelSelection, type AgentModel } from '../../shared/agent-models.ts';
 import { workerOperations } from './operations.mts';
+import { resolveAgentInstructions } from './instruction-files.mts';
 
 export interface RuntimeAccount { home: string; models: AgentModel[]; }
 interface RuntimeOptions {
@@ -127,16 +128,26 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     if (request.action !== 'status' && pending.has(key)) throw new Error('An operation for this agent is already running.');
     if (request.action !== 'status') pending.add(key);
     try {
-      const prefix = await local(request.engineId);
-      let worker = await find(prefix, key);
-      const fingerprint = digest(JSON.stringify({ agent: profileConfiguration(agent), workspace, instructions: assignment.instructions }));
-      if (request.action === 'status') {
-        const details = worker ? await options.management.details(request.engineId, worker.id) : null;
-        if (details && worker?.fingerprint !== fingerprint) details.error = 'Settings changed. Start the agent to apply them.';
-        return { details };
-      }
       const directory = join(options.directory, digest(request.engineId), key);
       const configPath = join(directory, 'runtime.json');
+      const settingsFingerprint = digest(JSON.stringify({ agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
+        ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
+      const instructions = request.action === 'start' ? await resolveAgentInstructions(agent, assignment) : null;
+      const hasFiles = Boolean(agent.instructionFiles?.length || assignment.instructionFiles?.length);
+      const fingerprint = hasFiles && instructions !== null ? digest(`${settingsFingerprint}\n${instructions}`) : settingsFingerprint;
+      const prefix = await local(request.engineId);
+      let worker = await find(prefix, key);
+      // Status/submit use the snapshot applied at Start; editing a source file takes effect at the next Start.
+      const applied = worker && request.action !== 'start' && request.action !== 'cancel'
+        ? agentRecord(JSON.parse(await readFile(configPath, 'utf8'))) : null;
+      const settingsChanged = applied?.settingsFingerprint === undefined
+        ? worker?.fingerprint !== settingsFingerprint
+        : applied.settingsFingerprint !== settingsFingerprint || applied.revision !== worker?.fingerprint;
+      if (request.action === 'status') {
+        const details = worker ? await options.management.details(request.engineId, worker.id) : null;
+        if (details && settingsChanged) details.error = 'Settings changed. Start the agent to apply them.';
+        return { details };
+      }
       if (request.action === 'cancel') {
         if (!worker?.endpoint) throw new Error('Worker is unavailable.');
         const saved = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
@@ -180,8 +191,8 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         }
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
-          const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, ...profileConfiguration(agent), profileId: agent.id, token: randomBytes(32).toString('hex'),
-            instructions: `${agent.instructions}\n\nProject instructions:\n${assignment.instructions}` };
+          const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint,
+            ...profileConfiguration(agent), profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [workspace];
@@ -221,7 +232,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         return { details: await waitReady(request.engineId, worker.id) };
       }
       if (!worker || worker.state !== 'running' || !worker.endpoint) throw new Error('Start this agent first.');
-      if (worker.fingerprint !== fingerprint) throw new Error('Settings changed. Start the agent to apply them.');
+      if (settingsChanged) throw new Error('Settings changed. Start the agent to apply them.');
       const configuration = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
       if (typeof configuration.token !== 'string' || !/^[a-f0-9]{64}$/.test(configuration.token)) throw new Error('Worker authorization is unavailable.');
       assertCurrent();
@@ -236,5 +247,6 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
 }
 function profileConfiguration(agent: SpecialistAgent) {
   return { role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,
-    serviceTier: agent.serviceTier, permissions: agent.permissions, instructions: agent.instructions };
+    serviceTier: agent.serviceTier, permissions: agent.permissions, instructions: agent.instructions,
+    ...(agent.instructionFiles?.length ? { instructionFiles: agent.instructionFiles } : {}) };
 }

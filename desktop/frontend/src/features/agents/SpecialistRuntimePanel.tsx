@@ -66,7 +66,7 @@ export function SpecialistRuntimePanel({ agent, model, engines, engineId, onSett
       <h2 className={styles.name}>{agent.name}</h2>
       <span className={shared.description}>{pending ? 'Processing…' : details?.busy ? 'Working' : details?.ready ? 'Ready' : 'Not running'}</span>
       <div className={styles.runtimeActions}>
-        <LiquidGlassSelect ariaLabel="Agent execution engine" value={engine} disabled={pending}
+        <LiquidGlassSelect ariaLabel="Agent execution engine" triggerAppearance="standard" value={engine} disabled={pending}
           options={engines.filter(item => item.supported).map(item => ({ value: item.id, label: item.name }))}
           onChange={value => { revision.current++; setEngine(value); }} menuAppearance="toolbar" />
         <TooltipButton variant="ghost" size="icon" title="Start agent" aria-label="Start agent" disabled={pending || !engine || details?.busy}
@@ -86,7 +86,7 @@ export function SpecialistRuntimePanel({ agent, model, engines, engineId, onSett
           <div className={styles.runtimeActions}>
             {details?.busy && <TooltipButton type="button" variant="ghost" size="icon" aria-label="Stop task" title="Stop task" disabled={pending}
               onClick={() => { void operate('cancel'); }}><Square aria-hidden="true" /></TooltipButton>}
-            <NeumorphicButton type="submit" disabled={pending || !details?.ready || !details.authenticated || details.busy || !prompt.trim()}>Run task</NeumorphicButton>
+            <NeumorphicButton variant="standard" type="submit" disabled={pending || !details?.ready || !details.authenticated || details.busy || !prompt.trim()}>Run task</NeumorphicButton>
           </div>
         </form>
       </div>
