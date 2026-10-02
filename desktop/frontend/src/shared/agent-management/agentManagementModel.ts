@@ -69,7 +69,8 @@ export class AgentManagementModel {
       // Clear an old selection as soon as the engine says it no longer exists.
       this.publish({ snapshot, agentId: agent?.id ?? '',
         details: agent?.id === this.state.details?.agent.id ? this.state.details : null, error: null });
-      if (agent) {
+      if (agent?.pendingDeletion) this.publish({ details: null });
+      else if (agent) {
         const details = await this.api.details(engineId, agent.id);
         if (revision === this.revision) this.publish({ details });
       }
@@ -89,6 +90,25 @@ export class AgentManagementModel {
       await this.refresh();
     } catch (error) {
       if (revision === this.revision) this.publish({ error: message(error), changing: false });
+    }
+  }
+  async remove(engineId: string, containerId: string, deleteData: boolean) {
+    if (!this.active || this.state.changing || this.state.engineId !== engineId) throw new Error('The engine selection changed. Reopen deletion.');
+    if (!this.api.remove) throw new Error('Container deletion is unavailable. Restart Cheshi.');
+    const revision = ++this.revision;
+    this.refreshing = false;
+    this.publish({ changing: true, loading: false, error: null });
+    try {
+      await this.api.remove({ engineId, containerId, deleteData });
+      if (!this.active || revision !== this.revision) return;
+      this.publish({ changing: false, snapshot: this.state.snapshot ? { ...this.state.snapshot,
+        agents: this.state.snapshot.agents.filter(agent => agent.id !== containerId) } : null,
+        agentId: this.state.agentId === containerId ? '' : this.state.agentId,
+        details: this.state.details?.agent.id === containerId ? null : this.state.details });
+      await this.refresh();
+    } catch (error) {
+      if (revision === this.revision) this.publish({ changing: false, error: message(error) });
+      throw error;
     }
   }
 }

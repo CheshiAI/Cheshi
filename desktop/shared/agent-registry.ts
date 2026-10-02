@@ -4,6 +4,7 @@ import type { AgentModel, AgentModelSelection } from './agent-models.ts';
 export const AGENT_REGISTRY_CHANNELS = {
   list: 'cheshi:agent-registry:list', save: 'cheshi:agent-registry:save', changed: 'cheshi:agent-registry:changed',
   models: 'cheshi:agent-registry:models',
+  remove: 'cheshi:agent-registry:remove',
 } as const;
 export const SPECIALIST_ROLES = ['planning', 'research', 'frontend', 'development', 'verification', 'custom'] as const;
 export type SpecialistRole = typeof SPECIALIST_ROLES[number];
@@ -22,11 +23,18 @@ export interface SaveSpecialistAgent {
   assignment: { assigned: boolean; instructions: string };
 }
 export interface AgentRegistryApi {
+  remove?(request: DeleteSpecialistAgent): Promise<AgentRegistrySnapshot>;
   runtime?(request: import('./agent-runtime.ts').AgentRuntimeRequest): Promise<import('./agent-runtime.ts').AgentRuntimeState>;
   models(accountId: string): Promise<AgentModel[]>;
   list(): Promise<AgentRegistrySnapshot>;
   save(input: SaveSpecialistAgent): Promise<{ agentId: string; snapshot: AgentRegistrySnapshot }>;
   onDidChange(listener: (snapshot: AgentRegistrySnapshot) => void): () => void;
+}
+
+export interface DeleteSpecialistAgent { id: string; revision: number; deleteData: boolean }
+export function parseDeleteSpecialistAgent(value: unknown): DeleteSpecialistAgent {
+  const data = record(value);
+  return { id: agentId(data.id), revision: revision(data.revision), deleteData: flag(data.deleteData) };
 }
 
 function record(value: unknown): Record<string, unknown> {

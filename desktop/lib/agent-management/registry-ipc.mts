@@ -1,7 +1,7 @@
 import { AGENT_RUNTIME_CHANNEL, parseAgentRuntimeRequest } from '../../shared/agent-runtime.ts';
 import type { AgentRuntimeRequest, AgentRuntimeState } from '../../shared/agent-runtime.ts';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
-import { AGENT_REGISTRY_CHANNELS, parseSaveSpecialistAgent } from '../../shared/agent-registry.ts';
+import { AGENT_REGISTRY_CHANNELS, parseSaveSpecialistAgent, parseDeleteSpecialistAgent } from '../../shared/agent-registry.ts';
 import { onWindowClosed } from '../window-close-cleanup.mts';
 import type { createAgentRegistry } from './registry.mts';
 import { isCodexAccountId } from '../../shared/codex-accounts.ts';
@@ -10,7 +10,8 @@ import type { AgentModel } from '../../shared/agent-models.ts';
 
 export function registerAgentRegistryIpc(options: {
   window: BrowserWindow; workspaceRoot: string; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>;
-  registry: ReturnType<typeof createAgentRegistry>;
+  registry: Pick<ReturnType<typeof createAgentRegistry>, 'snapshot' | 'subscribe' | 'save'>;
+  remove?: (request: import('../../shared/agent-registry.ts').DeleteSpecialistAgent) => Promise<import('../../shared/agent-registry.ts').AgentRegistrySnapshot>;
   runtime?: (request: AgentRuntimeRequest) => Promise<AgentRuntimeState>;
   models?: (accountId: string) => Promise<AgentModel[]>;
 }) {
@@ -41,6 +42,7 @@ export function registerAgentRegistryIpc(options: {
     return parseAgentModels(await options.models(accountId));
   };
   try {
+    if (options.remove) handle(AGENT_REGISTRY_CHANNELS.remove, value => options.remove!(parseDeleteSpecialistAgent(value)));
     if (options.runtime) handle(AGENT_RUNTIME_CHANNEL, value => options.runtime!(parseAgentRuntimeRequest(value)));
     handle(AGENT_REGISTRY_CHANNELS.list, () => options.registry.snapshot(options.workspaceRoot));
     handle(AGENT_REGISTRY_CHANNELS.models, models);

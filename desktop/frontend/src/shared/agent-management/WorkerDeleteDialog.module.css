@@ -1,0 +1,5 @@
+.form { display: flex; flex-direction: column; gap: var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); font-weight: 400; }
+.form p { margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
+.name { color: var(--text); }
+.option { display: flex; align-items: center; justify-content: space-between; gap: var(--space-default); color: var(--text); }
+.actions { display: flex; justify-content: flex-end; gap: var(--icon-default); }

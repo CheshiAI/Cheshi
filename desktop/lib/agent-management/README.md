@@ -10,7 +10,28 @@ worker volume. Background status refresh retains the displayed result.
 Legacy Compose verifier containers remain discoverable. Registered workers use separate
 `ai.cheshi.*` ownership labels; engine, profile, project and configuration are verified before
 mutation. Settings changes require Start and cannot replace a busy worker. Selecting a different account profile
-uses a separate volume, keeping conversations and credentials separate. Volumes are never deleted.
+uses a separate volume, keeping conversations and credentials separate. Volumes are preserved
+unless the user explicitly selects saved-data deletion in the deletion confirmation.
+
+Agent deletion removes its workers across its previously used local engines before removing the global
+profile and all assignments. Docker deletion removes only the selected container, preserving
+the registered profile. Both confirmations default to preserving saved data; deleting data also
+removes worker sign-in copies. Project bind mounts, images and host accounts are never removed.
+Running workers must be ready, idle and free of unknown tasks. An inaccessible previously used
+engine blocks global deletion; unrelated inactive Docker contexts do not. Before provisioning,
+Cheshi records the engine ID and local socket alongside the project runtime configuration.
+Deletion includes these records and unfinished deletion journals, even if a context disappears
+from discovery. Older runtime directories are matched to context IDs by their existing hash;
+an unresolved legacy engine blocks deletion rather than silently leaving workers behind.
+Changed socket addresses also block deletion until the original connection is restored. Remote engines are not supported by provisioning or deletion.
+
+`deletion.mts` records exact deletion plans before mutation; `docker-deletion.mts` pins local
+sockets, rechecks container ownership, and refuses shared or nonstandard data volumes. A failed
+operation retains registration and its journal for retry with the original saved-data choice.
+Docker lists unfinished container cleanup after a restart even when the container is already gone.
+Agent data deletion includes detached project/account volumes in that profile's generated namespace.
+`operations.mts` excludes in-app provisioning, task submissions, lifecycle operations and registry
+saves while deletion runs. This is not a lock against independent Docker or direct HTTP clients.
 
 `runtime.mts` orchestrates provisioning independently of the renderer. The bundled build
 context is prepared with an explicit file allowlist by `scripts/prepare-specialist-worker.mts`.
@@ -93,6 +114,7 @@ their HTTP task history can be read. Switching engines does not migrate volumes.
 ```sh
 bun test desktop/test/agent-management-docker.test.ts desktop/test/agent-management-service.test.ts desktop/test/agent-management-model.test.ts desktop/test/agent-management-ipc.test.ts
 bun test desktop/test/agent-management-views.test.tsx desktop/test/agent-runtime.test.ts
+bun test desktop/test/agent-deletion.test.ts
 bun test experiments/codex-specialists/src
 bun test desktop/test/agent-terminal.test.ts
 node --test desktop/test/agent-terminal-electron.test.ts desktop/test/ghostty-surface-host.test.ts

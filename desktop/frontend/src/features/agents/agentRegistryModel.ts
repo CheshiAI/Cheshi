@@ -1,4 +1,4 @@
-import type { AgentRegistryApi, AgentRegistrySnapshot, SaveSpecialistAgent } from '../../../../shared/agent-registry';
+import type { AgentRegistryApi, AgentRegistrySnapshot, SaveSpecialistAgent, DeleteSpecialistAgent } from '../../../../shared/agent-registry';
 
 export interface AgentRegistryState {
   data: AgentRegistrySnapshot | null; loading: boolean; saving: boolean; error: string | null; selection: string | null;
@@ -31,6 +31,23 @@ export class AgentRegistryModel {
     for (const listener of this.listeners) listener();
   }
   select(selection: string | null) { if (!this.state.saving) this.publish({ selection, error: null }); }
+  async remove(input: DeleteSpecialistAgent) {
+    if (!this.active || this.state.saving) throw new Error('An agent operation is already in progress.');
+    if (!this.api.remove) throw new Error('Agent deletion is unavailable. Restart Cheshi.');
+    this.request++;
+    this.publish({ saving: true, error: null });
+    const publication = this.publication;
+    try {
+      const result = await this.api.remove(input);
+      const data = publication !== this.publication && this.state.data ? this.state.data : result;
+      this.request++;
+      this.publish({ data: { ...data, agents: data.agents.filter(agent => agent.id !== input.id) },
+        saving: false, loading: false, selection: this.state.selection === input.id ? null : this.state.selection });
+    } catch (error) {
+      this.publish({ saving: false, error: error instanceof Error ? error.message : 'Could not delete agent.' });
+      throw error;
+    }
+  }
   async refresh() {
     const request = ++this.request;
     this.publish({ loading: true, error: null });

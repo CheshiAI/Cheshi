@@ -12,6 +12,7 @@ import { useSpecialistModels } from '../frontend/src/features/agents/SpecialistM
 async function withDOM(run: (ui: { render(node: ReactNode): Promise<void>; click(label: string): Promise<void> }) => Promise<void>) {
   const window = new Window();
   const globals = { window, document: window.document, navigator: window.navigator, Node: window.Node,
+    HTMLElement: window.HTMLElement,
     ResizeObserver: window.ResizeObserver, MutationObserver: window.MutationObserver,
     requestAnimationFrame: window.requestAnimationFrame.bind(window), cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
     IS_REACT_ACT_ENVIRONMENT: true };
@@ -438,4 +439,65 @@ test('registered runtime starts explicitly and shows acknowledged tasks without 
       expect(document.body.textContent).toContain('Ready');
     });
   } finally { registry.dispose(); }
+});
+
+test('container deletion requires confirmation, preserves state on failure and retries the captured target', async () => {
+  const id = 'a'.repeat(64);
+  let workers = [{ id, name: 'Worker', image: 'fixture', state: 'running' }];
+  let pending = registryDeferred<void>();
+  const requests: unknown[] = [];
+  const api: AgentManagementApi = {
+    engines: async () => ({ error: null, engines: [{ id: 'docker:local', name: 'local', supported: true, reason: null }] }),
+    snapshot: async engineId => ({ engineId, online: true, error: null, agents: workers }),
+    details: async () => ({ agent: workers[0]!, ready: true, busy: false, authenticated: true, threadId: null, error: null, logs: 'retained log', tasks: [] }),
+    control: async () => { throw new Error('unused'); },
+    remove: async request => { requests.push(request); await pending.promise; workers = []; },
+  };
+  await withDOM(async ({ render, click }) => {
+    await render(<AgentManagementViews api={api} view="docker" />);
+    await click('Delete selected container');
+    expect(document.querySelector('[aria-label="Also delete saved data"]')?.getAttribute('aria-checked')).toBe('false');
+    await click('Cancel'); expect(requests).toHaveLength(0);
+    await click('Delete selected container'); await click('Delete container');
+    expect(requests).toEqual([{ engineId: 'docker:local', containerId: id, deleteData: false }]);
+    expect(document.querySelector('[aria-label="Container log output"]')?.textContent).toBe('retained log');
+    expect((document.querySelector('[aria-label="Close dialog"]') as HTMLButtonElement).disabled).toBe(true);
+    await click('Deleting…'); expect(requests).toHaveLength(1);
+    await act(async () => pending.reject(new Error('Volume cleanup failed. Retry.')));
+    expect(document.querySelector('dialog [role="alert"]')?.textContent).toContain('cleanup failed');
+    expect(document.querySelector('[aria-label="Container selection"]')?.textContent).toContain('Worker');
+    pending = registryDeferred<void>();
+    await click('Delete container');
+    await act(async () => pending.resolve());
+    expect(document.querySelector('dialog')).toBeNull();
+    expect(document.querySelector('[aria-label="Container selection"]')?.textContent).not.toContain('Worker');
+    expect(requests).toHaveLength(2);
+  });
+});
+
+test('agent deletion includes its revision and explicit saved-data choice and removes registration only after acknowledgement', async () => {
+  const profile = specialistAgent();
+  let stored: AgentRegistrySnapshot = { workspaceRoot: '/project', agents: [profile] };
+  const pending = registryDeferred<void>();
+  const requests: unknown[] = [];
+  const registryApi: AgentRegistryApi = {
+    list: async () => stored, models: async () => [], onDidChange: () => () => {},
+    save: async () => { throw new Error('unused'); },
+    remove: async input => { requests.push(input); await pending.promise; stored = { ...stored, agents: [] }; return stored; },
+  };
+  const api: AgentManagementApi = {
+    engines: async () => ({ error: null, engines: [] }),
+    snapshot: async engineId => ({ engineId, online: false, error: null, agents: [] }),
+    details: async () => { throw new Error('unused'); }, control: async () => { throw new Error('unused'); },
+  };
+  await withDOM(async ({ render, click }) => {
+    await render(<AgentManagementViews api={api} registryApi={registryApi} view="agents" />);
+    await click(profile.name); await click('Delete selected agent');
+    await click('Also delete saved data'); await click('Delete agent');
+    expect(requests).toEqual([{ id: profile.id, revision: profile.revision, deleteData: true }]);
+    expect(document.querySelector('[aria-label="Agent selection"]')?.textContent).toContain(profile.name);
+    await act(async () => pending.resolve());
+    expect(document.querySelector('dialog')).toBeNull();
+    expect(document.querySelector('[aria-label="Agent selection"]')?.textContent).not.toContain(profile.name);
+  });
 });

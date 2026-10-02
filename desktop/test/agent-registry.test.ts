@@ -102,6 +102,7 @@ test('registry IPC binds assignment to its owner workspace and broadcasts across
     const window = Object.assign(new EventEmitter(), { webContents: owner }) as unknown as BrowserWindow;
     const handlers = new Map<string, Parameters<IpcMain['handle']>[1]>();
     const registration = registerAgentRegistryIpc({ window, workspaceRoot, registry: f.registry,
+      remove: async value => f.registry.remove(value, workspaceRoot),
       ipc: { handle: (channel, handler) => { handlers.set(channel, handler); }, removeHandler: channel => { handlers.delete(channel); } } });
     const event = { sender: owner, senderFrame: owner.mainFrame } as IpcMainInvokeEvent;
     const api = createAgentRegistryApi(Object.assign(renderer, {
@@ -121,6 +122,14 @@ test('registry IPC binds assignment to its owner workspace and broadcasts across
     expect(snapshots[0]?.workspaceRoot).toBe('/projects/two');
     expect(snapshots[0]?.agents[0]?.assignments[0]?.workspaceRoot).toBe('/projects/one');
     expect((await b.api.list()).agents).toEqual((await a.api.list()).agents);
+    const agent = (await a.api.list()).agents[0]!;
+    const deletion = { id: agent.id, revision: agent.revision, deleteData: false };
+    const remove = a.handlers.get(AGENT_REGISTRY_CHANNELS.remove)!;
+    expect(() => remove({ ...a.event, sender: {} } as IpcMainInvokeEvent, deletion)).toThrow('workspace window');
+    expect(() => remove({ ...a.event, senderFrame: {} } as IpcMainInvokeEvent, deletion)).toThrow('workspace window');
+    expect(() => remove(a.event, { ...deletion, deleteData: 'true' })).toThrow('permission');
+    expect((await a.api.remove!(deletion)).agents).toHaveLength(0);
+    expect(snapshots.at(-1)?.agents).toHaveLength(0);
     a.window.emit('closed');
     expect(a.handlers.size).toBe(0);
     expect(() => save(a.event, specialistInput())).toThrow('workspace window');

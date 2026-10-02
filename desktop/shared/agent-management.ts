@@ -1,12 +1,16 @@
 export const AGENT_CHANNELS = {
   engines: 'cheshi:agents:engines', snapshot: 'cheshi:agents:snapshot',
   details: 'cheshi:agents:details', control: 'cheshi:agents:control',
+  remove: 'cheshi:agents:remove',
 } as const;
 export const AGENT_ACTIONS = ['start', 'stop', 'restart'] as const;
 export type AgentAction = typeof AGENT_ACTIONS[number];
 export interface AgentEngineInfo { id: string; name: string; supported: boolean; reason: string | null }
 export interface AgentCatalog { engines: AgentEngineInfo[]; error: string | null }
-export interface ManagedAgent { id: string; name: string; state: string; image: string; profileId?: string }
+export interface ManagedAgent {
+  id: string; name: string; state: string; image: string; profileId?: string;
+  pendingDeletion?: { deleteData: boolean };
+}
 export interface AgentSnapshot { engineId: string; online: boolean; error: string | null; agents: ManagedAgent[] }
 export interface AgentTask {
   id: string; prompt: string; status: string; createdAt: string; output: string; error: string | null;
@@ -16,11 +20,19 @@ export interface AgentDetails {
   threadId: string | null; error: string | null; logs: string; tasks: AgentTask[];
 }
 export interface AgentManagementApi {
+  remove?(request: DeleteContainer): Promise<void>;
   terminal?: AgentTerminalApi;
   engines(): Promise<AgentCatalog>;
   snapshot(engineId: string): Promise<AgentSnapshot>;
   details(engineId: string, agentId: string): Promise<AgentDetails>;
   control(engineId: string, agentId: string, action: AgentAction): Promise<AgentSnapshot>;
+}
+
+export interface DeleteContainer { engineId: string; containerId: string; deleteData: boolean }
+export function parseDeleteContainer(value: unknown): DeleteContainer {
+  const v = agentRecord(value), containerId = parseAgentId(v.containerId);
+  if (!/^[a-f0-9]{64}$/.test(containerId)) throw new TypeError('Expected a full Docker container ID.');
+  return { engineId: parseAgentEngineId(v.engineId), containerId, deleteData: agentBoolean(v.deleteData) };
 }
 
 export function agentRecord(value: unknown): Record<string, unknown> {
@@ -59,7 +71,8 @@ export function parseAgentAction(value: unknown): AgentAction {
 export function parseManagedAgent(value: unknown): ManagedAgent {
   const v = agentRecord(value);
   return { id: parseAgentId(v.id), name: agentText(v.name), state: agentText(v.state, 100), image: agentText(v.image),
-    ...(v.profileId === undefined ? {} : { profileId: parseAgentId(v.profileId) }) };
+    ...(v.profileId === undefined ? {} : { profileId: parseAgentId(v.profileId) }),
+    ...(v.pendingDeletion === undefined ? {} : { pendingDeletion: { deleteData: agentBoolean(agentRecord(v.pendingDeletion).deleteData) } }) };
 }
 export function parseAgentCatalog(value: unknown): AgentCatalog {
   const v = agentRecord(value);

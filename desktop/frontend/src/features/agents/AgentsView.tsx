@@ -1,5 +1,5 @@
 import { SpecialistRuntimePanel } from './SpecialistRuntimePanel';
-import { Bot, Plus, RefreshCw } from 'lucide-react';
+import { Bot, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { LiquidGlassPanel } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
@@ -15,6 +15,8 @@ import type { AgentRegistryModel, AgentRegistryState } from './agentRegistryMode
 import type { CodexAccountsApi } from '../../../../shared/codex-accounts';
 import type { ManagedAgent } from '../../../../shared/agent-management';
 import { workerDisplayName } from '../../shared/agent-management/workerDisplayName';
+import { WorkerDeleteDialog } from '../../shared/agent-management/WorkerDeleteDialog';
+import type { SpecialistAgent } from '../../../../shared/agent-registry';
 
 const emptyRegistry: AgentRegistryState = { data: null, selection: null, loading: false, saving: false, error: null };
 const emptySnapshot = () => emptyRegistry;
@@ -24,6 +26,7 @@ export function AgentsView({ model, state, registry, accountsApi }: AgentScreenP
   registry?: AgentRegistryModel | null; accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
   const [runtimeId, setRuntimeId] = useState<string | null>(null);
+  const [deletion, setDeletion] = useState<SpecialistAgent | null>(null);
   const registered = useSyncExternalStore(registry?.subscribe ?? emptySubscribe, registry?.snapshot ?? emptySnapshot);
   const profile = registered.data?.agents.find(item => item.id === registered.selection);
   const editing = Boolean(registry && registered.data && (registered.selection === 'new' || profile));
@@ -40,6 +43,8 @@ export function AgentsView({ model, state, registry, accountsApi }: AgentScreenP
   }>
     <LiquidGlassPanel as="aside" className={viewStyles.sidebar} aria-label="Agents">
       <div className={viewStyles.sidebarHeading}><h2 className={styles.sectionTitle}>AGENTS</h2>
+        {profile && <TooltipButton variant="ghost" size="icon" aria-label="Delete selected agent" title="Delete agent"
+          disabled={registered.saving} onClick={() => setDeletion(profile)}><Trash2 aria-hidden="true" /></TooltipButton>}
         {registry && <TooltipButton className={viewStyles.createButton} variant="ghost" size="icon" aria-label="New agent" title="New agent"
           disabled={!registered.data || registered.saving} onClick={() => registry.select('new')}><Plus aria-hidden="true" /></TooltipButton>}
       </div>
@@ -85,5 +90,10 @@ export function AgentsView({ model, state, registry, accountsApi }: AgentScreenP
         </div>
       </> : <p className={viewStyles.empty}>Select an agent to view its status and task results.</p>}
     </section>
+    {deletion && registry && <WorkerDeleteDialog kind="agent" name={deletion.name} onClose={() => setDeletion(null)}
+      onDelete={async deleteData => {
+        await registry.remove({ id: deletion.id, revision: deletion.revision, deleteData });
+        setRuntimeId(null); await model.refresh();
+      }} />}
   </AgentManagementFrame>;
 }

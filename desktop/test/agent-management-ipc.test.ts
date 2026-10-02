@@ -25,7 +25,8 @@ test('workspace IPC refuses foreign senders, subframes and invalid control actio
   const ipc = { handle: (name: string, fn: Parameters<IpcMain['handle']>[1]) => { handlers.set(name, fn); },
     removeHandler: (name: string) => { handlers.delete(name); } };
   let terminalCalls = 0, terminalDisposed = false;
-  const registration = registerAgentManagementIpc({ window, ipc, service, terminal: {
+  const removals: unknown[] = [];
+  const registration = registerAgentManagementIpc({ window, ipc, service, remove: async value => { removals.push(value); }, terminal: {
     open: async (engineId, agentId) => { terminalCalls++; return { id: 'session', engineId, agentId, ended: false, error: null }; },
     update: async () => {}, close: async () => {}, dispose: () => { terminalDisposed = true; },
   } });
@@ -43,10 +44,20 @@ test('workspace IPC refuses foreign senders, subframes and invalid control actio
   expect(terminalCalls).toBe(0);
   await open(owner, mainFrame);
   expect(terminalCalls).toBe(1);
+  const remove = handlers.get(AGENT_CHANNELS.remove)!;
+  const deletion = { engineId: 'docker:local', containerId: 'a'.repeat(64), deleteData: false };
+  const event = { sender: owner, senderFrame: mainFrame } as IpcMainInvokeEvent;
+  expect(() => remove({ ...event, sender: {} } as IpcMainInvokeEvent, deletion)).toThrow('workspace window');
+  expect(() => remove({ ...event, senderFrame: {} } as IpcMainInvokeEvent, deletion)).toThrow('workspace window');
+  expect(() => remove(event, { ...deletion, deleteData: 'true' })).toThrow('flag');
+  const bridge = createAgentManagementApi({ invoke: async (channel: string, value: unknown) => handlers.get(channel)!(event, value) });
+  await bridge.remove!(deletion);
+  expect(removals).toEqual([deletion]);
   events.emit('closed');
   expect(handlers.size).toBe(0);
   expect(terminalDisposed).toBe(true);
   registration.dispose();
+  expect(() => remove(event, deletion)).toThrow('workspace window');
 });
 
 test('preload validates literal booleans instead of trusting IPC response truthiness', async () => {
@@ -60,7 +71,7 @@ test('packaged runtime includes all agent modules and native Node can load them'
   if (typeof ignore !== 'function') throw new Error('Expected package filter');
   const paths = ['desktop/shared/agent-management.ts', 'desktop/shared/agent-terminal.ts', 'desktop/lib/window-close-cleanup.mts',
     'desktop/shared/agent-registry.ts', 'desktop/shared/agent-models.ts', 'desktop/shared/agent-runtime.ts', 'desktop/shared/codex-accounts.ts',
-    ...['engine', 'docker', 'service', 'ipc', 'terminal', 'registry', 'registry-ipc', 'runtime'].map(name => `desktop/lib/agent-management/${name}.mts`)];
+    ...['engine', 'docker', 'service', 'ipc', 'terminal', 'registry', 'registry-ipc', 'runtime', 'operations', 'docker-deletion', 'deletion'].map(name => `desktop/lib/agent-management/${name}.mts`)];
   for (const path of paths) expect(ignore(`/${path}`)).toBe(false);
   expect(ignore('/desktop/lib/agent-management/local-secret.json')).toBe(true);
   const source = paths.map(path => `await import(${JSON.stringify(`./${path}`)});`).join('\n');

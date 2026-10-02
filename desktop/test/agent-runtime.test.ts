@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createSpecialistRuntime, readRuntimeAuth } from '../lib/agent-management/runtime.mts';
@@ -28,6 +28,8 @@ function fixture() {
   let created = false, remote = false, busy = false, seeded = false, failSeed = false;
   let labels: Record<string, string> = {};
   const calls: { args: string[]; input?: string }[] = [];
+  const runtimePath = join(directory, 'runtime', createHash('sha256').update('docker:colima-cheshi').digest('hex'),
+    `${agentId}-${createHash('sha256').update(realpathSync(workspace)).digest('hex').slice(0, 16)}`);
   const id = 'a'.repeat(64);
   const run: DockerCommand = async (args, input) => {
     calls.push({ args, input });
@@ -42,6 +44,9 @@ function fixture() {
     if (args.includes('inspect')) return JSON.stringify([{ Id: id, Name: '/worker', Config: { Image: 'worker', Labels: labels },
       State: { Status: 'running' }, NetworkSettings: { Ports: { '8787/tcp': [{ HostIp: '127.0.0.1', HostPort: '49831' }] } } }]);
     if (args.includes('create')) {
+      expect(JSON.parse(readFileSync(join(runtimePath, 'engine.json'), 'utf8'))).toEqual({
+        engineId: 'docker:colima-cheshi', host: 'unix:///tmp/docker.sock',
+      });
       created = true; labels = {};
       args.forEach((arg, index) => { if (arg === '--label') { const [key, value] = args[index + 1]!.split('='); labels[key!] = value!; } });
       return id;
@@ -55,7 +60,7 @@ function fixture() {
     account: async () => ({ home, models: [] }), management: { details: async () => details(),
       engines: async () => ({ engines: [], error: null }), snapshot: async engineId => ({ engineId, online: true, error: null, agents: [] }),
       control: async () => { throw new Error('unused'); } } });
-  return { runtime, registry, workspace, home, agentId, calls, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
+  return { runtime, registry, workspace, home, runtimePath, agentId, calls, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
     request: () => ({ agentId, engineId: 'docker:colima-cheshi', action: 'start' as const }) };
 }
 test('starts one project worker with isolated storage, readonly mount, private auth input and persisted settings', async () => {
@@ -109,4 +114,11 @@ test('does not submit work through a previous login under the same account profi
   const f = fixture(); await f.runtime.request(f.workspace, f.request());
   writeFileSync(join(f.home, 'auth.json'), JSON.stringify({ tokens: { access_token: 'fixture-new', refresh_token: 'fixture-refresh', id_token: 'fixture-id', account_id: 'different-account' } }));
   await fails(f.runtime.request(f.workspace, { ...f.request(), action: 'submit', taskId: 'new', prompt: 'work' }), 'earlier sign-in');
+});
+
+test('a previously used engine cannot be silently rebound to a different socket', async () => {
+  const f = fixture(); await f.runtime.request(f.workspace, f.request());
+  writeFileSync(join(f.runtimePath, 'engine.json'), JSON.stringify({ engineId: f.request().engineId, host: 'unix:///tmp/original.sock' }));
+  await fails(f.runtime.request(f.workspace, f.request()), 'original connection');
+  expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(1);
 });

@@ -1,4 +1,5 @@
 import { createSpecialistRuntime } from './lib/agent-management/runtime.mts';
+import { createAgentDeletion } from './lib/agent-management/deletion.mts';
 import { startScheduler, resumeScheduler, stopScheduler, suspendScheduler } from './lib/scheduler/application.mts';
 import { configureSchedulerDesktop } from './lib/scheduler/desktop.mts';
 import { createSchedulerNotifications } from './lib/scheduler/notifications.mts';
@@ -85,8 +86,11 @@ const aboutWindow = createAboutWindow({
 });
 const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'updates'));
 const agentEngines = [createDockerAgentEngine()];
-const agentManagement = createAgentManagementService({ engines: agentEngines });
+const agentManagement: ReturnType<typeof createAgentManagementService> = createAgentManagementService({ engines: agentEngines,
+  pendingDeletions: engineId => agentDeletion.pending(engineId) });
 const agentRegistry = createAgentRegistry(path.join(app.getPath('userData'), 'agents', 'registry.json'));
+const agentDeletion = createAgentDeletion({ directory: path.join(app.getPath('userData'), 'agents', 'deletions'),
+  runtimeDirectory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement });
 const specialistRuntime = createSpecialistRuntime({
   directory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement,
   buildContext: app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'specialist-worker') : path.join(app.getAppPath(), 'experiments', 'codex-specialists'),
@@ -260,6 +264,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
       agentRegistryIpc = registerAgentRegistryIpc({ window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot,
+        remove: request => agentDeletion.agent(options.workspaceRoot, request),
         runtime: request => specialistRuntime.request(options.workspaceRoot, request),
         models: async accountId => {
           const profiles = acquireAccountProfiles();
@@ -267,6 +272,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
           finally { await profiles.release(); }
         } });
       agentManagementIpc = registerAgentManagementIpc({ window, ipc: options.scope.ipc, service: agentManagement,
+        remove: request => agentDeletion.container(request),
         terminal: new AgentTerminalManager({ window, engines: agentEngines, workingDirectory: options.workspaceRoot }) });
       notificationEventsIpc = registerNotificationEventsIpc({ window, ipc: options.scope.ipc, service: notificationEvents });
       discordIpc = registerDiscordIpc({ window, ipc: options.scope.ipc, service: discord,

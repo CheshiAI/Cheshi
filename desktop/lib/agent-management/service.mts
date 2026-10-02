@@ -1,7 +1,8 @@
 import { agentBoolean, agentNullableText, agentRecord, parseAgentAction, parseAgentEngineId, parseAgentId,
   parseAgentTasks } from '../../shared/agent-management.ts';
-import type { AgentCatalog, AgentDetails, AgentManagementApi, AgentSnapshot } from '../../shared/agent-management.ts';
+import type { AgentCatalog, AgentDetails, AgentManagementApi, AgentSnapshot, DeleteContainer } from '../../shared/agent-management.ts';
 import type { AgentEngine, RuntimeAgent } from './engine.mts';
+import { workerOperations } from './operations.mts';
 
 type WorkerPath = '/health' | '/account' | '/activity';
 export type ReadWorker = (endpoint: string, path: WorkerPath) => Promise<unknown>;
@@ -40,7 +41,8 @@ function assertIdle(busy: boolean): void {
 }
 function publicAgent({ endpoint: _endpoint, ...agent }: RuntimeAgent) { return agent; }
 
-export function createAgentManagementService(options: { engines: AgentEngine[]; read?: ReadWorker }): AgentManagementApi {
+export function createAgentManagementService(options: { engines: AgentEngine[]; read?: ReadWorker;
+  pendingDeletions?: (engineId: string) => Promise<DeleteContainer[]> }): AgentManagementApi {
   const adapters = new Map(options.engines.map(engine => [engine.kind, engine]));
   const pending = new Set<string>();
   const read = options.read ?? readWorker;
@@ -52,7 +54,16 @@ export function createAgentManagementService(options: { engines: AgentEngine[]; 
   };
   const snapshot = async (engineId: string): Promise<AgentSnapshot> => {
     const engine = adapter(engineId);
-    try { return { engineId, online: true, error: null, agents: await engine.list(engineId) }; }
+    try {
+      const agents = await engine.list(engineId);
+      for (const pending of await options.pendingDeletions?.(engineId) ?? []) {
+        const agent = agents.find(item => item.id === pending.containerId);
+        if (agent) agent.pendingDeletion = { deleteData: pending.deleteData };
+        else agents.push({ id: pending.containerId, name: `Pending cleanup · ${pending.containerId.slice(0, 12)}`,
+          state: 'cleanup-pending', image: '', pendingDeletion: { deleteData: pending.deleteData } });
+      }
+      return { engineId, online: true, error: null, agents };
+    }
     catch { return { engineId, online: false, error: 'Engine unavailable. Start the selected engine, then refresh.', agents: [] }; }
   };
   return {
@@ -89,22 +100,24 @@ export function createAgentManagementService(options: { engines: AgentEngine[]; 
       return result;
     },
     async control(engineId, agentId, input) {
-      const engine = adapter(engineId), id = parseAgentId(agentId), action = parseAgentAction(input);
-      const key = `${engineId}/${id}`;
-      if (pending.has(key)) throw new Error('A worker operation is already running.');
-      pending.add(key);
-      try {
-        const agent = await engine.inspect(engineId, id);
-        if (action !== 'start') {
-          if (!agent.endpoint) throw new Error('Cannot verify worker activity. No loopback API is available.');
-          let busy: boolean;
-          try { busy = health(await read(agent.endpoint, '/health')).busy; }
-          catch { throw new Error('Cannot verify worker activity. Refresh before stopping or restarting.'); }
-          assertIdle(busy);
-        }
-        await engine.control(engineId, id, action);
-        return await snapshot(engineId);
-      } finally { pending.delete(key); }
+      return workerOperations.run(async () => {
+        const engine = adapter(engineId), id = parseAgentId(agentId), action = parseAgentAction(input);
+        const key = `${engineId}/${id}`;
+        if (pending.has(key)) throw new Error('A worker operation is already running.');
+        pending.add(key);
+        try {
+          const agent = await engine.inspect(engineId, id);
+          if (action !== 'start') {
+            if (!agent.endpoint) throw new Error('Cannot verify worker activity. No loopback API is available.');
+            let busy: boolean;
+            try { busy = health(await read(agent.endpoint, '/health')).busy; }
+            catch { throw new Error('Cannot verify worker activity. Refresh before stopping or restarting.'); }
+            assertIdle(busy);
+          }
+          await engine.control(engineId, id, action);
+          return await snapshot(engineId);
+        } finally { pending.delete(key); }
+      });
     },
   };
 }

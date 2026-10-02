@@ -1,4 +1,4 @@
-import { Box, Logs, Play, RefreshCw, RotateCw, Square, SquareTerminal } from 'lucide-react';
+import { Box, Logs, Play, RefreshCw, RotateCw, Square, SquareTerminal, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { LiquidGlassPanel, LiquidGlassSelect } from '../../shared/ui';
 import { DockerIcon } from '../../shared/ui/DockerIcon';
@@ -11,6 +11,7 @@ import styles from '../../shared/agent-management/agentManagement.module.css';
 import viewStyles from './DockerView.module.css';
 import { ContainerTerminal } from './ContainerTerminal';
 import { workerDisplayName } from '../../shared/agent-management/workerDisplayName';
+import { WorkerDeleteDialog } from '../../shared/agent-management/WorkerDeleteDialog';
 
 export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentScreenProps & {
   profiles?: readonly { id: string; name: string }[]; onRefreshProfiles?: () => void;
@@ -19,6 +20,7 @@ export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentS
   const logScrollbar = useAutoHideScrollbars<HTMLPreElement>();
   const [mode, setMode] = useState<'logs' | 'terminal'>('logs');
   const [terminalTarget, setTerminalTarget] = useState('');
+  const [deletion, setDeletion] = useState<{ id: string; engineId: string; name: string; retryDeleteData?: boolean } | null>(null);
   const { catalog, snapshot, details, changing, loading, error } = state;
   const agent = snapshot?.agents.find(item => item.id === state.agentId);
   const target = agent ? `${state.engineId}/${agent.id}` : '';
@@ -27,7 +29,7 @@ export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentS
     else if (mode === 'terminal') setTerminalTarget(target);
     else setTerminalTarget(current => current === target ? current : '');
   }, [target, agent?.state, mode]);
-  const disabled = changing || loading || !snapshot?.online || Boolean(error);
+  const disabled = changing || loading || !snapshot?.online || Boolean(error) || Boolean(agent?.pendingDeletion);
   const canStop = agent?.state === 'running' && details?.ready === true && details.busy === false;
   const engineStatus = loading ? 'Refreshing…' : snapshot?.online ? 'Engine connected' : 'Engine offline';
   return <AgentManagementFrame title="Docker" icon={<DockerIcon />} bodyLayout="fill" actions={<>
@@ -74,6 +76,10 @@ export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentS
             <span className={styles.description}>{agent.state}</span>
           </div>
           <div className={styles.actions}>
+            <TooltipButton variant="ghost" size="icon" aria-label="Delete selected container" title="Delete container"
+              disabled={changing || !snapshot?.online} onClick={() => setDeletion({ id: agent.id, engineId: state.engineId,
+                name: workerDisplayName(agent, profiles), retryDeleteData: agent.pendingDeletion?.deleteData })}>
+              <Trash2 aria-hidden="true" /></TooltipButton>
             <TooltipButton variant="ghost" size="icon" aria-label="Start" title="Start container"
               disabled={disabled || !['created', 'exited'].includes(agent.state)}
               onClick={() => { void model.control('start'); }}><Play aria-hidden="true" /></TooltipButton>
@@ -84,6 +90,7 @@ export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentS
           </div>
         </div>
         {changing && <p className={viewStyles.logNotice} role="status">Applying container operation…</p>}
+        {agent.pendingDeletion && <p className={viewStyles.logNotice}>Deletion is unfinished. Use Delete container to retry cleanup.</p>}
         {details?.error && <p role="alert" className={viewStyles.logNotice}>{details.error}</p>}
         <pre ref={logScrollbar} className={viewStyles.logOutput} hidden={mode !== 'logs'} aria-label="Container log output">{details?.logs || (loading ? 'Loading logs…' : 'No logs available.')}</pre>
         {terminalTarget === target && agent.state === 'running' && <ContainerTerminal key={target}
@@ -91,5 +98,7 @@ export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentS
         {mode === 'terminal' && agent.state !== 'running' && <p className={viewStyles.empty}>Start the container to connect to its shell.</p>}
       </> : <p className={viewStyles.empty}>Select a container to view its logs.</p>}
     </section>
+    {deletion && <WorkerDeleteDialog kind="container" name={deletion.name} retryDeleteData={deletion.retryDeleteData} onClose={() => setDeletion(null)}
+      onDelete={deleteData => model.remove(deletion.engineId, deletion.id, deleteData)} />}
   </AgentManagementFrame>;
 }
