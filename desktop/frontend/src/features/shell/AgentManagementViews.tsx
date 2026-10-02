@@ -5,14 +5,26 @@ import { AgentManagementModel } from '../../shared/agent-management/agentManagem
 import styles from '../../shared/agent-management/agentManagement.module.css';
 import { AgentsView } from '../agents/AgentsView';
 import { DockerView } from '../docker/DockerView';
+import { AgentRegistryModel } from '../agents/agentRegistryModel';
+import type { AgentRegistryApi } from '../../../../shared/agent-registry';
+import type { CodexAccountsApi } from '../../../../shared/codex-accounts';
 
 type ManagementView = 'docker' | 'agents' | null;
 
 /** Remains mounted in the workspace shell so navigation preserves engine/worker selection. */
-export function AgentManagementViews({ view, onOpenDocker, api = cheshiDesktop?.agentManagement }: {
-  view: ManagementView; onOpenDocker(): void; api?: AgentManagementApi;
+export function AgentManagementViews({ view, api = cheshiDesktop?.agentManagement, registryApi = cheshiDesktop?.agentRegistry,
+  accountsApi = cheshiDesktop?.codexAccounts }: {
+  view: ManagementView; api?: AgentManagementApi; registryApi?: AgentRegistryApi;
+  accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
   const [model, setModel] = useState<AgentManagementModel | null>(null);
+  const [registry, setRegistry] = useState<AgentRegistryModel | null>(null);
+  useEffect(() => {
+    if (!registryApi) { setRegistry(null); return; }
+    const next = new AgentRegistryModel(registryApi);
+    setRegistry(next);
+    return () => { next.dispose(); };
+  }, [registryApi]);
   useEffect(() => {
     if (!api) { setModel(null); return; }
     const next = new AgentManagementModel(api);
@@ -20,13 +32,15 @@ export function AgentManagementViews({ view, onOpenDocker, api = cheshiDesktop?.
     return () => { next.dispose(); };
   }, [api]);
   if (!api) return view ? <main className={styles.unavailable}>Worker management is available in the desktop app.</main> : null;
-  return model ? <ManagementScreens model={model} view={view} onOpenDocker={onOpenDocker} /> : null;
+  return model ? <ManagementScreens model={model} view={view} registry={registry} accountsApi={accountsApi} /> : null;
 }
 
-function ManagementScreens({ model, view, onOpenDocker }: {
-  model: AgentManagementModel; view: ManagementView; onOpenDocker(): void;
+function ManagementScreens({ model, view, registry, accountsApi }: {
+  model: AgentManagementModel; view: ManagementView; registry: AgentRegistryModel | null;
+  accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
   const state = useSyncExternalStore(model.subscribe, model.snapshot);
+  useEffect(() => { if (view === 'agents') void registry?.refresh(); }, [registry, view]);
   useEffect(() => {
     if (!view) return;
     if (model.snapshot().engineId) void model.refresh();
@@ -35,6 +49,6 @@ function ManagementScreens({ model, view, onOpenDocker }: {
     return () => { clearInterval(timer); };
   }, [model, view]);
   if (view === 'docker') return <DockerView model={model} state={state} />;
-  if (view === 'agents') return <AgentsView model={model} state={state} onOpenDocker={onOpenDocker} />;
+  if (view === 'agents') return <AgentsView model={model} state={state} registry={registry} accountsApi={accountsApi} />;
   return null;
 }

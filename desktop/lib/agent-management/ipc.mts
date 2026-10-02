@@ -1,3 +1,4 @@
+import { onWindowClosed } from '../window-close-cleanup.mts';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 import { AGENT_CHANNELS, parseAgentAction, parseAgentEngineId, parseAgentId } from '../../shared/agent-management.ts';
 import type { AgentManagementApi } from '../../shared/agent-management.ts';
@@ -17,10 +18,11 @@ export function registerAgentManagementIpc(options: {
       throw new Error('Agent management is only available to its workspace window.');
     }
   };
+  let unsubscribeClosed = () => {};
   const dispose = () => {
     if (disposed) return;
     disposed = true;
-    options.window.off('closed', dispose);
+    unsubscribeClosed();
     for (const channel of channels) options.ipc.removeHandler(channel);
     options.terminal?.dispose();
   };
@@ -40,7 +42,7 @@ export function registerAgentManagementIpc(options: {
       handle(AGENT_TERMINAL_CHANNELS.update, (_event, value: unknown) => terminal.update(parseAgentTerminalBounds(value)));
       handle(AGENT_TERMINAL_CHANNELS.close, (_event, id: unknown) => terminal.close(agentText(id, 100)));
     }
-    options.window.on('closed', dispose);
+    unsubscribeClosed = onWindowClosed(options.window, dispose);
   } catch (error) { dispose(); throw error; }
   return { dispose };
 }

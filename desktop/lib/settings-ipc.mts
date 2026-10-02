@@ -1,3 +1,4 @@
+import { onWindowClosed } from './window-close-cleanup.mts';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 import { SETTINGS_CHANNELS } from '../shared/settings.ts';
 import type { createSettingsService } from './settings-service.mts';
@@ -16,10 +17,11 @@ export function registerSettingsIpc(options: {
   const unsubscribe = options.service.subscribe(state => {
     if (!disposed && !owner.isDestroyed()) owner.send(SETTINGS_CHANNELS.changed, state);
   });
+  let unsubscribeClosed = () => {};
   const dispose = () => {
     if (disposed) return;
     disposed = true; unsubscribe();
-    options.window.off('closed', dispose);
+    unsubscribeClosed();
     for (const channel of channels) options.ipc.removeHandler(channel);
   };
   const handle = (channel: string, listener: Parameters<IpcMain['handle']>[1]) => {
@@ -37,7 +39,7 @@ export function registerSettingsIpc(options: {
       try { return await options.service.check(); }
       finally { checking = false; }
     });
-    options.window.on('closed', dispose);
+    unsubscribeClosed = onWindowClosed(options.window, dispose);
   } catch (error) { dispose(); throw error; }
   return { dispose };
 }

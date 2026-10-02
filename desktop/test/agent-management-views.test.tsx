@@ -1,9 +1,12 @@
 import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { act, type ReactNode } from 'react';
-import { createRoot } from 'react-dom/client';
 import { AgentManagementViews } from '../frontend/src/features/shell/AgentManagementViews';
-import type { AgentManagementApi } from '../shared/agent-management';
+import { AgentTaskResults } from '../frontend/src/features/agents/AgentTaskResults';
+import type { AgentManagementApi, AgentTask } from '../shared/agent-management';
+import type { AgentRegistryApi, AgentRegistrySnapshot, SaveSpecialistAgent } from '../shared/agent-registry';
+import { specialistAgent } from './agent-registry-fixtures';
+import type { CodexAccountsApi } from '../shared/codex-accounts';
 
 async function withDOM(run: (ui: { render(node: ReactNode): Promise<void>; click(label: string): Promise<void> }) => Promise<void>) {
   const window = new Window();
@@ -15,6 +18,7 @@ async function withDOM(run: (ui: { render(node: ReactNode): Promise<void>; click
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
   const container = document.createElement('div');
   document.body.append(container);
+  const { createRoot } = await import('react-dom/client');
   const root = createRoot(container);
   try {
     await run({ render: async node => { await act(async () => root.render(node)); },
@@ -35,7 +39,7 @@ async function withDOM(run: (ui: { render(node: ReactNode): Promise<void>; click
 }
 
 test('Docker and Agents separate controls and preserve engine/worker selection across navigation', async () => {
-  let discoveries = 0, openDocker = 0;
+  let discoveries = 0;
   const inspections: string[] = [];
   const opened: string[] = [], closed: string[] = [];
   const workers = ['first', 'second'].map(id => ({ id, name: `Worker ${id}`, state: 'running', image: 'fixture:test' }));
@@ -50,7 +54,7 @@ test('Docker and Agents separate controls and preserve engine/worker selection a
     snapshot: async engineId => ({ engineId, online: true, error: null, agents: workers }),
     details: async (engineId, id) => {
       inspections.push(`${engineId}/${id}`);
-      return { agent: workers.find(item => item.id === id)!, ready: true, busy: false, authenticated: true,
+      return { agent: workers.find(item => item.id === id)!, ready: true, busy: false, authenticated: id === 'second',
         threadId: `${engineId}/${id}`, error: null, logs: `log:${id}`,
         tasks: [{ id: `task-${id}`, prompt: 'Review', status: 'completed', createdAt: '2026-10-02', output: `result:${id}`, error: null }] };
     },
@@ -69,7 +73,7 @@ test('Docker and Agents separate controls and preserve engine/worker selection a
       expect(document.querySelector('[role="menu"]')).toBeNull();
       expect(menu?.hasAttribute('data-regional-blur-surface')).toBe(false);
     };
-    const screen = (view: 'docker' | 'agents' | null) => <AgentManagementViews api={api} view={view} onOpenDocker={() => { openDocker++; }} />;
+    const screen = (view: 'docker' | 'agents' | null) => <AgentManagementViews api={api} view={view} />;
     await render(screen(null));
     expect(discoveries).toBe(0);
     await render(screen('docker'));
@@ -100,11 +104,31 @@ test('Docker and Agents separate controls and preserve engine/worker selection a
     expect(document.querySelector('[aria-label="Execution engine"]')).toBeNull();
     expect(document.querySelector('[aria-label="Container logs"]')).toBeNull();
     expect([...document.querySelectorAll('button')].some(button => ['Start', 'Stop', 'Restart'].includes(button.textContent ?? ''))).toBe(false);
-    expect(document.querySelector('[aria-label="Task results"]')?.textContent).toContain('result:second');
+    expect(document.querySelector('[aria-label="Task result content"]')).toBeNull();
+    await click('Open task: task-second');
+    expect(document.querySelector('[aria-label="Task result content"]')?.textContent).toContain('result:second');
+    await click('Back to task list');
+    expect(document.querySelector('[aria-label="Task result content"]')).toBeNull();
     expect(document.querySelector('[aria-label="Agent status"]')?.textContent).toContain('test:two/second');
-    await selectWithBlur('Agent', 'Worker second');
-    await selectWithBlur('Task result', 'task-second · completed');
-    await click('Docker settings'); expect(openDocker).toBe(1);
+    expect(document.querySelector('[aria-label="Agent status"]')?.textContent).toContain('Signed');
+    expect(document.querySelector('button[aria-label="Agent"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Agent selection"] [aria-current="page"]')?.getAttribute('aria-label')).toBe('Worker second');
+    await click('Worker first');
+    expect(document.querySelector('[aria-label="Agent status"]')?.textContent).toContain('test:two/first');
+    expect(document.querySelector('[aria-label="Agent status"]')?.textContent).toContain('Not signed in');
+    expect(document.querySelector('[aria-label="Task result content"]')).toBeNull();
+    await click('Open task: task-first');
+    expect(document.querySelector('[aria-label="Task result content"]')?.textContent).toContain('result:first');
+    await click('Worker second');
+    expect(document.querySelector('[aria-label="Agent selection"] [aria-current="page"]')?.getAttribute('aria-label')).toBe('Worker second');
+    expect(document.querySelector('[aria-label="Task result content"]')).toBeNull();
+    await click('Open task: task-second');
+    const beforeRefresh = inspections.length;
+    await click('Refresh');
+    expect(inspections.length).toBe(beforeRefresh + 1);
+    expect(inspections.at(-1)).toBe('test:two/second');
+    expect(discoveries).toBe(1);
+    expect(document.querySelector('[aria-label="Task result content"]')?.textContent).toContain('result:second');
     await render(screen(null));
     await render(screen('docker'));
     expect(document.querySelector('[aria-label="Execution engine"]')?.textContent).toBe('Engine two');
@@ -114,4 +138,141 @@ test('Docker and Agents separate controls and preserve engine/worker selection a
     await click('Refresh');
     expect(document.querySelector('[aria-label="Container selection"] [aria-current="page"]')?.getAttribute('aria-label')).toBe('Worker second');
   });
+});
+
+test('task list restores its position and keeps the opened result through refreshes', async () => {
+  const task = (id: string, output = `output:${id}`): AgentTask => ({
+    id, prompt: `Review ${id}\nAdditional context`, status: 'completed',
+    createdAt: '2026-10-02T09:00:00Z', output, error: null,
+  });
+  await withDOM(async ({ render, click }) => {
+    const screen = (tasks: AgentTask[]) => <AgentTaskResults tasks={tasks} loading={false} running />;
+    await render(screen([task('newer'), task('older')]));
+    const list = document.querySelector<HTMLElement>('[aria-label="Task result list"]')!;
+    list.scrollTop = 80;
+    await click('Open task: older');
+    expect(list.hidden).toBe(true);
+    const content = document.querySelector<HTMLElement>('[aria-label="Task result content"]')!;
+    expect(content.textContent).toContain('output:older');
+    content.scrollTop = 37;
+    await render(screen([task('latest'), task('newer'), task('older', 'updated result')]));
+    expect(document.querySelector('[aria-label="Task result content"]')).toBe(content);
+    expect(content.textContent).toContain('updated result');
+    expect(content.scrollTop).toBe(37);
+    await click('Back to task list');
+    expect(document.querySelector('[aria-label="Task result list"]')).toBe(list);
+    expect(list.hidden).toBe(false);
+    expect(list.scrollTop).toBe(80);
+    expect(document.activeElement?.getAttribute('data-task-id')).toBe('older');
+    await click('Open task: older');
+    await render(screen([task('latest')]));
+    expect(document.querySelector('[aria-label="Task result content"]')).toBeNull();
+    expect(list.hidden).toBe(false);
+    await render(screen([]));
+    expect(list.textContent).toContain('No task results available.');
+  });
+});
+
+test('task detail renders request and output Markdown and preserves error and empty fallbacks', async () => {
+  const task: AgentTask = { id: 'markdown', prompt: '**Review** `failure-rate.ts`', status: 'completed',
+    createdAt: '2026-10-02T09:00:00Z', error: null,
+    output: '# Findings\n\n**Not a product defect.**\n\n- Input `0`\n- Input `10`\n\n'
+      + '```ts\nconst result = 1 / 0;\n```\n\n| Input | Result |\n| --- | --- |\n| 0 | NaN |\n\n'
+      + '[Reference](https://example.com)\n\n[Unsafe](javascript:alert(1))\n\n<script>alert(1)</script>' };
+  await withDOM(async ({ render, click }) => {
+    const screen = (value: AgentTask) => <AgentTaskResults tasks={[value]} loading={false} running />;
+    await render(screen(task));
+    await click('Open task: markdown');
+    const request = document.querySelector('[aria-label="Task request"]')!;
+    const output = document.querySelector('[aria-label="Task output"]')!;
+    expect(request.querySelector('strong')?.textContent).toBe('Review');
+    expect(request.querySelector('code')?.textContent).toBe('failure-rate.ts');
+    expect(output.querySelector('h1')?.textContent).toBe('Findings');
+    expect(output.querySelector('strong')?.textContent).toBe('Not a product defect.');
+    expect(output.querySelectorAll('ul > li')).toHaveLength(2);
+    expect(output.querySelector('pre code')?.textContent).toBe('const result = 1 / 0;');
+    expect(output.querySelector('tbody td')?.textContent).toBe('0');
+    expect(output.querySelector('a')?.getAttribute('href')).toBe('https://example.com');
+    expect(output.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(output.querySelector('script')).toBeNull();
+    await render(screen({ ...task, output: '', error: '**Failed** to inspect.' }));
+    expect(output.querySelector('strong')?.textContent).toBe('Failed');
+    await render(screen({ ...task, output: '', error: null }));
+    expect(output.textContent).toBe('No output yet.');
+  });
+});
+
+test('agents can be created and assigned without an engine, edited, and recovered after a failed save', async () => {
+  let stored: AgentRegistrySnapshot = { agents: [], workspaceRoot: '/projects/cheshi' };
+  let failSave = false;
+  const writes: SaveSpecialistAgent[] = [];
+  const listeners = new Set<(value: AgentRegistrySnapshot) => void>();
+  const registryApi: AgentRegistryApi = {
+    list: async () => stored,
+    onDidChange: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    save: async input => {
+      writes.push(structuredClone(input));
+      if (failSave) throw new Error('Could not save agent registry.');
+      const agent = { ...specialistAgent((input.revision ?? 0) + 1), ...input.profile,
+        assignments: input.assignment.assigned ? [{ workspaceRoot: stored.workspaceRoot, instructions: input.assignment.instructions }] : [] };
+      stored = { ...stored, agents: [agent] };
+      for (const listener of listeners) listener(stored);
+      return { agentId: agent.id, snapshot: stored };
+    },
+  };
+  const api: AgentManagementApi = { engines: async () => ({ engines: [], error: null }),
+    snapshot: async engineId => ({ engineId, online: false, error: 'Offline', agents: [] }),
+    details: async () => { throw new Error('No runtime should be contacted'); },
+    control: async () => { throw new Error('No runtime should be started'); } };
+  const accountsApi: Pick<CodexAccountsApi, 'list' | 'onDidChange'> = {
+    list: async () => ({ activeId: 'default', profiles: [{ id: 'fixture-account', label: 'Work account', email: null,
+      login: { state: 'signed_in', error: null }, usage: { state: 'ready', authenticated: true, plan: null, rateLimits: [], error: null } }] }),
+    onDidChange: () => () => {},
+  };
+  await withDOM(async ({ render, click }) => {
+    const fill = async (label: string, value: string) => {
+      const input = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[aria-label="${label}"]`)!;
+      await act(async () => {
+        const prototype = input.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+        Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(input, value);
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+      });
+    };
+    const screen = (view: 'agents' | null) => <AgentManagementViews api={api} registryApi={registryApi} accountsApi={accountsApi} view={view} />;
+    await render(screen('agents'));
+    await click('New agent');
+    expect(document.querySelector('form')?.getAttribute('aria-label')).toBe('Create agent');
+    await click('Agent specialty');
+    await click('Verification');
+    expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Agent instructions"]')?.value).toContain('Reproduce reported issues');
+    await click('Agent account');
+    await click('Work account');
+    await fill('Agent name', 'Cheshi developer');
+    await fill('Agent instructions', 'Follow AGENTS.md and verify changes.');
+    await fill('Project instructions', 'Work in a dedicated worktree.');
+    await fill('Agent model', 'model-fixture');
+    await click('Allow agent file changes');
+    await click('Create agent');
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ profile: { name: 'Cheshi developer', role: 'verification', model: 'model-fixture', accountId: 'fixture-account',
+      permissions: { fileWrite: true, commandExecution: false } }, assignment: { assigned: true, instructions: 'Work in a dedicated worktree.' } });
+    expect(document.querySelector('[aria-label="Agent selection"] [aria-current="page"]')?.getAttribute('aria-label')).toBe('Cheshi developer');
+    expect(document.querySelector('form')?.getAttribute('aria-label')).toBe('Agent settings');
+    expect(document.querySelector('form')?.textContent).toContain('Execution is not configured yet');
+    await fill('Agent name', 'Updated developer');
+    failSave = true;
+    await click('Save agent');
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('Could not save agent registry');
+    expect(document.querySelector<HTMLInputElement>('[aria-label="Agent name"]')?.value).toBe('Updated developer');
+    expect(stored.agents[0]?.name).toBe('Cheshi developer');
+    failSave = false;
+    await click('Assign agent to this project');
+    await click('Save agent');
+    expect(stored.agents[0]?.assignments).toEqual([]);
+    expect(stored.agents[0]?.name).toBe('Updated developer');
+    await render(screen(null));
+    await render(screen('agents'));
+    expect(document.querySelector<HTMLInputElement>('[aria-label="Agent name"]')?.value).toBe('Updated developer');
+  });
+  expect(listeners.size).toBe(0);
 });

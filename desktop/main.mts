@@ -35,6 +35,8 @@ import { createAgentManagementService } from './lib/agent-management/service.mts
 import { createDockerAgentEngine } from './lib/agent-management/docker.mts';
 import { registerAgentManagementIpc } from './lib/agent-management/ipc.mts';
 import { AgentTerminalManager } from './lib/agent-management/terminal.mts';
+import { createAgentRegistry } from './lib/agent-management/registry.mts';
+import { registerAgentRegistryIpc } from './lib/agent-management/registry-ipc.mts';
 import { checkTypeSafeConnection } from './lib/typesafe-connection.mts';
 import { readTypeSafeKey } from './lib/typesafe-key.mts';
 import { findAppRelease } from './lib/app-release-checker.mts';
@@ -83,6 +85,7 @@ const aboutWindow = createAboutWindow({
 const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'updates'));
 const agentEngines = [createDockerAgentEngine()];
 const agentManagement = createAgentManagementService({ engines: agentEngines });
+const agentRegistry = createAgentRegistry(path.join(app.getPath('userData'), 'agents', 'registry.json'));
 const apiSettings = createSettingsService({
   directory: path.join(app.getPath('userData'), 'api-keys'),
   settingsPath: path.join(app.getPath('userData'), 'settings.json'),
@@ -233,6 +236,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   const source = usageTray?.register();
   let settingsIpc: ReturnType<typeof registerSettingsIpc> | undefined;
   let agentManagementIpc: ReturnType<typeof registerAgentManagementIpc> | undefined;
+  let agentRegistryIpc: ReturnType<typeof registerAgentRegistryIpc> | undefined;
   let discordIpc: ReturnType<typeof registerDiscordIpc> | undefined;
   let notificationIpc: ReturnType<typeof registerIMessageIpc> | undefined;
   let notificationEventsIpc: ReturnType<typeof registerNotificationEventsIpc> | undefined;
@@ -242,6 +246,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       historyRecall: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) },
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
+      agentRegistryIpc = registerAgentRegistryIpc({ window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot });
       agentManagementIpc = registerAgentManagementIpc({ window, ipc: options.scope.ipc, service: agentManagement,
         terminal: new AgentTerminalManager({ window, engines: agentEngines, workingDirectory: options.workspaceRoot }) });
       notificationEventsIpc = registerNotificationEventsIpc({ window, ipc: options.scope.ipc, service: notificationEvents });
@@ -264,7 +269,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
     },
     show: () => runtime.show(),
     async dispose() {
-      try { agentManagementIpc?.dispose(); notificationEventsIpc?.dispose(); discordIpc?.dispose(); notificationIpc?.dispose(); settingsIpc?.dispose(); }
+      try { agentRegistryIpc?.dispose(); agentManagementIpc?.dispose(); notificationEventsIpc?.dispose(); discordIpc?.dispose(); notificationIpc?.dispose(); settingsIpc?.dispose(); }
       finally { try { await runtime.dispose(); } finally { source?.dispose(); } }
     },
   };

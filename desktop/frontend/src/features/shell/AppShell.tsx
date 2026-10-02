@@ -422,8 +422,7 @@ export function AppShell() {
             />
           )}
           {activeView === 'settings' && <SettingsView contextId={workspace.activePaneId} onOpenChat={openWorkflowChat} />}
-          <AgentManagementViews view={activeView === 'docker' || activeView === 'agents' ? activeView : null}
-            onOpenDocker={() => navigate('docker')} />
+          <AgentManagementViews view={activeView === 'docker' || activeView === 'agents' ? activeView : null} />
           {activeView === 'blank' && <BlankView />}
           </WorkspaceEditorSplit>
         </div>

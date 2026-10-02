@@ -1,3 +1,4 @@
+import { onWindowClosed } from './window-close-cleanup.mts';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 import { IMESSAGE_CHANNEL } from '../shared/imessage-notifications.ts';
 import type { createIMessageNotifications } from './imessage-notifications.mts';
@@ -20,9 +21,10 @@ export function registerIMessageIpc(options: {
     if (!owner.isDestroyed()) owner.send(`${IMESSAGE_CHANNEL}:changed`, state);
   });
   let disposed = false;
+  let unsubscribeClosed = () => {};
   const dispose = () => {
     if (disposed) return;
-    disposed = true; unsubscribe(); options.window.off('closed', dispose);
+    disposed = true; unsubscribe(); unsubscribeClosed();
     for (const channel of channels) options.ipc.removeHandler(channel);
   };
   try {
@@ -33,7 +35,7 @@ export function registerIMessageIpc(options: {
       handle('commands:get', () => options.commands!.get());
       handle('commands:configure', value => options.commands!.configure(value));
     }
-    options.window.once('closed', dispose);
+    unsubscribeClosed = onWindowClosed(options.window, dispose);
   } catch (error) { dispose(); throw error; }
   return { dispose };
 }

@@ -1,3 +1,4 @@
+import { onWindowClosed } from './window-close-cleanup.mts';
 import { randomUUID } from 'node:crypto';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 import { DISCORD_CHANNEL, discordPreferences, discordRecord, type DiscordConfirmation, type DiscordPreferences } from '../shared/discord.ts';
@@ -18,11 +19,12 @@ export function registerDiscordIpc(options: {
     options.ipc.handle(channel, (event, value) => { assertOwner(event); return action(value); }); channels.push(channel);
   };
   let disposed = false;
+  let unsubscribeClosed = () => {};
   const dispose = () => {
     if (disposed) return;
     disposed = true; cancel();
     for (const channel of channels) options.ipc.removeHandler(channel);
-    options.window.off('closed', dispose);
+    unsubscribeClosed();
     owner.off('did-start-loading', cancel);
     owner.off('render-process-gone', cancel);
     owner.off('destroyed', dispose);
@@ -62,7 +64,7 @@ export function registerDiscordIpc(options: {
       if (typeof data.accepted !== 'boolean' || !pending || data.id !== pending.request.id) throw new Error('Invalid or expired Discord confirmation.');
       pending.settle(data.accepted === true);
     });
-    options.window.once('closed', dispose);
+    unsubscribeClosed = onWindowClosed(options.window, dispose);
     owner.on('did-start-loading', cancel);
     owner.on('render-process-gone', cancel);
     owner.once('destroyed', dispose);

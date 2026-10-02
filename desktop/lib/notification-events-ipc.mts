@@ -1,3 +1,4 @@
+import { onWindowClosed } from './window-close-cleanup.mts';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 import { NOTIFICATION_EVENTS_CHANNEL } from '../shared/notification-events.ts';
 import type { createNotificationEvents } from './notification-events.mts';
@@ -15,9 +16,10 @@ export function registerNotificationEventsIpc(options: {
     if (!owner.isDestroyed()) owner.send(`${NOTIFICATION_EVENTS_CHANNEL}:changed`, value);
   });
   let disposed = false;
+  let unsubscribeClosed = () => {};
   const dispose = () => {
     if (disposed) return;
-    disposed = true; unsubscribe(); options.window.off('closed', dispose);
+    disposed = true; unsubscribe(); unsubscribeClosed();
     for (const channel of channels) options.ipc.removeHandler(channel);
   };
   try {
@@ -29,7 +31,7 @@ export function registerNotificationEventsIpc(options: {
       });
       channels.push(channel);
     }
-    options.window.once('closed', dispose);
+    unsubscribeClosed = onWindowClosed(options.window, dispose);
   } catch (error) { dispose(); throw error; }
   return { dispose };
 }

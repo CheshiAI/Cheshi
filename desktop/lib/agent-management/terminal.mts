@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { BrowserWindow } from 'electron';
+import type { BrowserWindow, WebContents } from 'electron';
 import { GhosttySurfaceHost } from '../ghostty-surface-host.mts';
 import type { AgentEngine } from './engine.mts';
 import { parseAgentEngineId, parseAgentId } from '../../shared/agent-management.ts';
@@ -13,6 +13,7 @@ type Entry = { session: AgentTerminalSession; host: Host };
 export class AgentTerminalManager {
   private readonly entries = new Map<string, Entry>();
   private readonly window: BrowserWindow;
+  private readonly contents: WebContents;
   private readonly engines: AgentEngine[];
   private readonly workingDirectory: string;
   private readonly createHost: (options: ConstructorParameters<typeof GhosttySurfaceHost>[0]) => Host;
@@ -22,6 +23,7 @@ export class AgentTerminalManager {
   constructor(options: { window: BrowserWindow; engines: AgentEngine[]; workingDirectory: string;
     createHost?: (options: ConstructorParameters<typeof GhosttySurfaceHost>[0]) => Host }) {
     this.window = options.window;
+    this.contents = options.window.webContents;
     this.engines = options.engines;
     this.workingDirectory = options.workingDirectory;
     this.createHost = options.createHost ?? (value => new GhosttySurfaceHost(value));
@@ -29,9 +31,10 @@ export class AgentTerminalManager {
     this.window.on('hide', this.syncVisibility);
     this.window.on('minimize', this.syncVisibility);
     this.window.on('restore', this.syncVisibility);
-    this.window.webContents.on('did-start-navigation', this.navigation);
+    this.contents.on('did-start-navigation', this.navigation);
   }
   private syncVisibility = () => {
+    if (this.disposed || this.window.isDestroyed()) return;
     for (const { host } of this.entries.values()) host.setWindowVisible(this.window.isVisible() && !this.window.isMinimized());
   };
   private navigation = (_event: unknown, _url: string, inPlace: boolean, mainFrame: boolean) => {
@@ -42,7 +45,7 @@ export class AgentTerminalManager {
     if (!entry || entry.session.ended) return;
     entry.session = { ...entry.session, ended: true, error };
     entry.host.close();
-    if (!this.window.webContents.isDestroyed()) this.window.webContents.send(AGENT_TERMINAL_CHANNELS.changed, entry.session);
+    if (!this.disposed && !this.contents.isDestroyed()) this.contents.send(AGENT_TERMINAL_CHANNELS.changed, entry.session);
   }
   async open(input: string, agentInput: string): Promise<AgentTerminalSession> {
     if (this.disposed || this.entries.size + this.pending >= 8) throw new Error('Container terminal is unavailable.');
@@ -66,8 +69,8 @@ export class AgentTerminalManager {
   }
   async update(input: unknown): Promise<void> {
     const value = parseAgentTerminalBounds(input), entry = this.entries.get(value.id);
-    if (!entry || entry.session.ended || this.disposed) return;
-    const zoom = this.window.webContents.getZoomFactor();
+    if (!entry || entry.session.ended || this.disposed || this.window.isDestroyed() || this.contents.isDestroyed()) return;
+    const zoom = this.contents.getZoomFactor();
     const bounds = this.window.getContentBounds();
     const frame = { x: value.x / zoom, y: value.y / zoom, width: value.width / zoom, height: value.height / zoom };
     const visible = value.visible && frame.x >= 0 && frame.y >= 0
@@ -83,12 +86,13 @@ export class AgentTerminalManager {
     entry?.host.close();
   }
   dispose() {
+    if (this.disposed) return;
     this.disposed = true;
     this.window.off('show', this.syncVisibility);
     this.window.off('hide', this.syncVisibility);
     this.window.off('minimize', this.syncVisibility);
     this.window.off('restore', this.syncVisibility);
-    this.window.webContents.off('did-start-navigation', this.navigation);
+    this.contents.off('did-start-navigation', this.navigation);
     for (const id of this.entries.keys()) void this.close(id);
   }
 }
