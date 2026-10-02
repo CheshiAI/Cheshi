@@ -7,7 +7,9 @@ import { createCodeGraphCommands } from './lib/codegraph-service.mts';
 import { codeGraphStorageDirectory, resolveCodeGraphDataRoot } from '../config/workspace-storage.mts';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, screen, safeStorage, shell, Tray } from 'electron';
+import { app, autoUpdater, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, screen, safeStorage, shell, Tray } from 'electron';
+import { createStickyNotesRuntime } from './lib/sticky-notes-runtime.mts';
+import { STICKY_NOTES_SHORTCUT, STICKY_NOTES_LIST_SHORTCUT } from './shared/sticky-notes.ts';
 import { product } from '../config/product.mts';
 import { aboutBackgroundColor, aboutPage } from './lib/about-page.mts';
 import { registerSelectionCopy } from './lib/selection-copy.mts';
@@ -52,6 +54,16 @@ import type { WorkspaceRuntimeOptions } from './lib/workspace-application.mts';
 process.env.PATH = desktopToolPath(process.env.PATH);
 const selectionCopyPreload = path.join(import.meta.dirname, 'runtime', 'selection-copy-preload.cjs');
 const usagePopoverPreload = path.join(app.isPackaged ? process.resourcesPath : import.meta.dirname, 'runtime', 'account-usage-preload.cjs');
+const stickyNotes = createStickyNotesRuntime({
+  directory: path.join(app.getPath('userData'), 'sticky-notes'),
+  appearanceFile: path.join(app.getPath('userData'), 'appearance.json'),
+  rendererUrl: process.env.CHESHI_RENDERER_URL?.trim() || pathToFileURL(app.isPackaged
+    ? path.join(process.resourcesPath, 'dist', 'index.html')
+    : path.join(import.meta.dirname, 'frontend', 'dist', 'index.html')).href,
+  preload: path.join(app.isPackaged ? process.resourcesPath : import.meta.dirname, 'runtime', 'sticky-notes-preload.cjs'),
+  createWindow: options => new BrowserWindow(options), ipc: ipcMain, shortcuts: globalShortcut, screen,
+  onError: error => dialog.showErrorBox('Cheshi Notes', error instanceof Error ? error.message : String(error)),
+});
 const aboutWindow = createAboutWindow({
   title: `About ${product.displayName}`,
   backgroundColor: aboutBackgroundColor,
@@ -105,6 +117,7 @@ const updates = createAppUpdateService({
       await updateResume.activate();
       report({ phase: 'restarting' });
       quitting = true;
+      await stickyNotes.prepareToQuit();
       await workspaces.closeAll();
       schedulerNotifications?.dispose();
       await stopScheduler();
@@ -113,11 +126,13 @@ const updates = createAppUpdateService({
       await backgroundUsage.dispose().catch(reportTrayError);
       usageTray?.dispose();
       aboutWindow.close();
+      stickyNotes.dispose();
       cleanupComplete = true;
       updates.dispose();
       autoUpdater.quitAndInstall();
     } catch (error) {
       quitting = false;
+      stickyNotes.resume();
       await updateResume.cancel();
       throw error;
     }
@@ -297,7 +312,17 @@ app.whenReady().then(async () => {
       .then(reason => updates.setUnavailableReason(reason));
   }
   const applicationMenu = Menu.getApplicationMenu();
-  if (applicationMenu) Menu.setApplicationMenu(Menu.buildFromTemplate(aboutMenuTemplate(applicationMenu.items, product.displayName, aboutWindow.open, template => Menu.buildFromTemplate(template))));
+  if (applicationMenu) {
+    const template = aboutMenuTemplate(applicationMenu.items, product.displayName, aboutWindow.open, items => Menu.buildFromTemplate(items));
+    template.push({ label: 'Notes', submenu: [
+      { label: 'New Note', accelerator: STICKY_NOTES_SHORTCUT, registerAccelerator: false,
+        click: () => { void stickyNotes.create().catch(error => dialog.showErrorBox('Cheshi Notes', String(error))); } },
+      { label: 'All Notes', accelerator: STICKY_NOTES_LIST_SHORTCUT, registerAccelerator: false,
+        click: () => { void stickyNotes.openList().catch(error => dialog.showErrorBox('Cheshi Notes', String(error))); } },
+    ] });
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  }
+  stickyNotes.start();
   if (process.platform === 'darwin') {
     try { usageTray = createAccountUsageTray({
       createTray: image => new Tray(image), createMenu: template => Menu.buildFromTemplate(template),
@@ -372,7 +397,7 @@ app.on('before-quit', (event) => {
   event.preventDefault();
   if (quitting) return;
   quitting = true;
-  void workspaces.closeAll().then(async () => {
+  void stickyNotes.prepareToQuit().then(() => workspaces.closeAll()).then(async () => {
     schedulerNotifications?.dispose();
     await stopScheduler();
     await keepAwake.dispose();
@@ -380,11 +405,13 @@ app.on('before-quit', (event) => {
     await backgroundUsage.dispose().catch(reportTrayError);
     usageTray?.dispose();
     aboutWindow.dispose();
+    stickyNotes.dispose();
     updates.dispose();
     cleanupComplete = true;
     app.quit();
   }).catch((error: unknown) => {
     quitting = false;
+    stickyNotes.resume();
     if (error instanceof WorkspaceWindowCloseCancelledError) return;
     dialog.showErrorBox(`${product.displayName} could not close`, error instanceof Error ? error.message : String(error));
   });

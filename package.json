@@ -34,6 +34,7 @@
     "desktop:runtime": "bun run scripts/build-desktop-runtime.mts",
     "desktop:test:devtools": "node --test desktop/test/development-devtools.test.ts desktop/test/development-devtools-electron.test.ts",
     "desktop:test:attachment-bridge": "bun run desktop:preload && node --test desktop/test/chat-attachment-electron-bridge.test.ts",
+    "desktop:test:sticky-notes": "bun test desktop/test/sticky-notes.test.ts && bun run desktop:preload && bun run viewer:build && node --test desktop/test/sticky-notes-electron-bridge.test.ts",
     "desktop:test:temporary-chat-bridge": "bun run desktop:preload && bun run viewer:build && node --test desktop/test/temporary-chat-electron-bridge.test.ts",
     "desktop:test:workspace-manager-bridge": "bun run desktop:preload && bun run viewer:build && node --test desktop/test/workspace-manager-electron-bridge.test.ts",
     "desktop:test:thread-writer": "CHESHI_TEST_REAL_CODEX=1 bun test desktop/test/codex-app-server-writer.test.ts",
