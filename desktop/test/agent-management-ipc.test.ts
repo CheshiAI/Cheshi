@@ -59,7 +59,7 @@ test('packaged runtime includes all agent modules and native Node can load them'
   const ignore = (await config()).packagerConfig?.ignore;
   if (typeof ignore !== 'function') throw new Error('Expected package filter');
   const paths = ['desktop/shared/agent-management.ts', 'desktop/shared/agent-terminal.ts', 'desktop/lib/window-close-cleanup.mts',
-    'desktop/shared/agent-registry.ts', 'desktop/shared/codex-accounts.ts',
+    'desktop/shared/agent-registry.ts', 'desktop/shared/agent-models.ts', 'desktop/shared/codex-accounts.ts',
     ...['engine', 'docker', 'service', 'ipc', 'terminal', 'registry', 'registry-ipc'].map(name => `desktop/lib/agent-management/${name}.mts`)];
   for (const path of paths) expect(ignore(`/${path}`)).toBe(false);
   expect(ignore('/desktop/lib/agent-management/local-secret.json')).toBe(true);

@@ -19,6 +19,7 @@ export class AgentRegistryModel {
     });
   }
   snapshot = () => this.state;
+  models = (accountId: string) => this.api.models(accountId);
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<AgentRegistryState>) {
     if (!this.active) return;

@@ -7,7 +7,7 @@ function fixture(overrides: Partial<AgentRegistryApi> = {}) {
   let notify: (value: AgentRegistrySnapshot) => void = () => {};
   let unsubscribed = false;
   const empty = { workspaceRoot: '/projects/one', agents: [] };
-  const model = new AgentRegistryModel({ list: async () => empty,
+  const model = new AgentRegistryModel({ list: async () => empty, models: async () => [],
     save: async () => ({ agentId: specialistAgent().id, snapshot: { ...empty, agents: [specialistAgent()] } }),
     onDidChange: listener => { notify = listener; return () => { unsubscribed = true; }; }, ...overrides });
   return { model, notify: (value: AgentRegistrySnapshot) => notify(value), unsubscribed: () => unsubscribed };

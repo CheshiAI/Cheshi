@@ -1,13 +1,15 @@
 import { isCodexAccountId } from './codex-accounts.ts';
+import type { AgentModel, AgentModelSelection } from './agent-models.ts';
 
 export const AGENT_REGISTRY_CHANNELS = {
   list: 'cheshi:agent-registry:list', save: 'cheshi:agent-registry:save', changed: 'cheshi:agent-registry:changed',
+  models: 'cheshi:agent-registry:models',
 } as const;
 export const SPECIALIST_ROLES = ['planning', 'research', 'frontend', 'development', 'verification', 'custom'] as const;
 export type SpecialistRole = typeof SPECIALIST_ROLES[number];
-export interface SpecialistProfile {
+export interface SpecialistProfile extends AgentModelSelection {
   name: string; role: SpecialistRole; instructions: string;
-  accountId: string | null; model: string | null;
+  accountId: string | null;
   permissions: { fileWrite: boolean; commandExecution: boolean };
 }
 export interface SpecialistAssignment { workspaceRoot: string; instructions: string; }
@@ -20,6 +22,7 @@ export interface SaveSpecialistAgent {
   assignment: { assigned: boolean; instructions: string };
 }
 export interface AgentRegistryApi {
+  models(accountId: string): Promise<AgentModel[]>;
   list(): Promise<AgentRegistrySnapshot>;
   save(input: SaveSpecialistAgent): Promise<{ agentId: string; snapshot: AgentRegistrySnapshot }>;
   onDidChange(listener: (snapshot: AgentRegistrySnapshot) => void): () => void;
@@ -55,6 +58,8 @@ function profile(value: unknown): SpecialistProfile {
   return { name: text(data.name, 100, true).trim(), role: data.role as SpecialistRole,
     instructions: text(data.instructions, 20_000, true), accountId: data.accountId as string | null,
     model: data.model === null ? null : text(data.model, 200, true).trim(),
+    reasoningEffort: data.reasoningEffort == null ? null : text(data.reasoningEffort, 100, true).trim(),
+    serviceTier: data.serviceTier == null ? null : text(data.serviceTier, 100, true).trim(),
     permissions: { fileWrite: flag(permissions.fileWrite), commandExecution: flag(permissions.commandExecution) } };
 }
 export function parseSaveSpecialistAgent(value: unknown): SaveSpecialistAgent {

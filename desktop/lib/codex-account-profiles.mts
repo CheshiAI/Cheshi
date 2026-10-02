@@ -222,6 +222,11 @@ export class CodexAccountProfiles {
     })));
   }
 
+  async models(id: string) {
+    await this.environment(id);
+    return this.session(id).models();
+  }
+
   async historyRequest(id: string, method: string, params?: unknown): Promise<unknown> {
     if (method !== 'thread/list' && method !== 'thread/read' && method !== 'thread/delete' && method !== 'thread/goal/get') {
       throw new Error('Unsupported account history operation.');

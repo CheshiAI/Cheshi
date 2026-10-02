@@ -171,12 +171,15 @@ function openSchedulerReview(): void {
   void openScheduledRun(run).catch(reportStartupError);
 }
 let usagePopoverWindow: BrowserWindow | null = null;
-const backgroundUsage = createAccountUsageBackground({
-  acquire: () => getCodexAccountProfiles({
+function acquireAccountProfiles() {
+  return getCodexAccountProfiles({
     directory: path.join(app.getPath('userData'), 'codex-accounts'),
     defaultHome: process.env.CODEX_HOME?.trim() || path.join(app.getPath('home'), '.codex'),
     cwd: app.getPath('home'), openExternal: url => shell.openExternal(url),
-  }),
+  });
+}
+const backgroundUsage = createAccountUsageBackground({
+  acquire: acquireAccountProfiles,
   update: snapshot => usageTray?.updateBackground(snapshot),
   onError: reportTrayError,
 });
@@ -246,7 +249,12 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       historyRecall: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) },
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
-      agentRegistryIpc = registerAgentRegistryIpc({ window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot });
+      agentRegistryIpc = registerAgentRegistryIpc({ window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot,
+        models: async accountId => {
+          const profiles = acquireAccountProfiles();
+          try { return await profiles.models(accountId); }
+          finally { await profiles.release(); }
+        } });
       agentManagementIpc = registerAgentManagementIpc({ window, ipc: options.scope.ipc, service: agentManagement,
         terminal: new AgentTerminalManager({ window, engines: agentEngines, workingDirectory: options.workspaceRoot }) });
       notificationEventsIpc = registerNotificationEventsIpc({ window, ipc: options.scope.ipc, service: notificationEvents });

@@ -5,8 +5,9 @@ import { AgentManagementViews } from '../frontend/src/features/shell/AgentManage
 import { AgentTaskResults } from '../frontend/src/features/agents/AgentTaskResults';
 import type { AgentManagementApi, AgentTask } from '../shared/agent-management';
 import type { AgentRegistryApi, AgentRegistrySnapshot, SaveSpecialistAgent } from '../shared/agent-registry';
-import { specialistAgent } from './agent-registry-fixtures';
+import { registryDeferred, specialistAgent, specialistModels } from './agent-registry-fixtures';
 import type { CodexAccountsApi } from '../shared/codex-accounts';
+import { useSpecialistModels } from '../frontend/src/features/agents/SpecialistModelSettings';
 
 async function withDOM(run: (ui: { render(node: ReactNode): Promise<void>; click(label: string): Promise<void> }) => Promise<void>) {
   const window = new Window();
@@ -206,8 +207,10 @@ test('agents can be created and assigned without an engine, edited, and recovere
   let stored: AgentRegistrySnapshot = { agents: [], workspaceRoot: '/projects/cheshi' };
   let failSave = false;
   const writes: SaveSpecialistAgent[] = [];
+  const modelAccounts: string[] = [];
   const listeners = new Set<(value: AgentRegistrySnapshot) => void>();
   const registryApi: AgentRegistryApi = {
+    models: async accountId => { modelAccounts.push(accountId); return specialistModels(); },
     list: async () => stored,
     onDidChange: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     save: async input => {
@@ -225,8 +228,12 @@ test('agents can be created and assigned without an engine, edited, and recovere
     details: async () => { throw new Error('No runtime should be contacted'); },
     control: async () => { throw new Error('No runtime should be started'); } };
   const accountsApi: Pick<CodexAccountsApi, 'list' | 'onDidChange'> = {
-    list: async () => ({ activeId: 'default', profiles: [{ id: 'fixture-account', label: 'Work account', email: null,
-      login: { state: 'signed_in', error: null }, usage: { state: 'ready', authenticated: true, plan: null, rateLimits: [], error: null } }] }),
+    list: async () => ({ activeId: 'default', profiles: [
+      { id: 'default', label: 'Default account', email: 'first@example.test',
+        login: { state: 'signed_in', error: null }, usage: { state: 'ready', authenticated: true, plan: null, rateLimits: [], error: null } },
+      { id: 'fixture-account', label: 'Account 2', email: 'second@example.test',
+        login: { state: 'signed_in', error: null }, usage: { state: 'ready', authenticated: true, plan: null, rateLimits: [], error: null } },
+    ] }),
     onDidChange: () => () => {},
   };
   await withDOM(async ({ render, click }) => {
@@ -246,16 +253,39 @@ test('agents can be created and assigned without an engine, edited, and recovere
     await click('Verification');
     expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Agent instructions"]')?.value).toContain('Reproduce reported issues');
     await click('Agent account');
-    await click('Work account');
+    await click('first@example.test');
+    expect(document.querySelector('[aria-label="Agent account"]')?.textContent).toContain('first@example.test');
+    await click('Agent account');
+    await click('second@example.test');
+    expect(document.querySelector('[aria-label="Agent account"]')?.textContent).toContain('second@example.test');
     await fill('Agent name', 'Cheshi developer');
     await fill('Agent instructions', 'Follow AGENTS.md and verify changes.');
     await fill('Project instructions', 'Work in a dedicated worktree.');
-    await fill('Agent model', 'model-fixture');
+    await click('Agent model');
+    await click('Fixture model');
+    await click('Agent reasoning effort');
+    await click('High');
+    await click('Agent service tier');
+    await click('Fast');
+    await click('Agent model');
+    await click('Small model');
+    expect(document.querySelector('[aria-label="Agent reasoning effort"]')?.textContent).toContain('Low');
+    expect(document.querySelector('[aria-label="Agent service tier"]')?.textContent).toContain('Standard');
+    await click('Agent model');
+    await click('Fixture model');
+    expect(document.querySelector('[aria-label="Agent reasoning effort"]')?.textContent).toContain('Medium');
+    await click('Agent reasoning effort');
+    await click('High');
+    await click('Agent service tier');
+    await click('Fast');
     await click('Allow agent file changes');
     await click('Create agent');
     expect(writes).toHaveLength(1);
     expect(writes[0]).toMatchObject({ profile: { name: 'Cheshi developer', role: 'verification', model: 'model-fixture', accountId: 'fixture-account',
-      permissions: { fileWrite: true, commandExecution: false } }, assignment: { assigned: true, instructions: 'Work in a dedicated worktree.' } });
+      reasoningEffort: 'high', serviceTier: 'priority', permissions: { fileWrite: true, commandExecution: false } },
+      assignment: { assigned: true, instructions: 'Work in a dedicated worktree.' } });
+    expect(modelAccounts).toContain('default');
+    expect(modelAccounts).toContain('fixture-account');
     expect(document.querySelector('[aria-label="Agent selection"] [aria-current="page"]')?.getAttribute('aria-label')).toBe('Cheshi developer');
     expect(document.querySelector('form')?.getAttribute('aria-label')).toBe('Agent settings');
     expect(document.querySelector('form')?.textContent).toContain('Execution is not configured yet');
@@ -273,6 +303,42 @@ test('agents can be created and assigned without an engine, edited, and recovere
     await render(screen(null));
     await render(screen('agents'));
     expect(document.querySelector<HTMLInputElement>('[aria-label="Agent name"]')?.value).toBe('Updated developer');
+    expect(document.querySelector('[aria-label="Agent model"]')?.textContent).toContain('Fixture model');
+    expect(document.querySelector('[aria-label="Agent reasoning effort"]')?.textContent).toContain('High');
+    expect(document.querySelector('[aria-label="Agent service tier"]')?.textContent).toContain('Fast');
+    await click('Agent account');
+    await click('first@example.test');
+    expect(document.querySelector('[aria-label="Agent model"]')?.textContent).toContain('Runtime default');
+    expect(document.querySelector<HTMLButtonElement>('[aria-label="Agent reasoning effort"]')?.disabled).toBe(true);
   });
   expect(listeners.size).toBe(0);
+});
+
+test('model catalogs ignore late account responses and recover from a failed load', async () => {
+  const pending = registryDeferred<ReturnType<typeof specialistModels>>();
+  let failed = true;
+  const load = async (id: string) => {
+    if (id === 'first') return pending.promise;
+    if (id === 'failed' && failed) throw new Error('Catalog unavailable');
+    return [specialistModels()[1]!];
+  };
+  function Catalog({ accountId }: { accountId: string | null }) {
+    const catalog = useSpecialistModels(accountId, load);
+    return <><output>{JSON.stringify(catalog)}</output><button onClick={catalog.retry}>Retry</button></>;
+  }
+  await withDOM(async ({ render, click }) => {
+    await render(<Catalog accountId="first" />);
+    await render(<Catalog accountId="second" />);
+    await act(async () => { pending.resolve(specialistModels()); });
+    expect(document.querySelector('output')?.textContent).toContain('small-fixture');
+    expect(document.querySelector('output')?.textContent).not.toContain('model-fixture');
+    await render(<Catalog accountId="failed" />);
+    expect(document.querySelector('output')?.textContent).toContain('Catalog unavailable');
+    failed = false;
+    await click('Retry');
+    expect(document.querySelector('output')?.textContent).not.toContain('Catalog unavailable');
+    expect(document.querySelector('output')?.textContent).toContain('small-fixture');
+    await render(<Catalog accountId={null} />);
+    expect(document.querySelector('output')?.textContent).not.toContain('small-fixture');
+  });
 });

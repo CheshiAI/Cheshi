@@ -84,9 +84,13 @@ test('registry persists account references and strips unrecognized fields', () =
   try {
     const input = specialistInput();
     const result = f.registry.save({ ...input, profile: { ...input.profile, accountId: 'account-fixture', model: 'model-fixture',
+      reasoningEffort: 'high', serviceTier: 'priority',
       extra: 'must-not-be-stored' } }, '/projects/one');
     expect(result.snapshot.agents[0]).toMatchObject({ accountId: 'account-fixture', model: 'model-fixture' });
     expect(readFileSync(f.filename, 'utf8')).not.toContain('must-not-be-stored');
+    expect(createAgentRegistry(f.filename).snapshot('/projects/one').agents[0]).toMatchObject({
+      model: 'model-fixture', reasoningEffort: 'high', serviceTier: 'priority',
+    });
   } finally { f.close(); }
 });
 
@@ -112,7 +116,7 @@ test('registry IPC binds assignment to its owner workspace and broadcasts across
     const save = a.handlers.get(AGENT_REGISTRY_CHANNELS.save)!;
     expect(() => save({ ...a.event, sender: {} } as IpcMainInvokeEvent, specialistInput())).toThrow('workspace window');
     expect(() => save({ ...a.event, senderFrame: {} } as IpcMainInvokeEvent, specialistInput())).toThrow('workspace window');
-    save(a.event, { ...specialistInput(), workspaceRoot: '/projects/foreign' });
+    await save(a.event, { ...specialistInput(), workspaceRoot: '/projects/foreign' });
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0]?.workspaceRoot).toBe('/projects/two');
     expect(snapshots[0]?.agents[0]?.assignments[0]?.workspaceRoot).toBe('/projects/one');

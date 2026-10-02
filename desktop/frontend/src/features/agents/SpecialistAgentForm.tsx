@@ -8,12 +8,15 @@ import { ToggleSwitch } from '../../shared/ui/ToggleSwitch';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import { specialistTemplates } from './specialistTemplates';
 import styles from './SpecialistAgentForm.module.css';
+import { SpecialistModelSettings, useSpecialistModels } from './SpecialistModelSettings';
+import { assertAgentModelSelection } from '../../../../shared/agent-models';
 
 function initialProfile(agent?: SpecialistAgent): SpecialistProfile {
   return agent ? { name: agent.name, role: agent.role, instructions: agent.instructions,
-    accountId: agent.accountId, model: agent.model, permissions: { ...agent.permissions } } : {
+    accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort, serviceTier: agent.serviceTier,
+    permissions: { ...agent.permissions } } : {
     name: '', role: 'development', instructions: specialistTemplates.development.instructions,
-    accountId: null, model: null, permissions: { fileWrite: false, commandExecution: false },
+    accountId: null, model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: false, commandExecution: false },
   };
 }
 
@@ -32,6 +35,11 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi }: {
   const [saved, setSaved] = useState(false);
   const active = useRef(true);
   const scrollbar = useAutoHideScrollbars<HTMLFormElement>();
+  const catalog = useSpecialistModels(profile.accountId, model.models);
+  let modelError: string | null = null;
+  try { assertAgentModelSelection(profile, catalog.models); }
+  catch (error) { modelError = error instanceof Error ? error.message : 'Invalid model settings.'; }
+  const modelBlocked = profile.model !== null && (catalog.loading || Boolean(catalog.error) || Boolean(modelError));
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => {
     if (!accountsApi) return;
@@ -47,7 +55,7 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi }: {
   }, [accountsApi]);
   const patch = (value: Partial<SpecialistProfile>) => { setProfile(current => ({ ...current, ...value })); setSaved(false); };
   const accountOptions = [{ value: '', label: 'Configure later' }, ...accounts.map(account => ({
-    value: account.id, label: `${account.label || account.email || account.id}${account.usage.authenticated ? '' : ' (sign-in required)'}`,
+    value: account.id, label: `${account.email || account.label || account.id}${account.usage.authenticated ? '' : ' (sign-in required)'}`,
   }))];
   if (profile.accountId && !accounts.some(account => account.id === profile.accountId)) {
     accountOptions.push({ value: profile.accountId, label: `${profile.accountId} (unavailable)` });
@@ -55,6 +63,7 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi }: {
   const outdated = agent && revision !== agent.revision;
   return <form ref={scrollbar} className={styles.form} aria-label={agent ? 'Agent settings' : 'Create agent'} onSubmit={event => {
     event.preventDefault();
+    if (modelBlocked) return;
     void model.save({ id: agent?.id ?? null, revision, profile,
       assignment: { assigned, instructions } }).then(result => {
       if (active.current) { setRevision(result.revision); setSaved(true); }
@@ -72,10 +81,11 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi }: {
       <label className={styles.field}>Instructions<NeumorphicTextField variant="standard" multiline rows={5} aria-label="Agent instructions"
         required maxLength={20_000} value={profile.instructions} onChange={event => patch({ instructions: event.target.value })} /></label>
       <div className={styles.field}><span>Account</span><LiquidGlassSelect ariaLabel="Agent account" menuAppearance="toolbar" triggerAppearance="standard"
-        options={accountOptions} value={profile.accountId ?? ''} disabled={state.saving} onChange={accountId => patch({ accountId: accountId || null })} /></div>
+        options={accountOptions} value={profile.accountId ?? ''} disabled={state.saving}
+        onChange={accountId => patch({ accountId: accountId || null, model: null, reasoningEffort: null, serviceTier: null })} /></div>
       {accountError && <p role="status" className={styles.description}>{accountError}</p>}
-      <label className={styles.field}>Model<NeumorphicTextField variant="standard" aria-label="Agent model" maxLength={200}
-        placeholder="Runtime default" value={profile.model ?? ''} onChange={event => patch({ model: event.target.value || null })} /></label>
+      <SpecialistModelSettings selection={profile} catalog={catalog} disabled={state.saving} onChange={patch} />
+      {modelError && !catalog.loading && !catalog.error && <p className={styles.description} role="alert">{modelError}</p>}
       <div className={styles.field}><h3>Execution permissions</h3>
         <p className={styles.description}>Saved policy for this agent's future execution environment.</p>
         <div className={styles.switchRow}><span>Modify project files</span><ToggleSwitch aria-label="Allow agent file changes" checked={profile.permissions.fileWrite}
@@ -98,7 +108,7 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi }: {
     {saved && !outdated && <p role="status" className={styles.description}>Agent saved.</p>}
     <div className={styles.actions}>
       <NeumorphicButton type="button" variant="ghost" disabled={state.saving} onClick={() => model.select(null)}>Cancel</NeumorphicButton>
-      <NeumorphicButton type="submit" disabled={state.saving || !profile.name.trim() || !profile.instructions.trim() || Boolean(outdated)}>
+      <NeumorphicButton type="submit" disabled={state.saving || modelBlocked || !profile.name.trim() || !profile.instructions.trim() || Boolean(outdated)}>
         {state.saving ? 'Saving…' : agent ? 'Save agent' : 'Create agent'}</NeumorphicButton>
     </div>
   </form>;

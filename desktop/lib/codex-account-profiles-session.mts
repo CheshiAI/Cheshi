@@ -2,6 +2,7 @@ import type { CodexAccountProfile } from '../shared/codex-accounts.ts';
 import { CodexAccountService } from './codex-account-service.mts';
 import type { CodexAppServerClient } from './codex-app-server-client.mts';
 import { WorkspaceCodexLoginService } from './workspace-codex-login.mts';
+import { modelsFromListResponse } from './codex-chat-catalog.mts';
 
 export type CodexProfileClient = Pick<CodexAppServerClient, 'start' | 'stop' | 'request' | 'onNotification' | 'onDidFail'>;
 
@@ -31,6 +32,19 @@ export class CodexAccountProfileSession {
     this.assertOpen();
     if (this.loggingOut) throw new Error('Wait for account logout to finish.');
     return this.client.request(method, params);
+  }
+
+  async models() {
+    this.assertOpen();
+    if (this.loggingOut) throw new Error('Wait for account logout to finish.');
+    await this.refresh();
+    this.assertOpen();
+    if (this.loggingOut || !this.current.usage.authenticated) throw new Error('Sign in to this account before selecting a model.');
+    const revision = this.revision;
+    const result = modelsFromListResponse(await this.client.request('model/list', { limit: 100, includeHidden: false }));
+    this.assertOpen();
+    if (revision !== this.revision || this.loggingOut) throw new Error('Account changed while loading models. Try again.');
+    return result;
   }
 
   constructor(options: {
