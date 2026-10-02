@@ -3,10 +3,11 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { expect, test } from 'bun:test';
 import ts from 'typescript';
-import type { GitRepositorySnapshot } from '../frontend/src/cheshiDesktop';
+import type { GitFileChange, GitRepositorySnapshot } from '../frontend/src/cheshiDesktop';
 import {
   observeWorkspaceGitBranch,
   workspaceGitBranchLabels,
+  workspaceGitFileCounts,
 } from '../frontend/src/features/shell/workspaceGitBranchModel';
 
 function createDeferred<T>() {
@@ -147,6 +148,29 @@ test('distinguishes branch, detached HEAD, unborn repository and unavailable sta
   expect(workspaceGitBranchLabels(null).label).toBe('Git unavailable');
 });
 
+function fileChange(path: string, indexStatus = ' ', workingTreeStatus = 'M'): GitFileChange {
+  return { path, oldPath: null, indexStatus, workingTreeStatus,
+    staged: indexStatus !== ' ' && indexStatus !== '?',
+    unstaged: workingTreeStatus !== ' ' && workingTreeStatus !== '?',
+    untracked: indexStatus === '?' && workingTreeStatus === '?' };
+}
+
+test('counts changed files once across staged, unstaged, untracked, renamed and deleted changes', () => {
+  const changes = [fileChange('modified.ts', 'M', 'M'), fileChange('new.ts', 'A', ' '),
+    fileChange('untracked.ts', '?', '?'), { ...fileChange('renamed.ts', 'R', ' '), oldPath: 'old.ts' },
+    fileChange('staged-delete.ts', 'D', ' '), fileChange('working-delete.ts', ' ', 'D'),
+    fileChange('modified.ts'), fileChange('clean.ts', ' ', ' ')];
+  expect(workspaceGitFileCounts({ ...branch('main'), changes })).toEqual({ changed: 4, deleted: 2 });
+});
+
+test('counts recreated paths as changed and hides unavailable or clean snapshots', () => {
+  const changes = [fileChange('recreated.ts', 'D', ' '), fileChange('recreated.ts', '?', '?')];
+  expect(workspaceGitFileCounts({ ...branch('main'), changes })).toEqual({ changed: 1, deleted: 0 });
+  for (const snapshot of [null, branch('main'), { available: false, message: 'Unavailable', changes }]) {
+    expect(workspaceGitFileCounts(snapshot)).toEqual({ changed: 0, deleted: 0 });
+  }
+});
+
 test('renders branch updates with a full tooltip and cleans up its subscription', () => {
   const states: unknown[] = [];
   let cursor = 0;
@@ -168,6 +192,7 @@ test('renders branch updates with a full tooltip and cleans up its subscription'
     '../../cheshiDesktop': { cheshiDesktop: { getGitSnapshot: () => {}, onGitRepositoryChanged: () => {} } },
     './workspaceGitBranchModel': {
       workspaceGitBranchLabels,
+      workspaceGitFileCounts,
       observeWorkspaceGitBranch: (_desktop: unknown, update: typeof receive) => {
         receive = update;
         return () => { disposed = true; };
@@ -199,8 +224,13 @@ test('renders branch updates with a full tooltip and cleans up its subscription'
   expect(tree.props['aria-busy']).toBe(false);
   expect(tree.props.children[1]!.props.children).toBe('feature/a-very-long-branch-name');
   expect(tree.props.children[1]!.props['aria-live']).toBe('polite');
+  receive({ ...branch('main'), changes: [fileChange('one.ts'), fileChange('removed.ts', 'D', ' ')] });
+  const changedTree = render();
+  expect(changedTree.props.children[2]!.props['aria-label']).toBe('1 added or modified files, 1 deleted files');
+  expect(changedTree.props.title).toContain('1 added or modified files, 1 deleted files');
   receive(branch('main'));
   expect(render().props.children[1]!.props.children).toBe('main');
+  expect(render().props.children[2]).toBe(false);
   assert.ok(cleanup);
   cleanup();
   expect(disposed).toBe(true);

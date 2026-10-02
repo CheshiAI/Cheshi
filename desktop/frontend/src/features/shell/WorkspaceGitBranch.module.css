@@ -23,3 +23,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.counts {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--icon-default);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.changed { color: #7fc78b; }
+.deleted { color: #d36c68; }
