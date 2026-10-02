@@ -4,7 +4,7 @@ import { act } from 'react';
 import { beginSplitPreview, useSplitPreviewActive } from '../frontend/src/shared/ui/splitPreviewState';
 
 mock.module('../frontend/src/shared/ui/Tooltip.module.css', () => ({
-  default: { anchor: 'tooltip-anchor', content: 'tooltip-content', arrow: 'tooltip-arrow' },
+  default: { anchor: 'tooltip-anchor', content: 'tooltip-content' },
 }));
 
 test.each(['button', 'disabled-button', 'text', 'nested', 'svg'] as const)('shared tooltip supports %s anchors, delay, dismissal and cleanup', async kind => {
@@ -157,8 +157,6 @@ test.each(['button', 'disabled-button', 'text', 'nested', 'svg'] as const)('shar
       expect(bubble.dataset.placement).toBe('above');
       expect(bubble.style.top).toBe('52px');
       expect(bubble.style.left).toBe(`${window.innerWidth - 208}px`);
-      const arrow = bubble.querySelector<HTMLElement>('[aria-hidden="true"]')!;
-      expect(arrow.style.left).toBe('188px');
       expect(nativeSurfacesHidden).toBe(false);
       await act(async () => { trigger.dispatchEvent(new window.PointerEvent('pointerout', { bubbles: true }) as unknown as Event); });
       trigger.getBoundingClientRect = () => new window.DOMRect(8, 5, 22, 22) as unknown as DOMRect;

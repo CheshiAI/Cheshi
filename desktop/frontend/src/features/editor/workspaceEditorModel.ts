@@ -325,7 +325,6 @@ export function languageServerHoverTooltip(
     pos: from,
     end: to,
     above: true,
-    arrow: true,
     create: () => {
       const dom = document.createElement('div');
       dom.className = 'workspace-editor-symbol-hover';
@@ -361,7 +360,6 @@ export function languageServerSignatureTooltip(
   return {
     pos: view.state.selection.main.head,
     above: false,
-    arrow: true,
     create: () => {
       const dom = document.createElement('div');
       dom.className = 'workspace-editor-signature-help';

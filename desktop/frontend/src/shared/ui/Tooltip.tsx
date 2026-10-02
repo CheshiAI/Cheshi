@@ -29,7 +29,7 @@ function TooltipContent({ anchor, content, id, blurSourceRef, placement }: {
   placement: 'above' | 'below';
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ left: number; top: number; above: boolean; arrowLeft: number } | null>(null);
+  const [position, setPosition] = useState<{ left: number; top: number; above: boolean } | null>(null);
 
   useLayoutEffect(() => {
     const tooltip = ref.current;
@@ -45,7 +45,6 @@ function TooltipContent({ anchor, content, id, blurSourceRef, placement }: {
       left,
       top: Math.max(gap, above ? aboveTop : below),
       above,
-      arrowLeft: Math.max(12, Math.min(bounds.left + bounds.width / 2 - left, width - 12)),
     });
   }, [anchor, content, placement]);
 
@@ -61,7 +60,6 @@ function TooltipContent({ anchor, content, id, blurSourceRef, placement }: {
       <LiquidGlassPanel id={id} role="tooltip" className={styles.content} data-liquid-glass-backdrop="false">
         {content}
       </LiquidGlassPanel>
-      <span aria-hidden="true" className={styles.arrow} style={{ left: position?.arrowLeft }} />
     </div>,
     anchor.closest('dialog') ?? anchor.ownerDocument.body,
   );

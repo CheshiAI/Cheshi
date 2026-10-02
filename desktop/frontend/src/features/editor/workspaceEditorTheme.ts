@@ -331,16 +331,7 @@ export const workspaceEditorTheme = EditorView.theme({
     textDecorationThickness: '1px',
     textUnderlineOffset: '3px',
   },
-  '.cm-tooltip-above > .cm-tooltip-arrow::before': {
-    borderTopColor: 'var(--divider)',
-  },
-  '.cm-tooltip-above > .cm-tooltip-arrow::after': {
-    borderTopColor: 'transparent',
-  },
-  '.cm-tooltip-below > .cm-tooltip-arrow::before': {
-    borderBottomColor: 'var(--divider)',
-  },
-  '.cm-tooltip-below > .cm-tooltip-arrow::after': {
-    borderBottomColor: 'transparent',
+  '.cm-tooltip > .cm-tooltip-arrow': {
+    display: 'none',
   },
 });

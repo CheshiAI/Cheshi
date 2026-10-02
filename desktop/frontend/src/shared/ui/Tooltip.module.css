@@ -22,23 +22,3 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-
-.arrow {
-  position: absolute;
-  width: 0;
-  height: 0;
-  margin-left: -7px;
-  border-left: 7px solid transparent;
-  border-right: 7px solid transparent;
-  pointer-events: none;
-}
-
-.anchor[data-placement='above'] > .arrow {
-  bottom: -7px;
-  border-top: 7px solid var(--divider);
-}
-
-.anchor[data-placement='below'] > .arrow {
-  top: -7px;
-  border-bottom: 7px solid var(--divider);
-}
