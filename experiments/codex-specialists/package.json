@@ -1,0 +1,14 @@
+{
+  "name": "cheshi-codex-specialists-experiment",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun src/worker.ts",
+    "test": "bun test src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "typescript": "5.9.3"
+  }
+}

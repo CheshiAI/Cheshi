@@ -1,0 +1,35 @@
+name: cheshi-codex-specialists-test
+services:
+  verifier:
+    build: .
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./security/codex-bwrap.json
+    pids_limit: 256
+    cpus: 2
+    mem_limit: 2g
+    environment:
+      CODEX_HOME: /agent/codex
+      AGENT_DATA_DIRECTORY: /agent
+      AGENT_WORKSPACE: /workspace
+      AGENT_PROFILE: /app/profiles/verifier/AGENTS.md
+      AGENT_PORT: "8787"
+    ports:
+      - "127.0.0.1:${CHESHI_SPECIALIST_PORT:-47831}:8787"
+    volumes:
+      - verifier-space:/agent
+      - ./fixtures/workspace:/workspace:ro
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=128m,mode=1777
+    healthcheck:
+      test: [CMD, bun, -e, "const r = await fetch('http://127.0.0.1:8787/health'); process.exit(r.ok ? 0 : 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    stop_grace_period: 15s
+volumes:
+  verifier-space:

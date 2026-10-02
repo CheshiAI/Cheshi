@@ -1,0 +1,7 @@
+node_modules
+bun.lock
+README.md
+src/*.test.ts
+fixtures
+.env*
+*.log
