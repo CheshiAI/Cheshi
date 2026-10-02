@@ -800,6 +800,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
     minHeight: 750,
     title: product.displayName,
     ...chatWindowOptions(preloadPath),
+    fullscreenable: process.platform !== 'darwin',
   });
   logStartup('window created');
   registerWorkspaceWindowCloseConfirmation(window, dialog);
@@ -821,8 +822,8 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
     if (shouldShowWindow) {
       if (options.windowState) window.setBounds(options.windowState.bounds);
       window.show();
-      if (options.windowState?.maximized) window.maximize();
-      if (options.windowState?.fullscreen) window.setFullScreen(true);
+      if (options.windowState?.maximized || (process.platform === 'darwin' && options.windowState?.fullscreen)) window.maximize();
+      if (process.platform !== 'darwin' && options.windowState?.fullscreen) window.setFullScreen(true);
       if (options.initial) startupScreen.close();
       logStartup('window shown');
     }
