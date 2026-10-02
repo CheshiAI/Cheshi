@@ -6,7 +6,7 @@ import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import { WorkspaceFileTree } from './WorkspaceFileTree';
 import { normalizeSidebarPanel, type SidebarPanel } from './sidebarPanel';
 
-export type WorkspaceView = 'chat' | 'notes' | 'calendar' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'local-history' | 'settings';
+export type WorkspaceView = 'chat' | 'notes' | 'calendar' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'local-history' | 'settings' | 'agents' | 'docker';
 
 interface SidebarProps {
   chatPanel?: ReactNode;

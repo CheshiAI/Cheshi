@@ -1,0 +1,18 @@
+.workspace { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; font-size: 12px; }
+.sectionTitle { margin: 0; color: var(--sidebar-section-label-color); font-size: var(--font-size-section-title); font-weight: 600; }
+.scroll { display: flex; flex: 1; flex-direction: column; gap: var(--space-default); min-height: 0; overflow: auto; padding: var(--space-default); }
+.fill { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.toolbar, .titleRow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-default); min-height: 32px; }
+.toolbar { flex-shrink: 0; }
+.headerEngineSelect { width: auto; max-width: 100%; }
+.titleRow { justify-content: space-between; }
+.label { color: var(--text); font-size: var(--font-size-label); }
+.description { margin: 0; color: var(--sidebar-section-label-color); font-size: var(--font-size-small); line-height: 1.6; }
+.panel { display: flex; flex: 0 0 auto; flex-direction: column; gap: var(--space-default); min-width: 0; padding: var(--space-default); }
+.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-default); margin: 0; }
+.facts dt { color: var(--sidebar-section-label-color); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--icon-default); }
+.prompt { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.output { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
+.unavailable { padding: var(--space-default); font-size: 12px; }

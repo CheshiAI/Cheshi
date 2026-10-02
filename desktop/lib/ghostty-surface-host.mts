@@ -20,6 +20,7 @@ interface NativeWindowOwner {
   getNativeWindowHandle(): Buffer;
 }
 interface GhosttyBinding {
+  supportsCommand?: boolean;
   initialize(fontDirectory: string): boolean;
   setDark(dark: boolean): void;
   setEventHandler(handler: (event: unknown) => void): void;
@@ -28,6 +29,7 @@ interface GhosttyBinding {
     frame: SurfaceFrame,
     workingDirectory: string,
     dark: boolean,
+    command?: string,
   ): number;
   resizeSurface(surfaceId: number, frame: SurfaceFrame): void;
   setOccluded(surfaceId: number, occluded: boolean): void;
@@ -53,6 +55,7 @@ function subscribeNativeEvents(binding: GhosttyBinding, listener: NativeEventLis
 }
 
 interface GhosttySurfaceHostOptions {
+  command?: string;
   owner: NativeWindowOwner;
   fontDirectory?: string;
   workingDirectory: string;
@@ -147,11 +150,13 @@ export class GhosttySurfaceHost {
   dark: boolean;
   workingDirectory: string;
   owner: NativeWindowOwner;
+  command?: string;
   private unsubscribeNativeEvents: (() => void) | null = null;
   constructor({
     owner,
     fontDirectory = "",
     workingDirectory,
+    command,
     dark = false,
     onFocus,
     onSplit,
@@ -162,6 +167,7 @@ export class GhosttySurfaceHost {
   }: GhosttySurfaceHostOptions) {
     this.owner = owner;
     this.workingDirectory = workingDirectory;
+    this.command = command;
     this.dark = isLiteralTrue(dark);
     this.onFocus = onFocus;
     this.onSplit = onSplit;
@@ -179,6 +185,9 @@ export class GhosttySurfaceHost {
     this.windowVisible = true;
 
     if (!this.binding) return;
+    if (command && this.binding.supportsCommand !== true) {
+      throw new Error('Restart Cheshi after rebuilding its terminal runtime to use container shells.');
+    }
     if (!this.binding.initialize(fontDirectory)) {
       throw new Error(
         "Could not initialize the Ghostty native surface bridge.",
@@ -211,6 +220,7 @@ export class GhosttySurfaceHost {
           frame,
           this.workingDirectory,
           this.dark,
+          this.command,
         );
         assertValidSurfaceId(surfaceId);
         this.surfaces.set(paneId, surfaceId);

@@ -31,6 +31,10 @@ import { createAccountUsageBackground } from './lib/account-usage-background.mts
 import { getCodexAccountProfiles } from './lib/codex-account-profiles.mts';
 import { createSettingsService } from './lib/settings-service.mts';
 import { registerSettingsIpc } from './lib/settings-ipc.mts';
+import { createAgentManagementService } from './lib/agent-management/service.mts';
+import { createDockerAgentEngine } from './lib/agent-management/docker.mts';
+import { registerAgentManagementIpc } from './lib/agent-management/ipc.mts';
+import { AgentTerminalManager } from './lib/agent-management/terminal.mts';
 import { checkTypeSafeConnection } from './lib/typesafe-connection.mts';
 import { readTypeSafeKey } from './lib/typesafe-key.mts';
 import { findAppRelease } from './lib/app-release-checker.mts';
@@ -77,6 +81,8 @@ const aboutWindow = createAboutWindow({
   onError: error => process.stderr.write(`[cheshi] About window failed: ${String(error)}\n`),
 });
 const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'updates'));
+const agentEngines = [createDockerAgentEngine()];
+const agentManagement = createAgentManagementService({ engines: agentEngines });
 const apiSettings = createSettingsService({
   directory: path.join(app.getPath('userData'), 'api-keys'),
   settingsPath: path.join(app.getPath('userData'), 'settings.json'),
@@ -226,6 +232,7 @@ let openingStartupWindow = false;
 function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntime>[0]) {
   const source = usageTray?.register();
   let settingsIpc: ReturnType<typeof registerSettingsIpc> | undefined;
+  let agentManagementIpc: ReturnType<typeof registerAgentManagementIpc> | undefined;
   let discordIpc: ReturnType<typeof registerDiscordIpc> | undefined;
   let notificationIpc: ReturnType<typeof registerIMessageIpc> | undefined;
   let notificationEventsIpc: ReturnType<typeof registerNotificationEventsIpc> | undefined;
@@ -235,6 +242,8 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       historyRecall: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) },
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
+      agentManagementIpc = registerAgentManagementIpc({ window, ipc: options.scope.ipc, service: agentManagement,
+        terminal: new AgentTerminalManager({ window, engines: agentEngines, workingDirectory: options.workspaceRoot }) });
       notificationEventsIpc = registerNotificationEventsIpc({ window, ipc: options.scope.ipc, service: notificationEvents });
       discordIpc = registerDiscordIpc({ window, ipc: options.scope.ipc, service: discord,
         setup: context => runtime.startDiscordSetup(context, () => createDiscordSetupBrowser({ parent: window,
@@ -255,7 +264,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
     },
     show: () => runtime.show(),
     async dispose() {
-      try { notificationEventsIpc?.dispose(); discordIpc?.dispose(); notificationIpc?.dispose(); settingsIpc?.dispose(); }
+      try { agentManagementIpc?.dispose(); notificationEventsIpc?.dispose(); discordIpc?.dispose(); notificationIpc?.dispose(); settingsIpc?.dispose(); }
       finally { try { await runtime.dispose(); } finally { source?.dispose(); } }
     },
   };

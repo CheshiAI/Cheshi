@@ -1,0 +1,15 @@
+.icon {
+  display: inline-block;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+  background-color: currentColor;
+  -webkit-mask: url('../../../../../resources/icons/docker.svg') center / contain no-repeat;
+  mask: url('../../../../../resources/icons/docker.svg') center / contain no-repeat;
+}
+
+:global(button[data-size='icon']) > .icon {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  flex-basis: var(--icon-button-icon-size);
+}

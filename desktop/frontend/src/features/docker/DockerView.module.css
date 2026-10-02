@@ -1,0 +1,64 @@
+.sidebar {
+  --liquid-glass-radius: 0;
+  display: flex;
+  flex: 0 0 var(--sidebar-width);
+  flex-direction: column;
+  width: var(--sidebar-width);
+  min-height: 0;
+  border-width: 0 1px 0 0;
+  overflow: hidden;
+}
+.sidebarHeading {
+  display: flex;
+  flex: 0 0 var(--header-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--icon-default);
+  padding: 0 var(--space-default);
+  border-bottom: 1px solid var(--divider);
+}
+.containerList { flex: 1; min-height: 0; overflow: auto; }
+.notice:not(:empty) { padding: var(--space-default); }
+.container[data-variant='ghost'] {
+  width: 100%;
+  height: 42px;
+  min-height: 42px;
+  justify-content: flex-start;
+  border-radius: 0;
+  text-align: left;
+}
+.container > svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); }
+.container[aria-current='page'] { background: var(--control-surface); }
+.container:not(:disabled):is(:hover, :active) { background: var(--control-surface-interactive); }
+.containerName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.logsPane { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.logHeader {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  min-height: var(--header-height);
+  align-items: center;
+  gap: var(--space-default);
+  padding: 4px var(--space-default);
+  border-bottom: 1px solid var(--divider);
+}
+.identity { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--icon-default); }
+.name { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-label); font-weight: 600; }
+.logOutput {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: var(--space-default);
+  overflow: auto;
+  white-space: pre;
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  color: var(--sidebar-section-label-color);
+  line-height: 1.6;
+}
+.logNotice, .empty { margin: 0; padding: var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
+.terminalView { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.terminalView[hidden], .logOutput[hidden] { display: none; }
+.terminalHost { flex: 1; min-height: 0; min-width: 0; }

@@ -112,8 +112,14 @@ Napi::Value CreateSurface(const Napi::CallbackInfo &info) {
 
   std::string working_directory = info[2].As<Napi::String>().Utf8Value();
   bool dark = info[3].As<Napi::Boolean>().Value();
+  if (info.Length() > 4 && !info[4].IsUndefined() && !info[4].IsString()) {
+    Napi::TypeError::New(env, "Terminal command must be a string").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  std::string command = info.Length() > 4 && info[4].IsString()
+      ? info[4].As<Napi::String>().Utf8Value() : "";
   int32_t surface_id = cheshi_ghostty_surface_create(
-      root_view, x, y, width, height, working_directory.c_str(), dark);
+      root_view, x, y, width, height, working_directory.c_str(), dark, command.c_str());
   return Napi::Number::New(env, surface_id);
 }
 
@@ -197,6 +203,7 @@ Napi::Object InitializeModule(Napi::Env env, Napi::Object exports) {
   RegisterWindowGlass(env, exports);
   exports.Set("initialize", Napi::Function::New(env, Initialize));
   exports.Set("createSurface", Napi::Function::New(env, CreateSurface));
+  exports.Set("supportsCommand", Napi::Boolean::New(env, true));
   exports.Set("resizeSurface", Napi::Function::New(env, ResizeSurface));
   exports.Set("destroySurface", Napi::Function::New(env, DestroySurface));
   exports.Set("setFocus", Napi::Function::New(env, SetFocus));

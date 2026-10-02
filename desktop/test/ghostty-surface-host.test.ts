@@ -21,6 +21,7 @@ function createBinding(): TestBinding {
   let nextSurfaceId = 1;
   let eventHandler: GhosttyEventHandler | null = null;
   return {
+    supportsCommand: true,
     calls,
     initialize(fontDirectory: string) {
       calls.push(['initialize', fontDirectory]);
@@ -42,8 +43,9 @@ function createBinding(): TestBinding {
       frame: Parameters<GhosttyBinding['createSurface']>[1],
       workingDirectory: string,
       dark: boolean,
+      command?: string,
     ) {
-      calls.push(['createSurface', handle, frame, workingDirectory, dark]);
+      calls.push(['createSurface', handle, frame, workingDirectory, dark, ...(command ? [command] : [])]);
       return nextSurfaceId++;
     },
     resizeSurface(surfaceId: number, frame: Parameters<GhosttyBinding['resizeSurface']>[1]) {
@@ -225,4 +227,18 @@ test('routes shared native events to each window and keeps remaining hosts alive
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(reopenedEvents, ['reopened']);
   reopened.close();
+});
+
+test('passes a custom container command only to a capable native runtime', () => {
+  const binding = createBinding();
+  const command = '/usr/bin/true';
+  const host = createHost(binding, { command });
+  host.sync({ paneIds: ['container'], visiblePaneIds: ['container'], activePaneId: 'container', pageVisible: true });
+  host.updatePane('container', { x: 0, y: 0, width: 300, height: 200 }, true);
+  assert.equal(binding.calls.find(call => call[0] === 'createSurface')?.at(-1), command);
+  host.close();
+  const legacy = createBinding();
+  legacy.supportsCommand = false;
+  assert.throws(() => createHost(legacy, { command }), /Restart Cheshi/);
+  assert.equal(legacy.calls.some(call => call[0] === 'createSurface'), false);
 });

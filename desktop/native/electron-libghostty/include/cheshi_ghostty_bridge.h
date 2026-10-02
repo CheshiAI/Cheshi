@@ -22,7 +22,8 @@ int32_t cheshi_ghostty_surface_create(
     double width,
     double height,
     const char *working_directory,
-    bool dark);
+    bool dark,
+    const char *command);
 bool cheshi_ghostty_surface_resize(
     int32_t surface_id,
     double x,

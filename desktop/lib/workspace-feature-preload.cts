@@ -6,6 +6,8 @@ import { createGitLineBlameApi } from './git-line-blame-preload.cts';
 import type { IpcRenderer } from 'electron';
 import { createSettingsApi } from './settings-preload.cts';
 import { createAppleCalendarApi } from './apple-calendar-preload.cts';
+import { createAgentManagementApi } from './agent-management-preload.cts';
+import { createAgentTerminalApi } from './agent-terminal-preload.cts';
 
 export function createWorkspaceFeatureApis(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>) {
   return {
@@ -13,5 +15,6 @@ export function createWorkspaceFeatureApis(ipc: Pick<IpcRenderer, 'invoke' | 'on
     notificationEvents: createNotificationEventsApi(ipc),
     ...createGitLineBlameApi(ipc), settings: createSettingsApi(ipc),
     appleCalendar: createAppleCalendarApi(ipc, process.platform),
+    agentManagement: { ...createAgentManagementApi(ipc), terminal: createAgentTerminalApi(ipc) },
   };
 }

@@ -35,6 +35,7 @@ import { SidebarRail } from '../navigation/SidebarRail';
 import { PluginsView } from '../plugins';
 import { TerminalWorkspace } from '../terminal';
 import { SettingsView } from '../settings/SettingsView';
+import { AgentManagementViews } from './AgentManagementViews';
 import { DiscordSetupConfirmation } from '../settings/DiscordSetupConfirmation';
 import { ReviewSidebar } from './ReviewSidebar';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
@@ -52,7 +53,7 @@ import { CalendarView } from '../calendar/CalendarView';
 import { appleNoteDraftText } from '../notes/appleNotesModel';
 import type { AppleNote } from '../../../../shared/apple-notes';
 
-const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'notes', 'calendar', 'settings'];
+const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'notes', 'calendar', 'settings', 'agents', 'docker'];
 
 export function AppShell() {
   const notificationSceneRef = useRef<HTMLDivElement>(null);
@@ -421,6 +422,8 @@ export function AppShell() {
             />
           )}
           {activeView === 'settings' && <SettingsView contextId={workspace.activePaneId} onOpenChat={openWorkflowChat} />}
+          <AgentManagementViews view={activeView === 'docker' || activeView === 'agents' ? activeView : null}
+            onOpenDocker={() => navigate('docker')} />
           {activeView === 'blank' && <BlankView />}
           </WorkspaceEditorSplit>
         </div>
