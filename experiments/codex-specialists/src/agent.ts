@@ -81,6 +81,17 @@ export class SpecialistAgent {
       : await this.client.request('thread/start', params);
     const threadId = textValue(record(result.thread).id, 'thread id');
     assertResumedThread(saved.threadId, threadId);
+    if (saved.threadId) {
+      // Codex 0.159.3 can replay old developer instructions on cold resume.
+      // Persist the current snapshot in model-visible history before any turn.
+      await this.client.request('thread/inject_items', {
+        threadId,
+        items: [{ type: 'message', role: 'developer', content: [{ type: 'input_text', text:
+          'Current Cheshi specialist instructions. This complete snapshot replaces earlier Cheshi specialist and project instructions, including linked instruction files. Instructions omitted from this snapshot no longer apply. Prior conversation and task results remain reference data.\n\n'
+          + this.profile,
+        }] }],
+      });
+    }
     this.store.saveThread(threadId, typeof result.model === 'string' ? result.model : saved.model);
     this.loadedThread = threadId;
     return threadId;

@@ -28,6 +28,7 @@ class FakeClient implements RpcClient {
   private readonly failures = new Set<(error: Error) => void>();
   account: unknown = { type: 'chatgpt' };
   resumeId = 'thread';
+  onInject: (params: JsonRecord) => Promise<JsonRecord> = async () => ({});
   onStart: (params: JsonRecord) => Promise<JsonRecord> = async () => {
     this.complete(); return { turn: { id: 'turn' } };
   };
@@ -40,6 +41,7 @@ class FakeClient implements RpcClient {
     if (method === 'account/read') return { account: this.account };
     if (method === 'thread/start') return { thread: { id: 'thread' }, model: 'test-model' };
     if (method === 'thread/resume') return { thread: { id: this.resumeId }, model: 'test-model' };
+    if (method === 'thread/inject_items') return await this.onInject(params);
     if (method === 'turn/start') { this.started.resolve(); return await this.onStart(params); }
     if (method === 'turn/interrupt') return await this.onInterrupt();
     throw new Error(`Unexpected request: ${method}`);
@@ -76,6 +78,7 @@ test('records completion before acknowledgement with read-only role and policy',
   });
   expect(client.calls.find(call => call.method === 'turn/start')?.params.sandboxPolicy)
     .toEqual({ type: 'readOnly', networkAccess: false });
+  expect(client.calls.some(call => call.method === 'thread/inject_items')).toBe(false);
 });
 
 test('deduplicates task ids, blocks concurrent work, and cancels before acknowledgement', async () => {
@@ -135,6 +138,56 @@ test('resumes a persisted native thread and loads the saved successful summary',
   expect(JSON.stringify(second.client.calls.find(call => call.method === 'turn/start')?.params.input))
     .toContain('verification result');
   expect(second.store.task('second')?.status).toBe('completed');
+});
+
+test('cold resume acknowledges the latest developer snapshot before starting work and injects only once', async () => {
+  const directory = temporary();
+  const first = setup(new AgentStore(directory));
+  first.agent.submit('first', 'inspect'); await first.agent.settled();
+  const client = new FakeClient(), store = new AgentStore(directory);
+  const agent = new SpecialistAgent({ client, store, profile: 'common V2\nproject V2', workspace: '/workspace' });
+  const injected = createDeferred<void>(), acknowledgement = createDeferred<JsonRecord>();
+  client.onInject = async () => { injected.resolve(); return await acknowledgement.promise; };
+  agent.submit('second', 'recall');
+  await injected.promise;
+  expect(client.calls.map(call => call.method)).toEqual(['account/read', 'thread/resume', 'thread/inject_items']);
+  const snapshot = client.calls.find(call => call.method === 'thread/inject_items')?.params;
+  expect(JSON.stringify(snapshot)).toContain('common V2\\nproject V2');
+  expect(JSON.stringify(snapshot)).toContain('Instructions omitted from this snapshot no longer apply');
+  expect(snapshot).toMatchObject({ threadId: 'thread', items: [{ type: 'message', role: 'developer', content: [
+    { type: 'input_text' },
+  ] }] });
+  acknowledgement.resolve({}); await agent.settled();
+  expect(store.snapshot().threadId).toBe('thread');
+  expect(store.task('first')?.output).toBe('verification result');
+  expect(store.task('second')?.status).toBe('completed');
+  agent.submit('third', 'continue'); await agent.settled();
+  expect(client.calls.filter(call => call.method === 'thread/inject_items')).toHaveLength(1);
+  expect(client.calls.some(call => call.method === 'thread/start')).toBe(false);
+});
+
+test('failed instruction injection blocks model work and retries the snapshot on the next task', async () => {
+  const store = new AgentStore(temporary()); store.saveThread('thread', 'test-model');
+  const { agent, client } = setup(store);
+  client.onInject = async () => { throw new Error('instruction update rejected'); };
+  agent.submit('failed', 'inspect'); await agent.settled();
+  expect(store.task('failed')?.status).toBe('failed');
+  expect(store.task('failed')?.error).toBe('instruction update rejected');
+  expect(client.calls.some(call => call.method === 'turn/start')).toBe(false);
+  expect(store.snapshot().threadId).toBe('thread');
+  client.onInject = async () => ({});
+  agent.submit('retry', 'inspect'); await agent.settled();
+  expect(store.task('retry')?.status).toBe('completed');
+  expect(client.calls.filter(call => call.method === 'thread/inject_items')).toHaveLength(2);
+});
+
+test('a mismatched resumed thread never receives instructions or model work', async () => {
+  const store = new AgentStore(temporary()); store.saveThread('thread', 'test-model');
+  const { agent, client } = setup(store); client.resumeId = 'different';
+  agent.submit('review', 'inspect'); await agent.settled();
+  expect(store.task('review')?.error).toBe('Resumed thread id changed.');
+  expect(client.calls.some(call => ['thread/inject_items', 'turn/start'].includes(call.method))).toBe(false);
+  expect(store.snapshot().threadId).toBe('thread');
 });
 
 test('reports missing authentication before submitting any model work', async () => {
