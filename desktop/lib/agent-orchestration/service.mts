@@ -1,4 +1,5 @@
 import { AgentMailbox, type Binding, type Peer } from './mailbox.mts';
+import { AgentHistoryRelay, type AgentHistoryOptions } from './history-relay.mts';
 import { workerOperations } from '../agent-management/operations.mts';
 
 export interface CollaborationConnection { endpoint: string; token: string }
@@ -7,6 +8,7 @@ interface Options {
   peer(binding: Binding): Peer | null;
   connect(binding: Binding): Promise<CollaborationConnection | null>;
   exchange?: typeof exchangeWorker;
+  history?: AgentHistoryOptions;
 }
 export async function exchangeWorker(connection: CollaborationConnection, body: unknown): Promise<unknown> {
   const url = new URL(connection.endpoint);
@@ -33,6 +35,8 @@ export async function exchangeWorker(connection: CollaborationConnection, body: 
   } finally { await reader.cancel(); }
 }
 export function createAgentOrchestration(options: Options) {
+  const history = options.history ? new AgentHistoryRelay(`${options.filename}.history`, options.history) : null;
+  const historyErrors = new Map<string, string>();
   let journal: AgentMailbox | null = null;
   const mailbox = () => journal ??= new AgentMailbox(options.filename);
   let journalError: string | null = null;
@@ -46,6 +50,8 @@ export function createAgentOrchestration(options: Options) {
         await workerOperations.run(async () => {
           const connection = await options.connect(binding);
           if (!connection) return;
+          if (history) void history.tick(binding, connection, () => options.peer(binding) !== null).then(
+            () => historyErrors.delete(binding.id), () => historyErrors.set(binding.id, 'History relay is unavailable. Retry after checking the worker.'));
           const peers = bindings.filter(b => b.scope === binding.scope).flatMap(b => {
             const peer = options.peer(b); return peer ? [peer] : [];
           });
@@ -66,9 +72,9 @@ export function createAgentOrchestration(options: Options) {
   };
   return {
     register: (binding: Binding) => mailbox().register(binding),
-    error: (id: string) => journalError ?? errors.get(id) ?? null,
+    error: (id: string) => journalError ?? errors.get(id) ?? historyErrors.get(id) ?? null,
     tick,
     start() { if (!timer) { timer = setInterval(() => { void tick(); }, 2000); timer.unref(); void tick(); } },
-    async dispose() { if (timer) clearInterval(timer); timer = null; await flight; },
+    async dispose() { if (timer) clearInterval(timer); timer = null; await flight; await history?.dispose(); },
   };
 }

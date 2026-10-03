@@ -50,7 +50,7 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 3 && (segments.length !== 4 || !agentFiles.has(segments[3] ?? ''));
   }
   if (grandchildEntry === 'agent-orchestration') {
-    const files = new Set(['mailbox.mts', 'service.mts']);
+    const files = new Set(['mailbox.mts', 'service.mts', 'history-source.mts', 'history-relay.mts']);
     return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
   }
   if (grandchildEntry === 'scheduler') {

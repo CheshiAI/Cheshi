@@ -5,6 +5,9 @@ import { AgentStore, validateTaskId, type Task } from './store.ts';
 import { TurnObserver } from './turn.ts';
 import { WorkerCollaboration } from './collaboration.ts';
 import { collaborationInstructions, collaborationTools } from './collaboration-tools.ts';
+import { historyInstructions, historyTools } from './history-tools.ts';
+import type { WorkerHistoryQueue } from './history-queue.ts';
+import type { WorkerHistory } from './history.ts';
 
 export class TaskConflict extends Error {}
 
@@ -21,7 +24,7 @@ function assertResumedThread(expected: string | null, actual: string): void {
 type ActiveTask = {
   id: string; threadId: string | null; turnId: string | null; stopRequested: boolean;
   done: Promise<void>; observer: TurnObserver; interrupting: Promise<void> | null;
-  messages: string[]; input: string;
+  messages: string[]; input: string; controller: AbortController;
 };
 
 export class SpecialistAgent {
@@ -35,13 +38,15 @@ export class SpecialistAgent {
   private active: ActiveTask | null = null;
   private failure: string | null = null;
 
+  private readonly historyQueue: WorkerHistoryQueue | undefined;
+  private readonly history: WorkerHistory | undefined;
   private readonly collaboration: WorkerCollaboration | undefined;
-  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; timeoutMs?: number; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration }) {
+  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; timeoutMs?: number; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; historyQueue?: WorkerHistoryQueue; history?: WorkerHistory }) {
     this.configuration = options.configuration;
     this.client = options.client; this.store = options.store; this.profile = options.profile;
     this.workspace = options.workspace; this.timeoutMs = options.timeoutMs ?? 180_000;
-    this.collaboration = options.collaboration;
-    if (this.collaboration) {
+    this.collaboration = options.collaboration; this.historyQueue = options.historyQueue; this.history = options.history;
+    if (this.collaboration || this.historyQueue) {
       if (!this.client.handleTools) throw new Error('Collaboration requires dynamic tool support.');
       this.client.handleTools(async params => {
         const active = this.active;
@@ -49,7 +54,13 @@ export class SpecialistAgent {
           throw new Error('Tool call does not belong to the active task.');
         }
         if (active.stopRequested) throw new Error('Task is stopping.');
-        return this.collaboration!.call(this.store.task(active.id)!, textValue(params.tool, 'tool'), params.arguments);
+        const tool = textValue(params.tool, 'tool');
+        if (this.historyQueue && ['history_search', 'history_read'].includes(tool)) {
+          return record(await this.historyQueue.call(active.id, active.threadId!, textValue(params.turnId, 'turn id'),
+            textValue(params.callId, 'call id'), tool, params.arguments, active.controller.signal));
+        }
+        if (!this.collaboration) throw new Error('Unknown tool.');
+        return this.collaboration.call(this.store.task(active.id)!, tool, params.arguments);
       });
     }
   }
@@ -77,7 +88,7 @@ export class SpecialistAgent {
   private launch(task: Task, input: string, messages: string[] = []): Task {
     const id = task.id;
     const active: ActiveTask = { id, threadId: null, turnId: null,
-      stopRequested: false, done: Promise.resolve(), observer: new TurnObserver(), interrupting: null, input, messages };
+      stopRequested: false, done: Promise.resolve(), observer: new TurnObserver(), interrupting: null, input, messages, controller: new AbortController() };
     this.active = active;
     active.done = this.run(task, active).finally(() => { if (this.active === active) this.active = null; });
     // A persistence failure is reported through the worker's health/lifecycle, not an unhandled rejection.
@@ -101,7 +112,7 @@ export class SpecialistAgent {
     const savedThread = task.conversation ? saved.threads[task.conversation] ?? null : saved.threadId;
     if (savedThread && this.loadedThreads.has(savedThread)) return savedThread;
     const settings = this.configuration;
-    const profile = this.profile + (this.collaboration ? collaborationInstructions : '');
+    const profile = this.profile + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '');
     const params: JsonRecord = { cwd: this.workspace, sandbox: !task.consultation && settings?.permissions.fileWrite ? 'workspace-write' : 'read-only', approvalPolicy: 'on-request',
       approvalsReviewer: 'user', developerInstructions: profile,
       ...(settings ? { model: settings.model, serviceTier: settings.serviceTier, config: {
@@ -112,7 +123,7 @@ export class SpecialistAgent {
       } } : {}) };
     const result = savedThread
       ? await this.client.request('thread/resume', { ...params, threadId: savedThread })
-      : await this.client.request('thread/start', { ...params, ...(this.collaboration ? { dynamicTools: collaborationTools } : {}) });
+      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : [])] });
     const threadId = textValue(record(result.thread).id, 'thread id');
     assertResumedThread(savedThread, threadId);
     if (savedThread) {
@@ -156,6 +167,7 @@ export class SpecialistAgent {
         ...(this.configuration ? { model: this.configuration.model, effort: this.configuration.reasoningEffort, serviceTier: this.configuration.serviceTier } : {}),
       });
       active.turnId = textValue(record(response.turn).id, 'turn id');
+      this.history?.remember(active.threadId, active.turnId, active.input === task.prompt ? task.prompt : null);
       this.store.update(task.id, { threadId: active.threadId, turnId: active.turnId, status: 'running' });
       observer.identify(active.threadId, active.turnId);
       deadline = setTimeout(() => {
@@ -175,7 +187,7 @@ export class SpecialistAgent {
     } catch (error) {
       this.store.complete(task.id, { status: submitted ? 'unknown' : active.stopRequested ? 'interrupted' : 'failed',
         output: '', error: error instanceof Error ? error.message : String(error) });
-    } finally { clearTimeout(deadline); remove(); removeFailure(); }
+    } finally { active.controller.abort(); clearTimeout(deadline); remove(); removeFailure(); }
   }
 
   private async interrupt(active: ActiveTask): Promise<void> {
@@ -193,6 +205,7 @@ export class SpecialistAgent {
       return;
     }
     active.stopRequested = true;
+    active.controller.abort();
     await this.interrupt(active);
   }
 

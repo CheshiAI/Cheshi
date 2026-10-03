@@ -199,10 +199,10 @@ function citedSources(originals: ReturnType<typeof originalMessage>[], records: 
 }
 
 export class ChatHistoryRecall {
-  private readonly history: ChatHistorySearch;
+  private readonly history: Pick<ChatHistorySearch, 'readRecords'>;
   private readonly evaluate: RecallEvaluator;
   private readonly judgments = new Map<string, { judgment: RecallJudgment; expires: number }>();
-  constructor(options: { history: ChatHistorySearch; evaluate: RecallEvaluator }) {
+  constructor(options: { history: Pick<ChatHistorySearch, 'readRecords'>; evaluate: RecallEvaluator }) {
     this.history = options.history;
     this.evaluate = options.evaluate;
   }

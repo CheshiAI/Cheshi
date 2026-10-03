@@ -7,6 +7,8 @@ import { AppServerClient } from './app-server-client.ts';
 import { record, textValue } from './protocol.ts';
 import { AgentStore, validateTaskId } from './store.ts';
 import { WorkerCollaboration } from './collaboration.ts';
+import { WorkerHistory } from './history.ts';
+import { WorkerHistoryQueue } from './history-queue.ts';
 
 const workspace = process.env.AGENT_WORKSPACE ?? '/workspace';
 const store = new AgentStore(process.env.AGENT_DATA_DIRECTORY ?? '/agent');
@@ -23,7 +25,9 @@ await client.initialize();
 let transportError: string | null = null;
 client.onFailure(error => { transportError = error.message; });
 const collaboration = configuration ? new WorkerCollaboration(store, configuration.profileId) : undefined;
-const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration });
+const history = new WorkerHistory(store, client, process.env.AGENT_DATA_DIRECTORY ?? '/agent', workspace);
+const historyQueue = configuration ? new WorkerHistoryQueue(process.env.AGENT_DATA_DIRECTORY ?? '/agent') : undefined;
+const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration, history, historyQueue });
 const pump = setInterval(() => {
   try { agent.pump(); } catch { transportError = 'Could not persist collaboration state.'; }
 }, 1000);
@@ -47,6 +51,14 @@ const server = Bun.serve({
         const body = await request.text();
         if (body.length > 2 * 1024 * 1024) throw new TypeError('Request is too large.');
         return Response.json(collaboration.exchange(JSON.parse(body)));
+      }
+      if (path.startsWith('/history/') && request.method === 'POST' && configuration) {
+        const body = await request.text();
+        if (body.length > 2 * 1024 * 1024) throw new TypeError('Request is too large.');
+        const input = JSON.parse(body);
+        if (path === '/history/exchange') return Response.json(historyQueue!.exchange(input));
+        if (path === '/history/catalog') return Response.json(history.catalog());
+        if (path === '/history/read') return Response.json(await history.read(input));
       }
       if (path === '/health' && request.method === 'GET') {
         return Response.json({ ready: error === null, role: configuration?.role ?? 'verifier', busy: agent.busy,

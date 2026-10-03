@@ -92,6 +92,8 @@ const agentRegistry = createAgentRegistry(path.join(app.getPath('userData'), 'ag
 const agentDeletion = createAgentDeletion({ directory: path.join(app.getPath('userData'), 'agents', 'deletions'),
   runtimeDirectory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement });
 const specialistRuntime = createSpecialistRuntime({
+  history: { enabled: () => apiSettings.isHistoryRecallEnabled(), getKey: () => apiSettings.getKey(),
+    subscribe: listener => apiSettings.subscribe(() => listener()) },
   directory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement,
   buildContext: app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'specialist-worker') : path.join(app.getAppPath(), 'experiments', 'codex-specialists'),
   account: async id => {

@@ -6,6 +6,7 @@ import { SpecialistAgent } from './agent.ts';
 import type { RpcClient } from './app-server-client.ts';
 import { createDeferred, type JsonRecord, type Notification } from './protocol.ts';
 import { AgentStore } from './store.ts';
+import { WorkerHistoryQueue } from './history-queue.ts';
 
 const directories: string[] = [];
 function temporary(): string {
@@ -24,6 +25,8 @@ async function expectFailure(operation: Promise<unknown>, message: string): Prom
 class FakeClient implements RpcClient {
   readonly calls: { method: string; params: JsonRecord }[] = [];
   readonly started = createDeferred<void>();
+  toolHandler: ((params: JsonRecord) => Promise<JsonRecord>) | undefined;
+  handleTools(handler: (params: JsonRecord) => Promise<JsonRecord>) { this.toolHandler = handler; }
   private readonly listeners = new Set<(event: Notification) => void>();
   private readonly failures = new Set<(error: Error) => void>();
   account: unknown = { type: 'chatgpt' };
@@ -241,4 +244,21 @@ test('registered profiles carry model, effort, tier and command restrictions int
     sandbox: 'read-only', config: { model_reasoning_effort: 'high', 'features.shell_tool': false, 'features.unified_exec': false, 'features.multi_agent': false } });
   expect(client.calls.find(call => call.method === 'turn/start')?.params).toMatchObject({ model: 'gpt-6-astra', effort: 'high', serviceTier: null,
     sandboxPolicy: { type: 'readOnly', networkAccess: false } });
+});
+
+
+test('native history calls bind to the active task and stop cancels pending relay work', async () => {
+  const directory = temporary(), store = new AgentStore(directory), historyQueue = new WorkerHistoryQueue(directory);
+  const client = new FakeClient(); client.onStart = async () => ({ turn: { id: 'turn' } });
+  const agent = new SpecialistAgent({ client, store, workspace: '/workspace', profile: 'Test', historyQueue });
+  agent.submit('recall', 'Find the policy.'); await client.started.promise;
+  await Bun.sleep(0);
+  const tools = client.calls.find(c => c.method === 'thread/start')!.params.dynamicTools as { name: string }[];
+  expect(tools.map(t => t.name)).toEqual(['history_search', 'history_read']);
+  await expectFailure(client.toolHandler!({ threadId: 'foreign', turnId: 'turn', callId: 'bad', tool: 'history_search', arguments: { query: 'policy' } }), 'active task');
+  await expectFailure(client.toolHandler!({ threadId: 'thread', turnId: 'wrong', callId: 'bad', tool: 'history_search', arguments: { query: 'policy' } }), 'active task');
+  const pending = client.toolHandler!({ threadId: 'thread', turnId: 'turn', callId: 'call', tool: 'history_read', arguments: { threadId: 'past', turnId: 't', itemId: 'i' } });
+  expect(historyQueue.exchange({ protocol: 1, enabled: true, results: [] }).requests[0]).toMatchObject({ taskId: 'recall', threadId: 'thread', tool: 'history_read' });
+  await agent.stop('recall'); expect((await pending).status).toBe('error'); await agent.settled();
+  expect(historyQueue.exchange({ protocol: 1, enabled: true, results: [] }).requests).toHaveLength(0);
 });
