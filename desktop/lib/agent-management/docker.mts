@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { agentRecord, agentText, parseAgentAction, parseAgentEngineId, parseAgentId } from '../../shared/agent-management.ts';
 import type { AgentAction, AgentEngineInfo } from '../../shared/agent-management.ts';
 import type { AgentEngine, RuntimeAgent } from './engine.mts';
+import { dockerCommandError } from './docker-errors.mts';
 
 export type DockerCommand = (args: string[], input?: string) => Promise<string>;
 const project = 'cheshi-codex-specialists-test';
@@ -19,7 +20,7 @@ export const runDocker: DockerCommand = (args, input) => new Promise((resolve, r
   const child = execFile(executable, ['--config', join(homedir(), '.docker'), ...args], {
     env, timeout: args.includes('build') ? 600_000 : 30_000, maxBuffer: 2 * 1024 * 1024, encoding: 'utf8',
   }, (error, stdout, stderr) => {
-    if (error) { reject(new Error('Docker command failed. Check that Docker CLI is installed and the selected engine is running.')); return; }
+    if (error) { reject(dockerCommandError(error, stderr, args)); return; }
     // Docker sends container stderr through its own stderr for `logs`.
     resolve(args.includes('logs') ? `${stdout}${stderr}` : stdout);
   });

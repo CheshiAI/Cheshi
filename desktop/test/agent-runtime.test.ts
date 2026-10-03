@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { createSpecialistRuntime, readRuntimeAuth } from '../lib/agent-management/runtime.mts';
 import { createAgentRegistry } from '../lib/agent-management/registry.mts';
 import { specialistInput } from './agent-registry-fixtures.ts';
-import { parseAgentRuntimeRequest } from '../shared/agent-runtime.ts';
+import { parseAgentRuntimeRequest, parseAgentRuntimeState } from '../shared/agent-runtime.ts';
+import { DockerCommandError, dockerCommandError } from '../lib/agent-management/docker-errors.mts';
 import type { AgentDetails } from '../shared/agent-management.ts';
 import type { DockerCommand } from '../lib/agent-management/docker.mts';
 
@@ -28,6 +29,7 @@ function fixture(linkedWorkspace = false) {
   const input = specialistInput(); input.profile.accountId = 'default';
   const agentId = registry.save(input, workspace).agentId;
   let created = false, remote = false, busy = false, seeded = false, failSeed = false;
+  let dockerFailure: Error | null = null, contextMissing = false;
   let labels: Record<string, string> = {};
   const calls: { args: string[]; input?: string }[] = [];
   const runtimePath = join(directory, 'runtime', createHash('sha256').update('docker:colima-cheshi').digest('hex'),
@@ -35,6 +37,9 @@ function fixture(linkedWorkspace = false) {
   const id = 'a'.repeat(64);
   const run: DockerCommand = async (args, input) => {
     calls.push({ args, input });
+    if (dockerFailure) throw dockerFailure;
+    if (args[0] === 'context' && contextMissing) throw dockerCommandError(Object.assign(new Error(), { code: 1 }),
+      'context "colima-cheshi": context not found: open /fixture/contexts/meta/id/meta.json: no such file or directory', args);
     if (args.includes('exec')) {
       if (args.at(-1)?.includes('createHash')) return seeded ? createHash('sha256').update('fixture-account').digest('hex') : '';
       if (!input) return seeded ? 'configured' : 'pending';
@@ -64,9 +69,45 @@ function fixture(linkedWorkspace = false) {
     account: async () => ({ home, models: [] }), management: { details: async () => details(),
       engines: async () => ({ engines: [], error: null }), snapshot: async engineId => ({ engineId, online: true, error: null, agents: [] }),
       control: async () => { throw new Error('unused'); } } });
-  return { runtime, registry, workspace, home, runtimePath, agentId, calls, exchanges, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
+  return { runtime, registry, workspace, home, runtimePath, agentId, calls, exchanges, setContextMissing: (missing: boolean) => { contextMissing = missing; }, setDockerFailure: (error: Error | null) => { dockerFailure = error; }, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
     request: () => ({ agentId, engineId: 'docker:colima-cheshi', action: 'start' as const }) };
 }
+test('missing selected context returns offline on repeated polls and restoration resumes normal lookup', async () => {
+  const f = fixture();
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    const status = { ...f.request(), action: 'status' as const };
+    f.setContextMissing(true);
+    for (let index = 0; index < 3; index++) {
+      const result = parseAgentRuntimeState(await f.runtime.request(f.workspace, status));
+      expect(result.details).toBeNull(); expect(result.unavailable?.kind).toBe('engine-unavailable');
+    }
+    await fails(f.runtime.request(f.workspace, f.request()), 'disconnected');
+    f.setContextMissing(false);
+    const restored = await f.runtime.request(f.workspace, status);
+    expect(restored.unavailable).toBeUndefined(); expect(restored.details?.ready).toBe(true);
+    expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(1);
+  } finally { await f.runtime.dispose(); }
+});
+test('status returns a disconnected state and recovers, while mutations and other failures still reject', async () => {
+  const f = fixture();
+  await f.runtime.request(f.workspace, f.request());
+  const status = { ...f.request(), action: 'status' as const };
+  f.setDockerFailure(new DockerCommandError('engine-unavailable', 'Engine disconnected'));
+  expect(parseAgentRuntimeState(await f.runtime.request(f.workspace, status))).toEqual({
+    details: null, unavailable: { kind: 'engine-unavailable', message: 'Engine disconnected' },
+  });
+  await fails(f.runtime.request(f.workspace, f.request()), 'Engine disconnected');
+  for (const kind of ['cli-missing', 'permission-denied', 'timeout', 'command-failed'] as const) {
+    f.setDockerFailure(new DockerCommandError(kind, kind));
+    await fails(f.runtime.request(f.workspace, status), kind);
+  }
+  f.setDockerFailure(null);
+  expect((await f.runtime.request(f.workspace, status)).details?.ready).toBe(true);
+  expect((await f.runtime.request(f.workspace, f.request())).details?.ready).toBe(true);
+  expect(() => parseAgentRuntimeState({ details: null, unavailable: { kind: 'unexpected', message: 'bad' } })).toThrow('availability');
+  await f.runtime.dispose();
+});
 test('starts one project worker with isolated storage, readonly mount, private auth input and persisted settings', async () => {
   const f = fixture();
   expect((await f.runtime.request(f.workspace, f.request())).details?.ready).toBe(true);

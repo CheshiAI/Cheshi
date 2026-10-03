@@ -16,6 +16,7 @@ export function SpecialistRuntimePanel({ agent, model, engines, engineId, onSett
   const [details, setDetails] = useState<AgentDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [disconnected, setDisconnected] = useState(false);
   const [prompt, setPrompt] = useState('');
   const task = useRef<{ id: string; prompt: string } | null>(null);
   const revision = useRef(0), active = useRef(true), busy = useRef(false);
@@ -31,20 +32,24 @@ export function SpecialistRuntimePanel({ agent, model, engines, engineId, onSett
     const version = ++revision.current;
     try {
       const result = await model.runtime({ agentId: agent.id, engineId: engine, action: 'status' });
-      if (active.current && version === revision.current) { setDetails(result.details); setError(null); }
+      if (active.current && version === revision.current) {
+        setDisconnected(Boolean(result.unavailable));
+        if (!result.unavailable) setDetails(result.details);
+        setError(result.unavailable?.message ?? null);
+      }
     } catch (reason) {
       if (active.current && version === revision.current) setError(reason instanceof Error ? reason.message : 'Could not read this agent.');
     }
   };
   useEffect(() => {
     revision.current++;
-    setDetails(null); setError(null); setPending(false); busy.current = false; task.current = null;
+    setDetails(null); setError(null); setPending(false); setDisconnected(false); busy.current = false; task.current = null;
     void refresh();
     const timer = setInterval(() => { void refresh(); }, 10_000);
     return () => { clearInterval(timer); revision.current++; };
   }, [agent.id, agent.revision, engine]);
   const operate = async (action: 'start' | 'submit' | 'cancel') => {
-    if (busy.current || !engine) return;
+    if (busy.current || !engine || disconnected) return;
     busy.current = true; setPending(true); setError(null);
     const version = ++revision.current;
     if (action === 'submit' && (!task.current || task.current.prompt !== prompt)) task.current = { id: crypto.randomUUID(), prompt };
@@ -54,6 +59,7 @@ export function SpecialistRuntimePanel({ agent, model, engines, engineId, onSett
         ...(action === 'cancel' ? { taskId: stoppable?.id } : {}) });
       if (active.current && version === revision.current) {
         setDetails(result.details);
+        setDisconnected(Boolean(result.unavailable)); setError(result.unavailable?.message ?? null);
         if (action === 'submit') { setPrompt(''); task.current = null; }
       }
     } catch (reason) {
@@ -65,12 +71,12 @@ export function SpecialistRuntimePanel({ agent, model, engines, engineId, onSett
   return <>
     <div className={styles.detailHeader}>
       <h2 className={styles.name}>{agent.name}</h2>
-      <span className={shared.description}>{pending ? 'Processing…' : details?.busy ? 'Working' : stoppable?.status === 'waiting' ? 'Waiting for reply' : details?.ready ? 'Ready' : 'Not running'}</span>
+      <span className={shared.description}>{pending ? 'Processing…' : disconnected ? 'Engine disconnected' : details?.busy ? 'Working' : stoppable?.status === 'waiting' ? 'Waiting for reply' : details?.ready ? 'Ready' : 'Not running'}</span>
       <div className={styles.runtimeActions}>
         <LiquidGlassSelect ariaLabel="Agent execution engine" triggerAppearance="standard" value={engine} disabled={pending}
           options={engines.filter(item => item.supported).map(item => ({ value: item.id, label: item.name }))}
           onChange={value => { revision.current++; setEngine(value); }} menuAppearance="toolbar" />
-        <TooltipButton variant="ghost" size="icon" title="Start agent" aria-label="Start agent" disabled={pending || !engine || details?.busy}
+        <TooltipButton variant="ghost" size="icon" title="Start agent" aria-label="Start agent" disabled={pending || disconnected || !engine || details?.busy}
           onClick={() => { void operate('start'); }}><Play aria-hidden="true" /></TooltipButton>
         <TooltipButton variant="ghost" size="icon" title="Refresh agent" aria-label="Refresh agent" disabled={pending || !engine}
           onClick={() => { void refresh(); }}><RefreshCw aria-hidden="true" /></TooltipButton>
@@ -85,13 +91,13 @@ export function SpecialistRuntimePanel({ agent, model, engines, engineId, onSett
           <NeumorphicTextField multiline rows={3} variant="standard" aria-label="Agent task" placeholder="Give this agent a task"
             value={prompt} maxLength={20_000} disabled={pending} onChange={event => setPrompt(event.target.value)} />
           <div className={styles.runtimeActions}>
-            {stoppable && <TooltipButton type="button" variant="ghost" size="icon" aria-label="Stop task" title="Stop task" disabled={pending}
+            {stoppable && <TooltipButton type="button" variant="ghost" size="icon" aria-label="Stop task" title="Stop task" disabled={pending || disconnected}
               onClick={() => { void operate('cancel'); }}><Square aria-hidden="true" /></TooltipButton>}
-            <NeumorphicButton variant="standard" type="submit" disabled={pending || !details?.ready || !details.authenticated || details.busy || !prompt.trim()}>Run task</NeumorphicButton>
+            <NeumorphicButton variant="standard" type="submit" disabled={pending || disconnected || !details?.ready || !details.authenticated || details.busy || !prompt.trim()}>Run task</NeumorphicButton>
           </div>
         </form>
       </div>
-      <AgentTaskResults tasks={details?.tasks ?? []} loading={false} running={details?.agent.state === 'running'} />
+      <AgentTaskResults tasks={details?.tasks ?? []} loading={false} running={!disconnected && details?.agent.state === 'running'} />
     </div>
   </>;
 }

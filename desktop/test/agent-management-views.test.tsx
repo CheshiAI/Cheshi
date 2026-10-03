@@ -482,6 +482,45 @@ test('registered runtime starts explicitly and shows acknowledged tasks without 
   } finally { registry.dispose(); }
 });
 
+test('engine disconnection preserves the draft and task history, disables actions, and recovers on refresh', async () => {
+  const { SpecialistRuntimePanel } = await import('../frontend/src/features/agents/SpecialistRuntimePanel');
+  const { AgentRegistryModel } = await import('../frontend/src/features/agents/agentRegistryModel');
+  const agent = specialistAgent();
+  let offline = false;
+  const details = { agent: { id: 'worker', name: agent.name, image: 'worker', state: 'running' }, ready: true, busy: false,
+    authenticated: true, threadId: 'thread', error: null, logs: '', tasks: [
+      { id: 'previous', prompt: 'Previous result', status: 'completed', createdAt: '2026-10-03', output: 'Keep this result', error: null },
+    ] };
+  const registry = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [agent] }), models: async () => [],
+    save: async () => { throw Error('unused'); }, onDidChange: () => () => {}, runtime: async request => {
+      expect(request.action).toBe('status');
+      return offline ? { details: null, unavailable: { kind: 'engine-unavailable', message: 'Engine disconnected; retrying.' } } : { details };
+    } });
+  try {
+    await withDOM(async ui => {
+      await ui.render(<SpecialistRuntimePanel agent={agent} model={registry} engineId="docker:local"
+        engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} onSettings={() => {}} />);
+      const input = document.querySelector<HTMLTextAreaElement>('textarea')!;
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value')!.set!;
+        setter.call(input, 'Preserve my draft');
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+      });
+      offline = true; await ui.click('Refresh agent');
+      expect(document.body.textContent).toContain('Engine disconnected');
+      expect(document.body.textContent).toContain('Previous result');
+      expect(document.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('Preserve my draft');
+      expect(document.querySelector<HTMLButtonElement>('[aria-label="Start agent"]')?.disabled).toBe(true);
+      expect(document.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true);
+      offline = false; await ui.click('Refresh agent');
+      expect(document.body.textContent).toContain('Ready');
+      expect(document.querySelector('[role="alert"]')).toBeNull();
+      expect(document.querySelector<HTMLButtonElement>('[aria-label="Start agent"]')?.disabled).toBe(false);
+      expect(document.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('Preserve my draft');
+    });
+  } finally { registry.dispose(); }
+});
+
 test('waiting collaboration is visible and can be stopped while the worker is idle', async () => {
   const { SpecialistRuntimePanel } = await import('../frontend/src/features/agents/SpecialistRuntimePanel');
   const { AgentRegistryModel } = await import('../frontend/src/features/agents/agentRegistryModel');

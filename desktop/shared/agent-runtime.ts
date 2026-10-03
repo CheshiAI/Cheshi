@@ -6,7 +6,10 @@ export interface AgentRuntimeRequest {
   agentId: string; engineId: string; action: 'status' | 'start' | 'submit' | 'cancel';
   taskId?: string; prompt?: string;
 }
-export interface AgentRuntimeState { details: AgentDetails | null; }
+export interface AgentRuntimeState {
+  details: AgentDetails | null;
+  unavailable?: { kind: 'engine-unavailable'; message: string };
+}
 export function parseAgentRuntimeRequest(value: unknown): AgentRuntimeRequest {
   const v = agentRecord(value), agentId = agentText(v.agentId, 36);
   if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(agentId)) throw new TypeError('Invalid specialist ID.');
@@ -25,5 +28,9 @@ export function parseAgentRuntimeRequest(value: unknown): AgentRuntimeRequest {
 }
 export function parseAgentRuntimeState(value: unknown): AgentRuntimeState {
   const v = agentRecord(value);
-  return { details: v.details === null ? null : parseAgentDetails(v.details) };
+  const details = v.details === null ? null : parseAgentDetails(v.details);
+  if (v.unavailable === undefined) return { details };
+  const unavailable = agentRecord(v.unavailable);
+  if (unavailable.kind !== 'engine-unavailable' || details !== null) throw new TypeError('Invalid runtime availability.');
+  return { details, unavailable: { kind: 'engine-unavailable', message: agentText(unavailable.message, 1000) } };
 }

@@ -9,6 +9,7 @@ import { agentRecord } from '../../shared/agent-management.ts';
 import type { AgentManagementApi } from '../../shared/agent-management.ts';
 import type { createAgentRegistry } from './registry.mts';
 import { parseDockerAgent, runDocker, type DockerCommand } from './docker.mts';
+import { DockerCommandError } from './docker-errors.mts';
 import { assertAgentModelSelection, type AgentModel } from '../../shared/agent-models.ts';
 import { workerOperations } from './operations.mts';
 import { resolveAgentInstructions } from './instruction-files.mts';
@@ -281,6 +282,11 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       assertCurrent();
       await post(worker.endpoint, configuration.token, '/tasks', { id: request.taskId, prompt: request.prompt });
       return { details: await options.management.details(request.engineId, worker.id) };
+    } catch (error) {
+      if (request.action === 'status' && error instanceof DockerCommandError && error.kind === 'engine-unavailable') {
+        return { details: null, unavailable: { kind: error.kind, message: error.message } };
+      }
+      throw error;
     } finally { if (request.action !== 'status') pending.delete(key); }
   }
   return {
