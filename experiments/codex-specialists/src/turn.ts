@@ -1,4 +1,4 @@
-import { createDeferred, record, type Notification } from './protocol.ts';
+import { createDeferred, record, type JsonRecord, type Notification } from './protocol.ts';
 
 export type TurnResult = { status: 'completed' | 'interrupted' | 'failed'; output: string; error: string | null };
 
@@ -11,7 +11,8 @@ export class TurnObserver {
   private readonly messages = new Map<string, string>();
   private settled = false;
 
-  constructor() { void this.result.catch(() => {}); }
+  private readonly observeItem: ((method: string, item: JsonRecord) => void) | undefined;
+  constructor(observeItem?: (method: string, item: JsonRecord) => void) { this.observeItem = observeItem; void this.result.catch(() => {}); }
 
   get finished(): boolean { return this.settled; }
 
@@ -22,7 +23,7 @@ export class TurnObserver {
   }
 
   receive(event: Notification): void {
-    if (this.settled || !['item/completed', 'turn/completed'].includes(event.method)) return;
+    if (this.settled || !['item/started', 'item/completed', 'turn/completed'].includes(event.method)) return;
     if (!this.target) { this.buffered.push(event); return; }
     this.consume(event);
   }
@@ -41,8 +42,12 @@ export class TurnObserver {
 
   private consume(event: Notification): void {
     if (!this.target || this.settled || event.params.threadId !== this.target.threadId) return;
-    if (event.method === 'item/completed') {
-      if (event.params.turnId === this.target.turnId) this.message(event.params.item);
+    if (event.method === 'item/completed' || event.method === 'item/started') {
+      if (event.params.turnId === this.target.turnId) {
+        try { this.observeItem?.(event.method, record(event.params.item)); }
+        catch (error) { this.fail(error instanceof Error ? error : new Error(String(error))); return; }
+        if (event.method === 'item/completed') this.message(event.params.item);
+      }
       return;
     }
     const turn = record(event.params.turn);

@@ -75,6 +75,8 @@ test('starts one project worker with isolated storage, readonly mount, private a
   expect(args).toContain('no-new-privileges:true'); expect(args).toContain('apparmor=cheshi-codex-bwrap');
   const config = JSON.parse(f.calls.find(call => call.input)!.input!).configuration;
   expect(args.some(arg => arg.includes('runtime.json,readonly'))).toBe(false);
+  expect(config.decisionProtocol).toBe(1);
+  expect(config.verificationProtocol).toBe(1);
   expect(config.permissions).toEqual({ fileWrite: false, commandExecution: false });
   expect(config.instructions).toContain('Project instructions:');
   expect(config).not.toHaveProperty('tokens');

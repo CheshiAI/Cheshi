@@ -1,8 +1,9 @@
+import { verificationRequest, verificationResult } from './verification-contract.ts';
 import { record, textValue } from './protocol.ts';
 
 export interface Peer { id: string; name: string; role: string }
 export interface CollaborationMessage {
-  id: string; kind: 'question' | 'reply'; from: string; to: string;
+  id: string; kind: 'question' | 'reply' | 'verification_request' | 'verification_result'; from: string; to: string;
   taskId: string; questionId: string; text: string;
 }
 export interface CollaborationState {
@@ -20,10 +21,12 @@ export function identifier(value: unknown): string {
 }
 export function message(value: unknown): CollaborationMessage {
   const v = record(value);
-  if (v.kind !== 'question' && v.kind !== 'reply') throw new Error('Invalid collaboration message kind.');
+  if (!['question', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid collaboration message kind.');
   const text = textValue(v.text, 'message');
   if (text.length > 12_000) throw new Error('Collaboration message is too long.');
-  return { id: identifier(v.id), kind: v.kind, from: identifier(v.from), to: identifier(v.to),
+  if (v.kind === 'verification_request') verificationRequest(JSON.parse(text));
+  if (v.kind === 'verification_result') verificationResult(JSON.parse(text));
+  return { id: identifier(v.id), kind: v.kind as CollaborationMessage['kind'], from: identifier(v.from), to: identifier(v.to),
     taskId: identifier(v.taskId), questionId: identifier(v.questionId), text };
 }
 function array(value: unknown): unknown[] {

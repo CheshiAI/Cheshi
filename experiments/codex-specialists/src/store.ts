@@ -1,6 +1,8 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { record, textValue } from './protocol.ts';
+import { evidence, list, verificationResult, type Evidence, type VerificationResult } from './verification-contract.ts';
+import { parseGoal, type GoalState } from './decision.ts';
 import { collaborationState, emptyCollaboration, type CollaborationState } from './collaboration-contract.ts';
 
 export const TASK_STATUSES = ['accepted', 'running', 'waiting', 'completed', 'interrupted', 'failed', 'unknown'] as const;
@@ -8,7 +10,8 @@ export type TaskStatus = typeof TASK_STATUSES[number];
 export type Task = {
   id: string; prompt: string; status: TaskStatus; createdAt: string; finishedAt: string | null;
   threadId: string | null; turnId: string | null; output: string; error: string | null;
-  conversation?: string; consultation?: string;
+  conversation?: string; consultation?: string; goal?: GoalState;
+  verification?: string; verificationEvidence?: Evidence[]; verificationDraft?: VerificationResult;
 };
 type SavedState = { version: 1; threadId: string | null; model: string | null; tasks: Task[];
   threads: Record<string, string>; collaboration: CollaborationState };
@@ -33,6 +36,10 @@ function savedTask(value: unknown): Task {
     createdAt: textValue(task.createdAt, 'creation time'), finishedAt: nullableText(task.finishedAt),
     threadId: nullableText(task.threadId), turnId: nullableText(task.turnId), output: task.output,
     error: nullableText(task.error),
+    ...(task.verification === undefined ? {} : { verification: validateTaskId(task.verification) }),
+    ...(task.verificationEvidence === undefined ? {} : { verificationEvidence: list(task.verificationEvidence, evidence, 32) }),
+    ...(task.verificationDraft === undefined ? {} : { verificationDraft: verificationResult(task.verificationDraft) }),
+    ...(task.goal === undefined ? {} : { goal: parseGoal(task.goal) }),
     ...(task.conversation === undefined ? {} : { conversation: validateTaskId(task.conversation) }),
     ...(task.consultation === undefined ? {} : { consultation: validateTaskId(task.consultation) }),
   };
@@ -90,7 +97,7 @@ export class AgentStore {
     });
   }
 
-  create(id: string, prompt: string, options: Pick<Task, 'conversation' | 'consultation'> = {}): Task {
+  create(id: string, prompt: string, options: Pick<Task, 'conversation' | 'consultation' | 'verification' | 'goal'> = {}): Task {
     if (this.task(id)) throw new Error('Task already exists.');
     const task: Task = { id, prompt, status: 'accepted', createdAt: new Date().toISOString(), finishedAt: null,
       threadId: null, turnId: null, output: '', error: null, ...options };
@@ -106,12 +113,12 @@ export class AgentStore {
     });
   }
 
-  complete(id: string, patch: Pick<Task, 'status' | 'output' | 'error'>, consumed: string[] = []): void {
+  complete(id: string, patch: Pick<Task, 'status' | 'output' | 'error' | 'goal'>, consumed: string[] = []): void {
     const task = this.task(id);
     if (!task) throw new Error('Unknown task.');
     const result = { ...task, ...patch, finishedAt: patch.status === 'waiting' ? null : new Date().toISOString() };
     this.write(join(this.directory, 'artifacts', `${id}.json`), result);
-    if (patch.status === 'completed' && !task.consultation) {
+    if (patch.status === 'completed' && !task.consultation && !task.verification) {
       this.write(join(this.directory, 'memory', 'latest.json'), {
         taskId: id, recordedAt: result.finishedAt, summary: patch.output.slice(0, 8000),
       });

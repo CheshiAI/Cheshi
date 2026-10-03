@@ -89,5 +89,7 @@ test('packaged specialist context includes its runtime dependencies without expe
     for (const filename of SPECIALIST_WORKER_FILES) expect((await readFile(join(directory, filename))).byteLength).toBeGreaterThan(0);
     expect(await readdir(directory)).not.toContain('fixtures');
     expect((await readdir(join(directory, 'src'))).some(name => name.endsWith('.test.ts'))).toBe(false);
+    // A staged worker must import all transitive verification modules without a TS transform.
+    execFileSync('node', ['--input-type=module', '-e', "await import('./src/agent.ts'); await import('./src/verification.ts');"], { cwd: directory, timeout: 15_000 });
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

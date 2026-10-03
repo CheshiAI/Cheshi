@@ -8,7 +8,7 @@ export interface Binding {
 }
 export interface Peer { id: string; name: string; role: string }
 export interface Message {
-  id: string; kind: 'question' | 'reply'; from: string; to: string; taskId: string; questionId: string; text: string;
+  id: string; kind: 'question' | 'reply' | 'verification_request' | 'verification_result'; from: string; to: string; taskId: string; questionId: string; text: string;
 }
 interface Envelope { scope: string; message: Message; delivered: boolean }
 interface State { version: 1; bindings: Binding[]; envelopes: Envelope[] }
@@ -19,10 +19,10 @@ function identifier(value: unknown): string {
 }
 function parseMessage(value: unknown): Message {
   const v = agentRecord(value);
-  if (v.kind !== 'question' && v.kind !== 'reply') throw new Error('Invalid collaboration message kind.');
+  if (!['question', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid collaboration message kind.');
   const text = agentText(v.text, 12_000);
   if (!text.trim()) throw new Error('Empty collaboration message.');
-  return { id: identifier(v.id), kind: v.kind, from: identifier(v.from), to: identifier(v.to),
+  return { id: identifier(v.id), kind: v.kind as Message['kind'], from: identifier(v.from), to: identifier(v.to),
     taskId: identifier(v.taskId), questionId: identifier(v.questionId), text };
 }
 export const bindingFor = (workspace: string, engineId: string, agentId: string, accountId: string): Binding => {
@@ -100,13 +100,15 @@ export class AgentMailbox {
           continue;
         }
         if (!peers.some(p => p.id === item.to)) throw new Error('Recipient is no longer assigned to this project.');
-        if (item.kind === 'question' && item.questionId !== item.id) throw new Error('Invalid question identity.');
-        if (item.kind === 'reply') {
+        if (['question', 'verification_request'].includes(item.kind) && item.questionId !== item.id) throw new Error('Invalid question identity.');
+        if (item.kind === 'verification_request' && !peers.some(p => p.id === item.to && p.role === 'verification')) throw new Error('Recipient is not a verification agent.');
+        if (item.kind === 'verification_result' && !peers.some(p => p.id === item.from && p.role === 'verification')) throw new Error('Sender is not a verification agent.');
+        if (item.kind === 'reply' || item.kind === 'verification_result') {
           const question = state.envelopes.find(e => e.scope === binding.scope && e.message.id === item.questionId)?.message;
-          if (!question || question.kind !== 'question' || question.from !== item.to || question.to !== item.from || question.taskId !== item.taskId) {
+          if (!question || question.kind !== (item.kind === 'reply' ? 'question' : 'verification_request') || question.from !== item.to || question.to !== item.from || question.taskId !== item.taskId) {
             throw new Error('Reply does not belong to this peer and task.');
           }
-          if (state.envelopes.some(e => e.scope === binding.scope && e.message.kind === 'reply' && e.message.questionId === item.questionId)) {
+          if (state.envelopes.some(e => e.scope === binding.scope && e.message.kind === item.kind && e.message.questionId === item.questionId)) {
             throw new Error('Question already has a reply.');
           }
         }

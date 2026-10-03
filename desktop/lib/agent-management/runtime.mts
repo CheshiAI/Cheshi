@@ -78,7 +78,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       if (!worker || worker.state !== 'running' || !worker.endpoint) return null;
       const saved = agentRecord(JSON.parse(await readFile(join(options.directory, digest(binding.engineId), key, 'runtime.json'), 'utf8')));
       if (saved.accountId !== binding.accountId || saved.profileId !== binding.agentId || saved.revision !== worker.fingerprint
-        || saved.collaborationProtocol !== 1 || saved.historyProtocol !== 1 || typeof saved.token !== 'string' || !/^[a-f0-9]{64}$/.test(saved.token)) {
+        || saved.collaborationProtocol !== 1 || saved.historyProtocol !== 1 || saved.decisionProtocol !== 1 || saved.verificationProtocol !== 1 || typeof saved.token !== 'string' || !/^[a-f0-9]{64}$/.test(saved.token)) {
         throw new Error('Start the agent to reconnect collaboration with its current settings.');
       }
       const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId);
@@ -232,7 +232,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint,
-            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [workspace];
@@ -291,7 +291,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   };
 }
 function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number]) {
-  return digest(JSON.stringify({ collaborationProtocol: 1, historyProtocol: 1, agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
+  return digest(JSON.stringify({ collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
     ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
 }
 function profileConfiguration(agent: SpecialistAgent) {

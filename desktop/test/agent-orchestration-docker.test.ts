@@ -27,7 +27,7 @@ test.if(Boolean(context))('Docker recreation preserves the waiting task, questio
   for (const filename of SPECIALIST_WORKER_FILES.filter(file => file.startsWith('src/'))) {
     copyFileSync(fileURLToPath(new URL(`../../experiments/codex-specialists/${filename}`, import.meta.url)), join(root, filename));
   }
-  for (const { id } of peers) writeFileSync(join(root, `${id}.json`), JSON.stringify({ profileId: id, accountId: 'fixture', role: 'development', token, revision: 'test',
+  for (const { id } of peers) writeFileSync(join(root, `${id}.json`), JSON.stringify({ decisionProtocol: 1, profileId: id, accountId: 'fixture', role: 'development', token, revision: 'test',
     instructions: 'Read-only fixture.', model: null, reasoningEffort: null, serviceTier: null,
     permissions: { fileWrite: false, commandExecution: false } }));
   writeFileSync(join(root, 'Dockerfile'), 'FROM cheshi-specialist:1\nUSER root\nCOPY src /app/src\nCOPY fixture.ts codex dev.json planner.json /test/\nRUN chmod 755 /test/codex\nUSER node\n');
@@ -55,7 +55,7 @@ test.if(Boolean(context))('Docker recreation preserves the waiting task, questio
     connect: async b => ({ endpoint: endpoints.get(b.agentId)!, token }),
   });
   let coordinator = relay();
-  const task = async () => await (await fetch(`${endpoints.get('dev')}/tasks/login`)).json() as { status: string; threadId: string; output: string };
+  const task = async () => await (await fetch(`${endpoints.get('dev')}/tasks/login`)).json() as { status: string; threadId: string; output: string; goal?: { phase: string; turns: number; decisions: { action: string }[] } };
   try {
     await docker('build', '--network=none', '--tag', image, root); imageBuilt = true;
     await start('dev'); await start('planner');
@@ -65,7 +65,7 @@ test.if(Boolean(context))('Docker recreation preserves the waiting task, questio
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'login', prompt: 'Complete login.' }) });
     expect(response.status).toBe(202);
     await wait(async () => (await task()).status === 'waiting', 'waiting question');
-    const original = await task();
+    const original = await task(); expect(original.goal?.phase).toBe('waiting');
     // Kill and remove the exact test container. The named data volume is retained.
     await docker('kill', `${prefix}-dev`); await docker('rm', `${prefix}-dev`); containers.delete(`${prefix}-dev`);
     await coordinator.dispose(); coordinator = relay();
@@ -74,6 +74,8 @@ test.if(Boolean(context))('Docker recreation preserves the waiting task, questio
     await wait(async () => { await coordinator.tick(); return (await task()).status === 'completed'; }, 'restored collaboration');
     const completed = await task();
     expect(completed.threadId).toBe(original.threadId);
+    expect(completed.goal).toMatchObject({ phase: 'completed', turns: 3 });
+    expect(completed.goal?.decisions.map(d => d.action)).toEqual(['wait', 'continue', 'complete']);
     expect(completed.output).toBe('Continued login using the received policy.');
   } finally {
     await coordinator.dispose();

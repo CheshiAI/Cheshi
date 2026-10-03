@@ -7,6 +7,7 @@ import type { RpcClient } from './app-server-client.ts';
 import { createDeferred, type JsonRecord, type Notification } from './protocol.ts';
 import { AgentStore } from './store.ts';
 import { WorkerHistoryQueue } from './history-queue.ts';
+import { WorkerCollaboration } from './collaboration.ts';
 
 const directories: string[] = [];
 function temporary(): string {
@@ -261,4 +262,141 @@ test('native history calls bind to the active task and stop cancels pending rela
   expect(historyQueue.exchange({ protocol: 1, enabled: true, results: [] }).requests[0]).toMatchObject({ taskId: 'recall', threadId: 'thread', tool: 'history_read' });
   await agent.stop('recall'); expect((await pending).status).toBe('error'); await agent.settled();
   expect(historyQueue.exchange({ protocol: 1, enabled: true, results: [] }).requests).toHaveLength(0);
+});
+
+function goalSetup(directory = temporary()) {
+  const store = new AgentStore(directory), client = new FakeClient();
+  const agent = new SpecialistAgent({ client, store, workspace: '/workspace', profile: 'Follow the user goal.',
+    configuration: { decisionProtocol: 1, profileId: 'dev', accountId: 'fixture', role: 'development', token: 'a'.repeat(64),
+      instructions: 'Follow the user goal.', model: null, reasoningEffort: null, serviceTier: null,
+      permissions: { fileWrite: false, commandExecution: false } } });
+  const decide = (action: string) => client.toolHandler!({ threadId: 'thread', turnId: 'turn', tool: 'record_decision', arguments: {
+    action, reason: 'Verified the current progress.', progress: 'One step checked.', nextAction: action === 'continue' ? 'Check the remaining result.' : '',
+    criteria: [{ criterion: 'Verify the requested result.', met: action === 'complete', evidence: action === 'complete' ? 'Observed the expected result.' : '' }],
+  } });
+  return { agent, client, store, decide, directory };
+}
+
+test('goal continues after cold restart and only explicit evidenced completion finishes it', async () => {
+  let f = goalSetup();
+  f.client.onStart = async () => { await f.decide('continue'); f.client.complete(); return { turn: { id: 'turn' } }; };
+  f.agent.submit('goal', 'Verify the requested result.'); await f.agent.settled();
+  expect(f.store.task('goal')).toMatchObject({ status: 'waiting', finishedAt: null, goal: { turns: 1, phase: 'ready' } });
+  expect(f.store.memory()).toBe('');
+  f = goalSetup(f.directory);
+  expect(f.store.task('goal')?.goal?.decisions).toHaveLength(1);
+  f.client.onStart = async params => {
+    expect(JSON.stringify(params.input)).toContain('Check the remaining result.');
+    await f.decide('complete'); f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.pump(); await f.agent.settled();
+  expect(f.store.task('goal')).toMatchObject({ status: 'completed', goal: { turns: 2, phase: 'completed' } });
+  expect(f.client.calls.some(c => c.method === 'thread/resume')).toBe(true);
+  f.agent.pump(); expect(f.client.calls.filter(c => c.method === 'turn/start')).toHaveLength(1);
+});
+
+test('a successful model response without a decision cannot complete a goal', async () => {
+  const f = goalSetup(); f.agent.submit('goal', 'Verify the requested result.'); await f.agent.settled();
+  expect(f.store.task('goal')).toMatchObject({ status: 'interrupted', goal: { phase: 'blocked' } });
+  expect(f.store.task('goal')?.error).toContain('No next-action decision');
+  expect(f.store.memory()).toBe(''); f.agent.pump(); expect(f.client.calls.filter(c => c.method === 'turn/start')).toHaveLength(1);
+});
+
+test('goal decisions reject invented waiting and incomplete evidence, then permit explicit blocking', async () => {
+  const f = goalSetup();
+  f.client.onStart = async () => {
+    await expectFailure(f.decide('wait'), 'outstanding');
+    await expectFailure(f.client.toolHandler!({ threadId: 'thread', turnId: 'turn', tool: 'record_decision', arguments: {
+      action: 'complete', reason: 'Done', progress: 'Done', nextAction: '', criteria: [{ criterion: 'Verify', met: true, evidence: '' }],
+    } }), 'evidence');
+    await f.decide('blocked');
+    await expectFailure(f.client.toolHandler!({ threadId: 'thread', turnId: 'turn', tool: 'history_search', arguments: {} }), 'End the turn');
+    f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.submit('goal', 'Verify the requested result.'); await f.agent.settled();
+  expect(f.store.task('goal')).toMatchObject({ status: 'interrupted', goal: { phase: 'blocked' } });
+});
+
+test('persisted turn budget stops a repeatedly continuing goal', async () => {
+  const f = goalSetup();
+  f.client.onStart = async () => { await f.decide('continue'); f.client.complete(); return { turn: { id: 'turn' } }; };
+  f.agent.submit('goal', 'Verify the requested result.'); await f.agent.settled();
+  for (let i = 0; i < 12; i++) { f.agent.pump(); await f.agent.settled(); }
+  expect(f.client.calls.filter(c => c.method === 'turn/start')).toHaveLength(8);
+  expect(f.store.task('goal')).toMatchObject({ status: 'interrupted', goal: { turns: 8, phase: 'blocked' } });
+  expect(f.store.task('goal')?.error).toContain('turn limit');
+});
+
+test('canceling queued continuation prevents execution after restart', async () => {
+  const f = goalSetup();
+  f.client.onStart = async () => { await f.decide('continue'); f.client.complete(); return { turn: { id: 'turn' } }; };
+  f.agent.submit('goal', 'Verify the requested result.'); await f.agent.settled(); await f.agent.stop('goal');
+  const restored = goalSetup(f.directory); restored.agent.pump();
+  expect(restored.agent.busy).toBe(false); expect(restored.store.task('goal')?.status).toBe('interrupted');
+});
+
+test('a recorded decision cannot cause continuation if transport fails before turn completion', async () => {
+  const f = goalSetup();
+  f.client.onStart = async () => { await f.decide('continue'); f.client.disconnect(); return { turn: { id: 'turn' } }; };
+  f.agent.submit('goal', 'Verify the requested result.'); await f.agent.settled();
+  const restored = goalSetup(f.directory); restored.agent.pump();
+  expect(restored.store.task('goal')?.status).toBe('unknown'); expect(restored.agent.busy).toBe(false);
+});
+
+test('a confirmed evidenced completion survives a concurrent stop request', async () => {
+  const f = goalSetup(), ready = createDeferred<void>(), acknowledgement = createDeferred<JsonRecord>();
+  f.client.onStart = async () => { await f.decide('complete'); ready.resolve(); return acknowledgement.promise; };
+  f.agent.submit('goal', 'Verify the requested result.'); await ready.promise;
+  await f.agent.stop('goal'); f.client.complete(); acknowledgement.resolve({ turn: { id: 'turn' } });
+  await f.agent.settled();
+  expect(f.store.task('goal')).toMatchObject({ status: 'completed', goal: { phase: 'completed' } });
+});
+
+test('canceling during a recorded continuation never schedules its next turn', async () => {
+  const f = goalSetup(), ready = createDeferred<void>(), acknowledgement = createDeferred<JsonRecord>();
+  f.client.onStart = async () => { await f.decide('continue'); ready.resolve(); return acknowledgement.promise; };
+  f.agent.submit('goal', 'Verify the requested result.'); await ready.promise;
+  await f.agent.stop('goal'); f.client.complete(); acknowledgement.resolve({ turn: { id: 'turn' } }); await f.agent.settled();
+  f.agent.pump();
+  expect(f.store.task('goal')).toMatchObject({ status: 'interrupted', goal: { phase: 'blocked', pending: null } });
+  expect(f.client.calls.filter(c => c.method === 'turn/start')).toHaveLength(1);
+});
+
+test('self-reported completion is refused when independent verification is required', async () => {
+  const client = new FakeClient(), store = new AgentStore(temporary());
+  const agent = new SpecialistAgent({ client, store, workspace: '/workspace', profile: 'Goal', configuration: {
+    decisionProtocol: 1, verificationProtocol: 1, profileId: 'dev', accountId: 'fixture', role: 'development', token: 'a'.repeat(64),
+    instructions: 'Goal', model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: false, commandExecution: false },
+  } });
+  client.onStart = async () => {
+    await expectFailure(client.toolHandler!({ threadId: 'thread', turnId: 'turn', tool: 'record_decision', arguments: {
+      action: 'complete', reason: 'I claim this is done', progress: 'Done', nextAction: '', criteria: [{ criterion: 'Original goal', met: true, evidence: 'Self-reported pass' }],
+    } }), 'verification is unavailable');
+    client.complete(); return { turn: { id: 'turn' } };
+  };
+  agent.submit('goal', 'Original goal'); await agent.settled();
+  expect(store.task('goal')?.status).toBe('interrupted');
+  expect(store.task('goal')?.goal?.verificationRequired).toBe(true);
+  expect(store.memory()).toBe('');
+});
+
+test('verification always uses a read-only sandbox and only its own command permission', async () => {
+  for (const commandExecution of [false, true]) {
+    const client = new FakeClient(), store = new AgentStore(temporary());
+    const collaboration = new WorkerCollaboration(store, 'reviewer', '/workspace');
+    collaboration.exchange({ peers: [{ id: 'dev', name: 'Developer', role: 'development' }], acknowledged: [], messages: [{
+      id: 'request', questionId: 'request', kind: 'verification_request', from: 'dev', to: 'reviewer', taskId: 'goal',
+      text: JSON.stringify({ goal: 'Original goal', criteria: ['Goal met'], artifacts: [{ path: 'login.ts', sha256: 'a'.repeat(64) }] }),
+    }] });
+    const agent = new SpecialistAgent({ client, store, collaboration, workspace: '/workspace', profile: 'Verify', configuration: {
+      decisionProtocol: 1, verificationProtocol: 1, profileId: 'reviewer', accountId: 'fixture', role: 'verification', token: 'a'.repeat(64),
+      instructions: 'Verify', model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: true, commandExecution },
+    } });
+    agent.pump(); await agent.settled();
+    expect(client.calls.find(c => c.method === 'thread/start')?.params).toMatchObject({ sandbox: 'read-only',
+      config: { 'features.shell_tool': commandExecution, 'features.unified_exec': commandExecution } });
+    expect(client.calls.find(c => c.method === 'turn/start')?.params.sandboxPolicy).toEqual({ type: 'readOnly', networkAccess: false });
+    expect(JSON.parse(store.snapshot().collaboration.outgoing[0]!.text).verdicts[0].verdict).toBe('inconclusive');
+    expect(store.memory()).toBe('');
+  }
 });

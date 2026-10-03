@@ -107,6 +107,24 @@ Mount flags can change with
 kernel/runtime versions: inspect AppArmor audit records and rerun the sandbox
 verification rather than switching to `privileged` or an unconfined profile.
 
+### Development workers with project write permission
+
+The independent-verification workflow also runs a development worker whose
+explicit profile permits project writes. On Colima, its inner writable project
+mount requires `rw,nosuid,nodev,remount,bind,silent,relatime`. The profile permits
+that flag combination **only** for `/newroot/workspace/`; it does not add a
+general writable-remount rule. Read-only verifier mounts, capability removal,
+`no-new-privileges`, the read-only container root, and the inner network denial
+remain in place. Install the updated dedicated profile with the same commands
+above before using a development worker with command and file-write permission.
+
+`desktop/test/fixtures/verification-sandbox.ts` is the model-free preflight for
+the opt-in native Docker collaboration test. In disposable workers it checks
+project reads, allowed/denied project writes by role, denied `/agent/state`
+writes, network denial against a reachable control server, zero capability
+masks, and `NoNewPrivs: 1`. It never reads credentials. A failed preflight stops
+the test before any model task is submitted.
+
 To stop, use both Compose files with `down` (without `-v`) to preserve the volume.
 To uninstall this policy after its containers have stopped, run
 `colima -p cheshi ssh -- sudo apparmor_parser -R /etc/apparmor.d/cheshi-codex-bwrap`,

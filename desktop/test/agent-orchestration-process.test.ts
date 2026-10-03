@@ -38,7 +38,7 @@ test('real worker processes exchange tools over stdio and HTTP and resume after 
   const start = async (id: string) => {
     const data = join(directory, id); mkdirSync(data, { recursive: true });
     const config = join(data, 'runtime.json');
-    writeFileSync(config, JSON.stringify({ profileId: id, accountId: 'fixture', role: 'development', token, revision: 'test',
+    writeFileSync(config, JSON.stringify({ decisionProtocol: 1, profileId: id, accountId: 'fixture', role: 'development', token, revision: 'test',
       instructions: 'Fixture instructions', model: null, reasoningEffort: null, serviceTier: null,
       permissions: { fileWrite: false, commandExecution: false } }));
     const port = await freePort();
@@ -60,7 +60,7 @@ test('real worker processes exchange tools over stdio and HTTP and resume after 
     connect: async binding => ({ endpoint: endpoints.get(binding.agentId)!, token }),
   });
   let coordinator = relay();
-  const task = async () => (await (await fetch(`${endpoints.get('dev')}/tasks/login`)).json()) as { status: string; threadId: string; output: string };
+  const task = async () => (await (await fetch(`${endpoints.get('dev')}/tasks/login`)).json()) as { status: string; threadId: string; output: string; goal?: { phase: string; turns: number; decisions: { action: string }[] } };
   try {
     let developer = await start('dev'); await start('planner');
     peers.forEach(p => coordinator.register(bindingFor(directory, 'docker:fixture', p.id, 'fixture')));
@@ -72,7 +72,7 @@ test('real worker processes exchange tools over stdio and HTTP and resume after 
       body: JSON.stringify({ id: 'login', prompt: 'Complete login.' }) });
     expect(accepted.status).toBe(202);
     await until(async () => (await task()).status === 'waiting', 'question wait');
-    const before = await task(); expect(before.output).toContain('Independent input validation');
+    const before = await task(); expect(before.goal?.phase).toBe('waiting'); expect(before.output).toContain('Independent input validation');
     await coordinator.tick();
     developer.kill('SIGTERM'); await developer.exited;
     await coordinator.dispose(); coordinator = relay();
@@ -81,6 +81,8 @@ test('real worker processes exchange tools over stdio and HTTP and resume after 
     await until(async () => { await coordinator.tick(); return (await task()).status === 'completed'; }, 'answer and resumed task');
     const after = await task();
     expect(after.threadId).toBe(before.threadId);
+    expect(after.goal).toMatchObject({ phase: 'completed', turns: 3 });
+    expect(after.goal?.decisions.map(d => d.action)).toEqual(['wait', 'continue', 'complete']);
     expect(after.output).toBe('Continued login using the received policy.');
     expect(coordinator.error(bindingFor(directory, 'docker:fixture', 'dev', 'fixture').id)).toBeNull();
     const direct = await exchangeWorker({ endpoint: endpoints.get('dev')!, token }, { peers, messages: [], acknowledged: [] });

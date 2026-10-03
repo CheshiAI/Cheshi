@@ -43,3 +43,16 @@ test('never grants approval, permissions, elicitation, or interactive input', ()
   for (const [method, expected] of cases) expect(deniedServerRequest(method)).toEqual(expected);
   expect(deniedServerRequest('unknown/request')).toBeNull();
 });
+
+test('evidence callbacks see only matched native items, including events before turn acknowledgement', async () => {
+  const observed: string[] = [];
+  const observer = new TurnObserver((method, item) => observed.push(`${method}/${item.id}`));
+  const event = (method: string, turnId = 'turn'): Notification => ({ method, params: { threadId: 'thread', turnId,
+    item: { id: 'check', type: 'commandExecution', command: 'bun test', exitCode: 0 } } });
+  observer.receive(event('item/started', 'foreign'));
+  observer.receive(event('item/started')); observer.receive(event('item/completed'));
+  observer.identify('thread', 'turn'); observer.receive(completion());
+  expect((await observer.result).status).toBe('completed');
+  observer.receive(event('item/completed'));
+  expect(observed).toEqual(['item/started/check', 'item/completed/check']);
+});

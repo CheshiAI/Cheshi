@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AgentMailbox, bindingFor, type Peer } from '../lib/agent-orchestration/mailbox.mts';
+import { AgentMailbox, bindingFor, type Peer, type Message } from '../lib/agent-orchestration/mailbox.mts';
 import { createAgentOrchestration } from '../lib/agent-orchestration/service.mts';
 import { AgentStore } from '../../experiments/codex-specialists/src/store.ts';
 import { WorkerCollaboration } from '../../experiments/codex-specialists/src/collaboration.ts';
@@ -147,4 +147,24 @@ test('an unreadable journal surfaces an error without crashing startup or replac
   expect(coordinator.error('binding')).not.toBeNull();
   expect(readFileSync(filename, 'utf8')).toBe('damaged journal');
   await coordinator.dispose();
+});
+
+test('verification messages bind the reviewer role, task, request and project across journal restart', () => {
+  const filename = join(temporary(), 'verification.json');
+  let mailbox = new AgentMailbox(filename);
+  const peers = [...roster, { id: 'reviewer', name: 'Verifier', role: 'verification' }];
+  const owner = bindingFor('/workspace', 'docker:test', 'dev', 'default');
+  const reviewer = bindingFor('/workspace', 'docker:test', 'reviewer', 'default');
+  const request: Message = { id: 'v1', kind: 'verification_request', from: 'dev', to: 'reviewer', taskId: 'login', questionId: 'v1', text: '{"criteria":["Login"]}' };
+  const accept = (binding: typeof owner, messages: unknown[]) => mailbox.accept(binding, { protocol: 1, received: [], outgoing: messages }, peers, []);
+  expect(() => accept(owner, [{ ...request, to: 'planner' }])).toThrow('verification agent');
+  accept(owner, [request]); mailbox = new AgentMailbox(filename);
+  expect(mailbox.request(reviewer, peers).messages).toEqual([request]);
+  const result: Message = { id: 'r1', kind: 'verification_result', from: 'reviewer', to: 'dev', taskId: 'login', questionId: 'v1', text: '{"verdicts":[]}' };
+  expect(() => accept(reviewer, [{ ...result, taskId: 'foreign' }])).toThrow('peer and task');
+  expect(() => accept(bindingFor('/elsewhere', 'docker:test', 'reviewer', 'default'), [result])).toThrow('peer and task');
+  expect(() => accept(bindingFor('/workspace', 'docker:test', 'planner', 'default'), [{ ...result, from: 'planner' }])).toThrow('verification agent');
+  accept(reviewer, [result]); accept(reviewer, [result]);
+  expect(() => accept(reviewer, [{ ...result, id: 'r2' }])).toThrow('already has');
+  expect(mailbox.request(owner, peers).messages).toEqual([result]);
 });

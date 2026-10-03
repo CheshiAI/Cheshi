@@ -24,7 +24,7 @@ const client = new AppServerClient();
 await client.initialize();
 let transportError: string | null = null;
 client.onFailure(error => { transportError = error.message; });
-const collaboration = configuration ? new WorkerCollaboration(store, configuration.profileId) : undefined;
+const collaboration = configuration ? new WorkerCollaboration(store, configuration.profileId, workspace) : undefined;
 const history = new WorkerHistory(store, client, process.env.AGENT_DATA_DIRECTORY ?? '/agent', workspace);
 const historyQueue = configuration ? new WorkerHistoryQueue(process.env.AGENT_DATA_DIRECTORY ?? '/agent') : undefined;
 const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration, history, historyQueue });
