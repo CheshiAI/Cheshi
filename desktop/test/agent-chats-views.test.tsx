@@ -3,6 +3,7 @@ import { Window } from 'happy-dom';
 import { act, type ReactNode } from 'react';
 import { specialistAgent } from './agent-registry-fixtures';
 import { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
+import { RoomDialog } from '../frontend/src/features/agent-chats/RoomDialog';
 import { AgentTaskResults } from '../frontend/src/features/agents/AgentTaskResults';
 import type { ChatsRequest, ChatsSnapshot, ChatTaskTarget } from '../shared/agent-chats';
 async function withDOM(run: (ui: { render(node: ReactNode): Promise<void>; click(label: string): Promise<void>; type(label: string, text: string): Promise<void> }) => Promise<void>) {
@@ -104,5 +105,45 @@ test('new room invites an assigned agent and uses that agent as its default reci
     expect(document.body.textContent).toContain('invited agent');
     await ui.type('Message', '@Developer hello'); await ui.click('Send');
     expect(requests.find(r => r.action === 'send')).toMatchObject({ recipient: agent.id, goal: false });
+  });
+});
+
+test.each(['deleted', 'account-replaced'])('room settings retain an unavailable %s participant and allow a new default', async reason => {
+  await withDOM(async ui => {
+    const room = snapshot().rooms[0]!;
+    const newcomer = { ...specialistAgent(), id: 'new', name: 'New agent', accountId: 'new-account' };
+    const replacement = { ...specialistAgent(), id: 'dev', name: 'Replacement', accountId: 'other-account' };
+    const requests: ChatsRequest[] = [];
+    await ui.render(<RoomDialog room={room} agents={reason === 'deleted' ? [newcomer] : [replacement, newcomer]} engines={[]}
+      onSave={async request => { requests.push(request); }} onClose={() => {}} />);
+    const old = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(old.checked).toBe(true); expect(old.disabled).toBe(true);
+    expect(old.closest('label')?.textContent).toContain('Development · Unavailable');
+    expect(document.body.textContent).not.toContain('Replacement');
+    expect(document.querySelector<HTMLButtonElement>('[aria-label="Default agent"]')?.disabled).toBe(true);
+    await ui.click('Save participants'); expect(requests).toHaveLength(0);
+    const added = document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1]!;
+    await act(async () => added.click());
+    await ui.click('Default agent');
+    const options = [...document.querySelectorAll('[role="menuitemradio"]')];
+    expect(options.map(e => e.textContent)).toEqual(['New agent']);
+    await ui.click('New agent');
+    await ui.click('Save participants');
+    expect(requests).toEqual([{ action: 'invite', roomId: 'room', members: ['dev', 'new'], defaultAgentId: 'new' }]);
+  });
+});
+
+test('room settings recheck a default whose account changes while the dialog is open', async () => {
+  await withDOM(async ui => {
+    const room = snapshot().rooms[0]!, requests: ChatsRequest[] = [];
+    const render = (accountId: string) => ui.render(<RoomDialog room={room} agents={[{ ...specialistAgent(), id: 'dev', name: 'Development', accountId }]} engines={[]}
+      onSave={async request => { requests.push(request); }} onClose={() => {}} />);
+    await render('account');
+    expect(document.querySelector<HTMLButtonElement>('[aria-label="Default agent"]')?.disabled).toBe(false);
+    await render('replacement');
+    expect(document.body.textContent).toContain('Unavailable');
+    await ui.click('Save participants'); expect(requests).toHaveLength(0);
+    await render('account'); await ui.click('Save participants');
+    expect(requests).toHaveLength(1);
   });
 });

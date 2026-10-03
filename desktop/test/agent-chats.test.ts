@@ -109,6 +109,40 @@ test('invitation is additive and permits the newly invited collaborator without 
   expect(next.messages.find(m => m.id === 'normal')?.recipient).toBe('planner');
 });
 
+test.each(['deleted', 'unassigned', 'account-replaced'])('inviting after a participant is %s preserves history without transferring its identity', async reason => {
+  const f = fixture(); f.send('goal');
+  const before = f.request({ action: 'list' });
+  const original = structuredClone(f.agents[1]!);
+  const binding = bindingFor(f.workspace, 'docker:test', 'dev', 'account-0');
+  const message: Message = { id: 'q', questionId: 'q', taskId: before.messages[0]!.taskId!, from: 'dev', to: 'planner', roomId: 'room', kind: 'question', text: 'Help' };
+  if (reason === 'deleted') f.agents.splice(1, 1);
+  else if (reason === 'unassigned') f.agents[1]!.assignments = [];
+  else { f.agents[1]!.accountId = 'replacement'; f.agents[1]!.name = 'Replacement'; }
+
+  const after = f.request({ action: 'invite', roomId: 'room', members: ['dev', 'planner', 'outside'], defaultAgentId: 'outside' });
+  expect(after.rooms[0]!.members.slice(0, 2)).toEqual(before.rooms[0]!.members);
+  expect(after.messages).toEqual(before.messages);
+  expect(after.rooms[0]!.defaultAgentId).toBe('outside');
+  expect(f.service.rooms.allowed(binding, message)).toBe(false);
+  expect(f.service.rooms.allowed(binding, { ...message, to: 'outside' })).toBe(true);
+  expect(() => f.send('unavailable', { recipient: 'planner' })).toThrow('participant');
+  expect(() => f.request({ action: 'invite', roomId: 'room', members: ['dev', 'planner', 'outside'], defaultAgentId: 'planner' })).toThrow('identity is unavailable');
+  expect(f.request({ action: 'list' })).toEqual(after);
+  f.send('new-member', { goal: false }); await f.service.tick();
+  expect(f.sent.some(s => s.agent === 'outside')).toBe(true);
+
+  const index = f.agents.findIndex(a => a.id === original.id);
+  if (index < 0) f.agents.push(original); else f.agents[index] = original;
+  f.request({ action: 'invite', roomId: 'room', members: ['dev', 'planner', 'outside'], defaultAgentId: 'planner' });
+  expect(f.service.rooms.allowed(binding, message)).toBe(true);
+});
+
+test('unknown new invitees are rejected without changing saved membership', () => {
+  const f = fixture(), before = f.request({ action: 'list' });
+  expect(() => f.request({ action: 'invite', roomId: 'room', members: ['dev', 'planner', 'unknown'], defaultAgentId: 'dev' })).toThrow('registered agent');
+  expect(f.request({ action: 'list' })).toEqual(before);
+});
+
 test('discussion after completion does not reopen the verified goal, including a send/completion race', async () => {
   const f = fixture(); f.send('goal'); await f.service.tick();
   f.send('late', { threadId: 'goal', goal: false, text: 'Explain the result' });

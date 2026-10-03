@@ -52,8 +52,11 @@ export function createAgentChats(options: Options) {
         s.rooms.push({ id: input.id, workspace, name: input.name, engineId: input.engineId, defaultAgentId: input.defaultAgentId, members: selected, createdAt: new Date().toISOString() });
       });
     } else if (input.action === 'invite') {
-      const room = roomFor(workspace, input.roomId), selected = members(workspace, input.members);
-      if (room.members.some(m => !selected.some(n => n.id === m.id && n.accountId === m.accountId))) throw new Error('Existing room identities must be retained.');
+      const room = roomFor(workspace, input.roomId);
+      if (room.members.some(m => !input.members.includes(m.id))) throw new Error('Existing room identities must be retained.');
+      // Historical membership survives deletion or account changes; inviting must never rebind it.
+      const selected = input.members.map(id => room.members.find(m => m.id === id) ?? members(workspace, [id])[0]!);
+      if (room.members.some(m => m.id === input.defaultAgentId)) assertCurrentMember(room, input.defaultAgentId);
       store().update(s => { Object.assign(s.rooms.find(r => r.id === room.id)!, { members: selected, defaultAgentId: input.defaultAgentId }); });
     } else if (input.action === 'send') {
       const room = roomFor(workspace, input.roomId), state = store().all();
