@@ -5,6 +5,7 @@ import { LiquidGlassPanel, LiquidGlassSelect, NeumorphicButton, NeumorphicTextFi
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import type { AgentChatsApi, ChatsRequest, ChatsSnapshot, ChatTaskTarget, RoomMessage } from '../../../../shared/agent-chats';
+import { CHAT_GOAL_TURN_LIMIT } from '../../../../shared/agent-chats';
 import type { AgentRegistryApi, SpecialistAgent } from '../../../../shared/agent-registry';
 import type { AgentEngineInfo, AgentManagementApi } from '../../../../shared/agent-management';
 import { AgentAvatar } from '../../shared/agent-management/AgentAvatar';
@@ -25,6 +26,7 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
   const version = useRef(0), alive = useRef(true);
   const pending = useRef<{ key: string; id: string } | null>(null);
   const sidebar = useAutoHideScrollbars<HTMLElement>(), timeline = useAutoHideScrollbars<HTMLDivElement>();
+  const summaryScroll = useAutoHideScrollbars<HTMLElement>();
   useEffect(() => { alive.current = true; return () => { alive.current = false; version.current++; }; }, []);
   useEffect(() => {
     if (!active || !api) return;
@@ -64,6 +66,13 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
     node.scrollTop = !position || position.pinned ? node.scrollHeight : position.top;
   }, [active, draftKey, visibleCount]);
   const owner = root?.recipient ?? room?.defaultAgentId;
+  const goalState = root?.goalProgress;
+  const needsRecovery = root?.status !== 'completed' && (root?.status === 'blocked' || root?.status === 'unknown'
+    || goalState?.phase === 'blocked' || goalState?.phase === 'unknown'
+    || (goalState?.turns ?? 0) >= (goalState?.turnLimit ?? CHAT_GOAL_TURN_LIMIT));
+  const ownerSelected = recipient === 'default' || recipient === owner;
+  const recoveryBlock = needsRecovery ? goalState ? goalState.resumeBlocked : 'Checking the saved goal and worker state.' : null;
+  const resumeGoal = needsRecovery && ownerSelected && !recoveryBlock;
   async function mutate(request: ChatsRequest) {
     if (!api) throw new Error('Restart the desktop app to load Chats.');
     version.current++;
@@ -80,6 +89,7 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
       if (!mention) { setError('Choose an invited agent in the recipient menu for this @mention.'); return; }
       to = mention.id;
     }
+    if (needsRecovery && (to === null || to === owner) && recoveryBlock) { setError(recoveryBlock); return; }
     const key = JSON.stringify([room.id, selectedThread, to, text, goal]);
     if (pending.current?.key !== key) pending.current = { key, id: crypto.randomUUID() };
     const id = pending.current.id;
@@ -126,6 +136,14 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
       <header className={styles.header}>{threadId && <TooltipButton variant="ghost" size="icon" title="Back to room" aria-label="Back to room" disabled={sending} onClick={() => { setThreadId(null); setRecipient('default'); }}><ArrowLeft aria-hidden="true" /></TooltipButton>}<h2>{threadId ? 'Goal thread' : room?.name ?? 'Chats'}</h2>
         {room && <TooltipButton variant="ghost" size="icon" title="Room participants" aria-label="Room participants" onClick={() => setDialog('participants')}><Users aria-hidden="true" /></TooltipButton>}</header>
       {room && <div className={styles.participants}>{room.members.map(m => m.name).join(' · ')}<span>Default: {name(owner ?? null)}</span></div>}
+      {root && <section ref={summaryScroll} className={styles.goalSummary} aria-label="Goal progress">
+        <div className={styles.metadata}><strong>Goal · {goalState?.phase ?? root.status ?? 'Checking'}</strong>
+          <span>Turns: {goalState?.turns ?? 'Unknown'} / {goalState?.turnLimit ?? CHAT_GOAL_TURN_LIMIT}</span></div>
+        {goalState?.progress && <p>{goalState.progress}</p>}
+        {(goalState?.reason || root.error) && <p>Reason: {goalState?.reason || root.error}</p>}
+        <p>Next action: {goalState?.nextAction || 'No next action recorded.'}</p>
+        {needsRecovery && <p role="status">{recoveryBlock ?? 'Add the missing information below to resume the same goal. Its completion criteria and verification requirements remain in place.'}</p>}
+      </section>}
       {error && <p className={styles.notice} role="alert">{error}</p>}
       {!api && <p className={styles.empty}>Restart the desktop app to load Chats.</p>}
       <div ref={attachTimeline} onScroll={e => { const node = e.currentTarget; scrollPositions.current.set(draftKey, { top: node.scrollTop, pinned: node.scrollHeight - node.clientHeight - node.scrollTop < 48 }); }} className={styles.timeline} key={`${roomId}/${threadId}`} aria-label="Room messages">
@@ -136,8 +154,8 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
       {room && <form className={styles.composer} onSubmit={e => { e.preventDefault(); void send(); }}>
         <div className={styles.composerControls}><LiquidGlassSelect ariaLabel="Message recipient" value={recipient} options={[{ value: 'default', label: `Default · ${name(owner ?? null)}` }, ...room.members.map(m => ({ value: m.id, label: `@${m.name}` }))]} onChange={setRecipient} disabled={sending} />
           {!threadId && <LiquidGlassSelect ariaLabel="Message type" value={goal ? 'goal' : 'message'} options={[{ value: 'message', label: 'Message' }, { value: 'goal', label: 'New goal' }]} onChange={v => setGoal(v === 'goal')} disabled={sending} />}</div>
-        <NeumorphicTextField multiline variant="standard" aria-label="Message" placeholder={goal ? 'Describe the goal and completion conditions…' : 'Message the selected agent…'} value={draft} maxLength={16000} onChange={e => setDrafts(all => ({ ...all, [draftKey]: e.target.value }))} />
-        <div className={styles.actions}><NeumorphicButton variant="standard" type="submit" disabled={sending || !draft.trim() || !api}>{sending ? 'Saving…' : goal && !threadId ? 'Start goal' : 'Send'}</NeumorphicButton></div>
+        <NeumorphicTextField multiline variant="standard" aria-label="Message" placeholder={resumeGoal ? 'Add the missing information to resume this goal…' : goal ? 'Describe the goal and completion conditions…' : 'Message the selected agent…'} value={draft} maxLength={16000} onChange={e => setDrafts(all => ({ ...all, [draftKey]: e.target.value }))} />
+        <div className={styles.actions}><NeumorphicButton variant="standard" type="submit" disabled={sending || !draft.trim() || !api || (ownerSelected && !!recoveryBlock)}>{sending ? 'Saving…' : resumeGoal ? 'Send and resume goal' : goal && !threadId ? 'Start goal' : 'Send'}</NeumorphicButton></div>
       </form>}
     </section>
     {active && dialog && <RoomDialog room={dialog === 'participants' ? room : undefined} agents={agents} engines={engines} onSave={mutate} onClose={() => setDialog(null)} />}

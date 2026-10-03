@@ -147,3 +147,59 @@ test('room settings recheck a default whose account changes while the dialog is 
     expect(requests).toHaveLength(1);
   });
 });
+
+function recoverySnapshot(block: string | null = null): ChatsSnapshot {
+  const data = snapshot();
+  Object.assign(data.messages[0]!, { status: 'blocked', goalProgress: { phase: 'blocked', turns: 2, turnLimit: 8,
+    progress: 'Requirements reviewed', reason: 'Choose the sign-in method', nextAction: 'Provide the sign-in method', resumeBlocked: block } });
+  return data;
+}
+
+test('blocked goal displays its progress and sends a follow-up to the same owner and thread', async () => {
+  await withDOM(async ui => {
+    const requests: ChatsRequest[] = [];
+    const api = { request: async (request: ChatsRequest) => { requests.push(request); return recoverySnapshot(); } };
+    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.click('Open goal thread · 1');
+    const panel = document.querySelector('[aria-label="Goal progress"]');
+    expect(panel?.textContent).toContain('Goal · blocked');
+    expect(panel?.textContent).toContain('Turns: 2 / 8');
+    expect(panel?.textContent).toContain('Requirements reviewed');
+    expect(panel?.textContent).toContain('Choose the sign-in method');
+    expect(panel?.textContent).toContain('Provide the sign-in method');
+    await ui.type('Message', 'Use email sign-in'); await ui.click('Send and resume goal');
+    expect(requests.filter(r => r.action === 'send')).toMatchObject([{ roomId: 'room', threadId: 'goal', recipient: null, text: 'Use email sign-in', goal: false }]);
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('');
+  });
+});
+
+test.each(['Execution outcome is unknown.', 'Goal turn limit reached (8/8).', 'Checking the saved goal and worker state.'])('recovery cannot send while blocked: %s', async reason => {
+  await withDOM(async ui => {
+    const requests: ChatsRequest[] = [];
+    const api = { request: async (request: ChatsRequest) => { requests.push(request); return recoverySnapshot(reason); } };
+    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.click('Open goal thread · 1'); await ui.type('Message', 'Continue');
+    expect(document.querySelector('[aria-label="Goal progress"]')?.textContent).toContain(reason);
+    await ui.click('Send');
+    expect(requests.some(r => r.action === 'send')).toBe(false);
+    // A keyboard form submit must pass the same guard as the disabled button.
+    await act(async () => document.querySelector('form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
+    expect(requests.some(r => r.action === 'send')).toBe(false);
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Continue');
+  });
+});
+
+test('recovery save failure preserves draft and retry identity', async () => {
+  await withDOM(async ui => {
+    const requests: ChatsRequest[] = []; let fail = true;
+    const api = { request: async (request: ChatsRequest) => {
+      if (request.action === 'send') { requests.push(request); if (fail) throw new Error('Save failed'); }
+      return recoverySnapshot();
+    } };
+    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.click('Open goal thread · 1'); await ui.type('Message', 'Use email'); await ui.click('Send and resume goal');
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Use email');
+    fail = false; await ui.click('Send and resume goal');
+    expect(requests).toHaveLength(2); expect(requests[1]).toEqual(requests[0]);
+  });
+});

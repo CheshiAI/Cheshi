@@ -8,6 +8,8 @@ import { bindingFor, type Message } from '../lib/agent-orchestration/mailbox.mts
 import { specialistAgent } from './agent-registry-fixtures';
 import type { AgentDetails } from '../shared/agent-management';
 import type { ChatsRequest } from '../shared/agent-chats';
+import { CHAT_GOAL_TURN_LIMIT, parseChatsSnapshot } from '../shared/agent-chats';
+import { MAX_GOAL_TURNS } from '../../experiments/codex-specialists/src/decision';
 const directories: string[] = [];
 afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }); });
 function fixture() {
@@ -152,4 +154,86 @@ test('discussion after completion does not reopen the verified goal, including a
   expect(f.sent[1]?.input).toBeUndefined();
   expect(f.sent[1]?.task).not.toBe(f.sent[0]?.task);
   expect(f.sent[1]?.goal).toBe(false);
+});
+
+async function blockedFixture() {
+  const f = fixture(); f.send('goal'); await f.service.tick();
+  const task = f.details.tasks[0]!;
+  task.status = 'interrupted'; task.error = 'Which sign-in method?';
+  task.inspection = { finishedAt: null, threadId: 'native-thread', conversation: task.id, messages: [], evidence: [], recall: [], error: null,
+    goal: { phase: 'blocked', turns: 2, verificationRequired: true, criteria: [{ criterion: 'Login works', met: false, evidence: '' }], pending: null,
+      decisions: [{ action: 'blocked', progress: 'Requirements reviewed', reason: 'Which sign-in method?', nextAction: 'Provide the sign-in method', criteria: [] }] } };
+  await f.service.tick();
+  return { ...f, task };
+}
+
+test('blocked goal recovery retains task identity and evidence, deduplicates delivery, and refreshes after restart', async () => {
+  expect(CHAT_GOAL_TURN_LIMIT).toBe(MAX_GOAL_TURNS);
+  const f = await blockedFixture(), before = structuredClone(f.task.inspection);
+  const state = parseChatsSnapshot(f.request({ action: 'list' }));
+  expect(state.messages[0]?.goalProgress).toMatchObject({ phase: 'blocked', turns: 2, turnLimit: 8,
+    reason: 'Which sign-in method?', progress: 'Requirements reviewed', nextAction: 'Provide the sign-in method', resumeBlocked: null });
+  const followup = { action: 'send', id: 'answer', roomId: 'room', threadId: 'goal', recipient: null, text: 'Use email', goal: false } as const;
+  f.request(followup); f.request(followup);
+  expect(() => f.request({ ...followup, id: 'double' })).toThrow('pending');
+  const restarted = createAgentChats(f.options);
+  expect(restarted.request(f.workspace, { action: 'list' }).messages[0]?.goalProgress?.resumeBlocked).not.toBeNull();
+  await restarted.tick(); await restarted.tick();
+  restarted.request(f.workspace, followup); await restarted.tick();
+  expect(f.sent.filter(s => s.input === 'answer')).toEqual([{ agent: 'dev', task: f.task.id, room: 'room', input: 'answer', goal: false }]);
+  expect(f.task.inspection).toEqual(before);
+  expect(f.task.inputs).toEqual([{ id: 'answer', prompt: 'Use email' }]);
+});
+
+test.each(['unknown', 'limit', 'offline', 'unavailable'])('blocked recovery rejects %s without saving or dispatching new work', async reason => {
+  const f = await blockedFixture();
+  if (reason === 'unknown') f.task.status = 'unknown';
+  if (reason === 'limit') f.task.inspection!.goal!.turns = 8;
+  if (reason === 'offline') f.details.ready = false;
+  if (reason === 'unavailable') f.agents[0]!.assignments = [];
+  await f.service.tick();
+  const state = f.request({ action: 'list' });
+  expect(state.messages[0]?.goalProgress?.resumeBlocked).not.toBeNull();
+  expect(() => f.send('resume', { threadId: 'goal', goal: false })).toThrow();
+  expect(f.request({ action: 'list' }).messages).toHaveLength(1);
+  expect(f.sent).toHaveLength(1);
+});
+
+test.each(['limit', 'unknown'])('dispatch rechecks %s after an eligible recovery was queued', async reason => {
+  const f = await blockedFixture();
+  f.send('resume', { threadId: 'goal', goal: false });
+  if (reason === 'limit') f.task.inspection!.goal!.turns = 8;
+  else f.task.status = 'unknown';
+  await f.service.tick(); await f.service.tick();
+  expect(f.sent).toHaveLength(1);
+  expect(f.request({ action: 'list' }).messages.find(m => m.id === 'resume')?.error).toBeTruthy();
+});
+
+test('an offline blocked goal becomes resumable after the worker recovers', async () => {
+  const f = await blockedFixture(); f.details.ready = false; await f.service.tick();
+  expect(f.request({ action: 'list' }).messages[0]?.goalProgress?.resumeBlocked).toContain('available worker');
+  f.details.ready = true; await f.service.tick();
+  expect(f.request({ action: 'list' }).messages[0]?.goalProgress?.resumeBlocked).toBeNull();
+  f.send('resume', { threadId: 'goal', goal: false }); await f.service.tick();
+  expect(f.sent).toHaveLength(2);
+});
+
+test('a restarted host requires a fresh worker observation before accepting blocked recovery', async () => {
+  const f = await blockedFixture(), restarted = createAgentChats(f.options);
+  const request = { action: 'send', id: 'resume', roomId: 'room', threadId: 'goal', recipient: null, text: 'Use email', goal: false } as const;
+  expect(() => restarted.request(f.workspace, request)).toThrow('Checking');
+  await restarted.tick();
+  restarted.request(f.workspace, request); await restarted.tick();
+  expect(f.sent).toHaveLength(2);
+});
+
+test('goal summaries preserve compatibility and reject malformed budget and recovery flags', async () => {
+  const f = await blockedFixture(), data = f.request({ action: 'list' });
+  const raw = structuredClone(data) as unknown as { messages: { goalProgress: { turns: unknown; resumeBlocked: unknown } }[] };
+  raw.messages[0]!.goalProgress.turns = '2';
+  expect(() => parseChatsSnapshot(raw)).toThrow('budget');
+  raw.messages[0]!.goalProgress.turns = 2; raw.messages[0]!.goalProgress.resumeBlocked = false;
+  expect(() => parseChatsSnapshot(raw)).toThrow();
+  delete data.messages[0]!.goalProgress;
+  expect(parseChatsSnapshot(data).messages[0]?.goalProgress).toBeUndefined();
 });

@@ -1,6 +1,12 @@
 import { agentRecord, agentText, parseAgentEngineId, parseAgentId } from './agent-management.ts';
 
 export const AGENT_CHATS_CHANNEL = 'cheshi:agent-chats:request';
+// Decision protocol 1 has a fixed eight-turn budget. Keep this aligned with the worker.
+export const CHAT_GOAL_TURN_LIMIT = 8;
+export interface RoomGoalProgress {
+  phase: string; progress: string; reason: string; nextAction: string;
+  turns: number | null; turnLimit: number; resumeBlocked: string | null;
+}
 export interface ChatMember { id: string; accountId: string; name: string }
 export interface AgentRoom {
   id: string; workspace: string; name: string; engineId: string; members: ChatMember[]; defaultAgentId: string; createdAt: string;
@@ -9,6 +15,7 @@ export interface RoomMessage {
   id: string; roomId: string; threadId: string | null; sender: string; recipient: string | null;
   kind: 'message' | 'goal' | 'question' | 'reply' | 'verification_request' | 'verification_result';
   text: string; createdAt: string; taskId?: string; status?: string; error?: string | null;
+  goalProgress?: RoomGoalProgress;
 }
 export interface RoomJob {
   id: string; roomId: string; threadId: string | null; agentId: string; taskId: string; prompt: string;
@@ -51,6 +58,14 @@ function entries<T>(value: unknown, parse: (value: unknown) => T, max: number): 
   return value.map(parse);
 }
 function optionalId(value: unknown): string | null { return value === null ? null : chatId(value); }
+function parseGoalProgress(value: unknown): RoomGoalProgress {
+  const v = agentRecord(value);
+  if ((v.turns !== null && (!Number.isSafeInteger(v.turns) || Number(v.turns) < 0))
+    || v.turnLimit !== CHAT_GOAL_TURN_LIMIT) throw new Error('Invalid goal budget.');
+  return { phase: required(v.phase, 100), progress: agentText(v.progress, 4000), reason: agentText(v.reason, 20_000),
+    nextAction: agentText(v.nextAction, 4000), turns: v.turns as number | null, turnLimit: CHAT_GOAL_TURN_LIMIT,
+    resumeBlocked: v.resumeBlocked === null ? null : required(v.resumeBlocked, 20_000) };
+}
 export function parseRoom(value: unknown): AgentRoom {
   const v = agentRecord(value), members = entries(v.members, raw => {
     const m = agentRecord(raw); return { id: chatId(m.id), name: required(m.name, 100), accountId: required(m.accountId, 200) };
@@ -66,7 +81,8 @@ export function parseRoomMessage(value: unknown): RoomMessage {
   return { id: chatId(v.id), roomId: chatId(v.roomId), threadId: optionalId(v.threadId), sender: chatId(v.sender), recipient: optionalId(v.recipient),
     kind: v.kind as RoomMessage['kind'], text: agentText(v.text, 500_000), createdAt: required(v.createdAt, 100),
     ...(v.taskId === undefined ? {} : { taskId: chatId(v.taskId) }), ...(v.status === undefined ? {} : { status: required(v.status, 100) }),
-    ...(v.error === undefined ? {} : { error: v.error === null ? null : agentText(v.error, 20_000) }) };
+    ...(v.error === undefined ? {} : { error: v.error === null ? null : agentText(v.error, 20_000) }),
+    ...(v.goalProgress === undefined ? {} : { goalProgress: parseGoalProgress(v.goalProgress) }) };
 }
 export function parseRoomJob(value: unknown): RoomJob {
   const v = agentRecord(value);
