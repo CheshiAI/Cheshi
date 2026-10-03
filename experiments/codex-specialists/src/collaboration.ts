@@ -3,7 +3,7 @@ import { assertSnapshot, snapshotArtifacts } from './verification.ts';
 import { assertResult, list, boundedText, verificationRequest, verificationResult, type VerificationResult } from './verification-contract.ts';
 import { createHash } from 'node:crypto';
 import { AgentStore, type Task } from './store.ts';
-import { identifier, message, peers, roomRoster, type CollaborationMessage } from './collaboration-contract.ts';
+import { appendOutgoing, identifier, message, peers, roomRoster, type CollaborationMessage } from './collaboration-contract.ts';
 import { record, textValue, type JsonRecord } from './protocol.ts';
 
 const idFor = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -103,13 +103,11 @@ export class WorkerCollaboration {
         if (!task.goal.criteria.length) task.goal.criteria = criteria.map(criterion => ({ criterion, met: false, evidence: '' }));
       }
       const previous = state.collaboration.outgoing.find(m => m.id === item.id);
-      if (previous && JSON.stringify(previous) !== JSON.stringify(item)) throw new Error('Request id already belongs to different content.');
       if (!previous) {
-        if (state.collaboration.outgoing.length >= 10_000) throw new Error('Collaboration history limit reached.');
         const pending = state.collaboration.outgoing.filter(m => ['question', 'verification_request'].includes(m.kind) && m.taskId === item.taskId);
         if (['question', 'verification_request'].includes(item.kind) && pending.length >= 16) throw new Error('Question budget reached. Summarize unresolved points for the user.');
-        state.collaboration.outgoing.push(item);
       }
+      appendOutgoing(state.collaboration, item);
     });
   }
 
@@ -129,10 +127,24 @@ export class WorkerCollaboration {
     return { requestId: id, status: 'queued', artifacts: request.artifacts };
   }
   publishVerification(task: Task, result: VerificationResult): void {
+    this.enqueue(this.verificationMessage(task, result));
+  }
+  verificationRecoveryMessage(task: Task, result: VerificationResult): CollaborationMessage {
+    const proposed = this.verificationMessage(task, result);
+    const existing = this.store.snapshot().collaboration.outgoing.filter(m => m.questionId === proposed.questionId && m.kind === 'verification_result');
+    if (!existing.length) return proposed;
+    // A prior publish may have committed before the task completion write failed.
+    // Preserve that durable result, even when the workspace has since changed.
+    const previous = existing[0]!;
+    const validated = this.verificationMessage(task, verificationResult(JSON.parse(previous.text)));
+    if (existing.length !== 1 || JSON.stringify(previous) !== JSON.stringify(validated)) throw new Error('Saved verification result identity conflict.');
+    return previous;
+  }
+  private verificationMessage(task: Task, result: VerificationResult): CollaborationMessage {
     const request = this.store.snapshot().collaboration.incoming.find(m => m.id === task.verification && m.kind === 'verification_request');
-    if (!request) throw new Error('Original verification request is unavailable.');
+    if (!request || request.roomId !== task.roomId || request.to !== this.agentId) throw new Error('Original verification request is unavailable or its scope changed.');
     assertResult(verificationRequest(JSON.parse(request.text)), result);
-    this.enqueue({ id: idFor(`result/${request.id}`), questionId: request.id, kind: 'verification_result',
+    return message({ id: idFor(`result/${request.id}`), questionId: request.id, kind: 'verification_result',
       from: this.agentId, to: request.from, taskId: request.taskId, ...(request.roomId ? { roomId: request.roomId } : {}), text: JSON.stringify(result) });
   }
   assertVerified(task: Task, consuming: string[] = []): void {

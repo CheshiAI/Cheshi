@@ -52,7 +52,7 @@ export function AgentTaskDetail({ task }: { task: AgentTask }) {
     {task.recovery && <section aria-label="Execution inspection"><h3>Execution inspection</h3>
       <p>Confirmed execution status: {task.recovery.status} · Checked: {task.recovery.checkedAt}</p>
       <p>Conversation: {task.recovery.threadId} · Turn: {task.recovery.turnId}</p>
-      <p>This confirms the saved execution ended. It does not establish goal completion or send a collaboration reply.</p>
+      <p>This confirms the saved execution ended. Verification verdicts are shown separately; goal completion still requires the owner's decision and valid evidence.</p>
     </section>}
     <section aria-label="Task goal"><h3>Goal</h3><div className={styles.markdown} aria-label="Task request"><MessageContent text={task.prompt} /></div></section>
     <section aria-label="Completion criteria"><h3>Completion criteria</h3>

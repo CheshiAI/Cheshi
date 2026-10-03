@@ -64,8 +64,10 @@ export function AgentTaskResults({ requestedTaskId, onBackToChats, tasks, loadin
         ? 'No task results available.' : 'Start the worker to read its stored task results.'}</p>}
     </div>
     {task && <div ref={content} className={styles.content} aria-label="Task result content" tabIndex={-1}>
-      {task.status === 'unknown' && task.inspection?.recoveryRoomId && onRecover && <section aria-label="Consultation recovery">
-        <p>Inspect the saved execution result before retrying or deleting. This does not send a reply or restart the consultation.</p>
+      {task.status === 'unknown' && task.inspection?.recoveryRoomId && onRecover && <section aria-label={task.inspection.recoveryKind === 'verification' ? 'Verification recovery' : 'Consultation recovery'}>
+        <p>{task.inspection.recoveryKind === 'verification'
+          ? 'Inspect the saved execution and verification evidence. A confirmed verdict or inconclusive result is delivered to the requesting agent; execution ending alone does not mean verification passed.'
+          : 'Inspect the saved execution result before retrying or deleting. This does not send a reply or restart the consultation.'}</p>
         <NeumorphicButton variant="standard" disabled={recoveryDisabled || !running}
           onClick={() => onRecover(task.id, task.inspection!.recoveryRoomId!)}>Inspect execution</NeumorphicButton>
       </section>}

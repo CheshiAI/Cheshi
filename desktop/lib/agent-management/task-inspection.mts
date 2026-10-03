@@ -39,8 +39,10 @@ export function inspectAgentTasks(value: unknown, owner?: { id: string; name: st
       const recall = state.recall === undefined ? null : inspectionList(state.recall, inspectionRecord, 64)
         .filter(item => item.taskId === task.id).map(({ id, activity }) => ({ id, activity }));
       const detail = parseTaskInspection({ finishedAt: original.finishedAt, threadId: original.threadId, conversation: original.conversation,
-        ...(task.status === 'unknown' && typeof original.consultation === 'string' && original.consultation && original.verification === undefined && original.roomId !== undefined
-          ? { recoveryRoomId: original.roomId } : {}),
+        ...(task.status === 'unknown' && original.goal === undefined && original.roomId !== undefined
+          && ((typeof original.consultation === 'string' && original.consultation && original.verification === undefined)
+            || (typeof original.verification === 'string' && original.verification && original.consultation === undefined))
+          ? { recoveryRoomId: original.roomId, recoveryKind: original.verification ? 'verification' : 'consultation' } : {}),
         goal: original.goal === undefined ? null : parseTaskGoal(original.goal), messages,
         evidence: original.verificationEvidence === undefined ? [] : inspectionList(original.verificationEvidence, parseTaskEvidence, 32), recall, error: null });
       return { ...task, inspection: detail };

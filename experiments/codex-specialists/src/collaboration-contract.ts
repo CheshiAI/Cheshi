@@ -17,6 +17,13 @@ export interface CollaborationState {
   consumed: string[];
 }
 export const emptyCollaboration = (): CollaborationState => ({ peers: [], outgoing: [], acknowledged: [], incoming: [], consumed: [] });
+export function appendOutgoing(state: CollaborationState, input: CollaborationMessage): void {
+  const item = message(input), previous = state.outgoing.find(m => m.id === item.id);
+  if (previous && JSON.stringify(previous) !== JSON.stringify(item)) throw new Error('Request id already belongs to different content.');
+  if (previous) return;
+  if (state.outgoing.length >= 10_000) throw new Error('Collaboration history limit reached.');
+  state.outgoing.push(item);
+}
 export function identifier(value: unknown): string {
   const text = textValue(value, 'collaboration identifier');
   if (!/^[a-zA-Z0-9_-]{1,80}$/.test(text)) throw new Error('Invalid collaboration identifier.');

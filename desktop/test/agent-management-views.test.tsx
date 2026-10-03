@@ -816,12 +816,12 @@ test('task inspection shows blocked progress, independent failures and refreshes
   });
 });
 
-test('consultation inspection uses the saved room, blocks duplicate clicks and preserves unknown on rejection', async () => {
+test.each(['consultation', 'verification'])('%s inspection uses the saved room, blocks duplicate clicks and preserves unknown on rejection', async kind => {
   const { SpecialistRuntimePanel } = await import('../frontend/src/features/agents/SpecialistRuntimePanel');
   const { AgentRegistryModel } = await import('../frontend/src/features/agents/agentRegistryModel');
   const { inspectAgentTasks } = await import('../lib/agent-management/task-inspection.mts');
   const agent = specialistAgent();
-  const tasks = inspectAgentTasks({ tasks: [{ id: 'q_question', consultation: 'question', roomId: 'room', status: 'unknown',
+  const tasks = inspectAgentTasks({ tasks: [{ id: 'q_question', [kind]: 'question', roomId: 'room', status: 'unknown',
     prompt: 'Consult', output: '', error: 'Unconfirmed', createdAt: '2026-10-03' }] });
   const details = { agent: { id: 'worker', name: agent.name, image: 'worker', state: 'running' }, ready: true, busy: false,
     authenticated: true, threadId: null, error: null, logs: '', tasks };
@@ -837,6 +837,8 @@ test('consultation inspection uses the saved room, blocks duplicate clicks and p
       await ui.render(<SpecialistRuntimePanel agent={agent} model={registry} engineId="docker:local"
         engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} onSettings={() => {}} />);
       await ui.click('Open task: q_question');
+      expect(document.querySelector(kind === 'verification' ? '[aria-label="Verification recovery"]' : '[aria-label="Consultation recovery"]')).not.toBeNull();
+      if (kind === 'verification') expect(document.body.textContent).toContain('execution ending alone does not mean verification passed');
       await ui.click('Inspect execution'); await ui.click('Inspect execution');
       expect(calls).toEqual([{ agentId: agent.id, engineId: 'docker:local', action: 'recover', taskId: 'q_question', roomId: 'room' }]);
       await act(async () => attempt.reject(new Error('The saved turn has not ended.')));

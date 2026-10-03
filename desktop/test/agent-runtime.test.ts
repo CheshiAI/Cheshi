@@ -70,16 +70,16 @@ function fixture(linkedWorkspace = false) {
     account: async () => ({ home, models: [] }), management: { details: async () => details(),
       engines: async () => ({ engines: [], error: null }), snapshot: async engineId => ({ engineId, online: true, error: null, agents: [] }),
       control: async () => { throw new Error('unused'); } } });
-  const legacyRecovery = () => {
+  const legacyRecovery = (protocol = 1) => {
     const filename = join(runtimePath, 'runtime.json');
     const config = JSON.parse(readFileSync(filename, 'utf8'));
     const agent = registry.snapshot(workspace).agents[0]!;
     const assignment = agent.assignments.find(a => a.workspaceRoot === workspace)!;
     const profile = { role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,
       serviceTier: agent.serviceTier, permissions: agent.permissions, instructions: agent.instructions };
-    config.recoveryProtocol = 1;
+    config.recoveryProtocol = protocol;
     config.settingsFingerprint = createHash('sha256').update(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1,
-      historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 1, questionProtocol: 2,
+      historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: protocol, questionProtocol: 2,
       agent: profile, workspace: realpathSync(workspace), instructions: assignment.instructions })).digest('hex');
     config.revision = config.settingsFingerprint;
     labels['ai.cheshi.configuration'] = config.revision;
@@ -134,7 +134,7 @@ test('starts one project worker with isolated storage, readonly mount, private a
   const config = JSON.parse(f.calls.find(call => call.input)!.input!).configuration;
   expect(args.some(arg => arg.includes('runtime.json,readonly'))).toBe(false);
   expect(config.decisionProtocol).toBe(1);
-  expect(config.recoveryProtocol).toBe(2);
+  expect(config.recoveryProtocol).toBe(3);
   expect(config.verificationProtocol).toBe(1);
   expect(config.permissions).toEqual({ fileWrite: false, commandExecution: false });
   expect(config.instructions).toContain('Project instructions:');
@@ -300,16 +300,16 @@ test('question controls post only the authenticated owner task route with valida
   } finally { mock.mockRestore(); await f.runtime.dispose(); }
 });
 
-test('recovery-only worker upgrade preserves the volume and unknown outcome without submitting or deleting data', async () => {
+test.each([1, 2])('recovery protocol %s upgrade preserves the volume and unknown outcome without submitting or deleting data', async protocol => {
   const f = fixture();
   try {
-    await f.runtime.request(f.workspace, f.request()); f.legacyRecovery();
+    await f.runtime.request(f.workspace, f.request()); f.legacyRecovery(protocol);
     const tasks = [{ id: 'q_question', status: 'unknown', prompt: 'Consult', output: '', error: 'Unconfirmed', createdAt: '2026-10-03' }];
     f.setTasks(tasks);
     const start = f.calls.length;
     const result = await f.runtime.request(f.workspace, f.request());
     expect(result.details?.tasks).toEqual(tasks);
-    expect(JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8')).recoveryProtocol).toBe(2);
+    expect(JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8')).recoveryProtocol).toBe(3);
     const changes = f.calls.slice(start);
     expect(changes.some(c => c.args.includes('stop'))).toBe(true);
     expect(changes.some(c => c.args.includes('create'))).toBe(true);
@@ -322,7 +322,7 @@ test('recovery-only worker upgrade preserves the volume and unknown outcome with
 test.each(['busy', 'running', 'accepted', 'settings', 'instructions', 'current-protocol'])('unknown worker upgrade still rejects %s', async reason => {
   const f = fixture();
   try {
-    await f.runtime.request(f.workspace, f.request()); f.legacyRecovery();
+    await f.runtime.request(f.workspace, f.request()); f.legacyRecovery(2);
     f.setTasks([{ id: 'q_question', status: 'unknown', prompt: 'Consult', output: '', error: null, createdAt: '2026-10-03' },
       ...(['running', 'accepted'].includes(reason) ? [{ id: 'active', status: reason, prompt: 'Work', output: '', error: null, createdAt: '2026-10-03' }] : [])]);
     if (reason === 'busy') f.setBusy();
@@ -333,7 +333,7 @@ test.each(['busy', 'running', 'accepted', 'settings', 'instructions', 'current-p
     }
     if (reason === 'instructions' || reason === 'current-protocol') {
       const filename = join(f.runtimePath, 'runtime.json'), config = JSON.parse(readFileSync(filename, 'utf8'));
-      if (reason === 'instructions') config.instructions += 'changed'; else config.recoveryProtocol = 2;
+      if (reason === 'instructions') config.instructions += 'changed'; else config.recoveryProtocol = 3;
       writeFileSync(filename, JSON.stringify(config));
     }
     await fails(f.runtime.request(f.workspace, f.request()), 'Wait for this worker');

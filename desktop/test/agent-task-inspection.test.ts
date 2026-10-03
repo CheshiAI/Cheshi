@@ -85,10 +85,16 @@ test('inspection projects owner deadlines and explicit expiry reason and rejects
   expect(inspectAgentTasks(input)[0]?.inspection?.error).toContain('invalid');
 });
 
-test('only unknown room consultations expose the scoped inspection action', () => {
+test('only unknown room consultations and verifications expose the scoped inspection action', () => {
   const consultation = { ...task, id: 'q_question', roomId: 'room', consultation: 'question', status: 'unknown' };
   const project = (t: unknown) => parseAgentTasks(inspectAgentTasks({ tasks: [t] }))[0]!.inspection;
   expect(project(consultation)?.recoveryRoomId).toBe('room');
+  expect(project(consultation)?.recoveryKind).toBe('consultation');
+  const verification = { ...consultation, consultation: undefined, verification: 'request' };
+  expect(project(verification)).toMatchObject({ recoveryRoomId: 'room', recoveryKind: 'verification' });
+  for (const other of [{ ...verification, status: 'interrupted' }, { ...verification, roomId: undefined }, { ...verification, goal }]) {
+    expect(project(other)?.recoveryRoomId).toBeUndefined();
+  }
   for (const other of [{ ...consultation, status: 'interrupted' }, { ...consultation, roomId: undefined },
     { ...consultation, consultation: undefined }, { ...consultation, verification: 'verification' }]) {
     expect(project(other)?.recoveryRoomId).toBeUndefined();

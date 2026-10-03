@@ -325,7 +325,9 @@ export class SpecialistAgent {
   async recover(id: string, roomId: string): Promise<Task> {
     validateTaskId(id); validateTaskId(roomId);
     const task = this.store.task(id);
-    if (!task || task.roomId !== roomId || (!task.goal && !task.consultation) || task.verification) throw new TaskConflict('Unknown room goal or consultation.');
+    if (!task || task.roomId !== roomId || (!task.goal && !task.consultation && !task.verification)
+      || (task.verification && (task.goal || task.consultation))) throw new TaskConflict('Unknown room goal, consultation or verification.');
+    if (task.verification && (!this.verification || !this.collaboration)) throw new TaskConflict('Independent verification recovery is unavailable.');
     if (task.status !== 'unknown') {
       if (task.recovery) return task;
       throw new TaskConflict('Only an unknown execution can be inspected.');
@@ -340,6 +342,12 @@ export class SpecialistAgent {
       await this.client.request('thread/unsubscribe', { threadId: task.threadId });
       this.loadedThreads.delete(task.threadId);
       assertUnchangedRecovery(task, this.store.task(id));
+      if (task.verification) {
+        const outgoing = this.collaboration!.verificationRecoveryMessage(task, this.verification!.recover(task, result.receipt));
+        this.store.complete(id, { status: 'interrupted', output: result.output, recovery: result.receipt,
+          error: `Execution ended (${result.receipt.status}). The verification result is recorded separately. The owner must process it before deciding goal completion.` }, [task.verification], outgoing);
+        return this.store.task(id)!;
+      }
       const goal = task.goal;
       this.store.complete(id, { status: 'interrupted', output: result.output, recovery: result.receipt,
         error: task.consultation

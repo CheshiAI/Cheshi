@@ -700,7 +700,7 @@ test.each(['running', 'wrong-thread', 'wrong-workspace', 'missing-turn', 'later-
   expect(f.store.snapshot()).toEqual(before);
 });
 
-test('consultation inspection remains exclusive and leaves verification executions quarantined', async () => {
+test('consultation inspection remains exclusive and unconfigured verification recovery stays quarantined', async () => {
   const f = unknownConsultation(), gate = createDeferred<JsonRecord>();
   f.client.onRead = () => gate.promise;
   const operation = f.agent.recover('q_question', 'room');
@@ -711,6 +711,6 @@ test('consultation inspection remains exclusive and leaves verification executio
   await expectFailure(operation, 'changed during inspection');
   f.store.create('verifier', 'Verify', { roomId: 'room', verification: 'request' });
   f.store.update('verifier', { status: 'unknown', threadId: 'thread', turnId: 'turn' });
-  await expectFailure(f.agent.recover('verifier', 'room'), 'Unknown room');
+  await expectFailure(f.agent.recover('verifier', 'room'), 'recovery is unavailable');
   expect(f.store.task('verifier')?.status).toBe('unknown');
 });

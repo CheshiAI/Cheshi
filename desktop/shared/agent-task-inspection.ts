@@ -24,6 +24,7 @@ export interface TaskMessage {
 export interface TaskRecall { id: string; activity: HistoryRecallActivity }
 export interface TaskInspection {
   recoveryRoomId?: string;
+  recoveryKind?: 'consultation' | 'verification';
   finishedAt: string | null; threadId: string | null; conversation: string | null;
   goal: TaskGoal | null; messages: TaskMessage[]; evidence: TaskEvidence[];
   recall: TaskRecall[] | null; error: string | null;
@@ -95,6 +96,7 @@ export function parseTaskInspection(value: unknown): TaskInspection {
   if (v.recoveryRoomId !== undefined && (typeof v.recoveryRoomId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(v.recoveryRoomId))) throw new TypeError('Invalid recovery room.');
   return { finishedAt: nullableText(v.finishedAt), threadId: nullableText(v.threadId), conversation: nullableText(v.conversation),
     ...(v.recoveryRoomId === undefined ? {} : { recoveryRoomId: v.recoveryRoomId as string }),
+    ...(v.recoveryKind === undefined ? {} : { recoveryKind: choice(v.recoveryKind, ['consultation', 'verification'] as const) }),
     error: nullableText(v.error), goal: v.goal === null ? null : parseTaskGoal(v.goal),
     evidence: inspectionList(v.evidence, parseTaskEvidence, 32),
     messages: inspectionList(v.messages, raw => {

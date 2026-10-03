@@ -3,6 +3,7 @@ import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, rea
 import { join } from 'node:path';
 import { record, type JsonRecord } from './protocol.ts';
 import { AgentStore, type Task } from './store.ts';
+import type { RecoveryReceipt } from './recovery.ts';
 import { artifactPath, assertResult, list, verdict, verificationRequest, verificationResult,
   type Artifact, type Evidence, type VerificationRequest, type VerificationResult } from './verification-contract.ts';
 
@@ -107,7 +108,29 @@ export class WorkerVerification {
         return result;
       } catch { /* A stale snapshot must wake the owner for re-verification, never pass. */ }
     }
+    return this.inconclusive(request);
+  }
+  recover(task: Task, receipt: RecoveryReceipt): VerificationResult {
+    const request = this.request(task);
+    if (receipt.status === 'completed' && task.verificationDraft) {
+      try {
+        const result = verificationResult(task.verificationDraft);
+        assertResult(request, result);
+        assertRecordedEvidence(task, result);
+        assertSnapshot(this.workspace, request.artifacts);
+        return result;
+      } catch { /* A terminal turn alone cannot establish a verification verdict. */ }
+    }
+    return this.inconclusive(request);
+  }
+  private inconclusive(request: VerificationRequest): VerificationResult {
     return { verdicts: request.criteria.map(criterion => ({ criterion, verdict: 'inconclusive',
-      reason: 'No confirmed verification result for the current artifact snapshot.', evidenceIds: [] })), evidence: [] };
+      reason: 'No confirmed verification result for the current artifact snapshot. Request a new verification round.', evidenceIds: [] })), evidence: [] };
+  }
+}
+
+function assertRecordedEvidence(task: Task, result: VerificationResult): void {
+  if (JSON.stringify(result.evidence) !== JSON.stringify(task.verificationEvidence ?? [])) {
+    throw new Error('Verification draft does not match recorded evidence.');
   }
 }

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { record, textValue } from './protocol.ts';
 import { evidence, list, verificationResult, type Evidence, type VerificationResult } from './verification-contract.ts';
 import { parseGoal, type GoalState } from './decision.ts';
-import { collaborationState, emptyCollaboration, type CollaborationState } from './collaboration-contract.ts';
+import { appendOutgoing, collaborationState, emptyCollaboration, type CollaborationMessage, type CollaborationState } from './collaboration-contract.ts';
 import { recoveryReceipt, type RecoveryReceipt } from './recovery.ts';
 
 export const TASK_STATUSES = ['accepted', 'running', 'waiting', 'completed', 'interrupted', 'failed', 'unknown'] as const;
@@ -126,17 +126,19 @@ export class AgentStore {
     });
   }
 
-  complete(id: string, patch: Pick<Task, 'status' | 'output' | 'error' | 'goal' | 'recovery'>, consumed: string[] = []): void {
+  complete(id: string, patch: Pick<Task, 'status' | 'output' | 'error' | 'goal' | 'recovery'>, consumed: string[] = [], outgoing?: CollaborationMessage): void {
     const task = this.task(id);
     if (!task) throw new Error('Unknown task.');
     const result = { ...task, ...patch, ...(task.roomId ? { responses: [...(task.responses ?? []), { id: `response_${(task.responses?.length ?? 0) + 1}`, text: patch.output, status: patch.status }] } : {}), finishedAt: patch.status === 'waiting' ? null : new Date().toISOString() };
-    this.write(join(this.directory, 'artifacts', `${id}.json`), result);
-    if (patch.status === 'completed' && !task.consultation && !task.verification) {
-      this.write(join(this.directory, 'memory', 'latest.json'), {
-        taskId: id, recordedAt: result.finishedAt, summary: patch.output.slice(0, 8000),
-      });
-    }
     this.transaction(state => {
+      // Publish the recovery result and release the unknown-task gate in one state commit.
+      if (outgoing) appendOutgoing(state.collaboration, outgoing);
+      this.write(join(this.directory, 'artifacts', `${id}.json`), result);
+      if (patch.status === 'completed' && !task.consultation && !task.verification) {
+        this.write(join(this.directory, 'memory', 'latest.json'), {
+          taskId: id, recordedAt: result.finishedAt, summary: patch.output.slice(0, 8000),
+        });
+      }
       Object.assign(state.tasks.find(t => t.id === id)!, result);
       for (const messageId of consumed) if (!state.collaboration.consumed.includes(messageId)) state.collaboration.consumed.push(messageId);
     });
