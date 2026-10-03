@@ -11,7 +11,7 @@ export const collaborationTools = [
   tool('collaboration_status', 'Read pending questions and replies for this task.', {}),
 ];
 export const collaborationInstructions = `
-Use collaboration_status when resuming to inspect user-closed questions. Closed questions no longer await answers; their late replies are history only. Cancellation does not establish completion or verification.
+Use collaboration_status when resuming to inspect question deadlines and closed questions, including expiry. Closed questions no longer await answers; their late replies are history only. Cancellation or expiry does not establish completion or verification.
 You are a persistent Cheshi specialist. Pursue the user's goal within its approved scope.
 Use list_agents and ask_agent when another specialist's knowledge is needed. You choose the peer and question.
 These tools support consultation only: do not delegate file edits, commands, permissions, or new goals through a question.

@@ -815,3 +815,40 @@ test('task inspection shows blocked progress, independent failures and refreshes
     expect(document.activeElement?.getAttribute('data-task-id')).toBe('inspect');
   });
 });
+
+test('consultation inspection uses the saved room, blocks duplicate clicks and preserves unknown on rejection', async () => {
+  const { SpecialistRuntimePanel } = await import('../frontend/src/features/agents/SpecialistRuntimePanel');
+  const { AgentRegistryModel } = await import('../frontend/src/features/agents/agentRegistryModel');
+  const { inspectAgentTasks } = await import('../lib/agent-management/task-inspection.mts');
+  const agent = specialistAgent();
+  const tasks = inspectAgentTasks({ tasks: [{ id: 'q_question', consultation: 'question', roomId: 'room', status: 'unknown',
+    prompt: 'Consult', output: '', error: 'Unconfirmed', createdAt: '2026-10-03' }] });
+  const details = { agent: { id: 'worker', name: agent.name, image: 'worker', state: 'running' }, ready: true, busy: false,
+    authenticated: true, threadId: null, error: null, logs: '', tasks };
+  const calls: unknown[] = [];
+  let attempt = registryDeferred<{ details: typeof details }>();
+  const registry = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [agent] }), models: async () => [],
+    save: async () => { throw Error('unused'); }, onDidChange: () => () => {}, runtime: async request => {
+      if (request.action === 'recover') { calls.push(request); return attempt.promise; }
+      return { details };
+    } });
+  try {
+    await withDOM(async ui => {
+      await ui.render(<SpecialistRuntimePanel agent={agent} model={registry} engineId="docker:local"
+        engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} onSettings={() => {}} />);
+      await ui.click('Open task: q_question');
+      await ui.click('Inspect execution'); await ui.click('Inspect execution');
+      expect(calls).toEqual([{ agentId: agent.id, engineId: 'docker:local', action: 'recover', taskId: 'q_question', roomId: 'room' }]);
+      await act(async () => attempt.reject(new Error('The saved turn has not ended.')));
+      expect(document.body.textContent).toContain('The saved turn has not ended.');
+      expect(document.body.textContent).toContain('unknown');
+      attempt = registryDeferred<{ details: typeof details }>();
+      await ui.click('Inspect execution');
+      await act(async () => attempt.resolve({ details: { ...details, tasks: tasks.map(task => ({ ...task, status: 'interrupted', output: 'Recovered consultation', error: null,
+        recovery: { threadId: 'saved-thread', turnId: 'saved-turn', status: 'interrupted' as const, checkedAt: '2026-10-03T00:00:00Z' } })) } }));
+      expect(document.body.textContent).toContain('Recovered consultation');
+      expect(document.querySelector('[aria-label="Execution inspection"]')?.textContent).toContain('saved-turn');
+      expect([...document.querySelectorAll('button')].some(b => b.textContent === 'Inspect execution')).toBe(false);
+    });
+  } finally { registry.dispose(); }
+});

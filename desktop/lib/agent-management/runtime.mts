@@ -80,7 +80,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       if (!worker || worker.state !== 'running' || !worker.endpoint) return null;
       const saved = agentRecord(JSON.parse(await readFile(join(options.directory, digest(binding.engineId), key, 'runtime.json'), 'utf8')));
       if (saved.accountId !== binding.accountId || saved.profileId !== binding.agentId || saved.revision !== worker.fingerprint
-        || saved.questionProtocol !== 1 || saved.collaborationProtocol !== 1 || saved.historyProtocol !== 1 || saved.decisionProtocol !== 1 || saved.verificationProtocol !== 1 || typeof saved.token !== 'string' || !/^[a-f0-9]{64}$/.test(saved.token)) {
+        || saved.recoveryProtocol !== 2 || saved.questionProtocol !== 2 || saved.collaborationProtocol !== 1 || saved.historyProtocol !== 1 || saved.decisionProtocol !== 1 || saved.verificationProtocol !== 1 || typeof saved.token !== 'string' || !/^[a-f0-9]{64}$/.test(saved.token)) {
         throw new Error('Start the agent to reconnect collaboration with its current settings.');
       }
       const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId);
@@ -231,7 +231,17 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (worker && worker.fingerprint !== fingerprint) {
           const details = await options.management.details(request.engineId, worker.id);
           if (worker.state === 'running') {
-            if (!details.ready || details.busy || details.tasks.some(task => task.status === 'unknown')) throw new Error('Wait for this worker or inspect its unfinished task before applying settings.');
+            const previous = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
+            const legacySettings = settingsDigest(agent, workspace, assignment, 1);
+            const legacyRevision = hasFiles ? digest(`${legacySettings}\n${instructions}`) : legacySettings;
+            // Upgrade recovery code without changing the execution profile or discarding unknown outcomes.
+            // The named volume survives replacement; native results still require explicit inspection.
+            const recoveryUpgrade = previous.recoveryProtocol === 1 && previous.settingsFingerprint === legacySettings
+              && previous.revision === legacyRevision && worker.fingerprint === legacyRevision
+              && previous.accountId === agent.accountId && previous.profileId === agent.id
+              && previous.accountFingerprint === selectedAccount && previous.instructions === instructions;
+            const executing = details.tasks.some(task => task.status === 'accepted' || task.status === 'running');
+            if (!details.ready || details.busy || executing || (details.tasks.some(task => task.status === 'unknown') && !recoveryUpgrade)) throw new Error('Wait for this worker or inspect its unfinished task before applying settings.');
             await run([...prefix, 'container', 'stop', '--time', '15', worker.id]);
           }
           await run([...prefix, 'container', 'rm', worker.id]);
@@ -240,7 +250,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint,
-            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 1, questionProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 2, questionProtocol: 2, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [workspace];
@@ -288,9 +298,10 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       if (typeof configuration.token !== 'string' || !/^[a-f0-9]{64}$/.test(configuration.token)) throw new Error('Worker authorization is unavailable.');
       assertCurrent();
       if (chat && configuration.chatsProtocol !== 1) throw new Error('Start the agent to enable Chats.');
-      if (request.action === 'question') {
-        await post(worker.endpoint, configuration.token, `/tasks/${request.taskId}/question`,
-          { roomId: request.roomId, questionId: request.questionId, recipient: request.recipient }, true);
+      if (request.action === 'question' || request.action === 'question-deadline') {
+        await post(worker.endpoint, configuration.token, `/tasks/${request.taskId}/${request.action}`,
+          { roomId: request.roomId, questionId: request.questionId,
+            ...(request.action === 'question' ? { recipient: request.recipient } : { expiresAt: request.expiresAt }) }, true);
         return { details: await options.management.details(request.engineId, worker.id) };
       }
       if (request.action === 'recover') {
@@ -316,8 +327,8 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       ? request(workspaceRoot, input) : workerOperations.run(() => request(workspaceRoot, input)),
   };
 }
-function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number]) {
-  return digest(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 1, questionProtocol: 1, agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
+function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], recoveryProtocol = 2) {
+  return digest(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol, questionProtocol: 2, agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
     ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
 }
 function profileConfiguration(agent: SpecialistAgent) {

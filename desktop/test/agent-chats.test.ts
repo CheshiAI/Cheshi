@@ -314,3 +314,42 @@ test('failed inspection and identity changes cannot clear unknown or replay queu
   await rejectsWith(service.recover(f.workspace, { ...request, roomId: 'foreign' }), 'project');
   expect(calls).toBe(1);
 });
+
+test('deadline controls retain goal scope, publish acknowledged dates and distinguish expiry from cancellation', async () => {
+  const f = await blockedFixture();
+  f.task.status = 'waiting'; f.task.inspection!.goal!.phase = 'waiting'; f.task.error = null;
+  const q = { id: 'question', kind: 'question' as const, from: 'dev', to: 'planner', fromName: 'dev', toName: 'planner', questionId: 'question',
+    text: 'Which credentials?', delivery: 'delivered' as const, request: null, verification: null, expiresAt: null as string | null };
+  f.task.inspection!.messages = [q];
+  const calls: import('../shared/agent-runtime').AgentRuntimeRequest[] = [];
+  const options = { ...f.options, question: async (_workspace: string, input: import('../shared/agent-runtime').AgentRuntimeRequest) => {
+    calls.push(input); q.expiresAt = input.expiresAt ?? null; return { details: f.details };
+  } };
+  const service = createAgentChats(options); await service.tick();
+  const input = { action: 'question-deadline', roomId: 'room', goalId: 'goal', questionId: q.id, expiresAt: '2099-01-01T00:00:00.000Z' } as const;
+  await rejectsWith(service.question(f.workspace, { ...input, questionId: 'foreign' }), 'Unknown goal question');
+  await rejectsWith(service.question(f.workspace, { ...input, roomId: 'foreign' }), 'Unknown room');
+  await rejectsWith(service.question(f.workspace, { ...input, expiresAt: false }), 'deadline');
+  expect(calls).toHaveLength(0);
+  const result = parseChatsSnapshot(await service.question(f.workspace, input));
+  expect(calls).toEqual([{ action: 'question-deadline', agentId: 'dev', engineId: 'docker:test', taskId: f.task.id, roomId: 'room', questionId: q.id, expiresAt: input.expiresAt }]);
+  expect(result.messages[0]?.goalProgress?.questions?.[0]).toMatchObject({ status: 'waiting', expiresAt: input.expiresAt });
+  await service.question(f.workspace, { ...input, expiresAt: null });
+  expect(q.expiresAt).toBeNull();
+  q.expiresAt = input.expiresAt;
+  f.task.inspection!.messages.push({ ...q, id: 'expired', kind: 'question_closed', closureReason: 'expired', text: 'Question expired.' });
+  f.task.status = 'interrupted'; f.task.inspection!.goal!.phase = 'blocked';
+  const restarted = createAgentChats(options); await restarted.tick();
+  expect(parseChatsSnapshot(restarted.request(f.workspace, { action: 'list' })).messages[0]?.goalProgress?.questions?.[0])
+    .toMatchObject({ status: 'expired', expiresAt: input.expiresAt, closure: 'Question expired.' });
+  const binding = bindingFor(f.workspace, 'docker:test', 'dev', 'account-0');
+  const original: Message = { id: 'question', questionId: 'question', taskId: f.task.id, roomId: 'room', kind: 'question', from: 'dev', to: 'planner', text: 'Policy?' };
+  restarted.rooms.record(binding, [original, { ...original, id: 'expired', kind: 'question_closed', closureReason: 'expired', text: 'Question expired.' },
+    { ...original, id: 'late', kind: 'reply', from: 'planner', to: 'dev', text: 'Too late' }]);
+  const messages = restarted.request(f.workspace, { action: 'list' }).messages;
+  expect(messages.find(m => m.id === 'peer_question')?.status).toBe('expired');
+  expect(messages.find(m => m.id === 'peer_late')?.status).toBe('late reply · not applied');
+  f.agents[0]!.accountId = 'changed';
+  await rejectsWith(restarted.question(f.workspace, input), 'identity');
+  expect(calls).toHaveLength(2);
+});

@@ -265,12 +265,54 @@ test('question reassignment chooses an invited alternative and submits the exist
     const calls: unknown[] = [];
     const props = { questions: [{ id: 'question', recipient: 'planner', text: 'Which credentials?', status: 'waiting' as const, closure: null }],
       members: [{ id: 'planner', name: 'Planner', accountId: 'a' }, { id: 'designer', name: 'Designer', accountId: 'b' }],
-      onChange: (id: string, recipient: string | null) => { calls.push({ id, recipient }); } };
+      onDeadline: () => {}, onChange: (id: string, recipient: string | null) => { calls.push({ id, recipient }); } };
     await ui.render(<GoalQuestions {...props} disabled={false} />);
     await ui.click('Reassign question'); expect(calls).toHaveLength(0);
     await ui.click('New question recipient'); await ui.click('Designer'); await ui.click('Reassign question');
     expect(calls).toEqual([{ id: 'question', recipient: 'designer' }]);
     await ui.render(<GoalQuestions {...props} disabled />);
     await ui.click('Reassign question'); await ui.click('Cancel question'); expect(calls).toHaveLength(1);
+  });
+});
+
+test('deadline edits await acknowledgement, preserve drafts on failure and send canonical UTC or null', async () => {
+  await withDOM(async ui => {
+    const data = snapshot(), requests: ChatsRequest[] = [];
+    data.messages[0]!.goalProgress = { phase: 'waiting', turns: 2, turnLimit: 8, progress: '', reason: '', nextAction: '', resumeBlocked: null,
+      questions: [{ id: 'question', recipient: 'planner', text: 'Which credentials?', status: 'waiting', closure: null }] };
+    let failure = true;
+    const api = { request: async (input: ChatsRequest) => {
+      if (input.action === 'question-deadline') {
+        requests.push(input);
+        if (failure) throw new Error('Worker unavailable.');
+        data.messages[0]!.goalProgress!.questions![0]!.expiresAt = input.expiresAt;
+      }
+      return structuredClone(data);
+    } };
+    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.click('Open goal thread · 1'); await ui.type('Message', 'Keep this draft');
+    await ui.click('Save deadline'); expect(requests).toHaveLength(0);
+    await ui.type('Question deadline', '2000-01-01T00:00'); await ui.click('Save deadline'); expect(requests).toHaveLength(0);
+    const local = '2099-01-01T12:30', expiresAt = new Date(local).toISOString();
+    await ui.type('Question deadline', local); await ui.click('Save deadline');
+    expect(document.body.textContent).toContain('Worker unavailable');
+    expect(document.body.textContent).toContain('Deadline: No expiry');
+    expect((document.querySelector('[aria-label="Question deadline"]') as HTMLInputElement).value).toBe(local);
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Keep this draft');
+    failure = false; await ui.click('Save deadline');
+    expect(requests).toEqual(Array(2).fill({ action: 'question-deadline', roomId: 'room', goalId: 'goal', questionId: 'question', expiresAt }));
+    expect(document.body.textContent).not.toContain('Deadline: No expiry');
+    await ui.click('Remove deadline');
+    expect(requests.at(-1)).toMatchObject({ action: 'question-deadline', expiresAt: null });
+    expect(document.body.textContent).toContain('Deadline: No expiry');
+  });
+});
+test('expired questions display their deadline and expose no cancel, reassign or deadline editor', async () => {
+  await withDOM(async ui => {
+    await ui.render(<GoalQuestions questions={[{ id: 'q', recipient: 'planner', text: 'Policy?', status: 'expired', closure: 'Question expired.', expiresAt: '2026-10-03T00:00:00.000Z' }]}
+      members={[]} disabled={false} onChange={() => { throw new Error('No change expected'); }} onDeadline={() => { throw new Error('No change expected'); }} />);
+    expect(document.body.textContent).toContain('expired'); expect(document.body.textContent).toContain('0 waiting');
+    expect(document.querySelector('[aria-label="Question deadline"]')).toBeNull();
+    expect(document.querySelectorAll('button')).toHaveLength(0);
   });
 });

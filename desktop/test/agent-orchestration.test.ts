@@ -41,12 +41,12 @@ class ModelFixture implements RpcClient {
 }
 const roster: Peer[] = [{ id: 'dev', name: 'Developer', role: 'development' }, { id: 'planner', name: 'Planner', role: 'planning' }];
 
-test('mailbox persists closures and late answers without accepting a forged closure', () => {
+test.each([undefined, 'expired'] as const)('mailbox persists closure reason %s and late answers without accepting a forged closure', closureReason => {
   const filename = join(temporary(), 'closed.json'), box = new AgentMailbox(filename);
   const dev = bindingFor('/workspace', 'docker:test', 'dev', 'default'), peer = bindingFor('/workspace', 'docker:test', 'planner', 'default');
   box.register(dev); box.register(peer);
   const q: Message = { id: 'question', questionId: 'question', kind: 'question', from: 'dev', to: 'planner', taskId: 'goal', text: 'Credentials?' };
-  const closed: Message = { ...q, id: 'closed', kind: 'question_closed', text: 'Cancelled' };
+  const closed: Message = { ...q, id: 'closed', kind: 'question_closed', text: 'Closed', ...(closureReason ? { closureReason } : {}) };
   const accept = (b: typeof dev, messages: Message[]) => box.accept(b, { protocol: 1, received: [], outgoing: messages }, roster, []);
   accept(dev, [q]);
   expect(() => accept(peer, [{ ...closed, from: 'planner', to: 'dev' }])).toThrow('closure');
@@ -54,6 +54,7 @@ test('mailbox persists closures and late answers without accepting a forged clos
   accept(peer, [{ ...q, id: 'answer', kind: 'reply', from: 'planner', to: 'dev', text: 'Too late' }]);
   const restored = new AgentMailbox(filename);
   expect(restored.messages(dev.scope)).toHaveLength(3);
+  expect(restored.messages(dev.scope)[1]?.closureReason).toBe(closureReason);
   expect(restored.request(peer, roster).messages.map(m => m.kind)).toEqual(['question', 'question_closed']);
   expect(restored.request(dev, roster).messages[0]?.text).toBe('Too late');
 });

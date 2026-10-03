@@ -9,6 +9,8 @@ import { SCRATCH_PROFILE } from './task-scratch.ts';
 import { AgentStore } from './store.ts';
 import { WorkerHistoryQueue } from './history-queue.ts';
 import { WorkerCollaboration } from './collaboration.ts';
+import { expireQuestions } from './question-control.ts';
+import { newGoal } from './decision.ts';
 
 const directories: string[] = [];
 function temporary(): string {
@@ -613,4 +615,102 @@ test('inspection does not overwrite a task changed during its native read', asyn
   gate.resolve({ thread: { id: 'thread', cwd: '/workspace', turns: [{ id: 'turn', status: 'interrupted', items: [] }] } });
   await expectFailure(recovery, 'changed during inspection');
   expect(f.store.task('goal')).toEqual(before);
+});
+
+test('explicit follow-up after expiry resumes the same conversation without dropping criteria or independent verification', async () => {
+  const directory = temporary(), store = new AgentStore(directory);
+  const collaboration = new WorkerCollaboration(store, 'dev');
+  collaboration.exchange({ peers: [{ id: 'planner', name: 'Planning', role: 'planning' }], rooms: { room: ['dev', 'planner'] }, messages: [], acknowledged: [] });
+  const criteria = [{ criterion: 'Verify login.', met: false, evidence: '' }];
+  const goal = { ...newGoal(true), criteria, phase: 'waiting' as const, turns: 2 };
+  const task = store.create('goal', 'Implement login.', { roomId: 'room', conversation: 'goal', goal });
+  store.saveThread('thread', null, 'goal'); store.update('goal', { status: 'waiting' });
+  collaboration.call(task, 'ask_agent', { agentId: 'planner', requestId: 'policy', question: 'Which credentials?' });
+  const question = store.snapshot().collaboration.outgoing[0]!;
+  const client = new FakeClient();
+  const agent = new SpecialistAgent({ store, client, collaboration, profile: '', workspace: '/workspace' });
+  const deadline = new Date(Date.now() + 60_000).toISOString();
+  agent.questionDeadline('goal', 'room', question.id, deadline);
+  expect(collaboration.call(task, 'collaboration_status', {}).questions).toEqual([{ ...question, expiresAt: deadline }]);
+  store.transaction(state => { expireQuestions(state, 'dev', Date.parse(deadline)); });
+  const restored = new AgentStore(directory), resumedClient = new FakeClient();
+  const resumed = new SpecialistAgent({ store: restored, client: resumedClient, collaboration: new WorkerCollaboration(restored, 'dev'), profile: '', workspace: '/workspace' });
+  resumed.pump(); expect(resumedClient.calls).toHaveLength(0);
+  resumedClient.onStart = async () => {
+    const base = { threadId: 'thread', turnId: 'turn', tool: 'record_decision' };
+    await expectFailure(resumedClient.toolHandler!({ ...base, arguments: { action: 'complete', reason: 'Done', progress: 'Done', nextAction: '',
+      criteria: [{ ...criteria[0]!, met: true, evidence: 'Reported done' }] } }), 'independent verification');
+    await resumedClient.toolHandler!({ ...base, arguments: { action: 'blocked', reason: 'Independent verification is still required.', progress: 'User supplied the missing policy.', nextAction: '', criteria } });
+    resumedClient.complete(); return { turn: { id: 'turn' } };
+  };
+  resumed.input('goal', 'followup', 'Use email; continue within the original scope.', 'room'); await resumed.settled();
+  resumed.input('goal', 'followup', 'Use email; continue within the original scope.', 'room'); await resumed.settled();
+  expect(resumedClient.calls.filter(c => c.method === 'turn/start')).toHaveLength(1);
+  expect(resumedClient.calls.find(c => c.method === 'thread/resume')?.params.threadId).toBe('thread');
+  expect(restored.task('goal')).toMatchObject({ status: 'interrupted', goal: { phase: 'blocked', turns: 3, criteria, verificationRequired: true } });
+  expect(restored.snapshot().collaboration.outgoing.filter(m => m.closureReason === 'expired')).toHaveLength(1);
+});
+
+function unknownConsultation(directory = temporary(), existingReply = false) {
+  const store = new AgentStore(directory), client = new FakeClient();
+  const collaboration = new WorkerCollaboration(store, 'planner');
+  if (!store.task('q_question')) {
+    collaboration.exchange({ peers: [{ id: 'dev', name: 'Developer', role: 'development' }], rooms: { room: ['dev', 'planner'] },
+      messages: [{ id: 'question', questionId: 'question', kind: 'question', from: 'dev', to: 'planner', taskId: 'goal', roomId: 'room', text: 'Which login?' }], acknowledged: [] });
+    store.create('q_question', 'Which login?', { roomId: 'room', conversation: 'q_question', consultation: 'question' });
+    store.update('q_question', { status: 'unknown', threadId: 'thread', turnId: 'turn', inputs: [], responses: [] });
+    store.transaction(state => { state.collaboration.questionDeadlines = {}; });
+    if (existingReply) collaboration.reply(store.task('q_question')!, 'Already sent');
+  }
+  const agent = new SpecialistAgent({ client, store, collaboration, workspace: '/workspace', profile: 'Planning' });
+  return { store, client, agent, directory };
+}
+
+test.each(['completed', 'interrupted', 'failed'])('consultation recovery confirms native %s without sending a reply or replaying work', async status => {
+  for (const existingReply of [false, true]) {
+    const f = unknownConsultation(undefined, existingReply), before = f.store.snapshot().collaboration;
+    f.client.onRead = async () => ({ thread: { id: 'thread', cwd: '/workspace', turns: [{ id: 'turn', status,
+      items: [{ type: 'agentMessage', text: 'Recovered consultation' }] }] } });
+    const result = await f.agent.recover('q_question', 'room');
+    expect(result).toMatchObject({ status: 'interrupted', output: 'Recovered consultation', recovery: { status, threadId: 'thread', turnId: 'turn' } });
+    expect(result.goal).toBeUndefined();
+    expect(f.store.snapshot().collaboration).toEqual(before);
+    expect(f.store.memory()).toBe('');
+    expect(f.client.calls.map(c => c.method)).toEqual(['thread/read', 'thread/unsubscribe']);
+    const restarted = unknownConsultation(f.directory);
+    expect(await restarted.agent.recover('q_question', 'room')).toEqual(result);
+    restarted.agent.pump(); await restarted.agent.settled();
+    expect(restarted.client.calls).toHaveLength(0);
+    expect(restarted.store.snapshot().collaboration).toEqual(before);
+  }
+});
+
+test.each(['running', 'wrong-thread', 'wrong-workspace', 'missing-turn', 'later-turn', 'read-failure', 'unsubscribe-failure', 'wrong-room', 'missing-id'])('consultation recovery preserves unknown on %s', async reason => {
+  const f = unknownConsultation();
+  if (reason === 'missing-id') f.store.update('q_question', { turnId: null });
+  const before = f.store.snapshot();
+  f.client.onRead = async () => {
+    if (reason === 'read-failure') throw new Error('read failed');
+    return { thread: { id: reason === 'wrong-thread' ? 'other' : 'thread', cwd: reason === 'wrong-workspace' ? '/other' : '/workspace',
+      turns: [{ id: reason === 'missing-turn' ? 'missing' : 'turn', status: reason === 'running' ? 'inProgress' : 'completed', items: [] },
+        ...(reason === 'later-turn' ? [{ id: 'later', status: 'completed', items: [] }] : [])] } };
+  };
+  if (reason === 'unsubscribe-failure') f.client.onUnsubscribe = async () => { throw new Error('unsubscribe failed'); };
+  await expectFailure(f.agent.recover('q_question', reason === 'wrong-room' ? 'foreign' : 'room'), '');
+  expect(f.store.snapshot()).toEqual(before);
+});
+
+test('consultation inspection remains exclusive and leaves verification executions quarantined', async () => {
+  const f = unknownConsultation(), gate = createDeferred<JsonRecord>();
+  f.client.onRead = () => gate.promise;
+  const operation = f.agent.recover('q_question', 'room');
+  await expectFailure(f.agent.recover('q_question', 'room'), 'cannot safely inspect');
+  expect(() => f.agent.submit('other', 'Work')).toThrow();
+  f.store.update('q_question', { error: 'Changed during read' });
+  gate.resolve({ thread: { id: 'thread', cwd: '/workspace', turns: [{ id: 'turn', status: 'interrupted', items: [] }] } });
+  await expectFailure(operation, 'changed during inspection');
+  f.store.create('verifier', 'Verify', { roomId: 'room', verification: 'request' });
+  f.store.update('verifier', { status: 'unknown', threadId: 'thread', turnId: 'turn' });
+  await expectFailure(f.agent.recover('verifier', 'room'), 'Unknown room');
+  expect(f.store.task('verifier')?.status).toBe('unknown');
 });

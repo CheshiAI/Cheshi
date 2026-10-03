@@ -15,10 +15,11 @@ function Evidence({ items }: { items: TaskEvidence[] }) {
 function Exchange({ message, messages }: { message: TaskMessage; messages: TaskMessage[] }) {
   const request = message.kind === 'question' || message.kind === 'verification_request';
   const reply = request ? messages.find(m => m.questionId === message.id && (m.kind === 'reply' || m.kind === 'verification_result')) : undefined;
-  const closed = messages.some(m => m.kind === 'question_closed' && m.questionId === message.questionId);
+  const closed = messages.find(m => m.kind === 'question_closed' && m.questionId === message.questionId);
   const label = { question: 'Question', question_closed: 'Question closed', reply: 'Reply', verification_request: 'Verification request', verification_result: 'Verification result' }[message.kind];
   return <details className={styles.record}>
-    <summary>{label} · {message.fromName} → {message.toName} · {closed ? message.kind === 'reply' ? 'Late reply · not applied' : 'Closed' : request ? !reply ? 'Awaiting reply' : reply.delivery === 'processed' ? 'Reply processed' : 'Reply recorded' : message.delivery}</summary>
+    <summary>{label} · {message.fromName} → {message.toName} · {closed ? message.kind === 'reply' ? 'Late reply · not applied' : closed.closureReason === 'expired' ? 'Expired' : 'Closed' : request ? !reply ? 'Awaiting reply' : reply.delivery === 'processed' ? 'Reply processed' : 'Reply recorded' : message.delivery}</summary>
+    {message.kind === 'question' && <p>Deadline: {message.expiresAt ? new Date(message.expiresAt).toLocaleString() : 'No expiry'}</p>}
     <p>Delivery: {message.delivery} · Request: {message.questionId}</p>
     {message.verification ? <>
       {message.verification.verdicts.map((verdict, index) => <div key={index} className={styles.criterion}>
@@ -48,6 +49,11 @@ export function AgentTaskDetail({ task }: { task: AgentTask }) {
     </dl>
     {task.error && <div role="alert"><MessageContent text={task.error} /></div>}
     {detail?.error && <p role="alert">{detail.error}</p>}
+    {task.recovery && <section aria-label="Execution inspection"><h3>Execution inspection</h3>
+      <p>Confirmed execution status: {task.recovery.status} · Checked: {task.recovery.checkedAt}</p>
+      <p>Conversation: {task.recovery.threadId} · Turn: {task.recovery.turnId}</p>
+      <p>This confirms the saved execution ended. It does not establish goal completion or send a collaboration reply.</p>
+    </section>}
     <section aria-label="Task goal"><h3>Goal</h3><div className={styles.markdown} aria-label="Task request"><MessageContent text={task.prompt} /></div></section>
     <section aria-label="Completion criteria"><h3>Completion criteria</h3>
       {goal?.criteria.length ? <>

@@ -1,4 +1,5 @@
 import { parseAgentTasks, type AgentTask } from '../../shared/agent-management.ts';
+import { parseQuestionDeadline } from '../../shared/agent-question.ts';
 import { inspectionRecord, inspectionText, inspectionList, parseTaskInspection, parseTaskGoal, parseTaskEvidence,
   parseTaskVerification, parseTaskVerificationRequest, type TaskMessage, type TaskInspection } from '../../shared/agent-task-inspection.ts';
 
@@ -18,6 +19,7 @@ export function inspectAgentTasks(value: unknown, owner?: { id: string; name: st
       const consumed = c ? inspectionList(c.consumed, id => inspectionText(id, 200), 10_000) : [];
       const acknowledged = c ? inspectionList(c.acknowledged, id => inspectionText(id, 200), 10_000) : [];
       const messages: TaskMessage[] = [];
+      const deadlines = c?.questionDeadlines === undefined ? {} : inspectionRecord(c.questionDeadlines);
       for (const direction of ['outgoing', 'incoming'] as const) {
         const entries = c ? inspectionList(c[direction], inspectionRecord, 10_000) : [];
         for (const m of entries) {
@@ -26,6 +28,8 @@ export function inspectAgentTasks(value: unknown, owner?: { id: string; name: st
           const id = inspectionText(m.id, 200), from = inspectionText(m.from, 200), to = inspectionText(m.to, 200);
           const text = inspectionText(m.text, 12_000);
           messages.push({ id, kind: m.kind as TaskMessage['kind'], from, to, fromName: names.get(from) ?? from, toName: names.get(to) ?? to,
+            ...(direction === 'outgoing' && m.kind === 'question' ? { expiresAt: parseQuestionDeadline(deadlines[id] ?? null) } : {}),
+            ...(m.closureReason === undefined ? {} : { closureReason: m.closureReason as TaskMessage['closureReason'] }),
             questionId: inspectionText(m.questionId, 200), text,
             delivery: direction === 'outgoing' ? acknowledged.includes(id) ? 'delivered' : 'queued' : consumed.includes(id) ? 'processed' : 'received',
             request: m.kind === 'verification_request' ? parseTaskVerificationRequest(JSON.parse(text)) : null,
@@ -35,6 +39,8 @@ export function inspectAgentTasks(value: unknown, owner?: { id: string; name: st
       const recall = state.recall === undefined ? null : inspectionList(state.recall, inspectionRecord, 64)
         .filter(item => item.taskId === task.id).map(({ id, activity }) => ({ id, activity }));
       const detail = parseTaskInspection({ finishedAt: original.finishedAt, threadId: original.threadId, conversation: original.conversation,
+        ...(task.status === 'unknown' && typeof original.consultation === 'string' && original.consultation && original.verification === undefined && original.roomId !== undefined
+          ? { recoveryRoomId: original.roomId } : {}),
         goal: original.goal === undefined ? null : parseTaskGoal(original.goal), messages,
         evidence: original.verificationEvidence === undefined ? [] : inspectionList(original.verificationEvidence, parseTaskEvidence, 32), recall, error: null });
       return { ...task, inspection: detail };

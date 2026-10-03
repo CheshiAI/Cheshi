@@ -75,7 +75,10 @@ const server = Bun.serve({
         const result = await client.request('model/list', { limit: 100 });
         return Response.json({ data: result.data, nextCursor: result.nextCursor });
       }
-      if (path === '/activity' && request.method === 'GET') return Response.json({ ...store.snapshot(), ...(historyQueue ? { recall: historyQueue.inspection() } : {}) });
+      if (path === '/activity' && request.method === 'GET') {
+        collaboration?.expire();
+        return Response.json({ ...store.snapshot(), ...(historyQueue ? { recall: historyQueue.inspection() } : {}) });
+      }
       if (path === '/tasks' && request.method === 'POST') {
         if (!request.headers.get('content-type')?.startsWith('application/json')) throw new TypeError('Use application/json.');
         const body = await request.text();
@@ -84,11 +87,13 @@ const server = Bun.serve({
         const task = agent.submit(input.id === undefined ? randomUUID() : validateTaskId(input.id), textValue(input.prompt, 'prompt'), input.chat === undefined ? undefined : (() => { const c = record(input.chat); if (typeof c.goal !== 'boolean') throw new TypeError('Invalid chat goal.'); return { roomId: validateTaskId(c.roomId), conversation: validateTaskId(c.conversation), goal: c.goal }; })());
         return Response.json(task, { status: 202 });
       }
-      const question = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/question$/.exec(path);
+      const question = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/(question|question-deadline)$/.exec(path);
       if (question && request.method === 'POST') {
         const body = await request.text();
         if (body.length > 1000) throw new TypeError('Request is too large.');
         const input = record(JSON.parse(body));
+        if (question[2] === 'question-deadline') return Response.json(agent.questionDeadline(question[1]!,
+          validateTaskId(input.roomId), validateTaskId(input.questionId), input.expiresAt));
         return Response.json(agent.question(question[1]!, validateTaskId(input.roomId), validateTaskId(input.questionId),
           input.recipient === null ? null : validateTaskId(input.recipient)));
       }

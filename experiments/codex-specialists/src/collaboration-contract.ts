@@ -5,8 +5,10 @@ export interface Peer { id: string; name: string; role: string }
 export interface CollaborationMessage {
   id: string; kind: 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result'; from: string; to: string;
   roomId?: string; taskId: string; questionId: string; text: string;
+  closureReason?: 'expired';
 }
 export interface CollaborationState {
+  questionDeadlines?: Record<string, string>;
   rooms?: Record<string, string[]>;
   peers: Peer[];
   outgoing: CollaborationMessage[];
@@ -27,7 +29,9 @@ export function message(value: unknown): CollaborationMessage {
   if (text.length > 12_000) throw new Error('Collaboration message is too long.');
   if (v.kind === 'verification_request') verificationRequest(JSON.parse(text));
   if (v.kind === 'verification_result') verificationResult(JSON.parse(text));
+  if (v.closureReason !== undefined && (v.kind !== 'question_closed' || v.closureReason !== 'expired')) throw new Error('Invalid question closure reason.');
   return { id: identifier(v.id), kind: v.kind as CollaborationMessage['kind'], from: identifier(v.from), to: identifier(v.to),
+    ...(v.closureReason === 'expired' ? { closureReason: 'expired' as const } : {}),
     ...(v.roomId === undefined ? {} : { roomId: identifier(v.roomId) }), taskId: identifier(v.taskId), questionId: identifier(v.questionId), text };
 }
 function array(value: unknown): unknown[] {
@@ -42,8 +46,21 @@ export function peers(value: unknown): Peer[] {
 }
 export function collaborationState(value: unknown): CollaborationState {
   const v = record(value);
-  return { rooms: roomRoster(v.rooms), peers: peers(v.peers), outgoing: array(v.outgoing).map(message), incoming: array(v.incoming).map(message),
+  const deadlines = v.questionDeadlines === undefined ? {} : record(v.questionDeadlines);
+  if (Object.keys(deadlines).length > 10_000) throw new Error('Too many question deadlines.');
+  return { questionDeadlines: Object.fromEntries(Object.entries(deadlines).map(([id, date]) => {
+    const parsed = questionDeadline(date);
+    if (parsed === null) throw new Error('Invalid saved question deadline.');
+    return [identifier(id), parsed];
+  })), rooms: roomRoster(v.rooms), peers: peers(v.peers), outgoing: array(v.outgoing).map(message), incoming: array(v.incoming).map(message),
     acknowledged: array(v.acknowledged).map(identifier), consumed: array(v.consumed).map(identifier) };
+}
+
+export function questionDeadline(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
+    || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString() !== value) throw new TypeError('Invalid question deadline.');
+  return value;
 }
 
 export function roomRoster(value: unknown): Record<string, string[]> {

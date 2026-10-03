@@ -1,4 +1,4 @@
-import { closeQuestion } from './question-control.ts';
+import { closeQuestion, setQuestionDeadline } from './question-control.ts';
 import { WorkerVerification } from './verification.ts';
 import { SCRATCH_PROFILE, TaskScratch } from './task-scratch.ts';
 import { verificationInstructions, verificationTools } from './verification-tools.ts';
@@ -137,6 +137,11 @@ export class SpecialistAgent {
     return closeQuestion(this.store, this.collaboration.agentId, taskId, roomId, questionId, recipient);
   }
 
+  questionDeadline(taskId: string, roomId: string, questionId: string, expiresAt: unknown): Task {
+    if (!this.collaboration || this.busy || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) throw new TaskConflict('Worker cannot safely change a question yet.');
+    return setQuestionDeadline(this.store, this.collaboration.agentId, taskId, roomId, questionId, expiresAt);
+  }
+
   private launch(task: Task, input: string, messages: string[] = []): Task {
     const id = task.id;
     // A lost acknowledgement must never reuse the preceding turn's identity.
@@ -157,6 +162,7 @@ export class SpecialistAgent {
 
   /** Called after exchanges and turn completion. Waiting tasks do not occupy the execution slot. */
   pump(): void {
+    this.collaboration?.expire();
     if (this.busy || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) return;
     const next = this.collaboration?.next();
     if (!next) {
@@ -319,7 +325,7 @@ export class SpecialistAgent {
   async recover(id: string, roomId: string): Promise<Task> {
     validateTaskId(id); validateTaskId(roomId);
     const task = this.store.task(id);
-    if (!task || task.roomId !== roomId || !task.goal || task.consultation || task.verification) throw new TaskConflict('Unknown room goal.');
+    if (!task || task.roomId !== roomId || (!task.goal && !task.consultation) || task.verification) throw new TaskConflict('Unknown room goal or consultation.');
     if (task.status !== 'unknown') {
       if (task.recovery) return task;
       throw new TaskConflict('Only an unknown execution can be inspected.');
@@ -336,8 +342,10 @@ export class SpecialistAgent {
       assertUnchangedRecovery(task, this.store.task(id));
       const goal = task.goal;
       this.store.complete(id, { status: 'interrupted', output: result.output, recovery: result.receipt,
-        error: `Execution ended (${result.receipt.status}). Review the recovered output and provide a follow-up to resume goal judgment.`,
-        goal: { ...goal, phase: 'blocked', pending: null, criteria: goal.criteria.length ? goal.criteria : goal.pending?.criteria ?? [] } });
+        error: task.consultation
+          ? `Execution ended (${result.receipt.status}). Consultation output recovered for review only. Inspection did not send or replay a reply. Reassign the question if another answer is needed.`
+          : `Execution ended (${result.receipt.status}). Review the recovered output and provide a follow-up to resume goal judgment.`,
+        ...(goal ? { goal: { ...goal, phase: 'blocked' as const, pending: null, criteria: goal.criteria.length ? goal.criteria : goal.pending?.criteria ?? [] } } : {}) });
       return this.store.task(id)!;
     } finally { this.recovering = false; }
   }

@@ -31,6 +31,7 @@ function fixture(linkedWorkspace = false) {
   let created = false, remote = false, busy = false, seeded = false, failSeed = false;
   let dockerFailure: Error | null = null, contextMissing = false;
   let labels: Record<string, string> = {};
+  let tasks: AgentDetails['tasks'] = [];
   const calls: { args: string[]; input?: string }[] = [];
   const runtimePath = join(directory, 'runtime', createHash('sha256').update('docker:colima-cheshi').digest('hex'),
     `${agentId}-${createHash('sha256').update(realpathSync(workspace)).digest('hex').slice(0, 16)}`);
@@ -62,14 +63,30 @@ function fixture(linkedWorkspace = false) {
     return '';
   };
   const details = (): AgentDetails => ({ agent: { id, name: 'worker', image: 'worker', state: 'running' },
-    ready: seeded, busy, authenticated: true, threadId: null, error: null, logs: '', tasks: [] });
+    ready: seeded, busy, authenticated: true, threadId: null, error: null, logs: '', tasks });
   const exchanges: unknown[] = [];
   const runtime = createSpecialistRuntime({ directory: join(directory, 'runtime'), buildContext: '/build', registry, run,
     collaborationExchange: async (_connection, body) => { exchanges.push(body); return { protocol: 1, received: [], outgoing: [] }; },
     account: async () => ({ home, models: [] }), management: { details: async () => details(),
       engines: async () => ({ engines: [], error: null }), snapshot: async engineId => ({ engineId, online: true, error: null, agents: [] }),
       control: async () => { throw new Error('unused'); } } });
-  return { runtime, registry, workspace, home, runtimePath, agentId, calls, exchanges, setContextMissing: (missing: boolean) => { contextMissing = missing; }, setDockerFailure: (error: Error | null) => { dockerFailure = error; }, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
+  const legacyRecovery = () => {
+    const filename = join(runtimePath, 'runtime.json');
+    const config = JSON.parse(readFileSync(filename, 'utf8'));
+    const agent = registry.snapshot(workspace).agents[0]!;
+    const assignment = agent.assignments.find(a => a.workspaceRoot === workspace)!;
+    const profile = { role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,
+      serviceTier: agent.serviceTier, permissions: agent.permissions, instructions: agent.instructions };
+    config.recoveryProtocol = 1;
+    config.settingsFingerprint = createHash('sha256').update(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1,
+      historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 1, questionProtocol: 2,
+      agent: profile, workspace: realpathSync(workspace), instructions: assignment.instructions })).digest('hex');
+    config.revision = config.settingsFingerprint;
+    labels['ai.cheshi.configuration'] = config.revision;
+    writeFileSync(filename, JSON.stringify(config));
+  };
+  return { runtime, registry, workspace, home, runtimePath, agentId, calls, exchanges, legacyRecovery,
+    setTasks: (value: AgentDetails['tasks']) => { tasks = value; }, setContextMissing: (missing: boolean) => { contextMissing = missing; }, setDockerFailure: (error: Error | null) => { dockerFailure = error; }, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
     request: () => ({ agentId, engineId: 'docker:colima-cheshi', action: 'start' as const }) };
 }
 test('missing selected context returns offline on repeated polls and restoration resumes normal lookup', async () => {
@@ -117,7 +134,7 @@ test('starts one project worker with isolated storage, readonly mount, private a
   const config = JSON.parse(f.calls.find(call => call.input)!.input!).configuration;
   expect(args.some(arg => arg.includes('runtime.json,readonly'))).toBe(false);
   expect(config.decisionProtocol).toBe(1);
-  expect(config.recoveryProtocol).toBe(1);
+  expect(config.recoveryProtocol).toBe(2);
   expect(config.verificationProtocol).toBe(1);
   expect(config.permissions).toEqual({ fileWrite: false, commandExecution: false });
   expect(config.instructions).toContain('Project instructions:');
@@ -275,6 +292,51 @@ test('question controls post only the authenticated owner task route with valida
     await f.runtime.request(f.workspace, input);
     expect(calls).toEqual([{ url: 'http://127.0.0.1:49831/tasks/goal/question', body: { roomId: 'room', questionId: 'question', recipient: 'designer' } }]);
     const config = JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8'));
-    expect(config.questionProtocol).toBe(1);
+    expect(config.questionProtocol).toBe(2);
+    const deadline = { ...input, action: 'question-deadline' as const, expiresAt: '2099-01-01T00:00:00.000Z' };
+    expect(() => parseAgentRuntimeRequest({ ...deadline, expiresAt: undefined })).toThrow('deadline');
+    await f.runtime.request(f.workspace, deadline);
+    expect(calls.at(-1)).toEqual({ url: 'http://127.0.0.1:49831/tasks/goal/question-deadline', body: { roomId: 'room', questionId: 'question', expiresAt: deadline.expiresAt } });
   } finally { mock.mockRestore(); await f.runtime.dispose(); }
+});
+
+test('recovery-only worker upgrade preserves the volume and unknown outcome without submitting or deleting data', async () => {
+  const f = fixture();
+  try {
+    await f.runtime.request(f.workspace, f.request()); f.legacyRecovery();
+    const tasks = [{ id: 'q_question', status: 'unknown', prompt: 'Consult', output: '', error: 'Unconfirmed', createdAt: '2026-10-03' }];
+    f.setTasks(tasks);
+    const start = f.calls.length;
+    const result = await f.runtime.request(f.workspace, f.request());
+    expect(result.details?.tasks).toEqual(tasks);
+    expect(JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8')).recoveryProtocol).toBe(2);
+    const changes = f.calls.slice(start);
+    expect(changes.some(c => c.args.includes('stop'))).toBe(true);
+    expect(changes.some(c => c.args.includes('create'))).toBe(true);
+    expect(changes.some(c => c.args.includes('volume'))).toBe(false);
+    const mounts = f.calls.filter(c => c.args.includes('create')).map(c => c.args.find(a => a.startsWith('type=volume,')));
+    expect(mounts).toHaveLength(2); expect(mounts[0]).toBe(mounts[1]);
+  } finally { await f.runtime.dispose(); }
+});
+
+test.each(['busy', 'running', 'accepted', 'settings', 'instructions', 'current-protocol'])('unknown worker upgrade still rejects %s', async reason => {
+  const f = fixture();
+  try {
+    await f.runtime.request(f.workspace, f.request()); f.legacyRecovery();
+    f.setTasks([{ id: 'q_question', status: 'unknown', prompt: 'Consult', output: '', error: null, createdAt: '2026-10-03' },
+      ...(['running', 'accepted'].includes(reason) ? [{ id: 'active', status: reason, prompt: 'Work', output: '', error: null, createdAt: '2026-10-03' }] : [])]);
+    if (reason === 'busy') f.setBusy();
+    if (reason === 'settings') {
+      const agent = f.registry.snapshot(f.workspace).agents[0]!;
+      f.registry.save({ id: agent.id, revision: agent.revision, profile: { ...agent, permissions: { fileWrite: true, commandExecution: true } },
+        assignment: { assigned: true, instructions: '' } }, f.workspace);
+    }
+    if (reason === 'instructions' || reason === 'current-protocol') {
+      const filename = join(f.runtimePath, 'runtime.json'), config = JSON.parse(readFileSync(filename, 'utf8'));
+      if (reason === 'instructions') config.instructions += 'changed'; else config.recoveryProtocol = 2;
+      writeFileSync(filename, JSON.stringify(config));
+    }
+    await fails(f.runtime.request(f.workspace, f.request()), 'Wait for this worker');
+    expect(f.calls.some(c => c.args.includes('stop') || c.args.includes('rm'))).toBe(false);
+  } finally { await f.runtime.dispose(); }
 });

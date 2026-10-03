@@ -38,8 +38,8 @@ export function createAgentChats(options: Options) {
     progress.set(job.id, { checkedAt: Date.now(), value: {
       questions: (task?.inspection?.messages ?? []).filter(m => m.kind === 'question').map(q => {
         const messages = task!.inspection!.messages, closed = messages.find(m => m.kind === 'question_closed' && m.questionId === q.id);
-        return { id: q.id, recipient: q.to, text: q.text, closure: closed?.text ?? null,
-          status: closed ? 'closed' : messages.some(m => m.kind === 'reply' && m.questionId === q.id) ? 'answered' : 'waiting' };
+        return { id: q.id, recipient: q.to, text: q.text, closure: closed?.text ?? null, expiresAt: q.expiresAt ?? null,
+          status: closed ? closed.closureReason === 'expired' ? 'expired' : 'closed' : messages.some(m => m.kind === 'reply' && m.questionId === q.id) ? 'answered' : 'waiting' };
       }),
       phase: task?.status === 'unknown' ? 'unknown' : goal?.phase ?? task?.status ?? 'unavailable',
       progress: latest?.progress ?? '', reason: task?.error ?? latest?.reason ?? '', nextAction: latest?.nextAction ?? '',
@@ -87,7 +87,7 @@ export function createAgentChats(options: Options) {
   };
   function request(workspaceRoot: string, value: unknown) {
     const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
-    if (input.action === 'recover' || input.action === 'question') throw new Error('Use the asynchronous execution inspection handler.');
+    if (input.action === 'recover' || input.action === 'question' || input.action === 'question-deadline') throw new Error('Use the asynchronous execution inspection handler.');
     if (input.action === 'create') {
       const selected = members(workspace, input.members);
       if (!input.engineId.startsWith('docker:')) throw new Error('Choose a Docker engine.');
@@ -176,12 +176,12 @@ export function createAgentChats(options: Options) {
   }
   async function question(workspaceRoot: string, value: unknown) {
     const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
-    if (input.action !== 'question') throw new Error('Invalid question control.');
+    if (input.action !== 'question' && input.action !== 'question-deadline') throw new Error('Invalid question control.');
     const room = roomFor(workspace, input.roomId);
     const root = store().all().messages.find(m => m.id === input.goalId && m.roomId === room.id && m.kind === 'goal');
     if (!root?.recipient || !root.taskId) throw new Error('Unknown goal thread.');
     assertCurrentMember(room, root.recipient);
-    if (input.recipient !== null) assertCurrentMember(room, input.recipient);
+    if (input.action === 'question' && input.recipient !== null) assertCurrentMember(room, input.recipient);
     if (!options.question) throw new Error('Restart the desktop app to enable question controls.');
     const key = keyFor(room, root.recipient);
     if (inspecting.has(key)) throw new Error('A goal operation is already in progress.');
@@ -189,15 +189,16 @@ export function createAgentChats(options: Options) {
     try {
       await flight;
       assertCurrentMember(room, root.recipient);
-      if (input.recipient !== null) assertCurrentMember(room, input.recipient);
+      if (input.action === 'question' && input.recipient !== null) assertCurrentMember(room, input.recipient);
       const base = { agentId: root.recipient, engineId: room.engineId };
       const state = await options.status(workspace, { ...base, action: 'status' });
       assertCurrentMember(room, root.recipient);
-      if (input.recipient !== null) assertCurrentMember(room, input.recipient);
+      if (input.action === 'question' && input.recipient !== null) assertCurrentMember(room, input.recipient);
       const task = state.details?.tasks.find(t => t.id === root.taskId && t.roomId === room.id);
       if (!task?.inspection?.messages.some(m => m.id === input.questionId && m.kind === 'question' && m.from === root.recipient)) throw new Error('Unknown goal question. Refresh the worker.');
-      if (input.recipient === root.recipient) throw new Error('Choose a different invited peer.');
-      await options.question(workspace, { ...base, action: 'question', taskId: root.taskId, roomId: room.id, questionId: input.questionId, recipient: input.recipient });
+      if (input.action === 'question' && input.recipient === root.recipient) throw new Error('Choose a different invited peer.');
+      await options.question(workspace, { ...base, action: input.action, taskId: root.taskId, roomId: room.id, questionId: input.questionId,
+        ...(input.action === 'question' ? { recipient: input.recipient } : { expiresAt: input.expiresAt }) });
       assertCurrentMember(room, root.recipient);
       progress.delete(root.id);
       await tick();
@@ -306,8 +307,8 @@ export function createAgentChats(options: Options) {
         if (!m.roomId || !rooms.allowed(b, m)) continue;
         const job = s.jobs.find(j => j.taskId === m.taskId && j.roomId === m.roomId)!;
         const id = `peer_${m.id}`;
-        const closed = messages.some(c => c.kind === 'question_closed' && c.questionId === m.questionId);
-        const status = closed ? m.kind === 'reply' ? 'late reply · not applied' : 'closed' : 'delivered';
+        const closed = messages.find(c => c.kind === 'question_closed' && c.questionId === m.questionId);
+        const status = closed ? m.kind === 'reply' ? 'late reply · not applied' : closed.closureReason === 'expired' ? 'expired' : 'closed' : 'delivered';
         const previous = s.messages.find(saved => saved.id === id);
         if (previous) previous.status = status;
         if (!s.messages.some(saved => saved.id === id)) s.messages.push({ id, roomId: m.roomId, threadId: job.threadId,

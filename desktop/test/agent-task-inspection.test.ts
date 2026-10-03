@@ -70,6 +70,28 @@ test('recall inspection strips arbitrary fields and isolates each task without i
 test('inspection modules and their transitive contracts are packaged and load with native Node', async () => {
   const ignore = (await config()).packagerConfig?.ignore;
   if (typeof ignore !== 'function') throw new Error('Missing package filter');
-  for (const path of ['desktop/shared/agent-task-inspection.ts', 'desktop/shared/history-recall.ts', 'desktop/lib/agent-management/task-inspection.mts']) expect(ignore(`/${path}`)).toBe(false);
+  for (const path of ['desktop/shared/agent-question.ts', 'desktop/shared/agent-task-inspection.ts', 'desktop/shared/history-recall.ts', 'desktop/lib/agent-management/task-inspection.mts']) expect(ignore(`/${path}`)).toBe(false);
   execFileSync('node', ['--input-type=module', '-e', "await import('./desktop/lib/agent-management/service.mts')"], { stdio: 'pipe' });
+});
+
+test('inspection projects owner deadlines and explicit expiry reason and rejects malformed persisted dates', () => {
+  const base = snapshot(), expiresAt = '2099-01-01T00:00:00.000Z';
+  const input = { ...base, collaboration: { ...base.collaboration, questionDeadlines: { question: expiresAt },
+    outgoing: [message, { ...message, id: 'expired', kind: 'question_closed', closureReason: 'expired', text: 'Question expired.' }] } };
+  const detail = parseAgentTasks(inspectAgentTasks(input))[0]!.inspection!;
+  expect(detail.messages[0]?.expiresAt).toBe(expiresAt);
+  expect(detail.messages[1]?.closureReason).toBe('expired');
+  input.collaboration.questionDeadlines.question = 'not a date';
+  expect(inspectAgentTasks(input)[0]?.inspection?.error).toContain('invalid');
+});
+
+test('only unknown room consultations expose the scoped inspection action', () => {
+  const consultation = { ...task, id: 'q_question', roomId: 'room', consultation: 'question', status: 'unknown' };
+  const project = (t: unknown) => parseAgentTasks(inspectAgentTasks({ tasks: [t] }))[0]!.inspection;
+  expect(project(consultation)?.recoveryRoomId).toBe('room');
+  for (const other of [{ ...consultation, status: 'interrupted' }, { ...consultation, roomId: undefined },
+    { ...consultation, consultation: undefined }, { ...consultation, verification: 'verification' }]) {
+    expect(project(other)?.recoveryRoomId).toBeUndefined();
+  }
+  expect(() => project({ ...consultation, roomId: '../foreign' })).toThrow();
 });

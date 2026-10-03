@@ -1,10 +1,11 @@
 import { agentRecord, agentText, parseAgentDetails, parseAgentEngineId } from './agent-management.ts';
 import type { AgentDetails } from './agent-management.ts';
+import { parseQuestionDeadline } from './agent-question.ts';
 
 export const AGENT_RUNTIME_CHANNEL = 'cheshi:agent-registry:runtime';
 export interface AgentRuntimeRequest {
-  agentId: string; engineId: string; action: 'status' | 'start' | 'submit' | 'cancel' | 'recover' | 'question';
-  taskId?: string; prompt?: string; roomId?: string; questionId?: string; recipient?: string | null;
+  agentId: string; engineId: string; action: 'status' | 'start' | 'submit' | 'cancel' | 'recover' | 'question' | 'question-deadline';
+  taskId?: string; prompt?: string; roomId?: string; questionId?: string; recipient?: string | null; expiresAt?: string | null;
 }
 export interface AgentRuntimeState {
   details: AgentDetails | null;
@@ -13,21 +14,25 @@ export interface AgentRuntimeState {
 export function parseAgentRuntimeRequest(value: unknown): AgentRuntimeRequest {
   const v = agentRecord(value), agentId = agentText(v.agentId, 36);
   if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(agentId)) throw new TypeError('Invalid specialist ID.');
-  if (!['status', 'start', 'submit', 'cancel', 'recover', 'question'].includes(String(v.action))) throw new TypeError('Invalid runtime action.');
+  if (!['status', 'start', 'submit', 'cancel', 'recover', 'question', 'question-deadline'].includes(String(v.action))) throw new TypeError('Invalid runtime action.');
   const action = v.action as AgentRuntimeRequest['action'];
   const result: AgentRuntimeRequest = { agentId, engineId: parseAgentEngineId(v.engineId), action };
-  if (action === 'submit' || action === 'cancel' || action === 'recover' || action === 'question') {
+  if (['submit', 'cancel', 'recover', 'question', 'question-deadline'].includes(action)) {
     result.taskId = agentText(v.taskId, 80);
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(result.taskId)) throw new TypeError('Invalid task ID.');
   }
-  if (action === 'recover' || action === 'question') {
+  if (action === 'recover' || action === 'question' || action === 'question-deadline') {
     result.roomId = agentText(v.roomId, 80);
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(result.roomId)) throw new TypeError('Invalid room ID.');
   }
-  if (action === 'question') {
+  if (action === 'question' || action === 'question-deadline') {
     result.questionId = agentText(v.questionId, 80);
-    result.recipient = v.recipient === null ? null : agentText(v.recipient, 80);
-    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(result.questionId) || (result.recipient !== null && !/^[a-zA-Z0-9_-]{1,80}$/.test(result.recipient))) throw new TypeError('Invalid question control.');
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(result.questionId)) throw new TypeError('Invalid question control.');
+    if (action === 'question-deadline') result.expiresAt = parseQuestionDeadline(v.expiresAt);
+    else {
+      result.recipient = v.recipient === null ? null : agentText(v.recipient, 80);
+      if (result.recipient !== null && !/^[a-zA-Z0-9_-]{1,80}$/.test(result.recipient)) throw new TypeError('Invalid question control.');
+    }
   }
   if (action === 'submit') {
     result.prompt = agentText(v.prompt, 20_000);

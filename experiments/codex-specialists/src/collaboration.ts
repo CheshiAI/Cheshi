@@ -1,4 +1,4 @@
-import { questionClosed } from './question-control.ts';
+import { expireQuestions, questionClosed } from './question-control.ts';
 import { assertSnapshot, snapshotArtifacts } from './verification.ts';
 import { assertResult, list, boundedText, verificationRequest, verificationResult, type VerificationResult } from './verification-contract.ts';
 import { createHash } from 'node:crypto';
@@ -11,7 +11,12 @@ export class WorkerCollaboration {
   private readonly store: AgentStore;
   readonly agentId: string;
   private readonly workspace: string | undefined;
-  constructor(store: AgentStore, agentId: string, workspace?: string) { this.store = store; this.agentId = identifier(agentId); this.workspace = workspace; }
+  private readonly now: () => number;
+  constructor(store: AgentStore, agentId: string, workspace?: string, now = Date.now) {
+    this.store = store; this.agentId = identifier(agentId); this.workspace = workspace; this.now = now;
+  }
+
+  expire(): void { this.store.transaction(state => { expireQuestions(state, this.agentId, this.now()); }); }
 
   exchange(input: unknown) {
     const data = record(input);
@@ -21,6 +26,7 @@ export class WorkerCollaboration {
     }
     const incoming = data.messages.map(message), acknowledged = data.acknowledged.map(identifier);
     this.store.transaction(state => {
+      expireQuestions(state, this.agentId, this.now());
       const c = state.collaboration;
       c.rooms = roomRoster(data.rooms);
       c.peers = roster.filter(peer => peer.id !== this.agentId);
@@ -56,7 +62,8 @@ export class WorkerCollaboration {
     if (tool === 'list_agents') return { agents: this.availablePeers(task) };
     if (tool === 'collaboration_status') {
       const c = this.store.snapshot().collaboration;
-      return { closed: c.outgoing.filter(m => m.kind === 'question_closed' && m.taskId === task.id), questions: c.outgoing.filter(m => m.kind === 'question' && m.taskId === task.id),
+      return { closed: c.outgoing.filter(m => m.kind === 'question_closed' && m.taskId === task.id),
+        questions: c.outgoing.filter(m => m.kind === 'question' && m.taskId === task.id).map(m => ({ ...m, expiresAt: c.questionDeadlines?.[m.id] ?? null })),
         replies: c.incoming.filter(m => m.kind === 'reply' && m.taskId === task.id) };
     }
     if (tool === 'verification_status') {
@@ -157,6 +164,7 @@ export class WorkerCollaboration {
       r.kind === (q.kind === 'question' ? 'reply' : 'verification_result') && r.questionId === q.id && (c.consumed.includes(r.id) || consuming.includes(r.id))));
   }
   next(): { roomId?: string; taskId: string; prompt: string; consultation?: string; verification?: string; messages: string[]; resume: boolean } | null {
+    this.expire();
     const state = this.store.snapshot(), c = state.collaboration;
     for (const task of state.tasks.filter(t => t.status === 'waiting' && (!t.goal || ['waiting', 'ready'].includes(t.goal.phase)))) {
       const replies = c.incoming.filter(m => ['reply', 'verification_result'].includes(m.kind) && m.taskId === task.id && !questionClosed(c, m.questionId) && !c.consumed.includes(m.id));

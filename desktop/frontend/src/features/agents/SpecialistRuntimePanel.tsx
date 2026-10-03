@@ -51,13 +51,14 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, model, 
     const timer = setInterval(() => { void refresh(); }, 10_000);
     return () => { clearInterval(timer); revision.current++; };
   }, [agent.id, agent.revision, engine]);
-  const operate = async (action: 'start' | 'submit' | 'cancel') => {
+  const operate = async (action: 'start' | 'submit' | 'cancel' | 'recover', recovery?: { taskId: string; roomId: string }) => {
     if (busy.current || !engine || disconnected) return;
     busy.current = true; setPending(true); setError(null);
     const version = ++revision.current;
     if (action === 'submit' && (!task.current || task.current.prompt !== prompt)) task.current = { id: crypto.randomUUID(), prompt };
     try {
       const result = await model.runtime({ agentId: agent.id, engineId: engine, action,
+        ...(action === 'recover' ? recovery : {}),
         ...(action === 'submit' ? { taskId: task.current!.id, prompt: task.current!.prompt } : {}),
         ...(action === 'cancel' ? { taskId: stoppable?.id } : {}) });
       if (active.current && version === revision.current) {
@@ -100,7 +101,9 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, model, 
           </div>
         </form>
       </div>
-      <AgentTaskResults requestedTaskId={chatTask?.taskId} onBackToChats={chatTask ? onBackToChats : undefined} key={engine} tasks={details?.tasks ?? []} loading={false} running={!disconnected && details?.agent.state === 'running'} />
+      <AgentTaskResults requestedTaskId={chatTask?.taskId} onBackToChats={chatTask ? onBackToChats : undefined} key={engine} tasks={details?.tasks ?? []} loading={false} running={!disconnected && details?.agent.state === 'running'}
+        recoveryDisabled={pending || disconnected || !details?.ready || details.busy || Boolean(details.error)}
+        onRecover={(taskId, roomId) => { void operate('recover', { taskId, roomId }); }} />
     </div>
   </>;
 }

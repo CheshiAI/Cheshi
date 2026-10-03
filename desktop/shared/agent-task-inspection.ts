@@ -1,4 +1,5 @@
 import { normalizeHistoryRecallActivity, type HistoryRecallActivity } from './history-recall.ts';
+import { parseQuestionDeadline } from './agent-question.ts';
 
 export interface TaskCriterion { criterion: string; met: boolean; evidence: string }
 export interface TaskDecision {
@@ -14,6 +15,7 @@ export interface TaskVerification {
 }
 export interface TaskVerificationRequest { goal: string; criteria: string[]; artifacts: { path: string; sha256: string }[] }
 export interface TaskMessage {
+  expiresAt?: string | null; closureReason?: 'expired';
   id: string; kind: 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result';
   from: string; to: string; fromName: string; toName: string; questionId: string; text: string;
   delivery: 'queued' | 'delivered' | 'received' | 'processed';
@@ -21,6 +23,7 @@ export interface TaskMessage {
 }
 export interface TaskRecall { id: string; activity: HistoryRecallActivity }
 export interface TaskInspection {
+  recoveryRoomId?: string;
   finishedAt: string | null; threadId: string | null; conversation: string | null;
   goal: TaskGoal | null; messages: TaskMessage[]; evidence: TaskEvidence[];
   recall: TaskRecall[] | null; error: string | null;
@@ -89,12 +92,17 @@ export function parseTaskVerificationRequest(value: unknown): TaskVerificationRe
 }
 export function parseTaskInspection(value: unknown): TaskInspection {
   const v = inspectionRecord(value);
+  if (v.recoveryRoomId !== undefined && (typeof v.recoveryRoomId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(v.recoveryRoomId))) throw new TypeError('Invalid recovery room.');
   return { finishedAt: nullableText(v.finishedAt), threadId: nullableText(v.threadId), conversation: nullableText(v.conversation),
+    ...(v.recoveryRoomId === undefined ? {} : { recoveryRoomId: v.recoveryRoomId as string }),
     error: nullableText(v.error), goal: v.goal === null ? null : parseTaskGoal(v.goal),
     evidence: inspectionList(v.evidence, parseTaskEvidence, 32),
     messages: inspectionList(v.messages, raw => {
       const m = inspectionRecord(raw);
+      if (m.closureReason !== undefined && (m.kind !== 'question_closed' || m.closureReason !== 'expired')) throw new TypeError('Invalid question closure reason.');
       return { id: inspectionText(m.id, 200), kind: choice(m.kind, ['question', 'question_closed', 'reply', 'verification_request', 'verification_result']),
+        ...(m.expiresAt === undefined ? {} : { expiresAt: parseQuestionDeadline(m.expiresAt) }),
+        ...(m.closureReason === 'expired' ? { closureReason: 'expired' as const } : {}),
         from: inspectionText(m.from, 200), to: inspectionText(m.to, 200), fromName: inspectionText(m.fromName, 200), toName: inspectionText(m.toName, 200),
         questionId: inspectionText(m.questionId, 200), text: inspectionText(m.text, 12_000),
         delivery: choice(m.delivery, ['queued', 'delivered', 'received', 'processed']),

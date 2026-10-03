@@ -10,8 +10,9 @@ import { AgentTaskDetail } from './AgentTaskDetail';
 import common from '../../shared/agent-management/agentManagement.module.css';
 import styles from './AgentTaskResults.module.css';
 
-export function AgentTaskResults({ requestedTaskId, onBackToChats, tasks, loading, running }: {
+export function AgentTaskResults({ requestedTaskId, onBackToChats, tasks, loading, running, onRecover, recoveryDisabled }: {
   requestedTaskId?: string; onBackToChats?(): void;
+  onRecover?(taskId: string, roomId: string): void; recoveryDisabled?: boolean;
   tasks: readonly AgentTask[]; loading: boolean; running: boolean;
 }) {
   const [taskId, setTaskId] = useState<string | null>(requestedTaskId ?? null);
@@ -63,6 +64,11 @@ export function AgentTaskResults({ requestedTaskId, onBackToChats, tasks, loadin
         ? 'No task results available.' : 'Start the worker to read its stored task results.'}</p>}
     </div>
     {task && <div ref={content} className={styles.content} aria-label="Task result content" tabIndex={-1}>
+      {task.status === 'unknown' && task.inspection?.recoveryRoomId && onRecover && <section aria-label="Consultation recovery">
+        <p>Inspect the saved execution result before retrying or deleting. This does not send a reply or restart the consultation.</p>
+        <NeumorphicButton variant="standard" disabled={recoveryDisabled || !running}
+          onClick={() => onRecover(task.id, task.inspection!.recoveryRoomId!)}>Inspect execution</NeumorphicButton>
+      </section>}
       <AgentTaskDetail task={task} />
     </div>}
   </section>;

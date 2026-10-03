@@ -8,6 +8,7 @@ export interface Binding {
 }
 export interface Peer { id: string; name: string; role: string }
 export interface Message {
+  closureReason?: 'expired';
   roomId?: string; id: string; kind: 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result'; from: string; to: string; taskId: string; questionId: string; text: string;
 }
 interface Envelope { scope: string; message: Message; delivered: boolean }
@@ -22,7 +23,9 @@ function parseMessage(value: unknown): Message {
   if (!['question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid collaboration message kind.');
   const text = agentText(v.text, 12_000);
   if (!text.trim()) throw new Error('Empty collaboration message.');
+  if (v.closureReason !== undefined && (v.kind !== 'question_closed' || v.closureReason !== 'expired')) throw new Error('Invalid question closure reason.');
   return { id: identifier(v.id), kind: v.kind as Message['kind'], from: identifier(v.from), to: identifier(v.to),
+    ...(v.closureReason === 'expired' ? { closureReason: 'expired' as const } : {}),
     ...(v.roomId === undefined ? {} : { roomId: identifier(v.roomId) }), taskId: identifier(v.taskId), questionId: identifier(v.questionId), text };
 }
 export const bindingFor = (workspace: string, engineId: string, agentId: string, accountId: string): Binding => {

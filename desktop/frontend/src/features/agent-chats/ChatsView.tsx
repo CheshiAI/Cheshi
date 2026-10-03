@@ -88,10 +88,10 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
     catch (e) { if (alive.current) setError(e instanceof Error ? e.message : 'Execution inspection failed.'); }
     finally { inspecting.current = false; if (alive.current) setSending(false); }
   }
-  async function changeQuestion(questionId: string, recipient: string | null) {
+  async function changeQuestion(questionId: string, change: { action: 'question'; recipient: string | null } | { action: 'question-deadline'; expiresAt: string | null }) {
     if (!room || !root || sending || inspecting.current) return;
     inspecting.current = true; setSending(true); setError(null);
-    try { await mutate({ action: 'question', roomId: room.id, goalId: root.id, questionId, recipient }); }
+    try { await mutate({ ...change, roomId: room.id, goalId: root.id, questionId }); }
     catch (e) { if (alive.current) setError(e instanceof Error ? e.message : 'Question change failed. Refresh before retrying.'); }
     finally { inspecting.current = false; if (alive.current) setSending(false); }
   }
@@ -162,7 +162,8 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
         {room && <GoalQuestions questions={goalState?.questions ?? []}
           members={room.members.filter(m => m.id !== root.recipient && agents.some(a => a.id === m.id && a.accountId === m.accountId))}
           disabled={sending || !api || goalState?.phase !== 'waiting' || !!goalState.resumeBlocked}
-          onChange={(id, recipient) => { void changeQuestion(id, recipient); }} />}
+          onChange={(id, recipient) => { void changeQuestion(id, { action: 'question', recipient }); }}
+          onDeadline={(id, expiresAt) => { void changeQuestion(id, { action: 'question-deadline', expiresAt }); }} />}
         {needsRecovery && <p role="status">{recoveryBlock ?? 'Add the missing information below to resume the same goal. Its completion criteria and verification requirements remain in place.'}</p>}
         {(root.status === 'unknown' || goalState?.phase === 'unknown') && <NeumorphicButton variant="standard" disabled={sending || !api} onClick={() => { void inspectExecution(); }}>Check execution result</NeumorphicButton>}
       </section>}
