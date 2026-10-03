@@ -456,3 +456,14 @@ test('scheduled task review reuses its workspace and concurrent clicks share one
   release(); await Promise.all([first, second]);
   await f.application.closeAll();
 });
+
+
+test('ready windows includes workspace and manager renderers and excludes closed windows', async () => {
+  const { application, instances } = fixture();
+  assert.deepEqual(application.readyWindows, []);
+  await application.open('/project');
+  await application.openManager();
+  assert.deepEqual(application.readyWindows, instances.map(instance => instance.window));
+  instances[0]!.state.destroyed = true;
+  assert.deepEqual(application.readyWindows, [instances[1]!.window]);
+});

@@ -128,6 +128,10 @@ export class WorkspaceApplication {
   }
 
   get hasWorkspaces(): boolean { return this.entries.size > 0; }
+  get readyWindows(): BrowserWindow[] {
+    return [...this.entries].flatMap(entry =>
+      !entry.closing && !entry.switching && entry.window && !entry.window.isDestroyed() ? [entry.window] : []);
+  }
   get isTransitioning(): boolean { return this.transitions > 0; }
   hasFocusedWorkspace(root?: string): boolean {
     return [...this.entries].some(entry => !entry.managementOnly && !entry.closing && entry.window && !entry.window.isDestroyed()

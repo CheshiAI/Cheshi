@@ -42,20 +42,20 @@ test('rail management items retain their order and destinations', () => {
   const destinations: WorkspaceView[] = [];
   const rail = SidebarRail({ activeView: 'chat', sidebarOpen: true,
     onNavigate: view => destinations.push(view), onToggleSidebar() {} });
-  const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 8);
+  const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 10);
   expect(navigation.map(element => element.props.label)).toEqual([
       'Codex', 'Terminal', 'Relationship Graph', 'Memo', 'Calendar',
-      'Github', 'Plugins', 'Settings',
+      'Github', 'Plugins', 'Agents', 'Docker', 'Settings',
     ]);
   for (const element of navigation) if (element.props.label !== 'Codex') element.props.onClick?.();
-  expect(destinations).toEqual(['terminal', 'codegraph', 'notes', 'calendar', 'git', 'plugins', 'settings']);
+  expect(destinations).toEqual(['terminal', 'codegraph', 'notes', 'calendar', 'git', 'plugins', 'agents', 'docker', 'settings']);
 });
 
-test('rail bottom controls expose caffeine, help, sidebar and project actions', () => {
+test('rail bottom controls retain caffeine, sidebar and project actions without a help launcher', () => {
   let toggles = 0;
   const rail = SidebarRail({ activeView: 'chat', sidebarOpen: true, onNavigate() {}, onToggleSidebar() { toggles++; } });
   expect(elements(rail).find(element => element.type === KeepAwakeButton)?.props.variant).toBe('rail');
-  expect(elements(rail).find(element => element.type === HelpCenter)?.props.variant).toBe('rail');
+  expect(elements(rail).some(element => element.type === HelpCenter)).toBe(false);
   expect(elements(rail).some(element => element.type === WorkspaceSelector)).toBe(true);
   const collapse = elements(rail).find(element => element.type === SidebarRailButton && element.props.label === 'Collapse sidebar');
   expect(collapse?.props['aria-label']).toBe('Collapse sidebar');

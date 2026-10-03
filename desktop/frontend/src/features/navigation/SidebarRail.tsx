@@ -14,7 +14,6 @@ import type { ReactNode } from 'react';
 import { SidebarRailButton } from '../../shared/ui';
 import { DockerIcon } from '../../shared/ui/DockerIcon';
 import { KeepAwakeButton } from '../chrome/KeepAwakeButton';
-import { HelpCenter } from '../help/HelpCenter';
 import type { WorkspaceView } from './Sidebar';
 import { WorkspaceSelector } from './WorkspaceSelector';
 import styles from './SidebarRail.module.css';
@@ -49,7 +48,6 @@ export function SidebarRail({ activeView, sidebarOpen, onNavigate, onToggleSideb
     </nav>
     <div className={styles.bottomControls} aria-label="Workspace controls">
       <KeepAwakeButton variant="rail" />
-      <HelpCenter variant="rail" />
       <SidebarRailButton active={!sidebarOpen}
         icon={sidebarOpen ? <PanelLeftClose aria-hidden="true" /> : <PanelLeftOpen aria-hidden="true" />}
         label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}

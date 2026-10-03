@@ -3,6 +3,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { helpArticles } from '../frontend/src/features/help/helpArticles';
 import { searchHelp } from '../frontend/src/features/help/helpCatalog';
 import { HelpPanel } from '../frontend/src/features/help/HelpPanel';
+import { HelpCenter } from '../frontend/src/features/help/HelpCenter';
+import { Window } from 'happy-dom';
+import { act } from 'react';
 
 test('bundled help contains six complete offline documents with valid related topics', () => {
   expect(helpArticles).toHaveLength(6);
@@ -46,4 +49,44 @@ test('open help exposes searchable topics without making the workspace modal', (
   expect(html).toContain('aria-label="Close help"');
   expect(html).toContain('Popular guides');
   for (const article of helpArticles) expect(html).toContain(article.title);
+});
+
+test('native menu requests open one help panel, close restores editor focus, and unmount unsubscribes', async () => {
+  const window = new Window();
+  const globals = { window, document: window.document, navigator: window.navigator, HTMLElement: window.HTMLElement,
+    IS_REACT_ACT_ENVIRONMENT: true };
+  const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
+  const host = document.createElement('div'), editor = document.createElement('textarea');
+  document.body.append(editor, host); editor.value = 'Unsaved draft';
+  const { createRoot } = await import('react-dom/client');
+  const root = createRoot(host);
+  let request: (() => void) | null = null, unsubscribed = false;
+  const api = { onHelpRequested(listener: () => void) {
+    request = listener; return () => { request = null; unsubscribed = true; };
+  } };
+  const open = () => { if (!request) throw new Error('Missing menu subscription'); request(); };
+  try {
+    await act(async () => root.render(<HelpCenter api={api} />));
+    expect(document.querySelector('[data-open="true"]')).toBeNull();
+    editor.focus(); await act(async () => open());
+    expect(document.querySelectorAll('[data-open="true"]')).toHaveLength(1);
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Search help');
+    await act(async () => open());
+    expect(document.querySelectorAll('[data-open="true"]')).toHaveLength(1);
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Close help"]')!.click());
+    expect(document.querySelector('[data-open="true"]')).toBeNull();
+    expect(document.activeElement).toBe(editor); expect(editor.value).toBe('Unsaved draft');
+    await act(async () => open());
+    await act(async () => window.document.activeElement!.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    expect(document.querySelector('[data-open="true"]')).toBeNull();
+    expect(document.activeElement).toBe(editor);
+  } finally {
+    await act(async () => root.unmount());
+    await window.happyDOM.close();
+    for (const [key, descriptor] of previous) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key);
+    }
+  }
+  expect(unsubscribed).toBe(true);
 });

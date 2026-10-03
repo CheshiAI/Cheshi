@@ -17,6 +17,7 @@ import { aboutBackgroundColor, aboutPage } from './lib/about-page.mts';
 import { registerSelectionCopy } from './lib/selection-copy.mts';
 import { createAboutWindow } from './lib/about-window.mts';
 import { aboutMenuTemplate } from './lib/about-menu.mts';
+import { createHelpMenuAction, helpMenuTemplate } from './lib/help-menu.mts';
 import { startupScreen } from './lib/startup-screen.mts';
 import { WorkspaceApplication, WorkspaceWindowCloseCancelledError } from './lib/workspace-application.mts';
 import { WorkspaceIpcRouter } from './lib/workspace-ipc-router.mts';
@@ -365,7 +366,10 @@ app.whenReady().then(async () => {
   }
   const applicationMenu = Menu.getApplicationMenu();
   if (applicationMenu) {
-    const template = aboutMenuTemplate(applicationMenu.items, product.displayName, aboutWindow.open, items => Menu.buildFromTemplate(items));
+    const openHelp = createHelpMenuAction({ focused: () => BrowserWindow.getFocusedWindow(), windows: () => workspaces.readyWindows,
+      openManager: () => workspaces.openManager() });
+    const template = helpMenuTemplate(aboutMenuTemplate(applicationMenu.items, product.displayName, aboutWindow.open, items => Menu.buildFromTemplate(items)),
+      () => { void openHelp().catch(error => dialog.showErrorBox('Cheshi Help', String(error))); }, items => Menu.buildFromTemplate(items));
     template.push({ label: 'Notes', submenu: [
       { label: 'New Note', accelerator: STICKY_NOTES_SHORTCUT, registerAccelerator: false,
         click: () => { void stickyNotes.create().catch(error => dialog.showErrorBox('Cheshi Notes', String(error))); } },

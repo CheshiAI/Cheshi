@@ -80,7 +80,10 @@ export interface WorkspaceCodexLoginState {
   error: string | null;
 }
 
+export const OPEN_HELP_CHANNEL = 'cheshi:open-help';
+
 export interface WorkspaceManagementApi extends Partial<AppUpdateApi> {
+  onHelpRequested?(listener: () => void): () => void;
   getCodexLogin(): Promise<WorkspaceCodexLoginState>;
   startCodexLogin(): Promise<WorkspaceCodexLoginState>;
   cancelCodexLogin(): Promise<WorkspaceCodexLoginState>;
