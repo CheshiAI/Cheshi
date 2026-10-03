@@ -77,7 +77,7 @@ function fixture(linkedWorkspace = false) {
     const assignment = agent.assignments.find(a => a.workspaceRoot === workspace)!;
     const profile = { role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,
       serviceTier: agent.serviceTier, permissions: agent.permissions, instructions: agent.instructions };
-    config.recoveryProtocol = protocol;
+    config.recoveryProtocol = protocol; delete config.progressProtocol;
     config.settingsFingerprint = createHash('sha256').update(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1,
       historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: protocol, questionProtocol: 2,
       agent: profile, workspace: realpathSync(workspace), instructions: assignment.instructions })).digest('hex');
@@ -300,7 +300,7 @@ test('question controls post only the authenticated owner task route with valida
   } finally { mock.mockRestore(); await f.runtime.dispose(); }
 });
 
-test.each([1, 2])('recovery protocol %s upgrade preserves the volume and unknown outcome without submitting or deleting data', async protocol => {
+test.each([1, 2, 3])('worker control upgrade from recovery protocol %s preserves the volume and unknown outcome without submitting or deleting data', async protocol => {
   const f = fixture();
   try {
     await f.runtime.request(f.workspace, f.request()); f.legacyRecovery(protocol);
@@ -309,7 +309,7 @@ test.each([1, 2])('recovery protocol %s upgrade preserves the volume and unknown
     const start = f.calls.length;
     const result = await f.runtime.request(f.workspace, f.request());
     expect(result.details?.tasks).toEqual(tasks);
-    expect(JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8')).recoveryProtocol).toBe(3);
+    expect(JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8')).progressProtocol).toBe(1);
     const changes = f.calls.slice(start);
     expect(changes.some(c => c.args.includes('stop'))).toBe(true);
     expect(changes.some(c => c.args.includes('create'))).toBe(true);
@@ -333,7 +333,7 @@ test.each(['busy', 'running', 'accepted', 'settings', 'instructions', 'current-p
     }
     if (reason === 'instructions' || reason === 'current-protocol') {
       const filename = join(f.runtimePath, 'runtime.json'), config = JSON.parse(readFileSync(filename, 'utf8'));
-      if (reason === 'instructions') config.instructions += 'changed'; else config.recoveryProtocol = 3;
+      if (reason === 'instructions') config.instructions += 'changed'; else { config.recoveryProtocol = 3; config.progressProtocol = 1; }
       writeFileSync(filename, JSON.stringify(config));
     }
     await fails(f.runtime.request(f.workspace, f.request()), 'Wait for this worker');

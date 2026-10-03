@@ -5,7 +5,6 @@ import { LiquidGlassPanel, LiquidGlassSelect, NeumorphicButton, NeumorphicTextFi
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import type { AgentChatsApi, ChatsRequest, ChatsSnapshot, ChatTaskTarget, RoomMessage } from '../../../../shared/agent-chats';
-import { CHAT_GOAL_TURN_LIMIT } from '../../../../shared/agent-chats';
 import type { AgentRegistryApi, SpecialistAgent } from '../../../../shared/agent-registry';
 import type { AgentEngineInfo, AgentManagementApi } from '../../../../shared/agent-management';
 import { AgentAvatar } from '../../shared/agent-management/AgentAvatar';
@@ -70,8 +69,7 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
   const owner = root?.recipient ?? room?.defaultAgentId;
   const goalState = root?.goalProgress;
   const needsRecovery = root?.status !== 'completed' && (root?.status === 'blocked' || root?.status === 'unknown'
-    || goalState?.phase === 'blocked' || goalState?.phase === 'unknown'
-    || (goalState?.turns ?? 0) >= (goalState?.turnLimit ?? CHAT_GOAL_TURN_LIMIT));
+    || goalState?.phase === 'blocked' || goalState?.phase === 'unknown');
   const ownerSelected = recipient === 'default' || recipient === owner;
   const recoveryBlock = needsRecovery ? goalState ? goalState.resumeBlocked : 'Checking the saved goal and worker state.' : null;
   const resumeGoal = needsRecovery && ownerSelected && !recoveryBlock;
@@ -154,7 +152,8 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
       {room && <div className={styles.participants}>{room.members.map(m => m.name).join(' · ')}<span>Default: {name(owner ?? null)}</span></div>}
       {root && <section ref={summaryScroll} className={styles.goalSummary} aria-label="Goal progress">
         <div className={styles.metadata}><strong>Goal · {goalState?.phase ?? root.status ?? 'Checking'}</strong>
-          <span>Turns: {goalState?.turns ?? 'Unknown'} / {goalState?.turnLimit ?? CHAT_GOAL_TURN_LIMIT}</span></div>
+          <span>Turns: {goalState?.turns ?? 'Unknown'}</span></div>
+        <p>Model tokens: {goalState?.usage ? `${goalState.usage.totalTokens.toLocaleString()} reported through turn ${goalState.usage.reportedThroughTurn}` : 'Unknown'} · Cost: Unknown</p>
         {goalState?.recovery && <p>Execution confirmed: {goalState.recovery.status} · {goalState.recovery.checkedAt}<br />Conversation: {goalState.recovery.threadId} · Turn: {goalState.recovery.turnId}</p>}
         {goalState?.progress && <p>{goalState.progress}</p>}
         {(goalState?.reason || root.error) && <p>Reason: {goalState?.reason || root.error}</p>}

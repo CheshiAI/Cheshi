@@ -1,7 +1,7 @@
 import { realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { ChatsStore } from './store.mts';
-import { CHAT_GOAL_TURN_LIMIT, parseChatsRequest, type AgentRoom, type ChatMember, type RoomJob, type RoomMessage, type RoomGoalProgress } from '../../shared/agent-chats.ts';
+import { parseChatsRequest, type AgentRoom, type ChatMember, type RoomJob, type RoomMessage, type RoomGoalProgress } from '../../shared/agent-chats.ts';
 import type { AgentDetails, AgentTask } from '../../shared/agent-management.ts';
 import type { AgentRuntimeRequest, AgentRuntimeState } from '../../shared/agent-runtime.ts';
 import type { AgentRegistrySnapshot } from '../../shared/agent-registry.ts';
@@ -15,7 +15,6 @@ interface Options {
   dispatch(workspace: string, input: AgentRuntimeRequest, context: { roomId: string; conversation: string; goal: boolean; inputId?: string }): Promise<AgentRuntimeState>;
 }
 const digest = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 40);
-const turnLimitMessage = `Goal turn limit reached (${CHAT_GOAL_TURN_LIMIT}/${CHAT_GOAL_TURN_LIMIT}). Review progress before starting a new goal.`;
 export function createAgentChats(options: Options) {
   let saved: ChatsStore | null = null;
   const store = () => saved ??= new ChatsStore(options.filename);
@@ -27,7 +26,6 @@ export function createAgentChats(options: Options) {
     if (details?.tasks.some(t => t.status === 'unknown')) return 'Execution outcome is unknown. Inspect the saved task before resuming.';
     if (!details?.ready || details.authenticated !== true || details.error || details.busy) return details?.error ?? 'Waiting for an available worker. Open Agents and start the participant.';
     if (!task?.inspection?.goal || task.inspection.error) return 'Goal state is unavailable. Inspect the task and refresh the worker.';
-    if (task.inspection.goal.turns >= CHAT_GOAL_TURN_LIMIT) return turnLimitMessage;
     if (task.status === 'completed') return 'This goal is completed.';
     return null;
   }
@@ -44,13 +42,13 @@ export function createAgentChats(options: Options) {
       phase: task?.status === 'unknown' ? 'unknown' : goal?.phase ?? task?.status ?? 'unavailable',
       progress: latest?.progress ?? '', reason: task?.error ?? latest?.reason ?? '', nextAction: latest?.nextAction ?? '',
       ...(task?.recovery ? { recovery: task.recovery } : {}),
-      turns: goal?.turns ?? null, turnLimit: CHAT_GOAL_TURN_LIMIT, resumeBlocked: resumeBlock(details, task),
+      turns: goal?.turns ?? null, ...(goal?.usage ? { usage: goal.usage } : {}), resumeBlocked: resumeBlock(details, task),
     } });
   }
   function goalProgress(message: RoomMessage, state: ReturnType<ChatsStore['all']>): RoomGoalProgress {
     const cached = progress.get(message.id);
     const value = cached?.value ?? { phase: message.status ?? 'queued', progress: '', reason: message.error ?? '', nextAction: '',
-      turns: null, turnLimit: CHAT_GOAL_TURN_LIMIT, resumeBlocked: 'Checking the saved goal and worker state.' };
+      turns: null, resumeBlocked: 'Checking the saved goal and worker state.' };
     const room = state.rooms.find(r => r.id === message.roomId)!;
     let blocked = value.resumeBlocked;
     if (!cached || Date.now() - cached.checkedAt > 10_000) blocked = 'Checking the saved goal and worker state.';
@@ -117,7 +115,7 @@ export function createAgentChats(options: Options) {
       const previous = state.messages.find(m => m.id === input.id);
       const recorded = root ? progress.get(root.id)?.value : undefined;
       if (resume && !previous && root && (root.status === 'blocked' || root.status === 'unknown'
-        || recorded?.phase === 'blocked' || recorded?.phase === 'unknown' || (recorded?.turns ?? 0) >= CHAT_GOAL_TURN_LIMIT)) {
+        || recorded?.phase === 'blocked' || recorded?.phase === 'unknown')) {
         const blocked = goalProgress(root, state).resumeBlocked;
         if (blocked) throw new Error(blocked);
       }
@@ -266,13 +264,6 @@ export function createAgentChats(options: Options) {
             s.messages.find(m => m.id === pending.id)!.taskId = newTask;
           });
           continue;
-        }
-        if (pending.inputId) {
-          const task = details.tasks.find(t => t.id === pending.taskId && t.roomId === pending.roomId);
-          // Older workers may lack inspection, but retain their own authoritative input guard.
-          if (task?.inspection?.goal && task.inspection.goal.turns >= CHAT_GOAL_TURN_LIMIT) {
-            updateJob(pending.id, { error: turnLimitMessage }); continue;
-          }
         }
         updateJob(pending.id, { state: 'sending', error: null });
         try {

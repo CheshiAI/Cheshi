@@ -101,3 +101,11 @@ test('only unknown room consultations and verifications expose the scoped inspec
   }
   expect(() => project({ ...consultation, roomId: '../foreign' })).toThrow();
 });
+
+
+test('long-lived goals expose cumulative usage and unknown legacy usage without an execution cap', () => {
+  const usage = { reportedThroughTurn: 1200, inputTokens: 100, outputTokens: 20, totalTokens: 120 };
+  expect(parseTaskGoal({ ...goal, turns: 1201, usage })).toMatchObject({ turns: 1201, usage });
+  expect(parseTaskGoal({ ...goal, turns: 1201 }).usage).toBeUndefined();
+  expect(() => parseTaskGoal({ ...goal, usage: { ...usage, totalTokens: '120' } })).toThrow('usage');
+});

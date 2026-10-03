@@ -56,3 +56,18 @@ test('evidence callbacks see only matched native items, including events before 
   observer.receive(event('item/completed'));
   expect(observed).toEqual(['item/started/check', 'item/completed/check']);
 });
+
+test('turn usage replaces cumulative notifications, excludes foreign turns and leaves missing usage unknown', async () => {
+  const observer = new TurnObserver();
+  const usage = (turnId: string, tokens: number): Notification => ({ method: 'thread/tokenUsage/updated', params: {
+    threadId: 'thread', turnId, tokenUsage: { total: { inputTokens: tokens, outputTokens: 2, totalTokens: tokens + 2 } },
+  } });
+  observer.receive(usage('turn', 10)); observer.receive(usage('foreign', 100));
+  observer.identify('thread', 'turn'); observer.receive(usage('turn', 20)); observer.receive(usage('turn', 20));
+  observer.receive(completion()); await observer.result;
+  expect(observer.usage).toEqual({ inputTokens: 20, outputTokens: 2, totalTokens: 22 });
+  const missing = new TurnObserver(); missing.identify('thread', 'turn');
+  missing.receive({ method: 'thread/tokenUsage/updated', params: { threadId: 'thread', turnId: 'turn', tokenUsage: { total: {} } } });
+  missing.receive(completion()); await missing.result;
+  expect(missing.usage).toBeNull();
+});

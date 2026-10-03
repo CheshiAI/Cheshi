@@ -1,15 +1,16 @@
 import { agentRecord, agentText, parseAgentEngineId, parseAgentId, parseExecutionRecovery, type ExecutionRecovery } from './agent-management.ts';
 import { parseQuestionDeadline } from './agent-question.ts';
 
+import { parseGoalUsage, type TaskGoalUsage } from './agent-task-inspection.ts';
+
 export const AGENT_CHATS_CHANNEL = 'cheshi:agent-chats:request';
-// Decision protocol 1 has a fixed eight-turn budget. Keep this aligned with the worker.
-export const CHAT_GOAL_TURN_LIMIT = 8;
 export interface RoomQuestion { id: string; recipient: string; text: string; status: 'waiting' | 'answered' | 'closed' | 'expired'; closure: string | null; expiresAt?: string | null }
 export interface RoomGoalProgress {
   questions?: RoomQuestion[];
   recovery?: ExecutionRecovery;
   phase: string; progress: string; reason: string; nextAction: string;
-  turns: number | null; turnLimit: number; resumeBlocked: string | null;
+  usage?: TaskGoalUsage;
+  turns: number | null; resumeBlocked: string | null;
 }
 export interface ChatMember { id: string; accountId: string; name: string }
 export interface AgentRoom {
@@ -70,15 +71,15 @@ function entries<T>(value: unknown, parse: (value: unknown) => T, max: number): 
 function optionalId(value: unknown): string | null { return value === null ? null : chatId(value); }
 function parseGoalProgress(value: unknown): RoomGoalProgress {
   const v = agentRecord(value);
-  if ((v.turns !== null && (!Number.isSafeInteger(v.turns) || Number(v.turns) < 0))
-    || v.turnLimit !== CHAT_GOAL_TURN_LIMIT) throw new Error('Invalid goal budget.');
+  if (v.turns !== null && (!Number.isSafeInteger(v.turns) || Number(v.turns) < 0)) throw new Error('Invalid goal turns.');
   return { ...(v.questions === undefined ? {} : { questions: entries(v.questions, raw => {
     const q = agentRecord(raw);
     if (!['waiting', 'answered', 'closed', 'expired'].includes(String(q.status))) throw new Error('Invalid question status.');
     return { id: chatId(q.id), recipient: chatId(q.recipient), text: required(q.text, 12000), status: q.status as RoomQuestion['status'], closure: q.closure === null ? null : required(q.closure, 12000),
       ...(q.expiresAt === undefined ? {} : { expiresAt: parseQuestionDeadline(q.expiresAt) }) };
   }, 16) }), ...(v.recovery === undefined ? {} : { recovery: parseExecutionRecovery(v.recovery) }), phase: required(v.phase, 100), progress: agentText(v.progress, 4000), reason: agentText(v.reason, 20_000),
-    nextAction: agentText(v.nextAction, 4000), turns: v.turns as number | null, turnLimit: CHAT_GOAL_TURN_LIMIT,
+    nextAction: agentText(v.nextAction, 4000), turns: v.turns as number | null,
+    ...(v.usage === undefined ? {} : { usage: parseGoalUsage(v.usage) }),
     resumeBlocked: v.resumeBlocked === null ? null : required(v.resumeBlocked, 20_000) };
 }
 export function parseRoom(value: unknown): AgentRoom {

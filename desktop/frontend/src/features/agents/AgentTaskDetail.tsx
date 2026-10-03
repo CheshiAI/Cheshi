@@ -68,7 +68,7 @@ export function AgentTaskDetail({ task }: { task: AgentTask }) {
         {latest ? <><p>{latest.progress}</p><p>Action: {latest.action} · {latest.nextAction || 'No further action recorded.'}</p><p>{latest.reason}</p></>
           : <p>No committed decision yet.</p>}
         {goal.pending && <p>A decision is pending. It is not committed until the current turn succeeds.</p>}
-        <details className={styles.record}><summary>Decision history ({goal.decisions.length})</summary>
+        <details className={styles.record}><summary>Recent decisions ({goal.decisions.length})</summary>
           {goal.decisions.map((decision, index) => <div className={styles.criterion} key={index}>
             <strong>{index + 1}. {decision.action}</strong><p>{decision.progress}</p><p>{decision.reason}</p><p>{decision.nextAction}</p>
           </div>)}

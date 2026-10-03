@@ -8,8 +8,7 @@ import { bindingFor, type Message } from '../lib/agent-orchestration/mailbox.mts
 import { specialistAgent } from './agent-registry-fixtures';
 import type { AgentDetails } from '../shared/agent-management';
 import type { ChatsRequest } from '../shared/agent-chats';
-import { CHAT_GOAL_TURN_LIMIT, parseChatsSnapshot } from '../shared/agent-chats';
-import { MAX_GOAL_TURNS } from '../../experiments/codex-specialists/src/decision';
+import { parseChatsSnapshot } from '../shared/agent-chats';
 const directories: string[] = [];
 afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }); });
 function fixture() {
@@ -168,10 +167,9 @@ async function blockedFixture() {
 }
 
 test('blocked goal recovery retains task identity and evidence, deduplicates delivery, and refreshes after restart', async () => {
-  expect(CHAT_GOAL_TURN_LIMIT).toBe(MAX_GOAL_TURNS);
   const f = await blockedFixture(), before = structuredClone(f.task.inspection);
   const state = parseChatsSnapshot(f.request({ action: 'list' }));
-  expect(state.messages[0]?.goalProgress).toMatchObject({ phase: 'blocked', turns: 2, turnLimit: 8,
+  expect(state.messages[0]?.goalProgress).toMatchObject({ phase: 'blocked', turns: 2,
     reason: 'Which sign-in method?', progress: 'Requirements reviewed', nextAction: 'Provide the sign-in method', resumeBlocked: null });
   const followup = { action: 'send', id: 'answer', roomId: 'room', threadId: 'goal', recipient: null, text: 'Use email', goal: false } as const;
   f.request(followup); f.request(followup);
@@ -185,10 +183,9 @@ test('blocked goal recovery retains task identity and evidence, deduplicates del
   expect(f.task.inputs).toEqual([{ id: 'answer', prompt: 'Use email' }]);
 });
 
-test.each(['unknown', 'limit', 'offline', 'unavailable'])('blocked recovery rejects %s without saving or dispatching new work', async reason => {
+test.each(['unknown', 'offline', 'unavailable'])('blocked recovery rejects %s without saving or dispatching new work', async reason => {
   const f = await blockedFixture();
   if (reason === 'unknown') f.task.status = 'unknown';
-  if (reason === 'limit') f.task.inspection!.goal!.turns = 8;
   if (reason === 'offline') f.details.ready = false;
   if (reason === 'unavailable') f.agents[0]!.assignments = [];
   await f.service.tick();
@@ -199,11 +196,10 @@ test.each(['unknown', 'limit', 'offline', 'unavailable'])('blocked recovery reje
   expect(f.sent).toHaveLength(1);
 });
 
-test.each(['limit', 'unknown'])('dispatch rechecks %s after an eligible recovery was queued', async reason => {
+test('dispatch rechecks unknown after an eligible recovery was queued', async () => {
   const f = await blockedFixture();
   f.send('resume', { threadId: 'goal', goal: false });
-  if (reason === 'limit') f.task.inspection!.goal!.turns = 8;
-  else f.task.status = 'unknown';
+  f.task.status = 'unknown';
   await f.service.tick(); await f.service.tick();
   expect(f.sent).toHaveLength(1);
   expect(f.request({ action: 'list' }).messages.find(m => m.id === 'resume')?.error).toBeTruthy();
@@ -227,11 +223,11 @@ test('a restarted host requires a fresh worker observation before accepting bloc
   expect(f.sent).toHaveLength(2);
 });
 
-test('goal summaries preserve compatibility and reject malformed budget and recovery flags', async () => {
+test('goal summaries preserve compatibility and reject malformed turn counts and recovery flags', async () => {
   const f = await blockedFixture(), data = f.request({ action: 'list' });
   const raw = structuredClone(data) as unknown as { messages: { goalProgress: { turns: unknown; resumeBlocked: unknown } }[] };
   raw.messages[0]!.goalProgress.turns = '2';
-  expect(() => parseChatsSnapshot(raw)).toThrow('budget');
+  expect(() => parseChatsSnapshot(raw)).toThrow('turns');
   raw.messages[0]!.goalProgress.turns = 2; raw.messages[0]!.goalProgress.resumeBlocked = false;
   expect(() => parseChatsSnapshot(raw)).toThrow();
   delete data.messages[0]!.goalProgress;
@@ -352,4 +348,19 @@ test('deadline controls retain goal scope, publish acknowledged dates and distin
   f.agents[0]!.accountId = 'changed';
   await rejectsWith(restarted.question(f.workspace, input), 'identity');
   expect(calls).toHaveLength(2);
+});
+
+
+test('Chats permits follow-up at high turn counts and reports known usage without a budget', async () => {
+  const f = await blockedFixture();
+  f.task.inspection!.goal!.turns = 1001;
+  f.task.inspection!.goal!.usage = { reportedThroughTurn: 5, inputTokens: 10, outputTokens: 5, totalTokens: 15 };
+  await f.service.tick();
+  const progress = parseChatsSnapshot(f.request({ action: 'list' })).messages[0]!.goalProgress!;
+  expect(progress).toMatchObject({ turns: 1001, resumeBlocked: null, usage: { reportedThroughTurn: 5, totalTokens: 15 } });
+  expect('turnLimit' in progress).toBe(false);
+  f.send('resume', { threadId: 'goal', goal: false });
+  f.task.inspection!.goal!.turns = 1002;
+  await f.service.tick();
+  expect(f.sent).toHaveLength(2);
 });

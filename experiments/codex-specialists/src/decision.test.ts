@@ -14,5 +14,6 @@ test('decision and progress survive serialization without committing a pending d
   const saved = parseGoal(JSON.parse(JSON.stringify(goal)));
   expect(saved.phase).toBe('active');
   expect(finishGoal(saved, true)).toMatchObject({ status: 'waiting', goal: { phase: 'waiting', pending: null, turns: 1 } });
-  expect(() => parseGoal({ ...goal, turns: 9 })).toThrow('Invalid saved goal');
+  expect(parseGoal({ ...goal, turns: 1001 }).turns).toBe(1001);
+  expect(() => parseGoal({ ...goal, turns: -1 })).toThrow('Invalid saved goal');
 });

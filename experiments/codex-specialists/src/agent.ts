@@ -13,7 +13,8 @@ import { collaborationInstructions, collaborationTools } from './collaboration-t
 import { historyInstructions, historyTools } from './history-tools.ts';
 import type { WorkerHistoryQueue } from './history-queue.ts';
 import type { WorkerHistory } from './history.ts';
-import { decisionInstructions, decisionTools, finishGoal, MAX_GOAL_TURNS, newGoal, parseDecision, validateDecision } from './decision.ts';
+import { decisionInstructions, decisionTools, finishGoal, goalContext, newGoal, parseDecision, validateDecision } from './decision.ts';
+import { GoalObservations, isStalled, STALLED_GOAL } from './goal-progress.ts';
 
 export class TaskConflict extends Error {}
 
@@ -30,7 +31,7 @@ function assertResumedThread(expected: string | null, actual: string): void {
 type ActiveTask = {
   id: string; threadId: string | null; turnId: string | null; stopRequested: boolean;
   done: Promise<void>; observer: TurnObserver; interrupting: Promise<void> | null;
-  messages: string[]; input: string; controller: AbortController;
+  observations: GoalObservations; messages: string[]; input: string; controller: AbortController;
 };
 
 export class SpecialistAgent {
@@ -67,7 +68,7 @@ export class SpecialistAgent {
         const tool = textValue(params.tool, 'tool');
         const task = this.store.task(active.id)!;
         if (task.goal) {
-          if (tool === 'goal_status') return { originalGoal: task.prompt, ...task.goal, remainingTurns: MAX_GOAL_TURNS - task.goal.turns };
+          if (tool === 'goal_status') return { originalGoal: task.prompt, ...goalContext(task.goal) };
           if (tool === 'record_decision') {
             const decision = parseDecision(params.arguments);
             if (decision.action === 'complete' && task.goal.verificationRequired) {
@@ -84,11 +85,19 @@ export class SpecialistAgent {
         if (task.verificationDraft) throw new Error('End the turn after submitting verification.');
         if (this.verification && task.verification && ['verification_read', 'verification_status', 'submit_verification'].includes(tool)) return this.verification.call(task, tool, params.arguments);
         if (this.historyQueue && ['history_search', 'history_read'].includes(tool)) {
-          return record(await this.historyQueue.call(active.id, active.threadId!, textValue(params.turnId, 'turn id'),
+          const result = record(await this.historyQueue.call(active.id, active.threadId!, textValue(params.turnId, 'turn id'),
             textValue(params.callId, 'call id'), tool, params.arguments, active.controller.signal));
+          if (result.isError !== true && result.error == null) active.observations.history(result);
+          return result;
         }
         if (!this.collaboration) throw new Error('Unknown tool.');
-        return this.collaboration.call(this.store.task(active.id)!, tool, params.arguments);
+        const result = this.collaboration.call(this.store.task(active.id)!, tool, params.arguments);
+        if (tool === 'ask_agent' || tool === 'request_verification') {
+          const request = this.store.snapshot().collaboration.outgoing.find(m => m.id === (result.questionId ?? result.requestId));
+          if (request) active.observations.add({ kind: request.kind, to: request.to,
+            text: request.kind === 'verification_request' ? JSON.parse(request.text) : request.text });
+        }
+        return result;
       });
     }
   }
@@ -126,9 +135,8 @@ export class SpecialistAgent {
       return task;
     }
     if (this.busy || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) throw new TaskConflict('Worker cannot safely resume yet.');
-    if (task.goal.turns >= MAX_GOAL_TURNS) throw new TaskConflict('Goal turn limit reached.');
     if (task.status === 'completed') throw new TaskConflict('This goal is completed. Start a new goal.');
-    this.store.update(id, { inputs: [...(task.inputs ?? []), { id: inputId, prompt }], status: 'accepted', finishedAt: null });
+    this.store.update(id, { inputs: [...(task.inputs ?? []), { id: inputId, prompt }], goal: { ...task.goal, progressCheck: { unchanged: 0, observations: [] } }, status: 'accepted', finishedAt: null });
     return this.launch(this.store.task(id)!, `Continue the original goal: ${task.prompt}\nUser follow-up:\n${prompt}`);
   }
 
@@ -147,12 +155,18 @@ export class SpecialistAgent {
     // A lost acknowledgement must never reuse the preceding turn's identity.
     this.store.update(id, { threadId: null, turnId: null, recovery: undefined });
     if (task.goal) {
-      if (task.goal.turns >= MAX_GOAL_TURNS) throw new Error('Goal turn limit reached.');
       this.store.update(id, { status: 'accepted', finishedAt: null, goal: { ...task.goal, turns: task.goal.turns + 1, phase: 'active', pending: null } });
       task = this.store.task(id)!;
     }
-    const active: ActiveTask = { id, threadId: null, turnId: null,
-      stopRequested: false, done: Promise.resolve(), observer: new TurnObserver((method, item) => { if (this.configuration?.permissions.commandExecution === true) this.verification?.observe(task, method, item); }), interrupting: null, input, messages, controller: new AbortController() };
+    const observations = new GoalObservations();
+    for (const message of this.store.snapshot().collaboration.incoming.filter(m => messages.includes(m.id))) {
+      if (message.kind === 'reply' || message.kind === 'verification_result') {
+        const text: unknown = message.kind === 'verification_result' ? JSON.parse(message.text) : message.text;
+        observations.add({ kind: message.kind, from: message.from, text });
+      }
+    }
+    const active: ActiveTask = { id, threadId: null, turnId: null, observations,
+      stopRequested: false, done: Promise.resolve(), observer: new TurnObserver((method, item) => { observations.item(method, item); if (this.configuration?.permissions.commandExecution === true) this.verification?.observe(task, method, item); }), interrupting: null, input, messages, controller: new AbortController() };
     this.active = active;
     active.done = this.run(task, active).finally(() => { if (this.active === active) this.active = null; });
     // A persistence failure is reported through the worker's health/lifecycle, not an unhandled rejection.
@@ -167,7 +181,7 @@ export class SpecialistAgent {
     const next = this.collaboration?.next();
     if (!next) {
       const ready = this.store.snapshot().tasks.find(t => t.status === 'waiting' && t.goal?.phase === 'ready');
-      if (ready) this.launch(ready, `Continue the original goal: ${ready.prompt}\nSaved goal state (reference data):\n${JSON.stringify(ready.goal)}\nPerform the next action within the original authority. Retrieve missing past decisions with history_search.`);
+      if (ready) this.launch(ready, `Continue the original goal: ${ready.prompt}\nSaved goal state (reference data):\n${JSON.stringify(goalContext(ready.goal!))}\nPerform the next action within the original authority. Retrieve missing past decisions with history_search.`);
       return;
     }
     if (next.resume) {
@@ -265,10 +279,13 @@ export class SpecialistAgent {
         catch (error) { if (!observer.finished) observer.fail(error instanceof Error ? error : new Error(String(error))); }
       }
       const result = await observer.result;
-      const savedGoal = this.store.task(task.id)?.goal;
+      const currentGoal = this.store.task(task.id)?.goal, reported = observer.usage;
+      const savedGoal = currentGoal && reported ? { ...currentGoal, usage: {
+        reportedThroughTurn: currentGoal.turns, ...reported,
+      } } : currentGoal;
       if (active.stopRequested && savedGoal && !(result.status === 'completed' && savedGoal.pending?.action === 'complete')) {
         this.store.complete(task.id, { status: 'interrupted', output: result.output, error: null,
-          goal: { ...this.store.task(task.id)!.goal!, phase: 'blocked', pending: null } }, active.messages);
+          goal: { ...savedGoal, phase: 'blocked', pending: null } }, active.messages);
       } else if (result.status === 'completed' && task.goal) {
         let verificationError: string | null = null;
         if (savedGoal?.pending?.action === 'complete' && savedGoal.verificationRequired) {
@@ -276,12 +293,14 @@ export class SpecialistAgent {
           catch (error) { verificationError = error instanceof Error ? error.message : String(error); }
         }
         if (verificationError) {
-          // The turn completed, but the evidence became stale. Resume judgment without claiming completion.
-          const goal = { ...savedGoal!, pending: null, phase: savedGoal!.turns >= MAX_GOAL_TURNS ? 'blocked' as const : 'ready' as const };
-          this.store.complete(task.id, { ...result, status: goal.phase === 'ready' ? 'waiting' : 'interrupted', goal, error: verificationError }, active.messages);
+          // Resume judgment after stale evidence, but do not loop forever on the same failed completion.
+          const progressCheck = active.observations.finish(savedGoal?.progressCheck);
+          const goal = { ...savedGoal!, progressCheck, pending: null, phase: isStalled(progressCheck) ? 'blocked' as const : 'ready' as const };
+          this.store.complete(task.id, { ...result, status: goal.phase === 'ready' ? 'waiting' : 'interrupted', goal,
+            error: goal.phase === 'blocked' ? `${STALLED_GOAL} ${verificationError}` : verificationError }, active.messages);
           return;
         }
-        const outcome = finishGoal(this.store.task(task.id)!.goal!, this.collaboration?.waiting(task.id, active.messages) ?? false);
+        const outcome = finishGoal({ ...savedGoal!, progressCheck: active.observations.finish(savedGoal?.progressCheck) }, this.collaboration?.waiting(task.id, active.messages) ?? false);
         this.store.complete(task.id, { ...result, ...outcome }, active.messages);
       } else if (result.status === 'completed' && this.collaboration) {
         if (task.verification && this.verification) this.collaboration.publishVerification(task, this.verification.finish(this.store.task(task.id)!));

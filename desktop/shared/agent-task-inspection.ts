@@ -5,7 +5,14 @@ export interface TaskCriterion { criterion: string; met: boolean; evidence: stri
 export interface TaskDecision {
   action: 'continue' | 'wait' | 'blocked' | 'complete'; reason: string; progress: string; nextAction: string; criteria: TaskCriterion[];
 }
+export interface TaskGoalUsage { reportedThroughTurn: number; inputTokens: number; outputTokens: number; totalTokens: number }
+export function parseGoalUsage(value: unknown): TaskGoalUsage {
+  const v = inspectionRecord(value);
+  if (![v.reportedThroughTurn, v.inputTokens, v.outputTokens, v.totalTokens].every(n => Number.isSafeInteger(n) && Number(n) >= 0)) throw new TypeError('Invalid goal usage.');
+  return { reportedThroughTurn: Number(v.reportedThroughTurn), inputTokens: Number(v.inputTokens), outputTokens: Number(v.outputTokens), totalTokens: Number(v.totalTokens) };
+}
 export interface TaskGoal {
+  usage?: TaskGoalUsage;
   phase: string; turns: number; verificationRequired: boolean; criteria: TaskCriterion[]; decisions: TaskDecision[]; pending: TaskDecision | null;
 }
 export interface TaskEvidence { id: string; kind: 'file' | 'command'; detail: string; output: string; exitCode: number | null; successful: boolean | null }
@@ -61,8 +68,9 @@ function decision(value: unknown): TaskDecision {
 }
 export function parseTaskGoal(value: unknown): TaskGoal {
   const v = inspectionRecord(value);
-  if (!Number.isSafeInteger(v.turns) || Number(v.turns) < 0 || Number(v.turns) > 1000) throw new TypeError('Invalid goal turns.');
+  if (!Number.isSafeInteger(v.turns) || Number(v.turns) < 0) throw new TypeError('Invalid goal turns.');
   return { phase: choice(v.phase, ['active', 'ready', 'waiting', 'blocked', 'completed']), turns: Number(v.turns),
+    ...(v.usage === undefined ? {} : { usage: parseGoalUsage(v.usage) }),
     verificationRequired: v.verificationRequired === undefined ? false : flag(v.verificationRequired),
     criteria: inspectionList(v.criteria, criterion, 16), decisions: inspectionList(v.decisions, decision, 1000),
     pending: v.pending === null ? null : decision(v.pending) };

@@ -151,7 +151,7 @@ test('room settings recheck a default whose account changes while the dialog is 
 
 function recoverySnapshot(block: string | null = null): ChatsSnapshot {
   const data = snapshot();
-  Object.assign(data.messages[0]!, { status: 'blocked', goalProgress: { phase: 'blocked', turns: 2, turnLimit: 8,
+  Object.assign(data.messages[0]!, { status: 'blocked', goalProgress: { phase: 'blocked', turns: 2,
     progress: 'Requirements reviewed', reason: 'Choose the sign-in method', nextAction: 'Provide the sign-in method', resumeBlocked: block } });
   return data;
 }
@@ -164,7 +164,8 @@ test('blocked goal displays its progress and sends a follow-up to the same owner
     await ui.click('Open goal thread · 1');
     const panel = document.querySelector('[aria-label="Goal progress"]');
     expect(panel?.textContent).toContain('Goal · blocked');
-    expect(panel?.textContent).toContain('Turns: 2 / 8');
+    expect(panel?.textContent).toContain('Turns: 2');
+    expect(panel?.textContent).toContain('Model tokens: Unknown');
     expect(panel?.textContent).toContain('Requirements reviewed');
     expect(panel?.textContent).toContain('Choose the sign-in method');
     expect(panel?.textContent).toContain('Provide the sign-in method');
@@ -174,7 +175,7 @@ test('blocked goal displays its progress and sends a follow-up to the same owner
   });
 });
 
-test.each(['Execution outcome is unknown.', 'Goal turn limit reached (8/8).', 'Checking the saved goal and worker state.'])('recovery cannot send while blocked: %s', async reason => {
+test.each(['Execution outcome is unknown.', 'Checking the saved goal and worker state.'])('recovery cannot send while blocked: %s', async reason => {
   await withDOM(async ui => {
     const requests: ChatsRequest[] = [];
     const api = { request: async (request: ChatsRequest) => { requests.push(request); return recoverySnapshot(reason); } };
@@ -236,7 +237,7 @@ test('unknown execution inspection preserves the draft on failure and shows nati
 test('question cancellation preserves drafts on a racing answer error and retries the same question identity', async () => {
   await withDOM(async ui => {
     const data = snapshot(), requests: ChatsRequest[] = [];
-    data.messages[0]!.goalProgress = { phase: 'waiting', turns: 2, turnLimit: 8, progress: '', reason: '', nextAction: '', resumeBlocked: null,
+    data.messages[0]!.goalProgress = { phase: 'waiting', turns: 2, progress: '', reason: '', nextAction: '', resumeBlocked: null,
       questions: [{ id: 'question', recipient: 'planner', text: 'Which credentials?', status: 'waiting', closure: null }] };
     let failure = true;
     const api = { request: async (input: ChatsRequest) => {
@@ -278,7 +279,7 @@ test('question reassignment chooses an invited alternative and submits the exist
 test('deadline edits await acknowledgement, preserve drafts on failure and send canonical UTC or null', async () => {
   await withDOM(async ui => {
     const data = snapshot(), requests: ChatsRequest[] = [];
-    data.messages[0]!.goalProgress = { phase: 'waiting', turns: 2, turnLimit: 8, progress: '', reason: '', nextAction: '', resumeBlocked: null,
+    data.messages[0]!.goalProgress = { phase: 'waiting', turns: 2, progress: '', reason: '', nextAction: '', resumeBlocked: null,
       questions: [{ id: 'question', recipient: 'planner', text: 'Which credentials?', status: 'waiting', closure: null }] };
     let failure = true;
     const api = { request: async (input: ChatsRequest) => {
@@ -314,5 +315,23 @@ test('expired questions display their deadline and expose no cancel, reassign or
     expect(document.body.textContent).toContain('expired'); expect(document.body.textContent).toContain('0 waiting');
     expect(document.querySelector('[aria-label="Question deadline"]')).toBeNull();
     expect(document.querySelectorAll('button')).toHaveLength(0);
+  });
+});
+
+
+test('long goals show observed cumulative tokens and stay usable without a turn budget', async () => {
+  await withDOM(async ui => {
+    const data = recoverySnapshot();
+    data.messages[0]!.status = 'waiting';
+    Object.assign(data.messages[0]!.goalProgress!, { phase: 'ready', turns: 1201,
+      usage: { reportedThroughTurn: 1200, inputTokens: 100, outputTokens: 20, totalTokens: 120 } });
+    await ui.render(<ChatsView active api={{ request: async () => data }} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.click('Open goal thread · 1');
+    const panel = document.querySelector('[aria-label="Goal progress"]');
+    expect(panel?.textContent).toContain('Turns: 1201');
+    expect(panel?.textContent).toContain('120 reported through turn 1200');
+    expect(panel?.textContent).toContain('Cost: Unknown');
+    expect(panel?.textContent).not.toContain('/ 8');
+    expect(document.body.textContent).not.toContain('Send and resume goal');
   });
 });

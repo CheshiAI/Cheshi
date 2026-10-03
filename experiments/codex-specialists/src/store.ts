@@ -31,7 +31,7 @@ function nullableText(value: unknown): string | null {
 
 function chatEntries<T>(value: unknown, parse: (value: unknown) => T): T[] {
   if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > 100) throw new TypeError('Invalid saved room entries.');
+  if (!Array.isArray(value)) throw new TypeError('Invalid saved room entries.');
   return value.map(parse);
 }
 

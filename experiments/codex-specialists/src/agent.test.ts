@@ -68,6 +68,7 @@ class FakeClient implements RpcClient {
   onFailure(listener: (error: Error) => void): () => void {
     this.failures.add(listener); return () => { this.failures.delete(listener); };
   }
+  emit(event: Notification): void { for (const listener of this.listeners) listener(event); }
   disconnect(): void { for (const listener of this.failures) listener(new Error('transport lost')); }
   complete(status = 'completed', text = 'verification result'): void {
     const event = { method: 'turn/completed', params: { threadId: 'thread', turn: {
@@ -276,9 +277,12 @@ test('native history calls bind to the active task and stop cancels pending rela
   expect(historyQueue.exchange({ protocol: 1, enabled: true, results: [] }).requests).toHaveLength(0);
 });
 
-function goalSetup(directory = temporary()) {
+function goalSetup(directory = temporary(), withPeer = false) {
   const store = new AgentStore(directory), client = new FakeClient();
-  const agent = new SpecialistAgent({ client, store, workspace: '/workspace', profile: 'Follow the user goal.',
+  const collaboration = withPeer ? new WorkerCollaboration(store, 'dev') : undefined;
+  const peers = [{ id: 'planner', name: 'Planner', role: 'planning' }];
+  collaboration?.exchange({ peers, messages: [], acknowledged: [] });
+  const agent = new SpecialistAgent({ client, store, collaboration, workspace: '/workspace', profile: 'Follow the user goal.',
     configuration: { decisionProtocol: 1, profileId: 'dev', accountId: 'fixture', role: 'development', token: 'a'.repeat(64),
       instructions: 'Follow the user goal.', model: null, reasoningEffort: null, serviceTier: null,
       permissions: { fileWrite: false, commandExecution: false } } });
@@ -286,7 +290,7 @@ function goalSetup(directory = temporary()) {
     action, reason: 'Verified the current progress.', progress: 'One step checked.', nextAction: action === 'continue' ? 'Check the remaining result.' : '',
     criteria: [{ criterion: 'Verify the requested result.', met: action === 'complete', evidence: action === 'complete' ? 'Observed the expected result.' : '' }],
   } });
-  return { agent, client, store, decide, directory };
+  return { agent, client, store, decide, directory, collaboration, peers };
 }
 
 test('goal continues after cold restart and only explicit evidenced completion finishes it', async () => {
@@ -329,14 +333,14 @@ test('goal decisions reject invented waiting and incomplete evidence, then permi
   expect(f.store.task('goal')).toMatchObject({ status: 'interrupted', goal: { phase: 'blocked' } });
 });
 
-test('persisted turn budget stops a repeatedly continuing goal', async () => {
+test('persisted lack of observed progress stops a repeatedly continuing goal', async () => {
   const f = goalSetup();
   f.client.onStart = async () => { await f.decide('continue'); f.client.complete(); return { turn: { id: 'turn' } }; };
   f.agent.submit('goal', 'Verify the requested result.'); await f.agent.settled();
   for (let i = 0; i < 12; i++) { f.agent.pump(); await f.agent.settled(); }
-  expect(f.client.calls.filter(c => c.method === 'turn/start')).toHaveLength(8);
-  expect(f.store.task('goal')).toMatchObject({ status: 'interrupted', goal: { turns: 8, phase: 'blocked' } });
-  expect(f.store.task('goal')?.error).toContain('turn limit');
+  expect(f.client.calls.filter(c => c.method === 'turn/start')).toHaveLength(3);
+  expect(f.store.task('goal')).toMatchObject({ status: 'interrupted', goal: { turns: 3, phase: 'blocked' } });
+  expect(f.store.task('goal')?.error).toContain('No new observable result');
 });
 
 test('canceling queued continuation prevents execution after restart', async () => {
@@ -596,15 +600,16 @@ test('lost acknowledgement on a follow-up cannot reuse its preceding turn id', a
   await expectFailure(f.agent.recover('goal', 'room'), 'no acknowledged turn ID');
 });
 
-test('recovered pending completion cannot commit itself or reset the exhausted budget', async () => {
+test('recovered pending completion needs explicit follow-up but can resume beyond eight turns', async () => {
   const f = await unknownRoomGoal(), goal = f.store.task('goal')!.goal!;
   f.store.update('goal', { goal: { ...goal, turns: 8, phase: 'active', pending: { action: 'complete', reason: 'Claimed complete', progress: 'Claimed done', nextAction: '',
     criteria: goal.criteria.map(c => ({ ...c, met: true, evidence: 'Claimed evidence' })) } } });
   const result = await f.agent.recover('goal', 'room');
   expect(result.goal).toMatchObject({ phase: 'blocked', turns: 8, pending: null, criteria: goal.criteria, decisions: goal.decisions, verificationRequired: true });
-  expect(() => f.agent.input('goal', 'extra', 'Continue', 'room')).toThrow('turn limit');
   const before = f.client.calls.length; f.agent.pump(); await f.agent.settled();
   expect(f.client.calls).toHaveLength(before);
+  f.agent.input('goal', 'extra', 'Continue', 'room'); await f.agent.settled();
+  expect(f.store.task('goal')?.goal).toMatchObject({ turns: 9, criteria: goal.criteria, verificationRequired: true, phase: 'blocked' });
 });
 
 test('inspection does not overwrite a task changed during its native read', async () => {
@@ -713,4 +718,64 @@ test('consultation inspection remains exclusive and unconfigured verification re
   f.store.update('verifier', { status: 'unknown', threadId: 'thread', turnId: 'turn' });
   await expectFailure(f.agent.recover('verifier', 'room'), 'recovery is unavailable');
   expect(f.store.task('verifier')?.status).toBe('unknown');
+});
+
+
+test('observable work continues beyond eight and one hundred turns, preserving progress and usage on cold restart', async () => {
+  let f = goalSetup();
+  const start = () => { f.client.onStart = async () => {
+    const turn = f.store.task('goal')!.goal!.turns;
+    f.client.emit({ method: 'item/completed', params: { threadId: 'thread', turnId: 'turn',
+      item: { id: `read-${turn}`, type: 'commandExecution', status: 'completed', command: `read part ${turn}`, aggregatedOutput: `part ${turn}`, exitCode: 0 } } });
+    f.client.emit({ method: 'thread/tokenUsage/updated', params: { threadId: 'thread', turnId: 'turn', tokenUsage: { total: { inputTokens: turn * 10, outputTokens: turn * 2, totalTokens: turn * 12 } } } });
+    await f.decide('continue'); f.client.complete(); return { turn: { id: 'turn' } };
+  }; };
+  start();
+  f.agent.submit('goal', 'Verify the requested result.', { roomId: 'room', conversation: 'goal', goal: true }); await f.agent.settled();
+  for (let i = 1; i < 105; i++) {
+    if (i === 8 || i === 101) { f = goalSetup(f.directory); start(); }
+    f.agent.pump(); await f.agent.settled();
+  }
+  f = goalSetup(f.directory);
+  expect(f.store.task('goal')).toMatchObject({ status: 'waiting', goal: { turns: 105, phase: 'ready',
+    usage: { reportedThroughTurn: 105, inputTokens: 1050, outputTokens: 210, totalTokens: 1260 } } });
+  expect(f.store.task('goal')?.goal?.decisions).toHaveLength(64);
+  expect(f.store.task('goal')?.responses).toHaveLength(105);
+  f.client.onStart = async () => { await f.decide('complete'); f.client.complete(); return { turn: { id: 'turn' } }; };
+  f.agent.pump(); await f.agent.settled();
+  expect(f.store.task('goal')).toMatchObject({ status: 'completed', goal: { turns: 106, usage: { reportedThroughTurn: 105 } } });
+});
+
+test('restart retains the stalled streak and explicit follow-up resumes the same goal', async () => {
+  let f = goalSetup();
+  const start = () => { f.client.onStart = async () => { await f.decide('continue'); f.client.complete(); return { turn: { id: 'turn' } }; }; };
+  start(); f.agent.submit('goal', 'Verify the requested result.', { roomId: 'room', conversation: 'goal', goal: true }); await f.agent.settled();
+  f.agent.pump(); await f.agent.settled();
+  f = goalSetup(f.directory); start(); f.agent.pump(); await f.agent.settled();
+  const goal = f.store.task('goal')!.goal!;
+  expect(goal).toMatchObject({ phase: 'blocked', turns: 3, progressCheck: { unchanged: 3 } });
+  f.agent.pump(); expect(f.agent.busy).toBe(false);
+  f.agent.input('goal', 'clarification', 'Inspect the missing source', 'room'); await f.agent.settled();
+  expect(f.store.task('goal')?.goal).toMatchObject({ phase: 'ready', turns: 4, criteria: goal.criteria, progressCheck: { unchanged: 1 } });
+});
+
+
+test('a newly dispatched question can wait after planning turns without polling or a false stall', async () => {
+  const f = goalSetup(temporary(), true);
+  f.client.onStart = async () => {
+    const turn = f.store.task('goal')!.goal!.turns;
+    if (turn === 3) await f.client.toolHandler!({ threadId: 'thread', turnId: 'turn', tool: 'ask_agent',
+      arguments: { agentId: 'planner', requestId: 'signin', question: 'Which sign-in method?' } });
+    await f.decide(turn === 3 ? 'wait' : turn === 4 ? 'complete' : 'continue');
+    f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.submit('goal', 'Verify the requested result.'); await f.agent.settled();
+  for (let i = 0; i < 10; i++) { f.agent.pump(); await f.agent.settled(); }
+  expect(f.store.task('goal')).toMatchObject({ status: 'waiting', goal: { phase: 'waiting', turns: 3, progressCheck: { unchanged: 0 } } });
+  expect(f.client.calls.filter(c => c.method === 'turn/start')).toHaveLength(3);
+  const question = f.store.snapshot().collaboration.outgoing[0]!;
+  f.collaboration!.exchange({ peers: f.peers, acknowledged: [question.id], messages: [{ ...question, id: 'answer',
+    kind: 'reply', from: 'planner', to: 'dev', text: 'Use email sign-in' }] });
+  f.agent.pump(); await f.agent.settled();
+  expect(f.store.task('goal')).toMatchObject({ status: 'completed', goal: { turns: 4 } });
 });
