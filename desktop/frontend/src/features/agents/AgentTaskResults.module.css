@@ -1,5 +1,5 @@
 .root { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
-.header { display: flex; flex: 0 0 var(--header-height); align-items: center; gap: var(--icon-default); min-width: 0; padding: 0 var(--space-default); }
+.header { display: flex; flex: 0 0 var(--header-height); align-items: center; gap: var(--icon-default); min-width: 0; padding: 0 var(--space-default); border-bottom: 1px solid var(--divider); box-sizing: border-box; }
 .heading { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list, .content { flex: 1; min-height: 0; min-width: 0; overflow: auto; }
 .list[hidden] { display: none; }
@@ -33,3 +33,16 @@
 .markdown { min-width: 0; font-family: var(--font-ui), sans-serif; font-size: var(--font-size-small); font-weight: 400; }
 .content .markdown :is(h1, h2, h3, h4, h5, h6) { font-size: var(--font-size-small); }
 .empty { margin: 0; padding: var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
+
+.content section { display: flex; flex-direction: column; gap: var(--icon-default); min-width: 0; }
+.content h3 { margin: 0; font-size: var(--font-size-label); color: var(--text); }
+.content p { margin: 0; white-space: pre-wrap; }
+.facts { display: flex; flex-wrap: wrap; gap: var(--space-default); margin: 0; }
+.facts dt { color: var(--sub-text); }
+.facts dd { margin: 0; }
+.records { display: flex; flex-direction: column; gap: var(--icon-default); }
+.record { min-width: 0; border-bottom: 1px solid var(--divider); padding: var(--icon-default) 0; }
+.record summary { cursor: pointer; color: var(--text); }
+.record > :not(summary) { margin-top: var(--icon-default); }
+.record pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.criterion { padding: var(--icon-default) 0; display: flex; flex-direction: column; gap: var(--icon-default); }

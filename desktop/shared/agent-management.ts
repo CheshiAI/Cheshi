@@ -1,3 +1,5 @@
+import { parseTaskInspection, type TaskInspection } from './agent-task-inspection.ts';
+
 export const AGENT_CHANNELS = {
   engines: 'cheshi:agents:engines', snapshot: 'cheshi:agents:snapshot',
   details: 'cheshi:agents:details', control: 'cheshi:agents:control',
@@ -13,6 +15,8 @@ export interface ManagedAgent {
 }
 export interface AgentSnapshot { engineId: string; online: boolean; error: string | null; agents: ManagedAgent[] }
 export interface AgentTask {
+  roomId?: string; inputs?: { id: string; prompt: string }[]; responses?: { id: string; text: string; status: string }[];
+  inspection?: TaskInspection;
   id: string; prompt: string; status: string; createdAt: string; output: string; error: string | null;
 }
 export interface AgentDetails {
@@ -98,8 +102,12 @@ export function parseAgentTasks(value: unknown): AgentTask[] {
     const t = agentRecord(raw);
     const status = agentText(t.status, 30);
     if (!['accepted', 'running', 'waiting', 'completed', 'interrupted', 'failed', 'unknown'].includes(status)) throw new TypeError('Invalid task status.');
-    return { id: parseAgentId(t.id), prompt: agentText(t.prompt, 20_000), status,
-      createdAt: agentText(t.createdAt, 100), output: agentText(t.output, 500_000), error: agentNullableText(t.error, 20_000) };
+    return { ...(t.roomId === undefined ? {} : { roomId: parseAgentId(t.roomId),
+      inputs: items(t.inputs ?? [], 100).map(raw => { const i = agentRecord(raw); return { id: parseAgentId(i.id), prompt: agentText(i.prompt, 20_000) }; }),
+      responses: items(t.responses ?? [], 100).map(raw => { const r = agentRecord(raw); return { id: parseAgentId(r.id), text: agentText(r.text, 500_000), status: agentText(r.status, 30) }; }) }),
+      id: parseAgentId(t.id), prompt: agentText(t.prompt, 20_000), status,
+      createdAt: agentText(t.createdAt, 100), output: agentText(t.output, 500_000), error: agentNullableText(t.error, 20_000),
+      ...(t.inspection === undefined ? {} : { inspection: parseTaskInspection(t.inspection) }) };
   });
 }
 export function parseAgentDetails(value: unknown): AgentDetails {

@@ -93,13 +93,14 @@ export class SpecialistAgent {
   get busy(): boolean { return this.active !== null; }
   get error(): string | null { return this.failure; }
 
-  submit(id: string, prompt: string): Task {
+  submit(id: string, prompt: string, chat?: { roomId: string; conversation: string; goal: boolean }): Task {
+    if (chat) { validateTaskId(chat.roomId); validateTaskId(chat.conversation); if (typeof chat.goal !== 'boolean') throw new TypeError('Invalid chat mode.'); }
     validateTaskId(id); textValue(prompt, 'prompt');
     if (prompt.length > 20_000) throw new TypeError('Prompt is too long.');
     if (this.failure) throw new Error(this.failure);
     const existing = this.store.task(id);
     if (existing) {
-      if (existing.prompt !== prompt) throw new TaskConflict('This task id belongs to a different prompt.');
+      if (existing.prompt !== prompt || existing.roomId !== chat?.roomId || (chat && (existing.conversation !== chat.conversation || Boolean(existing.goal) !== (chat.goal && this.configuration?.decisionProtocol === 1)))) throw new TaskConflict('This task id belongs to a different prompt.');
       return existing;
     }
     if (this.store.snapshot().tasks.some(task => task.status === 'unknown')) {
@@ -107,8 +108,25 @@ export class SpecialistAgent {
     }
     if (this.active) throw new TaskConflict('This specialist already has an active task.');
     const task = this.store.create(id, prompt, { ...(this.collaboration ? { conversation: id } : {}),
-      ...(this.configuration?.decisionProtocol === 1 ? { goal: newGoal(Boolean(this.verification)), conversation: id } : {}) });
+      ...(this.configuration?.decisionProtocol === 1 && (!chat || chat.goal) ? { goal: newGoal(Boolean(this.verification)), conversation: id } : {}), ...(chat ? { roomId: chat.roomId, conversation: chat.conversation } : {}) });
     return this.launch(task, prompt);
+  }
+
+  input(id: string, inputId: string, prompt: string, roomId: string): Task {
+    validateTaskId(inputId); textValue(prompt, 'prompt');
+    if (prompt.length > 20_000) throw new TypeError('Prompt is too long.');
+    const task = this.store.task(id);
+    if (!task || task.roomId !== roomId || !task.goal) throw new TaskConflict('Unknown room goal.');
+    const previous = task.inputs?.find(i => i.id === inputId);
+    if (previous) {
+      if (previous.prompt !== prompt) throw new TaskConflict('Input identity conflict.');
+      return task;
+    }
+    if (this.active || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) throw new TaskConflict('Worker cannot safely resume yet.');
+    if (task.goal.turns >= MAX_GOAL_TURNS) throw new TaskConflict('Goal turn limit reached.');
+    if (task.status === 'completed') throw new TaskConflict('This goal is completed. Start a new goal.');
+    this.store.update(id, { inputs: [...(task.inputs ?? []), { id: inputId, prompt }], status: 'accepted', finishedAt: null });
+    return this.launch(this.store.task(id)!, `Continue the original goal: ${task.prompt}\nUser follow-up:\n${prompt}`);
   }
 
   private launch(task: Task, input: string, messages: string[] = []): Task {
@@ -138,7 +156,7 @@ export class SpecialistAgent {
     }
     if (next.resume) {
       this.store.update(next.taskId, { status: 'accepted', turnId: null, finishedAt: null });
-    } else this.store.create(next.taskId, next.prompt, { conversation: next.taskId, consultation: next.consultation, verification: next.verification });
+    } else this.store.create(next.taskId, next.prompt, { conversation: next.taskId, consultation: next.consultation, verification: next.verification, roomId: next.roomId });
     this.launch(this.store.task(next.taskId)!, next.prompt, next.messages);
   }
 

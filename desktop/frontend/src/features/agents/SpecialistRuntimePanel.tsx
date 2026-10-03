@@ -1,3 +1,4 @@
+import type { ChatTaskTarget } from '../../../../shared/agent-chats';
 import { Play, RefreshCw, Settings, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { SpecialistAgent } from '../../../../shared/agent-registry';
@@ -9,10 +10,11 @@ import { AgentTaskResults } from './AgentTaskResults';
 import styles from './AgentsView.module.css';
 import shared from '../../shared/agent-management/agentManagement.module.css';
 
-export function SpecialistRuntimePanel({ agent, model, engines, engineId, onSettings }: {
+export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, model, engines, engineId, onSettings }: {
+  chatTask?: ChatTaskTarget | null; onBackToChats?(): void;
   agent: SpecialistAgent; model: AgentRegistryModel; engines: AgentEngineInfo[]; engineId: string; onSettings(): void;
 }) {
-  const [engine, setEngine] = useState(engineId);
+  const [engine, setEngine] = useState(chatTask?.engineId ?? engineId);
   const [details, setDetails] = useState<AgentDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -27,6 +29,7 @@ export function SpecialistRuntimePanel({ agent, model, engines, engineId, onSett
     return () => { active.current = false; revision.current++; };
   }, []);
   useEffect(() => { if (!engine && engineId) setEngine(engineId); }, [engine, engineId]);
+  useEffect(() => { if (chatTask) setEngine(chatTask.engineId); }, [chatTask]);
   const refresh = async () => {
     if (!engine || busy.current) return;
     const version = ++revision.current;
@@ -97,7 +100,7 @@ export function SpecialistRuntimePanel({ agent, model, engines, engineId, onSett
           </div>
         </form>
       </div>
-      <AgentTaskResults tasks={details?.tasks ?? []} loading={false} running={!disconnected && details?.agent.state === 'running'} />
+      <AgentTaskResults requestedTaskId={chatTask?.taskId} onBackToChats={chatTask ? onBackToChats : undefined} key={engine} tasks={details?.tasks ?? []} loading={false} running={!disconnected && details?.agent.state === 'running'} />
     </div>
   </>;
 }

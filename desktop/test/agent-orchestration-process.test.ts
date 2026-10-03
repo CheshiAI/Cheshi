@@ -27,7 +27,8 @@ async function until(check: () => Promise<boolean>, label: string): Promise<void
   throw new Error(`Timed out: ${label}`);
 }
 
-test('real worker processes exchange tools over stdio and HTTP and resume after a cold restart without provider calls', async () => {
+for (const roomScoped of [false, true]) test(`real worker processes exchange tools and resume after cold restart (${roomScoped ? 'room' : 'project'}) without provider calls`, async () => {
+  const taskId = roomScoped ? 'chats_login' : 'login';
   const directory = mkdtempSync(join(tmpdir(), 'cheshi-worker-process-'));
   const children: ReturnType<typeof Bun.spawn>[] = [];
   const token = 'b'.repeat(64), endpoints = new Map<string, string>();
@@ -56,11 +57,12 @@ test('real worker processes exchange tools over stdio and HTTP and resume after 
   };
   const peers = [{ id: 'dev', name: 'Developer', role: 'development' }, { id: 'planner', name: 'Planner', role: 'planning' }];
   const relay = () => createAgentOrchestration({ filename: join(directory, 'mailbox.json'),
+    ...(roomScoped ? { rooms: { roster: () => ({ room: ['dev', 'planner'] }), allowed: (_binding: unknown, m: { roomId?: string }) => m.roomId === 'room', record: () => {} } } : {}),
     peer: binding => peers.find(p => p.id === binding.agentId) ?? null,
     connect: async binding => ({ endpoint: endpoints.get(binding.agentId)!, token }),
   });
   let coordinator = relay();
-  const task = async () => (await (await fetch(`${endpoints.get('dev')}/tasks/login`)).json()) as { status: string; threadId: string; output: string; goal?: { phase: string; turns: number; decisions: { action: string }[] } };
+  const task = async () => (await (await fetch(`${endpoints.get('dev')}/tasks/${taskId}`)).json()) as { status: string; threadId: string; output: string; goal?: { phase: string; turns: number; decisions: { action: string }[] } };
   try {
     let developer = await start('dev'); await start('planner');
     peers.forEach(p => coordinator.register(bindingFor(directory, 'docker:fixture', p.id, 'fixture')));
@@ -69,7 +71,7 @@ test('real worker processes exchange tools over stdio and HTTP and resume after 
     expect(unauthorized.status).toBe(401);
     const accepted = await fetch(`${endpoints.get('dev')}/tasks`, { method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: 'login', prompt: 'Complete login.' }) });
+      body: JSON.stringify({ id: taskId, prompt: 'Complete login.', ...(roomScoped ? { chat: { roomId: 'room', conversation: taskId, goal: true } } : {}) }) });
     expect(accepted.status).toBe(202);
     await until(async () => (await task()).status === 'waiting', 'question wait');
     const before = await task(); expect(before.goal?.phase).toBe('waiting'); expect(before.output).toContain('Independent input validation');
@@ -80,6 +82,7 @@ test('real worker processes exchange tools over stdio and HTTP and resume after 
     expect((await task()).status).toBe('waiting');
     await until(async () => { await coordinator.tick(); return (await task()).status === 'completed'; }, 'answer and resumed task');
     const after = await task();
+    if (roomScoped) { expect(after).toHaveProperty('roomId', 'room'); expect(after).toHaveProperty('responses'); }
     expect(after.threadId).toBe(before.threadId);
     expect(after.goal).toMatchObject({ phase: 'completed', turns: 3 });
     expect(after.goal?.decisions.map(d => d.action)).toEqual(['wait', 'continue', 'complete']);

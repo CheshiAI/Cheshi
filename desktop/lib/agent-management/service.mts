@@ -1,6 +1,6 @@
-import { agentBoolean, agentNullableText, agentRecord, parseAgentAction, parseAgentEngineId, parseAgentId,
-  parseAgentTasks } from '../../shared/agent-management.ts';
+import { agentBoolean, agentNullableText, agentRecord, parseAgentAction, parseAgentEngineId, parseAgentId } from '../../shared/agent-management.ts';
 import type { AgentCatalog, AgentDetails, AgentManagementApi, AgentSnapshot, DeleteContainer } from '../../shared/agent-management.ts';
+import { inspectAgentTasks } from './task-inspection.mts';
 import type { AgentEngine, RuntimeAgent } from './engine.mts';
 import { workerOperations } from './operations.mts';
 
@@ -91,7 +91,7 @@ export function createAgentManagementService(options: { engines: AgentEngine[]; 
             result.authenticated = agentBoolean(agentRecord(value).authenticated);
           }).catch(() => { notices.push('Login status is unavailable.'); }),
           read(agent.endpoint, '/activity').then(value => {
-            result.tasks = parseAgentTasks(agentRecord(value).tasks).slice(-100).reverse();
+            result.tasks = inspectAgentTasks(value, { id: agent.profileId ?? agent.id, name: agent.name });
           }).catch(() => { notices.push('Task history is unavailable or exceeds the inspection limit.'); }),
         ]);
       } else if (agent.state === 'running') notices.push('Worker API needs one port bound to 127.0.0.1.');

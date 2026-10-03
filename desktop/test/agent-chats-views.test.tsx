@@ -1,0 +1,108 @@
+import { expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
+import { act, type ReactNode } from 'react';
+import { specialistAgent } from './agent-registry-fixtures';
+import { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
+import { AgentTaskResults } from '../frontend/src/features/agents/AgentTaskResults';
+import type { ChatsRequest, ChatsSnapshot, ChatTaskTarget } from '../shared/agent-chats';
+async function withDOM(run: (ui: { render(node: ReactNode): Promise<void>; click(label: string): Promise<void>; type(label: string, text: string): Promise<void> }) => Promise<void>) {
+  const window = new Window();
+  const globals = { window, document: window.document, navigator: window.navigator, Node: window.Node, HTMLElement: window.HTMLElement,
+    HTMLDialogElement: window.HTMLDialogElement, ResizeObserver: window.ResizeObserver, MutationObserver: window.MutationObserver,
+    requestAnimationFrame: window.requestAnimationFrame.bind(window), cancelAnimationFrame: window.cancelAnimationFrame.bind(window), IS_REACT_ACT_ENVIRONMENT: true };
+  const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
+  const container = document.createElement('div'); document.body.append(container);
+  const { createRoot } = await import('react-dom/client'); const root = createRoot(container);
+  try { await run({ render: async node => { await act(async () => root.render(node)); }, click: async label => {
+    const button = [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.getAttribute('aria-label') === label || b.textContent === label);
+    if (!button) throw new Error(`Missing button ${label}`); await act(async () => button.click());
+  }, type: async (label, text) => {
+    const input = document.querySelector(`[aria-label="${label}"]`) as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(input.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(input, text); input.dispatchEvent(new window.Event('input', { bubbles: true }) as unknown as Event);
+      input.dispatchEvent(new window.Event('change', { bubbles: true }) as unknown as Event);
+    });
+  } }); } finally {
+    await act(async () => root.unmount()); await window.happyDOM.close();
+    for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
+  }
+}
+const snapshot = (): ChatsSnapshot => ({ rooms: [{ id: 'room', workspace: '/project', name: 'Login', engineId: 'docker:test', defaultAgentId: 'dev',
+  members: [{ id: 'dev', accountId: 'account', name: 'Development' }], createdAt: '2026-10-03T00:00:00Z' }], messages: [
+  { id: 'goal', roomId: 'room', threadId: null, sender: 'user', recipient: 'dev', kind: 'goal', text: 'Build login', createdAt: '2026-10-03T00:00:00Z', taskId: 'task', status: 'waiting' },
+  { id: 'reply', roomId: 'room', threadId: 'goal', sender: 'dev', recipient: null, kind: 'message', text: 'Waiting for design', createdAt: '2026-10-03T00:01:00Z', taskId: 'task', status: 'waiting' },
+] });
+test('Chats shows room goals, opens a thread and task details, and preserves thread on return', async () => {
+  await withDOM(async ui => {
+    const api = { request: async () => snapshot() }, opened: ChatTaskTarget[] = [];
+    const render = (active: boolean) => ui.render(<ChatsView active={active} api={api} onOpenAgents={() => {}} onOpenTask={target => opened.push(target)} />);
+    await render(true);
+    expect(document.body.textContent).toContain('Build login');
+    expect(document.body.textContent).not.toContain('Waiting for design');
+    await ui.click('Open goal thread · 1');
+    expect(document.body.textContent).toContain('Waiting for design');
+    await ui.click('Task details');
+    expect(opened[0]).toEqual({ roomId: 'room', threadId: 'goal', agentId: 'dev', engineId: 'docker:test', taskId: 'task' });
+    await render(false); await render(true);
+    expect(document.body.textContent).toContain('Waiting for design');
+    await ui.click('Back to room');
+    expect(document.body.textContent).not.toContain('Waiting for design');
+  });
+});
+test('send failure keeps the draft and retry uses the same message identity', async () => {
+  await withDOM(async ui => {
+    const requests: ChatsRequest[] = []; let fail = true;
+    const api = { request: async (request: ChatsRequest) => {
+      if (request.action === 'send') { requests.push(request); if (fail) throw new Error('Save failed'); }
+      return snapshot();
+    } };
+    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.type('Message', 'Hello'); await ui.click('Send');
+    expect(requests).toHaveLength(1);
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Hello');
+    fail = false; await ui.click('Send');
+    expect(requests[1]).toEqual(requests[0]);
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('');
+  });
+});
+test('linked task detail opens when its delayed worker results arrive and returns to Chats', async () => {
+  await withDOM(async ui => {
+    let returned = false;
+    const back = () => { returned = true; };
+    await ui.render(<AgentTaskResults tasks={[]} requestedTaskId="task" onBackToChats={back} loading={false} running={false} />);
+    expect(document.body.textContent).toContain('linked task is not available');
+    await ui.render(<AgentTaskResults tasks={[{ id: 'task', prompt: 'Build login', status: 'completed', createdAt: '2026-10-03T00:00:00Z', output: 'Verified login', error: null }]} requestedTaskId="task" onBackToChats={back} loading={false} running />);
+    expect(document.body.textContent).toContain('Verified login');
+    await ui.click('Back to Chats'); expect(returned).toBe(true);
+  });
+});
+
+
+test('new room invites an assigned agent and uses that agent as its default recipient', async () => {
+  await withDOM(async ui => {
+    const agent = { ...specialistAgent(), name: 'Developer', accountId: 'account', assignments: [{ workspaceRoot: '/project', instructions: '' }] };
+    const requests: ChatsRequest[] = [];
+    let data: ChatsSnapshot = { rooms: [], messages: [] };
+    const api = { request: async (request: ChatsRequest) => {
+      requests.push(request);
+      if (request.action === 'create') data = { rooms: [{ id: request.id, name: request.name, workspace: '/project', engineId: request.engineId,
+        defaultAgentId: request.defaultAgentId, members: [{ id: agent.id, name: agent.name, accountId: 'account' }], createdAt: '2026-10-03T00:00:00Z' }], messages: [] };
+      return data;
+    } };
+    await ui.render(<ChatsView active api={api} registry={{ list: async () => ({ workspaceRoot: '/project', agents: [agent] }), onDidChange: () => () => {} }}
+      management={{ engines: async () => ({ engines: [{ id: 'docker:test', name: 'Test engine', supported: true, reason: null }], error: null }) }} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.click('New room'); await ui.type('Room name', 'Release');
+    const checkbox = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    await act(async () => checkbox.click()); await ui.click('Create room');
+    expect(requests.find(r => r.action === 'create')).toMatchObject({ name: 'Release', members: [agent.id], defaultAgentId: agent.id });
+    expect(document.querySelector('dialog')).toBeNull();
+    expect(document.body.textContent).toContain('Release');
+    await ui.type('Message', '@Stranger hello'); await ui.click('Send');
+    expect(requests.some(r => r.action === 'send')).toBe(false);
+    expect(document.body.textContent).toContain('invited agent');
+    await ui.type('Message', '@Developer hello'); await ui.click('Send');
+    expect(requests.find(r => r.action === 'send')).toMatchObject({ recipient: agent.id, goal: false });
+  });
+});

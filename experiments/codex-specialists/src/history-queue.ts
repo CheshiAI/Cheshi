@@ -1,3 +1,4 @@
+import { inspectHistoryJob } from './history-inspection.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
@@ -55,6 +56,7 @@ export class WorkerHistoryQueue {
     this.save(this.jobs.map(j => j.id === id ? { ...j, status: 'done', result } : j));
     this.waiters.get(id)?.resolve(result);
   }
+  inspection() { return this.jobs.slice(-64).map(inspectHistoryJob); }
   exchange(value: unknown) {
     const body = record(value);
     if (body.protocol !== 1 || !Array.isArray(body.results) || body.results.length > 4) throw new Error('Invalid history exchange.');

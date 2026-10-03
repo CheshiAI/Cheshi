@@ -4,9 +4,10 @@ import { record, textValue } from './protocol.ts';
 export interface Peer { id: string; name: string; role: string }
 export interface CollaborationMessage {
   id: string; kind: 'question' | 'reply' | 'verification_request' | 'verification_result'; from: string; to: string;
-  taskId: string; questionId: string; text: string;
+  roomId?: string; taskId: string; questionId: string; text: string;
 }
 export interface CollaborationState {
+  rooms?: Record<string, string[]>;
   peers: Peer[];
   outgoing: CollaborationMessage[];
   acknowledged: string[];
@@ -27,7 +28,7 @@ export function message(value: unknown): CollaborationMessage {
   if (v.kind === 'verification_request') verificationRequest(JSON.parse(text));
   if (v.kind === 'verification_result') verificationResult(JSON.parse(text));
   return { id: identifier(v.id), kind: v.kind as CollaborationMessage['kind'], from: identifier(v.from), to: identifier(v.to),
-    taskId: identifier(v.taskId), questionId: identifier(v.questionId), text };
+    ...(v.roomId === undefined ? {} : { roomId: identifier(v.roomId) }), taskId: identifier(v.taskId), questionId: identifier(v.questionId), text };
 }
 function array(value: unknown): unknown[] {
   if (!Array.isArray(value) || value.length > 10_000) throw new Error('Invalid collaboration list.');
@@ -41,6 +42,11 @@ export function peers(value: unknown): Peer[] {
 }
 export function collaborationState(value: unknown): CollaborationState {
   const v = record(value);
-  return { peers: peers(v.peers), outgoing: array(v.outgoing).map(message), incoming: array(v.incoming).map(message),
+  return { rooms: roomRoster(v.rooms), peers: peers(v.peers), outgoing: array(v.outgoing).map(message), incoming: array(v.incoming).map(message),
     acknowledged: array(v.acknowledged).map(identifier), consumed: array(v.consumed).map(identifier) };
+}
+
+export function roomRoster(value: unknown): Record<string, string[]> {
+  if (value === undefined) return {};
+  return Object.fromEntries(Object.entries(record(value)).map(([id, members]) => [identifier(id), array(members).map(identifier)]));
 }

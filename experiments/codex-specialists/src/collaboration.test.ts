@@ -45,3 +45,22 @@ test('consultations cannot recursively delegate or reply on behalf of another ta
   for (let i = 0; i < 16; i++) f.collaboration.call(f.task, 'ask_agent', { agentId: 'planner', requestId: `q${i}`, question: 'Clarification' });
   expect(() => f.collaboration.call(f.task, 'ask_agent', { agentId: 'planner', requestId: 'extra', question: 'More' })).toThrow('budget');
 });
+
+test('room tasks see only invited peers and keep room scope through question, restart and reply', () => {
+  const f = setup();
+  const peers = [...f.peers, { id: 'outside', name: 'Outside', role: 'planning' }];
+  f.collaboration.exchange({ peers, rooms: { room: ['dev', 'planner'] }, messages: [], acknowledged: [] });
+  const task = f.store.create('chats_login', 'Implement login', { roomId: 'room', conversation: 'chats_login' });
+  expect(f.collaboration.call(task, 'list_agents', {})).toEqual({ agents: f.peers });
+  expect(() => f.collaboration.call(task, 'ask_agent', { agentId: 'outside', requestId: 'no', question: 'Help' })).toThrow('invited');
+  f.collaboration.call(task, 'ask_agent', { agentId: 'planner', requestId: 'yes', question: 'Help' });
+  const question = new AgentStore(f.path).snapshot().collaboration.outgoing[0]!;
+  expect(question.roomId).toBe('room');
+  const peerPath = mkdtempSync(join(tmpdir(), 'cheshi-chat-peer-')); directories.push(peerPath);
+  const peerStore = new AgentStore(peerPath), peer = new WorkerCollaboration(peerStore, 'planner');
+  peer.exchange({ peers: [{ id: 'dev', name: 'Dev', role: 'development' }], rooms: { room: ['dev', 'planner'] }, messages: [question], acknowledged: [] });
+  const next = peer.next()!; expect(next.roomId).toBe('room');
+  const consultation = peerStore.create(next.taskId, next.prompt, { consultation: next.consultation, roomId: next.roomId });
+  peer.reply(consultation, 'Use email.');
+  expect(peerStore.snapshot().collaboration.outgoing[0]?.roomId).toBe('room');
+});

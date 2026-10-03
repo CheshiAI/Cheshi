@@ -491,3 +491,44 @@ test('failed execution-session cleanup retains scratch and stops further tasks',
   } finally { agent.disposeScratch(); }
   expect(existsSync(directory)).toBe(false);
 });
+
+test('Chats goal follow-up resumes its saved thread and deduplicates input after restart', async () => {
+  let f = goalSetup();
+  f.client.onStart = async () => { await f.decide('blocked'); f.client.complete(); return { turn: { id: 'turn' } }; };
+  f.agent.submit('chats_goal', 'Verify the requested result.', { roomId: 'room', conversation: 'chats_goal', goal: true });
+  await f.agent.settled();
+  expect(f.store.task('chats_goal')?.responses).toHaveLength(1);
+  f = goalSetup(f.directory);
+  f.client.onStart = async () => { await f.decide('complete'); f.client.complete(); return { turn: { id: 'turn' } }; };
+  expect(() => f.agent.input('chats_goal', 'input', 'New evidence', 'other')).toThrow('room');
+  f.agent.input('chats_goal', 'input', 'New evidence', 'room'); await f.agent.settled();
+  expect(f.client.calls.some(c => c.method === 'thread/resume')).toBe(true);
+  expect(f.store.task('chats_goal')).toMatchObject({ status: 'completed', roomId: 'room', goal: { turns: 2 } });
+  f = goalSetup(f.directory);
+  f.agent.input('chats_goal', 'input', 'New evidence', 'room'); await f.agent.settled();
+  expect(f.client.calls).toHaveLength(0);
+  expect(f.store.task('chats_goal')?.responses).toHaveLength(2);
+  expect(() => f.agent.input('chats_goal', 'input', 'Changed content', 'room')).toThrow('identity');
+  expect(() => f.agent.input('chats_goal', 'new', 'More work', 'room')).toThrow('completed');
+});
+
+test('Chats conversations resume independently of goals and do not share threads across rooms', async () => {
+  const f = goalSetup();
+  f.agent.submit('chats_first', 'Hello', { roomId: 'room', conversation: 'room_dev', goal: false }); await f.agent.settled();
+  expect(f.store.task('chats_first')?.goal).toBeUndefined();
+  expect(f.store.task('chats_first')?.status).toBe('completed');
+  f.agent.submit('chats_second', 'Remember this?', { roomId: 'room', conversation: 'room_dev', goal: false }); await f.agent.settled();
+  expect(f.client.calls.filter(c => c.method === 'thread/start')).toHaveLength(1);
+  f.agent.submit('chats_other', 'Separate room', { roomId: 'other', conversation: 'other_dev', goal: false }); await f.agent.settled();
+  expect(f.client.calls.filter(c => c.method === 'thread/start')).toHaveLength(2);
+});
+
+test('interrupted Chats input is quarantined after restart and never replayed', async () => {
+  let f = goalSetup();
+  f.client.onStart = async () => { await f.decide('blocked'); f.client.complete(); return { turn: { id: 'turn' } }; };
+  f.agent.submit('chats_goal', 'Verify the requested result.', { roomId: 'room', conversation: 'chats_goal', goal: true }); await f.agent.settled();
+  f.store.update('chats_goal', { status: 'accepted', inputs: [{ id: 'input', prompt: 'Answer' }] });
+  f = goalSetup(f.directory);
+  f.agent.input('chats_goal', 'input', 'Answer', 'room'); f.agent.pump(); await f.agent.settled();
+  expect(f.store.task('chats_goal')?.status).toBe('unknown'); expect(f.client.calls).toHaveLength(0);
+});

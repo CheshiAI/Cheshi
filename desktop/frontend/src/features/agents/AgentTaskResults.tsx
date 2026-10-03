@@ -6,14 +6,15 @@ import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import { formatSessionElapsedTime, useChatSessionClock } from '../chat/chatSessionTime';
-import { MessageContent } from '../chat/MessageContent';
+import { AgentTaskDetail } from './AgentTaskDetail';
 import common from '../../shared/agent-management/agentManagement.module.css';
 import styles from './AgentTaskResults.module.css';
 
-export function AgentTaskResults({ tasks, loading, running }: {
+export function AgentTaskResults({ requestedTaskId, onBackToChats, tasks, loading, running }: {
+  requestedTaskId?: string; onBackToChats?(): void;
   tasks: readonly AgentTask[]; loading: boolean; running: boolean;
 }) {
-  const [taskId, setTaskId] = useState<string | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(requestedTaskId ?? null);
   const lastOpened = useRef<string | null>(null);
   const scrollbar = useAutoHideScrollbars<HTMLElement>();
   const list = useRef<HTMLDivElement>(null);
@@ -22,8 +23,9 @@ export function AgentTaskResults({ tasks, loading, running }: {
   const now = useChatSessionClock(!task && tasks.length > 0);
 
   useEffect(() => {
-    if (!loading && taskId && !task) setTaskId(null);
-  }, [loading, taskId, task]);
+    if (!requestedTaskId && !loading && taskId && !task) setTaskId(null);
+  }, [loading, taskId, task, requestedTaskId]);
+  useEffect(() => { if (requestedTaskId) setTaskId(requestedTaskId); }, [requestedTaskId]);
   useLayoutEffect(() => {
     if (task) { content.current?.scrollTo({ top: 0 }); content.current?.focus({ preventScroll: true }); }
     else if (lastOpened.current) {
@@ -34,12 +36,14 @@ export function AgentTaskResults({ tasks, loading, running }: {
 
   return <section ref={scrollbar} className={styles.root} aria-label="Task results">
     <div className={styles.header}>
-      {task && <TooltipButton variant="ghost" size="icon" aria-label="Back to task list" title="Back to task list"
+      {onBackToChats && <TooltipButton variant="ghost" size="icon" aria-label="Back to Chats" title="Back to Chats" onClick={onBackToChats}><ArrowLeft aria-hidden="true" /></TooltipButton>}
+      {task && !onBackToChats && <TooltipButton variant="ghost" size="icon" aria-label="Back to task list" title="Back to task list"
         onClick={() => setTaskId(null)}><ArrowLeft aria-hidden="true" /></TooltipButton>}
       <TooltipTarget content={task?.id}><h2 className={`${common.sectionTitle} ${styles.heading}`}>
-        {task?.id ?? 'RECENT TASK RESULTS'}
+        {task ? 'Task details' : 'TASKS'}
       </h2></TooltipTarget>
     </div>
+    {requestedTaskId && !task && <p className={styles.empty}>The linked task is not available yet. Start its worker or check the queued message in Chats.</p>}
     <div ref={list} className={styles.list} hidden={Boolean(task)} aria-label="Task result list">
       {tasks.map(item => {
         const title = item.prompt.trim().split(/\r?\n/, 1)[0] || item.id;
@@ -50,7 +54,7 @@ export function AgentTaskResults({ tasks, loading, running }: {
           <TooltipTarget content={title}><span className={styles.title}>{title}</span></TooltipTarget>
           <span className={styles.metadata}>
             <TooltipTarget content={item.id}><span className={styles.id}>{item.id}</span></TooltipTarget>
-            <span className={styles.status}>{item.status}</span>
+            <span className={styles.status}>{item.inspection?.goal?.phase ?? item.status}</span>
             <span className={styles.time} aria-label={elapsed === '—' ? 'Created time unavailable' : `Created ${elapsed} ago`}>{elapsed}</span>
           </span>
         </NeumorphicButton>;
@@ -59,11 +63,7 @@ export function AgentTaskResults({ tasks, loading, running }: {
         ? 'No task results available.' : 'Start the worker to read its stored task results.'}</p>}
     </div>
     {task && <div ref={content} className={styles.content} aria-label="Task result content" tabIndex={-1}>
-      <p className={common.description}>{task.status} · {task.createdAt}</p>
-      <div className={styles.markdown} aria-label="Task request"><MessageContent text={task.prompt} /></div>
-      <div className={styles.markdown} aria-label="Task output">
-        <MessageContent text={task.output || task.error || 'No output yet.'} />
-      </div>
+      <AgentTaskDetail task={task} />
     </div>}
   </section>;
 }

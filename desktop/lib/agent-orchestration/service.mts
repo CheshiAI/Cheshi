@@ -1,4 +1,4 @@
-import { AgentMailbox, type Binding, type Peer } from './mailbox.mts';
+import { AgentMailbox, type Binding, type Peer, type Message } from './mailbox.mts';
 import { AgentHistoryRelay, type AgentHistoryOptions } from './history-relay.mts';
 import { workerOperations } from '../agent-management/operations.mts';
 
@@ -9,6 +9,7 @@ interface Options {
   connect(binding: Binding): Promise<CollaborationConnection | null>;
   exchange?: typeof exchangeWorker;
   history?: AgentHistoryOptions;
+  rooms?: { roster(binding: Binding): Record<string, string[]>; allowed(binding: Binding, message: Message): boolean; record(binding: Binding, messages: Message[]): void };
 }
 export async function exchangeWorker(connection: CollaborationConnection, body: unknown): Promise<unknown> {
   const url = new URL(connection.endpoint);
@@ -55,10 +56,13 @@ export function createAgentOrchestration(options: Options) {
           const peers = bindings.filter(b => b.scope === binding.scope).flatMap(b => {
             const peer = options.peer(b); return peer ? [peer] : [];
           });
-          const request = mailbox().request(binding, peers);
-          const response = await (options.exchange ?? exchangeWorker)(connection, request);
+          const request = mailbox().request(binding, peers, m => options.rooms?.allowed(binding, m) ?? !m.roomId);
+          const rooms = options.rooms?.roster(binding) ?? {};
+          const response = await (options.exchange ?? exchangeWorker)(connection, { ...request, rooms });
           if (!options.peer(binding)) throw new Error('Agent assignment changed during collaboration.');
-          mailbox().accept(binding, response, peers.filter(p => bindings.some(b => b.agentId === p.id && b.scope === binding.scope && options.peer(b))), request.messages.map(m => m.id));
+          mailbox().accept(binding, response, peers.filter(p => bindings.some(b => b.agentId === p.id && b.scope === binding.scope && options.peer(b))), request.messages.map(m => m.id), m => options.rooms?.allowed(binding, m) ?? !m.roomId);
+          // Journal acceptance is authoritative; projection is idempotent and catches up on every exchange.
+          options.rooms?.record(binding, mailbox().messages(binding.scope));
           errors.delete(binding.id);
         });
       } catch (error) { errors.set(binding.id, error instanceof Error ? error.message : 'Collaboration failed.'); }

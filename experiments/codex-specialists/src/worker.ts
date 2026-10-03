@@ -61,7 +61,7 @@ const server = Bun.serve({
         if (path === '/history/read') return Response.json(await history.read(input));
       }
       if (path === '/health' && request.method === 'GET') {
-        return Response.json({ ready: error === null, role: configuration?.role ?? 'verifier', busy: agent.busy,
+        return Response.json({ chatsProtocol: 1, ready: error === null, role: configuration?.role ?? 'verifier', busy: agent.busy,
           threadId: store.snapshot().threadId, deniedRequests: client.deniedRequests, error },
         { status: error === null ? 200 : 503 });
       }
@@ -75,14 +75,21 @@ const server = Bun.serve({
         const result = await client.request('model/list', { limit: 100 });
         return Response.json({ data: result.data, nextCursor: result.nextCursor });
       }
-      if (path === '/activity' && request.method === 'GET') return Response.json(store.snapshot());
+      if (path === '/activity' && request.method === 'GET') return Response.json({ ...store.snapshot(), ...(historyQueue ? { recall: historyQueue.inspection() } : {}) });
       if (path === '/tasks' && request.method === 'POST') {
         if (!request.headers.get('content-type')?.startsWith('application/json')) throw new TypeError('Use application/json.');
         const body = await request.text();
         if (body.length > 25_000) throw new TypeError('Request is too large.');
         const input = record(JSON.parse(body));
-        const task = agent.submit(input.id === undefined ? randomUUID() : validateTaskId(input.id), textValue(input.prompt, 'prompt'));
+        const task = agent.submit(input.id === undefined ? randomUUID() : validateTaskId(input.id), textValue(input.prompt, 'prompt'), input.chat === undefined ? undefined : (() => { const c = record(input.chat); if (typeof c.goal !== 'boolean') throw new TypeError('Invalid chat goal.'); return { roomId: validateTaskId(c.roomId), conversation: validateTaskId(c.conversation), goal: c.goal }; })());
         return Response.json(task, { status: 202 });
+      }
+      const resume = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/input$/.exec(path);
+      if (resume && request.method === 'POST') {
+        const body = await request.text();
+        if (body.length > 25_000) throw new TypeError('Request is too large.');
+        const input = record(JSON.parse(body));
+        return Response.json(agent.input(resume[1]!, validateTaskId(input.id), textValue(input.prompt, 'prompt'), validateTaskId(input.roomId)), { status: 202 });
       }
       const match = /^\/tasks\/([a-zA-Z0-9_-]{1,80})(\/stop)?$/.exec(path);
       if (match?.[1]) {

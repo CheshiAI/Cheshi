@@ -10,6 +10,7 @@ export type TaskStatus = typeof TASK_STATUSES[number];
 export type Task = {
   id: string; prompt: string; status: TaskStatus; createdAt: string; finishedAt: string | null;
   threadId: string | null; turnId: string | null; output: string; error: string | null;
+  roomId?: string; inputs?: { id: string; prompt: string }[]; responses?: { id: string; text: string; status: string }[];
   conversation?: string; consultation?: string; goal?: GoalState;
   verification?: string; verificationEvidence?: Evidence[]; verificationDraft?: VerificationResult;
 };
@@ -26,6 +27,12 @@ function nullableText(value: unknown): string | null {
   throw new TypeError('Invalid saved text.');
 }
 
+function chatEntries<T>(value: unknown, parse: (value: unknown) => T): T[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 100) throw new TypeError('Invalid saved room entries.');
+  return value.map(parse);
+}
+
 function savedTask(value: unknown): Task {
   const task = record(value);
   if (!TASK_STATUSES.some(status => status === task.status) || typeof task.output !== 'string') {
@@ -36,6 +43,9 @@ function savedTask(value: unknown): Task {
     createdAt: textValue(task.createdAt, 'creation time'), finishedAt: nullableText(task.finishedAt),
     threadId: nullableText(task.threadId), turnId: nullableText(task.turnId), output: task.output,
     error: nullableText(task.error),
+    ...(task.roomId === undefined ? {} : { roomId: validateTaskId(task.roomId),
+      inputs: chatEntries(task.inputs, v => { const i = record(v); return { id: validateTaskId(i.id), prompt: textValue(i.prompt, 'input') }; }),
+      responses: chatEntries(task.responses, v => { const r = record(v); return { id: validateTaskId(r.id), text: typeof r.text === 'string' ? r.text : textValue(r.text, 'response'), status: textValue(r.status, 'status') }; }) }),
     ...(task.verification === undefined ? {} : { verification: validateTaskId(task.verification) }),
     ...(task.verificationEvidence === undefined ? {} : { verificationEvidence: list(task.verificationEvidence, evidence, 32) }),
     ...(task.verificationDraft === undefined ? {} : { verificationDraft: verificationResult(task.verificationDraft) }),
@@ -97,7 +107,7 @@ export class AgentStore {
     });
   }
 
-  create(id: string, prompt: string, options: Pick<Task, 'conversation' | 'consultation' | 'verification' | 'goal'> = {}): Task {
+  create(id: string, prompt: string, options: Pick<Task, 'conversation' | 'consultation' | 'verification' | 'goal' | 'roomId'> = {}): Task {
     if (this.task(id)) throw new Error('Task already exists.');
     const task: Task = { id, prompt, status: 'accepted', createdAt: new Date().toISOString(), finishedAt: null,
       threadId: null, turnId: null, output: '', error: null, ...options };
@@ -116,7 +126,7 @@ export class AgentStore {
   complete(id: string, patch: Pick<Task, 'status' | 'output' | 'error' | 'goal'>, consumed: string[] = []): void {
     const task = this.task(id);
     if (!task) throw new Error('Unknown task.');
-    const result = { ...task, ...patch, finishedAt: patch.status === 'waiting' ? null : new Date().toISOString() };
+    const result = { ...task, ...patch, ...(task.roomId ? { responses: [...(task.responses ?? []), { id: `response_${(task.responses?.length ?? 0) + 1}`, text: patch.output, status: patch.status }] } : {}), finishedAt: patch.status === 'waiting' ? null : new Date().toISOString() };
     this.write(join(this.directory, 'artifacts', `${id}.json`), result);
     if (patch.status === 'completed' && !task.consultation && !task.verification) {
       this.write(join(this.directory, 'memory', 'latest.json'), {

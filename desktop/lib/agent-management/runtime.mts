@@ -25,6 +25,7 @@ interface RuntimeOptions {
   run?: DockerCommand;
   collaborationExchange?: typeof exchangeWorker;
   history?: AgentHistoryOptions;
+  rooms?: Parameters<typeof createAgentOrchestration>[0]['rooms'];
 }
 const image = 'cheshi-specialist:1';
 const marker = 'ai.cheshi.worker';
@@ -66,7 +67,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   const pending = new Set<string>();
   const builds = new Map<string, Promise<void>>();
   const orchestration = createAgentOrchestration({ filename: join(options.directory, 'collaboration.json'),
-    exchange: options.collaborationExchange, history: options.history,
+    exchange: options.collaborationExchange, history: options.history, rooms: options.rooms,
     peer: binding => {
       const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId && a.accountId === binding.accountId
         && projectAssignment(a, binding.workspace));
@@ -140,8 +141,9 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   async function post(endpoint: string, token: string, route: string, body: unknown) {
     const response = await fetch(`${endpoint}${route}`, { method: 'POST', redirect: 'error',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body), signal: AbortSignal.timeout(35_000) });
-    if (!response.ok) throw new Error(response.status === 409 ? 'The worker is busy or this task needs inspection.' : 'Worker did not accept the request. Refresh its status before retrying.');
+      body: JSON.stringify(body), signal: AbortSignal.timeout(35_000) }).catch(() => { throw Object.assign(new Error('Delivery outcome is unknown. Inspect the saved worker task.'), { deliveryUncertain: true }); });
+    if (response.status >= 500) { await response.body?.cancel(); throw Object.assign(new Error('Worker outcome is unknown. Inspect its task record.'), { deliveryUncertain: true }); }
+    if (!response.ok) { await response.body?.cancel(); throw new Error(response.status === 409 ? 'The worker is busy or this task needs inspection.' : 'Worker did not accept the request. Refresh its status before retrying.'); }
     await response.body?.cancel();
   }
   async function waitReady(engineId: string, id: string) {
@@ -153,7 +155,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     }
     throw new Error('Worker is still starting or needs sign-in. Refresh its status in a moment.');
   }
-  async function request(workspaceRoot: string, input: AgentRuntimeRequest): Promise<AgentRuntimeState> {
+  async function request(workspaceRoot: string, input: AgentRuntimeRequest, chat?: { roomId: string; conversation: string; goal: boolean; inputId?: string }): Promise<AgentRuntimeState> {
     const request = parseAgentRuntimeRequest(input);
     const workspace = await realpath(workspaceRoot);
     const agent = options.registry.snapshot(workspaceRoot).agents.find(item => item.id === request.agentId);
@@ -233,7 +235,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint,
-            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [workspace];
@@ -280,7 +282,10 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       const configuration = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
       if (typeof configuration.token !== 'string' || !/^[a-f0-9]{64}$/.test(configuration.token)) throw new Error('Worker authorization is unavailable.');
       assertCurrent();
-      await post(worker.endpoint, configuration.token, '/tasks', { id: request.taskId, prompt: request.prompt });
+      if (chat && configuration.chatsProtocol !== 1) throw new Error('Start the agent to enable Chats.');
+      await post(worker.endpoint, configuration.token, chat?.inputId ? `/tasks/${request.taskId}/input` : '/tasks',
+        chat?.inputId ? { id: chat.inputId, prompt: request.prompt, roomId: chat.roomId }
+          : { id: request.taskId, prompt: request.prompt, ...(chat ? { chat } : {}) });
       return { details: await options.management.details(request.engineId, worker.id) };
     } catch (error) {
       if (request.action === 'status' && error instanceof DockerCommandError && error.kind === 'engine-unavailable') {
@@ -290,6 +295,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     } finally { if (request.action !== 'status') pending.delete(key); }
   }
   return {
+    chat: (workspace: string, input: AgentRuntimeRequest, context: { roomId: string; conversation: string; goal: boolean; inputId?: string }) => workerOperations.run(() => request(workspace, input, context)),
     start: orchestration.start,
     dispose: orchestration.dispose,
     request: (workspaceRoot: string, input: AgentRuntimeRequest) => input.action === 'status'
@@ -297,7 +303,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   };
 }
 function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number]) {
-  return digest(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
+  return digest(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
     ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
 }
 function profileConfiguration(agent: SpecialistAgent) {

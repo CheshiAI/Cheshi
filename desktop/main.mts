@@ -1,3 +1,5 @@
+import { createAgentChats } from './lib/agent-chats/service.mts';
+import { registerAgentChatsIpc } from './lib/agent-chats/ipc.mts';
 import { createSpecialistRuntime } from './lib/agent-management/runtime.mts';
 import { createAgentDeletion } from './lib/agent-management/deletion.mts';
 import { startScheduler, resumeScheduler, stopScheduler, suspendScheduler } from './lib/scheduler/application.mts';
@@ -92,7 +94,13 @@ const agentManagement: ReturnType<typeof createAgentManagementService> = createA
 const agentRegistry = createAgentRegistry(path.join(app.getPath('userData'), 'agents', 'registry.json'));
 const agentDeletion = createAgentDeletion({ directory: path.join(app.getPath('userData'), 'agents', 'deletions'),
   runtimeDirectory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement });
+const agentChats = createAgentChats({ filename: path.join(app.getPath('userData'), 'agents', 'chats.json'),
+  registry: workspace => agentRegistry.snapshot(workspace),
+  status: (workspace, input) => specialistRuntime.request(workspace, input),
+  dispatch: (workspace, input, context) => specialistRuntime.chat(workspace, input, context),
+});
 const specialistRuntime = createSpecialistRuntime({
+  rooms: agentChats.rooms,
   history: { enabled: () => apiSettings.isHistoryRecallEnabled(), getKey: () => apiSettings.getKey(),
     subscribe: listener => apiSettings.subscribe(() => listener()) },
   directory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement,
@@ -103,8 +111,8 @@ const specialistRuntime = createSpecialistRuntime({
     finally { await profiles.release(); }
   },
 });
-void app.whenReady().then(() => specialistRuntime.start());
-app.on('will-quit', () => { void specialistRuntime.dispose(); });
+void app.whenReady().then(() => { specialistRuntime.start(); agentChats.start(); });
+app.on('will-quit', () => { void specialistRuntime.dispose(); void agentChats.dispose(); });
 const apiSettings = createSettingsService({
   directory: path.join(app.getPath('userData'), 'api-keys'),
   settingsPath: path.join(app.getPath('userData'), 'settings.json'),
@@ -258,6 +266,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   const source = usageTray?.register();
   let settingsIpc: ReturnType<typeof registerSettingsIpc> | undefined;
   let agentManagementIpc: ReturnType<typeof registerAgentManagementIpc> | undefined;
+  let agentChatsIpc: ReturnType<typeof registerAgentChatsIpc> | undefined;
   let agentRegistryIpc: ReturnType<typeof registerAgentRegistryIpc> | undefined;
   let discordIpc: ReturnType<typeof registerDiscordIpc> | undefined;
   let notificationIpc: ReturnType<typeof registerIMessageIpc> | undefined;
@@ -268,6 +277,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       historyRecall: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) },
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
+      agentChatsIpc = registerAgentChatsIpc({ window, ipc: options.scope.ipc, workspaceRoot: options.workspaceRoot, service: agentChats });
       agentRegistryIpc = registerAgentRegistryIpc({ window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot,
         selectInstructionFiles: async () => {
           const result = await dialog.showOpenDialog(window, { title: 'Link instruction files', defaultPath: options.workspaceRoot,
@@ -308,7 +318,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
     },
     show: () => runtime.show(),
     async dispose() {
-      try { agentRegistryIpc?.dispose(); agentManagementIpc?.dispose(); notificationEventsIpc?.dispose(); discordIpc?.dispose(); notificationIpc?.dispose(); settingsIpc?.dispose(); }
+      try { agentChatsIpc?.dispose(); agentRegistryIpc?.dispose(); agentManagementIpc?.dispose(); notificationEventsIpc?.dispose(); discordIpc?.dispose(); notificationIpc?.dispose(); settingsIpc?.dispose(); }
       finally { try { await runtime.dispose(); } finally { source?.dispose(); } }
     },
   };

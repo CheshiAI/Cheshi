@@ -300,9 +300,9 @@ test('task detail renders request and output Markdown and preserves error and em
     expect(output.querySelector('a[href^="javascript:"]')).toBeNull();
     expect(output.querySelector('script')).toBeNull();
     await render(screen({ ...task, output: '', error: '**Failed** to inspect.' }));
-    expect(output.querySelector('strong')?.textContent).toBe('Failed');
+    expect(document.querySelector('[role="alert"] strong')?.textContent).toBe('Failed');
     await render(screen({ ...task, output: '', error: null }));
-    expect(output.textContent).toBe('No output yet.');
+    expect(output.textContent).toContain('No output yet.');
   });
 });
 
@@ -785,5 +785,33 @@ test('instruction file controls preserve draft links through cancellation and er
     await click('Unlink /project/AGENTS.md'); await click('Save agent');
     expect(writes[1]?.assignment.instructionFiles).toEqual([]);
     expect(writes[1]?.profile.instructionFiles).toEqual(['/common/RULES.md']);
+  });
+});
+
+test('task inspection shows blocked progress, independent failures and refreshes without losing selection', async () => {
+  const { inspectAgentTasks } = await import('../lib/agent-management/task-inspection.mts');
+  const base = { id: 'inspect', prompt: 'Implement login', status: 'interrupted', createdAt: '2026-10-03', output: 'Implementation summary', error: 'Need verification',
+    goal: { phase: 'blocked', turns: 2, verificationRequired: true, criteria: [{ criterion: 'Reject bad password', met: true, evidence: 'Agent claim' }],
+      decisions: [{ action: 'blocked', progress: 'Login written', reason: 'Verifier found a failure', nextAction: 'Fix status code',
+        criteria: [{ criterion: 'Reject bad password', met: true, evidence: 'Agent claim' }] }], pending: null } };
+  const result = { verdicts: [{ criterion: 'Reject bad password', verdict: 'fail', reason: 'Returned 200', evidenceIds: ['receipt'] }],
+    evidence: [{ id: 'receipt', kind: 'command', detail: 'bun test login', output: 'expected 401', exitCode: 1, successful: false }] };
+  const records = { peers: [{ id: 'verify', name: 'Verifier', role: 'verification' }], outgoing: [], consumed: ['review'], acknowledged: [],
+    incoming: [{ id: 'review', kind: 'verification_result', from: 'verify', to: 'dev', taskId: 'inspect', questionId: 'request', text: JSON.stringify(result) }] };
+  await withDOM(async ({ render, click }) => {
+    const screen = (output: string) => <AgentTaskResults tasks={inspectAgentTasks({ tasks: [{ ...base, output }], collaboration: records, recall: [] })} loading={false} running />;
+    await render(screen('Implementation summary'));
+    expect(document.querySelector('h2')?.textContent).toBe('TASKS');
+    await click('Open task: inspect');
+    expect(document.querySelector('[aria-label="Task status"]')?.textContent).toContain('blocked');
+    expect(document.querySelector('[aria-label="Completion criteria"]')?.textContent).toContain('Reported met');
+    expect(document.querySelector('[aria-label="Independent verification"]')?.textContent).toContain('fail');
+    expect(document.querySelector('[aria-label="Independent verification"]')?.textContent).toContain('expected 401');
+    expect(document.querySelector('[aria-label="Task progress"]')?.textContent).toContain('Fix status code');
+    expect(document.querySelector('[aria-label="Task memory recall"]')?.textContent).toContain('No retained recall entries');
+    await render(screen('Refreshed evidence'));
+    expect(document.querySelector('[aria-label="Task output"]')?.textContent).toContain('Refreshed evidence');
+    await click('Back to task list');
+    expect(document.activeElement?.getAttribute('data-task-id')).toBe('inspect');
   });
 });

@@ -1,7 +1,8 @@
+import type { ChatTaskTarget } from '../../../../shared/agent-chats';
 import { AgentAvatar } from '../../shared/agent-management/AgentAvatar';
 import { SpecialistRuntimePanel } from './SpecialistRuntimePanel';
 import { Bot, Container, Plus, RefreshCw, Trash2 } from 'lucide-react';
-import { useState, useSyncExternalStore } from 'react';
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { LiquidGlassPanel } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
@@ -20,12 +21,19 @@ const emptyRegistry: AgentRegistryState = { data: null, selection: null, loading
 const emptySnapshot = () => emptyRegistry;
 const emptySubscribe = () => () => {};
 
-export function AgentsView({ model, state, registry, accountsApi }: AgentScreenProps & {
+export function AgentsView({ chatTask, onBackToChats, model, state, registry, accountsApi }: AgentScreenProps & {
+  chatTask?: ChatTaskTarget | null; onBackToChats?(): void;
   registry?: AgentRegistryModel | null; accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [deletion, setDeletion] = useState<SpecialistAgent | null>(null);
   const registered = useSyncExternalStore(registry?.subscribe ?? emptySubscribe, registry?.snapshot ?? emptySnapshot);
+  const openedChatTask = useRef<ChatTaskTarget | null>(null);
+  useEffect(() => {
+    if (chatTask && openedChatTask.current !== chatTask && registered.data?.agents.some(a => a.id === chatTask.agentId)) {
+      openedChatTask.current = chatTask; registry?.select(chatTask.agentId); setSettingsId(null);
+    }
+  }, [chatTask, registry, registered.data]);
   const creating = registered.selection === 'new';
   const profile = creating ? undefined : registered.data?.agents.find(item => item.id === registered.selection) ?? registered.data?.agents[0];
   const editing = creating || Boolean(profile && settingsId === profile.id);
@@ -73,7 +81,7 @@ export function AgentsView({ model, state, registry, accountsApi }: AgentScreenP
     <section className={viewStyles.detailsPane} aria-label="Agent details">
       {registry && registered.data && editing ? <SpecialistAgentForm key={profile?.id ?? 'new'} agent={profile}
         model={registry} state={registered} accountsApi={accountsApi} onBack={profile ? () => setSettingsId(null) : undefined} />
-        : registry && profile ? <SpecialistRuntimePanel key={profile.id} agent={profile} model={registry}
+        : registry && profile ? <SpecialistRuntimePanel chatTask={chatTask?.agentId === profile.id ? chatTask : null} onBackToChats={onBackToChats} key={profile.id} agent={profile} model={registry}
           engines={state.catalog.engines} engineId={state.engineId} onSettings={() => setSettingsId(profile.id)} />
         : <p className={viewStyles.empty}>Select an agent to view its status and task results.</p>}
     </section>

@@ -212,3 +212,20 @@ test('expired relay requests make no provider call and persistence failure publi
   await failure(f.search('persist-failure'), 'EISDIR');
   expect(f.queue.exchange({ protocol: 1, enabled: true, results: [] }).requests).toHaveLength(0);
 });
+
+test('recall inspection survives worker restart with source ids and incremental usage', async () => {
+  const f = fixture(async (_query, candidates, _signal, onUsage) => {
+    onUsage?.({ requests: 1, inputTokens: 100, outputTokens: 10, estimatedCostUsd: 0.001, knownEstimatedCostUsd: 0.001, unknownRequests: 0, modelMs: 5 });
+    return candidates.map(c => ({ answer: c.text.includes('401') ? .95 : .01, related: .01, direct: .95 }));
+  });
+  const relay = f.relay(), pending = f.search();
+  await deliver(f, relay); await pending; await relay.dispose();
+  const before = f.queue.inspection();
+  const restored = new WorkerHistoryQueue(f.directory);
+  expect(restored.inspection()).toEqual(before);
+  expect(before[0]?.taskId).toBe('task');
+  expect(JSON.stringify(before)).toContain('HTTP 401');
+  expect(before[0]?.activity.sources.some(s => s.threadId === 'past')).toBe(true);
+  expect(before[0]?.activity.metrics?.requests).toBe(1);
+  expect(f.calls()).toBe(1);
+});

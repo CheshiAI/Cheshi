@@ -1,3 +1,4 @@
+import type { ChatTaskTarget } from '../../../../shared/agent-chats';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { AgentManagementApi } from '../../../../shared/agent-management';
@@ -14,8 +15,9 @@ const emptyRegistrySnapshot = () => null;
 const emptyRegistrySubscribe = () => () => {};
 
 /** Remains mounted in the workspace shell so navigation preserves engine/worker selection. */
-export function AgentManagementViews({ view, api = cheshiDesktop?.agentManagement, registryApi = cheshiDesktop?.agentRegistry,
+export function AgentManagementViews({ view, chatTask, onBackToChats, api = cheshiDesktop?.agentManagement, registryApi = cheshiDesktop?.agentRegistry,
   accountsApi = cheshiDesktop?.codexAccounts }: {
+  chatTask?: ChatTaskTarget | null; onBackToChats?(): void;
   view: ManagementView; api?: AgentManagementApi; registryApi?: AgentRegistryApi;
   accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
@@ -34,10 +36,11 @@ export function AgentManagementViews({ view, api = cheshiDesktop?.agentManagemen
     return () => { next.dispose(); };
   }, [api]);
   if (!api) return view ? <main className={styles.unavailable}>Worker management is available in the desktop app.</main> : null;
-  return model ? <ManagementScreens model={model} view={view} registry={registry} accountsApi={accountsApi} /> : null;
+  return model ? <ManagementScreens chatTask={chatTask} onBackToChats={onBackToChats} model={model} view={view} registry={registry} accountsApi={accountsApi} /> : null;
 }
 
-function ManagementScreens({ model, view, registry, accountsApi }: {
+function ManagementScreens({ chatTask, onBackToChats, model, view, registry, accountsApi }: {
+  chatTask?: ChatTaskTarget | null; onBackToChats?(): void;
   model: AgentManagementModel; view: ManagementView; registry: AgentRegistryModel | null;
   accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
@@ -53,6 +56,6 @@ function ManagementScreens({ model, view, registry, accountsApi }: {
   }, [model, view]);
   if (view === 'docker') return <DockerView model={model} state={state} profiles={registered?.data?.agents}
     onRefreshProfiles={() => { void registry?.refresh(); }} />;
-  if (view === 'agents') return <AgentsView model={model} state={state} registry={registry} accountsApi={accountsApi} />;
+  if (view === 'agents') return <AgentsView chatTask={chatTask} onBackToChats={onBackToChats} model={model} state={state} registry={registry} accountsApi={accountsApi} />;
   return null;
 }

@@ -8,7 +8,7 @@ export interface Binding {
 }
 export interface Peer { id: string; name: string; role: string }
 export interface Message {
-  id: string; kind: 'question' | 'reply' | 'verification_request' | 'verification_result'; from: string; to: string; taskId: string; questionId: string; text: string;
+  roomId?: string; id: string; kind: 'question' | 'reply' | 'verification_request' | 'verification_result'; from: string; to: string; taskId: string; questionId: string; text: string;
 }
 interface Envelope { scope: string; message: Message; delivered: boolean }
 interface State { version: 1; bindings: Binding[]; envelopes: Envelope[] }
@@ -23,7 +23,7 @@ function parseMessage(value: unknown): Message {
   const text = agentText(v.text, 12_000);
   if (!text.trim()) throw new Error('Empty collaboration message.');
   return { id: identifier(v.id), kind: v.kind as Message['kind'], from: identifier(v.from), to: identifier(v.to),
-    taskId: identifier(v.taskId), questionId: identifier(v.questionId), text };
+    ...(v.roomId === undefined ? {} : { roomId: identifier(v.roomId) }), taskId: identifier(v.taskId), questionId: identifier(v.questionId), text };
 }
 export const bindingFor = (workspace: string, engineId: string, agentId: string, accountId: string): Binding => {
   const scope = createHash('sha256').update(`${engineId}\0${workspace}`).digest('hex');
@@ -65,6 +65,7 @@ export class AgentMailbox {
     renameSync(temporary, this.filename);
     this.state = next;
   }
+  messages(scope: string): Message[] { return structuredClone(this.state.envelopes.filter(e => e.scope === scope).map(e => e.message)); }
   bindings(): Binding[] { return structuredClone(this.state.bindings); }
   register(binding: Binding): void {
     const previous = this.state.bindings.find(b => b.id === binding.id);
@@ -74,13 +75,13 @@ export class AgentMailbox {
     }
     this.commit(state => { state.bindings = [...state.bindings.filter(b => b.id !== binding.id), binding]; });
   }
-  request(binding: Binding, peers: Peer[]) {
-    const entries = this.state.envelopes.filter(e => e.scope === binding.scope);
+  request(binding: Binding, peers: Peer[], allowed: (message: Message) => boolean = () => true) {
+    const entries = this.state.envelopes.filter(e => e.scope === binding.scope && allowed(e.message));
     return { peers, messages: entries.filter(e => e.message.to === binding.agentId && !e.delivered).slice(0, 100).map(e => e.message),
       // The worker filters these against its outgoing list; acknowledgements are bounded by exchange batches.
       acknowledged: entries.filter(e => e.message.from === binding.agentId).slice(-100).map(e => e.message.id) };
   }
-  accept(binding: Binding, response: unknown, peers: Peer[], sentIds: string[]): void {
+  accept(binding: Binding, response: unknown, peers: Peer[], sentIds: string[], allowed: (message: Message) => boolean = () => true): void {
     const value = agentRecord(response);
     if (value.protocol !== 1 || !Array.isArray(value.outgoing) || value.outgoing.length > 100
       || !Array.isArray(value.received) || value.received.length > 100) throw new Error('Unsupported collaboration exchange.');
@@ -93,6 +94,7 @@ export class AgentMailbox {
         entry.delivered = true;
       }
       for (const item of outgoing) {
+        if (!allowed(item)) throw new Error('Recipient is not invited to this room.');
         if (item.from !== binding.agentId || item.to === binding.agentId) throw new Error('Invalid collaboration sender.');
         const previous = state.envelopes.find(e => e.scope === binding.scope && e.message.id === item.id);
         if (previous) {
@@ -105,7 +107,7 @@ export class AgentMailbox {
         if (item.kind === 'verification_result' && !peers.some(p => p.id === item.from && p.role === 'verification')) throw new Error('Sender is not a verification agent.');
         if (item.kind === 'reply' || item.kind === 'verification_result') {
           const question = state.envelopes.find(e => e.scope === binding.scope && e.message.id === item.questionId)?.message;
-          if (!question || question.kind !== (item.kind === 'reply' ? 'question' : 'verification_request') || question.from !== item.to || question.to !== item.from || question.taskId !== item.taskId) {
+          if (!question || question.kind !== (item.kind === 'reply' ? 'question' : 'verification_request') || question.from !== item.to || question.to !== item.from || question.taskId !== item.taskId || question.roomId !== item.roomId) {
             throw new Error('Reply does not belong to this peer and task.');
           }
           if (state.envelopes.some(e => e.scope === binding.scope && e.message.kind === item.kind && e.message.questionId === item.questionId)) {
