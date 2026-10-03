@@ -237,3 +237,50 @@ test('goal summaries preserve compatibility and reject malformed budget and reco
   delete data.messages[0]!.goalProgress;
   expect(parseChatsSnapshot(data).messages[0]?.goalProgress).toBeUndefined();
 });
+
+async function rejectsWith(operation: Promise<unknown>, message: string) {
+  let error: unknown; try { await operation; } catch (e) { error = e; }
+  expect(error).toBeInstanceOf(Error); expect((error as Error).message).toContain(message);
+}
+
+test('execution inspection holds queued inputs across restart and requires a fresh explicit follow-up', async () => {
+  const f = await blockedFixture();
+  f.send('old-input', { threadId: 'goal', goal: false, text: 'Old follow-up' });
+  f.task.status = 'unknown'; await f.service.tick();
+  const before = structuredClone(f.task.inspection);
+  const recoveries: unknown[] = [];
+  const options = { ...f.options, recover: async (workspace: string, input: import('../shared/agent-runtime').AgentRuntimeRequest) => {
+    recoveries.push({ workspace, input });
+    f.task.status = 'interrupted';
+    f.task.recovery = { threadId: 'native-thread', turnId: 'native-turn', status: 'completed', checkedAt: '2026-10-03T00:00:00Z' };
+    f.task.responses = [{ id: 'recovered', text: 'Recovered output', status: 'interrupted' }];
+    return { details: f.details };
+  } };
+  const service = createAgentChats(options);
+  const result = await service.recover(f.workspace, { action: 'recover', roomId: 'room', goalId: 'goal' });
+  expect(recoveries).toEqual([{ workspace: f.workspace, input: { action: 'recover', agentId: 'dev', engineId: 'docker:test', taskId: f.task.id, roomId: 'room' } }]);
+  expect(parseChatsSnapshot(result).messages[0]?.goalProgress).toMatchObject({ phase: 'blocked', resumeBlocked: null, recovery: f.task.recovery });
+  expect(result.messages.find(m => m.id === 'old-input')?.status).toBe('held');
+  expect(result.messages.filter(m => m.text === 'Recovered output')).toHaveLength(1);
+  expect(f.task.inspection).toEqual(before); expect(f.sent).toHaveLength(1);
+  const restarted = createAgentChats(options); await restarted.tick();
+  expect(f.sent).toHaveLength(1);
+  restarted.request(f.workspace, { action: 'send', roomId: 'room', threadId: 'goal', id: 'new-input', recipient: null, text: 'Reviewed, use email', goal: false });
+  await restarted.tick();
+  expect(f.sent).toHaveLength(2); expect(f.sent[1]?.input).toBe('new-input');
+  expect(restarted.request(f.workspace, { action: 'list' }).messages.find(m => m.id === 'old-input')?.status).toBe('held');
+});
+
+test('failed inspection and identity changes cannot clear unknown or replay queued work', async () => {
+  const f = await blockedFixture(); f.task.status = 'unknown'; await f.service.tick();
+  let calls = 0;
+  const service = createAgentChats({ ...f.options, recover: async () => { calls++; throw new Error('Native turn is still running'); } });
+  const request = { action: 'recover', roomId: 'room', goalId: 'goal' };
+  await rejectsWith(service.recover(f.workspace, request), 'still running');
+  expect(service.request(f.workspace, { action: 'list' }).messages[0]?.status).toBe('unknown');
+  await service.tick(); expect(f.sent).toHaveLength(1);
+  f.agents[0]!.accountId = 'replacement';
+  await rejectsWith(service.recover(f.workspace, request), 'identity');
+  await rejectsWith(service.recover(f.workspace, { ...request, roomId: 'foreign' }), 'project');
+  expect(calls).toBe(1);
+});

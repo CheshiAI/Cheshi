@@ -1,9 +1,10 @@
-import { agentRecord, agentText, parseAgentEngineId, parseAgentId } from './agent-management.ts';
+import { agentRecord, agentText, parseAgentEngineId, parseAgentId, parseExecutionRecovery, type ExecutionRecovery } from './agent-management.ts';
 
 export const AGENT_CHATS_CHANNEL = 'cheshi:agent-chats:request';
 // Decision protocol 1 has a fixed eight-turn budget. Keep this aligned with the worker.
 export const CHAT_GOAL_TURN_LIMIT = 8;
 export interface RoomGoalProgress {
+  recovery?: ExecutionRecovery;
   phase: string; progress: string; reason: string; nextAction: string;
   turns: number | null; turnLimit: number; resumeBlocked: string | null;
 }
@@ -19,11 +20,12 @@ export interface RoomMessage {
 }
 export interface RoomJob {
   id: string; roomId: string; threadId: string | null; agentId: string; taskId: string; prompt: string;
-  goal: boolean; inputId?: string; state: 'queued' | 'sending' | 'sent' | 'unknown'; error: string | null;
+  goal: boolean; inputId?: string; state: 'queued' | 'sending' | 'sent' | 'unknown' | 'held'; error: string | null;
 }
 export interface ChatsSnapshot { rooms: AgentRoom[]; messages: RoomMessage[] }
 export interface ChatTaskTarget { roomId: string; threadId: string | null; agentId: string; engineId: string; taskId: string }
 export type ChatsRequest = { action: 'list' }
+  | { action: 'recover'; roomId: string; goalId: string }
   | { action: 'create'; id: string; name: string; engineId: string; members: string[]; defaultAgentId: string }
   | { action: 'invite'; roomId: string; members: string[]; defaultAgentId: string }
   | { action: 'send'; id: string; roomId: string; threadId: string | null; recipient: string | null; text: string; goal: boolean };
@@ -40,6 +42,7 @@ function required(value: unknown, max: number): string {
 }
 export function parseChatsRequest(value: unknown): ChatsRequest {
   const v = agentRecord(value);
+  if (v.action === 'recover') return { action: 'recover', roomId: chatId(v.roomId), goalId: chatId(v.goalId) };
   if (v.action === 'list') return { action: 'list' };
   if (v.action === 'create' || v.action === 'invite') {
     if (!Array.isArray(v.members) || !v.members.length || v.members.length > 32) throw new Error('Choose 1–32 agents.');
@@ -62,7 +65,7 @@ function parseGoalProgress(value: unknown): RoomGoalProgress {
   const v = agentRecord(value);
   if ((v.turns !== null && (!Number.isSafeInteger(v.turns) || Number(v.turns) < 0))
     || v.turnLimit !== CHAT_GOAL_TURN_LIMIT) throw new Error('Invalid goal budget.');
-  return { phase: required(v.phase, 100), progress: agentText(v.progress, 4000), reason: agentText(v.reason, 20_000),
+  return { ...(v.recovery === undefined ? {} : { recovery: parseExecutionRecovery(v.recovery) }), phase: required(v.phase, 100), progress: agentText(v.progress, 4000), reason: agentText(v.reason, 20_000),
     nextAction: agentText(v.nextAction, 4000), turns: v.turns as number | null, turnLimit: CHAT_GOAL_TURN_LIMIT,
     resumeBlocked: v.resumeBlocked === null ? null : required(v.resumeBlocked, 20_000) };
 }
@@ -86,7 +89,7 @@ export function parseRoomMessage(value: unknown): RoomMessage {
 }
 export function parseRoomJob(value: unknown): RoomJob {
   const v = agentRecord(value);
-  if (typeof v.goal !== 'boolean' || !['queued', 'sending', 'sent', 'unknown'].includes(String(v.state))) throw new Error('Invalid saved room delivery.');
+  if (typeof v.goal !== 'boolean' || !['queued', 'sending', 'sent', 'unknown', 'held'].includes(String(v.state))) throw new Error('Invalid saved room delivery.');
   return { id: chatId(v.id), roomId: chatId(v.roomId), threadId: optionalId(v.threadId), agentId: chatId(v.agentId), taskId: chatId(v.taskId),
     prompt: required(v.prompt, 20_000), goal: v.goal, state: v.state as RoomJob['state'], error: v.error === null ? null : agentText(v.error, 20_000),
     ...(v.inputId === undefined ? {} : { inputId: chatId(v.inputId) }) };

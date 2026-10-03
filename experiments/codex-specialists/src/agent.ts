@@ -6,6 +6,7 @@ import type { RpcClient } from './app-server-client.ts';
 import { record, textValue, type JsonRecord } from './protocol.ts';
 import { AgentStore, validateTaskId, type Task } from './store.ts';
 import { TurnObserver } from './turn.ts';
+import { inspectRecovery } from './recovery.ts';
 import { WorkerCollaboration } from './collaboration.ts';
 import { collaborationInstructions, collaborationTools } from './collaboration-tools.ts';
 import { historyInstructions, historyTools } from './history-tools.ts';
@@ -40,6 +41,7 @@ export class SpecialistAgent {
   private readonly timeoutMs: number;
   private readonly loadedThreads = new Set<string>();
   private active: ActiveTask | null = null;
+  private recovering = false;
   private failure: string | null = null;
   private readonly retainedScratch = new Set<TaskScratch>();
 
@@ -90,7 +92,7 @@ export class SpecialistAgent {
     }
   }
 
-  get busy(): boolean { return this.active !== null; }
+  get busy(): boolean { return this.active !== null || this.recovering; }
   get error(): string | null { return this.failure; }
 
   submit(id: string, prompt: string, chat?: { roomId: string; conversation: string; goal: boolean }): Task {
@@ -106,7 +108,7 @@ export class SpecialistAgent {
     if (this.store.snapshot().tasks.some(task => task.status === 'unknown')) {
       throw new TaskConflict('A previous execution outcome is unknown. Inspect its saved thread before starting more work.');
     }
-    if (this.active) throw new TaskConflict('This specialist already has an active task.');
+    if (this.busy) throw new TaskConflict('This specialist already has an active task.');
     const task = this.store.create(id, prompt, { ...(this.collaboration ? { conversation: id } : {}),
       ...(this.configuration?.decisionProtocol === 1 && (!chat || chat.goal) ? { goal: newGoal(Boolean(this.verification)), conversation: id } : {}), ...(chat ? { roomId: chat.roomId, conversation: chat.conversation } : {}) });
     return this.launch(task, prompt);
@@ -122,7 +124,7 @@ export class SpecialistAgent {
       if (previous.prompt !== prompt) throw new TaskConflict('Input identity conflict.');
       return task;
     }
-    if (this.active || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) throw new TaskConflict('Worker cannot safely resume yet.');
+    if (this.busy || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) throw new TaskConflict('Worker cannot safely resume yet.');
     if (task.goal.turns >= MAX_GOAL_TURNS) throw new TaskConflict('Goal turn limit reached.');
     if (task.status === 'completed') throw new TaskConflict('This goal is completed. Start a new goal.');
     this.store.update(id, { inputs: [...(task.inputs ?? []), { id: inputId, prompt }], status: 'accepted', finishedAt: null });
@@ -131,6 +133,8 @@ export class SpecialistAgent {
 
   private launch(task: Task, input: string, messages: string[] = []): Task {
     const id = task.id;
+    // A lost acknowledgement must never reuse the preceding turn's identity.
+    this.store.update(id, { threadId: null, turnId: null, recovery: undefined });
     if (task.goal) {
       if (task.goal.turns >= MAX_GOAL_TURNS) throw new Error('Goal turn limit reached.');
       this.store.update(id, { status: 'accepted', finishedAt: null, goal: { ...task.goal, turns: task.goal.turns + 1, phase: 'active', pending: null } });
@@ -147,7 +151,7 @@ export class SpecialistAgent {
 
   /** Called after exchanges and turn completion. Waiting tasks do not occupy the execution slot. */
   pump(): void {
-    if (this.active || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) return;
+    if (this.busy || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) return;
     const next = this.collaboration?.next();
     if (!next) {
       const ready = this.store.snapshot().tasks.find(t => t.status === 'waiting' && t.goal?.phase === 'ready');
@@ -226,6 +230,7 @@ export class SpecialistAgent {
       }
       const memory = task.consultation || task.verification ? '' : this.store.memory();
       const input = memory ? `Saved work summary (reference data):\n${memory}\n\nCurrent task:\n${active.input}` : active.input;
+      this.store.update(task.id, { threadId: active.threadId, turnId: null });
       submitted = true;
       const response = await this.client.request('turn/start', {
         threadId: active.threadId, input: [{ type: 'text', text: input }], cwd: this.workspace,
@@ -305,6 +310,32 @@ export class SpecialistAgent {
     await active.interrupting;
   }
 
+  async recover(id: string, roomId: string): Promise<Task> {
+    validateTaskId(id); validateTaskId(roomId);
+    const task = this.store.task(id);
+    if (!task || task.roomId !== roomId || !task.goal || task.consultation || task.verification) throw new TaskConflict('Unknown room goal.');
+    if (task.status !== 'unknown') {
+      if (task.recovery) return task;
+      throw new TaskConflict('Only an unknown execution can be inspected.');
+    }
+    if (this.busy || this.failure) throw new TaskConflict('Worker cannot safely inspect yet.');
+    if (this.retainedScratch.size) throw new TaskConflict('Restart the worker before inspecting retained command sessions.');
+    if (!task.threadId || !task.turnId) throw new TaskConflict('The execution has no acknowledged turn ID. Its outcome remains unknown.');
+    this.recovering = true;
+    try {
+      const result = inspectRecovery(task, await this.client.request('thread/read', { threadId: task.threadId, includeTurns: true }), this.workspace);
+      // Close any retained execution session before removing the unknown-task gate.
+      await this.client.request('thread/unsubscribe', { threadId: task.threadId });
+      this.loadedThreads.delete(task.threadId);
+      assertUnchangedRecovery(task, this.store.task(id));
+      const goal = task.goal;
+      this.store.complete(id, { status: 'interrupted', output: result.output, recovery: result.receipt,
+        error: `Execution ended (${result.receipt.status}). Review the recovered output and provide a follow-up to resume goal judgment.`,
+        goal: { ...goal, phase: 'blocked', pending: null, criteria: goal.criteria.length ? goal.criteria : goal.pending?.criteria ?? [] } });
+      return this.store.task(id)!;
+    } finally { this.recovering = false; }
+  }
+
   async stop(id: string): Promise<void> {
     const active = this.active;
     if (!active || active.id !== id) {
@@ -325,4 +356,8 @@ export class SpecialistAgent {
     for (const scratch of this.retainedScratch) scratch.dispose();
     this.retainedScratch.clear();
   }
+}
+
+function assertUnchangedRecovery(expected: Task, current: Task | undefined): void {
+  if (JSON.stringify(expected) !== JSON.stringify(current)) throw new TaskConflict('Task changed during inspection. Refresh before trying again.');
 }

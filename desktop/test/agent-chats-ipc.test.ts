@@ -13,6 +13,7 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   const registration = registerAgentChatsIpc({ window, workspaceRoot: '/project', ipc: {
     handle: (name, fn) => { handlers.set(name, fn); }, removeHandler: name => { handlers.delete(name); },
   }, service: {
+    recover: async root => { calls.push(root); return { rooms: [], messages: [] }; },
     request: root => { calls.push(root); return { rooms: [], messages: [] }; },
     rooms: { roster: () => ({}), allowed: () => false, record: () => {} }, tick: async () => {}, start: () => {}, dispose: async () => {},
   } });
@@ -24,6 +25,8 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   const api = createAgentChatsApi({ invoke: async (_channel: string, request: unknown) => invoke(owner, mainFrame, request) });
   expect(await api.request({ action: 'list' })).toEqual({ rooms: [], messages: [] });
   expect(calls).toEqual(['/project']);
+  expect(await api.request({ action: 'recover', roomId: 'room', goalId: 'goal' })).toEqual({ rooms: [], messages: [] });
+  expect(calls).toEqual(['/project', '/project']);
   registration.dispose();
   expect(handlers.size).toBe(0);
   expect(() => invoke(owner, mainFrame, { action: 'list' })).toThrow('workspace');

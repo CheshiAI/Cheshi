@@ -203,3 +203,31 @@ test('recovery save failure preserves draft and retry identity', async () => {
     expect(requests).toHaveLength(2); expect(requests[1]).toEqual(requests[0]);
   });
 });
+
+test('unknown execution inspection preserves the draft on failure and shows native source after success', async () => {
+  await withDOM(async ui => {
+    let data = recoverySnapshot('Execution outcome is unknown.'), fail = true;
+    data.messages[0]!.status = 'unknown'; data.messages[0]!.goalProgress!.phase = 'unknown';
+    const calls: ChatsRequest[] = [];
+    const api = { request: async (request: ChatsRequest) => {
+      calls.push(request);
+      if (request.action === 'recover') {
+        if (fail) throw new Error('The saved turn has not ended');
+        data = recoverySnapshot();
+        data.messages[0]!.goalProgress!.recovery = { threadId: 'native-thread', turnId: 'native-turn', status: 'completed', checkedAt: '2026-10-03T00:00:00Z' };
+      }
+      return structuredClone(data);
+    } };
+    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.click('Open goal thread · 1'); await ui.type('Message', 'Keep this draft');
+    await ui.click('Check execution result');
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('has not ended');
+    expect(document.querySelector('[aria-label="Goal progress"]')?.textContent).toContain('unknown');
+    fail = false; await ui.click('Check execution result');
+    expect(calls.filter(c => c.action === 'recover')).toEqual(Array(2).fill({ action: 'recover', roomId: 'room', goalId: 'goal' }));
+    expect(calls.some(c => c.action === 'send')).toBe(false);
+    expect(document.querySelector('[aria-label="Goal progress"]')?.textContent).toContain('native-turn');
+    expect(document.querySelector('[aria-label="Goal progress"]')?.textContent).toContain('Goal · blocked');
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Keep this draft');
+  });
+});

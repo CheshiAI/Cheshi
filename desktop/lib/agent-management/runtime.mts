@@ -138,10 +138,15 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     }
     await flight;
   }
-  async function post(endpoint: string, token: string, route: string, body: unknown) {
+  async function post(endpoint: string, token: string, route: string, body: unknown, inspection = false) {
     const response = await fetch(`${endpoint}${route}`, { method: 'POST', redirect: 'error',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(body), signal: AbortSignal.timeout(35_000) }).catch(() => { throw Object.assign(new Error('Delivery outcome is unknown. Inspect the saved worker task.'), { deliveryUncertain: true }); });
+    if (inspection && !response.ok) {
+      const body: unknown = await response.json().catch(() => null);
+      const message = body && typeof body === 'object' && 'error' in body && typeof body.error === 'string' ? body.error.slice(0, 2000) : null;
+      throw new Error(response.status === 404 ? 'Start the agent to enable execution inspection.' : message ?? 'Execution inspection failed. The outcome remains unknown.');
+    }
     if (response.status >= 500) { await response.body?.cancel(); throw Object.assign(new Error('Worker outcome is unknown. Inspect its task record.'), { deliveryUncertain: true }); }
     if (!response.ok) { await response.body?.cancel(); throw new Error(response.status === 409 ? 'The worker is busy or this task needs inspection.' : 'Worker did not accept the request. Refresh its status before retrying.'); }
     await response.body?.cancel();
@@ -235,7 +240,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint,
-            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [workspace];
@@ -283,6 +288,10 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       if (typeof configuration.token !== 'string' || !/^[a-f0-9]{64}$/.test(configuration.token)) throw new Error('Worker authorization is unavailable.');
       assertCurrent();
       if (chat && configuration.chatsProtocol !== 1) throw new Error('Start the agent to enable Chats.');
+      if (request.action === 'recover') {
+        await post(worker.endpoint, configuration.token, `/tasks/${request.taskId}/recover`, { roomId: request.roomId }, true);
+        return { details: await options.management.details(request.engineId, worker.id) };
+      }
       await post(worker.endpoint, configuration.token, chat?.inputId ? `/tasks/${request.taskId}/input` : '/tasks',
         chat?.inputId ? { id: chat.inputId, prompt: request.prompt, roomId: chat.roomId }
           : { id: request.taskId, prompt: request.prompt, ...(chat ? { chat } : {}) });
@@ -303,7 +312,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   };
 }
 function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number]) {
-  return digest(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
+  return digest(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 1, agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
     ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
 }
 function profileConfiguration(agent: SpecialistAgent) {

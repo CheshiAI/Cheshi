@@ -33,6 +33,7 @@ class FakeClient implements RpcClient {
   private readonly failures = new Set<(error: Error) => void>();
   account: unknown = { type: 'chatgpt' };
   resumeId = 'thread';
+  onRead: () => Promise<JsonRecord> = async () => ({ thread: { id: 'thread', cwd: '/workspace', turns: [{ id: 'turn', status: 'completed', items: [{ type: 'agentMessage', text: 'Recovered result' }] }] } });
   onInject: (params: JsonRecord) => Promise<JsonRecord> = async () => ({});
   onUnsubscribe: () => Promise<JsonRecord> = async () => ({ status: 'unsubscribed' });
   onStart: (params: JsonRecord) => Promise<JsonRecord> = async () => {
@@ -52,6 +53,7 @@ class FakeClient implements RpcClient {
           networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true } } : {};
       return { thread: { id: method === 'thread/start' ? 'thread' : this.resumeId }, model: 'test-model', ...scratch };
     }
+    if (method === 'thread/read') return this.onRead();
     if (method === 'thread/unsubscribe') return this.onUnsubscribe();
     if (method === 'thread/inject_items') return await this.onInject(params);
     if (method === 'turn/start') { this.started.resolve(); return await this.onStart(params); }
@@ -531,4 +533,84 @@ test('interrupted Chats input is quarantined after restart and never replayed', 
   f = goalSetup(f.directory);
   f.agent.input('chats_goal', 'input', 'Answer', 'room'); f.agent.pump(); await f.agent.settled();
   expect(f.store.task('chats_goal')?.status).toBe('unknown'); expect(f.client.calls).toHaveLength(0);
+});
+
+async function unknownRoomGoal() {
+  const f = goalSetup();
+  f.client.onStart = async () => { await f.decide('blocked'); f.client.complete(); return { turn: { id: 'turn' } }; };
+  f.agent.submit('goal', 'Verify login', { roomId: 'room', conversation: 'goal', goal: true });
+  await f.agent.settled();
+  const task = f.store.task('goal')!;
+  f.store.update('goal', { status: 'unknown', goal: { ...task.goal!, verificationRequired: true } });
+  return f;
+}
+
+test('native terminal result recovery survives restart, preserves verification and never runs a model or completes the goal', async () => {
+  const original = await unknownRoomGoal(), f = goalSetup(original.directory), before = f.store.task('goal')!.goal!;
+  const recovered = await f.agent.recover('goal', 'room');
+  expect(recovered).toMatchObject({ status: 'interrupted', output: 'Recovered result', recovery: { threadId: 'thread', turnId: 'turn', status: 'completed' },
+    goal: { phase: 'blocked', turns: before.turns, criteria: before.criteria, verificationRequired: true, pending: null } });
+  expect(f.client.calls.map(c => c.method)).toEqual(['thread/read', 'thread/unsubscribe']);
+  expect(f.store.memory()).toBe('');
+  const restarted = goalSetup(f.directory);
+  expect(await restarted.agent.recover('goal', 'room')).toEqual(recovered);
+  expect(restarted.client.calls).toHaveLength(0);
+  expect(restarted.store.task('goal')!.responses).toEqual(recovered.responses);
+});
+
+test.each(['running', 'wrong-thread', 'wrong-workspace', 'missing-turn', 'later-turn', 'fork', 'ephemeral', 'read-failure', 'unsubscribe-failure'])('unknown recovery refuses %s without changing the task', async reason => {
+  const f = await unknownRoomGoal(), before = f.store.task('goal');
+  f.client.onRead = async () => {
+    if (reason === 'read-failure') throw new Error('read failed');
+    return { thread: { id: reason === 'wrong-thread' ? 'other' : 'thread', cwd: reason === 'wrong-workspace' ? '/other' : '/workspace',
+      parentThreadId: reason === 'fork' ? 'parent' : null, ephemeral: reason === 'ephemeral',
+      turns: [{ id: reason === 'missing-turn' ? 'missing' : 'turn', status: reason === 'running' ? 'inProgress' : 'completed', items: [] },
+        ...(reason === 'later-turn' ? [{ id: 'later', status: 'completed', items: [] }] : [])] } };
+  };
+  if (reason === 'unsubscribe-failure') f.client.onUnsubscribe = async () => { throw new Error('unsubscribe failed'); };
+  let failed = false; try { await f.agent.recover('goal', 'room'); } catch { failed = true; }
+  expect(failed).toBe(true); expect(f.store.task('goal')).toEqual(before); expect(f.agent.busy).toBe(false);
+});
+
+test('inspection locks execution and rejects duplicate inspection and wrong rooms', async () => {
+  const f = await unknownRoomGoal(), gate = createDeferred<JsonRecord>();
+  await expectFailure(f.agent.recover('goal', 'foreign'), 'Unknown room');
+  f.client.onRead = () => gate.promise;
+  const inspection = f.agent.recover('goal', 'room');
+  expect(f.agent.busy).toBe(true);
+  await expectFailure(f.agent.recover('goal', 'room'), 'cannot safely inspect');
+  expect(() => f.agent.submit('another', 'Run another')).toThrow();
+  gate.resolve({ thread: { id: 'thread', cwd: '/workspace', turns: [{ id: 'turn', status: 'failed', items: [] }] } });
+  expect((await inspection).recovery?.status).toBe('failed');
+  expect(f.store.task('goal')?.status).toBe('interrupted');
+});
+
+test('lost acknowledgement on a follow-up cannot reuse its preceding turn id', async () => {
+  const f = await unknownRoomGoal(); await f.agent.recover('goal', 'room');
+  f.client.onStart = async () => { throw new Error('lost acknowledgement'); };
+  f.agent.input('goal', 'followup', 'Use email', 'room'); await f.agent.settled();
+  expect(f.store.task('goal')).toMatchObject({ status: 'unknown', threadId: 'thread', turnId: null });
+  expect(f.store.task('goal')?.recovery).toBeUndefined();
+  await expectFailure(f.agent.recover('goal', 'room'), 'no acknowledged turn ID');
+});
+
+test('recovered pending completion cannot commit itself or reset the exhausted budget', async () => {
+  const f = await unknownRoomGoal(), goal = f.store.task('goal')!.goal!;
+  f.store.update('goal', { goal: { ...goal, turns: 8, phase: 'active', pending: { action: 'complete', reason: 'Claimed complete', progress: 'Claimed done', nextAction: '',
+    criteria: goal.criteria.map(c => ({ ...c, met: true, evidence: 'Claimed evidence' })) } } });
+  const result = await f.agent.recover('goal', 'room');
+  expect(result.goal).toMatchObject({ phase: 'blocked', turns: 8, pending: null, criteria: goal.criteria, decisions: goal.decisions, verificationRequired: true });
+  expect(() => f.agent.input('goal', 'extra', 'Continue', 'room')).toThrow('turn limit');
+  const before = f.client.calls.length; f.agent.pump(); await f.agent.settled();
+  expect(f.client.calls).toHaveLength(before);
+});
+
+test('inspection does not overwrite a task changed during its native read', async () => {
+  const f = await unknownRoomGoal(), gate = createDeferred<JsonRecord>(); f.client.onRead = () => gate.promise;
+  const recovery = f.agent.recover('goal', 'room');
+  f.store.update('goal', { error: 'Updated during inspection' });
+  const before = f.store.task('goal');
+  gate.resolve({ thread: { id: 'thread', cwd: '/workspace', turns: [{ id: 'turn', status: 'interrupted', items: [] }] } });
+  await expectFailure(recovery, 'changed during inspection');
+  expect(f.store.task('goal')).toEqual(before);
 });

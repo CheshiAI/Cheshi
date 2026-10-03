@@ -8,7 +8,9 @@ export function registerAgentChatsIpc(options: { window: BrowserWindow; ipc: Pic
   const dispose = () => { if (disposed) return; disposed = true; unsubscribe(); options.ipc.removeHandler(AGENT_CHATS_CHANNEL); };
   options.ipc.handle(AGENT_CHATS_CHANNEL, (event, value) => {
     if (disposed || owner.isDestroyed() || event.sender !== owner || event.senderFrame !== owner.mainFrame) throw new Error('Chats belongs to its workspace window.');
-    return options.service.request(options.workspaceRoot, parseChatsRequest(value));
+    const request = parseChatsRequest(value);
+    return request.action === 'recover' ? options.service.recover(options.workspaceRoot, request)
+      : options.service.request(options.workspaceRoot, request);
   });
   unsubscribe = onWindowClosed(options.window, dispose);
   return { dispose };

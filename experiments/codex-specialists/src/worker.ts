@@ -85,6 +85,13 @@ const server = Bun.serve({
         return Response.json(task, { status: 202 });
       }
       const resume = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/input$/.exec(path);
+      const recovery = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/recover$/.exec(path);
+      if (recovery && request.method === 'POST') {
+        const body = await request.text();
+        if (body.length > 1000) throw new TypeError('Request is too large.');
+        const input = record(JSON.parse(body));
+        return Response.json(await agent.recover(recovery[1]!, validateTaskId(input.roomId)));
+      }
       if (resume && request.method === 'POST') {
         const body = await request.text();
         if (body.length > 25_000) throw new TypeError('Request is too large.');

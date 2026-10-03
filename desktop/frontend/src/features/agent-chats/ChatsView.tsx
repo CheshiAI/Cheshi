@@ -24,6 +24,7 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
   const [loading, setLoading] = useState(false), [sending, setSending] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({}), [recipient, setRecipient] = useState('default'), [goal, setGoal] = useState(false);
   const version = useRef(0), alive = useRef(true);
+  const inspecting = useRef(false);
   const pending = useRef<{ key: string; id: string } | null>(null);
   const sidebar = useAutoHideScrollbars<HTMLElement>(), timeline = useAutoHideScrollbars<HTMLDivElement>();
   const summaryScroll = useAutoHideScrollbars<HTMLElement>();
@@ -78,6 +79,13 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
     version.current++;
     const data = await api.request(request);
     if (alive.current) { version.current++; setSnapshot(data); if (request.action === 'create') { setRoomId(request.id); setThreadId(null); } }
+  }
+  async function inspectExecution() {
+    if (!room || !root || sending || inspecting.current) return;
+    inspecting.current = true; setSending(true); setError(null);
+    try { await mutate({ action: 'recover', roomId: room.id, goalId: root.id }); }
+    catch (e) { if (alive.current) setError(e instanceof Error ? e.message : 'Execution inspection failed.'); }
+    finally { inspecting.current = false; if (alive.current) setSending(false); }
   }
   async function send() {
     if (!room || sending || !draft.trim()) return;
@@ -139,10 +147,12 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
       {root && <section ref={summaryScroll} className={styles.goalSummary} aria-label="Goal progress">
         <div className={styles.metadata}><strong>Goal · {goalState?.phase ?? root.status ?? 'Checking'}</strong>
           <span>Turns: {goalState?.turns ?? 'Unknown'} / {goalState?.turnLimit ?? CHAT_GOAL_TURN_LIMIT}</span></div>
+        {goalState?.recovery && <p>Execution confirmed: {goalState.recovery.status} · {goalState.recovery.checkedAt}<br />Conversation: {goalState.recovery.threadId} · Turn: {goalState.recovery.turnId}</p>}
         {goalState?.progress && <p>{goalState.progress}</p>}
         {(goalState?.reason || root.error) && <p>Reason: {goalState?.reason || root.error}</p>}
         <p>Next action: {goalState?.nextAction || 'No next action recorded.'}</p>
         {needsRecovery && <p role="status">{recoveryBlock ?? 'Add the missing information below to resume the same goal. Its completion criteria and verification requirements remain in place.'}</p>}
+        {(root.status === 'unknown' || goalState?.phase === 'unknown') && <NeumorphicButton variant="standard" disabled={sending || !api} onClick={() => { void inspectExecution(); }}>Check execution result</NeumorphicButton>}
       </section>}
       {error && <p className={styles.notice} role="alert">{error}</p>}
       {!api && <p className={styles.empty}>Restart the desktop app to load Chats.</p>}

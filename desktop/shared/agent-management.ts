@@ -14,7 +14,9 @@ export interface ManagedAgent {
   pendingDeletion?: { deleteData: boolean };
 }
 export interface AgentSnapshot { engineId: string; online: boolean; error: string | null; agents: ManagedAgent[] }
+export interface ExecutionRecovery { threadId: string; turnId: string; status: 'completed' | 'interrupted' | 'failed'; checkedAt: string }
 export interface AgentTask {
+  recovery?: ExecutionRecovery;
   roomId?: string; inputs?: { id: string; prompt: string }[]; responses?: { id: string; text: string; status: string }[];
   inspection?: TaskInspection;
   id: string; prompt: string; status: string; createdAt: string; output: string; error: string | null;
@@ -97,6 +99,11 @@ export function parseAgentSnapshot(value: unknown): AgentSnapshot {
   return { engineId: parseAgentEngineId(v.engineId), online: agentBoolean(v.online), error: agentNullableText(v.error),
     agents: items(v.agents).map(parseManagedAgent) };
 }
+export function parseExecutionRecovery(value: unknown): ExecutionRecovery {
+  const v = agentRecord(value), threadId = agentText(v.threadId, 200), turnId = agentText(v.turnId, 200), checkedAt = agentText(v.checkedAt, 100);
+  if (!threadId || !turnId || !Number.isFinite(Date.parse(checkedAt)) || !['completed', 'interrupted', 'failed'].includes(String(v.status))) throw new TypeError('Invalid execution inspection.');
+  return { threadId, turnId, checkedAt, status: v.status as ExecutionRecovery['status'] };
+}
 export function parseAgentTasks(value: unknown): AgentTask[] {
   return items(value, 10_000).map(raw => {
     const t = agentRecord(raw);
@@ -105,6 +112,7 @@ export function parseAgentTasks(value: unknown): AgentTask[] {
     return { ...(t.roomId === undefined ? {} : { roomId: parseAgentId(t.roomId),
       inputs: items(t.inputs ?? [], 100).map(raw => { const i = agentRecord(raw); return { id: parseAgentId(i.id), prompt: agentText(i.prompt, 20_000) }; }),
       responses: items(t.responses ?? [], 100).map(raw => { const r = agentRecord(raw); return { id: parseAgentId(r.id), text: agentText(r.text, 500_000), status: agentText(r.status, 30) }; }) }),
+      ...(t.recovery === undefined ? {} : { recovery: parseExecutionRecovery(t.recovery) }),
       id: parseAgentId(t.id), prompt: agentText(t.prompt, 20_000), status,
       createdAt: agentText(t.createdAt, 100), output: agentText(t.output, 500_000), error: agentNullableText(t.error, 20_000),
       ...(t.inspection === undefined ? {} : { inspection: parseTaskInspection(t.inspection) }) };

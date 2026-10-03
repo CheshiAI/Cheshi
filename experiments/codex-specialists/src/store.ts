@@ -4,6 +4,7 @@ import { record, textValue } from './protocol.ts';
 import { evidence, list, verificationResult, type Evidence, type VerificationResult } from './verification-contract.ts';
 import { parseGoal, type GoalState } from './decision.ts';
 import { collaborationState, emptyCollaboration, type CollaborationState } from './collaboration-contract.ts';
+import { recoveryReceipt, type RecoveryReceipt } from './recovery.ts';
 
 export const TASK_STATUSES = ['accepted', 'running', 'waiting', 'completed', 'interrupted', 'failed', 'unknown'] as const;
 export type TaskStatus = typeof TASK_STATUSES[number];
@@ -13,6 +14,7 @@ export type Task = {
   roomId?: string; inputs?: { id: string; prompt: string }[]; responses?: { id: string; text: string; status: string }[];
   conversation?: string; consultation?: string; goal?: GoalState;
   verification?: string; verificationEvidence?: Evidence[]; verificationDraft?: VerificationResult;
+  recovery?: RecoveryReceipt;
 };
 type SavedState = { version: 1; threadId: string | null; model: string | null; tasks: Task[];
   threads: Record<string, string>; collaboration: CollaborationState };
@@ -43,6 +45,7 @@ function savedTask(value: unknown): Task {
     createdAt: textValue(task.createdAt, 'creation time'), finishedAt: nullableText(task.finishedAt),
     threadId: nullableText(task.threadId), turnId: nullableText(task.turnId), output: task.output,
     error: nullableText(task.error),
+    ...(task.recovery === undefined ? {} : { recovery: recoveryReceipt(task.recovery) }),
     ...(task.roomId === undefined ? {} : { roomId: validateTaskId(task.roomId),
       inputs: chatEntries(task.inputs, v => { const i = record(v); return { id: validateTaskId(i.id), prompt: textValue(i.prompt, 'input') }; }),
       responses: chatEntries(task.responses, v => { const r = record(v); return { id: validateTaskId(r.id), text: typeof r.text === 'string' ? r.text : textValue(r.text, 'response'), status: textValue(r.status, 'status') }; }) }),
@@ -123,7 +126,7 @@ export class AgentStore {
     });
   }
 
-  complete(id: string, patch: Pick<Task, 'status' | 'output' | 'error' | 'goal'>, consumed: string[] = []): void {
+  complete(id: string, patch: Pick<Task, 'status' | 'output' | 'error' | 'goal' | 'recovery'>, consumed: string[] = []): void {
     const task = this.task(id);
     if (!task) throw new Error('Unknown task.');
     const result = { ...task, ...patch, ...(task.roomId ? { responses: [...(task.responses ?? []), { id: `response_${(task.responses?.length ?? 0) + 1}`, text: patch.output, status: patch.status }] } : {}), finishedAt: patch.status === 'waiting' ? null : new Date().toISOString() };

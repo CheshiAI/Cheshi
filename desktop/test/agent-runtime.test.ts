@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync as createSymbolicLink, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -117,6 +117,7 @@ test('starts one project worker with isolated storage, readonly mount, private a
   const config = JSON.parse(f.calls.find(call => call.input)!.input!).configuration;
   expect(args.some(arg => arg.includes('runtime.json,readonly'))).toBe(false);
   expect(config.decisionProtocol).toBe(1);
+  expect(config.recoveryProtocol).toBe(1);
   expect(config.verificationProtocol).toBe(1);
   expect(config.permissions).toEqual({ fileWrite: false, commandExecution: false });
   expect(config.instructions).toContain('Project instructions:');
@@ -235,4 +236,25 @@ test('status and submission reject a saved configuration that does not match the
   writeFileSync(path, JSON.stringify({ ...configuration, revision: 'different-container-configuration' }));
   expect((await f.runtime.request(f.workspace, { ...f.request(), action: 'status' })).details?.error).toContain('Settings changed');
   await fails(f.runtime.request(f.workspace, { ...f.request(), action: 'submit', taskId: 'task', prompt: 'work' }), 'Settings changed');
+});
+
+test('execution inspection posts only the scoped recovery request and preserves worker rejection details', async () => {
+  const f = fixture(); await f.runtime.request(f.workspace, f.request());
+  const calls: { url: string; body: unknown; authenticated: boolean }[] = [];
+  let failure = false;
+  const fakeFetch = Object.assign(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    calls.push({ url: String(input), body: JSON.parse(String(init?.body)), authenticated: new Headers(init?.headers).get('Authorization')?.startsWith('Bearer ') === true });
+    return failure ? Response.json({ error: 'The saved turn has not ended.' }, { status: 502 }) : Response.json({});
+  }, { preconnect: fetch.preconnect });
+  const mock = spyOn(globalThis, 'fetch').mockImplementation(fakeFetch);
+  try {
+    const input = { ...f.request(), action: 'recover' as const, taskId: 'goal', roomId: 'room' };
+    expect(() => parseAgentRuntimeRequest({ ...input, roomId: '../other' })).toThrow('room ID');
+    expect(() => parseAgentRuntimeRequest({ ...input, taskId: '../other' })).toThrow('task ID');
+    await f.runtime.request(f.workspace, input);
+    expect(calls).toEqual([{ url: 'http://127.0.0.1:49831/tasks/goal/recover', body: { roomId: 'room' }, authenticated: true }]);
+    failure = true;
+    await fails(f.runtime.request(f.workspace, input), 'has not ended');
+    expect(calls).toHaveLength(2);
+  } finally { mock.mockRestore(); await f.runtime.dispose(); }
 });

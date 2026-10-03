@@ -97,6 +97,7 @@ const agentDeletion = createAgentDeletion({ directory: path.join(app.getPath('us
 const agentChats = createAgentChats({ filename: path.join(app.getPath('userData'), 'agents', 'chats.json'),
   registry: workspace => agentRegistry.snapshot(workspace),
   status: (workspace, input) => specialistRuntime.request(workspace, input),
+  recover: (workspace, input) => specialistRuntime.request(workspace, input),
   dispatch: (workspace, input, context) => specialistRuntime.chat(workspace, input, context),
 });
 const specialistRuntime = createSpecialistRuntime({
