@@ -15,9 +15,10 @@ function Evidence({ items }: { items: TaskEvidence[] }) {
 function Exchange({ message, messages }: { message: TaskMessage; messages: TaskMessage[] }) {
   const request = message.kind === 'question' || message.kind === 'verification_request';
   const reply = request ? messages.find(m => m.questionId === message.id && (m.kind === 'reply' || m.kind === 'verification_result')) : undefined;
-  const label = { question: 'Question', reply: 'Reply', verification_request: 'Verification request', verification_result: 'Verification result' }[message.kind];
+  const closed = messages.some(m => m.kind === 'question_closed' && m.questionId === message.questionId);
+  const label = { question: 'Question', question_closed: 'Question closed', reply: 'Reply', verification_request: 'Verification request', verification_result: 'Verification result' }[message.kind];
   return <details className={styles.record}>
-    <summary>{label} · {message.fromName} → {message.toName} · {request ? !reply ? 'Awaiting reply' : reply.delivery === 'processed' ? 'Reply processed' : 'Reply recorded' : message.delivery}</summary>
+    <summary>{label} · {message.fromName} → {message.toName} · {closed ? message.kind === 'reply' ? 'Late reply · not applied' : 'Closed' : request ? !reply ? 'Awaiting reply' : reply.delivery === 'processed' ? 'Reply processed' : 'Reply recorded' : message.delivery}</summary>
     <p>Delivery: {message.delivery} · Request: {message.questionId}</p>
     {message.verification ? <>
       {message.verification.verdicts.map((verdict, index) => <div key={index} className={styles.criterion}>
@@ -69,8 +70,8 @@ export function AgentTaskDetail({ task }: { task: AgentTask }) {
       </> : <p>No structured progress recorded for this task.</p>}
     </section>
     <section aria-label="Task collaboration"><h3>Questions and replies</h3>
-      {detail?.messages.some(m => m.kind === 'question' || m.kind === 'reply') ? <div className={styles.records}>
-        {detail.messages.filter(m => m.kind === 'question' || m.kind === 'reply').map(message => <Exchange key={message.id} message={message} messages={detail.messages} />)}
+      {detail?.messages.some(m => m.kind === 'question' || m.kind === 'question_closed' || m.kind === 'reply') ? <div className={styles.records}>
+        {detail.messages.filter(m => m.kind === 'question' || m.kind === 'question_closed' || m.kind === 'reply').map(message => <Exchange key={message.id} message={message} messages={detail.messages} />)}
       </div> : <p>No recorded questions or replies.</p>}
     </section>
     <section aria-label="Independent verification"><h3>Independent verification</h3>

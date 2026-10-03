@@ -258,3 +258,23 @@ test('execution inspection posts only the scoped recovery request and preserves 
     expect(calls).toHaveLength(2);
   } finally { mock.mockRestore(); await f.runtime.dispose(); }
 });
+
+test('question controls post only the authenticated owner task route with validated room and question', async () => {
+  const f = fixture(); await f.runtime.request(f.workspace, f.request());
+  const calls: { url: string; body: unknown }[] = [];
+  const fakeFetch = Object.assign(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    calls.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+    expect(new Headers(init?.headers).get('Authorization')?.startsWith('Bearer ')).toBe(true);
+    return Response.json({});
+  }, { preconnect: fetch.preconnect });
+  const mock = spyOn(globalThis, 'fetch').mockImplementation(fakeFetch);
+  try {
+    const input = { ...f.request(), action: 'question' as const, taskId: 'goal', roomId: 'room', questionId: 'question', recipient: 'designer' };
+    expect(() => parseAgentRuntimeRequest({ ...input, questionId: '../escape' })).toThrow('question control');
+    expect(() => parseAgentRuntimeRequest({ ...input, recipient: undefined })).toThrow();
+    await f.runtime.request(f.workspace, input);
+    expect(calls).toEqual([{ url: 'http://127.0.0.1:49831/tasks/goal/question', body: { roomId: 'room', questionId: 'question', recipient: 'designer' } }]);
+    const config = JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8'));
+    expect(config.questionProtocol).toBe(1);
+  } finally { mock.mockRestore(); await f.runtime.dispose(); }
+});

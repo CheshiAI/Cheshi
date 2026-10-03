@@ -8,7 +8,7 @@ export interface Binding {
 }
 export interface Peer { id: string; name: string; role: string }
 export interface Message {
-  roomId?: string; id: string; kind: 'question' | 'reply' | 'verification_request' | 'verification_result'; from: string; to: string; taskId: string; questionId: string; text: string;
+  roomId?: string; id: string; kind: 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result'; from: string; to: string; taskId: string; questionId: string; text: string;
 }
 interface Envelope { scope: string; message: Message; delivered: boolean }
 interface State { version: 1; bindings: Binding[]; envelopes: Envelope[] }
@@ -19,7 +19,7 @@ function identifier(value: unknown): string {
 }
 function parseMessage(value: unknown): Message {
   const v = agentRecord(value);
-  if (!['question', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid collaboration message kind.');
+  if (!['question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid collaboration message kind.');
   const text = agentText(v.text, 12_000);
   if (!text.trim()) throw new Error('Empty collaboration message.');
   return { id: identifier(v.id), kind: v.kind as Message['kind'], from: identifier(v.from), to: identifier(v.to),
@@ -105,6 +105,11 @@ export class AgentMailbox {
         if (['question', 'verification_request'].includes(item.kind) && item.questionId !== item.id) throw new Error('Invalid question identity.');
         if (item.kind === 'verification_request' && !peers.some(p => p.id === item.to && p.role === 'verification')) throw new Error('Recipient is not a verification agent.');
         if (item.kind === 'verification_result' && !peers.some(p => p.id === item.from && p.role === 'verification')) throw new Error('Sender is not a verification agent.');
+        if (item.kind === 'question_closed') {
+          const q = state.envelopes.find(e => e.scope === binding.scope && e.message.id === item.questionId)?.message;
+          if (!q || q.kind !== 'question' || q.from !== item.from || q.to !== item.to || q.taskId !== item.taskId || q.roomId !== item.roomId) throw new Error('Invalid question closure.');
+          if (state.envelopes.some(e => e.scope === binding.scope && e.message.kind === 'question_closed' && e.message.questionId === item.questionId)) throw new Error('Question already closed.');
+        }
         if (item.kind === 'reply' || item.kind === 'verification_result') {
           const question = state.envelopes.find(e => e.scope === binding.scope && e.message.id === item.questionId)?.message;
           if (!question || question.kind !== (item.kind === 'reply' ? 'question' : 'verification_request') || question.from !== item.to || question.to !== item.from || question.taskId !== item.taskId || question.roomId !== item.roomId) {

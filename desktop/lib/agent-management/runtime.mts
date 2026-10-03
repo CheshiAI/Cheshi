@@ -80,7 +80,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       if (!worker || worker.state !== 'running' || !worker.endpoint) return null;
       const saved = agentRecord(JSON.parse(await readFile(join(options.directory, digest(binding.engineId), key, 'runtime.json'), 'utf8')));
       if (saved.accountId !== binding.accountId || saved.profileId !== binding.agentId || saved.revision !== worker.fingerprint
-        || saved.collaborationProtocol !== 1 || saved.historyProtocol !== 1 || saved.decisionProtocol !== 1 || saved.verificationProtocol !== 1 || typeof saved.token !== 'string' || !/^[a-f0-9]{64}$/.test(saved.token)) {
+        || saved.questionProtocol !== 1 || saved.collaborationProtocol !== 1 || saved.historyProtocol !== 1 || saved.decisionProtocol !== 1 || saved.verificationProtocol !== 1 || typeof saved.token !== 'string' || !/^[a-f0-9]{64}$/.test(saved.token)) {
         throw new Error('Start the agent to reconnect collaboration with its current settings.');
       }
       const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId);
@@ -145,7 +145,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     if (inspection && !response.ok) {
       const body: unknown = await response.json().catch(() => null);
       const message = body && typeof body === 'object' && 'error' in body && typeof body.error === 'string' ? body.error.slice(0, 2000) : null;
-      throw new Error(response.status === 404 ? 'Start the agent to enable execution inspection.' : message ?? 'Execution inspection failed. The outcome remains unknown.');
+      throw new Error(response.status === 404 ? 'Start the agent to enable this operation.' : message ?? 'Execution inspection failed. The outcome remains unknown.');
     }
     if (response.status >= 500) { await response.body?.cancel(); throw Object.assign(new Error('Worker outcome is unknown. Inspect its task record.'), { deliveryUncertain: true }); }
     if (!response.ok) { await response.body?.cancel(); throw new Error(response.status === 409 ? 'The worker is busy or this task needs inspection.' : 'Worker did not accept the request. Refresh its status before retrying.'); }
@@ -240,7 +240,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint,
-            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 1, questionProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [workspace];
@@ -288,6 +288,11 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       if (typeof configuration.token !== 'string' || !/^[a-f0-9]{64}$/.test(configuration.token)) throw new Error('Worker authorization is unavailable.');
       assertCurrent();
       if (chat && configuration.chatsProtocol !== 1) throw new Error('Start the agent to enable Chats.');
+      if (request.action === 'question') {
+        await post(worker.endpoint, configuration.token, `/tasks/${request.taskId}/question`,
+          { roomId: request.roomId, questionId: request.questionId, recipient: request.recipient }, true);
+        return { details: await options.management.details(request.engineId, worker.id) };
+      }
       if (request.action === 'recover') {
         await post(worker.endpoint, configuration.token, `/tasks/${request.taskId}/recover`, { roomId: request.roomId }, true);
         return { details: await options.management.details(request.engineId, worker.id) };
@@ -312,7 +317,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   };
 }
 function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number]) {
-  return digest(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 1, agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
+  return digest(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 1, questionProtocol: 1, agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
     ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
 }
 function profileConfiguration(agent: SpecialistAgent) {

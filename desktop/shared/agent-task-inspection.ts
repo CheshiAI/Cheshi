@@ -14,7 +14,7 @@ export interface TaskVerification {
 }
 export interface TaskVerificationRequest { goal: string; criteria: string[]; artifacts: { path: string; sha256: string }[] }
 export interface TaskMessage {
-  id: string; kind: 'question' | 'reply' | 'verification_request' | 'verification_result';
+  id: string; kind: 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result';
   from: string; to: string; fromName: string; toName: string; questionId: string; text: string;
   delivery: 'queued' | 'delivered' | 'received' | 'processed';
   verification: TaskVerification | null; request: TaskVerificationRequest | null;
@@ -94,7 +94,7 @@ export function parseTaskInspection(value: unknown): TaskInspection {
     evidence: inspectionList(v.evidence, parseTaskEvidence, 32),
     messages: inspectionList(v.messages, raw => {
       const m = inspectionRecord(raw);
-      return { id: inspectionText(m.id, 200), kind: choice(m.kind, ['question', 'reply', 'verification_request', 'verification_result']),
+      return { id: inspectionText(m.id, 200), kind: choice(m.kind, ['question', 'question_closed', 'reply', 'verification_request', 'verification_result']),
         from: inspectionText(m.from, 200), to: inspectionText(m.to, 200), fromName: inspectionText(m.fromName, 200), toName: inspectionText(m.toName, 200),
         questionId: inspectionText(m.questionId, 200), text: inspectionText(m.text, 12_000),
         delivery: choice(m.delivery, ['queued', 'delivered', 'received', 'processed']),

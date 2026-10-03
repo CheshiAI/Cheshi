@@ -1,3 +1,4 @@
+import { closeQuestion } from './question-control.ts';
 import { WorkerVerification } from './verification.ts';
 import { SCRATCH_PROFILE, TaskScratch } from './task-scratch.ts';
 import { verificationInstructions, verificationTools } from './verification-tools.ts';
@@ -129,6 +130,11 @@ export class SpecialistAgent {
     if (task.status === 'completed') throw new TaskConflict('This goal is completed. Start a new goal.');
     this.store.update(id, { inputs: [...(task.inputs ?? []), { id: inputId, prompt }], status: 'accepted', finishedAt: null });
     return this.launch(this.store.task(id)!, `Continue the original goal: ${task.prompt}\nUser follow-up:\n${prompt}`);
+  }
+
+  question(taskId: string, roomId: string, questionId: string, recipient: string | null): Task {
+    if (!this.collaboration || this.busy || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) throw new TaskConflict('Worker cannot safely change a question yet.');
+    return closeQuestion(this.store, this.collaboration.agentId, taskId, roomId, questionId, recipient);
   }
 
   private launch(task: Task, input: string, messages: string[] = []): Task {

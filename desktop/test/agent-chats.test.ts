@@ -243,6 +243,36 @@ async function rejectsWith(operation: Promise<unknown>, message: string) {
   expect(error).toBeInstanceOf(Error); expect((error as Error).message).toContain(message);
 }
 
+test('question controls bind the original goal and participant identity and refresh durable question state', async () => {
+  const f = await blockedFixture();
+  f.task.status = 'waiting'; f.task.inspection!.goal!.phase = 'waiting'; f.task.error = null;
+  const q = { id: 'question', kind: 'question' as const, from: 'dev', to: 'planner', fromName: 'dev', toName: 'planner', questionId: 'question',
+    text: 'Which credentials?', delivery: 'delivered' as const, request: null, verification: null };
+  f.task.inspection!.messages = [q];
+  const controls: import('../shared/agent-runtime').AgentRuntimeRequest[] = [];
+  const options = { ...f.options, question: async (_workspace: string, input: import('../shared/agent-runtime').AgentRuntimeRequest) => {
+    controls.push(input);
+    if (!f.task.inspection!.messages.some(m => m.kind === 'question_closed')) f.task.inspection!.messages.push({ ...q, id: 'closed', kind: 'question_closed', text: 'Cancelled' });
+    return { details: f.details };
+  } };
+  const service = createAgentChats(options); await service.tick();
+  const input = { action: 'question', roomId: 'room', goalId: 'goal', questionId: q.id, recipient: null } as const;
+  expect(service.request(f.workspace, { action: 'list' }).messages[0]?.goalProgress?.questions?.[0]?.status).toBe('waiting');
+  await rejectsWith(service.question(f.workspace, { ...input, recipient: 'outside' }), 'identity');
+  await rejectsWith(service.question(f.workspace, { ...input, roomId: 'foreign' }), 'Unknown room');
+  await rejectsWith(service.question(f.workspace, { ...input, questionId: 'foreign' }), 'Unknown goal question');
+  await rejectsWith(service.question(f.workspace, { ...input, recipient: 'dev' }), 'different invited');
+  expect(controls).toHaveLength(0);
+  const result = parseChatsSnapshot(await service.question(f.workspace, input));
+  expect(controls).toEqual([{ action: 'question', agentId: 'dev', engineId: 'docker:test', taskId: f.task.id, roomId: 'room', questionId: q.id, recipient: null }]);
+  expect(result.messages[0]?.goalProgress?.questions?.[0]).toMatchObject({ status: 'closed', closure: 'Cancelled' });
+  const restarted = createAgentChats(options); await restarted.tick();
+  expect(restarted.request(f.workspace, { action: 'list' }).messages[0]?.goalProgress?.questions?.[0]?.status).toBe('closed');
+  f.agents[1]!.accountId = 'replacement-account';
+  await rejectsWith(restarted.question(f.workspace, { ...input, recipient: 'planner' }), 'identity');
+  expect(controls).toHaveLength(1);
+});
+
 test('execution inspection holds queued inputs across restart and requires a fresh explicit follow-up', async () => {
   const f = await blockedFixture();
   f.send('old-input', { threadId: 'goal', goal: false, text: 'Old follow-up' });

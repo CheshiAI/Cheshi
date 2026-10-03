@@ -3,7 +3,7 @@ import { record, textValue } from './protocol.ts';
 
 export interface Peer { id: string; name: string; role: string }
 export interface CollaborationMessage {
-  id: string; kind: 'question' | 'reply' | 'verification_request' | 'verification_result'; from: string; to: string;
+  id: string; kind: 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result'; from: string; to: string;
   roomId?: string; taskId: string; questionId: string; text: string;
 }
 export interface CollaborationState {
@@ -22,7 +22,7 @@ export function identifier(value: unknown): string {
 }
 export function message(value: unknown): CollaborationMessage {
   const v = record(value);
-  if (!['question', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid collaboration message kind.');
+  if (!['question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid collaboration message kind.');
   const text = textValue(v.text, 'message');
   if (text.length > 12_000) throw new Error('Collaboration message is too long.');
   if (v.kind === 'verification_request') verificationRequest(JSON.parse(text));

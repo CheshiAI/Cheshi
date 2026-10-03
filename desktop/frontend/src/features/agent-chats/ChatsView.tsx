@@ -9,6 +9,7 @@ import { CHAT_GOAL_TURN_LIMIT } from '../../../../shared/agent-chats';
 import type { AgentRegistryApi, SpecialistAgent } from '../../../../shared/agent-registry';
 import type { AgentEngineInfo, AgentManagementApi } from '../../../../shared/agent-management';
 import { AgentAvatar } from '../../shared/agent-management/AgentAvatar';
+import { GoalQuestions } from './GoalQuestions';
 import { RoomDialog } from './RoomDialog';
 import styles from './ChatsView.module.css';
 
@@ -87,6 +88,13 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
     catch (e) { if (alive.current) setError(e instanceof Error ? e.message : 'Execution inspection failed.'); }
     finally { inspecting.current = false; if (alive.current) setSending(false); }
   }
+  async function changeQuestion(questionId: string, recipient: string | null) {
+    if (!room || !root || sending || inspecting.current) return;
+    inspecting.current = true; setSending(true); setError(null);
+    try { await mutate({ action: 'question', roomId: room.id, goalId: root.id, questionId, recipient }); }
+    catch (e) { if (alive.current) setError(e instanceof Error ? e.message : 'Question change failed. Refresh before retrying.'); }
+    finally { inspecting.current = false; if (alive.current) setSending(false); }
+  }
   async function send() {
     if (!room || sending || !draft.trim()) return;
     const selectedRoom = room, selectedThread = threadId, text = draft.trim();
@@ -151,6 +159,10 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
         {goalState?.progress && <p>{goalState.progress}</p>}
         {(goalState?.reason || root.error) && <p>Reason: {goalState?.reason || root.error}</p>}
         <p>Next action: {goalState?.nextAction || 'No next action recorded.'}</p>
+        {room && <GoalQuestions questions={goalState?.questions ?? []}
+          members={room.members.filter(m => m.id !== root.recipient && agents.some(a => a.id === m.id && a.accountId === m.accountId))}
+          disabled={sending || !api || goalState?.phase !== 'waiting' || !!goalState.resumeBlocked}
+          onChange={(id, recipient) => { void changeQuestion(id, recipient); }} />}
         {needsRecovery && <p role="status">{recoveryBlock ?? 'Add the missing information below to resume the same goal. Its completion criteria and verification requirements remain in place.'}</p>}
         {(root.status === 'unknown' || goalState?.phase === 'unknown') && <NeumorphicButton variant="standard" disabled={sending || !api} onClick={() => { void inspectExecution(); }}>Check execution result</NeumorphicButton>}
       </section>}

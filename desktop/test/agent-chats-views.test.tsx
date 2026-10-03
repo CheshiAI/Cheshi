@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { act, type ReactNode } from 'react';
 import { specialistAgent } from './agent-registry-fixtures';
+import { GoalQuestions } from '../frontend/src/features/agent-chats/GoalQuestions';
 import { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
 import { RoomDialog } from '../frontend/src/features/agent-chats/RoomDialog';
 import { AgentTaskResults } from '../frontend/src/features/agents/AgentTaskResults';
@@ -229,5 +230,47 @@ test('unknown execution inspection preserves the draft on failure and shows nati
     expect(document.querySelector('[aria-label="Goal progress"]')?.textContent).toContain('native-turn');
     expect(document.querySelector('[aria-label="Goal progress"]')?.textContent).toContain('Goal · blocked');
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Keep this draft');
+  });
+});
+
+test('question cancellation preserves drafts on a racing answer error and retries the same question identity', async () => {
+  await withDOM(async ui => {
+    const data = snapshot(), requests: ChatsRequest[] = [];
+    data.messages[0]!.goalProgress = { phase: 'waiting', turns: 2, turnLimit: 8, progress: '', reason: '', nextAction: '', resumeBlocked: null,
+      questions: [{ id: 'question', recipient: 'planner', text: 'Which credentials?', status: 'waiting', closure: null }] };
+    let failure = true;
+    const api = { request: async (input: ChatsRequest) => {
+      if (input.action === 'question') {
+        requests.push(input);
+        if (failure) throw new Error('An answer already arrived. Refresh the question.');
+        data.messages[0]!.goalProgress!.questions![0]!.status = 'closed';
+      }
+      return structuredClone(data);
+    } };
+    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.click('Open goal thread · 1'); await ui.type('Message', 'Keep this draft');
+    await ui.click('Cancel question');
+    expect(document.body.textContent).toContain('answer already arrived');
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Keep this draft');
+    failure = false; await ui.click('Cancel question');
+    expect(requests).toEqual(Array(2).fill({ action: 'question', roomId: 'room', goalId: 'goal', questionId: 'question', recipient: null }));
+    expect(document.body.textContent).toContain('0 waiting');
+    expect([...document.querySelectorAll('button')].some(b => b.textContent === 'Cancel question')).toBe(false);
+  });
+});
+
+
+test('question reassignment chooses an invited alternative and submits the existing question identity', async () => {
+  await withDOM(async ui => {
+    const calls: unknown[] = [];
+    const props = { questions: [{ id: 'question', recipient: 'planner', text: 'Which credentials?', status: 'waiting' as const, closure: null }],
+      members: [{ id: 'planner', name: 'Planner', accountId: 'a' }, { id: 'designer', name: 'Designer', accountId: 'b' }],
+      onChange: (id: string, recipient: string | null) => { calls.push({ id, recipient }); } };
+    await ui.render(<GoalQuestions {...props} disabled={false} />);
+    await ui.click('Reassign question'); expect(calls).toHaveLength(0);
+    await ui.click('New question recipient'); await ui.click('Designer'); await ui.click('Reassign question');
+    expect(calls).toEqual([{ id: 'question', recipient: 'designer' }]);
+    await ui.render(<GoalQuestions {...props} disabled />);
+    await ui.click('Reassign question'); await ui.click('Cancel question'); expect(calls).toHaveLength(1);
   });
 });

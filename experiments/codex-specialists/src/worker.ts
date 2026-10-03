@@ -84,6 +84,14 @@ const server = Bun.serve({
         const task = agent.submit(input.id === undefined ? randomUUID() : validateTaskId(input.id), textValue(input.prompt, 'prompt'), input.chat === undefined ? undefined : (() => { const c = record(input.chat); if (typeof c.goal !== 'boolean') throw new TypeError('Invalid chat goal.'); return { roomId: validateTaskId(c.roomId), conversation: validateTaskId(c.conversation), goal: c.goal }; })());
         return Response.json(task, { status: 202 });
       }
+      const question = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/question$/.exec(path);
+      if (question && request.method === 'POST') {
+        const body = await request.text();
+        if (body.length > 1000) throw new TypeError('Request is too large.');
+        const input = record(JSON.parse(body));
+        return Response.json(agent.question(question[1]!, validateTaskId(input.roomId), validateTaskId(input.questionId),
+          input.recipient === null ? null : validateTaskId(input.recipient)));
+      }
       const resume = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/input$/.exec(path);
       const recovery = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/recover$/.exec(path);
       if (recovery && request.method === 'POST') {

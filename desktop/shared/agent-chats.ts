@@ -3,7 +3,9 @@ import { agentRecord, agentText, parseAgentEngineId, parseAgentId, parseExecutio
 export const AGENT_CHATS_CHANNEL = 'cheshi:agent-chats:request';
 // Decision protocol 1 has a fixed eight-turn budget. Keep this aligned with the worker.
 export const CHAT_GOAL_TURN_LIMIT = 8;
+export interface RoomQuestion { id: string; recipient: string; text: string; status: 'waiting' | 'answered' | 'closed'; closure: string | null }
 export interface RoomGoalProgress {
+  questions?: RoomQuestion[];
   recovery?: ExecutionRecovery;
   phase: string; progress: string; reason: string; nextAction: string;
   turns: number | null; turnLimit: number; resumeBlocked: string | null;
@@ -14,7 +16,7 @@ export interface AgentRoom {
 }
 export interface RoomMessage {
   id: string; roomId: string; threadId: string | null; sender: string; recipient: string | null;
-  kind: 'message' | 'goal' | 'question' | 'reply' | 'verification_request' | 'verification_result';
+  kind: 'message' | 'goal' | 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result';
   text: string; createdAt: string; taskId?: string; status?: string; error?: string | null;
   goalProgress?: RoomGoalProgress;
 }
@@ -25,6 +27,7 @@ export interface RoomJob {
 export interface ChatsSnapshot { rooms: AgentRoom[]; messages: RoomMessage[] }
 export interface ChatTaskTarget { roomId: string; threadId: string | null; agentId: string; engineId: string; taskId: string }
 export type ChatsRequest = { action: 'list' }
+  | { action: 'question'; roomId: string; goalId: string; questionId: string; recipient: string | null }
   | { action: 'recover'; roomId: string; goalId: string }
   | { action: 'create'; id: string; name: string; engineId: string; members: string[]; defaultAgentId: string }
   | { action: 'invite'; roomId: string; members: string[]; defaultAgentId: string }
@@ -42,6 +45,7 @@ function required(value: unknown, max: number): string {
 }
 export function parseChatsRequest(value: unknown): ChatsRequest {
   const v = agentRecord(value);
+  if (v.action === 'question') return { action: 'question', roomId: chatId(v.roomId), goalId: chatId(v.goalId), questionId: chatId(v.questionId), recipient: v.recipient === null ? null : chatId(v.recipient) };
   if (v.action === 'recover') return { action: 'recover', roomId: chatId(v.roomId), goalId: chatId(v.goalId) };
   if (v.action === 'list') return { action: 'list' };
   if (v.action === 'create' || v.action === 'invite') {
@@ -65,7 +69,11 @@ function parseGoalProgress(value: unknown): RoomGoalProgress {
   const v = agentRecord(value);
   if ((v.turns !== null && (!Number.isSafeInteger(v.turns) || Number(v.turns) < 0))
     || v.turnLimit !== CHAT_GOAL_TURN_LIMIT) throw new Error('Invalid goal budget.');
-  return { ...(v.recovery === undefined ? {} : { recovery: parseExecutionRecovery(v.recovery) }), phase: required(v.phase, 100), progress: agentText(v.progress, 4000), reason: agentText(v.reason, 20_000),
+  return { ...(v.questions === undefined ? {} : { questions: entries(v.questions, raw => {
+    const q = agentRecord(raw);
+    if (!['waiting', 'answered', 'closed'].includes(String(q.status))) throw new Error('Invalid question status.');
+    return { id: chatId(q.id), recipient: chatId(q.recipient), text: required(q.text, 12000), status: q.status as RoomQuestion['status'], closure: q.closure === null ? null : required(q.closure, 12000) };
+  }, 16) }), ...(v.recovery === undefined ? {} : { recovery: parseExecutionRecovery(v.recovery) }), phase: required(v.phase, 100), progress: agentText(v.progress, 4000), reason: agentText(v.reason, 20_000),
     nextAction: agentText(v.nextAction, 4000), turns: v.turns as number | null, turnLimit: CHAT_GOAL_TURN_LIMIT,
     resumeBlocked: v.resumeBlocked === null ? null : required(v.resumeBlocked, 20_000) };
 }
@@ -80,7 +88,7 @@ export function parseRoom(value: unknown): AgentRoom {
 }
 export function parseRoomMessage(value: unknown): RoomMessage {
   const v = agentRecord(value);
-  if (!['message', 'goal', 'question', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid room message.');
+  if (!['message', 'goal', 'question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid room message.');
   return { id: chatId(v.id), roomId: chatId(v.roomId), threadId: optionalId(v.threadId), sender: chatId(v.sender), recipient: optionalId(v.recipient),
     kind: v.kind as RoomMessage['kind'], text: agentText(v.text, 500_000), createdAt: required(v.createdAt, 100),
     ...(v.taskId === undefined ? {} : { taskId: chatId(v.taskId) }), ...(v.status === undefined ? {} : { status: required(v.status, 100) }),
