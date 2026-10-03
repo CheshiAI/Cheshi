@@ -11,6 +11,16 @@ function records(value: string): unknown[] {
   return parsed;
 }
 function lines(value: string) { return value.trim().split(/\s+/).filter(Boolean); }
+function pendingWork(activity: Record<string, unknown>): boolean {
+  if (activity.collaboration === undefined) return false;
+  const state = agentRecord(activity.collaboration);
+  if (!Array.isArray(state.incoming) || !Array.isArray(state.outgoing) || !Array.isArray(state.acknowledged) || !Array.isArray(activity.tasks)) {
+    throw new Error('Cannot verify pending delegated work.');
+  }
+  const acknowledged = state.acknowledged, tasks = activity.tasks;
+  return state.outgoing.some(raw => { const m = agentRecord(raw); return m.kind === 'work_result' && !acknowledged.includes(m.id); })
+    || state.incoming.some(raw => { const m = agentRecord(raw); return m.kind === 'work_request' && !tasks.some(rawTask => agentRecord(rawTask).delegation === m.id); });
+}
 export function validWorkerVolume(name: string, profileId?: string) {
   return profileId ? specialistVolume.exec(name)?.[1] === profileId : specialistVolume.test(name) || name === legacyVolume;
 }
@@ -40,9 +50,10 @@ export function createDockerDeletion(run: DockerCommand = runDocker, read: ReadW
     if (worker.state === 'running') {
       if (!worker.endpoint) throw new Error('Cannot verify worker activity. Stop the worker before deleting.');
       const health = agentRecord(await read(worker.endpoint, '/health'));
-      const tasks = parseAgentTasks(agentRecord(await read(worker.endpoint, '/activity')).tasks);
+      const activity = agentRecord(await read(worker.endpoint, '/activity'));
+      const tasks = parseAgentTasks(activity.tasks);
       if (!agentBoolean(health.ready) || agentBoolean(health.busy)
-        || tasks.some(task => ['accepted', 'running', 'waiting', 'unknown'].includes(task.status))) {
+        || tasks.some(task => ['accepted', 'running', 'waiting', 'unknown'].includes(task.status)) || pendingWork(activity)) {
         throw new Error('The worker has an active or unconfirmed task. Resolve it before deleting.');
       }
     } else if (!['created', 'exited', 'dead'].includes(worker.state)) throw new Error('The worker is changing state. Stop it before deleting.');

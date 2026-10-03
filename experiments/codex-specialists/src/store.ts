@@ -1,3 +1,5 @@
+import { parseWorkDraft, type WorkDraft } from './work-contract.ts';
+import { parseIntegration, type IntegrationSummary } from './integration-contract.ts';
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { record, textValue } from './protocol.ts';
@@ -14,6 +16,9 @@ export type Task = {
   roomId?: string; inputs?: { id: string; prompt: string }[]; responses?: { id: string; text: string; status: string }[];
   conversation?: string; consultation?: string; goal?: GoalState;
   verification?: string; verificationEvidence?: Evidence[]; verificationDraft?: VerificationResult;
+  delegation?: string; workDraft?: WorkDraft;
+  integration?: IntegrationSummary;
+  integrationTools?: true;
   recovery?: RecoveryReceipt;
 };
 type SavedState = { version: 1; threadId: string | null; model: string | null; tasks: Task[];
@@ -37,6 +42,7 @@ function chatEntries<T>(value: unknown, parse: (value: unknown) => T): T[] {
 
 function savedTask(value: unknown): Task {
   const task = record(value);
+  if (task.integrationTools !== undefined && task.integrationTools !== true) throw new TypeError('Invalid integration tool capability.');
   if (!TASK_STATUSES.some(status => status === task.status) || typeof task.output !== 'string') {
     throw new TypeError('Invalid saved task.');
   }
@@ -45,12 +51,16 @@ function savedTask(value: unknown): Task {
     createdAt: textValue(task.createdAt, 'creation time'), finishedAt: nullableText(task.finishedAt),
     threadId: nullableText(task.threadId), turnId: nullableText(task.turnId), output: task.output,
     error: nullableText(task.error),
+    ...(task.delegation === undefined ? {} : { delegation: validateTaskId(task.delegation) }),
+    ...(task.workDraft === undefined ? {} : { workDraft: parseWorkDraft(task.workDraft) }),
+    ...(task.integration === undefined ? {} : { integration: parseIntegration(task.integration) }),
+    ...(task.integrationTools === true ? { integrationTools: true as const } : {}),
     ...(task.recovery === undefined ? {} : { recovery: recoveryReceipt(task.recovery) }),
     ...(task.roomId === undefined ? {} : { roomId: validateTaskId(task.roomId),
       inputs: chatEntries(task.inputs, v => { const i = record(v); return { id: validateTaskId(i.id), prompt: textValue(i.prompt, 'input') }; }),
       responses: chatEntries(task.responses, v => { const r = record(v); return { id: validateTaskId(r.id), text: typeof r.text === 'string' ? r.text : textValue(r.text, 'response'), status: textValue(r.status, 'status') }; }) }),
     ...(task.verification === undefined ? {} : { verification: validateTaskId(task.verification) }),
-    ...(task.verificationEvidence === undefined ? {} : { verificationEvidence: list(task.verificationEvidence, evidence, 32) }),
+    ...(task.verificationEvidence === undefined ? {} : { verificationEvidence: list(task.verificationEvidence, evidence, 64) }),
     ...(task.verificationDraft === undefined ? {} : { verificationDraft: verificationResult(task.verificationDraft) }),
     ...(task.goal === undefined ? {} : { goal: parseGoal(task.goal) }),
     ...(task.conversation === undefined ? {} : { conversation: validateTaskId(task.conversation) }),
@@ -59,7 +69,7 @@ function savedTask(value: unknown): Task {
 }
 
 export class AgentStore {
-  private readonly directory: string;
+  readonly directory: string;
   private readonly filename: string;
   private state: SavedState;
 
@@ -110,7 +120,7 @@ export class AgentStore {
     });
   }
 
-  create(id: string, prompt: string, options: Pick<Task, 'conversation' | 'consultation' | 'verification' | 'goal' | 'roomId'> = {}): Task {
+  create(id: string, prompt: string, options: Pick<Task, 'conversation' | 'consultation' | 'verification' | 'delegation' | 'goal' | 'roomId'> = {}): Task {
     if (this.task(id)) throw new Error('Task already exists.');
     const task: Task = { id, prompt, status: 'accepted', createdAt: new Date().toISOString(), finishedAt: null,
       threadId: null, turnId: null, output: '', error: null, ...options };
@@ -134,7 +144,7 @@ export class AgentStore {
       // Publish the recovery result and release the unknown-task gate in one state commit.
       if (outgoing) appendOutgoing(state.collaboration, outgoing);
       this.write(join(this.directory, 'artifacts', `${id}.json`), result);
-      if (patch.status === 'completed' && !task.consultation && !task.verification) {
+      if (patch.status === 'completed' && !task.consultation && !task.verification && !task.delegation) {
         this.write(join(this.directory, 'memory', 'latest.json'), {
           taskId: id, recordedAt: result.finishedAt, summary: patch.output.slice(0, 8000),
         });

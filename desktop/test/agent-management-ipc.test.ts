@@ -81,10 +81,14 @@ test('preload validates literal booleans instead of trusting IPC response truthi
 test('packaged runtime includes all agent modules and native Node can load them', async () => {
   const ignore = (await config()).packagerConfig?.ignore;
   if (typeof ignore !== 'function') throw new Error('Expected package filter');
-  const paths = ['desktop/shared/agent-chats.ts', ...['store', 'service', 'ipc'].map(name => `desktop/lib/agent-chats/${name}.mts`), 'desktop/shared/agent-avatar.ts', 'desktop/shared/agent-management.ts', 'desktop/shared/agent-terminal.ts', 'desktop/lib/window-close-cleanup.mts',
+  const paths = ['desktop/lib/agent-orchestration/candidate-verification.mts', 'experiments/codex-specialists/src/candidate-verification-contract.ts', 'experiments/codex-specialists/src/verification-contract.ts', 'desktop/shared/agent-work.ts', 'experiments/codex-specialists/src/work-contract.ts', 'desktop/shared/agent-chats.ts', ...['store', 'service', 'ipc'].map(name => `desktop/lib/agent-chats/${name}.mts`), 'desktop/shared/agent-avatar.ts', 'desktop/shared/agent-management.ts', 'desktop/shared/agent-terminal.ts', 'desktop/lib/window-close-cleanup.mts',
     'desktop/shared/agent-registry.ts', 'desktop/shared/agent-models.ts', 'desktop/shared/agent-runtime.ts', 'desktop/shared/codex-accounts.ts',
     ...['engine', 'docker', 'docker-errors', 'service', 'ipc', 'terminal', 'registry', 'registry-ipc', 'runtime', 'instruction-files', 'operations', 'docker-deletion', 'deletion'].map(name => `desktop/lib/agent-management/${name}.mts`)];
   for (const path of paths) expect(ignore(`/${path}`)).toBe(false);
+  expect(ignore('/experiments/codex-specialists/src/integration-contract.ts')).toBe(false);
+  expect(ignore('/experiments/codex-specialists/src/agent.test.ts')).toBe(true);
+  expect(ignore('/experiments/codex-specialists/src/candidate-verification-fixture.ts')).toBe(true);
+  expect(ignore('/experiments/codex-specialists/fixtures')).toBe(true);
   expect(ignore('/desktop/lib/agent-management/local-secret.json')).toBe(true);
   expect(ignore('/desktop/lib/agent-chats/chats.json')).toBe(true);
   const source = paths.map(path => `await import(${JSON.stringify(`./${path}`)});`).join('\n');
@@ -103,6 +107,6 @@ test('packaged specialist context includes its runtime dependencies without expe
     expect(await readdir(directory)).not.toContain('fixtures');
     expect((await readdir(join(directory, 'src'))).some(name => name.endsWith('.test.ts'))).toBe(false);
     // A staged worker must import all transitive verification modules without a TS transform.
-    execFileSync('node', ['--input-type=module', '-e', "await import('./src/agent.ts'); await import('./src/verification.ts');"], { cwd: directory, timeout: 15_000 });
+    execFileSync('node', ['--input-type=module', '-e', "await import('./src/agent.ts'); await import('./src/verification.ts'); await import('./src/integration.ts');"], { cwd: directory, timeout: 15_000 });
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

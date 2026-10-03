@@ -1,3 +1,7 @@
+import { isWorkKind } from '../../../../shared/agent-work';
+import { VerificationMessage } from '../agents/VerificationMessage';
+import { WorkMessage } from '../agents/WorkMessage';
+import { IntegrationDetail } from '../agents/IntegrationDetail';
 import { ArrowLeft, MessagesSquare, Plus, Users } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
@@ -128,9 +132,12 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
       <div className={styles.messageBody}>
         <div className={styles.metadata}><strong>{name(message.sender)}</strong>{message.recipient && <span>→ {name(message.recipient)}</span>}<time>{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span>{message.status}</span></div>
         {message.kind !== 'message' && <span className={styles.description}>{message.kind.replaceAll('_', ' ')}</span>}
-        <p className={styles.text}>{message.text || 'No text response.'}</p>
+        {isWorkKind(message.kind) ? <WorkMessage kind={message.kind} text={message.text} />
+          : message.kind === 'verification_request' || message.kind === 'verification_result' ? <VerificationMessage kind={message.kind} text={message.text} />
+            : <p className={styles.text}>{message.text || 'No text response.'}</p>}
         {message.error && <p role="status" className={styles.description}>{message.error}</p>}
         <div className={styles.links}>
+          {room && message.relatedTask && <NeumorphicButton variant="ghost" onClick={() => onOpenTask({ roomId: room.id, threadId: message.threadId, agentId: message.relatedTask!.agentId, engineId: room.engineId, taskId: message.relatedTask!.taskId })}>Delegated task</NeumorphicButton>}
           {message.kind === 'goal' && <NeumorphicButton variant="ghost" onClick={() => { setThreadId(message.id); setRecipient('default'); setGoal(false); }}>Open goal thread · {snapshot.messages.filter(m => m.threadId === message.id).length}</NeumorphicButton>}
           {room && message.taskId && <NeumorphicButton variant="ghost" onClick={() => { setThreadId(message.kind === 'goal' ? message.id : message.threadId); onOpenTask({ roomId: room.id, threadId: message.kind === 'goal' ? message.id : message.threadId, agentId: owningJob?.recipient ?? taskAgent ?? room.defaultAgentId, engineId: room.engineId, taskId: message.taskId! }); }}>Task details</NeumorphicButton>}
         </div>
@@ -151,6 +158,7 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
         {room && <TooltipButton variant="ghost" size="icon" title="Room participants" aria-label="Room participants" onClick={() => setDialog('participants')}><Users aria-hidden="true" /></TooltipButton>}</header>
       {room && <div className={styles.participants}>{room.members.map(m => m.name).join(' · ')}<span>Default: {name(owner ?? null)}</span></div>}
       {root && <section ref={summaryScroll} className={styles.goalSummary} aria-label="Goal progress">
+        {goalState?.integration && <IntegrationDetail integration={goalState.integration} />}
         <div className={styles.metadata}><strong>Goal · {goalState?.phase ?? root.status ?? 'Checking'}</strong>
           <span>Turns: {goalState?.turns ?? 'Unknown'}</span></div>
         <p>Model tokens: {goalState?.usage ? `${goalState.usage.totalTokens.toLocaleString()} reported through turn ${goalState.usage.reportedThroughTurn}` : 'Unknown'} · Cost: Unknown</p>

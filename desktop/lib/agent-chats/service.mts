@@ -1,3 +1,4 @@
+import { isWorkKind } from '../../shared/agent-work.ts';
 import { realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { ChatsStore } from './store.mts';
@@ -34,6 +35,7 @@ export function createAgentChats(options: Options) {
     const task = details?.tasks.find(t => t.id === job.taskId && t.roomId === job.roomId);
     const goal = task?.inspection?.goal, latest = goal?.decisions.at(-1);
     progress.set(job.id, { checkedAt: Date.now(), value: {
+      ...(task?.inspection?.integration ? { integration: task.inspection.integration } : {}),
       questions: (task?.inspection?.messages ?? []).filter(m => m.kind === 'question').map(q => {
         const messages = task!.inspection!.messages, closed = messages.find(m => m.kind === 'question_closed' && m.questionId === q.id);
         return { id: q.id, recipient: q.to, text: q.text, closure: closed?.text ?? null, expiresAt: q.expiresAt ?? null,
@@ -291,6 +293,7 @@ export function createAgentChats(options: Options) {
       const job = store().all().jobs.find(j => j.taskId === m.taskId);
       if (!m.roomId) return !job && !m.taskId.startsWith('chats_');
       const room = scopeRoom(b, m.roomId);
+      if (m.kind === 'work_request' && ![m.from, m.to].every(id => options.registry(b.workspace).agents.some(a => a.id === id && a.permissions.fileWrite === true))) return false;
       return Boolean(room && job?.roomId === room.id && [m.from, m.to].every(id => room.members.some(p => p.id === id) && current(room, id)));
     },
     record(b: Binding, messages: Message[]) {
@@ -303,6 +306,7 @@ export function createAgentChats(options: Options) {
         const previous = s.messages.find(saved => saved.id === id);
         if (previous) previous.status = status;
         if (!s.messages.some(saved => saved.id === id)) s.messages.push({ id, roomId: m.roomId, threadId: job.threadId,
+          ...(isWorkKind(m.kind) ? { relatedTask: { agentId: m.kind === 'work_result' ? m.from : m.to, taskId: `w_${m.questionId}` } } : {}),
           sender: m.from, recipient: m.to, kind: m.kind, text: m.text, taskId: m.taskId, status, createdAt: new Date().toISOString() });
       } });
     },

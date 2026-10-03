@@ -1,9 +1,10 @@
+import { collaborationTextLimit, isWorkKind, parseWorkMessage, type WorkKind } from './work-contract.ts';
 import { verificationRequest, verificationResult } from './verification-contract.ts';
 import { record, textValue } from './protocol.ts';
 
-export interface Peer { id: string; name: string; role: string }
+export interface Peer { id: string; name: string; role: string; fileWrite?: boolean; workProtocol?: 1 }
 export interface CollaborationMessage {
-  id: string; kind: 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result'; from: string; to: string;
+  id: string; kind: WorkKind | 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result'; from: string; to: string;
   roomId?: string; taskId: string; questionId: string; text: string;
   closureReason?: 'expired';
 }
@@ -31,9 +32,13 @@ export function identifier(value: unknown): string {
 }
 export function message(value: unknown): CollaborationMessage {
   const v = record(value);
-  if (!['question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid collaboration message kind.');
+  if (!isWorkKind(v.kind) && !['question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid collaboration message kind.');
   const text = textValue(v.text, 'message');
-  if (text.length > 12_000) throw new Error('Collaboration message is too long.');
+  if ((text.length > collaborationTextLimit(v.kind))) throw new Error('Collaboration message is too long.');
+  if (isWorkKind(v.kind)) {
+    if (!v.roomId || !/^[a-f0-9]{64}$/.test(String(v.questionId))) throw new Error('Invalid delegated work identity.');
+    parseWorkMessage(v.kind, JSON.parse(text));
+  }
   if (v.kind === 'verification_request') verificationRequest(JSON.parse(text));
   if (v.kind === 'verification_result') verificationResult(JSON.parse(text));
   if (v.closureReason !== undefined && (v.kind !== 'question_closed' || v.closureReason !== 'expired')) throw new Error('Invalid question closure reason.');
@@ -48,7 +53,7 @@ function array(value: unknown): unknown[] {
 export function peers(value: unknown): Peer[] {
   return array(value).map(item => {
     const v = record(item);
-    return { id: identifier(v.id), name: textValue(v.name, 'peer name').slice(0, 200), role: textValue(v.role, 'peer role').slice(0, 100) };
+    return { id: identifier(v.id), name: textValue(v.name, 'peer name').slice(0, 200), role: textValue(v.role, 'peer role').slice(0, 100), ...(v.fileWrite === undefined ? {} : { fileWrite: v.fileWrite === true }), ...(v.workProtocol === 1 ? { workProtocol: 1 as const } : {}) };
   });
 }
 export function collaborationState(value: unknown): CollaborationState {

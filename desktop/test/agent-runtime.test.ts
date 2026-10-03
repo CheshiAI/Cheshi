@@ -70,17 +70,20 @@ function fixture(linkedWorkspace = false) {
     account: async () => ({ home, models: [] }), management: { details: async () => details(),
       engines: async () => ({ engines: [], error: null }), snapshot: async engineId => ({ engineId, online: true, error: null, agents: [] }),
       control: async () => { throw new Error('unused'); } } });
-  const legacyRecovery = (protocol = 1) => {
+  const legacyRecovery = (protocol = 1, progress = false, work = false, integration = false) => {
     const filename = join(runtimePath, 'runtime.json');
     const config = JSON.parse(readFileSync(filename, 'utf8'));
     const agent = registry.snapshot(workspace).agents[0]!;
     const assignment = agent.assignments.find(a => a.workspaceRoot === workspace)!;
     const profile = { role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,
       serviceTier: agent.serviceTier, permissions: agent.permissions, instructions: agent.instructions };
-    config.recoveryProtocol = protocol; delete config.progressProtocol;
+    config.recoveryProtocol = protocol; delete config.progressProtocol; delete config.workProtocol; delete config.integrationProtocol; delete config.candidateVerificationProtocol;
+    if (progress) config.progressProtocol = 1;
+    if (work) config.workProtocol = 1;
+    if (integration) config.integrationProtocol = 1;
     config.settingsFingerprint = createHash('sha256').update(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1,
-      historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: protocol, questionProtocol: 2,
-      agent: profile, workspace: realpathSync(workspace), instructions: assignment.instructions })).digest('hex');
+      historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: protocol, questionProtocol: 2, ...(progress ? { progressProtocol: 1 } : {}),
+      ...(work ? { workProtocol: 1 } : {}), ...(integration ? { integrationProtocol: 1 } : {}), agent: profile, workspace: realpathSync(workspace), instructions: assignment.instructions })).digest('hex');
     config.revision = config.settingsFingerprint;
     labels['ai.cheshi.configuration'] = config.revision;
     writeFileSync(filename, JSON.stringify(config));
@@ -135,7 +138,7 @@ test('starts one project worker with isolated storage, readonly mount, private a
   expect(args.some(arg => arg.includes('runtime.json,readonly'))).toBe(false);
   expect(config.decisionProtocol).toBe(1);
   expect(config.recoveryProtocol).toBe(3);
-  expect(config.verificationProtocol).toBe(1);
+  expect(config.verificationProtocol).toBe(1); expect(config.candidateVerificationProtocol).toBe(1);
   expect(config.permissions).toEqual({ fileWrite: false, commandExecution: false });
   expect(config.instructions).toContain('Project instructions:');
   expect(config).not.toHaveProperty('tokens');
@@ -300,16 +303,17 @@ test('question controls post only the authenticated owner task route with valida
   } finally { mock.mockRestore(); await f.runtime.dispose(); }
 });
 
-test.each([1, 2, 3])('worker control upgrade from recovery protocol %s preserves the volume and unknown outcome without submitting or deleting data', async protocol => {
+test.each([[1, false, false, false], [2, false, false, false], [3, false, false, false], [3, true, false, false], [3, true, true, false], [3, true, true, true]] as const)('worker upgrade from recovery %s, progress %s, work %s, integration %s preserves volume and unknown outcome', async (protocol, progress, work, integration) => {
   const f = fixture();
   try {
-    await f.runtime.request(f.workspace, f.request()); f.legacyRecovery(protocol);
+    await f.runtime.request(f.workspace, f.request()); f.legacyRecovery(protocol, progress, work, integration);
     const tasks = [{ id: 'q_question', status: 'unknown', prompt: 'Consult', output: '', error: 'Unconfirmed', createdAt: '2026-10-03' }];
     f.setTasks(tasks);
     const start = f.calls.length;
     const result = await f.runtime.request(f.workspace, f.request());
     expect(result.details?.tasks).toEqual(tasks);
-    expect(JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8')).progressProtocol).toBe(1);
+    expect(JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8')).workProtocol).toBe(1);
+    expect(JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8')).integrationProtocol).toBe(1);
     const changes = f.calls.slice(start);
     expect(changes.some(c => c.args.includes('stop'))).toBe(true);
     expect(changes.some(c => c.args.includes('create'))).toBe(true);
@@ -333,7 +337,7 @@ test.each(['busy', 'running', 'accepted', 'settings', 'instructions', 'current-p
     }
     if (reason === 'instructions' || reason === 'current-protocol') {
       const filename = join(f.runtimePath, 'runtime.json'), config = JSON.parse(readFileSync(filename, 'utf8'));
-      if (reason === 'instructions') config.instructions += 'changed'; else { config.recoveryProtocol = 3; config.progressProtocol = 1; }
+      if (reason === 'instructions') config.instructions += 'changed'; else { config.recoveryProtocol = 3; config.progressProtocol = 1; config.workProtocol = 1; config.integrationProtocol = 1; config.candidateVerificationProtocol = 1; }
       writeFileSync(filename, JSON.stringify(config));
     }
     await fails(f.runtime.request(f.workspace, f.request()), 'Wait for this worker');

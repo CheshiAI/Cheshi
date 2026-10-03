@@ -166,6 +166,23 @@ async function blockedFixture() {
   return { ...f, task };
 }
 
+test('integration metadata and later stale checks survive Chats projection and restart', async () => {
+  const f = await blockedFixture();
+  const integration = { version: 1 as const, id: 'a'.repeat(64), taskId: f.task.id, roomId: 'room', requestIds: ['b'.repeat(64)],
+    status: 'prepared' as const, candidateHash: 'c'.repeat(64), files: [{ path: 'login.ts', before: null, sha256: 'd'.repeat(64) }], issues: [],
+    createdAt: '2026-10-04T00:00:00Z', checkedAt: '2026-10-04T00:00:00Z' };
+  f.task.inspection!.integration = integration;
+  await f.service.tick();
+  expect(parseChatsSnapshot(f.request({ action: 'list' })).messages[0]?.goalProgress?.integration).toEqual(integration);
+  const restarted = createAgentChats(f.options);
+  expect(restarted.request(f.workspace, { action: 'list' }).messages[0]?.goalProgress?.integration).toBeUndefined();
+  await restarted.tick();
+  expect(restarted.request(f.workspace, { action: 'list' }).messages[0]?.goalProgress?.integration?.id).toBe(integration.id);
+  f.task.inspection!.integration = { ...integration, status: 'stale', issues: [{ kind: 'source_changed', path: 'login.ts', requestIds: integration.requestIds }] };
+  await restarted.tick();
+  expect(parseChatsSnapshot(restarted.request(f.workspace, { action: 'list' })).messages[0]?.goalProgress?.integration?.status).toBe('stale');
+});
+
 test('blocked goal recovery retains task identity and evidence, deduplicates delivery, and refreshes after restart', async () => {
   const f = await blockedFixture(), before = structuredClone(f.task.inspection);
   const state = parseChatsSnapshot(f.request({ action: 'list' }));

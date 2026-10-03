@@ -1,3 +1,6 @@
+import { collaborationTextLimit, WORK_KINDS, parseWorkRequest, parseWorkDraft, type WorkKind, type WorkRequest, type WorkDraft } from './agent-work.ts';
+import { candidateReference, type CandidateReference } from '../../experiments/codex-specialists/src/candidate-verification-contract.ts';
+import { parseIntegration, type IntegrationSummary } from './agent-work.ts';
 import { normalizeHistoryRecallActivity, type HistoryRecallActivity } from './history-recall.ts';
 import { parseQuestionDeadline } from './agent-question.ts';
 
@@ -17,21 +20,24 @@ export interface TaskGoal {
 }
 export interface TaskEvidence { id: string; kind: 'file' | 'command'; detail: string; output: string; exitCode: number | null; successful: boolean | null }
 export interface TaskVerification {
+  candidate?: CandidateReference;
   verdicts: { criterion: string; verdict: 'pass' | 'fail' | 'inconclusive'; reason: string; evidenceIds: string[] }[];
   evidence: TaskEvidence[];
 }
-export interface TaskVerificationRequest { goal: string; criteria: string[]; artifacts: { path: string; sha256: string }[] }
+export interface TaskVerificationRequest { candidate?: CandidateReference; goal: string; criteria: string[]; artifacts: { path: string; sha256: string | null }[] }
 export interface TaskMessage {
   expiresAt?: string | null; closureReason?: 'expired';
-  id: string; kind: 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result';
+  id: string; kind: WorkKind | 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result';
   from: string; to: string; fromName: string; toName: string; questionId: string; text: string;
   delivery: 'queued' | 'delivered' | 'received' | 'processed';
   verification: TaskVerification | null; request: TaskVerificationRequest | null;
 }
 export interface TaskRecall { id: string; activity: HistoryRecallActivity }
 export interface TaskInspection {
+  integration?: IntegrationSummary;
   recoveryRoomId?: string;
-  recoveryKind?: 'consultation' | 'verification';
+  recoveryKind?: 'consultation' | 'verification' | 'delegation';
+  work?: { request: WorkRequest; draft: WorkDraft | null };
   finishedAt: string | null; threadId: string | null; conversation: string | null;
   goal: TaskGoal | null; messages: TaskMessage[]; evidence: TaskEvidence[];
   recall: TaskRecall[] | null; error: string | null;
@@ -84,7 +90,7 @@ export function parseTaskEvidence(value: unknown): TaskEvidence {
 }
 export function parseTaskVerification(value: unknown): TaskVerification {
   const v = inspectionRecord(value);
-  return { evidence: inspectionList(v.evidence, parseTaskEvidence, 32), verdicts: inspectionList(v.verdicts, raw => {
+  return { ...(v.candidate === undefined ? {} : { candidate: candidateReference(v.candidate) }), evidence: inspectionList(v.evidence, parseTaskEvidence, 64), verdicts: inspectionList(v.verdicts, raw => {
     const item = inspectionRecord(raw);
     return { criterion: inspectionText(item.criterion), verdict: choice(item.verdict, ['pass', 'fail', 'inconclusive']),
       reason: inspectionText(item.reason), evidenceIds: inspectionList(item.evidenceIds, id => inspectionText(id, 200), 32) };
@@ -92,29 +98,32 @@ export function parseTaskVerification(value: unknown): TaskVerification {
 }
 export function parseTaskVerificationRequest(value: unknown): TaskVerificationRequest {
   const v = inspectionRecord(value);
-  return { goal: inspectionText(v.goal, 20_000), criteria: inspectionList(v.criteria, c => inspectionText(c), 16),
+  const candidate = v.candidate === undefined ? undefined : candidateReference(v.candidate);
+  return { ...(candidate ? { candidate } : {}), goal: inspectionText(v.goal, 20_000), criteria: inspectionList(v.criteria, c => inspectionText(c), 16),
     artifacts: inspectionList(v.artifacts, raw => {
-      const a = inspectionRecord(raw), sha256 = inspectionText(a.sha256, 64);
-      if (!/^[a-f0-9]{64}$/.test(sha256)) throw new TypeError('Invalid artifact digest.');
+      const a = inspectionRecord(raw), sha256 = candidate && a.sha256 === null ? null : inspectionText(a.sha256, 64);
+      if (sha256 !== null && !/^[a-f0-9]{64}$/.test(sha256)) throw new TypeError('Invalid artifact digest.');
       return { path: inspectionText(a.path, 300), sha256 };
-    }, 16) };
+    }, candidate ? 32 : 16) };
 }
 export function parseTaskInspection(value: unknown): TaskInspection {
   const v = inspectionRecord(value);
   if (v.recoveryRoomId !== undefined && (typeof v.recoveryRoomId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(v.recoveryRoomId))) throw new TypeError('Invalid recovery room.');
   return { finishedAt: nullableText(v.finishedAt), threadId: nullableText(v.threadId), conversation: nullableText(v.conversation),
+    ...(v.integration === undefined ? {} : { integration: parseIntegration(v.integration) }),
     ...(v.recoveryRoomId === undefined ? {} : { recoveryRoomId: v.recoveryRoomId as string }),
-    ...(v.recoveryKind === undefined ? {} : { recoveryKind: choice(v.recoveryKind, ['consultation', 'verification'] as const) }),
+    ...(v.recoveryKind === undefined ? {} : { recoveryKind: choice(v.recoveryKind, ['consultation', 'verification', 'delegation'] as const) }),
+    ...(v.work === undefined ? {} : { work: (() => { const work = inspectionRecord(v.work); return { request: parseWorkRequest(work.request), draft: work.draft === null ? null : parseWorkDraft(work.draft) }; })() }),
     error: nullableText(v.error), goal: v.goal === null ? null : parseTaskGoal(v.goal),
-    evidence: inspectionList(v.evidence, parseTaskEvidence, 32),
+    evidence: inspectionList(v.evidence, parseTaskEvidence, 64),
     messages: inspectionList(v.messages, raw => {
       const m = inspectionRecord(raw);
       if (m.closureReason !== undefined && (m.kind !== 'question_closed' || m.closureReason !== 'expired')) throw new TypeError('Invalid question closure reason.');
-      return { id: inspectionText(m.id, 200), kind: choice(m.kind, ['question', 'question_closed', 'reply', 'verification_request', 'verification_result']),
+      return { id: inspectionText(m.id, 200), kind: choice(m.kind, ['question', 'question_closed', 'reply', 'verification_request', 'verification_result', ...WORK_KINDS]),
         ...(m.expiresAt === undefined ? {} : { expiresAt: parseQuestionDeadline(m.expiresAt) }),
         ...(m.closureReason === 'expired' ? { closureReason: 'expired' as const } : {}),
         from: inspectionText(m.from, 200), to: inspectionText(m.to, 200), fromName: inspectionText(m.fromName, 200), toName: inspectionText(m.toName, 200),
-        questionId: inspectionText(m.questionId, 200), text: inspectionText(m.text, 12_000),
+        questionId: inspectionText(m.questionId, 200), text: inspectionText(m.text, collaborationTextLimit(m.kind)),
         delivery: choice(m.delivery, ['queued', 'delivered', 'received', 'processed']),
         request: m.request === null ? null : parseTaskVerificationRequest(m.request),
         verification: m.verification === null ? null : parseTaskVerification(m.verification) };

@@ -6,6 +6,8 @@ import { GoalQuestions } from '../frontend/src/features/agent-chats/GoalQuestion
 import { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
 import { RoomDialog } from '../frontend/src/features/agent-chats/RoomDialog';
 import { AgentTaskResults } from '../frontend/src/features/agents/AgentTaskResults';
+import { IntegrationDetail } from '../frontend/src/features/agents/IntegrationDetail';
+import { VerificationMessage } from '../frontend/src/features/agents/VerificationMessage';
 import type { ChatsRequest, ChatsSnapshot, ChatTaskTarget } from '../shared/agent-chats';
 async function withDOM(run: (ui: { render(node: ReactNode): Promise<void>; click(label: string): Promise<void>; type(label: string, text: string): Promise<void> }) => Promise<void>) {
   const window = new Window();
@@ -155,6 +157,52 @@ function recoverySnapshot(block: string | null = null): ChatsSnapshot {
     progress: 'Requirements reviewed', reason: 'Choose the sign-in method', nextAction: 'Provide the sign-in method', resumeBlocked: block } });
   return data;
 }
+
+test('Chats and task details expose integration conflicts and hashes without an apply control', async () => {
+  await withDOM(async ui => {
+    const data = recoverySnapshot(), integration = { version: 1 as const, id: 'a'.repeat(64), taskId: 'task', roomId: 'room', requestIds: ['b'.repeat(64)],
+      status: 'conflict' as const, candidateHash: null, files: [], issues: [{ kind: 'proposal_conflict' as const, path: 'login.ts', requestIds: ['b'.repeat(64)] }],
+      createdAt: '2026-10-04T00:00:00Z', checkedAt: '2026-10-04T00:00:00Z' };
+    data.messages[0]!.goalProgress!.integration = integration;
+    await ui.render(<ChatsView active api={{ request: async () => data }} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.click('Open goal thread · 1');
+    expect(document.querySelector('[aria-label="Integration candidate"]')?.textContent).toContain('Integration conflict');
+    expect(document.body.textContent).toContain('login.ts');
+    await ui.render(<AgentTaskResults tasks={[{ id: 'task', prompt: 'Implement login', status: 'interrupted', createdAt: integration.createdAt, output: '', error: null,
+      inspection: { integration: { ...integration, status: 'prepared', candidateHash: 'c'.repeat(64), issues: [], files: [{ path: 'login.ts', before: null, sha256: 'd'.repeat(64) }] },
+        finishedAt: null, threadId: 'native', conversation: 'task', goal: null, messages: [], evidence: [], recall: null, error: null } }]}
+      requestedTaskId="task" loading={false} running={false} />);
+    const panel = document.querySelector('[aria-label="Integration candidate"]');
+    expect(panel?.textContent).toContain('Integration candidate prepared');
+    expect(panel?.textContent).toContain('Not applied to project');
+    expect(panel?.textContent).toContain('d'.repeat(64));
+    expect(panel?.querySelectorAll('button')).toHaveLength(0);
+  });
+});
+
+test('candidate verification shows pending and stale results with receipts, without exposing snapshot bodies', async () => {
+  await withDOM(async ui => {
+    const candidate = { id: 'a'.repeat(64), hash: 'b'.repeat(64) };
+    const result = { candidate, verdicts: [{ criterion: 'Login works', verdict: 'pass' as const, reason: 'Tests passed', evidenceIds: ['file', 'check'] }],
+      evidence: [{ id: 'check', kind: 'command' as const, detail: 'bun test login.test.ts', output: '3 pass', exitCode: 0, successful: true }] };
+    const integration = { version: 1 as const, id: candidate.id, taskId: 'task', roomId: 'room', requestIds: ['c'.repeat(64)],
+      status: 'prepared' as const, candidateHash: candidate.hash, files: [], issues: [], createdAt: '2026-10-04T00:00:00Z', checkedAt: '2026-10-04T00:00:00Z' };
+    for (const status of ['pending', 'pass', 'fail', 'inconclusive', 'stale'] as const) {
+      await ui.render(<IntegrationDetail integration={{ ...integration, verification: { status, requestId: 'd'.repeat(64), agentId: 'reviewer', result: status === 'pending' ? null : result } }} />);
+      expect(document.body.textContent).toContain(`Independent verification: ${status}`);
+      expect(document.body.textContent).toContain('Not applied to project');
+      if (status === 'stale') expect(document.body.textContent).toContain('do not establish a pass');
+    }
+    await ui.render(<VerificationMessage kind="verification_request" text={JSON.stringify({ goal: 'Verify', criteria: ['Login works'],
+      artifacts: [{ path: 'deleted.ts', sha256: null }], candidate: { ...candidate, files: [{ path: 'deleted.ts', content: 'SECRET_SNAPSHOT_BODY' }] } })} />);
+    expect(document.body.textContent).toContain(candidate.hash);
+    expect(document.body.textContent).toContain('deleted.ts · Absent');
+    expect(document.body.textContent).not.toContain('SECRET_SNAPSHOT_BODY');
+    await ui.render(<VerificationMessage kind="verification_result" text={JSON.stringify(result)} />);
+    expect(document.body.textContent).toContain('bun test login.test.ts');
+    expect(document.body.textContent).toContain('3 pass');
+  });
+});
 
 test('blocked goal displays its progress and sends a follow-up to the same owner and thread', async () => {
   await withDOM(async ui => {
@@ -333,5 +381,35 @@ test('long goals show observed cumulative tokens and stay usable without a turn 
     expect(panel?.textContent).toContain('Cost: Unknown');
     expect(panel?.textContent).not.toContain('/ 8');
     expect(document.body.textContent).not.toContain('Send and resume goal');
+  });
+});
+
+
+test('delegated work displays proposed changes and opens the recipient task without changing the owner link', async () => {
+  await withDOM(async ui => {
+    const data = snapshot(), opened: ChatTaskTarget[] = [];
+    data.messages.push({ id: 'work-result', kind: 'work_result', sender: 'peer', recipient: 'dev', roomId: 'room', threadId: 'goal', taskId: 'task',
+      relatedTask: { agentId: 'peer', taskId: 'w_proposal' }, createdAt: '2026-10-04T00:00:00Z', status: 'delivered',
+      text: JSON.stringify({ version: 1, status: 'submitted', snapshot: 'a'.repeat(64), summary: 'Greeting proposed',
+        changes: [{ path: 'greet.ts', before: 'b'.repeat(64), sha256: 'c'.repeat(64), content: 'export const greeting = "hello";' }] }) });
+    await ui.render(<ChatsView active api={{ request: async () => data }} onOpenAgents={() => {}} onOpenTask={target => opened.push(target)} />);
+    await ui.click('Open goal thread · 2');
+    expect(document.body.textContent).toContain('Greeting proposed');
+    expect(document.body.textContent).toContain('Integration and independent verification are still required.');
+    expect(document.body.textContent).toContain('greet.ts');
+    await ui.click('Delegated task');
+    expect(opened[0]).toEqual({ roomId: 'room', threadId: 'goal', engineId: 'docker:test', agentId: 'peer', taskId: 'w_proposal' });
+    await ui.click('Task details'); expect(opened[1]?.agentId).toBe('dev');
+  });
+});
+
+test('unknown delegated task exposes execution inspection without claiming integration', async () => {
+  await withDOM(async ui => {
+    const recovered: string[] = [];
+    await ui.render(<AgentTaskResults tasks={[{ id: 'work', prompt: 'Implement greeting', status: 'unknown', createdAt: '2026-10-04T00:00:00Z', output: '', error: null,
+      inspection: { recoveryKind: 'delegation', recoveryRoomId: 'room', finishedAt: null, threadId: 'native', conversation: 'work', goal: null, messages: [], evidence: [], recall: null, error: null } }]}
+      requestedTaskId="work" loading={false} running onRecover={(id, room) => recovered.push(`${id}/${room}`)} />);
+    expect(document.body.textContent).toContain('without replaying the task or applying project files');
+    await ui.click('Inspect execution'); expect(recovered).toEqual(['work/room']);
   });
 });

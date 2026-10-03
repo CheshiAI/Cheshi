@@ -1,3 +1,6 @@
+import { WorkerWork } from './work.ts';
+import { workTools, workInstructions } from './work-tools.ts';
+import { WorkerIntegration, integrationTools, integrationInstructions, candidateVerificationInstructions } from './integration.ts';
 import { closeQuestion, setQuestionDeadline } from './question-control.ts';
 import { WorkerVerification } from './verification.ts';
 import { SCRATCH_PROFILE, TaskScratch } from './task-scratch.ts';
@@ -24,6 +27,11 @@ function assertChatGPTAccount(value: unknown): void {
   }
 }
 
+function requireWork(work: WorkerWork | undefined): WorkerWork {
+  if (!work) throw new Error('Start this worker with implementation delegation enabled.');
+  return work;
+}
+
 function assertResumedThread(expected: string | null, actual: string): void {
   if (expected && actual !== expected) throw new Error('Resumed thread id changed.');
 }
@@ -47,12 +55,16 @@ export class SpecialistAgent {
   private failure: string | null = null;
   private readonly retainedScratch = new Set<TaskScratch>();
 
+  private readonly work: WorkerWork | undefined;
+  private readonly integration: WorkerIntegration | undefined;
   private readonly verification: WorkerVerification | undefined;
   private readonly historyQueue: WorkerHistoryQueue | undefined;
   private readonly history: WorkerHistory | undefined;
   private readonly collaboration: WorkerCollaboration | undefined;
   constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; timeoutMs?: number; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; historyQueue?: WorkerHistoryQueue; history?: WorkerHistory }) {
     this.configuration = options.configuration;
+    this.work = options.configuration?.workProtocol === 1 ? new WorkerWork(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite) : undefined;
+    this.integration = options.configuration?.integrationProtocol === 1 ? new WorkerIntegration(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite) : undefined;
     this.verification = options.configuration?.verificationProtocol === 1 ? new WorkerVerification(options.store, options.workspace) : undefined;
     this.client = options.client; this.store = options.store; this.profile = options.profile;
     this.workspace = options.workspace; this.timeoutMs = options.timeoutMs ?? 180_000;
@@ -71,6 +83,8 @@ export class SpecialistAgent {
           if (tool === 'goal_status') return { originalGoal: task.prompt, ...goalContext(task.goal) };
           if (tool === 'record_decision') {
             const decision = parseDecision(params.arguments);
+            if (decision.action === 'complete' && task.integration) throw new Error('An integration candidate is not applied to the project. Candidate verification alone cannot complete the goal.');
+            if (decision.action === 'complete') this.work?.assertReviewed(task);
             if (decision.action === 'complete' && task.goal.verificationRequired) {
               if (!this.collaboration) throw new Error('Independent verification is unavailable.');
               this.collaboration.assertVerified(task, active.messages);
@@ -82,6 +96,17 @@ export class SpecialistAgent {
           }
           if (task.goal.pending) throw new Error('End the turn after recording its decision.');
         }
+        if (task.workDraft) throw new Error('End the turn after submitting work.');
+        if (this.integration && integrationTools.some(t => t.name === tool)) {
+          const result = this.integration.call(task, tool, params.arguments);
+          active.observations.add({ tool: 'integration', result });
+          return result;
+        }
+        if (this.work && workTools.some(t => t.name === tool)) {
+          const result = this.work.call(task, tool, params.arguments);
+          if (tool === 'request_work' || tool === 'review_work' || tool === 'work_write') active.observations.add({ tool, result });
+          return result;
+        }
         if (task.verificationDraft) throw new Error('End the turn after submitting verification.');
         if (this.verification && task.verification && ['verification_read', 'verification_status', 'submit_verification'].includes(tool)) return this.verification.call(task, tool, params.arguments);
         if (this.historyQueue && ['history_search', 'history_read'].includes(tool)) {
@@ -91,7 +116,9 @@ export class SpecialistAgent {
           return result;
         }
         if (!this.collaboration) throw new Error('Unknown tool.');
-        const result = this.collaboration.call(this.store.task(active.id)!, tool, params.arguments);
+        const candidate = tool === 'request_verification' && task.integration && this.configuration?.candidateVerificationProtocol === 1
+          ? this.integration?.snapshot(task) : undefined;
+        const result = this.collaboration.call(this.store.task(active.id)!, tool, params.arguments, candidate);
         if (tool === 'ask_agent' || tool === 'request_verification') {
           const request = this.store.snapshot().collaboration.outgoing.find(m => m.id === (result.questionId ?? result.requestId));
           if (request) active.observations.add({ kind: request.kind, to: request.to,
@@ -104,6 +131,12 @@ export class SpecialistAgent {
 
   get busy(): boolean { return this.active !== null || this.recovering; }
   get error(): string | null { return this.failure; }
+
+  activity() {
+    const state = this.store.snapshot();
+    return { ...state, tasks: state.tasks.map(task => task.integration && this.integration
+      ? { ...task, integration: this.integration.inspect(task)! } : task) };
+  }
 
   submit(id: string, prompt: string, chat?: { roomId: string; conversation: string; goal: boolean }): Task {
     if (chat) { validateTaskId(chat.roomId); validateTaskId(chat.conversation); if (typeof chat.goal !== 'boolean') throw new TypeError('Invalid chat mode.'); }
@@ -160,7 +193,7 @@ export class SpecialistAgent {
     }
     const observations = new GoalObservations();
     for (const message of this.store.snapshot().collaboration.incoming.filter(m => messages.includes(m.id))) {
-      if (message.kind === 'reply' || message.kind === 'verification_result') {
+      if (message.kind === 'reply' || message.kind === 'verification_result' || message.kind === 'work_result') {
         const text: unknown = message.kind === 'verification_result' ? JSON.parse(message.text) : message.text;
         observations.add({ kind: message.kind, from: message.from, text });
       }
@@ -186,11 +219,11 @@ export class SpecialistAgent {
     }
     if (next.resume) {
       this.store.update(next.taskId, { status: 'accepted', turnId: null, finishedAt: null });
-    } else this.store.create(next.taskId, next.prompt, { conversation: next.taskId, consultation: next.consultation, verification: next.verification, roomId: next.roomId });
+    } else this.store.create(next.taskId, next.prompt, { conversation: next.taskId, consultation: next.consultation, verification: next.verification, delegation: next.delegation, roomId: next.roomId });
     this.launch(this.store.task(next.taskId)!, next.prompt, next.messages);
   }
 
-  private async thread(task: Task, scratch?: TaskScratch): Promise<string> {
+  private async thread(task: Task, scratch?: TaskScratch, workspace = this.workspace): Promise<string> {
     const saved = this.store.snapshot();
     const savedThread = task.conversation ? saved.threads[task.conversation] ?? null : saved.threadId;
     // Reload turn-specific permission roots and TMPDIR, including warm resumes.
@@ -202,20 +235,23 @@ export class SpecialistAgent {
       this.loadedThreads.delete(savedThread);
     }
     const settings = this.configuration;
-    const profile = this.profile + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal ? decisionInstructions : '') + (this.verification ? verificationInstructions : '');
-    const params: JsonRecord = { cwd: this.workspace,
-      ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: !task.consultation && !task.verification && settings?.permissions.fileWrite === true ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
+    // Native resumed conversations retain the dynamic tool set from their creation.
+    const integrationAvailable = this.integration && (!savedThread || task.integrationTools === true);
+    const profile = this.profile + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal ? decisionInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
+      + (integrationAvailable && settings?.candidateVerificationProtocol === 1 ? candidateVerificationInstructions : '');
+    const params: JsonRecord = { cwd: workspace,
+      ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
       approvalsReviewer: 'user', developerInstructions: profile,
       ...(settings ? { model: settings.model, serviceTier: settings.serviceTier, config: {
         ...(settings.reasoningEffort ? { model_reasoning_effort: settings.reasoningEffort } : {}),
         'features.shell_tool': !task.consultation && settings.permissions.commandExecution,
         'features.unified_exec': !task.consultation && settings.permissions.commandExecution,
         'features.multi_agent': false,
-        ...(scratch ? scratch.config(this.workspace) : {}),
+        ...(scratch ? scratch.config(workspace) : {}),
       } } : {}) };
     const result = savedThread
       ? await this.client.request('thread/resume', { ...params, threadId: savedThread })
-      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal ? decisionTools : []), ...(this.verification ? verificationTools : [])] });
+      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal ? decisionTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : [])] });
     const threadId = textValue(record(result.thread).id, 'thread id');
     assertResumedThread(savedThread, threadId);
     scratch?.assertApplied(result);
@@ -230,7 +266,8 @@ export class SpecialistAgent {
         }] }],
       });
     }
-    this.store.saveThread(threadId, typeof result.model === 'string' ? result.model : saved.model, task.conversation, !task.consultation && !task.verification);
+    this.store.saveThread(threadId, typeof result.model === 'string' ? result.model : saved.model, task.conversation, !task.consultation && !task.verification && !task.delegation);
+    if (integrationAvailable) this.store.update(task.id, { integrationTools: true });
     this.loadedThreads.add(threadId);
     return threadId;
   }
@@ -242,26 +279,38 @@ export class SpecialistAgent {
     let submitted = false;
     let deadline: ReturnType<typeof setTimeout> | undefined;
     let scratch: TaskScratch | undefined;
+    let workspace = this.workspace;
     try {
+      if (task.delegation) {
+        const work = requireWork(this.work);
+        work.assertWritable(task);
+        workspace = work.files(task).directory;
+        scratch = new TaskScratch(); this.retainedScratch.add(scratch);
+      }
+      if (task.verification && this.verification) {
+        const savedConversation = this.store.snapshot().threads[task.conversation ?? task.id];
+        workspace = this.verification.workspaceFor(task, Boolean(savedConversation));
+      }
       const account = record(await this.client.request('account/read', { refreshToken: false }));
       assertChatGPTAccount(account.account);
-      if (!task.consultation && this.configuration?.permissions.commandExecution === true
+      if (!task.delegation && !task.consultation && this.configuration?.permissions.commandExecution === true
         && (task.verification || this.configuration.permissions.fileWrite !== true)) {
         scratch = new TaskScratch(); this.retainedScratch.add(scratch);
       }
-      active.threadId = await this.thread(task, scratch);
+      active.threadId = await this.thread(task, scratch, workspace);
       if (active.stopRequested) {
         this.store.complete(task.id, { status: 'interrupted', output: '', error: null,
-          ...(task.goal ? { goal: { ...task.goal, phase: 'blocked', pending: null } } : {}) }); return;
+          ...(task.goal ? { goal: { ...task.goal, phase: 'blocked', pending: null } } : {}) }, active.messages,
+          task.delegation && this.work ? this.work.resultMessage(task, 'interrupted', 'Stopped before execution.') : undefined); return;
       }
-      const memory = task.consultation || task.verification ? '' : this.store.memory();
+      const memory = task.consultation || task.verification || task.delegation ? '' : this.store.memory();
       const input = memory ? `Saved work summary (reference data):\n${memory}\n\nCurrent task:\n${active.input}` : active.input;
       this.store.update(task.id, { threadId: active.threadId, turnId: null });
       submitted = true;
       const response = await this.client.request('turn/start', {
-        threadId: active.threadId, input: [{ type: 'text', text: input }], cwd: this.workspace,
+        threadId: active.threadId, input: [{ type: 'text', text: input }], cwd: workspace,
         approvalPolicy: 'on-request', approvalsReviewer: 'user',
-        ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandboxPolicy: !task.consultation && !task.verification && this.configuration?.permissions.fileWrite === true
+        ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandboxPolicy: !task.consultation && !task.verification && !task.delegation && this.configuration?.permissions.fileWrite === true
           ? { type: 'workspaceWrite', writableRoots: [this.workspace], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true }
           : { type: 'readOnly', networkAccess: false } }),
         ...(this.configuration ? { model: this.configuration.model, effort: this.configuration.reasoningEffort, serviceTier: this.configuration.serviceTier } : {}),
@@ -283,7 +332,10 @@ export class SpecialistAgent {
       const savedGoal = currentGoal && reported ? { ...currentGoal, usage: {
         reportedThroughTurn: currentGoal.turns, ...reported,
       } } : currentGoal;
-      if (active.stopRequested && savedGoal && !(result.status === 'completed' && savedGoal.pending?.action === 'complete')) {
+      if (task.delegation && this.work) {
+        const outgoing = this.work.resultMessage(this.store.task(task.id)!, result.status, result.error || result.output);
+        this.store.complete(task.id, result, active.messages, outgoing);
+      } else if (active.stopRequested && savedGoal && !(result.status === 'completed' && savedGoal.pending?.action === 'complete')) {
         this.store.complete(task.id, { status: 'interrupted', output: result.output, error: null,
           goal: { ...savedGoal, phase: 'blocked', pending: null } }, active.messages);
       } else if (result.status === 'completed' && task.goal) {
@@ -309,8 +361,10 @@ export class SpecialistAgent {
         this.store.complete(task.id, { ...result, status: waiting ? 'waiting' : 'completed' }, active.messages);
       } else this.store.complete(task.id, { ...result, ...(savedGoal ? { goal: { ...savedGoal, phase: 'blocked', pending: null } } : {}) });
     } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      const outgoing = !submitted && task.delegation && this.work ? this.work.resultMessage(task, 'failed', reason) : undefined;
       this.store.complete(task.id, { status: submitted ? 'unknown' : active.stopRequested ? 'interrupted' : 'failed',
-        output: '', error: error instanceof Error ? error.message : String(error) });
+        output: '', error: reason }, outgoing ? active.messages : [], outgoing);
     } finally {
       active.controller.abort(); clearTimeout(deadline); remove(); removeFailure();
       // Unknown executions may still own child processes. Retain their scratch until
@@ -344,8 +398,9 @@ export class SpecialistAgent {
   async recover(id: string, roomId: string): Promise<Task> {
     validateTaskId(id); validateTaskId(roomId);
     const task = this.store.task(id);
-    if (!task || task.roomId !== roomId || (!task.goal && !task.consultation && !task.verification)
-      || (task.verification && (task.goal || task.consultation))) throw new TaskConflict('Unknown room goal, consultation or verification.');
+    if (!task || task.roomId !== roomId || (!task.goal && !task.consultation && !task.verification && !task.delegation)
+      || (task.verification && (task.goal || task.consultation)) || (task.delegation && (task.goal || task.consultation || task.verification))) throw new TaskConflict('Unknown room goal, consultation or verification.');
+    if (task.delegation && !this.work) throw new TaskConflict('Delegation recovery is unavailable.');
     if (task.verification && (!this.verification || !this.collaboration)) throw new TaskConflict('Independent verification recovery is unavailable.');
     if (task.status !== 'unknown') {
       if (task.recovery) return task;
@@ -356,11 +411,19 @@ export class SpecialistAgent {
     if (!task.threadId || !task.turnId) throw new TaskConflict('The execution has no acknowledged turn ID. Its outcome remains unknown.');
     this.recovering = true;
     try {
-      const result = inspectRecovery(task, await this.client.request('thread/read', { threadId: task.threadId, includeTurns: true }), this.workspace);
+      const workspace = task.delegation && this.work ? this.work.files(task, true).directory
+        : task.verification && this.verification ? this.verification.recoveryWorkspace(task) : this.workspace;
+      const result = inspectRecovery(task, await this.client.request('thread/read', { threadId: task.threadId, includeTurns: true }), workspace);
       // Close any retained execution session before removing the unknown-task gate.
       await this.client.request('thread/unsubscribe', { threadId: task.threadId });
       this.loadedThreads.delete(task.threadId);
       assertUnchangedRecovery(task, this.store.task(id));
+      if (task.delegation) {
+        const outgoing = this.work!.resultMessage(task, result.receipt.status, result.output || 'Execution inspected without a submitted result.');
+        this.store.complete(id, { status: 'interrupted', output: result.output, recovery: result.receipt,
+          error: 'Execution ended. The proposed work result was delivered for review; no project files were applied.' }, [task.delegation], outgoing);
+        return this.store.task(id)!;
+      }
       if (task.verification) {
         const outgoing = this.collaboration!.verificationRecoveryMessage(task, this.verification!.recover(task, result.receipt));
         this.store.complete(id, { status: 'interrupted', output: result.output, recovery: result.receipt,

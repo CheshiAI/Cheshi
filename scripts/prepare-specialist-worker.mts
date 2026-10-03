@@ -7,6 +7,8 @@ export const SPECIALIST_WORKER_FILES = [
   'src/worker.ts', 'src/agent.ts', 'src/app-server-client.ts', 'src/protocol.ts',
   'src/store.ts', 'src/turn.ts', 'src/runtime-config.ts', 'src/task-scratch.ts',
   'src/verification-contract.ts', 'src/verification-tools.ts', 'src/verification.ts',
+  'src/work-contract.ts', 'src/work-files.ts', 'src/work.ts', 'src/work-tools.ts',
+  'src/candidate-verification-contract.ts', 'src/verification-candidate-files.ts', 'src/integration-contract.ts', 'src/integration-plan.ts', 'src/integration.ts',
   'src/decision.ts', 'src/goal-progress.ts', 'src/question-control.ts', 'src/recovery.ts', 'src/history.ts', 'src/history-queue.ts', 'src/history-inspection.ts', 'src/history-tools.ts',
   'src/collaboration-contract.ts', 'src/collaboration-tools.ts', 'src/collaboration.ts',
   'security/codex-bwrap.json', 'security/cheshi-codex-bwrap.apparmor', 'security/vendor/LICENSE',

@@ -12,6 +12,7 @@ import { parseDeleteSpecialistAgent } from '../shared/agent-registry';
 import { createDockerAgentEngine } from '../lib/agent-management/docker.mts';
 import { AgentManagementModel } from '../frontend/src/shared/agent-management/agentManagementModel';
 import { parseAgentSnapshot } from '../shared/agent-management';
+import { createDockerDeletion } from '../lib/agent-management/docker-deletion.mts';
 
 async function fails(operation: Promise<unknown>, message: string) {
   let error: unknown;
@@ -27,6 +28,23 @@ test('container deletion stops an idle owned worker and retains registry, data a
     expect(f.calls.filter(args => args[3] === 'stop')).toHaveLength(1);
     expect(f.calls.filter(args => args[3] === 'rm')).toEqual([['--host', 'unix:///tmp/local.sock', 'container', 'rm', f.containerId]]);
     expect(f.calls.flat()).not.toContain('--force'); expect(f.calls.flat()).not.toContain('image');
+  } finally { f.close(); }
+});
+test('delegation deletion waits for queued work and durable result acknowledgement', async () => {
+  const f = deletionFixture();
+  try {
+    const activity = { tasks: [] as Record<string, unknown>[], collaboration: {
+      incoming: [{ kind: 'work_request', id: 'request' }], outgoing: [] as { kind: string; id: string }[], acknowledged: [] as string[],
+    } };
+    const docker = createDockerDeletion(f.run, async (_endpoint, path) => path === '/health' ? { ready: true, busy: false } : activity);
+    const plan = await docker.plan('docker:local', false, undefined, f.containerId);
+    await fails(docker.preflight(plan), 'active');
+    activity.tasks.push({ id: 'w_request', delegation: 'request', status: 'completed', prompt: 'Work', output: 'Submitted', error: null, createdAt: '2026-10-04' });
+    activity.collaboration.outgoing.push({ kind: 'work_result', id: 'result' });
+    await fails(docker.preflight(plan), 'active');
+    expect(f.calls.some(args => args.includes('stop') || args.includes('rm'))).toBe(false);
+    activity.collaboration.acknowledged.push('result');
+    await docker.preflight(plan);
   } finally { f.close(); }
 });
 test('agent deletion removes every assignment and owned storage only after all workers are cleaned', async () => {

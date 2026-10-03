@@ -1,3 +1,5 @@
+import type { WorkKind } from './agent-work.ts';
+import { isWorkKind, parseIntegration, type IntegrationSummary } from './agent-work.ts';
 import { agentRecord, agentText, parseAgentEngineId, parseAgentId, parseExecutionRecovery, type ExecutionRecovery } from './agent-management.ts';
 import { parseQuestionDeadline } from './agent-question.ts';
 
@@ -6,6 +8,7 @@ import { parseGoalUsage, type TaskGoalUsage } from './agent-task-inspection.ts';
 export const AGENT_CHATS_CHANNEL = 'cheshi:agent-chats:request';
 export interface RoomQuestion { id: string; recipient: string; text: string; status: 'waiting' | 'answered' | 'closed' | 'expired'; closure: string | null; expiresAt?: string | null }
 export interface RoomGoalProgress {
+  integration?: IntegrationSummary;
   questions?: RoomQuestion[];
   recovery?: ExecutionRecovery;
   phase: string; progress: string; reason: string; nextAction: string;
@@ -18,8 +21,9 @@ export interface AgentRoom {
 }
 export interface RoomMessage {
   id: string; roomId: string; threadId: string | null; sender: string; recipient: string | null;
-  kind: 'message' | 'goal' | 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result';
+  kind: WorkKind | 'message' | 'goal' | 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result';
   text: string; createdAt: string; taskId?: string; status?: string; error?: string | null;
+  relatedTask?: { agentId: string; taskId: string };
   goalProgress?: RoomGoalProgress;
 }
 export interface RoomJob {
@@ -80,6 +84,7 @@ function parseGoalProgress(value: unknown): RoomGoalProgress {
   }, 16) }), ...(v.recovery === undefined ? {} : { recovery: parseExecutionRecovery(v.recovery) }), phase: required(v.phase, 100), progress: agentText(v.progress, 4000), reason: agentText(v.reason, 20_000),
     nextAction: agentText(v.nextAction, 4000), turns: v.turns as number | null,
     ...(v.usage === undefined ? {} : { usage: parseGoalUsage(v.usage) }),
+    ...(v.integration === undefined ? {} : { integration: parseIntegration(v.integration) }),
     resumeBlocked: v.resumeBlocked === null ? null : required(v.resumeBlocked, 20_000) };
 }
 export function parseRoom(value: unknown): AgentRoom {
@@ -93,9 +98,10 @@ export function parseRoom(value: unknown): AgentRoom {
 }
 export function parseRoomMessage(value: unknown): RoomMessage {
   const v = agentRecord(value);
-  if (!['message', 'goal', 'question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid room message.');
+  if (!isWorkKind(v.kind) && !['message', 'goal', 'question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid room message.');
   return { id: chatId(v.id), roomId: chatId(v.roomId), threadId: optionalId(v.threadId), sender: chatId(v.sender), recipient: optionalId(v.recipient),
     kind: v.kind as RoomMessage['kind'], text: agentText(v.text, 500_000), createdAt: required(v.createdAt, 100),
+    ...(v.relatedTask === undefined ? {} : { relatedTask: (() => { const t = agentRecord(v.relatedTask); return { agentId: chatId(t.agentId), taskId: chatId(t.taskId) }; })() }),
     ...(v.taskId === undefined ? {} : { taskId: chatId(v.taskId) }), ...(v.status === undefined ? {} : { status: required(v.status, 100) }),
     ...(v.error === undefined ? {} : { error: v.error === null ? null : agentText(v.error, 20_000) }),
     ...(v.goalProgress === undefined ? {} : { goalProgress: parseGoalProgress(v.goalProgress) }) };

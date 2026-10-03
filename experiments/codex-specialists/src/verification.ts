@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { record, type JsonRecord } from './protocol.ts';
 import { AgentStore, type Task } from './store.ts';
 import type { RecoveryReceipt } from './recovery.ts';
+import { WORK_MESSAGE_LIMIT } from './work-contract.ts';
+import { verificationCandidateFiles } from './verification-candidate-files.ts';
 import { artifactPath, assertResult, list, verdict, verificationRequest, verificationResult,
   type Artifact, type Evidence, type VerificationRequest, type VerificationResult } from './verification-contract.ts';
 
@@ -45,8 +47,20 @@ export class WorkerVerification {
   constructor(store: AgentStore, workspace: string) { this.store = store; this.workspace = workspace; }
   request(task: Task): VerificationRequest {
     const message = this.store.snapshot().collaboration.incoming.find(m => m.kind === 'verification_request' && m.id === task.verification);
-    if (!message) throw new Error('No verification request belongs to this task.');
+    if (!message || message.roomId !== task.roomId) throw new Error('No verification request belongs to this task.');
     return verificationRequest(JSON.parse(message.text));
+  }
+  recoveryWorkspace(task: Task): string {
+    return this.request(task).candidate ? join(realpathSync(this.store.directory), 'verification-candidates', task.verification!) : this.workspace;
+  }
+  workspaceFor(task: Task, existing = true): string {
+    const candidate = this.request(task).candidate;
+    return candidate ? verificationCandidateFiles(this.store.directory, task.verification!, candidate, existing).directory : this.workspace;
+  }
+  private assertCurrent(task: Task): void {
+    const request = this.request(task);
+    if (request.candidate) this.workspaceFor(task);
+    else assertSnapshot(this.workspace, request.artifacts);
   }
   private save(task: Task, receipt: Evidence): void {
     const receipts = this.store.task(task.id)?.verificationEvidence ?? [];
@@ -55,7 +69,7 @@ export class WorkerVerification {
       if (JSON.stringify(previous) !== JSON.stringify(receipt)) throw new Error('Evidence identity conflict.');
       return;
     }
-    if (receipts.length >= 32) throw new Error('Verification evidence limit reached.');
+    if (receipts.length >= (this.request(task).candidate ? 64 : 32)) throw new Error('Verification evidence limit reached.');
     this.store.update(task.id, { verificationEvidence: [...receipts, receipt] });
   }
   /** Receipts originate from native app-server events, never from tool arguments. */
@@ -63,12 +77,12 @@ export class WorkerVerification {
     if (!task.verification || item.type !== 'commandExecution' || typeof item.id !== 'string') return;
     const key = `${task.id}/${item.id}`;
     if (method === 'item/started') {
-      try { assertSnapshot(this.workspace, this.request(task).artifacts); this.checks.add(key); }
+      try { this.assertCurrent(task); this.checks.add(key); }
       catch { this.checks.delete(key); }
       return;
     }
     if (!this.checks.delete(key)) return;
-    try { assertSnapshot(this.workspace, this.request(task).artifacts); }
+    try { this.assertCurrent(task); }
     catch { return; }
     if (typeof item.command !== 'string' || !item.command.trim()) return;
     this.save(task, { id: item.id, kind: 'command', detail: item.command.slice(0, 1000),
@@ -83,18 +97,19 @@ export class WorkerVerification {
     if (tool === 'verification_read') {
       const path = artifactPath(args.path);
       if (!request.artifacts.some(a => a.path === path)) throw new Error('Read only the requested artifacts through this tool.');
-      assertSnapshot(this.workspace, request.artifacts);
-      const bytes = readArtifact(this.workspace, path), sha256 = hash(bytes);
+      this.assertCurrent(task);
+      const file = request.candidate ? verificationCandidateFiles(this.store.directory, task.verification!, request.candidate).read(path) : null;
+      const bytes = file ? null : readArtifact(this.workspace, path), sha256 = file ? file.sha256 : hash(bytes!);
       if (request.artifacts.find(a => a.path === path)?.sha256 !== sha256) throw new Error('Artifact changed during read.');
-      const receipt: Evidence = { id: `file-${sha256}-${request.artifacts.findIndex(a => a.path === path)}`, kind: 'file', detail: path, output: sha256, exitCode: null };
+      const receipt: Evidence = { id: `file-${sha256 ?? 'absent'}-${request.artifacts.findIndex(a => a.path === path)}`, kind: 'file', detail: path, output: sha256 ?? 'absent', exitCode: null };
       this.save(task, receipt);
-      return { receipt, content: bytes.toString('utf8') };
+      return { receipt, content: file ? file.content : bytes!.toString('utf8') };
     }
     if (tool !== 'submit_verification') throw new Error('Unsupported verification tool.');
-    const result = { verdicts: list(args.verdicts, verdict), evidence: task.verificationEvidence ?? [] };
+    const result = { ...(request.candidate ? { candidate: { id: request.candidate.id, hash: request.candidate.hash } } : {}), verdicts: list(args.verdicts, verdict), evidence: task.verificationEvidence ?? [] };
     assertResult(request, result);
-    if (JSON.stringify(result).length > 12_000) throw new Error('Verification result exceeds the message limit. Use fewer receipts in a new verification round.');
-    if (result.verdicts.some(v => v.verdict === 'pass')) assertSnapshot(this.workspace, request.artifacts);
+    if (JSON.stringify(result).length > (request.candidate ? WORK_MESSAGE_LIMIT : 12_000)) throw new Error('Verification result exceeds the message limit. Use fewer receipts in a new verification round.');
+    if (result.verdicts.some(v => v.verdict === 'pass')) this.assertCurrent(task);
     this.store.update(task.id, { verificationDraft: result });
     return { status: 'recorded', guidance: 'End this turn. The result is published only after successful completion and a final artifact check.' };
   }
@@ -104,7 +119,7 @@ export class WorkerVerification {
       const result = verificationResult(task.verificationDraft);
       try {
         assertResult(request, result);
-        if (result.verdicts.some(v => v.verdict === 'pass')) assertSnapshot(this.workspace, request.artifacts);
+        if (result.verdicts.some(v => v.verdict === 'pass')) this.assertCurrent(task);
         return result;
       } catch { /* A stale snapshot must wake the owner for re-verification, never pass. */ }
     }
@@ -117,14 +132,14 @@ export class WorkerVerification {
         const result = verificationResult(task.verificationDraft);
         assertResult(request, result);
         assertRecordedEvidence(task, result);
-        assertSnapshot(this.workspace, request.artifacts);
+        this.assertCurrent(task);
         return result;
       } catch { /* A terminal turn alone cannot establish a verification verdict. */ }
     }
     return this.inconclusive(request);
   }
   private inconclusive(request: VerificationRequest): VerificationResult {
-    return { verdicts: request.criteria.map(criterion => ({ criterion, verdict: 'inconclusive',
+    return { ...(request.candidate ? { candidate: { id: request.candidate.id, hash: request.candidate.hash } } : {}), verdicts: request.criteria.map(criterion => ({ criterion, verdict: 'inconclusive',
       reason: 'No confirmed verification result for the current artifact snapshot. Request a new verification round.', evidenceIds: [] })), evidence: [] };
   }
 }

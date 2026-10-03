@@ -1,3 +1,4 @@
+import { collaborationTextLimit, WORK_MESSAGE_LIMIT, parseWorkRequest, parseWorkDraft } from '../../shared/agent-work.ts';
 import { parseAgentTasks, type AgentTask } from '../../shared/agent-management.ts';
 import { parseQuestionDeadline } from '../../shared/agent-question.ts';
 import { inspectionRecord, inspectionText, inspectionList, parseTaskInspection, parseTaskGoal, parseTaskEvidence,
@@ -23,10 +24,10 @@ export function inspectAgentTasks(value: unknown, owner?: { id: string; name: st
       for (const direction of ['outgoing', 'incoming'] as const) {
         const entries = c ? inspectionList(c[direction], inspectionRecord, 10_000) : [];
         for (const m of entries) {
-          const requestId = original.consultation ?? original.verification;
+          const requestId = original.consultation ?? original.verification ?? original.delegation;
           if (requestId ? m.questionId !== requestId : m.taskId !== task.id) continue;
           const id = inspectionText(m.id, 200), from = inspectionText(m.from, 200), to = inspectionText(m.to, 200);
-          const text = inspectionText(m.text, 12_000);
+          const text = inspectionText(m.text, collaborationTextLimit(m.kind));
           messages.push({ id, kind: m.kind as TaskMessage['kind'], from, to, fromName: names.get(from) ?? from, toName: names.get(to) ?? to,
             ...(direction === 'outgoing' && m.kind === 'question' ? { expiresAt: parseQuestionDeadline(deadlines[id] ?? null) } : {}),
             ...(m.closureReason === undefined ? {} : { closureReason: m.closureReason as TaskMessage['closureReason'] }),
@@ -38,13 +39,16 @@ export function inspectAgentTasks(value: unknown, owner?: { id: string; name: st
       }
       const recall = state.recall === undefined ? null : inspectionList(state.recall, inspectionRecord, 64)
         .filter(item => item.taskId === task.id).map(({ id, activity }) => ({ id, activity }));
-      const detail = parseTaskInspection({ finishedAt: original.finishedAt, threadId: original.threadId, conversation: original.conversation,
+      const workRequest = typeof original.delegation === 'string' && c ? inspectionList(c.incoming, inspectionRecord, 10_000).find(m => m.id === original.delegation && m.kind === 'work_request') : null;
+      const detail = parseTaskInspection({
+        ...(original.integration === undefined ? {} : { integration: original.integration }),
+        ...(workRequest ? { work: { request: parseWorkRequest(JSON.parse(inspectionText(workRequest.text, WORK_MESSAGE_LIMIT))), draft: original.workDraft === undefined ? null : parseWorkDraft(original.workDraft) } } : {}), finishedAt: original.finishedAt, threadId: original.threadId, conversation: original.conversation,
         ...(task.status === 'unknown' && original.goal === undefined && original.roomId !== undefined
           && ((typeof original.consultation === 'string' && original.consultation && original.verification === undefined)
-            || (typeof original.verification === 'string' && original.verification && original.consultation === undefined))
-          ? { recoveryRoomId: original.roomId, recoveryKind: original.verification ? 'verification' : 'consultation' } : {}),
+            || (typeof original.verification === 'string' && original.verification && original.consultation === undefined) || (typeof original.delegation === 'string' && original.delegation && original.consultation === undefined && original.verification === undefined))
+          ? { recoveryRoomId: original.roomId, recoveryKind: original.delegation ? 'delegation' : original.verification ? 'verification' : 'consultation' } : {}),
         goal: original.goal === undefined ? null : parseTaskGoal(original.goal), messages,
-        evidence: original.verificationEvidence === undefined ? [] : inspectionList(original.verificationEvidence, parseTaskEvidence, 32), recall, error: null });
+        evidence: original.verificationEvidence === undefined ? [] : inspectionList(original.verificationEvidence, parseTaskEvidence, 64), recall, error: null });
       return { ...task, inspection: detail };
     } catch {
       const inspection: TaskInspection = { finishedAt: null, threadId: null, conversation: null, goal: null, messages: [], evidence: [], recall: null,

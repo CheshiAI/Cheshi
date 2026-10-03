@@ -77,7 +77,7 @@ const server = Bun.serve({
       }
       if (path === '/activity' && request.method === 'GET') {
         collaboration?.expire();
-        return Response.json({ ...store.snapshot(), ...(historyQueue ? { recall: historyQueue.inspection() } : {}) });
+        return Response.json({ ...agent.activity(), ...(historyQueue ? { recall: historyQueue.inspection() } : {}) });
       }
       if (path === '/tasks' && request.method === 'POST') {
         if (!request.headers.get('content-type')?.startsWith('application/json')) throw new TypeError('Use application/json.');
