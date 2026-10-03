@@ -141,8 +141,11 @@ test('deletion and normal mutations exclude one another across services and rele
   try {
     const gate = registryDeferred<void>();
     const operation = workerOperations.run(() => gate.promise);
-    await fails(f.deletion.container(f.request()), 'operation is in progress');
-    gate.resolve(); await operation;
+    let acquired = false;
+    const waiting = workerOperations.exclusive(async () => { acquired = true; });
+    expect(acquired).toBe(false);
+    gate.resolve(); await operation; await waiting;
+    expect(acquired).toBe(true);
     const management = createAgentManagementService({ engines: [] });
     const runtime = createSpecialistRuntime({ ...f.options, buildContext: '/unused', management,
       account: async () => { throw new Error('must not request an account'); } });
@@ -157,6 +160,23 @@ test('deletion and normal mutations exclude one another across services and rele
     expect(f.registry.snapshot(f.workspace).agents).toHaveLength(1);
     f.state.failRemove = false; await f.deletion.container(f.request());
   } finally { f.close(); }
+});
+test('queued deletion rechecks profile revision and worker activity before changing anything', async () => {
+  for (const changed of ['revision', 'activity'] as const) {
+    const f = deletionFixture(), gate = registryDeferred<void>();
+    const operation = workerOperations.run(() => gate.promise);
+    try {
+      const deleted = f.deletion.agent(f.workspace, f.agentRequest(true));
+      const rejected = fails(deleted, changed === 'revision' ? 'changed' : 'active');
+      expect(f.calls).toEqual([]);
+      if (changed === 'revision') f.registry.save({ ...specialistInput(), id: f.profile.id, revision: f.profile.revision }, f.workspace);
+      else f.state.busy = true;
+      gate.resolve(); await operation; await rejected;
+      expect(f.containers.size).toBe(1); expect(f.volumes.has(f.volume)).toBe(true);
+      expect(f.registry.snapshot(f.workspace).agents).toHaveLength(1);
+      expect(f.calls.some(args => ['stop', 'rm'].includes(args[3] ?? ''))).toBe(false);
+    } finally { gate.resolve(); await operation; f.close(); }
+  }
 });
 test('deletion contracts require exact identities, revisions and literal data deletion choices', () => {
   const id = 'a1234567-1234-1234-1234-123456789abc';

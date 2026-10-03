@@ -9,6 +9,7 @@ import { AGENT_CHANNELS, parseAgentSnapshot } from '../shared/agent-management.t
 import { AGENT_TERMINAL_CHANNELS } from '../shared/agent-terminal.ts';
 import type { AgentManagementApi } from '../shared/agent-management.ts';
 import config from '../../forge.config.mts';
+import { WorkerOperationBusyError } from '../lib/agent-management/operations.mts';
 
 test('workspace IPC refuses foreign senders, subframes and invalid control actions', async () => {
   const events = new EventEmitter(), mainFrame = {};
@@ -26,7 +27,11 @@ test('workspace IPC refuses foreign senders, subframes and invalid control actio
     removeHandler: (name: string) => { handlers.delete(name); } };
   let terminalCalls = 0, terminalDisposed = false;
   const removals: unknown[] = [];
-  const registration = registerAgentManagementIpc({ window, ipc, service, remove: async value => { removals.push(value); }, terminal: {
+  let deletionBusy = false;
+  const registration = registerAgentManagementIpc({ window, ipc, service, remove: async value => {
+    if (deletionBusy) throw new WorkerOperationBusyError('Nothing was deleted. Try again shortly.');
+    removals.push(value);
+  }, terminal: {
     open: async (engineId, agentId) => { terminalCalls++; return { id: 'session', engineId, agentId, ended: false, error: null }; },
     update: async () => {}, close: async () => {}, dispose: () => { terminalDisposed = true; },
   } });
@@ -51,6 +56,13 @@ test('workspace IPC refuses foreign senders, subframes and invalid control actio
   expect(() => remove({ ...event, senderFrame: {} } as IpcMainInvokeEvent, deletion)).toThrow('workspace window');
   expect(() => remove(event, { ...deletion, deleteData: 'true' })).toThrow('flag');
   const bridge = createAgentManagementApi({ invoke: async (channel: string, value: unknown) => handlers.get(channel)!(event, value) });
+  deletionBusy = true;
+  expect(await remove(event, deletion)).toEqual({ status: 'busy', message: 'Nothing was deleted. Try again shortly.' });
+  let busy: unknown;
+  try { await bridge.remove!(deletion); } catch (error) { busy = error; }
+  expect(busy).toBeInstanceOf(Error); expect((busy as Error).message).toBe('Nothing was deleted. Try again shortly.');
+  expect(removals).toEqual([]);
+  deletionBusy = false;
   await bridge.remove!(deletion);
   expect(removals).toEqual([deletion]);
   events.emit('closed');

@@ -9,6 +9,7 @@ import { assertAgentModelSelection, parseAgentModels } from '../../shared/agent-
 import type { AgentModel } from '../../shared/agent-models.ts';
 import { parseInstructionFiles, parseInstructionFilePath } from '../../shared/agent-registry.ts';
 import { readInstructionFile } from './instruction-files.mts';
+import { deletionReply } from './operations.mts';
 
 export function registerAgentRegistryIpc(options: {
   window: BrowserWindow; workspaceRoot: string; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>;
@@ -64,7 +65,10 @@ export function registerAgentRegistryIpc(options: {
       if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
       await options.openInstructionFile!(path);
     });
-    if (options.remove) handle(AGENT_REGISTRY_CHANNELS.remove, value => options.remove!(parseDeleteSpecialistAgent(value)));
+    if (options.remove) handle(AGENT_REGISTRY_CHANNELS.remove, value => {
+      const input = parseDeleteSpecialistAgent(value);
+      return deletionReply(() => options.remove!(input));
+    });
     if (options.runtime) handle(AGENT_RUNTIME_CHANNEL, value => options.runtime!(parseAgentRuntimeRequest(value)));
     handle(AGENT_REGISTRY_CHANNELS.list, () => options.registry.snapshot(options.workspaceRoot));
     handle(AGENT_REGISTRY_CHANNELS.models, models);

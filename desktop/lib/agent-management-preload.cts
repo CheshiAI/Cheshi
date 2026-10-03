@@ -1,11 +1,11 @@
 import type { IpcRenderer } from 'electron';
 import { AGENT_CHANNELS, parseAgentAction, parseAgentCatalog, parseAgentDetails, parseAgentEngineId,
-  parseAgentId, parseAgentSnapshot, parseDeleteContainer } from '../shared/agent-management.ts';
+  parseAgentId, parseAgentSnapshot, parseDeleteContainer, unwrapAgentDeletion } from '../shared/agent-management.ts';
 import type { AgentManagementApi } from '../shared/agent-management.ts';
 
 export function createAgentManagementApi(ipc: Pick<IpcRenderer, 'invoke'>): AgentManagementApi {
   return {
-    async remove(input) { await ipc.invoke(AGENT_CHANNELS.remove, parseDeleteContainer(input)); },
+    async remove(input) { unwrapAgentDeletion(await ipc.invoke(AGENT_CHANNELS.remove, parseDeleteContainer(input))); },
     async engines() { return parseAgentCatalog(await ipc.invoke(AGENT_CHANNELS.engines)); },
     async snapshot(engine) { return parseAgentSnapshot(await ipc.invoke(AGENT_CHANNELS.snapshot, parseAgentEngineId(engine))); },
     async details(engine, id) { return parseAgentDetails(await ipc.invoke(AGENT_CHANNELS.details, parseAgentEngineId(engine), parseAgentId(id))); },

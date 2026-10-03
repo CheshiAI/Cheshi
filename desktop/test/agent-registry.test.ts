@@ -12,6 +12,7 @@ import { createAgentRegistryApi } from '../lib/agent-registry-preload.cts';
 import { AGENT_REGISTRY_CHANNELS, parseSaveSpecialistAgent } from '../shared/agent-registry.ts';
 import type { AgentRegistrySnapshot } from '../shared/agent-registry.ts';
 import { specialistInput } from './agent-registry-fixtures';
+import { WorkerOperationBusyError } from '../lib/agent-management/operations.mts';
 
 function fixture() {
   const directory = mkdtempSync(path.join(tmpdir(), 'cheshi-agent-registry-'));
@@ -98,13 +99,17 @@ test('registry persists account references and strips unrecognized fields', () =
 
 test('registry IPC binds assignment to its owner workspace and broadcasts across windows', async () => {
   const f = fixture();
+  let deletionBusy = false;
   const bridge = (workspaceRoot: string) => {
     const renderer = new EventEmitter();
     const owner = { mainFrame: {}, isDestroyed: () => false, send: (channel: string, value: unknown) => { renderer.emit(channel, {}, value); } };
     const window = Object.assign(new EventEmitter(), { webContents: owner }) as unknown as BrowserWindow;
     const handlers = new Map<string, Parameters<IpcMain['handle']>[1]>();
     const registration = registerAgentRegistryIpc({ window, workspaceRoot, registry: f.registry,
-      remove: async value => f.registry.remove(value, workspaceRoot),
+      remove: async value => {
+        if (deletionBusy) throw new WorkerOperationBusyError('Nothing was deleted. Try again shortly.');
+        return f.registry.remove(value, workspaceRoot);
+      },
       ipc: { handle: (channel, handler) => { handlers.set(channel, handler); }, removeHandler: channel => { handlers.delete(channel); } } });
     const event = { sender: owner, senderFrame: owner.mainFrame } as IpcMainInvokeEvent;
     const api = createAgentRegistryApi(Object.assign(renderer, {
@@ -130,6 +135,13 @@ test('registry IPC binds assignment to its owner workspace and broadcasts across
     expect(() => remove({ ...a.event, sender: {} } as IpcMainInvokeEvent, deletion)).toThrow('workspace window');
     expect(() => remove({ ...a.event, senderFrame: {} } as IpcMainInvokeEvent, deletion)).toThrow('workspace window');
     expect(() => remove(a.event, { ...deletion, deleteData: 'true' })).toThrow('permission');
+    deletionBusy = true;
+    expect(await remove(a.event, deletion)).toEqual({ status: 'busy', message: 'Nothing was deleted. Try again shortly.' });
+    let busy: unknown;
+    try { await a.api.remove!(deletion); } catch (error) { busy = error; }
+    expect(busy).toBeInstanceOf(Error); expect((busy as Error).message).toBe('Nothing was deleted. Try again shortly.');
+    expect((await a.api.list()).agents).toHaveLength(1);
+    deletionBusy = false;
     expect((await a.api.remove!(deletion)).agents).toHaveLength(0);
     expect(snapshots.at(-1)?.agents).toHaveLength(0);
     a.window.emit('closed');

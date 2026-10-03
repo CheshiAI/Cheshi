@@ -29,6 +29,13 @@ export interface AgentManagementApi {
 }
 
 export interface DeleteContainer { engineId: string; containerId: string; deleteData: boolean }
+/** Expected contention is raised in preload, without an Electron handler failure. */
+export function unwrapAgentDeletion(value: unknown): unknown {
+  const result = agentRecord(value);
+  if (result.status === 'busy') throw new Error(agentText(result.message));
+  if (result.status !== 'deleted') throw new TypeError('Invalid deletion response.');
+  return result.value;
+}
 export function parseDeleteContainer(value: unknown): DeleteContainer {
   const v = agentRecord(value), containerId = parseAgentId(v.containerId);
   if (!/^[a-f0-9]{64}$/.test(containerId)) throw new TypeError('Expected a full Docker container ID.');

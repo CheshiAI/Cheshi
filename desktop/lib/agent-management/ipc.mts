@@ -1,4 +1,5 @@
 import { onWindowClosed } from '../window-close-cleanup.mts';
+import { deletionReply } from './operations.mts';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 import { AGENT_CHANNELS, parseAgentAction, parseAgentEngineId, parseAgentId, parseDeleteContainer } from '../../shared/agent-management.ts';
 import type { AgentManagementApi } from '../../shared/agent-management.ts';
@@ -32,7 +33,10 @@ export function registerAgentManagementIpc(options: {
     channels.push(channel);
   };
   try {
-    if (options.remove) handle(AGENT_CHANNELS.remove, (_event, value: unknown) => options.remove!(parseDeleteContainer(value)));
+    if (options.remove) handle(AGENT_CHANNELS.remove, (_event, value: unknown) => {
+      const input = parseDeleteContainer(value);
+      return deletionReply(() => options.remove!(input));
+    });
     handle(AGENT_CHANNELS.engines, () => options.service.engines());
     handle(AGENT_CHANNELS.snapshot, (_event, engine: unknown) => options.service.snapshot(parseAgentEngineId(engine)));
     handle(AGENT_CHANNELS.details, (_event, engine: unknown, id: unknown) => options.service.details(parseAgentEngineId(engine), parseAgentId(id)));
