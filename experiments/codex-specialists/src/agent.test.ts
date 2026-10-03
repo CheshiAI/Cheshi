@@ -1,10 +1,11 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SpecialistAgent } from './agent.ts';
 import type { RpcClient } from './app-server-client.ts';
-import { createDeferred, type JsonRecord, type Notification } from './protocol.ts';
+import { createDeferred, record, type JsonRecord, type Notification } from './protocol.ts';
+import { SCRATCH_PROFILE } from './task-scratch.ts';
 import { AgentStore } from './store.ts';
 import { WorkerHistoryQueue } from './history-queue.ts';
 import { WorkerCollaboration } from './collaboration.ts';
@@ -33,6 +34,7 @@ class FakeClient implements RpcClient {
   account: unknown = { type: 'chatgpt' };
   resumeId = 'thread';
   onInject: (params: JsonRecord) => Promise<JsonRecord> = async () => ({});
+  onUnsubscribe: () => Promise<JsonRecord> = async () => ({ status: 'unsubscribed' });
   onStart: (params: JsonRecord) => Promise<JsonRecord> = async () => {
     this.complete(); return { turn: { id: 'turn' } };
   };
@@ -43,8 +45,14 @@ class FakeClient implements RpcClient {
   async request(method: string, params: JsonRecord): Promise<JsonRecord> {
     this.calls.push({ method, params });
     if (method === 'account/read') return { account: this.account };
-    if (method === 'thread/start') return { thread: { id: 'thread' }, model: 'test-model' };
-    if (method === 'thread/resume') return { thread: { id: this.resumeId }, model: 'test-model' };
+    if (method === 'thread/start' || method === 'thread/resume') {
+      const scratch = params.permissions === SCRATCH_PROFILE
+        ? { activePermissionProfile: { id: SCRATCH_PROFILE }, sandbox: { type: 'workspaceWrite',
+          writableRoots: [record(record(params.config)['shell_environment_policy.set']).TMPDIR],
+          networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true } } : {};
+      return { thread: { id: method === 'thread/start' ? 'thread' : this.resumeId }, model: 'test-model', ...scratch };
+    }
+    if (method === 'thread/unsubscribe') return this.onUnsubscribe();
     if (method === 'thread/inject_items') return await this.onInject(params);
     if (method === 'turn/start') { this.started.resolve(); return await this.onStart(params); }
     if (method === 'turn/interrupt') return await this.onInterrupt();
@@ -380,7 +388,7 @@ test('self-reported completion is refused when independent verification is requi
   expect(store.memory()).toBe('');
 });
 
-test('verification always uses a read-only sandbox and only its own command permission', async () => {
+test('verification keeps the project read-only and grants only command-enabled test scratch', async () => {
   for (const commandExecution of [false, true]) {
     const client = new FakeClient(), store = new AgentStore(temporary());
     const collaboration = new WorkerCollaboration(store, 'reviewer', '/workspace');
@@ -393,10 +401,93 @@ test('verification always uses a read-only sandbox and only its own command perm
       instructions: 'Verify', model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: true, commandExecution },
     } });
     agent.pump(); await agent.settled();
-    expect(client.calls.find(c => c.method === 'thread/start')?.params).toMatchObject({ sandbox: 'read-only',
+    const start = client.calls.find(c => c.method === 'thread/start')!.params;
+    expect(start).toMatchObject({
       config: { 'features.shell_tool': commandExecution, 'features.unified_exec': commandExecution } });
-    expect(client.calls.find(c => c.method === 'turn/start')?.params.sandboxPolicy).toEqual({ type: 'readOnly', networkAccess: false });
+    const turn = client.calls.find(c => c.method === 'turn/start')!.params;
+    if (commandExecution) {
+      expect(start.permissions).toBe(SCRATCH_PROFILE); expect(turn.permissions).toBe(SCRATCH_PROFILE);
+      expect(start).not.toHaveProperty('sandbox'); expect(turn).not.toHaveProperty('sandboxPolicy');
+      const config = record(start.config), environment = record(config['shell_environment_policy.set']);
+      expect(config.default_permissions).toBe(SCRATCH_PROFILE);
+      const directory = String(environment.TMPDIR);
+      expect(config[`permissions.${SCRATCH_PROFILE}`]).toEqual({
+        filesystem: { ':root': 'read', '/workspace': 'read', [directory]: 'write' }, network: { enabled: false },
+      });
+      expect(existsSync(directory)).toBe(false);
+    } else {
+      expect(start.sandbox).toBe('read-only');
+      expect(turn.sandboxPolicy).toEqual({ type: 'readOnly', networkAccess: false });
+    }
     expect(JSON.parse(store.snapshot().collaboration.outgoing[0]!.text).verdicts[0].verdict).toBe('inconclusive');
     expect(store.memory()).toBe('');
   }
+});
+
+test('read-only command turns get fresh scratch on warm and cold resumes and clean known outcomes', async () => {
+  const store = new AgentStore(temporary());
+  const configuration = { profileId: 'reviewer', accountId: 'fixture', role: 'verification', token: 'a'.repeat(64),
+    instructions: 'Verify', model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: false, commandExecution: true } };
+  const directories: string[] = [];
+  const create = () => {
+    const client = new FakeClient();
+    client.onStart = async () => {
+      const thread = [...client.calls].reverse().find(c => c.method === 'thread/start' || c.method === 'thread/resume')!;
+      const directory = String(record(record(thread.params.config)['shell_environment_policy.set']).TMPDIR);
+      expect(existsSync(directory)).toBe(true);
+      writeFileSync(join(directory, 'test-output'), 'disposable'); directories.push(directory);
+      client.complete(directories.length === 2 ? 'failed' : 'completed'); return { turn: { id: 'turn' } };
+    };
+    return { client, agent: new SpecialistAgent({ client, store, workspace: '/workspace', profile: 'Verify', configuration }) };
+  };
+  const first = create();
+  first.agent.submit('first', 'Test'); await first.agent.settled();
+  first.agent.submit('second', 'Retest'); await first.agent.settled();
+  expect(first.client.calls.filter(c => c.method === 'thread/resume')).toHaveLength(1);
+  expect(first.client.calls.findIndex(c => c.method === 'thread/unsubscribe'))
+    .toBeLessThan(first.client.calls.findIndex(c => c.method === 'thread/resume'));
+  const second = create();
+  second.agent.submit('third', 'Restarted test'); await second.agent.settled();
+  expect(second.client.calls.some(c => c.method === 'thread/resume')).toBe(true);
+  expect(new Set(directories).size).toBe(3);
+  expect(directories.every(directory => !existsSync(directory))).toBe(true);
+  expect(store.task('second')?.status).toBe('failed');
+});
+
+test('unknown execution retains scratch until app-server shutdown cleanup and blocks further work', async () => {
+  const client = new FakeClient(), store = new AgentStore(temporary());
+  let directory = '';
+  client.onStart = async () => {
+    directory = String(record(record(client.calls.find(c => c.method === 'thread/start')!.params.config)['shell_environment_policy.set']).TMPDIR);
+    throw new Error('transport lost');
+  };
+  const agent = new SpecialistAgent({ client, store, workspace: '/workspace', profile: 'Verify', configuration: {
+    profileId: 'reviewer', accountId: 'fixture', role: 'verification', token: 'a'.repeat(64), instructions: 'Verify',
+    model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: false, commandExecution: true },
+  } });
+  try {
+    agent.submit('unknown', 'Test'); await agent.settled();
+    expect(store.task('unknown')?.status).toBe('unknown');
+    expect(existsSync(directory)).toBe(true);
+    expect(() => agent.submit('other', 'Test')).toThrow('unknown');
+  } finally { agent.disposeScratch(); }
+  expect(existsSync(directory)).toBe(false);
+});
+
+test('failed execution-session cleanup retains scratch and stops further tasks', async () => {
+  const client = new FakeClient(), store = new AgentStore(temporary());
+  client.onUnsubscribe = async () => { throw new Error('transport lost'); };
+  const agent = new SpecialistAgent({ client, store, workspace: '/workspace', profile: 'Verify', configuration: {
+    profileId: 'reviewer', accountId: 'fixture', role: 'verification', token: 'a'.repeat(64), instructions: 'Verify',
+    model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: false, commandExecution: true },
+  } });
+  let directory = '';
+  try {
+    agent.submit('test', 'Test'); await agent.settled();
+    directory = String(record(record(client.calls.find(c => c.method === 'thread/start')!.params.config)['shell_environment_policy.set']).TMPDIR);
+    expect(existsSync(directory)).toBe(true);
+    expect(agent.error).toContain('Restart the worker');
+    expect(() => agent.submit('another', 'Test')).toThrow('Restart the worker');
+  } finally { agent.disposeScratch(); }
+  expect(existsSync(directory)).toBe(false);
 });

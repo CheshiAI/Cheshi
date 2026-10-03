@@ -1,4 +1,5 @@
 import { WorkerVerification } from './verification.ts';
+import { SCRATCH_PROFILE, TaskScratch } from './task-scratch.ts';
 import { verificationInstructions, verificationTools } from './verification-tools.ts';
 import type { RuntimeConfiguration } from './runtime-config.ts';
 import type { RpcClient } from './app-server-client.ts';
@@ -40,6 +41,7 @@ export class SpecialistAgent {
   private readonly loadedThreads = new Set<string>();
   private active: ActiveTask | null = null;
   private failure: string | null = null;
+  private readonly retainedScratch = new Set<TaskScratch>();
 
   private readonly verification: WorkerVerification | undefined;
   private readonly historyQueue: WorkerHistoryQueue | undefined;
@@ -140,25 +142,35 @@ export class SpecialistAgent {
     this.launch(this.store.task(next.taskId)!, next.prompt, next.messages);
   }
 
-  private async thread(task: Task): Promise<string> {
+  private async thread(task: Task, scratch?: TaskScratch): Promise<string> {
     const saved = this.store.snapshot();
     const savedThread = task.conversation ? saved.threads[task.conversation] ?? null : saved.threadId;
-    if (savedThread && this.loadedThreads.has(savedThread)) return savedThread;
+    // Reload turn-specific permission roots and TMPDIR, including warm resumes.
+    if (!scratch && savedThread && this.loadedThreads.has(savedThread)) return savedThread;
+    if (scratch && savedThread && this.loadedThreads.has(savedThread)) {
+      // Codex 0.159.3 ignores config overrides for an already-loaded thread.
+      // Unsubscribe unloads the idle execution session, not its persisted history.
+      await this.client.request('thread/unsubscribe', { threadId: savedThread });
+      this.loadedThreads.delete(savedThread);
+    }
     const settings = this.configuration;
     const profile = this.profile + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal ? decisionInstructions : '') + (this.verification ? verificationInstructions : '');
-    const params: JsonRecord = { cwd: this.workspace, sandbox: !task.consultation && !task.verification && settings?.permissions.fileWrite ? 'workspace-write' : 'read-only', approvalPolicy: 'on-request',
+    const params: JsonRecord = { cwd: this.workspace,
+      ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: !task.consultation && !task.verification && settings?.permissions.fileWrite === true ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
       approvalsReviewer: 'user', developerInstructions: profile,
       ...(settings ? { model: settings.model, serviceTier: settings.serviceTier, config: {
         ...(settings.reasoningEffort ? { model_reasoning_effort: settings.reasoningEffort } : {}),
         'features.shell_tool': !task.consultation && settings.permissions.commandExecution,
         'features.unified_exec': !task.consultation && settings.permissions.commandExecution,
         'features.multi_agent': false,
+        ...(scratch ? scratch.config(this.workspace) : {}),
       } } : {}) };
     const result = savedThread
       ? await this.client.request('thread/resume', { ...params, threadId: savedThread })
       : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal ? decisionTools : []), ...(this.verification ? verificationTools : [])] });
     const threadId = textValue(record(result.thread).id, 'thread id');
     assertResumedThread(savedThread, threadId);
+    scratch?.assertApplied(result);
     if (savedThread) {
       // Codex 0.159.3 can replay old developer instructions on cold resume.
       // Persist the current snapshot in model-visible history before any turn.
@@ -181,10 +193,15 @@ export class SpecialistAgent {
     const removeFailure = this.client.onFailure(error => observer.fail(error));
     let submitted = false;
     let deadline: ReturnType<typeof setTimeout> | undefined;
+    let scratch: TaskScratch | undefined;
     try {
       const account = record(await this.client.request('account/read', { refreshToken: false }));
       assertChatGPTAccount(account.account);
-      active.threadId = await this.thread(task);
+      if (!task.consultation && this.configuration?.permissions.commandExecution === true
+        && (task.verification || this.configuration.permissions.fileWrite !== true)) {
+        scratch = new TaskScratch(); this.retainedScratch.add(scratch);
+      }
+      active.threadId = await this.thread(task, scratch);
       if (active.stopRequested) {
         this.store.complete(task.id, { status: 'interrupted', output: '', error: null,
           ...(task.goal ? { goal: { ...task.goal, phase: 'blocked', pending: null } } : {}) }); return;
@@ -195,9 +212,9 @@ export class SpecialistAgent {
       const response = await this.client.request('turn/start', {
         threadId: active.threadId, input: [{ type: 'text', text: input }], cwd: this.workspace,
         approvalPolicy: 'on-request', approvalsReviewer: 'user',
-        sandboxPolicy: !task.consultation && !task.verification && this.configuration?.permissions.fileWrite
+        ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandboxPolicy: !task.consultation && !task.verification && this.configuration?.permissions.fileWrite === true
           ? { type: 'workspaceWrite', writableRoots: [this.workspace], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true }
-          : { type: 'readOnly', networkAccess: false },
+          : { type: 'readOnly', networkAccess: false } }),
         ...(this.configuration ? { model: this.configuration.model, effort: this.configuration.reasoningEffort, serviceTier: this.configuration.serviceTier } : {}),
       });
       active.turnId = textValue(record(response.turn).id, 'turn id');
@@ -240,7 +257,26 @@ export class SpecialistAgent {
     } catch (error) {
       this.store.complete(task.id, { status: submitted ? 'unknown' : active.stopRequested ? 'interrupted' : 'failed',
         output: '', error: error instanceof Error ? error.message : String(error) });
-    } finally { active.controller.abort(); clearTimeout(deadline); remove(); removeFailure(); }
+    } finally {
+      active.controller.abort(); clearTimeout(deadline); remove(); removeFailure();
+      // Unknown executions may still own child processes. Retain their scratch until
+      // app-server shutdown; the existing unknown-task gate prevents another turn.
+      if (scratch && this.store.task(task.id)?.status !== 'unknown') {
+        let released = true;
+        if (active.threadId) {
+          try {
+            // Unload also releases lingering unified-exec sessions before deleting
+            // their files. The saved conversation remains available for cold resume.
+            await this.client.request('thread/unsubscribe', { threadId: active.threadId });
+            this.loadedThreads.delete(active.threadId);
+          } catch {
+            this.failure = 'Could not close the test command session. Restart the worker before continuing.';
+            released = false;
+          }
+        }
+        if (released) { scratch.dispose(); this.retainedScratch.delete(scratch); }
+      }
+    }
   }
 
   private async interrupt(active: ActiveTask): Promise<void> {
@@ -265,4 +301,10 @@ export class SpecialistAgent {
   }
 
   async settled(): Promise<void> { await this.active?.done; }
+
+  /** Only after app-server and its command processes have stopped. */
+  disposeScratch(): void {
+    for (const scratch of this.retainedScratch) scratch.dispose();
+    this.retainedScratch.clear();
+  }
 }

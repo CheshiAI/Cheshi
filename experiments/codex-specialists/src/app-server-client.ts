@@ -20,9 +20,9 @@ export class AppServerClient implements RpcClient {
   private toolHandler: ((params: JsonRecord) => Promise<JsonRecord>) | undefined;
   handleTools(handler: (params: JsonRecord) => Promise<JsonRecord>): void { this.toolHandler = handler; }
 
-  constructor(command = 'codex') {
+  constructor(command = 'codex', env?: NodeJS.ProcessEnv) {
     this.child = spawn(command, ['app-server', '--listen', 'stdio://', '-c', 'cli_auth_credentials_store="file"'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'], env,
     });
     // Do not forward diagnostic output: provider diagnostics can contain private data.
     this.child.stderr.resume();

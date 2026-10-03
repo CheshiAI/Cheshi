@@ -291,7 +291,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   };
 }
 function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number]) {
-  return digest(JSON.stringify({ collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
+  return digest(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
     ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
 }
 function profileConfiguration(agent: SpecialistAgent) {

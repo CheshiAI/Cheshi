@@ -44,6 +44,8 @@ profile cheshi-codex-bwrap flags=(attach_disconnected,mediate_deleted) {
   mount options=(rw,rbind),
   # Only the explicitly writable project root in Codex's inner namespace.
   mount options=(rw,nosuid,nodev,remount,bind,silent,relatime) -> /newroot/workspace/,
+  # Per-turn test scratch only; /tmp itself and verifier project mounts stay read-only.
+  mount options=(rw,nosuid,nodev,remount,bind,silent,relatime) -> /newroot/tmp/cheshi-test-*/,
   mount options=(ro,nosuid,nodev,remount,bind,silent,relatime),
   mount options=(ro,nosuid,nodev,remount,bind,silent),
   mount options=(ro,nosuid,nodev,noexec,remount,bind,silent,relatime),

@@ -112,6 +112,7 @@ const shutdown = async () => {
   await Promise.allSettled(tasks.map(task => agent.stop(task.id)));
   await client.close();
   await agent.settled();
+  agent.disposeScratch();
   process.exit(0);
 };
 process.once('SIGTERM', () => { void shutdown(); });
