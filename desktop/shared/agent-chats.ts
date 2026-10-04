@@ -7,6 +7,9 @@ import { parseQuestionDeadline } from './agent-question.ts';
 
 import { parseGoalUsage, type TaskGoalUsage } from './agent-task-inspection.ts';
 
+export const AGENT_CHATS_CHANGED = 'cheshi:agent-chats:changed';
+export interface ChatsCursor { epoch: string; sequence: number }
+export interface ChatsUpdate { cursor: ChatsCursor; rooms: AgentRoom[]; messages: RoomMessage[]; removedRoomIds: string[]; removedMessageIds: string[] }
 export const AGENT_CHATS_CHANNEL = 'cheshi:agent-chats:request';
 export interface RoomQuestion { id: string; recipient: string; text: string; status: 'waiting' | 'answered' | 'closed' | 'expired'; closure: string | null; expiresAt?: string | null }
 export interface RoomGoalProgress {
@@ -35,7 +38,7 @@ export interface RoomJob {
   automatic?: true; userText?: string; questionId?: string; answerTo?: string;
   goal: boolean; inputId?: string; state: 'queued' | 'sending' | 'sent' | 'unknown' | 'held'; error: string | null;
 }
-export interface ChatsSnapshot { rooms: AgentRoom[]; messages: RoomMessage[] }
+export interface ChatsSnapshot { cursor?: ChatsCursor; rooms: AgentRoom[]; messages: RoomMessage[] }
 export interface ChatTaskTarget { roomId: string; threadId: string | null; agentId: string; engineId: string; taskId: string }
 export type ChatsRequest = { action: 'list' }
   | { action: 'retry'; roomId: string; messageId: string }
@@ -46,7 +49,7 @@ export type ChatsRequest = { action: 'list' }
   | { action: 'create'; id: string; name: string; engineId: string; members: string[]; defaultAgentId: string }
   | { action: 'invite'; roomId: string; members: string[]; defaultAgentId: string }
   | { action: 'send'; id: string; roomId: string; threadId: string | null; recipient: string | null; text: string; goal: boolean; automatic?: true; questionId?: string; answerTo?: string };
-export interface AgentChatsApi { request(input: ChatsRequest): Promise<ChatsSnapshot> }
+export interface AgentChatsApi { request(input: ChatsRequest): Promise<ChatsSnapshot>; onDidChange?(listener: (update: ChatsUpdate) => void): () => void }
 export const chatId = (value: unknown): string => {
   const id = parseAgentId(value);
   if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) throw new Error('Invalid chat identifier.');
@@ -135,5 +138,15 @@ export function parseRoomJob(value: unknown): RoomJob {
 }
 export function parseChatsSnapshot(value: unknown): ChatsSnapshot {
   const v = agentRecord(value);
-  return { rooms: entries(v.rooms, parseRoom, 1000), messages: entries(v.messages, parseRoomMessage, 100_000) };
+  return { ...(v.cursor === undefined ? {} : { cursor: parseChatsCursor(v.cursor) }), rooms: entries(v.rooms, parseRoom, 1000), messages: entries(v.messages, parseRoomMessage, 100_000) };
+}
+
+function parseChatsCursor(value: unknown): ChatsCursor {
+  const v = agentRecord(value);
+  if (typeof v.epoch !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(v.epoch) || !Number.isSafeInteger(v.sequence) || Number(v.sequence) < 0) throw new Error('Invalid Chats event cursor.');
+  return { epoch: v.epoch, sequence: Number(v.sequence) };
+}
+export function parseChatsUpdate(value: unknown): ChatsUpdate {
+  const v = agentRecord(value), snapshot = parseChatsSnapshot(value);
+  return { ...snapshot, cursor: parseChatsCursor(v.cursor), removedRoomIds: entries(v.removedRoomIds, chatId, 1000), removedMessageIds: entries(v.removedMessageIds, chatId, 100_000) };
 }

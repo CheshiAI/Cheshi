@@ -9,6 +9,8 @@ type Job = { id: string; taskId: string; threadId: string; turnId: string; tool:
 export class WorkerHistoryQueue {
   private readonly filename: string;
   private jobs: Job[];
+  private readonly listeners = new Set<() => void>();
+  subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   private waiters = new Map<string, ReturnType<typeof createDeferred<unknown>>>();
   constructor(directory: string) {
     this.filename = join(directory, 'state', 'history-requests.json');
@@ -21,6 +23,7 @@ export class WorkerHistoryQueue {
   private save(jobs: Job[]) {
     writeFileSync(`${this.filename}.tmp`, JSON.stringify(jobs), { mode: 0o600, flush: true });
     renameSync(`${this.filename}.tmp`, this.filename); this.jobs = jobs;
+    for (const listener of this.listeners) listener();
   }
   async call(taskId: string, threadId: string, turnId: string, callId: string, tool: string, value: unknown, signal: AbortSignal) {
     signal.throwIfAborted();

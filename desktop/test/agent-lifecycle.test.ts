@@ -56,6 +56,7 @@ test('busy work and pending demand from another room prevent sleep; prepare race
   expect(f.actions).not.toContain('prepare'); f.setDemand(false); f.setNow(1120000); await f.rest();
   f.prepare(() => { f.lifecycle.demand(f.binding); }); f.setNow(1420000); await f.rest();
   expect(f.actions).toContain('resume'); expect(f.actions).not.toContain('commit');
+  expect(f.lifecycle.nextCheck(f.binding)).toBeGreaterThan(1420000);
 });
 test('restart preserves sleeping state and the question deadline wakes the worker without a new message', async () => {
   const f = fixture(); await f.connect(); f.deadline(500000); await f.rest(); f.setNow(300000); await f.rest();
@@ -64,12 +65,22 @@ test('restart preserves sleeping state and the question deadline wakes the worke
   expect(f.lifecycle.cached(f.binding)?.lifecycle?.phase).toBe('sleeping');
   f.setNow(500000); await f.lifecycle.connection(f.binding, false); expect(f.startCount()).toBe(2);
 });
+test('deadlines schedule only idle sleep or a saved question; busy work has no recurring status deadline', async () => {
+  const f = fixture(); await f.connect(); f.setIdle(false); await f.rest();
+  expect(f.lifecycle.nextCheck(f.binding)).toBeNull();
+  f.setNow(1000); f.setIdle(true); f.lifecycle.activity(f.binding); await f.rest();
+  expect(f.lifecycle.nextCheck(f.binding)).toBe(301000);
+  f.deadline(500000); f.setNow(301000); await f.rest();
+  expect(f.lifecycle.nextCheck(f.binding)).toBe(500000);
+  f.restart(); expect(f.lifecycle.nextCheck(f.binding)).toBe(500000);
+});
 test('manual stop persists across restart, and uncertain shutdown is never reported as confirmed sleep', async () => {
   const f = fixture(); await f.connect();
   await f.lifecycle.manual('docker:test', 'container', 'stop', async () => { f.setRunning(false); });
   f.restart(); await fails(f.connect(), 'manually stopped'); expect(f.startCount()).toBe(1);
   f.lifecycle.adopt(f.binding, f.details); f.setRunning(true); f.unconfirmed();
   await f.rest(); f.setNow(300000); await f.rest(); expect(f.lifecycle.cached(f.binding)).toBeNull();
+  expect(f.lifecycle.nextCheck(f.binding)).toBe(420000);
 });
 test('manual stop captures newer activity and persists confirmed stopped details without waking', async () => {
   const f = fixture(); await f.connect();

@@ -506,3 +506,27 @@ test('unknown delivery never wakes or resends its saved job', async () => {
   const service = createAgentChats({ ...f.options, wake: async () => { wakes++; return { details: f.details }; } });
   await service.tick(); expect(wakes).toBe(0); expect(f.sent).toHaveLength(1);
 });
+
+test('started Chats delivers on request and worker events without periodic reads or duplicate submission', async () => {
+  const f = fixture(); let reads = 0;
+  const service = createAgentChats({ ...f.options, status: async () => { reads++; return { details: f.details }; } });
+  const events: import('../shared/agent-chats').ChatsUpdate[] = [];
+  const unsubscribe = service.subscribe(f.workspace, event => events.push(event));
+  service.request(f.workspace, { action: 'list' });
+  service.start(); await service.settled();
+  try {
+    service.request(f.workspace, { action: 'send', id: 'event-task', roomId: 'room', recipient: 'dev', threadId: null, text: 'Login', goal: false });
+    await service.settled();
+    expect(f.sent).toHaveLength(1);
+    f.details.tasks[0]!.status = 'completed';
+    f.details.tasks[0]!.responses = [{ id: 'answer', text: 'Login complete', status: 'completed' }];
+    service.changed(bindingFor(f.workspace, 'docker:test', 'dev', 'account-0')); await service.settled();
+    const saved = service.request(f.workspace, { action: 'list' });
+    expect(saved.messages.some(m => m.text === 'Login complete')).toBe(true);
+    expect(events.some(e => e.messages.some(m => m.text === 'Login complete'))).toBe(true);
+    const settledReads = reads;
+    // Exceed the old polling interval: an idle room performs no backend status reads.
+    await new Promise(resolve => setTimeout(resolve, 3100));
+    expect(reads).toBe(settledReads); expect(f.sent).toHaveLength(1);
+  } finally { unsubscribe(); await service.dispose(); }
+});

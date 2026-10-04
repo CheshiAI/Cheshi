@@ -227,9 +227,9 @@ export class SpecialistAgent {
     const active: ActiveTask = { commands, id, threadId: null, turnId: null, observations, health: new ExecutionHealth(id),
       stopRequested: false, done: Promise.resolve(), observer: new TurnObserver((method, item) => { commands.observe(method, item); observations.item(method, item); if (this.configuration?.permissions.commandExecution === true) this.verification?.observe(task, method, item); }), interrupting: null, input, messages, controller: new AbortController() };
     this.active = active;
-    active.done = this.run(task, active).finally(() => { if (this.active === active) this.active = null; });
+    active.done = this.run(task, active).finally(() => { if (this.active === active) this.active = null; this.store.changed(); });
     // A persistence failure is reported through the worker's health/lifecycle, not an unhandled rejection.
-    void active.done.catch(() => { this.failure = 'Could not persist specialist task state.'; });
+    void active.done.catch(() => { this.failure = 'Could not persist specialist task state.'; this.store.changed(); });
     return task;
   }
 
@@ -466,7 +466,7 @@ export class SpecialistAgent {
       // No model call, prompt, goal decision, replay or automatic continuation.
       this.integration.call(task, 'recover_integration', { candidateId, hash });
       return this.store.task(id)!;
-    } finally { this.recovering = false; }
+    } finally { this.recovering = false; this.store.changed(); }
   }
 
   async recover(id: string, roomId: string): Promise<Task> {
@@ -511,7 +511,7 @@ export class SpecialistAgent {
           : `Execution ended (${result.receipt.status}). Review the recovered output and provide a follow-up to resume goal judgment.`,
         ...(goal ? { goal: { ...goal, phase: 'blocked' as const, pending: null, criteria: goal.criteria.length ? goal.criteria : goal.pending?.criteria ?? [] } } : {}) });
       return this.store.task(id)!;
-    } finally { this.recovering = false; }
+    } finally { this.recovering = false; this.store.changed(); }
   }
 
   async stop(id: string): Promise<void> {

@@ -1,18 +1,22 @@
 import { expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
-import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
+import type { BrowserWindow, IpcMain, IpcMainInvokeEvent, IpcRenderer } from 'electron';
 import { registerAgentChatsIpc } from '../lib/agent-chats/ipc.mts';
 import { createAgentChatsApi } from '../lib/agent-chats-preload.cts';
-import { AGENT_CHATS_CHANNEL } from '../shared/agent-chats.ts';
+import { AGENT_CHATS_CHANNEL, AGENT_CHATS_CHANGED, type ChatsUpdate } from '../shared/agent-chats.ts';
 
 test('Chats bridge is confined to the owning workspace frame and validates requests before dispatch', async () => {
-  const events = new EventEmitter(), mainFrame = {}, owner = { mainFrame, isDestroyed: () => false };
+  const events = new EventEmitter(), renderer = new EventEmitter(), mainFrame = {};
+  let destroyed = false, subscribed = '', removed = 0;
+  let publish: (update: ChatsUpdate) => void = () => {};
+  const owner = { mainFrame, isDestroyed: () => destroyed, send: (channel: string, value: unknown) => renderer.emit(channel, {}, value) };
   const window = Object.assign(events, { webContents: owner }) as unknown as BrowserWindow;
   const handlers = new Map<string, Parameters<IpcMain['handle']>[1]>();
   const calls: string[] = [];
   const registration = registerAgentChatsIpc({ window, workspaceRoot: '/project', ipc: {
     handle: (name, fn) => { handlers.set(name, fn); }, removeHandler: name => { handlers.delete(name); },
   }, service: {
+    settled: async () => {}, subscribe: (root, listener) => { subscribed = root; publish = listener; return () => { removed++; }; }, changed: () => {},
     retry: async root => { calls.push(`${root}/retry`); return { rooms: [], messages: [] }; },
     inspectApplication: async root => { calls.push(`${root}/application`); return { rooms: [], messages: [] }; },
     question: async root => { calls.push(root); return { rooms: [], messages: [] }; },
@@ -25,7 +29,14 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   expect(() => invoke({}, mainFrame, { action: 'list' })).toThrow('workspace');
   expect(() => invoke(owner, {}, { action: 'list' })).toThrow('workspace');
   expect(() => invoke(owner, mainFrame, { action: 'send', goal: 'true' })).toThrow('Invalid');
-  const api = createAgentChatsApi({ invoke: async (_channel: string, request: unknown) => invoke(owner, mainFrame, request) });
+  const bridge = Object.assign(renderer, { invoke: async (_channel: string, request: unknown) => invoke(owner, mainFrame, request) });
+  const api = createAgentChatsApi(bridge as unknown as Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>);
+  const updates: ChatsUpdate[] = [], stop = api.onDidChange!(update => updates.push(update));
+  const update = { cursor: { epoch: 'test', sequence: 1 }, rooms: [], messages: [], removedRoomIds: [], removedMessageIds: [] };
+  expect(subscribed).toBe('/project'); publish(update); expect(updates).toEqual([update]);
+  destroyed = true; publish(update); expect(updates).toHaveLength(1); destroyed = false;
+  expect(() => renderer.emit(AGENT_CHATS_CHANGED, {}, { ...update, cursor: { epoch: 'test', sequence: -1 } })).toThrow();
+  stop(); expect(renderer.listenerCount(AGENT_CHATS_CHANGED)).toBe(0);
   expect(await api.request({ action: 'list' })).toEqual({ rooms: [], messages: [] });
   expect(calls).toEqual(['/project']);
   expect(await api.request({ action: 'recover', roomId: 'room', goalId: 'goal' })).toEqual({ rooms: [], messages: [] });
@@ -39,7 +50,8 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   expect(calls.at(-1)).toBe('/project/application');
   expect(await api.request({ action: 'retry', roomId: 'room', messageId: 'queued' })).toEqual({ rooms: [], messages: [] });
   expect(calls.at(-1)).toBe('/project/retry');
-  registration.dispose();
+  events.emit('closed'); registration.dispose();
+  expect(removed).toBe(1);
   expect(handlers.size).toBe(0);
   expect(() => invoke(owner, mainFrame, { action: 'list' })).toThrow('workspace');
 });

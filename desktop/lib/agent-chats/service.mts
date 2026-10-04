@@ -1,3 +1,5 @@
+import { ChatsChanges } from './changes.mts';
+import { createEventQueue } from '../agent-orchestration/event-queue.mts';
 import { isWorkKind } from '../../shared/agent-work.ts';
 import { realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -9,6 +11,7 @@ import type { AgentRegistrySnapshot } from '../../shared/agent-registry.ts';
 import { bindingFor, type Binding, type Message } from '../agent-orchestration/mailbox.mts';
 interface Options {
   filename: string;
+  roomChanged?(): void;
   lifecycle?(binding: Binding): AgentRuntimeState['lifecycle'];
   registry(workspace: string): AgentRegistrySnapshot;
   wake?(workspace: string, input: AgentRuntimeRequest, retry?: boolean): Promise<AgentRuntimeState>;
@@ -30,8 +33,20 @@ function workerWaitReason(details: AgentDetails | null | undefined, queued = fal
 }
 export function createAgentChats(options: Options) {
   let saved: ChatsStore | null = null;
-  const store = () => saved ??= new ChatsStore(options.filename);
-  let flight: Promise<void> | null = null, timer: ReturnType<typeof setInterval> | null = null;
+  const store = () => {
+    if (!saved) { saved = new ChatsStore(options.filename); saved.subscribe(publish); }
+    return saved;
+  };
+  let flight: Promise<void> | null = null, started = false, publishing = false;
+  const changes = new ChatsChanges(project);
+  const queue = createEventQueue<string>(async key => { await reconcile(key || undefined); }, () => { failure = 'Chats journal could not be read or saved.'; });
+  function publish() {
+    if (publishing || !started) return;
+    publishing = true;
+    queueMicrotask(() => { publishing = false; if (started) { try { changes.publish(); } catch { failure = 'Chats journal could not be read or saved.'; } } });
+  }
+  const snapshot = (workspace: string) => changes.snapshot(workspace);
+  function notify(binding?: Binding) { queue.notify(binding ? `${binding.workspace}/${binding.engineId}/${binding.agentId}` : ''); }
   let failure: string | null = null;
   const inspecting = new Set<string>();
   const progress = new Map<string, { checkedAt: number; value: RoomGoalProgress }>();
@@ -66,14 +81,14 @@ export function createAgentChats(options: Options) {
       turns: null, resumeBlocked: 'Checking the saved goal and worker state.' };
     const room = state.rooms.find(r => r.id === message.roomId)!;
     let blocked = value.resumeBlocked;
-    if (!cached || Date.now() - cached.checkedAt > 10_000) blocked = 'Checking the saved goal and worker state.';
+    if (!cached) blocked = 'Checking the saved goal and worker state.';
     if (!message.recipient || !current(room, message.recipient)) blocked = 'The saved agent identity is unavailable. Restore its project assignment and account.';
     if (!blocked && state.jobs.some(j => j.roomId === message.roomId && j.taskId === message.taskId && j.inputId
       && j.state !== 'held' && (j.state !== 'sent' || !state.messages.some(m => m.id === j.id && !['queued', 'sending', 'sent'].includes(m.status ?? ''))))) blocked = 'A follow-up is pending. Wait for the worker to acknowledge it.';
     if (state.jobs.some(j => j.roomId === message.roomId && j.taskId === message.taskId && j.state === 'unknown')) blocked = 'Delivery outcome is unknown. Inspect the saved task before resuming.';
     return { ...value, phase: message.status === 'unknown' ? 'unknown' : value.phase, resumeBlocked: blocked };
   }
-  function snapshot(workspace: string) {
+  function project(workspace: string) {
     const data = store().snapshot(workspace), state = store().all();
     return { ...data, messages: data.messages.map(m => {
       const room = data.rooms.find(r => r.id === m.roomId), member = room?.members.find(p => p.id === m.recipient);
@@ -165,6 +180,7 @@ export function createAgentChats(options: Options) {
           prompt, goal: input.goal, ...(resume ? { inputId: input.id } : {}), state: 'queued', error: null });
       });
     }
+    if (input.action !== 'list') { notify(); if (input.action === 'create' || input.action === 'invite') options.roomChanged?.(); }
     if (failure) throw new Error(failure);
     return snapshot(workspace);
   }
@@ -269,7 +285,7 @@ export function createAgentChats(options: Options) {
     store().update(s => { const j = s.jobs.find(j => j.id === id)!; Object.assign(j, patch);
       const m = s.messages.find(m => m.id === id)!; if (m.status === 'queued' || m.status === 'sending' || m.status === 'unknown') m.status = j.state; m.error = j.error; });
   }
-  async function dispatch() {
+  async function dispatch(only?: string) {
     const state = store().all();
     // One lookup per worker; never send concurrent model turns to the same worker.
     const groups = new Map<string, RoomJob[]>();
@@ -279,6 +295,7 @@ export function createAgentChats(options: Options) {
         ? m.status === 'completed' && progress.has(job.id) : job.automatic ? m.status === 'completed' && m.dialogue?.route?.delivered !== false : ['completed', 'failed', 'interrupted', 'blocked'].includes(m.status ?? '')))) continue;
       const room = state.rooms.find(r => r.id === job.roomId)!;
       const key = `${room.workspace}/${room.engineId}/${job.agentId}`;
+      if (only && key !== only) continue;
       groups.set(key, [...(groups.get(key) ?? []), job]);
     }
     for (const jobs of groups.values()) {
@@ -344,6 +361,7 @@ export function createAgentChats(options: Options) {
             j.prompt = `${pending.prompt}\n\nCompleted goal (reference data): ${completedGoal.prompt.slice(0, 1000)}\nResult: ${completedGoal.output.slice(0, 1000)}`;
             s.messages.find(m => m.id === pending.id)!.taskId = newTask;
           });
+          queue.notify(keyFor(room, pending.agentId));
           continue;
         }
         updateJob(pending.id, { state: 'sending', error: null });
@@ -353,6 +371,7 @@ export function createAgentChats(options: Options) {
             goal: pending.goal, ...(pending.automatic ? { automatic: true as const, userText: pending.userText } : {}), ...(pending.questionId ? { questionId: pending.questionId } : {}), ...(pending.inputId ? { inputId: pending.inputId } : {}),
           });
           updateJob(pending.id, { state: 'sent', error: null });
+          queue.notify(keyFor(room, pending.agentId));
         } catch (error) {
           const uncertain = Boolean(error && typeof error === 'object' && 'deliveryUncertain' in error && error.deliveryUncertain === true);
           updateJob(pending.id, { state: uncertain ? 'unknown' : 'queued', error: error instanceof Error ? error.message : 'Delivery failed.' });
@@ -363,7 +382,14 @@ export function createAgentChats(options: Options) {
       }
     }
   }
-  const tick = () => flight ??= dispatch().then(() => { failure = null; }, () => { failure = 'Chats journal could not be read or saved.'; }).finally(() => { flight = null; });
+  function reconcile(key?: string): Promise<void> {
+    const previous = flight;
+    const operation = Promise.resolve(previous).then(() => dispatch(key)).then(() => { failure = null; publish(); }, () => { failure = 'Chats journal could not be read or saved.'; });
+    flight = operation.finally(() => { if (flight === current) flight = null; });
+    const current = flight;
+    return current;
+  }
+  const tick = () => flight ?? reconcile();
   const scopeRoom = (b: Binding, id: string) => store().all().rooms.find(r => r.id === id && r.workspace === b.workspace && r.engineId === b.engineId
     && r.members.some(m => m.id === b.agentId && m.accountId === b.accountId) && current(r, b.agentId));
   const rooms = {
@@ -395,7 +421,10 @@ export function createAgentChats(options: Options) {
     },
   };
   return { retry, inspectApplication, request, recover, question, rooms, tick,
-    start() { if (!timer) { timer = setInterval(() => { void tick(); }, 3000); timer.unref(); void tick(); } },
-    async dispose() { if (timer) clearInterval(timer); timer = null; await flight; },
+    settled: () => queue.settled(),
+    subscribe: (workspace: string, listener: Parameters<ChatsChanges['subscribe']>[1]) => changes.subscribe(workspace, listener),
+    changed(binding?: Binding) { notify(binding); publish(); },
+    start() { if (!started) { started = true; notify(); queue.start(); } },
+    async dispose() { started = false; await queue.dispose(); await flight; changes.dispose(); },
   };
 }

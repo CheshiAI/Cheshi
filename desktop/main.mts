@@ -95,7 +95,7 @@ const agentManagement: ReturnType<typeof createAgentManagementService> = createA
 const agentRegistry = createAgentRegistry(path.join(app.getPath('userData'), 'agents', 'registry.json'));
 const agentDeletion = createAgentDeletion({ directory: path.join(app.getPath('userData'), 'agents', 'deletions'),
   runtimeDirectory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement });
-const agentChats = createAgentChats({ filename: path.join(app.getPath('userData'), 'agents', 'chats.json'),
+const agentChats = createAgentChats({ roomChanged: () => specialistRuntime.notify(), filename: path.join(app.getPath('userData'), 'agents', 'chats.json'),
   registry: workspace => agentRegistry.snapshot(workspace),
   lifecycle: binding => specialistRuntime.lifecycle(binding),
   wake: (workspace, input, retry) => specialistRuntime.wake(workspace, input, retry),
@@ -116,8 +116,10 @@ const specialistRuntime = createSpecialistRuntime({
     finally { await profiles.release(); }
   },
 });
+const unsubscribeChatsRuntime = specialistRuntime.subscribe(binding => agentChats.changed(binding));
+const unsubscribeChatsRegistry = agentRegistry.subscribe(() => agentChats.changed());
 void app.whenReady().then(() => { specialistRuntime.start(); agentChats.start(); });
-app.on('will-quit', () => { void specialistRuntime.dispose(); void agentChats.dispose(); });
+app.on('will-quit', () => { unsubscribeChatsRuntime(); unsubscribeChatsRegistry(); void specialistRuntime.dispose(); void agentChats.dispose(); });
 const apiSettings = createSettingsService({
   directory: path.join(app.getPath('userData'), 'api-keys'),
   settingsPath: path.join(app.getPath('userData'), 'settings.json'),

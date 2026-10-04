@@ -65,3 +65,42 @@ test('three participant routing wakes only recipients and a sleeping owner recei
     expect(coordinator.error(bindings[0]!.id)).toBeNull();
   } finally { await coordinator.dispose(); rmSync(directory, { recursive: true, force: true }); }
 });
+
+test('event-driven collaboration wakes only the question recipient and restores a sleeping owner after coordinator restart', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cheshi-event-routing-'));
+  const peers = [{ id: 'dev', name: 'Dev', role: 'development' }, { id: 'planner', name: 'Planner', role: 'planning' }, { id: 'verifier', name: 'Verifier', role: 'verification' }];
+  const bindings = peers.map(p => bindingFor('/workspace', 'docker:test', p.id, 'account'));
+  const running = new Set(['dev']), starts: string[] = [], callbacks = new Map<string, () => void>();
+  const outgoing = new Map<string, Message[]>(peers.map(p => [p.id, []]));
+  const delivered = new Map<string, Message>(); let exchanges = 0;
+  const create = () => createAgentOrchestration({ filename: join(directory, 'mailbox.json'),
+    peer: b => peers.find(p => p.id === b.agentId) ?? null,
+    rooms: { bindings: () => bindings, roster: () => ({}), allowed: () => true, record: () => {} },
+    watch: (c, changed) => { callbacks.set(c.endpoint, changed); return () => { callbacks.delete(c.endpoint); }; },
+    connect: async (b, demand) => {
+      if (!running.has(b.agentId) && demand) { running.add(b.agentId); starts.push(b.agentId); }
+      return running.has(b.agentId) ? { endpoint: b.agentId, token: 'test' } : null;
+    },
+    exchange: async (c, value) => {
+      exchanges++;
+      const input = value as { messages: Message[]; acknowledged: string[] };
+      for (const m of input.messages) delivered.set(m.id, m);
+      return { protocol: 1, received: input.messages.map(m => m.id), outgoing: outgoing.get(c.endpoint)!.filter(m => !input.acknowledged.includes(m.id)) };
+    },
+  });
+  let service = create();
+  try {
+    service.start(); await service.settled(); expect(starts).toEqual([]);
+    const question: Message = { id: 'question', questionId: 'question', taskId: 'goal', kind: 'question', from: 'dev', to: 'planner', text: 'Email only?' };
+    outgoing.get('dev')!.push(question); callbacks.get('dev')!(); await service.settled();
+    expect(starts).toEqual(['planner']); expect([...delivered.keys()]).toEqual(['question']);
+    const stable = exchanges; await new Promise(resolve => setTimeout(resolve, 2100)); expect(exchanges).toBe(stable);
+    running.delete('dev'); await service.dispose(); expect(callbacks.size).toBe(0);
+    service = create(); service.start(); await service.settled();
+    outgoing.get('planner')!.push({ ...question, id: 'reply', kind: 'reply', from: 'planner', to: 'dev', text: 'Yes, email only.' });
+    callbacks.get('planner')!(); await service.settled();
+    expect(starts).toEqual(['planner', 'dev']); expect([...delivered.keys()]).toEqual(['question', 'reply']);
+    const count = delivered.size; callbacks.get('planner')!(); await service.settled(); expect(delivered.size).toBe(count);
+    expect(running.has('verifier')).toBe(false);
+  } finally { await service.dispose(); rmSync(directory, { recursive: true, force: true }); }
+});

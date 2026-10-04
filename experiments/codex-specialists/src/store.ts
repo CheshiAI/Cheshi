@@ -77,6 +77,9 @@ export class AgentStore {
   readonly directory: string;
   private readonly filename: string;
   private state: SavedState;
+  private readonly listeners = new Set<() => void>();
+  subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
+  changed() { for (const listener of this.listeners) listener(); }
 
   constructor(directory: string) {
     this.directory = directory;
@@ -113,6 +116,7 @@ export class AgentStore {
     if (JSON.stringify(next) === JSON.stringify(this.state)) return result;
     this.write(this.filename, next);
     this.state = next;
+    this.changed();
     return result;
   }
   snapshot(): SavedState { return structuredClone(this.state); }

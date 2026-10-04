@@ -28,6 +28,8 @@ function parseSavedState(value: unknown): State {
 export class ChatsStore {
   private readonly filename: string;
   private state: State;
+  private readonly listeners = new Set<() => void>();
+  subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   constructor(filename: string) {
     this.filename = filename;
     try {
@@ -46,6 +48,7 @@ export class ChatsStore {
     mkdirSync(dirname(this.filename), { recursive: true, mode: 0o700 });
     writeFileSync(`${this.filename}.tmp`, json, { mode: 0o600, flush: true });
     renameSync(`${this.filename}.tmp`, this.filename); this.state = next;
+    for (const listener of this.listeners) listener();
   }
   all(): State { return structuredClone(this.state); }
   snapshot(workspace: string): ChatsSnapshot {

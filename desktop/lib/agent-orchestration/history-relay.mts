@@ -36,7 +36,8 @@ export class AgentHistoryRelay {
   private unsubscribe: (() => void) | undefined;
   private disposed = false;
   private readonly lifetime = new AbortController();
-  constructor(filename: string, options: AgentHistoryOptions) { this.filename = filename; this.options = options; }
+  private readonly changed: (binding: Binding) => void;
+  constructor(filename: string, options: AgentHistoryOptions, changed: (binding: Binding) => void = () => {}) { this.filename = filename; this.options = options; this.changed = changed; }
   private load() {
     if (this.jobs) return this.jobs;
     const raw: unknown = existsSync(this.filename) ? JSON.parse(readFileSync(this.filename, 'utf8')) : [];
@@ -66,10 +67,10 @@ export class AgentHistoryRelay {
     const scope = createHash('sha256').update(JSON.stringify([binding, connection.token])).digest('hex');
     const existing = this.polling.get(scope);
     if (existing) return existing;
-    const promise = this.poll(scope, connection, valid).finally(() => this.polling.delete(scope));
+    const promise = this.poll(scope, connection, valid, binding).finally(() => this.polling.delete(scope));
     this.polling.set(scope, promise); return promise;
   }
-  private async poll(scope: string, connection: CollaborationConnection, valid: () => boolean) {
+  private async poll(scope: string, connection: CollaborationConnection, valid: () => boolean, binding: Binding) {
     this.load();
     const allowed = () => !this.disposed && valid() && this.options.enabled() === true;
     const transport = this.options.transport ?? requestWorkerHistory;
@@ -111,7 +112,7 @@ export class AgentHistoryRelay {
       this.save([...this.load(), { scope, request, status: 'running' }]);
       const controller = new AbortController(), key = `${scope}:${request.id}`;
       this.active.set(key, controller);
-      const execution = this.run(scope, request, source, controller, allowed).finally(() => { this.active.delete(key); this.processing.delete(execution); });
+      const execution = this.run(scope, request, source, controller, allowed).finally(() => { this.active.delete(key); this.processing.delete(execution); if (!this.disposed) this.changed(binding); });
       this.processing.add(execution);
       // Persistence failures must not become unhandled rejections or silently replay provider calls.
       void execution.catch(() => controller.abort());

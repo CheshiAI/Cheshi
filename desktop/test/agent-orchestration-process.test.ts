@@ -131,7 +131,8 @@ for (const roomScoped of [false, true]) test(`real worker processes exchange too
     await coordinator.dispose(); coordinator = relay();
     developer = await start('dev');
     expect((await task()).status).toBe('waiting');
-    await until(async () => { await coordinator.tick(); return (await task()).status === 'completed'; }, 'answer and resumed task');
+    coordinator.start();
+    await until(async () => (await task()).status === 'completed', 'event-driven answer and resumed task');
     const after = await task();
     if (roomScoped) { expect(after).toHaveProperty('roomId', 'room'); expect(after).toHaveProperty('responses'); }
     expect(after.threadId).toBe(before.threadId);

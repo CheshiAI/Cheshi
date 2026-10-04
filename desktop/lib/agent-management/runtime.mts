@@ -66,6 +66,9 @@ export async function readRuntimeAuth(home: string): Promise<string> {
 }
 
 export function createSpecialistRuntime(options: RuntimeOptions) {
+  const listeners = new Set<(binding: Binding) => void>();
+  let started = false, unsubscribeRegistry: (() => void) | undefined, unsubscribeHistory: (() => void) | undefined;
+  const changed = (binding: Binding) => { for (const listener of listeners) listener(binding); };
   const run = options.run ?? runDocker;
   const pending = new Set<string>();
   const builds = new Map<string, Promise<void>>();
@@ -79,8 +82,12 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     around: (binding, operation) => lifecycle.exclusive(binding, operation),
     connect: (binding, demand) => lifecycle.connection(binding, demand),
     rest: (binding, connection, busy) => lifecycle.rest(binding, connection, busy),
+    nextCheck: binding => lifecycle.nextCheck(binding),
+    sleeping: binding => ['sleeping', 'disabled'].includes(lifecycle.state(binding)?.phase ?? ''),
+    changed: binding => { lifecycle.activity(binding); changed(binding); },
   });
-  const lifecycle = new WorkerLifecycle({ filename: join(options.directory, 'lifecycle.json'), idleMs: options.idleMs, now: options.now,
+  const lifecycle = new WorkerLifecycle({ filename: join(options.directory, 'lifecycle.json'), changed: binding => { changed(binding);
+    if (started && lifecycle.state(binding)?.phase !== 'running') orchestration.notify(binding); }, maintenance: binding => orchestration.notify(binding), idleMs: options.idleMs, now: options.now,
     inspect: readLive,
     start: async binding => {
       await request(binding.workspace, { action: 'start', engineId: binding.engineId, agentId: binding.agentId });
@@ -291,7 +298,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint,
-            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [workspace];
@@ -400,13 +407,16 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   async function wake(workspace: string, input: AgentRuntimeRequest, retry = false) {
     const b = await binding(workspace, input);
     lifecycle.demand(b);
-    return workerOperations.run(() => lifecycle.exclusive(b, async () => {
+    const result = await workerOperations.run(() => lifecycle.exclusive(b, async () => {
       if (retry) lifecycle.retry(b);
       await lifecycle.connection(b, true);
       return request(workspace, { ...input, action: 'status' });
     }));
+    orchestration.notify(b); changed(b); return result;
   }
   return {
+    subscribe(listener: (binding: Binding) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    notify: (binding?: Binding) => orchestration.notify(binding),
     wake,
     lifecycle: (binding: Binding) => lifecycle.state(binding),
     hold: (engine: string, id: string) => lifecycle.hold(engine, id),
@@ -414,10 +424,11 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       lifecycle.manual(engine, id, action, operation, () => options.management.details(engine, id)),
     chat: async (workspace: string, input: AgentRuntimeRequest, context: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }) => {
       const b = await binding(workspace, input); lifecycle.demand(b);
-      return workerOperations.run(() => lifecycle.exclusive(b, () => request(workspace, input, context)));
+      const result = await workerOperations.run(() => lifecycle.exclusive(b, () => request(workspace, input, context)));
+      orchestration.notify(b); changed(b); return result;
     },
-    start: orchestration.start,
-    async dispose() { await orchestration.dispose(); await lifecycle.settled(); },
+    start() { if (!started) { started = true; unsubscribeRegistry = options.registry.subscribe(() => orchestration.notify()); unsubscribeHistory = options.history?.subscribe?.(() => orchestration.notify()); orchestration.start(); } },
+    async dispose() { started = false; unsubscribeRegistry?.(); unsubscribeHistory?.(); await orchestration.dispose(); await lifecycle.settled(); listeners.clear(); },
     request: async (workspaceRoot: string, input: AgentRuntimeRequest) => {
       const parsed = parseAgentRuntimeRequest(input);
       if (parsed.action === 'status') return status(workspaceRoot, parsed);
@@ -430,13 +441,14 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         return result;
       }));
       // Never await this tick while holding the per-worker gate: dispatch uses the same gate.
+      orchestration.notify(b); changed(b);
       if (parsed.action === 'start') await orchestration.tick();
       return result;
     },
   };
 }
 function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], recoveryProtocol = 3, progressProtocol = true, workProtocol = true, integrationProtocol = true, candidateVerificationProtocol = true, applicationProtocol = true, applicationInspectionProtocol = true, conversationProtocol = true) {
-  return digest(JSON.stringify({ ...(conversationProtocol ? { conversationProtocol: 1, lifecycleProtocol: 1 } : {}), sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol, questionProtocol: 2, ...(progressProtocol ? { progressProtocol: 1 } : {}), ...(workProtocol ? { workProtocol: 1 } : {}), ...(integrationProtocol ? { integrationProtocol: 1 } : {}), ...(candidateVerificationProtocol ? { candidateVerificationProtocol: 1 } : {}), ...(applicationProtocol ? { applicationProtocol: 1 } : {}), ...(applicationInspectionProtocol ? { applicationInspectionProtocol: 1 } : {}), agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
+  return digest(JSON.stringify({ ...(conversationProtocol ? { conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1 } : {}), sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol, questionProtocol: 2, ...(progressProtocol ? { progressProtocol: 1 } : {}), ...(workProtocol ? { workProtocol: 1 } : {}), ...(integrationProtocol ? { integrationProtocol: 1 } : {}), ...(candidateVerificationProtocol ? { candidateVerificationProtocol: 1 } : {}), ...(applicationProtocol ? { applicationProtocol: 1 } : {}), ...(applicationInspectionProtocol ? { applicationInspectionProtocol: 1 } : {}), agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
     ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
 }
 function profileConfiguration(agent: SpecialistAgent) {

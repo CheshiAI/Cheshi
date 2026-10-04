@@ -161,7 +161,9 @@ test('an unreadable journal surfaces an error without crashing startup or replac
   const filename = join(temporary(), 'journal.json');
   writeFileSync(filename, 'damaged journal');
   const coordinator = createAgentOrchestration({ filename, peer: () => null, connect: async () => null });
-  await coordinator.tick();
+  expect(() => coordinator.start()).not.toThrow();
+  expect(() => coordinator.notify()).not.toThrow();
+  await coordinator.settled(); await coordinator.tick();
   expect(coordinator.error('binding')).not.toBeNull();
   expect(readFileSync(filename, 'utf8')).toBe('damaged journal');
   await coordinator.dispose();

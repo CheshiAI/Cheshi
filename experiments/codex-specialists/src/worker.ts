@@ -1,3 +1,4 @@
+import { WorkerChangeStream } from './change-stream.ts';
 import { timingSafeEqual } from 'node:crypto';
 import { parseRuntimeConfiguration } from './runtime-config.ts';
 import { randomUUID } from 'node:crypto';
@@ -31,19 +32,34 @@ const historyQueue = configuration ? new WorkerHistoryQueue(process.env.AGENT_DA
 const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration, history, historyQueue });
 const lifecycle = new IdleLifecycle({ store, client, blocked: () => agent.busy || !!agent.error || !!transportError
   || collaboration?.next() != null || historyQueue?.pending === true });
-const pump = setInterval(() => {
-  if (lifecycle.draining) return;
-  void agent.checkHealth();
-  try { agent.pump(); } catch { transportError = 'Could not persist collaboration state.'; }
-}, 1000);
+const changes = new WorkerChangeStream();
+let pumping = false, expiry: ReturnType<typeof setTimeout> | undefined;
+const schedulePump = () => {
+  if (pumping) return;
+  pumping = true;
+  queueMicrotask(() => {
+    pumping = false;
+    if (lifecycle.draining) return;
+    try { agent.pump(); } catch { transportError = 'Could not persist collaboration state.'; changes.changed(); }
+    clearTimeout(expiry);
+    const deadline = lifecycle.probe().nextWakeAt;
+    if (deadline !== null) expiry = setTimeout(schedulePump, Math.max(1, Math.min(2_147_483_647, deadline - Date.now())));
+  });
+};
+store.subscribe(() => { changes.changed(); schedulePump(); });
+historyQueue?.subscribe(() => changes.changed());
+client.onFailure(() => changes.changed());
+const health = setInterval(() => { if (!lifecycle.draining) void agent.checkHealth(); }, 120_000);
+schedulePump();
 const port = Number(process.env.AGENT_PORT ?? 8787);
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('Invalid agent port.');
 
 const server = Bun.serve({
-  hostname: '0.0.0.0', port,
+  hostname: '0.0.0.0', port, idleTimeout: 255,
   async fetch(request) {
     if (request.headers.has('origin')) return Response.json({ error: 'Browser-origin requests are disabled.' }, { status: 403 });
     const path = new URL(request.url).pathname;
+    if (path === '/events' && configuration) return changes.handle(request, configuration.token);
     if (configuration && request.method !== 'GET') {
       const actual = Buffer.from(request.headers.get('authorization') ?? '');
       const expected = Buffer.from(`Bearer ${configuration.token}`);
@@ -54,7 +70,7 @@ const server = Bun.serve({
       if (path.startsWith('/lifecycle/') && request.method === 'POST' && configuration) {
         if (path === '/lifecycle/status') return Response.json(lifecycle.probe());
         if (path === '/lifecycle/prepare') return Response.json(await lifecycle.prepare());
-        if (path === '/lifecycle/resume') { lifecycle.cancel(); return Response.json({ resumed: true }); }
+        if (path === '/lifecycle/resume') { lifecycle.cancel(); schedulePump(); return Response.json({ resumed: true }); }
         if (path === '/lifecycle/commit') {
           const body = await request.text();
           if (body.length > 1000) throw new TypeError('Request is too large.');
@@ -160,7 +176,7 @@ let stopping = false;
 const shutdown = async (sleep = false) => {
   if (stopping) return;
   stopping = true;
-  clearInterval(pump);
+  clearInterval(health); clearTimeout(expiry); changes.dispose();
   server.stop(true);
   const tasks = store.snapshot().tasks.filter(task => ['accepted', 'running'].includes(task.status));
   if (!sleep) await Promise.allSettled(tasks.map(task => agent.stop(task.id)));

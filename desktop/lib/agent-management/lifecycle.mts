@@ -16,6 +16,8 @@ interface Options {
   stopped(binding: Binding, containerId: string): Promise<boolean>;
   control(connection: CollaborationConnection, action: string, body?: unknown): Promise<unknown>;
   demand(binding: Binding): boolean;
+  changed?(binding: Binding): void;
+  maintenance?(binding: Binding): void;
 }
 
 /** Main-process owner. The inbox owns demand; this journal owns only worker power state. */
@@ -55,7 +57,16 @@ export class WorkerLifecycle {
     mkdirSync(dirname(this.options.filename), { recursive: true, mode: 0o700 });
     writeFileSync(`${this.options.filename}.tmp`, JSON.stringify(next), { mode: 0o600, flush: true });
     renameSync(`${this.options.filename}.tmp`, this.options.filename); this.entries = next;
+    this.options.changed?.(binding);
   }
+  nextCheck(binding: Binding): number | null {
+    const e = this.entry(binding);
+    if (!e || e.phase === 'disabled' || e.failures >= 3) return null;
+    if (e.failures > 0) return e.retryAt;
+    if (e.phase === 'sleeping') return !this.reconciled.has(binding.id) && this.nextProbe.has(binding.id) ? this.nextProbe.get(binding.id)! : e.nextWakeAt;
+    return this.nextProbe.get(binding.id) ?? null;
+  }
+  activity(binding: Binding) { this.nextProbe.delete(binding.id); }
   private entry(binding: Binding) {
     const entry = this.load()[binding.id];
     if (entry && JSON.stringify(entry.binding) !== JSON.stringify(binding)) throw new Error('Worker lifecycle identity changed.');
@@ -170,16 +181,16 @@ export class WorkerLifecycle {
     }
   }
   private async prepareRest(binding: Binding, connection: CollaborationConnection, historyBusy: boolean) {
-    if (historyBusy || this.options.demand(binding) || this.terminalOpen(binding)) { this.idle.delete(binding.id); return; }
+    if (historyBusy || this.options.demand(binding) || this.terminalOpen(binding)) { this.idle.delete(binding.id); this.nextProbe.delete(binding.id); return; }
     if (this.now() < (this.nextProbe.get(binding.id) ?? 0)) return;
     this.nextProbe.set(binding.id, this.now() + 120_000);
     const p = agentRecord(await this.options.control(connection, 'status'));
     if (p.protocol !== 1 || p.idle !== true || !(p.nextWakeAt === null || typeof p.nextWakeAt === 'number' && Number.isFinite(p.nextWakeAt))) {
-      this.idle.delete(binding.id); return;
+      this.idle.delete(binding.id); this.nextProbe.delete(binding.id); return;
     }
     const now = this.now(), since = this.idle.get(binding.id) ?? now;
     this.idle.set(binding.id, since);
-    this.nextProbe.set(binding.id, Math.min(this.now() + 120_000, since + (this.options.idleMs ?? 300_000)));
+    this.nextProbe.set(binding.id, since + (this.options.idleMs ?? 300_000));
     if (now - since < (this.options.idleMs ?? 300_000)) return;
     const generation = this.generations.get(binding.id) ?? 0;
     const prepared = agentRecord(await this.options.control(connection, 'prepare'));
@@ -189,14 +200,15 @@ export class WorkerLifecycle {
     const live = await this.options.inspect(binding);
     if (!live || live.externalBusy === true || live.details.busy || this.terminalOpen(binding, live.details.agent.id) || generation !== (this.generations.get(binding.id) ?? 0) || this.options.demand(binding)) {
       await this.options.control(connection, 'resume');
-      this.save(binding, { phase: 'running' }); this.idle.delete(binding.id); return;
+      this.save(binding, { phase: 'running' }); this.idle.delete(binding.id);
+      this.nextProbe.set(binding.id, this.now() + (this.options.idleMs ?? 300_000)); return;
     }
     // Persist intent before commit. A restart reconciles Docker before treating it as asleep.
     this.save(binding, { phase: 'sleeping', details: { ...structuredClone(live.details), logs: '' }, nextWakeAt: prepared.nextWakeAt as number | null });
     this.reconciled.delete(binding.id);
     await this.options.control(connection, 'commit', { lease: prepared.lease });
     if (!await this.options.stopped(binding, live.details.agent.id)) throw new Error('Worker sleep is not confirmed.');
-    this.reconciled.add(binding.id); this.idle.delete(binding.id);
+    this.reconciled.add(binding.id); this.idle.delete(binding.id); this.options.changed?.(binding);
   }
   hold(engineId: string, containerId: string): () => void {
     const entry = Object.values(this.load()).find(e => e.binding.engineId === engineId && e.details?.agent.id === containerId);
@@ -210,6 +222,7 @@ export class WorkerLifecycle {
       released = true;
       const count = (this.terminals.get(key) ?? 1) - 1;
       if (count) this.terminals.set(key, count); else this.terminals.delete(key);
+      if (entry) { this.nextProbe.delete(entry.binding.id); this.options.maintenance?.(entry.binding); }
     };
   }
   private terminalOpen(binding: Binding, containerId?: string) {
