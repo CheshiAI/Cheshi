@@ -37,7 +37,7 @@ export class VoiceRelay {
         this.send(target, { type: 'event', payload: value.payload });
       } else {
         if (!peer.approved || value.type !== 'request') throw new Error('Device approval required');
-        const host = this.hosts.get(peer.host); if (!host) throw new Error('Mac offline');
+        const host = this.hosts.get(peer.host); if (!host) { socket.close(1013, 'Mac reconnecting'); return; }
         this.send(host, { type: 'request', peerId: peer.id, payload: value.payload });
       }
     } catch { socket.close(1008, 'Invalid or unauthorized connection'); }
@@ -48,13 +48,13 @@ export class VoiceRelay {
     if (value.role === 'host') {
       const hash = createHash('sha256').update(voiceText(value.token, 128)).digest('hex');
       if (host.length !== hash.length || !timingSafeEqual(Buffer.from(host), Buffer.from(hash))) throw new Error('Invalid identity');
-      if (this.hosts.has(host)) throw new Error('Host already connected');
+      if (this.hosts.has(host)) { socket.close(1013, 'Host reconnecting'); return; }
       const peer: Peer = { socket, role: 'host', host, id: host, approved: true, count: 0, window: now };
       this.peers.set(socket, peer); this.hosts.set(host, peer);
       clearTimeout(this.timers.get(socket)); this.timers.delete(socket);
       this.send(peer, { type: 'ready' });
     } else if (value.role === 'phone') {
-      const owner = this.hosts.get(host); if (!owner) throw new Error('Mac offline');
+      const owner = this.hosts.get(host); if (!owner) { socket.close(1013, 'Mac reconnecting'); return; }
       if ([...this.peers.values()].filter(p => p.host === host && p.role === 'phone').length >= 8) throw new Error('Too many phones');
       const peer: Peer = { socket, role: 'phone', host, id: randomUUID(), approved: false, count: 0, window: now };
       this.peers.set(socket, peer);

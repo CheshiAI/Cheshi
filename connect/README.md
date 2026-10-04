@@ -61,9 +61,12 @@ browser device credentials belong to the original origin and do not transfer
 to a new address.
 
 The first version runs one relay process. Connected Macs and phones must reach
-that same process. Restarting it disconnects calls; the Mac reconnects and the
-phone user reconnects explicitly. There is no server-side offline instruction
-queue. A Mac that is shut down, asleep or disconnected cannot receive a call.
+that same process. Both ends retry temporary control disconnections automatically.
+The Mac retains the existing provider session for up to 30 seconds; the phone
+must authenticate again and resume the same call ID under the same device,
+account and room. A relay restart can recover within that window. A Mac app
+restart loses the live voice session, so the phone must start a new call.
+There is no server-side offline instruction queue. A Mac that is shut down, asleep or disconnected cannot receive a call.
 
 ## Access and data
 
@@ -96,6 +99,29 @@ queue. A Mac that is shut down, asleep or disconnected cannot receive a call.
   Hanging up ends the isolated voice process, not accepted Chats work.
 - The voice session has no project tools. It relays instructions and reads room
   replies; actual work uses the existing Homies orchestration and approval rules.
+
+## Temporary disconnections
+
+A control outage does not immediately close WebRTC audio. While control is being
+restored, final speech can still reach the Mac directly from the voice provider
+and be delivered to Chats. Receipts are replayed after recovery without creating
+new requests. These grace periods limit recovery attempts, not call duration:
+
+- Control reconnect and authenticated call recovery: 30 seconds after loss is
+  detected. Existing heartbeats detect a silent connection at their next check
+  after 75 seconds without a pong.
+- WebRTC `disconnected`: 15 seconds to return to `connected`. `failed` and a lost
+  microphone end media immediately; this does not initiate an ICE restart.
+- Hangup closes local media immediately. If control is offline, the phone sends
+  its scoped hangup after reauthentication; otherwise the Mac's grace expires.
+- Unlink, account changes and authentication rejection stop recovery. A changed
+  tunnel URL or a reloaded/closed phone page requires a new call.
+
+`voice-diagnostics.json`, beside `voice.json`, keeps the latest 100 local connection
+and call events with timestamps, close codes and fixed reason codes. It excludes
+speech, SDP, credentials and URLs. Phone console diagnostics contain only close
+codes and media state. Restart the Mac app and relay together after updating the
+protocol, rebuild phone assets, and reload the phone page before testing.
 
 ## Validation
 

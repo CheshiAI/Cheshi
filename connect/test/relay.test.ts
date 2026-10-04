@@ -6,8 +6,9 @@ import { voiceServerUrl } from '../shared/voice-protocol.ts';
 class Socket implements RelaySocket {
   messages: Record<string, unknown>[] = [];
   closed = false;
+  code: number | undefined;
   send(text: string) { this.messages.push(JSON.parse(text)); }
-  close() { this.closed = true; }
+  close(code?: number) { this.closed = true; this.code = code; }
 }
 const hostId = createHash('sha256').update('test-owner-secret').digest('hex');
 function harness() {
@@ -44,6 +45,16 @@ describe('connection relay boundaries', () => {
         const fake = new Socket(); h.relay.opened(fake);
         h.send(fake, { type: 'authenticate', role: 'host', hostId, token }); expect(fake.closed).toBe(true);
       }
+    } finally { h.relay.dispose(); }
+  });
+  test('Mac reconnecting is retryable while a rejected device remains terminal', () => {
+    const h = harness();
+    try {
+      h.send(h.host, { type: 'reject', peerId: h.peerId }); expect(h.phone.code).toBe(1008);
+      h.relay.closed(h.host);
+      const phone = new Socket(); h.relay.opened(phone);
+      h.send(phone, { type: 'authenticate', role: 'phone', hostId, deviceId: 'device', name: 'Phone', token: 'device-secret' });
+      expect(phone.code).toBe(1013);
     } finally { h.relay.dispose(); }
   });
   test('cannot route across Mac identities', () => {
