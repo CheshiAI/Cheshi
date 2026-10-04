@@ -192,12 +192,14 @@ test('deletion and normal mutations exclude one another across services and rele
     const management = createAgentManagementService({ engines: [] });
     const runtime = createSpecialistRuntime({ ...f.options, buildContext: '/unused', management,
       account: async () => { throw new Error('must not request an account'); } });
-    await workerOperations.exclusive(async () => {
-      expect(() => f.registry.save(specialistInput(), f.workspace)).toThrow('deletion is in progress');
-      await fails(management.control('docker:local', f.containerId, 'start'), 'deletion is in progress');
-      await fails(runtime.request(f.workspace, { agentId: f.profile.id, engineId: 'docker:local', action: 'start' }), 'deletion is in progress');
-      await fails(f.deletion.container(f.request()), 'deletion is in progress');
-    });
+    try {
+      await workerOperations.exclusive(async () => {
+        expect(() => f.registry.save(specialistInput(), f.workspace)).toThrow('deletion is in progress');
+        await fails(management.control('docker:local', f.containerId, 'start'), 'deletion is in progress');
+        await fails(runtime.request(f.workspace, { agentId: f.profile.id, engineId: 'docker:local', action: 'start' }), 'deletion is in progress');
+        await fails(f.deletion.container(f.request()), 'deletion is in progress');
+      });
+    } finally { await runtime.dispose(); }
     f.state.failRemove = true;
     await fails(f.deletion.container(f.request()), 'remove failed');
     expect(f.registry.snapshot(f.workspace).agents).toHaveLength(1);

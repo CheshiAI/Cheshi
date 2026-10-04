@@ -12,7 +12,8 @@ import { specialistInput } from './agent-registry-fixtures';
 export function deletionFixture() {
   const directory = mkdtempSync(join(tmpdir(), 'cheshi-deletion-'));
   const registry = createAgentRegistry(join(directory, 'registry.json'));
-  const workspace = '/projects/cheshi';
+  const workspace = join(directory, 'project');
+  mkdirSync(workspace);
   const profile = registry.save(specialistInput(), workspace).snapshot.agents[0]!;
   const containerId = 'a'.repeat(64), binding = `${profile.id}-${'b'.repeat(16)}`;
   const volume = `cheshi-agent-${binding}-${'c'.repeat(8)}`;
