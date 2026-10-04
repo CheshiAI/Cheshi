@@ -1,4 +1,4 @@
-import { type CollaborationMessage, type CollaborationState } from './collaboration-contract.ts';
+import type { CollaborationMessage, CollaborationState } from './collaboration-contract.ts';
 import { assertWorkRequest, assertWorkResult, assertWorkRevision, parseWorkRequest, parseWorkResult, parseWorkReview, type WorkFile } from './work-contract.ts';
 import { workDigest } from './work-files.ts';
 import type { IntegrationIssue } from './integration-contract.ts';
