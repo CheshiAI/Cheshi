@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createSpecialistRuntime, readRuntimeAuth } from '../lib/agent-management/runtime.mts';
 import { createAgentRegistry } from '../lib/agent-management/registry.mts';
-import { specialistInput } from './agent-registry-fixtures.ts';
+import { registryDeferred, specialistInput } from './agent-registry-fixtures.ts';
 import { parseAgentRuntimeRequest, parseAgentRuntimeState } from '../shared/agent-runtime.ts';
 import { DockerCommandError, dockerCommandError } from '../lib/agent-management/docker-errors.mts';
 import type { AgentDetails } from '../shared/agent-management.ts';
@@ -33,6 +33,7 @@ function fixture(linkedWorkspace = false) {
   let labels: Record<string, string> = {};
   let tasks: AgentDetails['tasks'] = [];
   let state = 'running';
+  let beforeDetails: (() => Promise<void>) | undefined;
   const calls: { args: string[]; input?: string }[] = [];
   const runtimePath = join(directory, 'runtime', createHash('sha256').update('docker:colima-cheshi').digest('hex'),
     `${agentId}-${createHash('sha256').update(realpathSync(workspace)).digest('hex').slice(0, 16)}`);
@@ -69,7 +70,7 @@ function fixture(linkedWorkspace = false) {
   const runtime = createSpecialistRuntime({ directory: join(directory, 'runtime'), buildContext: '/build', registry, run,
     lifecycleControl: async () => ({ protocol: 1, idle: false, nextWakeAt: null }),
     collaborationExchange: async (_connection, body) => { exchanges.push(body); return { protocol: 1, received: [], outgoing: [] }; },
-    account: async () => ({ home, models: [] }), management: { details: async () => details(),
+    account: async () => ({ home, models: [] }), management: { details: async () => { await beforeDetails?.(); return details(); },
       engines: async () => ({ engines: [], error: null }), snapshot: async engineId => ({ engineId, online: true, error: null, agents: [] }),
       control: async () => { throw new Error('unused'); } } });
   const legacyRecovery = (protocol = 1, progress = false, work = false, integration = false, candidate = false, application = false, applicationInspection = false) => {
@@ -94,6 +95,7 @@ function fixture(linkedWorkspace = false) {
     writeFileSync(filename, JSON.stringify(config));
   };
   return { runtime, registry, workspace, home, runtimePath, agentId, calls, exchanges, legacyRecovery,
+    onDetails: (callback: () => Promise<void>) => { beforeDetails = callback; },
     setState: (value: string) => { state = value; },
     setTasks: (value: AgentDetails['tasks']) => { tasks = value; }, setContextMissing: (missing: boolean) => { contextMissing = missing; }, setDockerFailure: (error: Error | null) => { dockerFailure = error; }, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
     request: () => ({ agentId, engineId: 'docker:colima-cheshi', action: 'start' as const }) };
@@ -173,6 +175,70 @@ test('rejects unassigned profiles and remote engines before provisioning', async
   f.setRemote(); await fails(f.runtime.request(f.workspace, f.request()), 'Only local');
   expect(f.calls.some(call => call.args.includes('create'))).toBe(false);
   await fails(f.runtime.request(f.home, f.request()), 'Assign this agent');
+});
+
+function assignFixture(f: ReturnType<typeof fixture>, assigned: boolean) {
+  const agent = f.registry.snapshot(f.workspace).agents[0]!;
+  f.registry.save({ id: agent.id, revision: agent.revision, profile: agent,
+    assignment: { assigned, instructions: specialistInput().assignment.instructions } }, f.workspace);
+}
+
+test('unassigned and deleted status is explicit without Docker access, while execution remains blocked', async () => {
+  const f = fixture(), status = { ...f.request(), action: 'status' as const };
+  try {
+    assignFixture(f, false);
+    expect(parseAgentRuntimeState(await f.runtime.request(f.workspace, status))).toMatchObject({
+      details: null, unavailable: { kind: 'agent-unassigned' },
+    });
+    await fails(f.runtime.request(f.workspace, f.request()), 'Assign this agent');
+    await fails(f.runtime.request(f.workspace, { ...status, action: 'submit', taskId: 'task', prompt: 'Work' }), 'Assign this agent');
+    await fails(f.runtime.wake(f.workspace, status), 'Assign this agent');
+    expect(f.calls).toHaveLength(0);
+    assignFixture(f, true);
+    expect((await f.runtime.request(f.workspace, f.request())).details?.ready).toBe(true);
+    const agent = f.registry.snapshot(f.workspace).agents[0]!;
+    f.registry.remove({ id: agent.id, revision: agent.revision, deleteData: false }, f.workspace);
+    const count = f.calls.length;
+    expect(parseAgentRuntimeState(await f.runtime.request(f.workspace, status))).toMatchObject({
+      details: null, unavailable: { kind: 'agent-removed' },
+    });
+    await fails(f.runtime.request(f.workspace, f.request()), 'Assign this agent');
+    expect(f.calls).toHaveLength(count);
+  } finally { await f.runtime.dispose(); }
+});
+
+test.each([['unassign', false], ['delete', false], ['unassign', true], ['delete', true]] as const)(
+  'status discards in-flight results after %s, failed lookup: %s', async (change, failed) => {
+  const f = fixture(), entered = registryDeferred<void>(), released = registryDeferred<void>();
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    f.onDetails(async () => { entered.resolve(); await released.promise; if (failed) throw new Error('Worker disappeared'); });
+    const pendingStatus = f.runtime.request(f.workspace, { ...f.request(), action: 'status' });
+    await entered.promise;
+    if (change === 'unassign') assignFixture(f, false);
+    else {
+      const agent = f.registry.snapshot(f.workspace).agents[0]!;
+      f.registry.remove({ id: agent.id, revision: agent.revision, deleteData: false }, f.workspace);
+    }
+    released.resolve();
+    expect(parseAgentRuntimeState(await pendingStatus)).toMatchObject({ details: null,
+      unavailable: { kind: change === 'unassign' ? 'agent-unassigned' : 'agent-removed' } });
+  } finally { released.resolve(); await f.runtime.dispose(); }
+});
+
+test('unassignment hides a stopped worker cache and reassignment restores status', async () => {
+  const f = fixture(), status = { ...f.request(), action: 'status' as const };
+  try {
+    const started = await f.runtime.request(f.workspace, f.request());
+    await f.runtime.manualControl(status.engineId, started.details!.agent.id, 'stop', async () => { f.setState('exited'); });
+    assignFixture(f, false);
+    expect((await f.runtime.request(f.workspace, status)).unavailable?.kind).toBe('agent-unassigned');
+    assignFixture(f, true);
+    const restored = await f.runtime.request(f.workspace, status);
+    expect(restored.unavailable).toBeUndefined(); expect(restored.details?.agent.state).toBe('exited');
+    expect(() => parseAgentRuntimeState({ details: started.details,
+      unavailable: { kind: 'agent-unassigned', message: 'Not assigned' } })).toThrow('availability');
+  } finally { await f.runtime.dispose(); }
 });
 
 test('collaboration resolves a project registered through a symbolic link', async () => {

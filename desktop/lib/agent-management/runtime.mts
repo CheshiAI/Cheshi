@@ -366,6 +366,31 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       throw error;
     } finally { if (request.action !== 'status') pending.delete(key); }
   }
+  function bindingAvailability(workspace: string, agentId: string): AgentRuntimeState | null {
+    const agent = options.registry.snapshot(workspace).agents.find(a => a.id === agentId);
+    if (!agent) return { details: null, unavailable: { kind: 'agent-removed', message: 'This agent is no longer available. Select another agent.' } };
+    if (!projectAssignment(agent, workspace)) return { details: null,
+      unavailable: { kind: 'agent-unassigned', message: 'Assign this agent to the current project in Agent settings.' } };
+    return null;
+  }
+  async function status(workspaceRoot: string, parsed: AgentRuntimeRequest): Promise<AgentRuntimeState> {
+    const workspace = await realpath(workspaceRoot);
+    const unavailable = bindingAvailability(workspace, parsed.agentId);
+    if (unavailable) return unavailable;
+    try {
+      const b = await binding(workspace, parsed), cached = lifecycle.cached(b);
+      const result = cached ?? await request(workspace, parsed);
+      // Registry deletion or unassignment can finish while Docker status is in flight.
+      const changed = bindingAvailability(workspace, parsed.agentId);
+      if (changed) return changed;
+      const state = lifecycle.state(b);
+      return { ...result, ...(state ? { lifecycle: state } : {}) };
+    } catch (error) {
+      const changed = bindingAvailability(workspace, parsed.agentId);
+      if (changed) return changed;
+      throw error;
+    }
+  }
   async function binding(workspaceRoot: string, input: AgentRuntimeRequest) {
     const parsed = parseAgentRuntimeRequest(input), workspace = await realpath(workspaceRoot);
     const agent = options.registry.snapshot(workspaceRoot).agents.find(a => a.id === parsed.agentId && projectAssignment(a, workspace));
@@ -394,13 +419,9 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     start: orchestration.start,
     async dispose() { await orchestration.dispose(); await lifecycle.settled(); },
     request: async (workspaceRoot: string, input: AgentRuntimeRequest) => {
-      const parsed = parseAgentRuntimeRequest(input), b = await binding(workspaceRoot, parsed);
-      if (parsed.action === 'status') {
-        const cached = lifecycle.cached(b);
-        if (cached) return cached;
-        const result = await request(workspaceRoot, parsed), state = lifecycle.state(b);
-        return { ...result, ...(state ? { lifecycle: state } : {}) };
-      }
+      const parsed = parseAgentRuntimeRequest(input);
+      if (parsed.action === 'status') return status(workspaceRoot, parsed);
+      const b = await binding(workspaceRoot, parsed);
       lifecycle.demand(b);
       const result = await workerOperations.run(() => lifecycle.exclusive(b, async () => {
         if (parsed.action !== 'start' && lifecycle.cached(b)?.lifecycle?.phase === 'sleeping') await lifecycle.connection(b, true);

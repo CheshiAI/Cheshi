@@ -82,6 +82,7 @@ export function AgentsView({ chatTask, onBackToChats, model, state, registry, ac
       {registry && registered.data && editing ? <SpecialistAgentForm key={profile?.id ?? 'new'} agent={profile}
         model={registry} state={registered} accountsApi={accountsApi} onBack={profile ? () => setSettingsId(null) : undefined} />
         : registry && profile ? <SpecialistRuntimePanel chatTask={chatTask?.agentId === profile.id ? chatTask : null} onBackToChats={onBackToChats} key={profile.id} agent={profile} model={registry}
+          assigned={profile.assignments.some(assignment => assignment.workspaceRoot === registered.data?.workspaceRoot)}
           engines={state.catalog.engines} engineId={state.engineId} onSettings={() => setSettingsId(profile.id)} />
         : <p className={viewStyles.empty}>Select an agent to view its status and task results.</p>}
     </section>

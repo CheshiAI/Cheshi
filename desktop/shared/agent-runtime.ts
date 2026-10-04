@@ -10,7 +10,7 @@ export interface AgentRuntimeRequest {
 export interface AgentRuntimeState {
   details: AgentDetails | null;
   lifecycle?: { phase: 'starting' | 'running' | 'draining' | 'sleeping' | 'disabled' | 'error'; error: string | null };
-  unavailable?: { kind: 'engine-unavailable'; message: string };
+  unavailable?: { kind: 'engine-unavailable' | 'agent-unassigned' | 'agent-removed'; message: string };
 }
 export function parseAgentRuntimeRequest(value: unknown): AgentRuntimeRequest {
   const v = agentRecord(value), agentId = agentText(v.agentId, 36);
@@ -54,8 +54,11 @@ export function parseAgentRuntimeState(value: unknown): AgentRuntimeState {
   }
   if (v.unavailable === undefined) return { details, ...(lifecycle ? { lifecycle } : {}) };
   const unavailable = agentRecord(v.unavailable);
-  if (unavailable.kind !== 'engine-unavailable' || details !== null) throw new TypeError('Invalid runtime availability.');
-  return { details, unavailable: { kind: 'engine-unavailable', message: agentText(unavailable.message, 1000) } };
+  const kind = unavailable.kind;
+  if ((kind !== 'engine-unavailable' && kind !== 'agent-unassigned' && kind !== 'agent-removed') || details !== null) {
+    throw new TypeError('Invalid runtime availability.');
+  }
+  return { details, unavailable: { kind, message: agentText(unavailable.message, 1000) } };
 }
 
 export function parseWorkerLifecycle(value: unknown): NonNullable<AgentRuntimeState['lifecycle']> {

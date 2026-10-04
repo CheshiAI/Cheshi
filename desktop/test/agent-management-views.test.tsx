@@ -203,7 +203,7 @@ test('worker labels follow registered names and renames while retaining containe
 });
 
 test('agent names open the default screen and container indicators never navigate', async () => {
-  const agent = specialistAgent();
+  const agent = { ...specialistAgent(), assignments: [{ workspaceRoot: '/project', instructions: '' }] };
   const unlinked = { ...agent, id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', name: 'Unlinked agent' };
   let workers = [
     { id: 'first', name: 'container-first', profileId: agent.id, state: 'running', image: 'fixture' },
@@ -484,7 +484,7 @@ test('registered runtime starts explicitly and shows acknowledged tasks without 
     } });
   try {
     await withDOM(async ui => {
-      await ui.render(<SpecialistRuntimePanel agent={agent} model={registry} engineId="docker:local"
+      await ui.render(<SpecialistRuntimePanel assigned agent={agent} model={registry} engineId="docker:local"
         engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} onSettings={() => {}} />);
       expect(actions).toEqual(['status']);
       await ui.click('Start agent');
@@ -516,7 +516,7 @@ test('engine disconnection preserves the draft and task history, disables action
     } });
   try {
     await withDOM(async ui => {
-      await ui.render(<SpecialistRuntimePanel agent={agent} model={registry} engineId="docker:local"
+      await ui.render(<SpecialistRuntimePanel assigned agent={agent} model={registry} engineId="docker:local"
         engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} onSettings={() => {}} />);
       const input = document.querySelector<HTMLTextAreaElement>('textarea')!;
       await act(async () => {
@@ -555,7 +555,7 @@ test('waiting collaboration is visible and can be stopped while the worker is id
     } });
   try {
     await withDOM(async ui => {
-      await ui.render(<SpecialistRuntimePanel agent={agent} model={registry} engineId="docker:local"
+      await ui.render(<SpecialistRuntimePanel assigned agent={agent} model={registry} engineId="docker:local"
         engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} onSettings={() => {}} />);
       expect(document.body.textContent).toContain('Waiting for reply');
       await ui.click('Stop task');
@@ -566,7 +566,7 @@ test('waiting collaboration is visible and can be stopped while the worker is id
 });
 
 test('settings back returns to the default agent screen while its worker task continues', async () => {
-  const agent = specialistAgent();
+  const agent = { ...specialistAgent(), assignments: [{ workspaceRoot: '/project', instructions: '' }] };
   const actions: string[] = [];
   const worker = { id: 'worker', name: 'Worker', image: 'fixture', state: 'running', profileId: agent.id };
   const details = { agent: worker, ready: true, busy: true, authenticated: true, threadId: 'retained-thread',
@@ -859,7 +859,7 @@ test.each(['consultation', 'verification'])('%s inspection uses the saved room, 
     } });
   try {
     await withDOM(async ui => {
-      await ui.render(<SpecialistRuntimePanel agent={agent} model={registry} engineId="docker:local"
+      await ui.render(<SpecialistRuntimePanel assigned agent={agent} model={registry} engineId="docker:local"
         engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} onSettings={() => {}} />);
       await ui.click('Open task: q_question');
       expect(document.querySelector(kind === 'verification' ? '[aria-label="Verification recovery"]' : '[aria-label="Consultation recovery"]')).not.toBeNull();
