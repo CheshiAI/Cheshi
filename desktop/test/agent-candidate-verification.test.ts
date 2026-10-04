@@ -17,7 +17,7 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 function fixture() { const root = mkdtempSync(join(tmpdir(), 'cheshi-candidate-runtime-')); roots.push(root); return { root, ...candidateFixture(root) }; }
 function agent(f: ReturnType<typeof fixture>, client: WorkAgentModel, store: AgentStore, commands: boolean, owner = false) {
   const id = owner ? 'owner' : 'verifier', collaboration = new WorkerCollaboration(store, id, f.project);
-  return new SpecialistAgent({ store, client, collaboration, workspace: f.project, profile: 'Verify candidate', timeoutMs: 3000,
+  return new SpecialistAgent({ store, client, collaboration, workspace: f.project, profile: 'Verify candidate',
     configuration: { workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, verificationProtocol: 1, decisionProtocol: 1,
       profileId: id, accountId: 'test', role: owner ? 'development' : 'verification', token: 'a'.repeat(64), instructions: 'Verify',
       model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: owner, commandExecution: commands } } });

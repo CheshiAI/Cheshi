@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { createAgentManagementService, readWorker } from '../lib/agent-management/service.mts';
 import type { AgentEngine, RuntimeAgent } from '../lib/agent-management/engine.mts';
 import { agentRecord, parseAgentDetails, parseAgentSnapshot } from '../shared/agent-management.ts';
+import { parseAgentExecutionHealth } from '../shared/agent-execution-health.ts';
 
 const agent: RuntimeAgent = { id: 'worker', name: 'Verifier', image: 'verifier:test', state: 'running', endpoint: 'http://127.0.0.1:47832' };
 function createDeferred<T>() {
@@ -18,6 +19,7 @@ async function rejected(operation: Promise<unknown>, text: string) {
 }
 function fixture() {
   let busy: unknown = false, online = true;
+  let execution: unknown = undefined;
   const actions: string[] = [];
   let gate: Promise<void> | null = null;
   const engine: AgentEngine = {
@@ -28,13 +30,27 @@ function fixture() {
     logs: async () => 'ready',
   };
   const service = createAgentManagementService({ engines: [engine], read: async (_endpoint, path) => {
-    if (path === '/health') return { role: 'verifier', ready: true, busy, threadId: 'thread-1', error: null };
+    if (path === '/health') return { role: 'verifier', ready: true, busy, threadId: 'thread-1', error: null, execution };
     if (path === '/account') return { authenticated: true, access_token: 'must-not-leave-main' };
     return { tasks: [{ id: 'task-1', prompt: 'review', status: 'completed', createdAt: '2026-10-02', output: 'done', error: null }] };
   } });
   return { service, actions, busy: (value: unknown) => { busy = value; }, offline: () => { online = false; },
-    hold: (value: Promise<void>) => { gate = value; } };
+    hold: (value: Promise<void>) => { gate = value; }, execution: (value: unknown) => { execution = value; } };
 }
+
+test('live execution health crosses the service and IPC boundary without changing task status', async () => {
+  const f = fixture(), execution = { taskId: 'task-1', startedAt: '2026-10-04T00:00:00Z',
+    lastActivityAt: '2026-10-04T00:01:00Z', lastActivity: 'tool', checkedAt: '2026-10-04T00:02:00Z',
+    lastResponsiveAt: '2026-10-04T00:01:45Z', engineStatus: 'unconfirmed' } as const;
+  f.execution({ ...execution, privateOutput: 'must-not-leave-main' }); f.busy(true);
+  const details = parseAgentDetails(await f.service.details('test:local', 'worker'));
+  expect(details.execution).toEqual(execution); expect(details.busy).toBe(true); expect(details.ready).toBe(true);
+  expect(details.tasks[0]?.status).toBe('completed');
+  f.execution(null); expect(parseAgentDetails(await f.service.details('test:local', 'worker')).execution).toBeNull();
+  for (const invalid of [{ ...execution, lastActivityAt: 'invalid' }, { ...execution, engineStatus: true }, { ...execution, taskId: '' }]) {
+    expect(() => parseAgentExecutionHealth(invalid)).toThrow();
+  }
+});
 
 test('engine-independent service reports offline and projects only account status', async () => {
   const f = fixture();

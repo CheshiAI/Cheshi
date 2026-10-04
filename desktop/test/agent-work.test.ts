@@ -31,7 +31,7 @@ function setup() {
   writeFileSync(join(project, 'greet.ts'), 'old'); writeFileSync(join(project, 'context.txt'), 'reference');
   const worker = (id: string, client = new Model(), fileWrite = true, integration = true) => {
     const store = new AgentStore(join(directory, id)), collaboration = new WorkerCollaboration(store, id, project);
-    const agent = new SpecialistAgent({ store, client, collaboration, workspace: project, profile: 'Implement only approved work.', timeoutMs: 3000,
+    const agent = new SpecialistAgent({ store, client, collaboration, workspace: project, profile: 'Implement only approved work.',
       configuration: { ...(integration ? { integrationProtocol: 1 as const } : {}), workProtocol: 1, decisionProtocol: 1, profileId: id, accountId: 'fixture', role: 'development', token: 'a'.repeat(64),
         instructions: 'Implement only approved work.', model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite, commandExecution: false } } });
     return { store, client, collaboration, agent };

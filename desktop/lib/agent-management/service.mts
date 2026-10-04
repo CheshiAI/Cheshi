@@ -3,6 +3,7 @@ import type { AgentCatalog, AgentDetails, AgentManagementApi, AgentSnapshot, Del
 import { inspectAgentTasks } from './task-inspection.mts';
 import type { AgentEngine, RuntimeAgent } from './engine.mts';
 import { workerOperations } from './operations.mts';
+import { parseAgentExecutionHealth } from '../../shared/agent-execution-health.ts';
 
 type WorkerPath = '/health' | '/account' | '/activity';
 export type ReadWorker = (endpoint: string, path: WorkerPath) => Promise<unknown>;
@@ -33,7 +34,8 @@ export const readWorker: ReadWorker = async (endpoint, path) => {
 function health(value: unknown) {
   const data = agentRecord(value);
   if (!['verifier', 'planning', 'research', 'frontend', 'development', 'verification', 'custom'].includes(String(data.role))) throw new Error('Unexpected worker role.');
-  return { ready: agentBoolean(data.ready), busy: agentBoolean(data.busy),
+  return { ...(data.execution === undefined ? {} : { execution: parseAgentExecutionHealth(data.execution) }),
+    ready: agentBoolean(data.ready), busy: agentBoolean(data.busy),
     threadId: agentNullableText(data.threadId), error: agentNullableText(data.error, 20_000) };
 }
 function assertIdle(busy: boolean): void {
@@ -84,7 +86,8 @@ export function createAgentManagementService(options: { engines: AgentEngine[]; 
         await Promise.all([
           read(agent.endpoint, '/health').then(value => {
             const state = health(value);
-            Object.assign(result, { ready: state.ready, busy: state.busy, threadId: state.threadId });
+            Object.assign(result, { ready: state.ready, busy: state.busy, threadId: state.threadId,
+              ...(state.execution === undefined ? {} : { execution: state.execution }) });
             if (state.error) notices.push('Worker reported an error. Inspect its logs.');
           }).catch(() => { notices.push('Worker health is unavailable.'); }),
           read(agent.endpoint, '/account').then(value => {

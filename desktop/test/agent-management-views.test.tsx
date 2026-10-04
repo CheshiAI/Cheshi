@@ -3,6 +3,7 @@ import { Window } from 'happy-dom';
 import { act, type ReactNode } from 'react';
 import { AgentManagementViews } from '../frontend/src/features/shell/AgentManagementViews';
 import { AgentTaskResults } from '../frontend/src/features/agents/AgentTaskResults';
+import { ExecutionHealth } from '../frontend/src/features/agents/ExecutionHealth';
 import type { AgentManagementApi, AgentTask } from '../shared/agent-management';
 import { unwrapAgentDeletion } from '../shared/agent-management';
 import type { AgentRegistryApi, AgentRegistrySnapshot, SaveSpecialistAgent } from '../shared/agent-registry';
@@ -40,6 +41,22 @@ async function withDOM(run: (ui: { render(node: ReactNode): Promise<void>; click
     }
   }
 }
+
+test('execution health distinguishes engine responses, task activity and unavailable snapshots', async () => {
+  const health = { taskId: 'task', startedAt: '2026-10-04T00:00:00Z', lastActivityAt: '2026-10-04T00:01:00Z',
+    lastActivity: 'tool' as const, checkedAt: '2026-10-04T00:02:00Z', lastResponsiveAt: '2026-10-04T00:02:00Z', engineStatus: 'responding' as const };
+  await withDOM(async ({ render }) => {
+    await render(<ExecutionHealth health={health} unavailable={false} />);
+    expect(document.body.textContent).toContain('Execution engine responding');
+    expect(document.body.textContent).toContain('Tool activity');
+    expect(document.body.textContent).toContain('No execution time limit');
+    await render(<ExecutionHealth health={health} unavailable />);
+    expect(document.body.textContent).toContain('Status unavailable');
+    expect(document.body.textContent).not.toContain('Execution engine responding');
+    await render(<ExecutionHealth health={{ ...health, engineStatus: 'unconfirmed' }} unavailable={false} />);
+    expect(document.body.textContent).toContain('Execution engine response unconfirmed');
+  });
+});
 
 test('Docker and Agents separate controls and preserve engine/worker selection across navigation', async () => {
   let discoveries = 0;

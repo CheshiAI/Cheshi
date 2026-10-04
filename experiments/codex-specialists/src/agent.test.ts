@@ -36,6 +36,8 @@ class FakeClient implements RpcClient {
   account: unknown = { type: 'chatgpt' };
   resumeId = 'thread';
   onRead: () => Promise<JsonRecord> = async () => ({ thread: { id: 'thread', cwd: '/workspace', turns: [{ id: 'turn', status: 'completed', items: [{ type: 'agentMessage', text: 'Recovered result' }] }] } });
+  onCommandList: () => Promise<JsonRecord> = async () => ({ data: [], nextCursor: null });
+  onCommandTerminate: () => Promise<JsonRecord> = async () => ({ terminated: true });
   onInject: (params: JsonRecord) => Promise<JsonRecord> = async () => ({});
   onUnsubscribe: () => Promise<JsonRecord> = async () => ({ status: 'unsubscribed' });
   onStart: (params: JsonRecord) => Promise<JsonRecord> = async () => {
@@ -55,6 +57,8 @@ class FakeClient implements RpcClient {
           networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true } } : {};
       return { thread: { id: method === 'thread/start' ? 'thread' : this.resumeId }, model: 'test-model', ...scratch };
     }
+    if (method === 'thread/backgroundTerminals/list') return this.onCommandList();
+    if (method === 'thread/backgroundTerminals/terminate') return this.onCommandTerminate();
     if (method === 'thread/read') return this.onRead();
     if (method === 'thread/unsubscribe') return this.onUnsubscribe();
     if (method === 'thread/inject_items') return await this.onInject(params);
@@ -78,9 +82,9 @@ class FakeClient implements RpcClient {
   }
 }
 
-function setup(store = new AgentStore(temporary()), timeoutMs = 1000) {
+function setup(store = new AgentStore(temporary())) {
   const client = new FakeClient();
-  const agent = new SpecialistAgent({ client, store, profile: 'verifier role', workspace: '/workspace', timeoutMs });
+  const agent = new SpecialistAgent({ client, store, profile: 'verifier role', workspace: '/workspace' });
   return { agent, client, store };
 }
 
@@ -226,15 +230,26 @@ test('transport loss after acknowledgement retains unknown execution status', as
   expect(store.task('review')?.error).toBe('transport lost');
 });
 
-test('deadline requests interruption without claiming a completed or canceled outcome', async () => {
-  const { agent, client, store } = setup(undefined, 10);
+test('elapsed time and health probe failure do not interrupt work; explicit stop still works', async () => {
+  const { agent, client, store } = setup();
   client.onStart = async () => ({ turn: { id: 'turn' } });
-  client.onInterrupt = async () => ({});
   agent.submit('review', 'inspect');
-  await agent.settled();
-  expect(store.task('review')?.status).toBe('unknown');
-  expect(client.calls.some(call => call.method === 'turn/interrupt')).toBe(true);
-});
+  await client.started.promise;
+  try {
+    await new Promise(resolve => setTimeout(resolve, process.env.CHESHI_TEST_LONG_WORKER === '1' ? 185_000 : 20));
+    client.onRead = async () => { throw new Error('probe unavailable'); };
+    await agent.checkHealth();
+    expect(agent.executionHealth?.engineStatus).toBe('unconfirmed');
+    expect(agent.executionHealth?.taskId).toBe('review');
+    expect(store.task('review')?.status).toBe('running');
+    expect(agent.busy).toBe(true);
+    expect(client.calls.some(call => call.method === 'turn/interrupt')).toBe(false);
+    await agent.stop('review'); await agent.settled();
+    expect(store.task('review')?.status).toBe('interrupted');
+    expect(agent.executionHealth).toBeNull();
+    expect(client.calls.filter(call => call.method === 'turn/interrupt')).toHaveLength(1);
+  } finally { client.complete(); await agent.settled(); }
+}, 200_000);
 
 test('exposes persistence failure to worker health instead of silently accepting more work', async () => {
   class BrokenStore extends AgentStore {
@@ -922,4 +937,43 @@ test('an interrupted route is held when the user follows up instead of implicitl
   f.agent.pump();
   expect(f.store.task('existing')?.inputs).toBeUndefined();
   expect(f.store.task('intake')?.dialogue?.route).toMatchObject({ held: true, delivered: false });
+});
+
+
+test('holds interrupted state until this turn commands are confirmed gone, including early items', async () => {
+  const { agent, client, store } = setup();
+  const listed = createDeferred<void>(), release = createDeferred<JsonRecord>();
+  client.onStart = async () => {
+    client.emit({ method: 'item/started', params: { threadId: 'other', turnId: 'turn', item: { type: 'commandExecution', id: 'unrelated' } } });
+    client.emit({ method: 'item/started', params: { threadId: 'thread', turnId: 'turn', item: { type: 'commandExecution', id: 'command', processId: 'opaque' } } });
+    client.complete('interrupted'); return { turn: { id: 'turn' } };
+  };
+  let calls = 0;
+  client.onCommandList = async () => {
+    listed.resolve();
+    return ++calls === 1 ? release.promise : { data: [], nextCursor: null };
+  };
+  agent.submit('review', 'inspect');
+  await listed.promise;
+  expect(agent.busy).toBe(true);
+  expect(store.task('review')?.status).toBe('running');
+  release.resolve({ data: [{ itemId: 'command', processId: 'opaque' }, { itemId: 'unrelated', processId: 'untouched' }], nextCursor: null });
+  await agent.settled();
+  expect(store.task('review')?.status).toBe('interrupted');
+  expect(client.calls.filter(c => c.method === 'thread/backgroundTerminals/terminate').map(c => c.params))
+    .toEqual([{ threadId: 'thread', processId: 'opaque' }]);
+});
+
+test('quarantines failed command cleanup and blocks subsequent work and recovery', async () => {
+  const { agent, client, store } = setup();
+  client.onStart = async () => {
+    client.emit({ method: 'item/started', params: { threadId: 'thread', turnId: 'turn', item: { type: 'commandExecution', id: 'command', processId: 'opaque' } } });
+    client.complete('interrupted'); return { turn: { id: 'turn' } };
+  };
+  client.onCommandList = async () => { throw new Error('List unavailable'); };
+  agent.submit('review', 'inspect'); await agent.settled();
+  expect(store.task('review')).toMatchObject({ status: 'unknown', error: 'List unavailable' });
+  expect(agent.error).toContain('Restart the worker');
+  expect(() => agent.submit('next', 'inspect')).toThrow('Restart the worker');
+  expect(client.calls.some(c => c.method === 'thread/unsubscribe')).toBe(false);
 });

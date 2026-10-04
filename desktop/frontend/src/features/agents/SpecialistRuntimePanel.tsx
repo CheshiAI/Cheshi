@@ -7,6 +7,7 @@ import { LiquidGlassSelect, NeumorphicButton, NeumorphicTextField } from '../../
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import type { AgentRegistryModel } from './agentRegistryModel';
 import { AgentTaskResults } from './AgentTaskResults';
+import { ExecutionHealth } from './ExecutionHealth';
 import styles from './AgentsView.module.css';
 import shared from '../../shared/agent-management/agentManagement.module.css';
 
@@ -91,6 +92,7 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, model, 
       <div className={styles.section}>
         <span className={shared.description}>{details?.authenticated ? 'Signed' : 'Not signed in'}{details?.threadId ? ` · ${details.threadId}` : ''}</span>
         {(error || details?.error) && <p className={shared.description} role="alert">{error || details?.error}</p>}
+        {details?.execution && <ExecutionHealth health={details.execution} unavailable={disconnected || Boolean(error || details.error)} />}
         <form className={styles.taskComposer} onSubmit={event => { event.preventDefault(); void operate('submit'); }}>
           <NeumorphicTextField multiline rows={3} variant="standard" aria-label="Agent task" placeholder="Give this agent a task"
             value={prompt} maxLength={20_000} disabled={pending} onChange={event => setPrompt(event.target.value)} />

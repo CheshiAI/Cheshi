@@ -1,4 +1,5 @@
 import { parseTaskInspection, type TaskInspection } from './agent-task-inspection.ts';
+import { parseAgentExecutionHealth, type AgentExecutionHealth } from './agent-execution-health.ts';
 
 export const AGENT_CHANNELS = {
   engines: 'cheshi:agents:engines', snapshot: 'cheshi:agents:snapshot',
@@ -22,6 +23,7 @@ export interface AgentTask {
   id: string; prompt: string; status: string; createdAt: string; output: string; error: string | null;
 }
 export interface AgentDetails {
+  execution?: AgentExecutionHealth | null;
   agent: ManagedAgent; ready: boolean; busy: boolean; authenticated: boolean | null;
   threadId: string | null; error: string | null; logs: string; tasks: AgentTask[];
 }
@@ -120,7 +122,8 @@ export function parseAgentTasks(value: unknown): AgentTask[] {
 }
 export function parseAgentDetails(value: unknown): AgentDetails {
   const v = agentRecord(value);
-  return { agent: parseManagedAgent(v.agent), ready: agentBoolean(v.ready), busy: agentBoolean(v.busy),
+  return { ...(v.execution === undefined ? {} : { execution: parseAgentExecutionHealth(v.execution) }),
+    agent: parseManagedAgent(v.agent), ready: agentBoolean(v.ready), busy: agentBoolean(v.busy),
     authenticated: v.authenticated === null ? null : agentBoolean(v.authenticated),
     threadId: agentNullableText(v.threadId), error: agentNullableText(v.error),
     logs: agentText(v.logs, 256_000), tasks: parseAgentTasks(v.tasks) };

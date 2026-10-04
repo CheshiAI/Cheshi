@@ -12,6 +12,8 @@ import type { RpcClient } from './app-server-client.ts';
 import { record, textValue, type JsonRecord } from './protocol.ts';
 import { AgentStore, validateTaskId, type Task } from './store.ts';
 import { TurnObserver } from './turn.ts';
+import { CommandSessions } from './command-stop.ts';
+import { ExecutionHealth } from './execution-health.ts';
 import { inspectRecovery } from './recovery.ts';
 import { WorkerCollaboration } from './collaboration.ts';
 import { collaborationInstructions, collaborationTools } from './collaboration-tools.ts';
@@ -42,6 +44,7 @@ type ActiveTask = {
   id: string; threadId: string | null; turnId: string | null; stopRequested: boolean;
   done: Promise<void>; observer: TurnObserver; interrupting: Promise<void> | null;
   observations: GoalObservations; messages: string[]; input: string; controller: AbortController;
+  health: ExecutionHealth; commands: CommandSessions;
 };
 
 export class SpecialistAgent {
@@ -50,7 +53,6 @@ export class SpecialistAgent {
   private readonly profile: string;
   private readonly workspace: string;
   private readonly configuration: RuntimeConfiguration | undefined;
-  private readonly timeoutMs: number;
   private readonly loadedThreads = new Set<string>();
   private active: ActiveTask | null = null;
   private recovering = false;
@@ -64,14 +66,14 @@ export class SpecialistAgent {
   private readonly historyQueue: WorkerHistoryQueue | undefined;
   private readonly history: WorkerHistory | undefined;
   private readonly collaboration: WorkerCollaboration | undefined;
-  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; timeoutMs?: number; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; historyQueue?: WorkerHistoryQueue; history?: WorkerHistory }) {
+  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; historyQueue?: WorkerHistoryQueue; history?: WorkerHistory }) {
     this.configuration = options.configuration;
     this.conversations = new WorkerConversation(options.store, options.configuration?.verificationProtocol === 1);
     this.work = options.configuration?.workProtocol === 1 ? new WorkerWork(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite) : undefined;
     this.integration = options.configuration?.integrationProtocol === 1 ? new WorkerIntegration(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite, options.configuration.applicationProtocol === 1) : undefined;
     this.verification = options.configuration?.verificationProtocol === 1 ? new WorkerVerification(options.store, options.workspace) : undefined;
     this.client = options.client; this.store = options.store; this.profile = options.profile;
-    this.workspace = options.workspace; this.timeoutMs = options.timeoutMs ?? 180_000;
+    this.workspace = options.workspace;
     this.collaboration = options.collaboration; this.historyQueue = options.historyQueue; this.history = options.history;
     if (this.collaboration || this.historyQueue || this.configuration?.decisionProtocol === 1) {
       if (!this.client.handleTools) throw new Error('Collaboration requires dynamic tool support.');
@@ -81,6 +83,7 @@ export class SpecialistAgent {
           throw new Error('Tool call does not belong to the active task.');
         }
         if (active.stopRequested) throw new Error('Task is stopping.');
+        active.health.activity('tool');
         const tool = textValue(params.tool, 'tool');
         const task = this.store.task(active.id)!;
         if (task.dialogue && conversationTools.some(t => t.name === tool)) {
@@ -145,6 +148,8 @@ export class SpecialistAgent {
 
   get busy(): boolean { return this.active !== null || this.recovering; }
   get error(): string | null { return this.failure; }
+  get executionHealth() { return this.active?.health.snapshot() ?? null; }
+  checkHealth(): Promise<void> { return this.active?.health.check(this.client, this.active.threadId) ?? Promise.resolve(); }
 
   activity() {
     const state = this.store.snapshot();
@@ -218,8 +223,9 @@ export class SpecialistAgent {
         observations.add({ kind: message.kind, from: message.from, text });
       }
     }
-    const active: ActiveTask = { id, threadId: null, turnId: null, observations,
-      stopRequested: false, done: Promise.resolve(), observer: new TurnObserver((method, item) => { observations.item(method, item); if (this.configuration?.permissions.commandExecution === true) this.verification?.observe(task, method, item); }), interrupting: null, input, messages, controller: new AbortController() };
+    const commands = new CommandSessions();
+    const active: ActiveTask = { commands, id, threadId: null, turnId: null, observations, health: new ExecutionHealth(id),
+      stopRequested: false, done: Promise.resolve(), observer: new TurnObserver((method, item) => { commands.observe(method, item); observations.item(method, item); if (this.configuration?.permissions.commandExecution === true) this.verification?.observe(task, method, item); }), interrupting: null, input, messages, controller: new AbortController() };
     this.active = active;
     active.done = this.run(task, active).finally(() => { if (this.active === active) this.active = null; });
     // A persistence failure is reported through the worker's health/lifecycle, not an unhandled rejection.
@@ -313,10 +319,12 @@ export class SpecialistAgent {
 
   private async run(task: Task, active: ActiveTask): Promise<void> {
     const observer = active.observer;
-    const remove = this.client.subscribe(event => observer.receive(event));
+    const remove = this.client.subscribe(event => {
+      active.health.receive(event, active.threadId, active.turnId);
+      observer.receive(event);
+    });
     const removeFailure = this.client.onFailure(error => observer.fail(error));
     let submitted = false;
-    let deadline: ReturnType<typeof setTimeout> | undefined;
     let scratch: TaskScratch | undefined;
     let workspace = this.workspace;
     try {
@@ -358,15 +366,19 @@ export class SpecialistAgent {
       this.history?.remember(active.threadId, active.turnId, active.input === task.prompt ? task.prompt : null);
       this.store.update(task.id, { threadId: active.threadId, turnId: active.turnId, status: 'running' });
       observer.identify(active.threadId, active.turnId);
-      deadline = setTimeout(() => {
-        void this.interrupt(active).catch(() => {});
-        observer.fail(new Error('Task deadline reached; execution outcome requires inspection.'));
-      }, this.timeoutMs);
       if (active.stopRequested) {
         try { await this.interrupt(active); }
         catch (error) { if (!observer.finished) observer.fail(error instanceof Error ? error : new Error(String(error))); }
       }
       const result = await observer.result;
+      if (active.stopRequested || result.status === 'interrupted') {
+        active.health.activity('stopping');
+        try { await active.commands.stop(this.client, active.threadId); }
+        catch (error) {
+          this.failure = 'Could not confirm command termination. Restart the worker before continuing.';
+          throw error;
+        }
+      }
       const currentGoal = this.store.task(task.id)?.goal, reported = observer.usage;
       const savedGoal = currentGoal && reported ? { ...currentGoal, usage: {
         reportedThroughTurn: currentGoal.turns, ...reported,
@@ -411,15 +423,15 @@ export class SpecialistAgent {
       this.store.complete(task.id, { status: submitted ? 'unknown' : active.stopRequested ? 'interrupted' : 'failed',
         output: '', error: reason }, outgoing ? active.messages : [], outgoing);
     } finally {
-      active.controller.abort(); clearTimeout(deadline); remove(); removeFailure();
+      active.controller.abort(); remove(); removeFailure();
       // Unknown executions may still own child processes. Retain their scratch until
       // app-server shutdown; the existing unknown-task gate prevents another turn.
       if (scratch && this.store.task(task.id)?.status !== 'unknown') {
         let released = true;
         if (active.threadId) {
           try {
-            // Unload also releases lingering unified-exec sessions before deleting
-            // their files. The saved conversation remains available for cold resume.
+            // Release the subscription after explicit stopped-command cleanup.
+            // Unsubscribe alone does not terminate background command sessions.
             await this.client.request('thread/unsubscribe', { threadId: active.threadId });
             this.loadedThreads.delete(active.threadId);
           } catch {
@@ -511,6 +523,7 @@ export class SpecialistAgent {
       return;
     }
     active.stopRequested = true;
+    active.health.activity('stopping');
     active.controller.abort();
     await this.interrupt(active);
   }

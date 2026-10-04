@@ -29,6 +29,7 @@ const history = new WorkerHistory(store, client, process.env.AGENT_DATA_DIRECTOR
 const historyQueue = configuration ? new WorkerHistoryQueue(process.env.AGENT_DATA_DIRECTORY ?? '/agent') : undefined;
 const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration, history, historyQueue });
 const pump = setInterval(() => {
+  void agent.checkHealth();
   try { agent.pump(); } catch { transportError = 'Could not persist collaboration state.'; }
 }, 1000);
 const port = Number(process.env.AGENT_PORT ?? 8787);
@@ -62,7 +63,7 @@ const server = Bun.serve({
       }
       if (path === '/health' && request.method === 'GET') {
         return Response.json({ chatsProtocol: 1, ready: error === null, role: configuration?.role ?? 'verifier', busy: agent.busy,
-          threadId: store.snapshot().threadId, deniedRequests: client.deniedRequests, error },
+          threadId: store.snapshot().threadId, execution: agent.executionHealth, deniedRequests: client.deniedRequests, error },
         { status: error === null ? 200 : 503 });
       }
       if (error) return Response.json({ error }, { status: 503 });
