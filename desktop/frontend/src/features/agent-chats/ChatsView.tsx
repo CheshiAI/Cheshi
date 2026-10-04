@@ -6,7 +6,7 @@ import { IntegrationDetail } from '../agents/IntegrationDetail';
 import { ArrowLeft, MessagesSquare, Plus, Users } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { LiquidGlassPanel, LiquidGlassSelect, NeumorphicButton, NeumorphicTextField } from '../../shared/ui';
+import { LiquidGlassPanel, NeumorphicButton, NeumorphicTextField } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import type { AgentChatsApi, ChatsRequest, ChatsSnapshot, ChatTaskTarget, RoomMessage } from '../../../../shared/agent-chats';
@@ -27,7 +27,7 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
   const [agents, setAgents] = useState<SpecialistAgent[]>([]), [engines, setEngines] = useState<AgentEngineInfo[]>([]);
   const [dialog, setDialog] = useState<'new' | 'participants' | null>(null), [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false), [sending, setSending] = useState(false);
-  const [drafts, setDrafts] = useState<Record<string, string>>({}), [recipient, setRecipient] = useState('default');
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const version = useRef(0), alive = useRef(true);
   const inspecting = useRef(false);
   const pending = useRef<{ key: string; id: string } | null>(null);
@@ -75,7 +75,10 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
   const goalState = root?.goalProgress;
   const needsRecovery = root?.status !== 'completed' && (root?.status === 'blocked' || root?.status === 'unknown'
     || goalState?.phase === 'blocked' || goalState?.phase === 'unknown');
-  const ownerSelected = recipient === 'default' || recipient === owner;
+  const messageText = draft.trim();
+  const recipient = messageText.startsWith('@')
+    ? room?.members.find(m => messageText.startsWith(`@${m.name} `) || messageText === `@${m.name}`)?.id ?? null : null;
+  const ownerSelected = recipient === null || recipient === owner;
   const recoveryBlock = needsRecovery ? goalState ? goalState.resumeBlocked : 'Checking the saved goal and worker state.' : null;
   const resumeGoal = needsRecovery && ownerSelected && !recoveryBlock;
   async function mutate(request: ChatsRequest) {
@@ -108,14 +111,9 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
   }
   async function send() {
     if (!room || sending || !draft.trim()) return;
-    const selectedRoom = room, selectedThread = threadId, text = draft.trim();
-    let to = recipient === 'default' ? null : recipient;
-    // A leading @name is explicit routing; the selector disambiguates names without parsing prose mentions.
-    if (text.startsWith('@')) {
-      const mention = selectedRoom.members.find(m => text.startsWith(`@${m.name} `) || text === `@${m.name}`);
-      if (!mention) { setError('Choose an invited agent in the recipient menu for this @mention.'); return; }
-      to = mention.id;
-    }
+    const selectedThread = threadId, text = messageText, to = recipient;
+    // Only a leading @name routes directly to an invited participant.
+    if (text.startsWith('@') && !to) { setError('Use the exact name of an invited agent after @.'); return; }
     if (needsRecovery && (to === null || to === owner) && recoveryBlock) { setError(recoveryBlock); return; }
     const key = JSON.stringify([room.id, selectedThread, to, text]);
     if (pending.current?.key !== key) pending.current = { key, id: crypto.randomUUID() };
@@ -150,7 +148,7 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
         {message.dialogue && <UserQuestions message={message} onAnswer={mutate} />}
         <div className={styles.links}>
           {room && message.relatedTask && <NeumorphicButton variant="ghost" onClick={() => onOpenTask({ roomId: room.id, threadId: message.threadId, agentId: message.relatedTask!.agentId, engineId: room.engineId, taskId: message.relatedTask!.taskId })}>{message.dialogue?.route ? 'Related goal' : 'Delegated task'}</NeumorphicButton>}
-          {(message.kind === 'goal' || (message.dialogue && !message.threadId)) && <NeumorphicButton variant="ghost" onClick={() => { setThreadId(message.id); setRecipient('default'); }}>{message.kind === 'goal' ? 'Open goal thread' : 'Open conversation'} · {snapshot.messages.filter(m => m.threadId === message.id).length}</NeumorphicButton>}
+          {(message.kind === 'goal' || (message.dialogue && !message.threadId)) && <NeumorphicButton variant="ghost" onClick={() => { setThreadId(message.id); }}>{message.kind === 'goal' ? 'Open goal thread' : 'Open conversation'} · {snapshot.messages.filter(m => m.threadId === message.id).length}</NeumorphicButton>}
           {room && message.taskId && <NeumorphicButton variant="ghost" onClick={() => { setThreadId(message.kind === 'goal' ? message.id : message.threadId); onOpenTask({ roomId: room.id, threadId: message.kind === 'goal' ? message.id : message.threadId, agentId: owningJob?.recipient ?? taskAgent ?? room.defaultAgentId, engineId: room.engineId, taskId: message.taskId! }); }}>Task details</NeumorphicButton>}
         </div>
       </div>
@@ -160,13 +158,13 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
     <LiquidGlassPanel as="aside" className={styles.sidebar}>
       <header className={styles.header}><h2>CHATS</h2><TooltipButton variant="ghost" size="icon" title="New room" aria-label="New room" onClick={() => setDialog('new')} disabled={!api}><Plus aria-hidden="true" /></TooltipButton></header>
       <nav ref={sidebar} className={styles.roomList} aria-label="Rooms">
-        {snapshot.rooms.map(r => <NeumorphicButton variant="ghost" className={styles.room} disabled={sending} key={r.id} aria-current={r.id === roomId ? 'page' : undefined} onClick={() => { setRoomId(r.id); setThreadId(null); setRecipient('default'); }}><MessagesSquare aria-hidden="true" /><span>{r.name}</span></NeumorphicButton>)}
+        {snapshot.rooms.map(r => <NeumorphicButton variant="ghost" className={styles.room} disabled={sending} key={r.id} aria-current={r.id === roomId ? 'page' : undefined} onClick={() => { setRoomId(r.id); setThreadId(null); }}><MessagesSquare aria-hidden="true" /><span>{r.name}</span></NeumorphicButton>)}
         {!snapshot.rooms.length && <p className={styles.empty}>{loading ? 'Loading rooms…' : 'Create a room and invite your agents to begin.'}</p>}
       </nav>
       <NeumorphicButton variant="ghost" onClick={onOpenAgents}>Manage agents and workers</NeumorphicButton>
     </LiquidGlassPanel>
     <section className={styles.conversation} aria-label={room?.name ?? 'Room conversation'}>
-      <header className={styles.header}>{threadId && <TooltipButton variant="ghost" size="icon" title="Back to room" aria-label="Back to room" disabled={sending} onClick={() => { setThreadId(null); setRecipient('default'); }}><ArrowLeft aria-hidden="true" /></TooltipButton>}<h2>{threadId ? 'Goal thread' : room?.name ?? 'Chats'}</h2>
+      <header className={styles.header}>{threadId && <TooltipButton variant="ghost" size="icon" title="Back to room" aria-label="Back to room" disabled={sending} onClick={() => { setThreadId(null); }}><ArrowLeft aria-hidden="true" /></TooltipButton>}<h2>{threadId ? 'Goal thread' : room?.name ?? 'Chats'}</h2>
         {room && <TooltipButton variant="ghost" size="icon" title="Room participants" aria-label="Room participants" onClick={() => setDialog('participants')}><Users aria-hidden="true" /></TooltipButton>}</header>
       {room && <div className={styles.participants}>{room.members.map(m => m.name).join(' · ')}<span>Default: {name(owner ?? null)}</span></div>}
       {root && <section ref={summaryScroll} className={styles.goalSummary} aria-label="Goal progress">
@@ -195,9 +193,7 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
         {room && !snapshot.messages.some(m => m.roomId === room.id) && <p className={styles.empty}>Describe what you need. Your agents will organize the work, consult invited peers, and ask you when a decision is needed.</p>}
       </div>
       {room && <form className={styles.composer} onSubmit={e => { e.preventDefault(); void send(); }}>
-        <div className={styles.composerControls}><LiquidGlassSelect ariaLabel="Message recipient" value={recipient} options={[{ value: 'default', label: `Default · ${name(owner ?? null)}` }, ...room.members.map(m => ({ value: m.id, label: `@${m.name}` }))]} onChange={setRecipient} disabled={sending} />
-</div>
-        <NeumorphicTextField multiline variant="standard" aria-label="Message" placeholder={resumeGoal ? 'Add the missing information to resume this goal…' : 'Message the selected agent…'} value={draft} maxLength={16000} onChange={e => setDrafts(all => ({ ...all, [draftKey]: e.target.value }))} />
+        <NeumorphicTextField multiline variant="standard" aria-label="Message" placeholder={resumeGoal ? 'Add the missing information to resume this goal…' : 'Message your agents…'} value={draft} maxLength={16000} onChange={e => setDrafts(all => ({ ...all, [draftKey]: e.target.value }))} />
         <div className={styles.actions}><NeumorphicButton variant="standard" type="submit" disabled={sending || !draft.trim() || !api || (ownerSelected && !!recoveryBlock)}>{sending ? 'Saving…' : resumeGoal ? 'Send and resume goal' : 'Send'}</NeumorphicButton></div>
       </form>}
     </section>

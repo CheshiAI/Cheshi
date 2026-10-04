@@ -22,7 +22,7 @@
 .metadata { display: flex; flex-wrap: wrap; align-items: center; gap: var(--icon-default); }
 .metadata span, .metadata time, .description { font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
 .text { margin: var(--space-default) 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.links, .actions, .composerControls { display: flex; gap: var(--icon-default); flex-wrap: wrap; }
+.links, .actions { display: flex; gap: var(--icon-default); flex-wrap: wrap; }
 .actions { justify-content: flex-end; }
 .composer { padding: var(--space-default); display: flex; flex-direction: column; gap: var(--space-default); border-top: 1px solid var(--divider); }
 .composer textarea { min-height: 88px; max-height: 200px; resize: vertical; }

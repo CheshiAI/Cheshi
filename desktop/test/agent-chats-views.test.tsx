@@ -67,6 +67,8 @@ test('send failure keeps the draft and retry uses the same message identity', as
     await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
     await ui.type('Message', 'Hello'); await ui.click('Send');
     expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ recipient: null, threadId: null });
+    expect(document.querySelector('[aria-label="Message recipient"]')).toBeNull();
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Hello');
     fail = false; await ui.click('Send');
     expect(requests[1]).toEqual(requests[0]);
@@ -108,6 +110,7 @@ test('new room invites an assigned agent and uses that agent as its default reci
     await ui.type('Message', '@Stranger hello'); await ui.click('Send');
     expect(requests.some(r => r.action === 'send')).toBe(false);
     expect(document.body.textContent).toContain('invited agent');
+    expect(document.body.textContent).not.toContain('recipient menu');
     await ui.type('Message', '@Developer hello'); await ui.click('Send');
     expect(requests.find(r => r.action === 'send')).toMatchObject({ recipient: agent.id, goal: false, automatic: true });
     expect(document.querySelector('[aria-label="Message type"]')).toBeNull();
@@ -294,6 +297,20 @@ test.each(['Execution outcome is unknown.', 'Checking the saved goal and worker 
     await act(async () => document.querySelector('form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
     expect(requests.some(r => r.action === 'send')).toBe(false);
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Continue');
+  });
+});
+
+test('a leading mention can address an invited peer while the goal owner cannot resume', async () => {
+  await withDOM(async ui => {
+    const data = recoverySnapshot('Execution outcome is unknown.'), requests: ChatsRequest[] = [];
+    data.rooms[0]!.members.push({ id: 'planner', name: 'Planning Homie', accountId: 'planner-account' });
+    const api = { request: async (request: ChatsRequest) => { requests.push(request); return data; } };
+    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.click('Open goal thread · 1');
+    await ui.type('Message', '@Planning Homie clarify the requirements'); await ui.click('Send');
+    expect(requests.filter(r => r.action === 'send')).toMatchObject([{ recipient: 'planner', threadId: 'goal' }]);
+    await ui.type('Message', '@Development continue'); await ui.click('Send');
+    expect(requests.filter(r => r.action === 'send')).toHaveLength(1);
   });
 });
 
