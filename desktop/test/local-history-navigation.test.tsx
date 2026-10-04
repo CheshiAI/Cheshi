@@ -48,6 +48,9 @@ function createHarness() {
   const slots: unknown[] = [];
   const jsx = (type: string, props: Record<string, unknown>, key?: string): TestElement => ({ type, props, key });
   const modules: Record<string, unknown> = {
+    '../chat/chatWorkspaceModel': { CHAT_PANE_MIN_WIDTH: 400 },
+    '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
+    './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },
     '../scheduler/SchedulerNotifications': { SchedulerNotifications: 'SchedulerNotifications' },
     '../settings/DiscordSetupConfirmation': { DiscordSetupConfirmation: 'DiscordSetupConfirmation' },
     './useWorkflowChatNavigation': { useWorkflowChatNavigation: () => async () => false },
@@ -67,7 +70,7 @@ function createHarness() {
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     '../../shared/ui': {
-      LiquidGlassPanel: 'LiquidGlassPanel',
+      SlidingSidePanel: 'SlidingSidePanel', RegionalBlur: 'RegionalBlur', LiquidGlassPanel: 'LiquidGlassPanel',
       SidebarToggleVisibility: { Provider: 'SidebarToggleVisibility' },
     },
     '../chat': { ChatSessionList: 'ChatSessionList' },

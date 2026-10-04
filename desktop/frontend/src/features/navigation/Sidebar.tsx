@@ -11,6 +11,7 @@ export type WorkspaceView = 'chats' | 'chat' | 'notes' | 'calendar' | 'blank' | 
 interface SidebarProps {
   chatPanel?: ReactNode;
   memoPanelRef?: Ref<HTMLDivElement>;
+  chatsPanelRef?: Ref<HTMLDivElement>;
   activePanel?: SidebarPanel;
   onPanelChange?: (panel: SidebarPanel) => void;
   selectedFilePath: string | null;
@@ -22,6 +23,7 @@ interface SidebarProps {
 export function Sidebar({
   chatPanel,
   memoPanelRef,
+  chatsPanelRef,
   activePanel = 'files',
   onPanelChange,
   selectedFilePath,
@@ -41,6 +43,7 @@ export function Sidebar({
             tabs={[
               { id: 'chats', label: 'SESSION', content: chatPanel },
               { id: 'files', label: 'EXPLORER', content: files },
+              { id: 'agent-chats', label: 'CHATS', content: <div ref={chatsPanelRef} className="sidebar-content-primary" /> },
               { id: 'memos', label: 'MEMO', content: <div ref={memoPanelRef} className="sidebar-content-primary" /> },
               { id: 'github', label: 'GITHUB', content: null },
             ]} /> : files}

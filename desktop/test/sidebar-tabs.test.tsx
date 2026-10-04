@@ -124,14 +124,14 @@ async function withTabs(run: (h: {
   }
 }
 
-test('sidebar exposes four ordered tabs with an empty GitHub placeholder', () => {
+test('sidebar exposes five ordered tabs with an empty GitHub placeholder', () => {
   const html = renderToStaticMarkup(<Sidebar activePanel="memos" onPanelChange={() => {}}
     chatPanel={<div>Session list</div>} selectedFilePath={null} onWorkspaceEntryMutation={() => {}}
     onOpenWorkspaceFile={() => {}} />);
   const window = new Window();
   window.document.body.innerHTML = html;
   const tabs = [...window.document.querySelectorAll('[role="tab"]')];
-  expect(tabs.map(tab => tab.textContent)).toEqual(['SESSION', 'EXPLORER', 'MEMO', 'GITHUB']);
+  expect(tabs.map(tab => tab.textContent)).toEqual(['SESSION', 'EXPLORER', 'CHATS', 'MEMO', 'GITHUB']);
   const selected = window.document.querySelector('[role="tab"][aria-selected="true"]')!;
   expect(selected.textContent).toBe('MEMO');
   const panel = window.document.getElementById(selected.getAttribute('aria-controls')!)!;
@@ -410,7 +410,7 @@ test('reduced motion tab clicks align immediately and unmount releases observers
 test('last selected tab is stored separately per workspace and invalid values fall back to Files', async () => {
   await withTabs(async ({ window }) => {
     expect(readSidebarPanel('/one')).toBe('files');
-    for (const panel of ['chats', 'memos', 'files', 'github'] as const) {
+    for (const panel of ['chats', 'agent-chats', 'memos', 'files', 'github'] as const) {
       saveSidebarPanel(panel, '/one');
       expect(readSidebarPanel('/one')).toBe(panel);
     }

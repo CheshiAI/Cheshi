@@ -90,7 +90,9 @@ function props<T>(tree: ReactNode, name: string): T {
 }
 
 function renderFilePane(loading: boolean, ready = true, existingFile = false) {
-  const modules: Record<string, unknown> = {};
+  const modules: Record<string, unknown> = {
+    '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
+    './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },};
   for (const path of ['lucide-react', '../shell/WorkspaceLayoutControls', './editorFileDrop',
     '../../shared/file-icons/FileTypeIcon', '../../shared/ui', '../../shared/ui/TooltipButton',
     './WorkspaceEditorFileToolbar', './WorkspaceCodeExplanationMenu', './WorkspaceCodeExplanationToast',
@@ -136,6 +138,8 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
   let editorSessionMode: ReturnType<typeof useAppUpdateResume>['editorSessionMode'] = 'restore';
   const attachments = draftAttachmentModule.createChatDraftAttachments();
   const modules: Record<string, unknown> = {
+    '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
+    './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },
     './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => initialLayout, saveWorkspaceLayout() {} },
     '../chat/chatWorkspaceModel': { CHAT_PANE_MIN_WIDTH },
     '../../shared/ui/splitPaneModel': splitModel,
@@ -178,7 +182,7 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
     '../editor/LocalHistoryPage': ['LocalHistoryPage'], './WorkspaceEditorSplit': ['WorkspaceEditorSplit'],
     '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'], '../notes/NotesView': ['NotesView'],
   })) modules[path] = Object.fromEntries(names.map(name => [name, name]));
-  modules['../../shared/ui'] = { LiquidGlassPanel: 'LiquidGlassPanel', SlidingSidePanel: 'SlidingSidePanel',
+  modules['../../shared/ui'] = { RegionalBlur: 'RegionalBlur', LiquidGlassPanel: 'LiquidGlassPanel', SlidingSidePanel: 'SlidingSidePanel',
     SidebarToggleVisibility: { Provider: 'SidebarToggleVisibility' } };
   const Shell = load<typeof AppShell>('features/shell/AppShell.tsx', 'AppShell', modules, { document: {} });
   return { attachments, render: () => {
@@ -682,4 +686,20 @@ test('custom workspace layout keeps editor, chat and terminal visible together a
   props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('terminal');
   expect(props<ComponentProps<typeof TerminalWorkspace>>(split().terminal, 'TerminalWorkspace').active).toBe(true);
   expect(props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace').active).toBe(true);
+});
+
+test('Chats tab opens the conversation and rail navigation restores its sidebar without losing the list target', () => {
+  const app = shellHarness();
+  const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
+  const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
+  sidebar().onPanelChange!('agent-chats');
+  expect(sidebar().activePanel).toBe('agent-chats');
+  expect(props<{ active: boolean }>(app.render(), 'ChatsView').active).toBe(true);
+  const target = {} as HTMLDivElement;
+  (sidebar().chatsPanelRef as (node: HTMLDivElement) => void)(target);
+  expect(props<{ sidebarTarget: HTMLDivElement }>(app.render(), 'ChatsView').sidebarTarget).toBe(target);
+  sidebar().onPanelChange!('files'); rail().onToggleSidebar();
+  rail().onNavigate('chats');
+  expect(sidebar().activePanel).toBe('agent-chats'); expect(rail().sidebarOpen).toBe(true);
+  expect(props<{ sidebarTarget: HTMLDivElement }>(app.render(), 'ChatsView').sidebarTarget).toBe(target);
 });

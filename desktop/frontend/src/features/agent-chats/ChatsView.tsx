@@ -3,14 +3,19 @@ import { isWorkKind } from '../../../../shared/agent-work';
 import { VerificationMessage } from '../agents/VerificationMessage';
 import { WorkMessage } from '../agents/WorkMessage';
 import { IntegrationDetail } from '../agents/IntegrationDetail';
-import { ArrowLeft, MessagesSquare, Phone, Plus, Users } from 'lucide-react';
+import { ArrowLeft, MessagesSquare, Phone, Users } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { MessageContent } from '../chat/MessageContent';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
+import { useChatsSnapshot } from './useChatsSnapshot';
+import { ChatsRoomList } from './ChatsRoomList';
 import { VoiceDialog } from './VoiceDialog';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { LiquidGlassPanel, NeumorphicButton, NeumorphicTextField } from '../../shared/ui';
+import { NeumorphicButton, NeumorphicTextField } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
-import type { AgentChatsApi, ChatsRequest, ChatsSnapshot, ChatTaskTarget, RoomMessage } from '../../../../shared/agent-chats';
+import type { AgentChatsApi, ChatsRequest, ChatTaskTarget, RoomMessage } from '../../../../shared/agent-chats';
 import type { AgentRegistryApi, SpecialistAgent } from '../../../../shared/agent-registry';
 import type { AgentEngineInfo, AgentManagementApi } from '../../../../shared/agent-management';
 import { AgentAvatar } from '../../shared/agent-management/AgentAvatar';
@@ -18,40 +23,32 @@ import { GoalQuestions } from './GoalQuestions';
 import { RoomDialog } from './RoomDialog';
 import styles from './ChatsView.module.css';
 
-export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDesktop?.agentChats,
+const ChatsMessageContent = memo(MessageContent);
+
+export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpenRoom, onOpenTask, onOpenAgents, api = cheshiDesktop?.agentChats,
   registry = cheshiDesktop?.agentRegistry, management = cheshiDesktop?.agentManagement }: {
-  active: boolean; onOpenTask(target: ChatTaskTarget): void; onOpenAgents(): void;
+  active: boolean; sidebarTarget?: HTMLElement | null; sidebarActive?: boolean; onOpenRoom?(): void; onOpenTask(target: ChatTaskTarget): void; onOpenAgents(): void;
   api?: AgentChatsApi; registry?: Pick<AgentRegistryApi, 'list' | 'onDidChange'>; management?: Pick<AgentManagementApi, 'engines'>;
 }) {
-  const [snapshot, setSnapshot] = useState<ChatsSnapshot>({ rooms: [], messages: [] });
+  const data = useChatsSnapshot(api, active || sidebarActive);
+  const { snapshot } = data;
   const [roomId, setRoomId] = useState<string | null>(null), [threadId, setThreadId] = useState<string | null>(null);
   const [agents, setAgents] = useState<SpecialistAgent[]>([]), [engines, setEngines] = useState<AgentEngineInfo[]>([]);
   const [dialog, setDialog] = useState<'new' | 'participants' | null>(null), [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false), [sending, setSending] = useState(false);
+  const [sending, setSending] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const version = useRef(0), alive = useRef(true);
+  const alive = useRef(true);
   const inspecting = useRef(false);
   const pending = useRef<{ key: string; id: string } | null>(null);
-  const sidebar = useAutoHideScrollbars<HTMLElement>(), timeline = useAutoHideScrollbars<HTMLDivElement>();
+  const sendingRef = useRef(false), composing = useRef(false);
+  const timeline = useAutoHideScrollbars<HTMLDivElement>();
   const summaryScroll = useAutoHideScrollbars<HTMLElement>();
-  useEffect(() => { alive.current = true; return () => { alive.current = false; version.current++; }; }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => {
-    if (!active || !api) return;
-    let stopped = false, busy = false;
-    const refresh = async () => {
-      if (busy) return; busy = true;
-      const requestVersion = ++version.current;
-      try {
-        const data = await api.request({ action: 'list' });
-        if (!stopped && requestVersion === version.current) { setSnapshot(data); setError(null); setRoomId(id => id ?? data.rooms[0]?.id ?? null); }
-      } catch (e) { if (!stopped && requestVersion === version.current) setError(e instanceof Error ? e.message : 'Could not load Chats.'); }
-      finally { busy = false; if (!stopped) setLoading(false); }
-    };
-    setLoading(true); void refresh();
-    const timer = setInterval(() => { void refresh(); }, 3000);
-    return () => { stopped = true; clearInterval(timer); version.current++; };
-  }, [active, api]);
+    if (!data.loaded || snapshot.rooms.some(room => room.id === roomId)) return;
+    setRoomId(snapshot.rooms[0]?.id ?? null); setThreadId(null);
+  }, [data.loaded, snapshot.rooms, roomId]);
   useEffect(() => {
     if (!active) return;
     let stopped = false;
@@ -85,9 +82,8 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
   const resumeGoal = needsRecovery && ownerSelected && !recoveryBlock;
   async function mutate(request: ChatsRequest) {
     if (!api) throw new Error('Restart the desktop app to load Chats.');
-    version.current++;
-    const data = await api.request(request);
-    if (alive.current) { version.current++; setSnapshot(data); if (request.action === 'create') { setRoomId(request.id); setThreadId(null); } }
+    await data.request(request);
+    if (alive.current && request.action === 'create') { setRoomId(request.id); setThreadId(null); }
   }
   async function inspectExecution() {
     if (!room || !root || sending || inspecting.current) return;
@@ -112,7 +108,7 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
     finally { inspecting.current = false; if (alive.current) setSending(false); }
   }
   async function send() {
-    if (!room || sending || !draft.trim()) return;
+    if (!room || sending || sendingRef.current || !draft.trim()) return;
     const selectedThread = threadId, text = messageText, to = recipient;
     // Only a leading @name routes directly to an invited participant.
     if (text.startsWith('@') && !to) { setError('Use the exact name of an invited agent after @.'); return; }
@@ -120,14 +116,14 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
     const key = JSON.stringify([room.id, selectedThread, to, text]);
     if (pending.current?.key !== key) pending.current = { key, id: crypto.randomUUID() };
     const id = pending.current.id;
-    setSending(true); setError(null);
+    sendingRef.current = true; setSending(true); setError(null);
     try {
       await mutate({ action: 'send', id, roomId: room.id, threadId: selectedThread, recipient: to, text, goal: false, automatic: true });
       if (!alive.current) return;
       setDrafts(all => ({ ...all, [draftKey]: all[draftKey]?.trim() === text ? '' : all[draftKey] ?? '' }));
       pending.current = null;
     } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : 'Message was not saved.'); }
-    finally { if (alive.current) setSending(false); }
+    finally { sendingRef.current = false; if (alive.current) setSending(false); }
   }
   const name = (id: string | null) => id === 'user' ? 'You' : room?.members.find(m => m.id === id)?.name ?? id ?? '';
   function renderMessage(message: RoomMessage) {
@@ -135,14 +131,17 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
     const taskAgent = message.sender === 'user' || message.kind !== 'message' ? message.recipient : message.sender;
     // Peer messages refer to the owner's task, not the recipient's consultation task.
     const owningJob = snapshot.messages.find(m => m.sender === 'user' && m.taskId === message.taskId && m.roomId === room?.id);
+    const meaningfulTask = message.kind !== 'message' || !!message.dialogue?.objective || !!message.goalProgress
+      || !!message.error || (!!message.status && !['completed', 'queued', 'running'].includes(message.status))
+      || owningJob?.kind === 'goal' || !!owningJob?.dialogue?.objective;
     return <article className={styles.message} key={message.id}>
       <div className={styles.avatar}>{message.sender === 'user' ? <MessagesSquare aria-hidden="true" /> : <AgentAvatar id={message.sender} avatar={agent?.avatar} />}</div>
       <div className={styles.messageBody}>
-        <div className={styles.metadata}><strong>{name(message.sender)}</strong>{message.recipient && <span>→ {name(message.recipient)}</span>}<time>{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span>{message.status}</span></div>
+        <div className={styles.metadata}><strong>{name(message.sender)}</strong>{message.recipient && <span>→ {name(message.recipient)}</span>}<time>{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>{message.status && (message.status !== 'completed' || meaningfulTask) && <span>{message.status}</span>}</div>
         {message.kind !== 'message' && <span className={styles.description}>{message.kind.replaceAll('_', ' ')}</span>}
         {isWorkKind(message.kind) ? <WorkMessage kind={message.kind} text={message.text} />
           : message.kind === 'verification_request' || message.kind === 'verification_result' ? <VerificationMessage kind={message.kind} text={message.text} />
-            : <p className={styles.text}>{message.text || 'No text response.'}</p>}
+            : <div className={styles.text}><ChatsMessageContent text={message.text || 'No text response.'} /></div>}
         {message.worker && message.worker.phase !== 'running' && <p className={styles.description} role="status">{({
           starting: 'Waking the participant…', sleeping: 'Sleeping · wakes on request', draining: 'Preparing to sleep…',
           disabled: 'Worker manually stopped · start it in Agents', error: 'Worker could not start · retry when ready',
@@ -159,25 +158,29 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
               finally { if (alive.current) setSending(false); } }}>Retry worker</NeumorphicButton>}
           {room && message.relatedTask && <NeumorphicButton variant="ghost" onClick={() => onOpenTask({ roomId: room.id, threadId: message.threadId, agentId: message.relatedTask!.agentId, engineId: room.engineId, taskId: message.relatedTask!.taskId })}>{message.dialogue?.route ? 'Related goal' : 'Delegated task'}</NeumorphicButton>}
           {(message.kind === 'goal' || (message.dialogue && !message.threadId)) && <NeumorphicButton variant="ghost" onClick={() => { setThreadId(message.id); }}>{message.kind === 'goal' ? 'Open goal thread' : 'Open conversation'} · {snapshot.messages.filter(m => m.threadId === message.id).length}</NeumorphicButton>}
-          {room && message.taskId && <NeumorphicButton variant="ghost" onClick={() => { setThreadId(message.kind === 'goal' ? message.id : message.threadId); onOpenTask({ roomId: room.id, threadId: message.kind === 'goal' ? message.id : message.threadId, agentId: owningJob?.recipient ?? taskAgent ?? room.defaultAgentId, engineId: room.engineId, taskId: message.taskId! }); }}>Task details</NeumorphicButton>}
+          {room && message.taskId && meaningfulTask && <NeumorphicButton variant="ghost" onClick={() => { setThreadId(message.kind === 'goal' ? message.id : message.threadId); onOpenTask({ roomId: room.id, threadId: message.kind === 'goal' ? message.id : message.threadId, agentId: owningJob?.recipient ?? taskAgent ?? room.defaultAgentId, engineId: room.engineId, taskId: message.taskId! }); }}>Task details</NeumorphicButton>}
         </div>
       </div>
     </article>;
   }
-  return <main className={styles.root} hidden={!active} aria-label="Agent chats">
-    <LiquidGlassPanel as="aside" className={styles.sidebar}>
-      <header className={styles.header}><h2>CHATS</h2><TooltipButton variant="ghost" size="icon" title="New room" aria-label="New room" onClick={() => setDialog('new')} disabled={!api}><Plus aria-hidden="true" /></TooltipButton></header>
-      <nav ref={sidebar} className={styles.roomList} aria-label="Rooms">
-        {snapshot.rooms.map(r => <NeumorphicButton variant="ghost" className={styles.room} disabled={sending} key={r.id} aria-current={r.id === roomId ? 'page' : undefined} onClick={() => { setRoomId(r.id); setThreadId(null); }}><MessagesSquare aria-hidden="true" /><span>{r.name}</span></NeumorphicButton>)}
-        {!snapshot.rooms.length && <p className={styles.empty}>{loading ? 'Loading rooms…' : 'Create a room and invite your agents to begin.'}</p>}
-      </nav>
-      <NeumorphicButton variant="ghost" onClick={onOpenAgents}>Manage agents and workers</NeumorphicButton>
-    </LiquidGlassPanel>
+  const roomList = <ChatsRoomList snapshot={snapshot} selectedId={roomId} phase={data.phase} loaded={data.loaded} refreshing={data.refreshing} disabled={!api} error={data.error}
+    onSelect={id => { setRoomId(id); setThreadId(null); onOpenRoom?.(); }}
+    onNew={() => { setDialog('new'); onOpenRoom?.(); }} onRefresh={() => { void data.refresh(); }} onOpenAgents={onOpenAgents} />;
+  return <>
+    {sidebarTarget && createPortal(roomList, sidebarTarget)}
+    <main className={styles.root} hidden={!active} aria-label="Agent chats">
+    {sidebarTarget === undefined && <aside className={styles.sidebar}>{roomList}</aside>}
     <section className={styles.conversation} aria-label={room?.name ?? 'Room conversation'}>
-      <header className={styles.header}>{threadId && <TooltipButton variant="ghost" size="icon" title="Back to room" aria-label="Back to room" disabled={sending} onClick={() => { setThreadId(null); }}><ArrowLeft aria-hidden="true" /></TooltipButton>}<h2>{threadId ? 'Goal thread' : room?.name ?? 'Chats'}</h2>
+      <header className={styles.header}>
+        {threadId && <TooltipButton variant="ghost" size="icon" title="Back to room" aria-label="Back to room" disabled={sending} onClick={() => { setThreadId(null); }}><ArrowLeft aria-hidden="true" /></TooltipButton>}
+        {room ? <div className={styles.participants} aria-label="Room participants">
+          {room.members.map(member => <TooltipTarget key={member.id} content={member.id === room.defaultAgentId ? `${member.name} · Default agent` : member.name}>
+            <span className={styles.participant} tabIndex={0}><AgentAvatar id={member.id} avatar={agents.find(agent => agent.id === member.id)?.avatar} /><span>{member.name}</span></span>
+          </TooltipTarget>)}
+        </div> : <h2>Chats</h2>}
         {room && <TooltipButton variant="ghost" size="icon" title="Phone calls" aria-label="Phone calls" onClick={() => setVoiceOpen(true)}><Phone aria-hidden="true" /></TooltipButton>}
-        {room && <TooltipButton variant="ghost" size="icon" title="Room participants" aria-label="Room participants" onClick={() => setDialog('participants')}><Users aria-hidden="true" /></TooltipButton>}</header>
-      {room && <div className={styles.participants}>{room.members.map(m => m.name).join(' · ')}<span>Default: {name(owner ?? null)}</span></div>}
+        {room && <TooltipButton variant="ghost" size="icon" title="Room participants" aria-label="Room participants" onClick={() => setDialog('participants')}><Users aria-hidden="true" /></TooltipButton>}
+      </header>
       {root && <section ref={summaryScroll} className={styles.goalSummary} aria-label="Goal progress">
         {goalState?.integration && <IntegrationDetail integration={goalState.integration} onInspect={() => { void inspectApplication(); }}
           inspectionDisabled={sending || !api || !['completed', 'blocked', 'interrupted', 'failed'].includes(root?.status ?? '')} />}
@@ -204,11 +207,17 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
         {room && !snapshot.messages.some(m => m.roomId === room.id) && <p className={styles.empty}>Describe what you need. Your agents will organize the work, consult invited peers, and ask you when a decision is needed.</p>}
       </div>
       {room && <form className={styles.composer} onSubmit={e => { e.preventDefault(); void send(); }}>
-        <NeumorphicTextField multiline variant="standard" aria-label="Message" placeholder={resumeGoal ? 'Add the missing information to resume this goal…' : 'Message your agents…'} value={draft} maxLength={16000} onChange={e => setDrafts(all => ({ ...all, [draftKey]: e.target.value }))} />
+        <NeumorphicTextField multiline variant="standard" aria-label="Message" placeholder={resumeGoal ? 'Add the missing information to resume this goal…' : 'Message your agents…'} value={draft} maxLength={16000}
+          onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
+          onKeyDown={event => {
+            if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey
+              || composing.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
+            event.preventDefault(); void send();
+          }} onChange={e => setDrafts(all => ({ ...all, [draftKey]: e.target.value }))} />
         <div className={styles.actions}><NeumorphicButton variant="standard" type="submit" disabled={sending || !draft.trim() || !api || (ownerSelected && !!recoveryBlock)}>{sending ? 'Saving…' : resumeGoal ? 'Send and resume goal' : 'Send'}</NeumorphicButton></div>
       </form>}
     </section>
     {active && dialog && <RoomDialog room={dialog === 'participants' ? room : undefined} agents={agents} engines={engines} onSave={mutate} onClose={() => setDialog(null)} />}
     {active && voiceOpen && room && <VoiceDialog key={room.id} roomId={room.id} onClose={() => setVoiceOpen(false)} />}
-  </main>;
+  </main></>;
 }

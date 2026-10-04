@@ -91,6 +91,7 @@ export function AppShell() {
   const closeReview = useCallback(() => { setFileReview(null); setLineCommitTarget(null); setLocalHistoryPath(null); }, []);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
+  const [chatsSidebarTarget, setChatsSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [memoSidebarTarget, setMemoSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
   useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
@@ -198,6 +199,7 @@ export function AppShell() {
   };
 
   const navigate = (view: WorkspaceView): void => {
+    if (view === 'chats') { setSidebarPanel('agent-chats'); setLeftSidebarOpen(true); }
     historyRequestId.current += 1;
     closeReview();
     if (customLayout) {
@@ -308,8 +310,9 @@ export function AppShell() {
           inert={workspace.accountSwitchPending}>
             <Sidebar
               memoPanelRef={setMemoSidebarTarget}
+              chatsPanelRef={setChatsSidebarTarget}
               activePanel={sidebarPanel}
-              onPanelChange={setSidebarPanel}
+              onPanelChange={panel => { setSidebarPanel(panel); if (panel === 'agent-chats') navigate('chats'); }}
               chatPanel={<ChatSessionList
                 search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
                   onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
@@ -425,7 +428,7 @@ export function AppShell() {
             />
           )}
           {activeView === 'settings' && <SettingsView contextId={workspace.activePaneId} onOpenChat={openWorkflowChat} />}
-          <ChatsView active={activeView === 'chats'} onOpenAgents={() => { setChatTask(null); setActiveView('agents'); }} onOpenTask={target => { setChatTask(target); setActiveView('agents'); }} />
+          <ChatsView active={activeView === 'chats'} sidebarTarget={chatsSidebarTarget} sidebarActive={sidebarPanel === 'agent-chats' && leftSidebarOpen} onOpenRoom={() => navigate('chats')} onOpenAgents={() => { setChatTask(null); setActiveView('agents'); }} onOpenTask={target => { setChatTask(target); setActiveView('agents'); }} />
           <AgentManagementViews chatTask={chatTask} onBackToChats={() => { setChatTask(null); setActiveView('chats'); }} view={activeView === 'docker' || activeView === 'agents' ? activeView : null} />
           {activeView === 'blank' && <BlankView />}
           </WorkspaceEditorSplit>

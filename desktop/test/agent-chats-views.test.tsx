@@ -68,7 +68,7 @@ test('Chats shows room goals, opens a thread and task details, and preserves thr
     const render = (active: boolean) => ui.render(<ChatsView active={active} api={api} onOpenAgents={() => {}} onOpenTask={target => opened.push(target)} />);
     await render(true);
     expect(document.body.textContent).toContain('Build login');
-    expect(document.body.textContent).not.toContain('Waiting for design');
+    expect(document.querySelector('[aria-label="Room messages"]')?.textContent).not.toContain('Waiting for design');
     await ui.click('Open goal thread · 1');
     expect(document.body.textContent).toContain('Waiting for design');
     await ui.click('Task details');
@@ -76,7 +76,7 @@ test('Chats shows room goals, opens a thread and task details, and preserves thr
     await render(false); await render(true);
     expect(document.body.textContent).toContain('Waiting for design');
     await ui.click('Back to room');
-    expect(document.body.textContent).not.toContain('Waiting for design');
+    expect(document.querySelector('[aria-label="Room messages"]')?.textContent).not.toContain('Waiting for design');
   });
 });
 test('send failure keeps the draft and retry uses the same message identity', async () => {
@@ -541,5 +541,136 @@ test('Chats displays sleeping workers and retry wakes the saved recipient withou
     await ui.type('Message', 'Unsaved follow-up'); await ui.click('Retry worker');
     expect(requests.filter(r => r.action !== 'list')).toEqual([{ action: 'retry', roomId: 'room', messageId: 'goal' }]);
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Unsaved follow-up');
+  });
+});
+
+test('Chats portals its room list and preserves drafts, filtering and scroll across room and view changes', async () => {
+  await withDOM(async ui => {
+    const data = snapshot(); data.rooms.push({ ...data.rooms[0]!, id: 'second', name: 'Planning' });
+    const api = { request: async () => data }, target = document.createElement('div'); document.body.append(target);
+    let opened = 0;
+    const render = (active: boolean) => ui.render(<ChatsView active={active} sidebarTarget={target} onOpenRoom={() => { opened++; }} api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await render(true);
+    expect(target.querySelector('[aria-label="Chats rooms"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Agent chats"] [aria-label="Chats rooms"]')).toBeNull();
+    await ui.type('Message', 'Keep login draft');
+    const timeline = document.querySelector('[aria-label="Room messages"]') as HTMLElement;
+    Object.defineProperty(timeline, 'scrollHeight', { configurable: true, value: 1000 });
+    Object.defineProperty(timeline, 'clientHeight', { configurable: true, value: 200 });
+    timeline.scrollTop = 120; timeline.dispatchEvent(new window.Event('scroll', { bubbles: true }));
+    await ui.click('Planning'); await ui.type('Message', 'Keep planning draft');
+    await ui.click('Login');
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Keep login draft');
+    expect((document.querySelector('[aria-label="Room messages"]') as HTMLElement).scrollTop).toBe(120);
+    await ui.type('Search rooms', 'Planning'); expect(target.querySelector('[aria-label="Login"]')).toBeNull();
+    await render(false); await render(true);
+    expect((target.querySelector('[aria-label="Search rooms"]') as HTMLInputElement).value).toBe('Planning');
+    await ui.click('Planning'); expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Keep planning draft');
+    expect(opened).toBe(3);
+    await ui.click('Filter rooms');
+    expect(document.activeElement).toBe(target.querySelector('[aria-label="Search rooms"]'));
+    expect(target.querySelector('[aria-label="Login"]')).toBeNull();
+    await ui.click('Clear room search');
+    expect(target.querySelector('[aria-label="Login"]')).not.toBeNull();
+    expect(document.activeElement).toBe(target.querySelector('[aria-label="Search rooms"]'));
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Keep planning draft');
+  });
+});
+test('ordinary messages render safe markdown without completed or task-detail clutter', async () => {
+  await withDOM(async ui => {
+    const data = snapshot(); data.messages = [{ ...data.messages[1]!, threadId: null, status: 'completed', text: '**Important**\n\n- first\n- second\n\n[bad](javascript:alert(1))' }];
+    await ui.render(<ChatsView active api={{ request: async () => data }} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    const timeline = document.querySelector('[aria-label="Room messages"]')!;
+    expect(timeline.querySelector('strong')?.textContent).toBe('Development');
+    expect([...timeline.querySelectorAll('strong')].some(node => node.textContent === 'Important')).toBe(true);
+    expect(timeline.querySelectorAll('li')).toHaveLength(2);
+    expect(timeline.querySelector('[href^="javascript:"]')).toBeNull();
+    expect(timeline.textContent).not.toContain('completed'); expect(timeline.textContent).not.toContain('Task details');
+    expect(document.body.textContent).not.toContain('Default:');
+    expect(document.querySelector('[aria-description="Development · Default agent"] [data-agent-avatar]')).not.toBeNull();
+  });
+});
+test('Enter sends a follow-up while a goal runs, Shift+Enter and IME do not send, and repeated Enter saves once', async () => {
+  await withDOM(async ui => {
+    const data = snapshot(); data.messages[0]!.status = 'running';
+    const requests: ChatsRequest[] = [];
+    let finish!: () => void;
+    const saved = new Promise<void>(resolve => { finish = resolve; });
+    const api = { request: async (request: ChatsRequest) => { if (request.action === 'send') { requests.push(request); await saved; } return data; } };
+    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.click('Open goal thread · 1'); await ui.type('Message', 'Email only');
+    const input = document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement;
+    const press = (options: KeyboardEventInit = {}) => input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...options }));
+    await act(async () => {
+      expect(press({ shiftKey: true })).toBe(true);
+      expect(press({ isComposing: true })).toBe(true);
+      input.dispatchEvent(new window.Event('compositionstart', { bubbles: true })); expect(press()).toBe(true);
+      input.dispatchEvent(new window.Event('compositionend', { bubbles: true }));
+    });
+    expect(requests).toHaveLength(0);
+    await act(async () => { expect(press()).toBe(false); press(); });
+    expect(requests).toHaveLength(1); expect(requests[0]).toMatchObject({ action: 'send', threadId: 'goal', automatic: true, goal: false, text: 'Email only' });
+    await ui.type('Message', 'Next requirement');
+    await act(async () => { finish(); await saved; });
+    expect(input.value).toBe('Next requirement');
+  });
+});
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void, reject!: (reason: Error) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+test('offscreen Chats starts one initial read and never displays an empty-room notice while loading', async () => {
+  await withDOM(async ui => {
+    const pending = createDeferred<ChatsSnapshot>(); let reads = 0;
+    const api = { request: async () => { reads++; return pending.promise; } };
+    const render = (active: boolean) => ui.render(<ChatsView active={active} api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await render(false);
+    expect(reads).toBe(1);
+    expect(document.querySelector('[role="status"][aria-label="Loading rooms…"]')).not.toBeNull();
+    expect(document.body.textContent).not.toContain('Create a room and invite');
+    await render(true); await render(false); expect(reads).toBe(1);
+    await act(async () => { pending.resolve(snapshot()); await pending.promise; });
+    await render(true);
+    expect(reads).toBe(1); expect(document.querySelector('[aria-label="Login"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Loading rooms…"]')).toBeNull();
+  });
+});
+
+test('first-load failure shows the error and retry, not a create-room invitation', async () => {
+  await withDOM(async ui => {
+    let fail = true;
+    const api = { request: async () => { if (fail) throw new Error('Room service unavailable'); return { rooms: [], messages: [] }; } };
+    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    expect(document.body.textContent).toContain('Room service unavailable');
+    expect(document.body.textContent).not.toContain('Create a room and invite');
+    expect((document.querySelector('[aria-label="Refresh rooms"]') as HTMLButtonElement).disabled).toBe(false);
+    fail = false; await ui.click('Refresh rooms');
+    expect(document.body.textContent).not.toContain('Room service unavailable');
+    expect(document.body.textContent).toContain('Create a room and invite');
+  });
+});
+
+test('refresh keeps room selection, draft and list scroll visible through failure and retry', async () => {
+  await withDOM(async ui => {
+    const background = createDeferred<ChatsSnapshot>(); let reads = 0;
+    const data = snapshot(); data.rooms.push({ ...data.rooms[0]!, id: 'second', name: 'Planning' });
+    const api = { request: async () => { reads++; return reads === 2 ? background.promise : data; } };
+    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.click('Planning'); await ui.type('Message', 'Keep this draft');
+    const list = document.querySelector('[role="region"][aria-label="Rooms"]') as HTMLElement;
+    list.scrollTop = 75;
+    await ui.click('Refresh rooms');
+    expect(document.querySelector('[aria-label="Planning"][aria-current="page"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Loading rooms…"]')).toBeNull();
+    expect(document.querySelector('[role="region"][aria-label="Rooms"]')).toBe(list);
+    await act(async () => { background.reject(new Error('Refresh failed')); await background.promise.catch(() => {}); });
+    expect(document.body.textContent).toContain('Refresh failed'); expect(list.scrollTop).toBe(75);
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Keep this draft');
+    await ui.click('Refresh rooms'); expect(document.body.textContent).not.toContain('Refresh failed');
+    expect(document.querySelector('[aria-label="Planning"][aria-current="page"]')).not.toBeNull();
+    expect(list.scrollTop).toBe(75);
   });
 });
