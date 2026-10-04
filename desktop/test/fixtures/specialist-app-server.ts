@@ -4,6 +4,7 @@ type ObjectValue = Record<string, unknown>;
 const send = (value: ObjectValue) => process.stdout.write(`${JSON.stringify(value)}\n`);
 const profile = process.env.FIXTURE_PROFILE;
 let sequence = 0;
+const loaded = new Set<string>();
 const callbacks = new Map<string, (result: ObjectValue) => void>();
 function call(tool: string, args: ObjectValue, threadId: unknown, turnId: string, done: (value: ObjectValue) => void) {
   const id = `tool-${++sequence}`;
@@ -15,8 +16,11 @@ createInterface({ input: process.stdin }).on('line', line => {
   const params = (m.params ?? {}) as ObjectValue;
   if (m.method === 'initialize') { send({ id: m.id, result: {} }); return; }
   if (m.method === 'account/read') { send({ id: m.id, result: { account: { type: 'chatgpt' } } }); return; }
+  if (m.method === 'thread/loaded/list') { send({ id: m.id, result: { data: [...loaded], nextCursor: null } }); return; }
+  if (m.method === 'thread/backgroundTerminals/list') { send({ id: m.id, result: { data: [], nextCursor: null } }); return; }
   if (m.method === 'thread/start' || m.method === 'thread/resume') {
-    send({ id: m.id, result: { thread: { id: params.threadId ?? `${profile}-thread-${++sequence}` } } }); return;
+    const id = String(params.threadId ?? `${profile}-thread-${++sequence}`); loaded.add(id);
+    send({ id: m.id, result: { thread: { id } } }); return;
   }
   if (m.method === 'thread/inject_items') { send({ id: m.id, result: {} }); return; }
   if (m.method === 'turn/start') {

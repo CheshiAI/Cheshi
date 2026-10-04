@@ -44,6 +44,7 @@ function assertIdle(busy: boolean): void {
 function publicAgent({ endpoint: _endpoint, ...agent }: RuntimeAgent) { return agent; }
 
 export function createAgentManagementService(options: { engines: AgentEngine[]; read?: ReadWorker;
+  control?<T>(engineId: string, agentId: string, action: string, operation: () => Promise<T>): Promise<T>;
   pendingDeletions?: (engineId: string) => Promise<DeleteContainer[]> }): AgentManagementApi {
   const adapters = new Map(options.engines.map(engine => [engine.kind, engine]));
   const pending = new Set<string>();
@@ -108,7 +109,7 @@ export function createAgentManagementService(options: { engines: AgentEngine[]; 
         const key = `${engineId}/${id}`;
         if (pending.has(key)) throw new Error('A worker operation is already running.');
         pending.add(key);
-        try {
+        const execute = async () => {
           const agent = await engine.inspect(engineId, id);
           if (action !== 'start') {
             if (!agent.endpoint) throw new Error('Cannot verify worker activity. No loopback API is available.');
@@ -119,7 +120,8 @@ export function createAgentManagementService(options: { engines: AgentEngine[]; 
           }
           await engine.control(engineId, id, action);
           return await snapshot(engineId);
-        } finally { pending.delete(key); }
+        };
+        try { return await (options.control ? options.control(engineId, id, action, execute) : execute()); } finally { pending.delete(key); }
       });
     },
   };

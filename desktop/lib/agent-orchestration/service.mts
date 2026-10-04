@@ -6,10 +6,12 @@ export interface CollaborationConnection { endpoint: string; token: string }
 interface Options {
   filename: string;
   peer(binding: Binding): Peer | null;
-  connect(binding: Binding): Promise<CollaborationConnection | null>;
+  connect(binding: Binding, demand: boolean): Promise<CollaborationConnection | null>;
+  around?(binding: Binding, operation: () => Promise<void>): Promise<void>;
+  rest?(binding: Binding, connection: CollaborationConnection, historyBusy: boolean): Promise<void>;
   exchange?: typeof exchangeWorker;
   history?: AgentHistoryOptions;
-  rooms?: { roster(binding: Binding): Record<string, string[]>; allowed(binding: Binding, message: Message): boolean; record(binding: Binding, messages: Message[]): void };
+  rooms?: { bindings?(): Binding[]; pending?(binding: Binding): boolean; roster(binding: Binding): Record<string, string[]>; allowed(binding: Binding, message: Message): boolean; record(binding: Binding, messages: Message[]): void };
 }
 export async function exchangeWorker(connection: CollaborationConnection, body: unknown): Promise<unknown> {
   const url = new URL(connection.endpoint);
@@ -44,14 +46,16 @@ export function createAgentOrchestration(options: Options) {
   const errors = new Map<string, string>();
   let flight: Promise<void> | null = null, timer: ReturnType<typeof setInterval> | null = null;
   async function dispatch(): Promise<void> {
+    for (const binding of options.rooms?.bindings?.() ?? []) mailbox().register(binding);
     const bindings = mailbox().bindings();
     for (const binding of bindings) {
       try {
         if (!options.peer(binding)) continue;
-        await workerOperations.run(async () => {
-          const connection = await options.connect(binding);
+        const operation = async () => {
+          const demand = mailbox().request(binding, [], m => options.rooms?.allowed(binding, m) ?? !m.roomId).messages.length > 0;
+          const connection = await options.connect(binding, demand);
           if (!connection) return;
-          if (history) void history.tick(binding, connection, () => options.peer(binding) !== null).then(
+          const historyFlight = history?.tick(binding, connection, () => options.peer(binding) !== null).then(
             () => historyErrors.delete(binding.id), () => historyErrors.set(binding.id, 'History relay is unavailable. Retry after checking the worker.'));
           const peers = bindings.filter(b => b.scope === binding.scope).flatMap(b => {
             const peer = options.peer(b); return peer ? [peer] : [];
@@ -64,7 +68,10 @@ export function createAgentOrchestration(options: Options) {
           // Journal acceptance is authoritative; projection is idempotent and catches up on every exchange.
           options.rooms?.record(binding, mailbox().messages(binding.scope));
           errors.delete(binding.id);
-        });
+          await historyFlight;
+          await options.rest?.(binding, connection, history?.busy ?? false);
+        };
+        await workerOperations.run(() => options.around ? options.around(binding, operation) : operation());
       } catch (error) { errors.set(binding.id, error instanceof Error ? error.message : 'Collaboration failed.'); }
     }
   }
@@ -75,6 +82,7 @@ export function createAgentOrchestration(options: Options) {
     return flight;
   };
   return {
+    pending: (binding: Binding) => mailbox().request(binding, [], m => options.rooms?.allowed(binding, m) ?? !m.roomId).messages.length > 0,
     register: (binding: Binding) => mailbox().register(binding),
     error: (id: string) => journalError ?? errors.get(id) ?? historyErrors.get(id) ?? null,
     tick,

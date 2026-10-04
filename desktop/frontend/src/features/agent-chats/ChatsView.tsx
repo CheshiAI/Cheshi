@@ -141,12 +141,20 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
         {isWorkKind(message.kind) ? <WorkMessage kind={message.kind} text={message.text} />
           : message.kind === 'verification_request' || message.kind === 'verification_result' ? <VerificationMessage kind={message.kind} text={message.text} />
             : <p className={styles.text}>{message.text || 'No text response.'}</p>}
+        {message.worker && message.worker.phase !== 'running' && <p className={styles.description} role="status">{({
+          starting: 'Waking the participant…', sleeping: 'Sleeping · wakes on request', draining: 'Preparing to sleep…',
+          disabled: 'Worker manually stopped · start it in Agents', error: 'Worker could not start · retry when ready',
+        })[message.worker.phase]}</p>}
         {message.error && <p role="status" className={styles.description}>{message.error}</p>}
         {message.dialogue?.objective && <p className={styles.description}>Working on: {message.dialogue.objective}</p>}
         {message.dialogue?.route && <p className={styles.description}>{message.dialogue.route.held ? 'Follow-up on hold' : 'Follow-up'}: {message.dialogue.route.reason}</p>}
         {message.dialogue?.revisions.map(revision => <details key={revision.inputId}><summary>Requirements updated</summary><p>{revision.reason}</p><p>User message: {revision.source}</p><ul>{revision.after.map(c => <li key={c}>{c}</li>)}</ul></details>)}
         {message.dialogue && <UserQuestions message={message} onAnswer={mutate} />}
         <div className={styles.links}>
+          {message.status === 'queued' && message.error && <NeumorphicButton variant="ghost" disabled={sending}
+            onClick={async () => { setSending(true); setError(null); try { await mutate({ action: 'retry', roomId: message.roomId, messageId: message.id }); }
+              catch (e) { if (alive.current) setError(e instanceof Error ? e.message : 'Worker retry failed.'); }
+              finally { if (alive.current) setSending(false); } }}>Retry worker</NeumorphicButton>}
           {room && message.relatedTask && <NeumorphicButton variant="ghost" onClick={() => onOpenTask({ roomId: room.id, threadId: message.threadId, agentId: message.relatedTask!.agentId, engineId: room.engineId, taskId: message.relatedTask!.taskId })}>{message.dialogue?.route ? 'Related goal' : 'Delegated task'}</NeumorphicButton>}
           {(message.kind === 'goal' || (message.dialogue && !message.threadId)) && <NeumorphicButton variant="ghost" onClick={() => { setThreadId(message.id); }}>{message.kind === 'goal' ? 'Open goal thread' : 'Open conversation'} · {snapshot.messages.filter(m => m.threadId === message.id).length}</NeumorphicButton>}
           {room && message.taskId && <NeumorphicButton variant="ghost" onClick={() => { setThreadId(message.kind === 'goal' ? message.id : message.threadId); onOpenTask({ roomId: room.id, threadId: message.kind === 'goal' ? message.id : message.threadId, agentId: owningJob?.recipient ?? taskAgent ?? room.defaultAgentId, engineId: room.engineId, taskId: message.taskId! }); }}>Task details</NeumorphicButton>}

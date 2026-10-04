@@ -6,10 +6,12 @@ import { parseChatsRequest, type AgentRoom, type ChatMember, type RoomJob, type 
 import type { AgentDetails, AgentTask } from '../../shared/agent-management.ts';
 import type { AgentRuntimeRequest, AgentRuntimeState } from '../../shared/agent-runtime.ts';
 import type { AgentRegistrySnapshot } from '../../shared/agent-registry.ts';
-import type { Binding, Message } from '../agent-orchestration/mailbox.mts';
+import { bindingFor, type Binding, type Message } from '../agent-orchestration/mailbox.mts';
 interface Options {
   filename: string;
+  lifecycle?(binding: Binding): AgentRuntimeState['lifecycle'];
   registry(workspace: string): AgentRegistrySnapshot;
+  wake?(workspace: string, input: AgentRuntimeRequest, retry?: boolean): Promise<AgentRuntimeState>;
   status(workspace: string, input: AgentRuntimeRequest): Promise<AgentRuntimeState>;
   question?(workspace: string, input: AgentRuntimeRequest): Promise<AgentRuntimeState>;
   recover?(workspace: string, input: AgentRuntimeRequest): Promise<AgentRuntimeState>;
@@ -18,7 +20,7 @@ interface Options {
 const digest = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 40);
 function workerWaitReason(details: AgentDetails | null | undefined, queued = false): string | null {
   if (details?.error) return details.error;
-  if (!details?.ready) return 'Waiting for an available worker. Open Agents and start the participant.';
+  if (!details?.ready) return 'Waiting for an available worker.';
   if (details.authenticated !== true) return 'Waiting for worker authentication. Check the participant account in Agents.';
   if (details.tasks.some(t => t.status === 'unknown')) return 'Execution outcome is unknown. Inspect the saved task before resuming.';
   if (details.busy) return queued
@@ -33,15 +35,15 @@ export function createAgentChats(options: Options) {
   let failure: string | null = null;
   const inspecting = new Set<string>();
   const progress = new Map<string, { checkedAt: number; value: RoomGoalProgress }>();
-  function resumeBlock(details: AgentDetails | null | undefined, task: AgentTask | undefined): string | null {
+  function resumeBlock(details: AgentDetails | null | undefined, task: AgentTask | undefined, sleeping = false): string | null {
     if (details?.tasks.some(t => t.status === 'unknown')) return 'Execution outcome is unknown. Inspect the saved task before resuming.';
-    const waiting = workerWaitReason(details);
+    const waiting = sleeping ? null : workerWaitReason(details);
     if (waiting) return waiting;
     if ((!task?.inspection?.goal && !task?.inspection?.dialogue) || task.inspection?.error) return 'Goal state is unavailable. Inspect the task and refresh the worker.';
     if (task.status === 'completed') return 'This goal is completed.';
     return null;
   }
-  function recordProgress(job: RoomJob, details: AgentDetails | null | undefined) {
+  function recordProgress(job: RoomJob, details: AgentDetails | null | undefined, sleeping = false) {
     if (!job.goal && !job.automatic) return;
     const task = details?.tasks.find(t => t.id === job.taskId && t.roomId === job.roomId);
     const goal = task?.inspection?.goal, latest = goal?.decisions.at(-1);
@@ -55,7 +57,7 @@ export function createAgentChats(options: Options) {
       phase: task?.status === 'unknown' ? 'unknown' : goal?.phase ?? task?.status ?? 'unavailable',
       progress: latest?.progress ?? '', reason: task?.error ?? latest?.reason ?? '', nextAction: latest?.nextAction ?? '',
       ...(task?.recovery ? { recovery: task.recovery } : {}),
-      turns: goal?.turns ?? null, ...(goal?.usage ? { usage: goal.usage } : {}), resumeBlocked: resumeBlock(details, task),
+      turns: goal?.turns ?? null, ...(goal?.usage ? { usage: goal.usage } : {}), resumeBlocked: resumeBlock(details, task, sleeping),
     } });
   }
   function goalProgress(message: RoomMessage, state: ReturnType<ChatsStore['all']>): RoomGoalProgress {
@@ -73,7 +75,12 @@ export function createAgentChats(options: Options) {
   }
   function snapshot(workspace: string) {
     const data = store().snapshot(workspace), state = store().all();
-    return { ...data, messages: data.messages.map(m => (m.kind === 'goal' || m.dialogue) ? { ...m, goalProgress: goalProgress(m, state) } : m) };
+    return { ...data, messages: data.messages.map(m => {
+      const room = data.rooms.find(r => r.id === m.roomId), member = room?.members.find(p => p.id === m.recipient);
+      const worker = m.sender === 'user' && member && room && current(room, member.id) && !['completed', 'held'].includes(m.status ?? '')
+        ? options.lifecycle?.(bindingFor(room.workspace, room.engineId, member.id, member.accountId)) : undefined;
+      return { ...m, ...(worker ? { worker } : {}), ...((m.kind === 'goal' || m.dialogue) ? { goalProgress: goalProgress(m, state) } : {}) };
+    }) };
   }
   function members(workspace: string, ids: string[]): ChatMember[] {
     const agents = options.registry(workspace).agents;
@@ -98,7 +105,7 @@ export function createAgentChats(options: Options) {
   };
   function request(workspaceRoot: string, value: unknown) {
     const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
-    if (input.action === 'recover' || input.action === 'question' || input.action === 'question-deadline') throw new Error('Use the asynchronous execution inspection handler.');
+    if (input.action === 'retry' || input.action === 'recover' || input.action === 'question' || input.action === 'question-deadline') throw new Error('Use the asynchronous execution inspection handler.');
     if (input.action === 'create') {
       const selected = members(workspace, input.members);
       if (!input.engineId.startsWith('docker:')) throw new Error('Choose a Docker engine.');
@@ -166,6 +173,16 @@ export function createAgentChats(options: Options) {
     if (store().all().messages.find(m => m.id === id)?.status !== 'unknown' && progress.get(id)?.value.phase !== 'unknown') {
       throw new Error('Only an unknown execution can be inspected. Refresh its status.');
     }
+  }
+  async function retry(workspaceRoot: string, value: unknown) {
+    const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
+    if (input.action !== 'retry' || !options.wake) throw new Error('Worker retry is unavailable.');
+    const room = roomFor(workspace, input.roomId);
+    const job = store().all().jobs.find(j => j.id === input.messageId && j.roomId === room.id && j.state === 'queued');
+    if (!job) throw new Error('Only a queued request can retry worker startup.');
+    assertCurrentMember(room, job.agentId);
+    await options.wake(workspace, { action: 'status', engineId: room.engineId, agentId: job.agentId }, true);
+    return snapshot(workspace);
   }
   async function inspectApplication(workspaceRoot: string, value: unknown) {
     const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
@@ -269,6 +286,11 @@ export function createAgentChats(options: Options) {
       const base = { agentId: first.agentId, engineId: room.engineId };
       try {
         assertCurrentMember(room, first.agentId);
+        const queued = jobs.find(j => j.state === 'queued');
+        if (queued && options.wake && !jobs.some(j => j.state === 'unknown')) {
+          updateJob(queued.id, { error: 'Waking the participant…' });
+          await options.wake(room.workspace, { ...base, action: 'status' });
+        }
         const runtime = await options.status(room.workspace, { ...base, action: 'status' }), details = runtime.details;
         assertCurrentMember(room, first.agentId);
         for (const job of jobs) {
@@ -286,7 +308,7 @@ export function createAgentChats(options: Options) {
               if (dialogue.route) m.relatedTask = { agentId: job.agentId, taskId: dialogue.route.taskId };
             });
           }
-          recordProgress(job, details);
+          recordProgress(job, details, runtime.lifecycle?.phase === 'sleeping');
           const acknowledged = task && (!job.inputId || task.inputs?.some(i => i.id === job.inputId && i.prompt === job.prompt));
           if (acknowledged) {
             updateJob(job.id, { state: 'sent', error: null });
@@ -345,6 +367,10 @@ export function createAgentChats(options: Options) {
   const scopeRoom = (b: Binding, id: string) => store().all().rooms.find(r => r.id === id && r.workspace === b.workspace && r.engineId === b.engineId
     && r.members.some(m => m.id === b.agentId && m.accountId === b.accountId) && current(r, b.agentId));
   const rooms = {
+    bindings() { return store().all().rooms.flatMap(r => r.members.filter(m => current(r, m.id))
+      .map(m => bindingFor(r.workspace, r.engineId, m.id, m.accountId))); },
+    pending(b: Binding) { const s = store().all(); return s.jobs.some(j => ['queued', 'sending', 'unknown'].includes(j.state)
+      && j.agentId === b.agentId && s.rooms.some(r => r.id === j.roomId && !!scopeRoom(b, r.id))); },
     roster(b: Binding) { return Object.fromEntries(store().all().rooms.filter(r => scopeRoom(b, r.id)).map(r => [r.id, r.members.filter(m => current(r, m.id)).map(m => m.id)])); },
     allowed(b: Binding, m: Message) {
       const job = store().all().jobs.find(j => j.taskId === m.taskId);
@@ -368,7 +394,7 @@ export function createAgentChats(options: Options) {
       } });
     },
   };
-  return { inspectApplication, request, recover, question, rooms, tick,
+  return { retry, inspectApplication, request, recover, question, rooms, tick,
     start() { if (!timer) { timer = setInterval(() => { void tick(); }, 3000); timer.unref(); void tick(); } },
     async dispose() { if (timer) clearInterval(timer); timer = null; await flight; },
   };

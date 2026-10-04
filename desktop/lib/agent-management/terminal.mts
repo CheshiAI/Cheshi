@@ -7,7 +7,7 @@ import { AGENT_TERMINAL_CHANNELS, parseAgentTerminalBounds } from '../../shared/
 import type { AgentTerminalSession } from '../../shared/agent-terminal.ts';
 
 type Host = Pick<GhosttySurfaceHost, 'available' | 'sync' | 'updatePane' | 'setDark' | 'setWindowVisible' | 'close'>;
-type Entry = { session: AgentTerminalSession; host: Host };
+type Entry = { release(): void; session: AgentTerminalSession; host: Host };
 
 /** Window-owned shells; the renderer supplies identity and geometry, never a host command. */
 export class AgentTerminalManager {
@@ -17,11 +17,14 @@ export class AgentTerminalManager {
   private readonly engines: AgentEngine[];
   private readonly workingDirectory: string;
   private readonly createHost: (options: ConstructorParameters<typeof GhosttySurfaceHost>[0]) => Host;
+  private readonly hold: ((engineId: string, containerId: string) => () => void) | undefined;
   private disposed = false;
   private pending = 0;
   private generation = 0;
   constructor(options: { window: BrowserWindow; engines: AgentEngine[]; workingDirectory: string;
+    hold?(engineId: string, containerId: string): () => void;
     createHost?: (options: ConstructorParameters<typeof GhosttySurfaceHost>[0]) => Host }) {
+    this.hold = options.hold;
     this.window = options.window;
     this.contents = options.window.webContents;
     this.engines = options.engines;
@@ -44,7 +47,7 @@ export class AgentTerminalManager {
     const entry = this.entries.get(id);
     if (!entry || entry.session.ended) return;
     entry.session = { ...entry.session, ended: true, error };
-    entry.host.close();
+    entry.release(); entry.host.close();
     if (!this.disposed && !this.contents.isDestroyed()) this.contents.send(AGENT_TERMINAL_CHANNELS.changed, entry.session);
   }
   async open(input: string, agentInput: string): Promise<AgentTerminalSession> {
@@ -52,6 +55,7 @@ export class AgentTerminalManager {
     const engineId = parseAgentEngineId(input), agentId = parseAgentId(agentInput);
     const engine = this.engines.find(item => item.kind === engineId.split(':')[0]);
     if (!engine?.terminalCommand) throw new Error('This engine does not support an interactive terminal.');
+    const release = this.hold?.(engineId, agentId) ?? (() => {});
     this.pending++;
     const generation = this.generation;
     try {
@@ -62,10 +66,10 @@ export class AgentTerminalManager {
         onClose: () => this.end(id, null), onError: error => this.end(id, error.message) });
       if (!host.available) { host.close(); throw new Error('Container terminals require the macOS Ghostty runtime.'); }
       const session = { id, engineId, agentId, ended: false, error: null };
-      this.entries.set(id, { host, session });
+      this.entries.set(id, { host, session, release });
       this.syncVisibility();
       return session;
-    } finally { this.pending--; }
+    } catch (error) { release(); throw error; } finally { this.pending--; }
   }
   async update(input: unknown): Promise<void> {
     const value = parseAgentTerminalBounds(input), entry = this.entries.get(value.id);
@@ -83,7 +87,7 @@ export class AgentTerminalManager {
   async close(id: string): Promise<void> {
     const entry = this.entries.get(id);
     this.entries.delete(id);
-    entry?.host.close();
+    entry?.release(); entry?.host.close();
   }
   dispose() {
     if (this.disposed) return;

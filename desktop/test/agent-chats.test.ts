@@ -110,7 +110,7 @@ test('queued guidance follows worker availability and clears after a single disp
   expect(message().error).toContain('when the current task finishes');
   expect(message().error).not.toContain('start the participant');
   f.details.ready = false; await f.service.tick();
-  expect(message().error).toContain('Open Agents and start the participant');
+  expect(message().error).toContain('Waiting for an available worker');
   f.details.ready = true; await f.service.tick();
   expect(message().error).toContain('when the current task finishes');
   expect(f.sent).toHaveLength(0);
@@ -477,4 +477,32 @@ test('automatic dispatch preserves source text, isolates the native conversation
   service.request(f.workspace, { action: 'send', id: 'answer', roomId: 'room', threadId: null, recipient: null, text: 'Yes', goal: false, automatic: true, answerTo: 'auto', questionId: 'scope' });
   await service.tick();
   expect(contexts[1]).toMatchObject({ inputId: 'answer', questionId: 'scope', conversation: task.id });
+});
+
+test('queued room work wakes its recipient, newly invited peers are discoverable without startup, and retry preserves the task identity', async () => {
+  const f = fixture(), wakes: { agent: string; retry: boolean }[] = [];
+  let unavailable = true;
+  const service = createAgentChats({ ...f.options, wake: async (_workspace, input, retry) => {
+    wakes.push({ agent: input.agentId, retry: retry === true });
+    if (unavailable) throw new Error('Engine unavailable');
+    return { details: f.details };
+  } });
+  expect(service.rooms.bindings().map(b => b.agentId)).toEqual(['dev', 'planner']);
+  expect(wakes).toHaveLength(0); service.request(f.workspace, { action: 'send', id: 'wake', roomId: 'room', threadId: null, recipient: null, text: 'Build login', goal: true });
+  await service.tick(); expect(f.sent).toHaveLength(0);
+  const queued = service.request(f.workspace, { action: 'list' }).messages.find(m => m.id === 'wake')!;
+  expect(queued.status).toBe('queued'); expect(queued.error).toBe('Engine unavailable');
+  unavailable = false;
+  await service.retry(f.workspace, { action: 'retry', roomId: 'room', messageId: 'wake' });
+  await service.tick(); expect(f.sent).toHaveLength(1); expect(f.sent[0]?.task).toBe(queued.taskId);
+  expect(wakes.some(w => w.retry)).toBe(true); expect(wakes.every(w => w.agent === 'dev')).toBe(true);
+  let failure: unknown;
+  try { await service.retry(f.workspace, { action: 'retry', roomId: 'room', messageId: 'wake' }); } catch (e) { failure = e; }
+  expect((failure as Error).message).toContain('Only a queued');
+});
+test('unknown delivery never wakes or resends its saved job', async () => {
+  const f = fixture(); f.uncertain(); f.send('uncertain'); await f.service.tick();
+  let wakes = 0;
+  const service = createAgentChats({ ...f.options, wake: async () => { wakes++; return { details: f.details }; } });
+  await service.tick(); expect(wakes).toBe(0); expect(f.sent).toHaveLength(1);
 });

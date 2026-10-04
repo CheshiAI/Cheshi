@@ -32,6 +32,7 @@ function fixture(linkedWorkspace = false) {
   let dockerFailure: Error | null = null, contextMissing = false;
   let labels: Record<string, string> = {};
   let tasks: AgentDetails['tasks'] = [];
+  let state = 'running';
   const calls: { args: string[]; input?: string }[] = [];
   const runtimePath = join(directory, 'runtime', createHash('sha256').update('docker:colima-cheshi').digest('hex'),
     `${agentId}-${createHash('sha256').update(realpathSync(workspace)).digest('hex').slice(0, 16)}`);
@@ -50,7 +51,7 @@ function fixture(linkedWorkspace = false) {
     if (args[0] === 'context') return JSON.stringify([{ Endpoints: { docker: { Host: remote ? 'ssh://other' : 'unix:///tmp/docker.sock' } } }]);
     if (args.includes('ls')) return created ? id : '';
     if (args.includes('inspect')) return JSON.stringify([{ Id: id, Name: '/worker', Config: { Image: 'worker', Labels: labels },
-      State: { Status: 'running' }, NetworkSettings: { Ports: { '8787/tcp': [{ HostIp: '127.0.0.1', HostPort: '49831' }] } } }]);
+      State: { Status: state }, NetworkSettings: { Ports: { '8787/tcp': [{ HostIp: '127.0.0.1', HostPort: '49831' }] } } }]);
     if (args.includes('create')) {
       expect(JSON.parse(readFileSync(join(runtimePath, 'engine.json'), 'utf8'))).toEqual({
         engineId: 'docker:colima-cheshi', host: 'unix:///tmp/docker.sock',
@@ -62,10 +63,11 @@ function fixture(linkedWorkspace = false) {
     if (args.includes('rm')) created = false;
     return '';
   };
-  const details = (): AgentDetails => ({ agent: { id, name: 'worker', image: 'worker', state: 'running' },
+  const details = (): AgentDetails => ({ agent: { id, name: 'worker', image: 'worker', state },
     ready: seeded, busy, authenticated: true, threadId: null, error: null, logs: '', tasks });
   const exchanges: unknown[] = [];
   const runtime = createSpecialistRuntime({ directory: join(directory, 'runtime'), buildContext: '/build', registry, run,
+    lifecycleControl: async () => ({ protocol: 1, idle: false, nextWakeAt: null }),
     collaborationExchange: async (_connection, body) => { exchanges.push(body); return { protocol: 1, received: [], outgoing: [] }; },
     account: async () => ({ home, models: [] }), management: { details: async () => details(),
       engines: async () => ({ engines: [], error: null }), snapshot: async engineId => ({ engineId, online: true, error: null, agents: [] }),
@@ -92,9 +94,24 @@ function fixture(linkedWorkspace = false) {
     writeFileSync(filename, JSON.stringify(config));
   };
   return { runtime, registry, workspace, home, runtimePath, agentId, calls, exchanges, legacyRecovery,
+    setState: (value: string) => { state = value; },
     setTasks: (value: AgentDetails['tasks']) => { tasks = value; }, setContextMissing: (missing: boolean) => { contextMissing = missing; }, setDockerFailure: (error: Error | null) => { dockerFailure = error; }, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
     request: () => ({ agentId, engineId: 'docker:colima-cheshi', action: 'start' as const }) };
 }
+test('manual control preserves the latest runtime task list while status reports confirmed stop', async () => {
+  const f = fixture();
+  try {
+    const started = await f.runtime.request(f.workspace, f.request());
+    const tasks = [{ id: 'latest', status: 'completed', prompt: 'Check', output: 'Latest result', error: null, createdAt: '2026-10-04' }];
+    f.setTasks(tasks);
+    await f.runtime.manualControl(f.request().engineId, started.details!.agent.id, 'stop', async () => { f.setState('exited'); });
+    f.setTasks([]); // The stopped HTTP API cannot return activity anymore.
+    const status = parseAgentRuntimeState(await f.runtime.request(f.workspace, { ...f.request(), action: 'status' }));
+    expect(status).toMatchObject({ lifecycle: { phase: 'disabled' }, details: { ready: false, busy: false,
+      agent: { state: 'exited' }, tasks } });
+    await fails(f.runtime.wake(f.workspace, { ...f.request(), action: 'status' }), 'manually stopped');
+  } finally { await f.runtime.dispose(); }
+});
 test('missing selected context returns offline on repeated polls and restoration resumes normal lookup', async () => {
   const f = fixture();
   try {
@@ -363,5 +380,16 @@ test('conversation protocol upgrade preserves an unknown result and its existing
     expect(f.calls.slice(start).some(c => c.args.includes('volume'))).toBe(false);
     const mounts = f.calls.filter(c => c.args.includes('create')).map(c => c.args.find(a => a.startsWith('type=volume,')));
     expect(mounts).toHaveLength(2); expect(mounts[0]).toBe(mounts[1]);
+  } finally { await f.runtime.dispose(); }
+});
+
+test('concurrent automatic requests start one worker without waiting recursively on the collaboration tick', async () => {
+  const f = fixture();
+  try {
+    const state = await Promise.all([f.runtime.wake(f.workspace, { ...f.request(), action: 'status' }),
+      f.runtime.wake(f.workspace, { ...f.request(), action: 'status' })]);
+    expect(state.every(s => s.details?.ready === true)).toBe(true);
+    expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(1);
+    expect(f.exchanges).toHaveLength(0);
   } finally { await f.runtime.dispose(); }
 });

@@ -13,7 +13,7 @@ function createDeferred<T>() {
   const promise = new Promise<T>(yes => { resolve = yes; });
   return { promise, resolve };
 }
-function fixture(command: () => Promise<string> = async () => '/usr/bin/true') {
+function fixture(command: () => Promise<string> = async () => '/usr/bin/true', hold?: Options['hold']) {
   const events = new EventEmitter(), owner = new EventEmitter();
   let destroyed = false;
   const messages: unknown[] = [], updates: unknown[] = [], closed: number[] = [];
@@ -29,7 +29,7 @@ function fixture(command: () => Promise<string> = async () => '/usr/bin/true') {
   const hosts: Parameters<NonNullable<Options['createHost']>>[0][] = [];
   const engine: AgentEngine = { kind: 'test', engines: async () => [], list: async () => [],
     inspect: async () => { throw Error('unused'); }, control: async () => {}, logs: async () => '', terminalCommand: command };
-  const manager = new AgentTerminalManager({ window, engines: [engine], workingDirectory: '/tmp', createHost: options => {
+  const manager = new AgentTerminalManager({ window, hold, engines: [engine], workingDirectory: '/tmp', createHost: options => {
     const index = hosts.push(options) - 1;
     return { available: true, sync: state => updates.push(state), updatePane: (...args) => updates.push(args),
       setDark: () => {}, setWindowVisible: () => {}, close: () => { closed.push(index); } };
@@ -124,4 +124,17 @@ test('window disposal rejects a pending terminal without creating a native host'
   pending.resolve('/usr/bin/true');
   await rejected(opening, 'closed');
   expect(f.hosts).toEqual([]);
+});
+
+
+test('terminal lifetime holds automatic sleep during opening and releases it on failure or close', async () => {
+  let held = 0;
+  const hold = () => { held++; let released = false; return () => { if (!released) { released = true; held--; } }; };
+  const pending = createDeferred<string>();
+  const f = fixture(() => pending.promise, hold);
+  const opening = f.manager.open('test:one', 'worker'); expect(held).toBe(1);
+  pending.resolve('/usr/bin/true'); const session = await opening;
+  expect(held).toBe(1); await f.manager.close(session.id); expect(held).toBe(0); f.manager.dispose();
+  const failed = fixture(async () => { throw new Error('No worker'); }, hold);
+  await rejected(failed.manager.open('test:one', 'worker'), 'No worker'); expect(held).toBe(0); failed.manager.dispose();
 });

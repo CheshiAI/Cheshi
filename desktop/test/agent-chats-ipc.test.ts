@@ -13,11 +13,12 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   const registration = registerAgentChatsIpc({ window, workspaceRoot: '/project', ipc: {
     handle: (name, fn) => { handlers.set(name, fn); }, removeHandler: name => { handlers.delete(name); },
   }, service: {
+    retry: async root => { calls.push(`${root}/retry`); return { rooms: [], messages: [] }; },
     inspectApplication: async root => { calls.push(`${root}/application`); return { rooms: [], messages: [] }; },
     question: async root => { calls.push(root); return { rooms: [], messages: [] }; },
     recover: async root => { calls.push(root); return { rooms: [], messages: [] }; },
     request: root => { calls.push(root); return { rooms: [], messages: [] }; },
-    rooms: { roster: () => ({}), allowed: () => false, record: () => {} }, tick: async () => {}, start: () => {}, dispose: async () => {},
+    rooms: { bindings: () => [], pending: () => false, roster: () => ({}), allowed: () => false, record: () => {} }, tick: async () => {}, start: () => {}, dispose: async () => {},
   } });
   const handler = handlers.get(AGENT_CHATS_CHANNEL)!;
   const invoke = (sender: unknown, senderFrame: unknown, request: unknown) => handler({ sender, senderFrame } as IpcMainInvokeEvent, request);
@@ -36,6 +37,8 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   expect(() => invoke(owner, mainFrame, { action: 'application-inspect', roomId: 'room', goalId: 'goal', candidateId: '../bad', hash: 'b'.repeat(64) })).toThrow('identity');
   expect(await api.request({ action: 'application-inspect', roomId: 'room', goalId: 'goal', candidateId: 'a'.repeat(64), hash: 'b'.repeat(64) })).toEqual({ rooms: [], messages: [] });
   expect(calls.at(-1)).toBe('/project/application');
+  expect(await api.request({ action: 'retry', roomId: 'room', messageId: 'queued' })).toEqual({ rooms: [], messages: [] });
+  expect(calls.at(-1)).toBe('/project/retry');
   registration.dispose();
   expect(handlers.size).toBe(0);
   expect(() => invoke(owner, mainFrame, { action: 'list' })).toThrow('workspace');

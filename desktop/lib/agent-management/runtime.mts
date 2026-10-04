@@ -15,7 +15,8 @@ import { workerOperations } from './operations.mts';
 import { resolveAgentInstructions } from './instruction-files.mts';
 import { createAgentOrchestration, type exchangeWorker } from '../agent-orchestration/service.mts';
 import type { AgentHistoryOptions } from '../agent-orchestration/history-relay.mts';
-import { bindingFor } from '../agent-orchestration/mailbox.mts';
+import { WorkerLifecycle } from './lifecycle.mts';
+import { bindingFor, type Binding } from '../agent-orchestration/mailbox.mts';
 
 export interface RuntimeAccount { home: string; models: AgentModel[]; }
 interface RuntimeOptions {
@@ -25,6 +26,8 @@ interface RuntimeOptions {
   run?: DockerCommand;
   collaborationExchange?: typeof exchangeWorker;
   history?: AgentHistoryOptions;
+  lifecycleControl?: (connection: { endpoint: string; token: string }, action: string, body?: unknown) => Promise<unknown>;
+  idleMs?: number; now?(): number;
   rooms?: Parameters<typeof createAgentOrchestration>[0]['rooms'];
 }
 const image = 'cheshi-specialist:1';
@@ -73,24 +76,61 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         && projectAssignment(a, binding.workspace));
       return agent ? { id: agent.id, name: agent.name, role: agent.role, fileWrite: agent.permissions.fileWrite, workProtocol: 1 } : null;
     },
-    connect: async binding => {
-      const key = `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`;
+    around: (binding, operation) => lifecycle.exclusive(binding, operation),
+    connect: (binding, demand) => lifecycle.connection(binding, demand),
+    rest: (binding, connection, busy) => lifecycle.rest(binding, connection, busy),
+  });
+  const lifecycle = new WorkerLifecycle({ filename: join(options.directory, 'lifecycle.json'), idleMs: options.idleMs, now: options.now,
+    inspect: readLive,
+    start: async binding => {
+      await request(binding.workspace, { action: 'start', engineId: binding.engineId, agentId: binding.agentId });
+      const live = await readLive(binding);
+      if (!live) throw new Error('Worker did not become available.');
+      return live;
+    },
+    demand: binding => orchestration.pending(binding) || options.rooms?.pending?.(binding) === true,
+    control: options.lifecycleControl ?? lifecycleControl,
+    stopped: async (binding, id) => {
       const prefix = await local(binding.engineId);
-      const worker = await find(prefix, key);
-      if (!worker || worker.state !== 'running' || !worker.endpoint) return null;
-      const saved = agentRecord(JSON.parse(await readFile(join(options.directory, digest(binding.engineId), key, 'runtime.json'), 'utf8')));
-      if (saved.accountId !== binding.accountId || saved.profileId !== binding.agentId || saved.revision !== worker.fingerprint
-        || saved.applicationInspectionProtocol !== 1 || saved.applicationProtocol !== 1 || saved.candidateVerificationProtocol !== 1 || saved.integrationProtocol !== 1 || saved.workProtocol !== 1 || saved.progressProtocol !== 1 || saved.recoveryProtocol !== 3 || saved.questionProtocol !== 2 || saved.collaborationProtocol !== 1 || saved.historyProtocol !== 1 || saved.decisionProtocol !== 1 || saved.verificationProtocol !== 1 || typeof saved.token !== 'string' || !/^[a-f0-9]{64}$/.test(saved.token)) {
-        throw new Error('Start the agent to reconnect collaboration with its current settings.');
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const worker = await find(prefix, `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`);
+        if (worker?.id !== id) return false;
+        if (worker.state === 'exited') return true;
+        await delay(1000);
       }
-      const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId);
-      const assignment = agent && projectAssignment(agent, binding.workspace);
-      if (!agent || !assignment || saved.settingsFingerprint !== settingsDigest(agent, binding.workspace, assignment)) {
-        throw new Error('Settings changed. Start the agent to resume collaboration.');
-      }
-      return { endpoint: worker.endpoint, token: saved.token };
+      return false;
     },
   });
+  async function lifecycleControl(connection: { endpoint: string; token: string }, action: string, body: unknown = {}) {
+    const response = await fetch(`${connection.endpoint}/lifecycle/${action}`, { method: 'POST', redirect: 'error',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${connection.token}` },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(35_000) });
+    if (!response.ok) { await response.body?.cancel(); throw new Error('Worker sleep control is unavailable. Update or inspect the worker.'); }
+    const text = await response.text();
+    if (text.length > 4000) throw new Error('Invalid worker lifecycle response.');
+    return JSON.parse(text) as unknown;
+  }
+  async function readLive(binding: Binding) {
+    const key = `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`;
+    const prefix = await local(binding.engineId);
+    const worker = await find(prefix, key);
+    if (worker && worker.state !== 'running' && !lifecycle.permitsStoppedWake(binding)) {
+      lifecycle.disable(binding); throw new Error('Worker is stopped. Start it explicitly to enable automatic wake.');
+    }
+    if (!worker || worker.state !== 'running' || !worker.endpoint) return null;
+    const saved = agentRecord(JSON.parse(await readFile(join(options.directory, digest(binding.engineId), key, 'runtime.json'), 'utf8')));
+    if (saved.accountId !== binding.accountId || saved.profileId !== binding.agentId || saved.revision !== worker.fingerprint
+      || saved.applicationInspectionProtocol !== 1 || saved.applicationProtocol !== 1 || saved.candidateVerificationProtocol !== 1 || saved.integrationProtocol !== 1 || saved.workProtocol !== 1 || saved.progressProtocol !== 1 || saved.recoveryProtocol !== 3 || saved.questionProtocol !== 2 || saved.collaborationProtocol !== 1 || saved.historyProtocol !== 1 || saved.decisionProtocol !== 1 || saved.verificationProtocol !== 1 || typeof saved.token !== 'string' || !/^[a-f0-9]{64}$/.test(saved.token)) {
+      throw new Error('Start the agent to reconnect collaboration with its current settings.');
+    }
+    const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId);
+    const assignment = agent && projectAssignment(agent, binding.workspace);
+    if (!agent || !assignment || saved.settingsFingerprint !== settingsDigest(agent, binding.workspace, assignment)) {
+      throw new Error('Settings changed. Start the agent to resume collaboration.');
+    }
+    return { externalBusy: worker.externalBusy, connection: { endpoint: worker.endpoint, token: saved.token }, details: await options.management.details(binding.engineId, worker.id) };
+  }
+
   async function local(engineId: string) {
     if (!engineId.startsWith('docker:')) throw new Error('This execution engine cannot create specialist workers.');
     const contexts: unknown = JSON.parse(await run(['context', 'inspect', engineId.slice(7)]));
@@ -126,7 +166,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     if (labels[marker] !== 'specialist-v1' || labels['ai.cheshi.binding'] !== key) throw new Error('Worker ownership changed.');
     const worker = parseDockerAgent(raw);
     if (worker.id !== ids[0]) throw new Error('Worker identity changed.');
-    return { ...worker, fingerprint: labels['ai.cheshi.configuration'] };
+    return { ...worker, externalBusy: !(raw.ExecIDs === null || Array.isArray(raw.ExecIDs) && raw.ExecIDs.length === 0), fingerprint: labels['ai.cheshi.configuration'] };
   }
   async function build(prefix: string[]) {
     const key = prefix.join('/');
@@ -164,7 +204,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     const request = parseAgentRuntimeRequest(input);
     const workspace = await realpath(workspaceRoot);
     const agent = options.registry.snapshot(workspaceRoot).agents.find(item => item.id === request.agentId);
-    const assignment = agent?.assignments.find(item => item.workspaceRoot === workspaceRoot);
+    const assignment = agent && projectAssignment(agent, workspace);
     if (!agent || !assignment) throw new Error('Assign this agent to the current project first.');
     const key = `${agent.id}-${digest(workspace).slice(0, 16)}`;
     const assertCurrent = () => {
@@ -251,7 +291,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint,
-            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [workspace];
@@ -290,7 +330,6 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         }
         const details = await waitReady(request.engineId, worker.id);
         orchestration.register(bindingFor(workspace, request.engineId, agent.id, agent.accountId));
-        await orchestration.tick();
         return { details };
       }
       if (!worker || worker.state !== 'running' || !worker.endpoint) throw new Error('Start this agent first.');
@@ -327,16 +366,56 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       throw error;
     } finally { if (request.action !== 'status') pending.delete(key); }
   }
+  async function binding(workspaceRoot: string, input: AgentRuntimeRequest) {
+    const parsed = parseAgentRuntimeRequest(input), workspace = await realpath(workspaceRoot);
+    const agent = options.registry.snapshot(workspaceRoot).agents.find(a => a.id === parsed.agentId && projectAssignment(a, workspace));
+    if (!agent) throw new Error('Assign this agent to the current project first.');
+    return bindingFor(workspace, parsed.engineId, agent.id, agent.accountId ?? '');
+  }
+  async function wake(workspace: string, input: AgentRuntimeRequest, retry = false) {
+    const b = await binding(workspace, input);
+    lifecycle.demand(b);
+    return workerOperations.run(() => lifecycle.exclusive(b, async () => {
+      if (retry) lifecycle.retry(b);
+      await lifecycle.connection(b, true);
+      return request(workspace, { ...input, action: 'status' });
+    }));
+  }
   return {
-    chat: (workspace: string, input: AgentRuntimeRequest, context: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }) => workerOperations.run(() => request(workspace, input, context)),
+    wake,
+    lifecycle: (binding: Binding) => lifecycle.state(binding),
+    hold: (engine: string, id: string) => lifecycle.hold(engine, id),
+    manualControl: <T,>(engine: string, id: string, action: string, operation: () => Promise<T>) =>
+      lifecycle.manual(engine, id, action, operation, () => options.management.details(engine, id)),
+    chat: async (workspace: string, input: AgentRuntimeRequest, context: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }) => {
+      const b = await binding(workspace, input); lifecycle.demand(b);
+      return workerOperations.run(() => lifecycle.exclusive(b, () => request(workspace, input, context)));
+    },
     start: orchestration.start,
-    dispose: orchestration.dispose,
-    request: (workspaceRoot: string, input: AgentRuntimeRequest) => input.action === 'status'
-      ? request(workspaceRoot, input) : workerOperations.run(() => request(workspaceRoot, input)),
+    async dispose() { await orchestration.dispose(); await lifecycle.settled(); },
+    request: async (workspaceRoot: string, input: AgentRuntimeRequest) => {
+      const parsed = parseAgentRuntimeRequest(input), b = await binding(workspaceRoot, parsed);
+      if (parsed.action === 'status') {
+        const cached = lifecycle.cached(b);
+        if (cached) return cached;
+        const result = await request(workspaceRoot, parsed), state = lifecycle.state(b);
+        return { ...result, ...(state ? { lifecycle: state } : {}) };
+      }
+      lifecycle.demand(b);
+      const result = await workerOperations.run(() => lifecycle.exclusive(b, async () => {
+        if (parsed.action !== 'start' && lifecycle.cached(b)?.lifecycle?.phase === 'sleeping') await lifecycle.connection(b, true);
+        const result = await request(workspaceRoot, parsed);
+        if (parsed.action === 'start' && result.details) lifecycle.adopt(b, result.details);
+        return result;
+      }));
+      // Never await this tick while holding the per-worker gate: dispatch uses the same gate.
+      if (parsed.action === 'start') await orchestration.tick();
+      return result;
+    },
   };
 }
 function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], recoveryProtocol = 3, progressProtocol = true, workProtocol = true, integrationProtocol = true, candidateVerificationProtocol = true, applicationProtocol = true, applicationInspectionProtocol = true, conversationProtocol = true) {
-  return digest(JSON.stringify({ ...(conversationProtocol ? { conversationProtocol: 1 } : {}), sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol, questionProtocol: 2, ...(progressProtocol ? { progressProtocol: 1 } : {}), ...(workProtocol ? { workProtocol: 1 } : {}), ...(integrationProtocol ? { integrationProtocol: 1 } : {}), ...(candidateVerificationProtocol ? { candidateVerificationProtocol: 1 } : {}), ...(applicationProtocol ? { applicationProtocol: 1 } : {}), ...(applicationInspectionProtocol ? { applicationInspectionProtocol: 1 } : {}), agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
+  return digest(JSON.stringify({ ...(conversationProtocol ? { conversationProtocol: 1, lifecycleProtocol: 1 } : {}), sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol, questionProtocol: 2, ...(progressProtocol ? { progressProtocol: 1 } : {}), ...(workProtocol ? { workProtocol: 1 } : {}), ...(integrationProtocol ? { integrationProtocol: 1 } : {}), ...(candidateVerificationProtocol ? { candidateVerificationProtocol: 1 } : {}), ...(applicationProtocol ? { applicationProtocol: 1 } : {}), ...(applicationInspectionProtocol ? { applicationInspectionProtocol: 1 } : {}), agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
     ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
 }
 function profileConfiguration(agent: SpecialistAgent) {

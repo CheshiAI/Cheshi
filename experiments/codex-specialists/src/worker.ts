@@ -9,6 +9,7 @@ import { AgentStore, validateTaskId } from './store.ts';
 import { WorkerCollaboration } from './collaboration.ts';
 import { WorkerHistory } from './history.ts';
 import { WorkerHistoryQueue } from './history-queue.ts';
+import { IdleLifecycle, WorkerSleepingError } from './idle-lifecycle.ts';
 
 const workspace = process.env.AGENT_WORKSPACE ?? '/workspace';
 const store = new AgentStore(process.env.AGENT_DATA_DIRECTORY ?? '/agent');
@@ -28,7 +29,10 @@ const collaboration = configuration ? new WorkerCollaboration(store, configurati
 const history = new WorkerHistory(store, client, process.env.AGENT_DATA_DIRECTORY ?? '/agent', workspace);
 const historyQueue = configuration ? new WorkerHistoryQueue(process.env.AGENT_DATA_DIRECTORY ?? '/agent') : undefined;
 const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration, history, historyQueue });
+const lifecycle = new IdleLifecycle({ store, client, blocked: () => agent.busy || !!agent.error || !!transportError
+  || collaboration?.next() != null || historyQueue?.pending === true });
 const pump = setInterval(() => {
+  if (lifecycle.draining) return;
   void agent.checkHealth();
   try { agent.pump(); } catch { transportError = 'Could not persist collaboration state.'; }
 }, 1000);
@@ -45,7 +49,21 @@ const server = Bun.serve({
       const expected = Buffer.from(`Bearer ${configuration.token}`);
       if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return Response.json({ error: 'Unauthorized.' }, { status: 401 });
     }
+    let leave: (() => void) | undefined;
     try {
+      if (path.startsWith('/lifecycle/') && request.method === 'POST' && configuration) {
+        if (path === '/lifecycle/status') return Response.json(lifecycle.probe());
+        if (path === '/lifecycle/prepare') return Response.json(await lifecycle.prepare());
+        if (path === '/lifecycle/resume') { lifecycle.cancel(); return Response.json({ resumed: true }); }
+        if (path === '/lifecycle/commit') {
+          const body = await request.text();
+          if (body.length > 1000) throw new TypeError('Request is too large.');
+          await lifecycle.commit(JSON.parse(body));
+          setTimeout(() => { void shutdown(true); }, 50);
+          return Response.json({ committed: true });
+        }
+      }
+      if (request.method !== 'GET') leave = lifecycle.enter();
       const error = transportError ?? agent.error;
       if (path === '/collaboration/exchange' && request.method === 'POST' && collaboration) {
         if (!request.headers.get('content-type')?.startsWith('application/json')) throw new TypeError('Use application/json.');
@@ -77,7 +95,7 @@ const server = Bun.serve({
         return Response.json({ data: result.data, nextCursor: result.nextCursor });
       }
       if (path === '/activity' && request.method === 'GET') {
-        collaboration?.expire();
+        if (!lifecycle.draining) collaboration?.expire();
         return Response.json({ ...agent.activity(), ...(historyQueue ? { recall: historyQueue.inspection() } : {}) });
       }
       if (path === '/tasks' && request.method === 'POST') {
@@ -132,20 +150,20 @@ const server = Bun.serve({
       return Response.json({ error: 'Unknown route.' }, { status: 404 });
     } catch (error) {
       return Response.json({ error: error instanceof Error ? error.message : String(error) },
-        { status: error instanceof TaskConflict ? 409 : error instanceof TypeError || error instanceof SyntaxError ? 400 : 502 });
-    }
+        { status: error instanceof TaskConflict || error instanceof WorkerSleepingError ? 409 : error instanceof TypeError || error instanceof SyntaxError ? 400 : 502 });
+    } finally { leave?.(); }
   },
 });
 
 console.log(JSON.stringify({ type: 'ready', role: configuration?.role ?? 'verifier', port, workspace, persistedThread: store.snapshot().threadId }));
 let stopping = false;
-const shutdown = async () => {
+const shutdown = async (sleep = false) => {
   if (stopping) return;
   stopping = true;
   clearInterval(pump);
   server.stop(true);
   const tasks = store.snapshot().tasks.filter(task => ['accepted', 'running'].includes(task.status));
-  await Promise.allSettled(tasks.map(task => agent.stop(task.id)));
+  if (!sleep) await Promise.allSettled(tasks.map(task => agent.stop(task.id)));
   await client.close();
   await agent.settled();
   agent.disposeScratch();

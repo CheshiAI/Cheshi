@@ -18,6 +18,7 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, model, 
   const [engine, setEngine] = useState(chatTask?.engineId ?? engineId);
   const [details, setDetails] = useState<AgentDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lifecycle, setLifecycle] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [disconnected, setDisconnected] = useState(false);
   const [prompt, setPrompt] = useState('');
@@ -37,9 +38,10 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, model, 
     try {
       const result = await model.runtime({ agentId: agent.id, engineId: engine, action: 'status' });
       if (active.current && version === revision.current) {
+        setLifecycle(result.lifecycle?.phase ?? null);
         setDisconnected(Boolean(result.unavailable));
         if (!result.unavailable) setDetails(result.details);
-        setError(result.unavailable?.message ?? null);
+        setError(result.unavailable?.message ?? result.lifecycle?.error ?? null);
       }
     } catch (reason) {
       if (active.current && version === revision.current) setError(reason instanceof Error ? reason.message : 'Could not read this agent.');
@@ -47,7 +49,7 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, model, 
   };
   useEffect(() => {
     revision.current++;
-    setDetails(null); setError(null); setPending(false); setDisconnected(false); busy.current = false; task.current = null;
+    setDetails(null); setLifecycle(null); setError(null); setPending(false); setDisconnected(false); busy.current = false; task.current = null;
     void refresh();
     const timer = setInterval(() => { void refresh(); }, 10_000);
     return () => { clearInterval(timer); revision.current++; };
@@ -64,7 +66,8 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, model, 
         ...(action === 'cancel' ? { taskId: stoppable?.id } : {}) });
       if (active.current && version === revision.current) {
         setDetails(result.details);
-        setDisconnected(Boolean(result.unavailable)); setError(result.unavailable?.message ?? null);
+        setLifecycle(result.lifecycle?.phase ?? null);
+        setDisconnected(Boolean(result.unavailable)); setError(result.unavailable?.message ?? result.lifecycle?.error ?? null);
         if (action === 'submit') { setPrompt(''); task.current = null; }
       }
     } catch (reason) {
@@ -76,7 +79,7 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, model, 
   return <>
     <div className={styles.detailHeader}>
       <h2 className={styles.name}>{agent.name}</h2>
-      <span className={shared.description}>{pending ? 'Processing…' : disconnected ? 'Engine disconnected' : details?.busy ? 'Working' : stoppable?.status === 'waiting' ? 'Waiting for reply' : details?.ready ? 'Ready' : 'Not running'}</span>
+      <span className={shared.description}>{pending ? 'Processing…' : disconnected ? 'Engine disconnected' : lifecycle === 'sleeping' ? 'Sleeping · wakes on request' : lifecycle === 'starting' ? 'Starting…' : lifecycle === 'disabled' ? 'Manually stopped' : details?.busy ? 'Working' : stoppable?.status === 'waiting' ? 'Waiting for reply' : details?.ready ? 'Ready' : 'Not running'}</span>
       <div className={styles.runtimeActions}>
         <LiquidGlassSelect ariaLabel="Agent execution engine" triggerAppearance="standard" value={engine} disabled={pending}
           options={engines.filter(item => item.supported).map(item => ({ value: item.id, label: item.name }))}

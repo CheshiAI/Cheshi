@@ -506,3 +506,18 @@ test('user decision answers retain their exact identity on retry and render the 
     expect(document.querySelector('form')).toBeNull();
   });
 });
+
+test('Chats displays sleeping workers and retry wakes the saved recipient without sending a new prompt', async () => {
+  await withDOM(async ui => {
+    const data = snapshot(), requests: ChatsRequest[] = [];
+    data.messages[0]!.worker = { phase: 'sleeping', error: null };
+    const api = { request: async (input: ChatsRequest) => { requests.push(input); return data; } };
+    const render = (active: boolean) => ui.render(<ChatsView active={active} api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await render(true); expect(document.body.textContent).toContain('Sleeping · wakes on request');
+    await render(false); data.messages[0]!.status = 'queued'; data.messages[0]!.error = 'Engine unavailable';
+    data.messages[0]!.worker = { phase: 'error', error: 'Engine unavailable' }; await render(true);
+    await ui.type('Message', 'Unsaved follow-up'); await ui.click('Retry worker');
+    expect(requests.filter(r => r.action !== 'list')).toEqual([{ action: 'retry', roomId: 'room', messageId: 'goal' }]);
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Unsaved follow-up');
+  });
+});

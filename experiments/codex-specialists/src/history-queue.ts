@@ -56,6 +56,7 @@ export class WorkerHistoryQueue {
     this.save(this.jobs.map(j => j.id === id ? { ...j, status: 'done', result } : j));
     this.waiters.get(id)?.resolve(result);
   }
+  get pending() { return this.jobs.some(j => j.status === 'pending') || this.waiters.size > 0; }
   inspection() { return this.jobs.slice(-64).map(inspectHistoryJob); }
   exchange(value: unknown) {
     const body = record(value);

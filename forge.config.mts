@@ -51,7 +51,7 @@ function shouldIgnore(packagePath: string): boolean {
   if (grandchildEntry === 'electron-libghostty') return false;
   if (grandchildEntry === 'agent-chats') return segments.length > 4 || (segments.length === 4 && !new Set(['ipc.mts', 'service.mts', 'store.mts']).has(segments[3]!));
   if (grandchildEntry === 'agent-management') {
-    const agentFiles = new Set(['engine.mts', 'docker.mts', 'docker-errors.mts', 'task-inspection.mts', 'service.mts', 'ipc.mts', 'terminal.mts', 'registry.mts', 'registry-ipc.mts', 'runtime.mts', 'instruction-files.mts', 'operations.mts', 'application-deletion.mts', 'docker-deletion.mts', 'deletion.mts']);
+    const agentFiles = new Set(['lifecycle.mts', 'engine.mts', 'docker.mts', 'docker-errors.mts', 'task-inspection.mts', 'service.mts', 'ipc.mts', 'terminal.mts', 'registry.mts', 'registry-ipc.mts', 'runtime.mts', 'instruction-files.mts', 'operations.mts', 'application-deletion.mts', 'docker-deletion.mts', 'deletion.mts']);
     return segments.length > 3 && (segments.length !== 4 || !agentFiles.has(segments[3] ?? ''));
   }
   if (grandchildEntry === 'agent-orchestration') {

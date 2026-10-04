@@ -1,3 +1,4 @@
+import { parseWorkerLifecycle, type AgentRuntimeState } from './agent-runtime.ts';
 import { parseConversation, type ConversationState } from '../../experiments/codex-specialists/src/conversation-contract.ts';
 import type { WorkKind } from './agent-work.ts';
 import { isWorkKind, parseIntegration, type IntegrationSummary } from './agent-work.ts';
@@ -21,6 +22,7 @@ export interface AgentRoom {
   id: string; workspace: string; name: string; engineId: string; members: ChatMember[]; defaultAgentId: string; createdAt: string;
 }
 export interface RoomMessage {
+  worker?: AgentRuntimeState['lifecycle'];
   dialogue?: ConversationState;
   id: string; roomId: string; threadId: string | null; sender: string; recipient: string | null;
   kind: WorkKind | 'message' | 'goal' | 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result';
@@ -36,6 +38,7 @@ export interface RoomJob {
 export interface ChatsSnapshot { rooms: AgentRoom[]; messages: RoomMessage[] }
 export interface ChatTaskTarget { roomId: string; threadId: string | null; agentId: string; engineId: string; taskId: string }
 export type ChatsRequest = { action: 'list' }
+  | { action: 'retry'; roomId: string; messageId: string }
   | { action: 'question-deadline'; roomId: string; goalId: string; questionId: string; expiresAt: string | null }
   | { action: 'question'; roomId: string; goalId: string; questionId: string; recipient: string | null }
   | { action: 'application-inspect'; roomId: string; goalId: string; candidateId: string; hash: string }
@@ -56,6 +59,7 @@ function required(value: unknown, max: number): string {
 }
 export function parseChatsRequest(value: unknown): ChatsRequest {
   const v = agentRecord(value);
+  if (v.action === 'retry') return { action: 'retry', roomId: chatId(v.roomId), messageId: chatId(v.messageId) };
   if (v.action === 'question-deadline') return { action: 'question-deadline', roomId: chatId(v.roomId), goalId: chatId(v.goalId), questionId: chatId(v.questionId), expiresAt: parseQuestionDeadline(v.expiresAt) };
   if (v.action === 'question') return { action: 'question', roomId: chatId(v.roomId), goalId: chatId(v.goalId), questionId: chatId(v.questionId), recipient: v.recipient === null ? null : chatId(v.recipient) };
   if (v.action === 'application-inspect') {
@@ -114,7 +118,7 @@ export function parseRoom(value: unknown): AgentRoom {
 export function parseRoomMessage(value: unknown): RoomMessage {
   const v = agentRecord(value);
   if (!isWorkKind(v.kind) && !['message', 'goal', 'question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid room message.');
-  return { ...(v.dialogue === undefined ? {} : { dialogue: parseConversation(v.dialogue) }), id: chatId(v.id), roomId: chatId(v.roomId), threadId: optionalId(v.threadId), sender: chatId(v.sender), recipient: optionalId(v.recipient),
+  return { ...(v.worker === undefined ? {} : { worker: parseWorkerLifecycle(v.worker) }), ...(v.dialogue === undefined ? {} : { dialogue: parseConversation(v.dialogue) }), id: chatId(v.id), roomId: chatId(v.roomId), threadId: optionalId(v.threadId), sender: chatId(v.sender), recipient: optionalId(v.recipient),
     kind: v.kind as RoomMessage['kind'], text: agentText(v.text, 500_000), createdAt: required(v.createdAt, 100),
     ...(v.relatedTask === undefined ? {} : { relatedTask: (() => { const t = agentRecord(v.relatedTask); return { agentId: chatId(t.agentId), taskId: chatId(t.taskId) }; })() }),
     ...(v.taskId === undefined ? {} : { taskId: chatId(v.taskId) }), ...(v.status === undefined ? {} : { status: required(v.status, 100) }),

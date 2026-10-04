@@ -93,7 +93,7 @@ test('packaged runtime includes all agent modules and native Node can load them'
   if (typeof ignore !== 'function') throw new Error('Expected package filter');
   const paths = ['desktop/lib/agent-orchestration/candidate-verification.mts', 'experiments/codex-specialists/src/candidate-verification-contract.ts', 'experiments/codex-specialists/src/verification-contract.ts', 'desktop/shared/agent-work.ts', 'experiments/codex-specialists/src/work-contract.ts', 'desktop/shared/agent-chats.ts', ...['store', 'service', 'ipc'].map(name => `desktop/lib/agent-chats/${name}.mts`), 'desktop/shared/agent-avatar.ts', 'desktop/shared/agent-management.ts', 'desktop/shared/agent-terminal.ts', 'desktop/lib/window-close-cleanup.mts',
     'desktop/shared/agent-registry.ts', 'desktop/shared/agent-models.ts', 'desktop/shared/agent-runtime.ts', 'desktop/shared/codex-accounts.ts',
-    ...['engine', 'docker', 'docker-errors', 'service', 'ipc', 'terminal', 'registry', 'registry-ipc', 'runtime', 'instruction-files', 'operations', 'docker-deletion', 'deletion'].map(name => `desktop/lib/agent-management/${name}.mts`)];
+    ...['lifecycle', 'engine', 'docker', 'docker-errors', 'service', 'ipc', 'terminal', 'registry', 'registry-ipc', 'runtime', 'instruction-files', 'operations', 'docker-deletion', 'deletion'].map(name => `desktop/lib/agent-management/${name}.mts`)];
   for (const path of paths) expect(ignore(`/${path}`)).toBe(false);
   expect(ignore('/experiments/codex-specialists/src/integration-contract.ts')).toBe(false);
   expect(ignore('/experiments/codex-specialists/src/application-contract.ts')).toBe(false);
@@ -121,6 +121,6 @@ test('packaged specialist context includes its runtime dependencies without expe
     expect(await readdir(directory)).not.toContain('fixtures');
     expect((await readdir(join(directory, 'src'))).some(name => name.endsWith('.test.ts'))).toBe(false);
     // A staged worker must import all transitive verification modules without a TS transform.
-    execFileSync('node', ['--input-type=module', '-e', "await import('./src/agent.ts'); await import('./src/verification.ts'); await import('./src/integration.ts');"], { cwd: directory, timeout: 15_000 });
+    execFileSync('node', ['--input-type=module', '-e', "await import('./src/idle-lifecycle.ts'); await import('./src/agent.ts'); await import('./src/verification.ts'); await import('./src/integration.ts');"], { cwd: directory, timeout: 15_000 });
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

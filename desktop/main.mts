@@ -90,12 +90,15 @@ const aboutWindow = createAboutWindow({
 const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'updates'));
 const agentEngines = [createDockerAgentEngine()];
 const agentManagement: ReturnType<typeof createAgentManagementService> = createAgentManagementService({ engines: agentEngines,
+  control: (engine, id, action, operation) => specialistRuntime.manualControl(engine, id, action, operation),
   pendingDeletions: engineId => agentDeletion.pending(engineId) });
 const agentRegistry = createAgentRegistry(path.join(app.getPath('userData'), 'agents', 'registry.json'));
 const agentDeletion = createAgentDeletion({ directory: path.join(app.getPath('userData'), 'agents', 'deletions'),
   runtimeDirectory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement });
 const agentChats = createAgentChats({ filename: path.join(app.getPath('userData'), 'agents', 'chats.json'),
   registry: workspace => agentRegistry.snapshot(workspace),
+  lifecycle: binding => specialistRuntime.lifecycle(binding),
+  wake: (workspace, input, retry) => specialistRuntime.wake(workspace, input, retry),
   status: (workspace, input) => specialistRuntime.request(workspace, input),
   question: (workspace, input) => specialistRuntime.request(workspace, input),
   recover: (workspace, input) => specialistRuntime.request(workspace, input),
@@ -299,7 +302,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
         } });
       agentManagementIpc = registerAgentManagementIpc({ window, ipc: options.scope.ipc, service: agentManagement,
         remove: request => agentDeletion.container(request),
-        terminal: new AgentTerminalManager({ window, engines: agentEngines, workingDirectory: options.workspaceRoot }) });
+        terminal: new AgentTerminalManager({ window, hold: (engine, id) => specialistRuntime.hold(engine, id), engines: agentEngines, workingDirectory: options.workspaceRoot }) });
       notificationEventsIpc = registerNotificationEventsIpc({ window, ipc: options.scope.ipc, service: notificationEvents });
       discordIpc = registerDiscordIpc({ window, ipc: options.scope.ipc, service: discord,
         setup: context => runtime.startDiscordSetup(context, () => createDiscordSetupBrowser({ parent: window,

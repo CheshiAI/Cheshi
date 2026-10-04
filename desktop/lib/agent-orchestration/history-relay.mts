@@ -128,6 +128,7 @@ export class AgentHistoryRelay {
       this.update(scope, request.id, { status: 'done', ...(allowed() ? result : { result: failed('Recall access changed.') }) });
     } catch { this.update(scope, request.id, { status: 'done', result: failed('Recall failed or was canceled. Usage may be unknown.') }); }
   }
+  get busy() { return this.active.size > 0 || this.polling.size > 0; }
   async dispose() {
     this.disposed = true; this.lifetime.abort(); this.unsubscribe?.();
     for (const controller of this.active.values()) controller.abort();
