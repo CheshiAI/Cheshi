@@ -50,6 +50,17 @@ test('returning to default removes profile-specific environment overrides', asyn
   await pool.stop();
 });
 
+test('voice API-key exclusions survive account client rebinding', async () => {
+  const pool = new CodexAccountClients({ CODEX_HOME: '/default' });
+  const client = pool.create({ command: { executable: 'unused-test-transport', args: [], environment: { CODEX_HOME: '/wrong-profile', OPENAI_API_KEY: undefined, CODEX_API_KEY: undefined } },
+    cwd: '/tmp', clientInfo: { name: 'voice-test', title: 'Voice test', version: '1' } });
+  expect(client.command.environment.CODEX_HOME).toBe('/default');
+  await pool.change({ CODEX_HOME: '/next' }, [client], async () => {});
+  expect(client.command.environment).toEqual({ CODEX_HOME: '/next', OPENAI_API_KEY: undefined, CODEX_API_KEY: undefined });
+  expect(Object.hasOwn(client.command.environment, 'OPENAI_API_KEY')).toBe(true);
+  await pool.stop();
+});
+
 test('an outstanding request blocks switching until its result settles', async () => {
   const pool = new CodexAccountClients({ CODEX_HOME: '/default' });
   const client = createClient(pool);

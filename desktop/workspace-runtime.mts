@@ -1,4 +1,5 @@
 import { AppleNotesService } from './lib/apple-notes-service.mts';
+import { createWorkspaceVoice } from './lib/agent-voice/workspace.mts';
 import { createWorkspaceScheduler } from './lib/scheduler/workspace.mts';
 import { createWorkspaceNotifications } from './lib/workspace-notifications.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
@@ -188,6 +189,9 @@ const { accounts: workspaceAccounts, search: chatHistorySearch, mcp: historyMcp 
   accountSelection: options.accountSelection,
 });
 const createChatClient = workspaceAccounts.createClient;
+const agentVoice = createWorkspaceVoice({ ipc: ipcMain, assertSender: assertCheshiSender, directory: userDataDirectory,
+  workspace: workspaceRoot, chats: options.voiceChats, createClient: workspaceAccounts.createVoiceClient,
+  ready: workspaceAccounts.beforeMessage, account: () => accountSwitch.activeId });
 const codexAppServerClient = createChatClient();
 const ephemeralSessionClient = createChatClient();
 const codeExplanation = createWorkspaceCodeExplanation(ephemeralSessionClient, workspaceRoot);
@@ -239,14 +243,14 @@ const codexChatSavedTurns = new CodexChatSavedTurns(path.join(path.dirname(codeG
 const codexChatSessionDeletion = new CodexChatSessionDeletion({ contexts: codexChatContexts, service: codexChatService, relays: codexChatRelays });
 const accountSwitch = workspaceAccounts.register({
   ipc: ipcMain, assertSender: assertCheshiSender,
-  startup: { signal: initialIndexAbort.signal, onPhase: logStartup,
+  startup: { signal: initialIndexAbort.signal, onPhase: phase => { logStartup(phase); if (phase === 'account selection ready') agentVoice.accountsReady(); },
     onError: error => chatServiceOptions.log('codex-account-initialization-failed', { message: String(error) }) },
   retained: [codexAppServerClient, ephemeralSessionClient],
   service: codexChatService, contexts: codexChatContexts, deletion: codexChatSessionDeletion,
   relays: codexChatRelays, accountUsage: codexAccountService,
-  temporaryBusy: () => temporaryChats.hasSessions || codeExplanation.busy,
+  temporaryBusy: () => temporaryChats.hasSessions || codeExplanation.busy || agentVoice.busy,
   schedulerBusy: () => workspaceScheduler.busy,
-  resetTemporary: () => codeExplanation.reset(),
+  resetTemporary: () => { codeExplanation.reset(); agentVoice.resetAccount(); },
   emit: snapshot => {
     chatHistorySearch.changed({ type: 'sessions-changed' });
     onAccountsChanged?.(snapshot);
@@ -969,7 +973,7 @@ function dispose(): Promise<void> {
       process.stderr.write(`[cheshi] Scheduler cleanup failed: ${String(error)}\n`);
     });
     const results = await Promise.allSettled([
-      codexChatService.stop(),
+      codexChatService.stop(), agentVoice.dispose(),
       historyMcp.stop(), chatHistorySearch.stop(), appleNotesService.stop(),
       temporaryChats.stop(),
       localHistory.dispose(),

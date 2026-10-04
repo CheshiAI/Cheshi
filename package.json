@@ -11,9 +11,17 @@
   "workspaces": [
     "codegraph",
     "desktop/backend/codegraph-server",
-    "desktop/frontend"
+    "desktop/frontend",
+    "connect/server",
+    "connect/client",
+    "connect/test"
   ],
   "scripts": {
+    "connect:start": "bun run --cwd connect/server start",
+    "connect:test": "bun test connect/test desktop/test/agent-voice.test.ts",
+    "connect:typecheck": "bun run --bun tsc -p connect/tsconfig.json --noEmit",
+    "phone:build": "bun run --cwd connect/client build",
+    "phone:typecheck": "bun run --bun tsc -p connect/client/tsconfig.json --noEmit",
     "build": "bun run codegraph:build && bun run viewer:build",
     "check": "bun run desktop:check && bun run typecheck && bun run test",
     "cheshi-cli": "bun cli/cheshi-cli.ts",

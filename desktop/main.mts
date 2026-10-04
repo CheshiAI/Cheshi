@@ -279,6 +279,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try {
     runtime = createWorkspaceRuntime({ ...options, notifications, messageCommands, discord, getTypeSafeKey: apiSettings.getKey,
+      voiceChats: request => agentChats.request(options.workspaceRoot, request),
       historyRecall: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) },
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });

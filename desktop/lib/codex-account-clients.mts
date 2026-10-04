@@ -68,9 +68,12 @@ export class AccountClient extends CodexAppServerClient {
   private calls = 0;
   private readonly turns = new Set<string>();
   private preparationRevision = 0;
+  private readonly environmentOverrides: Record<string, string | undefined>;
 
   constructor(pool: CodexAccountClients, options: ClientOptions) {
-    super({ ...options, command: { ...options.command, args: pool.commandArgs(options.command.args), environment: { ...pool.environment } } });
+    super({ ...options, command: { ...options.command, args: pool.commandArgs(options.command.args),
+      environment: { ...pool.environment, ...options.command.environment, CODEX_HOME: pool.environment.CODEX_HOME } } });
+    this.environmentOverrides = Object.fromEntries(Object.entries(options.command.environment).filter(([key]) => key !== 'CODEX_HOME'));
     this.pool = pool;
     this.originalArgs = [...options.command.args];
     this.generation = pool.generation;
@@ -88,7 +91,7 @@ export class AccountClient extends CodexAppServerClient {
 
   rebind(): void {
     this.generation = this.pool.generation;
-    this.command.environment = { ...this.pool.environment };
+    this.command.environment = { ...this.pool.environment, ...this.environmentOverrides };
     this.command.args = this.pool.commandArgs(this.originalArgs);
   }
 

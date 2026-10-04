@@ -3,7 +3,8 @@ import { isWorkKind } from '../../../../shared/agent-work';
 import { VerificationMessage } from '../agents/VerificationMessage';
 import { WorkMessage } from '../agents/WorkMessage';
 import { IntegrationDetail } from '../agents/IntegrationDetail';
-import { ArrowLeft, MessagesSquare, Plus, Users } from 'lucide-react';
+import { ArrowLeft, MessagesSquare, Phone, Plus, Users } from 'lucide-react';
+import { VoiceDialog } from './VoiceDialog';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { LiquidGlassPanel, NeumorphicButton, NeumorphicTextField } from '../../shared/ui';
@@ -27,6 +28,7 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
   const [agents, setAgents] = useState<SpecialistAgent[]>([]), [engines, setEngines] = useState<AgentEngineInfo[]>([]);
   const [dialog, setDialog] = useState<'new' | 'participants' | null>(null), [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false), [sending, setSending] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const version = useRef(0), alive = useRef(true);
   const inspecting = useRef(false);
@@ -173,6 +175,7 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
     </LiquidGlassPanel>
     <section className={styles.conversation} aria-label={room?.name ?? 'Room conversation'}>
       <header className={styles.header}>{threadId && <TooltipButton variant="ghost" size="icon" title="Back to room" aria-label="Back to room" disabled={sending} onClick={() => { setThreadId(null); }}><ArrowLeft aria-hidden="true" /></TooltipButton>}<h2>{threadId ? 'Goal thread' : room?.name ?? 'Chats'}</h2>
+        {room && <TooltipButton variant="ghost" size="icon" title="Phone calls" aria-label="Phone calls" onClick={() => setVoiceOpen(true)}><Phone aria-hidden="true" /></TooltipButton>}
         {room && <TooltipButton variant="ghost" size="icon" title="Room participants" aria-label="Room participants" onClick={() => setDialog('participants')}><Users aria-hidden="true" /></TooltipButton>}</header>
       {room && <div className={styles.participants}>{room.members.map(m => m.name).join(' · ')}<span>Default: {name(owner ?? null)}</span></div>}
       {root && <section ref={summaryScroll} className={styles.goalSummary} aria-label="Goal progress">
@@ -206,5 +209,6 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
       </form>}
     </section>
     {active && dialog && <RoomDialog room={dialog === 'participants' ? room : undefined} agents={agents} engines={engines} onSave={mutate} onClose={() => setDialog(null)} />}
+    {active && voiceOpen && room && <VoiceDialog key={room.id} roomId={room.id} onClose={() => setVoiceOpen(false)} />}
   </main>;
 }

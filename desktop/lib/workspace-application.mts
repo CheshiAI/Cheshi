@@ -13,6 +13,7 @@ export interface WorkspaceRuntimeOptions {
   discord?: import('./discord-service.mts').DiscordBridge;
   messageCommands?: import('./imessage-commands.mts').IMessageCommandRegistry;
   getTypeSafeKey?(): string | null;
+  voiceChats?: import('./agent-voice/chats.mts').ChatAccess;
   historyRecall?: HistoryRecallAccess;
   accountSelection?: WorkspaceAccountSelection;
   managementOnly?: boolean;

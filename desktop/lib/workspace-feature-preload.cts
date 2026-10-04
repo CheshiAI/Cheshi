@@ -1,4 +1,5 @@
 import { createAgentChatsApi } from './agent-chats-preload.cts';
+import { createAgentVoiceApi } from './agent-voice-preload.cts';
 import { createSchedulerApi } from './scheduler-preload.cts';
 import { createDiscordApi } from './discord-preload.cts';
 import { createNotificationEventsApi } from './notification-events-preload.cts';
@@ -19,6 +20,7 @@ export function createWorkspaceFeatureApis(ipc: Pick<IpcRenderer, 'invoke' | 'on
     appleCalendar: createAppleCalendarApi(ipc, process.platform),
     agentManagement: { ...createAgentManagementApi(ipc), terminal: createAgentTerminalApi(ipc) },
     agentChats: createAgentChatsApi(ipc),
+    agentVoice: createAgentVoiceApi(ipc),
     agentRegistry: createAgentRegistryApi(ipc),
   };
 }

@@ -60,9 +60,10 @@ export function createWorkspaceCodexAccounts(options: {
     confirmDeletion: (id, deletion) => catalog.confirmDeletion(id, deletion),
     forget: id => catalog.forget(id),
   };
-  const createClient = () => clients.create({
-    capabilities: { experimentalApi: true },
-    command: { executable: process.env.CHESHI_CODEX?.trim() || 'codex', args: ['app-server', '--listen', 'stdio://'], environment: {} },
+  const createClient = (voice = false) => clients.create({
+    capabilities: { experimentalApi: true, ...(voice ? { explicitGatewayOauth: true } : {}) },
+    command: { executable: process.env.CHESHI_CODEX?.trim() || 'codex', args: ['app-server', '--listen', 'stdio://'],
+      environment: voice ? { OPENAI_API_KEY: undefined, CODEX_API_KEY: undefined } : {} },
     cwd: options.cwd,
     clientInfo: { name: product.internalName, title: product.displayName, version: product.version },
   });
@@ -133,5 +134,5 @@ export function createWorkspaceCodexAccounts(options: {
     if (!availability.accountId) throw new Error(availability.message ?? 'No Codex account is available.');
     if (availability.accountId !== selection.activeId) await selection.select(availability.accountId);
   };
-  return { createClient, register, conversations, beforeMessage, stop: () => clients.stop() };
+  return { createClient: () => createClient(), createVoiceClient: () => createClient(true), register, conversations, beforeMessage, stop: () => clients.stop() };
 }

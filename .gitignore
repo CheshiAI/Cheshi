@@ -6,6 +6,7 @@ node_modules/
 .env.*
 !.env.product
 desktop/frontend/dist/
+connect/client/dist/
 out/
 .DS_Store
 .idea/

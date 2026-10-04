@@ -853,6 +853,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   scheduler?: import('../../shared/scheduler').SchedulerApi;
   agentManagement?: import('../../shared/agent-management').AgentManagementApi;
   agentChats?: import('../../shared/agent-chats').AgentChatsApi;
+  agentVoice?: import('../../shared/agent-voice').AgentVoiceApi;
   agentRegistry?: import('../../shared/agent-registry').AgentRegistryApi;
   importCodexChatAttachments: (files: (File | string)[]) => Promise<CodexChatAttachment[]>;
   getCodexChatAttachmentPreview: (attachmentPath: string) => Promise<string | null>;

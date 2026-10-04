@@ -6,6 +6,8 @@ import { specialistAgent } from './agent-registry-fixtures';
 import { GoalQuestions } from '../frontend/src/features/agent-chats/GoalQuestions';
 import { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
 import { RoomDialog } from '../frontend/src/features/agent-chats/RoomDialog';
+import { VoiceDialog } from '../frontend/src/features/agent-chats/VoiceDialog';
+import type { VoiceRequest, VoiceSnapshot } from '../shared/agent-voice';
 import { AgentTaskResults } from '../frontend/src/features/agents/AgentTaskResults';
 import { IntegrationDetail } from '../frontend/src/features/agents/IntegrationDetail';
 import { VerificationMessage } from '../frontend/src/features/agents/VerificationMessage';
@@ -40,6 +42,26 @@ const snapshot = (): ChatsSnapshot => ({ rooms: [{ id: 'room', workspace: '/proj
   { id: 'goal', roomId: 'room', threadId: null, sender: 'user', recipient: 'dev', kind: 'goal', text: 'Build login', createdAt: '2026-10-03T00:00:00Z', taskId: 'task', status: 'waiting' },
   { id: 'reply', roomId: 'room', threadId: 'goal', sender: 'dev', recipient: null, kind: 'message', text: 'Waiting for design', createdAt: '2026-10-03T00:01:00Z', taskId: 'task', status: 'waiting' },
 ] });
+test('phone dialog binds pairing to this room and requires explicit approval before showing a linked device', async () => {
+  await withDOM(async ui => {
+    const requests: VoiceRequest[] = [];
+    let state: VoiceSnapshot = { configured: true, connected: true, calling: false, error: null, link: null, expiresAt: null, pending: null, devices: [] };
+    const api = { request: async (request: VoiceRequest) => {
+      requests.push(request);
+      if (request.action === 'pair') state = { ...state, link: 'https://connect.example/#host=test&pair=fixture', expiresAt: Date.now() + 120000, pending: { id: 'pending', name: 'Phone', code: '123456' } };
+      if (request.action === 'approve') state = { ...state, link: null, pending: null, devices: [{ id: 'device', name: 'Phone', roomId: 'room', roomName: 'Login' }] };
+      if (request.action === 'revoke') state = { ...state, devices: [] };
+      return state;
+    } };
+    await ui.render(<VoiceDialog roomId="room" api={api} onClose={() => {}} />);
+    await ui.click('Link a phone to this room');
+    expect(requests.at(-1)).toEqual({ action: 'pair', roomId: 'room' });
+    expect(document.body.textContent).toContain('123456'); expect(state.devices).toHaveLength(0);
+    await ui.click('Codes match · Approve'); expect(requests.at(-1)).toEqual({ action: 'approve', id: 'pending' });
+    expect(document.querySelector('[aria-label="Phone pairing link"]')).toBeNull();
+    await ui.click('Unlink'); expect(requests.at(-1)).toEqual({ action: 'revoke', id: 'device' });
+  });
+});
 test('Chats shows room goals, opens a thread and task details, and preserves thread on return', async () => {
   await withDOM(async ui => {
     const api = { request: async () => snapshot() }, opened: ChatTaskTarget[] = [];
