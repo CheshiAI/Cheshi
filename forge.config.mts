@@ -30,7 +30,7 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 2 && (!grandchildEntry || !packagedIcons.has(grandchildEntry) || segments.length > 3);
   }
   if (rootEntry === 'experiments') {
-    const contracts = ['application-storage.ts', 'application-contract.ts', 'work-contract.ts', 'work-files.ts', 'integration-contract.ts', 'integration-plan.ts', 'verification-contract.ts', 'candidate-verification-contract.ts', 'protocol.ts'].map(name => `experiments/codex-specialists/src/${name}`);
+    const contracts = ['conversation-contract.ts', 'application-storage.ts', 'application-contract.ts', 'work-contract.ts', 'work-files.ts', 'integration-contract.ts', 'integration-plan.ts', 'verification-contract.ts', 'candidate-verification-contract.ts', 'protocol.ts'].map(name => `experiments/codex-specialists/src/${name}`);
     return !contracts.some(contract => normalizedPath === contract || contract.startsWith(`${normalizedPath}/`));
   }
   if (rootEntry !== 'desktop') return true;

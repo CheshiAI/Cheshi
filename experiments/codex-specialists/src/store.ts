@@ -1,3 +1,4 @@
+import { parseConversation, type ConversationState } from './conversation-contract.ts';
 import { parseWorkDraft, type WorkDraft } from './work-contract.ts';
 import { parseIntegration, type IntegrationSummary } from './integration-contract.ts';
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from 'node:fs';
@@ -13,7 +14,8 @@ export type TaskStatus = typeof TASK_STATUSES[number];
 export type Task = {
   id: string; prompt: string; status: TaskStatus; createdAt: string; finishedAt: string | null;
   threadId: string | null; turnId: string | null; output: string; error: string | null;
-  roomId?: string; inputs?: { id: string; prompt: string }[]; responses?: { id: string; text: string; status: string }[];
+  roomId?: string; inputs?: { id: string; prompt: string; questionId?: string }[]; responses?: { id: string; text: string; status: string }[];
+  dialogue?: ConversationState;
   conversation?: string; consultation?: string; goal?: GoalState;
   verification?: string; verificationEvidence?: Evidence[]; verificationDraft?: VerificationResult;
   delegation?: string; workDraft?: WorkDraft;
@@ -59,11 +61,12 @@ function savedTask(value: unknown): Task {
     ...(task.integrationTools === true ? { integrationTools: true as const } : {}),
     ...(task.recovery === undefined ? {} : { recovery: recoveryReceipt(task.recovery) }),
     ...(task.roomId === undefined ? {} : { roomId: validateTaskId(task.roomId),
-      inputs: chatEntries(task.inputs, v => { const i = record(v); return { id: validateTaskId(i.id), prompt: textValue(i.prompt, 'input') }; }),
+      inputs: chatEntries(task.inputs, v => { const i = record(v); return { id: validateTaskId(i.id), prompt: textValue(i.prompt, 'input'), ...(i.questionId === undefined ? {} : { questionId: validateTaskId(i.questionId) }) }; }),
       responses: chatEntries(task.responses, v => { const r = record(v); return { id: validateTaskId(r.id), text: typeof r.text === 'string' ? r.text : textValue(r.text, 'response'), status: textValue(r.status, 'status') }; }) }),
     ...(task.verification === undefined ? {} : { verification: validateTaskId(task.verification) }),
     ...(task.verificationEvidence === undefined ? {} : { verificationEvidence: list(task.verificationEvidence, evidence, 64) }),
     ...(task.verificationDraft === undefined ? {} : { verificationDraft: verificationResult(task.verificationDraft) }),
+    ...(task.dialogue === undefined ? {} : { dialogue: parseConversation(task.dialogue) }),
     ...(task.goal === undefined ? {} : { goal: parseGoal(task.goal) }),
     ...(task.conversation === undefined ? {} : { conversation: validateTaskId(task.conversation) }),
     ...(task.consultation === undefined ? {} : { consultation: validateTaskId(task.consultation) }),
@@ -122,7 +125,7 @@ export class AgentStore {
     });
   }
 
-  create(id: string, prompt: string, options: Pick<Task, 'conversation' | 'consultation' | 'verification' | 'delegation' | 'goal' | 'roomId'> = {}): Task {
+  create(id: string, prompt: string, options: Pick<Task, 'conversation' | 'consultation' | 'verification' | 'delegation' | 'goal' | 'roomId' | 'dialogue'> = {}): Task {
     if (this.task(id)) throw new Error('Task already exists.');
     const task: Task = { id, prompt, status: 'accepted', createdAt: new Date().toISOString(), finishedAt: null,
       threadId: null, turnId: null, output: '', error: null, ...options };

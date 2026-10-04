@@ -1,3 +1,5 @@
+import { WorkerConversation, conversationTools, conversationInstructions } from './conversation.ts';
+import { waitingForUser } from './conversation-contract.ts';
 import { WorkerWork } from './work.ts';
 import { workTools, workInstructions } from './work-tools.ts';
 import { WorkerIntegration, integrationTools, integrationInstructions, candidateVerificationInstructions, applicationTools, applicationInstructions } from './integration.ts';
@@ -55,6 +57,7 @@ export class SpecialistAgent {
   private failure: string | null = null;
   private readonly retainedScratch = new Set<TaskScratch>();
 
+  private readonly conversations: WorkerConversation;
   private readonly work: WorkerWork | undefined;
   private readonly integration: WorkerIntegration | undefined;
   private readonly verification: WorkerVerification | undefined;
@@ -63,6 +66,7 @@ export class SpecialistAgent {
   private readonly collaboration: WorkerCollaboration | undefined;
   constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; timeoutMs?: number; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; historyQueue?: WorkerHistoryQueue; history?: WorkerHistory }) {
     this.configuration = options.configuration;
+    this.conversations = new WorkerConversation(options.store, options.configuration?.verificationProtocol === 1);
     this.work = options.configuration?.workProtocol === 1 ? new WorkerWork(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite) : undefined;
     this.integration = options.configuration?.integrationProtocol === 1 ? new WorkerIntegration(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite, options.configuration.applicationProtocol === 1) : undefined;
     this.verification = options.configuration?.verificationProtocol === 1 ? new WorkerVerification(options.store, options.workspace) : undefined;
@@ -79,8 +83,14 @@ export class SpecialistAgent {
         if (active.stopRequested) throw new Error('Task is stopping.');
         const tool = textValue(params.tool, 'tool');
         const task = this.store.task(active.id)!;
+        if (task.dialogue && conversationTools.some(t => t.name === tool)) {
+          const result = this.conversations.call(task, tool, params.arguments);
+          if (tool !== 'conversation_status') active.observations.add({ tool, result });
+          return result;
+        }
+        if (task.dialogue && (!task.goal || task.goal.turns === 0) && !['list_agents', 'ask_agent', 'collaboration_status', 'history_search', 'history_read'].includes(tool)) throw new Error('Intake is read-only. Record the work goal, then end this turn.');
         if (task.goal) {
-          if (tool === 'goal_status') return { originalGoal: task.prompt, ...goalContext(task.goal) };
+          if (tool === 'goal_status') return { originalGoal: task.dialogue?.objective ?? task.prompt, ...goalContext(task.goal) };
           if (tool === 'record_decision') {
             const decision = parseDecision(params.arguments);
             if (decision.action === 'complete' && task.integration) {
@@ -92,7 +102,7 @@ export class SpecialistAgent {
               if (!this.collaboration) throw new Error('Independent verification is unavailable.');
               this.collaboration.assertVerified(task, active.messages);
             }
-            validateDecision(task.goal, decision, this.collaboration?.waiting(task.id, active.messages) ?? false);
+            validateDecision(task.goal, decision, (waitingForUser(this.store.task(task.id)!) || (this.collaboration?.waiting(task.id, active.messages) ?? false)));
             if (task.goal.pending && JSON.stringify(task.goal.pending) !== JSON.stringify(decision)) throw new Error('A decision was already recorded for this turn.');
             this.store.update(task.id, { goal: { ...task.goal, pending: decision } });
             return { status: 'recorded', guidance: 'End this turn now. The decision is applied only after successful turn completion.' };
@@ -142,14 +152,16 @@ export class SpecialistAgent {
       ? { ...task, integration: this.integration.inspect(task)! } : task) };
   }
 
-  submit(id: string, prompt: string, chat?: { roomId: string; conversation: string; goal: boolean }): Task {
+  submit(id: string, prompt: string, chat?: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string }): Task {
     if (chat) { validateTaskId(chat.roomId); validateTaskId(chat.conversation); if (typeof chat.goal !== 'boolean') throw new TypeError('Invalid chat mode.'); }
+    if (chat?.automatic && (typeof chat.userText !== 'string' || !chat.userText.trim() || chat.userText.length > 16000)) throw new Error('Invalid original user message.');
+    if (chat?.automatic && this.configuration?.conversationProtocol !== 1) throw new Error('Restart the worker to enable conversational tasks.');
     validateTaskId(id); textValue(prompt, 'prompt');
     if (prompt.length > 20_000) throw new TypeError('Prompt is too long.');
     if (this.failure) throw new Error(this.failure);
     const existing = this.store.task(id);
     if (existing) {
-      if (existing.prompt !== prompt || existing.roomId !== chat?.roomId || (chat && (existing.conversation !== chat.conversation || Boolean(existing.goal) !== (chat.goal && this.configuration?.decisionProtocol === 1)))) throw new TaskConflict('This task id belongs to a different prompt.');
+      if (existing.prompt !== prompt || existing.roomId !== chat?.roomId || (chat && (existing.conversation !== chat.conversation || (chat.automatic ? existing.dialogue?.userText !== chat.userText : Boolean(existing.goal) !== (chat.goal && this.configuration?.decisionProtocol === 1))))) throw new TaskConflict('This task id belongs to a different prompt.');
       return existing;
     }
     if (this.store.snapshot().tasks.some(task => task.status === 'unknown')) {
@@ -157,23 +169,27 @@ export class SpecialistAgent {
     }
     if (this.busy) throw new TaskConflict('This specialist already has an active task.');
     const task = this.store.create(id, prompt, { ...(this.collaboration ? { conversation: id } : {}),
-      ...(this.configuration?.decisionProtocol === 1 && (!chat || chat.goal) ? { goal: newGoal(Boolean(this.verification)), conversation: id } : {}), ...(chat ? { roomId: chat.roomId, conversation: chat.conversation } : {}) });
+      ...(this.configuration?.decisionProtocol === 1 && (!chat || chat.goal) ? { goal: newGoal(Boolean(this.verification)), conversation: id } : {}), ...(chat ? { roomId: chat.roomId, conversation: chat.conversation, ...(chat.automatic ? { dialogue: { userText: textValue(chat.userText, 'user message'), questions: [], revisions: [] } } : {}) } : {}) });
     return this.launch(task, prompt);
   }
 
-  input(id: string, inputId: string, prompt: string, roomId: string): Task {
+  input(id: string, inputId: string, prompt: string, roomId: string, questionId?: string): Task {
     validateTaskId(inputId); textValue(prompt, 'prompt');
-    if (prompt.length > 20_000) throw new TypeError('Prompt is too long.');
+    if (prompt.length > 16_000) throw new TypeError('Follow-up is too long.');
     const task = this.store.task(id);
-    if (!task || task.roomId !== roomId || !task.goal) throw new TaskConflict('Unknown room goal.');
+    if (!task || task.roomId !== roomId || (!task.goal && !task.dialogue)) throw new TaskConflict('Unknown room goal.');
     const previous = task.inputs?.find(i => i.id === inputId);
     if (previous) {
-      if (previous.prompt !== prompt) throw new TaskConflict('Input identity conflict.');
+      if (previous.prompt !== prompt || previous.questionId !== questionId) throw new TaskConflict('Input identity conflict.');
       return task;
     }
     if (this.busy || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) throw new TaskConflict('Worker cannot safely resume yet.');
     if (task.status === 'completed') throw new TaskConflict('This goal is completed. Start a new goal.');
-    this.store.update(id, { inputs: [...(task.inputs ?? []), { id: inputId, prompt }], goal: { ...task.goal, progressCheck: { unchanged: 0, observations: [] } }, status: 'accepted', finishedAt: null });
+    const question = questionId ? task.dialogue?.questions.find(q => q.id === questionId) : undefined;
+    if (questionId && (!question || question.answer)) throw new TaskConflict('Unknown or already answered user question.');
+    const dialogue = task.dialogue && { ...task.dialogue, ...(task.dialogue.route && !task.dialogue.route.delivered ? { route: { ...task.dialogue.route, held: true as const } } : {}),
+      questions: task.dialogue.questions.map(q => question && q.id === questionId ? { ...q, answer: { id: inputId, text: prompt } } : q) };
+    this.store.update(id, { ...(dialogue ? { dialogue } : {}), inputs: [...(task.inputs ?? []), { id: inputId, prompt, ...(questionId ? { questionId } : {}) }], ...(task.goal ? { goal: { ...task.goal, progressCheck: { unchanged: 0, observations: [] } } } : {}), status: 'accepted', finishedAt: null });
     return this.launch(this.store.task(id)!, `Continue the original goal: ${task.prompt}\nUser follow-up:\n${prompt}`);
   }
 
@@ -215,6 +231,23 @@ export class SpecialistAgent {
   pump(): void {
     this.collaboration?.expire();
     if (this.busy || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) return;
+    const routed = this.store.snapshot().tasks.find(t => t.status === 'completed' && t.dialogue?.route && !t.dialogue.route.delivered && !t.dialogue.route.held);
+    if (routed) {
+      const target = this.store.task(routed.dialogue!.route!.taskId);
+      const inputs = [{ id: routed.id, prompt: routed.dialogue!.userText }, ...(routed.inputs ?? []).map(i => ({ id: i.id, prompt: i.prompt }))];
+      const userFollowup = inputs.map(i => `User input (${i.id}):\n${i.prompt}`).join('\n');
+      if (target && (target.goal || waitingForUser(target)) && target.roomId === routed.roomId && target.status !== 'completed') {
+        this.store.transaction(state => {
+          state.tasks.find(t => t.id === routed.id)!.dialogue!.route!.delivered = true;
+          const next = state.tasks.find(t => t.id === target.id)!;
+          next.inputs = [...(next.inputs ?? []), ...inputs];
+          if (next.goal) next.goal.progressCheck = { unchanged: 0, observations: [] };
+          next.status = 'accepted'; next.finishedAt = null;
+        });
+        this.launch(this.store.task(target.id)!, `User follow-up (${routed.id}):\n${userFollowup}`);
+        return;
+      }
+    }
     const next = this.collaboration?.next();
     if (!next) {
       const ready = this.store.snapshot().tasks.find(t => t.status === 'waiting' && t.goal?.phase === 'ready');
@@ -231,32 +264,33 @@ export class SpecialistAgent {
     const saved = this.store.snapshot();
     const savedThread = task.conversation ? saved.threads[task.conversation] ?? null : saved.threadId;
     // Reload turn-specific permission roots and TMPDIR, including warm resumes.
-    if (!scratch && savedThread && this.loadedThreads.has(savedThread)) return savedThread;
-    if (scratch && savedThread && this.loadedThreads.has(savedThread)) {
+    if (!scratch && !task.dialogue && savedThread && this.loadedThreads.has(savedThread)) return savedThread;
+    if ((scratch || task.dialogue) && savedThread && this.loadedThreads.has(savedThread)) {
       // Codex 0.159.3 ignores config overrides for an already-loaded thread.
       // Unsubscribe unloads the idle execution session, not its persisted history.
       await this.client.request('thread/unsubscribe', { threadId: savedThread });
       this.loadedThreads.delete(savedThread);
     }
     const settings = this.configuration;
+    const intake = !!task.dialogue && !task.goal;
     // Native resumed conversations retain the dynamic tool set from their creation.
     const integrationAvailable = this.integration && (!savedThread || task.integrationTools === true);
     const applicationAvailable = integrationAvailable && settings?.applicationProtocol === 1 && (!savedThread || task.applicationTools === true);
-    const profile = this.profile + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal ? decisionInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
+    const profile = this.profile + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal || task.dialogue ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
       + (integrationAvailable && settings?.candidateVerificationProtocol === 1 ? candidateVerificationInstructions : '') + (applicationAvailable ? applicationInstructions : '');
     const params: JsonRecord = { cwd: workspace,
-      ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
+      ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: !intake && !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
       approvalsReviewer: 'user', developerInstructions: profile,
       ...(settings ? { model: settings.model, serviceTier: settings.serviceTier, config: {
         ...(settings.reasoningEffort ? { model_reasoning_effort: settings.reasoningEffort } : {}),
-        'features.shell_tool': !task.consultation && settings.permissions.commandExecution,
-        'features.unified_exec': !task.consultation && settings.permissions.commandExecution,
+        'features.shell_tool': !intake && !task.consultation && settings.permissions.commandExecution,
+        'features.unified_exec': !intake && !task.consultation && settings.permissions.commandExecution,
         'features.multi_agent': false,
         ...(scratch ? scratch.config(workspace) : {}),
       } } : {}) };
     const result = savedThread
       ? await this.client.request('thread/resume', { ...params, threadId: savedThread })
-      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal ? decisionTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])] });
+      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal || task.dialogue ? decisionTools : []), ...(task.dialogue ? conversationTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])] });
     const threadId = textValue(record(result.thread).id, 'thread id');
     assertResumedThread(savedThread, threadId);
     scratch?.assertApplied(result);
@@ -315,7 +349,7 @@ export class SpecialistAgent {
       const response = await this.client.request('turn/start', {
         threadId: active.threadId, input: [{ type: 'text', text: input }], cwd: workspace,
         approvalPolicy: 'on-request', approvalsReviewer: 'user',
-        ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandboxPolicy: !task.consultation && !task.verification && !task.delegation && this.configuration?.permissions.fileWrite === true
+        ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandboxPolicy: (!task.dialogue || !!task.goal) && !task.consultation && !task.verification && !task.delegation && this.configuration?.permissions.fileWrite === true
           ? { type: 'workspaceWrite', writableRoots: [this.workspace], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true }
           : { type: 'readOnly', networkAccess: false } }),
         ...(this.configuration ? { model: this.configuration.model, effort: this.configuration.reasoningEffort, serviceTier: this.configuration.serviceTier } : {}),
@@ -343,6 +377,8 @@ export class SpecialistAgent {
       } else if (active.stopRequested && savedGoal && !(result.status === 'completed' && savedGoal.pending?.action === 'complete')) {
         this.store.complete(task.id, { status: 'interrupted', output: result.output, error: null,
           goal: { ...savedGoal, phase: 'blocked', pending: null } }, active.messages);
+      } else if (result.status === 'completed' && savedGoal && !task.goal) {
+        this.store.complete(task.id, { ...result, goal: savedGoal, status: 'waiting' }, active.messages);
       } else if (result.status === 'completed' && task.goal) {
         let verificationError: string | null = null;
         if (savedGoal?.pending?.action === 'complete' && (savedGoal.verificationRequired || this.store.task(task.id)?.integration)) {
@@ -361,14 +397,14 @@ export class SpecialistAgent {
             error: goal.phase === 'blocked' ? `${STALLED_GOAL} ${verificationError}` : verificationError }, active.messages);
           return;
         }
-        const outcome = finishGoal({ ...savedGoal!, progressCheck: active.observations.finish(savedGoal?.progressCheck) }, this.collaboration?.waiting(task.id, active.messages) ?? false);
+        const outcome = finishGoal({ ...savedGoal!, progressCheck: active.observations.finish(savedGoal?.progressCheck) }, (waitingForUser(this.store.task(task.id)!) || (this.collaboration?.waiting(task.id, active.messages) ?? false)));
         this.store.complete(task.id, { ...result, ...outcome }, active.messages);
       } else if (result.status === 'completed' && this.collaboration) {
         if (task.verification && this.verification) this.collaboration.publishVerification(task, this.verification.finish(this.store.task(task.id)!));
         if (task.consultation && !this.collaboration.hasReply(task)) this.collaboration.reply(task, result.output || 'No answer was produced.');
-        const waiting = this.collaboration.waiting(task.id, active.messages);
+        const waiting = waitingForUser(this.store.task(task.id)!) || this.collaboration.waiting(task.id, active.messages);
         this.store.complete(task.id, { ...result, status: waiting ? 'waiting' : 'completed' }, active.messages);
-      } else this.store.complete(task.id, { ...result, ...(savedGoal ? { goal: { ...savedGoal, phase: 'blocked', pending: null } } : {}) });
+      } else this.store.complete(task.id, { ...result, ...(result.status === 'completed' && waitingForUser(this.store.task(task.id)!) ? { status: 'waiting' as const } : {}), ...(savedGoal ? { goal: { ...savedGoal, phase: 'blocked', pending: null } } : {}) });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       const outgoing = !submitted && task.delegation && this.work ? this.work.resultMessage(task, 'failed', reason) : undefined;
@@ -424,7 +460,7 @@ export class SpecialistAgent {
   async recover(id: string, roomId: string): Promise<Task> {
     validateTaskId(id); validateTaskId(roomId);
     const task = this.store.task(id);
-    if (!task || task.roomId !== roomId || (!task.goal && !task.consultation && !task.verification && !task.delegation)
+    if (!task || task.roomId !== roomId || (!task.dialogue && !task.goal && !task.consultation && !task.verification && !task.delegation)
       || (task.verification && (task.goal || task.consultation)) || (task.delegation && (task.goal || task.consultation || task.verification))) throw new TaskConflict('Unknown room goal, consultation or verification.');
     if (task.delegation && !this.work) throw new TaskConflict('Delegation recovery is unavailable.');
     if (task.verification && (!this.verification || !this.collaboration)) throw new TaskConflict('Independent verification recovery is unavailable.');

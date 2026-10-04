@@ -84,7 +84,7 @@ const server = Bun.serve({
         const body = await request.text();
         if (body.length > 25_000) throw new TypeError('Request is too large.');
         const input = record(JSON.parse(body));
-        const task = agent.submit(input.id === undefined ? randomUUID() : validateTaskId(input.id), textValue(input.prompt, 'prompt'), input.chat === undefined ? undefined : (() => { const c = record(input.chat); if (typeof c.goal !== 'boolean') throw new TypeError('Invalid chat goal.'); return { roomId: validateTaskId(c.roomId), conversation: validateTaskId(c.conversation), goal: c.goal }; })());
+        const task = agent.submit(input.id === undefined ? randomUUID() : validateTaskId(input.id), textValue(input.prompt, 'prompt'), input.chat === undefined ? undefined : (() => { const c = record(input.chat); if (typeof c.goal !== 'boolean' || (c.automatic !== undefined && c.automatic !== true)) throw new TypeError('Invalid chat goal.'); return { roomId: validateTaskId(c.roomId), conversation: validateTaskId(c.conversation), goal: c.goal, ...(c.automatic === true ? { automatic: true as const, userText: textValue(c.userText, 'user message') } : {}) }; })());
         return Response.json(task, { status: 202 });
       }
       const question = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/(question|question-deadline)$/.exec(path);
@@ -117,7 +117,7 @@ const server = Bun.serve({
         const body = await request.text();
         if (body.length > 25_000) throw new TypeError('Request is too large.');
         const input = record(JSON.parse(body));
-        return Response.json(agent.input(resume[1]!, validateTaskId(input.id), textValue(input.prompt, 'prompt'), validateTaskId(input.roomId)), { status: 202 });
+        return Response.json(agent.input(resume[1]!, validateTaskId(input.id), textValue(input.prompt, 'prompt'), validateTaskId(input.roomId), input.questionId === undefined ? undefined : validateTaskId(input.questionId)), { status: 202 });
       }
       const match = /^\/tasks\/([a-zA-Z0-9_-]{1,80})(\/stop)?$/.exec(path);
       if (match?.[1]) {

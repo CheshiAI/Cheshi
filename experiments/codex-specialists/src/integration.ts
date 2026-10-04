@@ -1,3 +1,4 @@
+import { staleVerification } from './conversation-contract.ts';
 import { IntegrationApplication } from './integration-application.ts';
 import { parseWorkRequest } from './work-contract.ts';
 import { constants, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -91,8 +92,9 @@ export class WorkerIntegration {
         status = result.verdicts.some(v => v.verdict === 'fail') ? 'fail' : result.verdicts.every(v => v.verdict === 'pass') ? 'pass' : 'inconclusive';
       } catch { result = null; status = 'inconclusive'; }
     }
+    const historicalReceipt = !project && summary.application?.status === 'applied' && summary.application.verificationId === request.id;
     if (summary.status !== 'prepared' || (project && summary.application?.status !== 'applied') || spec.candidate?.hash !== summary.candidateHash
-      || JSON.stringify(spec.criteria) !== JSON.stringify(task.goal?.criteria.map(v => v.criterion))) status = 'stale';
+      || (!historicalReceipt && (staleVerification(task, request.id) || JSON.stringify(spec.criteria) !== JSON.stringify(task.goal?.criteria.map(v => v.criterion))))) status = 'stale';
     return { ...summary, [project ? 'projectVerification' : 'verification']: { requestId: request.id, agentId: request.to, status, result } };
   }
   /** Recheck immutable bytes and the current source whenever a candidate is inspected. */

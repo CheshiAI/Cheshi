@@ -1,3 +1,4 @@
+import { UserQuestions } from './UserQuestions';
 import { isWorkKind } from '../../../../shared/agent-work';
 import { VerificationMessage } from '../agents/VerificationMessage';
 import { WorkMessage } from '../agents/WorkMessage';
@@ -26,7 +27,7 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
   const [agents, setAgents] = useState<SpecialistAgent[]>([]), [engines, setEngines] = useState<AgentEngineInfo[]>([]);
   const [dialog, setDialog] = useState<'new' | 'participants' | null>(null), [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false), [sending, setSending] = useState(false);
-  const [drafts, setDrafts] = useState<Record<string, string>>({}), [recipient, setRecipient] = useState('default'), [goal, setGoal] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, string>>({}), [recipient, setRecipient] = useState('default');
   const version = useRef(0), alive = useRef(true);
   const inspecting = useRef(false);
   const pending = useRef<{ key: string; id: string } | null>(null);
@@ -116,16 +117,15 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
       to = mention.id;
     }
     if (needsRecovery && (to === null || to === owner) && recoveryBlock) { setError(recoveryBlock); return; }
-    const key = JSON.stringify([room.id, selectedThread, to, text, goal]);
+    const key = JSON.stringify([room.id, selectedThread, to, text]);
     if (pending.current?.key !== key) pending.current = { key, id: crypto.randomUUID() };
     const id = pending.current.id;
     setSending(true); setError(null);
     try {
-      await mutate({ action: 'send', id, roomId: room.id, threadId: selectedThread, recipient: to, text, goal: !selectedThread && goal });
+      await mutate({ action: 'send', id, roomId: room.id, threadId: selectedThread, recipient: to, text, goal: false, automatic: true });
       if (!alive.current) return;
       setDrafts(all => ({ ...all, [draftKey]: all[draftKey]?.trim() === text ? '' : all[draftKey] ?? '' }));
-      if (goal && !selectedThread) setThreadId(id);
-      setGoal(false); pending.current = null;
+      pending.current = null;
     } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : 'Message was not saved.'); }
     finally { if (alive.current) setSending(false); }
   }
@@ -144,9 +144,13 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
           : message.kind === 'verification_request' || message.kind === 'verification_result' ? <VerificationMessage kind={message.kind} text={message.text} />
             : <p className={styles.text}>{message.text || 'No text response.'}</p>}
         {message.error && <p role="status" className={styles.description}>{message.error}</p>}
+        {message.dialogue?.objective && <p className={styles.description}>Working on: {message.dialogue.objective}</p>}
+        {message.dialogue?.route && <p className={styles.description}>{message.dialogue.route.held ? 'Follow-up on hold' : 'Follow-up'}: {message.dialogue.route.reason}</p>}
+        {message.dialogue?.revisions.map(revision => <details key={revision.inputId}><summary>Requirements updated</summary><p>{revision.reason}</p><p>User message: {revision.source}</p><ul>{revision.after.map(c => <li key={c}>{c}</li>)}</ul></details>)}
+        {message.dialogue && <UserQuestions message={message} onAnswer={mutate} />}
         <div className={styles.links}>
-          {room && message.relatedTask && <NeumorphicButton variant="ghost" onClick={() => onOpenTask({ roomId: room.id, threadId: message.threadId, agentId: message.relatedTask!.agentId, engineId: room.engineId, taskId: message.relatedTask!.taskId })}>Delegated task</NeumorphicButton>}
-          {message.kind === 'goal' && <NeumorphicButton variant="ghost" onClick={() => { setThreadId(message.id); setRecipient('default'); setGoal(false); }}>Open goal thread · {snapshot.messages.filter(m => m.threadId === message.id).length}</NeumorphicButton>}
+          {room && message.relatedTask && <NeumorphicButton variant="ghost" onClick={() => onOpenTask({ roomId: room.id, threadId: message.threadId, agentId: message.relatedTask!.agentId, engineId: room.engineId, taskId: message.relatedTask!.taskId })}>{message.dialogue?.route ? 'Related goal' : 'Delegated task'}</NeumorphicButton>}
+          {(message.kind === 'goal' || (message.dialogue && !message.threadId)) && <NeumorphicButton variant="ghost" onClick={() => { setThreadId(message.id); setRecipient('default'); }}>{message.kind === 'goal' ? 'Open goal thread' : 'Open conversation'} · {snapshot.messages.filter(m => m.threadId === message.id).length}</NeumorphicButton>}
           {room && message.taskId && <NeumorphicButton variant="ghost" onClick={() => { setThreadId(message.kind === 'goal' ? message.id : message.threadId); onOpenTask({ roomId: room.id, threadId: message.kind === 'goal' ? message.id : message.threadId, agentId: owningJob?.recipient ?? taskAgent ?? room.defaultAgentId, engineId: room.engineId, taskId: message.taskId! }); }}>Task details</NeumorphicButton>}
         </div>
       </div>
@@ -156,7 +160,7 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
     <LiquidGlassPanel as="aside" className={styles.sidebar}>
       <header className={styles.header}><h2>CHATS</h2><TooltipButton variant="ghost" size="icon" title="New room" aria-label="New room" onClick={() => setDialog('new')} disabled={!api}><Plus aria-hidden="true" /></TooltipButton></header>
       <nav ref={sidebar} className={styles.roomList} aria-label="Rooms">
-        {snapshot.rooms.map(r => <NeumorphicButton variant="ghost" className={styles.room} disabled={sending} key={r.id} aria-current={r.id === roomId ? 'page' : undefined} onClick={() => { setRoomId(r.id); setThreadId(null); setRecipient('default'); setGoal(false); }}><MessagesSquare aria-hidden="true" /><span>{r.name}</span></NeumorphicButton>)}
+        {snapshot.rooms.map(r => <NeumorphicButton variant="ghost" className={styles.room} disabled={sending} key={r.id} aria-current={r.id === roomId ? 'page' : undefined} onClick={() => { setRoomId(r.id); setThreadId(null); setRecipient('default'); }}><MessagesSquare aria-hidden="true" /><span>{r.name}</span></NeumorphicButton>)}
         {!snapshot.rooms.length && <p className={styles.empty}>{loading ? 'Loading rooms…' : 'Create a room and invite your agents to begin.'}</p>}
       </nav>
       <NeumorphicButton variant="ghost" onClick={onOpenAgents}>Manage agents and workers</NeumorphicButton>
@@ -188,13 +192,13 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
       <div ref={attachTimeline} onScroll={e => { const node = e.currentTarget; scrollPositions.current.set(draftKey, { top: node.scrollTop, pinned: node.scrollHeight - node.clientHeight - node.scrollTop < 48 }); }} className={styles.timeline} key={`${roomId}/${threadId}`} aria-label="Room messages">
         {root && renderMessage(root)}
         {snapshot.messages.filter(m => m.roomId === roomId && m.threadId === threadId).map(renderMessage)}
-        {room && !snapshot.messages.some(m => m.roomId === room.id) && <p className={styles.empty}>Send a message, or start a goal with clear completion conditions. Agents can ask invited peers for help and verification.</p>}
+        {room && !snapshot.messages.some(m => m.roomId === room.id) && <p className={styles.empty}>Describe what you need. Your agents will organize the work, consult invited peers, and ask you when a decision is needed.</p>}
       </div>
       {room && <form className={styles.composer} onSubmit={e => { e.preventDefault(); void send(); }}>
         <div className={styles.composerControls}><LiquidGlassSelect ariaLabel="Message recipient" value={recipient} options={[{ value: 'default', label: `Default · ${name(owner ?? null)}` }, ...room.members.map(m => ({ value: m.id, label: `@${m.name}` }))]} onChange={setRecipient} disabled={sending} />
-          {!threadId && <LiquidGlassSelect ariaLabel="Message type" value={goal ? 'goal' : 'message'} options={[{ value: 'message', label: 'Message' }, { value: 'goal', label: 'New goal' }]} onChange={v => setGoal(v === 'goal')} disabled={sending} />}</div>
-        <NeumorphicTextField multiline variant="standard" aria-label="Message" placeholder={resumeGoal ? 'Add the missing information to resume this goal…' : goal ? 'Describe the goal and completion conditions…' : 'Message the selected agent…'} value={draft} maxLength={16000} onChange={e => setDrafts(all => ({ ...all, [draftKey]: e.target.value }))} />
-        <div className={styles.actions}><NeumorphicButton variant="standard" type="submit" disabled={sending || !draft.trim() || !api || (ownerSelected && !!recoveryBlock)}>{sending ? 'Saving…' : resumeGoal ? 'Send and resume goal' : goal && !threadId ? 'Start goal' : 'Send'}</NeumorphicButton></div>
+</div>
+        <NeumorphicTextField multiline variant="standard" aria-label="Message" placeholder={resumeGoal ? 'Add the missing information to resume this goal…' : 'Message the selected agent…'} value={draft} maxLength={16000} onChange={e => setDrafts(all => ({ ...all, [draftKey]: e.target.value }))} />
+        <div className={styles.actions}><NeumorphicButton variant="standard" type="submit" disabled={sending || !draft.trim() || !api || (ownerSelected && !!recoveryBlock)}>{sending ? 'Saving…' : resumeGoal ? 'Send and resume goal' : 'Send'}</NeumorphicButton></div>
       </form>}
     </section>
     {active && dialog && <RoomDialog room={dialog === 'participants' ? room : undefined} agents={agents} engines={engines} onSave={mutate} onClose={() => setDialog(null)} />}

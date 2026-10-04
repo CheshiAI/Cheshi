@@ -13,9 +13,19 @@ interface Options {
   status(workspace: string, input: AgentRuntimeRequest): Promise<AgentRuntimeState>;
   question?(workspace: string, input: AgentRuntimeRequest): Promise<AgentRuntimeState>;
   recover?(workspace: string, input: AgentRuntimeRequest): Promise<AgentRuntimeState>;
-  dispatch(workspace: string, input: AgentRuntimeRequest, context: { roomId: string; conversation: string; goal: boolean; inputId?: string }): Promise<AgentRuntimeState>;
+  dispatch(workspace: string, input: AgentRuntimeRequest, context: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }): Promise<AgentRuntimeState>;
 }
 const digest = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 40);
+function workerWaitReason(details: AgentDetails | null | undefined, queued = false): string | null {
+  if (details?.error) return details.error;
+  if (!details?.ready) return 'Waiting for an available worker. Open Agents and start the participant.';
+  if (details.authenticated !== true) return 'Waiting for worker authentication. Check the participant account in Agents.';
+  if (details.tasks.some(t => t.status === 'unknown')) return 'Execution outcome is unknown. Inspect the saved task before resuming.';
+  if (details.busy) return queued
+    ? 'The worker is handling another task. This request will be processed when the current task finishes.'
+    : 'The worker is handling another task. Wait for the current task to finish before resuming.';
+  return null;
+}
 export function createAgentChats(options: Options) {
   let saved: ChatsStore | null = null;
   const store = () => saved ??= new ChatsStore(options.filename);
@@ -25,13 +35,14 @@ export function createAgentChats(options: Options) {
   const progress = new Map<string, { checkedAt: number; value: RoomGoalProgress }>();
   function resumeBlock(details: AgentDetails | null | undefined, task: AgentTask | undefined): string | null {
     if (details?.tasks.some(t => t.status === 'unknown')) return 'Execution outcome is unknown. Inspect the saved task before resuming.';
-    if (!details?.ready || details.authenticated !== true || details.error || details.busy) return details?.error ?? 'Waiting for an available worker. Open Agents and start the participant.';
-    if (!task?.inspection?.goal || task.inspection.error) return 'Goal state is unavailable. Inspect the task and refresh the worker.';
+    const waiting = workerWaitReason(details);
+    if (waiting) return waiting;
+    if ((!task?.inspection?.goal && !task?.inspection?.dialogue) || task.inspection?.error) return 'Goal state is unavailable. Inspect the task and refresh the worker.';
     if (task.status === 'completed') return 'This goal is completed.';
     return null;
   }
   function recordProgress(job: RoomJob, details: AgentDetails | null | undefined) {
-    if (!job.goal) return;
+    if (!job.goal && !job.automatic) return;
     const task = details?.tasks.find(t => t.id === job.taskId && t.roomId === job.roomId);
     const goal = task?.inspection?.goal, latest = goal?.decisions.at(-1);
     progress.set(job.id, { checkedAt: Date.now(), value: {
@@ -62,7 +73,7 @@ export function createAgentChats(options: Options) {
   }
   function snapshot(workspace: string) {
     const data = store().snapshot(workspace), state = store().all();
-    return { ...data, messages: data.messages.map(m => m.kind === 'goal' ? { ...m, goalProgress: goalProgress(m, state) } : m) };
+    return { ...data, messages: data.messages.map(m => (m.kind === 'goal' || m.dialogue) ? { ...m, goalProgress: goalProgress(m, state) } : m) };
   }
   function members(workspace: string, ids: string[]): ChatMember[] {
     const agents = options.registry(workspace).agents;
@@ -108,9 +119,16 @@ export function createAgentChats(options: Options) {
       store().update(s => { Object.assign(s.rooms.find(r => r.id === room.id)!, { members: selected, defaultAgentId: input.defaultAgentId }); });
     } else if (input.action === 'send') {
       const room = roomFor(workspace, input.roomId), state = store().all();
-      const root = input.threadId ? state.messages.find(m => m.id === input.threadId && m.roomId === room.id && m.kind === 'goal') : null;
+      const answerRoot = input.answerTo ? state.messages.find(m => m.id === input.answerTo && m.roomId === room.id && m.sender === 'user') : undefined;
+      if (input.answerTo && (!answerRoot || !answerRoot.dialogue?.questions.some(q => q.id === input.questionId))) throw new Error('Unknown user question.');
+      const root = answerRoot ?? (input.threadId ? state.messages.find(m => m.id === input.threadId && m.roomId === room.id && (m.kind === 'goal' || (m.sender === 'user' && m.dialogue))) : null);
       if (input.threadId && !root) throw new Error('Unknown goal thread.');
       if (input.goal && input.threadId) throw new Error('Create a new goal from the room.');
+      if (answerRoot && input.recipient && input.recipient !== answerRoot.recipient) throw new Error('Answer recipient must match its question.');
+      if (answerRoot && !state.messages.some(m => m.id === input.id)) {
+        const question = answerRoot.dialogue!.questions.find(q => q.id === input.questionId)!;
+        if (question.answer || answerRoot.status === 'completed' || state.jobs.some(j => j.answerTo === answerRoot.id && j.questionId === input.questionId && j.state !== 'held')) throw new Error('This question already has an answer or a pending answer.');
+      }
       const agentId = input.recipient ?? root?.recipient ?? room.defaultAgentId;
       if (!room.members.some(m => m.id === agentId) || !current(room, agentId)) throw new Error('Recipient is not an available room participant.');
       const resume = root?.recipient === agentId && root.status !== 'completed';
@@ -129,11 +147,14 @@ export function createAgentChats(options: Options) {
       store().update(s => {
         const previous = s.messages.find(m => m.id === input.id);
         if (previous) {
-          if (['roomId', 'threadId', 'recipient', 'kind', 'text'].some(key => previous[key as keyof RoomMessage] !== message[key as keyof RoomMessage])) throw new Error('Message identity conflict.');
+          if (['roomId', 'recipient', 'text'].some(key => previous[key as keyof RoomMessage] !== message[key as keyof RoomMessage]) || (!(input.automatic && previous.kind === 'goal') && (previous.kind !== message.kind || previous.threadId !== message.threadId))) throw new Error('Message identity conflict.');
+          const job = s.jobs.find(j => j.id === input.id)!;
+          if (job.questionId !== input.questionId || job.answerTo !== input.answerTo || job.automatic !== input.automatic) throw new Error('Message identity conflict.');
           return;
         }
         s.messages.push(message);
         s.jobs.push({ id: input.id, roomId: room.id, threadId: input.goal ? input.id : input.threadId, agentId, taskId,
+          ...(input.automatic ? { automatic: true as const, userText: input.text } : {}), ...(input.questionId ? { questionId: input.questionId, answerTo: input.answerTo } : {}),
           prompt, goal: input.goal, ...(resume ? { inputId: input.id } : {}), state: 'queued', error: null });
       });
     }
@@ -172,7 +193,7 @@ export function createAgentChats(options: Options) {
     const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
     if (input.action !== 'recover') throw new Error('Invalid inspection request.');
     const room = roomFor(workspace, input.roomId);
-    const root = store().all().messages.find(m => m.id === input.goalId && m.roomId === room.id && m.kind === 'goal');
+    const root = store().all().messages.find(m => m.id === input.goalId && m.roomId === room.id && (m.kind === 'goal' || (m.sender === 'user' && m.dialogue)));
     if (!root?.recipient || !root.taskId) throw new Error('Unknown goal thread.');
     assertCurrentMember(room, root.recipient);
     if (!options.recover) throw new Error('Restart the desktop app to enable execution inspection.');
@@ -238,7 +259,7 @@ export function createAgentChats(options: Options) {
     for (const job of state.jobs) {
       if (job.state === 'held') continue;
       if (job.state === 'sent' && state.messages.some(m => m.id === job.id && (job.goal
-        ? m.status === 'completed' && progress.has(job.id) : ['completed', 'failed', 'interrupted', 'blocked'].includes(m.status ?? '')))) continue;
+        ? m.status === 'completed' && progress.has(job.id) : job.automatic ? m.status === 'completed' && m.dialogue?.route?.delivered !== false : ['completed', 'failed', 'interrupted', 'blocked'].includes(m.status ?? '')))) continue;
       const room = state.rooms.find(r => r.id === job.roomId)!;
       const key = `${room.workspace}/${room.engineId}/${job.agentId}`;
       groups.set(key, [...(groups.get(key) ?? []), job]);
@@ -251,8 +272,21 @@ export function createAgentChats(options: Options) {
         const runtime = await options.status(room.workspace, { ...base, action: 'status' }), details = runtime.details;
         assertCurrentMember(room, first.agentId);
         for (const job of jobs) {
-          recordProgress(job, details);
           const task = details?.tasks.find(t => t.id === job.taskId && t.roomId === job.roomId);
+          if (task?.inspection?.dialogue) {
+            const dialogue = task.inspection.dialogue;
+            store().update(s => {
+              const m = s.messages.find(m => m.id === job.id)!;
+              if (!job.inputId) m.dialogue = dialogue;
+              if (task.inspection?.goal && !job.goal && !job.inputId) {
+                const j = s.jobs.find(j => j.id === job.id)!;
+                j.goal = true; j.threadId = j.id; m.kind = 'goal'; m.threadId = null;
+                job.goal = true; job.threadId = job.id;
+              }
+              if (dialogue.route) m.relatedTask = { agentId: job.agentId, taskId: dialogue.route.taskId };
+            });
+          }
+          recordProgress(job, details);
           const acknowledged = task && (!job.inputId || task.inputs?.some(i => i.id === job.inputId && i.prompt === job.prompt));
           if (acknowledged) {
             updateJob(job.id, { state: 'sent', error: null });
@@ -275,8 +309,9 @@ export function createAgentChats(options: Options) {
         if (!pending) continue;
         const targetRoom = state.rooms.find(r => r.id === pending.roomId)!;
         assertCurrentMember(targetRoom, pending.agentId);
-        if (!details?.ready || details.authenticated !== true || details.error || details.busy || details.tasks.some(t => t.status === 'unknown')) {
-          updateJob(pending.id, { error: runtime.unavailable?.message ?? details?.error ?? 'Waiting for an available worker. Open Agents and start the participant.' }); continue;
+        const waiting = runtime.unavailable?.message ?? workerWaitReason(details, true);
+        if (waiting || !details) {
+          updateJob(pending.id, { error: waiting }); continue;
         }
         const completedGoal = pending.inputId && details.tasks.find(t => t.id === pending.taskId && t.status === 'completed');
         if (completedGoal) {
@@ -292,8 +327,8 @@ export function createAgentChats(options: Options) {
         updateJob(pending.id, { state: 'sending', error: null });
         try {
           await options.dispatch(room.workspace, { ...base, action: 'submit', taskId: pending.taskId, prompt: pending.prompt }, {
-            roomId: pending.roomId, conversation: pending.goal || pending.inputId ? pending.taskId : `room_${digest(`${pending.roomId}/${pending.threadId ?? 'main'}/${pending.agentId}`)}`,
-            goal: pending.goal, ...(pending.inputId ? { inputId: pending.inputId } : {}),
+            roomId: pending.roomId, conversation: pending.automatic || pending.goal || pending.inputId ? pending.taskId : `room_${digest(`${pending.roomId}/${pending.threadId ?? 'main'}/${pending.agentId}`)}`,
+            goal: pending.goal, ...(pending.automatic ? { automatic: true as const, userText: pending.userText } : {}), ...(pending.questionId ? { questionId: pending.questionId } : {}), ...(pending.inputId ? { inputId: pending.inputId } : {}),
           });
           updateJob(pending.id, { state: 'sent', error: null });
         } catch (error) {

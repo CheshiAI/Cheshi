@@ -283,7 +283,7 @@ function goalSetup(directory = temporary(), withPeer = false) {
   const peers = [{ id: 'planner', name: 'Planner', role: 'planning' }];
   collaboration?.exchange({ peers, messages: [], acknowledged: [] });
   const agent = new SpecialistAgent({ client, store, collaboration, workspace: '/workspace', profile: 'Follow the user goal.',
-    configuration: { decisionProtocol: 1, profileId: 'dev', accountId: 'fixture', role: 'development', token: 'a'.repeat(64),
+    configuration: { conversationProtocol: 1, decisionProtocol: 1, profileId: 'dev', accountId: 'fixture', role: 'development', token: 'a'.repeat(64),
       instructions: 'Follow the user goal.', model: null, reasoningEffort: null, serviceTier: null,
       permissions: { fileWrite: false, commandExecution: false } } });
   const decide = (action: string) => client.toolHandler!({ threadId: 'thread', turnId: 'turn', tool: 'record_decision', arguments: {
@@ -778,4 +778,148 @@ test('a newly dispatched question can wait after planning turns without polling 
     kind: 'reply', from: 'planner', to: 'dev', text: 'Use email sign-in' }] });
   f.agent.pump(); await f.agent.settled();
   expect(f.store.task('goal')).toMatchObject({ status: 'completed', goal: { turns: 4 } });
+});
+
+const autoChat = { roomId: 'room', conversation: 'intake', goal: false, automatic: true as const, userText: 'Build a login form' };
+function conversationCall(client: FakeClient, tool: string, args: JsonRecord = {}) {
+  return client.toolHandler!({ threadId: 'thread', turnId: 'turn', tool, arguments: args });
+}
+test('automatic conversation answers ordinary questions without creating a goal', async () => {
+  const f = goalSetup();
+  f.agent.submit('intake', 'Explain login', { ...autoChat, userText: 'Explain login' }); await f.agent.settled();
+  expect(f.store.task('intake')?.goal).toBeUndefined();
+  expect(f.store.task('intake')?.status).toBe('completed');
+  const start = f.client.calls.find(c => c.method === 'thread/start')!.params;
+  expect(start.sandbox).toBe('read-only');
+  expect(record(start.config)['features.shell_tool']).toBe(false);
+  expect(JSON.stringify(start.dynamicTools)).toContain('start_goal');
+});
+test('model promotes intake to durable work, and a later successful decision completes it', async () => {
+  let f = goalSetup();
+  f.client.onStart = async () => {
+    await conversationCall(f.client, 'start_goal', { objective: 'Login form', criteria: ['Verify the requested result.'] });
+    await expectFailure(f.decide('complete'), 'Intake is read-only');
+    f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.submit('intake', 'Build a login form', autoChat); await f.agent.settled();
+  expect(f.store.task('intake')).toMatchObject({ status: 'waiting', goal: { phase: 'ready', turns: 0 }, dialogue: { objective: 'Login form' } });
+  const directory = f.directory;
+  f = goalSetup(directory);
+  f.client.onStart = async () => { await f.decide('complete'); f.client.complete(); return { turn: { id: 'turn' } }; };
+  f.agent.pump(); await f.agent.settled();
+  expect(f.store.task('intake')).toMatchObject({ status: 'completed', goal: { phase: 'completed', turns: 1 } });
+});
+test('user question survives restart, exact answer resumes it once without guessing a goal', async () => {
+  let f = goalSetup();
+  f.client.onStart = async () => {
+    await conversationCall(f.client, 'ask_user', { id: 'login-method', question: 'Email or social login?' });
+    f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.submit('intake', 'Build login', autoChat); await f.agent.settled();
+  expect(f.store.task('intake')?.status).toBe('waiting');
+  f = goalSetup(f.directory); f.agent.pump();
+  expect(f.client.calls).toHaveLength(0);
+  expect(() => f.agent.input('intake', 'answer', 'Email', 'other', 'login-method')).toThrow();
+  expect(() => f.agent.input('intake', 'answer', 'Email', 'room', 'wrong')).toThrow();
+  f.client.onStart = async () => {
+    const status = await conversationCall(f.client, 'conversation_status');
+    expect(status.questions).toMatchObject([{ id: 'login-method', answer: { id: 'answer', text: 'Email' } }]);
+    await conversationCall(f.client, 'start_goal', { objective: 'Email login', criteria: ['Email login works'] });
+    f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.input('intake', 'answer', 'Email', 'room', 'login-method'); await f.agent.settled();
+  f.agent.input('intake', 'answer', 'Email', 'room', 'login-method');
+  expect(f.client.calls.filter(c => c.method === 'turn/start')).toHaveLength(1);
+  expect(() => f.agent.input('intake', 'answer', 'Email', 'room', 'other')).toThrow('identity');
+});
+test('model chooses a same-room goal; routing waits for confirmed intake completion and survives restart', async () => {
+  let f = goalSetup();
+  f.store.create('existing', 'Build login', { roomId: 'room', conversation: 'existing', goal: newGoal() });
+  f.store.update('existing', { status: 'waiting', goal: { ...newGoal(), phase: 'waiting' } });
+  f.client.onStart = async () => {
+    await conversationCall(f.client, 'continue_goal', { taskId: 'existing', reason: 'Clarifies the login method' });
+    expect(f.store.task('existing')?.inputs).toBeUndefined();
+    f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.submit('intake', 'Use email only', { ...autoChat, userText: 'Use email only' }); await f.agent.settled();
+  f = goalSetup(f.directory); f.agent.pump(); await f.agent.settled();
+  expect(f.store.task('existing')?.inputs).toEqual([{ id: 'intake', prompt: 'Use email only' }]);
+  expect(f.store.task('intake')?.dialogue?.route?.delivered).toBe(true);
+  f.agent.pump(); expect(f.store.task('existing')?.inputs).toHaveLength(1);
+});
+test('unanswered user decision prevents goal completion even if the model claims all criteria met', async () => {
+  const f = goalSetup();
+  f.client.onStart = async () => {
+    await conversationCall(f.client, 'start_goal', { objective: 'Login', criteria: ['Verify the requested result.'] });
+    f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.submit('intake', 'Build login', autoChat); await f.agent.settled();
+  f.client.onStart = async () => {
+    await conversationCall(f.client, 'ask_user', { id: 'decision', question: 'Which provider?' });
+    await expectFailure(f.decide('complete'), 'unresolved questions');
+    await f.decide('wait'); f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.pump(); await f.agent.settled();
+  expect(f.store.task('intake')).toMatchObject({ status: 'waiting', goal: { phase: 'waiting' } });
+  const calls = f.client.calls.length; f.agent.pump(); expect(f.client.calls).toHaveLength(calls);
+});
+
+test('a normal follow-up can answer an intake question without using a separate answer form', async () => {
+  const f = goalSetup();
+  f.client.onStart = async () => {
+    await conversationCall(f.client, 'ask_user', { id: 'method', question: 'Email or social?' });
+    f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.submit('intake', 'Build login', autoChat); await f.agent.settled();
+  f.client.onStart = async () => {
+    await conversationCall(f.client, 'continue_goal', { taskId: 'intake', reason: 'Answers the login question' });
+    f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.submit('followup', 'Email only', { ...autoChat, conversation: 'followup', userText: 'Email only' }); await f.agent.settled();
+  f.client.onStart = async () => {
+    await conversationCall(f.client, 'use_user_answer', { inputId: 'followup', questionId: 'method' });
+    await conversationCall(f.client, 'start_goal', { objective: 'Email login', criteria: ['Email login works'] });
+    f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.pump(); await f.agent.settled();
+  expect(f.store.task('intake')).toMatchObject({ status: 'waiting', goal: { phase: 'ready' }, dialogue: { questions: [{ answer: { id: 'followup', text: 'Email only' } }] } });
+});
+
+test('a writable agent stays read-only during intake and regains only its configured permissions for work', async () => {
+  const store = new AgentStore(temporary()), client = new FakeClient();
+  const agent = new SpecialistAgent({ client, store, workspace: '/workspace', profile: 'Developer', configuration: {
+    conversationProtocol: 1, decisionProtocol: 1, profileId: 'dev', accountId: 'fixture', role: 'development', token: 'a'.repeat(64),
+    instructions: 'Developer', model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: true, commandExecution: false },
+  } });
+  client.onStart = async params => {
+    expect(record(params.sandboxPolicy).type).toBe('readOnly');
+    await conversationCall(client, 'start_goal', { objective: 'Login', criteria: ['Login works'] });
+    client.complete(); return { turn: { id: 'turn' } };
+  };
+  agent.submit('intake', 'Build login', autoChat); await agent.settled();
+  client.onStart = async params => {
+    expect(record(params.sandboxPolicy).type).toBe('workspaceWrite');
+    client.complete(); return { turn: { id: 'turn' } };
+  };
+  agent.pump(); await agent.settled();
+  const start = client.calls.find(c => c.method === 'thread/start')!.params, resume = client.calls.find(c => c.method === 'thread/resume')!.params;
+  expect(start.sandbox).toBe('read-only'); expect(resume.sandbox).toBe('workspace-write');
+  expect(record(resume.config)['features.shell_tool']).toBe(false);
+  expect(store.task('intake')?.status).toBe('interrupted'); // A reply alone never completes work.
+});
+
+test('an interrupted route is held when the user follows up instead of implicitly replaying its old decision', async () => {
+  const f = goalSetup();
+  f.store.create('existing', 'Build login', { roomId: 'room', goal: newGoal() });
+  f.store.update('existing', { status: 'waiting', goal: { ...newGoal(), phase: 'waiting' } });
+  f.client.onStart = async () => {
+    await conversationCall(f.client, 'continue_goal', { taskId: 'existing', reason: 'Old interpretation' });
+    f.client.complete('interrupted'); return { turn: { id: 'turn' } };
+  };
+  f.agent.submit('intake', 'Email only', { ...autoChat, userText: 'Email only' }); await f.agent.settled();
+  f.client.onStart = async () => { f.client.complete('completed', 'Understood, cancelled.'); return { turn: { id: 'turn' } }; };
+  f.agent.input('intake', 'cancel-route', 'Do not deliver that follow-up', 'room'); await f.agent.settled();
+  f.agent.pump();
+  expect(f.store.task('existing')?.inputs).toBeUndefined();
+  expect(f.store.task('intake')?.dialogue?.route).toMatchObject({ held: true, delivered: false });
 });

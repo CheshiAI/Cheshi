@@ -102,6 +102,35 @@ test('offline and busy workers retain queued requests; unknown acknowledgements 
   const restarted = createAgentChats(f.options); await restarted.tick(); await restarted.tick();
   expect(f.sent).toHaveLength(1);
 });
+test('queued guidance follows worker availability and clears after a single dispatch', async () => {
+  const f = fixture(); f.send('goal'); f.details.busy = true;
+  const message = () => f.request({ action: 'list' }).messages[0]!;
+  await f.service.tick();
+  expect(message().status).toBe('queued');
+  expect(message().error).toContain('when the current task finishes');
+  expect(message().error).not.toContain('start the participant');
+  f.details.ready = false; await f.service.tick();
+  expect(message().error).toContain('Open Agents and start the participant');
+  f.details.ready = true; await f.service.tick();
+  expect(message().error).toContain('when the current task finishes');
+  expect(f.sent).toHaveLength(0);
+  f.details.busy = false; await f.service.tick(); await f.service.tick();
+  expect(f.sent).toHaveLength(1);
+  expect(message().status).toBe('waiting'); expect(message().error).toBeNull();
+});
+test('authentication, runtime errors and unknown executions do not show busy guidance', async () => {
+  const f = fixture(); f.send('goal'); f.details.busy = true;
+  const message = () => f.request({ action: 'list' }).messages[0]!;
+  f.details.authenticated = false; await f.service.tick();
+  expect(message().error).toContain('worker authentication');
+  f.details.authenticated = true; f.details.error = 'Worker connection lost'; await f.service.tick();
+  expect(message().error).toBe('Worker connection lost');
+  f.details.error = null;
+  f.details.tasks.push({ id: 'uncertain', prompt: 'Earlier request', status: 'unknown', createdAt: new Date().toISOString(), output: '', error: null });
+  await f.service.tick();
+  expect(message().error).toContain('Execution outcome is unknown');
+  expect(f.sent).toHaveLength(0); expect(message().status).toBe('queued');
+});
 test('interrupted host delivery reconciles an acknowledged task without sending it twice', async () => {
   const f = fixture(); f.send('goal'); await f.service.tick();
   const journal = JSON.parse(readFileSync(f.filename, 'utf8')); journal.jobs[0].state = 'sending';
@@ -244,6 +273,18 @@ test('an offline blocked goal becomes resumable after the worker recovers', asyn
   expect(f.request({ action: 'list' }).messages[0]?.goalProgress?.resumeBlocked).toContain('available worker');
   f.details.ready = true; await f.service.tick();
   expect(f.request({ action: 'list' }).messages[0]?.goalProgress?.resumeBlocked).toBeNull();
+  f.send('resume', { threadId: 'goal', goal: false }); await f.service.tick();
+  expect(f.sent).toHaveLength(2);
+});
+test('blocked goal resume guidance distinguishes a busy worker and clears when idle', async () => {
+  const f = await blockedFixture(); f.details.busy = true; await f.service.tick();
+  const guidance = () => f.request({ action: 'list' }).messages[0]?.goalProgress?.resumeBlocked;
+  expect(guidance()).toContain('Wait for the current task to finish before resuming');
+  expect(guidance()).not.toContain('start the participant');
+  expect(() => f.send('resume', { threadId: 'goal', goal: false })).toThrow('current task');
+  expect(f.sent).toHaveLength(1);
+  f.details.busy = false; await f.service.tick();
+  expect(guidance()).toBeNull();
   f.send('resume', { threadId: 'goal', goal: false }); await f.service.tick();
   expect(f.sent).toHaveLength(2);
 });
@@ -397,4 +438,43 @@ test('Chats permits follow-up at high turn counts and reports known usage withou
   f.task.inspection!.goal!.turns = 1002;
   await f.service.tick();
   expect(f.sent).toHaveLength(2);
+});
+
+test('automatic intake becomes a goal only after worker judgment; promotion and questions survive host restart', async () => {
+  const f = fixture(); f.send('intake', { goal: false, automatic: true }); await f.service.tick();
+  const task = f.details.tasks[0]!;
+  task.inspection = { finishedAt: null, threadId: 'native', conversation: task.id, goal: null, messages: [], evidence: [], recall: null, error: null,
+    dialogue: { userText: 'Build login', questions: [{ id: 'method', text: 'Email or social?', answer: null }], revisions: [] } };
+  await f.service.tick();
+  expect(f.request({ action: 'list' }).messages[0]?.kind).toBe('message');
+  const answer = { goal: false, automatic: true as const, answerTo: 'intake', questionId: 'method', text: 'Email only' };
+  f.send('answer', answer); f.send('answer', answer);
+  expect(() => f.send('bad', { ...answer, recipient: 'planner' })).toThrow('recipient');
+  await f.service.tick();
+  expect(f.sent.filter(s => s.input === 'answer')).toHaveLength(1);
+  task.inspection.goal = { turns: 0, phase: 'ready', verificationRequired: true, criteria: [{ criterion: 'Email login works', met: false, evidence: '' }], decisions: [], pending: null };
+  task.inspection.dialogue!.objective = 'Email login';
+  await f.service.tick();
+  const saved = new ChatsStore(f.filename).snapshot(f.workspace);
+  expect(saved.messages.find(m => m.id === 'intake')).toMatchObject({ kind: 'goal', dialogue: { objective: 'Email login' } });
+  f.send('intake', { goal: false, automatic: true }); // A lost acknowledgement after promotion is still idempotent.
+  expect(saved.messages.filter(m => m.id === 'intake')).toHaveLength(1);
+});
+
+test('automatic dispatch preserves source text, isolates the native conversation and sends the exact question identity', async () => {
+  const f = fixture();
+  const contexts: unknown[] = [];
+  const service = createAgentChats({ ...f.options, dispatch: async (workspace, request, context) => {
+    contexts.push(context); return f.options.dispatch(workspace, request, context);
+  } });
+  service.request(f.workspace, { action: 'send', id: 'auto', roomId: 'room', threadId: null, recipient: null, text: 'Login please', goal: false, automatic: true });
+  await service.tick();
+  const task = f.details.tasks[0]!;
+  expect(contexts[0]).toMatchObject({ automatic: true, userText: 'Login please', conversation: task.id, goal: false });
+  task.inspection = { finishedAt: null, threadId: 'native', conversation: task.id, goal: null, messages: [], evidence: [], recall: null, error: null,
+    dialogue: { userText: 'Login please', questions: [{ id: 'scope', text: 'Email only?', answer: null }], revisions: [] } };
+  await service.tick();
+  service.request(f.workspace, { action: 'send', id: 'answer', roomId: 'room', threadId: null, recipient: null, text: 'Yes', goal: false, automatic: true, answerTo: 'auto', questionId: 'scope' });
+  await service.tick();
+  expect(contexts[1]).toMatchObject({ inputId: 'answer', questionId: 'scope', conversation: task.id });
 });

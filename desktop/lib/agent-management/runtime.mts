@@ -160,7 +160,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     }
     throw new Error('Worker is still starting or needs sign-in. Refresh its status in a moment.');
   }
-  async function request(workspaceRoot: string, input: AgentRuntimeRequest, chat?: { roomId: string; conversation: string; goal: boolean; inputId?: string }): Promise<AgentRuntimeState> {
+  async function request(workspaceRoot: string, input: AgentRuntimeRequest, chat?: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }): Promise<AgentRuntimeState> {
     const request = parseAgentRuntimeRequest(input);
     const workspace = await realpath(workspaceRoot);
     const agent = options.registry.snapshot(workspaceRoot).agents.find(item => item.id === request.agentId);
@@ -232,12 +232,12 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
           const details = await options.management.details(request.engineId, worker.id);
           if (worker.state === 'running') {
             const previous = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
-            const legacySettings = settingsDigest(agent, workspace, assignment, Number(previous.recoveryProtocol), previous.progressProtocol === 1, previous.workProtocol === 1, previous.integrationProtocol === 1, previous.candidateVerificationProtocol === 1, previous.applicationProtocol === 1, false);
+            const legacySettings = settingsDigest(agent, workspace, assignment, Number(previous.recoveryProtocol), previous.progressProtocol === 1, previous.workProtocol === 1, previous.integrationProtocol === 1, previous.candidateVerificationProtocol === 1, previous.applicationProtocol === 1, previous.applicationInspectionProtocol === 1, false);
             const legacyRevision = hasFiles ? digest(`${legacySettings}\n${instructions}`) : legacySettings;
             // Upgrade worker control code without changing the execution profile or discarding unknown outcomes.
             // The named volume survives replacement; native results still require explicit inspection.
             const recoveryUpgrade = [1, 2, 3].some(protocol => protocol === previous.recoveryProtocol) && (previous.progressProtocol === undefined || previous.progressProtocol === 1)
-              && (previous.workProtocol === undefined || previous.workProtocol === 1) && (previous.integrationProtocol === undefined || previous.integrationProtocol === 1) && (previous.candidateVerificationProtocol === undefined || previous.candidateVerificationProtocol === 1) && (previous.applicationProtocol === undefined || previous.applicationProtocol === 1) && previous.applicationInspectionProtocol === undefined && previous.settingsFingerprint === legacySettings
+              && (previous.workProtocol === undefined || previous.workProtocol === 1) && (previous.integrationProtocol === undefined || previous.integrationProtocol === 1) && (previous.candidateVerificationProtocol === undefined || previous.candidateVerificationProtocol === 1) && (previous.applicationProtocol === undefined || previous.applicationProtocol === 1) && (previous.applicationInspectionProtocol === undefined || previous.applicationInspectionProtocol === 1) && previous.conversationProtocol === undefined && previous.settingsFingerprint === legacySettings
               && previous.revision === legacyRevision && worker.fingerprint === legacyRevision
               && previous.accountId === agent.accountId && previous.profileId === agent.id
               && previous.accountFingerprint === selectedAccount && previous.instructions === instructions;
@@ -251,7 +251,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint,
-            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [workspace];
@@ -315,8 +315,9 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         await post(worker.endpoint, configuration.token, `/tasks/${request.taskId}/recover`, { roomId: request.roomId }, true);
         return { details: await options.management.details(request.engineId, worker.id) };
       }
+      if (chat?.automatic && configuration.conversationProtocol !== 1) throw new Error('Start the agent to enable conversational tasks.');
       await post(worker.endpoint, configuration.token, chat?.inputId ? `/tasks/${request.taskId}/input` : '/tasks',
-        chat?.inputId ? { id: chat.inputId, prompt: request.prompt, roomId: chat.roomId }
+        chat?.inputId ? { id: chat.inputId, prompt: request.prompt, roomId: chat.roomId, ...(chat.questionId ? { questionId: chat.questionId } : {}) }
           : { id: request.taskId, prompt: request.prompt, ...(chat ? { chat } : {}) });
       return { details: await options.management.details(request.engineId, worker.id) };
     } catch (error) {
@@ -327,15 +328,15 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     } finally { if (request.action !== 'status') pending.delete(key); }
   }
   return {
-    chat: (workspace: string, input: AgentRuntimeRequest, context: { roomId: string; conversation: string; goal: boolean; inputId?: string }) => workerOperations.run(() => request(workspace, input, context)),
+    chat: (workspace: string, input: AgentRuntimeRequest, context: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }) => workerOperations.run(() => request(workspace, input, context)),
     start: orchestration.start,
     dispose: orchestration.dispose,
     request: (workspaceRoot: string, input: AgentRuntimeRequest) => input.action === 'status'
       ? request(workspaceRoot, input) : workerOperations.run(() => request(workspaceRoot, input)),
   };
 }
-function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], recoveryProtocol = 3, progressProtocol = true, workProtocol = true, integrationProtocol = true, candidateVerificationProtocol = true, applicationProtocol = true, applicationInspectionProtocol = true) {
-  return digest(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol, questionProtocol: 2, ...(progressProtocol ? { progressProtocol: 1 } : {}), ...(workProtocol ? { workProtocol: 1 } : {}), ...(integrationProtocol ? { integrationProtocol: 1 } : {}), ...(candidateVerificationProtocol ? { candidateVerificationProtocol: 1 } : {}), ...(applicationProtocol ? { applicationProtocol: 1 } : {}), ...(applicationInspectionProtocol ? { applicationInspectionProtocol: 1 } : {}), agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
+function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], recoveryProtocol = 3, progressProtocol = true, workProtocol = true, integrationProtocol = true, candidateVerificationProtocol = true, applicationProtocol = true, applicationInspectionProtocol = true, conversationProtocol = true) {
+  return digest(JSON.stringify({ ...(conversationProtocol ? { conversationProtocol: 1 } : {}), sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol, questionProtocol: 2, ...(progressProtocol ? { progressProtocol: 1 } : {}), ...(workProtocol ? { workProtocol: 1 } : {}), ...(integrationProtocol ? { integrationProtocol: 1 } : {}), ...(candidateVerificationProtocol ? { candidateVerificationProtocol: 1 } : {}), ...(applicationProtocol ? { applicationProtocol: 1 } : {}), ...(applicationInspectionProtocol ? { applicationInspectionProtocol: 1 } : {}), agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
     ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
 }
 function profileConfiguration(agent: SpecialistAgent) {

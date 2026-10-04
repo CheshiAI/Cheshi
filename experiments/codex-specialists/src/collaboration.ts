@@ -1,3 +1,4 @@
+import { staleVerification } from './conversation-contract.ts';
 import { collaborationBatch, assertWorkRequest, assertWorkResult, parseWorkRequest, parseWorkResult, parseWorkReview } from './work-contract.ts';
 import { workDigest } from './work-files.ts';
 import { assertCandidate, candidateReference, type CandidateSnapshot } from './candidate-verification-contract.ts';
@@ -171,7 +172,7 @@ export class WorkerCollaboration {
     const request = c.outgoing.filter(m => m.kind === 'verification_request' && m.taskId === task.id).at(-1);
     const reply = request && c.incoming.find(m => m.kind === 'verification_result' && m.questionId === request.id && m.from === request.to
       && (c.consumed.includes(m.id) || consuming.includes(m.id)));
-    if (!request || !reply || !this.workspace || !c.peers.some(p => p.id === request.to && p.role === 'verification')) throw new Error('Completion requires a processed independent verification result.');
+    if (!request || staleVerification(task, request.id) || !reply || !this.workspace || !c.peers.some(p => p.id === request.to && p.role === 'verification')) throw new Error('Completion requires a processed independent verification result.');
     const target = verificationRequest(JSON.parse(request.text)), result = verificationResult(JSON.parse(reply.text));
     if (target.candidate) throw new Error('Candidate verification does not establish project application. An application receipt and project verification are required.');
     assertResult(target, result);

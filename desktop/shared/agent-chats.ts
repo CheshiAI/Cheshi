@@ -1,3 +1,4 @@
+import { parseConversation, type ConversationState } from '../../experiments/codex-specialists/src/conversation-contract.ts';
 import type { WorkKind } from './agent-work.ts';
 import { isWorkKind, parseIntegration, type IntegrationSummary } from './agent-work.ts';
 import { agentRecord, agentText, parseAgentEngineId, parseAgentId, parseExecutionRecovery, type ExecutionRecovery } from './agent-management.ts';
@@ -20,6 +21,7 @@ export interface AgentRoom {
   id: string; workspace: string; name: string; engineId: string; members: ChatMember[]; defaultAgentId: string; createdAt: string;
 }
 export interface RoomMessage {
+  dialogue?: ConversationState;
   id: string; roomId: string; threadId: string | null; sender: string; recipient: string | null;
   kind: WorkKind | 'message' | 'goal' | 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result';
   text: string; createdAt: string; taskId?: string; status?: string; error?: string | null;
@@ -28,6 +30,7 @@ export interface RoomMessage {
 }
 export interface RoomJob {
   id: string; roomId: string; threadId: string | null; agentId: string; taskId: string; prompt: string;
+  automatic?: true; userText?: string; questionId?: string; answerTo?: string;
   goal: boolean; inputId?: string; state: 'queued' | 'sending' | 'sent' | 'unknown' | 'held'; error: string | null;
 }
 export interface ChatsSnapshot { rooms: AgentRoom[]; messages: RoomMessage[] }
@@ -39,7 +42,7 @@ export type ChatsRequest = { action: 'list' }
   | { action: 'recover'; roomId: string; goalId: string }
   | { action: 'create'; id: string; name: string; engineId: string; members: string[]; defaultAgentId: string }
   | { action: 'invite'; roomId: string; members: string[]; defaultAgentId: string }
-  | { action: 'send'; id: string; roomId: string; threadId: string | null; recipient: string | null; text: string; goal: boolean };
+  | { action: 'send'; id: string; roomId: string; threadId: string | null; recipient: string | null; text: string; goal: boolean; automatic?: true; questionId?: string; answerTo?: string };
 export interface AgentChatsApi { request(input: ChatsRequest): Promise<ChatsSnapshot> }
 export const chatId = (value: unknown): string => {
   const id = parseAgentId(value);
@@ -70,9 +73,16 @@ export function parseChatsRequest(value: unknown): ChatsRequest {
   }
   if (v.action !== 'send' || typeof v.goal !== 'boolean') throw new Error('Invalid chat request.');
   return { action: 'send', id: chatId(v.id), roomId: chatId(v.roomId), threadId: v.threadId === null ? null : chatId(v.threadId),
-    recipient: v.recipient === null ? null : chatId(v.recipient), text: required(v.text, 16_000), goal: v.goal };
+    recipient: v.recipient === null ? null : chatId(v.recipient), text: required(v.text, 16_000), goal: v.goal,
+    ...conversationDelivery(v) };
 }
 
+function conversationDelivery(v: Record<string, unknown>) {
+  if (v.automatic !== undefined && v.automatic !== true) throw new Error('Invalid automatic mode.');
+  if ((v.questionId === undefined) !== (v.answerTo === undefined)) throw new Error('An answer must identify its question.');
+  return { ...(v.automatic === true ? { automatic: true as const } : {}),
+    ...(v.questionId === undefined ? {} : { questionId: chatId(v.questionId), answerTo: chatId(v.answerTo) }) };
+}
 function entries<T>(value: unknown, parse: (value: unknown) => T, max: number): T[] {
   if (!Array.isArray(value) || value.length > max) throw new Error('Invalid Chats list.');
   return value.map(parse);
@@ -104,7 +114,7 @@ export function parseRoom(value: unknown): AgentRoom {
 export function parseRoomMessage(value: unknown): RoomMessage {
   const v = agentRecord(value);
   if (!isWorkKind(v.kind) && !['message', 'goal', 'question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid room message.');
-  return { id: chatId(v.id), roomId: chatId(v.roomId), threadId: optionalId(v.threadId), sender: chatId(v.sender), recipient: optionalId(v.recipient),
+  return { ...(v.dialogue === undefined ? {} : { dialogue: parseConversation(v.dialogue) }), id: chatId(v.id), roomId: chatId(v.roomId), threadId: optionalId(v.threadId), sender: chatId(v.sender), recipient: optionalId(v.recipient),
     kind: v.kind as RoomMessage['kind'], text: agentText(v.text, 500_000), createdAt: required(v.createdAt, 100),
     ...(v.relatedTask === undefined ? {} : { relatedTask: (() => { const t = agentRecord(v.relatedTask); return { agentId: chatId(t.agentId), taskId: chatId(t.taskId) }; })() }),
     ...(v.taskId === undefined ? {} : { taskId: chatId(v.taskId) }), ...(v.status === undefined ? {} : { status: required(v.status, 100) }),
@@ -115,6 +125,7 @@ export function parseRoomJob(value: unknown): RoomJob {
   const v = agentRecord(value);
   if (typeof v.goal !== 'boolean' || !['queued', 'sending', 'sent', 'unknown', 'held'].includes(String(v.state))) throw new Error('Invalid saved room delivery.');
   return { id: chatId(v.id), roomId: chatId(v.roomId), threadId: optionalId(v.threadId), agentId: chatId(v.agentId), taskId: chatId(v.taskId),
+    ...conversationDelivery(v), ...(v.userText === undefined ? {} : { userText: required(v.userText, 16000) }),
     prompt: required(v.prompt, 20_000), goal: v.goal, state: v.state as RoomJob['state'], error: v.error === null ? null : agentText(v.error, 20_000),
     ...(v.inputId === undefined ? {} : { inputId: chatId(v.inputId) }) };
 }

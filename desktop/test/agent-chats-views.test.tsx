@@ -1,3 +1,4 @@
+import { UserQuestions } from '../frontend/src/features/agent-chats/UserQuestions';
 import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { act, type ReactNode } from 'react';
@@ -108,7 +109,9 @@ test('new room invites an assigned agent and uses that agent as its default reci
     expect(requests.some(r => r.action === 'send')).toBe(false);
     expect(document.body.textContent).toContain('invited agent');
     await ui.type('Message', '@Developer hello'); await ui.click('Send');
-    expect(requests.find(r => r.action === 'send')).toMatchObject({ recipient: agent.id, goal: false });
+    expect(requests.find(r => r.action === 'send')).toMatchObject({ recipient: agent.id, goal: false, automatic: true });
+    expect(document.querySelector('[aria-label="Message type"]')).toBeNull();
+    expect(document.body.textContent).not.toContain('New goal');
   });
 });
 
@@ -466,5 +469,23 @@ test('unknown delegated task exposes execution inspection without claiming integ
       requestedTaskId="work" loading={false} running onRecover={(id, room) => recovered.push(`${id}/${room}`)} />);
     expect(document.body.textContent).toContain('without replaying the task or applying project files');
     await ui.click('Inspect execution'); expect(recovered).toEqual(['work/room']);
+  });
+});
+
+test('user decision answers retain their exact identity on retry and render the acknowledged answer', async () => {
+  await withDOM(async ui => {
+    const message = { ...snapshot().messages[0]!, dialogue: { userText: 'Build login', questions: [{ id: 'method', text: 'Which login method?', answer: null }], revisions: [] } };
+    const requests: ChatsRequest[] = [];
+    let fail = true;
+    const onAnswer = async (request: ChatsRequest) => { requests.push(request); if (fail) throw new Error('Lost acknowledgement'); };
+    await ui.render(<UserQuestions message={message} onAnswer={onAnswer} />);
+    await ui.type('Answer: Which login method?', 'Email only'); await ui.click('Send answer');
+    expect(document.body.textContent).toContain('Lost acknowledgement');
+    fail = false; await ui.click('Send answer');
+    expect(requests[1]).toEqual(requests[0]);
+    expect(requests[0]).toMatchObject({ action: 'send', answerTo: 'goal', questionId: 'method', text: 'Email only', automatic: true, goal: false });
+    await ui.render(<UserQuestions message={{ ...message, dialogue: { ...message.dialogue, questions: [{ id: 'method', text: 'Which login method?', answer: { id: 'answer', text: 'Email only' } }] } }} onAnswer={onAnswer} />);
+    expect(document.body.textContent).toContain('Your answer: Email only');
+    expect(document.querySelector('form')).toBeNull();
   });
 });

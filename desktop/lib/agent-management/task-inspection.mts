@@ -41,6 +41,7 @@ export function inspectAgentTasks(value: unknown, owner?: { id: string; name: st
         .filter(item => item.taskId === task.id).map(({ id, activity }) => ({ id, activity }));
       const workRequest = typeof original.delegation === 'string' && c ? inspectionList(c.incoming, inspectionRecord, 10_000).find(m => m.id === original.delegation && m.kind === 'work_request') : null;
       const detail = parseTaskInspection({
+        ...(original.dialogue === undefined ? {} : { dialogue: original.dialogue }),
         ...(original.integration === undefined ? {} : { integration: original.integration }),
         ...(workRequest ? { work: { request: parseWorkRequest(JSON.parse(inspectionText(workRequest.text, WORK_MESSAGE_LIMIT))), draft: original.workDraft === undefined ? null : parseWorkDraft(original.workDraft) } } : {}), finishedAt: original.finishedAt, threadId: original.threadId, conversation: original.conversation,
         ...(task.status === 'unknown' && original.goal === undefined && original.roomId !== undefined
