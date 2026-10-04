@@ -1,5 +1,5 @@
 import { collaborationTextLimit, isWorkKind, parseWorkMessage, type WorkKind } from './work-contract.ts';
-import { verificationRequest, verificationResult } from './verification-contract.ts';
+import { assertVerificationContextScope, verificationRequest, verificationResult } from './verification-contract.ts';
 import { record, textValue } from './protocol.ts';
 
 export interface Peer { id: string; name: string; role: string; fileWrite?: boolean; workProtocol?: 1 }
@@ -39,7 +39,9 @@ export function message(value: unknown): CollaborationMessage {
     if (!v.roomId || !/^[a-f0-9]{64}$/.test(String(v.questionId))) throw new Error('Invalid delegated work identity.');
     parseWorkMessage(v.kind, JSON.parse(text));
   }
-  if (v.kind === 'verification_request') verificationRequest(JSON.parse(text));
+  if (v.kind === 'verification_request') assertVerificationContextScope(verificationRequest(JSON.parse(text)), {
+    from: identifier(v.from), taskId: identifier(v.taskId), ...(v.roomId === undefined ? {} : { roomId: identifier(v.roomId) }),
+  });
   if (v.kind === 'verification_result') verificationResult(JSON.parse(text));
   if (v.closureReason !== undefined && (v.kind !== 'question_closed' || v.closureReason !== 'expired')) throw new Error('Invalid question closure reason.');
   return { id: identifier(v.id), kind: v.kind as CollaborationMessage['kind'], from: identifier(v.from), to: identifier(v.to),

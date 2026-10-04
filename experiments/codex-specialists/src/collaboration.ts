@@ -1,10 +1,10 @@
 import { staleVerification } from './conversation-contract.ts';
-import { collaborationBatch, assertWorkRequest, assertWorkResult, parseWorkRequest, parseWorkResult, parseWorkReview } from './work-contract.ts';
+import { WORK_MESSAGE_LIMIT, collaborationBatch, assertWorkRequest, assertWorkResult, parseWorkRequest, parseWorkResult, parseWorkReview } from './work-contract.ts';
 import { workDigest } from './work-files.ts';
 import { assertCandidate, candidateReference, type CandidateSnapshot } from './candidate-verification-contract.ts';
 import { expireQuestions, questionClosed } from './question-control.ts';
 import { assertSnapshot, snapshotArtifacts } from './verification.ts';
-import { assertResult, list, boundedText, verificationRequest, verificationResult, type VerificationResult } from './verification-contract.ts';
+import { VERIFICATION_CONTEXT_LIMIT, assertResult, list, boundedText, verificationContext, verificationRequest, verificationResult, type VerificationContext, type VerificationRequest, type VerificationResult } from './verification-contract.ts';
 import { createHash } from 'node:crypto';
 import { AgentStore, type Task } from './store.ts';
 import { appendOutgoing, identifier, message, peers, roomRoster, type CollaborationMessage } from './collaboration-contract.ts';
@@ -135,15 +135,52 @@ export class WorkerCollaboration {
       if (c.outgoing.some(m => m.kind === 'work_request' && candidate.requestIds.includes(m.id) && m.to === target)) throw new Error('Choose a verifier who did not author the candidate.');
       if (!Array.isArray(args.paths) || JSON.stringify([...args.paths].sort()) !== JSON.stringify(candidate.files.map(f => f.path).sort())) throw new Error('Include every candidate path in verification.');
     }
-    const request = verificationRequest({ goal: task.prompt, criteria, ...(candidate ? { candidate } : {}),
+    const base = verificationRequest({ goal: task.prompt, criteria, ...(candidate ? { candidate } : {}),
       artifacts: candidate ? candidate.files.map(({ path, sha256 }) => ({ path, sha256 })) : snapshotArtifacts(this.workspace, args.paths) });
     const id = idFor(`verification/${this.agentId}/${task.id}/${requestId}`);
     const previous = c.outgoing.find(m => m.id === id);
+    // A retry keeps the original context even if later replies or user inputs arrived.
+    const context = previous ? verificationRequest(JSON.parse(previous.text)).context : this.verificationContext(task, base);
+    const request = { ...base, ...(context ? { context } : {}) };
     if (!previous && c.outgoing.some(m => m.kind === 'verification_request' && m.taskId === task.id && !c.incoming.some(r => r.kind === 'verification_result' && r.questionId === m.id))) {
       throw new Error('Wait for the outstanding verification round before requesting another.');
     }
     this.enqueue({ id, questionId: id, kind: 'verification_request', from: this.agentId, to: target, taskId: task.id, ...(task.roomId ? { roomId: task.roomId } : {}), text: JSON.stringify(request) }, criteria);
     return { requestId: id, status: 'queued', artifacts: request.artifacts };
+  }
+  private verificationContext(task: Task, request: VerificationRequest): VerificationContext {
+    const saved = this.store.task(task.id);
+    if (!saved || saved.roomId !== task.roomId) throw new Error('Verification goal scope changed.');
+    const c = this.store.snapshot().collaboration;
+    const prior = c.outgoing.filter(m => m.kind === 'verification_request' && m.from === this.agentId
+      && m.taskId === task.id && m.roomId === task.roomId);
+    const first = prior[0];
+    const records = prior.flatMap(m => {
+      const reply = c.incoming.find(r => r.kind === 'verification_result' && r.questionId === m.id && r.from === m.to
+        && r.to === this.agentId && r.taskId === task.id && r.roomId === task.roomId);
+      if (!reply) return [];
+      const spec = verificationRequest(JSON.parse(m.text)), result = verificationResult(JSON.parse(reply.text));
+      assertResult(spec, result);
+      return [{ requestId: m.id, resultId: reply.id, verifierId: m.to, criteria: spec.criteria, artifacts: spec.artifacts,
+        ...(spec.candidate ? { candidate: candidateReference(spec.candidate) } : {}), result, superseded: staleVerification(saved, m.id) }];
+    });
+    const inputs = (saved.inputs ?? []).map(input => {
+      const question = saved.dialogue?.questions.find(q => q.answer?.id === input.id && q.answer.text === input.prompt);
+      return { id: input.id, text: input.prompt, ...(question ? { question: { id: question.id, text: question.text } } : {}) };
+    });
+    const context: VerificationContext = { version: 1, ownerId: this.agentId, taskId: task.id,
+      ...(task.roomId ? { roomId: task.roomId } : {}), baseline: first ? { requestId: first.id, artifacts: verificationRequest(JSON.parse(first.text)).artifacts } : null,
+      rounds: records.length <= 3 ? records : [records[0]!, ...records.slice(-2)], inputs: inputs.slice(-8),
+      omittedRounds: Math.max(0, records.length - 3), omittedInputs: Math.max(0, inputs.length - 8) };
+    // Keep whole records with explicit omission counts; never recursively embed prior contexts or candidate contents.
+    const fits = () => JSON.stringify(context).length <= VERIFICATION_CONTEXT_LIMIT
+      && JSON.stringify({ ...request, context }).length <= WORK_MESSAGE_LIMIT;
+    while (!fits() && (context.rounds.length || context.inputs.length)) {
+      if (context.rounds.length) { context.rounds.shift(); context.omittedRounds++; }
+      else { context.inputs.shift(); context.omittedInputs++; }
+    }
+    if (!fits()) throw new Error('Verification context and artifacts exceed the message limit. Use a smaller artifact scope.');
+    return verificationContext(context);
   }
   publishVerification(task: Task, result: VerificationResult): void {
     this.enqueue(this.verificationMessage(task, result));

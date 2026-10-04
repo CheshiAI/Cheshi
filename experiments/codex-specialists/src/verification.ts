@@ -8,7 +8,7 @@ import { AgentStore, type Task } from './store.ts';
 import type { RecoveryReceipt } from './recovery.ts';
 import { WORK_MESSAGE_LIMIT } from './work-contract.ts';
 import { verificationCandidateFiles } from './verification-candidate-files.ts';
-import { artifactPath, assertResult, list, verdict, verificationRequest, verificationResult,
+import { artifactPath, assertResult, assertVerificationContextScope, list, verdict, verificationRequest, verificationResult,
   type Artifact, type Evidence, type VerificationRequest, type VerificationResult } from './verification-contract.ts';
 
 function readArtifact(workspace: string, path: string): Buffer {
@@ -50,7 +50,9 @@ export class WorkerVerification {
   request(task: Task): VerificationRequest {
     const message = this.store.snapshot().collaboration.incoming.find(m => m.kind === 'verification_request' && m.id === task.verification);
     if (!message || message.roomId !== task.roomId) throw new Error('No verification request belongs to this task.');
-    return verificationRequest(JSON.parse(message.text));
+    const request = verificationRequest(JSON.parse(message.text));
+    assertVerificationContextScope(request, message);
+    return request;
   }
   recoveryWorkspace(task: Task): string {
     const candidate = this.request(task).candidate;

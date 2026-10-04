@@ -2,10 +2,70 @@ import { candidateReference, candidateSnapshot, sameCandidate, type CandidateRef
 import { record, textValue } from './protocol.ts';
 
 export type Artifact = { path: string; sha256: string | null };
-export type VerificationRequest = { goal: string; criteria: string[]; artifacts: Artifact[]; candidate?: CandidateSnapshot };
+export type VerificationRequest = { goal: string; criteria: string[]; artifacts: Artifact[]; candidate?: CandidateSnapshot; context?: VerificationContext };
 export type Evidence = { id: string; kind: 'file' | 'command'; detail: string; output: string; exitCode: number | null; successful?: boolean };
 export type Verdict = { criterion: string; verdict: 'pass' | 'fail' | 'inconclusive'; reason: string; evidenceIds: string[] };
 export type VerificationResult = { verdicts: Verdict[]; evidence: Evidence[]; candidate?: CandidateReference };
+export type VerificationRound = {
+  requestId: string; resultId: string; verifierId: string; criteria: string[]; artifacts: Artifact[];
+  candidate?: CandidateReference; result: VerificationResult; superseded: boolean;
+};
+export type VerificationContext = {
+  version: 1; ownerId: string; taskId: string; roomId?: string;
+  baseline: { requestId: string; artifacts: Artifact[] } | null;
+  rounds: VerificationRound[];
+  inputs: { id: string; text: string; question?: { id: string; text: string } }[];
+  omittedRounds: number; omittedInputs: number;
+};
+export const VERIFICATION_CONTEXT_LIMIT = 80_000;
+function contextId(value: unknown): string {
+  const id = boundedText(value, 80);
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error('Invalid verification context identity.');
+  return id;
+}
+function artifacts(value: unknown, absent: boolean, max = 32): Artifact[] {
+  const result = list(value, item => {
+    const a = record(item), sha256 = a.sha256 === null && absent ? null : boundedText(a.sha256, 64);
+    if (sha256 !== null && !/^[a-f0-9]{64}$/.test(sha256)) throw new Error('Invalid artifact hash.');
+    return { path: artifactPath(a.path), sha256 };
+  }, max);
+  if (new Set(result.map(a => a.path)).size !== result.length) throw new Error('Duplicate verification target.');
+  return result;
+}
+function contextList<T>(value: unknown, parse: (v: unknown) => T, max: number): T[] {
+  if (!Array.isArray(value) || value.length > max) throw new Error('Invalid verification context list.');
+  return value.map(parse);
+}
+export function verificationContext(value: unknown): VerificationContext {
+  const v = record(value);
+  if (v.version !== 1 || JSON.stringify(value).length > VERIFICATION_CONTEXT_LIMIT
+    || ![v.omittedRounds, v.omittedInputs].every(n => Number.isSafeInteger(n) && Number(n) >= 0)) throw new Error('Invalid verification context.');
+  const baseline = v.baseline === null ? null : (() => {
+    const b = record(v.baseline); return { requestId: contextId(b.requestId), artifacts: artifacts(b.artifacts, true) };
+  })();
+  const rounds = contextList(v.rounds, raw => {
+    const r = record(raw), candidate = r.candidate === undefined ? undefined : candidateReference(r.candidate);
+    if (typeof r.superseded !== 'boolean') throw new Error('Invalid prior verification state.');
+    const round: VerificationRound = { requestId: contextId(r.requestId), resultId: contextId(r.resultId), verifierId: contextId(r.verifierId),
+      criteria: list(r.criteria, c => boundedText(c)), artifacts: artifacts(r.artifacts, !!candidate),
+      ...(candidate ? { candidate } : {}), result: verificationResult(r.result), superseded: r.superseded };
+    assertResult(round, round.result);
+    return round;
+  }, 3);
+  const inputs = contextList(v.inputs, raw => {
+    const i = record(raw), q = i.question === undefined ? undefined : record(i.question);
+    return { id: contextId(i.id), text: boundedText(i.text, 20_000),
+      ...(q ? { question: { id: contextId(q.id), text: boundedText(q.text, 4000) } } : {}) };
+  }, 8);
+  if (new Set(rounds.map(r => r.requestId)).size !== rounds.length || new Set(rounds.map(r => r.resultId)).size !== rounds.length
+    || new Set(inputs.map(i => i.id)).size !== inputs.length) throw new Error('Duplicate verification context record.');
+  return { version: 1, ownerId: contextId(v.ownerId), taskId: contextId(v.taskId), ...(v.roomId === undefined ? {} : { roomId: contextId(v.roomId) }),
+    baseline, rounds, inputs, omittedRounds: Number(v.omittedRounds), omittedInputs: Number(v.omittedInputs) };
+}
+export function assertVerificationContextScope(request: VerificationRequest, scope: { from: string; taskId: string; roomId?: string }): void {
+  const c = request.context;
+  if (c && (c.ownerId !== scope.from || c.taskId !== scope.taskId || c.roomId !== scope.roomId)) throw new Error('Verification context belongs to another goal or room.');
+}
 export function boundedText(value: unknown, limit = 1000): string {
   const text = textValue(value, 'verification text');
   if (!text.trim() || text.length > limit) throw new Error('Invalid verification text.');
@@ -25,14 +85,11 @@ export function verificationRequest(value: unknown): VerificationRequest {
   const v = record(value);
   const candidate = v.candidate === undefined ? undefined : candidateSnapshot(v.candidate);
   const criteria = list(v.criteria, item => boundedText(item));
-  const artifacts = list(v.artifacts, item => {
-    const a = record(item), sha256 = a.sha256 === null && candidate ? null : boundedText(a.sha256, 64);
-    if (sha256 !== null && !/^[a-f0-9]{64}$/.test(sha256)) throw new Error('Invalid artifact hash.');
-    return { path: artifactPath(a.path), sha256 };
-  }, candidate ? 32 : 16);
-  if (candidate && JSON.stringify(artifacts) !== JSON.stringify(candidate.files.map(({ path, sha256 }) => ({ path, sha256 })))) throw new Error('Verify every candidate file, including deleted files.');
-  if (new Set(criteria).size !== criteria.length || new Set(artifacts.map(a => a.path)).size !== artifacts.length) throw new Error('Duplicate verification target.');
-  return { goal: boundedText(v.goal, 20_000), criteria, artifacts, ...(candidate ? { candidate } : {}) };
+  const files = artifacts(v.artifacts, !!candidate, candidate ? 32 : 16);
+  if (candidate && JSON.stringify(files) !== JSON.stringify(candidate.files.map(({ path, sha256 }) => ({ path, sha256 })))) throw new Error('Verify every candidate file, including deleted files.');
+  if (new Set(criteria).size !== criteria.length) throw new Error('Duplicate verification target.');
+  return { goal: boundedText(v.goal, 20_000), criteria, artifacts: files, ...(candidate ? { candidate } : {}),
+    ...(v.context === undefined ? {} : { context: verificationContext(v.context) }) };
 }
 export function evidence(value: unknown): Evidence {
   const v = record(value);
@@ -53,7 +110,7 @@ export function verificationResult(value: unknown): VerificationResult {
   const v = record(value);
   return { ...(v.candidate === undefined ? {} : { candidate: candidateReference(v.candidate) }), verdicts: list(v.verdicts, verdict), evidence: Array.isArray(v.evidence) && !v.evidence.length ? [] : list(v.evidence, evidence, 64) };
 }
-export function assertResult(request: VerificationRequest, result: VerificationResult): void {
+export function assertResult(request: { criteria: string[]; artifacts: Artifact[]; candidate?: CandidateReference }, result: VerificationResult): void {
   if (!sameCandidate(request.candidate, result.candidate)) throw new Error('Verification result belongs to another candidate.');
   if (JSON.stringify(request.criteria) !== JSON.stringify(result.verdicts.map(v => v.criterion))) throw new Error('Verify every original criterion in order.');
   if (new Set(result.evidence.map(e => e.id)).size !== result.evidence.length) throw new Error('Duplicate evidence identity.');
