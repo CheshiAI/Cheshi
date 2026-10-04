@@ -18,7 +18,7 @@ export type Task = {
   verification?: string; verificationEvidence?: Evidence[]; verificationDraft?: VerificationResult;
   delegation?: string; workDraft?: WorkDraft;
   integration?: IntegrationSummary;
-  integrationTools?: true;
+  integrationTools?: true; applicationTools?: true;
   recovery?: RecoveryReceipt;
 };
 type SavedState = { version: 1; threadId: string | null; model: string | null; tasks: Task[];
@@ -42,6 +42,7 @@ function chatEntries<T>(value: unknown, parse: (value: unknown) => T): T[] {
 
 function savedTask(value: unknown): Task {
   const task = record(value);
+  if (task.applicationTools !== undefined && task.applicationTools !== true) throw new TypeError('Invalid application tool capability.');
   if (task.integrationTools !== undefined && task.integrationTools !== true) throw new TypeError('Invalid integration tool capability.');
   if (!TASK_STATUSES.some(status => status === task.status) || typeof task.output !== 'string') {
     throw new TypeError('Invalid saved task.');
@@ -54,6 +55,7 @@ function savedTask(value: unknown): Task {
     ...(task.delegation === undefined ? {} : { delegation: validateTaskId(task.delegation) }),
     ...(task.workDraft === undefined ? {} : { workDraft: parseWorkDraft(task.workDraft) }),
     ...(task.integration === undefined ? {} : { integration: parseIntegration(task.integration) }),
+    ...(task.applicationTools === true ? { applicationTools: true as const } : {}),
     ...(task.integrationTools === true ? { integrationTools: true as const } : {}),
     ...(task.recovery === undefined ? {} : { recovery: recoveryReceipt(task.recovery) }),
     ...(task.roomId === undefined ? {} : { roomId: validateTaskId(task.roomId),

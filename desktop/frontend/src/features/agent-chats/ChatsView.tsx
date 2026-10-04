@@ -90,6 +90,14 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
     catch (e) { if (alive.current) setError(e instanceof Error ? e.message : 'Execution inspection failed.'); }
     finally { inspecting.current = false; if (alive.current) setSending(false); }
   }
+  async function inspectApplication() {
+    const integration = goalState?.integration;
+    if (!room || !root || !integration?.candidateHash || sending || inspecting.current) return;
+    inspecting.current = true; setSending(true); setError(null);
+    try { await mutate({ action: 'application-inspect', roomId: room.id, goalId: root.id, candidateId: integration.id, hash: integration.candidateHash }); }
+    catch (e) { if (alive.current) setError(e instanceof Error ? e.message : 'Application inspection failed.'); }
+    finally { inspecting.current = false; if (alive.current) setSending(false); }
+  }
   async function changeQuestion(questionId: string, change: { action: 'question'; recipient: string | null } | { action: 'question-deadline'; expiresAt: string | null }) {
     if (!room || !root || sending || inspecting.current) return;
     inspecting.current = true; setSending(true); setError(null);
@@ -158,7 +166,8 @@ export function ChatsView({ active, onOpenTask, onOpenAgents, api = cheshiDeskto
         {room && <TooltipButton variant="ghost" size="icon" title="Room participants" aria-label="Room participants" onClick={() => setDialog('participants')}><Users aria-hidden="true" /></TooltipButton>}</header>
       {room && <div className={styles.participants}>{room.members.map(m => m.name).join(' · ')}<span>Default: {name(owner ?? null)}</span></div>}
       {root && <section ref={summaryScroll} className={styles.goalSummary} aria-label="Goal progress">
-        {goalState?.integration && <IntegrationDetail integration={goalState.integration} />}
+        {goalState?.integration && <IntegrationDetail integration={goalState.integration} onInspect={() => { void inspectApplication(); }}
+          inspectionDisabled={sending || !api || !['completed', 'blocked', 'interrupted', 'failed'].includes(root?.status ?? '')} />}
         <div className={styles.metadata}><strong>Goal · {goalState?.phase ?? root.status ?? 'Checking'}</strong>
           <span>Turns: {goalState?.turns ?? 'Unknown'}</span></div>
         <p>Model tokens: {goalState?.usage ? `${goalState.usage.totalTokens.toLocaleString()} reported through turn ${goalState.usage.reportedThroughTurn}` : 'Unknown'} · Cost: Unknown</p>

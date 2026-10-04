@@ -35,7 +35,8 @@ test('timed-out deletion never runs later and a fresh retry succeeds', async () 
 
 test('operation rejection releases waiting deletion and genuine deletion errors are not hidden', async () => {
   const operations = createWorkerOperations(), gate = createDeferred<void>();
-  const failure = new Error('real failure');
+  // Matching text alone must not disguise a genuine failure as an expected block.
+  const failure = new Error('Unresolved project application.');
   const running = operations.run(() => gate.promise).catch(error => error);
   const deletion = operations.exclusive(async () => { throw failure; }).catch(error => error);
   gate.reject(failure);
@@ -45,4 +46,5 @@ test('operation rejection releases waiting deletion and genuine deletion errors 
   expect(observed).toBe(failure);
   expect(await operations.exclusive(async () => 'retry')).toBe('retry');
   expect(() => unwrapAgentDeletion({ status: 'unknown' })).toThrow('Invalid deletion');
+  expect(() => unwrapAgentDeletion({ status: 'blocked', message: true })).toThrow('Invalid agent text');
 });

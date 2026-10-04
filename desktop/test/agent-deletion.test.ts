@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync, readdirSync, writeFileSync } from 'node:
 import { join } from 'node:path';
 import { deletionFixture } from './agent-deletion-fixtures';
 import { createAgentDeletion } from '../lib/agent-management/deletion.mts';
-import { workerOperations } from '../lib/agent-management/operations.mts';
+import { deletionReply, workerOperations } from '../lib/agent-management/operations.mts';
 import { createSpecialistRuntime } from '../lib/agent-management/runtime.mts';
 import { createAgentManagementService } from '../lib/agent-management/service.mts';
 import { specialistInput, registryDeferred } from './agent-registry-fixtures';
@@ -19,6 +19,31 @@ async function fails(operation: Promise<unknown>, message: string) {
   try { await operation; } catch (reason) { error = reason; }
   expect(error).toBeInstanceOf(Error); expect((error as Error).message).toContain(message);
 }
+test.each(['running', 'stopped', 'detached'] as const)('unresolved application prevents deleting %s worker identity and recovery data', async mode => {
+  const f = deletionFixture();
+  try {
+    if (mode === 'stopped') f.worker.State.Status = 'exited';
+    if (mode === 'detached') f.containers.clear();
+    const receipt = { id: 'b'.repeat(64), candidateId: 'a'.repeat(64), hash: 'c'.repeat(64), verificationId: 'd'.repeat(64),
+      status: 'interrupted', updatedAt: '2026-10-04T00:00:00Z', files: [{ path: 'file.txt', before: 'e'.repeat(64), after: 'f'.repeat(64), phase: 'writing' }] };
+    f.state.applicationRecords = { version: 1, references: [receipt.candidateId], journals: [{ candidateId: receipt.candidateId, receipt }] };
+    for (const deleteData of [false, true]) {
+      await fails(f.deletion.agent(f.workspace, f.agentRequest(deleteData)), 'Unresolved project application');
+      expect(await deletionReply(() => f.deletion.agent(f.workspace, f.agentRequest(deleteData)))).toMatchObject({
+        status: 'blocked', message: expect.stringContaining('Inspect application'),
+      });
+      expect(f.volumes.has(f.volume)).toBe(true); expect(f.registry.snapshot(f.workspace).agents).toHaveLength(1);
+      expect(f.calls.some(args => args[3] === 'stop' || args[3] === 'rm')).toBe(false);
+    }
+    const probe = f.calls.find(args => args[2] === 'run')!;
+    expect(probe).toContain(`type=volume,src=${f.volume},dst=/agent,readonly`);
+    expect(probe).toContain('--read-only'); expect(probe).toContain('--network'); expect(probe).toContain('none');
+    expect(probe).toContain('--cap-drop'); expect(probe).toContain('ALL'); expect(probe).toContain('--pull'); expect(probe).toContain('never');
+    Object.assign(receipt, { status: 'aborted', lockReleased: true });
+    await f.deletion.agent(f.workspace, f.agentRequest(true));
+    expect(f.volumes.size).toBe(0); expect(f.registry.snapshot(f.workspace).agents).toHaveLength(0);
+  } finally { f.close(); }
+});
 test('container deletion stops an idle owned worker and retains registry, data and images by default', async () => {
   const f = deletionFixture();
   try {

@@ -1,3 +1,4 @@
+import { assertStoredApplications } from './application-deletion.mts';
 import { agentBoolean, agentRecord, agentText, parseAgentTasks } from '../../shared/agent-management.ts';
 import { parseDockerAgent, runDocker, type DockerCommand } from './docker.mts';
 import { readWorker, type ReadWorker } from './service.mts';
@@ -46,7 +47,7 @@ export function createDockerDeletion(run: DockerCommand = runDocker, read: ReadW
     return { raw, worker };
   }
   async function idle(plan: DockerDeletionPlan, id: string, profileId?: string) {
-    const { worker } = await inspect(plan, id, profileId);
+    const { raw, worker } = await inspect(plan, id, profileId);
     if (worker.state === 'running') {
       if (!worker.endpoint) throw new Error('Cannot verify worker activity. Stop the worker before deleting.');
       const health = agentRecord(await read(worker.endpoint, '/health'));
@@ -57,6 +58,14 @@ export function createDockerDeletion(run: DockerCommand = runDocker, read: ReadW
         throw new Error('The worker has an active or unconfirmed task. Resolve it before deleting.');
       }
     } else if (!['created', 'exited', 'dead'].includes(worker.state)) throw new Error('The worker is changing state. Stop it before deleting.');
+    if (!Array.isArray(raw.Mounts)) throw new Error('Cannot verify worker storage.');
+    if (raw.Mounts.filter(item => agentRecord(item).Destination === '/agent').length !== 1) throw new Error('Cannot verify application storage mount.');
+    for (const item of raw.Mounts) {
+      const mount = agentRecord(item);
+      if (mount.Destination !== '/agent') continue;
+      if (mount.Type !== 'volume' || !validWorkerVolume(agentText(mount.Name), worker.profileId)) throw new Error('Cannot verify application storage ownership.');
+      await checkVolume(plan, agentText(mount.Name), new Set(plan.containers), profileId);
+    }
     return worker;
   }
   async function existingVolumes(plan: DockerDeletionPlan) {
@@ -70,6 +79,7 @@ export function createDockerDeletion(run: DockerCommand = runDocker, read: ReadW
     }
     const users = await ids(plan, ['--filter', `volume=${name}`]);
     if (users.some(id => !allowedContainers.has(id))) throw new Error('Saved data is shared with another container. It has not been deleted.');
+    await assertStoredApplications(run, plan.host, name);
   }
   return {
     async plan(engineId: string, deleteData: boolean, profileId?: string, containerId?: string): Promise<DockerDeletionPlan> {
@@ -109,7 +119,8 @@ export function createDockerDeletion(run: DockerCommand = runDocker, read: ReadW
       const present = new Set(await ids(plan));
       for (const id of plan.containers) if (present.has(id)) await idle(plan, id, profileId);
       const volumes = await existingVolumes(plan);
-      for (const name of plan.volumes) if (volumes.has(name)) await checkVolume(plan, name, new Set(plan.containers), profileId);
+      const inspectVolumes = new Set([...plan.volumes, ...(profileId ? [...volumes].filter(name => validWorkerVolume(name, profileId)) : [])]);
+      for (const name of inspectVolumes) if (volumes.has(name)) await checkVolume(plan, name, new Set(plan.containers), profileId);
     },
     async execute(plan: DockerDeletionPlan, profileId?: string) {
       for (const id of plan.containers) {
@@ -118,6 +129,7 @@ export function createDockerDeletion(run: DockerCommand = runDocker, read: ReadW
         if (worker.state === 'running') await run([...prefix(plan), 'container', 'stop', '--time', '15', id]);
         const stopped = await inspect(plan, id, profileId);
         if (!['created', 'exited', 'dead'].includes(stopped.worker.state)) throw new Error('Worker did not stop. Retry deletion after it stops.');
+        await idle(plan, id, profileId); // Recheck durable application records after stopping the writer.
         await run([...prefix(plan), 'container', 'rm', id]);
         if ((await ids(plan)).includes(id)) throw new Error('Container removal could not be confirmed.');
       }

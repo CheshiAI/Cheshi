@@ -1,13 +1,16 @@
+import { UnresolvedApplicationError } from '../../../experiments/codex-specialists/src/application-storage.ts';
+
 /** Deletion excludes all in-app worker mutations, while normal independent operations may overlap. */
 export class WorkerOperationBusyError extends Error {
   constructor(message: string) { super(message); this.name = 'WorkerOperationBusyError'; }
 }
 
-/** Expected contention is a normal IPC reply; other deletion failures still reject. */
+/** Expected contention and unresolved application state are normal IPC replies; other failures still reject. */
 export async function deletionReply<T>(operation: () => Promise<T>) {
   try { return { status: 'deleted' as const, value: await operation() }; }
   catch (error) {
     if (error instanceof WorkerOperationBusyError) return { status: 'busy' as const, message: error.message };
+    if (error instanceof UnresolvedApplicationError) return { status: 'blocked' as const, message: error.message };
     throw error;
   }
 }

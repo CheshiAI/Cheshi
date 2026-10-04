@@ -449,10 +449,60 @@ bun test experiments/codex-specialists/src/integration.test.ts desktop/test/agen
   복구하며, 유실된 복사본을 자동 재생성하지 않는다.
 - Chats와 작업 상세는 pending/pass/fail/inconclusive/stale 및 검증 근거를 표시한다.
   원본 또는 후보가 변경되면 이전 통과는 stale로 표시한다. 새 후보에는 이전 결과를
-  재사용하지 않는다. 원본 적용 및 최종 목표 완료는 아직 지원하지 않는다.
+  재사용하지 않는다. 원본 적용 및 최종 목표 완료는 아래 applicationProtocol 단계에서 별도로 처리한다.
 
 다음 자동 검증은 실제 임시 파일·영속 저장소를 사용하며 모델·Docker 통신은 대역이다.
 
 ```sh
 bun test experiments/codex-specialists/src/candidate-verification.test.ts desktop/test/agent-candidate-verification.test.ts
 ```
+
+
+### 검증 후보의 원본 적용과 완료 판정
+
+`applicationProtocol: 1`로 호스트·워커를 갱신한 뒤 **새 목표**를 만들면
+`apply_integration`, `recover_integration`을 사용할 수 있다. 기존 네이티브 대화에는
+새 도구를 주입하지 않으며, 해당 대화의 기록과 상태는 보존한다.
+
+- 적용은 목표 담당자의 기존 Write files 권한과 방 참여가 필요하다. 실제 Docker/VM
+  공유도 쓰기 가능해야 한다. 권한이나 Colima 공유를 자동으로 확대하지 않는다.
+- 현재 후보 ID·해시, 수락한 제안 이력, 원래 완료 조건의 독립 검증 통과를 확인한다.
+  읽기 전용 문맥까지 원본 해시를 다시 비교하고, 선택된 변경 파일만 적용한다.
+- 프로젝트의 `.cheshi-integration-lock`으로 Cheshi 적용 작업을 직렬화한다.
+  기존 락은 다른 워커가 자동 제거하지 않는다. 파일 추가는 배타적으로 생성하며
+  수정은 기존 모드를 보존한 파일 교체, 삭제는 명시된 경로에만 수행한다.
+- 후보 디렉터리의 `application.json`에 쓰기 전 의도와 파일별 결과를 먼저 기록한다.
+  원본·후보 내용은 기존 manifest에 보존한다. 동일 요청은 이전 상태를 반환하고
+  중단된 쓰기를 재실행하지 않는다. 여러 파일 전체를 원자적으로 교체하지 않으며,
+  외부 편집기는 Cheshi 락을 따르지 않으므로 편집 충돌을 완전히 잠그는 기능은 아니다.
+- `recover_integration`은 파일을 쓰거나 되돌리지 않고 before/after/changed/unavailable를
+  비교한다. 모든 쓰기 의도와 실제 결과가 일치하면 applied, 전부 원본이면 aborted로
+  기록하고 소유한 락을 해제한다. 일부만 적용되거나 외부 변경이 있으면 interrupted/
+  conflict로 남겨 사용자 검토를 요구한다. 손상·유실된 기록으로 성공을 추정하지 않는다.
+- 적용 후 새 requestId로 `request_verification`을 호출한다. 검증자는 후보 복사본이
+  아닌 실제 프로젝트를 읽기 전용으로 검사한다. 전체 대상 경로와 삭제 상태, 후보 ID·해시,
+  적용 ID를 결과에 연결한다. 명령 쓰기는 기존 scratch 공간에만 허용한다.
+- 후보 검증 결과와 프로젝트 검증 결과는 서로 대체할 수 없다. 담당 목표는 프로젝트
+  검증 응답을 처리하고 모든 최종 제안의 적용을 확인한 뒤 완료 판단을 기록한다.
+  턴 종료 직전에도 재검사하며 변경된 원본이나 실패·불확실한 검증을 완료로 처리하지 않는다.
+- Chats와 작업 상세의 **Inspect application**은 현재 후보 ID·해시에 해당하는
+  적용 기록과 실제 파일을 비교한다. `applicationInspectionProtocol: 1` 워커 갱신이
+  필요하지만 기존 목표에서도 사용할 수 있다. 모델 호출·쓰기 재실행·자동 재개·완료
+  판정은 하지 않는다. 실행 중인 작업을 멈추고 unknown 실행 결과를 먼저 확인해야 한다.
+- 적용 의도는 프로젝트 락 생성 전부터 기록한다. 복구가 applied/aborted를 확인하고
+  락 해제까지 확인하면 `lockReleased: true`를 영속화한다. 부분 적용·외부 수정은
+  미해결 상태로 남기며, 이 확인 자체가 독립 검증 통과를 뜻하지 않는다.
+- 삭제 전에는 실행 중·중지된 컨테이너와 에이전트의 분리된 저장 볼륨을 검사한다.
+  네트워크·capability가 없는 일회성 읽기 전용 검사 컨테이너로 저장 기록을 읽으며
+  워커나 모델을 실행하지 않는다. 로컬 `cheshi-specialist:1` 이미지가 없거나 기록을
+  읽을 수 없으면 삭제를 중단한다. 미해결 적용과 유실·손상된 복구 기록은 데이터 보존을
+  선택해도 에이전트 삭제를 막는다. 기존 완료 기록도 락 해제 표식이 없으면 명시적으로
+  Inspect application을 실행한 뒤 삭제해야 한다.
+
+```sh
+bun test experiments/codex-specialists/src/integration-application.test.ts desktop/test/agent-application.test.ts
+bun test desktop/test/agent-application-storage.test.ts desktop/test/agent-deletion.test.ts desktop/test/agent-chats.test.ts desktop/test/agent-chats-views.test.tsx
+```
+
+이 테스트는 실제 임시 파일과 저장소에 적용·복구를 실행한다. 모델 및 Docker 통신은
+대역이며, 개발앱의 실제 모델·컨테이너 검증과는 구분한다.

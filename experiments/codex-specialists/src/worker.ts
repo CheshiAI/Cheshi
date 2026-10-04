@@ -98,6 +98,14 @@ const server = Bun.serve({
           input.recipient === null ? null : validateTaskId(input.recipient)));
       }
       const resume = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/input$/.exec(path);
+      const application = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/application$/.exec(path);
+      if (application && request.method === 'POST') {
+        const body = await request.text();
+        if (body.length > 1000) throw new TypeError('Request is too large.');
+        const input = record(JSON.parse(body));
+        return Response.json(agent.inspectApplication(application[1]!, validateTaskId(input.roomId),
+          textValue(input.candidateId, 'candidate'), textValue(input.hash, 'hash')));
+      }
       const recovery = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/recover$/.exec(path);
       if (recovery && request.method === 'POST') {
         const body = await request.text();

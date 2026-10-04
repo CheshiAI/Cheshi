@@ -1,6 +1,6 @@
 import { parseWorkRequest, assertWorkRequest, type WorkFile, type WorkRequest, WORK_MESSAGE_LIMIT } from './work-contract.ts';
 
-export interface CandidateReference { id: string; hash: string }
+export interface CandidateReference { id: string; hash: string; applicationId?: string }
 export interface CandidateSnapshot extends CandidateReference { requestIds: string[]; files: WorkFile[] }
 function hash(value: unknown): string {
   if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) throw new Error('Invalid candidate identity or hash.');
@@ -9,7 +9,7 @@ function hash(value: unknown): string {
 export function candidateReference(value: unknown): CandidateReference {
   if (!value || typeof value !== 'object') throw new Error('Invalid candidate reference.');
   const v = value as Record<string, unknown>;
-  return { id: hash(v.id), hash: hash(v.hash) };
+  return { id: hash(v.id), hash: hash(v.hash), ...(v.applicationId === undefined ? {} : { applicationId: hash(v.applicationId) }) };
 }
 export function candidateSpec(candidate: Pick<CandidateSnapshot, 'files' | 'hash'>): WorkRequest {
   return parseWorkRequest({ version: 1, objective: 'Verify isolated integration candidate', criteria: ['Independently verify the candidate'],
@@ -28,5 +28,5 @@ export function assertCandidate(candidate: CandidateSnapshot, digest: (value: st
   if (candidate.files.some(file => file.content !== null && new TextEncoder().encode(file.content).byteLength > 128_000)) throw new Error('Candidate file exceeds 128 KB.');
 }
 export function sameCandidate(a: CandidateReference | undefined, b: CandidateReference | undefined): boolean {
-  return a === undefined ? b === undefined : b !== undefined && a.id === b.id && a.hash === b.hash;
+  return a === undefined ? b === undefined : b !== undefined && a.id === b.id && a.hash === b.hash && a.applicationId === b.applicationId;
 }

@@ -10,8 +10,9 @@ import { AgentTaskDetail } from './AgentTaskDetail';
 import common from '../../shared/agent-management/agentManagement.module.css';
 import styles from './AgentTaskResults.module.css';
 
-export function AgentTaskResults({ requestedTaskId, onBackToChats, tasks, loading, running, onRecover, recoveryDisabled }: {
+export function AgentTaskResults({ requestedTaskId, onBackToChats, tasks, loading, running, onRecover, onInspectApplication, recoveryDisabled }: {
   requestedTaskId?: string; onBackToChats?(): void;
+  onInspectApplication?(taskId: string, roomId: string, candidateId: string, hash: string): void;
   onRecover?(taskId: string, roomId: string): void; recoveryDisabled?: boolean;
   tasks: readonly AgentTask[]; loading: boolean; running: boolean;
 }) {
@@ -73,7 +74,9 @@ export function AgentTaskResults({ requestedTaskId, onBackToChats, tasks, loadin
         <NeumorphicButton variant="standard" disabled={recoveryDisabled || !running}
           onClick={() => onRecover(task.id, task.inspection!.recoveryRoomId!)}>Inspect execution</NeumorphicButton>
       </section>}
-      <AgentTaskDetail task={task} />
+      <AgentTaskDetail task={task} inspectionDisabled={recoveryDisabled || !running || !['completed', 'interrupted', 'failed'].includes(task.status)}
+        onInspectApplication={task.roomId && task.inspection?.integration?.candidateHash && onInspectApplication
+          ? () => onInspectApplication(task.id, task.roomId!, task.inspection!.integration!.id, task.inspection!.integration!.candidateHash!) : undefined} />
     </div>}
   </section>;
 }

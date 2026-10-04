@@ -23,12 +23,14 @@ export function deletionFixture() {
   const containers = new Map([[containerId, worker]]), volumes = new Set([volume]);
   const calls: string[][] = [];
   const state = { busy: false, unknown: false, failVolume: false, failRemove: false, shared: false,
-    offline: '', remote: false, nonstandardVolume: false, malformedHealth: false };
+    offline: '', remote: false, nonstandardVolume: false, malformedHealth: false,
+    applicationRecords: { version: 1, references: [], journals: [] } as unknown };
   const run: DockerCommand = async args => {
     calls.push(args);
     if (args[0] === 'context') return JSON.stringify([{ Endpoints: { docker: { Host: state.remote ? 'ssh://remote' : `unix:///tmp/${args[2]}.sock` } } }]);
     if (state.offline && args[1]?.includes(state.offline)) throw new Error('engine offline');
     const [kind, action] = args.slice(2), target = args.at(-1)!;
+    if (kind === 'run') return JSON.stringify(state.applicationRecords);
     if (kind === 'container' && action === 'ls') {
       let found = [...containers.keys()];
       for (const filter of args.filter((_value, index) => args[index - 1] === '--filter')) {

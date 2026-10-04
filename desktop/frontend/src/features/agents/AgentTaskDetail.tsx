@@ -25,7 +25,7 @@ function Exchange({ message, messages }: { message: TaskMessage; messages: TaskM
     {message.kind === 'question' && <p>Deadline: {message.expiresAt ? new Date(message.expiresAt).toLocaleString() : 'No expiry'}</p>}
     <p>Delivery: {message.delivery} · Request: {message.questionId}</p>
     {isWorkKind(message.kind) ? <WorkMessage kind={message.kind} text={message.text} /> : message.verification ? <>
-      {message.verification.candidate && <p>Candidate: {message.verification.candidate.id}<br />SHA-256: {message.verification.candidate.hash} · Not applied to project</p>}
+      {message.verification.candidate && <p>Candidate: {message.verification.candidate.id}<br />SHA-256: {message.verification.candidate.hash} · {message.verification.candidate.applicationId ? `Project application: ${message.verification.candidate.applicationId}` : 'Not applied to project'}</p>}
       {message.verification.verdicts.map((verdict, index) => <div key={index} className={styles.criterion}>
         <strong>{verdict.verdict} · {verdict.criterion}</strong><p>{verdict.reason}</p>
         <p>Evidence receipts: {verdict.evidenceIds.join(', ') || 'None'}</p>
@@ -41,7 +41,7 @@ function Exchange({ message, messages }: { message: TaskMessage; messages: TaskM
     </> : <MessageContent text={message.text} />}
   </details>;
 }
-export function AgentTaskDetail({ task }: { task: AgentTask }) {
+export function AgentTaskDetail({ task, onInspectApplication, inspectionDisabled }: { task: AgentTask; onInspectApplication?(): void; inspectionDisabled?: boolean }) {
   const detail = task.inspection, goal = detail?.goal;
   const latest = goal?.decisions.at(-1);
   const verifications = detail?.messages.filter(m => m.kind === 'verification_request' || m.kind === 'verification_result') ?? [];
@@ -90,7 +90,7 @@ export function AgentTaskDetail({ task }: { task: AgentTask }) {
       {detail?.messages.filter(m => isWorkKind(m.kind)).map(message => <Exchange key={message.id} message={message} messages={detail.messages} />)}
       {!detail?.work && !detail?.messages.some(m => isWorkKind(m.kind)) && <p>No implementation delegated.</p>}
     </section>
-    {detail?.integration && <IntegrationDetail integration={detail.integration} />}
+    {detail?.integration && <IntegrationDetail integration={detail.integration} onInspect={onInspectApplication} inspectionDisabled={inspectionDisabled} />}
     <section aria-label="Independent verification"><h3>Independent verification</h3>
       {goal?.verificationRequired && <p>Required before goal completion.</p>}
       {verifications.length ? <div className={styles.records}>{verifications.map(message => <Exchange key={message.id} message={message} messages={detail?.messages ?? []} />)}</div>

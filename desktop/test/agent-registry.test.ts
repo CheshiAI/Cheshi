@@ -13,6 +13,7 @@ import { AGENT_REGISTRY_CHANNELS, parseSaveSpecialistAgent } from '../shared/age
 import type { AgentRegistrySnapshot } from '../shared/agent-registry.ts';
 import { specialistInput } from './agent-registry-fixtures';
 import { WorkerOperationBusyError } from '../lib/agent-management/operations.mts';
+import { UnresolvedApplicationError } from '../../experiments/codex-specialists/src/application-storage.ts';
 
 function fixture() {
   const directory = mkdtempSync(path.join(tmpdir(), 'cheshi-agent-registry-'));
@@ -100,6 +101,7 @@ test('registry persists account references and strips unrecognized fields', () =
 test('registry IPC binds assignment to its owner workspace and broadcasts across windows', async () => {
   const f = fixture();
   let deletionBusy = false;
+  let applicationUnresolved = false;
   const bridge = (workspaceRoot: string) => {
     const renderer = new EventEmitter();
     const owner = { mainFrame: {}, isDestroyed: () => false, send: (channel: string, value: unknown) => { renderer.emit(channel, {}, value); } };
@@ -108,6 +110,7 @@ test('registry IPC binds assignment to its owner workspace and broadcasts across
     const registration = registerAgentRegistryIpc({ window, workspaceRoot, registry: f.registry,
       remove: async value => {
         if (deletionBusy) throw new WorkerOperationBusyError('Nothing was deleted. Try again shortly.');
+        if (applicationUnresolved) throw new UnresolvedApplicationError();
         return f.registry.remove(value, workspaceRoot);
       },
       ipc: { handle: (channel, handler) => { handlers.set(channel, handler); }, removeHandler: channel => { handlers.delete(channel); } } });
@@ -142,6 +145,13 @@ test('registry IPC binds assignment to its owner workspace and broadcasts across
     expect(busy).toBeInstanceOf(Error); expect((busy as Error).message).toBe('Nothing was deleted. Try again shortly.');
     expect((await a.api.list()).agents).toHaveLength(1);
     deletionBusy = false;
+    applicationUnresolved = true;
+    expect(await remove(a.event, deletion)).toEqual({ status: 'blocked', message: new UnresolvedApplicationError().message });
+    let blocked: unknown;
+    try { await a.api.remove!(deletion); } catch (error) { blocked = error; }
+    expect(blocked).toBeInstanceOf(Error); expect((blocked as Error).message).toContain('Inspect application');
+    expect((await a.api.list()).agents).toHaveLength(1);
+    applicationUnresolved = false;
     expect((await a.api.remove!(deletion)).agents).toHaveLength(0);
     expect(snapshots.at(-1)?.agents).toHaveLength(0);
     a.window.emit('closed');

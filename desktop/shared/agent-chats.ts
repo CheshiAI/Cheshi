@@ -35,6 +35,7 @@ export interface ChatTaskTarget { roomId: string; threadId: string | null; agent
 export type ChatsRequest = { action: 'list' }
   | { action: 'question-deadline'; roomId: string; goalId: string; questionId: string; expiresAt: string | null }
   | { action: 'question'; roomId: string; goalId: string; questionId: string; recipient: string | null }
+  | { action: 'application-inspect'; roomId: string; goalId: string; candidateId: string; hash: string }
   | { action: 'recover'; roomId: string; goalId: string }
   | { action: 'create'; id: string; name: string; engineId: string; members: string[]; defaultAgentId: string }
   | { action: 'invite'; roomId: string; members: string[]; defaultAgentId: string }
@@ -54,6 +55,10 @@ export function parseChatsRequest(value: unknown): ChatsRequest {
   const v = agentRecord(value);
   if (v.action === 'question-deadline') return { action: 'question-deadline', roomId: chatId(v.roomId), goalId: chatId(v.goalId), questionId: chatId(v.questionId), expiresAt: parseQuestionDeadline(v.expiresAt) };
   if (v.action === 'question') return { action: 'question', roomId: chatId(v.roomId), goalId: chatId(v.goalId), questionId: chatId(v.questionId), recipient: v.recipient === null ? null : chatId(v.recipient) };
+  if (v.action === 'application-inspect') {
+    if (![v.candidateId, v.hash].every(id => typeof id === 'string' && /^[a-f0-9]{64}$/.test(id))) throw new Error('Invalid application identity.');
+    return { action: 'application-inspect', roomId: chatId(v.roomId), goalId: chatId(v.goalId), candidateId: v.candidateId as string, hash: v.hash as string };
+  }
   if (v.action === 'recover') return { action: 'recover', roomId: chatId(v.roomId), goalId: chatId(v.goalId) };
   if (v.action === 'list') return { action: 'list' };
   if (v.action === 'create' || v.action === 'invite') {

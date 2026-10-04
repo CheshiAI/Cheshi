@@ -1,3 +1,4 @@
+import { parseApplication, type ApplicationReceipt } from './application-contract.ts';
 import { workPath } from './work-contract.ts';
 import { verificationResult, type VerificationResult } from './verification-contract.ts';
 
@@ -9,6 +10,8 @@ export interface IntegrationIssue {
 export interface IntegrationFile { path: string; before: string | null; sha256: string | null }
 /** Metadata only: candidate contents stay in the owner's volume, outside activity/IPC payloads. */
 export interface IntegrationSummary {
+  application?: ApplicationReceipt;
+  projectVerification?: IntegrationSummary['verification'];
   verification?: { requestId: string; agentId: string; status: 'pending' | 'pass' | 'fail' | 'inconclusive' | 'stale'; result: VerificationResult | null };
   version: 1; id: string; taskId: string; roomId: string; requestIds: string[];
   status: typeof INTEGRATION_STATES[number]; candidateHash: string | null;
@@ -58,15 +61,22 @@ export function parseIntegration(value: unknown): IntegrationSummary {
     return { kind: i.kind as IntegrationIssue['kind'], path: i.path === null ? null : workPath(i.path), requestIds: ids };
   }, 128);
   const candidateHash = v.candidateHash === null ? null : integrationHash(v.candidateHash);
-  if ((v.status === 'prepared' && (!candidateHash || issues.length)) || (v.status !== 'prepared' && !issues.length)) throw new Error('Inconsistent integration state.');
-  const verification = v.verification === undefined ? undefined : (() => {
-    const check = object(v.verification);
+  const application = v.application === undefined ? undefined : parseApplication(v.application);
+  if (application && (application.candidateId !== v.id || application.hash !== candidateHash)) throw new Error('Application belongs to another candidate.');
+  const unfinishedApplication = application?.status === 'aborted' || application?.status === 'interrupted';
+  if ((v.status === 'prepared' && (!candidateHash || issues.length || (application && application.status !== 'applied')))
+    || (v.status !== 'prepared' && !issues.length && !(v.status === 'stale' && unfinishedApplication))) throw new Error('Inconsistent integration state.');
+  const parseCheck = (value: unknown, project: boolean) => {
+    if (value === undefined) return undefined;
+    const check = object(value);
     if (!['pending', 'pass', 'fail', 'inconclusive', 'stale'].includes(String(check.status))) throw new Error('Invalid candidate verification state.');
     const result = check.result === null ? null : verificationResult(check.result);
     if (check.status === 'pass' && (v.status !== 'prepared' || !result?.candidate || result.candidate.id !== v.id
-      || result.candidate.hash !== candidateHash || result.verdicts.some(item => item.verdict !== 'pass'))) throw new Error('Invalid candidate verification pass.');
+      || result.candidate.hash !== candidateHash || result.candidate.applicationId !== (project ? application?.id : undefined)
+      || (project && application?.status !== 'applied') || result.verdicts.some(item => item.verdict !== 'pass'))) throw new Error('Invalid candidate verification pass.');
     return { requestId: integrationHash(check.requestId), agentId: integrationId(check.agentId), status: check.status as NonNullable<IntegrationSummary['verification']>['status'], result };
-  })();
-  return { ...(verification ? { verification } : {}), version: 1, id: integrationHash(v.id), taskId: integrationId(v.taskId), roomId: integrationId(v.roomId), requestIds,
+  };
+  const verification = parseCheck(v.verification, false), projectVerification = parseCheck(v.projectVerification, true);
+  return { ...(application ? { application } : {}), ...(projectVerification ? { projectVerification } : {}), ...(verification ? { verification } : {}), version: 1, id: integrationHash(v.id), taskId: integrationId(v.taskId), roomId: integrationId(v.roomId), requestIds,
     status: v.status as IntegrationSummary['status'], candidateHash, files, issues, createdAt: timestamp(v.createdAt), checkedAt: timestamp(v.checkedAt) };
 }

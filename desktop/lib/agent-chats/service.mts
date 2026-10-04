@@ -146,6 +146,28 @@ export function createAgentChats(options: Options) {
       throw new Error('Only an unknown execution can be inspected. Refresh its status.');
     }
   }
+  async function inspectApplication(workspaceRoot: string, value: unknown) {
+    const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
+    if (input.action !== 'application-inspect') throw new Error('Invalid application inspection request.');
+    const room = roomFor(workspace, input.roomId);
+    const root = store().all().messages.find(m => m.id === input.goalId && m.roomId === room.id && m.kind === 'goal');
+    if (!root?.recipient || !root.taskId) throw new Error('Unknown goal thread.');
+    assertCurrentMember(room, root.recipient);
+    if (!options.recover) throw new Error('Restart the desktop app to inspect applications.');
+    const key = keyFor(room, root.recipient);
+    if (inspecting.has(key)) throw new Error('Inspection is already in progress.');
+    inspecting.add(key);
+    try {
+      await flight;
+      assertCurrentMember(room, root.recipient);
+      const details = await options.recover(workspace, { action: 'application-inspect', agentId: root.recipient,
+        engineId: room.engineId, taskId: root.taskId, roomId: room.id, candidateId: input.candidateId, hash: input.hash });
+      const job = store().all().jobs.find(j => j.id === root.id);
+      if (job) recordProgress(job, details.details);
+      // Inspection must not call tick/dispatch: the user separately chooses when to resume judgment.
+      return snapshot(workspace);
+    } finally { inspecting.delete(key); }
+  }
   async function recover(workspaceRoot: string, value: unknown) {
     const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
     if (input.action !== 'recover') throw new Error('Invalid inspection request.');
@@ -311,7 +333,7 @@ export function createAgentChats(options: Options) {
       } });
     },
   };
-  return { request, recover, question, rooms, tick,
+  return { inspectApplication, request, recover, question, rooms, tick,
     start() { if (!timer) { timer = setInterval(() => { void tick(); }, 3000); timer.unref(); void tick(); } },
     async dispose() { if (timer) clearInterval(timer); timer = null; await flight; },
   };

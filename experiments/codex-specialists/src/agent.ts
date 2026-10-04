@@ -1,6 +1,6 @@
 import { WorkerWork } from './work.ts';
 import { workTools, workInstructions } from './work-tools.ts';
-import { WorkerIntegration, integrationTools, integrationInstructions, candidateVerificationInstructions } from './integration.ts';
+import { WorkerIntegration, integrationTools, integrationInstructions, candidateVerificationInstructions, applicationTools, applicationInstructions } from './integration.ts';
 import { closeQuestion, setQuestionDeadline } from './question-control.ts';
 import { WorkerVerification } from './verification.ts';
 import { SCRATCH_PROFILE, TaskScratch } from './task-scratch.ts';
@@ -64,7 +64,7 @@ export class SpecialistAgent {
   constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; timeoutMs?: number; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; historyQueue?: WorkerHistoryQueue; history?: WorkerHistory }) {
     this.configuration = options.configuration;
     this.work = options.configuration?.workProtocol === 1 ? new WorkerWork(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite) : undefined;
-    this.integration = options.configuration?.integrationProtocol === 1 ? new WorkerIntegration(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite) : undefined;
+    this.integration = options.configuration?.integrationProtocol === 1 ? new WorkerIntegration(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite, options.configuration.applicationProtocol === 1) : undefined;
     this.verification = options.configuration?.verificationProtocol === 1 ? new WorkerVerification(options.store, options.workspace) : undefined;
     this.client = options.client; this.store = options.store; this.profile = options.profile;
     this.workspace = options.workspace; this.timeoutMs = options.timeoutMs ?? 180_000;
@@ -83,9 +83,12 @@ export class SpecialistAgent {
           if (tool === 'goal_status') return { originalGoal: task.prompt, ...goalContext(task.goal) };
           if (tool === 'record_decision') {
             const decision = parseDecision(params.arguments);
-            if (decision.action === 'complete' && task.integration) throw new Error('An integration candidate is not applied to the project. Candidate verification alone cannot complete the goal.');
+            if (decision.action === 'complete' && task.integration) {
+              if (!this.integration) throw new Error('Integration unavailable.');
+              this.integration.assertComplete(task, active.messages);
+            }
             if (decision.action === 'complete') this.work?.assertReviewed(task);
-            if (decision.action === 'complete' && task.goal.verificationRequired) {
+            if (decision.action === 'complete' && task.goal.verificationRequired && !task.integration) {
               if (!this.collaboration) throw new Error('Independent verification is unavailable.');
               this.collaboration.assertVerified(task, active.messages);
             }
@@ -97,7 +100,8 @@ export class SpecialistAgent {
           if (task.goal.pending) throw new Error('End the turn after recording its decision.');
         }
         if (task.workDraft) throw new Error('End the turn after submitting work.');
-        if (this.integration && integrationTools.some(t => t.name === tool)) {
+        if (this.integration && [...integrationTools, ...applicationTools].some(t => t.name === tool)) {
+          if (applicationTools.some(t => t.name === tool) && task.applicationTools !== true) throw new Error('Start a new goal to acquire application tools.');
           const result = this.integration.call(task, tool, params.arguments);
           active.observations.add({ tool: 'integration', result });
           return result;
@@ -237,8 +241,9 @@ export class SpecialistAgent {
     const settings = this.configuration;
     // Native resumed conversations retain the dynamic tool set from their creation.
     const integrationAvailable = this.integration && (!savedThread || task.integrationTools === true);
+    const applicationAvailable = integrationAvailable && settings?.applicationProtocol === 1 && (!savedThread || task.applicationTools === true);
     const profile = this.profile + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal ? decisionInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
-      + (integrationAvailable && settings?.candidateVerificationProtocol === 1 ? candidateVerificationInstructions : '');
+      + (integrationAvailable && settings?.candidateVerificationProtocol === 1 ? candidateVerificationInstructions : '') + (applicationAvailable ? applicationInstructions : '');
     const params: JsonRecord = { cwd: workspace,
       ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
       approvalsReviewer: 'user', developerInstructions: profile,
@@ -251,7 +256,7 @@ export class SpecialistAgent {
       } } : {}) };
     const result = savedThread
       ? await this.client.request('thread/resume', { ...params, threadId: savedThread })
-      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal ? decisionTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : [])] });
+      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal ? decisionTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])] });
     const threadId = textValue(record(result.thread).id, 'thread id');
     assertResumedThread(savedThread, threadId);
     scratch?.assertApplied(result);
@@ -267,7 +272,7 @@ export class SpecialistAgent {
       });
     }
     this.store.saveThread(threadId, typeof result.model === 'string' ? result.model : saved.model, task.conversation, !task.consultation && !task.verification && !task.delegation);
-    if (integrationAvailable) this.store.update(task.id, { integrationTools: true });
+    if (integrationAvailable) this.store.update(task.id, { integrationTools: true, ...(applicationAvailable ? { applicationTools: true as const } : {}) });
     this.loadedThreads.add(threadId);
     return threadId;
   }
@@ -340,8 +345,12 @@ export class SpecialistAgent {
           goal: { ...savedGoal, phase: 'blocked', pending: null } }, active.messages);
       } else if (result.status === 'completed' && task.goal) {
         let verificationError: string | null = null;
-        if (savedGoal?.pending?.action === 'complete' && savedGoal.verificationRequired) {
-          try { this.collaboration!.assertVerified(this.store.task(task.id)!, active.messages); }
+        if (savedGoal?.pending?.action === 'complete' && (savedGoal.verificationRequired || this.store.task(task.id)?.integration)) {
+          try {
+            const current = this.store.task(task.id)!;
+            if (current.integration) this.integration!.assertComplete(current, active.messages);
+            else this.collaboration!.assertVerified(current, active.messages);
+          }
           catch (error) { verificationError = error instanceof Error ? error.message : String(error); }
         }
         if (verificationError) {
@@ -393,6 +402,23 @@ export class SpecialistAgent {
       threadId: active.threadId, turnId: active.turnId,
     }).then(() => {});
     await active.interrupting;
+  }
+
+  inspectApplication(id: string, roomId: string, candidateId: string, hash: string): Task {
+    validateTaskId(id); validateTaskId(roomId);
+    const task = this.store.task(id);
+    if (!task?.goal || task.roomId !== roomId || !task.integration || !this.integration
+      || this.configuration?.applicationInspectionProtocol !== 1) throw new TaskConflict('Application inspection is unavailable for this goal.');
+    if (this.busy || this.failure || this.retainedScratch.size || this.store.snapshot().tasks.some(t => ['unknown', 'accepted', 'running'].includes(t.status))) {
+      throw new TaskConflict('Stop active work and inspect unknown executions before inspecting application state.');
+    }
+    if (!['interrupted', 'failed', 'completed'].includes(task.status)) throw new TaskConflict('Stop goal judgment before inspecting application state.');
+    this.recovering = true;
+    try {
+      // No model call, prompt, goal decision, replay or automatic continuation.
+      this.integration.call(task, 'recover_integration', { candidateId, hash });
+      return this.store.task(id)!;
+    } finally { this.recovering = false; }
   }
 
   async recover(id: string, roomId: string): Promise<Task> {

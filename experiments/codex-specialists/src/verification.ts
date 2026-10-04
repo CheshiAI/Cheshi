@@ -1,3 +1,5 @@
+import { readWorkFile } from './work-files.ts';
+import { candidateReference } from './candidate-verification-contract.ts';
 import { createHash } from 'node:crypto';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
@@ -51,10 +53,15 @@ export class WorkerVerification {
     return verificationRequest(JSON.parse(message.text));
   }
   recoveryWorkspace(task: Task): string {
-    return this.request(task).candidate ? join(realpathSync(this.store.directory), 'verification-candidates', task.verification!) : this.workspace;
+    const candidate = this.request(task).candidate;
+    return candidate && !candidate.applicationId ? join(realpathSync(this.store.directory), 'verification-candidates', task.verification!) : this.workspace;
   }
   workspaceFor(task: Task, existing = true): string {
     const candidate = this.request(task).candidate;
+    if (candidate?.applicationId) {
+      if (candidate.files.some(file => readWorkFile(this.workspace, file.path).sha256 !== file.sha256)) throw new Error('Applied project changed. Request a new verification round.');
+      return this.workspace;
+    }
     return candidate ? verificationCandidateFiles(this.store.directory, task.verification!, candidate, existing).directory : this.workspace;
   }
   private assertCurrent(task: Task): void {
@@ -98,7 +105,7 @@ export class WorkerVerification {
       const path = artifactPath(args.path);
       if (!request.artifacts.some(a => a.path === path)) throw new Error('Read only the requested artifacts through this tool.');
       this.assertCurrent(task);
-      const file = request.candidate ? verificationCandidateFiles(this.store.directory, task.verification!, request.candidate).read(path) : null;
+      const file = request.candidate ? request.candidate.applicationId ? readWorkFile(this.workspace, path) : verificationCandidateFiles(this.store.directory, task.verification!, request.candidate).read(path) : null;
       const bytes = file ? null : readArtifact(this.workspace, path), sha256 = file ? file.sha256 : hash(bytes!);
       if (request.artifacts.find(a => a.path === path)?.sha256 !== sha256) throw new Error('Artifact changed during read.');
       const receipt: Evidence = { id: `file-${sha256 ?? 'absent'}-${request.artifacts.findIndex(a => a.path === path)}`, kind: 'file', detail: path, output: sha256 ?? 'absent', exitCode: null };
@@ -106,7 +113,7 @@ export class WorkerVerification {
       return { receipt, content: file ? file.content : bytes!.toString('utf8') };
     }
     if (tool !== 'submit_verification') throw new Error('Unsupported verification tool.');
-    const result = { ...(request.candidate ? { candidate: { id: request.candidate.id, hash: request.candidate.hash } } : {}), verdicts: list(args.verdicts, verdict), evidence: task.verificationEvidence ?? [] };
+    const result = { ...(request.candidate ? { candidate: candidateReference(request.candidate) } : {}), verdicts: list(args.verdicts, verdict), evidence: task.verificationEvidence ?? [] };
     assertResult(request, result);
     if (JSON.stringify(result).length > (request.candidate ? WORK_MESSAGE_LIMIT : 12_000)) throw new Error('Verification result exceeds the message limit. Use fewer receipts in a new verification round.');
     if (result.verdicts.some(v => v.verdict === 'pass')) this.assertCurrent(task);
@@ -139,7 +146,7 @@ export class WorkerVerification {
     return this.inconclusive(request);
   }
   private inconclusive(request: VerificationRequest): VerificationResult {
-    return { ...(request.candidate ? { candidate: { id: request.candidate.id, hash: request.candidate.hash } } : {}), verdicts: request.criteria.map(criterion => ({ criterion, verdict: 'inconclusive',
+    return { ...(request.candidate ? { candidate: candidateReference(request.candidate) } : {}), verdicts: request.criteria.map(criterion => ({ criterion, verdict: 'inconclusive',
       reason: 'No confirmed verification result for the current artifact snapshot. Request a new verification round.', evidenceIds: [] })), evidence: [] };
   }
 }

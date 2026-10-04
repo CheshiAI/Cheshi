@@ -70,20 +70,22 @@ function fixture(linkedWorkspace = false) {
     account: async () => ({ home, models: [] }), management: { details: async () => details(),
       engines: async () => ({ engines: [], error: null }), snapshot: async engineId => ({ engineId, online: true, error: null, agents: [] }),
       control: async () => { throw new Error('unused'); } } });
-  const legacyRecovery = (protocol = 1, progress = false, work = false, integration = false) => {
+  const legacyRecovery = (protocol = 1, progress = false, work = false, integration = false, candidate = false, application = false) => {
     const filename = join(runtimePath, 'runtime.json');
     const config = JSON.parse(readFileSync(filename, 'utf8'));
     const agent = registry.snapshot(workspace).agents[0]!;
     const assignment = agent.assignments.find(a => a.workspaceRoot === workspace)!;
     const profile = { role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,
       serviceTier: agent.serviceTier, permissions: agent.permissions, instructions: agent.instructions };
-    config.recoveryProtocol = protocol; delete config.progressProtocol; delete config.workProtocol; delete config.integrationProtocol; delete config.candidateVerificationProtocol;
+    config.recoveryProtocol = protocol; delete config.progressProtocol; delete config.workProtocol; delete config.integrationProtocol; delete config.candidateVerificationProtocol; delete config.applicationProtocol; delete config.applicationInspectionProtocol;
     if (progress) config.progressProtocol = 1;
     if (work) config.workProtocol = 1;
     if (integration) config.integrationProtocol = 1;
+    if (candidate) config.candidateVerificationProtocol = 1;
+    if (application) config.applicationProtocol = 1;
     config.settingsFingerprint = createHash('sha256').update(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1,
       historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: protocol, questionProtocol: 2, ...(progress ? { progressProtocol: 1 } : {}),
-      ...(work ? { workProtocol: 1 } : {}), ...(integration ? { integrationProtocol: 1 } : {}), agent: profile, workspace: realpathSync(workspace), instructions: assignment.instructions })).digest('hex');
+      ...(work ? { workProtocol: 1 } : {}), ...(integration ? { integrationProtocol: 1 } : {}), ...(candidate ? { candidateVerificationProtocol: 1 } : {}), ...(application ? { applicationProtocol: 1 } : {}), agent: profile, workspace: realpathSync(workspace), instructions: assignment.instructions })).digest('hex');
     config.revision = config.settingsFingerprint;
     labels['ai.cheshi.configuration'] = config.revision;
     writeFileSync(filename, JSON.stringify(config));
@@ -138,7 +140,7 @@ test('starts one project worker with isolated storage, readonly mount, private a
   expect(args.some(arg => arg.includes('runtime.json,readonly'))).toBe(false);
   expect(config.decisionProtocol).toBe(1);
   expect(config.recoveryProtocol).toBe(3);
-  expect(config.verificationProtocol).toBe(1); expect(config.candidateVerificationProtocol).toBe(1);
+  expect(config.verificationProtocol).toBe(1); expect(config.candidateVerificationProtocol).toBe(1); expect(config.applicationProtocol).toBe(1);
   expect(config.permissions).toEqual({ fileWrite: false, commandExecution: false });
   expect(config.instructions).toContain('Project instructions:');
   expect(config).not.toHaveProperty('tokens');
@@ -258,7 +260,7 @@ test('status and submission reject a saved configuration that does not match the
   await fails(f.runtime.request(f.workspace, { ...f.request(), action: 'submit', taskId: 'task', prompt: 'work' }), 'Settings changed');
 });
 
-test('execution inspection posts only the scoped recovery request and preserves worker rejection details', async () => {
+test.each(['recover', 'application-inspect'] as const)('%s posts only the scoped inspection request and preserves worker rejection details', async action => {
   const f = fixture(); await f.runtime.request(f.workspace, f.request());
   const calls: { url: string; body: unknown; authenticated: boolean }[] = [];
   let failure = false;
@@ -268,11 +270,12 @@ test('execution inspection posts only the scoped recovery request and preserves 
   }, { preconnect: fetch.preconnect });
   const mock = spyOn(globalThis, 'fetch').mockImplementation(fakeFetch);
   try {
-    const input = { ...f.request(), action: 'recover' as const, taskId: 'goal', roomId: 'room' };
+    const extra = action === 'application-inspect' ? { candidateId: 'a'.repeat(64), hash: 'b'.repeat(64) } : {};
+    const input = { ...f.request(), action, taskId: 'goal', roomId: 'room', ...extra };
     expect(() => parseAgentRuntimeRequest({ ...input, roomId: '../other' })).toThrow('room ID');
     expect(() => parseAgentRuntimeRequest({ ...input, taskId: '../other' })).toThrow('task ID');
     await f.runtime.request(f.workspace, input);
-    expect(calls).toEqual([{ url: 'http://127.0.0.1:49831/tasks/goal/recover', body: { roomId: 'room' }, authenticated: true }]);
+    expect(calls).toEqual([{ url: `http://127.0.0.1:49831/tasks/goal/${action === 'recover' ? 'recover' : 'application'}`, body: { roomId: 'room', ...extra }, authenticated: true }]);
     failure = true;
     await fails(f.runtime.request(f.workspace, input), 'has not ended');
     expect(calls).toHaveLength(2);
@@ -303,10 +306,10 @@ test('question controls post only the authenticated owner task route with valida
   } finally { mock.mockRestore(); await f.runtime.dispose(); }
 });
 
-test.each([[1, false, false, false], [2, false, false, false], [3, false, false, false], [3, true, false, false], [3, true, true, false], [3, true, true, true]] as const)('worker upgrade from recovery %s, progress %s, work %s, integration %s preserves volume and unknown outcome', async (protocol, progress, work, integration) => {
+test.each([[1, false, false, false, false, false], [2, false, false, false, false, false], [3, false, false, false, false, false], [3, true, false, false, false, false], [3, true, true, false, false, false], [3, true, true, true, false, false], [3, true, true, true, true, false], [3, true, true, true, true, true]] as const)('worker upgrade from recovery %s, progress %s, work %s, integration %s, candidate %s, application %s preserves volume and unknown outcome', async (protocol, progress, work, integration, candidate, application) => {
   const f = fixture();
   try {
-    await f.runtime.request(f.workspace, f.request()); f.legacyRecovery(protocol, progress, work, integration);
+    await f.runtime.request(f.workspace, f.request()); f.legacyRecovery(protocol, progress, work, integration, candidate, application);
     const tasks = [{ id: 'q_question', status: 'unknown', prompt: 'Consult', output: '', error: 'Unconfirmed', createdAt: '2026-10-03' }];
     f.setTasks(tasks);
     const start = f.calls.length;
@@ -337,7 +340,7 @@ test.each(['busy', 'running', 'accepted', 'settings', 'instructions', 'current-p
     }
     if (reason === 'instructions' || reason === 'current-protocol') {
       const filename = join(f.runtimePath, 'runtime.json'), config = JSON.parse(readFileSync(filename, 'utf8'));
-      if (reason === 'instructions') config.instructions += 'changed'; else { config.recoveryProtocol = 3; config.progressProtocol = 1; config.workProtocol = 1; config.integrationProtocol = 1; config.candidateVerificationProtocol = 1; }
+      if (reason === 'instructions') config.instructions += 'changed'; else { config.recoveryProtocol = 3; config.progressProtocol = 1; config.workProtocol = 1; config.integrationProtocol = 1; config.candidateVerificationProtocol = 1; config.applicationProtocol = 1; config.applicationInspectionProtocol = 1; }
       writeFileSync(filename, JSON.stringify(config));
     }
     await fails(f.runtime.request(f.workspace, f.request()), 'Wait for this worker');

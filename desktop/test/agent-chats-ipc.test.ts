@@ -13,6 +13,7 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   const registration = registerAgentChatsIpc({ window, workspaceRoot: '/project', ipc: {
     handle: (name, fn) => { handlers.set(name, fn); }, removeHandler: name => { handlers.delete(name); },
   }, service: {
+    inspectApplication: async root => { calls.push(`${root}/application`); return { rooms: [], messages: [] }; },
     question: async root => { calls.push(root); return { rooms: [], messages: [] }; },
     recover: async root => { calls.push(root); return { rooms: [], messages: [] }; },
     request: root => { calls.push(root); return { rooms: [], messages: [] }; },
@@ -32,6 +33,9 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   expect(calls).toHaveLength(3);
   expect(await api.request({ action: 'question-deadline', roomId: 'room', goalId: 'goal', questionId: 'question', expiresAt: null })).toEqual({ rooms: [], messages: [] });
   expect(calls).toHaveLength(4);
+  expect(() => invoke(owner, mainFrame, { action: 'application-inspect', roomId: 'room', goalId: 'goal', candidateId: '../bad', hash: 'b'.repeat(64) })).toThrow('identity');
+  expect(await api.request({ action: 'application-inspect', roomId: 'room', goalId: 'goal', candidateId: 'a'.repeat(64), hash: 'b'.repeat(64) })).toEqual({ rooms: [], messages: [] });
+  expect(calls.at(-1)).toBe('/project/application');
   registration.dispose();
   expect(handlers.size).toBe(0);
   expect(() => invoke(owner, mainFrame, { action: 'list' })).toThrow('workspace');

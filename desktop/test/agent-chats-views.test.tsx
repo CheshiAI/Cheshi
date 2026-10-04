@@ -9,6 +9,7 @@ import { AgentTaskResults } from '../frontend/src/features/agents/AgentTaskResul
 import { IntegrationDetail } from '../frontend/src/features/agents/IntegrationDetail';
 import { VerificationMessage } from '../frontend/src/features/agents/VerificationMessage';
 import type { ChatsRequest, ChatsSnapshot, ChatTaskTarget } from '../shared/agent-chats';
+import type { IntegrationSummary } from '../shared/agent-work';
 async function withDOM(run: (ui: { render(node: ReactNode): Promise<void>; click(label: string): Promise<void>; type(label: string, text: string): Promise<void> }) => Promise<void>) {
   const window = new Window();
   const globals = { window, document: window.document, navigator: window.navigator, Node: window.Node, HTMLElement: window.HTMLElement,
@@ -157,6 +158,31 @@ function recoverySnapshot(block: string | null = null): ChatsSnapshot {
     progress: 'Requirements reviewed', reason: 'Choose the sign-in method', nextAction: 'Provide the sign-in method', resumeBlocked: block } });
   return data;
 }
+test('Chats and task details inspect exact application identity without sending a prompt and retain errors and drafts', async () => {
+  await withDOM(async ui => {
+    const data = recoverySnapshot(), calls: ChatsRequest[] = [];
+    const integration: IntegrationSummary = { version: 1, id: 'a'.repeat(64), taskId: 'task', roomId: 'room', requestIds: ['b'.repeat(64)],
+      status: 'prepared', candidateHash: 'c'.repeat(64), files: [], issues: [], createdAt: '2026-10-04T00:00:00Z', checkedAt: '2026-10-04T00:00:00Z',
+      application: { id: 'd'.repeat(64), candidateId: 'a'.repeat(64), hash: 'c'.repeat(64), verificationId: 'e'.repeat(64), status: 'interrupted',
+        updatedAt: '2026-10-04T00:00:00Z', files: [{ path: 'login.ts', before: 'f'.repeat(64), after: 'c'.repeat(64), phase: 'writing', observed: 'before' }] } };
+    data.messages[0]!.goalProgress!.integration = integration;
+    const api = { request: async (request: ChatsRequest) => { calls.push(request); if (request.action === 'application-inspect') throw new Error('Application lock belongs to another operation.'); return data; } };
+    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} onOpenTask={() => {}} />);
+    await ui.click('Open goal thread · 1'); await ui.type('Message', 'Keep this draft'); await ui.click('Inspect application');
+    expect(calls.filter(c => c.action !== 'list')).toEqual([{ action: 'application-inspect', roomId: 'room', goalId: 'goal', candidateId: integration.id, hash: integration.candidateHash! }]);
+    expect(document.body.textContent).toContain('Application lock belongs to another operation.');
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Keep this draft');
+    const inspected: string[][] = [];
+    for (const status of ['unknown', 'interrupted'] as const) {
+      await ui.render(<AgentTaskResults tasks={[{ id: 'task', roomId: 'room', prompt: 'Implement login', status, createdAt: integration.createdAt, output: '', error: null,
+        inspection: { integration, finishedAt: null, threadId: 'native', conversation: 'task', goal: null, messages: [], evidence: [], recall: null, error: null } }]}
+        requestedTaskId="task" loading={false} running onInspectApplication={(...args) => inspected.push(args)} />);
+      const button = [...document.querySelectorAll('button')].find(b => b.textContent === 'Inspect application')!;
+      expect(button.disabled).toBe(status === 'unknown'); await ui.click('Inspect application');
+    }
+    expect(inspected).toEqual([['task', 'room', integration.id, integration.candidateHash!]]);
+  });
+});
 
 test('Chats and task details expose integration conflicts and hashes without an apply control', async () => {
   await withDOM(async ui => {
@@ -201,6 +227,35 @@ test('candidate verification shows pending and stale results with receipts, with
     await ui.render(<VerificationMessage kind="verification_result" text={JSON.stringify(result)} />);
     expect(document.body.textContent).toContain('bun test login.test.ts');
     expect(document.body.textContent).toContain('3 pass');
+  });
+});
+
+test('application status distinguishes interrupted files and project verification from candidate verification', async () => {
+  await withDOM(async ui => {
+    const id = 'a'.repeat(64), hash = 'b'.repeat(64), applicationId = 'c'.repeat(64);
+    const result = { candidate: { id, hash, applicationId }, verdicts: [{ criterion: 'Login works', verdict: 'pass' as const, reason: 'Project tests passed', evidenceIds: ['check'] }],
+      evidence: [{ id: 'check', kind: 'command' as const, detail: 'bun test login.test.ts', output: 'project pass', exitCode: 0, successful: true }] };
+    const integration = { version: 1 as const, id, taskId: 'task', roomId: 'room', requestIds: ['d'.repeat(64)], status: 'prepared' as const,
+      candidateHash: hash, files: [], issues: [], createdAt: '2026-10-04T00:00:00Z', checkedAt: '2026-10-04T00:00:00Z' };
+    for (const status of ['applied', 'interrupted', 'conflict', 'aborted'] as const) {
+      const observed = status === 'aborted' ? 'before' : status === 'conflict' ? 'changed' : 'after';
+      await ui.render(<IntegrationDetail integration={{ ...integration, status: status === 'applied' ? 'prepared' : 'stale',
+        issues: status === 'conflict' ? [{ kind: 'source_changed', path: null, requestIds: integration.requestIds }] : [],
+        application: { id: applicationId, candidateId: id, hash, status,
+        verificationId: 'e'.repeat(64), updatedAt: integration.checkedAt, files: [{ path: 'login.ts', before: 'f'.repeat(64), after: hash, phase: 'written', observed }] },
+        projectVerification: { requestId: 'f'.repeat(64), agentId: 'verifier', status: status === 'applied' ? 'pass' : 'stale', result } }} />);
+      expect(document.body.textContent).toContain(`Project application · ${status}`);
+      expect(document.body.textContent).toContain(`login.ts · written · ${observed}`);
+      expect(document.body.textContent).toContain('does not retry writes');
+      expect(document.body.textContent).toContain(status === 'applied' ? 'Project verification: pass' : 'Project verification: stale');
+      if (status === 'conflict') expect(document.body.textContent).toContain('Original file changed since delegation');
+      else expect(document.body.textContent).not.toContain('Original file changed since delegation');
+      if (status === 'aborted') expect(document.body.textContent).toContain('Application aborted · Original files match the pre-application snapshot');
+      if (status === 'interrupted') expect(document.body.textContent).toContain('Application interrupted · Inspect file states before continuing');
+    }
+    await ui.render(<VerificationMessage kind="verification_result" text={JSON.stringify(result)} />);
+    expect(document.body.textContent).toContain(`Project application: ${applicationId}`);
+    expect(document.body.textContent).not.toContain('Not applied to project');
   });
 });
 

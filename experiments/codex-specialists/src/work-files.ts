@@ -6,7 +6,7 @@ import { assertWorkRequest, parseWorkRequest, parseWorkResult, workPath, workSna
 export const workDigest = (text: string) => createHash('sha256').update(text).digest('hex');
 
 /** Check every component, including missing files, before opening a project path. */
-function checkedPath(root: string, path: string): string {
+export function checkedWorkPath(root: string, path: string): string {
   workPath(path);
   const absoluteRoot = realpathSync(root), target = resolve(absoluteRoot, path);
   if (relative(absoluteRoot, target).replaceAll('\\', '/') !== path) throw new Error('Work path escaped its workspace.');
@@ -19,9 +19,9 @@ function checkedPath(root: string, path: string): string {
   return target;
 }
 export function readWorkFile(root: string, path: string): WorkFile {
-  const filename = checkedPath(root, path);
+  const filename = checkedWorkPath(root, path);
   let fd: number;
-  try { fd = openSync(filename, constants.O_RDONLY | constants.O_NOFOLLOW); }
+  try { fd = openSync(filename, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { path, content: null, sha256: null };
     throw error;
@@ -29,7 +29,10 @@ export function readWorkFile(root: string, path: string): WorkFile {
   try {
     const stat = fstatSync(fd);
     if (!stat.isFile() || stat.size > 128_000) throw new Error('Delegation supports text files up to 128 KB each.');
-    const bytes = readFileSync(fd), content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    if (process.platform === 'linux' && realpathSync(`/proc/self/fd/${fd}`) !== filename) throw new Error('Work path changed during open.');
+    const bytes = readFileSync(fd);
+    if (bytes.length > 128_000) throw new Error('Work file grew beyond 128 KB.');
+    const content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     if (content.includes('\0') || !Buffer.from(content).equals(bytes)) throw new Error('Delegation requires UTF-8 text without a byte-order mark.');
     return { path, content, sha256: workDigest(content) };
   } finally { closeSync(fd); }
@@ -61,7 +64,7 @@ export class WorkFiles {
     mkdirSync(temporary, { mode: 0o700 });
     for (const file of request.files) {
       if (file.content === null) continue;
-      const target = checkedPath(temporary, file.path);
+      const target = checkedWorkPath(temporary, file.path);
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, file.content, { flag: 'wx', mode: 0o600 });
     }
@@ -91,7 +94,7 @@ export class WorkFiles {
     if (!this.request.writePaths.includes(path)) throw new Error('File is outside the delegated write scope.');
     if (content !== null && (typeof content !== 'string' || Buffer.byteLength(content) > 128_000 || content.includes('\0'))) throw new Error('Invalid work file content.');
     this.assertTree();
-    const filename = checkedPath(this.directory, path);
+    const filename = checkedWorkPath(this.directory, path);
     if (content === null) { if (existsSync(filename)) unlinkSync(filename); }
     else {
       mkdirSync(dirname(filename), { recursive: true });

@@ -35,10 +35,10 @@ export interface AgentManagementApi {
 }
 
 export interface DeleteContainer { engineId: string; containerId: string; deleteData: boolean }
-/** Expected contention is raised in preload, without an Electron handler failure. */
+/** Expected deletion blocks reach the existing UI error display without an Electron handler failure. */
 export function unwrapAgentDeletion(value: unknown): unknown {
   const result = agentRecord(value);
-  if (result.status === 'busy') throw new Error(agentText(result.message));
+  if (result.status === 'busy' || result.status === 'blocked') throw new Error(agentText(result.message));
   if (result.status !== 'deleted') throw new TypeError('Invalid deletion response.');
   return result.value;
 }

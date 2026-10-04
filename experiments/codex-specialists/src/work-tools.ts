@@ -17,7 +17,7 @@ Use ask_agent only for consultation; use request_work for file changes. Keep the
 Specify exact text files for context and exact writePaths; new files may be absent. Dependencies not included in the snapshot are not installed automatically.
 Continue independent work while a peer works, or record wait when only results remain. Do not poll.
 Use work_status to inspect returned changes and review_work to accept a proposal or request changes.
-Acceptance records review only. No work result is applied to the original project in this version. Do not claim an implementation has been integrated or verified based on submission.
+Acceptance records review only. Work results do not directly change the project; use the configured integration and verification flow for application. Do not claim an implementation has been integrated or verified based on submission.
 For revisions, review with changes_requested and send a new request_work referencing previousRequestId. The prior result becomes the new isolated baseline without expanding file scope.
 For delegated tasks, edit only with work_write and read with work_read. Commands, when enabled, have read-only snapshot access and a disposable scratch directory. Never change the original project or start another delegation.
 Call submit_work as the last tool call, then end the turn. If blocked, explain why; the result is not a success.

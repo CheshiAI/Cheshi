@@ -10,6 +10,7 @@ import { AGENT_TERMINAL_CHANNELS } from '../shared/agent-terminal.ts';
 import type { AgentManagementApi } from '../shared/agent-management.ts';
 import config from '../../forge.config.mts';
 import { WorkerOperationBusyError } from '../lib/agent-management/operations.mts';
+import { UnresolvedApplicationError } from '../../experiments/codex-specialists/src/application-storage.ts';
 
 test('workspace IPC refuses foreign senders, subframes and invalid control actions', async () => {
   const events = new EventEmitter(), mainFrame = {};
@@ -28,8 +29,10 @@ test('workspace IPC refuses foreign senders, subframes and invalid control actio
   let terminalCalls = 0, terminalDisposed = false;
   const removals: unknown[] = [];
   let deletionBusy = false;
+  let applicationUnresolved = false;
   const registration = registerAgentManagementIpc({ window, ipc, service, remove: async value => {
     if (deletionBusy) throw new WorkerOperationBusyError('Nothing was deleted. Try again shortly.');
+    if (applicationUnresolved) throw new UnresolvedApplicationError();
     removals.push(value);
   }, terminal: {
     open: async (engineId, agentId) => { terminalCalls++; return { id: 'session', engineId, agentId, ended: false, error: null }; },
@@ -63,6 +66,13 @@ test('workspace IPC refuses foreign senders, subframes and invalid control actio
   expect(busy).toBeInstanceOf(Error); expect((busy as Error).message).toBe('Nothing was deleted. Try again shortly.');
   expect(removals).toEqual([]);
   deletionBusy = false;
+  applicationUnresolved = true;
+  expect(await remove(event, deletion)).toEqual({ status: 'blocked', message: new UnresolvedApplicationError().message });
+  let blocked: unknown;
+  try { await bridge.remove!(deletion); } catch (error) { blocked = error; }
+  expect(blocked).toBeInstanceOf(Error); expect((blocked as Error).message).toContain('Inspect application');
+  expect(removals).toEqual([]);
+  applicationUnresolved = false;
   await bridge.remove!(deletion);
   expect(removals).toEqual([deletion]);
   events.emit('closed');
@@ -86,6 +96,10 @@ test('packaged runtime includes all agent modules and native Node can load them'
     ...['engine', 'docker', 'docker-errors', 'service', 'ipc', 'terminal', 'registry', 'registry-ipc', 'runtime', 'instruction-files', 'operations', 'docker-deletion', 'deletion'].map(name => `desktop/lib/agent-management/${name}.mts`)];
   for (const path of paths) expect(ignore(`/${path}`)).toBe(false);
   expect(ignore('/experiments/codex-specialists/src/integration-contract.ts')).toBe(false);
+  expect(ignore('/experiments/codex-specialists/src/application-contract.ts')).toBe(false);
+  expect(ignore('/experiments/codex-specialists/src/application-storage.ts')).toBe(false);
+  expect(ignore('/desktop/lib/agent-management/application-deletion.mts')).toBe(false);
+  expect(ignore('/experiments/codex-specialists/src/integration-application.ts')).toBe(true);
   expect(ignore('/experiments/codex-specialists/src/agent.test.ts')).toBe(true);
   expect(ignore('/experiments/codex-specialists/src/candidate-verification-fixture.ts')).toBe(true);
   expect(ignore('/experiments/codex-specialists/fixtures')).toBe(true);

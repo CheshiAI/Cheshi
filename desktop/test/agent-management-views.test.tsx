@@ -4,6 +4,7 @@ import { act, type ReactNode } from 'react';
 import { AgentManagementViews } from '../frontend/src/features/shell/AgentManagementViews';
 import { AgentTaskResults } from '../frontend/src/features/agents/AgentTaskResults';
 import type { AgentManagementApi, AgentTask } from '../shared/agent-management';
+import { unwrapAgentDeletion } from '../shared/agent-management';
 import type { AgentRegistryApi, AgentRegistrySnapshot, SaveSpecialistAgent } from '../shared/agent-registry';
 import { registryDeferred, specialistAgent, specialistModels } from './agent-registry-fixtures';
 import type { CodexAccountsApi } from '../shared/codex-accounts';
@@ -620,15 +621,16 @@ test('container deletion requires confirmation, preserves state on failure and r
   });
 });
 
-test('agent deletion includes its revision and explicit saved-data choice and removes registration only after acknowledgement', async () => {
+test('agent deletion preserves registration and shows application blocks until a successful retry', async () => {
   const profile = specialistAgent();
   let stored: AgentRegistrySnapshot = { workspaceRoot: '/project', agents: [profile] };
   const pending = registryDeferred<void>();
+  let reply: unknown = { status: 'blocked', message: 'Open the task details and select Inspect application before deleting.' };
   const requests: unknown[] = [];
   const registryApi: AgentRegistryApi = {
     list: async () => stored, models: async () => [], onDidChange: () => () => {},
     save: async () => { throw new Error('unused'); },
-    remove: async input => { requests.push(input); await pending.promise; stored = { ...stored, agents: [] }; return stored; },
+    remove: async input => { requests.push(input); await pending.promise; unwrapAgentDeletion(reply); stored = { ...stored, agents: [] }; return stored; },
   };
   const api: AgentManagementApi = {
     engines: async () => ({ error: null, engines: [] }),
@@ -642,8 +644,14 @@ test('agent deletion includes its revision and explicit saved-data choice and re
     expect(requests).toEqual([{ id: profile.id, revision: profile.revision, deleteData: true }]);
     expect(document.querySelector('[aria-label="Agent selection"]')?.textContent).toContain(profile.name);
     await act(async () => pending.resolve());
+    expect(document.querySelector('dialog [role="alert"]')?.textContent).toContain('Inspect application');
+    expect(document.querySelector('[aria-label="Agent selection"]')?.textContent).toContain(profile.name);
+    expect(document.querySelector('[aria-label="Also delete saved data"]')?.getAttribute('aria-checked')).toBe('true');
+    reply = { status: 'deleted' };
+    await click('Delete agent');
     expect(document.querySelector('dialog')).toBeNull();
     expect(document.querySelector('[aria-label="Agent selection"]')?.textContent).not.toContain(profile.name);
+    expect(requests).toEqual(Array(2).fill({ id: profile.id, revision: profile.revision, deleteData: true }));
   });
 });
 

@@ -8,6 +8,7 @@ import { bindingFor, type Message } from '../lib/agent-orchestration/mailbox.mts
 import { specialistAgent } from './agent-registry-fixtures';
 import type { AgentDetails } from '../shared/agent-management';
 import type { ChatsRequest } from '../shared/agent-chats';
+import type { AgentRuntimeRequest } from '../shared/agent-runtime';
 import { parseChatsSnapshot } from '../shared/agent-chats';
 const directories: string[] = [];
 afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }); });
@@ -33,6 +34,22 @@ function fixture() {
   const send = (id: string, patch: Partial<Extract<ChatsRequest, { action: 'send' }>> = {}) => request({ action: 'send', id, roomId: 'room', threadId: null, recipient: null, text: 'Build login', goal: true, ...patch });
   return { workspace, filename, agents, details, sent, options, service, request, send, uncertain: () => { uncertain = true; } };
 }
+test('application inspection routes only the existing owner and preserves queued work without automatic dispatch', async () => {
+  const f = fixture(); f.send('goal'); await f.service.tick();
+  f.details.tasks[0]!.status = 'interrupted';
+  f.send('queued', { threadId: 'goal', goal: false });
+  const calls: AgentRuntimeRequest[] = [];
+  const service = createAgentChats({ ...f.options, recover: async (_workspace, request) => { calls.push(request); return { details: f.details }; } });
+  const input = { action: 'application-inspect' as const, roomId: 'room', goalId: 'goal', candidateId: 'a'.repeat(64), hash: 'b'.repeat(64) };
+  const result = await service.inspectApplication(f.workspace, input);
+  expect(calls).toEqual([{ action: 'application-inspect', agentId: 'dev', engineId: 'docker:test', roomId: 'room',
+    taskId: f.sent[0]!.task, candidateId: input.candidateId, hash: input.hash }]);
+  expect(f.sent).toHaveLength(1); expect(result.messages.find(m => m.id === 'queued')?.status).toBe('queued');
+  f.agents[0]!.accountId = 'replacement';
+  let error: unknown;
+  try { await service.inspectApplication(f.workspace, input); } catch (reason) { error = reason; }
+  expect(error).toBeInstanceOf(Error); expect(calls).toHaveLength(1);
+});
 test('room membership and messages survive restart; sends are idempotent and workspace scoped', async () => {
   const f = fixture();
   f.send('goal'); f.send('goal');
