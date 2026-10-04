@@ -142,6 +142,38 @@ test('failed wake attempts back off, stop after three attempts and require an ex
   f.setNow(999999); await fails(f.connect(), 'Engine unavailable'); expect(f.startCount()).toBe(3);
   f.lifecycle.retry(f.binding); await fails(f.connect(), 'Engine unavailable'); expect(f.startCount()).toBe(4);
 });
+test.each([false, true])('successful inspection clears retry state without resetting idle scheduling (idle: %s)', async idle => {
+  const f = fixture(); await f.connect(); f.setIdle(idle); await f.rest();
+  const inspect = f.options.inspect;
+  f.options.inspect = async () => { throw new Error('Temporary Docker failure'); };
+  f.setNow(1000); await fails(f.lifecycle.connection(f.binding, false), 'Temporary Docker failure');
+  expect(f.lifecycle.nextCheck(f.binding)).toBe(31000);
+  f.setNow(31000); f.options.inspect = inspect;
+  expect(await f.lifecycle.connection(f.binding, false)).toEqual(f.connection);
+  await f.rest();
+  expect(f.lifecycle.state(f.binding)).toEqual({ phase: 'running', error: null });
+  expect(f.lifecycle.nextCheck(f.binding)).toBe(idle ? 300000 : null);
+  f.options.inspect = async () => { throw new Error('Another Docker failure'); };
+  f.setNow(40000); await fails(f.lifecycle.connection(f.binding, false), 'Another Docker failure');
+  expect(f.lifecycle.nextCheck(f.binding)).toBe(70000);
+});
+test('incomplete inspection continues backoff until healthy details confirm recovery', async () => {
+  const f = fixture(); await f.connect();
+  const inspect = f.options.inspect;
+  f.options.inspect = async () => { throw new Error('Temporary Docker failure'); };
+  await fails(f.lifecycle.connection(f.binding, false), 'Temporary Docker failure');
+  f.options.inspect = inspect; f.setNow(30000);
+  f.details.error = 'Task history is unavailable.';
+  await fails(f.lifecycle.connection(f.binding, false), 'Task history is unavailable.');
+  expect(f.lifecycle.nextCheck(f.binding)).toBe(90000);
+  const reads = f.inspectCount();
+  expect(await f.lifecycle.connection(f.binding, false)).toBeNull();
+  expect(f.inspectCount()).toBe(reads);
+  f.setNow(90000); f.details.error = null;
+  expect(await f.lifecycle.connection(f.binding, false)).toEqual(f.connection);
+  expect(f.lifecycle.state(f.binding)).toEqual({ phase: 'running', error: null });
+  expect(f.lifecycle.nextCheck(f.binding)).toBeNull();
+});
 test('a host crash before sleep commit releases preparation without replaying or creating a worker', async () => {
   const f = fixture(); await f.connect(); await f.rest(); f.setNow(300000);
   f.options.control = async (_connection, action) => { f.actions.push(action); if (action === 'commit') throw new Error('Lost commit'); return { protocol: 1, idle: true, nextWakeAt: null, lease: 'lease' }; };

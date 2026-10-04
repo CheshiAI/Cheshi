@@ -7,6 +7,46 @@ import { createAgentOrchestration } from '../lib/agent-orchestration/service.mts
 import { bindingFor, type Message, type Binding } from '../lib/agent-orchestration/mailbox.mts';
 import type { AgentDetails } from '../shared/agent-management.ts';
 
+test('recovered Docker inspection stops deadline-driven exchanges until the next worker event', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cheshi-recovered-routing-'));
+  const binding = bindingFor('/workspace', 'docker:test', 'dev', 'account');
+  const connection = { endpoint: 'dev', token: 'fixture' };
+  const details: AgentDetails = { agent: { id: 'dev', name: 'Dev', state: 'running', image: 'fixture' },
+    ready: true, busy: true, authenticated: true, threadId: null, tasks: [], logs: '', error: null };
+  let now = Date.now() - 30001, unavailable = false, inspections = 0, exchanges = 0;
+  let changed = () => {};
+  const lifecycle = new WorkerLifecycle({ filename: join(directory, 'lifecycle.json'), now: () => now,
+    inspect: async () => { inspections++; if (unavailable) throw new Error('Temporary Docker failure'); return { connection, details }; },
+    start: async () => { throw new Error('Must not restart the running worker'); },
+    stopped: async () => false, demand: () => false,
+    control: async () => ({ protocol: 1, idle: false, nextWakeAt: null }),
+  });
+  const coordinator = createAgentOrchestration({ filename: join(directory, 'mailbox.json'),
+    peer: () => ({ id: 'dev', name: 'Dev', role: 'development' }),
+    around: (b, operation) => lifecycle.exclusive(b, operation),
+    connect: (b, demand) => lifecycle.connection(b, demand),
+    rest: (b, c, busy) => lifecycle.rest(b, c, busy), nextCheck: b => lifecycle.nextCheck(b),
+    watch: (_connection, notify) => { changed = notify; return () => {}; },
+    exchange: async () => { exchanges++; return { protocol: 1, received: [], outgoing: [] }; },
+  });
+  try {
+    await lifecycle.connection(binding, false);
+    unavailable = true;
+    let failure: unknown;
+    try { await lifecycle.connection(binding, false); } catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(Error);
+    unavailable = false; now = Date.now(); inspections = 0;
+    coordinator.register(binding); coordinator.start(); await coordinator.settled();
+    expect(inspections).toBe(1); expect(exchanges).toBe(1);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    expect(inspections).toBe(1); expect(exchanges).toBe(1);
+    expect(coordinator.error(binding.id)).toBeNull();
+    changed(); await coordinator.settled();
+    expect(inspections).toBe(2); expect(exchanges).toBe(2);
+    expect(lifecycle.nextCheck(binding)).toBeNull();
+  } finally { await coordinator.dispose(); rmSync(directory, { recursive: true, force: true }); }
+});
+
 test('three participant routing wakes only recipients and a sleeping owner receives consultation and verification results after host restart', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'cheshi-idle-routing-'));
   const peers = [{ id: 'dev', name: 'Dev', role: 'development' }, { id: 'planner', name: 'Planner', role: 'planning' }, { id: 'verifier', name: 'Verifier', role: 'verification' }];

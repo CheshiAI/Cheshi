@@ -98,11 +98,15 @@ export class WorkerLifecycle {
     this.save(binding, { phase: 'running', details: { ...structuredClone(details), logs: '' }, nextWakeAt: null, failures: 0, retryAt: 0, error: null });
     this.reconciled.add(binding.id); this.idle.delete(binding.id);
   }
-  private remember(binding: Binding, details: AgentDetails) {
-    this.save(binding, { details: { ...structuredClone(details), logs: '' } });
+  private remember(binding: Binding, details: AgentDetails, retryRecovered = false) {
+    this.save(binding, { details: { ...structuredClone(details), logs: '' },
+      ...(retryRecovered ? { failures: 0, retryAt: 0, error: null } : {}) });
   }
   private assertContainer(details: AgentDetails, containerId: string) {
     if (details.agent.id !== containerId) throw new Error('Worker identity changed. Refresh before controlling it.');
+  }
+  private assertRetryRecovered(details: AgentDetails) {
+    if (details.error !== null) throw new Error(details.error);
   }
   disable(binding: Binding) { this.save(binding, { phase: 'disabled', error: 'Worker stopped. Start it explicitly in Agents.' }); }
   permitsStoppedWake(binding: Binding) { const e = this.entry(binding); return !!e && (['sleeping', 'starting'].includes(e.phase) || e.phase === 'error' && e.startAttempted === true); }
@@ -139,12 +143,14 @@ export class WorkerLifecycle {
     const live = await this.options.inspect(binding);
     if (e && live && e.details && e.details.agent.id !== live.details.agent.id) throw new Error('Worker identity changed. Start it explicitly.');
     if (live) {
+      if (e?.failures) this.assertRetryRecovered(live.details);
       if (e?.phase === 'draining' || e?.phase === 'sleeping') {
         // A crash between prepare and commit must release the admission lease before delivery.
         await this.options.control(live.connection, 'resume');
       }
       if (e?.phase !== 'running') this.adopt(binding, live.details);
-      else if (live.details.error === null) this.remember(binding, live.details);
+      // Recover inspection retries without resetting the existing idle deadline.
+      else if (live.details.error === null) this.remember(binding, live.details, e.failures > 0);
       this.reconciled.add(binding.id);
       if (demand || due) this.demand(binding);
       return live.connection;
