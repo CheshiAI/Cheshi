@@ -203,6 +203,39 @@ describe('voice session recovery', () => {
   const hello = (socket: Socket, peerId: string) => socket.receive({ type: 'hello', peerId, deviceId: 'phone', name: 'Test phone', token: 'test-device-secret' });
   const request = (socket: Socket, peerId: string, type: string, callId = 'call-1') => socket.receive({ type: 'request', peerId, payload: { type, callId } });
   const events = (socket: Socket, type: string) => socket.frames.filter(f => (f.payload as JsonObject)?.type === type);
+  test.each(['ready', 'pong'])('idle reconnect clears a transport error after %s', async type => {
+    const h = await host();
+    try {
+      h.socket.onerror?.();
+      expect(h.voice.snapshot().error).toBe('Cannot reach the connection service.');
+      h.socket.close();
+      await until(() => h.sockets.length === 2);
+      expect(h.voice.snapshot().connected).toBe(false);
+      h.sockets[1]!.receive({ type });
+      await until(() => h.voice.snapshot().connected);
+      expect(h.voice.snapshot().error).toBeNull();
+      expect(h.voice.busy).toBe(false);
+    } finally { await h.voice.dispose(); }
+  });
+  test('transport errors and recovery preserve the previous call failure', async () => {
+    const h = await host();
+    try {
+      await h.call(); h.callbacks().failed('Provider failed');
+      await until(() => !h.voice.busy);
+      const reason = h.voice.snapshot().error;
+      expect(reason).toBe('음성 서비스 오류로 통화가 종료됐습니다.');
+      h.socket.onerror?.();
+      expect(h.voice.snapshot().error).toBe(reason);
+      h.socket.close();
+      await until(() => h.sockets.length === 2);
+      h.sockets[1]!.receive({ type: 'ready' });
+      await until(() => h.voice.snapshot().connected);
+      expect(h.voice.snapshot().error).toBe(reason);
+      h.sockets[1]!.receive({ type: 'pong' });
+      await new Promise(resolve => setImmediate(resolve));
+      expect(h.voice.snapshot().error).toBe(reason);
+    } finally { await h.voice.dispose(); }
+  });
   test('phone reconnect preserves provider, replays SDP and receipts, and dispatches final speech once', async () => {
     const h = await host();
     try {

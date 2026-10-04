@@ -33,6 +33,7 @@ export class AgentVoice {
   private ending: Promise<void> | null = null;
   private shutdownFailed = false;
   private error: string | null = null;
+  private connectionError: string | null = null;
   private connected = false;
   private disposed = false;
   private retry: ReturnType<typeof setTimeout> | null = null;
@@ -54,7 +55,7 @@ export class AgentVoice {
   }
   get busy() { return this.call !== null || this.ending !== null || this.shutdownFailed; }
   snapshot(): VoiceSnapshot {
-    return { configured: !!this.options.origin, connected: this.connected, error: this.error, calling: this.busy,
+    return { configured: !!this.options.origin, connected: this.connected, error: this.error ?? this.connectionError, calling: this.busy,
       link: this.pairing && this.options.origin ? `${this.options.origin}/#host=${digest(this.storage.state.token)}&pair=${this.pairing.token}` : null,
       expiresAt: this.pairing?.expires ?? null,
       pending: this.pending ? { id: this.pending.peerId, name: this.pending.name, code: this.pending.code } : null,
@@ -134,14 +135,14 @@ export class AgentVoice {
         this.operation = this.operation.then(async () => { if (socket === this.socket) await this.receive(parseVoiceFrame(String(event.data)), socket); })
           .catch(() => { this.error = 'A phone request failed. Check the phone and Chats for its delivery status.'; });
       };
-      socket.onerror = () => { if (socket !== this.socket) return; this.diagnostics.record('control-error'); this.error = 'Cannot reach the connection service.'; };
+      socket.onerror = () => { if (socket !== this.socket) return; this.diagnostics.record('control-error'); this.connectionError = 'Cannot reach the connection service.'; };
       socket.onclose = event => this.disconnect(socket, event?.code);
-    } catch { this.error = 'Invalid or unavailable connection service.'; this.scheduleReconnect(); }
+    } catch { this.connectionError = 'Invalid or unavailable connection service.'; this.scheduleReconnect(); }
   }
   private async receive(frame: Record<string, unknown>, socket: WebSocket) {
     if (frame.type === 'ready' || frame.type === 'pong') {
       if (!this.connected) this.diagnostics.record('control-open');
-      this.clearConnectTimer(); this.connected = true; this.pongAt = Date.now(); return;
+      this.clearConnectTimer(); this.connected = true; this.connectionError = null; this.pongAt = Date.now(); return;
     }
     const peerId = voiceId(frame.peerId);
     if (frame.type === 'hello') {
