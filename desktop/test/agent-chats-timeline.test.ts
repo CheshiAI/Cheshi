@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { expect, test } from 'bun:test';
 import type { RoomMessage } from '../shared/agent-chats';
-import { exchangeLabel, workLabel } from '../frontend/src/features/agent-chats/roomTimeline';
+import { exchangeLabel } from '../frontend/src/features/agent-chats/roomTimeline';
 import { legacyReplyLinks } from '../frontend/src/features/agent-chats/useRoomTimeline';
 
 const rawId = 'a'.repeat(64);
@@ -27,14 +27,4 @@ test('a legacy question is not assumed to be waiting; closure and late replies r
   expect(exchangeLabel(question, [question, { ...linked, status: 'late reply · not applied' }])).toBe('Reply status unavailable');
   expect(exchangeLabel(question, [question, { ...linked, kind: 'question_closed' }])).toBe('Closed');
   expect(exchangeLabel({ ...question, questionId: question.id }, [question])).toBe('Awaiting reply');
-});
-
-test('unavailable or blocked work cannot be masked by sleeping workers', () => {
-  const task: RoomMessage = { ...question, sender: 'user', kind: 'goal', status: 'blocked', worker: { phase: 'sleeping', error: null },
-    goalProgress: { phase: 'unavailable', progress: '', reason: '', nextAction: '', turns: null, resumeBlocked: 'Check worker state' } };
-  expect(workLabel(task)).toBe('Needs attention · current task state unavailable');
-  expect(workLabel({ ...task, status: 'unknown' })).toBe('Execution needs checking');
-  expect(workLabel({ ...task, status: 'running' })).toBe('Task state unavailable');
-  expect(workLabel({ ...task, goalProgress: undefined })).toBe('Needs attention');
-  expect(workLabel({ ...task, goalProgress: undefined, status: 'waiting' })).toBe('Waiting for a reply');
 });

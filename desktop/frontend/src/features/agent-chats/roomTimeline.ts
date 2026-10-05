@@ -42,17 +42,3 @@ export function currentWork(messages: RoomMessage[]) {
   }
   return [...tasks.values()].filter(message => !['completed', 'held'].includes(message.goalProgress?.phase ?? message.status ?? ''));
 }
-export function workLabel(message: RoomMessage) {
-  const state = message.goalProgress?.phase ?? message.status;
-  if (state === 'unknown' || message.status === 'unknown') return 'Execution needs checking';
-  if (state === 'unavailable') return ['blocked', 'failed', 'interrupted'].includes(message.status ?? '')
-    ? 'Needs attention · current task state unavailable' : 'Task state unavailable';
-  if (state === 'blocked' || state === 'failed' || state === 'interrupted') return 'Needs attention';
-  if (message.dialogue?.questions.some(q => !q.answer)) return 'Waiting for your answer';
-  if (message.worker?.phase === 'starting') return 'Starting';
-  if (message.worker?.phase === 'disabled') return 'Stopped · start in Agents';
-  if (message.worker?.phase === 'error') return 'Worker unavailable';
-  if (state === 'waiting') return 'Waiting for a reply';
-  if (message.worker?.phase === 'sleeping') return 'Sleeping · wakes on request';
-  return ({ queued: 'Queued', sending: 'Sending', sent: 'Accepted', running: 'Working', active: 'Working', ready: 'Continuing' })[state ?? ''] ?? 'Checking';
-}

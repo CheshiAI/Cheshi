@@ -11,9 +11,9 @@ import searchStyles from '../chat/ChatHistorySearch.module.css';
 import styles from './ChatsRoomList.module.css';
 import type { ChatsLoadPhase } from './useChatsSnapshot';
 
-export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing, disabled, error, onSelect, onNew, onRefresh, onOpenAgents }: {
+export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing, disabled, error, onSelect, onNew, onRefresh }: {
   snapshot: ChatsSnapshot; selectedId: string | null; phase: ChatsLoadPhase; loaded: boolean; refreshing: boolean; disabled: boolean; error: string | null;
-  onSelect(id: string): void; onNew(): void; onRefresh(): void; onOpenAgents(): void;
+  onSelect(id: string): void; onNew(): void; onRefresh(): void;
 }) {
   const [query, setQuery] = useState('');
   const searchInput = useRef<HTMLInputElement>(null);
@@ -53,6 +53,5 @@ export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing,
         </nav>
       </OverlayScrollArea>
     </div>
-    <NeumorphicButton variant="ghost" onClick={onOpenAgents}>Manage agents and workers</NeumorphicButton>
   </section>;
 }

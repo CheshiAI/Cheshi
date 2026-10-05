@@ -1,14 +1,15 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Phone, Reply, Users, X } from 'lucide-react';
+import { Phone, Reply, Users } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { NeumorphicButton, NeumorphicTextField } from '../../shared/ui';
+import { NeumorphicButton, RegionalBlur } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import { AgentAvatar } from '../../shared/agent-management/AgentAvatar';
 import { MessageContent } from '../chat/MessageContent';
 import { ChatMessageLabel } from '../chat/ChatMessageLabel';
+import { syncChatComposerOverlayHeight } from '../chat/chatComposerOverlay';
 import { isWorkKind } from '../../../../shared/agent-work';
 import { VerificationMessage } from '../agents/VerificationMessage';
 import { WorkMessage } from '../agents/WorkMessage';
@@ -20,17 +21,18 @@ import { useChatsSnapshot } from './useChatsSnapshot';
 import { ChatsRoomList } from './ChatsRoomList';
 import { VoiceDialog } from './VoiceDialog';
 import { RoomDialog } from './RoomDialog';
+import { ChatsComposer } from './ChatsComposer';
 import { RoomWorkState } from './RoomWorkState';
 import { ExecutionRecord } from './ExecutionRecord';
-import { currentWork, exchangeLabel, messageRoot, workLabel } from './roomTimeline';
+import { currentWork, exchangeLabel, messageRoot } from './roomTimeline';
 import styles from './ChatsView.module.css';
 import { useRoomTimeline } from './useRoomTimeline';
 
 const ChatsMessageContent = memo(MessageContent);
 
-export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpenRoom, onOpenAgents, api = cheshiDesktop?.agentChats,
+export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpenRoom, api = cheshiDesktop?.agentChats,
   registry = cheshiDesktop?.agentRegistry, management = cheshiDesktop?.agentManagement }: {
-  active: boolean; sidebarTarget?: HTMLElement | null; sidebarActive?: boolean; onOpenRoom?(): void; onOpenAgents(): void;
+  active: boolean; sidebarTarget?: HTMLElement | null; sidebarActive?: boolean; onOpenRoom?(): void;
   api?: AgentChatsApi; registry?: Pick<AgentRegistryApi, 'list' | 'onDidChange'>; management?: Pick<AgentManagementApi, 'engines'>;
 }) {
   const data = useChatsSnapshot(api, active || sidebarActive), { snapshot } = data;
@@ -40,8 +42,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   const [dialog, setDialog] = useState<'new' | 'participants' | null>(null), [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false), [voiceOpen, setVoiceOpen] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const composerInput = useRef<HTMLTextAreaElement | null>(null);
-  const alive = useRef(true), sendingRef = useRef(false), composing = useRef(false);
+  const alive = useRef(true), sendingRef = useRef(false);
   const pending = useRef<{ key: string; id: string } | null>(null);
   const timeline = useAutoHideScrollbars<HTMLDivElement>();
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -66,6 +67,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   const threadId = root?.id ?? null;
   const draftKey = roomId ?? '', draft = drafts[draftKey] ?? '';
   const scrollNode = useRef<HTMLDivElement | null>(null), scrollPositions = useRef(new Map<string, { top: number; pinned: boolean }>());
+  const contentRef = useRef<HTMLDivElement>(null), composerRef = useRef<HTMLElement>(null);
   const attachTimeline = useCallback((node: HTMLDivElement | null) => { scrollNode.current = node; return timeline(node); }, [timeline]);
   const visibleCount = messages.length;
   useLayoutEffect(() => {
@@ -80,6 +82,23 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     if (node.firstElementChild) resize.observe(node.firstElementChild);
     return () => resize.disconnect();
   }, [active, draftKey, visibleCount]);
+  useLayoutEffect(() => {
+    const content = contentRef.current, area = composerRef.current, node = scrollNode.current;
+    if (!active || !content || !area || !node) return;
+    const sync = () => {
+      if (node.clientWidth > 0) content.style.setProperty('--chat-viewport-width', `${node.clientWidth}px`);
+      syncChatComposerOverlayHeight(content, area.getBoundingClientRect().height, node,
+        scrollPositions.current.get(draftKey)?.pinned ?? true);
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(area); observer.observe(node);
+    return () => {
+      observer.disconnect();
+      content.style.removeProperty('--composer-overlay-height');
+      content.style.removeProperty('--chat-viewport-width');
+    };
+  }, [active, draftKey]);
   const owner = root?.recipient ?? room?.defaultAgentId, goalState = root?.goalProgress;
   const needsRecovery = root?.status !== 'completed' && (root?.status === 'blocked' || root?.status === 'unknown'
     || goalState?.phase === 'blocked' || goalState?.phase === 'unknown');
@@ -151,7 +170,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     </article>;
   }
   const roomList = <ChatsRoomList snapshot={snapshot} selectedId={roomId} phase={data.phase} loaded={data.loaded} refreshing={data.refreshing} disabled={!api} error={data.error}
-    onSelect={id => { setRoomId(id); onOpenRoom?.(); }} onNew={() => { setDialog('new'); onOpenRoom?.(); }} onRefresh={() => { void data.refresh(); }} onOpenAgents={onOpenAgents} />;
+    onSelect={id => { setRoomId(id); onOpenRoom?.(); }} onNew={() => { setDialog('new'); onOpenRoom?.(); }} onRefresh={() => { void data.refresh(); }} />;
   return <>
     {sidebarTarget && createPortal(roomList, sidebarTarget)}
     <main className={styles.root} hidden={!active} aria-label="Agent chats">
@@ -163,48 +182,40 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
               <span className={styles.participant} tabIndex={0}><AgentAvatar id={member.id} avatar={agents.find(agent => agent.id === member.id)?.avatar} /><span>{member.name}</span></span>
             </TooltipTarget>)}
           </div> : <h2>Chats</h2>}
-          {room && <TooltipButton variant="ghost" size="icon" title="Phone calls" aria-label="Phone calls" onClick={() => setVoiceOpen(true)}><Phone aria-hidden="true" /></TooltipButton>}
-          {room && <TooltipButton variant="ghost" size="icon" title="Room participants" aria-label="Room participants" onClick={() => setDialog('participants')}><Users aria-hidden="true" /></TooltipButton>}
         </header>
-        {error && <p className={styles.notice} role="alert">{error}</p>}
-        {!api && <p className={styles.empty}>Restart the desktop app to load Chats.</p>}
-        <div ref={attachTimeline} onScroll={e => { const node = e.currentTarget; scrollPositions.current.set(draftKey, { top: node.scrollTop, pinned: node.scrollHeight - node.clientHeight - node.scrollTop < 48 }); }} className={styles.timeline} key={roomId} aria-label="Room messages">
-          <div>{messages.map(renderMessage)}</div>
-          {room && !messages.length && <p className={styles.empty}>Mention an agent with @ to assign work, or reply to continue their work. Other messages stay in the room without calling an agent.</p>}
+        <div className={styles.body}>
+          <div className={styles.content} ref={contentRef}>
+            {error && <p className={styles.notice} role="alert">{error}</p>}
+            {!api && <p className={styles.empty}>Restart the desktop app to load Chats.</p>}
+            <RegionalBlur sourceRef={scrollNode}>
+              <div ref={attachTimeline} onScroll={e => { const node = e.currentTarget; scrollPositions.current.set(draftKey, { top: node.scrollTop, pinned: node.scrollHeight - node.clientHeight - node.scrollTop < 48 }); }} className={styles.timeline} key={roomId} aria-label="Room messages">
+                <div className={styles.timelineContent}>{messages.map(renderMessage)}
+                  {room && !messages.length && <p className={styles.empty}>Mention an agent with @ to assign work, or reply to continue their work. Other messages stay in the room without calling an agent.</p>}
+                </div>
+              </div>
+              {room && <ChatsComposer key={`composer-${room.id}`} areaRef={composerRef} active={active} draft={draft} sending={sending} resumeGoal={resumeGoal}
+                sendDisabled={sending || !draft.trim() || !api || (ownerSelected && !!recoveryBlock)}
+                onSend={() => { void send(); }} onDraftChange={text => setDrafts(all => ({ ...all, [draftKey]: text }))}
+                deliveryTarget={addressing.error ?? (recipient ? `To: ${name(recipient)}` : 'Room message · Mention an agent with @ to call them')}
+                replyMessage={replyMessage} replyName={replyMessage ? name(replyMessage.sender) : ''}
+                onCancelReply={() => setReplies(all => ({ ...all, [room.id]: null }))}
+                mentionChoices={mentionChoices} onMention={member => { setDrafts(all => ({ ...all, [draftKey]: `@${member.name} ` })); setError(null); }}>
+                {!replyMessage && userQuestions.length > 0 && <div className={styles.links} aria-label="Questions for you">
+                  {userQuestions.map(question => <NeumorphicButton key={question.id} variant="standard" type="button"
+                    onClick={() => { setReplies(all => ({ ...all, [room.id]: question.id })); }}>
+                    {name(question.sender)} · Needs your answer
+                  </NeumorphicButton>)}
+                </div>}
+                {root && <RoomWorkState message={root} room={room} agents={agents} mutate={mutate} />}
+                {recoveryBlock && <p role="status" className={styles.description}>{recoveryBlock}</p>}
+              </ChatsComposer>}
+            </RegionalBlur>
+          </div>
+          {room && <aside className={styles.toolsRail} aria-label="Room tools">
+            <TooltipButton variant="ghost" size="icon" title="Phone calls" aria-label="Phone calls" aria-haspopup="dialog" onClick={() => setVoiceOpen(true)}><Phone aria-hidden="true" /></TooltipButton>
+            <TooltipButton variant="ghost" size="icon" title="Room participants" aria-label="Room participants" aria-haspopup="dialog" onClick={() => setDialog('participants')}><Users aria-hidden="true" /></TooltipButton>
+          </aside>}
         </div>
-        {room && <div className={styles.activityBar} aria-label="Current agent activity" role="status">
-          {working.map(work => <span key={`${work.recipient}/${work.taskId}`} title={work.goalProgress?.reason || work.error || work.goalProgress?.resumeBlocked || work.text}>
-            <AgentAvatar id={work.recipient!} avatar={agents.find(a => a.id === work.recipient)?.avatar} />
-            {name(work.recipient)} · {workLabel(work)}{working.length > 1 && ` · ${work.text.slice(0, 60)}`}
-          </span>)}
-        </div>}
-        {room && <form aria-label="Room composer" className={styles.composer} onSubmit={e => { e.preventDefault(); void send(); }}>
-          {!replyMessage && userQuestions.length > 0 && <div className={styles.links} aria-label="Questions for you">
-            {userQuestions.map(question => <NeumorphicButton key={question.id} variant="standard" type="button"
-              onClick={() => { setReplies(all => ({ ...all, [room.id]: question.id })); }}>
-              {name(question.sender)} · Needs your answer
-            </NeumorphicButton>)}
-          </div>}
-          {root && room && <RoomWorkState message={root} room={room} agents={agents} mutate={mutate} />}
-          {recoveryBlock && <p role="status" className={styles.description}>{recoveryBlock}</p>}
-          {replyMessage && <div className={styles.replyContext} aria-label="Reply context"><span>Replying to {name(replyMessage.sender)}: {replyMessage.text.slice(0, 160)}</span>
-            <TooltipButton variant="ghost" size="icon" title="Cancel reply" aria-label="Cancel reply" onClick={() => setReplies(all => ({ ...all, [room.id]: null }))}><X aria-hidden="true" /></TooltipButton></div>}
-          <p className={styles.description} aria-label="Delivery target" role="status">{addressing.error ?? (recipient ? `To: ${name(recipient)}` : 'Room message · Mention an agent with @ to call them')}</p>
-          {mentionChoices.length > 0 && <div className={styles.links} aria-label="Mention suggestions">
-            {mentionChoices.map(member => <NeumorphicButton key={member.id} type="button" variant="standard"
-              onClick={() => { setDrafts(all => ({ ...all, [draftKey]: `@${member.name} ` })); setError(null); composerInput.current?.focus(); }}>
-              @{member.name}
-            </NeumorphicButton>)}
-          </div>}
-          <NeumorphicTextField ref={composerInput} multiline variant="standard" aria-label="Message" placeholder={resumeGoal ? 'Add the missing information to resume this goal…' : 'Message the room, or @mention an agent…'} value={draft} maxLength={16000}
-            onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
-            onKeyDown={event => {
-              if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey
-                || composing.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
-              event.preventDefault(); void send();
-            }} onChange={e => setDrafts(all => ({ ...all, [draftKey]: e.target.value }))} />
-          <div className={styles.actions}><NeumorphicButton variant="standard" type="submit" disabled={sending || !draft.trim() || !api || (ownerSelected && !!recoveryBlock)}>{sending ? 'Saving…' : resumeGoal ? 'Send and resume goal' : 'Send'}</NeumorphicButton></div>
-        </form>}
       </section>
       {active && dialog && <RoomDialog room={dialog === 'participants' ? room : undefined} agents={agents} engines={engines} onSave={mutate} onClose={() => setDialog(null)} />}
       {active && voiceOpen && room && <VoiceDialog key={room.id} roomId={room.id} onClose={() => setVoiceOpen(false)} />}

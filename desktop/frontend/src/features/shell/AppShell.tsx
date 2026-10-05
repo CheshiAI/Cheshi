@@ -426,7 +426,7 @@ export function AppShell() {
             />
           )}
           {activeView === 'settings' && <SettingsView contextId={workspace.activePaneId} onOpenChat={openWorkflowChat} />}
-          <ChatsView active={activeView === 'chats'} sidebarTarget={chatsSidebarTarget} sidebarActive={sidebarPanel === 'agent-chats' && leftSidebarOpen} onOpenRoom={() => navigate('chats')} onOpenAgents={() => setActiveView('agents')} />
+          <ChatsView active={activeView === 'chats'} sidebarTarget={chatsSidebarTarget} sidebarActive={sidebarPanel === 'agent-chats' && leftSidebarOpen} onOpenRoom={() => navigate('chats')} />
           <AgentManagementViews view={activeView === 'docker' || activeView === 'agents' ? activeView : null} />
           {activeView === 'blank' && <BlankView />}
           </WorkspaceEditorSplit>

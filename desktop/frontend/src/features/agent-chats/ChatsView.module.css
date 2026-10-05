@@ -4,11 +4,15 @@
 .header { height: 42px; flex: 0 0 42px; box-sizing: border-box; display: flex; align-items: center; gap: var(--icon-default); padding: 0 var(--space-default); border-bottom: 1px solid var(--divider); }
 .header h2 { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
 .conversation { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.body { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.content { --composer-overlay-height: 0px; --composer-overlay-top-padding: 0px; --chat-content-max-width: 100%; --chat-content-padding: var(--space-default); position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.toolsRail { display: flex; box-sizing: border-box; width: 42px; flex: 0 0 42px; align-items: center; flex-direction: column; gap: var(--icon-default); border-left: 1px solid var(--divider); padding: var(--space-default) 0; }
 .participant { display: inline-flex; align-items: center; gap: var(--icon-default); min-width: 0; max-width: 100%; }
 .participant > :first-child { flex-shrink: 0; }
 .participant > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .participants { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--space-default); overflow: hidden; font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
-.timeline { flex: 1; min-height: 0; overflow: auto; }
+.timeline { flex: 1; min-height: 0; overflow: auto; scroll-padding-bottom: calc(var(--composer-overlay-height) + var(--space-default)); }
+.timelineContent { padding-bottom: var(--composer-overlay-height); }
 .timeline { --scrollbar-size: var(--auto-hide-scrollbar-size); scrollbar-width: auto; scrollbar-color: auto; }
 .message { position: relative; padding: var(--space-default); }
 .messageActions { position: absolute; top: var(--space-default); right: var(--space-default); display: flex; gap: var(--icon-default); opacity: 0; pointer-events: none; }
@@ -24,8 +28,11 @@
 .text > div { font-size: inherit; line-height: 1.6; }
 .links, .actions { display: flex; gap: var(--icon-default); flex-wrap: wrap; }
 .actions { justify-content: flex-end; }
-.composer { padding: var(--space-default); display: flex; flex-direction: column; gap: var(--space-default); border-top: 1px solid var(--divider); }
-.composer textarea { min-height: 88px; max-height: 200px; resize: vertical; }
+.content .composerArea { width: 100%; padding: 0 16px 16px; pointer-events: none; }
+.composerArea > * { pointer-events: auto; }
+.composerContext { display: flex; flex-direction: column; gap: var(--icon-default); padding: var(--space-default) var(--space-default) 0; }
+.composerContext:empty { display: none; }
+.deliveryTarget { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .form { display: flex; flex-direction: column; gap: var(--space-default); }
 .form label { display: flex; flex-direction: column; gap: var(--icon-default); font-size: var(--font-size-label); }
 .form fieldset { border: 1px solid var(--divider); display: flex; flex-direction: column; gap: var(--space-default); padding: var(--space-default); max-height: 240px; overflow: auto; }
@@ -45,8 +52,5 @@
 .execution summary > strong { margin-left: auto; flex: 0 0 auto; font-size: var(--font-size-label); font-weight: 400; }
 .execution pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-size-label); }
 .execution [data-status='failed'], .execution [data-status='unknown'] { color: var(--text); font-weight: 600; }
-.activityBar { display: flex; flex-wrap: wrap; gap: var(--space-default); padding: var(--icon-default) var(--space-default); font-size: var(--font-size-label); color: var(--sidebar-section-label-color); }
-.activityBar:empty { display: none; }
-.activityBar > span { display: inline-flex; gap: var(--icon-default); align-items: center; }
 .replyContext { display: flex; align-items: center; gap: var(--icon-default); font-size: var(--font-size-label); }
 .replyContext > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -62,10 +62,32 @@ test('phone dialog binds pairing to this room and requires explicit approval bef
     await ui.click('Unlink'); expect(requests.at(-1)).toEqual({ action: 'revoke', id: 'device' });
   });
 });
+test('room tools open their existing dialogs and preserve the conversation draft', async () => {
+  await withDOM(async ui => {
+    const requests: ChatsRequest[] = [];
+    const api = { request: async (request: ChatsRequest) => { requests.push(request); return snapshot(); } };
+    await ui.render(<ChatsView active api={api} />);
+    const rail = document.querySelector('[aria-label="Room tools"]')!;
+    expect([...rail.querySelectorAll('button')].map(button => button.getAttribute('aria-label')))
+      .toEqual(['Phone calls', 'Room participants']);
+    await ui.type('Message', 'Keep this draft');
+    const timeline = document.querySelector('[aria-label="Room messages"]');
+    for (const label of ['Phone calls', 'Room participants']) {
+      await ui.click(label);
+      const dialog = document.querySelector('dialog')!;
+      expect(dialog.textContent).toContain(label);
+      await ui.click('Close dialog');
+      expect(document.querySelector('dialog')).toBeNull();
+      expect(document.querySelector('[aria-label="Room messages"]')).toBe(timeline);
+      expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Keep this draft');
+    }
+    expect(requests.every(request => request.action === 'list')).toBe(true);
+  });
+});
 test('Chats shows the entire room timeline without thread or task navigation and retains reply context', async () => {
   await withDOM(async ui => {
     const api = { request: async () => snapshot() };
-    const render = (active: boolean) => ui.render(<ChatsView active={active} api={api} onOpenAgents={() => {}} />);
+    const render = (active: boolean) => ui.render(<ChatsView active={active} api={api} />);
     await render(true);
     const timeline = document.querySelector('[aria-label="Room messages"]')!;
     expect(timeline.textContent).toContain('Build login'); expect(timeline.textContent).toContain('Waiting for design');
@@ -79,6 +101,54 @@ test('Chats shows the entire room timeline without thread or task navigation and
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Email only');
   });
 });
+test('room composer reconnects shared blur and resizes its overlay without moving a reader away from earlier messages', async () => {
+  await withDOM(async ui => {
+    const observers = new Map<ResizeObserver, { callback: ResizeObserverCallback; targets: Set<Element> }>();
+    class Observer implements ResizeObserver {
+      constructor(callback: ResizeObserverCallback) { observers.set(this, { callback, targets: new Set() }); }
+      observe(target: Element) { observers.get(this)!.targets.add(target); }
+      unobserve(target: Element) { observers.get(this)!.targets.delete(target); }
+      disconnect() { observers.delete(this); }
+    }
+    Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: Observer });
+    const resize = async (target: Element) => {
+      await act(async () => {
+        for (const [observer, entry] of observers) if (entry.targets.has(target)) entry.callback([], observer);
+      });
+    };
+    const data = snapshot(); data.rooms.push({ ...data.rooms[0]!, id: 'second', name: 'Planning' });
+    await ui.render(<ChatsView active api={{ request: async () => data }} />);
+    const panel = document.querySelector('[aria-label="Room composer"]')!.parentElement!;
+    const area = panel.closest('footer')!, content = area.parentElement!;
+    const timeline = document.querySelector('[aria-label="Room messages"]') as HTMLElement;
+    expect(panel.getAttribute('data-regional-blur-surface')).toBe('true');
+    expect(timeline.contains(panel)).toBe(false);
+    expect(content.querySelector('feGaussianBlur')?.getAttribute('stdDeviation')).toBe('16');
+    Object.defineProperties(timeline, {
+      scrollHeight: { configurable: true, value: 1200 }, clientHeight: { configurable: true, value: 500 },
+      clientWidth: { configurable: true, value: 640 },
+    });
+    let height = 180;
+    area.getBoundingClientRect = () => ({ x: 0, y: 320, width: 640, height, top: 320, right: 640, bottom: 320 + height, left: 0, toJSON() { return {}; } });
+    await resize(area);
+    expect(content.style.getPropertyValue('--composer-overlay-height')).toBe('180px');
+    expect(content.style.getPropertyValue('--chat-viewport-width')).toBe('640px');
+    expect(timeline.scrollTop).toBe(1200);
+    timeline.scrollTop = 100; timeline.dispatchEvent(new window.Event('scroll', { bubbles: true }));
+    height = 260; await resize(area);
+    expect(content.style.getPropertyValue('--composer-overlay-height')).toBe('260px');
+    expect(timeline.scrollTop).toBe(100);
+    await ui.type('Message', 'Keep this draft');
+    await ui.click('Planning');
+    expect([...observers.values()].some(entry => entry.targets.has(area))).toBe(false);
+    expect(panel.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(document.querySelector('[aria-label="Room composer"]')?.parentElement?.getAttribute('data-regional-blur-surface')).toBe('true');
+    await ui.click('Login');
+    expect((document.querySelector('[aria-label="Room messages"]') as HTMLElement).scrollTop).toBe(100);
+    expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Keep this draft');
+  });
+});
+
 test('send failure keeps the draft and retry uses the same message identity', async () => {
   await withDOM(async ui => {
     const requests: ChatsRequest[] = []; let fail = true;
@@ -86,13 +156,13 @@ test('send failure keeps the draft and retry uses the same message identity', as
       if (request.action === 'send') { requests.push(request); if (fail) throw new Error('Save failed'); }
       return snapshot();
     } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
-    await ui.type('Message', 'Hello'); await ui.click('Send');
+    await ui.render(<ChatsView active api={api} />);
+    await ui.type('Message', 'Hello'); await ui.click('Send message');
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ recipient: null, threadId: null });
     expect(document.querySelector('[aria-label="Message recipient"]')).toBeNull();
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Hello');
-    fail = false; await ui.click('Send');
+    fail = false; await ui.click('Send message');
     expect(requests[1]).toEqual(requests[0]);
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('');
   });
@@ -110,22 +180,43 @@ test('linked task detail opens when its delayed worker results arrive and return
 });
 
 
+test('shared composer grows with the draft, caps its height and resets after sending', async () => {
+  await withDOM(async ui => {
+    const requests: ChatsRequest[] = [];
+    const api = { request: async (request: ChatsRequest) => { requests.push(request); return snapshot(); } };
+    await ui.render(<ChatsView active api={api} />);
+    const input = document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement;
+    const button = document.querySelector('[aria-label="Send message"]') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    let height = 300;
+    Object.defineProperty(input, 'scrollHeight', { configurable: true, get: () => height });
+    await ui.type('Message', 'First line\nSecond line');
+    expect(input.style.height).toBe('180px');
+    expect(button.disabled).toBe(false);
+    height = 44;
+    await ui.click('Send message');
+    expect(requests.filter(request => request.action === 'send')).toMatchObject([{ text: 'First line\nSecond line', recipient: null }]);
+    expect(input.value).toBe('');
+    expect(input.style.height).toBe('44px');
+    expect(button.disabled).toBe(true);
+  });
+});
 test('composer previews natural calls and selected mentions, and replies keep their recipient', async () => {
   await withDOM(async ui => {
     const requests: ChatsRequest[] = [];
     const api = { request: async (request: ChatsRequest) => { if (request.action === 'send') requests.push(request); return snapshot(); } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={api} />);
     await ui.type('Message', 'Development 호출하여 로그인 만들어줘');
     expect(document.querySelector('[aria-label="Delivery target"]')?.textContent).toBe('To: Development');
-    await ui.click('Send'); expect(requests.at(-1)).toMatchObject({ recipient: 'dev' });
+    await ui.click('Send message'); expect(requests.at(-1)).toMatchObject({ recipient: 'dev' });
     await ui.type('Message', '@Dev'); await ui.click('@Development');
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('@Development ');
     await ui.type('Message', 'Development가 담당합니다');
     expect(document.querySelector('[aria-label="Delivery target"]')?.textContent).toContain('Room message');
-    await ui.click('Send'); expect(requests.at(-1)).toMatchObject({ recipient: null });
+    await ui.click('Send message'); expect(requests.at(-1)).toMatchObject({ recipient: null });
     await ui.click('Reply to Build login'); await ui.type('Message', 'Use email');
     expect(document.querySelector('[aria-label="Delivery target"]')?.textContent).toBe('To: Development');
-    await ui.click('Send'); expect(requests.at(-1)).toMatchObject({ recipient: 'dev', replyTo: 'goal' });
+    await ui.click('Send message'); expect(requests.at(-1)).toMatchObject({ recipient: 'dev', replyTo: 'goal' });
   });
 });
 test('new room invites an assigned agent and requires an explicit call to deliver work', async () => {
@@ -140,18 +231,18 @@ test('new room invites an assigned agent and requires an explicit call to delive
       return data;
     } };
     await ui.render(<ChatsView active api={api} registry={{ list: async () => ({ workspaceRoot: '/project', agents: [agent] }), onDidChange: () => () => {} }}
-      management={{ engines: async () => ({ engines: [{ id: 'docker:test', name: 'Test engine', supported: true, reason: null }], error: null }) }} onOpenAgents={() => {}} />);
+      management={{ engines: async () => ({ engines: [{ id: 'docker:test', name: 'Test engine', supported: true, reason: null }], error: null }) }} />);
     await ui.click('New room'); await ui.type('Room name', 'Release');
     const checkbox = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
     await act(async () => checkbox.click()); await ui.click('Create room');
     expect(requests.find(r => r.action === 'create')).toMatchObject({ name: 'Release', members: [agent.id], defaultAgentId: agent.id });
     expect(document.querySelector('dialog')).toBeNull();
     expect(document.body.textContent).toContain('Release');
-    await ui.type('Message', '@Stranger hello'); await ui.click('Send');
+    await ui.type('Message', '@Stranger hello'); await ui.click('Send message');
     expect(requests.some(r => r.action === 'send')).toBe(false);
     expect(document.body.textContent).toContain('invited agent');
     expect(document.body.textContent).not.toContain('recipient menu');
-    await ui.type('Message', '@Developer hello'); await ui.click('Send');
+    await ui.type('Message', '@Developer hello'); await ui.click('Send message');
     expect(requests.find(r => r.action === 'send')).toMatchObject({ recipient: agent.id, goal: false, automatic: true });
     expect(document.querySelector('[aria-label="Message type"]')).toBeNull();
     expect(document.body.textContent).not.toContain('New goal');
@@ -213,7 +304,7 @@ test('Chats and task details inspect exact application identity without sending 
         updatedAt: '2026-10-04T00:00:00Z', files: [{ path: 'login.ts', before: 'f'.repeat(64), after: 'c'.repeat(64), phase: 'writing', observed: 'before' }] } };
     data.messages[0]!.goalProgress!.integration = integration;
     const api = { request: async (request: ChatsRequest) => { calls.push(request); if (request.action === 'application-inspect') throw new Error('Application lock belongs to another operation.'); return data; } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={api} />);
     await ui.click('Reply to Build login'); await ui.type('Message', 'Keep this draft'); await ui.click('Inspect application');
     expect(calls.filter(c => c.action !== 'list')).toEqual([{ action: 'application-inspect', roomId: 'room', goalId: 'goal', candidateId: integration.id, hash: integration.candidateHash! }]);
     expect(document.body.textContent).toContain('Application lock belongs to another operation.');
@@ -236,7 +327,7 @@ test('Chats and task details expose integration conflicts and hashes without an 
       status: 'conflict' as const, candidateHash: null, files: [], issues: [{ kind: 'proposal_conflict' as const, path: 'login.ts', requestIds: ['b'.repeat(64)] }],
       createdAt: '2026-10-04T00:00:00Z', checkedAt: '2026-10-04T00:00:00Z' };
     data.messages[0]!.goalProgress!.integration = integration;
-    await ui.render(<ChatsView active api={{ request: async () => data }} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={{ request: async () => data }} />);
     await ui.click('Reply to Build login');
     expect(document.querySelector('[aria-label="Application attention"]')?.textContent).toContain('Integration conflict');
     expect(document.body.textContent).toContain('login.ts');
@@ -309,13 +400,13 @@ test('blocked goal keeps reports out of the timeline and sends a follow-up to it
   await withDOM(async ui => {
     const requests: ChatsRequest[] = [];
     const api = { request: async (request: ChatsRequest) => { requests.push(request); return recoverySnapshot(); } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={api} />);
     await ui.click('Reply to Build login');
     const timeline = document.querySelector('[aria-label="Room messages"]')!;
     expect(timeline.textContent).not.toContain('Turns:');
     expect(timeline.textContent).not.toContain('Work update');
     expect(timeline.querySelector('[aria-label="Goal progress"]')).toBeNull();
-    await ui.type('Message', 'Use email sign-in'); await ui.click('Send and resume goal');
+    await ui.type('Message', 'Use email sign-in'); await ui.click('Send message');
     expect(requests.filter(r => r.action === 'send')).toMatchObject([{ roomId: 'room', threadId: 'goal', recipient: 'dev', text: 'Use email sign-in', goal: false }]);
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('');
   });
@@ -325,10 +416,10 @@ test.each(['Execution outcome is unknown.', 'Checking the saved goal and worker 
   await withDOM(async ui => {
     const requests: ChatsRequest[] = [];
     const api = { request: async (request: ChatsRequest) => { requests.push(request); return recoverySnapshot(reason); } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={api} />);
     await ui.click('Reply to Build login'); await ui.type('Message', 'Continue');
     expect(document.querySelector('[aria-label="Room composer"]')?.textContent).toContain(reason);
-    await ui.click('Send');
+    await ui.click('Send message');
     expect(requests.some(r => r.action === 'send')).toBe(false);
     // A keyboard form submit must pass the same guard as the disabled button.
     await act(async () => document.querySelector('form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
@@ -342,12 +433,12 @@ test('a leading mention can address an invited peer while the goal owner cannot 
     const data = recoverySnapshot('Execution outcome is unknown.'), requests: ChatsRequest[] = [];
     data.rooms[0]!.members.push({ id: 'planner', name: 'Planning Homie', accountId: 'planner-account' });
     const api = { request: async (request: ChatsRequest) => { requests.push(request); return data; } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={api} />);
     await ui.click('Reply to Build login');
-    await ui.type('Message', '@Planning Homie clarify the requirements'); await ui.click('Send');
+    await ui.type('Message', '@Planning Homie clarify the requirements'); await ui.click('Send message');
     expect(requests.filter(r => r.action === 'send')).toMatchObject([{ recipient: 'planner', threadId: 'goal' }]);
     await ui.click('Reply to Build login');
-    await ui.type('Message', '@Development continue'); await ui.click('Send');
+    await ui.type('Message', '@Development continue'); await ui.click('Send message');
     expect(requests.filter(r => r.action === 'send')).toHaveLength(1);
   });
 });
@@ -359,10 +450,10 @@ test('recovery save failure preserves draft and retry identity', async () => {
       if (request.action === 'send') { requests.push(request); if (fail) throw new Error('Save failed'); }
       return recoverySnapshot();
     } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
-    await ui.click('Reply to Build login'); await ui.type('Message', 'Use email'); await ui.click('Send and resume goal');
+    await ui.render(<ChatsView active api={api} />);
+    await ui.click('Reply to Build login'); await ui.type('Message', 'Use email'); await ui.click('Send message');
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Use email');
-    fail = false; await ui.click('Send and resume goal');
+    fail = false; await ui.click('Send message');
     expect(requests).toHaveLength(2); expect(requests[1]).toEqual(requests[0]);
   });
 });
@@ -381,7 +472,7 @@ test('unknown execution inspection preserves the draft on failure and shows nati
       }
       return structuredClone(data);
     } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={api} />);
     await ui.click('Reply to Build login'); await ui.type('Message', 'Keep this draft');
     await ui.click('Check execution result');
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('has not ended');
@@ -390,7 +481,7 @@ test('unknown execution inspection preserves the draft on failure and shows nati
     expect(calls.filter(c => c.action === 'recover')).toEqual(Array(2).fill({ action: 'recover', roomId: 'room', goalId: 'goal' }));
     expect(calls.some(c => c.action === 'send')).toBe(false);
     expect(document.querySelector('[aria-label="Room messages"]')?.textContent).not.toContain('native-turn');
-    expect([...document.querySelectorAll('button')].some(b => b.textContent === 'Send and resume goal')).toBe(true);
+    expect(document.querySelector('[aria-label="Delivery target"]')?.textContent).toContain('Send to resume this goal');
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Keep this draft');
   });
 });
@@ -409,7 +500,7 @@ test('question cancellation preserves drafts on a racing answer error and retrie
       }
       return structuredClone(data);
     } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={api} />);
     await ui.click('Reply to Build login'); await ui.type('Message', 'Keep this draft');
     await ui.click('Cancel question');
     expect(document.body.textContent).toContain('answer already arrived');
@@ -451,7 +542,7 @@ test('deadline edits await acknowledgement, preserve drafts on failure and send 
       }
       return structuredClone(data);
     } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={api} />);
     await ui.click('Reply to Build login'); await ui.type('Message', 'Keep this draft');
     await ui.click('Save deadline'); expect(requests).toHaveLength(0);
     await ui.type('Question deadline', '2000-01-01T00:00'); await ui.click('Save deadline'); expect(requests).toHaveLength(0);
@@ -486,11 +577,11 @@ test('long goals stay usable without displaying a metrics report', async () => {
     data.messages[0]!.status = 'waiting';
     Object.assign(data.messages[0]!.goalProgress!, { phase: 'ready', turns: 1201,
       usage: { reportedThroughTurn: 1200, inputTokens: 100, outputTokens: 20, totalTokens: 120 } });
-    await ui.render(<ChatsView active api={{ request: async () => data }} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={{ request: async () => data }} />);
     await ui.click('Reply to Build login');
     expect(document.querySelector('[aria-label="Goal progress"]')).toBeNull();
     expect(document.querySelector('[aria-label="Room messages"]')?.textContent).not.toContain('Model tokens');
-    expect(document.body.textContent).not.toContain('Send and resume goal');
+    expect(document.querySelector('[aria-label="Delivery target"]')?.textContent).not.toContain('Send to resume this goal');
   });
 });
 
@@ -502,7 +593,7 @@ test('delegated work displays proposed changes directly in the room without task
       relatedTask: { agentId: 'peer', taskId: 'w_proposal' }, createdAt: '2026-10-04T00:00:00Z', status: 'delivered',
       text: JSON.stringify({ version: 1, status: 'submitted', snapshot: 'a'.repeat(64), summary: 'Greeting proposed',
         changes: [{ path: 'greet.ts', before: 'b'.repeat(64), sha256: 'c'.repeat(64), content: 'export const greeting = "hello";' }] }) });
-    await ui.render(<ChatsView active api={{ request: async () => data }} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={{ request: async () => data }} />);
     await ui.click('Reply to Build login');
     expect(document.body.textContent).toContain('Greeting proposed');
     expect(document.body.textContent).toContain('Integration and independent verification are still required.');
@@ -534,25 +625,25 @@ test('user questions appear in the conversation and answers use the shared compo
       if (request.action === 'send') { requests.push(request); if (fail) throw new Error('Lost acknowledgement'); }
       return data;
     } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={api} />);
     expect(document.querySelector('[aria-label="Room messages"]')?.querySelectorAll('form')).toHaveLength(0);
     expect(document.querySelectorAll('[aria-label="Room composer"]')).toHaveLength(1);
     expect(document.querySelector('[data-message-id="question"]')?.textContent).toContain('Needs your answer');
-    await ui.click('Reply to Which login method?'); await ui.type('Message', 'Email only'); await ui.click('Send');
+    await ui.click('Reply to Which login method?'); await ui.type('Message', 'Email only'); await ui.click('Send message');
     expect(document.body.textContent).toContain('Lost acknowledgement');
-    fail = false; await ui.click('Send');
+    fail = false; await ui.click('Send message');
     expect(requests[1]).toEqual(requests[0]);
     expect(requests[0]).toMatchObject({ action: 'send', recipient: 'dev', replyTo: 'question', answerTo: 'goal', questionId: 'method', text: 'Email only', automatic: true, goal: false });
   });
 });
 
-test('Chats displays sleeping workers and retry wakes the saved recipient without sending a new prompt', async () => {
+test('retry wakes the saved recipient without sending a new prompt or showing an activity strip', async () => {
   await withDOM(async ui => {
     const data = snapshot(), requests: ChatsRequest[] = [];
     data.messages[0]!.worker = { phase: 'sleeping', error: null };
     const api = { request: async (input: ChatsRequest) => { requests.push(input); return data; } };
-    const render = (active: boolean) => ui.render(<ChatsView active={active} api={api} onOpenAgents={() => {}} />);
-    await render(true); expect(document.querySelector('[aria-label="Current agent activity"]')?.textContent).toContain('Waiting for a reply');
+    const render = (active: boolean) => ui.render(<ChatsView active={active} api={api} />);
+    await render(true); expect(document.querySelector('[aria-label="Current agent activity"]')).toBeNull();
     await render(false); data.messages[0]!.status = 'queued'; data.messages[0]!.error = 'Engine unavailable';
     data.messages[0]!.worker = { phase: 'error', error: 'Engine unavailable' }; await render(true);
     await ui.type('Message', 'Unsaved follow-up'); await ui.click('Retry worker');
@@ -566,7 +657,7 @@ test('Chats portals its room list and preserves drafts, filtering and scroll acr
     const data = snapshot(); data.rooms.push({ ...data.rooms[0]!, id: 'second', name: 'Planning' });
     const api = { request: async () => data }, target = document.createElement('div'); document.body.append(target);
     let opened = 0;
-    const render = (active: boolean) => ui.render(<ChatsView active={active} sidebarTarget={target} onOpenRoom={() => { opened++; }} api={api} onOpenAgents={() => {}} />);
+    const render = (active: boolean) => ui.render(<ChatsView active={active} sidebarTarget={target} onOpenRoom={() => { opened++; }} api={api} />);
     await render(true);
     expect(target.querySelector('[aria-label="Chats rooms"]')).not.toBeNull();
     expect(document.querySelector('[aria-label="Agent chats"] [aria-label="Chats rooms"]')).toBeNull();
@@ -596,7 +687,7 @@ test('Chats portals its room list and preserves drafts, filtering and scroll acr
 test('ordinary messages render safe markdown without completed or task-detail clutter', async () => {
   await withDOM(async ui => {
     const data = snapshot(); data.messages = [{ ...data.messages[1]!, threadId: null, status: 'completed', text: '**Important**\n\n- first\n- second\n\n[bad](javascript:alert(1))' }];
-    await ui.render(<ChatsView active api={{ request: async () => data }} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={{ request: async () => data }} />);
     const timeline = document.querySelector('[aria-label="Room messages"]')!;
     expect(timeline.querySelector('strong')?.textContent).toBe('Development');
     expect([...timeline.querySelectorAll('strong')].some(node => node.textContent === 'Important')).toBe(true);
@@ -614,7 +705,7 @@ test('Enter sends a follow-up while a goal runs, Shift+Enter and IME do not send
     let finish!: () => void;
     const saved = new Promise<void>(resolve => { finish = resolve; });
     const api = { request: async (request: ChatsRequest) => { if (request.action === 'send') { requests.push(request); await saved; } return data; } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={api} />);
     await ui.click('Reply to Build login'); await ui.type('Message', 'Email only');
     const input = document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement;
     const press = (options: KeyboardEventInit = {}) => input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...options }));
@@ -643,7 +734,7 @@ test('offscreen Chats starts one initial read and never displays an empty-room n
   await withDOM(async ui => {
     const pending = createDeferred<ChatsSnapshot>(); let reads = 0;
     const api = { request: async () => { reads++; return pending.promise; } };
-    const render = (active: boolean) => ui.render(<ChatsView active={active} api={api} onOpenAgents={() => {}} />);
+    const render = (active: boolean) => ui.render(<ChatsView active={active} api={api} />);
     await render(false);
     expect(reads).toBe(1);
     expect(document.querySelector('[role="status"][aria-label="Loading rooms…"]')).not.toBeNull();
@@ -660,7 +751,7 @@ test('first-load failure shows the error and retry, not a create-room invitation
   await withDOM(async ui => {
     let fail = true;
     const api = { request: async () => { if (fail) throw new Error('Room service unavailable'); return { rooms: [], messages: [] }; } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={api} />);
     expect(document.body.textContent).toContain('Room service unavailable');
     expect(document.body.textContent).not.toContain('Create a room and invite');
     expect((document.querySelector('[aria-label="Refresh rooms"]') as HTMLButtonElement).disabled).toBe(false);
@@ -675,7 +766,7 @@ test('refresh keeps room selection, draft and list scroll visible through failur
     const background = createDeferred<ChatsSnapshot>(); let reads = 0;
     const data = snapshot(); data.rooms.push({ ...data.rooms[0]!, id: 'second', name: 'Planning' });
     const api = { request: async () => { reads++; return reads === 2 ? background.promise : data; } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={api} />);
     await ui.click('Planning'); await ui.type('Message', 'Keep this draft');
     const list = document.querySelector('[role="region"][aria-label="Rooms"]') as HTMLElement;
     list.scrollTop = 75;
@@ -700,7 +791,7 @@ test('room interleaves agent messages and execution cards by recorded time and u
       activity: { id: 'native-command', turnId: 'turn', kind: 'command', title: 'bun test login', text: '', status: 'running', createdAt: '2026-10-03T00:00:30Z', final: false, truncated: false } });
     let receive!: (update: import('../shared/agent-chats').ChatsUpdate) => void;
     const api = { request: async () => data, onDidChange: (listener: typeof receive) => { receive = listener; return () => {}; } };
-    await ui.render(<ChatsView active api={api} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={api} />);
     const ids = () => [...document.querySelectorAll('[data-message-id]')].map(node => node.getAttribute('data-message-id'));
     expect(ids()).toEqual(['goal', 'command', 'reply']);
     const command = document.querySelector('[data-message-id="command"]')!;
@@ -720,25 +811,24 @@ test('room interleaves agent messages and execution cards by recorded time and u
   });
 });
 
-test('answered questions retain their connection and simultaneous workers have distinct current activity', async () => {
+test('answered questions retain their connection with simultaneous workers and no activity strip', async () => {
   await withDOM(async ui => {
     const data = snapshot(); data.messages[0]!.status = 'running';
     data.rooms[0]!.members.push({ id: 'planner', accountId: 'p', name: 'Planning' });
     data.messages.push({ id: 'question', roomId: 'room', threadId: 'goal', sender: 'dev', recipient: 'planner', kind: 'question', text: 'Password reset too?', taskId: 'task', createdAt: '2026-10-03T00:02:00Z', questionId: 'question', status: 'delivered',
       relatedTask: { agentId: 'planner', taskId: 'planning' }, executionStatus: 'running' });
     data.messages.push({ id: 'answer', roomId: 'room', threadId: 'goal', sender: 'planner', recipient: 'dev', kind: 'reply', text: 'Yes, include it.', taskId: 'task', createdAt: '2026-10-03T00:03:00Z', questionId: 'question', status: 'delivered' });
-    await ui.render(<ChatsView active api={{ request: async () => data }} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={{ request: async () => data }} />);
     expect(document.querySelector('[data-message-id="question"]')?.textContent).toContain('Answered');
     expect(document.querySelector('[data-message-id="answer"] blockquote')?.textContent).toContain('Password reset too?');
-    const activity = document.querySelector('[aria-label="Current agent activity"]')!;
-    expect(activity.textContent).toContain('Development · Working'); expect(activity.textContent).toContain('Planning · Working');
+    expect(document.querySelector('[aria-label="Current agent activity"]')).toBeNull();
     expect(document.querySelector('[aria-label="Room messages"]')?.textContent).not.toContain('delivered');
     expect(document.body.textContent).not.toContain('Task details');
   });
 });
 
 
-test('legacy questions recover exact reply links while unavailable work stays above sleeping status', async () => {
+test('legacy questions recover exact reply links without an unavailable-work activity strip', async () => {
   await withDOM(async ui => {
     const data = snapshot(), questionId = 'a'.repeat(64);
     data.messages[0]!.status = 'blocked';
@@ -747,13 +837,13 @@ test('legacy questions recover exact reply links while unavailable work stays ab
     data.messages[0]!.goalProgress = { phase: 'unavailable', progress: '', reason: '', nextAction: '', turns: null, resumeBlocked: 'Refresh the worker to confirm its task state.' };
     const question = { id: `peer_${questionId}`, roomId: 'room', threadId: 'goal', sender: 'dev', recipient: 'planner', kind: 'question' as const, text: 'Include password reset?', taskId: 'task', createdAt: '2026-10-03T00:02:00Z', status: 'delivered' };
     data.messages.push(question, { ...question, id: `peer_${createHash('sha256').update(`reply/${questionId}`).digest('hex')}`, sender: 'planner', recipient: 'dev', kind: 'reply', text: 'Yes, include password reset.' });
-    await ui.render(<ChatsView active api={{ request: async () => data }} onOpenAgents={() => {}} />);
+    await ui.render(<ChatsView active api={{ request: async () => data }} />);
     for (let attempt = 0; attempt < 30 && !document.querySelector(`[data-message-id="${question.id}"]`)?.textContent?.includes('Answered'); attempt++) {
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
     }
     expect(document.querySelector(`[data-message-id="${question.id}"]`)?.textContent).toContain('Answered');
     expect(document.querySelector('[aria-label="Room messages"]')?.textContent).not.toContain('Awaiting reply');
     expect(document.querySelector('[aria-label="Work records"]')).toBeNull();
-    expect(document.querySelector('[aria-label="Current agent activity"]')?.textContent).not.toContain('Sleeping');
+    expect(document.querySelector('[aria-label="Current agent activity"]')).toBeNull();
   });
 });
