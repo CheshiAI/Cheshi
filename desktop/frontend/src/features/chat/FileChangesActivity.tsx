@@ -8,6 +8,7 @@ import type { ChatActivityItem, ChatFileChange } from './model';
 import styles from './FileChangesActivity.module.css';
 
 const MAX_RENDERED_DIFF_LINES = 1_200;
+const DIFF_HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
 type DiffLineKind = 'add' | 'remove' | 'context' | 'header';
 
@@ -47,7 +48,7 @@ function displayPath(value: string): string {
 function parseDiff(change: ChatFileChange): DiffMetrics {
   const sourceLines = change.diff.replaceAll('\r\n', '\n').split('\n');
   if (sourceLines.at(-1) === '') sourceLines.pop();
-  const hasHunks = sourceLines.some((line) => line.startsWith('@@ '));
+  const hasHunks = sourceLines.some((line) => DIFF_HUNK_HEADER.test(line));
   const lines: DiffLine[] = [];
   let additions = 0;
   let deletions = 0;
@@ -63,7 +64,20 @@ function parseDiff(change: ChatFileChange): DiffMetrics {
       append({ kind: 'context', content: line, oldLine: null, newLine: null });
       continue;
     }
-    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    // Whole-file additions/deletions contain source text, not diff-prefixed lines.
+    if (!hasHunks && change.kind === 'add') {
+      additions += 1;
+      newCursor += 1;
+      append({ kind: 'add', content: line, oldLine: null, newLine: newCursor });
+      continue;
+    }
+    if (!hasHunks && change.kind === 'delete') {
+      deletions += 1;
+      oldCursor += 1;
+      append({ kind: 'remove', content: line, oldLine: oldCursor, newLine: null });
+      continue;
+    }
+    const hunk = DIFF_HUNK_HEADER.exec(line);
     if (hunk) {
       oldCursor = Number(hunk[1]);
       newCursor = Number(hunk[2]);
@@ -100,18 +114,6 @@ function parseDiff(change: ChatFileChange): DiffMetrics {
       continue;
     }
 
-    if (!hasHunks && change.kind === 'add') {
-      additions += 1;
-      newCursor += 1;
-      append({ kind: 'add', content: line, oldLine: null, newLine: newCursor });
-      continue;
-    }
-    if (!hasHunks && change.kind === 'delete') {
-      deletions += 1;
-      oldCursor += 1;
-      append({ kind: 'remove', content: line, oldLine: oldCursor, newLine: null });
-      continue;
-    }
     append({ kind: 'context', content: line, oldLine: null, newLine: null });
   }
 
