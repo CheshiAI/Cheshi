@@ -42,7 +42,7 @@ export function RoomDialog({ room, agents, engines, onSave, onClose }: {
         {!candidates.length && <p className={styles.description}>Register an agent, assign it to this project, and select an account in Agents.</p>}
       </fieldset>
       <label>Default agent<LiquidGlassSelect ariaLabel="Default agent" value={ownerAvailable ? owner : ''} placeholder="Choose an available agent" options={defaults.map(a => ({ value: a.id, label: a.name }))} onChange={setOwner} disabled={saving || !defaults.length} /></label>
-      <p className={styles.description}>Only invited agents can collaborate in this room. Start their workers in Agents before sending work. Existing participants retain their room identity.</p>
+      <p className={styles.description}>Only invited agents can collaborate in this room. Workers wake when work arrives. Manually stopped workers must be started in Agents. Existing participants retain their room identity.</p>
       {error && <p role="alert">{error}</p>}
       <div className={styles.actions}><NeumorphicButton variant="standard" disabled={saving || !ownerAvailable || (!room && (!name.trim() || !engine))} onClick={() => void save()}>{saving ? 'Saving…' : room ? 'Save participants' : 'Create room'}</NeumorphicButton></div>
     </div>

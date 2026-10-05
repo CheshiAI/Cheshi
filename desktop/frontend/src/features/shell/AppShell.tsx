@@ -1,5 +1,4 @@
 import { ChatsView } from '../agent-chats/ChatsView';
-import type { ChatTaskTarget } from '../../../../shared/agent-chats';
 import { SchedulerNotifications } from '../scheduler/SchedulerNotifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -81,7 +80,6 @@ export function AppShell() {
   const accountReady = useCallback(() => setAccountLoaded(true), []);
   const indexReady = useCallback(() => setIndexLoaded(true), []);
   const startupReported = useRef(false);
-  const [chatTask, setChatTask] = useState<ChatTaskTarget | null>(null);
   const [activeView, setActiveView] = useState<WorkspaceView>('chat');
   const [historyChoice, setHistoryChoice] = useState<{ sessionId: string; title: string; paneId: string } | null>(null);
   const [deleteChoice, setDeleteChoice] = useState<{ sessionId: string; title: string } | null>(null);
@@ -428,8 +426,8 @@ export function AppShell() {
             />
           )}
           {activeView === 'settings' && <SettingsView contextId={workspace.activePaneId} onOpenChat={openWorkflowChat} />}
-          <ChatsView active={activeView === 'chats'} sidebarTarget={chatsSidebarTarget} sidebarActive={sidebarPanel === 'agent-chats' && leftSidebarOpen} onOpenRoom={() => navigate('chats')} onOpenAgents={() => { setChatTask(null); setActiveView('agents'); }} onOpenTask={target => { setChatTask(target); setActiveView('agents'); }} />
-          <AgentManagementViews chatTask={chatTask} onBackToChats={() => { setChatTask(null); setActiveView('chats'); }} view={activeView === 'docker' || activeView === 'agents' ? activeView : null} />
+          <ChatsView active={activeView === 'chats'} sidebarTarget={chatsSidebarTarget} sidebarActive={sidebarPanel === 'agent-chats' && leftSidebarOpen} onOpenRoom={() => navigate('chats')} onOpenAgents={() => setActiveView('agents')} />
+          <AgentManagementViews view={activeView === 'docker' || activeView === 'agents' ? activeView : null} />
           {activeView === 'blank' && <BlankView />}
           </WorkspaceEditorSplit>
         </div>
