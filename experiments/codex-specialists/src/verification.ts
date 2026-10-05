@@ -78,7 +78,7 @@ export class WorkerVerification {
       if (JSON.stringify(previous) !== JSON.stringify(receipt)) throw new Error('Evidence identity conflict.');
       return;
     }
-    if (receipts.length >= (this.request(task).candidate ? 64 : 32)) throw new Error('Verification evidence limit reached.');
+    if (receipts.length >= 64) throw new Error('Verification evidence limit reached.');
     this.store.update(task.id, { verificationEvidence: [...receipts, receipt] });
   }
   /** Receipts originate from native app-server events, never from tool arguments. */
@@ -117,7 +117,7 @@ export class WorkerVerification {
     if (tool !== 'submit_verification') throw new Error('Unsupported verification tool.');
     const result = { ...(request.candidate ? { candidate: candidateReference(request.candidate) } : {}), verdicts: list(args.verdicts, verdict), evidence: task.verificationEvidence ?? [] };
     assertResult(request, result);
-    if (JSON.stringify(result).length > (request.candidate ? WORK_MESSAGE_LIMIT : 12_000)) throw new Error('Verification result exceeds the message limit. Use fewer receipts in a new verification round.');
+    if (JSON.stringify(result).length > WORK_MESSAGE_LIMIT) throw new Error('Verification result exceeds the message limit. Use fewer receipts in a new verification round.');
     if (result.verdicts.some(v => v.verdict === 'pass')) this.assertCurrent(task);
     this.store.update(task.id, { verificationDraft: result });
     return { status: 'recorded', guidance: 'End this turn. The result is published only after successful completion and a final artifact check.' };

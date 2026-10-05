@@ -1,6 +1,10 @@
 import { parseTaskInspection, type TaskInspection } from './agent-task-inspection.ts';
 import { parseTaskUsage, type TaskUsage } from '../../experiments/codex-specialists/src/usage-contract.ts';
 import { parseAgentExecutionHealth, type AgentExecutionHealth } from './agent-execution-health.ts';
+import { WORK_MESSAGE_LIMIT } from './agent-work.ts';
+
+// Generated collaboration tasks include a bounded instruction prefix around the wire payload.
+const TASK_PROMPT_LIMIT = WORK_MESSAGE_LIMIT + 1024;
 
 export const AGENT_CHANNELS = {
   engines: 'cheshi:agents:engines', snapshot: 'cheshi:agents:snapshot',
@@ -118,7 +122,7 @@ export function parseAgentTasks(value: unknown): AgentTask[] {
       responses: items(t.responses ?? [], 100).map(raw => { const r = agentRecord(raw); return { id: parseAgentId(r.id), text: agentText(r.text, 500_000), status: agentText(r.status, 30) }; }) }),
       ...(t.recovery === undefined ? {} : { recovery: parseExecutionRecovery(t.recovery) }),
       ...(t.usage === undefined ? {} : { usage: parseTaskUsage(t.usage) }),
-      id: parseAgentId(t.id), prompt: agentText(t.prompt, 20_000), status,
+      id: parseAgentId(t.id), prompt: agentText(t.prompt, TASK_PROMPT_LIMIT), status,
       createdAt: agentText(t.createdAt, 100), output: agentText(t.output, 500_000), error: agentNullableText(t.error, 20_000),
       ...(t.inspection === undefined ? {} : { inspection: parseTaskInspection(t.inspection) }) };
   });

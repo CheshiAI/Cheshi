@@ -47,6 +47,28 @@ function deliver(f: ReturnType<typeof setup>, taskId: string) {
   return result;
 }
 
+test('ordinary verification delivers more than 12k of evidence and retains all 64 native receipts', () => {
+  const f = setup(), { taskId } = f.request();
+  f.verifier.call(f.reviewer.task(taskId)!, 'verification_read', { path: 'login.ts' });
+  const observeCommand = (index: number) => {
+    const item = { id: `check-${index}`, type: 'commandExecution', command: `bun test check-${index}.test.ts`,
+      status: 'completed', exitCode: 0, aggregatedOutput: 'verified output '.repeat(70) };
+    f.verifier.observe(f.reviewer.task(taskId)!, 'item/started', item);
+    f.verifier.observe(f.reviewer.task(taskId)!, 'item/completed', item);
+  };
+  for (let index = 0; index < 63; index++) observeCommand(index);
+  const evidence = f.reviewer.task(taskId)!.verificationEvidence!;
+  expect(evidence).toHaveLength(64);
+  expect(() => observeCommand(63)).toThrow('Verification evidence limit reached');
+  expect(f.reviewer.task(taskId)!.verificationEvidence).toEqual(evidence);
+  f.verifier.call(f.reviewer.task(taskId)!, 'submit_verification', { verdicts: [{ criterion: 'Login is correct',
+    verdict: 'pass', reason: 'Observed file and successful native commands.', evidenceIds: [evidence[0]!.id, evidence[1]!.id] }] });
+  const result = deliver(f, taskId);
+  expect(result.text.length).toBeGreaterThan(12_000);
+  expect(verificationResult(JSON.parse(result.text)).evidence).toEqual(evidence);
+  f.owner.assertVerified(f.store.task('login')!, [result.id]);
+});
+
 test('independent pass needs observed file and command receipts, survives restart, and becomes stale after an edit', () => {
   const f = setup(), { taskId } = f.request();
   expect(() => f.owner.assertVerified(f.store.task('login')!)).toThrow('processed');

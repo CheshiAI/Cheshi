@@ -5,11 +5,20 @@ import { parseAgentTasks } from '../shared/agent-management.ts';
 import { parseTaskGoal, parseTaskEvidence } from '../shared/agent-task-inspection.ts';
 import { inspectHistoryJob } from '../../experiments/codex-specialists/src/history-inspection.ts';
 import config from '../../forge.config.mts';
+import { WORK_MESSAGE_LIMIT } from '../shared/agent-work.ts';
 
 const task = { id: 'goal', prompt: 'Build login', status: 'waiting', createdAt: '2026-10-03', output: 'Progress', error: null,
   threadId: 'thread', finishedAt: null };
 const goal = { phase: 'waiting', turns: 1, criteria: [{ criterion: 'Login works', met: false, evidence: '' }], decisions: [], pending: null, verificationRequired: true };
 const message = { id: 'question', kind: 'question', taskId: 'goal', questionId: 'question', from: 'developer', to: 'planner', text: 'Which login method?' };
+test('generated collaboration prompts survive host and preload projection without widening user inputs', () => {
+  for (const length of [20_182, WORK_MESSAGE_LIMIT, WORK_MESSAGE_LIMIT + 1024]) {
+    const prompt = 'x'.repeat(length);
+    expect(parseAgentTasks(inspectAgentTasks({ tasks: [{ ...task, prompt }] }))[0]?.prompt).toBe(prompt);
+  }
+  expect(() => parseAgentTasks([{ ...task, prompt: 'x'.repeat(WORK_MESSAGE_LIMIT + 1025) }])).toThrow('Invalid agent text');
+  expect(() => parseAgentTasks([{ ...task, roomId: 'room', inputs: [{ id: 'input', prompt: 'x'.repeat(20_001) }] }])).toThrow('Invalid agent text');
+});
 function snapshot() {
   return { tasks: [{ ...task, goal }], collaboration: {
     peers: [{ id: 'planner', name: 'Planning', role: 'planning' }], outgoing: [message],
