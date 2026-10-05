@@ -49,7 +49,7 @@ export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing,
             </NeumorphicButton>
           </div>)}
           {!loaded && phase === 'loading' && <LoadingState className={sessionStyles.loading} label="Loading rooms…" />}
-          {loaded && phase !== 'error' && !visible.length && <p className={styles.notice}>{query.trim() ? 'No matching rooms.' : 'Create a room and invite your agents to begin.'}</p>}
+          {loaded && phase !== 'error' && !visible.length && <p className={`${styles.notice} ${styles.empty}`}>{query.trim() ? 'No matching rooms.' : 'Create a room and invite your agents to begin.'}</p>}
         </nav>
       </OverlayScrollArea>
     </div>

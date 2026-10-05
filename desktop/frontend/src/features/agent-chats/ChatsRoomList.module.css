@@ -6,3 +6,4 @@
 }
 
 .notice { margin: 0; padding: var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
+.empty { display: flex; flex: 1 1 auto; align-items: center; justify-content: center; text-align: center; }
