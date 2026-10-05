@@ -42,6 +42,16 @@
 .markdown h5,
 .markdown h6 { font-size: inherit; }
 .markdown > :first-child { margin-top: 0; }
+.mention {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--control-surface);
+  color: var(--sidebar-section-label-color);
+  font-size: inherit;
+  font-weight: 600;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
 .markdown ul,
 .markdown ol { padding-left: 22px; }
 .markdown li { padding-left: 2px; }

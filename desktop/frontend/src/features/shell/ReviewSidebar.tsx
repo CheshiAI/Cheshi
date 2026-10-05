@@ -1,3 +1,5 @@
+import { VerificationReviewPanel } from '../agent-chats/VerificationReview';
+import type { VerificationReview } from '../agent-chats/verificationReviewModel';
 import { useState } from 'react';
 import { FileChangesReviewPanel, type ChatActivityItem } from '../chat';
 import { WorkspaceLineCommitPanel } from '../editor/WorkspaceLineCommitPanel';
@@ -9,27 +11,30 @@ import { useReviewSidebarFocus } from './useReviewSidebarFocus';
 
 interface ReviewSidebarProps {
   open: boolean;
+  verification?: VerificationReview | null;
   item: ChatActivityItem | null;
   initialPath: string | null;
   onCloseReview: () => void;
+  onOpenFile?: (path: string) => void;
   lineCommit?: GitLineBlameRequest | null;
   localHistoryPath?: string | null;
   localHistoryDirty?: boolean;
 }
 
 export function ReviewSidebar({ open, item, initialPath, lineCommit = null, localHistoryPath = null,
-  localHistoryDirty = false, onCloseReview }: ReviewSidebarProps) {
-  const reviewing = item !== null || lineCommit !== null || localHistoryPath !== null;
+  localHistoryDirty = false, verification = null, onCloseReview, onOpenFile }: ReviewSidebarProps) {
+  const reviewing = verification !== null || item !== null || lineCommit !== null || localHistoryPath !== null;
   const resizableOpen = open && (lineCommit !== null || localHistoryPath !== null);
   const resize = useReviewSidebarResize(resizableOpen, localHistoryPath !== null ? 'local history' : 'line commit');
   const focus = useReviewSidebarFocus(open && reviewing, resize.slotRef);
-  const [retainedReview, setRetainedReview] = useState({ item, initialPath, lineCommit, localHistoryPath, active: reviewing, revision: 0 });
+  const [retainedReview, setRetainedReview] = useState({ item, verification, initialPath, lineCommit, localHistoryPath, active: reviewing, revision: 0 });
   // Keep the last review mounted during closing, including interrupted transitions.
   if (retainedReview.active !== reviewing
-    || (reviewing && (retainedReview.item !== item || retainedReview.lineCommit !== lineCommit
+    || (reviewing && (retainedReview.verification !== verification || retainedReview.item !== item || retainedReview.lineCommit !== lineCommit
       || retainedReview.localHistoryPath !== localHistoryPath || retainedReview.initialPath !== initialPath))) {
     setRetainedReview({
       item: reviewing ? item : retainedReview.item,
+      verification: reviewing ? verification : retainedReview.verification,
       initialPath: reviewing ? initialPath : retainedReview.initialPath,
       lineCommit: reviewing ? lineCommit : retainedReview.lineCommit,
       localHistoryPath: reviewing ? localHistoryPath : retainedReview.localHistoryPath,
@@ -50,6 +55,7 @@ export function ReviewSidebar({ open, item, initialPath, lineCommit = null, loca
           key={retainedReview.localHistoryPath} path={retainedReview.localHistoryPath}
           draftDirty={localHistoryDirty} onClose={onCloseReview} />
           : retainedReview.lineCommit ? <WorkspaceLineCommitPanel request={retainedReview.lineCommit} onClose={onCloseReview} />
+          : retainedReview.verification ? <VerificationReviewPanel key={`${retainedReview.revision}:${retainedReview.verification.id}`} review={retainedReview.verification} onClose={onCloseReview} onOpenFile={onOpenFile} />
           : retainedReview.item && <FileChangesReviewPanel
           key={retainedReview.revision}
           item={retainedReview.item}

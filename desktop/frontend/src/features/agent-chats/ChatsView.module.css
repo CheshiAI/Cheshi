@@ -11,8 +11,10 @@
 .participant > :first-child { flex-shrink: 0; }
 .participant > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .participants { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--space-default); overflow: hidden; font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
-.timeline { flex: 1; min-height: 0; overflow: auto; scroll-padding-bottom: calc(var(--composer-overlay-height) + var(--space-default)); }
-.timelineContent { padding-bottom: var(--composer-overlay-height); }
+.timeline { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; scroll-padding-bottom: calc(var(--composer-overlay-height) + var(--space-default)); }
+.latestMessages { position: absolute; bottom: calc(var(--composer-overlay-height) + var(--space-default)); left: var(--space-default); right: var(--space-default); display: flex; justify-content: center; pointer-events: none; z-index: 2; }
+.latestMessages > button { pointer-events: auto; }
+.timelineContent { padding-bottom: calc(var(--composer-overlay-height) + 16px); }
 .timeline { --scrollbar-size: var(--auto-hide-scrollbar-size); scrollbar-width: auto; scrollbar-color: auto; }
 .message { position: relative; padding: var(--space-default); }
 .messageActions { position: absolute; top: var(--space-default); right: var(--space-default); display: flex; gap: var(--icon-default); opacity: 0; pointer-events: none; }
@@ -48,12 +50,6 @@
 .records p { margin: var(--icon-default) 0; white-space: pre-wrap; }
 .workState { padding-left: var(--space-default); border-left: 2px solid var(--divider); }
 .replyQuote { margin: var(--icon-default) 0; padding-left: var(--space-default); border-left: 2px solid var(--divider); color: var(--sidebar-section-label-color); font-size: var(--font-size-label); overflow-wrap: anywhere; }
-.execution { margin: var(--space-default) 0; padding: var(--space-default); min-width: 0; }
-.execution summary { display: flex; align-items: center; gap: var(--icon-default); cursor: pointer; }
-.execution summary > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex: 0 0 auto; }
-.execution summary > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.execution summary > strong { margin-left: auto; flex: 0 0 auto; font-size: var(--font-size-label); font-weight: 400; }
-.execution pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-size-label); }
-.execution [data-status='failed'], .execution [data-status='unknown'] { color: var(--text); font-weight: 600; }
 .replyContext { display: flex; align-items: center; gap: var(--icon-default); font-size: var(--font-size-label); }
 .replyContext > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.execution { margin: var(--space-default) 0; }

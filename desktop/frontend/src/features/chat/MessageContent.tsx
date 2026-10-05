@@ -14,6 +14,7 @@ interface MessageContentProps {
   text: string;
   renderLocalImages?: boolean;
   presentation?: 'default' | 'description';
+  mention?: { id: string; name: string };
 }
 
 interface ContentSegment {
@@ -191,14 +192,27 @@ const descriptionComponents: Components = {
   code: ({ children }) => <code>{children}</code>,
 };
 
-export function MessageContent({ renderLocalImages = false, text, presentation = 'default' }: MessageContentProps) {
+export function MessageContent({ renderLocalImages = false, text, presentation = 'default', mention }: MessageContentProps) {
   const description = presentation === 'description';
   const jsonSegment = description ? null : jsonSegmentFromText(text);
   if (jsonSegment) return <CodePanel code={jsonSegment.value} language={jsonSegment.language} />;
+  const mentionLabel = mention ? `@${mention.name}` : '';
+  const mentionOffset = text.length - text.trimStart().length;
+  const addressed = mention && text.slice(mentionOffset).startsWith(mentionLabel)
+    && /^(?:$|[\s,:：])/.test(text.slice(mentionOffset + mentionLabel.length));
+  const components = description ? descriptionComponents : renderLocalImages ? localImageComponents : markdownComponents;
+  const mentionComponents: Components = addressed ? { ...components, p: ({ node, children }) => {
+    const parts = Children.toArray(children);
+    const first = parts[0];
+    if (node?.position?.start.offset === mentionOffset && typeof first === 'string' && first.startsWith(mentionLabel)) {
+      parts.splice(0, 1, <span key="mention" className={markdownStyles.mention} data-mention-id={mention.id}>{mentionLabel}</span>, first.slice(mentionLabel.length));
+    }
+    return renderLocalImages ? <LocalImageParagraph>{parts}</LocalImageParagraph> : <p>{parts}</p>;
+  } } : components;
   return (
     <div className={`${markdownStyles.markdown}${description ? ` ${markdownStyles.description}` : ''}`}>
       <ReactMarkdown
-        components={description ? descriptionComponents : renderLocalImages ? localImageComponents : markdownComponents}
+        components={mentionComponents}
         remarkPlugins={[remarkGfm]}
         urlTransform={(url, key) => key === 'href' && localFileLinkPath(url) ? url : defaultUrlTransform(url)}
       >

@@ -140,13 +140,14 @@ interface ChatTextItem {
   asyncQuestions?: ChatAsyncQuestion[];
 }
 
-export type ChatFileChangeKind = 'add' | 'delete' | 'update';
+export type ChatFileChangeKind = 'add' | 'delete' | 'update' | 'unknown';
 
 export interface ChatFileChange {
   path: string;
   kind: ChatFileChangeKind;
   diff: string;
   movePath: string | null;
+  diffFormat?: 'plain';
 }
 
 export interface ChatActivityItem {
@@ -160,6 +161,7 @@ export interface ChatActivityItem {
   detail: string;
   status: string;
   changes?: ChatFileChange[];
+  changesTruncated?: boolean;
   output?: string;
   cwd?: string;
   exitCode?: number;

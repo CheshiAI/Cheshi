@@ -138,6 +138,11 @@ test('room composer reconnects shared blur and resizes its overlay without movin
     height = 260; await resize(area);
     expect(content.style.getPropertyValue('--composer-overlay-height')).toBe('260px');
     expect(timeline.scrollTop).toBe(100);
+    height = 0; await resize(area);
+    expect(content.style.getPropertyValue('--composer-overlay-height')).toBe('260px');
+    expect(timeline.scrollTop).toBe(100);
+    height = 280; await resize(area);
+    expect(content.style.getPropertyValue('--composer-overlay-height')).toBe('280px');
     await ui.type('Message', 'Keep this draft');
     await ui.click('Planning');
     expect([...observers.values()].some(entry => entry.targets.has(area))).toBe(false);
@@ -359,7 +364,8 @@ test('candidate verification shows pending and stale results with receipts, with
     await ui.render(<VerificationMessage kind="verification_request" text={JSON.stringify({ goal: 'Verify', criteria: ['Login works'],
       artifacts: [{ path: 'deleted.ts', sha256: null }], candidate: { ...candidate, files: [{ path: 'deleted.ts', content: 'SECRET_SNAPSHOT_BODY' }] } })} />);
     expect(document.body.textContent).toContain(candidate.hash);
-    expect(document.body.textContent).toContain('deleted.ts · Absent');
+    expect(document.body.textContent).toContain('deleted.ts');
+    expect(document.querySelector('[aria-label="Requested file hash"] code')?.textContent).toBe('Absent');
     expect(document.body.textContent).not.toContain('SECRET_SNAPSHOT_BODY');
     await ui.render(<VerificationMessage kind="verification_result" text={JSON.stringify(result)} />);
     expect(document.body.textContent).toContain('bun test login.test.ts');

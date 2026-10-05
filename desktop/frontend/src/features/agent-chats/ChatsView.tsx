@@ -1,6 +1,6 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Phone, Reply, Users } from 'lucide-react';
+import { ArrowDown, Phone, Reply, Users } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { EmptyState, NeumorphicButton, RegionalBlur } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
@@ -11,7 +11,9 @@ import { MessageContent } from '../chat/MessageContent';
 import { ChatMessageLabel } from '../chat/ChatMessageLabel';
 import { syncChatComposerOverlayHeight } from '../chat/chatComposerOverlay';
 import { isWorkKind } from '../../../../shared/agent-work';
-import { VerificationMessage } from '../agents/VerificationMessage';
+import { VerificationCard } from './VerificationReview';
+import { verificationReview, type VerificationReview } from './verificationReviewModel';
+import { verificationQuote } from '../agents/verificationPresentation';
 import { WorkMessage } from '../agents/WorkMessage';
 import type { AgentChatsApi, ChatsRequest, RoomMessage } from '../../../../shared/agent-chats';
 import { resolveChatRecipient } from '../../../../shared/agent-chat-recipient';
@@ -24,15 +26,20 @@ import { RoomDialog } from './RoomDialog';
 import { ChatsComposer } from './ChatsComposer';
 import { RoomWorkState } from './RoomWorkState';
 import { ExecutionRecord } from './ExecutionRecord';
+import { fileChangesItem } from './fileChanges';
+import type { ChatActivityItem } from '../chat/model';
 import { currentWork, exchangeLabel, messageRoot } from './roomTimeline';
 import styles from './ChatsView.module.css';
 import { useRoomTimeline } from './useRoomTimeline';
+import { useChatsScroll } from './useChatsScroll';
 
 const ChatsMessageContent = memo(MessageContent);
 
-export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpenRoom, api = cheshiDesktop?.agentChats,
+export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpenRoom, reviewedMessageId, onReviewFileChanges, reviewedVerificationId, onReviewVerification, api = cheshiDesktop?.agentChats,
   registry = cheshiDesktop?.agentRegistry, management = cheshiDesktop?.agentManagement }: {
   active: boolean; sidebarTarget?: HTMLElement | null; sidebarActive?: boolean; onOpenRoom?(): void;
+  reviewedMessageId?: string; onReviewFileChanges?: (item: ChatActivityItem | null, path?: string) => void;
+  reviewedVerificationId?: string; onReviewVerification?: (review: VerificationReview | null, open?: boolean) => void;
   api?: AgentChatsApi; registry?: Pick<AgentRegistryApi, 'list' | 'onDidChange'>; management?: Pick<AgentManagementApi, 'engines'>;
 }) {
   const data = useChatsSnapshot(api, active || sidebarActive), { snapshot } = data;
@@ -61,34 +68,39 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     return () => { stopped = true; unsubscribe?.(); };
   }, [active, registry, management]);
   const room = snapshot.rooms.find(r => r.id === roomId), messages = useRoomTimeline(snapshot.messages, roomId);
+  const reviewedMessage = messages.find(message => message.id === reviewedMessageId);
+  const reviewedFiles = useMemo(() => reviewedMessage?.activity
+    ? fileChangesItem(reviewedMessage.activity, reviewedMessage.id) : null, [reviewedMessage?.activity, reviewedMessage?.id]);
+  useEffect(() => {
+    if (reviewedMessageId) onReviewFileChanges?.(active ? reviewedFiles : null);
+  }, [active, reviewedMessageId, reviewedFiles, onReviewFileChanges]);
+  const selectedVerification = useMemo(() => {
+    const message = messages.find(message => message.id === reviewedVerificationId);
+    return message ? verificationReview(message, messages) : null;
+  }, [messages, reviewedVerificationId]);
+  useEffect(() => {
+    if (reviewedVerificationId) onReviewVerification?.(active ? selectedVerification : null);
+  }, [active, reviewedVerificationId, selectedVerification, onReviewVerification]);
   const replyMessage = messages.find(m => m.id === replies[roomId ?? '']);
   const candidate = replyMessage && messageRoot(replyMessage, messages);
   const root = candidate && (candidate.kind === 'goal' || candidate.dialogue) ? candidate : undefined;
   const threadId = root?.id ?? null;
   const draftKey = roomId ?? '', draft = drafts[draftKey] ?? '';
-  const scrollNode = useRef<HTMLDivElement | null>(null), scrollPositions = useRef(new Map<string, { top: number; pinned: boolean }>());
-  const contentRef = useRef<HTMLDivElement>(null), composerRef = useRef<HTMLElement>(null);
+  const scrollNode = useRef<HTMLDivElement | null>(null);
+  const reading = useChatsScroll(snapshot, data.loaded, roomId, active, scrollNode);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [composerArea, setComposerArea] = useState<HTMLElement | null>(null);
   const attachTimeline = useCallback((node: HTMLDivElement | null) => { scrollNode.current = node; return timeline(node); }, [timeline]);
-  const visibleCount = messages.length;
   useLayoutEffect(() => {
-    const node = scrollNode.current;
-    if (!active || !node) return;
-    const position = scrollPositions.current.get(draftKey);
-    node.scrollTop = !position || position.pinned ? node.scrollHeight : position.top;
-    const resize = new ResizeObserver(() => {
-      const current = scrollPositions.current.get(draftKey);
-      if (!current || current.pinned) node.scrollTop = node.scrollHeight;
-    });
-    if (node.firstElementChild) resize.observe(node.firstElementChild);
-    return () => resize.disconnect();
-  }, [active, draftKey, visibleCount]);
-  useLayoutEffect(() => {
-    const content = contentRef.current, area = composerRef.current, node = scrollNode.current;
+    const content = contentRef.current, area = composerArea, node = scrollNode.current;
     if (!active || !content || !area || !node) return;
     const sync = () => {
+      const height = area.getBoundingClientRect().height;
+      if (!area.isConnected || height <= 0) return;
       if (node.clientWidth > 0) content.style.setProperty('--chat-viewport-width', `${node.clientWidth}px`);
-      syncChatComposerOverlayHeight(content, area.getBoundingClientRect().height, node,
-        scrollPositions.current.get(draftKey)?.pinned ?? true);
+      syncChatComposerOverlayHeight(content, height, node,
+        reading.isPinned());
+      reading.restore();
     };
     sync();
     const observer = new ResizeObserver(sync);
@@ -98,7 +110,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
       content.style.removeProperty('--composer-overlay-height');
       content.style.removeProperty('--chat-viewport-width');
     };
-  }, [active, draftKey]);
+  }, [active, draftKey, composerArea]);
   const owner = root?.recipient ?? room?.defaultAgentId, goalState = root?.goalProgress;
   const needsRecovery = root?.status !== 'completed' && (root?.status === 'blocked' || root?.status === 'unknown'
     || goalState?.phase === 'blocked' || goalState?.phase === 'unknown');
@@ -138,7 +150,11 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   }
   const name = (id: string | null) => id === 'user' ? 'You' : room?.members.find(m => m.id === id)?.name ?? id ?? '';
   function renderMessage(message: RoomMessage) {
+    const addressed = message.text.trimStart().startsWith('@')
+      ? resolveChatRecipient(message.text, room?.members ?? []).recipient : null;
+    const mention = addressed && addressed === message.recipient ? room?.members.find(member => member.id === addressed) : undefined;
     const label = exchangeLabel(message, messages);
+    const verification = verificationReview(message, messages);
     const question = message.questionId && message.questionId !== message.id ? messages.find(m => m.id === message.questionId) : undefined;
     const ownRoot = messageRoot(message, messages);
     const context = messages.find(m => m.id === message.replyTo) ?? question ?? (ownRoot && ownRoot.id !== message.id && working.length > 1 ? ownRoot : undefined);
@@ -153,11 +169,11 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
           createdAt={Date.parse(message.createdAt) / 1000} className={styles.metadata}>
           {message.recipient && <span>→ {name(message.recipient)}</span>}{label && <span>{label}</span>}
         </ChatMessageLabel>
-        {context && <blockquote className={styles.replyQuote}>{name(context.sender)}: {context.text.slice(0, 240)}</blockquote>}
-        {message.activity && message.activity.kind !== 'message' ? <ExecutionRecord activity={message.activity} />
+        {context && <blockquote className={styles.replyQuote}>{name(context.sender)}: {context.kind === 'verification_request' || context.kind === 'verification_result' ? verificationQuote(context.kind, context.text) : context.text.slice(0, 240)}</blockquote>}
+        {message.activity && message.activity.kind !== 'message' ? <ExecutionRecord activity={message.activity} messageId={message.id} onReview={onReviewFileChanges} />
           : isWorkKind(message.kind) ? <WorkMessage kind={message.kind} text={message.text} />
-            : message.kind === 'verification_request' || message.kind === 'verification_result' ? <VerificationMessage kind={message.kind} text={message.text} />
-              : <div className={styles.text}><ChatsMessageContent text={message.text || 'No text response.'} /></div>}
+            : verification ? <VerificationCard review={verification} onOpen={() => onReviewVerification?.(verification, true)} />
+              : <div className={styles.text}><ChatsMessageContent text={message.text || 'No text response.'} mention={mention} /></div>}
         {message.error && !message.goalProgress && <p role="status" className={styles.description}>{message.error}</p>}
         {message.activity?.kind === 'message' && message.activity.truncated && <p className={styles.description}>Message shortened to the retained excerpt.</p>}
         {message.status === 'queued' && message.error && <div className={styles.links}>
@@ -191,12 +207,17 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
               description={data.phase === 'error' ? data.error : !data.loaded ? 'Checking your chat rooms.'
                 : 'Select a room in Chats, or create one and invite your agents to begin.'} />}
             <RegionalBlur sourceRef={scrollNode}>
-              <div ref={attachTimeline} hidden={!room} onScroll={e => { const node = e.currentTarget; scrollPositions.current.set(draftKey, { top: node.scrollTop, pinned: node.scrollHeight - node.clientHeight - node.scrollTop < 48 }); }} className={styles.timeline} key={roomId} aria-label="Room messages">
+              <div ref={attachTimeline} hidden={!room} onScroll={reading.onScroll} className={styles.timeline} key={roomId} aria-label="Room messages">
                 <div className={styles.timelineContent}>{messages.map(renderMessage)}
                   {room && !messages.length && <p className={styles.empty}>Mention an agent with @ to assign work, or reply to continue their work. Other messages stay in the room without calling an agent.</p>}
                 </div>
               </div>
-              {room && <ChatsComposer key={`composer-${room.id}`} areaRef={composerRef} active={active} draft={draft} sending={sending} resumeGoal={resumeGoal}
+              {room && reading.awayFromBottom && <div className={styles.latestMessages}>
+                <NeumorphicButton variant="standard" size={reading.unreadCount ? 'standard' : 'icon'} aria-label="Jump to latest messages" title="Jump to latest messages" onClick={reading.jumpToLatest}>
+                  <ArrowDown aria-hidden="true" />{reading.unreadCount > 0 && <span>{reading.unreadCount} new {reading.unreadCount === 1 ? 'message' : 'messages'}</span>}
+                </NeumorphicButton>
+              </div>}
+              {room && <ChatsComposer key={`composer-${room.id}`} areaRef={setComposerArea} active={active} draft={draft} sending={sending} resumeGoal={resumeGoal}
                 sendDisabled={sending || !draft.trim() || !api || (ownerSelected && !!recoveryBlock)}
                 onSend={() => { void send(); }} onDraftChange={text => setDrafts(all => ({ ...all, [draftKey]: text }))}
                 deliveryTarget={addressing.error ?? (recipient ? `To: ${name(recipient)}` : 'Room message · Mention an agent with @ to call them')}

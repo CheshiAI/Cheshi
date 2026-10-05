@@ -1,0 +1,22 @@
+.message { display: grid; gap: var(--space-default); margin: var(--space-default) 0; font-size: 10px; font-weight: 400; color: var(--text); line-height: 1.6; }
+.card { --content-card-title-size: 10px; --content-card-title-weight: 600; --content-card-description-size: 10px; --content-card-icon-size: var(--icon-button-icon-size); }
+.panel { --liquid-glass-radius: 0; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; border-block: 0; }
+.content { min-height: 0; overflow: auto; padding: var(--space-default); display: grid; align-content: start; gap: var(--space-default); color: var(--text); font-size: 10px; font-weight: 400; line-height: 1.6; overflow-wrap: anywhere; --scrollbar-size: var(--auto-hide-scrollbar-size); scrollbar-width: auto; scrollbar-color: auto; }
+.content section { min-width: 0; }
+.content h3 { margin: 0 0 var(--space-default); font-size: var(--font-size-section-title); font-weight: 600; color: var(--sidebar-section-label-color); }
+.criteria { margin: 0; padding-left: 20px; display: grid; gap: var(--space-default); }
+.criteria li::marker { color: var(--sidebar-section-label-color); }
+.files { list-style: none; padding: 0; margin: 0; }
+.file { display: flex; align-items: flex-start; gap: var(--icon-default); padding: var(--space-default) 0; border-bottom: 1px solid var(--divider); }
+.file:first-child { padding-top: 0; }
+.file:last-child { border-bottom: 0; }
+.file > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; color: var(--sidebar-section-label-color); }
+.fileText { display: grid; gap: 4px; min-width: 0; flex: 1; }
+.filename { padding: 0; border: 0; background: transparent; font: inherit; color: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.filename:hover:not(:disabled) { text-decoration: underline; }
+.filename:disabled { cursor: default; opacity: 0.5; }
+.path, .muted { color: var(--sidebar-section-label-color); }
+.path { font-size: 9px; }
+.details { min-width: 0; }
+.details summary { cursor: pointer; color: var(--sidebar-section-label-color); }
+.details[open] > summary { margin-bottom: var(--icon-default); }

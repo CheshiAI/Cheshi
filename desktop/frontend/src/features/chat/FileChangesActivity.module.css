@@ -217,3 +217,13 @@
 
 .emptyReview { margin: auto; text-align: center; }
 .truncated { border-top: 1px solid rgba(255, 255, 255, .06); }
+
+
+.fileContents {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--space-default);
+}
+
+.fileContents > pre { min-height: 0; }
