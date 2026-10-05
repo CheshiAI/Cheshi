@@ -2,9 +2,34 @@ import { createHash } from 'node:crypto';
 import { record, type JsonRecord } from './protocol.ts';
 import type { AgentStore, Task } from './store.ts';
 
-import { ACTIVITY_LIMIT, TEXT_LIMIT, type TaskActivity } from './activity-contract.ts';
+import { ACTIVITY_LIMIT, FILE_CHANGE_LIMIT, TEXT_LIMIT, type TaskActivity, type TaskFileChange } from './activity-contract.ts';
 
 const string = (value: unknown) => typeof value === 'string' ? value : '';
+
+function retainFileChanges(value: unknown) {
+  const source = Array.isArray(value) ? value : [], changes: TaskFileChange[] = [];
+  let remaining = TEXT_LIMIT, truncated = false;
+  for (const entry of source) {
+    const v = record(entry), path = string(v.path);
+    const kindData = v.kind && typeof v.kind === 'object' && !Array.isArray(v.kind) ? record(v.kind) : {};
+    const rawKind = typeof v.kind === 'string' ? v.kind : kindData.type;
+    const kind = rawKind === 'add' || rawKind === 'delete' || rawKind === 'update' ? rawKind : 'unknown';
+    const movePath = string(kindData.move_path ?? kindData.movePath ?? v.movePath) || null;
+    const metadataSize = path.length + (movePath?.length ?? 0);
+    if (!path || metadataSize > remaining || changes.length >= FILE_CHANGE_LIMIT) { truncated = true; break; }
+    remaining -= metadataSize;
+    const sourceDiff = string(v.diff);
+    let diff = sourceDiff.slice(0, remaining);
+    if (diff.length < sourceDiff.length) {
+      // Never count an unfinished line as a complete addition or deletion.
+      diff = diff.slice(0, Math.max(0, diff.lastIndexOf('\n') + 1));
+      truncated = true;
+    }
+    changes.push({ path, kind, movePath, diff }); remaining -= diff.length;
+    if (truncated) break;
+  }
+  return { changes, truncated };
+}
 
 /** Public messages and tool receipts only. Exclude reasoning and raw protocol envelopes. */
 export function recordTaskActivity(store: AgentStore, taskId: string, method: string, item: JsonRecord, turnId: string) {
@@ -36,9 +61,11 @@ export function recordTaskActivity(store: AgentStore, taskId: string, method: st
   if (!task) return;
   const activity = task.activity ?? [], previous = activity.find(entry => entry.id === id);
   if (previous && method === 'item/started') return;
+  const files = kind === 'file' ? retainFileChanges(item.changes) : undefined;
   const entry: TaskActivity = { id, turnId, kind, title: title.slice(0, 1000), text: text.slice(0, TEXT_LIMIT), status,
     createdAt: previous?.createdAt ?? new Date().toISOString(), final: kind === 'message' && (item.phase == null || item.phase === 'final_answer'),
-    truncated: title.length > 1000 || text.length > TEXT_LIMIT };
+    truncated: title.length > 1000 || text.length > TEXT_LIMIT || files?.truncated === true,
+    ...(files ? { changes: files.changes } : {}) };
   let next = previous ? activity.map(value => value.id === id ? entry : value) : [...activity, entry];
   let truncated = task.activityTruncated === true || next.length > ACTIVITY_LIMIT;
   next = next.slice(-ACTIVITY_LIMIT);

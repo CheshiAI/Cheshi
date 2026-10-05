@@ -71,3 +71,40 @@ test('a restarted worker keeps unfinished execution cards unknown without replay
   expect(task.activity).toHaveLength(1);
   expect(task.activity![0]?.status).toBe('unknown');
 });
+
+test('file changes retain kinds, rename destinations and diffs through restart and contract parsing', () => {
+  const { directory, store } = fixture();
+  recordTaskActivity(store, 'task', 'item/completed', { type: 'fileChange', id: 'files', status: 'completed', changes: [
+    { path: '/workspace/new.ts', kind: { type: 'add' }, diff: '+new' },
+    { path: '/workspace/old.ts', kind: { type: 'delete' }, diff: '-old' },
+    { path: '/workspace/before.ts', kind: { type: 'update', move_path: '/workspace/after.ts' }, diff: '@@ -1 +1 @@\n-old\n+new' },
+  ] }, 'turn');
+  const saved = new AgentStore(directory).task('task')!.activity!;
+  const parsed = parseTaskActivities(saved);
+  expect(parsed).toEqual(saved);
+  expect(parsed[0]!.changes?.map(change => change.kind)).toEqual(['add', 'delete', 'update']);
+  expect(parsed[0]!.changes?.[2]?.movePath).toBe('/workspace/after.ts');
+  expect(parsed[0]!.changes?.[2]?.diff).toContain('+new');
+});
+
+test('structured file payloads are bounded, incomplete lines omitted, legacy records still parse', () => {
+  const { store } = fixture();
+  recordTaskActivity(store, 'task', 'item/completed', { type: 'fileChange', id: 'large', changes: [
+    { path: 'a.ts', kind: 'update', diff: '@@ -1 +1 @@\n-old\n+' + 'x'.repeat(20000) },
+  ] }, 'turn');
+  const saved = store.task('task')!.activity![0]!;
+  expect(saved.truncated).toBe(true);
+  expect(saved.changes![0]!.diff).toBe('@@ -1 +1 @@\n-old\n');
+  expect(parseTaskActivities([saved])[0]!.changes).toEqual(saved.changes);
+  const { changes, ...legacy } = saved;
+  expect(parseTaskActivities([legacy])).toEqual([legacy]);
+  for (const invalid of [
+    [{ path: 'a', kind: 'update', diff: 'x'.repeat(16000), movePath: null }],
+    [{ path: 'a', kind: 'invalid', diff: '', movePath: null }],
+    Array.from({ length: 101 }, () => ({ path: 'a', kind: 'update', diff: '', movePath: null })),
+  ]) expect(() => parseTaskActivities([{ ...saved, changes: invalid }])).toThrow();
+  recordTaskActivity(store, 'task', 'item/completed', { type: 'fileChange', id: 'many', changes:
+    Array.from({ length: 101 }, (_, i) => ({ path: `${i}.ts`, kind: 'add', diff: '+x' })) }, 'turn');
+  expect(store.task('task')!.activity![1]!.changes).toHaveLength(100);
+  expect(store.task('task')!.activity![1]!.truncated).toBe(true);
+});
