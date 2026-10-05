@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import { createPortal } from 'react-dom';
 import { Phone, Reply, Users } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { NeumorphicButton, RegionalBlur } from '../../shared/ui';
+import { EmptyState, NeumorphicButton, RegionalBlur } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
@@ -186,9 +186,12 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
         <div className={styles.body}>
           <div className={styles.content} ref={contentRef}>
             {error && <p className={styles.notice} role="alert">{error}</p>}
-            {!api && <p className={styles.empty}>Restart the desktop app to load Chats.</p>}
+            {!room && <EmptyState className={styles.roomEmpty}
+              title={data.phase === 'error' ? 'Could not load Chats' : !data.loaded ? 'Loading rooms…' : 'Start a conversation'}
+              description={data.phase === 'error' ? data.error : !data.loaded ? 'Checking your chat rooms.'
+                : 'Select a room in Chats, or create one and invite your agents to begin.'} />}
             <RegionalBlur sourceRef={scrollNode}>
-              <div ref={attachTimeline} onScroll={e => { const node = e.currentTarget; scrollPositions.current.set(draftKey, { top: node.scrollTop, pinned: node.scrollHeight - node.clientHeight - node.scrollTop < 48 }); }} className={styles.timeline} key={roomId} aria-label="Room messages">
+              <div ref={attachTimeline} hidden={!room} onScroll={e => { const node = e.currentTarget; scrollPositions.current.set(draftKey, { top: node.scrollTop, pinned: node.scrollHeight - node.clientHeight - node.scrollTop < 48 }); }} className={styles.timeline} key={roomId} aria-label="Room messages">
                 <div className={styles.timelineContent}>{messages.map(renderMessage)}
                   {room && !messages.length && <p className={styles.empty}>Mention an agent with @ to assign work, or reply to continue their work. Other messages stay in the room without calling an agent.</p>}
                 </div>
@@ -211,10 +214,10 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
               </ChatsComposer>}
             </RegionalBlur>
           </div>
-          {room && <aside className={styles.toolsRail} aria-label="Room tools">
-            <TooltipButton variant="ghost" size="icon" title="Phone calls" aria-label="Phone calls" aria-haspopup="dialog" onClick={() => setVoiceOpen(true)}><Phone aria-hidden="true" /></TooltipButton>
-            <TooltipButton variant="ghost" size="icon" title="Room participants" aria-label="Room participants" aria-haspopup="dialog" onClick={() => setDialog('participants')}><Users aria-hidden="true" /></TooltipButton>
-          </aside>}
+          <aside className={styles.toolsRail} aria-label="Room tools">
+            <TooltipButton variant="ghost" size="icon" title="Phone calls" aria-label="Phone calls" aria-haspopup="dialog" disabled={!room} onClick={() => setVoiceOpen(true)}><Phone aria-hidden="true" /></TooltipButton>
+            <TooltipButton variant="ghost" size="icon" title="Room participants" aria-label="Room participants" aria-haspopup="dialog" disabled={!room} onClick={() => setDialog('participants')}><Users aria-hidden="true" /></TooltipButton>
+          </aside>
         </div>
       </section>
       {active && dialog && <RoomDialog room={dialog === 'participants' ? room : undefined} agents={agents} engines={engines} onSave={mutate} onClose={() => setDialog(null)} />}

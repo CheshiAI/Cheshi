@@ -730,6 +730,33 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
+test('empty Chats keeps room tools visible and enables them only after a room is available', async () => {
+  await withDOM(async ui => {
+    let data: ChatsSnapshot = { rooms: [], messages: [] };
+    const api = { request: async () => data };
+    await ui.render(<ChatsView active api={api} />);
+    const conversation = document.querySelector('[aria-label="Room conversation"]')!;
+    expect(conversation.textContent).toContain('Start a conversation');
+    expect(conversation.textContent).toContain('Select a room in Chats, or create one');
+    const rail = document.querySelector('[aria-label="Room tools"]')!;
+    const buttons = [...rail.querySelectorAll('button')];
+    expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['Phone calls', 'Room participants']);
+    for (const button of buttons) {
+      expect(button.disabled).toBe(true);
+      await ui.click(button.getAttribute('aria-label')!);
+      expect(document.querySelector('dialog')).toBeNull();
+    }
+    data = snapshot(); await ui.click('Refresh rooms');
+    expect(document.querySelector('[aria-label="Room tools"]')).toBe(rail);
+    expect(buttons.every(button => !button.disabled)).toBe(true);
+    expect(conversation.textContent).not.toContain('Start a conversation');
+    expect(document.querySelector('[aria-label="Room messages"]')?.hasAttribute('hidden')).toBe(false);
+    data = { rooms: [], messages: [] }; await ui.click('Refresh rooms');
+    expect(conversation.textContent).toContain('Start a conversation');
+    expect(buttons.every(button => button.disabled)).toBe(true);
+  });
+});
+
 test('offscreen Chats starts one initial read and never displays an empty-room notice while loading', async () => {
   await withDOM(async ui => {
     const pending = createDeferred<ChatsSnapshot>(); let reads = 0;
@@ -739,6 +766,7 @@ test('offscreen Chats starts one initial read and never displays an empty-room n
     expect(reads).toBe(1);
     expect(document.querySelector('[role="status"][aria-label="Loading rooms…"]')).not.toBeNull();
     expect(document.body.textContent).not.toContain('Create a room and invite');
+    expect(document.body.textContent).not.toContain('Start a conversation');
     await render(true); await render(false); expect(reads).toBe(1);
     await act(async () => { pending.resolve(snapshot()); await pending.promise; });
     await render(true);
@@ -753,6 +781,8 @@ test('first-load failure shows the error and retry, not a create-room invitation
     const api = { request: async () => { if (fail) throw new Error('Room service unavailable'); return { rooms: [], messages: [] }; } };
     await ui.render(<ChatsView active api={api} />);
     expect(document.body.textContent).toContain('Room service unavailable');
+    expect(document.querySelector('[aria-label="Room conversation"]')?.textContent).toContain('Could not load Chats');
+    expect(document.body.textContent).not.toContain('Start a conversation');
     expect(document.body.textContent).not.toContain('Create a room and invite');
     expect((document.querySelector('[aria-label="Refresh rooms"]') as HTMLButtonElement).disabled).toBe(false);
     fail = false; await ui.click('Refresh rooms');

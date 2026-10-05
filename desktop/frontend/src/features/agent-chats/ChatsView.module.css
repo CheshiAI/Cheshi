@@ -38,6 +38,9 @@
 .form fieldset { border: 1px solid var(--divider); display: flex; flex-direction: column; gap: var(--space-default); padding: var(--space-default); max-height: 240px; overflow: auto; }
 .form .member { flex-direction: row; align-items: center; }
 .empty, .notice { padding: var(--space-default); margin: 0; color: var(--sidebar-section-label-color); }
+.content .roomEmpty { --empty-text: var(--sidebar-section-label-color); --empty-muted: var(--sidebar-section-label-color); font-family: var(--font-ui), sans-serif; letter-spacing: normal; }
+.content .roomEmpty > strong { font-size: var(--font-size-section-title); font-weight: 600; }
+.content .roomEmpty > p { font-size: var(--font-size-small); font-weight: 400; }
 @media (max-width: 720px) { .sidebar { width: 180px; flex-basis: 180px; } }
 
 .records { display: flex; flex-direction: column; gap: var(--space-default); margin: var(--space-default) 0; overflow-wrap: anywhere; }
