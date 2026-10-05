@@ -126,6 +126,13 @@ export function createAgentChats(options: Options) {
   };
   function request(workspaceRoot: string, value: unknown) {
     const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
+    if (input.action === 'pin') {
+      const room = roomFor(workspace, input.roomId);
+      if ((room.pinned === true) !== input.pinned) {
+        store().update(s => { s.rooms.find(r => r.id === room.id)!.pinned = input.pinned; });
+      }
+      return snapshot(workspace);
+    }
     if (input.action === 'retry' || input.action === 'recover' || input.action === 'question' || input.action === 'question-deadline') throw new Error('Use the asynchronous execution inspection handler.');
     if (input.action === 'create') {
       const selected = members(workspace, input.members);

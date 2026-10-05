@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createAgentChats } from '../lib/agent-chats/service.mts';
@@ -9,7 +9,7 @@ import { specialistAgent } from './agent-registry-fixtures';
 import type { AgentDetails } from '../shared/agent-management';
 import type { ChatsRequest } from '../shared/agent-chats';
 import type { AgentRuntimeRequest } from '../shared/agent-runtime';
-import { parseChatsSnapshot } from '../shared/agent-chats';
+import { parseChatsRequest, parseChatsSnapshot } from '../shared/agent-chats';
 const directories: string[] = [];
 afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }); });
 function fixture() {
@@ -34,6 +34,48 @@ function fixture() {
   const send = (id: string, patch: Partial<Extract<ChatsRequest, { action: 'send' }>> = {}) => request({ action: 'send', id, roomId: 'room', threadId: null, recipient: 'dev', text: 'Build login', goal: true, ...patch });
   return { workspace, filename, agents, details, sent, options, service, request, send, uncertain: () => { uncertain = true; } };
 }
+test('pin requests require literal booleans and legacy rooms load unpinned', () => {
+  const f = fixture();
+  expect(parseChatsRequest({ action: 'pin', roomId: 'room', pinned: false })).toEqual({ action: 'pin', roomId: 'room', pinned: false });
+  for (const pinned of [undefined, null, 0, 1, 'true', 'false', {}, []]) {
+    expect(() => f.service.request(f.workspace, { action: 'pin', roomId: 'room', pinned })).toThrow('pin state');
+  }
+  const legacy = new ChatsStore(f.filename).snapshot(f.workspace);
+  expect(legacy.rooms[0]?.pinned).toBe(false);
+  expect(() => parseChatsSnapshot({ ...legacy, rooms: [{ ...legacy.rooms[0], pinned: 'true' }] })).toThrow('pin state');
+});
+test('pin persists across service and store reloads without delivery or same-value writes', async () => {
+  const f = fixture(), pin = (pinned: boolean) => f.request({ action: 'pin', roomId: 'room', pinned });
+  const before = f.request({ action: 'list' });
+  let events = 0;
+  const unsubscribe = f.service.subscribe(f.workspace, () => { events++; });
+  expect(pin(false).cursor).toEqual(before.cursor); expect(events).toBe(0);
+  const acknowledged = pin(true);
+  expect(acknowledged.rooms[0]?.pinned).toBe(true); expect(events).toBe(1);
+  const saved = readFileSync(f.filename, 'utf8'), modified = statSync(f.filename).mtimeMs;
+  expect(pin(true)).toEqual(acknowledged); expect(events).toBe(1);
+  expect(readFileSync(f.filename, 'utf8')).toBe(saved); expect(statSync(f.filename).mtimeMs).toBe(modified);
+  const restarted = createAgentChats(f.options);
+  expect(restarted.request(f.workspace, { action: 'list' }).rooms[0]?.pinned).toBe(true);
+  expect(new ChatsStore(f.filename).snapshot(f.workspace).rooms[0]?.pinned).toBe(true);
+  expect(pin(false).rooms[0]?.pinned).toBe(false);
+  expect(new ChatsStore(f.filename).snapshot(f.workspace).rooms[0]?.pinned).toBe(false);
+  await f.service.tick(); expect(f.sent).toHaveLength(0);
+  expect(f.request({ action: 'list' }).messages).toEqual(before.messages);
+  expect(f.request({ action: 'list' }).rooms[0]?.members).toEqual(before.rooms[0]?.members);
+  unsubscribe();
+});
+test('pin rejects foreign and missing rooms and preserves memory and journal on storage failure', () => {
+  const f = fixture(), before = readFileSync(f.filename, 'utf8');
+  const other = realpathSync(mkdtempSync(join(tmpdir(), 'cheshi-chats-pin-other-'))); directories.push(other);
+  expect(() => f.service.request(other, { action: 'pin', roomId: 'room', pinned: true })).toThrow('project');
+  expect(() => f.request({ action: 'pin', roomId: 'missing', pinned: true })).toThrow('project');
+  mkdirSync(`${f.filename}.tmp`);
+  expect(() => f.request({ action: 'pin', roomId: 'room', pinned: true })).toThrow();
+  expect(f.request({ action: 'list' }).rooms[0]?.pinned).not.toBe(true);
+  expect(readFileSync(f.filename, 'utf8')).toBe(before);
+  expect(new ChatsStore(f.filename).snapshot(f.workspace).rooms[0]?.pinned).toBe(false);
+});
 test('unaddressed room messages persist without jobs, worker wakes or model requests', async () => {
   const f = fixture(); let wakes = 0;
   const service = createAgentChats({ ...f.options, wake: async () => { wakes++; return { details: f.details }; } });

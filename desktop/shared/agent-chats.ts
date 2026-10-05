@@ -24,6 +24,7 @@ export interface RoomGoalProgress {
 }
 export interface ChatMember { id: string; accountId: string; name: string }
 export interface AgentRoom {
+  pinned?: boolean;
   id: string; workspace: string; name: string; engineId: string; members: ChatMember[]; defaultAgentId: string; createdAt: string;
 }
 export interface RoomMessage {
@@ -45,6 +46,7 @@ export interface RoomJob {
 export interface ChatsSnapshot { cursor?: ChatsCursor; rooms: AgentRoom[]; messages: RoomMessage[] }
 export interface ChatTaskTarget { roomId: string; threadId: string | null; agentId: string; engineId: string; taskId: string }
 export type ChatsRequest = { action: 'list' }
+  | { action: 'pin'; roomId: string; pinned: boolean }
   | { action: 'retry'; roomId: string; messageId: string }
   | { action: 'question-deadline'; roomId: string; goalId: string; questionId: string; expiresAt: string | null }
   | { action: 'question'; roomId: string; goalId: string; questionId: string; recipient: string | null }
@@ -66,6 +68,10 @@ function required(value: unknown, max: number): string {
 }
 export function parseChatsRequest(value: unknown): ChatsRequest {
   const v = agentRecord(value);
+  if (v.action === 'pin') {
+    if (typeof v.pinned !== 'boolean') throw new Error('Invalid room pin state.');
+    return { action: 'pin', roomId: chatId(v.roomId), pinned: v.pinned };
+  }
   if (v.action === 'retry') return { action: 'retry', roomId: chatId(v.roomId), messageId: chatId(v.messageId) };
   if (v.action === 'question-deadline') return { action: 'question-deadline', roomId: chatId(v.roomId), goalId: chatId(v.goalId), questionId: chatId(v.questionId), expiresAt: parseQuestionDeadline(v.expiresAt) };
   if (v.action === 'question') return { action: 'question', roomId: chatId(v.roomId), goalId: chatId(v.goalId), questionId: chatId(v.questionId), recipient: v.recipient === null ? null : chatId(v.recipient) };
@@ -117,10 +123,11 @@ export function parseRoom(value: unknown): AgentRoom {
   const v = agentRecord(value), members = entries(v.members, raw => {
     const m = agentRecord(raw); return { id: chatId(m.id), name: required(m.name, 100), accountId: required(m.accountId, 200) };
   }, 32);
+  if (v.pinned !== undefined && typeof v.pinned !== 'boolean') throw new Error('Invalid room pin state.');
   const defaultAgentId = chatId(v.defaultAgentId);
   if (!members.some(m => m.id === defaultAgentId) || new Set(members.map(m => m.id)).size !== members.length) throw new Error('Invalid room membership.');
   return { id: chatId(v.id), workspace: required(v.workspace, 4096), name: required(v.name, 100), engineId: parseAgentEngineId(v.engineId),
-    members, defaultAgentId, createdAt: required(v.createdAt, 100) };
+    members, defaultAgentId, createdAt: required(v.createdAt, 100), pinned: v.pinned === true };
 }
 export function parseRoomMessage(value: unknown): RoomMessage {
   const v = agentRecord(value);

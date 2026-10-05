@@ -51,6 +51,9 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const alive = useRef(true), sendingRef = useRef(false);
   const pending = useRef<{ key: string; id: string } | null>(null);
+  const [pinningRoomId, setPinningRoomId] = useState<string | null>(null);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const pinning = useRef(false);
   const timeline = useAutoHideScrollbars<HTMLDivElement>();
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => {
@@ -148,6 +151,13 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : 'Message was not saved.'); }
     finally { sendingRef.current = false; if (alive.current) setSending(false); }
   }
+  async function pinRoom(id: string, pinned: boolean) {
+    if (pinning.current) return;
+    pinning.current = true; setPinningRoomId(id); setPinError(null);
+    try { await mutate({ action: 'pin', roomId: id, pinned }); }
+    catch (e) { if (alive.current) setPinError(e instanceof Error ? e.message : 'Room pin was not saved.'); }
+    finally { pinning.current = false; if (alive.current) setPinningRoomId(null); }
+  }
   const name = (id: string | null) => id === 'user' ? 'You' : room?.members.find(m => m.id === id)?.name ?? id ?? '';
   function renderMessage(message: RoomMessage) {
     const addressed = message.text.trimStart().startsWith('@')
@@ -185,7 +195,8 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
       </div>
     </article>;
   }
-  const roomList = <ChatsRoomList snapshot={snapshot} selectedId={roomId} phase={data.phase} loaded={data.loaded} refreshing={data.refreshing} disabled={!api} error={data.error}
+  const roomList = <ChatsRoomList snapshot={snapshot} selectedId={roomId} phase={data.phase} loaded={data.loaded} refreshing={data.refreshing} disabled={!api} error={data.error ?? pinError}
+    pinningRoomId={pinningRoomId} onPin={(id, pinned) => { void pinRoom(id, pinned); }}
     onSelect={id => { setRoomId(id); onOpenRoom?.(); }} onNew={() => { setDialog('new'); onOpenRoom?.(); }} onRefresh={() => { void data.refresh(); }} />;
   return <>
     {sidebarTarget && createPortal(roomList, sidebarTarget)}

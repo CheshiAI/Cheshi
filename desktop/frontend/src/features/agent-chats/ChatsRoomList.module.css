@@ -7,3 +7,7 @@
 
 .notice { margin: 0; padding: var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
 .empty { display: flex; flex: 1 1 auto; align-items: center; justify-content: center; text-align: center; }
+
+.actions { flex: 0 0 auto; padding-right: var(--space-default); }
+.pin { display: inline-flex; flex: 0 0 auto; margin-left: var(--icon-default); color: var(--text); }
+.pin svg { width: var(--icon-size-default); height: var(--icon-size-default); }
