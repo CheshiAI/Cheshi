@@ -54,7 +54,7 @@ test('evidence callbacks see only matched native items, including events before 
   observer.identify('thread', 'turn'); observer.receive(completion());
   expect((await observer.result).status).toBe('completed');
   observer.receive(event('item/completed'));
-  expect(observed).toEqual(['item/started/check', 'item/completed/check']);
+  expect(observed).toEqual(['item/started/check', 'item/completed/check', 'item/completed/answer']);
 });
 
 test('turn usage replaces cumulative notifications, excludes foreign turns and leaves missing usage unknown', async () => {
@@ -70,4 +70,18 @@ test('turn usage replaces cumulative notifications, excludes foreign turns and l
   missing.receive({ method: 'thread/tokenUsage/updated', params: { threadId: 'thread', turnId: 'turn', tokenUsage: { total: {} } } });
   missing.receive(completion()); await missing.result;
   expect(missing.usage).toBeNull();
+});
+
+test('live usage retains cached totals, ignores older snapshots and never treats events as model calls', async () => {
+  const reported: unknown[] = [];
+  const observer = new TurnObserver(undefined, (tokens, threadId, turnId) => reported.push({ tokens, threadId, turnId }));
+  const event = (inputTokens: number, cachedInputTokens?: number): Notification => ({ method: 'thread/tokenUsage/updated', params: {
+    threadId: 'thread', turnId: 'turn', tokenUsage: { total: { inputTokens, cachedInputTokens, outputTokens: 5, totalTokens: inputTokens + 5 } },
+  } });
+  observer.receive(event(100, 80)); observer.identify('thread', 'turn');
+  observer.receive(event(100, 80)); observer.receive(event(90, 70));
+  observer.receive(completion()); await observer.result;
+  expect(observer.threadTotals).toEqual({ inputTokens: 100, cachedInputTokens: 80, outputTokens: 5, totalTokens: 105 });
+  expect(reported).toHaveLength(2);
+  expect(reported[0]).toEqual(reported[1]);
 });

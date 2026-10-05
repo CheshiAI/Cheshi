@@ -1,3 +1,5 @@
+import { parseTaskActivity, type TaskActivity } from './agent-activity.ts';
+import { parseTaskInspection, type TaskInspection } from './agent-task-inspection.ts';
 import { parseWorkerLifecycle, type AgentRuntimeState } from './agent-runtime.ts';
 import { parseConversation, type ConversationState } from '../../experiments/codex-specialists/src/conversation-contract.ts';
 import type { WorkKind } from './agent-work.ts';
@@ -25,6 +27,8 @@ export interface AgentRoom {
   id: string; workspace: string; name: string; engineId: string; members: ChatMember[]; defaultAgentId: string; createdAt: string;
 }
 export interface RoomMessage {
+  replyTo?: string; userQuestion?: { rootId: string; id: string; answered: boolean };
+  activity?: TaskActivity; inspection?: TaskInspection; executionStatus?: string; questionId?: string;
   worker?: AgentRuntimeState['lifecycle'];
   dialogue?: ConversationState;
   id: string; roomId: string; threadId: string | null; sender: string; recipient: string | null;
@@ -48,7 +52,7 @@ export type ChatsRequest = { action: 'list' }
   | { action: 'recover'; roomId: string; goalId: string }
   | { action: 'create'; id: string; name: string; engineId: string; members: string[]; defaultAgentId: string }
   | { action: 'invite'; roomId: string; members: string[]; defaultAgentId: string }
-  | { action: 'send'; id: string; roomId: string; threadId: string | null; recipient: string | null; text: string; goal: boolean; automatic?: true; questionId?: string; answerTo?: string };
+  | { action: 'send'; id: string; roomId: string; threadId: string | null; recipient: string | null; text: string; goal: boolean; automatic?: true; questionId?: string; answerTo?: string; replyTo?: string };
 export interface AgentChatsApi { request(input: ChatsRequest): Promise<ChatsSnapshot>; onDidChange?(listener: (update: ChatsUpdate) => void): () => void }
 export const chatId = (value: unknown): string => {
   const id = parseAgentId(value);
@@ -81,7 +85,7 @@ export function parseChatsRequest(value: unknown): ChatsRequest {
   if (v.action !== 'send' || typeof v.goal !== 'boolean') throw new Error('Invalid chat request.');
   return { action: 'send', id: chatId(v.id), roomId: chatId(v.roomId), threadId: v.threadId === null ? null : chatId(v.threadId),
     recipient: v.recipient === null ? null : chatId(v.recipient), text: required(v.text, 16_000), goal: v.goal,
-    ...conversationDelivery(v) };
+    ...conversationDelivery(v), ...(v.replyTo === undefined ? {} : { replyTo: chatId(v.replyTo) }) };
 }
 
 function conversationDelivery(v: Record<string, unknown>) {
@@ -121,7 +125,14 @@ export function parseRoom(value: unknown): AgentRoom {
 export function parseRoomMessage(value: unknown): RoomMessage {
   const v = agentRecord(value);
   if (!isWorkKind(v.kind) && !['message', 'goal', 'question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid room message.');
-  return { ...(v.worker === undefined ? {} : { worker: parseWorkerLifecycle(v.worker) }), ...(v.dialogue === undefined ? {} : { dialogue: parseConversation(v.dialogue) }), id: chatId(v.id), roomId: chatId(v.roomId), threadId: optionalId(v.threadId), sender: chatId(v.sender), recipient: optionalId(v.recipient),
+  const userQuestion = v.userQuestion === undefined ? undefined : agentRecord(v.userQuestion);
+  if (userQuestion && typeof userQuestion.answered !== 'boolean') throw new Error('Invalid user question state.');
+  return { ...(v.replyTo === undefined ? {} : { replyTo: chatId(v.replyTo) }),
+    ...(userQuestion ? { userQuestion: { rootId: chatId(userQuestion.rootId), id: chatId(userQuestion.id), answered: userQuestion.answered as boolean } } : {}),
+    ...(v.activity === undefined ? {} : { activity: parseTaskActivity(v.activity) }),
+    ...(v.inspection === undefined ? {} : { inspection: parseTaskInspection(v.inspection) }),
+    ...(v.executionStatus === undefined ? {} : { executionStatus: required(v.executionStatus, 100) }),
+    ...(v.questionId === undefined ? {} : { questionId: chatId(v.questionId) }), ...(v.worker === undefined ? {} : { worker: parseWorkerLifecycle(v.worker) }), ...(v.dialogue === undefined ? {} : { dialogue: parseConversation(v.dialogue) }), id: chatId(v.id), roomId: chatId(v.roomId), threadId: optionalId(v.threadId), sender: chatId(v.sender), recipient: optionalId(v.recipient),
     kind: v.kind as RoomMessage['kind'], text: agentText(v.text, 500_000), createdAt: required(v.createdAt, 100),
     ...(v.relatedTask === undefined ? {} : { relatedTask: (() => { const t = agentRecord(v.relatedTask); return { agentId: chatId(t.agentId), taskId: chatId(t.taskId) }; })() }),
     ...(v.taskId === undefined ? {} : { taskId: chatId(v.taskId) }), ...(v.status === undefined ? {} : { status: required(v.status, 100) }),

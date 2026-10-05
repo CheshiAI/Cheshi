@@ -31,9 +31,38 @@ function fixture() {
   const service = createAgentChats(options);
   const request = (v: ChatsRequest) => service.request(workspace, v);
   request({ action: 'create', id: 'room', name: 'Login', engineId: 'docker:test', members: ['dev', 'planner'], defaultAgentId: 'dev' });
-  const send = (id: string, patch: Partial<Extract<ChatsRequest, { action: 'send' }>> = {}) => request({ action: 'send', id, roomId: 'room', threadId: null, recipient: null, text: 'Build login', goal: true, ...patch });
+  const send = (id: string, patch: Partial<Extract<ChatsRequest, { action: 'send' }>> = {}) => request({ action: 'send', id, roomId: 'room', threadId: null, recipient: 'dev', text: 'Build login', goal: true, ...patch });
   return { workspace, filename, agents, details, sent, options, service, request, send, uncertain: () => { uncertain = true; } };
 }
+test('unaddressed room messages persist without jobs, worker wakes or model requests', async () => {
+  const f = fixture(); let wakes = 0;
+  const service = createAgentChats({ ...f.options, wake: async () => { wakes++; return { details: f.details }; } });
+  const input = { action: 'send', id: 'note', roomId: 'room', threadId: null, recipient: null, text: 'Hello everyone', goal: false, automatic: true } as const;
+  service.request(f.workspace, input); service.request(f.workspace, input);
+  await service.tick();
+  expect(wakes).toBe(0); expect(f.sent).toHaveLength(0);
+  const persisted = new ChatsStore(f.filename);
+  expect(persisted.all().jobs).toHaveLength(0);
+  expect(persisted.snapshot(f.workspace).messages).toMatchObject([{ id: 'note', recipient: null, text: 'Hello everyone' }]);
+  expect(persisted.all().messages[0]?.taskId).toBeUndefined();
+  expect(() => service.request(f.workspace, { ...input, recipient: 'dev' })).toThrow('identity');
+});
+test.each(['@planner Build login', 'planner 호출해서 로그인 만들어줘'])('calls only the addressed participant: %s', async text => {
+  const f = fixture();
+  f.send('call', { recipient: null, text, goal: false, automatic: true }); await f.service.tick();
+  expect(f.sent).toMatchObject([{ agent: 'planner' }]);
+  expect(f.details.tasks[0]?.prompt).toContain('request_work for bounded implementation');
+  expect(f.details.tasks[0]?.prompt).toContain('If the user requests planning only, stop at planning');
+  expect(f.details.tasks[0]?.prompt).toContain('not routine handoffs already covered by the request');
+  expect(() => f.send('mismatch', { recipient: 'dev', text, goal: false })).toThrow('does not match');
+});
+test('reply to a directed user message retains its recipient; unknown calls never use the default', async () => {
+  const f = fixture(); f.send('initial', { recipient: 'planner', goal: false });
+  f.send('reply', { recipient: null, replyTo: 'initial', text: 'Use email', goal: false });
+  expect(new ChatsStore(f.filename).all().jobs.map(j => j.agentId)).toEqual(['planner', 'planner']);
+  expect(() => f.send('unknown', { recipient: null, text: '@stranger do it', goal: false })).toThrow('exact name');
+  expect(() => f.send('no-target', { recipient: null })).toThrow('Choose a recipient');
+});
 test('application inspection routes only the existing owner and preserves queued work without automatic dispatch', async () => {
   const f = fixture(); f.send('goal'); await f.service.tick();
   f.details.tasks[0]!.status = 'interrupted';
@@ -152,7 +181,7 @@ test('invitation is additive and permits the newly invited collaborator without 
   f.request({ action: 'invite', roomId: 'room', members: ['dev', 'planner', 'outside'], defaultAgentId: 'planner' });
   expect(f.service.rooms.allowed(binding, { id: 'q', questionId: 'q', taskId, from: 'dev', to: 'outside', roomId: 'room', kind: 'question', text: 'Help' })).toBe(true);
   expect(() => f.request({ action: 'invite', roomId: 'room', members: ['dev'], defaultAgentId: 'dev' })).toThrow('retained');
-  const next = f.send('normal', { goal: false });
+  const next = f.send('normal', { goal: false, recipient: 'planner' });
   expect(next.messages.find(m => m.id === 'normal')?.recipient).toBe('planner');
 });
 
@@ -175,7 +204,7 @@ test.each(['deleted', 'unassigned', 'account-replaced'])('inviting after a parti
   expect(() => f.send('unavailable', { recipient: 'planner' })).toThrow('participant');
   expect(() => f.request({ action: 'invite', roomId: 'room', members: ['dev', 'planner', 'outside'], defaultAgentId: 'planner' })).toThrow('identity is unavailable');
   expect(f.request({ action: 'list' })).toEqual(after);
-  f.send('new-member', { goal: false }); await f.service.tick();
+  f.send('new-member', { goal: false, recipient: 'outside' }); await f.service.tick();
   expect(f.sent.some(s => s.agent === 'outside')).toBe(true);
 
   const index = f.agents.findIndex(a => a.id === original.id);
@@ -234,7 +263,7 @@ test('blocked goal recovery retains task identity and evidence, deduplicates del
   const state = parseChatsSnapshot(f.request({ action: 'list' }));
   expect(state.messages[0]?.goalProgress).toMatchObject({ phase: 'blocked', turns: 2,
     reason: 'Which sign-in method?', progress: 'Requirements reviewed', nextAction: 'Provide the sign-in method', resumeBlocked: null });
-  const followup = { action: 'send', id: 'answer', roomId: 'room', threadId: 'goal', recipient: null, text: 'Use email', goal: false } as const;
+  const followup = { action: 'send', id: 'answer', roomId: 'room', threadId: 'goal', recipient: 'dev', text: 'Use email', goal: false } as const;
   f.request(followup); f.request(followup);
   expect(() => f.request({ ...followup, id: 'double' })).toThrow('pending');
   const restarted = createAgentChats(f.options);
@@ -291,7 +320,7 @@ test('blocked goal resume guidance distinguishes a busy worker and clears when i
 
 test('a restarted host requires a fresh worker observation before accepting blocked recovery', async () => {
   const f = await blockedFixture(), restarted = createAgentChats(f.options);
-  const request = { action: 'send', id: 'resume', roomId: 'room', threadId: 'goal', recipient: null, text: 'Use email', goal: false } as const;
+  const request = { action: 'send', id: 'resume', roomId: 'room', threadId: 'goal', recipient: 'dev', text: 'Use email', goal: false } as const;
   expect(() => restarted.request(f.workspace, request)).toThrow('Checking');
   await restarted.tick();
   restarted.request(f.workspace, request); await restarted.tick();
@@ -366,7 +395,7 @@ test('execution inspection holds queued inputs across restart and requires a fre
   expect(f.task.inspection).toEqual(before); expect(f.sent).toHaveLength(1);
   const restarted = createAgentChats(options); await restarted.tick();
   expect(f.sent).toHaveLength(1);
-  restarted.request(f.workspace, { action: 'send', roomId: 'room', threadId: 'goal', id: 'new-input', recipient: null, text: 'Reviewed, use email', goal: false });
+  restarted.request(f.workspace, { action: 'send', roomId: 'room', threadId: 'goal', id: 'new-input', recipient: 'dev', text: 'Reviewed, use email', goal: false });
   await restarted.tick();
   expect(f.sent).toHaveLength(2); expect(f.sent[1]?.input).toBe('new-input');
   expect(restarted.request(f.workspace, { action: 'list' }).messages.find(m => m.id === 'old-input')?.status).toBe('held');
@@ -467,7 +496,7 @@ test('automatic dispatch preserves source text, isolates the native conversation
   const service = createAgentChats({ ...f.options, dispatch: async (workspace, request, context) => {
     contexts.push(context); return f.options.dispatch(workspace, request, context);
   } });
-  service.request(f.workspace, { action: 'send', id: 'auto', roomId: 'room', threadId: null, recipient: null, text: 'Login please', goal: false, automatic: true });
+  service.request(f.workspace, { action: 'send', id: 'auto', roomId: 'room', threadId: null, recipient: 'dev', text: 'Login please', goal: false, automatic: true });
   await service.tick();
   const task = f.details.tasks[0]!;
   expect(contexts[0]).toMatchObject({ automatic: true, userText: 'Login please', conversation: task.id, goal: false });
@@ -488,7 +517,7 @@ test('queued room work wakes its recipient, newly invited peers are discoverable
     return { details: f.details };
   } });
   expect(service.rooms.bindings().map(b => b.agentId)).toEqual(['dev', 'planner']);
-  expect(wakes).toHaveLength(0); service.request(f.workspace, { action: 'send', id: 'wake', roomId: 'room', threadId: null, recipient: null, text: 'Build login', goal: true });
+  expect(wakes).toHaveLength(0); service.request(f.workspace, { action: 'send', id: 'wake', roomId: 'room', threadId: null, recipient: 'dev', text: 'Build login', goal: true });
   await service.tick(); expect(f.sent).toHaveLength(0);
   const queued = service.request(f.workspace, { action: 'list' }).messages.find(m => m.id === 'wake')!;
   expect(queued.status).toBe('queued'); expect(queued.error).toBe('Engine unavailable');
@@ -529,4 +558,81 @@ test('started Chats delivers on request and worker events without periodic reads
     await new Promise(resolve => setTimeout(resolve, 3100));
     expect(reads).toBe(settledReads); expect(f.sent).toHaveLength(1);
   } finally { unsubscribe(); await service.dispose(); }
+});
+
+test('room execution timeline retains real timestamps, updates entries, suppresses duplicate finals and survives restart', async () => {
+  const f = fixture(); f.send('goal'); await f.service.tick();
+  const task = f.details.tasks[0]!;
+  task.inspection = { finishedAt: null, threadId: 'native', conversation: 'task', goal: null, messages: [], evidence: [], recall: null, error: null,
+    activity: [{ id: 'command', turnId: 'turn', kind: 'command', title: 'bun test', text: '', status: 'running', createdAt: '2026-10-05T01:00:00Z', final: false, truncated: false }] };
+  await f.service.tick();
+  const initial = f.request({ action: 'list' }).messages.find(m => m.activity)!;
+  task.inspection.activity![0] = { ...task.inspection.activity![0]!, status: 'failed', text: 'Test failed' };
+  task.inspection.activity!.push({ id: 'final', turnId: 'turn', kind: 'message', title: '', text: 'Fixing test', status: 'completed', createdAt: '2026-10-05T01:01:00Z', final: true, truncated: false });
+  task.responses = [{ id: 'response_1', text: 'Fixing test', status: 'waiting' }];
+  await f.service.tick(); await f.service.tick();
+  const messages = f.request({ action: 'list' }).messages;
+  expect(messages.find(m => m.id === initial.id)).toMatchObject({ createdAt: initial.createdAt, activity: { status: 'failed', text: 'Test failed' } });
+  expect(messages.filter(m => m.text === 'Fixing test')).toHaveLength(1);
+  const restarted = createAgentChats(f.options);
+  const recovered = parseChatsSnapshot(restarted.request(f.workspace, { action: 'list' }));
+  expect(recovered.messages.filter(m => m.activity)).toHaveLength(2);
+  expect(recovered.messages.find(m => m.id === 'goal')?.inspection?.activity).toEqual([]);
+});
+
+test('peer worker execution is projected only into its invited room and unknown work is inspected inline', async () => {
+  const f = fixture(); f.send('goal'); await f.service.tick();
+  const taskId = f.details.tasks[0]!.id;
+  const binding = bindingFor(f.workspace, 'docker:test', 'dev', 'account-0');
+  f.service.rooms.record(binding, [{ id: 'question', kind: 'question', from: 'dev', to: 'planner', taskId, questionId: 'question', text: 'Plan login', roomId: 'room' }]);
+  const peerTask = { id: 'q_question', roomId: 'room', prompt: 'Plan login', status: 'unknown', createdAt: '2026-10-05', output: '', error: null,
+    inspection: { recoveryRoomId: 'room', recoveryKind: 'consultation' as const, finishedAt: null, threadId: 'native', conversation: 'question', goal: null, messages: [], evidence: [], recall: null, error: null,
+      activity: [{ id: 'tool', turnId: 'turn', kind: 'command' as const, title: 'Read plan', text: 'Login plan', status: 'completed' as const, createdAt: '2026-10-05T00:00:00Z', final: false, truncated: false }] } };
+  const calls: AgentRuntimeRequest[] = [];
+  const peer = { ...f.details, tasks: [peerTask, { ...peerTask, id: 'private', roomId: 'other-room' }] };
+  const service = createAgentChats({ ...f.options, status: async (_workspace, request) => ({ details: request.agentId === 'planner' ? peer : f.details }),
+    recover: async (_workspace, request) => { calls.push(request); peerTask.status = 'interrupted'; return { details: peer }; } });
+  await service.tick();
+  const messages = service.request(f.workspace, { action: 'list' }).messages;
+  expect(messages.filter(m => m.activity).map(m => m.sender)).toEqual(['planner']);
+  expect(messages.find(m => m.id === 'peer_question')?.executionStatus).toBe('unknown');
+  await service.recover(f.workspace, { action: 'recover', roomId: 'room', goalId: 'peer_question' });
+  expect(calls).toEqual([{ action: 'recover', roomId: 'room', agentId: 'planner', engineId: 'docker:test', taskId: 'q_question' }]);
+  f.agents[1]!.accountId = 'replacement';
+  let rejected = false;
+  try { await service.recover(f.workspace, { action: 'recover', roomId: 'room', goalId: 'peer_question' }); } catch { rejected = true; }
+  expect(rejected).toBe(true); expect(calls).toHaveLength(1);
+});
+
+test('reply keeps the exact message context and queues a correction to the running owner', async () => {
+  const f = fixture(); f.send('goal'); await f.service.tick();
+  const task = f.details.tasks[0]!;
+  task.status = 'running';
+  task.inspection = { finishedAt: null, threadId: 'native', conversation: task.id, goal: null, messages: [], evidence: [], recall: null, error: null,
+    dialogue: { userText: 'Build login', questions: [], revisions: [] },
+    activity: [{ id: 'progress', turnId: 'turn', kind: 'message', title: '', text: 'I will use browser storage.', status: 'completed', createdAt: '2026-10-05T01:00:00Z', final: false, truncated: false }] };
+  f.details.busy = true; await f.service.tick();
+  const progress = f.request({ action: 'list' }).messages.find(m => m.activity)!;
+  f.send('correction', { goal: false, automatic: true, threadId: 'goal', replyTo: progress.id, text: 'Use server sessions.' });
+  await f.service.tick();
+  expect(f.sent.at(-1)).toMatchObject({ agent: 'dev', task: task.id, input: 'correction' });
+  expect(task.inputs?.at(-1)?.prompt).toContain('I will use browser storage.');
+  expect(task.inputs?.at(-1)?.prompt).toContain('Use server sessions.');
+  expect(new ChatsStore(f.filename).snapshot(f.workspace).messages.find(m => m.id === 'correction')?.replyTo).toBe(progress.id);
+  expect(() => f.send('correction', { goal: false, automatic: true, threadId: 'goal', replyTo: 'goal', text: 'Use server sessions.' })).toThrow('identity');
+  expect(() => f.send('bad', { goal: false, replyTo: 'missing' })).toThrow('reply message');
+});
+
+test('user questions are durable chronological messages with a stable receipt and answer state', async () => {
+  const f = fixture(); f.send('goal'); await f.service.tick();
+  const task = f.details.tasks[0]!;
+  task.inspection = { finishedAt: null, threadId: 'native', conversation: task.id, goal: null, messages: [], evidence: [], recall: null, error: null,
+    dialogue: { userText: 'Build login', questions: [{ id: 'method', text: 'Email or social?', answer: null }], revisions: [] } };
+  await f.service.tick();
+  const first = f.request({ action: 'list' }).messages.find(m => m.userQuestion)!;
+  expect(first).toMatchObject({ sender: 'dev', recipient: 'user', text: 'Email or social?', userQuestion: { rootId: 'goal', id: 'method', answered: false } });
+  task.inspection.dialogue!.questions[0]!.answer = { id: 'answer', text: 'Email' };
+  await f.service.tick();
+  const saved = new ChatsStore(f.filename).snapshot(f.workspace).messages.filter(m => m.userQuestion);
+  expect(saved).toHaveLength(1); expect(saved[0]).toMatchObject({ id: first.id, createdAt: first.createdAt, userQuestion: { answered: true } });
 });

@@ -80,7 +80,7 @@ const textSchema = { type: 'string', maxLength: 4000 };
 export const decisionTools = [
   { type: 'function', name: 'goal_status', description: 'Read the original goal, persisted progress, completion criteria and accumulated judgment turns. There is no fixed turn budget.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
-  { type: 'function', name: 'record_decision', description: 'Record the next action as the final tool call of this turn, then end the turn. This commits only after the turn succeeds. Completion requires evidence for every criterion and all peer answers processed. Keep criterion text unchanged after the first decision.',
+  { type: 'function', name: 'record_decision', description: 'Only for an active persistent goal execution turn. Never use for ordinary conversation, consultation, acknowledgements, or the intake turn that starts/routes a goal. Record the next action as the final tool call, then end the turn. This commits only after the turn succeeds. Completion requires evidence for every criterion and all peer answers processed. Keep criterion text unchanged after the first decision.',
     inputSchema: { type: 'object', additionalProperties: false, required: ['action', 'reason', 'progress', 'nextAction', 'criteria'], properties: {
       action: { type: 'string', enum: [...DECISION_ACTIONS] }, reason: textSchema, progress: textSchema, nextAction: textSchema,
       criteria: { type: 'array', minItems: 1, maxItems: 16, items: { type: 'object', additionalProperties: false,
@@ -89,7 +89,7 @@ export const decisionTools = [
 ];
 export const decisionInstructions = `
 For a task with a persistent goal, use goal_status to inspect its original scope and saved decisions.
-At the end of EVERY turn call record_decision, then end the turn without further tool calls.
+At the end of every persistent goal execution turn call record_decision, then end the turn without further tool calls. This does not apply to ordinary conversation, consultation, or goal intake turns.
 Derive completion criteria from the user's original goal, not just the work you chose to do. Preserve these criteria on later turns.
 Choose continue with a concrete next action if useful independent work remains; choose wait only for outstanding peer answers.
 Choose blocked with the reason if required authority, evidence or capability is missing. Never invent evidence.

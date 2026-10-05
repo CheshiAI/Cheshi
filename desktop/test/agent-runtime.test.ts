@@ -73,21 +73,23 @@ function fixture(linkedWorkspace = false) {
     account: async () => ({ home, models: [] }), management: { details: async () => { await beforeDetails?.(); return details(); },
       engines: async () => ({ engines: [], error: null }), snapshot: async engineId => ({ engineId, online: true, error: null, agents: [] }),
       control: async () => { throw new Error('unused'); } } });
-  const legacyRecovery = (protocol = 1, progress = false, work = false, integration = false, candidate = false, application = false, applicationInspection = false) => {
+  const legacyRecovery = (protocol = 1, progress = false, work = false, integration = false, candidate = false, application = false, applicationInspection = false, conversation = false, activity = false) => {
     const filename = join(runtimePath, 'runtime.json');
     const config = JSON.parse(readFileSync(filename, 'utf8'));
     const agent = registry.snapshot(workspace).agents[0]!;
     const assignment = agent.assignments.find(a => a.workspaceRoot === workspace)!;
     const profile = { role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,
       serviceTier: agent.serviceTier, permissions: agent.permissions, instructions: agent.instructions };
-    config.recoveryProtocol = protocol; delete config.conversationProtocol; delete config.progressProtocol; delete config.workProtocol; delete config.integrationProtocol; delete config.candidateVerificationProtocol; delete config.applicationProtocol; delete config.applicationInspectionProtocol;
+    config.recoveryProtocol = protocol; delete config.inputQueueProtocol; delete config.activityProtocol; delete config.conversationProtocol; delete config.progressProtocol; delete config.workProtocol; delete config.integrationProtocol; delete config.candidateVerificationProtocol; delete config.applicationProtocol; delete config.applicationInspectionProtocol;
+    if (activity) config.activityProtocol = 1;
+    if (conversation) config.conversationProtocol = 1;
     if (progress) config.progressProtocol = 1;
     if (work) config.workProtocol = 1;
     if (integration) config.integrationProtocol = 1;
     if (candidate) config.candidateVerificationProtocol = 1;
     if (application) config.applicationProtocol = 1;
     if (applicationInspection) config.applicationInspectionProtocol = 1;
-    config.settingsFingerprint = createHash('sha256').update(JSON.stringify({ sandboxProtocol: 2, collaborationProtocol: 1,
+    config.settingsFingerprint = createHash('sha256').update(JSON.stringify({ ...(activity ? { activityProtocol: 1 } : {}), ...(conversation ? { conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1 } : {}), sandboxProtocol: 2, collaborationProtocol: 1,
       historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: protocol, questionProtocol: 2, ...(progress ? { progressProtocol: 1 } : {}),
       ...(work ? { workProtocol: 1 } : {}), ...(integration ? { integrationProtocol: 1 } : {}), ...(candidate ? { candidateVerificationProtocol: 1 } : {}), ...(application ? { applicationProtocol: 1 } : {}), ...(applicationInspection ? { applicationInspectionProtocol: 1 } : {}), agent: profile, workspace: realpathSync(workspace), instructions: assignment.instructions })).digest('hex');
     config.revision = config.settingsFingerprint;
@@ -457,5 +459,36 @@ test('concurrent automatic requests start one worker without waiting recursively
     expect(state.every(s => s.details?.ready === true)).toBe(true);
     expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(1);
     expect(f.exchanges).toHaveLength(0);
+  } finally { await f.runtime.dispose(); }
+});
+
+
+test('activity protocol upgrade preserves unknown tasks and the existing worker volume', async () => {
+  const f = fixture();
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    f.legacyRecovery(3, true, true, true, true, true, true, true);
+    const tasks = [{ id: 'goal', status: 'unknown', prompt: 'Build login', output: '', error: 'Unconfirmed', createdAt: '2026-10-03' }];
+    f.setTasks(tasks);
+    expect((await f.runtime.request(f.workspace, { ...f.request(), action: 'status' })).details?.error).toContain('Start the agent');
+    expect((await f.runtime.request(f.workspace, f.request())).details?.tasks).toEqual(tasks);
+    expect(JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8')).activityProtocol).toBe(1);
+    const mounts = f.calls.filter(c => c.args.includes('create')).map(c => c.args.find(a => a.startsWith('type=volume,')));
+    expect(mounts).toHaveLength(2); expect(mounts[0]).toBe(mounts[1]);
+    expect(f.calls.some(c => c.args.includes('volume'))).toBe(false);
+  } finally { await f.runtime.dispose(); }
+});
+
+test('input queue protocol upgrade preserves activity-era unknown work and its volume', async () => {
+  const f = fixture();
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    f.legacyRecovery(3, true, true, true, true, true, true, true, true);
+    const tasks = [{ id: 'goal', status: 'unknown', prompt: 'Build login', output: '', error: 'Unconfirmed', createdAt: '2026-10-03' }];
+    f.setTasks(tasks);
+    expect((await f.runtime.request(f.workspace, f.request())).details?.tasks).toEqual(tasks);
+    expect(JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8')).inputQueueProtocol).toBe(1);
+    const mounts = f.calls.filter(c => c.args.includes('create')).map(c => c.args.find(a => a.startsWith('type=volume,')));
+    expect(mounts).toHaveLength(2); expect(mounts[0]).toBe(mounts[1]);
   } finally { await f.runtime.dispose(); }
 });

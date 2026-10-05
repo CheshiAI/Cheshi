@@ -1,4 +1,5 @@
 import { parseTaskInspection, type TaskInspection } from './agent-task-inspection.ts';
+import { parseTaskUsage, type TaskUsage } from '../../experiments/codex-specialists/src/usage-contract.ts';
 import { parseAgentExecutionHealth, type AgentExecutionHealth } from './agent-execution-health.ts';
 
 export const AGENT_CHANNELS = {
@@ -17,8 +18,9 @@ export interface ManagedAgent {
 export interface AgentSnapshot { engineId: string; online: boolean; error: string | null; agents: ManagedAgent[] }
 export interface ExecutionRecovery { threadId: string; turnId: string; status: 'completed' | 'interrupted' | 'failed'; checkedAt: string }
 export interface AgentTask {
+  usage?: TaskUsage;
   recovery?: ExecutionRecovery;
-  roomId?: string; inputs?: { id: string; prompt: string }[]; responses?: { id: string; text: string; status: string }[];
+  roomId?: string; inputs?: { id: string; prompt: string; pending?: true }[]; responses?: { id: string; text: string; status: string }[];
   inspection?: TaskInspection;
   id: string; prompt: string; status: string; createdAt: string; output: string; error: string | null;
 }
@@ -112,9 +114,10 @@ export function parseAgentTasks(value: unknown): AgentTask[] {
     const status = agentText(t.status, 30);
     if (!['accepted', 'running', 'waiting', 'completed', 'interrupted', 'failed', 'unknown'].includes(status)) throw new TypeError('Invalid task status.');
     return { ...(t.roomId === undefined ? {} : { roomId: parseAgentId(t.roomId),
-      inputs: items(t.inputs ?? [], 100).map(raw => { const i = agentRecord(raw); return { id: parseAgentId(i.id), prompt: agentText(i.prompt, 20_000) }; }),
+      inputs: items(t.inputs ?? [], 100).map(raw => { const i = agentRecord(raw); if (i.pending !== undefined && i.pending !== true) throw new Error('Invalid pending input.'); return { id: parseAgentId(i.id), prompt: agentText(i.prompt, 20_000), ...(i.pending === true ? { pending: true as const } : {}) }; }),
       responses: items(t.responses ?? [], 100).map(raw => { const r = agentRecord(raw); return { id: parseAgentId(r.id), text: agentText(r.text, 500_000), status: agentText(r.status, 30) }; }) }),
       ...(t.recovery === undefined ? {} : { recovery: parseExecutionRecovery(t.recovery) }),
+      ...(t.usage === undefined ? {} : { usage: parseTaskUsage(t.usage) }),
       id: parseAgentId(t.id), prompt: agentText(t.prompt, 20_000), status,
       createdAt: agentText(t.createdAt, 100), output: agentText(t.output, 500_000), error: agentNullableText(t.error, 20_000),
       ...(t.inspection === undefined ? {} : { inspection: parseTaskInspection(t.inspection) }) };

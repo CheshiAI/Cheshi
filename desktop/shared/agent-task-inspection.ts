@@ -1,3 +1,4 @@
+import { parseTaskActivities, type TaskActivity } from './agent-activity.ts';
 import { parseConversation, type ConversationState } from '../../experiments/codex-specialists/src/conversation-contract.ts';
 import { collaborationTextLimit, WORK_KINDS, parseWorkRequest, parseWorkDraft, type WorkKind, type WorkRequest, type WorkDraft } from './agent-work.ts';
 import { candidateReference, type CandidateReference } from '../../experiments/codex-specialists/src/candidate-verification-contract.ts';
@@ -35,6 +36,7 @@ export interface TaskMessage {
 }
 export interface TaskRecall { id: string; activity: HistoryRecallActivity }
 export interface TaskInspection {
+  activity?: TaskActivity[]; activityTruncated?: boolean;
   dialogue?: ConversationState;
   integration?: IntegrationSummary;
   recoveryRoomId?: string;
@@ -111,7 +113,7 @@ export function parseTaskVerificationRequest(value: unknown): TaskVerificationRe
 export function parseTaskInspection(value: unknown): TaskInspection {
   const v = inspectionRecord(value);
   if (v.recoveryRoomId !== undefined && (typeof v.recoveryRoomId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(v.recoveryRoomId))) throw new TypeError('Invalid recovery room.');
-  return { ...(v.dialogue === undefined ? {} : { dialogue: parseConversation(v.dialogue) }), finishedAt: nullableText(v.finishedAt), threadId: nullableText(v.threadId), conversation: nullableText(v.conversation),
+  return { ...(v.activity === undefined ? {} : { activity: parseTaskActivities(v.activity), activityTruncated: v.activityTruncated === true }), ...(v.dialogue === undefined ? {} : { dialogue: parseConversation(v.dialogue) }), finishedAt: nullableText(v.finishedAt), threadId: nullableText(v.threadId), conversation: nullableText(v.conversation),
     ...(v.integration === undefined ? {} : { integration: parseIntegration(v.integration) }),
     ...(v.recoveryRoomId === undefined ? {} : { recoveryRoomId: v.recoveryRoomId as string }),
     ...(v.recoveryKind === undefined ? {} : { recoveryKind: choice(v.recoveryKind, ['consultation', 'verification', 'delegation'] as const) }),

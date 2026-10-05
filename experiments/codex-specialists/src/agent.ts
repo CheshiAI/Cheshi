@@ -1,3 +1,6 @@
+import { projectTaskActivities, recordTaskActivity } from './activity.ts';
+import { readNativeTurnUsage } from './native-usage.ts';
+import { mergeTurnUsage } from './usage-contract.ts';
 import { WorkerConversation, conversationTools, conversationInstructions } from './conversation.ts';
 import { waitingForUser } from './conversation-contract.ts';
 import { WorkerWork } from './work.ts';
@@ -54,6 +57,7 @@ export class SpecialistAgent {
   private readonly workspace: string;
   private readonly configuration: RuntimeConfiguration | undefined;
   private readonly loadedThreads = new Set<string>();
+  private readonly threadPaths = new Map<string, string>();
   private active: ActiveTask | null = null;
   private recovering = false;
   private failure: string | null = null;
@@ -153,7 +157,7 @@ export class SpecialistAgent {
 
   activity() {
     const state = this.store.snapshot();
-    return { ...state, tasks: state.tasks.map(task => task.integration && this.integration
+    return { ...state, tasks: projectTaskActivities(state.tasks).map(task => task.integration && this.integration
       ? { ...task, integration: this.integration.inspect(task)! } : task) };
   }
 
@@ -188,13 +192,17 @@ export class SpecialistAgent {
       if (previous.prompt !== prompt || previous.questionId !== questionId) throw new TaskConflict('Input identity conflict.');
       return task;
     }
-    if (this.busy || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) throw new TaskConflict('Worker cannot safely resume yet.');
+    if ((this.busy && this.active?.id !== id) || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) throw new TaskConflict('Worker cannot safely resume yet.');
     if (task.status === 'completed') throw new TaskConflict('This goal is completed. Start a new goal.');
     const question = questionId ? task.dialogue?.questions.find(q => q.id === questionId) : undefined;
     if (questionId && (!question || question.answer)) throw new TaskConflict('Unknown or already answered user question.');
     const dialogue = task.dialogue && { ...task.dialogue, ...(task.dialogue.route && !task.dialogue.route.delivered ? { route: { ...task.dialogue.route, held: true as const } } : {}),
       questions: task.dialogue.questions.map(q => question && q.id === questionId ? { ...q, answer: { id: inputId, text: prompt } } : q) };
-    this.store.update(id, { ...(dialogue ? { dialogue } : {}), inputs: [...(task.inputs ?? []), { id: inputId, prompt, ...(questionId ? { questionId } : {}) }], ...(task.goal ? { goal: { ...task.goal, progressCheck: { unchanged: 0, observations: [] } } } : {}), status: 'accepted', finishedAt: null });
+    if (this.active?.id === id) {
+      this.store.update(id, { ...(dialogue ? { dialogue } : {}), inputs: [...(task.inputs ?? []), { id: inputId, prompt, pending: true, ...(questionId ? { questionId } : {}) }] });
+      return this.store.task(id)!;
+    }
+    this.store.update(id, { ...(dialogue ? { dialogue } : {}), inputs: [...(task.inputs ?? []).map(({ pending, ...input }) => input), { id: inputId, prompt, ...(questionId ? { questionId } : {}) }], ...(task.goal ? { goal: { ...task.goal, progressCheck: { unchanged: 0, observations: [] } } } : {}), status: 'accepted', finishedAt: null });
     return this.launch(this.store.task(id)!, `Continue the original goal: ${task.prompt}\nUser follow-up:\n${prompt}`);
   }
 
@@ -225,7 +233,14 @@ export class SpecialistAgent {
     }
     const commands = new CommandSessions();
     const active: ActiveTask = { commands, id, threadId: null, turnId: null, observations, health: new ExecutionHealth(id),
-      stopRequested: false, done: Promise.resolve(), observer: new TurnObserver((method, item) => { commands.observe(method, item); observations.item(method, item); if (this.configuration?.permissions.commandExecution === true) this.verification?.observe(task, method, item); }), interrupting: null, input, messages, controller: new AbortController() };
+      stopRequested: false, done: Promise.resolve(), observer: new TurnObserver((method, item, turnId) => {
+        recordTaskActivity(this.store, id, method, item, turnId); commands.observe(method, item); observations.item(method, item);
+        if (this.configuration?.permissions.commandExecution === true) this.verification?.observe(task, method, item);
+      }, (threadTotals, threadId, turnId) => {
+        this.store.update(id, { usage: mergeTurnUsage(this.store.task(id)?.usage, {
+          threadId, turnId, modelCalls: null, tokens: null, threadTotals,
+        }) });
+      }), interrupting: null, input, messages, controller: new AbortController() };
     this.active = active;
     active.done = this.run(task, active).finally(() => { if (this.active === active) this.active = null; this.store.changed(); });
     // A persistence failure is reported through the worker's health/lifecycle, not an unhandled rejection.
@@ -237,6 +252,14 @@ export class SpecialistAgent {
   pump(): void {
     this.collaboration?.expire();
     if (this.busy || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) return;
+    const queued = this.store.snapshot().tasks.find(t => t.status === 'waiting' && t.inputs?.some(i => i.pending === true));
+    if (queued) {
+      const inputs = queued.inputs!.filter(i => i.pending === true);
+      this.store.update(queued.id, { status: 'accepted', finishedAt: null, inputs: queued.inputs!.map(({ pending, ...input }) => input),
+        ...(queued.goal ? { goal: { ...queued.goal, pending: null, progressCheck: { unchanged: 0, observations: [] } } } : {}) });
+      this.launch(this.store.task(queued.id)!, `User corrections received during the preceding turn. Apply these before continuing; explain what already ran and what you will change.\n${inputs.map(i => i.prompt).join('\n\n')}`);
+      return;
+    }
     const routed = this.store.snapshot().tasks.find(t => t.status === 'completed' && t.dialogue?.route && !t.dialogue.route.delivered && !t.dialogue.route.held);
     if (routed) {
       const target = this.store.task(routed.dialogue!.route!.taskId);
@@ -282,7 +305,7 @@ export class SpecialistAgent {
     // Native resumed conversations retain the dynamic tool set from their creation.
     const integrationAvailable = this.integration && (!savedThread || task.integrationTools === true);
     const applicationAvailable = integrationAvailable && settings?.applicationProtocol === 1 && (!savedThread || task.applicationTools === true);
-    const profile = this.profile + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal || task.dialogue ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
+    const profile = this.profile + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
       + (integrationAvailable && settings?.candidateVerificationProtocol === 1 ? candidateVerificationInstructions : '') + (applicationAvailable ? applicationInstructions : '');
     const params: JsonRecord = { cwd: workspace,
       ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: !intake && !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
@@ -299,6 +322,9 @@ export class SpecialistAgent {
       : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal || task.dialogue ? decisionTools : []), ...(task.dialogue ? conversationTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])] });
     const threadId = textValue(record(result.thread).id, 'thread id');
     assertResumedThread(savedThread, threadId);
+    const nativePath = record(result.thread).path;
+    if (typeof nativePath === 'string') this.threadPaths.set(threadId, nativePath);
+    else this.threadPaths.delete(threadId);
     scratch?.assertApplied(result);
     if (savedThread) {
       // Codex 0.159.3 can replay old developer instructions on cold resume.
@@ -371,6 +397,7 @@ export class SpecialistAgent {
         catch (error) { if (!observer.finished) observer.fail(error instanceof Error ? error : new Error(String(error))); }
       }
       const result = await observer.result;
+      await this.saveUsage(active);
       if (active.stopRequested || result.status === 'interrupted') {
         active.health.activity('stopping');
         try { await active.commands.stop(this.client, active.threadId); }
@@ -383,7 +410,10 @@ export class SpecialistAgent {
       const savedGoal = currentGoal && reported ? { ...currentGoal, usage: {
         reportedThroughTurn: currentGoal.turns, ...reported,
       } } : currentGoal;
-      if (task.delegation && this.work) {
+      if (!active.stopRequested && result.status === 'completed' && this.store.task(task.id)?.inputs?.some(i => i.pending === true)) {
+        this.store.complete(task.id, { ...result, status: 'waiting',
+          ...(savedGoal ? { goal: { ...savedGoal, phase: 'ready', pending: null } } : {}) }, active.messages);
+      } else if (task.delegation && this.work) {
         const outgoing = this.work.resultMessage(this.store.task(task.id)!, result.status, result.error || result.output);
         this.store.complete(task.id, result, active.messages, outgoing);
       } else if (active.stopRequested && savedGoal && !(result.status === 'completed' && savedGoal.pending?.action === 'complete')) {
@@ -419,6 +449,7 @@ export class SpecialistAgent {
       } else this.store.complete(task.id, { ...result, ...(result.status === 'completed' && waitingForUser(this.store.task(task.id)!) ? { status: 'waiting' as const } : {}), ...(savedGoal ? { goal: { ...savedGoal, phase: 'blocked', pending: null } } : {}) });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
+      await this.saveUsage(active);
       const outgoing = !submitted && task.delegation && this.work ? this.work.resultMessage(task, 'failed', reason) : undefined;
       this.store.complete(task.id, { status: submitted ? 'unknown' : active.stopRequested ? 'interrupted' : 'failed',
         output: '', error: reason }, outgoing ? active.messages : [], outgoing);
@@ -442,6 +473,16 @@ export class SpecialistAgent {
         if (released) { scratch.dispose(); this.retainedScratch.delete(scratch); }
       }
     }
+  }
+
+  private async saveUsage(active: ActiveTask): Promise<void> {
+    if (!active.threadId || !active.turnId) return;
+    const reported = await readNativeTurnUsage(this.threadPaths.get(active.threadId), active.threadId, active.turnId);
+    const task = this.store.task(active.id)!;
+    this.store.update(active.id, { usage: mergeTurnUsage(task.usage, {
+      threadId: active.threadId, turnId: active.turnId, modelCalls: reported?.modelCalls ?? null,
+      tokens: reported?.tokens ?? null, threadTotals: active.observer.threadTotals,
+    }) });
   }
 
   private async interrupt(active: ActiveTask): Promise<void> {

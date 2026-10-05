@@ -17,6 +17,14 @@ function snapshot() {
     consumed: [] as string[], acknowledged: ['question'],
   } };
 }
+test('ordinary task usage crosses host and preload boundaries without a goal', () => {
+  const usage = { turns: [{ threadId: 'thread', turnId: 'turn', modelCalls: 2,
+    tokens: { inputTokens: 200, cachedInputTokens: 100, outputTokens: 5, totalTokens: 205 }, threadTotals: null }] };
+  const result = parseAgentTasks(inspectAgentTasks({ tasks: [{ ...task, usage }] }))[0]!;
+  expect(result.usage).toEqual(usage);
+  expect(result.inspection?.goal).toBeNull();
+  expect(parseAgentTasks([task])[0]?.usage).toBeUndefined();
+});
 test('activity projection carries goal and only this task messages through the preload contract', () => {
   const input = snapshot();
   input.collaboration.outgoing.push({ ...message, id: 'unrelated', taskId: 'different', text: 'PRIVATE_OTHER_TASK' });
@@ -70,7 +78,7 @@ test('recall inspection strips arbitrary fields and isolates each task without i
 test('inspection modules and their transitive contracts are packaged and load with native Node', async () => {
   const ignore = (await config()).packagerConfig?.ignore;
   if (typeof ignore !== 'function') throw new Error('Missing package filter');
-  for (const path of ['desktop/shared/agent-question.ts', 'desktop/shared/agent-task-inspection.ts', 'desktop/shared/history-recall.ts', 'desktop/lib/agent-management/task-inspection.mts']) expect(ignore(`/${path}`)).toBe(false);
+  for (const path of ['experiments/codex-specialists/src/usage-contract.ts', 'experiments/codex-specialists/src/activity-contract.ts', 'desktop/lib/agent-chats/records.mts', 'desktop/shared/agent-activity.ts', 'desktop/shared/agent-question.ts', 'desktop/shared/agent-task-inspection.ts', 'desktop/shared/history-recall.ts', 'desktop/lib/agent-management/task-inspection.mts']) expect(ignore(`/${path}`)).toBe(false);
   execFileSync('node', ['--input-type=module', '-e', "await import('./desktop/lib/agent-management/service.mts')"], { stdio: 'pipe' });
 });
 

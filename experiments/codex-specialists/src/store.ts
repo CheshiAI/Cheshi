@@ -1,3 +1,5 @@
+import { parseTaskActivities, type TaskActivity } from './activity-contract.ts';
+import { parseTaskUsage, type TaskUsage } from './usage-contract.ts';
 import { parseConversation, type ConversationState } from './conversation-contract.ts';
 import { parseWorkDraft, type WorkDraft } from './work-contract.ts';
 import { parseIntegration, type IntegrationSummary } from './integration-contract.ts';
@@ -14,7 +16,9 @@ export type TaskStatus = typeof TASK_STATUSES[number];
 export type Task = {
   id: string; prompt: string; status: TaskStatus; createdAt: string; finishedAt: string | null;
   threadId: string | null; turnId: string | null; output: string; error: string | null;
-  roomId?: string; inputs?: { id: string; prompt: string; questionId?: string }[]; responses?: { id: string; text: string; status: string }[];
+  roomId?: string; inputs?: { id: string; prompt: string; questionId?: string; pending?: true }[]; responses?: { id: string; text: string; status: string }[];
+  activity?: TaskActivity[]; activityTruncated?: boolean;
+  usage?: TaskUsage;
   dialogue?: ConversationState;
   conversation?: string; consultation?: string; goal?: GoalState;
   verification?: string; verificationEvidence?: Evidence[]; verificationDraft?: VerificationResult;
@@ -54,6 +58,8 @@ function savedTask(value: unknown): Task {
     createdAt: textValue(task.createdAt, 'creation time'), finishedAt: nullableText(task.finishedAt),
     threadId: nullableText(task.threadId), turnId: nullableText(task.turnId), output: task.output,
     error: nullableText(task.error),
+    ...(task.usage === undefined ? {} : { usage: parseTaskUsage(task.usage) }),
+    ...(task.activity === undefined ? {} : { activity: parseTaskActivities(task.activity), activityTruncated: task.activityTruncated === true }),
     ...(task.delegation === undefined ? {} : { delegation: validateTaskId(task.delegation) }),
     ...(task.workDraft === undefined ? {} : { workDraft: parseWorkDraft(task.workDraft) }),
     ...(task.integration === undefined ? {} : { integration: parseIntegration(task.integration) }),
@@ -61,7 +67,7 @@ function savedTask(value: unknown): Task {
     ...(task.integrationTools === true ? { integrationTools: true as const } : {}),
     ...(task.recovery === undefined ? {} : { recovery: recoveryReceipt(task.recovery) }),
     ...(task.roomId === undefined ? {} : { roomId: validateTaskId(task.roomId),
-      inputs: chatEntries(task.inputs, v => { const i = record(v); return { id: validateTaskId(i.id), prompt: textValue(i.prompt, 'input'), ...(i.questionId === undefined ? {} : { questionId: validateTaskId(i.questionId) }) }; }),
+      inputs: chatEntries(task.inputs, v => { const i = record(v); if (i.pending !== undefined && i.pending !== true) throw new TypeError('Invalid pending input.'); return { ...(i.pending === true ? { pending: true as const } : {}), id: validateTaskId(i.id), prompt: textValue(i.prompt, 'input'), ...(i.questionId === undefined ? {} : { questionId: validateTaskId(i.questionId) }) }; }),
       responses: chatEntries(task.responses, v => { const r = record(v); return { id: validateTaskId(r.id), text: typeof r.text === 'string' ? r.text : textValue(r.text, 'response'), status: textValue(r.status, 'status') }; }) }),
     ...(task.verification === undefined ? {} : { verification: validateTaskId(task.verification) }),
     ...(task.verificationEvidence === undefined ? {} : { verificationEvidence: list(task.verificationEvidence, evidence, 64) }),
@@ -97,6 +103,7 @@ export class AgentStore {
     // A crashed process cannot prove whether its submitted work completed. Do not replay it.
     for (const task of this.state.tasks) {
       if (!['accepted', 'running'].includes(task.status)) continue;
+      task.activity = task.activity?.map(entry => entry.status === 'running' ? { ...entry, status: 'unknown' } : entry);
       task.status = 'unknown'; task.finishedAt = new Date().toISOString();
       task.error = 'Worker restarted during execution. Inspect the saved thread before retrying.';
     }
@@ -148,7 +155,8 @@ export class AgentStore {
   complete(id: string, patch: Pick<Task, 'status' | 'output' | 'error' | 'goal' | 'recovery'>, consumed: string[] = [], outgoing?: CollaborationMessage): void {
     const task = this.task(id);
     if (!task) throw new Error('Unknown task.');
-    const result = { ...task, ...patch, ...(task.roomId ? { responses: [...(task.responses ?? []), { id: `response_${(task.responses?.length ?? 0) + 1}`, text: patch.output, status: patch.status }] } : {}), finishedAt: patch.status === 'waiting' ? null : new Date().toISOString() };
+    const result = { ...task, ...patch,
+      ...(task.activity ? { activity: task.activity.map(entry => entry.status === 'running' ? { ...entry, status: 'unknown' as const } : entry) } : {}), ...(task.roomId ? { responses: [...(task.responses ?? []), { id: `response_${(task.responses?.length ?? 0) + 1}`, text: patch.output, status: patch.status }] } : {}), finishedAt: patch.status === 'waiting' ? null : new Date().toISOString() };
     this.transaction(state => {
       // Publish the recovery result and release the unknown-task gate in one state commit.
       if (outgoing) appendOutgoing(state.collaboration, outgoing);

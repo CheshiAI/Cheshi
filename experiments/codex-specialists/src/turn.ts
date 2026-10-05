@@ -1,4 +1,5 @@
 import { parseUsage, type GoalUsage } from './goal-progress.ts';
+import { parseTokenTotals, type TokenTotals } from './usage-contract.ts';
 import { createDeferred, record, type JsonRecord, type Notification } from './protocol.ts';
 
 export type TurnResult = { status: 'completed' | 'interrupted' | 'failed'; output: string; error: string | null };
@@ -10,11 +11,17 @@ export class TurnObserver {
   private target: { threadId: string; turnId: string } | null = null;
   private readonly buffered: Notification[] = [];
   private readonly messages = new Map<string, string>();
+  private readonly completedItems = new Set<string>();
   private settled = false;
   usage: Omit<GoalUsage, 'reportedThroughTurn'> | null = null;
+  threadTotals: TokenTotals | null = null;
 
-  private readonly observeItem: ((method: string, item: JsonRecord) => void) | undefined;
-  constructor(observeItem?: (method: string, item: JsonRecord) => void) { this.observeItem = observeItem; void this.result.catch(() => {}); }
+  private readonly observeItem: ((method: string, item: JsonRecord, turnId: string) => void) | undefined;
+  private readonly observeUsage: ((totals: TokenTotals, threadId: string, turnId: string) => void) | undefined;
+  constructor(observeItem?: (method: string, item: JsonRecord, turnId: string) => void,
+    observeUsage?: (totals: TokenTotals, threadId: string, turnId: string) => void) {
+    this.observeItem = observeItem; this.observeUsage = observeUsage; void this.result.catch(() => {});
+  }
 
   get finished(): boolean { return this.settled; }
 
@@ -42,6 +49,15 @@ export class TurnObserver {
     if (typeof item.id === 'string' && typeof item.text === 'string') this.messages.set(item.id, item.text);
   }
 
+  private observe(method: string, item: JsonRecord) {
+    if (!this.target) return;
+    if (typeof item.id === 'string' && method === 'item/completed') {
+      if (this.completedItems.has(item.id)) return;
+      this.completedItems.add(item.id);
+    }
+    this.observeItem?.(method, item, this.target.turnId);
+  }
+
   private consume(event: Notification): void {
     if (!this.target || this.settled || event.params.threadId !== this.target.threadId) return;
     if (event.method === 'thread/tokenUsage/updated') {
@@ -49,15 +65,22 @@ export class TurnObserver {
       try {
         const total = record(record(event.params.tokenUsage).total);
         const { inputTokens, outputTokens, totalTokens } = parseUsage({ ...total, reportedThroughTurn: 1 });
+        const totals = parseTokenTotals(total);
+        if (this.usage && (inputTokens < this.usage.inputTokens || outputTokens < this.usage.outputTokens || totalTokens < this.usage.totalTokens)) return;
         // Goal tasks own separate native conversations. Keep the latest thread total;
         // neither sum cumulative notifications nor mistake the last model call for a whole turn.
         this.usage = { inputTokens, outputTokens, totalTokens };
+        this.threadTotals = totals;
       } catch { /* Missing usage stays unknown. */ }
+      if (this.threadTotals) {
+        try { this.observeUsage?.(this.threadTotals, this.target.threadId, this.target.turnId); }
+        catch (error) { this.fail(error instanceof Error ? error : new Error(String(error))); }
+      }
       return;
     }
     if (event.method === 'item/completed' || event.method === 'item/started') {
       if (event.params.turnId === this.target.turnId) {
-        try { this.observeItem?.(event.method, record(event.params.item)); }
+        try { this.observe(event.method, record(event.params.item)); }
         catch (error) { this.fail(error instanceof Error ? error : new Error(String(error))); return; }
         if (event.method === 'item/completed') this.message(event.params.item);
       }
@@ -65,7 +88,10 @@ export class TurnObserver {
     }
     const turn = record(event.params.turn);
     if (turn.id !== this.target.turnId) return;
-    if (Array.isArray(turn.items)) turn.items.forEach(item => this.message(item));
+    if (Array.isArray(turn.items)) {
+      try { for (const item of turn.items) { this.observe('item/completed', record(item)); this.message(item); } }
+      catch (error) { this.fail(error instanceof Error ? error : new Error(String(error))); return; }
+    }
     const status = turn.status;
     if (!['completed', 'interrupted', 'failed'].includes(String(status))) {
       this.fail(new Error('Invalid terminal turn status.')); return;
