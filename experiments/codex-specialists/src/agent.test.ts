@@ -854,18 +854,21 @@ test('a normal follow-up can answer an intake question without using a separate 
 
 test('a writable agent stays read-only during intake and regains only its configured permissions for work', async () => {
   const store = new AgentStore(temporary()), client = new FakeClient();
-  const agent = new SpecialistAgent({ client, store, workspace: '/workspace', profile: 'Developer', configuration: {
+  const workspace = temporary();
+  const agent = new SpecialistAgent({ client, store, workspace, profile: 'Developer', configuration: {
     conversationProtocol: 1, decisionProtocol: 1, profileId: 'dev', accountId: 'fixture', role: 'development', token: 'a'.repeat(64),
     instructions: 'Developer', model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: true, commandExecution: false },
   } });
   client.onStart = async params => {
     expect(record(params.sandboxPolicy).type).toBe('readOnly');
+    expect(existsSync(join(workspace, '.codex'))).toBe(false);
     await conversationCall(client, 'start_goal', { objective: 'Login', criteria: ['Login works'] });
     client.complete(); return { turn: { id: 'turn' } };
   };
   agent.submit('intake', 'Build login', autoChat); await agent.settled();
   client.onStart = async params => {
     expect(record(params.sandboxPolicy).type).toBe('workspaceWrite');
+    expect(existsSync(join(workspace, '.codex'))).toBe(false);
     client.complete(); return { turn: { id: 'turn' } };
   };
   agent.pump(); await agent.settled();

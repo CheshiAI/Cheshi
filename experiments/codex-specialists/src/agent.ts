@@ -9,6 +9,7 @@ import { WorkerIntegration, integrationTools, integrationInstructions, candidate
 import { closeQuestion, setQuestionDeadline } from './question-control.ts';
 import { WorkerVerification } from './verification.ts';
 import { SCRATCH_PROFILE, TaskScratch } from './task-scratch.ts';
+import { assertWritableWorkspace } from './workspace-sandbox.ts';
 import { verificationInstructions, verificationTools } from './verification-tools.ts';
 import type { RuntimeConfiguration } from './runtime-config.ts';
 import type { RpcClient } from './app-server-client.ts';
@@ -370,6 +371,8 @@ export class SpecialistAgent {
         && (task.verification || this.configuration.permissions.fileWrite !== true)) {
         scratch = new TaskScratch(); this.retainedScratch.add(scratch);
       }
+      if ((!task.dialogue || task.goal) && !task.consultation && !task.verification && !task.delegation
+        && this.configuration?.permissions.fileWrite === true) assertWritableWorkspace(workspace);
       active.threadId = await this.thread(task, scratch, workspace);
       if (active.stopRequested) {
         this.store.complete(task.id, { status: 'interrupted', output: '', error: null,
