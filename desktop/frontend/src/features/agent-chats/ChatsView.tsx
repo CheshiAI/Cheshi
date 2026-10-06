@@ -184,6 +184,9 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     const ownRoot = messageRoot(message, messages);
     const context = messages.find(m => m.id === message.replyTo) ?? question ?? (ownRoot && ownRoot.id !== message.id && working.length > 1 ? ownRoot : undefined);
     const copyable = message.kind === 'message' && (!message.activity || message.activity.kind === 'message');
+    const reviewFileContext = copyable && agents.some(agent => agent.id === message.sender && agent.role === 'verification')
+      ? messages.find(request => request.sender === 'user' && request.recipient === message.sender
+        && request.roomId === message.roomId && message.taskId && request.taskId === message.taskId)?.text ?? '' : undefined;
     return <article key={message.id} className={styles.message} data-message-id={message.id} data-reply-action data-copy-action={copyable || undefined}>
       <ChatsMessageActions text={message.text} copyable={copyable}
         replyLabel={`Reply to ${(message.text || message.activity?.title || 'execution').slice(0, 80)}`}
@@ -199,7 +202,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
           : message.activity && message.activity.kind !== 'message' ? <ExecutionRecord activity={message.activity} messageId={message.id} onReview={onReviewFileChanges} />
           : isWorkKind(message.kind) ? <WorkMessage kind={message.kind} text={message.text} />
             : verification ? <VerificationCard review={verification} onOpen={() => onReviewVerification?.(verification, true)} />
-              : <div className={styles.text}><ChatsMessageContent text={message.text || 'No text response.'} mention={mention} /></div>}
+              : <div className={styles.text}><ChatsMessageContent text={message.text || 'No text response.'} mention={mention} reviewFileContext={reviewFileContext} /></div>}
         {message.error && !message.goalProgress && <p role="status" className={styles.description}>{message.error}</p>}
         {message.error?.includes('Project setup required:') && <ProjectEnvironmentSetup roomId={message.roomId} mutate={mutate} />}
         {message.activity?.kind === 'message' && message.activity.truncated && <p className={styles.description}>Message shortened to the retained excerpt.</p>}

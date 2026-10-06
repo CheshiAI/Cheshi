@@ -1,7 +1,7 @@
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { Image as ImageIcon } from 'lucide-react';
-import { Children, useEffect, useState, type ReactNode } from 'react';
-import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
+import { Children, useEffect, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react';
+import ReactMarkdown, { defaultUrlTransform, type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { cheshiDesktop } from '../../cheshiDesktop';
@@ -9,12 +9,15 @@ import { localFileLinkPath } from '../../../../shared/local-file-link';
 import { CodePanel, LiquidGlassPanel } from '../../shared/ui';
 import styles from './ChatView.module.css';
 import markdownStyles from './MessageContent.module.css';
+import { FileEvidence } from './FileEvidence';
+import { fileEvidence } from './fileEvidenceModel';
 
 interface MessageContentProps {
   text: string;
   renderLocalImages?: boolean;
   presentation?: 'default' | 'description';
   mention?: { id: string; name: string };
+  reviewFileContext?: string;
 }
 
 interface ContentSegment {
@@ -158,22 +161,26 @@ function LocalImageParagraph({ children }: { children?: ReactNode }) {
   return imagesOnly ? <>{content}</> : <p>{content}</p>;
 }
 
+function markdownCodeBlock({ node, children }: ComponentPropsWithoutRef<'pre'> & ExtraProps, reviewFileContext?: string) {
+  const code = node?.children.find(child => child.type === 'element' && child.tagName === 'code');
+  if (!code || code.type !== 'element') return <pre>{children}</pre>;
+  const value = code.children.map(child => child.type === 'text' ? child.value : '').join('');
+  const classNames = code.properties.className;
+  const languageClass = Array.isArray(classNames)
+    ? classNames.find(name => typeof name === 'string' && name.startsWith('language-')) : undefined;
+  const language = typeof languageClass === 'string' ? languageClass.slice(9) : undefined;
+  const files = reviewFileContext === undefined ? null : fileEvidence(value, language, reviewFileContext);
+  return files ? <FileEvidence files={files} renderLink={(path, name) => <LocalFileAnchor href={path}>{name}</LocalFileAnchor>} />
+    : <CodePanel code={value.replace(/\n$/, '')} language={language} />;
+}
+
 const markdownComponents: Components = {
   a: ({ href, children }) => <MessageAnchor href={href ?? ''}>{children}</MessageAnchor>,
   // Markdown images do not initiate network or filesystem access. Local previews
   // are available only through the explicit attachment marker and desktop bridge.
   img: ({ alt }) => <span>{alt || 'Image'}</span>,
   code: ({ children }) => <code className={styles.inlineCode}>{children}</code>,
-  pre: ({ node, children }) => {
-    const code = node?.children.find((child) => child.type === 'element' && child.tagName === 'code');
-    if (!code || code.type !== 'element') return <pre>{children}</pre>;
-    const value = code.children.map((child) => child.type === 'text' ? child.value : '').join('');
-    const classNames = code.properties.className;
-    const language = Array.isArray(classNames)
-      ? classNames.find((name) => typeof name === 'string' && name.startsWith('language-'))
-      : undefined;
-    return <CodePanel code={value.replace(/\n$/, '')} language={typeof language === 'string' ? language.slice(9) : undefined} />;
-  },
+  pre: props => markdownCodeBlock(props),
   table: ({ children }) => (
     <LiquidGlassPanel className={markdownStyles.tableScroll} role="region" aria-label="Table" tabIndex={0}>
       <table>{children}</table>
@@ -192,7 +199,7 @@ const descriptionComponents: Components = {
   code: ({ children }) => <code>{children}</code>,
 };
 
-export function MessageContent({ renderLocalImages = false, text, presentation = 'default', mention }: MessageContentProps) {
+export function MessageContent({ renderLocalImages = false, text, presentation = 'default', mention, reviewFileContext }: MessageContentProps) {
   const description = presentation === 'description';
   const jsonSegment = description ? null : jsonSegmentFromText(text);
   if (jsonSegment) return <CodePanel code={jsonSegment.value} language={jsonSegment.language} />;
@@ -200,7 +207,9 @@ export function MessageContent({ renderLocalImages = false, text, presentation =
   const mentionOffset = text.length - text.trimStart().length;
   const addressed = mention && text.slice(mentionOffset).startsWith(mentionLabel)
     && /^(?:$|[\s,:：])/.test(text.slice(mentionOffset + mentionLabel.length));
-  const components = description ? descriptionComponents : renderLocalImages ? localImageComponents : markdownComponents;
+  const baseComponents = description ? descriptionComponents : renderLocalImages ? localImageComponents : markdownComponents;
+  const components: Components = !description && reviewFileContext !== undefined
+    ? { ...baseComponents, pre: props => markdownCodeBlock(props, reviewFileContext) } : baseComponents;
   const mentionComponents: Components = addressed ? { ...components, p: ({ node, children }) => {
     const parts = Children.toArray(children);
     const first = parts[0];

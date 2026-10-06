@@ -1,0 +1,16 @@
+.card { margin-block: var(--space-default); }
+.files { display: grid; min-width: 0; }
+.file { display: flex; align-items: flex-start; gap: var(--icon-default); padding-block: var(--space-default); border-bottom: 1px solid var(--divider); }
+.file:first-child { padding-top: 0; }
+.file:last-child { padding-bottom: 0; border-bottom: 0; }
+.file > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; color: var(--sidebar-section-label-color); }
+.label { display: grid; gap: 4px; min-width: 0; }
+.name { font-size: var(--font-size-label); overflow-wrap: anywhere; }
+.name a { color: var(--text); cursor: pointer; }
+.name a:focus-visible { outline: 1px solid var(--divider); outline-offset: 2px; }
+.path { color: var(--sidebar-section-label-color); font-size: var(--font-size-small); overflow-wrap: anywhere; }
+.details { min-width: 0; border-top: 1px solid var(--divider); padding-top: var(--space-default); }
+.details summary { cursor: pointer; color: var(--sidebar-section-label-color); }
+.hashes { display: grid; gap: var(--space-default); margin: var(--space-default) 0 0; }
+.hashes dt { color: var(--sidebar-section-label-color); }
+.hashes dd { margin: 4px 0 0; font-family: monospace; overflow-wrap: anywhere; }
