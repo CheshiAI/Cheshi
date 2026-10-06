@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { parseHistoryRecallEnabled, parseTypeSafeKey } from '../shared/settings.ts';
+import { DEFAULT_PROJECT_DOC_MAX_BYTES, parseProjectDocMaxBytes } from '../../experiments/codex-specialists/src/project-instructions.ts';
 import type { TypeSafeSettings } from '../shared/settings.ts';
 import { isCodexAccountId } from '../shared/codex-accounts.ts';
 
@@ -32,6 +33,7 @@ export function createSettingsService(options: Options) {
   const filename = path.join(options.directory, 'typesafe-api-key.enc');
   let cached: string | undefined;
   const listeners = new Set<(state: TypeSafeSettings) => void>();
+  const projectDocListeners = new Set<(bytes: number) => void>();
   const readPreferences = (): Record<string, unknown> => {
     try {
       return assertPreferences(JSON.parse(readFileSync(options.settingsPath, 'utf8')));
@@ -89,6 +91,21 @@ export function createSettingsService(options: Options) {
   };
   return {
     getKey, snapshot,
+    getProjectDocMaxBytes() {
+      const value = readPreferences().projectDocMaxBytes;
+      return value === undefined ? DEFAULT_PROJECT_DOC_MAX_BYTES : parseProjectDocMaxBytes(value);
+    },
+    setProjectDocMaxBytes(value: unknown) {
+      const bytes = parseProjectDocMaxBytes(value);
+      updatePreferences(preferences => ({ ...preferences, projectDocMaxBytes: bytes }),
+        'Could not save the instruction size limit. Try again.');
+      for (const listener of projectDocListeners) listener(bytes);
+      return bytes;
+    },
+    subscribeProjectDocMaxBytes(listener: (bytes: number) => void) {
+      projectDocListeners.add(listener);
+      return () => { projectDocListeners.delete(listener); };
+    },
     isHistoryRecallEnabled() {
       try { return readPreferences().historyRecallEnabled === true; } catch { return false; }
     },

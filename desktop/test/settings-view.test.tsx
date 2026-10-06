@@ -13,9 +13,10 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 async function withSettings(run: (view: {
-  container: HTMLElement; window: Window; savedKeys: string[]; checks: () => number; recallWrites: boolean[];
+  container: HTMLElement; window: Window; projectWrites: number[]; emitLimit(bytes: number): Promise<void>; savedKeys: string[]; checks: () => number; recallWrites: boolean[];
   emit(state: TypeSafeSettings): Promise<void>; initial: ReturnType<typeof createDeferred<TypeSafeSettings>>;
 }) => Promise<void>, options: {
+  projectLoad?: Promise<number>; projectSave?: Promise<void>; failProjectSave?: boolean;
   failRecallSave?: boolean; recallSave?: Promise<void>; check?: () => Promise<boolean>;
   removeReply?: () => Promise<TypeSafeSettings>; broadcast?: boolean;
 } = {}) {
@@ -37,7 +38,19 @@ async function withSettings(run: (view: {
   const savedKeys: string[] = [];
   const recallWrites: boolean[] = [];
   let checks = 0;
+  const projectWrites: number[] = [];
+  const projectListeners = new Set<(bytes: number) => void>();
+  let projectBytes = 32768;
   const api: SettingsApi = {
+    getProjectDocMaxBytes: async () => options.projectLoad ?? projectBytes,
+    setProjectDocMaxBytes: async bytes => {
+      projectWrites.push(bytes); await options.projectSave;
+      if (options.failProjectSave) throw new Error('Could not save');
+      projectBytes = bytes;
+      for (const listener of projectListeners) listener(bytes);
+      return bytes;
+    },
+    onProjectDocMaxBytesChanged: handler => { projectListeners.add(handler); return () => { projectListeners.delete(handler); }; },
     getTypeSafe: async () => { const state = await initial.promise; current = state; return state; },
     saveTypeSafe: async key => { savedKeys.push(key); publish(saved); return saved; },
     removeTypeSafe: async () => {
@@ -65,7 +78,8 @@ async function withSettings(run: (view: {
     await act(async () => root.render(<>
       <SettingsView api={api} />
     </>));
-    await run({ container, window, savedKeys, checks: () => checks, recallWrites, initial,
+    await run({ container, window, savedKeys, projectWrites,
+      emitLimit: async bytes => { await act(async () => { for (const listener of projectListeners) listener(bytes); }); }, checks: () => checks, recallWrites, initial,
       emit: async state => { await act(async () => publish(state, true)); } });
   } finally {
     await unmount?.(); await window.happyDOM.abort();
@@ -340,4 +354,54 @@ test('Scheduler category opens the moved settings with the existing settings nav
     expect(container.querySelector('[aria-label="Launch Cheshi at login"]')).not.toBeNull();
     expect(container.querySelector('[aria-labelledby="typesafe-heading"]')).toBeNull();
   });
+});
+
+
+async function enterInstructionLimit(container: HTMLElement, window: Window, value: string) {
+  const input = container.querySelector<HTMLInputElement>('#project-doc-limit')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+test('agent settings load 32 KiB and save 128 KiB through the shared API', async () => {
+  await withSettings(async ({ container, window, initial, projectWrites }) => {
+    await act(async () => initial.resolve(none));
+    await act(async () => category(container, 'Agents').click());
+    expect(category(container, 'Agents').getAttribute('aria-current')).toBe('page');
+    expect(container.querySelector<HTMLInputElement>('#project-doc-limit')!.value).toBe('32');
+    await enterInstructionLimit(container, window, '128');
+    await act(async () => button(container, 'Save instruction size limit').click());
+    expect(projectWrites).toEqual([131072]);
+    expect(container.querySelector<HTMLInputElement>('#project-doc-limit')!.value).toBe('128');
+    expect(container.textContent).toContain('Saved.');
+    expect(button(container, 'Save instruction size limit').disabled).toBe(true);
+  });
+});
+
+test('a settings broadcast takes priority over a stale initial instruction limit', async () => {
+  const load = createDeferred<number>();
+  await withSettings(async ({ container, initial, emitLimit }) => {
+    await act(async () => initial.resolve(none));
+    await act(async () => category(container, 'Agents').click());
+    await emitLimit(131072);
+    await act(async () => load.resolve(32768));
+    expect(container.querySelector<HTMLInputElement>('#project-doc-limit')!.value).toBe('128');
+  }, { projectLoad: load.promise });
+});
+
+test('a rejected save keeps the prior saved instruction limit and remains retryable', async () => {
+  await withSettings(async ({ container, window, initial, projectWrites }) => {
+    await act(async () => initial.resolve(none));
+    await act(async () => category(container, 'Agents').click());
+    await enterInstructionLimit(container, window, '128');
+    await act(async () => button(container, 'Save instruction size limit').click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Could not save');
+    expect(button(container, 'Save instruction size limit').disabled).toBe(false);
+    expect(projectWrites).toEqual([131072]);
+    await act(async () => category(container, 'TypeSafe API').click());
+    await act(async () => category(container, 'Agents').click());
+    expect(container.querySelector<HTMLInputElement>('#project-doc-limit')!.value).toBe('32');
+  }, { failProjectSave: true });
 });

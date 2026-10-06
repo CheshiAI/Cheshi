@@ -1,5 +1,6 @@
 import { CodexAppServerClient, CodexAppServerStoppedError } from './codex-app-server-client.mts';
 import { recordValue } from './codex-service-utils.mts';
+import { DEFAULT_PROJECT_DOC_MAX_BYTES, projectDocConfigOverride } from '../../experiments/codex-specialists/src/project-instructions.ts';
 
 type ClientOptions = ConstructorParameters<typeof CodexAppServerClient>[0];
 type PrepareCommand = (command: ClientOptions['command']) => Promise<string[]>;
@@ -13,16 +14,19 @@ export class CodexAccountClients {
   switching = false;
   private closed = false;
   readonly prepareCommand: PrepareCommand | undefined;
+  private readonly projectDocMaxBytes: () => number;
 
-  constructor(environment: Record<string, string | undefined>, prepareCommand?: PrepareCommand) {
+  constructor(environment: Record<string, string | undefined>, prepareCommand?: PrepareCommand, projectDocMaxBytes = () => DEFAULT_PROJECT_DOC_MAX_BYTES) {
     this.environment = environment;
     this.defaultHome = environment.CODEX_HOME;
     this.prepareCommand = prepareCommand;
+    this.projectDocMaxBytes = projectDocMaxBytes;
   }
 
   commandArgs(args: string[]): string[] {
-    return this.environment.CODEX_HOME === this.defaultHome ? [...args]
-      : [...args, '-c', 'cli_auth_credentials_store="file"'];
+    const configured = [...args, '-c', projectDocConfigOverride(this.projectDocMaxBytes())];
+    return this.environment.CODEX_HOME === this.defaultHome ? configured
+      : [...configured, '-c', 'cli_auth_credentials_store="file"'];
   }
 
   create(options: ClientOptions): AccountClient {
@@ -109,6 +113,7 @@ export class AccountClient extends CodexAppServerClient {
   }
 
   override async startInternal(): Promise<Record<string, unknown>> {
+    this.command.args = this.pool.commandArgs(this.originalArgs);
     if (this.pool.prepareCommand) {
       const revision = this.preparationRevision;
       const args = await this.pool.prepareCommand(this.command);

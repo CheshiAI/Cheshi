@@ -107,6 +107,7 @@ const agentChats = createAgentChats({ roomChanged: () => specialistRuntime.notif
 });
 const specialistRuntime = createSpecialistRuntime({
   rooms: agentChats.rooms,
+  getProjectDocMaxBytes: () => apiSettings.getProjectDocMaxBytes(),
   history: { enabled: () => apiSettings.isHistoryRecallEnabled(), getKey: () => apiSettings.getKey(),
     subscribe: listener => apiSettings.subscribe(() => listener()) },
   directory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement,
@@ -282,6 +283,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try {
     runtime = createWorkspaceRuntime({ ...options, notifications, messageCommands, discord, getTypeSafeKey: apiSettings.getKey,
+      getProjectDocMaxBytes: apiSettings.getProjectDocMaxBytes,
       voiceChats: request => agentChats.request(options.workspaceRoot, request),
       historyRecall: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) },
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
@@ -437,6 +439,7 @@ app.whenReady().then(async () => {
     openExternal: url => shell.openExternal(url), codeGraph: { cli: commands.cli(), dataRoot },
     historyDirectory: workspace => path.join(path.dirname(codeGraphStorageDirectory(dataRoot, workspace)), 'chat-history-index'),
     accountSelection: apiSettings.workspaceAccountSelection, getKey: apiSettings.getKey,
+    getProjectDocMaxBytes: apiSettings.getProjectDocMaxBytes,
     access: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) } });
   schedulerNotifications = createSchedulerNotifications({ engine: scheduler,
     shouldNotify: run => !workspaces.hasFocusedWorkspace(run.workspace === '*' ? undefined : run.workspace),

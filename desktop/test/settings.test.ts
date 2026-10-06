@@ -173,11 +173,17 @@ test('settings IPC rejects foreign renderers and subframes and cleans up handler
     expect(() => invoke(SETTINGS_CHANNELS.setHistoryRecallEnabled, true, owner, {})).toThrow('workspace window');
     expect(() => invoke(SETTINGS_CHANNELS.setHistoryRecallEnabled, 'true')).toThrow('Invalid');
     expect(invoke(SETTINGS_CHANNELS.setHistoryRecallEnabled, true).historyRecallEnabled).toBe(true);
+    expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072, {})).toThrow('workspace window');
+    expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072, owner, {})).toThrow('workspace window');
+    expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, '131072')).toThrow('whole number');
+    expect(invoke(SETTINGS_CHANNELS.getProjectDocMaxBytes)).toBe(32768);
+    expect(invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072)).toBe(131072);
     expect(await invoke(SETTINGS_CHANNELS.check)).toBe(true);
     expect(JSON.stringify(sent)).not.toContain(key);
     registration.dispose();
     const count = sent.length;
     f.service.remove();
+    f.service.setProjectDocMaxBytes(32768);
     expect(sent).toHaveLength(count);
     expect(routes.size).toBe(0);
   } finally { registration.dispose(); f.close(); }
@@ -199,6 +205,12 @@ test('preload validates both requests and status replies without exposing full k
   await rejected(api.getTypeSafe(), 'Invalid');
   response = 'true';
   await rejected(api.checkTypeSafe(), 'Invalid');
+  response = 131072;
+  expect(await api.setProjectDocMaxBytes(131072)).toBe(131072);
+  expect(calls.at(-1)).toEqual([SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072]);
+  await rejected(api.setProjectDocMaxBytes(1025), 'whole number');
+  response = '131072';
+  await rejected(api.getProjectDocMaxBytes(), 'whole number');
 });
 
 test('recall preferences survive service restart and retain unrelated app settings', () => {
@@ -298,6 +310,15 @@ test('separate workspace IPC clients share recall changes and a fresh client res
   };
   try {
     const first = client(), second = client();
+    const limits: number[] = [];
+    const stopLimits = second.onProjectDocMaxBytesChanged(value => limits.push(value));
+    expect(await first.getProjectDocMaxBytes()).toBe(32768);
+    await first.setProjectDocMaxBytes(131072);
+    expect(limits).toEqual([131072]);
+    expect(await second.getProjectDocMaxBytes()).toBe(131072);
+    expect(await client(createSettingsService(f.options)).getProjectDocMaxBytes()).toBe(131072);
+    stopLimits(); await first.setProjectDocMaxBytes(32768);
+    expect(limits).toEqual([131072]);
     const seen: TypeSafeSettings[] = [];
     const unsubscribe = second.onTypeSafeChanged(state => seen.push(state));
     await first.setHistoryRecallEnabled(true);
@@ -321,5 +342,39 @@ test('existing Autopilot preferences and saved keys never opt users into recall'
     expect(f.service.isHistoryRecallEnabled()).toBe(true);
     writeFileSync(f.options.settingsPath, '{damaged');
     expect(f.service.isHistoryRecallEnabled()).toBe(false);
+  } finally { f.close(); }
+});
+
+
+test('instruction limit defaults to 32 KiB, persists independently and rejects invalid values', () => {
+  const f = fixture();
+  try {
+    expect(f.service.getProjectDocMaxBytes()).toBe(32768);
+    f.service.setHistoryRecallEnabled(true);
+    const seen: number[] = [];
+    const unsubscribe = f.service.subscribeProjectDocMaxBytes(value => seen.push(value));
+    expect(f.service.setProjectDocMaxBytes(131072)).toBe(131072);
+    expect(createSettingsService(f.options).getProjectDocMaxBytes()).toBe(131072);
+    expect(f.service.isHistoryRecallEnabled()).toBe(true);
+    for (const value of [null, undefined, true, '131072', 0, -1024, 1.5, 1025, Infinity, Number.MAX_SAFE_INTEGER]) {
+      expect(() => f.service.setProjectDocMaxBytes(value)).toThrow('whole number');
+    }
+    expect(f.service.getProjectDocMaxBytes()).toBe(131072);
+    expect(seen).toEqual([131072]);
+    unsubscribe(); f.service.setProjectDocMaxBytes(32768);
+    expect(seen).toEqual([131072]);
+  } finally { f.close(); }
+});
+
+test('instruction preference failures leave saved data untouched and do not publish success', () => {
+  const f = fixture();
+  try {
+    writeFileSync(f.options.settingsPath, '{damaged');
+    const seen: number[] = [];
+    f.service.subscribeProjectDocMaxBytes(value => seen.push(value));
+    expect(() => f.service.getProjectDocMaxBytes()).toThrow('Could not read');
+    expect(() => f.service.setProjectDocMaxBytes(131072)).toThrow('Could not save');
+    expect(readFileSync(f.options.settingsPath, 'utf8')).toBe('{damaged');
+    expect(seen).toEqual([]);
   } finally { f.close(); }
 });

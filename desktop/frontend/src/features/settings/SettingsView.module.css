@@ -80,3 +80,5 @@
 .discordForm > label { display: flex; flex-direction: column; gap: var(--space-default); }
 .discordSetup { box-sizing: border-box; height: 32px; padding: 0 var(--space-default); border: 0; background: var(--control-surface); color: var(--text); font-size: var(--font-size-label); }
 .discordSetup:not(:disabled):is(:hover, :active) { border: 0; background: var(--control-surface-interactive); }
+
+.instructionLimit { width: 64px; }

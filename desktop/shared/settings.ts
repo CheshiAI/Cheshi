@@ -1,9 +1,16 @@
+import { parseProjectDocMaxBytes } from '../../experiments/codex-specialists/src/project-instructions.ts';
+
 export const SETTINGS_CHANNELS = {
+  getProjectDocMaxBytes: 'cheshi:settings:project-doc:get',
+  setProjectDocMaxBytes: 'cheshi:settings:project-doc:set',
+  projectDocMaxBytesChanged: 'cheshi:settings:project-doc:changed',
   get: 'cheshi:settings:typesafe:get', save: 'cheshi:settings:typesafe:save',
   remove: 'cheshi:settings:typesafe:remove', check: 'cheshi:settings:typesafe:check',
   changed: 'cheshi:settings:typesafe:changed',
   setHistoryRecallEnabled: 'cheshi:settings:history-recall:set',
 } as const;
+export { parseProjectDocMaxBytes };
+
 export interface TypeSafeSettings {
   source: 'saved' | 'environment' | 'none';
   maskedKey: string | null;
@@ -12,6 +19,9 @@ export interface TypeSafeSettings {
   historyRecallEnabled: boolean;
 }
 export interface SettingsApi {
+  getProjectDocMaxBytes(): Promise<number>;
+  setProjectDocMaxBytes(bytes: number): Promise<number>;
+  onProjectDocMaxBytesChanged(handler: (bytes: number) => void): () => void;
   getTypeSafe(): Promise<TypeSafeSettings>;
   saveTypeSafe(key: string): Promise<TypeSafeSettings>;
   removeTypeSafe(): Promise<TypeSafeSettings>;

@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { DEFAULT_PROJECT_DOC_MAX_BYTES, projectDocConfigOverride } from './project-instructions.ts';
 import { createDeferred, deniedServerRequest, record, type JsonRecord, type Notification } from './protocol.ts';
 
 export interface RpcClient {
@@ -23,8 +24,9 @@ export class AppServerClient implements RpcClient {
   private toolHandler: ((params: JsonRecord) => Promise<JsonRecord>) | undefined;
   handleTools(handler: (params: JsonRecord) => Promise<JsonRecord>): void { this.toolHandler = handler; }
 
-  constructor(command = 'codex', env?: NodeJS.ProcessEnv, args = ['app-server', '--listen', 'stdio://', '-c', 'cli_auth_credentials_store="file"']) {
-    this.child = spawn(command, args, {
+  constructor(command = 'codex', env?: NodeJS.ProcessEnv, args?: string[], projectDocMaxBytes = DEFAULT_PROJECT_DOC_MAX_BYTES) {
+    const commandArgs = args ?? ['app-server', '--listen', 'stdio://', '-c', 'cli_auth_credentials_store="file"', '-c', projectDocConfigOverride(projectDocMaxBytes)];
+    this.child = spawn(command, commandArgs, {
       stdio: ['pipe', 'pipe', 'pipe'], env,
     });
     // Do not forward diagnostic output: provider diagnostics can contain private data.

@@ -186,7 +186,7 @@ const { accounts: workspaceAccounts, search: chatHistorySearch, mcp: historyMcp 
   codeGraph: { cli: codeGraphCommands.cli(), dataRoot: codeGraphDataRoot },
   historyDirectory: path.join(path.dirname(codeGraphDirectory), 'chat-history-index'),
   getKey: options.getTypeSafeKey, access: options.historyRecall,
-  accountSelection: options.accountSelection,
+  accountSelection: options.accountSelection, getProjectDocMaxBytes: options.getProjectDocMaxBytes,
 });
 const createChatClient = workspaceAccounts.createClient;
 const agentVoice = createWorkspaceVoice({ ipc: ipcMain, assertSender: assertCheshiSender, directory: userDataDirectory,

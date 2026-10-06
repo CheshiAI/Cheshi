@@ -50,6 +50,24 @@ test('returning to default removes profile-specific environment overrides', asyn
   await pool.stop();
 });
 
+test('project instruction limit defaults to 32 KiB and follows settings across account switches', async () => {
+  let limit = 32768;
+  const pool = new CodexAccountClients({ CODEX_HOME: '/default' }, undefined, () => limit);
+  const args = ['app-server', '--listen', 'stdio://'];
+  const client = pool.create({ command: { executable: 'unused-test-transport', args, environment: {} },
+    cwd: '/tmp', clientInfo: { name: 'rules-test', title: 'Rules test', version: '1' } });
+  expect(client.command.args).toContain('project_doc_max_bytes=32768');
+  limit = 131072;
+  try {
+    for (const home of ['/default', '/second', '/default']) {
+      await pool.change({ CODEX_HOME: home }, [client], async () => {});
+      expect(client.command.args.filter(arg => arg === 'project_doc_max_bytes=131072')).toHaveLength(1);
+      expect(client.command.args.includes('cli_auth_credentials_store="file"')).toBe(home !== '/default');
+    }
+    expect(args).toEqual(['app-server', '--listen', 'stdio://']);
+  } finally { await pool.stop(); }
+});
+
 test('voice API-key exclusions survive account client rebinding', async () => {
   const pool = new CodexAccountClients({ CODEX_HOME: '/default' });
   const client = pool.create({ command: { executable: 'unused-test-transport', args: [], environment: { CODEX_HOME: '/wrong-profile', OPENAI_API_KEY: undefined, CODEX_API_KEY: undefined } },

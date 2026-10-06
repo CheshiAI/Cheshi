@@ -17,6 +17,7 @@ import { DockerCommandError } from './docker-errors.mts';
 import { assertAgentModelSelection, type AgentModel } from '../../shared/agent-models.ts';
 import { workerOperations } from './operations.mts';
 import { resolveAgentInstructions } from './instruction-files.mts';
+import { DEFAULT_PROJECT_DOC_MAX_BYTES, parseProjectDocMaxBytes } from '../../../experiments/codex-specialists/src/project-instructions.ts';
 import { createAgentOrchestration, type exchangeWorker } from '../agent-orchestration/service.mts';
 import type { AgentHistoryOptions } from '../agent-orchestration/history-relay.mts';
 import { WorkerLifecycle } from './lifecycle.mts';
@@ -25,6 +26,7 @@ import { bindingFor, type Binding } from '../agent-orchestration/mailbox.mts';
 export interface RuntimeAccount { home: string; models: AgentModel[]; }
 interface RuntimeOptions {
   directory: string; buildContext: string;
+  getProjectDocMaxBytes?(): number;
   registry: ReturnType<typeof createAgentRegistry>; management: AgentManagementApi;
   account(id: string): Promise<RuntimeAccount>;
   run?: DockerCommand;
@@ -137,7 +139,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     }
     const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId);
     const assignment = agent && projectAssignment(agent, binding.workspace);
-    if (!agent || !assignment || saved.settingsFingerprint !== runtimeSettingsDigest(agent, binding.workspace, assignment)) {
+    if (!agent || !assignment || saved.settingsFingerprint !== runtimeSettingsDigest(agent, binding.workspace, assignment, options.getProjectDocMaxBytes?.())) {
       throw new Error('Settings changed. Start the agent to resume collaboration.');
     }
     return { externalBusy: worker.externalBusy, connection: { endpoint: worker.endpoint, token: saved.token }, details: await options.management.details(binding.engineId, worker.id) };
@@ -231,7 +233,8 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       const directory = join(options.directory, digest(request.engineId), key);
       const configPath = join(directory, 'runtime.json');
       const dependencies = agent.permissions.commandExecution ? projectDependencies(workspace) : null;
-      const settingsFingerprint = runtimeSettingsDigest(agent, workspace, assignment, dependencies);
+      const projectDocMaxBytes = parseProjectDocMaxBytes(options.getProjectDocMaxBytes?.() ?? DEFAULT_PROJECT_DOC_MAX_BYTES);
+      const settingsFingerprint = runtimeSettingsDigest(agent, workspace, assignment, projectDocMaxBytes, dependencies);
       const instructions = request.action === 'start' ? await resolveAgentInstructions(agent, assignment) : null;
       const hasFiles = Boolean(agent.instructionFiles?.length || assignment.instructionFiles?.length);
       const fingerprint = hasFiles && instructions !== null ? digest(`${settingsFingerprint}\n${instructions}`) : settingsFingerprint;
@@ -307,7 +310,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         }
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
-          const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint,
+          const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint, projectDocMaxBytes,
             ...profileConfiguration(agent), permissionProtocol: 1, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, activityProtocol: 1, inputQueueProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
@@ -519,6 +522,6 @@ function profileConfiguration(agent: SpecialistAgent) {
     ...(agent.instructionFiles?.length ? { instructionFiles: agent.instructionFiles } : {}) };
 }
 
-function runtimeSettingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], dependencies = (assignment.permissions ?? agent.permissions).commandExecution ? projectDependencies(workspace) : null) {
-  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}`);
+function runtimeSettingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], projectDocMaxBytes = DEFAULT_PROJECT_DOC_MAX_BYTES, dependencies = (assignment.permissions ?? agent.permissions).commandExecution ? projectDependencies(workspace) : null) {
+  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}`);
 }

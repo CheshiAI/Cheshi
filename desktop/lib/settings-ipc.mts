@@ -17,10 +17,13 @@ export function registerSettingsIpc(options: {
   const unsubscribe = options.service.subscribe(state => {
     if (!disposed && !owner.isDestroyed()) owner.send(SETTINGS_CHANNELS.changed, state);
   });
+  const unsubscribeProjectDoc = options.service.subscribeProjectDocMaxBytes(bytes => {
+    if (!disposed && !owner.isDestroyed()) owner.send(SETTINGS_CHANNELS.projectDocMaxBytesChanged, bytes);
+  });
   let unsubscribeClosed = () => {};
   const dispose = () => {
     if (disposed) return;
-    disposed = true; unsubscribe();
+    disposed = true; unsubscribe(); unsubscribeProjectDoc();
     unsubscribeClosed();
     for (const channel of channels) options.ipc.removeHandler(channel);
   };
@@ -29,6 +32,8 @@ export function registerSettingsIpc(options: {
     channels.push(channel);
   };
   try {
+    handle(SETTINGS_CHANNELS.getProjectDocMaxBytes, () => options.service.getProjectDocMaxBytes());
+    handle(SETTINGS_CHANNELS.setProjectDocMaxBytes, (_event, bytes: unknown) => options.service.setProjectDocMaxBytes(bytes));
     handle(SETTINGS_CHANNELS.get, () => options.service.snapshot());
     handle(SETTINGS_CHANNELS.save, (_event, key: unknown) => options.service.save(key));
     handle(SETTINGS_CHANNELS.remove, () => options.service.remove());

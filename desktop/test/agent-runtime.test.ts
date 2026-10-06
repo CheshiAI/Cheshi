@@ -28,6 +28,7 @@ function fixture(linkedWorkspace = false) {
   const registry = createAgentRegistry(join(directory, 'registry.json'));
   const input = specialistInput(); input.profile.accountId = 'default';
   const agentId = registry.save(input, workspace).agentId;
+  let projectDocMaxBytes = 32768;
   let created = false, remote = false, busy = false, seeded = false, failSeed = false;
   let dockerFailure: Error | null = null, contextMissing = false;
   let labels: Record<string, string> = {};
@@ -67,7 +68,7 @@ function fixture(linkedWorkspace = false) {
   const details = (): AgentDetails => ({ agent: { id, name: 'worker', image: 'worker', state },
     ready: seeded, busy, authenticated: true, threadId: null, error: null, logs: '', tasks });
   const exchanges: unknown[] = [];
-  const runtime = createSpecialistRuntime({ directory: join(directory, 'runtime'), buildContext: '/build', registry, run, checkProjectEnvironment: async () => {},
+  const runtime = createSpecialistRuntime({ getProjectDocMaxBytes: () => projectDocMaxBytes, directory: join(directory, 'runtime'), buildContext: '/build', registry, run, checkProjectEnvironment: async () => {},
     lifecycleControl: async () => ({ protocol: 1, idle: false, nextWakeAt: null }),
     collaborationExchange: async (_connection, body) => { exchanges.push(body); return { protocol: 1, received: [], outgoing: [] }; },
     account: async () => ({ home, models: [] }), management: { details: async () => { await beforeDetails?.(); return details(); },
@@ -96,7 +97,27 @@ function fixture(linkedWorkspace = false) {
     labels['ai.cheshi.configuration'] = config.revision;
     writeFileSync(filename, JSON.stringify(config));
   };
-  return { runtime, registry, workspace, home, runtimePath, agentId, calls, exchanges, legacyRecovery,
+  const previousInstructionLimit = () => {
+    const filename = join(runtimePath, 'runtime.json');
+    const config = JSON.parse(readFileSync(filename, 'utf8'));
+    const agent = registry.snapshot(workspace).agents[0]!;
+    const assignment = agent.assignments.find(a => a.workspaceRoot === workspace)!;
+    // Historical fingerprint before project_doc_max_bytes was included; no dependency plan in this fixture.
+    const settings = { inputQueueProtocol: 1, activityProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1,
+      sandboxProtocol: 3, permissionProtocol: 1, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1,
+      chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1,
+      candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1,
+      agent: { role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,
+        serviceTier: agent.serviceTier, permissions: agent.permissions, instructions: agent.instructions },
+      workspace: realpathSync(workspace), instructions: assignment.instructions };
+    const previous = createHash('sha256').update(JSON.stringify(settings)).digest('hex');
+    config.settingsFingerprint = createHash('sha256').update(`${previous}\n`).digest('hex');
+    config.revision = config.settingsFingerprint;
+    labels['ai.cheshi.configuration'] = config.revision;
+    writeFileSync(filename, JSON.stringify(config));
+  };
+  return { runtime, registry, workspace, home, runtimePath, agentId, calls, exchanges, legacyRecovery, previousInstructionLimit,
+    setProjectDocMaxBytes: (value: number) => { projectDocMaxBytes = value; },
     onDetails: (callback: () => Promise<void>) => { beforeDetails = callback; },
     setState: (value: string) => { state = value; },
     setTasks: (value: AgentDetails['tasks']) => { tasks = value; }, setContextMissing: (missing: boolean) => { contextMissing = missing; }, setDockerFailure: (error: Error | null) => { dockerFailure = error; }, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
@@ -177,6 +198,23 @@ test('rejects unassigned profiles and remote engines before provisioning', async
   f.setRemote(); await fails(f.runtime.request(f.workspace, f.request()), 'Only local');
   expect(f.calls.some(call => call.args.includes('create'))).toBe(false);
   await fails(f.runtime.request(f.home, f.request()), 'Assign this agent');
+});
+
+test('a worker without an explicit instruction limit is replaced on start while its conversation volume is preserved', async () => {
+  const f = fixture();
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    f.previousInstructionLimit();
+    const status = await f.runtime.request(f.workspace, { ...f.request(), action: 'status' });
+    expect(status.details?.error).toContain('Settings changed');
+    expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(1);
+    await f.runtime.request(f.workspace, f.request());
+    const created = f.calls.filter(call => call.args.includes('create'));
+    expect(created).toHaveLength(2);
+    const volume = (args: string[]) => args.find(arg => arg.startsWith('type=volume,src=cheshi-agent-'));
+    expect(volume(created[1]!.args)).toBe(volume(created[0]!.args));
+    expect(f.calls.some(call => call.args.includes('volume') && call.args.includes('rm'))).toBe(false);
+  } finally { await f.runtime.dispose(); }
 });
 
 function assignFixture(f: ReturnType<typeof fixture>, assigned: boolean) {
@@ -533,5 +571,31 @@ test('failed permission application restores the previous project grant without 
     const agent = f.registry.snapshot(f.workspace).agents[0]!;
     expect(agent.permissions).toEqual({ fileWrite: false, commandExecution: false });
     expect(agent.assignments[0]?.permissions).toBeUndefined();
+  } finally { await f.runtime.dispose(); }
+});
+
+
+test('changing the shared instruction limit replaces only an idle worker and preserves its volume', async () => {
+  const f = fixture();
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    const configuration = () => JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8'));
+    expect(configuration().projectDocMaxBytes).toBe(32768);
+    f.setProjectDocMaxBytes(131072);
+    const status = await f.runtime.request(f.workspace, { ...f.request(), action: 'status' });
+    expect(status.details?.error).toContain('Settings changed');
+    expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(1);
+    await f.runtime.request(f.workspace, f.request());
+    expect(configuration().projectDocMaxBytes).toBe(131072);
+    const created = f.calls.filter(call => call.args.includes('create'));
+    expect(created).toHaveLength(2);
+    const volume = (args: string[]) => args.find(arg => arg.startsWith('type=volume,src=cheshi-agent-'));
+    expect(volume(created[1]!.args)).toBe(volume(created[0]!.args));
+    await f.runtime.request(f.workspace, f.request());
+    expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(2);
+    f.setBusy(); f.setProjectDocMaxBytes(32768);
+    await fails(f.runtime.request(f.workspace, f.request()), 'unfinished task');
+    expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(2);
+    expect(configuration().projectDocMaxBytes).toBe(131072);
   } finally { await f.runtime.dispose(); }
 });

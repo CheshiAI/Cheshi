@@ -22,7 +22,7 @@ if (configurationPath) {
 }
 const configuration = configurationPath ? parseRuntimeConfiguration(JSON.parse(readFileSync(configurationPath, 'utf8'))) : undefined;
 const profile = configuration?.instructions ?? readFileSync(process.env.AGENT_PROFILE ?? '/app/profiles/verifier/AGENTS.md', 'utf8');
-const client = new AppServerClient();
+const client = new AppServerClient(undefined, undefined, undefined, configuration?.projectDocMaxBytes);
 await client.initialize();
 let transportError: string | null = null;
 client.onFailure(error => { transportError = error.message; });

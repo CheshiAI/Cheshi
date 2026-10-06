@@ -16,6 +16,7 @@ export interface WorkspaceRuntimeOptions {
   voiceChats?: import('./agent-voice/chats.mts').ChatAccess;
   historyRecall?: HistoryRecallAccess;
   accountSelection?: WorkspaceAccountSelection;
+  getProjectDocMaxBytes?(): number;
   managementOnly?: boolean;
   initial: boolean;
   deferShow?: boolean;
