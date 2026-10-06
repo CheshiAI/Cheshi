@@ -30,7 +30,7 @@
 .text > div { font-size: inherit; line-height: 1.6; }
 .links, .actions { display: flex; gap: var(--icon-default); flex-wrap: wrap; }
 .actions { justify-content: flex-end; }
-.content .composerArea { width: 100%; padding: 0 16px 16px; pointer-events: none; }
+.content .composerArea { padding: 0 var(--space-default) var(--space-default); pointer-events: none; }
 .composerArea > * { pointer-events: auto; }
 .composerContext { display: flex; flex-direction: column; gap: var(--icon-default); padding: var(--space-default) var(--space-default) 0; }
 .composerContext:empty { display: none; }
