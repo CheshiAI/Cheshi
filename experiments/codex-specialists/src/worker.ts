@@ -1,3 +1,5 @@
+import { WorkerCustomToolQueue } from './custom-tool-queue.ts';
+import { installHomieSkills } from './homie-pack-skills.ts';
 import { WorkerCodeGraphQueue } from './codegraph-queue.ts';
 import { WorkerChangeStream } from './change-stream.ts';
 import { timingSafeEqual } from 'node:crypto';
@@ -23,6 +25,7 @@ if (configurationPath) {
 }
 const configuration = configurationPath ? parseRuntimeConfiguration(JSON.parse(readFileSync(configurationPath, 'utf8'))) : undefined;
 const profile = configuration?.instructions ?? readFileSync(process.env.AGENT_PROFILE ?? '/app/profiles/verifier/AGENTS.md', 'utf8');
+await installHomieSkills(process.env.CODEX_HOME ?? '/agent/codex');
 const client = new AppServerClient(undefined, undefined, undefined, configuration?.projectDocMaxBytes);
 await client.initialize();
 let transportError: string | null = null;
@@ -31,9 +34,10 @@ const collaboration = configuration ? new WorkerCollaboration(store, configurati
 const history = new WorkerHistory(store, client, process.env.AGENT_DATA_DIRECTORY ?? '/agent', workspace);
 const historyQueue = configuration ? new WorkerHistoryQueue(process.env.AGENT_DATA_DIRECTORY ?? '/agent') : undefined;
 const codegraph = configuration?.codegraphProtocol === 1 ? new WorkerCodeGraphQueue() : undefined;
-const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration, history, historyQueue, codegraph });
+const customTools = new WorkerCustomToolQueue();
+const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration, history, historyQueue, codegraph, customTools });
 const lifecycle = new IdleLifecycle({ store, client, blocked: () => agent.busy || !!agent.error || !!transportError
-  || collaboration?.next() != null || historyQueue?.pending === true || codegraph?.pending === true });
+  || collaboration?.next() != null || historyQueue?.pending === true || codegraph?.pending === true || customTools.pending });
 const changes = new WorkerChangeStream();
 let pumping = false, expiry: ReturnType<typeof setTimeout> | undefined;
 const schedulePump = () => {
@@ -51,6 +55,7 @@ const schedulePump = () => {
 store.subscribe(() => { changes.changed(); schedulePump(); });
 historyQueue?.subscribe(() => changes.changed());
 codegraph?.subscribe(() => changes.changed());
+customTools.subscribe(() => changes.changed());
 client.onFailure(() => changes.changed());
 const health = setInterval(() => { if (!lifecycle.draining) void agent.checkHealth(); }, 120_000);
 schedulePump();
@@ -89,6 +94,11 @@ const server = Bun.serve({
         const body = await request.text();
         if (body.length > 2 * 1024 * 1024) throw new TypeError('Request is too large.');
         return Response.json(collaboration.exchange(JSON.parse(body)));
+      }
+      if (path === '/custom-tools/exchange' && request.method === 'POST') {
+        const body = await request.text();
+        if (body.length > 2 * 1024 * 1024) throw new TypeError('Request is too large.');
+        return Response.json(customTools.exchange(JSON.parse(body)));
       }
       if (path === '/codegraph/exchange' && request.method === 'POST' && codegraph) {
         return Response.json(codegraph.exchange(await request.json()));

@@ -1,3 +1,5 @@
+import { parseCustomTools, type CustomTool } from '../../experiments/codex-specialists/src/custom-tool-contract.ts';
+import { parseHomiePackResources, type HomiePackResources } from './homie-pack.ts';
 import { SPECIALIST_ROLES } from './agent-registry.ts';
 import type { ExecutionPermissions, SpecialistProfile, SpecialistRole } from './agent-registry.ts';
 import type { AgentModelSelection } from './agent-models.ts';
@@ -5,6 +7,9 @@ import type { AgentModelSelection } from './agent-models.ts';
 export const AGENT_PACKAGE_TOOLS = ['codegraph', 'collaboration', 'verification'] as const;
 export type AgentPackageTool = typeof AGENT_PACKAGE_TOOLS[number];
 export interface AgentPackageManifest {
+  tools?: CustomTool[];
+  enabledTools?: AgentPackageTool[];
+  resources?: HomiePackResources;
   schemaVersion: 1;
   id: string;
   version: string;
@@ -31,7 +36,7 @@ function text(value: unknown, limit: number): string {
   }
   return value;
 }
-const MANIFEST_KEYS = ['schemaVersion', 'id', 'version', 'name', 'description', 'role', 'instructionsFile', 'model', 'requiredTools', 'requestedPermissions'];
+const MANIFEST_KEYS = ['tools', 'schemaVersion', 'id', 'version', 'name', 'description', 'role', 'instructionsFile', 'model', 'requiredTools', 'requestedPermissions', 'resources', 'enabledTools'];
 export function parseAgentPackageManifest(value: unknown): AgentPackageManifest {
   const data = object(value, MANIFEST_KEYS);
   if (data.schemaVersion !== 1) throw new TypeError('Unsupported agent package schema version.');
@@ -53,7 +58,10 @@ export function parseAgentPackageManifest(value: unknown): AgentPackageManifest 
   }
   if (!Array.isArray(data.requiredTools) || data.requiredTools.length > AGENT_PACKAGE_TOOLS.length
     || data.requiredTools.some(tool => !AGENT_PACKAGE_TOOLS.includes(tool))) throw new TypeError('This package requires unsupported tools.');
-  return { schemaVersion: 1, id, version, name: text(data.name, 100).trim(), description: text(data.description, 2000),
+  const enabledTools = data.enabledTools;
+  if (enabledTools !== undefined && (!Array.isArray(enabledTools) || enabledTools.some(tool => !AGENT_PACKAGE_TOOLS.includes(tool))
+    || data.requiredTools.some(tool => !enabledTools.includes(tool)))) throw new TypeError('Required tools must be enabled.');
+  return { ...(data.tools === undefined ? {} : { tools: parseCustomTools(data.tools) }), ...(enabledTools === undefined ? {} : { enabledTools: [...new Set(enabledTools as AgentPackageTool[])] }), ...(data.resources === undefined ? {} : { resources: parseHomiePackResources(data.resources) }), schemaVersion: 1, id, version, name: text(data.name, 100).trim(), description: text(data.description, 2000),
     role: data.role as SpecialistRole, instructionsFile: 'instructions.md', model: selection,
     requiredTools: [...new Set(data.requiredTools)] as AgentPackageTool[],
     requestedPermissions: { fileWrite: permissions.fileWrite === true, commandExecution: permissions.commandExecution === true } };
@@ -61,7 +69,12 @@ export function parseAgentPackageManifest(value: unknown): AgentPackageManifest 
 export function parseAgentPackage(value: unknown): AgentPackage {
   const data = object(value, [...MANIFEST_KEYS, 'instructions']);
   const { instructions, ...manifest } = data;
-  return { ...parseAgentPackageManifest(manifest), instructions: text(instructions, 20_000) };
+  const parsed = parseAgentPackageManifest(manifest);
+  for (const tool of parsed.tools ?? []) {
+    if (!parsed.resources?.files.some(file => file.path === tool.script)) throw new Error(`Missing script for tool: ${tool.name}`);
+    if (tool.runtime === 'python3' && !parsed.resources.programs.some(p => p.split('=')[0] === 'python3')) throw new Error('Python tools require python3 in Programs.');
+  }
+  return { ...parsed, instructions: text(instructions, 20_000) };
 }
 export function parseAgentPackages(value: unknown): AgentPackage[] {
   if (!Array.isArray(value) || value.length > 100) throw new TypeError('Invalid agent package list.');

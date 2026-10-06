@@ -4,6 +4,7 @@ import type { AgentModel, AgentModelSelection } from './agent-models.ts';
 import { parseAgentPackage, type AgentPackage } from './agent-package.ts';
 
 export const AGENT_REGISTRY_CHANNELS = {
+  toolCredential: 'cheshi:agent-registry:tool-credential', testTool: 'cheshi:agent-registry:test-tool',
   list: 'cheshi:agent-registry:list', save: 'cheshi:agent-registry:save', changed: 'cheshi:agent-registry:changed',
   models: 'cheshi:agent-registry:models',
   remove: 'cheshi:agent-registry:remove',
@@ -11,6 +12,8 @@ export const AGENT_REGISTRY_CHANNELS = {
   openInstructionFile: 'cheshi:agent-registry:open-instruction-file',
   packages: 'cheshi:agent-registry:packages',
   importPackage: 'cheshi:agent-registry:import-package',
+  installPackage: 'cheshi:agent-registry:install-package',
+  exportPackage: 'cheshi:agent-registry:export-package',
 } as const;
 export const SPECIALIST_ROLES = ['planning', 'research', 'frontend', 'development', 'verification', 'custom'] as const;
 export type SpecialistRole = typeof SPECIALIST_ROLES[number];
@@ -45,6 +48,10 @@ export interface SaveSpecialistAgent {
   assignment: { assigned: boolean; instructions: string; instructionFiles?: string[]; permissions?: ExecutionPermissions | null };
 }
 export interface AgentRegistryApi {
+  toolCredential?(input: import('./homie-tools.ts').ToolCredentialRequest): Promise<boolean>;
+  testTool?(input: import('./homie-tools.ts').ToolTestRequest): Promise<unknown>;
+  installPackage?(definition: AgentPackage, instructionFiles?: string[]): Promise<AgentPackage>;
+  exportPackage?(definition: AgentPackage, instructionFiles?: string[]): Promise<boolean>;
   packages?(): Promise<AgentPackage[]>;
   importPackage?(): Promise<AgentPackage | null>;
   selectInstructionFiles?(): Promise<string[]>;

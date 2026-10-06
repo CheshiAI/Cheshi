@@ -1,3 +1,6 @@
+import { customToolArguments, customToolDefinition } from './custom-tool-contract.ts';
+import type { WorkerCustomToolQueue } from './custom-tool-queue.ts';
+import { packToolAllowed, assertPackToolAllowed } from './pack-tools.ts';
 import { WorkerCodeGraphQueue } from './codegraph-queue.ts';
 import { codegraphTools, codegraphInstructions } from './codegraph-tools.ts';
 import { randomUUID } from 'node:crypto';
@@ -74,11 +77,12 @@ export class SpecialistAgent {
   private readonly verification: WorkerVerification | undefined;
   private readonly historyQueue: WorkerHistoryQueue | undefined;
   private readonly history: WorkerHistory | undefined;
+  private readonly customTools: WorkerCustomToolQueue | undefined;
   private readonly codegraph: WorkerCodeGraphQueue | undefined;
   private readonly collaboration: WorkerCollaboration | undefined;
-  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; historyQueue?: WorkerHistoryQueue; history?: WorkerHistory; codegraph?: WorkerCodeGraphQueue }) {
-    this.configuration = options.configuration;
-    this.conversations = new WorkerConversation(options.store, options.configuration?.verificationProtocol === 1);
+  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; historyQueue?: WorkerHistoryQueue; history?: WorkerHistory; codegraph?: WorkerCodeGraphQueue; customTools?: WorkerCustomToolQueue }) {
+    this.configuration = options.configuration; this.customTools = options.customTools;
+    this.conversations = new WorkerConversation(options.store, options.configuration?.verificationProtocol === 1 && packToolAllowed(options.configuration.enabledTools, 'request_verification'));
     this.work = options.configuration?.workProtocol === 1 ? new WorkerWork(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite) : undefined;
     this.integration = options.configuration?.integrationProtocol === 1 ? new WorkerIntegration(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite, options.configuration.applicationProtocol === 1) : undefined;
     this.verification = options.configuration?.verificationProtocol === 1 ? new WorkerVerification(options.store, options.workspace) : undefined;
@@ -95,7 +99,7 @@ export class SpecialistAgent {
       if (shouldRequestPermissions(task.permissionRequest, { fileWrite, commandExecution })) this.store.update(task.id, { permissionRequest: { id: randomUUID(), fileWrite, commandExecution, status: 'pending',
         reason: fileWrite ? 'This task needs permission to modify project files.' : 'This task needs permission to run commands.' } });
     });
-    if (this.collaboration || this.historyQueue || this.codegraph || this.configuration?.decisionProtocol === 1 || this.configuration?.permissionProtocol === 1) {
+    if (this.customTools || this.collaboration || this.historyQueue || this.codegraph || this.configuration?.decisionProtocol === 1 || this.configuration?.permissionProtocol === 1) {
       if (!this.client.handleTools) throw new Error('Collaboration requires dynamic tool support.');
       this.client.handleTools(async params => {
         const active = this.active;
@@ -105,6 +109,7 @@ export class SpecialistAgent {
         if (active.stopRequested) throw new Error('Task is stopping.');
         active.health.activity('tool');
         const tool = textValue(params.tool, 'tool');
+        assertPackToolAllowed(this.configuration?.enabledTools, tool);
         const task = this.store.task(active.id)!;
         if (tool === 'request_execution_permissions' && this.configuration?.permissionProtocol === 1) {
           if (!task.roomId) throw new Error('Permission requests require a Chats task.');
@@ -156,6 +161,14 @@ export class SpecialistAgent {
         }
         if (task.verificationDraft) throw new Error('End the turn after submitting verification.');
         if (this.verification && task.verification && ['verification_read', 'verification_status', 'submit_verification'].includes(tool)) return this.verification.call(task, tool, params.arguments);
+        if (tool.startsWith('homie_')) {
+          const definition = this.configuration?.customTools?.find(t => `homie_${t.name}` === tool && t.enabled);
+          if (!definition || !this.customTools) throw new Error('Custom tool is disabled or unavailable.');
+          if (!this.configuration?.permissions.commandExecution || task.consultation) throw new Error('Custom scripts require command permission outside read-only consultation.');
+          const result = record(await this.customTools.call(tool, customToolArguments(definition, params.arguments), active.controller.signal));
+          active.observations.add({ tool, result });
+          return result;
+        }
         if (this.codegraph && codegraphTools.some(t => t.name === tool)) {
           const result = record(await this.codegraph.call(tool, params.arguments, active.controller.signal));
           if (result.isError !== true) active.observations.add({ tool, result });
@@ -220,7 +233,7 @@ export class SpecialistAgent {
     }
     if (this.busy) throw new TaskConflict('This specialist already has an active task.');
     const task = this.store.create(id, prompt, { ...(this.collaboration ? { conversation: id } : {}),
-      ...(this.configuration?.decisionProtocol === 1 && (!chat || chat.goal) ? { goal: newGoal(Boolean(this.verification)), conversation: id } : {}), ...(chat ? { roomId: chat.roomId, conversation: chat.conversation, ...(chat.automatic ? { dialogue: { userText: textValue(chat.userText, 'user message'), questions: [], revisions: [] } } : {}) } : {}) });
+      ...(this.configuration?.decisionProtocol === 1 && (!chat || chat.goal) ? { goal: newGoal(Boolean(this.verification) && packToolAllowed(this.configuration?.enabledTools, 'request_verification')), conversation: id } : {}), ...(chat ? { roomId: chat.roomId, conversation: chat.conversation, ...(chat.automatic ? { dialogue: { userText: textValue(chat.userText, 'user message'), questions: [], revisions: [] } } : {}) } : {}) });
     return this.launch(task, prompt);
   }
 
@@ -346,10 +359,10 @@ export class SpecialistAgent {
     const intake = !!task.dialogue && !task.goal;
     const projectWritable = !intake && !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true;
     // Native resumed conversations retain the dynamic tool set from their creation.
-    const integrationAvailable = this.integration && (!savedThread || task.integrationTools === true);
+    const integrationAvailable = this.integration && packToolAllowed(settings?.enabledTools, integrationTools[0]!.name) && (!savedThread || task.integrationTools === true);
     const applicationAvailable = integrationAvailable && settings?.applicationProtocol === 1 && (!savedThread || task.applicationTools === true);
-    const codegraphAvailable = this.codegraph && (!savedThread || saved.tasks.some(t => t.threadId === savedThread && t.codegraphTools === true));
-    const profile = this.profile + (codegraphAvailable ? codegraphInstructions : this.codegraph ? '\nThis older conversation has no CodeGraph tools. Use scoped source reads within existing permissions; a new conversation is required for CodeGraph tools.\n' : '') + (settings?.permissionProtocol === 1 ? permissionInstructions : '') + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
+    const codegraphAvailable = this.codegraph && packToolAllowed(settings?.enabledTools, codegraphTools[0]!.name) && (!savedThread || saved.tasks.some(t => t.threadId === savedThread && t.codegraphTools === true));
+    const profile = this.profile + (settings?.enabledTools ? `\nEnabled Homie tool groups: ${settings.enabledTools.join(', ') || 'none'}. Disabled groups are unavailable even if older instructions mention them.\n` : '') + (codegraphAvailable ? codegraphInstructions : this.codegraph ? '\nThis older conversation has no CodeGraph tools. Use scoped source reads within existing permissions; a new conversation is required for CodeGraph tools.\n' : '') + (settings?.permissionProtocol === 1 ? permissionInstructions : '') + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
       + (integrationAvailable && settings?.candidateVerificationProtocol === 1 ? candidateVerificationInstructions : '') + (applicationAvailable ? applicationInstructions : '');
     const params: JsonRecord = { cwd: workspace,
       ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: !intake && !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
@@ -363,7 +376,7 @@ export class SpecialistAgent {
       } } : {}) };
     const result = savedThread
       ? await this.client.request('thread/resume', { ...params, threadId: savedThread })
-      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.codegraph ? codegraphTools : []), ...(settings?.permissionProtocol === 1 ? permissionTools : []), ...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal || task.dialogue ? decisionTools : []), ...(task.dialogue ? conversationTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])] });
+      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.configuration?.customTools ?? []).filter(t => t.enabled).map(customToolDefinition), ...(this.codegraph ? codegraphTools : []), ...(settings?.permissionProtocol === 1 ? permissionTools : []), ...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal || task.dialogue ? decisionTools : []), ...(task.dialogue ? conversationTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])].filter(tool => packToolAllowed(settings?.enabledTools, tool.name)) });
     const threadId = textValue(record(result.thread).id, 'thread id');
     assertResumedThread(savedThread, threadId);
     const nativePath = record(result.thread).path;

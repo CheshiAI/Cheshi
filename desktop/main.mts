@@ -1,3 +1,4 @@
+import { createToolCredentials } from './lib/agent-management/tool-credentials.mts';
 import { createCodeGraphSynchronization } from './lib/codegraph-synchronization.mts';
 import { createAgentCodeGraph } from './lib/agent-orchestration/codegraph-source.mts';
 import { createAgentChats } from './lib/agent-chats/service.mts';
@@ -113,6 +114,7 @@ const codeGraphDataRoot = resolveCodeGraphDataRoot() ?? app.getPath('userData');
 const codeGraphSynchronization = createCodeGraphSynchronization({ command: codeGraphCommand, dataRoot: codeGraphDataRoot });
 const specialistRuntime = createSpecialistRuntime({
   rooms: agentChats.rooms,
+  toolCredential: (origin, name) => toolCredentials.get(origin, name),
   codegraph: createAgentCodeGraph({ cli: codeGraphCommand, dataRoot: codeGraphDataRoot, beforeQuery: codeGraphSynchronization.ensure }),
   prepareCodeGraph: codeGraphSynchronization.ensure,
   getProjectDocMaxBytes: () => apiSettings.getProjectDocMaxBytes(),
@@ -143,6 +145,10 @@ const apiSettings = createSettingsService({
     developmentFile: app.isPackaged ? undefined : path.resolve(import.meta.dirname, '..', '.env.signing'),
   }),
   checkKey: checkTypeSafeConnection,
+});
+const toolCredentials = createToolCredentials(path.join(app.getPath('userData'), 'api-keys', 'homie-tools'), {
+  isEncryptionAvailable: () => safeStorage.isEncryptionAvailable() && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
+  encryptString: value => safeStorage.encryptString(value), decryptString: value => safeStorage.decryptString(value),
 });
 const notificationEvents = createNotificationEvents({ filename: path.join(app.getPath('userData'), 'notification-events.json'),
   legacyIMessageFilename: path.join(app.getPath('userData'), 'imessage-notifications.json') });
@@ -298,9 +304,18 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
       agentChatsIpc = registerAgentChatsIpc({ window, ipc: options.scope.ipc, workspaceRoot: options.workspaceRoot, service: agentChats });
       agentRegistryIpc = registerAgentRegistryIpc({ window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot,
+        testTool: input => specialistRuntime.testTool(options.workspaceRoot, input),
+        toolCredential: input => input.action === 'save' ? toolCredentials.save(input.origin, input.name, input.value!)
+          : input.action === 'remove' ? toolCredentials.remove(input.origin, input.name) : toolCredentials.status(input.origin, input.name),
+        packsDirectory: path.join(app.getPath('userData'), 'homie-packs'),
+        exportPackagePath: async name => {
+          const result = await dialog.showSaveDialog(window, { title: 'Export Homie pack', defaultPath: name,
+            filters: [{ name: 'Homie pack', extensions: ['json'] }] });
+          return result.canceled ? null : result.filePath ?? null;
+        },
         selectPackage: async () => {
-          const result = await dialog.showOpenDialog(window, { title: 'Import agent package', defaultPath: options.workspaceRoot,
-            properties: ['openFile'], filters: [{ name: 'Agent package (agent.json)', extensions: ['json'] }] });
+          const result = await dialog.showOpenDialog(window, { title: 'Import Homie pack', defaultPath: options.workspaceRoot,
+            properties: ['openFile'], filters: [{ name: 'Homie pack or agent.json', extensions: ['json'] }] });
           return result.canceled ? null : result.filePaths[0] ?? null;
         },
         selectInstructionFiles: async () => {

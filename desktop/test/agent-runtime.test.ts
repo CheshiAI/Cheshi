@@ -160,6 +160,33 @@ test('package instructions reach the worker and updates wait for explicit Start'
   } finally { f.runtime.dispose(); }
 });
 
+test('pack resources reach the worker image and changed assets require Start without rebuilding during status', async () => {
+  const f = fixture(false, undefined, true);
+  let agent = f.registry.snapshot(f.workspace).agents[0]!;
+  const definition = { ...(await officialAgentPackages())[0]!, resources: { files: [{ path: 'scripts/check.ts', content: 'console.log(1)' }], programs: ['jq'] } };
+  agent = f.registry.save({ id: agent.id, revision: agent.revision, profile: { ...agent, package: definition },
+    assignment: { assigned: true, instructions: '' } }, f.workspace).snapshot.agents[0]!;
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    const created = f.calls.find(call => call.args.includes('create'))!;
+    expect(created.args.at(-1)).toStartWith('cheshi-homie-pack:');
+    const configuration = JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8'));
+    expect(configuration.instructions).toContain('/opt/cheshi/homie-pack/scripts/check.ts');
+    expect(configuration.homiePack.resources).toEqual(definition.resources);
+    f.calls.length = 0;
+    await f.runtime.request(f.workspace, { ...f.request(), action: 'status' });
+    expect(f.calls.some(call => call.args.includes('build') || call.args.includes('create'))).toBe(false);
+    f.registry.save({ id: agent.id, revision: agent.revision,
+      profile: { ...agent, package: { ...definition, resources: { ...definition.resources, files: [{ path: 'scripts/check.ts', content: 'console.log(2)' }] } } },
+      assignment: { assigned: true, instructions: '' } }, f.workspace);
+    const status = await f.runtime.request(f.workspace, { ...f.request(), action: 'status' });
+    expect(status.details?.error).toContain('Settings changed');
+    expect(f.calls.some(call => call.args.includes('build'))).toBe(false);
+    await f.runtime.request(f.workspace, f.request());
+    expect(f.calls.find(call => call.args.includes('create'))!.args.at(-1)).not.toBe(created.args.at(-1));
+  } finally { f.runtime.dispose(); }
+});
+
 test('command-enabled worker uses separate dependency volumes and unchanged starts and status do not rebuild', async () => {
   const f = fixture();
   const agent = f.registry.snapshot(f.workspace).agents[0]!;
@@ -682,5 +709,13 @@ test('changing the shared instruction limit replaces only an idle worker and pre
     await fails(f.runtime.request(f.workspace, f.request()), 'unfinished task');
     expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(2);
     expect(configuration().projectDocMaxBytes).toBe(131072);
+  } finally { await f.runtime.dispose(); }
+});
+
+test('custom tool calls without a saved enabled definition are blocked before Docker execution', async () => {
+  const f = fixture();
+  try {
+    await fails(f.runtime.testTool(f.workspace, { agentId: f.agentId, engineId: 'docker:colima-cheshi', tool: 'missing', args: {} }), 'saved definition');
+    expect(f.calls).toEqual([]);
   } finally { await f.runtime.dispose(); }
 });

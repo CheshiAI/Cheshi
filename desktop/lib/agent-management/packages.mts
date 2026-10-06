@@ -1,5 +1,6 @@
+import { readHomiePack } from './homie-packs.mts';
 import { constants } from 'node:fs';
-import { open, realpath } from 'node:fs/promises';
+import { open, realpath, readdir } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseAgentPackage, parseAgentPackageManifest } from '../../shared/agent-package.ts';
@@ -28,13 +29,16 @@ async function readPackageFile(filename: string, directory: string): Promise<str
   } finally { await file.close(); }
 }
 export async function readAgentPackage(filename: string): Promise<AgentPackage> {
+  if (filename.endsWith('.homiepack.json')) return readHomiePack(filename);
   if (basename(filename) !== 'agent.json') throw new Error('Select the package agent.json file.');
   const directory = await realpath(dirname(filename));
   const manifest = parseAgentPackageManifest(JSON.parse(await readPackageFile(filename, directory)));
   const instructions = await readPackageFile(join(directory, manifest.instructionsFile), directory);
   return parseAgentPackage({ ...manifest, instructions });
 }
-export function officialAgentPackages(): Promise<AgentPackage[]> {
+export async function officialAgentPackages(): Promise<AgentPackage[]> {
   const directory = fileURLToPath(new URL('../../../resources/agent-packages/', import.meta.url));
-  return Promise.all(['cheshi-development', 'cheshi-review'].map(id => readAgentPackage(join(directory, id, 'agent.json'))));
+  const entries = await readdir(directory, { withFileTypes: true });
+  return Promise.all(entries.filter(entry => entry.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))
+    .map(entry => readAgentPackage(join(directory, entry.name, 'agent.json'))));
 }

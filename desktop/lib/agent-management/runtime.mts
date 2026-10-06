@@ -1,3 +1,6 @@
+import { executeCustomTool, type ToolCredential } from './custom-tool-execution.mts';
+import type { ToolTestRequest } from '../../shared/homie-tools.ts';
+import { packInstructions, preparePackEnvironment } from './pack-environment.mts';
 import type { CodeGraphQuery } from '../agent-orchestration/codegraph-source.mts';
 import { assertProjectEnvironment, prepareProjectEnvironment } from './project-environment.mts';
 import { projectDependencies, prepareDependencies } from './dependencies.mts';
@@ -35,6 +38,7 @@ interface RuntimeOptions {
   collaborationExchange?: typeof exchangeWorker;
   history?: AgentHistoryOptions;
   codegraph?: CodeGraphQuery;
+  toolCredential?: ToolCredential;
   prepareCodeGraph?: (workspace: string) => Promise<void>;
   lifecycleControl?: (connection: { endpoint: string; token: string }, action: string, body?: unknown) => Promise<unknown>;
   idleMs?: number; now?(): number;
@@ -85,6 +89,8 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   const builds = new Map<string, Promise<void>>();
   const orchestration = createAgentOrchestration({ filename: join(options.directory, 'collaboration.json'),
     exchange: options.collaborationExchange, history: options.history, codegraph: options.codegraph, rooms: options.rooms,
+    customTools: runCustomTool,
+    customToolsAvailable: binding => Boolean(options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId)?.package?.tools?.some(t => t.enabled)),
     peer: binding => {
       const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId && a.accountId === binding.accountId
         && projectAssignment(a, binding.workspace));
@@ -184,7 +190,20 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     if (labels[marker] !== 'specialist-v1' || labels['ai.cheshi.binding'] !== key) throw new Error('Worker ownership changed.');
     const worker = parseDockerAgent(raw);
     if (worker.id !== ids[0]) throw new Error('Worker identity changed.');
-    return { ...worker, externalBusy: !(raw.ExecIDs === null || Array.isArray(raw.ExecIDs) && raw.ExecIDs.length === 0), fingerprint: labels['ai.cheshi.configuration'] };
+    return { ...worker, imageId: typeof raw.Image === 'string' ? raw.Image : '', externalBusy: !(raw.ExecIDs === null || Array.isArray(raw.ExecIDs) && raw.ExecIDs.length === 0), fingerprint: labels['ai.cheshi.configuration'] };
+  }
+  async function runCustomTool(binding: Binding, name: string, args: Record<string, unknown>, signal: AbortSignal) {
+    const snapshot = () => options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId && a.accountId === binding.accountId);
+    const agent = snapshot(), assignment = agent && projectAssignment(agent, binding.workspace);
+    const tool = agent?.package?.tools?.find(t => `homie_${t.name}` === name && t.enabled);
+    if (!agent || !assignment || !tool || !(assignment.permissions ?? agent.permissions).commandExecution) throw new Error('This tool requires a saved definition and command permission.');
+    const revision = agent.revision;
+    const valid = () => snapshot()?.revision === revision && !signal.aborted;
+    if (!await readLive(binding)) throw new Error('Start the saved Homie before testing its tool.');
+    const prefix = await local(binding.engineId);
+    const worker = await find(prefix, `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`);
+    if (!worker || !worker.imageId.startsWith('sha256:') || !valid()) throw new Error('Start the saved Homie before testing its tool.');
+    return { result: await executeCustomTool({ run, prefix, image: worker.imageId, tool, args, signal, credential: options.toolCredential, valid }) };
   }
   async function build(prefix: string[], dependencies: boolean) {
     const key = `${prefix.join('/')}/${dependencies}`;
@@ -245,7 +264,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       const dependencies = agent.permissions.commandExecution ? projectDependencies(workspace) : null;
       const projectDocMaxBytes = parseProjectDocMaxBytes(options.getProjectDocMaxBytes?.() ?? DEFAULT_PROJECT_DOC_MAX_BYTES);
       const settingsFingerprint = runtimeSettingsDigest(agent, workspace, assignment, projectDocMaxBytes, dependencies);
-      const instructions = request.action === 'start' ? await resolveAgentInstructions(agent, assignment) : null;
+      const instructions = request.action === 'start' ? (await resolveAgentInstructions(agent, assignment)) + packInstructions(agent.package) : null;
       const hasFiles = Boolean(agent.instructionFiles?.length || assignment.instructionFiles?.length);
       const fingerprint = hasFiles && instructions !== null ? digest(`${settingsFingerprint}\n${instructions}`) : settingsFingerprint;
       const prefix = await local(request.engineId);
@@ -296,6 +315,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker || worker.fingerprint !== fingerprint) await build(prefix, dependencies !== null);
         if (agent.permissions.fileWrite) await (options.checkProjectEnvironment ?? assertProjectEnvironment)(request.engineId, prefix, workspace);
         const environment = !worker || worker.fingerprint !== fingerprint ? await prepareDependencies(run, prefix, image, dependencies, environmentImage) : { image, mounts: [] };
+        if (!worker || worker.fingerprint !== fingerprint) environment.image = await preparePackEnvironment(run, prefix, environment.image, agent.package);
         assertCurrent();
         if (worker && worker.fingerprint !== fingerprint) {
           const details = await options.management.details(request.engineId, worker.id);
@@ -442,6 +462,10 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     orchestration.notify(b); changed(b); return result;
   }
   return {
+    async testTool(workspaceRoot: string, input: ToolTestRequest) {
+      const b = await binding(workspaceRoot, { action: 'status', engineId: input.engineId, agentId: input.agentId });
+      return runCustomTool(b, `homie_${input.tool}`, input.args, AbortSignal.timeout(60_000));
+    },
     async permissions(workspaceRoot: string, input: { agentId: string; engineId: string; accountId: string; roomId: string; taskId: string; request: PermissionRequest; decision: 'allow' | 'deny' }) {
       const b = await binding(workspaceRoot, { ...input, action: 'status' });
       if (b.accountId !== input.accountId) throw new Error('The participant account changed.');
@@ -531,7 +555,7 @@ function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: S
     ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
 }
 function profileConfiguration(agent: SpecialistAgent) {
-  return { role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,
+  return { ...(agent.package ? { customTools: agent.package?.tools, homiePack: agent.package, ...(agent.package.enabledTools ? { enabledTools: agent.package.enabledTools } : {}) } : {}), role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,
     serviceTier: agent.serviceTier, permissions: agent.permissions, instructions: agent.instructions,
     ...(agent.instructionFiles?.length ? { instructionFiles: agent.instructionFiles } : {}) };
 }

@@ -1,3 +1,4 @@
+import { parseToolCredentialRequest, parseToolTestRequest } from '../shared/homie-tools.ts';
 import { AGENT_RUNTIME_CHANNEL, parseAgentRuntimeRequest, parseAgentRuntimeState } from '../shared/agent-runtime.ts';
 import type { IpcRenderer } from 'electron';
 import { AGENT_REGISTRY_CHANNELS, parseAgentRegistrySnapshot, parseAgentRegistrySaveResult, parseSaveSpecialistAgent, parseDeleteSpecialistAgent } from '../shared/agent-registry.ts';
@@ -10,6 +11,10 @@ import { parseAgentPackage, parseAgentPackages } from '../shared/agent-package.t
 
 export function createAgentRegistryApi(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>): AgentRegistryApi {
   return {
+    async toolCredential(input) { return await ipc.invoke(AGENT_REGISTRY_CHANNELS.toolCredential, parseToolCredentialRequest(input)) === true; },
+    async testTool(input) { return ipc.invoke(AGENT_REGISTRY_CHANNELS.testTool, parseToolTestRequest(input)); },
+    async installPackage(value, instructionFiles = []) { return parseAgentPackage(await ipc.invoke(AGENT_REGISTRY_CHANNELS.installPackage, { definition: parseAgentPackage(value), instructionFiles: parseInstructionFiles(instructionFiles) })); },
+    async exportPackage(value, instructionFiles = []) { return (await ipc.invoke(AGENT_REGISTRY_CHANNELS.exportPackage, { definition: parseAgentPackage(value), instructionFiles: parseInstructionFiles(instructionFiles) })) === true; },
     async packages() { return parseAgentPackages(await ipc.invoke(AGENT_REGISTRY_CHANNELS.packages)); },
     async importPackage() {
       const value = await ipc.invoke(AGENT_REGISTRY_CHANNELS.importPackage);
