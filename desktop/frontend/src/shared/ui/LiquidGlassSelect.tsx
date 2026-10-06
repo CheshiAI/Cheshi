@@ -15,7 +15,7 @@ import { createPortal } from 'react-dom';
 import { LiquidGlassPanel } from './LiquidGlassPanel';
 import { NeumorphicButton } from './NeumorphicButton';
 import { PillDropdownButton } from './PillDropdownButton';
-import { RegionalBlur } from './RegionalBlur';
+import { RegionalBlur, type RegionalBlurSourceMode } from './RegionalBlur';
 import styles from './LiquidGlassSelect.module.css';
 import menuStyles from './ToolbarMenu.module.css';
 
@@ -38,6 +38,7 @@ interface LiquidGlassSelectProps<Value extends string> {
   menuPlacement?: 'auto' | 'left';
   menuWidth?: number;
   menuBlurSourceRef?: RefObject<HTMLElement | null>;
+  menuBlurSourceMode?: RegionalBlurSourceMode;
   onChange: (value: Value) => void;
   options: readonly LiquidGlassSelectOption<Value>[];
   triggerAppearance?: 'flat' | 'raised' | 'pill' | 'standard';
@@ -87,6 +88,7 @@ export function LiquidGlassSelect<Value extends string>({
   menuPlacement = 'auto',
   menuWidth,
   menuBlurSourceRef,
+  menuBlurSourceMode,
   onChange,
   options,
   triggerAppearance = 'raised',
@@ -252,7 +254,7 @@ export function LiquidGlassSelect<Value extends string>({
       </TooltipTarget>
 
       {menu && createPortal(
-        menuBlurSourceRef ? <RegionalBlur sourceRef={menuBlurSourceRef}>{menu}</RegionalBlur> : menu,
+        menuBlurSourceRef ? <RegionalBlur sourceRef={menuBlurSourceRef} sourceMode={menuBlurSourceMode}>{menu}</RegionalBlur> : menu,
         rootRef.current?.closest('dialog') ?? document.body,
       )}
     </div>

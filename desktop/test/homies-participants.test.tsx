@@ -63,6 +63,32 @@ test('Homies edits participation in its list, saves additions and removals, and 
   });
 });
 
+test('default Homie menu connects the shell backdrop and keeps selection in the participation draft until saved', async () => {
+  const f = fixture();
+  await withDOM(async ui => {
+    await ui.render(<div className="app-shell">
+      <AgentManagementViews view="homies" selectionRequest={selection} {...f} />
+      <footer>Workspace status</footer>
+    </div>);
+    await act(async () => { checkbox('Review').click(); });
+    await ui.click('Default Homie');
+    const menu = document.querySelector<HTMLElement>('[role="menu"]')!;
+    expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
+    expect(document.querySelector('.app-shell')!.contains(menu)).toBe(false);
+    const options = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
+    expect(options.find(option => option.textContent === 'Development')?.getAttribute('aria-checked')).toBe('true');
+    await act(async () => { options.find(option => option.textContent === 'Review')!.click(); });
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(menu.hasAttribute('data-regional-blur-surface')).toBe(false);
+    const trigger = document.querySelector<HTMLButtonElement>('[aria-label="Default Homie"]')!;
+    expect(trigger.textContent).toBe('Review');
+    expect(document.activeElement).toBe(trigger);
+    expect(f.snapshot().rooms[0]!.defaultAgentId).toBe(f.first.id);
+    await ui.click('Save participants');
+    expect(f.snapshot().rooms[0]!.defaultAgentId).toBe(f.second.id);
+  });
+});
+
 test('participation retains the draft on failure and prevents duplicate saves while waiting for acknowledgement', async () => {
   const f = fixture(), gate = registryDeferred<ChatsSnapshot>();
   const request = f.chatsApi.request;

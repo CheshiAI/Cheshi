@@ -14,11 +14,12 @@ mock.module('../frontend/src/shared/ui/Tooltip.module.css', () => ({
   default: { anchor: 'tooltip-anchor', content: 'tooltip-content' },
 }));
 
-function Fixture({ portal, thread = 'one', menu = true, composer = true, nested = false, layered = false, select = false, mcp = false, tooltip = false }: {
-  portal: HTMLElement; thread?: string; menu?: boolean; composer?: boolean; nested?: boolean; layered?: boolean; select?: boolean; mcp?: boolean; tooltip?: boolean;
+function Fixture({ portal, thread = 'one', menu = true, composer = true, nested = false, layered = false, select = false, fullSceneSelect = false, mcp = false, tooltip = false }: {
+  portal: HTMLElement; thread?: string; menu?: boolean; composer?: boolean; nested?: boolean; layered?: boolean; select?: boolean; fullSceneSelect?: boolean; mcp?: boolean; tooltip?: boolean;
 }) {
   const sourceRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  const fullSceneRef = useRef<HTMLDivElement>(null);
   const panelStyle = { display: 'block', visibility: 'visible', opacity: 1, borderRadius: '16px' } as const;
   const popup = createPortal(<div><LiquidGlassPanel role="menu"
     data-box={layered ? '350,470,200,60' : '350,250,200,180'} style={panelStyle}>
@@ -40,12 +41,15 @@ function Fixture({ portal, thread = 'one', menu = true, composer = true, nested 
             serverName: 'Test', message: 'Choose whether to proceed', fields: [{ name: 'proceed', title: 'Proceed',
               description: '', type: 'boolean', required: true }] }} />}
         {select && <LiquidGlassSelect ariaLabel="Permissions" menuAppearance="toolbar" triggerAppearance="standard"
-          menuBlurSourceRef={composerRef} value="read-only" options={[{ value: 'read-only', label: 'Read only' }]}
+          menuBlurSourceRef={fullSceneSelect ? fullSceneRef : composerRef} menuBlurSourceMode={fullSceneSelect ? 'replace' : 'add'}
+          value="read-only" options={[{ value: 'read-only', label: 'Read only' }]}
           onChange={() => {}} />}
       </LiquidGlassPanel></div>}
     {menu && (layered ? <RegionalBlur sourceRef={composerRef}>{popup}</RegionalBlur> : popup)}
   </>;
-  return tooltip ? scene : <RegionalBlur sourceRef={sourceRef}>{scene}</RegionalBlur>;
+  return tooltip ? scene : <RegionalBlur sourceRef={sourceRef}>
+    {fullSceneSelect ? <div ref={fullSceneRef} data-full-scene="true" data-box="100,50,600,500">{scene}</div> : scene}
+  </RegionalBlur>;
 }
 
 async function withDOM(run: (h: {
@@ -247,6 +251,37 @@ test('a select connects its composer backdrop only while the popup is open and r
     expect(menu.hasAttribute('data-regional-blur-surface')).toBe(false);
     expect(h.document.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe('Keep this draft');
     expect(mask(h.document).match(/<path /g)?.length).toBe(1);
+  });
+});
+
+test('a full-scene select blurs its backdrop once without adding its footprint to inherited layers', async () => {
+  await withDOM(async h => {
+    await h.render({ menu: false, select: true, fullSceneSelect: true });
+    const source = h.document.querySelector<HTMLElement>('[data-full-scene]')!;
+    const inheritedMask = mask(h.document);
+    const trigger = h.document.querySelector<HTMLButtonElement>('[aria-label="Permissions"]')!;
+    await act(async () => trigger.click());
+    const menu = h.document.querySelector<HTMLElement>('[role="menu"]')!;
+    menu.dataset.box = '350,470,200,60';
+    menu.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:16px';
+    h.invalidate(); await h.flush();
+    expect(source.contains(menu)).toBe(false);
+    expect(source.style.filter).toContain('url(');
+    expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
+    expect(menu.style.filter).toBe('');
+    expect(mask(h.document)).toBe(inheritedMask);
+    const filter = h.document.getElementById(source.getAttribute('data-regional-blur-source')!)!;
+    expect(filter.querySelector('feGaussianBlur')?.getAttribute('stdDeviation')).toBe('16');
+    const fullSceneMask = decodeURIComponent(filter.querySelector('feImage')!.getAttribute('href')!.split(',').slice(1).join(','));
+    expect(fullSceneMask.match(/<path /g)?.length).toBe(1);
+    await act(async () => trigger.click());
+    expect(source.style.filter).toBe('');
+    expect(source.hasAttribute('data-regional-blur-source')).toBe(false);
+    expect(menu.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(mask(h.document)).toBe(inheritedMask);
+    expect(h.document.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe('Keep this draft');
+    await h.unmount();
+    expect(h.observerCount()).toBe(0);
   });
 });
 

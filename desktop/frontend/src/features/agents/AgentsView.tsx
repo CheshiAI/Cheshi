@@ -6,9 +6,9 @@ import type { AgentChatsApi, ChatTaskTarget } from '../../../../shared/agent-cha
 import { AgentAvatar } from '../../shared/agent-management/AgentAvatar';
 import { SpecialistRuntimePanel } from './SpecialistRuntimePanel';
 import { Bot, Container, Download, Plus, RefreshCw, Trash2, X } from 'lucide-react';
-import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
+import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { LiquidGlassPanel, LiquidGlassSelect, NeumorphicButton } from '../../shared/ui';
+import { LiquidGlassPanel, LiquidGlassSelect, NeumorphicButton, NeumorphicCheckbox } from '../../shared/ui';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
@@ -62,6 +62,11 @@ export function AgentsView({ active = true, chatTask, onBackToChats, selectionRe
   const editing = creating || Boolean(profile);
   useEffect(() => { onEditingChange?.(editing); }, [editing, onEditingChange]);
   const listScrollbar = useAutoHideScrollbars<HTMLElement>();
+  const menuBlurSourceRef = useRef<HTMLElement | null>(null);
+  const connectParticipationBackdrop = useCallback((element: HTMLElement | null) => {
+    // Include sidebar and status-bar borders behind the portalled menu.
+    menuBlurSourceRef.current = element?.closest<HTMLElement>('.app-shell') ?? null;
+  }, []);
   const { snapshot, changing, loading } = state;
   const locked = registered.saving || editorBusy || importing || participation.saving;
   const importPack = async () => {
@@ -103,7 +108,7 @@ export function AgentsView({ active = true, chatTask, onBackToChats, selectionRe
           const selected = profile?.id === item.id;
           const candidate = participation.candidates.find(candidate => candidate.id === item.id);
           return <div key={item.id} className={viewStyles.agentRow} data-selected={selected ? 'true' : undefined}>
-            {participation.room && <input className={viewStyles.participationCheckbox} type="checkbox" aria-label={`Participate: ${item.name}`}
+            {participation.room && <NeumorphicCheckbox className={viewStyles.participationCheckbox} aria-label={`Participate: ${item.name}`}
               title={candidate?.existing ? 'Remove from this room' : candidate?.available ? 'Invite to this room' : 'Assign this project and an account to participate'}
               checked={participation.members.includes(item.id)} disabled={locked || participation.conflict || (!candidate?.available && !candidate?.existing)}
               onChange={event => participation.toggle(item.id, event.target.checked)} />}
@@ -125,7 +130,7 @@ export function AgentsView({ active = true, chatTask, onBackToChats, selectionRe
         })}
         {participation.room && participation.candidates.filter(item => !registered.data?.agents.some(agent => agent.id === item.id)).map(item =>
           <div key={item.id} className={viewStyles.agentRow}>
-            <input className={viewStyles.participationCheckbox} type="checkbox" aria-label={`Participate: ${item.name}`} checked={participation.members.includes(item.id)} disabled={locked || participation.conflict}
+            <NeumorphicCheckbox className={viewStyles.participationCheckbox} aria-label={`Participate: ${item.name}`} checked={participation.members.includes(item.id)} disabled={locked || participation.conflict}
               onChange={event => participation.toggle(item.id, event.target.checked)} />
             <span className={viewStyles.empty}>{item.name} · Unavailable</span>
           </div>)}
@@ -133,11 +138,12 @@ export function AgentsView({ active = true, chatTask, onBackToChats, selectionRe
         <div className={viewStyles.notice}><AgentManagementNotice state={state} /></div>
 
       </nav>
-      {selectionRequest?.roomId && <section className={viewStyles.participation} aria-label="Room participation">
+      {selectionRequest?.roomId && <section ref={connectParticipationBackdrop} className={viewStyles.participation} aria-label="Room participation">
         {participation.loading && <p>Loading participants…</p>}
         {participation.room && <>
           <span className={viewStyles.roomName}>{participation.room.name}</span>
           <label>Default Homie<LiquidGlassSelect ariaLabel="Default Homie" value={participation.defaults.some(item => item.id === participation.owner) ? participation.owner : ''}
+            triggerAppearance="standard" menuAppearance="toolbar" menuBlurSourceRef={menuBlurSourceRef} menuBlurSourceMode="replace"
             placeholder="Choose a participating Homie" options={participation.defaults.map(item => ({ value: item.id, label: item.name }))}
             disabled={locked || participation.conflict || !participation.defaults.length} onChange={participation.setOwner} /></label>
           <p>Changes apply when saved. Removing a participant keeps its past messages and does not delete the Homie.</p>

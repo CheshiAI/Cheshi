@@ -74,14 +74,22 @@ test('the unified editor saves all sections directly and exports only portable c
 });
 
 test('new Homies use the same section layout without entering a pack editor', async () => {
-  const { model, saves, Editor } = fixture(); await model.refresh();
+  const { model, saves, exports, Editor } = fixture(); await model.refresh();
   try {
     await withDOM(async ui => {
       await ui.render(<Editor creating />);
+      const exportButton = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Export')!;
+      expect(exportButton.disabled).toBe(true);
       await ui.type('Agent name', 'New Homie');
       await ui.click('Skills'); await ui.type('Skill name', 'draft');
       await ui.click('Instructions'); await ui.type('Agent instructions', 'New instructions.');
       await ui.click('Skills'); expect(field('Skill name').value).toBe('draft');
+      await ui.click('Export');
+      expect(exports).toHaveLength(1);
+      expect(exports[0]!.name).toBe('New Homie');
+      expect(exports[0]!.instructions).toBe('New instructions.');
+      expect(saves).toHaveLength(0);
+      expect(field('Skill name').value).toBe('draft');
       await ui.click('Create agent');
       expect(saves[0]!.id).toBeNull();
       expect(saves[0]!.profile.instructions).toBe('New instructions.');

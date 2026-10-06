@@ -1,6 +1,6 @@
 .editor { container-type: inline-size; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; font-size: 12px; }
-.header { display: flex; flex-shrink: 0; align-items: center; flex-wrap: wrap; gap: var(--icon-default); padding: var(--space-default); border-bottom: 1px solid var(--divider); }
-.title { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: var(--font-size-label); }
+.header { display: flex; box-sizing: border-box; height: var(--header-height); flex: 0 0 var(--header-height); align-items: center; gap: var(--icon-default); padding: 0 var(--space-default); border-bottom: 1px solid var(--divider); }
+.title { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-label); }
 .body { display: flex; flex: 1; min-height: 0; }
 .navigation { --liquid-glass-radius: 0; width: var(--sidebar-width); max-width: 30%; flex-shrink: 0; overflow: hidden; border-width: 0 1px 0 0; }
 .navScroll { height: 100%; overflow: auto; }
@@ -28,7 +28,7 @@
 
 .toolResult { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 
-.runtimeHeader { flex: 1 0 100%; border: 0; padding: 0; margin: 0; min-width: 0; }
+.runtimeHeader { flex: 0 0 auto; border: 0; border-bottom: 1px solid var(--divider); padding: var(--icon-default) var(--space-default); margin: 0; min-width: 0; }
 .runtime[hidden] { display: none; }
 @container (max-width: 700px) {
   .body { flex-direction: column; }

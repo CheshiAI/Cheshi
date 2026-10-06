@@ -114,6 +114,7 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack, 
     } catch (error) { if (active.current) setPackError(error instanceof Error ? error.message : 'Could not export Homie pack.'); }
     finally { operation.current = false; if (active.current) setFilePending(false); }
   };
+  const profileActionDisabled = disabled || modelBlocked || !profile.name.trim() || !profile.instructions.trim();
   const files = pack.resources?.files ?? [];
   const assets = { files, disabled, onBusy: setFilePending, onError: setPackError,
     onChange: (files: NonNullable<AgentPackage['resources']>['files']) => patchPack({ resources: { files, programs: pack.resources?.programs ?? [] } }) };
@@ -125,7 +126,7 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack, 
   ];
   return <form className={layout.editor} noValidate aria-label={agent ? 'Agent settings' : 'Create agent'} onSubmit={event => {
     event.preventDefault();
-    if (modelBlocked || disabled || operation.current || outdated || !profile.name.trim() || !profile.instructions.trim()) return;
+    if (profileActionDisabled || operation.current || outdated) return;
     let savedProfile = profile;
     try { savedProfile = { ...profile, package: profile.package ? parseAgentPackage(profile.package) : portable() }; setPackError(null); }
     catch (error) { setPackError(error instanceof Error ? error.message : 'Invalid Homie pack.'); return; }
@@ -139,17 +140,19 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack, 
     <header className={layout.header}>
       {onBack && <TooltipButton variant="ghost" size="icon" aria-label="All Homies" title="All Homies" disabled={disabled} onClick={onBack}><ArrowLeft aria-hidden="true" /></TooltipButton>}
       <h2 className={layout.title}>{outdated ? agent.name : profile.name || 'Create agent'}</h2>
-      <NeumorphicButton type="submit" variant="standard" disabled={disabled || modelBlocked || !profile.name.trim() || !profile.instructions.trim() || Boolean(outdated)}>
+      {!agent && <NeumorphicButton variant="standard" disabled={profileActionDisabled}
+        onClick={() => { void exportPack(); }}>Export</NeumorphicButton>}
+      <NeumorphicButton type="submit" variant="standard" disabled={profileActionDisabled || Boolean(outdated)}>
         {state.saving ? 'Saving…' : agent ? 'Save agent' : 'Create agent'}</NeumorphicButton>
-      <ToolbarMenu label="Homie actions" items={[
-        { id: 'export', label: 'Export…', icon: <Download aria-hidden="true" />, disabled: disabled || modelBlocked || !profile.name.trim() || !profile.instructions.trim(), onSelect: () => { void exportPack(); } },
+      {agent && <ToolbarMenu label="Homie actions" items={[
+        { id: 'export', label: 'Export…', icon: <Download aria-hidden="true" />, disabled: profileActionDisabled, onSelect: () => { void exportPack(); } },
         ...(onDuplicate ? [{ id: 'duplicate', label: 'Duplicate Homie', icon: <Copy aria-hidden="true" />, disabled: disabled || !profile.name.trim(),
           onSelect: () => onDuplicate({ profile, permissions, revision, assigned, instructions, instructionFiles, localPack, section }) }] : []),
         ...(onDelete ? [{ id: 'delete', label: `Delete agent: ${agent?.name}`, icon: <Trash2 aria-hidden="true" />, disabled,
           separatorBefore: true, onSelect: onDelete }] : []),
-      ]} />
-      {runtime && <fieldset ref={setRuntimeHeader} disabled={disabled} className={layout.runtimeHeader} aria-label="Homie runtime controls" />}
+      ]} />}
     </header>
+    {runtime && <fieldset ref={setRuntimeHeader} disabled={disabled} className={layout.runtimeHeader} aria-label="Homie runtime controls" />}
     <div className={layout.body}>
       <LiquidGlassPanel as="aside" className={layout.navigation}>
         <nav ref={navigation} className={layout.navScroll} aria-label="Homie sections">

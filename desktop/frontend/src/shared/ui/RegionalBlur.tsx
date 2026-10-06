@@ -4,13 +4,17 @@ import { createRegionalBlurController } from './regionalBlurController';
 
 type BlurController = ReturnType<typeof createRegionalBlurController>;
 const RegionalBlurContext = createContext<readonly BlurController[]>([]);
+export type RegionalBlurSourceMode = 'add' | 'replace';
 
 /** Context crosses HTML portals, so floating menus share the composer's source and material. */
-export function RegionalBlur({ sourceRef, children }: { sourceRef: RefObject<HTMLElement | null>; children: ReactNode }) {
+export function RegionalBlur({ sourceRef, sourceMode = 'add', children }: {
+  sourceRef: RefObject<HTMLElement | null>; sourceMode?: RegionalBlurSourceMode; children: ReactNode;
+}) {
   const parents = useContext(RegionalBlurContext);
   const controller = useMemo(createRegionalBlurController, []);
-  // A nested provider adds a background layer without losing the outer scene.
-  const controllers = useMemo(() => [...parents, controller], [parents, controller]);
+  // A complete scene replaces inherited layers so the same pixels are not blurred twice.
+  const controllers = useMemo(() => sourceMode === 'replace' ? [controller] : [...parents, controller],
+    [parents, controller, sourceMode]);
   const defsRef = useRef<SVGDefsElement>(null);
   const connection = useRef<{ source: HTMLElement; dispose: () => void } | null>(null);
   // Switching conversations remounts the timeline under the same RefObject.

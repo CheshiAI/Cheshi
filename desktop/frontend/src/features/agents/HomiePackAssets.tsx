@@ -80,7 +80,7 @@ export function PackSkills(props: AssetsProps & { onBusy(value: boolean): void }
       <label className={form.field}>Name<NeumorphicTextField variant="standard" aria-label="Skill name" value={name} disabled={disabled} onChange={event => setName(event.target.value)} /></label>
       <label className={form.field}>When to use<NeumorphicTextField variant="standard" aria-label="Skill description" value={description} disabled={disabled} onChange={event => setDescription(event.target.value)} /></label>
       <label className={form.field}>Instructions<NeumorphicTextField variant="standard" multiline rows={8} aria-label="Skill instructions" value={instructions} disabled={disabled} onChange={event => setInstructions(event.target.value)} /></label>
-      <NeumorphicButton disabled={disabled || !name.trim() || !description.trim() || !instructions.trim()} onClick={() => {
+      <NeumorphicButton variant="standard" disabled={disabled || !name.trim() || !description.trim() || !instructions.trim()} onClick={() => {
         try {
           const file = createPackSkill(files, name, description, instructions);
           onChange([...files, file]); setSelected(file.path); setName(''); setDescription(''); setInstructions('');
