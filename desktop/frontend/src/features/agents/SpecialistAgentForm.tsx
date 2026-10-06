@@ -15,11 +15,13 @@ import { specialistTemplates } from './specialistTemplates';
 import styles from './SpecialistAgentForm.module.css';
 import { SpecialistModelSettings, useSpecialistModels } from './SpecialistModelSettings';
 import { assertAgentModelSelection } from '../../../../shared/agent-models';
+import { applyAgentPackage } from '../../../../shared/agent-package';
+import { AgentPackagePicker } from './AgentPackagePicker';
 
 function initialProfile(agent?: SpecialistAgent): SpecialistProfile {
   return agent ? { avatar: agent.avatar ?? defaultAgentAvatar(agent.id), name: agent.name, role: agent.role, instructions: agent.instructions,
     instructionFiles: agent.instructionFiles ?? [], accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort, serviceTier: agent.serviceTier,
-    permissions: { ...agent.permissions } } : {
+    permissions: { ...agent.permissions }, package: agent.package } : {
     avatar: randomAgentAvatar(), name: '', role: 'development', instructions: specialistTemplates.development.instructions,
     accountId: null, model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: false, commandExecution: false },
   };
@@ -87,6 +89,11 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack, 
       {!agent && <span>Cheshi-wide agent</span>}
     </div>
     <fieldset disabled={disabled} className={styles.fields}>
+      <AgentPackagePicker profile={profile} model={model} existing={Boolean(agent)} disabled={disabled} onBusy={setFilePending}
+        onApply={(definition, keepInstructions) => {
+          patch(applyAgentPackage(profile, definition, Boolean(agent), keepInstructions));
+          if (!agent) setPermissions({ ...definition.requestedPermissions });
+        }} />
       <AgentAvatarPicker value={profile.avatar!} disabled={state.saving} onChange={avatar => patch({ avatar })} />
       <label className={styles.field}>Name<NeumorphicTextField variant="standard" aria-label="Agent name" required maxLength={100}
         value={profile.name} onChange={event => patch({ name: event.target.value })} /></label>
@@ -102,7 +109,8 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack, 
         onBusy={setFilePending} onChange={instructionFiles => patch({ instructionFiles })} />
       <div className={styles.field}><span>Account</span><LiquidGlassSelect ariaLabel="Agent account" menuAppearance="toolbar" triggerAppearance="standard"
         options={accountOptions} value={profile.accountId ?? ''} disabled={state.saving}
-        onChange={accountId => patch({ accountId: accountId || null, model: null, reasoningEffort: null, serviceTier: null })} /></div>
+        onChange={accountId => patch({ accountId: accountId || null,
+          ...(!agent && profile.package ? profile.package.model : { model: null, reasoningEffort: null, serviceTier: null }) })} /></div>
       {accountError && <p role="status" className={styles.description}>{accountError}</p>}
       <SpecialistModelSettings selection={profile} catalog={catalog} disabled={state.saving} onChange={patch} />
       {modelError && !catalog.loading && !catalog.error && <p className={styles.description} role="alert">{modelError}</p>}

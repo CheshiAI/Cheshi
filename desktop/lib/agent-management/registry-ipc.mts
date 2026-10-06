@@ -10,6 +10,7 @@ import type { AgentModel } from '../../shared/agent-models.ts';
 import { parseInstructionFiles, parseInstructionFilePath } from '../../shared/agent-registry.ts';
 import { readInstructionFile } from './instruction-files.mts';
 import { deletionReply } from './operations.mts';
+import { officialAgentPackages, readAgentPackage } from './packages.mts';
 
 export function registerAgentRegistryIpc(options: {
   window: BrowserWindow; workspaceRoot: string; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>;
@@ -19,6 +20,7 @@ export function registerAgentRegistryIpc(options: {
   models?: (accountId: string) => Promise<AgentModel[]>;
   selectInstructionFiles?: () => Promise<string[]>;
   openInstructionFile?: (path: string) => Promise<void>;
+  selectPackage?: () => Promise<string | null>;
 }) {
   const owner = options.window.webContents, channels: string[] = [];
   let disposed = false;
@@ -49,6 +51,18 @@ export function registerAgentRegistryIpc(options: {
     return parseAgentModels(await options.models(accountId));
   };
   try {
+    handle(AGENT_REGISTRY_CHANNELS.packages, async () => {
+      const packages = await officialAgentPackages();
+      if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
+      return packages;
+    });
+    if (options.selectPackage) handle(AGENT_REGISTRY_CHANNELS.importPackage, async () => {
+      const filename = await options.selectPackage!();
+      if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
+      const definition = filename === null ? null : await readAgentPackage(filename);
+      if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
+      return definition;
+    });
     if (options.selectInstructionFiles) handle(AGENT_REGISTRY_CHANNELS.selectInstructionFiles, async () => {
       const paths = parseInstructionFiles(await options.selectInstructionFiles!());
       if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');

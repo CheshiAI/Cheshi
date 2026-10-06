@@ -1,6 +1,7 @@
 import { defaultAgentAvatar, parseAgentAvatar, type AgentAvatarValue } from './agent-avatar.ts';
 import { isCodexAccountId } from './codex-accounts.ts';
 import type { AgentModel, AgentModelSelection } from './agent-models.ts';
+import { parseAgentPackage, type AgentPackage } from './agent-package.ts';
 
 export const AGENT_REGISTRY_CHANNELS = {
   list: 'cheshi:agent-registry:list', save: 'cheshi:agent-registry:save', changed: 'cheshi:agent-registry:changed',
@@ -8,6 +9,8 @@ export const AGENT_REGISTRY_CHANNELS = {
   remove: 'cheshi:agent-registry:remove',
   selectInstructionFiles: 'cheshi:agent-registry:select-instruction-files',
   openInstructionFile: 'cheshi:agent-registry:open-instruction-file',
+  packages: 'cheshi:agent-registry:packages',
+  importPackage: 'cheshi:agent-registry:import-package',
 } as const;
 export const SPECIALIST_ROLES = ['planning', 'research', 'frontend', 'development', 'verification', 'custom'] as const;
 export type SpecialistRole = typeof SPECIALIST_ROLES[number];
@@ -29,6 +32,7 @@ export interface SpecialistProfile extends AgentModelSelection {
   accountId: string | null;
   avatar?: AgentAvatarValue;
   instructionFiles?: string[];
+  package?: AgentPackage;
   permissions: ExecutionPermissions;
 }
 export interface SpecialistAssignment { permissions?: ExecutionPermissions; workspaceRoot: string; instructions: string; instructionFiles?: string[]; }
@@ -41,6 +45,8 @@ export interface SaveSpecialistAgent {
   assignment: { assigned: boolean; instructions: string; instructionFiles?: string[]; permissions?: ExecutionPermissions | null };
 }
 export interface AgentRegistryApi {
+  packages?(): Promise<AgentPackage[]>;
+  importPackage?(): Promise<AgentPackage | null>;
   selectInstructionFiles?(): Promise<string[]>;
   openInstructionFile?(path: string): Promise<void>;
   remove?(request: DeleteSpecialistAgent): Promise<AgentRegistrySnapshot>;
@@ -98,7 +104,7 @@ function profile(value: unknown): SpecialistProfile {
   const data = record(value), permissions = record(data.permissions);
   if (!SPECIALIST_ROLES.some(role => role === data.role)) throw new TypeError('Invalid specialist role.');
   if (data.accountId !== null && !isCodexAccountId(data.accountId)) throw new TypeError('Invalid agent account.');
-  return { ...instructionFiles(data), ...(data.avatar === undefined ? {} : { avatar: parseAgentAvatar(data.avatar) }), name: text(data.name, 100, true).trim(), role: data.role as SpecialistRole,
+  return { ...instructionFiles(data), ...(data.package === undefined ? {} : { package: parseAgentPackage(data.package) }), ...(data.avatar === undefined ? {} : { avatar: parseAgentAvatar(data.avatar) }), name: text(data.name, 100, true).trim(), role: data.role as SpecialistRole,
     instructions: text(data.instructions, 20_000, true), accountId: data.accountId as string | null,
     model: data.model === null ? null : text(data.model, 200, true).trim(),
     reasoningEffort: data.reasoningEffort == null ? null : text(data.reasoningEffort, 100, true).trim(),

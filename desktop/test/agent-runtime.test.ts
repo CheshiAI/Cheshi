@@ -10,6 +10,7 @@ import { parseAgentRuntimeRequest, parseAgentRuntimeState } from '../shared/agen
 import { DockerCommandError, dockerCommandError } from '../lib/agent-management/docker-errors.mts';
 import type { AgentDetails } from '../shared/agent-management.ts';
 import type { DockerCommand } from '../lib/agent-management/docker.mts';
+import { officialAgentPackages } from '../lib/agent-management/packages.mts';
 
 const directories: string[] = [];
 afterEach(() => { for (const dir of directories.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -18,7 +19,7 @@ async function fails(operation: Promise<unknown>, message: string) {
   try { await operation; } catch (reason) { error = reason; }
   expect(error).toBeInstanceOf(Error); expect((error as Error).message).toContain(message);
 }
-function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string) => Promise<void>) {
+function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string) => Promise<void>, withCodeGraph = false) {
   const directory = mkdtempSync(join(tmpdir(), 'cheshi-runtime-')); directories.push(directory);
   const project = join(directory, 'project'), home = join(directory, 'account');
   mkdirSync(project); mkdirSync(home);
@@ -72,6 +73,7 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
     ready: seeded, busy, authenticated: true, threadId: null, error: null, logs: '', tasks });
   const exchanges: unknown[] = [];
   const runtime = createSpecialistRuntime({ prepareCodeGraph, getProjectDocMaxBytes: () => projectDocMaxBytes, directory: join(directory, 'runtime'), buildContext: '/build', registry, run, checkProjectEnvironment: async () => {},
+    codegraph: withCodeGraph ? async () => ({ result: 'fixture' }) : undefined,
     lifecycleControl: async () => ({ protocol: 1, idle: false, nextWakeAt: null }),
     collaborationExchange: async (_connection, body) => { exchanges.push(body); return { protocol: 1, received: [], outgoing: [] }; },
     account: async () => ({ home, models: [] }), management: { details: async () => { await beforeDetails?.(); return details(); },
@@ -126,6 +128,38 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
     setTasks: (value: AgentDetails['tasks']) => { tasks = value; }, setContextMissing: (missing: boolean) => { contextMissing = missing; }, setDockerFailure: (error: Error | null) => { dockerFailure = error; }, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
     request: () => ({ agentId, engineId: 'docker:colima-cheshi', action: 'start' as const }) };
 }
+test('required package tools are checked before Docker operations', async () => {
+  const f = fixture();
+  const agent = f.registry.snapshot(f.workspace).agents[0]!;
+  const [definition] = await officialAgentPackages();
+  f.registry.save({ id: agent.id, revision: agent.revision, profile: { ...agent, package: definition },
+    assignment: { assigned: true, instructions: '' } }, f.workspace);
+  await fails(f.runtime.request(f.workspace, f.request()), 'requires CodeGraph');
+  expect(f.calls).toEqual([]);
+});
+
+test('package instructions reach the worker and updates wait for explicit Start', async () => {
+  const f = fixture(false, undefined, true);
+  let agent = f.registry.snapshot(f.workspace).agents[0]!;
+  const [definition] = await officialAgentPackages();
+  agent = f.registry.save({ id: agent.id, revision: agent.revision,
+    profile: { ...agent, instructions: definition!.instructions, package: definition },
+    assignment: { assigned: true, instructions: 'Local project rules.' } }, f.workspace).snapshot.agents[0]!;
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    const configured = () => JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8'));
+    expect(configured().instructions).toBe(`${definition!.instructions}\n\nProject instructions:\nLocal project rules.`);
+    expect(configured().codegraphProtocol).toBe(1);
+    f.registry.save({ id: agent.id, revision: agent.revision,
+      profile: { ...agent, instructions: 'Updated package instructions', package: { ...definition!, version: '1.1.0', instructions: 'Updated package instructions' } },
+      assignment: { assigned: true, instructions: 'Local project rules.' } }, f.workspace);
+    expect(configured().instructions).toContain(definition!.instructions);
+    await f.runtime.request(f.workspace, f.request());
+    expect(configured().instructions).toBe('Updated package instructions\n\nProject instructions:\nLocal project rules.');
+    expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(2);
+  } finally { f.runtime.dispose(); }
+});
+
 test('command-enabled worker uses separate dependency volumes and unchanged starts and status do not rebuild', async () => {
   const f = fixture();
   const agent = f.registry.snapshot(f.workspace).agents[0]!;

@@ -169,6 +169,21 @@ test('fails signed builds when a required signing environment value is missing',
   }, 'darwin'), /MACOS_NOTARY_PROFILE/);
 });
 
+test('packages both official agent manifests and instructions without extra files', async () => {
+  const configuration = await createForgeConfiguration();
+  const shouldIgnore = configuration.packagerConfig?.ignore;
+  if (typeof shouldIgnore !== 'function') throw new Error('Forge ignore configuration is unavailable.');
+  for (const id of ['cheshi-development', 'cheshi-review']) {
+    for (const name of ['agent.json', 'instructions.md']) {
+      const filename = `resources/agent-packages/${id}/${name}`;
+      assert.equal(existsSync(path.join(rootDirectory, filename)), true);
+      for (let entry = filename; entry !== '.'; entry = path.posix.dirname(entry)) assert.equal(shouldIgnore(`/${entry}`), false);
+    }
+    assert.equal(shouldIgnore(`/resources/agent-packages/${id}/auth.json`), true);
+  }
+  assert.equal(shouldIgnore('/resources/agent-packages/unlisted/agent.json'), true);
+});
+
 test('packages only the TypeScript configuration sources', async () => {
   const configuration = await createForgeConfiguration();
   const shouldIgnore = configuration.packagerConfig?.ignore;

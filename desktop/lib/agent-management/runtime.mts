@@ -227,6 +227,9 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     const agent = options.registry.snapshot(workspaceRoot).agents.find(item => item.id === request.agentId);
     const assignment = agent && projectAssignment(agent, workspace);
     if (!agent || !assignment) throw new Error('Assign this agent to the current project first.');
+    if (request.action === 'start' && agent.package?.requiredTools.includes('codegraph') && !options.codegraph) {
+      throw new Error('This agent package requires CodeGraph. Connect CodeGraph before starting the worker.');
+    }
     agent.permissions = assignment.permissions ?? agent.permissions;
     const key = `${agent.id}-${digest(workspace).slice(0, 16)}`;
     const assertCurrent = () => {

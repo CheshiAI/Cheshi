@@ -24,6 +24,11 @@ export class AgentRegistryModel {
     return this.api.runtime(request);
   };
   models = (accountId: string) => this.api.models(accountId);
+  packages = () => this.api.packages?.() ?? Promise.resolve([]);
+  importPackage = () => {
+    if (!this.api.importPackage) return Promise.reject(new Error('Package import is unavailable. Restart Cheshi.'));
+    return this.api.importPackage();
+  };
   selectInstructionFiles = () => {
     if (!this.api.selectInstructionFiles) return Promise.reject(new Error('Instruction file selection is unavailable. Restart Cheshi.'));
     return this.api.selectInstructionFiles();

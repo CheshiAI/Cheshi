@@ -298,6 +298,11 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
       agentChatsIpc = registerAgentChatsIpc({ window, ipc: options.scope.ipc, workspaceRoot: options.workspaceRoot, service: agentChats });
       agentRegistryIpc = registerAgentRegistryIpc({ window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot,
+        selectPackage: async () => {
+          const result = await dialog.showOpenDialog(window, { title: 'Import agent package', defaultPath: options.workspaceRoot,
+            properties: ['openFile'], filters: [{ name: 'Agent package (agent.json)', extensions: ['json'] }] });
+          return result.canceled ? null : result.filePaths[0] ?? null;
+        },
         selectInstructionFiles: async () => {
           const result = await dialog.showOpenDialog(window, { title: 'Link instruction files', defaultPath: options.workspaceRoot,
             properties: ['openFile', 'multiSelections'], filters: [{ name: 'Markdown', extensions: ['md'] }] });

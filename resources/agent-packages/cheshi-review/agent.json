@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "cheshi.review",
+  "version": "1.0.0",
+  "name": "Cheshi Review Specialist",
+  "description": "Independently review changes and completion criteria with reproducible evidence.",
+  "role": "verification",
+  "instructionsFile": "instructions.md",
+  "model": {
+    "model": "gpt-6.1-sol",
+    "reasoningEffort": "medium",
+    "serviceTier": null
+  },
+  "requiredTools": [
+    "codegraph",
+    "collaboration",
+    "verification"
+  ],
+  "requestedPermissions": {
+    "fileWrite": false,
+    "commandExecution": true
+  }
+}

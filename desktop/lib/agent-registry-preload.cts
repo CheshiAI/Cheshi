@@ -6,9 +6,15 @@ import { parseAgentModels } from '../shared/agent-models.ts';
 import { isCodexAccountId } from '../shared/codex-accounts.ts';
 import { parseInstructionFiles, parseInstructionFilePath } from '../shared/agent-registry.ts';
 import { unwrapAgentDeletion } from '../shared/agent-management.ts';
+import { parseAgentPackage, parseAgentPackages } from '../shared/agent-package.ts';
 
 export function createAgentRegistryApi(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>): AgentRegistryApi {
   return {
+    async packages() { return parseAgentPackages(await ipc.invoke(AGENT_REGISTRY_CHANNELS.packages)); },
+    async importPackage() {
+      const value = await ipc.invoke(AGENT_REGISTRY_CHANNELS.importPackage);
+      return value === null ? null : parseAgentPackage(value);
+    },
     async selectInstructionFiles() { return parseInstructionFiles(await ipc.invoke(AGENT_REGISTRY_CHANNELS.selectInstructionFiles)); },
     async openInstructionFile(path) { await ipc.invoke(AGENT_REGISTRY_CHANNELS.openInstructionFile, parseInstructionFilePath(path)); },
     async remove(input) { return parseAgentRegistrySnapshot(unwrapAgentDeletion(await ipc.invoke(AGENT_REGISTRY_CHANNELS.remove, parseDeleteSpecialistAgent(input)))); },
