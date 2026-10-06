@@ -79,6 +79,9 @@ test('renders a separate colored path for each merge parent and a node for every
   const html = renderToStaticMarkup(<GitCommitGraph row={graph.rows[0]!} laneCount={graph.laneCount} />);
   expect(html.match(/<path /g)).toHaveLength(2);
   expect(html.match(/<circle /g)).toHaveLength(1);
-  expect(html).toContain('viewBox="0 0 32 54"');
+  expect(html).toContain('viewBox="0 0 32 48"');
+  expect(html).toContain('cy="24"');
+  expect(html).toContain('M 8 24 C 8 36, 8 36, 8 48');
+  expect(html).toContain('M 8 24 C 8 36, 24 36, 24 48');
   expect(html).toContain('aria-hidden="true"');
 });

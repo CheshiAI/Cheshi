@@ -22,10 +22,13 @@ export function PluginAddDialog({ chatContextId, onClose, onOpenChat, onMarketpl
   return (
     <Modal
       className={styles.dialog}
-      title={title}
+      title={title.toUpperCase()}
+      headerVariant="section"
+      closeButtonVariant="ghost"
+      closeDisabled={busy}
       titleIcon={<Icon aria-hidden="true" />}
       leadingAction={view !== 'menu' ? (
-        <NeumorphicButton raised className="theme-toggle" aria-label="Back to Add plugins" title="Back to Add plugins" disabled={busy} onClick={() => setView('menu')}>
+        <NeumorphicButton variant="ghost" size="icon" aria-label="Back to Add plugins" title="Back to Add plugins" disabled={busy} onClick={() => setView('menu')}>
           <ArrowLeft size={11} strokeWidth={1.7} aria-hidden="true" />
         </NeumorphicButton>
       ) : undefined}
@@ -35,18 +38,18 @@ export function PluginAddDialog({ chatContextId, onClose, onOpenChat, onMarketpl
       {view === 'marketplace' && <MarketplaceAddForm onBusyChange={setBusy} onAdded={onMarketplaceAdded} onDone={onClose} />}
       {view === 'record' && <SkillRecordingForm chatContextId={chatContextId} onBusyChange={setBusy} onStarted={onStarted} />}
       {view === 'menu' && <div className={styles.options}>
-        <NeumorphicButton className={styles.option} onClick={() => setView('plugin')}>
+        <NeumorphicButton variant="ghost" className={styles.option} onClick={() => setView('plugin')}>
           <Blocks aria-hidden="true" />
           <span><strong>Create plugin</strong><span>Bring your skills and tools together in a plugin.</span></span>
           <ChevronRight className={styles.chevron} aria-hidden="true" />
         </NeumorphicButton>
-        <NeumorphicButton className={styles.option} onClick={() => setView('marketplace')}>
+        <NeumorphicButton variant="ghost" className={styles.option} onClick={() => setView('marketplace')}>
           <Store aria-hidden="true" />
           <span><strong>Add marketplace</strong><span>Browse plugins from another marketplace.</span></span>
           <ChevronRight className={styles.chevron} aria-hidden="true" />
         </NeumorphicButton>
         <div className={styles.divider} />
-        <NeumorphicButton className={styles.option} onClick={() => setView('record')}>
+        <NeumorphicButton variant="ghost" className={styles.option} onClick={() => setView('record')}>
           <CircleDot aria-hidden="true" />
           <span><strong>Record skill</strong><span>Turn a recorded workflow into a reusable skill.</span></span>
           <ChevronRight className={styles.chevron} aria-hidden="true" />

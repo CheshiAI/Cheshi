@@ -24,7 +24,10 @@
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
-  font-size: 10px;
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
   line-height: normal;
 }
 
@@ -34,34 +37,49 @@
 }
 
 .pullRequestBranchActions {
-  display: flex;
+  display: grid;
   flex: 0 0 auto;
   min-width: 0;
-  flex-direction: column;
-  align-items: flex-start;
+  grid-template-columns: minmax(0, 1fr) fit-content(65%);
+  align-items: center;
   gap: var(--icon-default);
   padding: var(--space-default);
   border-bottom: 1px solid var(--divider);
 }
 
 .pullRequestBranchActions > strong {
+  grid-area: 1 / 1;
+  min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  font-size: 10px;
-  font-weight: 500;
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-section-title);
+  font-weight: 600;
   line-height: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.pullRequestBranchActions:not(:has(.pullRequestEmptyAction)) > strong {
+  grid-column: 1 / -1;
+}
+
 .pullRequestBranchActions > span {
+  grid-area: 2 / 1 / auto / -1;
+  min-width: 0;
   color: var(--sidebar-section-label-color);
-  font-size: 10px;
+  font-size: var(--font-size-small);
+  font-weight: 400;
   line-height: 16px;
   overflow-wrap: anywhere;
 }
 
-.pullRequestEmptyAction { min-width: 0; max-width: 100%; }
+.pullRequestEmptyAction {
+  grid-area: 1 / 2;
+  justify-self: end;
+  min-width: 0;
+  max-width: 100%;
+}
 
 .pullRequestEmptyAction > span {
   overflow: hidden;
@@ -110,30 +128,41 @@
 }
 
 .commitRow {
-  --git-row-hover-background: var(--dropdown-selection-bg);
-  --git-row-selected-background: var(--dropdown-selection-bg);
-  min-height: 54px;
-  gap: 10px;
-  padding: 7px 10px;
+  box-sizing: border-box;
+  height: 48px;
+  min-height: 48px;
+  gap: var(--icon-default);
+  padding: 0 var(--space-default);
+  background: var(--control-surface-ghost);
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  line-height: 15px;
 }
 
-.commitRow:hover,
-.pullRequestRow:hover {
-  background: var(--git-row-hover-background);
-  color: var(--dropdown-selection-text);
-}
-
-.commitRow[aria-current='true'],
 .pullRequestRow[aria-current='true'] {
-  background: var(--git-row-selected-background);
-  color: var(--dropdown-selection-text);
+  background: var(--control-surface);
+  color: var(--text);
+}
+
+.pullRequestRow:is(:hover, :active) {
+  background: var(--control-surface-interactive);
+  color: var(--text);
+}
+
+.commitRow[aria-current='true'] {
+  background: var(--control-surface);
+}
+
+.commitRow:is(:hover, :active) {
+  background: var(--control-surface-interactive);
 }
 
 .commitGraph {
   display: block;
-  height: 54px;
+  height: 100%;
   flex: 0 0 auto;
-  margin-block: -7px;
 }
 
 .commitText,
@@ -153,17 +182,23 @@
   white-space: nowrap;
 }
 
-.commitText strong,
 .pullRequestRow strong {
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-small);
+  font-weight: 400;
 }
 
+.pullRequestRow small {
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+}
+
+.commitText strong { font: inherit; }
+
 .commitText span,
-.pullRequestRow small,
 .commitRow code {
   color: var(--sidebar-section-label-color);
-  font-size: 9px;
+  font-size: var(--font-size-small);
+  font-weight: 400;
 }
 
 .commitRow code {

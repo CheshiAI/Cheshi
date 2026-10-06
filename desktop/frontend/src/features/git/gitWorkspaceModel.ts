@@ -1,5 +1,3 @@
-import type { CSSProperties } from 'react';
-
 import type {
   GitDiffRequest,
   GitFileChange,
@@ -65,11 +63,6 @@ export const EMPTY_PULL_REQUESTS: GitHubPullRequestListResult = {
   available: false,
   message: '',
   pullRequests: [],
-};
-
-export const PULL_REQUEST_DETAIL_STYLE: CSSProperties = {
-  backgroundColor: 'var(--app-bg)',
-  backgroundImage: 'none',
 };
 
 export const gitWorkspaceTabs: Array<{ id: GitWorkspaceTab; label: string }> = [

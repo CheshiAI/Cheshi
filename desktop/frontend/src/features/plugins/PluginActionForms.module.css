@@ -1,16 +1,15 @@
 .form {
-  composes: neumorphic-surface-tokens from global;
   display: grid;
   gap: var(--space-default);
-  padding: 8px;
+  padding: 0;
 }
 
 .field {
   display: grid;
   gap: 8px;
   color: var(--plugin-label-color);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: 400;
   line-height: 15px;
 }
 
@@ -38,7 +37,7 @@
 }
 
 .message {
-  color: var(--neumorphic-button-active-color);
+  color: var(--sidebar-section-label-color);
 }
 
 .error {
@@ -59,30 +58,11 @@
   gap: 8px;
 }
 
-.actions button {
-  min-height: 28px;
-  padding: 0 12px;
-  font-size: 10px;
-  font-weight: 400;
-  line-height: 14px;
-  white-space: nowrap;
-  --neumorphic-button-radius: 8px;
-}
-
-.actions button:not(:disabled) {
-  cursor: pointer;
-}
-
-.actions button:disabled {
-  cursor: default;
-  opacity: .48;
-}
-
 .preview {
   width: 100%;
   max-height: 200px;
   border-radius: 8px;
-  background: var(--app-bg);
+  background: transparent;
 }
 
 @media (max-width: 420px) {

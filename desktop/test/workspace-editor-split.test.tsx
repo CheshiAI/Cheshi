@@ -27,6 +27,7 @@ import type { CodeGraphView } from '../frontend/src/features/graph/CodeGraphView
 import * as draftAttachmentModule from '../frontend/src/features/chat/chatDraftAttachments';
 import { appleNoteDraftText } from '../frontend/src/features/notes/appleNotesModel';
 import type { NotesView } from '../frontend/src/features/notes/NotesView';
+import type { GitWorkspace } from '../frontend/src/features/git/GitWorkspace';
 import type { AppleNote } from '../shared/apple-notes';
 import type { TerminalWorkspace } from '../frontend/src/features/terminal/TerminalWorkspace';
 import type { ReviewSidebar } from '../frontend/src/features/shell/ReviewSidebar';
@@ -361,7 +362,7 @@ test('file search keeps the current page until a result opens in the standalone 
   const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   expect(split.mode).toBe('editor');
   expect(props<ComponentProps<typeof WorkspaceEditor>>(split.editor, 'WorkspaceEditor').target?.path).toBe('src/found.ts');
-  expect(elements(split.children).some(element => element.type === 'GitWorkspace')).toBe(false);
+  expect(props<ComponentProps<typeof GitWorkspace>>(split.children, 'GitWorkspace').active).toBe(false);
 });
 
 test('Explorer file opening keeps the chat visible and reuses the same editor for subsequent files', () => {
@@ -659,6 +660,36 @@ for (const view of ['git', 'plugins'] as const) {
 }
 
 const appleNote: AppleNote = { id: 'note', title: 'Meeting', plaintext: 'Agenda', locked: false, modifiedAt: '2026-09-16T00:00:00Z' };
+
+test('GitHub rail and sidebar tab share the changes panel and preserve the mounted workspace across scenes', () => {
+  const app = shellHarness();
+  const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
+  const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
+  const git = () => props<ComponentProps<typeof GitWorkspace>>(app.render(), 'GitWorkspace');
+  expect(git().active).toBe(false);
+  rail().onToggleSidebar();
+  rail().onNavigate('git');
+  expect(rail().sidebarOpen).toBe(true);
+  expect(sidebar().activePanel).toBe('github');
+  expect(git().active).toBe(true);
+  const target = {} as HTMLDivElement;
+  const attach = sidebar().githubPanelRef;
+  if (typeof attach !== 'function') throw new Error('Expected GitHub panel callback ref');
+  attach(target);
+  expect(git().sidebarTarget).toBe(target);
+  rail().onNavigate('chat');
+  expect(git().active).toBe(false);
+  expect(git().sidebarTarget).toBe(target);
+  sidebar().onPanelChange!('github');
+  expect(git().active).toBe(true);
+  expect(sidebar().activePanel).toBe('github');
+  sidebar().onPanelChange!('memos');
+  expect(sidebar().activePanel).toBe('memos');
+  git().onOpenChanges?.();
+  expect(sidebar().activePanel).toBe('github');
+  expect(sidebarPanelForWorkspace('git', ['primary', 'editor'])).toBe('github');
+  expect(sidebarPanelForWorkspace('git', ['editor'])).toBe('files');
+});
 
 test('Memo tab browses alongside the current scene and opening a note activates the Memo page', () => {
   const app = shellHarness();

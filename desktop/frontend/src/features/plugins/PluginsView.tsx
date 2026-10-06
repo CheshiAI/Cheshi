@@ -6,11 +6,12 @@ import {
   LiquidGlassPanel,
   NeumorphicButton,
   NeumorphicTextField,
-  SearchClearButton,
   TieredHeader,
   draggableWindowRegionStyle,
   nonDraggableWindowRegionStyle,
 } from '../../shared/ui';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { PluginCatalog } from './PluginCatalog';
 import { PluginAddDialog } from './PluginAddDialog';
 import { PluginDetails } from './PluginDetails';
@@ -46,35 +47,23 @@ export function PluginsView({ chatContextId, rightSidebarOpen, onToggleRightSide
         className={styles.header}
         primary={(
           <>
-            <div className={styles.title}>
-              <NeumorphicButton raised aria-hidden="true" className={`theme-toggle ${styles.titleMark}`} disabled>
-                <Blocks aria-hidden="true" />
-              </NeumorphicButton>
-              <h1>Plugins</h1>
-            </div>
+            <SidebarPanelTitle icon={<Blocks aria-hidden="true" />} title="PLUGINS" />
             <div className={styles.headerActions} style={nonDraggableWindowRegionStyle}>
               <NeumorphicTextField
+                variant="standard"
                 className={styles.search}
-                fitPlaceholder
                 ref={searchInputRef}
                 value={query}
                 type="search"
                 placeholder={SEARCH_PLACEHOLDER}
                 aria-label="Search plugins"
                 onChange={(event) => setQuery(event.target.value)}
-                trailingAction={query ? (
-                  <SearchClearButton
-                    aria-label="Clear plugin search"
-                    onClick={() => {
-                      setQuery('');
-                      requestAnimationFrame(() => searchInputRef.current?.focus());
-                    }}
-                  />
-                ) : undefined}
+                onClear={() => setQuery('')}
+                clearLabel="Clear plugin search"
               />
               <div className={styles.scopeSwitch} role="tablist" aria-label="Plugin directory scope">
                 <NeumorphicButton
-                  raised={scope === 'discover'}
+                  variant="ghost"
                   className={styles.scopeOption}
                   id="plugin-discover-tab"
                   role="tab"
@@ -85,7 +74,7 @@ export function PluginsView({ chatContextId, rightSidebarOpen, onToggleRightSide
                   Discover
                 </NeumorphicButton>
                 <NeumorphicButton
-                  raised={scope === 'installed'}
+                  variant="ghost"
                   className={styles.scopeOption}
                   id="plugin-installed-tab"
                   role="tab"
@@ -96,30 +85,32 @@ export function PluginsView({ chatContextId, rightSidebarOpen, onToggleRightSide
                   Installed
                 </NeumorphicButton>
               </div>
-              <NeumorphicButton
-                raised
-                className={`codegraph-inspector-toggle ${styles.headerAction}`}
+              <TooltipButton
+                variant="ghost"
+                size="icon"
+                title="Refresh plugin directory"
                 aria-label="Refresh plugin directory"
                 disabled={catalogLoading}
                 onClick={() => void loadCatalog(true)}
               >
                 <RefreshCw className={catalogLoading ? styles.spinning : undefined} aria-hidden="true" />
-              </NeumorphicButton>
-              <NeumorphicButton
-                raised
-                className={`codegraph-inspector-toggle ${styles.headerAction}`}
+              </TooltipButton>
+              <TooltipButton
+                variant="ghost"
+                size="icon"
                 aria-label="Add plugins"
                 aria-haspopup="dialog"
                 title="Add plugins"
                 onClick={() => setAddDialogOpen(true)}
               >
                 <ToyBrick aria-hidden="true" />
-              </NeumorphicButton>
+              </TooltipButton>
               <SidebarToggle
-                raised
-                className={`codegraph-inspector-toggle ${styles.headerAction}`}
+                variant="ghost"
+                size="icon"
                 aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-                aria-pressed={rightSidebarOpen}
+                title={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
+                aria-expanded={rightSidebarOpen}
                 onClick={onToggleRightSidebar}
               >
                 <PanelRight aria-hidden="true" />

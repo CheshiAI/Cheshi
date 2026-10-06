@@ -1,3 +1,23 @@
+.diffTitle {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: normal;
+}
+
+.diffTitle > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .diffHeaderMeta,
 .diffSummary,
 .diffLoadingIndicator {
@@ -30,8 +50,6 @@
 .diffSummary span[data-kind='deletion'] { color: #e08c84; }
 
 .diffFiles {
-  --git-row-hover-background: var(--dropdown-selection-bg);
-  --git-row-selected-background: var(--dropdown-selection-bg);
   display: flex;
   min-height: 0;
   max-height: 160px;
@@ -49,12 +67,16 @@
   min-height: 32px;
   flex: 0 0 32px;
   align-items: center;
+  background: var(--control-surface-ghost);
+  color: var(--text);
 }
 
-.diffFileRow:hover,
 .diffFileRow[data-selected='true'] {
-  background: var(--dropdown-selection-bg);
-  color: var(--dropdown-selection-text);
+  background: var(--control-surface);
+}
+
+.diffFileRow:is(:hover, :active) {
+  background: var(--control-surface-interactive);
 }
 
 .diffFileSelect {
@@ -64,11 +86,17 @@
   max-width: none;
   min-width: 0;
   flex: 1 1 auto;
+  border: 0;
   border-radius: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
   box-sizing: border-box;
   overflow: hidden;
   padding: 0 var(--space-default);
-  font-size: 10px;
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -104,6 +132,8 @@
 }
 
 .diffLine[data-reviewable='true'] {
+  min-height: var(--icon-button-size);
+  line-height: var(--icon-button-size);
   grid-template-columns: 24px 46px 46px 20px minmax(max-content, 1fr);
 }
 
@@ -128,27 +158,13 @@
 }
 
 .diffCommentTrigger {
-  --neumorphic-button-radius: 50%;
-  display: grid;
-  width: 16px;
-  height: 16px;
-  min-height: 16px;
-  place-items: center;
-  cursor: pointer;
   opacity: 0;
-  padding: 0;
-  transition: opacity 120ms ease, transform 180ms cubic-bezier(.22, 1, .36, 1);
+  transition: opacity 120ms ease;
 }
 
 .diffLine:hover .diffCommentTrigger,
 .diffLine:focus-within .diffCommentTrigger {
   opacity: 1;
-}
-
-.diffCommentTrigger svg {
-  width: 9px;
-  height: 9px;
-  stroke-width: 2;
 }
 
 .lineMarker {
@@ -168,12 +184,13 @@
 .pendingReviewBar {
   display: flex;
   min-height: 48px;
+  flex-wrap: wrap;
   flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-default);
   border-bottom: 1px solid var(--divider);
-  background: var(--git-row-selected-background);
+  background: transparent;
   padding: 7px var(--space-default);
 }
 
@@ -190,10 +207,10 @@
 }
 
 .pendingReviewBar > span > svg {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 14px;
-  color: #8cb8c5;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+  color: var(--sidebar-section-label-color);
 }
 
 .pendingReviewBar > span > span {
@@ -209,7 +226,7 @@
 
 .pendingReviewBar small {
   color: var(--sidebar-section-label-color);
-  font-size: 9px;
+  font-size: var(--font-size-small);
 }
 
 .pendingReviewBar > div {
@@ -222,13 +239,17 @@
 }
 
 .inlineReviewRow {
-  min-width: 720px;
-  background: var(--app-bg);
+  position: sticky;
+  left: 0;
+  width: 100cqi;
+  box-sizing: border-box;
+  min-width: 0;
+  background: transparent;
 }
 
 .inlineReviewRow > div {
   box-sizing: border-box;
-  padding: 8px var(--space-default) 8px 136px;
+  padding: var(--space-default);
 }
 
 .inlineReviewEditorRow {
@@ -252,31 +273,22 @@
 .inlineReviewComment {
   width: min(100%, 760px);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--dropdown-selection-text) 4%, var(--app-bg));
+  background: transparent;
   color: var(--text);
   font-family: var(--font-ui), sans-serif;
 }
 
-.inlineReviewComment .pullRequestCommentHeader {
-  min-height: 30px;
-}
-
-.inlineReviewComment p {
-  padding: 10px;
-}
-
 .inlineReviewEditor {
+  --liquid-glass-radius: var(--panel-radius);
   display: grid;
   width: 100%;
-  gap: 10px;
-  border: 1px solid var(--divider);
-  border-radius: 10px;
+  gap: var(--space-default);
   background: var(--git-panel-bar-background);
   box-sizing: border-box;
   color: var(--text);
   cursor: default;
   font-family: var(--font-ui), sans-serif;
-  padding: 12px;
+  padding: var(--space-default);
 }
 
 .inlineReviewEditor > header,
@@ -288,23 +300,22 @@
 }
 
 .inlineReviewEditor > header {
-  gap: 7px;
+  gap: var(--icon-default);
 }
 
 .inlineReviewEditor > header svg {
-  width: 13px;
-  height: 13px;
-  color: #8cb8c5;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  color: var(--sidebar-section-label-color);
 }
 
 .inlineReviewEditor > header strong {
+  color: var(--sidebar-section-label-color);
   font-size: 10px;
   font-weight: 600;
 }
 
 .inlineReviewEditor textarea {
-  --neumorphic-textarea-font-size: 10px;
-  --neumorphic-textarea-line-height: 16px;
   width: 100%;
   height: 92px;
   min-height: 92px;
@@ -321,7 +332,7 @@
 .inlineReviewEditor > footer > span {
   overflow: hidden;
   color: var(--sidebar-section-label-color);
-  font-size: 9px;
+  font-size: var(--font-size-small);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -334,9 +345,9 @@
 }
 
 .outdatedReviewThreads {
-  min-width: 720px;
+  min-width: 0;
   border-top: 1px solid var(--divider);
-  background: var(--app-bg);
+  background: transparent;
   padding-top: 8px;
 }
 
@@ -344,7 +355,7 @@
   color: var(--sidebar-section-label-color);
   font-family: var(--font-ui), sans-serif;
   font-size: 10px;
-  padding: 0 var(--space-default) 4px 112px;
+  padding: 0 var(--space-default) var(--space-8);
 }
 
 .diffWarning {

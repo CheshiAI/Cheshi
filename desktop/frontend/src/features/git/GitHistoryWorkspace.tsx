@@ -2,12 +2,12 @@ import { GitBranch, History } from 'lucide-react';
 import { useMemo } from 'react';
 
 import { LiquidGlassPanel } from '../../shared/ui';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { GitBranchTree } from './GitBranchTree';
 import { GitCommitGraph } from './GitCommitGraph';
 import { buildCommitGraph } from './gitCommitGraphLayout';
 import { GitDiffViewer } from './GitDiffViewer';
 import { formatGitDate } from './gitWorkspaceModel';
-import { MarkedPanelTitle } from './GitPullRequestPanels';
 import styles from './GitWorkspace.module.css';
 import type { GitWorkspaceController } from './useGitWorkspaceController';
 
@@ -29,8 +29,8 @@ export function GitHistoryWorkspace({ controller, onOpenWorkspaceFile }: {
     <div className={styles.splitLayout}>
       <LiquidGlassPanel as="section" className={styles.listPanel} data-liquid-glass-surface="side-panel">
         <header className={styles.panelHeader}>
-          <MarkedPanelTitle icon={GitBranch} title="HEAD" />
-          <span>{snapshot.head ?? 'unborn'}{snapshot.detached === true ? ' · detached' : ''}</span>
+          <SidebarPanelTitle icon={<GitBranch aria-hidden="true" />} title="HEAD" />
+          <span className={styles.historyBranchName}>{snapshot.head ?? 'unborn'}{snapshot.detached === true ? ' · detached' : ''}</span>
         </header>
         <GitBranchTree
           branches={snapshot.branches ?? []}
@@ -42,7 +42,7 @@ export function GitHistoryWorkspace({ controller, onOpenWorkspaceFile }: {
           onUpdate={(branch) => updateBranch(branch.fullName, branch.name)}
         />
         <header className={styles.panelHeader}>
-          <MarkedPanelTitle icon={History} title="Commit log" />
+          <SidebarPanelTitle icon={<History aria-hidden="true" />} title="COMMIT LOG" />
           <span className={styles.historyBranchName} title={branchHistory.branchName}>{branchHistory.branchName}</span>
           <small className={styles.changeCountBadge}>{branchHistory.commits.length}</small>
         </header>

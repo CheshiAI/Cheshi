@@ -20,9 +20,11 @@
   align-items: center;
   border: 0;
   border-radius: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
+  background: var(--control-surface-ghost);
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
 }
 
 .logBranchGroupToggle,
@@ -69,27 +71,28 @@
   transform: rotate(90deg);
 }
 
-.logBranchGroupToggle:hover,
-.logRemoteToggle:hover,
-.logBranchRow:hover,
-.logBranchRow[data-selected='true'],
-.logBranchRow[data-context-menu-open='true'] {
-  background: var(--dropdown-selection-bg);
-  color: var(--dropdown-selection-text);
+.logBranchRow[data-selected='true'] {
+  background: var(--control-surface);
+}
+
+.logBranchGroupToggle:is(:hover, :active),
+.logRemoteToggle:is(:hover, :active),
+.logBranchRow:is(:hover, :active, [data-context-menu-open='true']) {
+  background: var(--control-surface-interactive);
 }
 
 .logBranchGroupToggle {
-  gap: 6px;
+  gap: var(--icon-default);
   padding: 0 var(--space-default);
 }
 
 .logBranchGroupToggle svg,
 .logRemoteToggle svg,
 .logBranchRow svg {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 12px;
-  stroke-width: 1.7;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+  color: var(--sidebar-section-label-color);
 }
 
 .logBranchGroupToggle span,
@@ -97,7 +100,7 @@
 .logBranchName {
   overflow: hidden;
   min-width: 0;
-  font-size: 10px;
+  font-size: var(--font-size-small);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -107,30 +110,18 @@
   flex: 1 1 auto;
 }
 
-.logBranchGroupToggle span {
-  font-weight: 600;
-}
-
 .logRemoteToggle {
-  gap: 6px;
+  gap: var(--icon-default);
   padding: 0 var(--space-default) 0 34px;
 }
 
-.logRemoteToggle svg:nth-child(2) {
-  color: #8cb8c5;
-}
-
 .logBranchRow {
-  gap: 8px;
+  gap: var(--icon-default);
   padding: 0 var(--space-default) 0 36px;
 }
 
 .logBranchRow[data-nested='true'] {
   padding-left: 56px;
-}
-
-.logBranchRow > svg {
-  color: #8cb8c5;
 }
 
 .logBranchIdentity {
@@ -215,6 +206,7 @@
 }
 
 .historyBranchName {
+  margin-left: auto;
   overflow: hidden;
   max-width: 45%;
   text-overflow: ellipsis;

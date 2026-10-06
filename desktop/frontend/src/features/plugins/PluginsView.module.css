@@ -14,7 +14,6 @@
   flex: 0 0 var(--header-height);
 }
 
-.title,
 .headerActions,
 .pluginCardHeading,
 .pluginCardFooter,
@@ -26,87 +25,31 @@
   align-items: center;
 }
 
-.title {
-  min-width: 0;
-  flex: 0 0 auto;
-  gap: 12px;
-}
-
-.title h1 {
-  overflow: hidden;
-  margin: 0;
-  color: var(--sidebar-section-label-color);
-  font-size: var(--font-size-section-title);
-  font-weight: 600;
-  line-height: 15px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.titleMark svg,
-.headerActions .headerAction svg {
-  width: 11px;
-  height: 11px;
-  stroke-width: 1.7;
-}
-
-.closeDetails svg {
-  width: 11px;
-  height: 11px;
-  stroke-width: 1.7;
-}
-
 .headerActions {
   min-width: 0;
   flex: 1 1 auto;
   justify-content: flex-end;
-  gap: 4px;
-}
-
-.headerAction:disabled {
-  cursor: wait;
-  opacity: .62;
+  gap: var(--icon-default);
 }
 
 .search {
-  flex: 0 0 auto;
+  min-width: 120px;
+  max-width: 380px;
+  flex: 1 1 380px;
 }
 
 .scopeSwitch {
-  display: grid;
-  width: 168px;
-  height: 34px;
-  flex: 0 0 168px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px;
-  border: 1px solid var(--divider);
-  border-radius: 9px;
-  padding: 2px;
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--icon-default);
 }
 
 .scopeOption {
-  min-width: 0;
-  min-height: 0;
-  margin: 2px;
-  --neumorphic-button-radius: 5px;
-  --neumorphic-button-active-color: var(--text);
-  color: var(--text);
-  cursor: pointer;
-  font-size: 10px;
-  font-weight: 400;
-  line-height: 14px;
-  padding: 0 9px;
   white-space: nowrap;
 }
 
-.scopeOption:hover,
-.scopeOption[aria-selected='true'] {
-  --neumorphic-button-active-color: var(--active-text);
-  color: var(--active-text);
-}
-
 .body {
-  --plugin-details-width: 360px;
+  --plugin-details-width: var(--sidebar-width);
   display: grid;
   min-width: 0;
   min-height: 0;
@@ -180,11 +123,13 @@
   justify-content: space-between;
   gap: var(--space-default);
   border-bottom: 1px solid var(--divider);
-  padding: 0 0 10px;
+  padding: 0 0 var(--space-default);
 }
 
 .sectionHeading > div {
   display: grid;
+  flex: 0 0 auto;
+  max-width: 100%;
   min-width: 0;
   gap: 2px;
 }
@@ -192,21 +137,28 @@
 .sectionHeading span {
   color: var(--sidebar-section-label-color);
   font-size: 10px;
-  letter-spacing: .08em;
+  letter-spacing: normal;
   line-height: 14px;
 }
 
 .sectionHeading h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   margin: 0;
   font-size: 10px;
-  font-weight: 650;
-  line-height: 18px;
+  font-weight: 600;
+  color: var(--sidebar-section-label-color);
+  line-height: 16px;
+  text-transform: uppercase;
 }
 
 .sectionHeading p {
   overflow: hidden;
+  min-width: 0;
+  flex: 1 1 auto;
   margin: 0;
-  color: var(--sub-text);
+  color: var(--sidebar-section-label-color);
   font-size: 10px;
   line-height: 14px;
   text-align: right;
@@ -221,31 +173,23 @@
   gap: var(--space-default);
 }
 
-.pluginCard,
-.installedTile,
-.detailsFooter button,
-.errorState button {
-  --neumorphic-button-active-color: #eef1f1;
-}
-
 .pluginCard {
   display: grid;
   min-width: 0;
+  height: auto;
   min-height: 134px;
-  cursor: pointer;
-  gap: 12px;
+  align-items: stretch;
+  justify-items: stretch;
+  gap: var(--space-default);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
   padding: var(--space-default);
   text-align: left;
 }
 
-.pluginCard[data-active='true'] {
-  border-color: rgba(169, 207, 209, .35);
-}
-
 .pluginCardHeading {
   min-width: 0;
-  gap: 10px;
+  gap: var(--space-default);
 }
 
 .pluginMark {
@@ -318,14 +262,15 @@
 }
 
 .pluginCardTitle strong {
-  font-size: 10px;
-  font-weight: 650;
+  color: var(--text);
+  font-size: var(--font-size-label);
+  font-weight: 400;
   line-height: 16px;
 }
 
 .pluginCardTitle span {
-  color: var(--sub-text);
-  font-size: 9px;
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
   line-height: 12px;
 }
 
@@ -337,16 +282,17 @@
 }
 
 .installedBadge svg {
-  width: 10px;
-  height: 10px;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
   stroke-width: 2;
 }
 
 .pluginCardDescription {
   display: block;
   align-self: start;
-  color: var(--text);
+  color: var(--sidebar-section-label-color);
   font-size: 10px;
+  font-weight: 400;
   line-height: 16px;
 }
 
@@ -354,8 +300,8 @@
   min-width: 0;
   justify-content: space-between;
   gap: 8px;
-  color: var(--sub-text);
-  font-size: 9px;
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
   line-height: 12px;
 }
 
@@ -367,8 +313,8 @@
 }
 
 .pluginCardFooter svg {
-  width: 11px;
-  height: 11px;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
   flex: 0 0 auto;
 }
 
@@ -377,7 +323,7 @@
   min-width: 0;
   gap: var(--space-default);
   overflow-x: auto;
-  padding: 2px 2px 12px;
+  padding: 0 0 var(--space-default);
 }
 
 .installedTile {
@@ -394,7 +340,7 @@
 .installedTile > span:last-child {
   overflow: hidden;
   width: 100%;
-  font-size: 9px;
+  font-size: 10px;
   line-height: 11px;
   text-align: center;
   text-overflow: ellipsis;
@@ -402,10 +348,10 @@
 }
 
 .installedEmpty {
-  border: 1px dashed rgba(255, 255, 255, .12);
-  border-radius: 12px;
-  color: #80898c;
-  line-height: 18px;
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 16px;
   padding: var(--space-default);
 }
 
@@ -414,53 +360,26 @@
   justify-self: center;
 }
 
-.emptyState,
-.errorState,
-.marketplaceWarning,
-.detailError {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #8d9699;
-}
-
-.emptyState {
-  min-height: 160px;
-  justify-content: center;
-}
-
-.emptyState {
-  flex-direction: column;
-  border: 1px dashed rgba(255, 255, 255, .1);
-  border-radius: 12px;
-  text-align: center;
-}
-
-.emptyState svg {
-  width: 24px;
-  height: 24px;
-  color: #6f7a7d;
-  stroke-width: 1.4;
-}
-
 .emptyState strong {
-  color: #cbd0d1;
   font-size: 10px;
-}
-
-.emptyState span {
-  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
 }
 
 .errorState,
 .marketplaceWarning {
+  display: flex;
+  align-items: center;
+  gap: var(--icon-default);
   min-height: 36px;
   border: 1px solid rgba(218, 159, 83, .22);
-  border-radius: 10px;
+  border-radius: var(--button-radius);
   background: rgba(117, 78, 35, .1);
   color: #c8a77e;
+  font-size: 10px;
+  font-weight: 400;
   margin-bottom: var(--space-default);
-  padding: 8px 10px;
+  padding: var(--space-default);
 }
 
 .errorState svg,
@@ -473,12 +392,6 @@
 
 .errorState span {
   flex: 1 1 auto;
-}
-
-.errorState button {
-  min-height: 24px;
-  cursor: pointer;
-  padding: 0 9px;
 }
 
 .details {
@@ -494,17 +407,20 @@
 
 .detailsHeader {
   display: flex;
-  flex: 0 0 auto;
+  box-sizing: border-box;
+  height: 48px;
+  min-height: 48px;
+  flex: 0 0 48px;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-default);
   border-bottom: 1px solid var(--divider);
-  padding: var(--space-default);
+  padding: 5px var(--space-default);
 }
 
 .detailsIdentity {
   min-width: 0;
-  gap: 10px;
+  gap: var(--space-default);
 }
 
 .detailsIdentity .pluginMark {
@@ -527,22 +443,19 @@
 }
 
 .detailsIdentity strong {
+  color: var(--sidebar-section-label-color);
   font-size: 10px;
-  line-height: 16px;
+  font-weight: 600;
+  line-height: 15px;
 }
 
 .detailsIdentity span {
-  color: var(--sub-text);
-  font-size: 8px;
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
   line-height: 12px;
 }
 
-.closeDetails {
-  flex: 0 0 auto;
-}
-
 .detailsContent {
-  composes: neumorphic-surface-tokens from global;
   display: block;
   min-height: 0;
   flex: 1 1 auto;
@@ -550,34 +463,23 @@
   padding: var(--space-default);
 }
 
-.detailError {
-  min-height: 38px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, .035);
-  margin-bottom: var(--space-default);
-  padding: 8px 10px;
-}
-
-.detailError {
-  color: #d49a8f;
-}
-
 .detailsDescription {
   margin: 0 0 var(--space-default);
-  color: var(--text);
+  color: var(--sidebar-section-label-color);
   font-size: 10px;
-  line-height: 17px;
+  font-weight: 400;
+  line-height: 16px;
 }
 
 .detailBadges {
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--icon-default);
   margin-bottom: var(--space-default);
 }
 
 .capabilitySummary > div,
 .detailList > div {
-  background: var(--neumorphic-button-surface);
+  background: var(--control-surface-ghost);
 }
 
 .detailBadge {
@@ -585,15 +487,13 @@
   gap: 4px;
 }
 
-
-
 .detailBadges > span[data-status='installed'] {
   color: #94cbb7;
 }
 
 .detailBadges svg {
-  width: 10px;
-  height: 10px;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
 }
 
 .capabilitySummary {
@@ -617,8 +517,7 @@
 .capabilitySummary svg {
   width: var(--icon-size-default);
   height: var(--icon-size-default);
-  color: var(--text);
-  stroke-width: 1.6;
+  color: var(--sidebar-section-label-color);
 }
 
 .capabilitySummary strong {
@@ -627,13 +526,14 @@
 }
 
 .capabilitySummary span {
-  color: var(--text);
-  font-size: 9px;
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  font-weight: 400;
 }
 
 .detailSection {
   display: grid;
-  gap: 10px;
+  gap: var(--space-default);
   border-top: 1px solid var(--divider);
   padding: var(--space-default) 0;
 }
@@ -641,21 +541,21 @@
 .detailSection h3 {
   margin: 0;
   color: var(--sidebar-section-label-color);
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: .08em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: normal;
   line-height: 12px;
   text-transform: uppercase;
 }
 
 .chips {
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--icon-default);
 }
 
 .detailList {
   display: grid;
-  gap: 6px;
+  gap: var(--icon-default);
 }
 
 .detailList > div {
@@ -673,7 +573,7 @@
   width: var(--icon-size-default);
   height: var(--icon-size-default);
   flex: 0 0 auto;
-  color: var(--text);
+  color: var(--sidebar-section-label-color);
 }
 
 .detailList > div > span {
@@ -691,15 +591,17 @@
 }
 
 .detailList strong {
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 13px;
+  color: var(--text);
+  font-size: var(--font-size-label);
+  font-weight: 400;
+  line-height: 16px;
 }
 
 .detailList small {
-  color: var(--text);
-  font-size: 9px;
-  line-height: 11px;
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 15px;
 }
 
 .detailList a,
@@ -708,30 +610,31 @@
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 4px;
-  color: var(--sub-text);
-  font-size: 9px;
+  gap: var(--icon-default);
+  color: var(--text);
+  font-size: var(--font-size-label);
+  font-weight: 400;
   text-decoration: none;
 }
 
 .detailList a:hover,
 .authNotice a:hover,
 .shareLink:hover {
-  color: #c0dcdd;
+  color: var(--text);
   text-decoration: underline;
 }
 
 .detailList a svg,
 .authNotice a svg,
 .shareLink svg {
-  width: 10px;
-  height: 10px;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
 }
 
 .automationSummary {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--icon-default);
 }
 
 .shareLink {
@@ -764,11 +667,12 @@
 
 .authNotice strong {
   font-size: 10px;
+  font-weight: 600;
 }
 
 .authNotice span {
-  color: #869c9f;
-  font-size: 9px;
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
 }
 
 .authNotice a {
@@ -787,6 +691,7 @@
 
 .detailsFooter {
   display: flex;
+  box-sizing: border-box;
   min-height: var(--header-height);
   flex: 0 0 auto;
   align-items: stretch;
@@ -795,22 +700,10 @@
 }
 
 .detailsFooter > button {
-  --neumorphic-button-radius: 0;
-  display: inline-flex;
   width: 100%;
+  height: auto;
   min-height: calc(var(--header-height) - 1px);
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 0;
-  cursor: pointer;
-  font-size: 10px;
-  padding: 0;
-}
-
-.detailsFooter button:disabled {
-  cursor: default;
-  opacity: .62;
+  border-radius: 0;
 }
 
 .detailsFooter button svg {
@@ -818,48 +711,29 @@
   height: var(--icon-size-default);
 }
 
-.primaryButton {
-  --neumorphic-button-active-color: #d9f2ef !important;
-  color: #b8d9d6;
-}
-
-.removeButton,
-.dangerButton {
-  --neumorphic-button-active-color: #e2aaa4 !important;
-  color: #d3a09a;
-}
-
 .confirmation {
   display: grid;
   width: 100%;
-  gap: 6px;
-  padding: 10px var(--space-default);
+  gap: var(--space-default);
 }
 
 .confirmation > strong {
+  color: var(--sidebar-section-label-color);
   font-size: 10px;
-  line-height: 13px;
+  font-weight: 600;
+  line-height: 16px;
 }
 
 .confirmation > span {
-  color: #858f92;
-  font-size: 9px;
-  line-height: 13px;
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 16px;
 }
 
 .confirmation > div {
   justify-content: flex-end;
   gap: 8px;
-}
-
-.confirmation button {
-  display: inline-flex;
-  min-height: 28px;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  font-size: 10px;
-  padding: 0 10px;
 }
 
 .spinning {
@@ -886,3 +760,20 @@
     animation-duration: 1.6s;
   }
 }
+
+/* Selection stays quieter than pointer feedback, matching the GitHub tabs. */
+.root .scopeOption[aria-selected='true']:not(:hover):not(:active),
+.root .pluginCard[data-active='true']:not(:hover):not(:active),
+.root .installedTile[data-active='true']:not(:hover):not(:active) {
+  background: var(--control-surface);
+}
+
+.root .emptyState {
+  --empty-text: var(--sidebar-section-label-color);
+  --empty-muted: var(--sidebar-section-label-color);
+  min-height: 160px;
+}
+
+.detailError { margin-bottom: var(--space-default); }
+
+.detailsFooter[data-confirming='true'] { padding: var(--space-default); }

@@ -102,6 +102,7 @@ export function AppShell() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [chatsSidebarTarget, setChatsSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [memoSidebarTarget, setMemoSidebarTarget] = useState<HTMLDivElement | null>(null);
+  const [githubSidebarTarget, setGithubSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
   useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
   const [sidebarPanel, setSidebarPanel] = useState(() => sidebarPanelForWorkspace(activeView,
@@ -233,6 +234,7 @@ export function AppShell() {
 
   const navigate = (view: WorkspaceView): void => {
     if (view === 'chats') { setSidebarPanel('agent-chats'); setLeftSidebarOpen(true); }
+    if (view === 'git') { setSidebarPanel('github'); setLeftSidebarOpen(true); }
     historyRequestId.current += 1;
     closeReview();
     if (customLayout) {
@@ -345,8 +347,13 @@ export function AppShell() {
             <Sidebar
               memoPanelRef={setMemoSidebarTarget}
               chatsPanelRef={setChatsSidebarTarget}
+              githubPanelRef={setGithubSidebarTarget}
               activePanel={sidebarPanel}
-              onPanelChange={panel => { setSidebarPanel(panel); if (panel === 'agent-chats') navigate('chats'); }}
+              onPanelChange={panel => {
+                setSidebarPanel(panel);
+                if (panel === 'agent-chats') navigate('chats');
+                if (panel === 'github') navigate('git');
+              }}
               chatPanel={<ChatSessionList
                 search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
                   onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
@@ -446,13 +453,13 @@ export function AppShell() {
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
           )}
-          {activeView === 'git' && (
             <GitWorkspace
+              active={activeView === 'git'}
+              sidebarTarget={githubSidebarTarget} onOpenChanges={() => navigate('git')}
               onOpenWorkspaceFile={openWorkspaceFile}
               rightSidebarOpen={rightSidebarOpen}
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
-          )}
           {activeView === 'plugins' && (
             <PluginsView
               chatContextId={workspace.activePaneId}

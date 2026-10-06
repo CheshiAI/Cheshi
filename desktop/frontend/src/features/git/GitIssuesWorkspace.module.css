@@ -6,6 +6,10 @@
   min-height: 0;
   font-size: 10px;
 }
+.workspace[hidden] { display: none; }
+.filters > button[aria-pressed='true']:not(:hover):not(:active) {
+  background: var(--control-surface);
+}
 .toolbar, .search, .detailHeader {
   display: flex;
   align-items: center;
@@ -59,17 +63,20 @@
   border-bottom: 1px solid var(--divider);
   padding: var(--space-default);
   background: transparent;
-  color: inherit;
-  font: inherit;
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
   text-align: left;
   cursor: pointer;
 }
 .row:hover, .row[data-selected='true'] { background: var(--dropdown-selection-bg); }
 .row:focus-visible { outline: 1px solid var(--active-text); outline-offset: -1px; }
-.row > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; }
+.row > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; color: var(--sidebar-section-label-color); }
 .rowContent { display: flex; flex-direction: column; gap: var(--icon-default); min-width: 0; overflow-wrap: anywhere; }
-.rowContent > strong { font-size: 10px; }
+.rowContent > strong { font: inherit; }
 .meta { color: var(--sub-text); overflow-wrap: anywhere; }
+.row .meta { color: inherit; }
 .issueMeta {
   display: flex;
   flex-direction: column;

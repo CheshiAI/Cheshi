@@ -241,7 +241,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   const roomList = <ChatsRoomList snapshot={snapshot} selectedId={roomId} phase={data.phase} loaded={data.loaded} refreshing={data.refreshing} disabled={!api} error={data.error ?? pinError}
     pinningRoomId={pinningRoomId} onPin={(id, pinned) => { void pinRoom(id, pinned); }}
     onDelete={id => { setDeleteRoomId(id); onOpenRoom?.(); }}
-    onSelect={id => { setRoomId(id); onOpenRoom?.(); }} onNew={() => { setDialog('new'); onOpenRoom?.(); }} onRefresh={() => { void data.refresh(); }} />;
+    onSelect={id => { setRoomId(id); onOpenRoom?.(); }} onNew={() => { setDialog('new'); onOpenRoom?.(); }} onRefresh={data.refresh} />;
   return <>
     {sidebarTarget && createPortal(roomList, sidebarTarget)}
     <main className={styles.root} hidden={!active} aria-label="Worker">

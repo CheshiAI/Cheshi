@@ -1,16 +1,16 @@
 .dialog {
-  --plugin-label-color: #fff;
-  --plugin-description-color: #a8afb1;
-  --plugin-caption-color: #80898c;
-  --modal-title-color: var(--active-text);
+  --plugin-label-color: var(--text);
+  --plugin-description-color: var(--sidebar-section-label-color);
+  --plugin-caption-color: var(--sidebar-section-label-color);
   --modal-width: 400px;
-  --modal-header-padding: 12px var(--space-default);
-  --modal-content-padding: 8px;
+  --modal-header-height: var(--header-height);
+  --modal-header-padding: 0 var(--space-default);
+  --modal-content-padding: var(--space-default);
 }
 
 .options {
   display: grid;
-  gap: 4px;
+  gap: var(--icon-default);
 }
 
 .option {
@@ -19,10 +19,9 @@
   align-items: center;
   gap: var(--space-default);
   width: 100%;
+  height: auto;
   min-height: 56px;
-  --neumorphic-button-radius: 8px;
-  color: var(--neumorphic-button-active-color);
-  padding: 10px 12px;
+  padding: var(--space-default);
   text-align: left;
   cursor: pointer;
 }
@@ -40,8 +39,8 @@
 
 .option strong {
   color: var(--plugin-label-color);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: 400;
   line-height: 15px;
 }
 
@@ -54,7 +53,7 @@
 
 .divider {
   height: 1px;
-  margin: 4px 12px;
+  margin: 0;
   background: var(--divider);
 }
 

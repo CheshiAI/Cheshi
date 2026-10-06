@@ -1,10 +1,11 @@
 .pullRequestRow {
-  --git-row-hover-background: var(--dropdown-selection-bg);
-  --git-row-selected-background: var(--dropdown-selection-bg);
   box-sizing: border-box;
-  height: 54px;
-  gap: 10px;
-  padding: 7px var(--space-default);
+  height: 48px;
+  min-height: 48px;
+  gap: var(--icon-default);
+  padding: 0 var(--space-default);
+  background: var(--control-surface-ghost);
+  color: var(--text);
 }
 
 .pullRequestRow > svg {
@@ -25,6 +26,7 @@
   justify-content: flex-start;
   overflow: hidden;
   padding: 0;
+  background: transparent;
 }
 
 .workspace .pullRequestBody {
@@ -43,38 +45,21 @@
   flex: 1 1 auto;
 }
 
-.pullRequestDetail > .pullRequestEmptyState {
-  --empty-text: var(--title);
-  --empty-muted: var(--sub-text);
+.workspace .pullRequestEmptyState {
+  --empty-text: var(--sidebar-section-label-color);
+  --empty-muted: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
 }
 
-.pullRequestSelectionEmpty {
-  flex-direction: column;
-  gap: var(--space-default);
-  font-size: 10px;
-}
-
-.pullRequestSelectionHeading {
-  display: flex;
-  align-items: center;
-  gap: var(--space-default);
-  color: #fff;
-  font-size: 10px;
+.workspace .pullRequestEmptyState > strong {
+  font-size: var(--font-size-section-title);
   font-weight: 600;
-  line-height: 15px;
 }
 
-.pullRequestSelectionEmpty > span:last-child {
-  font-size: inherit;
-  line-height: normal;
-}
-
-.workspace .pullRequestSelectionMark {
-  width: var(--icon-size-default);
-  height: var(--icon-size-default);
-  flex: 0 0 auto;
-  color: inherit;
-  stroke-width: 2;
+.workspace .pullRequestEmptyState > p {
+  font-size: var(--font-size-small);
+  font-weight: 400;
 }
 
 .pullRequestBranchFlow,
@@ -122,12 +107,11 @@
 }
 
 .pullRequestMergedCard {
+  --liquid-glass-radius: var(--panel-radius);
   display: grid;
   width: min(100%, 600px);
   gap: var(--space-default);
-  border: 1px solid var(--divider);
-  border-radius: 12px;
-  background: var(--dropdown-selection-bg);
+  background: transparent;
   box-sizing: border-box;
   padding: var(--space-default);
 }
@@ -136,25 +120,7 @@
   display: flex;
   min-width: 0;
   align-items: flex-start;
-  gap: 12px;
-}
-
-.pullRequestMergedMark {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  border: 1px solid color-mix(in srgb, #8cb8c5 22%, var(--divider));
-  border-radius: 50%;
-  background: color-mix(in srgb, #8cb8c5 10%, transparent);
-  color: #8cb8c5;
-  place-items: center;
-}
-
-.pullRequestMergedMark svg {
-  width: var(--icon-size-default);
-  height: var(--icon-size-default);
-  stroke-width: 1.6;
+  gap: var(--space-default);
 }
 
 .pullRequestMergedCopy {
@@ -169,9 +135,10 @@
 }
 
 .pullRequestMergedCopy h2 {
-  font-size: 13px;
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-section-title);
   font-weight: 600;
-  line-height: 18px;
+  line-height: 15px;
 }
 
 .pullRequestMergedCopy p,
@@ -183,10 +150,10 @@
 }
 
 .pullRequestMergedCopy code {
-  border-radius: 5px;
-  background: color-mix(in srgb, #8cb8c5 12%, transparent);
-  color: var(--dropdown-selection-text);
-  font: 9px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  border-radius: var(--field-radius);
+  background: var(--control-surface);
+  color: var(--text);
+  font: inherit;
   padding: 2px 5px;
 }
 
@@ -195,7 +162,7 @@
   min-width: 0;
   align-items: stretch;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-default);
   border-top: 1px solid var(--divider);
   padding-top: var(--space-default);
 }
@@ -231,8 +198,8 @@
 
 .pullRequestMergedStatus svg,
 .pullRequestMergedBlocked svg {
-  width: 12px;
-  height: 12px;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
 }
 
 .pullRequestMergedStatus {
@@ -252,15 +219,13 @@
 }
 
 .pullRequestMergedUnavailable {
-  max-width: 280px;
-  text-align: right;
+  text-align: left;
 }
 
 .pullRequestOverview {
-  composes: neumorphic-surface-tokens from global;
   display: grid;
   flex: 0 0 auto;
-  gap: 12px;
+  gap: var(--space-default);
   padding: var(--space-default);
 }
 
@@ -272,22 +237,20 @@
 
 .pullRequestOverviewHeading > span {
   color: var(--sidebar-section-label-color);
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: .1em;
-  line-height: 12px;
+  font-size: var(--font-size-section-title);
+  font-weight: 600;
+  line-height: 15px;
   text-transform: uppercase;
 }
 
 .pullRequestOverview h2 {
-  max-width: 720px;
-  overflow: hidden;
+  min-width: 0;
   margin: 0;
-  font-size: 16px;
-  font-weight: 650;
-  line-height: 22px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  line-height: 15px;
+  overflow-wrap: anywhere;
 }
 
 .pullRequestBranchFlow {
@@ -297,27 +260,22 @@
 }
 
 .pullRequestBranchFlow > svg {
-  width: 13px;
-  height: 13px;
-  flex: 0 0 13px;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
 }
 
 .pullRequestBranchRef {
   max-width: min(100%, 240px);
-  height: 24px;
-  gap: 7px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: var(--dropdown-selection-bg);
-  color: var(--dropdown-selection-text);
-  box-sizing: border-box;
-  padding: 0 9px;
+  gap: var(--icon-default);
+  color: var(--text);
 }
 
 .pullRequestBranchRef svg {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 12px;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+  color: var(--sidebar-section-label-color);
 }
 
 .pullRequestBranchRef code {
@@ -329,45 +287,36 @@
 
 .pullRequestDetail dl {
   display: grid;
-  min-height: 46px;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr);
-  overflow: hidden;
-  border: 1px solid var(--divider);
-  border-radius: 10px;
-  background: var(--neumorphic-button-surface);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-default);
   margin: 0;
 }
 
 .pullRequestDetail dl div {
   display: grid;
   min-width: 0;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-}
-
-.pullRequestDetail dl div + div {
-  border-left: 1px solid var(--divider);
+  align-content: start;
+  gap: var(--icon-default);
 }
 
 .pullRequestDetail dt {
-  gap: 6px;
+  gap: var(--icon-default);
   color: var(--sidebar-section-label-color);
-  font-size: 9px;
+  font-size: var(--font-size-small);
+  font-weight: 400;
 }
 
 .pullRequestDetail dt svg {
-  width: 11px;
-  height: 11px;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
 }
 
 .pullRequestDetail dd {
   overflow: hidden;
   margin: 0;
-  font-size: 10px;
-  font-weight: 600;
-  text-align: right;
+  color: var(--text);
+  font-size: var(--font-size-small);
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -385,6 +334,7 @@
 }
 
 .pullRequestActivityHeader {
+  box-sizing: border-box;
   display: flex;
   min-height: var(--header-height);
   flex: 0 0 var(--header-height);
@@ -395,50 +345,32 @@
   padding: 0 var(--space-default);
 }
 
-.pullRequestActivityTitle {
-  display: flex;
-  min-width: 0;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
-}
-
-.pullRequestActivityTitle strong {
-  font-size: 10px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.pullRequestActivityMark {
-  --neumorphic-button-radius: 50%;
-  display: inline-grid;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
-  place-items: center;
-  color: #8cb8c5;
-}
-
-.pullRequestActivityMark svg {
-  width: 11px;
-  height: 11px;
-  stroke-width: 1.7;
-}
-
 .pullRequestDetailTabs {
-  composes: neumorphic-surface-tokens from global;
   width: auto;
-  flex: 0 1 auto;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .pullRequestDetailTabs button {
   justify-content: center;
-  color: var(--sidebar-section-label-color);
+  padding: 0 var(--space-default);
+  border-radius: var(--button-radius);
+  background: var(--control-surface-ghost);
+  color: var(--text);
+  font-size: var(--font-size-label);
+  font-weight: 400;
 }
 
-.pullRequestDetailTabs button:hover,
-.pullRequestDetailTabs button[data-active='true'] { color: var(--active-text); }
-.pullRequestActivityTitle > strong { color: var(--sidebar-section-label-color); }
+.pullRequestDetailTabs button[data-active='true'] {
+  background: var(--control-surface);
+  color: var(--text);
+  font-weight: 400;
+}
+
+.pullRequestDetailTabs button:is(:hover, :active) {
+  background: var(--control-surface-interactive);
+  color: var(--text);
+}
 
 .pullRequestBranchRef[data-kind='base'] code { font: inherit; }
 
@@ -461,16 +393,11 @@
   min-height: 0;
   flex: 1 1 auto;
   border: 0;
-  background: var(--app-bg);
+  background: transparent;
 }
 
 .pullRequestChangesViewer > .panelHeader {
-  background: var(--git-row-selected-background);
-}
-
-.workspace .pullRequestCommentsEmpty {
-  --empty-text: var(--title);
-  --empty-muted: var(--sub-text);
+  background: transparent;
 }
 
 .pullRequestActivityEmpty {
@@ -479,12 +406,9 @@
 }
 
 .pullRequestActivityState {
-  min-height: 180px;
+  display: flex;
+  min-height: 0;
   flex: 1 1 auto;
-}
-
-.pullRequestActivityState > span:last-child {
-  max-width: 320px;
 }
 
 .pullRequestComments,
@@ -514,10 +438,6 @@
   background: transparent;
 }
 
-.pullRequestComments > .pullRequestComment:hover {
-  background: var(--dropdown-selection-bg);
-}
-
 .pullRequestComments > .pullRequestComment:not(:last-child) {
   border-bottom: 1px solid var(--divider);
 }
@@ -526,19 +446,22 @@
   overflow: hidden;
   border: 1px solid var(--divider);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--dropdown-selection-text) 3%, transparent);
+  background: transparent;
 }
 
 .pullRequestCommentHeader {
   display: flex;
-  min-height: 34px;
+  min-height: var(--header-height);
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: var(--icon-default);
+  box-sizing: border-box;
   border-bottom: 1px solid var(--divider);
   color: var(--sidebar-section-label-color);
-  font-size: 9px;
-  padding: 0 10px;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  padding: var(--space-8) var(--space-default);
 }
 
 .pullRequestCommentHeader > span {
@@ -551,8 +474,8 @@
 .pullRequestCommentHeader strong {
   overflow: hidden;
   color: var(--text);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-small);
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -572,9 +495,9 @@
 }
 
 .pullRequestCommentHeader svg {
-  width: 11px;
-  height: 11px;
-  flex: 0 0 11px;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
 }
 
 .pullRequestCommentHeader time {
@@ -587,20 +510,19 @@
   font-size: 10px;
   line-height: 17px;
   overflow-wrap: anywhere;
-  padding: 12px;
+  padding: var(--space-default);
   white-space: pre-wrap;
 }
 
 .pullRequestCommentForm {
   display: grid;
-  gap: 8px;
+  gap: var(--space-default);
 }
 
 .pullRequestCommentForm > label {
   color: var(--sidebar-section-label-color);
-  font-size: 9px;
+  font-size: var(--font-size-small);
   font-weight: 600;
-  letter-spacing: .05em;
   text-transform: uppercase;
 }
 
@@ -629,31 +551,37 @@
 .pullRequestCommentFooter > span {
   overflow: hidden;
   color: var(--sidebar-section-label-color);
-  font-size: 9px;
+  font-size: var(--font-size-small);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pullRequestCommit {
   display: flex;
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
+  height: 48px;
   min-height: 48px;
+  flex: 0 0 48px;
   align-items: center;
-  gap: 10px;
-  padding: 8px var(--space-default);
+  gap: var(--icon-default);
+  padding: 0 var(--space-default);
   border: 0;
   border-radius: 0;
-  background: transparent;
-  color: inherit;
+  background: var(--control-surface-ghost);
+  color: var(--text);
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
-.pullRequestCommit:hover,
 .pullRequestCommit[aria-pressed='true'] {
-  background: var(--dropdown-selection-bg);
+  background: var(--control-surface);
+}
+
+.pullRequestCommit:is(:hover, :active) {
+  background: var(--control-surface-interactive);
 }
 
 .pullRequestCommit:focus-visible {
@@ -667,18 +595,16 @@
 
 .pullRequestCommitIcon {
   display: grid;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
-  border-radius: 50%;
-  background: color-mix(in srgb, #8cb8c5 12%, transparent);
-  color: #8cb8c5;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+  color: var(--sidebar-section-label-color);
   place-items: center;
 }
 
 .pullRequestCommitIcon svg {
-  width: 13px;
-  height: 13px;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
 }
 
 .pullRequestCommitCopy {
@@ -696,14 +622,14 @@
 }
 
 .pullRequestCommitCopy strong {
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--font-size-small);
+  font-weight: 400;
 }
 
 .pullRequestCommitCopy small,
 .pullRequestCommit > code {
   color: var(--sidebar-section-label-color);
-  font-size: 9px;
+  font-size: var(--font-size-small);
 }
 
 .pullRequestCommit > code {
@@ -716,19 +642,19 @@
   flex: 0 0 42px;
   justify-content: space-between;
   flex-wrap: nowrap;
-  gap: 3.5px;
+  gap: var(--icon-default);
   overflow-x: auto;
   overflow-y: hidden;
   border-top: 1px solid var(--divider);
   box-sizing: border-box;
   margin: 0;
-  padding: 0 calc((42px - 34px - 1px) / 2);
+  padding: 0 calc((42px - 32px - 1px) / 2);
 }
 
 .pullRequestActionGroup {
   flex: 0 0 auto;
   flex-wrap: nowrap;
-  gap: 3.5px;
+  gap: var(--icon-default);
 }
 
 .pullRequestActionGroup:last-child {
@@ -736,10 +662,11 @@
 }
 
 .mergeConfirmation {
+  flex: 0 0 auto;
   --liquid-glass-radius: 0;
   display: grid;
   width: 100%;
-  gap: 8px;
+  gap: var(--space-default);
   box-sizing: border-box;
   border-width: 0 0 1px;
   margin: 0;
@@ -747,6 +674,7 @@
 }
 
 .mergeConfirmation > strong {
+  color: var(--sidebar-section-label-color);
   font-size: 10px;
   font-weight: 600;
 }
@@ -759,10 +687,10 @@
 
 .mergeConfirmationControls {
   display: grid;
-  grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   align-items: end;
   gap: var(--space-default);
-  margin-top: 8px;
+  margin-top: 0;
 }
 
 .mergeConfirmationActions {

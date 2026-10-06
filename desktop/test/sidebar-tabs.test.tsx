@@ -124,7 +124,7 @@ async function withTabs(run: (h: {
   }
 }
 
-test('sidebar exposes five ordered tabs with an empty GitHub placeholder', () => {
+test('sidebar exposes five ordered tabs with a GitHub portal target', () => {
   const html = renderToStaticMarkup(<Sidebar activePanel="memos" onPanelChange={() => {}}
     chatPanel={<div>Session list</div>} selectedFilePath={null} onWorkspaceEntryMutation={() => {}}
     onOpenWorkspaceFile={() => {}} />);
@@ -138,6 +138,8 @@ test('sidebar exposes five ordered tabs with an empty GitHub placeholder', () =>
   expect(panel.querySelector('.sidebar-content-primary')).not.toBeNull();
   expect(panel.hasAttribute('inert')).toBe(false);
   expect(window.document.querySelector('[aria-roledescription="carousel"]')).toBeNull();
+  const github = tabs.find(tab => tab.textContent === 'GITHUB')!;
+  expect(window.document.getElementById(github.getAttribute('aria-controls')!)?.querySelector('.sidebar-content-primary')).not.toBeNull();
 });
 
 test('Activity appears progressively during the content swipe before selection settles', async () => {

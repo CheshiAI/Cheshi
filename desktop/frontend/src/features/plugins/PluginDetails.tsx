@@ -12,7 +12,8 @@ import {
   X,
 } from 'lucide-react';
 
-import { LoadingState, NeumorphicButton } from '../../shared/ui';
+import { EmptyState, LoadingState, NeumorphicButton } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { canInstallPlugin, canUninstallPlugin } from './model';
 import { PluginMark } from './PluginDirectoryCards';
 import styles from './PluginsView.module.css';
@@ -46,9 +47,9 @@ export function PluginDetails({ controller }: { controller: PluginsController })
           <PluginMark plugin={selected} />
           <div><strong>{selected.displayName}</strong><span>{selected.developerName}</span></div>
         </div>
-        <NeumorphicButton raised className={`theme-toggle ${styles.closeDetails}`} aria-label="Close plugin details" onClick={closeDetails}>
+        <TooltipButton variant="ghost" size="icon" aria-label="Close plugin details" title="Close plugin details" onClick={closeDetails}>
           <X aria-hidden="true" />
-        </NeumorphicButton>
+        </TooltipButton>
       </header>
 
       <div
@@ -57,7 +58,7 @@ export function PluginDetails({ controller }: { controller: PluginsController })
         aria-busy={detailLoading}
       >
         {detailLoading && <LoadingState />}
-        {!detailLoading && detailError && <div className={styles.detailError} role="alert"><AlertTriangle aria-hidden="true" />{detailError}</div>}
+        {!detailLoading && detailError && <div className={styles.detailError} role="alert"><EmptyState className={styles.emptyState} title="Could not load plugin details" description={detailError} /></div>}
 
         {!detailLoading && selected && (
           <>
@@ -115,7 +116,7 @@ export function PluginDetails({ controller }: { controller: PluginsController })
                 {detail.mcpServers.length > 0 && (
                   <section className={styles.detailSection}>
                     <h3>MCP servers</h3>
-                    <div className={styles.chips}>{detail.mcpServers.map((server) => <span key={server}>{server}</span>)}</div>
+                    <div className={styles.chips}>{detail.mcpServers.map((server) => <span className={styles.detailBadge} key={server}>{server}</span>)}</div>
                   </section>
                 )}
 
@@ -153,31 +154,31 @@ export function PluginDetails({ controller }: { controller: PluginsController })
       </div>
 
       {selected && (
-        <footer className={styles.detailsFooter}>
+        <footer className={styles.detailsFooter} data-confirming={confirmationAction ? 'true' : undefined}>
           {confirmationAction ? (
             <div className={styles.confirmation}>
               <strong>{confirmationAction === 'install' ? `Install ${selected.displayName}?` : `Remove ${selected.displayName}?`}</strong>
               <span>{confirmationAction === 'install' ? 'This can add skills, apps, MCP servers, hooks, and scheduled tasks.' : 'Its capabilities will no longer be available to new chats.'}</span>
               <div>
-                <NeumorphicButton raised disabled={mutating} onClick={() => setConfirmationAction(null)}>Cancel</NeumorphicButton>
-                <NeumorphicButton raised className={confirmationAction === 'uninstall' ? styles.dangerButton : styles.primaryButton} disabled={mutating} onClick={() => void mutatePlugin(confirmationAction)}>
+                <NeumorphicButton variant="ghost" disabled={mutating} onClick={() => setConfirmationAction(null)}>Cancel</NeumorphicButton>
+                <NeumorphicButton variant="standard" disabled={mutating} onClick={() => void mutatePlugin(confirmationAction)}>
                   {mutating ? <LoaderCircle className={styles.spinning} aria-hidden="true" /> : confirmationAction === 'install' ? <Download aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
                   {confirmationAction === 'install' ? 'Install' : 'Remove'}
                 </NeumorphicButton>
               </div>
             </div>
           ) : canInstallPlugin(selected) ? (
-            <NeumorphicButton raised className={styles.primaryButton} disabled={mutating || detailLoading} onClick={() => setConfirmationAction('install')}>
+            <NeumorphicButton variant="ghost" disabled={mutating || detailLoading} onClick={() => setConfirmationAction('install')}>
               <Download aria-hidden="true" />Install plugin
             </NeumorphicButton>
           ) : canUninstallPlugin(selected) ? (
-            <NeumorphicButton raised className={styles.removeButton} disabled={mutating || detailLoading} onClick={() => setConfirmationAction('uninstall')}>
+            <NeumorphicButton variant="standard" disabled={mutating || detailLoading} onClick={() => setConfirmationAction('uninstall')}>
               <Trash2 aria-hidden="true" />Remove plugin
             </NeumorphicButton>
           ) : selected.installPolicy === 'INSTALLED_BY_DEFAULT' ? (
-            <NeumorphicButton raised disabled><ShieldCheck aria-hidden="true" />Included with Codex</NeumorphicButton>
+            <NeumorphicButton variant="standard" disabled><ShieldCheck aria-hidden="true" />Included with Codex</NeumorphicButton>
           ) : (
-            <NeumorphicButton raised disabled><AlertTriangle aria-hidden="true" />{selected.disabledReason ? humanizeStatus(selected.disabledReason) : 'Unavailable'}</NeumorphicButton>
+            <NeumorphicButton variant="standard" disabled><AlertTriangle aria-hidden="true" />{selected.disabledReason ? humanizeStatus(selected.disabledReason) : 'Unavailable'}</NeumorphicButton>
           )}
         </footer>
       )}

@@ -7,13 +7,13 @@ import {
 
 import {
   SidebarToggle,
-  FilterTab,
   FilterTabList,
   NeumorphicButton,
   TieredHeader,
   draggableWindowRegionStyle,
   nonDraggableWindowRegionStyle,
 } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { gitWorkspaceTabs } from './gitWorkspaceModel';
 import styles from './GitWorkspace.module.css';
 import type { GitWorkspaceController } from './useGitWorkspaceController';
@@ -43,20 +43,10 @@ export function GitWorkspaceHeader({ controller, rightSidebarOpen, onToggleRight
       style={draggableWindowRegionStyle}
       primary={(
         <>
-          <div className={styles.title}>
-            <NeumorphicButton
-              raised
-              aria-hidden="true"
-              className={`theme-toggle ${styles.titleMark}`}
-              disabled
-            >
-              <span className={styles.githubMark} />
-            </NeumorphicButton>
-            <h1>Github</h1>
-          </div>
           <FilterTabList as="nav" className={styles.tabs} aria-label="Git sections">
             {gitWorkspaceTabs.map((item) => (
-              <FilterTab
+              <NeumorphicButton
+                variant="ghost"
                 active={tab === item.id}
                 aria-current={tab === item.id ? 'page' : undefined}
                 key={item.id}
@@ -67,7 +57,7 @@ export function GitWorkspaceHeader({ controller, rightSidebarOpen, onToggleRight
                 {item.id === 'changes' && changes.length > 0 && (
                   <span className={styles.changeCountBadge}>{changes.length}</span>
                 )}
-              </FilterTab>
+              </NeumorphicButton>
             ))}
           </FilterTabList>
           <div className={styles.headerActions} style={nonDraggableWindowRegionStyle}>
@@ -82,17 +72,17 @@ export function GitWorkspaceHeader({ controller, rightSidebarOpen, onToggleRight
                 <span>{error ?? notice}</span>
               </span>
             )}
-            <NeumorphicButton
-              raised
+            <TooltipButton
+              variant="ghost"
+              size="icon"
               aria-busy={refreshing}
               aria-label={refreshing ? 'Refreshing Git' : 'Refresh Git'}
-              className="sidebar-heading-action"
               disabled={busy || refreshing}
               title={refreshing ? 'Refreshing…' : 'Refresh'}
               onClick={() => onRefreshIssues ? onRefreshIssues() : void refreshRepository()}
             >
               <RefreshCw className={refreshing ? styles.spinner : undefined} aria-hidden="true" />
-            </NeumorphicButton>
+            </TooltipButton>
             <SidebarToggle
               raised
               className="sidebar-heading-action"

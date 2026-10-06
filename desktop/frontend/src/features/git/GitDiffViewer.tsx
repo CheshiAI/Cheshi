@@ -7,8 +7,9 @@ import {
   LiquidGlassSelect,
   LoadingState,
   NeumorphicButton,
-  NeumorphicTextarea,
+  NeumorphicTextField,
 } from '../../shared/ui';
+import panelHeaderStyles from '../../shared/ui/SidebarPanelHeader.module.css';
 import type {
   GitHubPullRequestDetails,
   GitHubPullRequestReviewCommentMode,
@@ -22,7 +23,7 @@ import {
   pullRequestReviewLocationKey,
   type PullRequestReviewLocation,
 } from './gitWorkspaceModel';
-import { MarkedPanelTitle, PullRequestReviewThread } from './GitPullRequestPanels';
+import { PullRequestReviewThread } from './GitPullRequestPanels';
 import styles from './GitWorkspace.module.css';
 import type { UnifiedDiffFile } from './unifiedDiff';
 import { GitDiffFileRow } from './GitDiffFileRow';
@@ -134,7 +135,12 @@ export const GitDiffViewer = memo(function GitDiffViewer({
   ) : (
     <>
       <header className={styles.panelHeader}>
-        <MarkedPanelTitle icon={FileText} title={selectedFile?.path ?? diff?.path ?? 'Diff'} />
+        <div className={styles.diffTitle}>
+          <NeumorphicButton raised size="icon" className={panelHeaderStyles.titleMark} aria-hidden="true" disabled>
+            <FileText aria-hidden="true" />
+          </NeumorphicButton>
+          <span>{selectedFile?.path ?? diff?.path ?? 'Diff'}</span>
+        </div>
         {(loading || selectedFile) && (
           <div className={styles.diffHeaderMeta}>
             {loading && (
@@ -169,6 +175,8 @@ export const GitDiffViewer = memo(function GitDiffViewer({
           </span>
           <div>
             <LiquidGlassSelect
+              triggerAppearance="standard"
+              menuAppearance="toolbar"
               ariaLabel="Review decision"
               className={styles.pendingReviewSelect}
               disabled={review.submitting}
@@ -178,10 +186,8 @@ export const GitDiffViewer = memo(function GitDiffViewer({
               value={reviewEvent}
             />
             <NeumorphicButton
-              size="standard"
-              raised
+              variant="standard"
               aria-busy={review.submitting}
-              className="neumorphic-surface"
               disabled={review.submitting}
               onClick={() => void review.onSubmit(reviewEvent)}
             >
@@ -236,9 +242,10 @@ export const GitDiffViewer = memo(function GitDiffViewer({
                       <span className={styles.diffCommentCell} role="cell">
                         {location && (
                           <NeumorphicButton
-                            raised
+                            variant="ghost"
+                            size="icon"
                             aria-label={`Comment on ${location.path} line ${location.line}`}
-                            className={`neumorphic-surface ${styles.diffCommentTrigger}`}
+                            className={styles.diffCommentTrigger}
                             onClick={() => {
                               setEditorLocation(location);
                               setReviewBody('');
@@ -269,7 +276,8 @@ export const GitDiffViewer = memo(function GitDiffViewer({
                       role="row"
                     >
                       <div role="cell">
-                        <section
+                        <LiquidGlassPanel
+                          as="section"
                           aria-label={`Comment on ${location.path} line ${location.line}`}
                           className={styles.inlineReviewEditor}
                         >
@@ -277,7 +285,9 @@ export const GitDiffViewer = memo(function GitDiffViewer({
                             <MessageSquareText aria-hidden="true" />
                             <strong>Comment on line {location.line}</strong>
                           </header>
-                          <NeumorphicTextarea
+                          <NeumorphicTextField
+                            variant="standard"
+                            multiline
                             autoFocus
                             aria-label={`Review comment on ${location.path} line ${location.line}`}
                             disabled={review.submitting}
@@ -291,27 +301,21 @@ export const GitDiffViewer = memo(function GitDiffViewer({
                             <span>Markdown is supported by GitHub.</span>
                             <div>
                               <NeumorphicButton
-                                size="standard"
-                                raised
-                                className="neumorphic-surface"
+                                variant="ghost"
                                 disabled={review.submitting}
                                 onClick={closeReviewEditor}
                               >
                                 Cancel
                               </NeumorphicButton>
                               <NeumorphicButton
-                                size="standard"
-                                raised
-                                className="neumorphic-surface"
+                                variant="standard"
                                 disabled={review.submitting || !reviewBody.trim()}
                                 onClick={() => void addReviewComment('comment')}
                               >
                                 Comment
                               </NeumorphicButton>
                               <NeumorphicButton
-                                size="standard"
-                                raised
-                                className="neumorphic-surface"
+                                variant="standard"
                                 disabled={review.submitting || !reviewBody.trim()}
                                 onClick={() => void addReviewComment('review')}
                               >
@@ -322,7 +326,7 @@ export const GitDiffViewer = memo(function GitDiffViewer({
                               </NeumorphicButton>
                             </div>
                           </footer>
-                        </section>
+                        </LiquidGlassPanel>
                       </div>
                     </div>
                   )}

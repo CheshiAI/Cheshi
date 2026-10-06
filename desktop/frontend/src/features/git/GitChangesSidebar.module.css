@@ -1,0 +1,105 @@
+.sidebar {
+  --liquid-glass-radius: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  border: 0;
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-label);
+}
+
+.changeList { flex: 1 1 auto; }
+.changeGroup + .changeGroup { margin-top: var(--space-default); }
+.groupHeader {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-default);
+  padding: 0 var(--space-default);
+}
+.groupLabel {
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-section-title);
+  font-weight: 600;
+  letter-spacing: normal;
+}
+.groupEmpty {
+  display: block;
+  padding: var(--space-default);
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+  font-weight: 400;
+}
+.changeRow {
+  display: flex;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 42px;
+  align-items: center;
+  gap: var(--icon-default);
+  padding: 0 var(--space-default);
+  background: var(--control-surface-ghost);
+}
+.changeRow[data-selected='true'] { background: var(--control-surface); }
+.changeRow:is(:hover, :active) { background: var(--control-surface-interactive); }
+.changeCheckbox { flex: 0 0 16px; }
+.changeTrigger {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--icon-default);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.status {
+  width: 16px;
+  flex: 0 0 16px;
+  color: #8fc6a8;
+  font-size: var(--font-size-small);
+  font-weight: 700;
+  text-align: center;
+}
+.status[data-status='D'] { color: #dc8d88; }
+.status[data-status='M'] { color: #d8bc72; }
+.status[data-status='R'] { color: #8db8da; }
+.status[data-status='U'] { color: #b8a4d8; }
+.changeName {
+  overflow: hidden;
+  flex: 1 1 auto;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.commitBar {
+  display: grid;
+  box-sizing: border-box;
+  height: var(--header-height);
+  min-height: var(--header-height);
+  flex: 0 0 var(--header-height);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--icon-default);
+  padding: 0 calc((var(--header-height) - 32px - 1px) / 2);
+  border-top: 1px solid var(--divider);
+}
+.diffWorkspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.diffWorkspace[hidden] { display: none; }

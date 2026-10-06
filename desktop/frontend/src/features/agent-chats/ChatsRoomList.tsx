@@ -4,6 +4,8 @@ import { useMemo, useRef, useState } from 'react';
 import type { ChatsSnapshot } from '../../../../shared/agent-chats';
 import { LoadingState, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader } from '../../shared/ui';
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
+import { PullToRefreshStatus } from '../../shared/ui/PullToRefreshStatus';
+import { usePullToRefresh } from '../../shared/usePullToRefresh';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { formatSessionElapsedTime, useChatSessionClock } from '../chat/chatSessionTime';
@@ -14,12 +16,15 @@ import type { ChatsLoadPhase } from './useChatsSnapshot';
 
 export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing, disabled, error, pinningRoomId, onPin, onDelete, onSelect, onNew, onRefresh }: {
   snapshot: ChatsSnapshot; selectedId: string | null; phase: ChatsLoadPhase; loaded: boolean; refreshing: boolean; disabled: boolean; error: string | null;
-  onSelect(id: string): void; onNew(): void; onRefresh(): void;
+  onSelect(id: string): void; onNew(): void; onRefresh(): Promise<void>;
   pinningRoomId: string | null; onPin(id: string, pinned: boolean): void;
   onDelete?(id: string): void;
 }) {
   const [query, setQuery] = useState('');
   const searchInput = useRef<HTMLInputElement>(null);
+  const refreshDisabled = disabled || refreshing || phase === 'loading';
+  const refresh = usePullToRefresh(onRefresh, refreshDisabled);
+  const refreshError = error || refresh.error;
   const now = useChatSessionClock(snapshot.rooms.length > 0);
   const rooms = useMemo(() => snapshot.rooms.map(room => {
     const messages = snapshot.messages.filter(message => message.roomId === room.id);
@@ -30,7 +35,9 @@ export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing,
   const visible = rooms.filter(({ room }) => room.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <section className={`${sessionStyles.root} ${styles.root}`} aria-label="Worker rooms">
     <SidebarPanelHeader title="WORKER" icon={<WorkerIcon />} actions={<>
-      <TooltipButton size="icon" aria-label="Refresh rooms" title="Refresh rooms" disabled={disabled || refreshing} onClick={onRefresh}><RefreshCw aria-hidden="true" /></TooltipButton>
+      <TooltipButton size="icon" aria-label="Refresh rooms" title="Refresh rooms"
+        className={!disabled && loaded && (refreshing || refresh.refreshing) ? styles.refreshPending : undefined}
+        disabled={refreshDisabled || refresh.refreshing} onClick={() => { void refresh.refresh(); }}><RefreshCw aria-hidden="true" /></TooltipButton>
       <TooltipButton size="icon" aria-label="New room" title="New room" disabled={disabled} onClick={onNew}><Plus aria-hidden="true" /></TooltipButton>
     </>} />
     <div className={sessionStyles.body}>
@@ -42,9 +49,10 @@ export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing,
         <TooltipButton raised size="icon" className={searchStyles.searchSubmit} type="submit"
           disabled={!query.trim()} aria-label="Filter rooms" title="Search room names"><Search aria-hidden="true" /></TooltipButton>
       </form>
-      {error && <p className={styles.notice} role="alert">{error}</p>}
-      <OverlayScrollArea className={sessionStyles.listScroll} label="Rooms">
-        <nav className={sessionStyles.list} aria-label="Rooms" aria-busy={phase === 'loading' || refreshing}>
+      {refreshError && <p className={styles.notice} role="alert">{refreshError}</p>}
+      <OverlayScrollArea className={sessionStyles.listScroll} label="Rooms" viewportRef={refresh.viewportRef}>
+        <PullToRefreshStatus {...refresh} />
+        <nav className={sessionStyles.list} aria-label="Rooms" aria-busy={phase === 'loading' || refreshing || refresh.refreshing}>
           {visible.map(({ room, preview, updated }) => <div key={room.id} className={`${sessionStyles.sessionRow} ${styles.row}`}>
             <NeumorphicButton variant="ghost" className={sessionStyles.session} aria-label={room.name} aria-current={room.id === selectedId ? 'page' : undefined} onClick={() => onSelect(room.id)}>
               <span className={`${sessionStyles.sessionTitleRow} ${styles.title}`}><TooltipTarget content={room.name}><span className={sessionStyles.sessionTitle}>{room.name}</span></TooltipTarget>

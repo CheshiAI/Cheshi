@@ -84,7 +84,7 @@ export function SkillRecordingForm({ chatContextId, onBusyChange, onStarted }: P
     }}>
       <label className={styles.field}>
         Workflow
-        <NeumorphicTextField multiline autoFocus required maxLength={16_000} rows={3} value={description} disabled={busy}
+        <NeumorphicTextField variant="standard" multiline autoFocus required maxLength={16_000} rows={3} value={description} disabled={busy}
           placeholder="Describe the task and the result you want to repeat."
           onChange={(event) => setDescription(event.target.value)} />
       </label>
@@ -95,9 +95,9 @@ export function SkillRecordingForm({ chatContextId, onBusyChange, onStarted }: P
       {(captureError || error) && <p className={styles.error} role="alert">{captureError || error}</p>}
       <div className={styles.actions}>
         {capturing
-          ? <NeumorphicButton raised onClick={() => capture.current?.stop()}>Stop recording</NeumorphicButton>
-          : <NeumorphicButton raised={!recording} disabled={busy || picking} onClick={() => void start()}>{picking ? 'Choose a screen…' : recording ? 'Record again' : 'Start recording'}</NeumorphicButton>}
-        {recording && <NeumorphicButton raised type="submit" disabled={busy || picking || !description.trim()}>{busy ? 'Creating…' : 'Create skill'}</NeumorphicButton>}
+          ? <NeumorphicButton variant="standard" onClick={() => capture.current?.stop()}>Stop recording</NeumorphicButton>
+          : <NeumorphicButton variant={recording ? 'ghost' : 'standard'} disabled={busy || picking} onClick={() => void start()}>{picking ? 'Choose a screen…' : recording ? 'Record again' : 'Start recording'}</NeumorphicButton>}
+        {recording && <NeumorphicButton variant="standard" type="submit" disabled={busy || picking || !description.trim()}>{busy ? 'Creating…' : 'Create skill'}</NeumorphicButton>}
       </div>
     </form>
   );

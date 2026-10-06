@@ -5,8 +5,9 @@ import {
   Upload,
 } from 'lucide-react';
 
-import { LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
-import { MarkedPanelTitle } from './GitPullRequestPanels';
+import { LiquidGlassPanel, LoadingState, NeumorphicButton } from '../../shared/ui';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { pullRequestMatchesBranch } from './gitWorkspaceModel';
 import styles from './GitWorkspace.module.css';
 import type { GitWorkspaceController } from './useGitWorkspaceController';
@@ -35,20 +36,22 @@ export function GitPullRequestListPanel({ controller }: { controller: GitWorkspa
   return (
     <LiquidGlassPanel as="section" className={styles.listPanel} data-liquid-glass-surface="side-panel">
       <header className={styles.panelHeader}>
-        <MarkedPanelTitle icon={GitPullRequest} title="Open pull requests" />
-        <NeumorphicButton
-          raised
+        <SidebarPanelTitle icon={<GitPullRequest aria-hidden="true" />} title="OPEN PULL REQUESTS" />
+        <TooltipButton
+          variant="ghost"
+          size="icon"
           aria-busy={pullRequestsLoading}
           aria-label={pullRequestsLoading ? 'Refreshing pull requests' : 'Refresh pull requests'}
-          className={`theme-toggle ${styles.smallAction}`}
           disabled={busy || pullRequestsLoading}
           title={pullRequestsLoading ? 'Refreshing pull requests…' : 'Refresh pull requests'}
           onClick={() => void refreshPullRequests()}
         >
           <RefreshCw className={pullRequestsLoading ? styles.spinner : undefined} aria-hidden="true" />
-        </NeumorphicButton>
+        </TooltipButton>
       </header>
-      {!pullRequests.available ? (
+      {!pullRequests.available && pullRequestsLoading ? (
+        <LoadingState className={styles.loadingState} />
+      ) : !pullRequests.available ? (
         <div className={`${styles.pullRequestList} ${styles.emptyState}`}>
           {pullRequests.message || 'Loading pull requests…'}
         </div>
@@ -59,10 +62,9 @@ export function GitPullRequestListPanel({ controller }: { controller: GitWorkspa
             <span>{currentPullRequest ? `Pull request #${currentPullRequest.number} is open for this branch.` : pullRequestEmptyMessage}</span>
             {canActOnBranch && (
               <NeumorphicButton
-                size="standard"
-                raised
+                variant="standard"
                 aria-busy={pullRequestOperation !== null}
-                className={`neumorphic-surface ${styles.pullRequestEmptyAction}`}
+                className={styles.pullRequestEmptyAction}
                 disabled={actionDisabled}
                 onClick={() => {
                   if (actionDisabled) return;
@@ -76,7 +78,7 @@ export function GitPullRequestListPanel({ controller }: { controller: GitWorkspa
                 <span>{pullRequestOperation === 'push' ? 'Pushing…'
                   : pullRequestOperation === 'create' ? 'Creating…'
                     : pullRequestNeedsPush ? `Push ${snapshot.head}`
-                      : currentPullRequest ? `View pull request #${currentPullRequest.number}` : 'Create pull request'}</span>
+                      : currentPullRequest ? `View pull request #${currentPullRequest.number}` : 'Create PR'}</span>
               </NeumorphicButton>
             )}
           </section>
@@ -101,11 +103,13 @@ export function GitPullRequestListPanel({ controller }: { controller: GitWorkspa
                 {pullRequest.draft && <em className={styles.pullRequestDraftBadge}>Draft</em>}
               </button>
             ))}
-            {pullRequests.pullRequests.length === 0 && (
+            {pullRequests.pullRequests.length === 0 && (pullRequestsLoading ? (
+              <LoadingState className={styles.loadingState} />
+            ) : (
               <div className={`${styles.emptyState} ${styles.pullRequestEmptyState}`}>
                 <span>No open pull requests.</span>
               </div>
-            )}
+            ))}
           </div>
         </>
       )}

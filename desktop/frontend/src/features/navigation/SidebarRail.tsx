@@ -24,10 +24,10 @@ const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceVi
   { label: 'Relationship Graph', icon: <Crosshair aria-hidden="true" />, view: 'codegraph' },
   { label: 'Memo', icon: <StickyNote aria-hidden="true" />, view: 'notes' },
   { label: 'Calendar', icon: <CalendarDays aria-hidden="true" />, view: 'calendar' },
-  { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
-  { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },
   { label: 'Worker', icon: <WorkerIcon />, view: 'chats' },
   { label: 'Docker', icon: <DockerIcon />, view: 'docker' },
+  { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
+  { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },
   { label: 'Settings', icon: <Settings aria-hidden="true" />, view: 'settings' },
 ];
 

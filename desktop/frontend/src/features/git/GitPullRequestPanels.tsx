@@ -6,10 +6,11 @@ import {
   Trash2,
   Upload,
   UserRound,
-  type LucideIcon,
 } from 'lucide-react';
 
-import { EmptyState, LoadingState, NeumorphicButton } from '../../shared/ui';
+import { EmptyState, LiquidGlassPanel, LoadingState, NeumorphicButton } from '../../shared/ui';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
+import panelHeaderStyles from '../../shared/ui/SidebarPanelHeader.module.css';
 import type { GitHubPullRequestReviewThread } from '../../cheshiDesktop';
 import {
   formatGitDate,
@@ -76,22 +77,6 @@ export function PullRequestReviewThread({ thread }: { thread: GitHubPullRequestR
   );
 }
 
-export function MarkedPanelTitle({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
-  return (
-    <div className={`${styles.panelTitle} ${styles.markedPanelTitle}`}>
-      <NeumorphicButton
-        raised
-        aria-hidden="true"
-        className={`theme-toggle ${styles.panelTitleMark}`}
-        disabled
-      >
-        <Icon />
-      </NeumorphicButton>
-      <strong>{title}</strong>
-    </div>
-  );
-}
-
 type PullRequestActivityStateKind = 'loading' | PullRequestDetailTab;
 
 export function PullRequestActivityState({ kind }: { kind: PullRequestActivityStateKind }) {
@@ -102,7 +87,7 @@ export function PullRequestActivityState({ kind }: { kind: PullRequestActivitySt
   if (kind === 'conversation') {
     return (
       <EmptyState
-        className={styles.pullRequestCommentsEmpty}
+        className={styles.pullRequestEmptyState}
         title="No comments yet."
         description="Comments from GitHub will appear here."
       />
@@ -173,21 +158,22 @@ export function MergedPullRequestDetail({
   return (
     <>
       <header className={`${styles.panelHeader} ${styles.pullRequestDetailHeader}`}>
-        <MarkedPanelTitle icon={GitMerge} title={`Pull request #${pullRequest.number}`} />
+        <SidebarPanelTitle icon={<GitMerge aria-hidden="true" />} title={`PULL REQUEST #${pullRequest.number}`} />
         <span className={styles.pullRequestState} data-state="merged">
           <Check aria-hidden="true" />
           Merged
         </span>
       </header>
       <div className={styles.pullRequestMergedBody}>
-        <section
+        <LiquidGlassPanel
+          as="section"
           aria-labelledby={`merged-pull-request-${pullRequest.number}`}
           className={styles.pullRequestMergedCard}
         >
           <div className={styles.pullRequestMergedHeading}>
-            <span className={styles.pullRequestMergedMark} aria-hidden="true">
+            <NeumorphicButton raised size="icon" className={panelHeaderStyles.titleMark} aria-hidden="true" disabled>
               <GitMerge />
-            </span>
+            </NeumorphicButton>
             <div className={styles.pullRequestMergedCopy}>
               <h2 id={`merged-pull-request-${pullRequest.number}`}>
                 Pull request successfully merged and closed
@@ -206,10 +192,8 @@ export function MergedPullRequestDetail({
               <>
                 <small>{mergedPullRequest.cleanupError ?? cleanup.message}</small>
                 <NeumorphicButton
-                  size="standard"
-                  raised
+                  variant="standard"
                   aria-busy={pushingBranch}
-                  className="neumorphic-surface"
                   disabled={busy || checkingCleanup || mergedPullRequest.cleanupError !== null}
                   onClick={onPushBranch}
                 >
@@ -234,10 +218,8 @@ export function MergedPullRequestDetail({
                 </div>
                 {cleanup?.canCleanup === true ? (
                   <NeumorphicButton
-                    size="standard"
-                    raised
+                    variant="standard"
                     aria-busy={cleaningBranch}
-                    className="neumorphic-surface"
                     disabled={busy || checkingCleanup}
                     onClick={onCleanupBranch}
                   >
@@ -259,10 +241,8 @@ export function MergedPullRequestDetail({
               <>
                 <small>{mergedPullRequest.cleanupError ?? remoteStatus}</small>
                 <NeumorphicButton
-                  size="standard"
-                  raised
+                  variant="standard"
                   aria-busy={deletingBranch}
-                  className="neumorphic-surface"
                   disabled={busy || !canDeleteRemote}
                   onClick={onDeleteBranch}
                 >
@@ -280,7 +260,7 @@ export function MergedPullRequestDetail({
               </span>
             )}
           </div>
-        </section>
+        </LiquidGlassPanel>
       </div>
     </>
   );

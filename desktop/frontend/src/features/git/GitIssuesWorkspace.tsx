@@ -1,13 +1,14 @@
 import { useRef, useState } from 'react';
 import { CircleDot, CircleCheck, ExternalLink, Search } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { FilterTab, FilterTabList, LiquidGlassPanel, LoadingState, NeumorphicButton, NeumorphicTextField, SearchClearButton } from '../../shared/ui';
+import { FilterTabList, LiquidGlassPanel, LoadingState, NeumorphicButton, NeumorphicTextField, SearchClearButton } from '../../shared/ui';
+import badgeStyles from '../../shared/ui/Badge.module.css';
 import type { GitHubIssueState } from '../../../../shared/github-issues';
 import { useGitIssues } from './useGitIssues';
 import { formatGitDate } from './gitWorkspaceModel';
 import styles from './GitIssuesWorkspace.module.css';
 
-export function GitIssuesWorkspace({ revision }: { revision: number }) {
+export function GitIssuesWorkspace({ revision, active = true }: { revision: number; active?: boolean }) {
   const searchInput = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState('');
   const [search, setSearch] = useState('');
@@ -15,20 +16,22 @@ export function GitIssuesWorkspace({ revision }: { revision: number }) {
   const issues = useGitIssues(cheshiDesktop?.githubIssues, { search, state }, revision);
   const { list, detail, selected } = issues;
   return (
-    <section className={styles.workspace} aria-label="GitHub issues">
+    <section className={styles.workspace} aria-label="GitHub issues" hidden={!active}>
       <div className={styles.toolbar}>
         <form className={styles.search} onSubmit={event => { event.preventDefault(); setSearch(input.trim()); }}>
           <Search className={styles.searchIcon} aria-hidden="true" />
-          <NeumorphicTextField ref={searchInput} className={styles.searchField} type="search" aria-label="Search issue titles and bodies" placeholder="Search issues…" maxLength={200}
+          <NeumorphicTextField variant="standard" ref={searchInput} className={styles.searchField} type="search" aria-label="Search issue titles and bodies" placeholder="Search issues…" maxLength={200}
             value={input} onChange={event => setInput(event.target.value)}
-            trailingAction={input || search ? <SearchClearButton aria-label="Clear issue search" onClick={() => {
+            trailingAction={input || search ? <SearchClearButton variant="ghost" aria-label="Clear issue search" onClick={() => {
               setInput(''); setSearch(''); searchInput.current?.focus();
             }} /> : undefined} />
         </form>
-        <FilterTabList aria-label="Issue state">
-          {(['open', 'closed', 'all'] as const).map(value => <FilterTab key={value} active={state === value}
-            badge={issues.counts && issues.counts[value] > 0 ? issues.counts[value] : undefined}
-            aria-pressed={state === value} onClick={() => setState(value)}>{value === 'all' ? 'All' : value === 'open' ? 'Open' : 'Closed'}</FilterTab>)}
+        <FilterTabList className={styles.filters} aria-label="Issue state">
+          {(['open', 'closed', 'all'] as const).map(value => <NeumorphicButton key={value} variant="ghost"
+            aria-pressed={state === value} onClick={() => setState(value)}>
+            {value === 'all' ? 'All' : value === 'open' ? 'Open' : 'Closed'}
+            {issues.counts && issues.counts[value] > 0 && <span className={badgeStyles.badge}>{issues.counts[value]}</span>}
+          </NeumorphicButton>)}
         </FilterTabList>
       </div>
       <div className={styles.split}>

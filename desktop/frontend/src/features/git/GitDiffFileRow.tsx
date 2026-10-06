@@ -1,6 +1,6 @@
 import { FileInput } from 'lucide-react';
 
-import { NeumorphicButton } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import styles from './GitWorkspace.module.css';
 
 interface GitDiffFileRowProps {
@@ -22,15 +22,16 @@ export function GitDiffFileRow({ path, selected, onSelectPath, onOpenWorkspaceFi
       >
         {path}
       </button>
-      {onOpenWorkspaceFile && <NeumorphicButton
-        raised
-        className={`sidebar-heading-action ${styles.diffFileOpen}`}
+      {onOpenWorkspaceFile && <TooltipButton
+        variant="ghost"
+        size="icon"
+        className={styles.diffFileOpen}
         aria-label={`Open file in editor: ${path}`}
         title="Open file in editor"
         onClick={() => onOpenWorkspaceFile(path)}
       >
         <FileInput aria-hidden="true" />
-      </NeumorphicButton>}
+      </TooltipButton>}
     </div>
   );
 }

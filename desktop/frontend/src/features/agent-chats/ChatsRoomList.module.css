@@ -9,6 +9,9 @@
 .notice { margin: 0; padding: var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
 .empty { display: flex; flex: 1 1 auto; align-items: center; justify-content: center; text-align: center; }
 
+/* Refresh locks the button without dimming it on every background or pull request. */
+.root .refreshPending[data-size]:disabled { opacity: 1; }
+
 .root .title { padding-right: var(--room-meta-width); }
 .root .metadata { display: grid; grid-template-columns: minmax(0, 1fr) var(--room-meta-width); gap: 0; }
 .time { text-align: right; }

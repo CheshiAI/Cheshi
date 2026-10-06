@@ -1,20 +1,24 @@
-import { FileText, GitPullRequestClosed, ListChecks } from 'lucide-react';
-import { useRef, useState, type MouseEvent } from 'react';
+import { GitPullRequestClosed, ListChecks } from 'lucide-react';
+import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 
 import {
   LiquidGlassPanel,
+  LoadingState,
   NeumorphicButton,
   NeumorphicCheckbox,
   NeumorphicTextField,
-  SearchClearButton,
+  SidebarPanelHeader,
 } from '../../shared/ui';
 import type { GitDiffRequest, GitDiscardTarget, GitFileChange } from '../../cheshiDesktop';
 import { GitDiscardDialog } from './GitDiscardDialog';
-import { checkedGitDiscardTargets, gitChangeKey, selectGitChanges } from './gitChangeSelection';
+import { checkedGitDiscardTargets, reconcileGitChangeSelection, selectGitChanges } from './gitChangeSelection';
 import { GitDiffViewer } from './GitDiffViewer';
 import { changeStatus } from './gitWorkspaceModel';
-import { MarkedPanelTitle } from './GitPullRequestPanels';
-import styles from './GitWorkspace.module.css';
+import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import workspaceStyles from './GitWorkspace.module.css';
+import styles from './GitChangesSidebar.module.css';
 import type { GitWorkspaceController } from './useGitWorkspaceController';
 
 type ChangeScope = Extract<GitDiffRequest['scope'], 'working' | 'staged'>;
@@ -51,16 +55,15 @@ function GitChangeGroup({
       <div className={styles.groupHeader}>
         <span className={styles.groupLabel}>{label}</span>
         {changes.length > 0 && (
-          <NeumorphicButton
-            raised
+          <TooltipButton
+            variant="ghost" size="icon"
             aria-label={`${toggleLabel} all changes`}
-            className={`theme-toggle ${styles.smallAction}`}
             disabled={busy}
             title={`${toggleLabel} all`}
             onClick={() => onToggleAll(changes)}
           >
             <ListChecks aria-hidden="true" />
-          </NeumorphicButton>
+          </TooltipButton>
         )}
       </div>
       {changes.length === 0 && <span className={styles.groupEmpty}>{emptyLabel}</span>}
@@ -88,23 +91,25 @@ function GitChangeGroup({
             <span className={styles.status} data-status={changeStatus(change)}>{changeStatus(change)}</span>
             <span className={styles.changeName}>{change.path}</span>
           </button>
-          <NeumorphicButton
-            raised
-            className={`sidebar-heading-action ${styles.discardAction}`}
+          <TooltipButton
+            variant="ghost" size="icon"
             aria-label={`Discard changes in ${change.path}`}
             title="Discard changes"
             disabled={busy}
             onClick={() => onDiscard({ path: change.path, scope })}
           >
             <GitPullRequestClosed aria-hidden="true" />
-          </NeumorphicButton>
+          </TooltipButton>
         </div>
       ))}
     </section>
   );
 }
 
-export function GitChangesWorkspace({ controller, onOpenWorkspaceFile }: {
+export function GitChangesWorkspace({ controller, onOpenWorkspaceFile, sidebarTarget, active = true, onOpenChanges }: {
+  sidebarTarget?: HTMLElement | null;
+  active?: boolean;
+  onOpenChanges?: () => void;
   controller: GitWorkspaceController;
   onOpenWorkspaceFile: (path: string) => void;
 }) {
@@ -117,30 +122,37 @@ export function GitChangesWorkspace({ controller, onOpenWorkspaceFile }: {
     diffFiles,
     diffLoading,
     discardChanges,
+    error,
+    loading,
     selectChange,
     selection,
     selectedDiffPath,
     setCommitMessage,
     setSelectedDiffPath,
     stagedChanges,
+    snapshot,
     stagePaths,
     unstagedChanges,
     unstagePaths,
   } = controller;
-  const commitUnavailable = busy || stagedChanges.length === 0;
-  const commitInputRef = useRef<HTMLInputElement>(null);
+  const commitUnavailable = busy || !snapshot.available || stagedChanges.length === 0;
   const [selectedChanges, setSelectedChanges] = useState<GitDiscardTarget[] | null>(null);
   const [discardTargets, setDiscardTargets] = useState<GitDiscardTarget[] | null>(null);
   const selectionAnchor = useRef<GitDiscardTarget | null>(null);
-  const targets: GitDiscardTarget[] = [
-    ...unstagedChanges.map((change) => ({ path: change.path, scope: 'working' as const })),
-    ...stagedChanges.map((change) => ({ path: change.path, scope: 'staged' as const })),
-  ];
+  const targets = useMemo<GitDiscardTarget[]>(() => [
+    ...changes.filter(change => change.unstaged === true).map(change => ({ path: change.path, scope: 'working' as const })),
+    ...changes.filter(change => change.staged === true).map(change => ({ path: change.path, scope: 'staged' as const })),
+  ], [changes]);
   const defaultSelection: GitDiscardTarget[] = selection && selection.scope !== 'commit'
     ? [{ path: selection.path, scope: selection.scope }]
     : [];
-  const availableKeys = new Set(targets.map(gitChangeKey));
-  const selectedTargets = (selectedChanges ?? defaultSelection).filter((target) => availableKeys.has(gitChangeKey(target)));
+  const selectedTargets = reconcileGitChangeSelection(selectedChanges ?? defaultSelection, targets);
+  useLayoutEffect(() => {
+    setSelectedChanges(current => current === null ? null : reconcileGitChangeSelection(current, targets));
+    if (selectionAnchor.current) {
+      selectionAnchor.current = reconcileGitChangeSelection([selectionAnchor.current], targets)[0] ?? null;
+    }
+  }, [targets]);
   const checkedTargets = checkedGitDiscardTargets(changes);
   const selectRow = (change: GitFileChange, scope: ChangeScope, event: MouseEvent<HTMLButtonElement>): void => {
     const target = { path: change.path, scope };
@@ -149,113 +161,96 @@ export function GitChangesWorkspace({ controller, onOpenWorkspaceFile }: {
       toggle: event.metaKey || event.ctrlKey, range: event.shiftKey,
     }));
     if (!event.shiftKey) selectionAnchor.current = target;
+    onOpenChanges?.();
     selectChange(change, scope);
   };
 
-  return (
-    <>
-      <div className={styles.splitLayout}>
-        <LiquidGlassPanel as="section" className={styles.listPanel} data-liquid-glass-surface="side-panel">
-          <header className={styles.panelHeader}>
-            <div className={styles.changeTitle}>
-              <MarkedPanelTitle icon={FileText} title="Local changes" />
-              {changes.length > 0 && (
-                <span className={styles.changeCountBadge}>{changes.length}</span>
-              )}
-            </div>
-            {changes.length > 0 && (
-              <NeumorphicButton
-                raised
-                className={`sidebar-heading-action ${styles.discardCheckedAction}`}
-                aria-label={`Discard changes in ${checkedTargets.length} checked files`}
-                title="Discard checked changes"
-                disabled={busy || checkedTargets.length === 0}
-                onClick={() => setDiscardTargets(checkedTargets)}
-              >
-                <GitPullRequestClosed aria-hidden="true" />
-              </NeumorphicButton>
+  const sidebar = (
+    <LiquidGlassPanel as="section" className={styles.sidebar} aria-label="Git changes">
+      <SidebarPanelHeader title="GITHUB" count={snapshot.available ? changes.length : undefined} icon={<span className={workspaceStyles.githubMark} aria-hidden="true" />}
+        actions={<TooltipButton variant="ghost" size="icon"
+          aria-label={`Discard changes in ${checkedTargets.length} checked files`} title="Discard checked changes"
+          disabled={busy || !snapshot.available || checkedTargets.length === 0} onClick={() => setDiscardTargets(checkedTargets)}>
+          <GitPullRequestClosed aria-hidden="true" />
+        </TooltipButton>} />
+      <OverlayScrollArea className={styles.changeList} label="Changed files">
+        {!snapshot.available ? loading ? <LoadingState label="Loading changes…" /> : <p className={styles.groupEmpty} role="alert">
+          {error || snapshot.message || 'Git repository unavailable'}
+        </p> : <>
+          <GitChangeGroup
+            busy={busy}
+            changes={unstagedChanges}
+            scope="working"
+            selectedTargets={selectedTargets}
+            onSelect={selectRow}
+            onDiscard={(target) => setDiscardTargets([target])}
+            onToggle={(change) => void stagePaths([change.path], `${change.path} staged.`)}
+            onToggleAll={(groupChanges) => void stagePaths(
+              groupChanges.map((change) => change.path),
+              'Changes staged.',
             )}
-          </header>
-          <div className={styles.changeList}>
-            <GitChangeGroup
-              busy={busy}
-              changes={unstagedChanges}
-              scope="working"
-              selectedTargets={selectedTargets}
-              onSelect={selectRow}
-              onDiscard={(target) => setDiscardTargets([target])}
-              onToggle={(change) => void stagePaths([change.path], `${change.path} staged.`)}
-              onToggleAll={(groupChanges) => void stagePaths(
-                groupChanges.map((change) => change.path),
-                'Changes staged.',
-              )}
-            />
-            <GitChangeGroup
-              busy={busy}
-              changes={stagedChanges}
-              scope="staged"
-              selectedTargets={selectedTargets}
-              onSelect={selectRow}
-              onDiscard={(target) => setDiscardTargets([target])}
-              onToggle={(change) => void unstagePaths([change.path], `${change.path} unstaged.`)}
-              onToggleAll={(groupChanges) => void unstagePaths(
-                groupChanges.map((change) => change.path),
-                'Changes unstaged.',
-              )}
-            />
-          </div>
-          <footer className={styles.commitBar}>
-            <NeumorphicTextField
-              ref={commitInputRef}
-              aria-label="Commit message"
-              disabled={commitUnavailable}
-              placeholder="Commit message"
-              value={commitMessage}
-              trailingAction={commitMessage ? (
-                <SearchClearButton
-                  aria-label="Clear commit message"
-                  disabled={commitUnavailable}
-                  onClick={() => {
-                    setCommitMessage('');
-                    commitInputRef.current?.focus();
-                  }}
-                />
-              ) : undefined}
-              onChange={(event) => setCommitMessage(event.target.value)}
-              onKeyDown={(event) => {
-                if (!commitUnavailable && commitMessage.trim() && (event.metaKey || event.ctrlKey) && event.key === 'Enter') void commit();
-              }}
-            />
-            <NeumorphicButton
-              size="standard"
-              raised
-              className="neumorphic-surface"
-              disabled={commitUnavailable || !commitMessage.trim()}
-              onClick={() => void commit()}
-            >
-              Commit
-            </NeumorphicButton>
-          </footer>
-        </LiquidGlassPanel>
-        <GitDiffViewer
-          onOpenWorkspaceFile={onOpenWorkspaceFile}
-          diff={diff}
-          files={diffFiles}
-          loading={diffLoading}
-          selectedPath={selectedDiffPath}
-          onSelectPath={setSelectedDiffPath}
-        />
-      </div>
-      {discardTargets && (
-        <GitDiscardDialog
-          targets={discardTargets}
-          onClose={() => setDiscardTargets(null)}
-          onDiscard={async (request) => {
-            await discardChanges(request);
-            setSelectedChanges(null);
+          />
+          <GitChangeGroup
+            busy={busy}
+            changes={stagedChanges}
+            scope="staged"
+            selectedTargets={selectedTargets}
+            onSelect={selectRow}
+            onDiscard={(target) => setDiscardTargets([target])}
+            onToggle={(change) => void unstagePaths([change.path], `${change.path} unstaged.`)}
+            onToggleAll={(groupChanges) => void unstagePaths(
+              groupChanges.map((change) => change.path),
+              'Changes unstaged.',
+            )}
+          />
+        </>}
+      </OverlayScrollArea>
+      <footer className={styles.commitBar}>
+        <NeumorphicTextField
+          variant="standard"
+          aria-label="Commit message"
+          disabled={commitUnavailable}
+          placeholder="Commit message"
+          value={commitMessage}
+          onClear={() => setCommitMessage('')}
+          clearLabel="Clear commit message"
+          onChange={(event) => setCommitMessage(event.target.value)}
+          onKeyDown={(event) => {
+            if (!commitUnavailable && commitMessage.trim() && (event.metaKey || event.ctrlKey) && event.key === 'Enter') void commit();
           }}
         />
-      )}
-    </>
+        <NeumorphicButton
+          variant="standard"
+          disabled={commitUnavailable || !commitMessage.trim()}
+          onClick={() => void commit()}
+        >
+          Commit
+        </NeumorphicButton>
+      </footer>
+    </LiquidGlassPanel>
   );
+  return <>
+    {sidebarTarget && createPortal(sidebar, sidebarTarget)}
+    <div className={sidebarTarget === undefined ? workspaceStyles.splitLayout : styles.diffWorkspace} hidden={!active}>
+      {sidebarTarget === undefined && sidebar}
+      <GitDiffViewer
+        onOpenWorkspaceFile={onOpenWorkspaceFile}
+        diff={diff}
+        files={diffFiles}
+        loading={diffLoading}
+        selectedPath={selectedDiffPath}
+        onSelectPath={setSelectedDiffPath}
+      />
+    </div>
+    {discardTargets && (
+      <GitDiscardDialog
+        targets={discardTargets}
+        onClose={() => setDiscardTargets(null)}
+        onDiscard={async (request) => {
+          await discardChanges(request);
+          setSelectedChanges(null);
+        }}
+      />
+    )}
+  </>;
 }

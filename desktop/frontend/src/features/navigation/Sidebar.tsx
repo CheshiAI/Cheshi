@@ -12,6 +12,7 @@ interface SidebarProps {
   chatPanel?: ReactNode;
   memoPanelRef?: Ref<HTMLDivElement>;
   chatsPanelRef?: Ref<HTMLDivElement>;
+  githubPanelRef?: Ref<HTMLDivElement>;
   activePanel?: SidebarPanel;
   onPanelChange?: (panel: SidebarPanel) => void;
   selectedFilePath: string | null;
@@ -24,6 +25,7 @@ export function Sidebar({
   chatPanel,
   memoPanelRef,
   chatsPanelRef,
+  githubPanelRef,
   activePanel = 'files',
   onPanelChange,
   selectedFilePath,
@@ -45,7 +47,7 @@ export function Sidebar({
               { id: 'files', label: 'EXPLORER', content: files },
               { id: 'agent-chats', label: 'WORKER', content: <div ref={chatsPanelRef} className="sidebar-content-primary" /> },
               { id: 'memos', label: 'MEMO', content: <div ref={memoPanelRef} className="sidebar-content-primary" /> },
-              { id: 'github', label: 'GITHUB', content: null },
+              { id: 'github', label: 'GITHUB', content: <div ref={githubPanelRef} className="sidebar-content-primary" /> },
             ]} /> : files}
         </div>
 

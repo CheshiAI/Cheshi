@@ -82,10 +82,15 @@ function loadComponent(filename: string): Record<string, unknown> {
       NeumorphicButton: 'button', NeumorphicSurface: 'surface', NeumorphicTextarea: 'textarea',
       NeumorphicTextField: 'text-field',
     },
+    '../../shared/ui/SidebarPanelHeader': {
+      SidebarPanelTitle: ({ icon, title }: { icon: unknown; title: string }) => jsx('panel-title', { children: [icon, title] }),
+    },
+    '../../shared/ui/TooltipButton': { TooltipButton: 'button' },
+    '../../shared/ui/SidebarPanelHeader.module.css': { default: {} },
     './GitDiffViewer': { GitDiffViewer: 'diff-viewer' },
     './GitWorkspace.module.css': { default: {} },
     './gitWorkspaceModel': {
-      GITHUB_COMMENT_BODY_LIMIT: 65536, PULL_REQUEST_DETAIL_STYLE: {}, pullRequestMergeMethods: [],
+      GITHUB_COMMENT_BODY_LIMIT: 65536, pullRequestMergeMethods: [],
       formatGitDate: (value: string) => value,
       reviewDecisionLabel: (value: string | null) => value ?? 'Pending',
       pullRequestMatchesBranch, pullRequestReviewLocation, pullRequestReviewLocationKey,
@@ -160,7 +165,7 @@ test('an unrelated selected PR leaves current-branch push and creation available
   for (const needsPush of [true, false]) {
     const view = renderBranchActions({ needsPush });
     assert.ok(view.area);
-    assert.equal(visibleText(view.action).trim(), needsPush ? 'Push feature/local' : 'Create pull request');
+    assert.equal(visibleText(view.action).trim(), needsPush ? 'Push feature/local' : 'Create PR');
     view.click();
     assert.deepEqual(view.calls, [needsPush ? 'push' : 'create']);
     const externalRow = elements(view.tree).find(element => element.props['aria-current'] === 'true');
@@ -181,7 +186,7 @@ test('an existing current-branch PR is selected instead of creating a duplicate'
 
 test('a same-named branch from an external fork does not hide local PR creation', () => {
   const view = renderBranchActions({ requests: [{ ...selectedPullRequest, headRefName: 'feature/local', crossRepository: true }] });
-  assert.equal(visibleText(view.action).trim(), 'Create pull request');
+  assert.equal(visibleText(view.action).trim(), 'Create PR');
   view.click();
   assert.deepEqual(view.calls, ['create']);
 });
@@ -193,6 +198,18 @@ test('the current-branch actions remain available with an empty PR list', () => 
     view.click();
     assert.deepEqual(view.calls, [needsPush ? 'push' : 'create']);
   }
+});
+
+test('PR lists show loading before the empty state and keep cached rows during refresh', () => {
+  for (const available of [false, true]) {
+    const loading = renderBranchActions({ requests: [], loading: true, available });
+    assert.equal(hasLoadingState(loading.tree), true);
+    assert.equal(visibleText(loading.tree).includes('No open pull requests.'), false);
+  }
+  const cached = renderBranchActions({ loading: true });
+  assert.equal(hasLoadingState(cached.tree), false);
+  assert.ok(visibleText(cached.tree).includes(selectedPullRequest.title));
+  assert.ok(visibleText(renderBranchActions({ requests: [] }).tree).includes('No open pull requests.'));
 });
 
 test('branch actions retain loading, operation, detached and post-merge guards', () => {

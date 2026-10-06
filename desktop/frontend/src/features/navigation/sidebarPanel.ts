@@ -6,6 +6,7 @@ export type SidebarPanel = 'chats' | 'files' | 'agent-chats' | 'memos' | 'github
 export function sidebarPanelForWorkspace(view: WorkspaceView, visiblePanes: readonly string[]): SidebarPanel | null {
   if (view === 'chats' && visiblePanes.includes('primary')) return 'agent-chats';
   if (view === 'notes') return 'memos';
+  if (view === 'git' && visiblePanes.includes('primary')) return 'github';
   if (visiblePanes.includes('editor')) return 'files';
   return view === 'chat' && visiblePanes.includes('primary') ? 'chats' : null;
 }
