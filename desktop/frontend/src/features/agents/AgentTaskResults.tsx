@@ -39,14 +39,14 @@ export function AgentTaskResults({ requestedTaskId, onBackToChats, listTitle = '
 
   return <section ref={scrollbar} className={styles.root} aria-label="Task results">
     <div className={styles.header}>
-      {onBackToChats && <TooltipButton variant="ghost" size="icon" aria-label="Back to Chats" title="Back to Chats" onClick={onBackToChats}><ArrowLeft aria-hidden="true" /></TooltipButton>}
+      {onBackToChats && <TooltipButton variant="ghost" size="icon" aria-label="Back to Worker" title="Back to Worker" onClick={onBackToChats}><ArrowLeft aria-hidden="true" /></TooltipButton>}
       {task && !onBackToChats && <TooltipButton variant="ghost" size="icon" aria-label="Back to task list" title="Back to task list"
         onClick={() => setTaskId(null)}><ArrowLeft aria-hidden="true" /></TooltipButton>}
       <TooltipTarget content={task?.id}><h2 className={`${common.sectionTitle} ${styles.heading}`}>
         {task ? 'Task details' : listTitle}
       </h2></TooltipTarget>
     </div>
-    {requestedTaskId && !task && <p className={styles.empty}>The linked task is not available yet. Start its worker or check the queued message in Chats.</p>}
+    {requestedTaskId && !task && <p className={styles.empty}>The linked task is not available yet. Start its worker or check the queued message in Worker.</p>}
     <div ref={list} className={styles.list} hidden={Boolean(task)} aria-label="Task result list">
       {tasks.map(item => {
         const title = item.prompt.trim().split(/\r?\n/, 1)[0] || item.id;

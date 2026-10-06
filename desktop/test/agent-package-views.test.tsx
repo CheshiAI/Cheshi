@@ -19,7 +19,7 @@ test('package model defaults require a local compatible account and permission r
       login: { state: 'signed_in' as const, error: null }, usage: { state: 'ready' as const, authenticated: true, plan: null, rateLimits: [], error: null } })) }),
     onDidChange: () => () => {},
   };
-  const model = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [] }), packages: async () => [definition!],
+  const model = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [] }), installPackage: async value => value, packages: async () => [definition!],
     importPackage: async () => definition!, models: async id => id === 'compatible' ? [supported] : [], onDidChange: () => () => {},
     save: async input => { saved = input; const agent = { ...specialistAgent(), ...input.profile };
       return { agentId: agent.id, snapshot: { workspaceRoot: '/project', agents: [agent] } }; } });
@@ -27,7 +27,7 @@ test('package model defaults require a local compatible account and permission r
   try {
     await withDOM(async ui => {
       await ui.render(<SpecialistAgentForm model={model} state={model.snapshot()} accountsApi={accounts} />);
-      await ui.click('Import from file…'); await ui.click('Load package into draft');
+      await ui.click('Import Homie pack…'); await ui.click('Load package into draft');
       const submit = () => document.querySelector<HTMLButtonElement>('button[type="submit"]')!;
       expect(submit().disabled).toBe(true);
       await ui.click('Agent account'); await ui.click('default@example.test');
@@ -49,7 +49,7 @@ test('package import only changes a draft after review and saves a self-containe
   const definition = { ...definitions[1]!, model: { model: null, reasoningEffort: null, serviceTier: null } };
   let saved: SaveSpecialistAgent | undefined;
   const api: AgentRegistryApi = { list: async () => ({ workspaceRoot: '/project', agents: [] }), models: async () => [],
-    packages: async () => [definition], importPackage: async () => definition, onDidChange: () => () => {},
+    installPackage: async value => value, packages: async () => [definition], importPackage: async () => definition, onDidChange: () => () => {},
     save: async input => { saved = input; const agent = { ...specialistAgent(), ...input.profile, assignments: [] };
       return { agentId: agent.id, snapshot: { workspaceRoot: '/project', agents: [agent] } }; } };
   const model = new AgentRegistryModel(api); await model.refresh();
@@ -57,7 +57,7 @@ test('package import only changes a draft after review and saves a self-containe
     await withDOM(async ui => {
       await ui.render(<SpecialistAgentForm model={model} state={model.snapshot()} />);
       await ui.type('Agent name', 'My draft');
-      await ui.click('Import from file…');
+      await ui.click('Import Homie pack…');
       expect(field('Agent name').value).toBe('My draft'); expect(saved).toBeUndefined();
       expect(document.querySelector('[aria-label="Package preview"]')).not.toBeNull();
       await ui.click('Cancel package preview'); expect(field('Agent name').value).toBe('My draft');
@@ -84,13 +84,13 @@ test('updates preserve customized instructions and local settings until the user
     assignments: [{ workspaceRoot: '/project', instructions: 'Project-only rules', permissions: { fileWrite: false, commandExecution: false } }] };
   const update = { ...definition, version: '1.1.0', instructions: 'Updated rules' };
   const model = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [agent] }),
-    models: async () => [], packages: async () => [], importPackage: async () => update,
+    models: async () => [], installPackage: async value => value, packages: async () => [], importPackage: async () => update,
     save: async () => { throw Error('Must stay a draft'); }, onDidChange: () => () => {} });
   await model.refresh();
   try {
     await withDOM(async ui => {
       await ui.render(<SpecialistAgentForm agent={agent} model={model} state={model.snapshot()} />);
-      await ui.click('Import from file…');
+      await ui.click('Import Homie pack…');
       expect(field('Current package instructions').value).toBe('Locally customized');
       expect(field('Package instructions preview').value).toBe('Updated rules');
       expect(document.querySelector('[aria-label="Keep current instructions"]')?.getAttribute('aria-checked')).toBe('true');
@@ -99,7 +99,7 @@ test('updates preserve customized instructions and local settings until the user
       expect(field('Agent name').value).toBe('My Homie');
       expect(field('Project instructions').value).toBe('Project-only rules');
       expect(document.body.textContent).toContain('Customized instructions');
-      await ui.click('Import from file…'); await ui.click('Keep current instructions');
+      await ui.click('Import Homie pack…'); await ui.click('Keep current instructions');
       await ui.click('Apply package update to draft');
       expect(field('Agent instructions').value).toBe('Updated rules');
       expect(document.querySelector('[aria-label="Allow agent commands"]')?.getAttribute('aria-checked')).toBe('false');
@@ -111,18 +111,18 @@ test('cancelled and failed imports preserve drafts and late results after unmoun
   const deferred = registryDeferred<null>();
   let mode = 'cancel';
   const model = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [] }), models: async () => [],
-    packages: async () => [], importPackage: async () => { if (mode === 'fail') throw Error('Invalid package'); return mode === 'pending' ? deferred.promise : null; },
+    installPackage: async value => value, packages: async () => [], importPackage: async () => { if (mode === 'fail') throw Error('Invalid package'); return mode === 'pending' ? deferred.promise : null; },
     save: async () => { throw Error('unused'); }, onDidChange: () => () => {} });
   await model.refresh();
   try {
     await withDOM(async ui => {
       await ui.render(<SpecialistAgentForm model={model} state={model.snapshot()} />);
       await ui.type('Agent name', 'Keep draft');
-      await ui.click('Import from file…'); expect(field('Agent name').value).toBe('Keep draft');
-      mode = 'fail'; await ui.click('Import from file…');
+      await ui.click('Import Homie pack…'); expect(field('Agent name').value).toBe('Keep draft');
+      mode = 'fail'; await ui.click('Import Homie pack…');
       expect(document.querySelector('[role="alert"]')?.textContent).toContain('Invalid package');
       expect(field('Agent name').value).toBe('Keep draft');
-      mode = 'pending'; await ui.click('Import from file…');
+      mode = 'pending'; await ui.click('Import Homie pack…');
       expect(document.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
       await ui.render(null); await act(async () => deferred.resolve(null));
       expect(document.querySelector('form')).toBeNull();

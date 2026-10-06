@@ -678,3 +678,61 @@ test('user questions are durable chronological messages with a stable receipt an
   const saved = new ChatsStore(f.filename).snapshot(f.workspace).messages.filter(m => m.userQuestion);
   expect(saved).toHaveLength(1); expect(saved[0]).toMatchObject({ id: first.id, createdAt: first.createdAt, userQuestion: { answered: true } });
 });
+
+
+function participantChange(f: ReturnType<typeof fixture>, members: string[], defaultAgentId: string) {
+  const room = f.request({ action: 'list' }).rooms[0]!;
+  return { action: 'participants' as const, roomId: room.id, members, defaultAgentId,
+    expectedMembers: room.members.map(member => member.id), expectedDefaultAgentId: room.defaultAgentId };
+}
+
+test('participant removal preserves completed history across restart and blocks new delivery and relay', async () => {
+  const f = fixture(); f.send('old', { recipient: 'planner', goal: false }); await f.service.tick();
+  f.details.tasks[0]!.status = 'completed'; f.details.tasks[0]!.output = 'Historical response';
+  await f.service.tick();
+  const before = f.request({ action: 'list' });
+  const after = f.request(participantChange(f, ['dev'], 'dev'));
+  expect(after.rooms[0]!.members.map(m => m.id)).toEqual(['dev']);
+  expect(after.rooms[0]!.formerMembers).toEqual([before.rooms[0]!.members[1]!]);
+  expect(after.messages).toEqual(before.messages);
+  expect(new ChatsStore(f.filename).snapshot(f.workspace).messages).toEqual(before.messages);
+  expect(createAgentChats(f.options).request(f.workspace, { action: 'list' }).rooms[0]!.formerMembers).toEqual(after.rooms[0]!.formerMembers);
+  expect(f.agents).toHaveLength(3);
+  expect(() => f.send('removed', { recipient: 'planner' })).toThrow('participant');
+  const binding = bindingFor(f.workspace, 'docker:test', 'dev', 'account-0');
+  expect(f.service.rooms.roster(binding).room).toEqual(['dev']);
+  expect(f.service.rooms.allowed(binding, { id: 'q', questionId: 'q', taskId: before.messages[0]!.taskId!, from: 'dev', to: 'planner', roomId: 'room', kind: 'question', text: 'Help' })).toBe(false);
+  f.agents[1]!.accountId = 'new-account';
+  expect(() => f.request(participantChange(f, ['dev', 'planner'], 'dev'))).toThrow('earlier account');
+  expect(() => f.request({ action: 'invite', roomId: 'room', members: ['dev', 'planner'], defaultAgentId: 'dev' })).toThrow('earlier account');
+  f.agents[1]!.accountId = 'account-1';
+  const restored = f.request(participantChange(f, ['dev', 'planner'], 'planner'));
+  expect(restored.rooms[0]!.members[1]).toEqual(before.rooms[0]!.members[1]);
+  expect(restored.rooms[0]!.formerMembers).toEqual([]);
+});
+
+test('participant updates reject concurrent changes, unavailable defaults and unresolved work atomically', () => {
+  const f = fixture(), change = participantChange(f, ['dev'], 'dev');
+  f.request({ action: 'invite', roomId: 'room', members: ['dev', 'planner', 'outside'], defaultAgentId: 'dev' });
+  const before = f.request({ action: 'list' });
+  expect(() => f.request(change)).toThrow('Participants changed');
+  expect(f.request({ action: 'list' })).toEqual(before);
+  expect(() => f.request(participantChange(f, ['planner'], 'dev'))).toThrow('default agent');
+  f.agents[1]!.accountId = 'replacement';
+  expect(() => f.request(participantChange(f, ['planner'], 'planner'))).toThrow('identity is unavailable');
+  f.send('queued');
+  const queued = f.request({ action: 'list' });
+  expect(() => f.request(participantChange(f, ['dev'], 'dev'))).toThrow('pending or unresolved');
+  expect(f.request({ action: 'list' })).toEqual(queued);
+});
+
+test('participant persistence failures retain membership and malformed archived identities are rejected', () => {
+  const f = fixture(), before = readFileSync(f.filename, 'utf8'), change = participantChange(f, ['dev'], 'dev');
+  mkdirSync(`${f.filename}.tmp`);
+  expect(() => f.request(change)).toThrow();
+  expect(readFileSync(f.filename, 'utf8')).toBe(before);
+  expect(f.request({ action: 'list' }).rooms[0]!.members.map(m => m.id)).toEqual(['dev', 'planner']);
+  const snapshot = f.request({ action: 'list' });
+  expect(() => parseChatsSnapshot({ ...snapshot, rooms: [{ ...snapshot.rooms[0], formerMembers: [snapshot.rooms[0]!.members[0]] }] })).toThrow('Duplicate room identity');
+  expect(() => parseChatsRequest({ ...change, expectedMembers: null })).toThrow('previous participants');
+});

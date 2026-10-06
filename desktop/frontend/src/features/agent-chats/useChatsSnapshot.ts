@@ -13,7 +13,7 @@ interface State {
 /** Keep acknowledged data visible while refreshing; never interpret a failed read as an empty room list. */
 export function createChatsSnapshotStore(api?: AgentChatsApi) {
   let state: State = { snapshot: { rooms: [], messages: [] }, phase: api ? 'loading' : 'error', loaded: false,
-    refreshing: false, error: api ? null : 'Restart the desktop app to load Chats.' };
+    refreshing: false, error: api ? null : 'Restart the desktop app to load Worker.' };
   let pending: Promise<void> | null = null, revision = 0, mutations = 0, needsSync = false;
   const listeners = new Set<() => void>();
   const publish = (changes: Partial<State>) => { state = { ...state, ...changes }; listeners.forEach(listener => listener()); };
@@ -36,7 +36,7 @@ export function createChatsSnapshotStore(api?: AgentChatsApi) {
     pending = Promise.resolve().then(() => api.request({ action: 'list' })).then(data => {
       if (started === revision) accept(data);
     }, error => {
-      if (started === revision) publish({ phase: 'error', error: error instanceof Error ? error.message : 'Could not load Chats.' });
+      if (started === revision) publish({ phase: 'error', error: error instanceof Error ? error.message : 'Could not load Worker.' });
     }).finally(() => {
       pending = null; publish({ refreshing: false });
       // A mutation invalidates the in-flight list, even if that list arrives last.
@@ -45,7 +45,7 @@ export function createChatsSnapshotStore(api?: AgentChatsApi) {
     return pending;
   };
   const request = async (input: ChatsRequest): Promise<ChatsSnapshot> => {
-    if (!api) throw new Error('Restart the desktop app to load Chats.');
+    if (!api) throw new Error('Restart the desktop app to load Worker.');
     mutations++; revision++;
     try {
       const data = await api.request(input);

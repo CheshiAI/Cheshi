@@ -45,7 +45,7 @@ test('rail management items retain their order and destinations', () => {
   const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 10);
   expect(navigation.map(element => element.props.label)).toEqual([
       'Codex', 'Terminal', 'Relationship Graph', 'Memo', 'Calendar',
-      'Github', 'Plugins', 'Chats', 'Docker', 'Settings',
+      'Github', 'Plugins', 'Worker', 'Docker', 'Settings',
     ]);
   for (const element of navigation) if (element.props.label !== 'Codex') element.props.onClick?.();
   expect(destinations).toEqual(['terminal', 'codegraph', 'notes', 'calendar', 'git', 'plugins', 'chats', 'docker', 'settings']);

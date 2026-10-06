@@ -88,6 +88,3 @@
     transition: none;
   }
 }
-
-.homiesSlot { --review-width: var(--sidebar-width); }
-.homiesSlot .reviewContent { border-left: 1px solid var(--divider); box-sizing: border-box; }

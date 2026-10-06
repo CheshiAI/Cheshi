@@ -1,4 +1,5 @@
-import { Bot, MessagesSquare, Pin, PinOff, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { Pin, PinOff, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { WorkerIcon } from '../../shared/ui/WorkerIcon';
 import { useMemo, useRef, useState } from 'react';
 import type { ChatsSnapshot } from '../../../../shared/agent-chats';
 import { LoadingState, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader } from '../../shared/ui';
@@ -12,11 +13,11 @@ import searchStyles from '../chat/ChatHistorySearch.module.css';
 import styles from './ChatsRoomList.module.css';
 import type { ChatsLoadPhase } from './useChatsSnapshot';
 
-export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing, disabled, error, pinningRoomId, onPin, onDelete, onSelect, onNew, onRefresh, onManageHomies }: {
+export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing, disabled, error, pinningRoomId, onPin, onDelete, onSelect, onNew, onRefresh }: {
   snapshot: ChatsSnapshot; selectedId: string | null; phase: ChatsLoadPhase; loaded: boolean; refreshing: boolean; disabled: boolean; error: string | null;
   onSelect(id: string): void; onNew(): void; onRefresh(): void;
   pinningRoomId: string | null; onPin(id: string, pinned: boolean): void;
-  onDelete?(id: string): void; onManageHomies?(): void;
+  onDelete?(id: string): void;
 }) {
   const [query, setQuery] = useState('');
   const searchInput = useRef<HTMLInputElement>(null);
@@ -28,9 +29,8 @@ export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing,
     return { room, preview: latest?.text ?? 'No messages yet', updated: Date.parse(latest?.createdAt ?? room.createdAt) };
   }).sort((a, b) => Number(b.room.pinned === true) - Number(a.room.pinned === true) || b.updated - a.updated), [snapshot]);
   const visible = rooms.filter(({ room }) => room.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
-  return <section className={`${sessionStyles.root} ${styles.root}`} aria-label="Chats rooms">
-    <SidebarPanelHeader title="CHATS" icon={<MessagesSquare aria-hidden="true" />} actions={<>
-      {onManageHomies && <TooltipButton size="icon" aria-label="Manage Homies" title="Manage Homies" onClick={onManageHomies}><Bot aria-hidden="true" /></TooltipButton>}
+  return <section className={`${sessionStyles.root} ${styles.root}`} aria-label="Worker rooms">
+    <SidebarPanelHeader title="WORKER" icon={<WorkerIcon />} actions={<>
       <TooltipButton size="icon" aria-label="Refresh rooms" title="Refresh rooms" disabled={disabled || refreshing} onClick={onRefresh}><RefreshCw aria-hidden="true" /></TooltipButton>
       <TooltipButton size="icon" aria-label="New room" title="New room" disabled={disabled} onClick={onNew}><Plus aria-hidden="true" /></TooltipButton>
     </>} />
@@ -61,7 +61,7 @@ export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing,
             }]} /></div>
           </div>)}
           {!loaded && phase === 'loading' && <LoadingState className={sessionStyles.loading} label="Loading rooms…" />}
-          {loaded && phase !== 'error' && !visible.length && <p className={`${styles.notice} ${styles.empty}`}>{query.trim() ? 'No matching rooms.' : 'Create a room and invite your agents to begin.'}</p>}
+          {loaded && phase !== 'error' && !visible.length && <p className={`${styles.notice} ${styles.empty}`}>{query.trim() ? 'No matching rooms.' : 'Create a work room and invite your Homies to begin.'}</p>}
         </nav>
       </OverlayScrollArea>
     </div>

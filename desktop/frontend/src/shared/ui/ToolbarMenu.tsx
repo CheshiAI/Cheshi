@@ -55,10 +55,11 @@ function MenuContents({ anchor, id, label, items, onClose }: {
   </div>, anchor.ownerDocument.body);
 }
 
-export function ToolbarMenu({ label, items, raised = false }: {
+export function ToolbarMenu({ label, items, raised = false, disabled = false }: {
   label: string;
   items: readonly ToolbarMenuItem[];
   raised?: boolean;
+  disabled?: boolean;
 }) {
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
@@ -68,7 +69,7 @@ export function ToolbarMenu({ label, items, raised = false }: {
     if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true });
   }, []);
   return <>
-    <NeumorphicButton size="icon" raised={raised} aria-label={label} title={label}
+    <NeumorphicButton size="icon" raised={raised} disabled={disabled} aria-label={label} title={label}
       aria-haspopup="menu" aria-expanded={!!anchor} aria-controls={anchor ? id : undefined}
       onPointerDown={event => { if (anchor) event.stopPropagation(); }}
       onClick={event => {

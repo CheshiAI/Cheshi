@@ -22,9 +22,6 @@
 .agentRow { display: flex; box-sizing: border-box; width: 100%; min-width: 0; align-items: center; padding-right: var(--space-default); gap: var(--icon-default); background: var(--control-surface-ghost); transition: background-color var(--button-transition-duration) ease; }
 .agentRow[data-selected='true'] { background: var(--control-surface); }
 .agentRow:has(.agent:not(:disabled)):is(:hover, :active) { background: var(--control-surface-interactive); }
-.workerActions { display: flex; flex: 0 0 auto; align-items: center; gap: var(--icon-default); }
-.containerIndicator { display: inline-flex; flex: 0 0 var(--icon-button-size); align-items: center; justify-content: center; width: var(--icon-button-size); height: var(--icon-button-size); border-radius: 50%; background: var(--control-surface); color: var(--text); }
-.containerIndicator > svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); stroke-width: var(--icon-button-stroke-width); }
 .notice:not(:empty) { padding: var(--space-default); }
 .agent[data-variant='ghost'] {
   width: 100%;
@@ -63,3 +60,17 @@
 }
 
 .recovery { display: flex; flex: 1 0 var(--sidebar-width); min-height: 0; }
+
+.detailHeader[data-inline='true'] { padding: 0; border: 0; width: 100%; }
+.detailHeader[data-inline='true'] .runtimeActions { flex-wrap: wrap; }
+
+.workerActions { display: flex; flex: 0 0 auto; align-items: center; gap: var(--icon-default); }
+.containerIndicator { display: inline-flex; flex: 0 0 var(--icon-button-size); align-items: center; justify-content: center; width: var(--icon-button-size); height: var(--icon-button-size); border-radius: 50%; background: var(--control-surface); color: var(--text); }
+.containerIndicator > svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); stroke-width: var(--icon-button-stroke-width); }
+
+.participationCheckbox { flex: 0 0 auto; margin-left: var(--space-default); cursor: pointer; }
+.participationCheckbox:disabled { cursor: default; }
+.participation { display: flex; flex-direction: column; gap: var(--space-default); padding: var(--space-default); border-top: 1px solid var(--divider); flex: 0 1 auto; overflow: auto; }
+.participation label { display: flex; flex-direction: column; gap: var(--icon-default); }
+.participation p { margin: 0; color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
+.roomName { font-size: var(--font-size-label); overflow-wrap: anywhere; }

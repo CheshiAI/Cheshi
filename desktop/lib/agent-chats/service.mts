@@ -149,13 +149,35 @@ export function createAgentChats(options: Options) {
         }
         s.rooms.push({ id: input.id, workspace, name: input.name, engineId: input.engineId, defaultAgentId: input.defaultAgentId, members: selected, createdAt: new Date().toISOString() });
       });
-    } else if (input.action === 'invite') {
+    } else if (input.action === 'invite' || input.action === 'participants') {
       const room = roomFor(workspace, input.roomId);
-      if (room.members.some(m => !input.members.includes(m.id))) throw new Error('Existing room identities must be retained.');
+      const removing = room.members.some(m => !input.members.includes(m.id));
+      if (input.action === 'invite' && removing) throw new Error('Existing room identities must be retained.');
+      if (input.action === 'participants') {
+        if (room.defaultAgentId !== input.expectedDefaultAgentId
+          || JSON.stringify(room.members.map(m => m.id).sort()) !== JSON.stringify([...input.expectedMembers].sort())) {
+          throw new Error('Participants changed. Reload before saving.');
+        }
+        const state = store().all();
+        if (removing && (room.members.some(member => inspecting.has(keyFor(room, member.id)))
+          || state.jobs.some(job => job.roomId === room.id && ['queued', 'sending', 'unknown'].includes(job.state))
+          || state.messages.some(message => message.roomId === room.id && message.sender === 'user'
+            && (message.taskId || message.relatedTask) && !isRoomWorkSettled(message.status)))) {
+          throw new Error('This room has pending or unresolved work. Finish or inspect it before removing participants.');
+        }
+      }
       // Historical membership survives deletion or account changes; inviting must never rebind it.
-      const selected = input.members.map(id => room.members.find(m => m.id === id) ?? members(workspace, [id])[0]!);
+      const selected = input.members.map(id => {
+        const existing = room.members.find(m => m.id === id);
+        if (existing) return existing;
+        const registered = members(workspace, [id])[0]!;
+        const former = room.formerMembers?.find(m => m.id === id);
+        if (former && former.accountId !== registered.accountId) throw new Error('This room retains an earlier account identity. Restore that account before rejoining.');
+        return former ?? registered;
+      });
+      const formerMembers = [...(room.formerMembers ?? []), ...room.members].filter(member => !input.members.includes(member.id));
       if (room.members.some(m => m.id === input.defaultAgentId)) assertCurrentMember(room, input.defaultAgentId);
-      store().update(s => { Object.assign(s.rooms.find(r => r.id === room.id)!, { members: selected, defaultAgentId: input.defaultAgentId }); });
+      store().update(s => { Object.assign(s.rooms.find(r => r.id === room.id)!, { members: selected, formerMembers, defaultAgentId: input.defaultAgentId }); });
     } else if (input.action === 'send') {
       const room = roomFor(workspace, input.roomId), state = store().all();
       const replied = input.replyTo ? state.messages.find(m => m.id === input.replyTo && m.roomId === room.id) : undefined;
@@ -218,7 +240,7 @@ export function createAgentChats(options: Options) {
           prompt, goal: input.goal, ...(resume ? { inputId: input.id } : {}), state: 'queued', error: null });
       });
     }
-    if (input.action !== 'list') { notify(); if (input.action === 'create' || input.action === 'invite') options.roomChanged?.(); }
+    if (input.action !== 'list') { notify(); if (input.action === 'create' || input.action === 'invite' || input.action === 'participants') options.roomChanged?.(); }
     if (failure) throw new Error(failure);
     return snapshot(workspace);
   }

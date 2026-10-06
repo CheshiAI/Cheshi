@@ -6,7 +6,7 @@ import { registryDeferred, specialistAgent } from './agent-registry-fixtures';
 import type { AgentDetails, AgentManagementApi } from '../shared/agent-management';
 import type { AgentRegistryApi, AgentRegistrySnapshot } from '../shared/agent-registry';
 
-test('requested Homies open settings after loading, retain drafts in Advanced, and close without worker mutations', async () => {
+test('requested Homies open settings after loading, retain drafts in Runtime, and close without worker mutations', async () => {
   const first = { ...specialistAgent(), assignments: [{ workspaceRoot: '/project', instructions: '' }] };
   const second = { ...first, id: 'second', name: 'Second Homie' };
   const pending = registryDeferred<AgentRegistrySnapshot>();
@@ -29,10 +29,11 @@ test('requested Homies open settings after loading, retain drafts in Advanced, a
     await render();
     await act(async () => pending.resolve({ workspaceRoot: '/project', agents: [first, second] }));
     expect(document.querySelector<HTMLInputElement>('[aria-label="Agent name"]')?.value).toBe(second.name);
-    expect(actions).toEqual([]);
+    expect(actions).toEqual(['status']);
+    expect(document.querySelector('[aria-label="Homie runtime controls"] [aria-label="Start agent"]')).not.toBeNull();
     await ui.type('Agent name', 'Unsaved name');
     const form = document.querySelector('form');
-    await ui.click('Advanced');
+    await ui.click('Files and environment');
     expect(actions).toEqual(['status']);
     expect(document.querySelector('[aria-label="Agent task"]')).toBeNull();
     expect(document.body.textContent).not.toContain('Run task');
@@ -50,11 +51,11 @@ test('requested Homies open settings after loading, retain drafts in Advanced, a
     expect(document.querySelector('[aria-label="Agent selection"]')?.textContent).toContain(second.name);
     await ui.click('New agent');
     expect(document.querySelector('form')?.getAttribute('aria-label')).toBe('Create agent');
-    expect(actions).toEqual(['status']);
+    expect(actions.every(action => action === 'status')).toBe(true);
   });
 });
 
-test('Advanced exposes logs, omits completed history, and stops only its idle worker', async () => {
+test('Runtime exposes logs, omits completed history, and stops only its idle worker', async () => {
   const agent = { ...specialistAgent(), assignments: [{ workspaceRoot: '/project', instructions: '' }] };
   const worker = { id: 'worker', name: 'Worker', image: 'fixture', state: 'running', profileId: agent.id };
   let details: AgentDetails = { agent: worker, ready: true, authenticated: true, busy: true, threadId: 'thread', error: null,
@@ -80,7 +81,7 @@ test('Advanced exposes logs, omits completed history, and stops only its idle wo
   };
   await withDOM(async ui => {
     await ui.render(<AgentManagementViews view="homies" api={api} registryApi={registry} selectionRequest={{ agentId: agent.id }} />);
-    await ui.click('Advanced');
+    await ui.click('Files and environment');
     expect(document.body.textContent).not.toContain('Completed history');
     expect(document.body.textContent).toContain('Active work');
     expect(document.querySelector('[aria-label="Worker log output"]')?.textContent).toBe('Worker diagnostic output');

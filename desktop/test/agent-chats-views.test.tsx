@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import { expect, test } from 'bun:test';
-import { act } from 'react';
+import { act, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { withDOM } from './agent-chats-test-dom';
 import { specialistAgent } from './agent-registry-fixtures';
 import { GoalQuestions } from '../frontend/src/features/agent-chats/GoalQuestions';
 import { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
-import { RoomDialog } from '../frontend/src/features/agent-chats/RoomDialog';
 import { VoiceDialog } from '../frontend/src/features/agent-chats/VoiceDialog';
 import type { VoiceRequest, VoiceSnapshot } from '../shared/agent-voice';
 import { AgentTaskResults } from '../frontend/src/features/agents/AgentTaskResults';
@@ -18,18 +18,38 @@ const snapshot = (): ChatsSnapshot => ({ rooms: [{ id: 'room', workspace: '/proj
   { id: 'goal', roomId: 'room', threadId: null, sender: 'user', recipient: 'dev', kind: 'goal', text: 'Build login', createdAt: '2026-10-03T00:00:00Z', taskId: 'task', status: 'waiting' },
   { id: 'reply', roomId: 'room', threadId: 'goal', sender: 'dev', recipient: null, kind: 'message', text: 'Waiting for design', createdAt: '2026-10-03T00:01:00Z', taskId: 'task', status: 'waiting' },
 ] });
-test('Chats opens Homie management from its header and participants without submitting or losing a draft', async () => {
+test('Worker opens Homie management from its right tools rail and participants and preserves the hidden conversation', async () => {
   await withDOM(async ui => {
     const requests: ChatsRequest[] = [], selections: (string | undefined)[] = [];
     const api = { request: async (request: ChatsRequest) => { requests.push(request); return snapshot(); } };
-    await ui.render(<ChatsView active api={api} onManageHomies={id => selections.push(id)} />);
+    const render = (active = true) => ui.render(<ChatsView active={active} api={api} onManageHomies={id => selections.push(id)} />);
+    await render();
     await ui.type('Message', 'Keep the room draft');
     const timeline = document.querySelector('[aria-label="Room messages"]');
-    await ui.click('Manage Homies');
+    expect(document.querySelector('[aria-label="Worker rooms"] [aria-label="Manage Homies"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Worker"] header [aria-label="Manage Homies"]')).toBeNull();
+    const manage = document.querySelector<HTMLButtonElement>('[aria-label="Room tools"] [aria-label="Manage Homies"]')!;
+    await act(async () => manage.click());
     await ui.click('Manage Homie: Development');
     expect(selections).toEqual([undefined, 'dev']);
+    await render(false);
+    expect(document.querySelector<HTMLElement>('[aria-label="Worker"]')?.hidden).toBe(true);
+    await render();
+    expect(document.querySelector<HTMLElement>('[aria-label="Worker"]')?.hidden).toBe(false);
     expect(document.querySelector('[aria-label="Room messages"]')).toBe(timeline);
     expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')?.value).toBe('Keep the room draft');
+    expect(requests.every(request => request.action === 'list')).toBe(true);
+  });
+});
+test('Worker offers Homie management before a room exists with the room sidebar hidden', async () => {
+  await withDOM(async ui => {
+    const requests: ChatsRequest[] = [];
+    let opened = 0;
+    await ui.render(<ChatsView active sidebarTarget={null} onManageHomies={() => { opened++; }}
+      api={{ request: async request => { requests.push(request); return { rooms: [], messages: [] }; } }} />);
+    expect(document.querySelector('[aria-label="Worker rooms"]')).toBeNull();
+    await ui.click('Manage Homies');
+    expect(opened).toBe(1);
     expect(requests.every(request => request.action === 'list')).toBe(true);
   });
 });
@@ -53,17 +73,18 @@ test('phone dialog binds pairing to this room and requires explicit approval bef
     await ui.click('Unlink'); expect(requests.at(-1)).toEqual({ action: 'revoke', id: 'device' });
   });
 });
-test('room tools open their existing dialogs and preserve the conversation draft', async () => {
+test('header phone opens its dialog without a separate participants popup and preserves the draft', async () => {
   await withDOM(async ui => {
     const requests: ChatsRequest[] = [];
     const api = { request: async (request: ChatsRequest) => { requests.push(request); return snapshot(); } };
     await ui.render(<ChatsView active api={api} />);
     const rail = document.querySelector('[aria-label="Room tools"]')!;
     expect([...rail.querySelectorAll('button')].map(button => button.getAttribute('aria-label')))
-      .toEqual(['Phone calls', 'Room participants']);
+      .toEqual([]);
+    expect(document.querySelector('[aria-label="Worker"] header [aria-label="Phone calls"]')).not.toBeNull();
     await ui.type('Message', 'Keep this draft');
     const timeline = document.querySelector('[aria-label="Room messages"]');
-    for (const label of ['Phone calls', 'Room participants']) {
+    for (const label of ['Phone calls']) {
       await ui.click(label);
       const dialog = document.querySelector('dialog')!;
       expect(dialog.textContent).toContain(label);
@@ -171,7 +192,7 @@ test('linked task detail opens when its delayed worker results arrive and return
     expect(document.body.textContent).toContain('linked task is not available');
     await ui.render(<AgentTaskResults tasks={[{ id: 'task', prompt: 'Build login', status: 'completed', createdAt: '2026-10-03T00:00:00Z', output: 'Verified login', error: null }]} requestedTaskId="task" onBackToChats={back} loading={false} running />);
     expect(document.body.textContent).toContain('Verified login');
-    await ui.click('Back to Chats'); expect(returned).toBe(true);
+    await ui.click('Back to Worker'); expect(returned).toBe(true);
   });
 });
 
@@ -242,46 +263,6 @@ test('new room invites an assigned agent and requires an explicit call to delive
     expect(requests.find(r => r.action === 'send')).toMatchObject({ recipient: agent.id, goal: false, automatic: true });
     expect(document.querySelector('[aria-label="Message type"]')).toBeNull();
     expect(document.body.textContent).not.toContain('New goal');
-  });
-});
-
-test.each(['deleted', 'account-replaced'])('room settings retain an unavailable %s participant and allow a new default', async reason => {
-  await withDOM(async ui => {
-    const room = snapshot().rooms[0]!;
-    const newcomer = { ...specialistAgent(), id: 'new', name: 'New agent', accountId: 'new-account' };
-    const replacement = { ...specialistAgent(), id: 'dev', name: 'Replacement', accountId: 'other-account' };
-    const requests: ChatsRequest[] = [];
-    await ui.render(<RoomDialog room={room} agents={reason === 'deleted' ? [newcomer] : [replacement, newcomer]} engines={[]}
-      onSave={async request => { requests.push(request); }} onClose={() => {}} />);
-    const old = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
-    expect(old.checked).toBe(true); expect(old.disabled).toBe(true);
-    expect(old.closest('label')?.textContent).toContain('Development · Unavailable');
-    expect(document.body.textContent).not.toContain('Replacement');
-    expect(document.querySelector<HTMLButtonElement>('[aria-label="Default agent"]')?.disabled).toBe(true);
-    await ui.click('Save participants'); expect(requests).toHaveLength(0);
-    const added = document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1]!;
-    await act(async () => added.click());
-    await ui.click('Default agent');
-    const options = [...document.querySelectorAll('[role="menuitemradio"]')];
-    expect(options.map(e => e.textContent)).toEqual(['New agent']);
-    await ui.click('New agent');
-    await ui.click('Save participants');
-    expect(requests).toEqual([{ action: 'invite', roomId: 'room', members: ['dev', 'new'], defaultAgentId: 'new' }]);
-  });
-});
-
-test('room settings recheck a default whose account changes while the dialog is open', async () => {
-  await withDOM(async ui => {
-    const room = snapshot().rooms[0]!, requests: ChatsRequest[] = [];
-    const render = (accountId: string) => ui.render(<RoomDialog room={room} agents={[{ ...specialistAgent(), id: 'dev', name: 'Development', accountId }]} engines={[]}
-      onSave={async request => { requests.push(request); }} onClose={() => {}} />);
-    await render('account');
-    expect(document.querySelector<HTMLButtonElement>('[aria-label="Default agent"]')?.disabled).toBe(false);
-    await render('replacement');
-    expect(document.body.textContent).toContain('Unavailable');
-    await ui.click('Save participants'); expect(requests).toHaveLength(0);
-    await render('account'); await ui.click('Save participants');
-    expect(requests).toHaveLength(1);
   });
 });
 
@@ -656,8 +637,8 @@ test('Chats portals its room list and preserves drafts, filtering and scroll acr
     let opened = 0;
     const render = (active: boolean) => ui.render(<ChatsView active={active} sidebarTarget={target} onOpenRoom={() => { opened++; }} api={api} />);
     await render(true);
-    expect(target.querySelector('[aria-label="Chats rooms"]')).not.toBeNull();
-    expect(document.querySelector('[aria-label="Agent chats"] [aria-label="Chats rooms"]')).toBeNull();
+    expect(target.querySelector('[aria-label="Worker rooms"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Worker"] [aria-label="Worker rooms"]')).toBeNull();
     await ui.type('Message', 'Keep login draft');
     const timeline = document.querySelector('[aria-label="Room messages"]') as HTMLElement;
     Object.defineProperty(timeline, 'scrollHeight', { configurable: true, value: 1000 });
@@ -733,11 +714,13 @@ test('empty Chats keeps room tools visible and enables them only after a room is
     const api = { request: async () => data };
     await ui.render(<ChatsView active api={api} />);
     const conversation = document.querySelector('[aria-label="Room conversation"]')!;
-    expect(conversation.textContent).toContain('Start a conversation');
-    expect(conversation.textContent).toContain('Select a room in Chats, or create one');
+    expect(conversation.textContent).toContain('Start working with your Homies');
+    expect(conversation.textContent).toContain('Select a room in Worker, or create one');
     const rail = document.querySelector('[aria-label="Room tools"]')!;
-    const buttons = [...rail.querySelectorAll('button')];
-    expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['Phone calls', 'Room participants']);
+    const buttons = [...conversation.querySelectorAll<HTMLButtonElement>('header [aria-label="Phone calls"]')];
+    expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['Phone calls']);
+    expect(rail.querySelector('button')).toBeNull();
+    expect(document.querySelector('[aria-label="Worker"] header [aria-label="Phone calls"]')).not.toBeNull();
     for (const button of buttons) {
       expect(button.disabled).toBe(true);
       await ui.click(button.getAttribute('aria-label')!);
@@ -746,10 +729,10 @@ test('empty Chats keeps room tools visible and enables them only after a room is
     data = snapshot(); await ui.click('Refresh rooms');
     expect(document.querySelector('[aria-label="Room tools"]')).toBe(rail);
     expect(buttons.every(button => !button.disabled)).toBe(true);
-    expect(conversation.textContent).not.toContain('Start a conversation');
+    expect(conversation.textContent).not.toContain('Start working with your Homies');
     expect(document.querySelector('[aria-label="Room messages"]')?.hasAttribute('hidden')).toBe(false);
     data = { rooms: [], messages: [] }; await ui.click('Refresh rooms');
-    expect(conversation.textContent).toContain('Start a conversation');
+    expect(conversation.textContent).toContain('Start working with your Homies');
     expect(buttons.every(button => button.disabled)).toBe(true);
   });
 });
@@ -762,8 +745,8 @@ test('offscreen Chats starts one initial read and never displays an empty-room n
     await render(false);
     expect(reads).toBe(1);
     expect(document.querySelector('[role="status"][aria-label="Loading rooms…"]')).not.toBeNull();
-    expect(document.body.textContent).not.toContain('Create a room and invite');
-    expect(document.body.textContent).not.toContain('Start a conversation');
+    expect(document.body.textContent).not.toContain('Create a work room and invite');
+    expect(document.body.textContent).not.toContain('Start working with your Homies');
     await render(true); await render(false); expect(reads).toBe(1);
     await act(async () => { pending.resolve(snapshot()); await pending.promise; });
     await render(true);
@@ -778,13 +761,13 @@ test('first-load failure shows the error and retry, not a create-room invitation
     const api = { request: async () => { if (fail) throw new Error('Room service unavailable'); return { rooms: [], messages: [] }; } };
     await ui.render(<ChatsView active api={api} />);
     expect(document.body.textContent).toContain('Room service unavailable');
-    expect(document.querySelector('[aria-label="Room conversation"]')?.textContent).toContain('Could not load Chats');
-    expect(document.body.textContent).not.toContain('Start a conversation');
-    expect(document.body.textContent).not.toContain('Create a room and invite');
+    expect(document.querySelector('[aria-label="Room conversation"]')?.textContent).toContain('Could not load Worker');
+    expect(document.body.textContent).not.toContain('Start working with your Homies');
+    expect(document.body.textContent).not.toContain('Create a work room and invite');
     expect((document.querySelector('[aria-label="Refresh rooms"]') as HTMLButtonElement).disabled).toBe(false);
     fail = false; await ui.click('Refresh rooms');
     expect(document.body.textContent).not.toContain('Room service unavailable');
-    expect(document.body.textContent).toContain('Create a room and invite');
+    expect(document.body.textContent).toContain('Create a work room and invite');
   });
 });
 
@@ -872,5 +855,53 @@ test('legacy questions recover exact reply links without an unavailable-work act
     expect(document.querySelector('[aria-label="Room messages"]')?.textContent).not.toContain('Awaiting reply');
     expect(document.querySelector('[aria-label="Work records"]')).toBeNull();
     expect(document.querySelector('[aria-label="Current agent activity"]')).toBeNull();
+  });
+});
+
+
+test('Homies slides inside Worker before its fixed tools rail and closes through the trigger or Escape', async () => {
+  const api = { request: async () => snapshot() };
+  function Harness() {
+    const [open, setOpen] = useState(false);
+    const [target, setTarget] = useState<HTMLDivElement | null>(null);
+    return <>
+      <ChatsView active api={api} homiesOpen={open} onHomiesTarget={setTarget}
+        onManageHomies={() => setOpen(value => !value)} onCloseHomies={() => setOpen(false)} />
+      {target && createPortal(<button onKeyDown={event => {
+        if (event.key === 'Escape' && event.shiftKey) event.preventDefault();
+      }}>Sidebar content</button>, target)}
+    </>;
+  }
+  await withDOM(async ui => {
+    await ui.render(<Harness />);
+    await ui.type('Message', 'Keep sliding draft');
+    const timeline = document.querySelector('[aria-label="Room messages"]');
+    const rail = document.querySelector('[aria-label="Room tools"]')!;
+    const panel = document.querySelector<HTMLElement>('[aria-label="Homies sidebar"]')!;
+    const trigger = document.querySelector<HTMLButtonElement>('[aria-label="Manage Homies"]')!;
+    expect(panel.parentElement?.nextElementSibling).toBe(rail);
+    expect(panel.closest('[aria-label="Worker"]')).not.toBeNull();
+    expect(panel.getAttribute('aria-hidden')).toBe('true');
+    await ui.click('Manage Homies');
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(panel.hasAttribute('inert')).toBe(false);
+    const content = document.getElementById(trigger.getAttribute('aria-controls')!)!.querySelector('button')!;
+    await act(async () => content.dispatchEvent(new window.KeyboardEvent('keydown', {
+      key: 'Escape', shiftKey: true, bubbles: true, cancelable: true,
+    })));
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    await act(async () => {
+      content.focus();
+      content.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(trigger);
+    expect(panel.hasAttribute('inert')).toBe(true);
+    expect(panel.contains(content)).toBe(true);
+    await ui.click('Manage Homies'); await ui.click('Manage Homies');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(document.querySelector('[aria-label="Room tools"]')).toBe(rail);
+    expect(document.querySelector('[aria-label="Room messages"]')).toBe(timeline);
+    expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')?.value).toBe('Keep sliding draft');
   });
 });

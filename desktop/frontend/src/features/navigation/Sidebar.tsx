@@ -43,7 +43,7 @@ export function Sidebar({
             tabs={[
               { id: 'chats', label: 'SESSION', content: chatPanel },
               { id: 'files', label: 'EXPLORER', content: files },
-              { id: 'agent-chats', label: 'CHATS', content: <div ref={chatsPanelRef} className="sidebar-content-primary" /> },
+              { id: 'agent-chats', label: 'WORKER', content: <div ref={chatsPanelRef} className="sidebar-content-primary" /> },
               { id: 'memos', label: 'MEMO', content: <div ref={memoPanelRef} className="sidebar-content-primary" /> },
               { id: 'github', label: 'GITHUB', content: null },
             ]} /> : files}

@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import type { ChatTaskTarget } from '../../../../shared/agent-chats';
 import { Play, RefreshCw, Settings, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -12,7 +13,8 @@ import { ExecutionHealth } from './ExecutionHealth';
 import styles from './AgentsView.module.css';
 import shared from '../../shared/agent-management/agentManagement.module.css';
 
-export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigned, model, engines, engineId, onSettings, onStopWorker }: {
+export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigned, model, engines, engineId, onSettings, onStopWorker, headerTarget }: {
+  headerTarget?: HTMLElement | null;
   chatTask?: ChatTaskTarget | null; onBackToChats?(): void;
   agent: SpecialistAgent; assigned: boolean; model: AgentRegistryModel; engines: AgentEngineInfo[]; engineId: string; onSettings(): void;
   onStopWorker?(engineId: string, workerId: string): Promise<void>;
@@ -91,9 +93,8 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigne
       if (active.current && version === revision.current) { busy.current = false; setPending(false); }
     }
   };
-  return <>
-    <div className={styles.detailHeader}>
-      <h2 className={styles.name}>{agent.name}</h2>
+  const header = <div className={styles.detailHeader} data-inline={headerTarget ? 'true' : undefined}>
+      {!headerTarget && <h2 className={styles.name}>{agent.name}</h2>}
       <span className={shared.description}>{notice ? unavailable?.kind === 'agent-removed' ? 'Agent unavailable' : 'Not assigned' : pending ? 'Processing…' : disconnected ? 'Engine disconnected' : lifecycle === 'sleeping' ? 'Sleeping · wakes on request' : lifecycle === 'starting' ? 'Starting…' : lifecycle === 'disabled' ? 'Manually stopped' : details?.busy ? 'Working' : stoppable?.status === 'waiting' ? 'Waiting for reply' : details?.ready ? 'Ready' : 'Not running'}</span>
       <div className={styles.runtimeActions}>
         <LiquidGlassSelect ariaLabel="Agent execution engine" triggerAppearance="standard" value={engine} disabled={pending || Boolean(notice)}
@@ -108,7 +109,9 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigne
           onClick={() => { void refresh(); }}><RefreshCw aria-hidden="true" /></TooltipButton>
         <TooltipButton variant="ghost" size="icon" title="Agent settings" aria-label="Agent settings" disabled={pending} onClick={onSettings}><Settings aria-hidden="true" /></TooltipButton>
       </div>
-    </div>
+    </div>;
+  return <>
+    {headerTarget ? createPortal(header, headerTarget) : header}
     <div className={styles.detailBody}>
       {notice ? <p className={shared.description} role="status">{notice}</p> : <>
         <div className={styles.section}>
@@ -126,7 +129,7 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigne
         <div className={styles.recovery}>
           <AgentTaskResults key={engine} requestedTaskId={chatTask?.taskId}
             onBackToChats={chatTask ? onBackToChats : undefined} listTitle="Active tasks and recovery"
-            emptyText="No active tasks or recovery items. Work history is available in Chats."
+            emptyText="No active tasks or recovery items. Work history is available in Worker."
             tasks={recoveryTasks} loading={false} running={!disconnected && details?.agent.state === 'running'}
             recoveryDisabled={pending || blocked || !details?.ready || details.busy || Boolean(details.error)}
             onInspectApplication={(taskId, roomId, candidateId, hash) => { void operate('application-inspect', { taskId, roomId, candidateId, hash }); }}

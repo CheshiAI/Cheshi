@@ -23,7 +23,17 @@ export class AgentRegistryModel {
     if (!this.api.runtime) return Promise.reject(new Error('Agent runtime is unavailable. Restart Cheshi.'));
     return this.api.runtime(request);
   };
+  toolCredential = (input: import('../../../../shared/homie-tools').ToolCredentialRequest) => this.api.toolCredential?.(input) ?? Promise.reject(new Error('Restart Cheshi to configure tool credentials.'));
+  testTool = (input: import('../../../../shared/homie-tools').ToolTestRequest) => this.api.testTool?.(input) ?? Promise.reject(new Error('Restart Cheshi to test tools.'));
   models = (accountId: string) => this.api.models(accountId);
+  installPackage = (definition: import('../../../../shared/agent-package').AgentPackage, instructionFiles: string[] = []) => {
+    if (!this.api.installPackage) return Promise.reject(new Error('Pack installation is unavailable. Restart Cheshi.'));
+    return this.api.installPackage(definition, instructionFiles);
+  };
+  exportPackage = (definition: import('../../../../shared/agent-package').AgentPackage, instructionFiles: string[] = []) => {
+    if (!this.api.exportPackage) return Promise.reject(new Error('Pack export is unavailable. Restart Cheshi.'));
+    return this.api.exportPackage(definition, instructionFiles);
+  };
   packages = () => this.api.packages?.() ?? Promise.resolve([]);
   importPackage = () => {
     if (!this.api.importPackage) return Promise.reject(new Error('Package import is unavailable. Restart Cheshi.'));

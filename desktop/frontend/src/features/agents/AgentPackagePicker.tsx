@@ -34,13 +34,13 @@ export function AgentPackagePicker({ profile, model, existing, disabled, onBusy,
   };
   const imported = candidate && !packages.some(item => item.id === candidate.id && item.version === candidate.version);
   return <section className={styles.field} aria-label="Agent package">
-    <h3>Agent package</h3>
+    <h3>Homie pack</h3>
     {profile.package && <p className={styles.description}>
       {profile.package.id} · {profile.package.version} · {profile.instructions === profile.package.instructions ? 'Package instructions' : 'Customized instructions'}
     </p>}
     <LiquidGlassSelect ariaLabel="Official agent package" menuAppearance="toolbar" triggerAppearance="standard"
       value={candidate ? `${candidate.id}@${candidate.version}` : ''} disabled={disabled}
-      options={[{ value: '', label: 'Official packages' }, ...packages.map(item => ({ value: `${item.id}@${item.version}`,
+      options={[{ value: '', label: 'Installed and starter packs' }, ...packages.map(item => ({ value: `${item.id}@${item.version}`,
         label: `${item.name} · ${item.version}`, disabled: Boolean(profile.package && item.id !== profile.package.id) })),
       ...(imported ? [{ value: `${candidate.id}@${candidate.version}`, label: `${candidate.name} · ${candidate.version} (imported)` }] : [])]}
       onChange={value => {
@@ -54,12 +54,13 @@ export function AgentPackagePicker({ profile, model, existing, disabled, onBusy,
       }, reason => {
         if (active.current) setError(reason instanceof Error ? reason.message : 'Could not import package.');
       }).finally(() => { if (active.current) onBusy(false); });
-    }}>Import from file…</NeumorphicButton>
+    }}>Import Homie pack…</NeumorphicButton>
     {candidate && <div className={styles.field} aria-label="Package preview">
       <p className={styles.description}>{candidate.description}</p>
       <p className={styles.description}>{candidate.id} · {profile.package ? `${profile.package.version} → ` : ''}{candidate.version}</p>
       <p className={styles.description}>Default model: {candidate.model.model ?? 'Runtime default'} · {candidate.model.reasoningEffort ?? 'Model default'}</p>
       <p className={styles.description}>Required tools: {candidate.requiredTools.join(', ') || 'None'}</p>
+      <p className={styles.description}>Pack files: {candidate.resources?.files.length ?? 0} · Linux programs: {candidate.resources?.programs.join(', ') || 'None'}</p>
       <p className={styles.description}>Requested permissions: {candidate.requestedPermissions.fileWrite ? 'Modify project files' : 'Read project files'} · {candidate.requestedPermissions.commandExecution ? 'Run commands' : 'No commands'}</p>
       {existing && profile.instructions !== candidate.instructions && <label className={styles.field}>Current instructions
         <NeumorphicTextField variant="standard" multiline readOnly rows={4} aria-label="Current package instructions" value={profile.instructions} />
@@ -72,7 +73,16 @@ export function AgentPackagePicker({ profile, model, existing, disabled, onBusy,
       <p className={styles.description}>{existing
         ? 'Your name, specialty, account, model, project settings and permissions are preserved. Save to apply; worker instructions update at the next Start.'
         : 'Loading fills this draft. Review the account, model and project permissions before creating your Homie.'}</p>
-      <NeumorphicButton variant="standard" disabled={disabled} onClick={() => { onApply(candidate, keepInstructions); setCandidate(null); }}>
+      <NeumorphicButton variant="standard" disabled={disabled} onClick={() => {
+        onBusy(true); setError(null);
+        void model.installPackage(candidate).then(definition => {
+          if (active.current) {
+            setPackages(current => [...current.filter(item => item.id !== definition.id || item.version !== definition.version), definition]);
+            onApply(definition, keepInstructions); setCandidate(null);
+          }
+        }, reason => { if (active.current) setError(reason instanceof Error ? reason.message : 'Could not install pack.'); })
+          .finally(() => { if (active.current) onBusy(false); });
+      }}>
         {profile.package ? 'Apply package update to draft' : 'Load package into draft'}
       </NeumorphicButton>
       <NeumorphicButton variant="ghost" disabled={disabled} onClick={() => setCandidate(null)}>Cancel package preview</NeumorphicButton>

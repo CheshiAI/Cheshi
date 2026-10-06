@@ -20,7 +20,7 @@ export function DeleteRoomDialog({ name, blocked, onDelete, onClose }: {
     className={styles.recordDeletionDialog} closeDisabled={pending} onClose={close}>
     <form className={`${styles.form} ${styles.sessionDeletionForm}`} onSubmit={event => { event.preventDefault(); void remove(); }}>
       <p className={styles.sessionTitle}>{name}</p>
-      <p>This permanently deletes this room and its Chats conversation and delivery history.<br />This cannot be undone.</p>
+      <p>This permanently deletes this room and its Worker conversation and delivery history.<br />This cannot be undone.</p>
       {(error || blocked) && <p role="alert">{error ?? 'This room has pending or unresolved work. Finish or inspect it before deleting the room.'}</p>}
       <div className={styles.buttons}>
         <NeumorphicButton variant="standard" autoFocus type="button" disabled={pending} onClick={close}>Cancel</NeumorphicButton>

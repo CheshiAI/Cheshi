@@ -54,14 +54,14 @@ test('deletion fallback to an unassigned agent shows guidance without querying o
   await withDOM(async render => {
     await render(<AgentManagementViews view="homies" api={management} registryApi={registry} />);
     await act(async () => button(assigned.name).click());
-    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === 'Advanced')!.click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === 'Files and environment')!.click());
     expect(calls).toEqual([assigned.id]);
     snapshot = { ...snapshot, agents: [other] };
     await act(async () => publish(snapshot));
     expect(document.querySelector('form')).toBeNull();
     expect(document.body.textContent).not.toContain('Old task');
     await act(async () => button(other.name).click());
-    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === 'Advanced')!.click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === 'Files and environment')!.click());
     expect(document.body.textContent).toContain('Assign this agent to the current project in Agent settings.');
     expect(button('Start agent').disabled).toBe(true);
     await act(async () => { button('Start agent').click(); button('Refresh agent').click(); });

@@ -13,8 +13,9 @@ function parseSavedState(value: unknown): State {
   }
   for (const m of state.messages) {
     const room = state.rooms.find(r => r.id === m.roomId);
-    if (!room || (m.sender !== 'user' && !room.members.some(p => p.id === m.sender))
-      || (m.recipient !== null && !(m.recipient === 'user' && (m.userQuestion || (m.kind === 'permission_request' && m.permissionRequest)) && m.sender !== 'user') && !room.members.some(p => p.id === m.recipient))) throw new Error('Invalid saved participant.');
+    const identities = [...(room?.members ?? []), ...(room?.formerMembers ?? [])];
+    if (!room || (m.sender !== 'user' && !identities.some(p => p.id === m.sender))
+      || (m.recipient !== null && !(m.recipient === 'user' && (m.userQuestion || (m.kind === 'permission_request' && m.permissionRequest)) && m.sender !== 'user') && !identities.some(p => p.id === m.recipient))) throw new Error('Invalid saved participant.');
     if (m.threadId && !state.messages.some(root => root.id === m.threadId && root.roomId === room.id && (root.kind === 'goal' || (root.sender === 'user' && root.dialogue)) && root.threadId === null)) throw new Error('Invalid saved goal thread.');
   }
   for (const j of state.jobs) {

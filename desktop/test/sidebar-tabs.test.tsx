@@ -131,7 +131,7 @@ test('sidebar exposes five ordered tabs with an empty GitHub placeholder', () =>
   const window = new Window();
   window.document.body.innerHTML = html;
   const tabs = [...window.document.querySelectorAll('[role="tab"]')];
-  expect(tabs.map(tab => tab.textContent)).toEqual(['SESSION', 'EXPLORER', 'CHATS', 'MEMO', 'GITHUB']);
+  expect(tabs.map(tab => tab.textContent)).toEqual(['SESSION', 'EXPLORER', 'WORKER', 'MEMO', 'GITHUB']);
   const selected = window.document.querySelector('[role="tab"][aria-selected="true"]')!;
   expect(selected.textContent).toBe('MEMO');
   const panel = window.document.getElementById(selected.getAttribute('aria-controls')!)!;

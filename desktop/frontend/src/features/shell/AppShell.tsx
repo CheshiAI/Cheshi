@@ -84,7 +84,14 @@ export function AppShell() {
   const [activeView, setActiveView] = useState<WorkspaceView>('chat');
   const [historyChoice, setHistoryChoice] = useState<{ sessionId: string; title: string; paneId: string } | null>(null);
   const [deleteChoice, setDeleteChoice] = useState<{ sessionId: string; title: string } | null>(null);
-  const [homies, setHomies] = useState<{ agentId: string | null } | null>(null);
+  const [homies, setHomies] = useState<{ agentId: string | null; roomId?: string } | null>(null);
+  const [homieEditing, setHomieEditing] = useState(false);
+  const [homiesPanelOpen, setHomiesPanelOpen] = useState(false);
+  const handleHomieEditing = useCallback((editing: boolean) => {
+    setHomieEditing(editing);
+    if (editing) setHomiesPanelOpen(true);
+  }, []);
+  const [homiesListTarget, setHomiesListTarget] = useState<HTMLDivElement | null>(null);
   const [fileReview, setFileReview] = useState<{ paneId: string; itemId: string; path: string | null; item?: never }
     | { paneId?: never; itemId: string; path: string | null; item: ChatActivityItem } | null>(null);
   const [verificationReview, setVerificationReview] = useState<VerificationReview | null>(null);
@@ -455,17 +462,24 @@ export function AppShell() {
             />
           )}
           {activeView === 'settings' && <SettingsView contextId={workspace.activePaneId} onOpenChat={openWorkflowChat} />}
-          <ChatsView onManageHomies={agentId => { navigate('chats'); setHomies({ agentId: agentId ?? null }); setRightSidebarOpen(true); }}
+          <ChatsView onManageHomies={(agentId, roomId) => {
+            if (!agentId && homies && !homieEditing && homiesPanelOpen) { setHomiesPanelOpen(false); return; }
+            navigate('chats'); closeReview(); setHomieEditing(Boolean(agentId)); setHomiesPanelOpen(true);
+            setHomies({ agentId: agentId ?? null, ...(roomId ? { roomId } : {}) });
+          }}
+            homiesOpen={homies !== null && !homieEditing && homiesPanelOpen}
+            onHomiesTarget={setHomiesListTarget} onCloseHomies={() => setHomiesPanelOpen(false)}
             reviewedVerificationId={verificationReview?.id} onReviewVerification={openVerificationReview}
             reviewedMessageId={fileReview?.item?.id} onReviewFileChanges={openChatsFileReview}
-            active={activeView === 'chats'} sidebarTarget={chatsSidebarTarget}
+            active={activeView === 'chats' && !(homies && homieEditing)} sidebarTarget={chatsSidebarTarget}
             sidebarActive={sidebarPanel === 'agent-chats' && leftSidebarOpen} onOpenRoom={() => navigate('chats')} />
-          <AgentManagementViews view={activeView === 'docker' ? 'docker' : null} />
+          <AgentManagementViews view={activeView === 'docker' ? 'docker' : activeView === 'chats' && homies ? 'homies' : null}
+            listTarget={homiesListTarget} onEditingChange={handleHomieEditing}
+            selectionRequest={homies ?? undefined} onClose={homies ? () => { if (homieEditing) setHomies(null); else setHomiesPanelOpen(false); } : undefined} />
           {activeView === 'blank' && <BlankView />}
           </WorkspaceEditorSplit>
         </div>
         <ReviewSidebar
-          homies={homies}
           onOpenFile={openWorkspaceFile}
           verification={verificationReview}
           open={rightSidebarOpen}

@@ -9,6 +9,8 @@ import ts from 'typescript';
 import { isValidElement, type ComponentProps, type CSSProperties, type HTMLAttributes, type PointerEvent, type ReactElement, type ReactNode } from 'react';
 import * as jsxRuntime from 'react/jsx-runtime';
 import type { AppShell } from '../frontend/src/features/shell/AppShell';
+import type { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
+import type { AgentManagementViews } from '../frontend/src/features/shell/AgentManagementViews';
 import type { WorkspaceEditorSplit } from '../frontend/src/features/shell/WorkspaceEditorSplit';
 import type { SplitPaneLayout } from '../frontend/src/shared/ui/SplitPaneLayout';
 import type { SlidingSidePanel } from '../frontend/src/shared/ui/SlidingSidePanel';
@@ -197,6 +199,42 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
     finishRestore: () => { editorSessionMode = 'preserve'; },
     finishInitialHistory: () => { historyLoading = false; } };
 }
+
+test('Worker keeps the conversation beside the Homies list and opens settings centrally', () => {
+  const app = shellHarness();
+  const chats = () => props<ComponentProps<typeof ChatsView>>(app.render(), 'ChatsView');
+  const management = () => props<ComponentProps<typeof AgentManagementViews>>(app.render(), 'AgentManagementViews');
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chats');
+  expect(chats().active).toBe(true);
+  expect(management().view).toBeNull();
+  chats().onManageHomies?.();
+  expect(chats().active).toBe(true);
+  expect(chats().sidebarActive).toBe(true);
+  expect(chats().homiesOpen).toBe(true);
+  expect(management()).toMatchObject({ view: 'homies', selectionRequest: { agentId: null } });
+  const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  expect(props<ComponentProps<typeof AgentManagementViews>>(split.children, 'AgentManagementViews').view).toBe('homies');
+  expect(props<{ value: boolean }>(app.render(), 'SidebarToggleVisibility').value).toBe(false);
+  expect(props<ComponentProps<typeof ReviewSidebar>>(app.render(), 'ReviewSidebar').item).toBeNull();
+  management().onEditingChange?.(true);
+  expect(chats().active).toBe(false);
+  management().onEditingChange?.(false);
+  expect(chats().active).toBe(true);
+  management().onClose?.();
+  expect(chats().active).toBe(true);
+  expect(chats().homiesOpen).toBe(false);
+  expect(management().view).toBe('homies');
+  chats().onManageHomies?.();
+  expect(chats().homiesOpen).toBe(true);
+  chats().onManageHomies?.();
+  expect(chats().homiesOpen).toBe(false);
+  chats().onManageHomies?.('development');
+  expect(chats().active).toBe(false);
+  expect(management().selectionRequest).toEqual({ agentId: 'development' });
+  chats().onOpenRoom?.();
+  expect(chats().active).toBe(true);
+  expect(management().view).toBeNull();
+});
 
 test('sidebar tabs retain navigation and load initial chats before limiting refresh to Sessions', () => {
   const app = shellHarness(true);

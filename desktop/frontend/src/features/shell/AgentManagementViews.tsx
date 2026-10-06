@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
-import type { ChatTaskTarget } from '../../../../shared/agent-chats';
+import type { AgentChatsApi, ChatTaskTarget } from '../../../../shared/agent-chats';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { AgentManagementApi } from '../../../../shared/agent-management';
@@ -17,11 +17,13 @@ const emptyRegistrySnapshot = () => null;
 const emptyRegistrySubscribe = () => () => {};
 
 /** Remains mounted in the workspace shell so navigation preserves engine/worker selection. */
-export function AgentManagementViews({ view, active = true, chatTask, onBackToChats, selectionRequest, onClose, api = cheshiDesktop?.agentManagement, registryApi = cheshiDesktop?.agentRegistry,
-  accountsApi = cheshiDesktop?.codexAccounts }: {
+export function AgentManagementViews({ view, active = true, chatTask, onBackToChats, selectionRequest, onClose, listTarget, onEditingChange, api = cheshiDesktop?.agentManagement, registryApi = cheshiDesktop?.agentRegistry,
+  chatsApi = cheshiDesktop?.agentChats, accountsApi = cheshiDesktop?.codexAccounts }: {
   chatTask?: ChatTaskTarget | null; onBackToChats?(): void;
-  selectionRequest?: { agentId: string | null }; onClose?(): void;
+  listTarget?: HTMLElement | null; onEditingChange?(editing: boolean): void;
+  selectionRequest?: { agentId: string | null; roomId?: string }; onClose?(): void;
   active?: boolean; view: ManagementView; api?: AgentManagementApi; registryApi?: AgentRegistryApi;
+  chatsApi?: AgentChatsApi;
   accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
   const [model, setModel] = useState<AgentManagementModel | null>(null);
@@ -39,14 +41,16 @@ export function AgentManagementViews({ view, active = true, chatTask, onBackToCh
     return () => { next.dispose(); };
   }, [api]);
   if (!api) return view ? <main className={styles.unavailable}><p>Worker management is available in the desktop app.</p>{onClose && <TooltipButton variant="ghost" size="icon" aria-label="Close Homies" title="Close Homies" onClick={onClose}><X aria-hidden="true" /></TooltipButton>}</main> : null;
-  return model ? <ManagementScreens active={active} selectionRequest={selectionRequest} onClose={onClose} onStopWorker={async (engineId, workerId) => { await api.control(engineId, workerId, 'stop'); await model.refresh(); }} chatTask={chatTask} onBackToChats={onBackToChats} model={model} view={view} registry={registry} accountsApi={accountsApi} /> : null;
+  return model ? <ManagementScreens active={active} selectionRequest={selectionRequest} onClose={onClose} listTarget={listTarget} onEditingChange={onEditingChange} onStopWorker={async (engineId, workerId) => { await api.control(engineId, workerId, 'stop'); await model.refresh(); }} chatTask={chatTask} onBackToChats={onBackToChats} model={model} view={view} registry={registry} accountsApi={accountsApi} chatsApi={chatsApi} /> : null;
 }
 
-function ManagementScreens({ active, selectionRequest, onClose, onStopWorker, chatTask, onBackToChats, model, view, registry, accountsApi }: {
+function ManagementScreens({ active, selectionRequest, onClose, listTarget, onEditingChange, onStopWorker, chatTask, onBackToChats, model, view, registry, accountsApi, chatsApi }: {
   chatTask?: ChatTaskTarget | null; onBackToChats?(): void;
-  selectionRequest?: { agentId: string | null }; onClose?(): void;
+  listTarget?: HTMLElement | null; onEditingChange?(editing: boolean): void;
+  selectionRequest?: { agentId: string | null; roomId?: string }; onClose?(): void;
   onStopWorker(engineId: string, workerId: string): Promise<void>;
   active: boolean; model: AgentManagementModel; view: ManagementView; registry: AgentRegistryModel | null;
+  chatsApi?: AgentChatsApi;
   accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
   const state = useSyncExternalStore(model.subscribe, model.snapshot);
@@ -61,6 +65,6 @@ function ManagementScreens({ active, selectionRequest, onClose, onStopWorker, ch
   }, [model, view, active]);
   if (view === 'docker') return <DockerView model={model} state={state} profiles={registered?.data?.agents}
     onRefreshProfiles={() => { void registry?.refresh(); }} />;
-  if (view === 'homies') return <AgentsView active={active} selectionRequest={selectionRequest} onClose={onClose} onStopWorker={onStopWorker} chatTask={chatTask} onBackToChats={onBackToChats} model={model} state={state} registry={registry} accountsApi={accountsApi} />;
+  if (view === 'homies') return <AgentsView active={active} selectionRequest={selectionRequest} onClose={onClose} listTarget={listTarget} onEditingChange={onEditingChange} onStopWorker={onStopWorker} chatTask={chatTask} onBackToChats={onBackToChats} model={model} state={state} registry={registry} accountsApi={accountsApi} chatsApi={chatsApi} />;
   return null;
 }

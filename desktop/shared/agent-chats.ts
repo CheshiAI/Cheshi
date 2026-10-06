@@ -25,6 +25,7 @@ export interface RoomGoalProgress {
 }
 export interface ChatMember { id: string; accountId: string; name: string }
 export interface AgentRoom {
+  formerMembers?: ChatMember[];
   pinned?: boolean;
   id: string; workspace: string; name: string; engineId: string; members: ChatMember[]; defaultAgentId: string; createdAt: string;
 }
@@ -61,6 +62,7 @@ export type ChatsRequest = { action: 'list' }
   | { action: 'application-inspect'; roomId: string; goalId: string; candidateId: string; hash: string }
   | { action: 'recover'; roomId: string; goalId: string }
   | { action: 'create'; id: string; name: string; engineId: string; members: string[]; defaultAgentId: string }
+  | { action: 'participants'; roomId: string; members: string[]; defaultAgentId: string; expectedMembers: string[]; expectedDefaultAgentId: string }
   | { action: 'invite'; roomId: string; members: string[]; defaultAgentId: string }
   | { action: 'send'; id: string; roomId: string; threadId: string | null; recipient: string | null; text: string; goal: boolean; automatic?: true; questionId?: string; answerTo?: string; replyTo?: string };
 export interface AgentChatsApi { request(input: ChatsRequest): Promise<ChatsSnapshot>; onDidChange?(listener: (update: ChatsUpdate) => void): () => void }
@@ -95,10 +97,15 @@ export function parseChatsRequest(value: unknown): ChatsRequest {
   }
   if (v.action === 'recover') return { action: 'recover', roomId: chatId(v.roomId), goalId: chatId(v.goalId) };
   if (v.action === 'list') return { action: 'list' };
-  if (v.action === 'create' || v.action === 'invite') {
+  if (v.action === 'create' || v.action === 'invite' || v.action === 'participants') {
     if (!Array.isArray(v.members) || !v.members.length || v.members.length > 32) throw new Error('Choose 1–32 agents.');
     const members = [...new Set(v.members.map(chatId))], defaultAgentId = chatId(v.defaultAgentId);
     if (!members.includes(defaultAgentId)) throw new Error('The default agent must participate in the room.');
+    if (v.action === 'participants') {
+      if (!Array.isArray(v.expectedMembers) || !v.expectedMembers.length || v.expectedMembers.length > 32) throw new Error('Invalid previous participants.');
+      return { action: 'participants', roomId: chatId(v.roomId), members, defaultAgentId,
+        expectedMembers: v.expectedMembers.map(chatId), expectedDefaultAgentId: chatId(v.expectedDefaultAgentId) };
+    }
     return v.action === 'create' ? { action: 'create', id: chatId(v.id), name: required(v.name, 100), engineId: parseAgentEngineId(v.engineId), members, defaultAgentId }
       : { action: 'invite', roomId: chatId(v.roomId), members, defaultAgentId };
   }
@@ -114,7 +121,7 @@ function conversationDelivery(v: Record<string, unknown>) {
   return { ...(v.automatic === true ? { automatic: true as const } : {}),
     ...(v.questionId === undefined ? {} : { questionId: chatId(v.questionId), answerTo: chatId(v.answerTo) }) };
 }
-function entries<T>(value: unknown, parse: (value: unknown) => T, max: number): T[] {
+function entries<T>(value: unknown, parse: (value: unknown) => T, max = Number.POSITIVE_INFINITY): T[] {
   if (!Array.isArray(value) || value.length > max) throw new Error('Invalid Chats list.');
   return value.map(parse);
 }
@@ -134,14 +141,19 @@ function parseGoalProgress(value: unknown): RoomGoalProgress {
     resumeBlocked: v.resumeBlocked === null ? null : required(v.resumeBlocked, 20_000) };
 }
 export function parseRoom(value: unknown): AgentRoom {
-  const v = agentRecord(value), members = entries(v.members, raw => {
+  const v = agentRecord(value);
+  const member = (raw: unknown): ChatMember => {
     const m = agentRecord(raw); return { id: chatId(m.id), name: required(m.name, 100), accountId: required(m.accountId, 200) };
-  }, 32);
+  };
+  const members = entries(v.members, member, 32);
+  const formerMembers = v.formerMembers === undefined ? [] : entries(v.formerMembers, member);
+  const identities = [...members, ...formerMembers];
+  if (new Set(identities.map(item => item.id)).size !== identities.length) throw new Error('Duplicate room identity.');
   if (v.pinned !== undefined && typeof v.pinned !== 'boolean') throw new Error('Invalid room pin state.');
   const defaultAgentId = chatId(v.defaultAgentId);
   if (!members.some(m => m.id === defaultAgentId) || new Set(members.map(m => m.id)).size !== members.length) throw new Error('Invalid room membership.');
   return { id: chatId(v.id), workspace: required(v.workspace, 4096), name: required(v.name, 100), engineId: parseAgentEngineId(v.engineId),
-    members, defaultAgentId, createdAt: required(v.createdAt, 100), pinned: v.pinned === true };
+    members, ...(formerMembers.length ? { formerMembers } : {}), defaultAgentId, createdAt: required(v.createdAt, 100), pinned: v.pinned === true };
 }
 export function parseRoomMessage(value: unknown): RoomMessage {
   const v = agentRecord(value);

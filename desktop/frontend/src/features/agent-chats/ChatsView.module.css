@@ -54,3 +54,7 @@
 .replyContext { display: flex; align-items: center; gap: var(--icon-default); font-size: var(--font-size-label); }
 .replyContext > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .execution { margin: var(--space-default) 0; }
+
+.inspector { --sliding-side-panel-width: min(var(--sidebar-width), 60cqw); display: flex; min-height: 0; flex: 0 0 auto; }
+.homiesPanel { --liquid-glass-radius: 0; border-top: 0; border-right: 0; border-bottom: 0; }
+.homiesPanelContent { display: flex; height: 100%; min-width: 0; min-height: 0; }

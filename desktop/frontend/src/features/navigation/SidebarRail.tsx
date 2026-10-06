@@ -1,6 +1,5 @@
 import {
   Blocks,
-  MessagesSquare,
   CalendarDays,
   Crosshair,
   PanelLeftClose,
@@ -13,6 +12,7 @@ import type { ReactNode } from 'react';
 
 import { SidebarRailButton } from '../../shared/ui';
 import { DockerIcon } from '../../shared/ui/DockerIcon';
+import { WorkerIcon } from '../../shared/ui/WorkerIcon';
 import { KeepAwakeButton } from '../chrome/KeepAwakeButton';
 import type { WorkspaceView } from './Sidebar';
 import { WorkspaceSelector } from './WorkspaceSelector';
@@ -26,7 +26,7 @@ const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceVi
   { label: 'Calendar', icon: <CalendarDays aria-hidden="true" />, view: 'calendar' },
   { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
   { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },
-  { label: 'Chats', icon: <MessagesSquare aria-hidden="true" />, view: 'chats' },
+  { label: 'Worker', icon: <WorkerIcon />, view: 'chats' },
   { label: 'Docker', icon: <DockerIcon />, view: 'docker' },
   { label: 'Settings', icon: <Settings aria-hidden="true" />, view: 'settings' },
 ];

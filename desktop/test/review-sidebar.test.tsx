@@ -13,25 +13,25 @@ const item: ChatActivityItem = {
   changes: [{ path: 'sample.ts', kind: 'update', diff: '@@ -1 +1 @@\n-old\n+new', movePath: null }],
 };
 
-test('Homies uses the sliding sidebar and restores focus before hiding its controls', async () => {
+test('file review restores focus before hiding its sidebar controls', async () => {
   function Workspace() {
-    const [homies, setHomies] = useState<{ agentId: string | null } | null>(null);
+    const [review, setReview] = useState<ChatActivityItem | null>(null);
     return <div>
-      <button onClick={() => setHomies({ agentId: null })}>Manage Homies</button>
-      <ReviewSidebar open homies={homies} item={null} initialPath={null} onCloseReview={() => setHomies(null)} />
+      <button onClick={() => setReview(item)}>Review changes</button>
+      <ReviewSidebar open item={review} initialPath={null} onCloseReview={() => setReview(null)} />
     </div>;
   }
   await withDOM(async ui => {
     await ui.render(<Workspace />);
     const opener = document.querySelector<HTMLButtonElement>('button')!;
     await act(async () => opener.focus());
-    await ui.click('Manage Homies');
-    const sidebar = document.querySelector('[aria-label="Homies sidebar"]')!;
+    await ui.click('Review changes');
+    const sidebar = document.querySelector('[aria-label="Review sidebar"]')!;
     expect(sidebar.getAttribute('data-open')).toBe('true');
     expect(sidebar.getAttribute('aria-hidden')).toBe('false');
-    const close = sidebar.querySelector<HTMLButtonElement>('[aria-label="Close Homies"]')!;
+    const close = sidebar.querySelector<HTMLButtonElement>('[aria-label="Close file changes review"]')!;
     await act(async () => close.focus());
-    await ui.click('Close Homies');
+    await ui.click('Close file changes review');
     expect(sidebar.getAttribute('data-open')).toBe('false');
     expect(sidebar.getAttribute('aria-hidden')).toBe('true');
     expect(sidebar.hasAttribute('inert')).toBe(true);

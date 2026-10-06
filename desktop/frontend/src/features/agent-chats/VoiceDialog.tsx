@@ -28,7 +28,7 @@ export function VoiceDialog({ roomId, onClose, api = cheshiDesktop?.agentVoice }
   };
   return <Modal title="Phone calls" headerVariant="section" closeButtonVariant="ghost" onClose={onClose}>
     <div className={styles.content}>
-      <p>Approve your phone to call this Mac and send spoken requests to this Chats room. Existing agent permissions still apply.</p>
+      <p>Approve your phone to call this Mac and send spoken requests to this Worker room. Existing agent permissions still apply.</p>
       {!state?.configured && <p role="status">The connection service is not configured for this build.</p>}
       {state?.configured && <p role="status">{state.connected ? 'Connection service connected' : 'Connection service disconnected'}</p>}
       {(error || state?.error) && <p role="alert">{error || state?.error}</p>}
@@ -48,7 +48,7 @@ export function VoiceDialog({ roomId, onClose, api = cheshiDesktop?.agentVoice }
       {state?.devices.map(device => <div key={device.id} className={styles.actions}><span>{device.name} · {device.roomName}</span>
         <NeumorphicButton variant="ghost" disabled={busy} onClick={() => { void request({ action: 'revoke', id: device.id }); }}>Unlink</NeumorphicButton></div>)}
       {state?.calling && <NeumorphicButton variant="standard" disabled={busy} onClick={() => { void request({ action: 'stop' }); }}>End call</NeumorphicButton>}
-      <p>Ending a call keeps accepted Chats work running. Switching accounts removes phone approvals.</p>
+      <p>Ending a call keeps accepted Worker tasks running. Switching accounts removes phone approvals.</p>
     </div>
   </Modal>;
 }

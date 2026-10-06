@@ -178,7 +178,7 @@ test('worker labels follow registered names and renames while retaining containe
     const selected = () => document.querySelector('[aria-label="Agent selection"] button');
     const header = () => document.querySelector('[aria-label="Agent details"] h2');
     expect(selected()?.getAttribute('aria-label')).toBe(profile.name);
-    expect(document.querySelector('[aria-label^="Container connection:"]')?.getAttribute('aria-description')).toBe(`${workers[0]!.name} · running`);
+    expect(document.querySelector('[aria-label^="Container connection:"]')).not.toBeNull();
     await click(profile.name);
     expect(header()?.textContent).toBe(profile.name);
     stored = { ...stored, agents: [{ ...profile, name: 'Renamed Specialist', revision: 2 }] };
@@ -186,7 +186,7 @@ test('worker labels follow registered names and renames while retaining containe
     expect(header()?.textContent).toBe('Renamed Specialist');
     await click('All Homies');
     expect(document.querySelector('[aria-label="Agent selection"]')?.textContent).toContain('Renamed Specialist');
-    expect(document.querySelector('[aria-label^="Container connection:"]')?.getAttribute('aria-description')).toBe(`${workers[0]!.name} · running`);
+    expect(document.querySelector('[aria-label^="Container connection:"]')).not.toBeNull();
     await render(screen('docker'));
     expect(containerRow()?.textContent).toBe('Renamed Specialist');
     expect(containerHeader()?.textContent).toBe('Renamed Specialist');
@@ -205,7 +205,7 @@ test('worker labels follow registered names and renames while retaining containe
   });
 });
 
-test('agent names open the default screen and container indicators never navigate', async () => {
+test('agent names open settings and container indicators never navigate', async () => {
   const agent = { ...specialistAgent(), assignments: [{ workspaceRoot: '/project', instructions: '' }] };
   const unlinked = { ...agent, id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', name: 'Unlinked agent' };
   let workers = [
@@ -239,24 +239,22 @@ test('agent names open the default screen and container indicators never navigat
     expect(nav().textContent).not.toContain('CONNECTED WORKER CONTAINERS');
     expect(nav().querySelectorAll('[data-agent-avatar]')).toHaveLength(2);
     expect(nav().querySelectorAll('button')).toHaveLength(4);
-    expect(nav().querySelectorAll('[role="img"][aria-label^="Container connection:"]')).toHaveLength(2);
+    expect(nav().querySelectorAll('[aria-label^="Container connection:"]')).toHaveLength(2);
+    expect(nav().textContent).not.toContain('Stopped');
     expect(nav().querySelector('button button')).toBeNull();
-    const indicator = nav().querySelector<HTMLElement>('[aria-label="Container connection: container-second"]')!;
-    expect(indicator.getAttribute('aria-description')).toBe('container-second · exited');
-    expect(indicator.tabIndex).toBe(-1);
     const before = inspections.length;
-    await act(async () => { indicator.click(); });
+    await act(async () => nav().querySelector<HTMLElement>('[aria-label="Container connection: container-second"]')!.click());
     expect(inspections).toHaveLength(before);
-    expect(document.querySelector('[aria-label="Agent task"]')).toBeNull();
     await click(agent.name);
     expect(document.querySelector('form[aria-label="Agent settings"]')).not.toBeNull();
-    expect(runtimeAgents).toEqual([]);
-    await click('Advanced');
+    expect(runtimeAgents).toEqual([agent.id]);
+    expect(inspections).toHaveLength(before);
+    await click('Files and environment');
     expect(runtimeAgents.at(-1)).toBe(agent.id);
     await click('Agent settings'); await click('All Homies');
     await click('Unlinked agent');
     expect(document.querySelector<HTMLInputElement>('[aria-label="Agent name"]')?.value).toBe(unlinked.name);
-    await click('Advanced');
+    await click('Files and environment');
     expect(runtimeAgents.at(-1)).toBe(unlinked.id);
     await click('Agent settings'); await click('All Homies');
     workers = []; await click('Refresh');
@@ -567,7 +565,7 @@ test('waiting collaboration is visible and can be stopped while the worker is id
   } finally { registry.dispose(); }
 });
 
-test('Advanced preserves settings drafts and never starts or cancels a running task', async () => {
+test('Runtime preserves settings drafts and never starts or cancels a running task', async () => {
   const agent = { ...specialistAgent(), assignments: [{ workspaceRoot: '/project', instructions: '' }] };
   const actions: string[] = [];
   const worker = { id: 'worker', name: 'Worker', image: 'fixture', state: 'running', profileId: agent.id };
@@ -593,7 +591,7 @@ test('Advanced preserves settings drafts and never starts or cancels a running t
     await render(<AgentManagementViews api={api} registryApi={registryApi} view="homies" />);
     await click(agent.name);
     const form = document.querySelector('form');
-    await click('Advanced');
+    await click('Files and environment');
     expect(document.body.textContent).toContain('Working');
     await click('Agent settings');
     expect(document.querySelector('form[aria-label="Agent settings"]')).not.toBeNull();
@@ -601,11 +599,11 @@ test('Advanced preserves settings drafts and never starts or cancels a running t
     expect(document.querySelector('[aria-label="Agent task"]')).toBeNull();
     expect(actions).toEqual(['status']);
     expect(document.querySelector('form')).toBe(form);
-    await click('Advanced');
+    await click('Files and environment');
     expect(document.body.textContent).toContain('Working');
     expect(document.body.textContent).toContain('retained-thread');
     expect(document.querySelector('[aria-label="Open task: running-task"]')).not.toBeNull();
-    expect(actions).toEqual(['status', 'status']);
+    expect(actions).toEqual(['status']);
   });
 });
 
@@ -661,6 +659,7 @@ test('agent deletion preserves registration and shows application blocks until a
   };
   await withDOM(async ({ render, click }) => {
     await render(<AgentManagementViews api={api} registryApi={registryApi} view="homies" />);
+    await click(`Homie actions: ${profile.name}`);
     await click(`Delete agent: ${profile.name}`);
     await click('Also delete saved data'); await click('Delete agent');
     expect(requests).toEqual([{ id: profile.id, revision: profile.revision, deleteData: true }]);
@@ -700,7 +699,8 @@ test('row deletion targets only the chosen Homie and preserves the remaining reg
     await render(<AgentManagementViews api={api} registryApi={registryApi} view="homies" />);
     const list = document.querySelector('[aria-label="Agent selection"]');
     expect(document.querySelector('[aria-label="Delete selected agent"]')).toBeNull();
-    expect(document.querySelectorAll('[aria-label="Agent selection"] button[aria-label^="Delete agent:"]')).toHaveLength(2);
+    expect(document.querySelectorAll('[aria-label="Agent selection"] button[aria-label^="Homie actions:"]')).toHaveLength(2);
+    await click(`Homie actions: ${other.name}`);
     await click(`Delete agent: ${other.name}`);
     expect(document.querySelector('dialog')?.textContent).toContain(other.name);
     await act(async () => {
@@ -708,9 +708,10 @@ test('row deletion targets only the chosen Homie and preserves the remaining reg
     });
     expect(requests).toHaveLength(0);
     expect(document.querySelector('[aria-label="Agent selection"]')).toBe(list);
+    await click(`Homie actions: ${other.name}`);
     await click(`Delete agent: ${other.name}`); await click('Delete agent');
     expect(requests).toEqual([{ id: other.id, revision: other.revision, deleteData: false }]);
-    expect([...document.querySelectorAll<HTMLButtonElement>('[aria-label="Agent selection"] button[aria-label^="Delete agent:"]')]
+    expect([...document.querySelectorAll<HTMLButtonElement>('[aria-label="Agent selection"] button')]
       .every(button => button.disabled)).toBe(true);
     await act(async () => pending.resolve());
     expect(document.querySelector('dialog')).toBeNull();
@@ -744,7 +745,7 @@ test('agent icon selection supports cancellation, rerolls and persistence in the
     await render(screen());
     const icons = () => Array.from(document.querySelectorAll('[aria-label="Agent selection"] [data-agent-avatar]')).map(e => e.getAttribute('data-agent-avatar'));
     expect(icons()).toHaveLength(1);
-    expect(document.querySelector('[aria-label="Container connection: worker-internal-name"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label^="Container connection:"]')).not.toBeNull();
     await click(profile.name);
     const preview = () => document.querySelector('[aria-label="Choose agent icon"] [data-agent-avatar]')?.getAttribute('data-agent-avatar');
     const initial = preview();

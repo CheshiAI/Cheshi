@@ -1,10 +1,10 @@
 import { ProjectEnvironmentSetup } from './ProjectEnvironmentSetup';
 import { PermissionRequestCard } from './PermissionRequestCard';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDown, Phone, Users } from 'lucide-react';
+import { ArrowDown, Bot, Phone } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { EmptyState, NeumorphicButton, RegionalBlur } from '../../shared/ui';
+import { EmptyState, NeumorphicButton, RegionalBlur, SlidingSidePanel } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
@@ -39,18 +39,43 @@ import { ChatsMessageActions } from './ChatsMessageActions';
 
 const ChatsMessageContent = memo(MessageContent);
 
-export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpenRoom, onManageHomies, reviewedMessageId, onReviewFileChanges, reviewedVerificationId, onReviewVerification, api = cheshiDesktop?.agentChats,
+export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpenRoom, onManageHomies, homiesOpen = false, onHomiesTarget, onCloseHomies, reviewedMessageId, onReviewFileChanges, reviewedVerificationId, onReviewVerification, api = cheshiDesktop?.agentChats,
   registry = cheshiDesktop?.agentRegistry, management = cheshiDesktop?.agentManagement }: {
-  active: boolean; sidebarTarget?: HTMLElement | null; sidebarActive?: boolean; onOpenRoom?(): void; onManageHomies?(agentId?: string): void;
+  active: boolean; sidebarTarget?: HTMLElement | null; sidebarActive?: boolean; onOpenRoom?(): void; onManageHomies?(agentId?: string, roomId?: string): void;
+  homiesOpen?: boolean; onHomiesTarget?(target: HTMLDivElement | null): void; onCloseHomies?(): void;
   reviewedMessageId?: string; onReviewFileChanges?: (item: ChatActivityItem | null, path?: string) => void;
   reviewedVerificationId?: string; onReviewVerification?: (review: VerificationReview | null, open?: boolean) => void;
   api?: AgentChatsApi; registry?: Pick<AgentRegistryApi, 'list' | 'onDidChange'>; management?: Pick<AgentManagementApi, 'engines'>;
 }) {
+  const homiesId = useId();
+  const homiesContentRef = useRef<HTMLDivElement | null>(null);
+  const attachHomiesTarget = useCallback((target: HTMLDivElement | null) => {
+    homiesContentRef.current = target; onHomiesTarget?.(target);
+  }, [onHomiesTarget]);
+  useEffect(() => {
+    const panel = homiesContentRef.current?.parentElement;
+    if (!active || !homiesOpen || !panel) return;
+    // Listen outside the portal root so its React handlers can consume Escape first.
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault(); onCloseHomies?.();
+    };
+    panel.addEventListener('keydown', closeOnEscape);
+    return () => panel.removeEventListener('keydown', closeOnEscape);
+  }, [active, homiesOpen, onCloseHomies]);
+  const toolsRailRef = useRef<HTMLElement>(null);
+  const wasHomiesOpen = useRef(homiesOpen);
+  useEffect(() => {
+    if (active && wasHomiesOpen.current && !homiesOpen) {
+      toolsRailRef.current?.querySelector<HTMLButtonElement>('[aria-label="Manage Homies"]')?.focus();
+    }
+    wasHomiesOpen.current = homiesOpen;
+  }, [active, homiesOpen]);
   const data = useChatsSnapshot(api, active || sidebarActive), { snapshot } = data;
   const [roomId, setRoomId] = useState<string | null>(null);
   const [replies, setReplies] = useState<Record<string, string | null>>({});
   const [agents, setAgents] = useState<SpecialistAgent[]>([]), [engines, setEngines] = useState<AgentEngineInfo[]>([]);
-  const [dialog, setDialog] = useState<'new' | 'participants' | null>(null), [error, setError] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<'new' | null>(null), [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false), [voiceOpen, setVoiceOpen] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const alive = useRef(true), sendingRef = useRef(false);
@@ -134,7 +159,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   const working = currentWork(messages);
   const userQuestions = messages.filter(message => message.userQuestion && !message.userQuestion.answered);
   async function mutate(request: ChatsRequest) {
-    if (!api) throw new Error('Restart the desktop app to load Chats.');
+    if (!api) throw new Error('Restart the desktop app to load Worker.');
     await data.request(request);
     if (alive.current && request.action === 'create') setRoomId(request.id);
   }
@@ -173,7 +198,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     if (pending.current?.roomId === id) pending.current = null;
     if (roomId === id) { setRoomId(null); setVoiceOpen(false); setDialog(null); setError(null); }
   }
-  const name = (id: string | null) => id === 'user' ? 'You' : room?.members.find(m => m.id === id)?.name ?? id ?? '';
+  const name = (id: string | null) => id === 'user' ? 'You' : [...(room?.members ?? []), ...(room?.formerMembers ?? [])].find(m => m.id === id)?.name ?? id ?? '';
   function renderMessage(message: RoomMessage) {
     const addressed = message.text.trimStart().startsWith('@')
       ? resolveChatRecipient(message.text, room?.members ?? []).recipient : null;
@@ -216,29 +241,29 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     </article>;
   }
   const roomList = <ChatsRoomList snapshot={snapshot} selectedId={roomId} phase={data.phase} loaded={data.loaded} refreshing={data.refreshing} disabled={!api} error={data.error ?? pinError}
-    onManageHomies={onManageHomies ? () => { onManageHomies(); } : undefined}
     pinningRoomId={pinningRoomId} onPin={(id, pinned) => { void pinRoom(id, pinned); }}
     onDelete={id => { setDeleteRoomId(id); onOpenRoom?.(); }}
     onSelect={id => { setRoomId(id); onOpenRoom?.(); }} onNew={() => { setDialog('new'); onOpenRoom?.(); }} onRefresh={() => { void data.refresh(); }} />;
   return <>
     {sidebarTarget && createPortal(roomList, sidebarTarget)}
-    <main className={styles.root} hidden={!active} aria-label="Agent chats">
+    <main className={styles.root} hidden={!active} aria-label="Worker">
       {sidebarTarget === undefined && <aside className={styles.sidebar}>{roomList}</aside>}
       <section className={styles.conversation} aria-label={room?.name ?? 'Room conversation'}>
         <header className={styles.header}>
           {room ? <div className={styles.participants} aria-label="Room participants">
             {room.members.map(member => <TooltipTarget key={member.id} content={member.name}>
-              <NeumorphicButton variant="ghost" className={styles.participant} aria-label={`Manage Homie: ${member.name}`} disabled={!onManageHomies} onClick={() => onManageHomies?.(member.id)}><AgentAvatar id={member.id} avatar={agents.find(agent => agent.id === member.id)?.avatar} /><span>{member.name}</span></NeumorphicButton>
+              <NeumorphicButton variant="ghost" className={styles.participant} aria-label={`Manage Homie: ${member.name}`} disabled={!onManageHomies} onClick={() => onManageHomies?.(member.id, room.id)}><AgentAvatar id={member.id} avatar={agents.find(agent => agent.id === member.id)?.avatar} /><span>{member.name}</span></NeumorphicButton>
             </TooltipTarget>)}
-          </div> : <h2>Chats</h2>}
+          </div> : <h2>Worker</h2>}
+          <TooltipButton variant="ghost" size="icon" title="Phone calls" aria-label="Phone calls" aria-haspopup="dialog" disabled={!room} onClick={() => setVoiceOpen(true)}><Phone aria-hidden="true" /></TooltipButton>
         </header>
         <div className={styles.body}>
           <div className={styles.content} ref={contentRef}>
             {error && <p className={styles.notice} role="alert">{error}</p>}
             {!room && <EmptyState className={styles.roomEmpty}
-              title={data.phase === 'error' ? 'Could not load Chats' : !data.loaded ? 'Loading rooms…' : 'Start a conversation'}
-              description={data.phase === 'error' ? data.error : !data.loaded ? 'Checking your chat rooms.'
-                : 'Select a room in Chats, or create one and invite your agents to begin.'} />}
+              title={data.phase === 'error' ? 'Could not load Worker' : !data.loaded ? 'Loading rooms…' : 'Start working with your Homies'}
+              description={data.phase === 'error' ? data.error : !data.loaded ? 'Checking your work rooms.'
+                : 'Select a room in Worker, or create one and invite your Homies to begin.'} />}
             <RegionalBlur sourceRef={scrollNode}>
               <div ref={attachTimeline} hidden={!room} onScroll={reading.onScroll} className={styles.timeline} key={roomId} aria-label="Room messages">
                 <div className={styles.timelineContent}>{messages.map(renderMessage)}
@@ -268,13 +293,17 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
               </ChatsComposer>}
             </RegionalBlur>
           </div>
-          <aside className={styles.toolsRail} aria-label="Room tools">
-            <TooltipButton variant="ghost" size="icon" title="Phone calls" aria-label="Phone calls" aria-haspopup="dialog" disabled={!room} onClick={() => setVoiceOpen(true)}><Phone aria-hidden="true" /></TooltipButton>
-            <TooltipButton variant="ghost" size="icon" title="Room participants" aria-label="Room participants" aria-haspopup="dialog" disabled={!room} onClick={() => setDialog('participants')}><Users aria-hidden="true" /></TooltipButton>
+          <aside className={styles.inspector} aria-label="Worker panels">
+            <SlidingSidePanel open={homiesOpen} className={styles.homiesPanel} aria-label="Homies sidebar">
+              <div id={homiesId} ref={attachHomiesTarget} className={styles.homiesPanelContent} />
+            </SlidingSidePanel>
+            <aside ref={toolsRailRef} className={styles.toolsRail} aria-label="Room tools">
+              {onManageHomies && <TooltipButton variant="ghost" size="icon" title="Manage Homies" aria-label="Manage Homies" active={homiesOpen} aria-expanded={homiesOpen} aria-controls={homiesId} onClick={() => onManageHomies(undefined, room?.id)}><Bot aria-hidden="true" /></TooltipButton>}
+            </aside>
           </aside>
         </div>
       </section>
-      {active && dialog && <RoomDialog room={dialog === 'participants' ? room : undefined} agents={agents} engines={engines} onSave={mutate} onClose={() => setDialog(null)} />}
+      {active && dialog && <RoomDialog agents={agents} engines={engines} onSave={mutate} onClose={() => setDialog(null)} />}
       {active && voiceOpen && room && <VoiceDialog key={room.id} roomId={room.id} onClose={() => setVoiceOpen(false)} />}
       {active && deleteTarget && <DeleteRoomDialog key={deleteTarget.id} name={deleteTarget.name}
         blocked={sending || snapshot.messages.some(message => message.roomId === deleteTarget.id && message.sender === 'user'
