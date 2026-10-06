@@ -1,4 +1,4 @@
-import { MessagesSquare, Pin, PinOff, Plus, RefreshCw, Search } from 'lucide-react';
+import { MessagesSquare, Pin, PinOff, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import type { ChatsSnapshot } from '../../../../shared/agent-chats';
 import { LoadingState, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader } from '../../shared/ui';
@@ -12,10 +12,11 @@ import searchStyles from '../chat/ChatHistorySearch.module.css';
 import styles from './ChatsRoomList.module.css';
 import type { ChatsLoadPhase } from './useChatsSnapshot';
 
-export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing, disabled, error, pinningRoomId, onPin, onSelect, onNew, onRefresh }: {
+export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing, disabled, error, pinningRoomId, onPin, onDelete, onSelect, onNew, onRefresh }: {
   snapshot: ChatsSnapshot; selectedId: string | null; phase: ChatsLoadPhase; loaded: boolean; refreshing: boolean; disabled: boolean; error: string | null;
   onSelect(id: string): void; onNew(): void; onRefresh(): void;
   pinningRoomId: string | null; onPin(id: string, pinned: boolean): void;
+  onDelete?(id: string): void;
 }) {
   const [query, setQuery] = useState('');
   const searchInput = useRef<HTMLInputElement>(null);
@@ -54,6 +55,8 @@ export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing,
             <div className={styles.actions}><ToolbarMenu label={`Room actions for ${room.name}`} items={[{
               id: 'pin', label: room.pinned === true ? 'Unpin' : 'Pin', icon: room.pinned === true ? <PinOff aria-hidden="true" /> : <Pin aria-hidden="true" />,
               disabled: disabled || pinningRoomId !== null, onSelect: () => onPin(room.id, room.pinned !== true),
+            }, { id: 'delete', label: 'Delete room', icon: <Trash2 aria-hidden="true" />, separatorBefore: true,
+              disabled: disabled || !onDelete, onSelect: () => onDelete?.(room.id),
             }]} /></div>
           </div>)}
           {!loaded && phase === 'loading' && <LoadingState className={sessionStyles.loading} label="Loading rooms…" />}

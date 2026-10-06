@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { ChatsStore } from './store.mts';
 import { resolveChatRecipient } from '../../shared/agent-chat-recipient.ts';
 import { roomCoordination } from './coordination.mts';
-import { parseChatsRequest, type AgentRoom, type ChatMember, type RoomJob, type RoomMessage, type RoomGoalProgress } from '../../shared/agent-chats.ts';
+import { isRoomWorkSettled, parseChatsRequest, type AgentRoom, type ChatMember, type RoomJob, type RoomMessage, type RoomGoalProgress } from '../../shared/agent-chats.ts';
 import type { AgentDetails, AgentTask } from '../../shared/agent-management.ts';
 import type { AgentRuntimeRequest, AgentRuntimeState } from '../../shared/agent-runtime.ts';
 import { projectPermissions } from '../../shared/agent-registry.ts';
@@ -57,6 +57,7 @@ export function createAgentChats(options: Options) {
   function notify(binding?: Binding) { queue.notify(binding ? `${binding.workspace}/${binding.engineId}/${binding.agentId}` : ''); }
   let failure: string | null = null;
   const inspecting = new Set<string>();
+  const deleting = new Set<string>();
   const progress = new Map<string, { checkedAt: number; value: RoomGoalProgress }>();
   function resumeBlock(details: AgentDetails | null | undefined, task: AgentTask | undefined, sleeping = false): string | null {
     if (details?.tasks.some(t => t.status === 'unknown')) return 'Execution outcome is unknown. Inspect the saved task before resuming.';
@@ -124,6 +125,7 @@ export function createAgentChats(options: Options) {
   const roomFor = (workspace: string, id: string) => {
     const room = store().all().rooms.find(r => r.workspace === workspace && r.id === id);
     if (!room) throw new Error('Unknown room in this project.');
+    if (deleting.has(id)) throw new Error('Room deletion is in progress.');
     return room;
   };
   function request(workspaceRoot: string, value: unknown) {
@@ -135,7 +137,7 @@ export function createAgentChats(options: Options) {
       }
       return snapshot(workspace);
     }
-    if (input.action === 'project-setup' || input.action === 'permission' || input.action === 'retry' || input.action === 'recover' || input.action === 'question' || input.action === 'question-deadline') throw new Error('Use the asynchronous execution inspection handler.');
+    if (input.action === 'delete' || input.action === 'project-setup' || input.action === 'permission' || input.action === 'retry' || input.action === 'recover' || input.action === 'question' || input.action === 'question-deadline') throw new Error('Use the asynchronous execution inspection handler.');
     if (input.action === 'create') {
       const selected = members(workspace, input.members);
       if (!input.engineId.startsWith('docker:')) throw new Error('Choose a Docker engine.');
@@ -467,6 +469,7 @@ export function createAgentChats(options: Options) {
       && j.agentId === b.agentId && s.rooms.some(r => r.id === j.roomId && !!scopeRoom(b, r.id))); },
     roster(b: Binding) { return Object.fromEntries(store().all().rooms.filter(r => scopeRoom(b, r.id)).map(r => [r.id, r.members.filter(m => current(r, m.id)).map(m => m.id)])); },
     allowed(b: Binding, m: Message) {
+      if (m.roomId && deleting.has(m.roomId)) return false;
       const job = store().all().jobs.find(j => j.taskId === m.taskId);
       if (!m.roomId) return !job && !m.taskId.startsWith('chats_');
       const room = scopeRoom(b, m.roomId);
@@ -523,7 +526,53 @@ export function createAgentChats(options: Options) {
     await options.status(workspace, { action: 'project-setup', engineId: room.engineId, agentId: room.defaultAgentId });
     notify(); return snapshot(workspace);
   }
-  return { prepareProject, permissions, retry, inspectApplication, request, recover, question, rooms, tick,
+  async function deleteRoom(workspaceRoot: string, value: unknown) {
+    const input = parseChatsRequest(value);
+    if (input.action !== 'delete') throw new Error('Invalid room deletion request.');
+    const workspace = realpathSync(workspaceRoot), room = roomFor(workspace, input.roomId);
+    const keys = room.members.map(member => keyFor(room, member.id));
+    if (keys.some(key => inspecting.has(key))) throw new Error('A worker operation is already in progress.');
+    deleting.add(room.id);
+    keys.forEach(key => inspecting.add(key));
+    const assertIdle = () => {
+      const state = store().all();
+      if (state.jobs.some(job => job.roomId === room.id && ['queued', 'sending', 'unknown'].includes(job.state))
+        || state.messages.some(message => message.roomId === room.id && (message.taskId || message.relatedTask) && !isRoomWorkSettled(message.status)
+          && message.sender === 'user')) throw new Error('This room has pending or unresolved work. Finish or inspect it before deleting the room.');
+    };
+    try {
+      await flight;
+      assertIdle();
+      // Read only worker status. Audit records and worker profiles remain intact.
+      for (const member of room.members) {
+        assertCurrentMember(room, member.id);
+        const runtime = await options.status(workspace, { action: 'status', engineId: room.engineId, agentId: member.id });
+        assertCurrentMember(room, member.id);
+        if (!runtime.details || runtime.details.error || runtime.unavailable) throw new Error('Worker state is unavailable. Refresh the participant before deleting the room.');
+        const messages = store().all().messages.filter(message => message.roomId === room.id);
+        const tasks = runtime.details.tasks.filter(task => task.roomId === room.id || messages.some(message =>
+          (message.recipient === member.id && message.taskId === task.id) || (message.relatedTask?.agentId === member.id && message.relatedTask.taskId === task.id)));
+        if (tasks.some(task => !isRoomWorkSettled(task.status) || task.inputs?.some(input => input.pending === true))) {
+          throw new Error('This room has active or unresolved work. Finish or inspect it before deleting the room.');
+        }
+        if (store().all().jobs.some(job => job.roomId === room.id && job.agentId === member.id && job.state === 'sent'
+          && !tasks.some(task => task.id === job.taskId)) || messages.some(message => message.relatedTask?.agentId === member.id
+          && !tasks.some(task => task.id === message.relatedTask?.taskId))) throw new Error('Saved execution state is unavailable. Inspect it before deleting the room.');
+      }
+      await flight;
+      assertIdle();
+      room.members.forEach(member => assertCurrentMember(room, member.id));
+      const removedJobs = store().all().jobs.filter(job => job.roomId === room.id);
+      store().update(state => {
+        state.rooms = state.rooms.filter(saved => saved.id !== room.id);
+        state.messages = state.messages.filter(message => message.roomId !== room.id);
+        state.jobs = state.jobs.filter(job => job.roomId !== room.id);
+      });
+      removedJobs.forEach(job => progress.delete(job.id));
+      return snapshot(workspace);
+    } finally { deleting.delete(room.id); keys.forEach(key => inspecting.delete(key)); }
+  }
+  return { deleteRoom, prepareProject, permissions, retry, inspectApplication, request, recover, question, rooms, tick,
     settled: () => queue.settled(),
     subscribe: (workspace: string, listener: Parameters<ChatsChanges['subscribe']>[1]) => changes.subscribe(workspace, listener),
     changed(binding?: Binding) { notify(binding); publish(); },

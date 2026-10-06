@@ -47,7 +47,11 @@ export interface RoomJob {
 }
 export interface ChatsSnapshot { cursor?: ChatsCursor; rooms: AgentRoom[]; messages: RoomMessage[] }
 export interface ChatTaskTarget { roomId: string; threadId: string | null; agentId: string; engineId: string; taskId: string }
+export function isRoomWorkSettled(status: string | undefined): boolean {
+  return ['completed', 'failed', 'interrupted', 'blocked', 'held', 'cancelled'].includes(status ?? '');
+}
 export type ChatsRequest = { action: 'list' }
+  | { action: 'delete'; roomId: string }
   | { action: 'project-setup'; roomId: string }
   | { action: 'permission'; roomId: string; messageId: string; decision: 'allow' | 'deny' }
   | { action: 'pin'; roomId: string; pinned: boolean }
@@ -72,6 +76,7 @@ function required(value: unknown, max: number): string {
 }
 export function parseChatsRequest(value: unknown): ChatsRequest {
   const v = agentRecord(value);
+  if (v.action === 'delete') return { action: 'delete', roomId: chatId(v.roomId) };
   if (v.action === 'project-setup') return { action: 'project-setup', roomId: chatId(v.roomId) };
   if (v.action === 'permission') {
     if (v.decision !== 'allow' && v.decision !== 'deny') throw new Error('Invalid permission decision.');

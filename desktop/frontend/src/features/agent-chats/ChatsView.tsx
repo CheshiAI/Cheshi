@@ -17,12 +17,13 @@ import { VerificationCard } from './VerificationReview';
 import { verificationReview, type VerificationReview } from './verificationReviewModel';
 import { verificationQuote } from '../agents/verificationPresentation';
 import { WorkMessage } from '../agents/WorkMessage';
-import type { AgentChatsApi, ChatsRequest, RoomMessage } from '../../../../shared/agent-chats';
+import { isRoomWorkSettled, type AgentChatsApi, type ChatsRequest, type RoomMessage } from '../../../../shared/agent-chats';
 import { resolveChatRecipient } from '../../../../shared/agent-chat-recipient';
 import type { AgentRegistryApi, SpecialistAgent } from '../../../../shared/agent-registry';
 import type { AgentEngineInfo, AgentManagementApi } from '../../../../shared/agent-management';
 import { useChatsSnapshot } from './useChatsSnapshot';
 import { ChatsRoomList } from './ChatsRoomList';
+import { DeleteRoomDialog } from './DeleteRoomDialog';
 import { VoiceDialog } from './VoiceDialog';
 import { RoomDialog } from './RoomDialog';
 import { ChatsComposer } from './ChatsComposer';
@@ -52,10 +53,12 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   const [sending, setSending] = useState(false), [voiceOpen, setVoiceOpen] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const alive = useRef(true), sendingRef = useRef(false);
-  const pending = useRef<{ key: string; id: string } | null>(null);
+  const pending = useRef<{ key: string; id: string; roomId: string } | null>(null);
   const [pinningRoomId, setPinningRoomId] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
   const pinning = useRef(false);
+  const [deleteRoomId, setDeleteRoomId] = useState<string | null>(null);
+  const deleteTarget = snapshot.rooms.find(saved => saved.id === deleteRoomId);
   const timeline = useAutoHideScrollbars<HTMLDivElement>();
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => {
@@ -142,7 +145,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     const question = replyMessage?.userQuestion;
     const answer = question && !question.answered ? { answerTo: question.rootId, questionId: question.id } : {};
     const key = JSON.stringify([room.id, threadId, to, text, replyMessage?.id, answer]);
-    if (pending.current?.key !== key) pending.current = { key, id: crypto.randomUUID() };
+    if (pending.current?.key !== key) pending.current = { key, id: crypto.randomUUID(), roomId: room.id };
     sendingRef.current = true; setSending(true); setError(null);
     try {
       await mutate({ action: 'send', id: pending.current.id, roomId: room.id, threadId, recipient: to, text, goal: false, automatic: true, ...(replyMessage ? { replyTo: replyMessage.id } : {}), ...answer });
@@ -159,6 +162,15 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     try { await mutate({ action: 'pin', roomId: id, pinned }); }
     catch (e) { if (alive.current) setPinError(e instanceof Error ? e.message : 'Room pin was not saved.'); }
     finally { pinning.current = false; if (alive.current) setPinningRoomId(null); }
+  }
+  async function deleteRoom(id: string) {
+    if (sendingRef.current) throw new Error('Wait for the pending message to be saved.');
+    await mutate({ action: 'delete', roomId: id });
+    if (!alive.current) return;
+    setDrafts(all => { const next = { ...all }; delete next[id]; return next; });
+    setReplies(all => { const next = { ...all }; delete next[id]; return next; });
+    if (pending.current?.roomId === id) pending.current = null;
+    if (roomId === id) { setRoomId(null); setVoiceOpen(false); setDialog(null); setError(null); }
   }
   const name = (id: string | null) => id === 'user' ? 'You' : room?.members.find(m => m.id === id)?.name ?? id ?? '';
   function renderMessage(message: RoomMessage) {
@@ -201,6 +213,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   }
   const roomList = <ChatsRoomList snapshot={snapshot} selectedId={roomId} phase={data.phase} loaded={data.loaded} refreshing={data.refreshing} disabled={!api} error={data.error ?? pinError}
     pinningRoomId={pinningRoomId} onPin={(id, pinned) => { void pinRoom(id, pinned); }}
+    onDelete={id => { setDeleteRoomId(id); onOpenRoom?.(); }}
     onSelect={id => { setRoomId(id); onOpenRoom?.(); }} onNew={() => { setDialog('new'); onOpenRoom?.(); }} onRefresh={() => { void data.refresh(); }} />;
   return <>
     {sidebarTarget && createPortal(roomList, sidebarTarget)}
@@ -258,6 +271,10 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
       </section>
       {active && dialog && <RoomDialog room={dialog === 'participants' ? room : undefined} agents={agents} engines={engines} onSave={mutate} onClose={() => setDialog(null)} />}
       {active && voiceOpen && room && <VoiceDialog key={room.id} roomId={room.id} onClose={() => setVoiceOpen(false)} />}
+      {active && deleteTarget && <DeleteRoomDialog key={deleteTarget.id} name={deleteTarget.name}
+        blocked={sending || snapshot.messages.some(message => message.roomId === deleteTarget.id && message.sender === 'user'
+          && !!message.taskId && !isRoomWorkSettled(message.status))}
+        onDelete={() => deleteRoom(deleteTarget.id)} onClose={() => setDeleteRoomId(null)} />}
     </main>
   </>;
 }

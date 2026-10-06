@@ -16,6 +16,7 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   const registration = registerAgentChatsIpc({ window, workspaceRoot: '/project', ipc: {
     handle: (name, fn) => { handlers.set(name, fn); }, removeHandler: name => { handlers.delete(name); },
   }, service: {
+    deleteRoom: async root => { calls.push(`${root}/delete`); return { rooms: [], messages: [] }; },
     settled: async () => {}, subscribe: (root, listener) => { subscribed = root; publish = listener; return () => { removed++; }; }, changed: () => {},
     permissions: async root => { calls.push(`${root}/permission`); return { rooms: [], messages: [] }; },
     prepareProject: async root => { calls.push(`${root}/project-setup`); return { rooms: [], messages: [] }; },
@@ -56,6 +57,9 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   expect(calls.at(-1)).toBe('/project/permission');
   await api.request({ action: 'project-setup', roomId: 'room' });
   expect(calls.at(-1)).toBe('/project/project-setup');
+  await api.request({ action: 'delete', roomId: 'room' });
+  expect(calls.at(-1)).toBe('/project/delete');
+  expect(() => invoke(owner, {}, { action: 'delete', roomId: 'room' })).toThrow('workspace');
   expect(() => invoke(owner, {}, { action: 'permission', roomId: 'room', messageId: 'pending', decision: 'allow' })).toThrow('workspace');
   events.emit('closed'); registration.dispose();
   expect(removed).toBe(1);
