@@ -5,6 +5,8 @@ import { SCRATCH_PROFILE } from './task-scratch.ts';
 export class FakeClient implements RpcClient {
   readonly calls: { method: string; params: JsonRecord }[] = [];
   readonly started = createDeferred<void>();
+  approvalHandler: ((method: string, params: JsonRecord) => void) | undefined;
+  handleApprovals(handler: (method: string, params: JsonRecord) => void) { this.approvalHandler = handler; }
   toolHandler: ((params: JsonRecord) => Promise<JsonRecord>) | undefined;
   handleTools(handler: (params: JsonRecord) => Promise<JsonRecord>) { this.toolHandler = handler; }
   private readonly listeners = new Set<(event: Notification) => void>();
@@ -30,7 +32,7 @@ export class FakeClient implements RpcClient {
     if (method === 'thread/start' || method === 'thread/resume') {
       const scratch = params.permissions === SCRATCH_PROFILE
         ? { activePermissionProfile: { id: SCRATCH_PROFILE }, sandbox: { type: 'workspaceWrite',
-          writableRoots: [record(record(params.config)['shell_environment_policy.set']).TMPDIR],
+          writableRoots: Object.entries(record(record(record(params.config)[`permissions.${SCRATCH_PROFILE}`]).filesystem)).filter(([, access]) => access === 'write').map(([path]) => path),
           networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true } } : {};
       return { thread: { id: method === 'thread/start' ? 'thread' : this.resumeId, path: this.threadPath }, model: 'test-model', ...scratch };
     }

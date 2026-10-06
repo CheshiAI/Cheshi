@@ -1,7 +1,11 @@
+import { assertProjectEnvironment, prepareProjectEnvironment } from './project-environment.mts';
+import { projectDependencies, prepareDependencies } from './dependencies.mts';
+import { coversPermissions, type PermissionRequest } from '../../../experiments/codex-specialists/src/execution-permissions.ts';
 import { createHash, randomBytes } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { mkdir, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { projectPermissions } from '../../shared/agent-registry.ts';
 import type { SpecialistAgent } from '../../shared/agent-registry.ts';
 import type { AgentRuntimeRequest, AgentRuntimeState } from '../../shared/agent-runtime.ts';
 import { parseAgentRuntimeRequest } from '../../shared/agent-runtime.ts';
@@ -24,6 +28,7 @@ interface RuntimeOptions {
   registry: ReturnType<typeof createAgentRegistry>; management: AgentManagementApi;
   account(id: string): Promise<RuntimeAccount>;
   run?: DockerCommand;
+  checkProjectEnvironment?: typeof assertProjectEnvironment;
   collaborationExchange?: typeof exchangeWorker;
   history?: AgentHistoryOptions;
   lifecycleControl?: (connection: { endpoint: string; token: string }, action: string, body?: unknown) => Promise<unknown>;
@@ -77,7 +82,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     peer: binding => {
       const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId && a.accountId === binding.accountId
         && projectAssignment(a, binding.workspace));
-      return agent ? { id: agent.id, name: agent.name, role: agent.role, fileWrite: agent.permissions.fileWrite, workProtocol: 1 } : null;
+      return agent ? { id: agent.id, name: agent.name, role: agent.role, fileWrite: projectPermissions(agent, binding.workspace).fileWrite, workProtocol: 1 } : null;
     },
     around: (binding, operation) => lifecycle.exclusive(binding, operation),
     connect: (binding, demand) => lifecycle.connection(binding, demand),
@@ -132,7 +137,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     }
     const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId);
     const assignment = agent && projectAssignment(agent, binding.workspace);
-    if (!agent || !assignment || saved.settingsFingerprint !== settingsDigest(agent, binding.workspace, assignment)) {
+    if (!agent || !assignment || saved.settingsFingerprint !== runtimeSettingsDigest(agent, binding.workspace, assignment)) {
       throw new Error('Settings changed. Start the agent to resume collaboration.');
     }
     return { externalBusy: worker.externalBusy, connection: { endpoint: worker.endpoint, token: saved.token }, details: await options.management.details(binding.engineId, worker.id) };
@@ -213,6 +218,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     const agent = options.registry.snapshot(workspaceRoot).agents.find(item => item.id === request.agentId);
     const assignment = agent && projectAssignment(agent, workspace);
     if (!agent || !assignment) throw new Error('Assign this agent to the current project first.');
+    agent.permissions = assignment.permissions ?? agent.permissions;
     const key = `${agent.id}-${digest(workspace).slice(0, 16)}`;
     const assertCurrent = () => {
       if (options.registry.snapshot(workspaceRoot).agents.find(item => item.id === agent.id)?.revision !== agent.revision) {
@@ -224,7 +230,8 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     try {
       const directory = join(options.directory, digest(request.engineId), key);
       const configPath = join(directory, 'runtime.json');
-      const settingsFingerprint = settingsDigest(agent, workspace, assignment);
+      const dependencies = agent.permissions.commandExecution ? projectDependencies(workspace) : null;
+      const settingsFingerprint = runtimeSettingsDigest(agent, workspace, assignment, dependencies);
       const instructions = request.action === 'start' ? await resolveAgentInstructions(agent, assignment) : null;
       const hasFiles = Boolean(agent.instructionFiles?.length || assignment.instructionFiles?.length);
       const fingerprint = hasFiles && instructions !== null ? digest(`${settingsFingerprint}\n${instructions}`) : settingsFingerprint;
@@ -274,9 +281,12 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         await rememberEngine(directory, request.engineId, prefix[1]!);
         const auth = selectedAuth;
         if (!worker || worker.fingerprint !== fingerprint) await build(prefix);
+        if (agent.permissions.fileWrite) await (options.checkProjectEnvironment ?? assertProjectEnvironment)(request.engineId, prefix, workspace);
+        const environment = !worker || worker.fingerprint !== fingerprint ? await prepareDependencies(run, prefix, image, dependencies) : { image, mounts: [] };
         assertCurrent();
         if (worker && worker.fingerprint !== fingerprint) {
           const details = await options.management.details(request.engineId, worker.id);
+          if (worker.externalBusy) throw new Error('Wait for retained container commands before applying settings.');
           if (worker.state === 'running') {
             const previous = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
             const legacySettings = settingsDigest(agent, workspace, assignment, Number(previous.recoveryProtocol), previous.progressProtocol === 1, previous.workProtocol === 1, previous.integrationProtocol === 1, previous.candidateVerificationProtocol === 1, previous.applicationProtocol === 1, previous.applicationInspectionProtocol === 1, previous.conversationProtocol === 1, previous.activityProtocol === 1, false);
@@ -298,7 +308,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint,
-            ...profileConfiguration(agent), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, activityProtocol: 1, inputQueueProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+            ...profileConfiguration(agent), permissionProtocol: 1, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, activityProtocol: 1, inputQueueProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [workspace];
@@ -314,7 +324,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
             '--mount', `type=bind,src=${workspace},dst=/workspace${agent.permissions.fileWrite ? '' : ',readonly'}`,
             '--tmpfs', '/tmp:rw,nosuid,nodev,size=128m,mode=1777',
             '--env', 'CODEX_HOME=/agent/codex', '--env', 'AGENT_DATA_DIRECTORY=/agent', '--env', 'AGENT_WORKSPACE=/workspace',
-            '--env', 'AGENT_RUNTIME_CONFIG=/agent/runtime.json', '--env', `AGENT_RUNTIME_REVISION=${fingerprint}`, image]);
+            '--env', 'AGENT_RUNTIME_CONFIG=/agent/runtime.json', '--env', `AGENT_RUNTIME_REVISION=${fingerprint}`, ...environment.mounts, environment.image]);
           worker = await find(prefix, key);
           if (!worker) throw new Error('Created worker could not be verified.');
           await run([...prefix, 'container', 'start', worker.id]);
@@ -415,6 +425,52 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     orchestration.notify(b); changed(b); return result;
   }
   return {
+    async permissions(workspaceRoot: string, input: { agentId: string; engineId: string; accountId: string; roomId: string; taskId: string; request: PermissionRequest; decision: 'allow' | 'deny' }) {
+      const b = await binding(workspaceRoot, { ...input, action: 'status' });
+      if (b.accountId !== input.accountId) throw new Error('The participant account changed.');
+      const result = await workerOperations.run(() => lifecycle.exclusive(b, async () => {
+        await lifecycle.connection(b, true);
+        const state = await request(workspaceRoot, { ...input, action: 'status' });
+        const details = state.details, task = details?.tasks.find(t => t.id === input.taskId && t.roomId === input.roomId);
+        const current = task?.inspection?.permissionRequest;
+        if (!details?.ready || details.busy || details.tasks.some(t => ['accepted', 'running', 'unknown'].includes(t.status))) throw new Error('Wait for this worker or inspect unfinished execution before applying permissions.');
+        if (!current || current.id !== input.request.id || current.fileWrite !== input.request.fileWrite || current.commandExecution !== input.request.commandExecution) throw new Error('The permission request changed. Refresh Chats.');
+        const desired = input.decision === 'allow' ? 'allowed' : 'denied';
+        if (current.status !== 'pending' && current.status !== desired) throw new Error('This permission request was already decided.');
+        const snapshot = options.registry.snapshot(workspaceRoot), agent = snapshot.agents.find(a => a.id === input.agentId);
+        const assignment = agent && projectAssignment(agent, b.workspace);
+        if (!agent || !assignment || agent.accountId !== input.accountId) throw new Error('The participant assignment changed.');
+        const permissions = assignment.permissions ?? agent.permissions;
+        let grantedRevision: number | undefined;
+        if (input.decision === 'allow' && !coversPermissions(permissions, current)) {
+          if (current.fileWrite) await (options.checkProjectEnvironment ?? assertProjectEnvironment)(input.engineId, await local(input.engineId), b.workspace);
+          const granted = options.registry.save({ id: agent.id, revision: agent.revision, profile: agent, assignment: { ...assignment, assigned: true, permissions: {
+            fileWrite: permissions.fileWrite || current.fileWrite, commandExecution: permissions.commandExecution || current.commandExecution,
+          } } }, workspaceRoot);
+          grantedRevision = granted.snapshot.agents.find(a => a.id === agent.id)!.revision;
+        }
+        if (input.decision === 'allow') {
+          try {
+            const started = await request(workspaceRoot, { ...input, action: 'start' });
+            if (started.details) lifecycle.adopt(b, started.details);
+          } catch (error) {
+            const latest = options.registry.snapshot(workspaceRoot).agents.find(a => a.id === agent.id);
+            // Restore only this operation's grant; never overwrite a concurrent settings edit.
+            if (grantedRevision !== undefined && latest?.revision === grantedRevision) options.registry.save({ id: agent.id, revision: grantedRevision, profile: latest,
+              assignment: { ...assignment, assigned: true, permissions: assignment.permissions ?? null } }, workspaceRoot);
+            throw error;
+          }
+        }
+        const key = `${agent.id}-${digest(b.workspace).slice(0, 16)}`, prefix = await local(input.engineId);
+        const worker = await find(prefix, key);
+        if (!worker?.endpoint) throw new Error('Worker is unavailable. Permissions were saved; retry after starting it.');
+        const config = agentRecord(JSON.parse(await readFile(join(options.directory, digest(input.engineId), key, 'runtime.json'), 'utf8')));
+        if (typeof config.token !== 'string') throw new Error('Worker authorization unavailable.');
+        await post(worker.endpoint, config.token, `/tasks/${input.taskId}/permissions`, { roomId: input.roomId, requestId: current.id, decision: input.decision }, true);
+        return request(workspaceRoot, { ...input, action: 'status' });
+      }));
+      orchestration.notify(b); changed(b); return result;
+    },
     subscribe(listener: (binding: Binding) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     notify: (binding?: Binding) => orchestration.notify(binding),
     wake,
@@ -432,6 +488,12 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     request: async (workspaceRoot: string, input: AgentRuntimeRequest) => {
       const parsed = parseAgentRuntimeRequest(input);
       if (parsed.action === 'status') return status(workspaceRoot, parsed);
+      if (parsed.action === 'project-setup') {
+        await binding(workspaceRoot, parsed);
+        const workspace = await realpath(workspaceRoot), prefix = await local(parsed.engineId);
+        await workerOperations.exclusive(() => prepareProjectEnvironment(parsed.engineId, prefix, workspace, run));
+        return { details: null };
+      }
       const b = await binding(workspaceRoot, parsed);
       lifecycle.demand(b);
       const result = await workerOperations.run(() => lifecycle.exclusive(b, async () => {
@@ -448,11 +510,15 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   };
 }
 function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], recoveryProtocol = 3, progressProtocol = true, workProtocol = true, integrationProtocol = true, candidateVerificationProtocol = true, applicationProtocol = true, applicationInspectionProtocol = true, conversationProtocol = true, activityProtocol = true, inputQueueProtocol = true) {
-  return digest(JSON.stringify({ ...(inputQueueProtocol ? { inputQueueProtocol: 1 } : {}), ...(activityProtocol ? { activityProtocol: 1 } : {}), ...(conversationProtocol ? { conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1 } : {}), sandboxProtocol: 2, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol, questionProtocol: 2, ...(progressProtocol ? { progressProtocol: 1 } : {}), ...(workProtocol ? { workProtocol: 1 } : {}), ...(integrationProtocol ? { integrationProtocol: 1 } : {}), ...(candidateVerificationProtocol ? { candidateVerificationProtocol: 1 } : {}), ...(applicationProtocol ? { applicationProtocol: 1 } : {}), ...(applicationInspectionProtocol ? { applicationInspectionProtocol: 1 } : {}), agent: profileConfiguration(agent), workspace, instructions: assignment.instructions,
+  return digest(JSON.stringify({ ...(inputQueueProtocol ? { inputQueueProtocol: 1 } : {}), ...(activityProtocol ? { activityProtocol: 1 } : {}), ...(conversationProtocol ? { conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1 } : {}), ...(inputQueueProtocol ? { sandboxProtocol: 3, permissionProtocol: 1 } : { sandboxProtocol: 2 }), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol, questionProtocol: 2, ...(progressProtocol ? { progressProtocol: 1 } : {}), ...(workProtocol ? { workProtocol: 1 } : {}), ...(integrationProtocol ? { integrationProtocol: 1 } : {}), ...(candidateVerificationProtocol ? { candidateVerificationProtocol: 1 } : {}), ...(applicationProtocol ? { applicationProtocol: 1 } : {}), ...(applicationInspectionProtocol ? { applicationInspectionProtocol: 1 } : {}), agent: profileConfiguration({ ...agent, permissions: assignment.permissions ?? agent.permissions }), workspace, instructions: assignment.instructions,
     ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
 }
 function profileConfiguration(agent: SpecialistAgent) {
   return { role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,
     serviceTier: agent.serviceTier, permissions: agent.permissions, instructions: agent.instructions,
     ...(agent.instructionFiles?.length ? { instructionFiles: agent.instructionFiles } : {}) };
+}
+
+function runtimeSettingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], dependencies = (assignment.permissions ?? agent.permissions).commandExecution ? projectDependencies(workspace) : null) {
+  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}`);
 }

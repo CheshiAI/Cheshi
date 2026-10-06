@@ -338,7 +338,7 @@ test('agents can be created and assigned without an engine, edited, and recovere
       writes.push(structuredClone(input));
       if (failSave) throw new Error('Could not save agent registry.');
       const agent = { ...specialistAgent((input.revision ?? 0) + 1), ...input.profile,
-        assignments: input.assignment.assigned ? [{ workspaceRoot: stored.workspaceRoot, instructions: input.assignment.instructions }] : [] };
+        assignments: input.assignment.assigned ? [{ workspaceRoot: stored.workspaceRoot, instructions: input.assignment.instructions, ...(input.assignment.permissions ? { permissions: input.assignment.permissions } : {}) }] : [] };
       stored = { ...stored, agents: [agent] };
       for (const listener of listeners) listener(stored);
       return { agentId: agent.id, snapshot: stored };
@@ -370,8 +370,14 @@ test('agents can be created and assigned without an engine, edited, and recovere
     await render(screen('agents'));
     await click('New agent');
     expect(document.querySelector('form')?.getAttribute('aria-label')).toBe('Create agent');
+    expect(document.querySelector('[aria-label="Allow agent file changes"]')?.getAttribute('aria-checked')).toBe('true');
     await click('Agent specialty');
     await click('Verification');
+    expect(document.querySelector('[aria-label="Allow agent file changes"]')?.getAttribute('aria-checked')).toBe('false');
+    expect(document.querySelector('[aria-label="Allow agent commands"]')?.getAttribute('aria-checked')).toBe('true');
+    await click('Execution permission preset');
+    await click('Review · Read only');
+    expect(document.querySelector('[aria-label="Allow agent commands"]')?.getAttribute('aria-checked')).toBe('false');
     expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Agent instructions"]')?.value).toContain('Reproduce reported issues');
     await click('Agent account');
     await click('first@example.test');
@@ -403,8 +409,8 @@ test('agents can be created and assigned without an engine, edited, and recovere
     await click('Create agent');
     expect(writes).toHaveLength(1);
     expect(writes[0]).toMatchObject({ profile: { name: 'Cheshi developer', role: 'verification', model: 'model-fixture', accountId: 'fixture-account',
-      reasoningEffort: 'high', serviceTier: 'priority', permissions: { fileWrite: true, commandExecution: false } },
-      assignment: { assigned: true, instructions: 'Work in a dedicated worktree.' } });
+      reasoningEffort: 'high', serviceTier: 'priority', permissions: { fileWrite: false, commandExecution: false } },
+      assignment: { assigned: true, instructions: 'Work in a dedicated worktree.', permissions: { fileWrite: true, commandExecution: false } } });
     expect(modelAccounts).toContain('default');
     expect(modelAccounts).toContain('fixture-account');
     expect(document.querySelector('[aria-label="Agent selection"] [aria-current="page"]')?.getAttribute('aria-label')).toBe('Cheshi developer');

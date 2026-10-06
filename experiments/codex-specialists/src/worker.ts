@@ -122,6 +122,14 @@ const server = Bun.serve({
         const task = agent.submit(input.id === undefined ? randomUUID() : validateTaskId(input.id), textValue(input.prompt, 'prompt'), input.chat === undefined ? undefined : (() => { const c = record(input.chat); if (typeof c.goal !== 'boolean' || (c.automatic !== undefined && c.automatic !== true)) throw new TypeError('Invalid chat goal.'); return { roomId: validateTaskId(c.roomId), conversation: validateTaskId(c.conversation), goal: c.goal, ...(c.automatic === true ? { automatic: true as const, userText: textValue(c.userText, 'user message') } : {}) }; })());
         return Response.json(task, { status: 202 });
       }
+      const permission = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/permissions$/.exec(path);
+      if (permission && request.method === 'POST') {
+        const body = await request.text();
+        if (body.length > 1000) throw new TypeError('Request is too large.');
+        const input = record(JSON.parse(body));
+        if (input.decision !== 'allow' && input.decision !== 'deny') throw new TypeError('Invalid permission decision.');
+        return Response.json(agent.resolvePermissions(permission[1]!, validateTaskId(input.roomId), validateTaskId(input.requestId), input.decision));
+      }
       const question = /^\/tasks\/([a-zA-Z0-9_-]{1,80})\/(question|question-deadline)$/.exec(path);
       if (question && request.method === 'POST') {
         const body = await request.text();

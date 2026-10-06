@@ -30,7 +30,7 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 2 && (!grandchildEntry || !packagedIcons.has(grandchildEntry) || segments.length > 3);
   }
   if (rootEntry === 'experiments') {
-    const contracts = ['usage-contract.ts', 'activity-contract.ts', 'conversation-contract.ts', 'application-storage.ts', 'application-contract.ts', 'work-contract.ts', 'work-files.ts', 'integration-contract.ts', 'integration-plan.ts', 'verification-contract.ts', 'candidate-verification-contract.ts', 'protocol.ts'].map(name => `experiments/codex-specialists/src/${name}`);
+    const contracts = ['execution-permissions.ts', 'usage-contract.ts', 'activity-contract.ts', 'conversation-contract.ts', 'application-storage.ts', 'application-contract.ts', 'work-contract.ts', 'work-files.ts', 'integration-contract.ts', 'integration-plan.ts', 'verification-contract.ts', 'candidate-verification-contract.ts', 'protocol.ts'].map(name => `experiments/codex-specialists/src/${name}`);
     return !contracts.some(contract => normalizedPath === contract || contract.startsWith(`${normalizedPath}/`));
   }
   if (rootEntry === 'connect') {
@@ -57,7 +57,7 @@ function shouldIgnore(packagePath: string): boolean {
   if (grandchildEntry === 'agent-chats') return segments.length > 4 || (segments.length === 4 && !new Set(['ipc.mts', 'service.mts', 'store.mts', 'changes.mts', 'records.mts', 'coordination.mts']).has(segments[3]!));
   if (grandchildEntry === 'agent-voice') return segments.length > 4 || (segments.length === 4 && !new Set(['workspace.mts', 'service.mts', 'storage.mts', 'chats.mts', 'realtime.mts', 'diagnostics.mts']).has(segments[3]!));
   if (grandchildEntry === 'agent-management') {
-    const agentFiles = new Set(['lifecycle.mts', 'engine.mts', 'docker.mts', 'docker-errors.mts', 'task-inspection.mts', 'service.mts', 'ipc.mts', 'terminal.mts', 'registry.mts', 'registry-ipc.mts', 'runtime.mts', 'instruction-files.mts', 'operations.mts', 'application-deletion.mts', 'docker-deletion.mts', 'deletion.mts']);
+    const agentFiles = new Set(['dependencies.mts', 'project-environment.mts', 'lifecycle.mts', 'engine.mts', 'docker.mts', 'docker-errors.mts', 'task-inspection.mts', 'service.mts', 'ipc.mts', 'terminal.mts', 'registry.mts', 'registry-ipc.mts', 'runtime.mts', 'instruction-files.mts', 'operations.mts', 'application-deletion.mts', 'docker-deletion.mts', 'deletion.mts']);
     return segments.length > 3 && (segments.length !== 4 || !agentFiles.has(segments[3] ?? ''));
   }
   if (grandchildEntry === 'agent-orchestration') {

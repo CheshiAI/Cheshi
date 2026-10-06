@@ -5,9 +5,11 @@ import { join } from 'node:path';
 import { AppServerClient } from './app-server-client.ts';
 import { record, textValue } from './protocol.ts';
 import { SCRATCH_PROFILE, TaskScratch } from './task-scratch.ts';
+import { permissionTools } from './execution-permissions.ts';
+import { collaborationTools } from './collaboration-tools.ts';
 
 // Uses an installed Codex but no credentials, turn/start, model call or running desktop app.
-test.skipIf(!Bun.which('codex'))('native Codex reloads scratch permissions on warm and cold resumes', async () => {
+for (const projectWritable of [false, true]) test.skipIf(!Bun.which('codex'))(`native Codex reloads ${projectWritable ? 'development' : 'verification'} scratch permissions on warm and cold resumes`, async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'cheshi-native-scratch-')));
   const workspace = join(root, 'workspace'); mkdirSync(workspace);
   mkdirSync(join(root, 'codex'));
@@ -16,16 +18,16 @@ test.skipIf(!Bun.which('codex'))('native Codex reloads scratch permissions on wa
   let client = new AppServerClient(Bun.which('codex')!, env);
   const params = (index: number) => ({ cwd: workspace, model: 'gpt-6-astra', approvalPolicy: 'on-request',
     // Exercise both default selection and explicit selection against native Codex.
-    ...(index === 0 ? {} : { permissions: SCRATCH_PROFILE }), config: scratch[index]!.config(workspace) });
+    ...(index === 0 ? {} : { permissions: SCRATCH_PROFILE }), config: scratch[index]!.config(workspace, projectWritable) });
   const assertPermissions = (result: Record<string, unknown>, index: number) => {
-    scratch[index]!.assertApplied(result);
+    scratch[index]!.assertApplied(result, projectWritable ? workspace : undefined);
     expect(record(result.activePermissionProfile).id).toBe(SCRATCH_PROFILE);
-    expect(result.sandbox).toEqual({ type: 'workspaceWrite', writableRoots: [scratch[index]!.directory],
+    expect(result.sandbox).toEqual({ type: 'workspaceWrite', writableRoots: expect.arrayContaining([scratch[index]!.directory]),
       networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true });
   };
   try {
     await client.initialize();
-    const start = await client.request('thread/start', params(0));
+    const start = await client.request('thread/start', { ...params(0), dynamicTools: [...permissionTools, ...collaborationTools] });
     const threadId = textValue(record(start.thread).id, 'thread id');
     assertPermissions(start, 0);
     // Persist a local history item without submitting anything to a provider.

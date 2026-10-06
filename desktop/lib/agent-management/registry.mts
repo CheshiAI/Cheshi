@@ -68,8 +68,10 @@ export function createAgentRegistry(filename: string) {
       }
       const now = new Date().toISOString();
       const assignments = (previous?.assignments ?? []).filter(item => item.workspaceRoot !== workspace);
+      const previousAssignment = previous?.assignments.find(item => item.workspaceRoot === workspace);
+      const permissions = input.assignment.permissions === undefined ? previousAssignment?.permissions : input.assignment.permissions;
       const projectFiles = input.assignment.instructionFiles ?? previous?.assignments.find(item => item.workspaceRoot === workspace)?.instructionFiles;
-      if (input.assignment.assigned) assignments.push({ workspaceRoot: workspace, instructions: input.assignment.instructions,
+      if (input.assignment.assigned) assignments.push({ ...(permissions ? { permissions } : {}), workspaceRoot: workspace, instructions: input.assignment.instructions,
         ...(projectFiles === undefined ? {} : { instructionFiles: projectFiles }) });
       const agent: SpecialistAgent = { ...input.profile, instructionFiles: input.profile.instructionFiles ?? previous?.instructionFiles,
         avatar: input.profile.avatar ?? previous?.avatar ?? randomAgentAvatar(), id: previous?.id ?? randomUUID(), revision: (previous?.revision ?? 0) + 1,

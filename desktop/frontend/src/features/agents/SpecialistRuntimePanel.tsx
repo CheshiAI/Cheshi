@@ -66,7 +66,7 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigne
     const timer = setInterval(() => { void refresh(); }, 10_000);
     return () => { clearInterval(timer); revision.current++; };
   }, [agent.id, agent.revision, engine, assigned]);
-  const operate = async (action: 'start' | 'submit' | 'cancel' | 'recover' | 'application-inspect', recovery?: { taskId: string; roomId: string; candidateId?: string; hash?: string }) => {
+  const operate = async (action: 'project-setup' | 'start' | 'submit' | 'cancel' | 'recover' | 'application-inspect', recovery?: { taskId: string; roomId: string; candidateId?: string; hash?: string }) => {
     if (busy.current || !engine || blocked || bindingUnavailable.current) return;
     busy.current = true; setPending(true); setError(null);
     const version = ++revision.current;
@@ -106,6 +106,10 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigne
         <div className={styles.section}>
           <span className={shared.description}>{details?.authenticated ? 'Signed' : 'Not signed in'}{details?.threadId ? ` · ${details.threadId}` : ''}</span>
           {(error || details?.error) && <p className={shared.description} role="alert">{error || details?.error}</p>}
+          {(error || details?.error)?.includes('Project setup required:') && <>
+            <p className={shared.description}>Enable a writable share for this project and restart its Colima VM. All containers must be stopped first. Each Homie keeps its own file permissions.</p>
+            <NeumorphicButton disabled={pending} onClick={() => { void operate('project-setup'); }}>Enable project share and restart VM</NeumorphicButton>
+          </>}
           {details?.execution && <ExecutionHealth health={details.execution} unavailable={disconnected || Boolean(error || details.error)} />}
           <form className={styles.taskComposer} onSubmit={event => { event.preventDefault(); void operate('submit'); }}>
             <NeumorphicTextField multiline rows={3} variant="standard" aria-label="Agent task" placeholder="Give this agent a task"

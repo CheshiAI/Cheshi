@@ -12,6 +12,8 @@ export function registerAgentChatsIpc(options: { window: BrowserWindow; ipc: Pic
   options.ipc.handle(AGENT_CHATS_CHANNEL, (event, value) => {
     if (disposed || owner.isDestroyed() || event.sender !== owner || event.senderFrame !== owner.mainFrame) throw new Error('Chats belongs to its workspace window.');
     const request = parseChatsRequest(value);
+    if (request.action === 'project-setup') return options.service.prepareProject(options.workspaceRoot, request);
+    if (request.action === 'permission') return options.service.permissions(options.workspaceRoot, request);
     if (request.action === 'retry') return options.service.retry(options.workspaceRoot, request);
     if (request.action === 'application-inspect') return options.service.inspectApplication(options.workspaceRoot, request);
     if (request.action === 'question' || request.action === 'question-deadline') return options.service.question(options.workspaceRoot, request);

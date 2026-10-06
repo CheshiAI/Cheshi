@@ -17,6 +17,8 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
     handle: (name, fn) => { handlers.set(name, fn); }, removeHandler: name => { handlers.delete(name); },
   }, service: {
     settled: async () => {}, subscribe: (root, listener) => { subscribed = root; publish = listener; return () => { removed++; }; }, changed: () => {},
+    permissions: async root => { calls.push(`${root}/permission`); return { rooms: [], messages: [] }; },
+    prepareProject: async root => { calls.push(`${root}/project-setup`); return { rooms: [], messages: [] }; },
     retry: async root => { calls.push(`${root}/retry`); return { rooms: [], messages: [] }; },
     inspectApplication: async root => { calls.push(`${root}/application`); return { rooms: [], messages: [] }; },
     question: async root => { calls.push(root); return { rooms: [], messages: [] }; },
@@ -50,6 +52,11 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   expect(calls.at(-1)).toBe('/project/application');
   expect(await api.request({ action: 'retry', roomId: 'room', messageId: 'queued' })).toEqual({ rooms: [], messages: [] });
   expect(calls.at(-1)).toBe('/project/retry');
+  await api.request({ action: 'permission', roomId: 'room', messageId: 'pending', decision: 'deny' });
+  expect(calls.at(-1)).toBe('/project/permission');
+  await api.request({ action: 'project-setup', roomId: 'room' });
+  expect(calls.at(-1)).toBe('/project/project-setup');
+  expect(() => invoke(owner, {}, { action: 'permission', roomId: 'room', messageId: 'pending', decision: 'allow' })).toThrow('workspace');
   events.emit('closed'); registration.dispose();
   expect(removed).toBe(1);
   expect(handlers.size).toBe(0);

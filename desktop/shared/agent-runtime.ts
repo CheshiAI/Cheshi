@@ -4,7 +4,7 @@ import { parseQuestionDeadline } from './agent-question.ts';
 
 export const AGENT_RUNTIME_CHANNEL = 'cheshi:agent-registry:runtime';
 export interface AgentRuntimeRequest {
-  agentId: string; engineId: string; action: 'application-inspect' | 'status' | 'start' | 'submit' | 'cancel' | 'recover' | 'question' | 'question-deadline';
+  agentId: string; engineId: string; action: 'project-setup' | 'application-inspect' | 'status' | 'start' | 'submit' | 'cancel' | 'recover' | 'question' | 'question-deadline';
   candidateId?: string; hash?: string; taskId?: string; prompt?: string; roomId?: string; questionId?: string; recipient?: string | null; expiresAt?: string | null;
 }
 export interface AgentRuntimeState {
@@ -15,7 +15,7 @@ export interface AgentRuntimeState {
 export function parseAgentRuntimeRequest(value: unknown): AgentRuntimeRequest {
   const v = agentRecord(value), agentId = agentText(v.agentId, 36);
   if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(agentId)) throw new TypeError('Invalid specialist ID.');
-  if (!['application-inspect', 'status', 'start', 'submit', 'cancel', 'recover', 'question', 'question-deadline'].includes(String(v.action))) throw new TypeError('Invalid runtime action.');
+  if (!['project-setup', 'application-inspect', 'status', 'start', 'submit', 'cancel', 'recover', 'question', 'question-deadline'].includes(String(v.action))) throw new TypeError('Invalid runtime action.');
   const action = v.action as AgentRuntimeRequest['action'];
   const result: AgentRuntimeRequest = { agentId, engineId: parseAgentEngineId(v.engineId), action };
   if (['application-inspect', 'submit', 'cancel', 'recover', 'question', 'question-deadline'].includes(action)) {

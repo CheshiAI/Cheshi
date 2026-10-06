@@ -1,3 +1,4 @@
+import { parsePermissionRequest, type PermissionRequest } from './execution-permissions.ts';
 import { parseTaskActivities, type TaskActivity } from './activity-contract.ts';
 import { parseTaskUsage, type TaskUsage } from './usage-contract.ts';
 import { parseConversation, type ConversationState } from './conversation-contract.ts';
@@ -18,6 +19,7 @@ export type Task = {
   threadId: string | null; turnId: string | null; output: string; error: string | null;
   roomId?: string; inputs?: { id: string; prompt: string; questionId?: string; pending?: true }[]; responses?: { id: string; text: string; status: string }[];
   activity?: TaskActivity[]; activityTruncated?: boolean;
+  permissionRequest?: PermissionRequest;
   usage?: TaskUsage;
   dialogue?: ConversationState;
   conversation?: string; consultation?: string; goal?: GoalState;
@@ -58,6 +60,7 @@ function savedTask(value: unknown): Task {
     createdAt: textValue(task.createdAt, 'creation time'), finishedAt: nullableText(task.finishedAt),
     threadId: nullableText(task.threadId), turnId: nullableText(task.turnId), output: task.output,
     error: nullableText(task.error),
+    ...(task.permissionRequest === undefined ? {} : { permissionRequest: parsePermissionRequest(task.permissionRequest) }),
     ...(task.usage === undefined ? {} : { usage: parseTaskUsage(task.usage) }),
     ...(task.activity === undefined ? {} : { activity: parseTaskActivities(task.activity), activityTruncated: task.activityTruncated === true }),
     ...(task.delegation === undefined ? {} : { delegation: validateTaskId(task.delegation) }),

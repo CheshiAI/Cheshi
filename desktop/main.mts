@@ -97,6 +97,7 @@ const agentDeletion = createAgentDeletion({ directory: path.join(app.getPath('us
   runtimeDirectory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement });
 const agentChats = createAgentChats({ roomChanged: () => specialistRuntime.notify(), filename: path.join(app.getPath('userData'), 'agents', 'chats.json'),
   registry: workspace => agentRegistry.snapshot(workspace),
+  permissions: (workspace, input) => specialistRuntime.permissions(workspace, input),
   lifecycle: binding => specialistRuntime.lifecycle(binding),
   wake: (workspace, input, retry) => specialistRuntime.wake(workspace, input, retry),
   status: (workspace, input) => specialistRuntime.request(workspace, input),

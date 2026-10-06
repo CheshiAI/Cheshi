@@ -11,21 +11,34 @@ export const AGENT_REGISTRY_CHANNELS = {
 } as const;
 export const SPECIALIST_ROLES = ['planning', 'research', 'frontend', 'development', 'verification', 'custom'] as const;
 export type SpecialistRole = typeof SPECIALIST_ROLES[number];
+export interface ExecutionPermissions { fileWrite: boolean; commandExecution: boolean }
+export const EXECUTION_PRESETS = {
+  development: { fileWrite: true, commandExecution: true },
+  verification: { fileWrite: false, commandExecution: true },
+  review: { fileWrite: false, commandExecution: false },
+} satisfies Record<string, ExecutionPermissions>;
+export function parseExecutionPermissions(value: unknown): ExecutionPermissions {
+  const p = record(value);
+  return { fileWrite: flag(p.fileWrite), commandExecution: flag(p.commandExecution) };
+}
+export function projectPermissions(agent: SpecialistAgent, workspace: string): ExecutionPermissions {
+  return agent.assignments.find(a => a.workspaceRoot === workspace)?.permissions ?? agent.permissions;
+}
 export interface SpecialistProfile extends AgentModelSelection {
   name: string; role: SpecialistRole; instructions: string;
   accountId: string | null;
   avatar?: AgentAvatarValue;
   instructionFiles?: string[];
-  permissions: { fileWrite: boolean; commandExecution: boolean };
+  permissions: ExecutionPermissions;
 }
-export interface SpecialistAssignment { workspaceRoot: string; instructions: string; instructionFiles?: string[]; }
+export interface SpecialistAssignment { permissions?: ExecutionPermissions; workspaceRoot: string; instructions: string; instructionFiles?: string[]; }
 export interface SpecialistAgent extends SpecialistProfile {
   id: string; revision: number; createdAt: string; updatedAt: string; assignments: SpecialistAssignment[];
 }
 export interface AgentRegistrySnapshot { agents: SpecialistAgent[]; workspaceRoot: string; }
 export interface SaveSpecialistAgent {
   id: string | null; revision: number | null; profile: SpecialistProfile;
-  assignment: { assigned: boolean; instructions: string; instructionFiles?: string[] };
+  assignment: { assigned: boolean; instructions: string; instructionFiles?: string[]; permissions?: ExecutionPermissions | null };
 }
 export interface AgentRegistryApi {
   selectInstructionFiles?(): Promise<string[]>;
@@ -96,7 +109,7 @@ export function parseSaveSpecialistAgent(value: unknown): SaveSpecialistAgent {
   const data = record(value), assignment = record(data.assignment);
   if ((data.id === null) !== (data.revision === null)) throw new TypeError('Agent ID and revision must be supplied together.');
   return { id: data.id === null ? null : agentId(data.id), revision: data.revision === null ? null : revision(data.revision),
-    profile: profile(data.profile), assignment: { ...instructionFiles(assignment), assigned: flag(assignment.assigned), instructions: text(assignment.instructions, 20_000) } };
+    profile: profile(data.profile), assignment: { ...(assignment.permissions === undefined ? {} : { permissions: assignment.permissions === null ? null : parseExecutionPermissions(assignment.permissions) }), ...instructionFiles(assignment), assigned: flag(assignment.assigned), instructions: text(assignment.instructions, 20_000) } };
 }
 export function parseSpecialistAgents(value: unknown): SpecialistAgent[] {
   if (!Array.isArray(value) || value.length > 1000) throw new TypeError('Invalid specialist agent registry.');
@@ -111,7 +124,7 @@ export function parseSpecialistAgents(value: unknown): SpecialistAgent[] {
       const assignment = record(rawAssignment), workspaceRoot = text(assignment.workspaceRoot, 4096, true);
       if (roots.has(workspaceRoot)) throw new TypeError('Duplicate agent assignment.');
       roots.add(workspaceRoot);
-      return { workspaceRoot, instructions: text(assignment.instructions, 20_000), ...instructionFiles(assignment) };
+      return { ...(assignment.permissions === undefined ? {} : { permissions: parseExecutionPermissions(assignment.permissions) }), workspaceRoot, instructions: text(assignment.instructions, 20_000), ...instructionFiles(assignment) };
     });
     const createdAt = text(data.createdAt, 40, true), updatedAt = text(data.updatedAt, 40, true);
     if (!Number.isFinite(Date.parse(createdAt)) || !Number.isFinite(Date.parse(updatedAt))) throw new TypeError('Invalid agent timestamp.');

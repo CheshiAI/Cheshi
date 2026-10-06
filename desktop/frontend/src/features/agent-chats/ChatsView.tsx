@@ -1,3 +1,5 @@
+import { ProjectEnvironmentSetup } from './ProjectEnvironmentSetup';
+import { PermissionRequestCard } from './PermissionRequestCard';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDown, Phone, Reply, Users } from 'lucide-react';
@@ -180,11 +182,13 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
           {message.recipient && <span>→ {name(message.recipient)}</span>}{label && <span>{label}</span>}
         </ChatMessageLabel>
         {context && <blockquote className={styles.replyQuote}>{name(context.sender)}: {context.kind === 'verification_request' || context.kind === 'verification_result' ? verificationQuote(context.kind, context.text) : context.text.slice(0, 240)}</blockquote>}
-        {message.activity && message.activity.kind !== 'message' ? <ExecutionRecord activity={message.activity} messageId={message.id} onReview={onReviewFileChanges} />
+        {message.kind === 'permission_request' && message.permissionRequest ? <PermissionRequestCard message={message} workspace={room!.workspace} mutate={mutate} />
+          : message.activity && message.activity.kind !== 'message' ? <ExecutionRecord activity={message.activity} messageId={message.id} onReview={onReviewFileChanges} />
           : isWorkKind(message.kind) ? <WorkMessage kind={message.kind} text={message.text} />
             : verification ? <VerificationCard review={verification} onOpen={() => onReviewVerification?.(verification, true)} />
               : <div className={styles.text}><ChatsMessageContent text={message.text || 'No text response.'} mention={mention} /></div>}
         {message.error && !message.goalProgress && <p role="status" className={styles.description}>{message.error}</p>}
+        {message.error?.includes('Project setup required:') && <ProjectEnvironmentSetup roomId={message.roomId} mutate={mutate} />}
         {message.activity?.kind === 'message' && message.activity.truncated && <p className={styles.description}>Message shortened to the retained excerpt.</p>}
         {message.status === 'queued' && message.error && <div className={styles.links}>
           <NeumorphicButton variant="ghost" disabled={sending}

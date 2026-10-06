@@ -6,6 +6,7 @@ export interface RpcClient {
   request(method: string, params: JsonRecord): Promise<JsonRecord>;
   subscribe(listener: (event: Notification) => void): () => void;
   onFailure(listener: (error: Error) => void): () => void;
+  handleApprovals?(handler: (method: string, params: JsonRecord) => void): void;
   handleTools?(handler: (params: JsonRecord) => Promise<JsonRecord>): void;
 }
 
@@ -17,11 +18,13 @@ export class AppServerClient implements RpcClient {
   private readonly notifications = new Set<(event: Notification) => void>();
   private readonly failures = new Set<(error: Error) => void>();
   deniedRequests = 0;
+  private approvalHandler: ((method: string, params: JsonRecord) => void) | undefined;
+  handleApprovals(handler: (method: string, params: JsonRecord) => void): void { this.approvalHandler = handler; }
   private toolHandler: ((params: JsonRecord) => Promise<JsonRecord>) | undefined;
   handleTools(handler: (params: JsonRecord) => Promise<JsonRecord>): void { this.toolHandler = handler; }
 
-  constructor(command = 'codex', env?: NodeJS.ProcessEnv) {
-    this.child = spawn(command, ['app-server', '--listen', 'stdio://', '-c', 'cli_auth_credentials_store="file"'], {
+  constructor(command = 'codex', env?: NodeJS.ProcessEnv, args = ['app-server', '--listen', 'stdio://', '-c', 'cli_auth_credentials_store="file"']) {
+    this.child = spawn(command, args, {
       stdio: ['pipe', 'pipe', 'pipe'], env,
     });
     // Do not forward diagnostic output: provider diagnostics can contain private data.
@@ -80,6 +83,9 @@ export class AppServerClient implements RpcClient {
         void this.answerTool(message);
         return;
       }
+      // A request is never a grant. Record missing capabilities for the host UI,
+      // then deny this execution until the user has applied a new worker profile.
+      this.approvalHandler?.(message.method, record(message.params ?? {}));
       this.deniedRequests++;
       const result = deniedServerRequest(message.method);
       this.send(result === null
@@ -123,7 +129,7 @@ export class AppServerClient implements RpcClient {
   }
 
   async close(): Promise<void> {
-    if (this.child.exitCode !== null || this.child.signalCode !== null) return;
+    if (!this.child.pid || this.child.exitCode !== null || this.child.signalCode !== null) return;
     const exited = new Promise<void>(resolve => this.child.once('exit', () => resolve()));
     this.child.kill('SIGTERM');
     const timer = setTimeout(() => this.child.kill('SIGKILL'), 3000);

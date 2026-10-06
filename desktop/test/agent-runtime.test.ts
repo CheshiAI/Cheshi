@@ -51,7 +51,7 @@ function fixture(linkedWorkspace = false) {
     }
     if (args[0] === 'context') return JSON.stringify([{ Endpoints: { docker: { Host: remote ? 'ssh://other' : 'unix:///tmp/docker.sock' } } }]);
     if (args.includes('ls')) return created ? id : '';
-    if (args.includes('inspect')) return JSON.stringify([{ Id: id, Name: '/worker', Config: { Image: 'worker', Labels: labels },
+    if (args.includes('inspect')) return JSON.stringify([{ Id: id, ExecIDs: null, Name: '/worker', Config: { Image: 'worker', Labels: labels },
       State: { Status: state }, NetworkSettings: { Ports: { '8787/tcp': [{ HostIp: '127.0.0.1', HostPort: '49831' }] } } }]);
     if (args.includes('create')) {
       expect(JSON.parse(readFileSync(join(runtimePath, 'engine.json'), 'utf8'))).toEqual({
@@ -67,7 +67,7 @@ function fixture(linkedWorkspace = false) {
   const details = (): AgentDetails => ({ agent: { id, name: 'worker', image: 'worker', state },
     ready: seeded, busy, authenticated: true, threadId: null, error: null, logs: '', tasks });
   const exchanges: unknown[] = [];
-  const runtime = createSpecialistRuntime({ directory: join(directory, 'runtime'), buildContext: '/build', registry, run,
+  const runtime = createSpecialistRuntime({ directory: join(directory, 'runtime'), buildContext: '/build', registry, run, checkProjectEnvironment: async () => {},
     lifecycleControl: async () => ({ protocol: 1, idle: false, nextWakeAt: null }),
     collaborationExchange: async (_connection, body) => { exchanges.push(body); return { protocol: 1, received: [], outgoing: [] }; },
     account: async () => ({ home, models: [] }), management: { details: async () => { await beforeDetails?.(); return details(); },
@@ -490,5 +490,48 @@ test('input queue protocol upgrade preserves activity-era unknown work and its v
     expect(JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8')).inputQueueProtocol).toBe(1);
     const mounts = f.calls.filter(c => c.args.includes('create')).map(c => c.args.find(a => a.startsWith('type=volume,')));
     expect(mounts).toHaveLength(2); expect(mounts[0]).toBe(mounts[1]);
+  } finally { await f.runtime.dispose(); }
+});
+
+test('Chats permission decisions verify saved requests, refuse busy work, and grant only the current project', async () => {
+  const f = fixture();
+  const permission = { id: 'permission', fileWrite: true, commandExecution: true, reason: 'Implement and test', status: 'pending' as const };
+  const task = { id: 'permission-task', roomId: 'room', status: 'waiting', createdAt: '2026-10-06', prompt: 'Implement', output: '', error: null,
+    inspection: { permissionRequest: permission, finishedAt: null, threadId: null, conversation: null, goal: null, messages: [], evidence: [], recall: null, error: null } };
+  const posts: { url: string; body: unknown }[] = [];
+  const fakeFetch = Object.assign(async (url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    posts.push({ url: String(url), body: JSON.parse(String(init?.body)) }); return Response.json({ status: 'allowed' });
+  }, { preconnect: fetch.preconnect });
+  const fetchMock = spyOn(globalThis, 'fetch').mockImplementation(fakeFetch);
+  try {
+    await f.runtime.request(f.workspace, f.request()); f.setTasks([task]);
+    const input = { agentId: f.agentId, engineId: f.request().engineId, accountId: 'default', roomId: 'room', taskId: task.id, request: permission, decision: 'allow' as const };
+    await fails(f.runtime.permissions(f.workspace, { ...input, accountId: 'other' }), 'account changed');
+    await fails(f.runtime.permissions(f.workspace, { ...input, request: { ...permission, id: 'foreign' } }), 'request changed');
+    expect(f.registry.snapshot(f.workspace).agents[0]!.permissions.fileWrite).toBe(false);
+    await f.runtime.permissions(f.workspace, input);
+    const agent = f.registry.snapshot(f.workspace).agents[0]!;
+    expect(agent.permissions).toEqual({ fileWrite: false, commandExecution: false });
+    expect(agent.assignments[0]?.permissions).toEqual({ fileWrite: true, commandExecution: true });
+    expect(posts.at(-1)).toEqual({ url: 'http://127.0.0.1:49831/tasks/permission-task/permissions', body: { roomId: 'room', requestId: permission.id, decision: 'allow' } });
+    expect(f.calls.filter(c => c.args.includes('rm'))).toHaveLength(1);
+    f.setBusy(); const before = f.calls.length;
+    await fails(f.runtime.permissions(f.workspace, input), 'Wait for');
+    expect(f.calls.slice(before).some(c => c.args.includes('stop') || c.args.includes('rm'))).toBe(false);
+  } finally { fetchMock.mockRestore(); await f.runtime.dispose(); }
+});
+
+test('failed permission application restores the previous project grant without changing the shared profile', async () => {
+  const f = fixture();
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    const permission = { id: 'request', fileWrite: true, commandExecution: true, reason: 'Implement', status: 'pending' as const };
+    f.setTasks([{ id: 'task', roomId: 'room', status: 'waiting', createdAt: '2026-10-06', prompt: 'Implement', output: '', error: null,
+      inspection: { permissionRequest: permission, finishedAt: null, threadId: null, conversation: null, goal: null, messages: [], evidence: [], recall: null, error: null } }]);
+    f.failBootstrap();
+    await fails(f.runtime.permissions(f.workspace, { ...f.request(), accountId: 'default', taskId: 'task', roomId: 'room', request: permission, decision: 'allow' }), 'bootstrap interrupted');
+    const agent = f.registry.snapshot(f.workspace).agents[0]!;
+    expect(agent.permissions).toEqual({ fileWrite: false, commandExecution: false });
+    expect(agent.assignments[0]?.permissions).toBeUndefined();
   } finally { await f.runtime.dispose(); }
 });

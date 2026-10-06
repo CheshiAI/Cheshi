@@ -28,6 +28,14 @@ export function recordRoomTasks(messages: RoomMessage[], room: AgentRoom, agentI
         userQuestion: { rootId: anchor.id, id: question.id, answered: question.answer !== null } };
       if (previous) Object.assign(previous, entry); else messages.push(entry);
     }
+    if (task.inspection?.permissionRequest) {
+      const permissionRequest = task.inspection.permissionRequest;
+      const id = `permission_${createHash('sha256').update(`${room.id}/${agentId}/${task.id}/${permissionRequest.id}`).digest('hex').slice(0, 40)}`;
+      const previous = messages.find(m => m.id === id);
+      const entry: RoomMessage = { id, roomId: room.id, threadId: anchor.kind === 'goal' || anchor.dialogue ? anchor.id : anchor.threadId, sender: agentId, recipient: 'user', kind: 'permission_request',
+        taskId: task.id, text: permissionRequest.reason, permissionRequest, createdAt: previous?.createdAt ?? new Date().toISOString() };
+      if (previous) Object.assign(previous, entry); else messages.push(entry);
+    }
     if (task.inspection) {
       // Activity is persisted below once as timeline entries, not duplicated in the summary.
       anchor.inspection = { ...task.inspection, ...(task.inspection.activity ? { activity: [] } : {}), messages: [] };

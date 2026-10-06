@@ -1,3 +1,4 @@
+import { parsePermissionRequest, type PermissionRequest } from '../../experiments/codex-specialists/src/execution-permissions.ts';
 import { parseTaskActivity, type TaskActivity } from './agent-activity.ts';
 import { parseTaskInspection, type TaskInspection } from './agent-task-inspection.ts';
 import { parseWorkerLifecycle, type AgentRuntimeState } from './agent-runtime.ts';
@@ -28,12 +29,13 @@ export interface AgentRoom {
   id: string; workspace: string; name: string; engineId: string; members: ChatMember[]; defaultAgentId: string; createdAt: string;
 }
 export interface RoomMessage {
+  permissionRequest?: PermissionRequest;
   replyTo?: string; userQuestion?: { rootId: string; id: string; answered: boolean };
   activity?: TaskActivity; inspection?: TaskInspection; executionStatus?: string; questionId?: string;
   worker?: AgentRuntimeState['lifecycle'];
   dialogue?: ConversationState;
   id: string; roomId: string; threadId: string | null; sender: string; recipient: string | null;
-  kind: WorkKind | 'message' | 'goal' | 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result';
+  kind: WorkKind | 'permission_request' | 'message' | 'goal' | 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result';
   text: string; createdAt: string; taskId?: string; status?: string; error?: string | null;
   relatedTask?: { agentId: string; taskId: string };
   goalProgress?: RoomGoalProgress;
@@ -46,6 +48,8 @@ export interface RoomJob {
 export interface ChatsSnapshot { cursor?: ChatsCursor; rooms: AgentRoom[]; messages: RoomMessage[] }
 export interface ChatTaskTarget { roomId: string; threadId: string | null; agentId: string; engineId: string; taskId: string }
 export type ChatsRequest = { action: 'list' }
+  | { action: 'project-setup'; roomId: string }
+  | { action: 'permission'; roomId: string; messageId: string; decision: 'allow' | 'deny' }
   | { action: 'pin'; roomId: string; pinned: boolean }
   | { action: 'retry'; roomId: string; messageId: string }
   | { action: 'question-deadline'; roomId: string; goalId: string; questionId: string; expiresAt: string | null }
@@ -68,6 +72,11 @@ function required(value: unknown, max: number): string {
 }
 export function parseChatsRequest(value: unknown): ChatsRequest {
   const v = agentRecord(value);
+  if (v.action === 'project-setup') return { action: 'project-setup', roomId: chatId(v.roomId) };
+  if (v.action === 'permission') {
+    if (v.decision !== 'allow' && v.decision !== 'deny') throw new Error('Invalid permission decision.');
+    return { action: 'permission', roomId: chatId(v.roomId), messageId: chatId(v.messageId), decision: v.decision };
+  }
   if (v.action === 'pin') {
     if (typeof v.pinned !== 'boolean') throw new Error('Invalid room pin state.');
     return { action: 'pin', roomId: chatId(v.roomId), pinned: v.pinned };
@@ -131,10 +140,10 @@ export function parseRoom(value: unknown): AgentRoom {
 }
 export function parseRoomMessage(value: unknown): RoomMessage {
   const v = agentRecord(value);
-  if (!isWorkKind(v.kind) && !['message', 'goal', 'question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid room message.');
+  if (!isWorkKind(v.kind) && !['permission_request', 'message', 'goal', 'question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid room message.');
   const userQuestion = v.userQuestion === undefined ? undefined : agentRecord(v.userQuestion);
   if (userQuestion && typeof userQuestion.answered !== 'boolean') throw new Error('Invalid user question state.');
-  return { ...(v.replyTo === undefined ? {} : { replyTo: chatId(v.replyTo) }),
+  return { ...(v.permissionRequest === undefined ? {} : { permissionRequest: parsePermissionRequest(v.permissionRequest) }), ...(v.replyTo === undefined ? {} : { replyTo: chatId(v.replyTo) }),
     ...(userQuestion ? { userQuestion: { rootId: chatId(userQuestion.rootId), id: chatId(userQuestion.id), answered: userQuestion.answered as boolean } } : {}),
     ...(v.activity === undefined ? {} : { activity: parseTaskActivity(v.activity) }),
     ...(v.inspection === undefined ? {} : { inspection: parseTaskInspection(v.inspection) }),

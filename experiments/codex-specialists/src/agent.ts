@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { coversPermissions, parsePermissionRequest, permissionTools, permissionInstructions } from './execution-permissions.ts';
 import { projectTaskActivities, recordTaskActivity } from './activity.ts';
 import { readNativeTurnUsage } from './native-usage.ts';
 import { mergeTurnUsage } from './usage-contract.ts';
@@ -80,7 +82,17 @@ export class SpecialistAgent {
     this.client = options.client; this.store = options.store; this.profile = options.profile;
     this.workspace = options.workspace;
     this.collaboration = options.collaboration; this.historyQueue = options.historyQueue; this.history = options.history;
-    if (this.collaboration || this.historyQueue || this.configuration?.decisionProtocol === 1) {
+    if (this.configuration?.permissionProtocol === 1) this.client.handleApprovals?.((method, params) => {
+      const active = this.active;
+      if (!active || active.stopRequested || params.threadId !== active.threadId || (active.turnId && params.turnId !== active.turnId)) return;
+      const task = this.store.task(active.id);
+      if (!task?.roomId || task.permissionRequest) return;
+      const fileWrite = method === 'item/fileChange/requestApproval' && !this.configuration!.permissions.fileWrite;
+      const commandExecution = method === 'item/commandExecution/requestApproval' && !this.configuration!.permissions.commandExecution;
+      if (fileWrite || commandExecution) this.store.update(task.id, { permissionRequest: { id: randomUUID(), fileWrite, commandExecution, status: 'pending',
+        reason: fileWrite ? 'This task needs permission to modify project files.' : 'This task needs permission to run commands.' } });
+    });
+    if (this.collaboration || this.historyQueue || this.configuration?.decisionProtocol === 1 || this.configuration?.permissionProtocol === 1) {
       if (!this.client.handleTools) throw new Error('Collaboration requires dynamic tool support.');
       this.client.handleTools(async params => {
         const active = this.active;
@@ -91,6 +103,13 @@ export class SpecialistAgent {
         active.health.activity('tool');
         const tool = textValue(params.tool, 'tool');
         const task = this.store.task(active.id)!;
+        if (tool === 'request_execution_permissions' && this.configuration?.permissionProtocol === 1) {
+          if (!task.roomId) throw new Error('Permission requests require a Chats task.');
+          const requested = parsePermissionRequest({ ...record(params.arguments), id: randomUUID(), status: 'pending' });
+          if (coversPermissions(this.configuration.permissions, requested)) return { status: 'already-allowed', message: 'These permissions are already enabled. Other sandbox boundaries and saved instructions still apply.' };
+          if (!task.permissionRequest) this.store.update(task.id, { permissionRequest: requested });
+          return { ...this.store.task(task.id)!.permissionRequest, message: 'End this turn. The user must decide in Chats.' };
+        }
         if (task.dialogue && conversationTools.some(t => t.name === tool)) {
           const result = this.conversations.call(task, tool, params.arguments);
           if (tool !== 'conversation_status') active.observations.add({ tool, result });
@@ -149,6 +168,17 @@ export class SpecialistAgent {
         return result;
       });
     }
+  }
+
+  resolvePermissions(id: string, roomId: string, requestId: string, decision: 'allow' | 'deny') {
+    if (this.busy || this.store.snapshot().tasks.some(t => t.status === 'unknown')) throw new TaskConflict('Wait for the worker or inspect unfinished execution before changing permissions.');
+    const task = this.store.task(id), request = task?.permissionRequest;
+    if (!task || task.roomId !== roomId || !request || request.id !== requestId) throw new TaskConflict('Permission request changed.');
+    const status = decision === 'allow' ? 'allowed' : 'denied';
+    if (request.status !== 'pending' && request.status !== status) throw new TaskConflict('Permission request already decided.');
+    if (decision === 'allow' && (!this.configuration || !coversPermissions(this.configuration.permissions, request))) throw new TaskConflict('Start the worker with the approved project permissions first.');
+    this.store.update(id, { permissionRequest: { ...request, status } });
+    return { status };
   }
 
   get busy(): boolean { return this.active !== null || this.recovering; }
@@ -303,10 +333,11 @@ export class SpecialistAgent {
     }
     const settings = this.configuration;
     const intake = !!task.dialogue && !task.goal;
+    const projectWritable = !intake && !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true;
     // Native resumed conversations retain the dynamic tool set from their creation.
     const integrationAvailable = this.integration && (!savedThread || task.integrationTools === true);
     const applicationAvailable = integrationAvailable && settings?.applicationProtocol === 1 && (!savedThread || task.applicationTools === true);
-    const profile = this.profile + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
+    const profile = this.profile + (settings?.permissionProtocol === 1 ? permissionInstructions : '') + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
       + (integrationAvailable && settings?.candidateVerificationProtocol === 1 ? candidateVerificationInstructions : '') + (applicationAvailable ? applicationInstructions : '');
     const params: JsonRecord = { cwd: workspace,
       ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: !intake && !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
@@ -316,17 +347,17 @@ export class SpecialistAgent {
         'features.shell_tool': !intake && !task.consultation && settings.permissions.commandExecution,
         'features.unified_exec': !intake && !task.consultation && settings.permissions.commandExecution,
         'features.multi_agent': false,
-        ...(scratch ? scratch.config(workspace) : {}),
+        ...(scratch ? scratch.config(workspace, projectWritable) : {}),
       } } : {}) };
     const result = savedThread
       ? await this.client.request('thread/resume', { ...params, threadId: savedThread })
-      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal || task.dialogue ? decisionTools : []), ...(task.dialogue ? conversationTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])] });
+      : await this.client.request('thread/start', { ...params, dynamicTools: [...(settings?.permissionProtocol === 1 ? permissionTools : []), ...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal || task.dialogue ? decisionTools : []), ...(task.dialogue ? conversationTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])] });
     const threadId = textValue(record(result.thread).id, 'thread id');
     assertResumedThread(savedThread, threadId);
     const nativePath = record(result.thread).path;
     if (typeof nativePath === 'string') this.threadPaths.set(threadId, nativePath);
     else this.threadPaths.delete(threadId);
-    scratch?.assertApplied(result);
+    scratch?.assertApplied(result, projectWritable ? workspace : undefined);
     if (savedThread) {
       // Codex 0.159.3 can replay old developer instructions on cold resume.
       // Persist the current snapshot in model-visible history before any turn.
@@ -367,8 +398,7 @@ export class SpecialistAgent {
       }
       const account = record(await this.client.request('account/read', { refreshToken: false }));
       assertChatGPTAccount(account.account);
-      if (!task.delegation && !task.consultation && this.configuration?.permissions.commandExecution === true
-        && (task.verification || this.configuration.permissions.fileWrite !== true)) {
+      if (!task.delegation && !task.consultation && this.configuration?.permissions.commandExecution === true) {
         scratch = new TaskScratch(); this.retainedScratch.add(scratch);
       }
       if ((!task.dialogue || task.goal) && !task.consultation && !task.verification && !task.delegation
@@ -413,7 +443,9 @@ export class SpecialistAgent {
       const savedGoal = currentGoal && reported ? { ...currentGoal, usage: {
         reportedThroughTurn: currentGoal.turns, ...reported,
       } } : currentGoal;
-      if (!active.stopRequested && result.status === 'completed' && this.store.task(task.id)?.inputs?.some(i => i.pending === true)) {
+      if (!active.stopRequested && result.status === 'completed' && this.store.task(task.id)?.permissionRequest?.status === 'pending') {
+        this.store.complete(task.id, { ...result, status: 'waiting', ...(savedGoal ? { goal: { ...savedGoal, phase: 'blocked', pending: null } } : {}) }, active.messages);
+      } else if (!active.stopRequested && result.status === 'completed' && this.store.task(task.id)?.inputs?.some(i => i.pending === true)) {
         this.store.complete(task.id, { ...result, status: 'waiting',
           ...(savedGoal ? { goal: { ...savedGoal, phase: 'ready', pending: null } } : {}) }, active.messages);
       } else if (task.delegation && this.work) {

@@ -10,9 +10,11 @@ import { roomCoordination } from './coordination.mts';
 import { parseChatsRequest, type AgentRoom, type ChatMember, type RoomJob, type RoomMessage, type RoomGoalProgress } from '../../shared/agent-chats.ts';
 import type { AgentDetails, AgentTask } from '../../shared/agent-management.ts';
 import type { AgentRuntimeRequest, AgentRuntimeState } from '../../shared/agent-runtime.ts';
+import { projectPermissions } from '../../shared/agent-registry.ts';
 import type { AgentRegistrySnapshot } from '../../shared/agent-registry.ts';
 import { bindingFor, type Binding, type Message } from '../agent-orchestration/mailbox.mts';
 interface Options {
+  permissions?(workspace: string, input: { agentId: string; engineId: string; accountId: string; roomId: string; taskId: string; request: NonNullable<RoomMessage['permissionRequest']>; decision: 'allow' | 'deny' }): Promise<AgentRuntimeState>;
   filename: string;
   roomChanged?(): void;
   lifecycle?(binding: Binding): AgentRuntimeState['lifecycle'];
@@ -133,7 +135,7 @@ export function createAgentChats(options: Options) {
       }
       return snapshot(workspace);
     }
-    if (input.action === 'retry' || input.action === 'recover' || input.action === 'question' || input.action === 'question-deadline') throw new Error('Use the asynchronous execution inspection handler.');
+    if (input.action === 'project-setup' || input.action === 'permission' || input.action === 'retry' || input.action === 'recover' || input.action === 'question' || input.action === 'question-deadline') throw new Error('Use the asynchronous execution inspection handler.');
     if (input.action === 'create') {
       const selected = members(workspace, input.members);
       if (!input.engineId.startsWith('docker:')) throw new Error('Choose a Docker engine.');
@@ -468,7 +470,7 @@ export function createAgentChats(options: Options) {
       const job = store().all().jobs.find(j => j.taskId === m.taskId);
       if (!m.roomId) return !job && !m.taskId.startsWith('chats_');
       const room = scopeRoom(b, m.roomId);
-      if (m.kind === 'work_request' && ![m.from, m.to].every(id => options.registry(b.workspace).agents.some(a => a.id === id && a.permissions.fileWrite === true))) return false;
+      if (m.kind === 'work_request' && ![m.from, m.to].every(id => options.registry(b.workspace).agents.some(a => a.id === id && projectPermissions(a, b.workspace).fileWrite === true))) return false;
       return Boolean(room && job?.roomId === room.id && [m.from, m.to].every(id => room.members.some(p => p.id === id) && current(room, id)));
     },
     record(b: Binding, messages: Message[]) {
@@ -493,7 +495,35 @@ export function createAgentChats(options: Options) {
       } });
     },
   };
-  return { retry, inspectApplication, request, recover, question, rooms, tick,
+  async function permissions(workspaceRoot: string, value: unknown) {
+    const input = parseChatsRequest(value);
+    if (input.action !== 'permission' || !options.permissions) throw new Error('Permission controls are unavailable.');
+    const workspace = realpathSync(workspaceRoot), room = roomFor(workspace, input.roomId);
+    const message = store().all().messages.find(m => m.id === input.messageId && m.roomId === room.id);
+    if (message?.kind !== 'permission_request' || !message.permissionRequest || !message.taskId) throw new Error('Unknown permission request in this room.');
+    assertCurrentMember(room, message.sender);
+    const key = `${workspace}/${room.engineId}/${message.sender}`;
+    if (inspecting.has(key)) throw new Error('A worker operation is already in progress.');
+    inspecting.add(key);
+    try {
+      await flight;
+      assertCurrentMember(room, message.sender);
+      const result = await options.permissions(workspace, { agentId: message.sender, engineId: room.engineId, accountId: room.members.find(m => m.id === message.sender)!.accountId,
+        roomId: room.id, taskId: message.taskId, request: message.permissionRequest, decision: input.decision });
+      if (result.details) store().update(s => recordRoomTasks(s.messages, room, message.sender, result.details!.tasks));
+      return snapshot(workspace);
+    } finally { inspecting.delete(key); notify(); }
+  }
+  async function prepareProject(workspaceRoot: string, value: unknown) {
+    const input = parseChatsRequest(value);
+    if (input.action !== 'project-setup') throw new Error('Invalid project setup request.');
+    const workspace = realpathSync(workspaceRoot), room = roomFor(workspace, input.roomId);
+    assertCurrentMember(room, room.defaultAgentId);
+    await flight;
+    await options.status(workspace, { action: 'project-setup', engineId: room.engineId, agentId: room.defaultAgentId });
+    notify(); return snapshot(workspace);
+  }
+  return { prepareProject, permissions, retry, inspectApplication, request, recover, question, rooms, tick,
     settled: () => queue.settled(),
     subscribe: (workspace: string, listener: Parameters<ChatsChanges['subscribe']>[1]) => changes.subscribe(workspace, listener),
     changed(binding?: Binding) { notify(binding); publish(); },
