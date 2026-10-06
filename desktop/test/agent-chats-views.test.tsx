@@ -18,6 +18,21 @@ const snapshot = (): ChatsSnapshot => ({ rooms: [{ id: 'room', workspace: '/proj
   { id: 'goal', roomId: 'room', threadId: null, sender: 'user', recipient: 'dev', kind: 'goal', text: 'Build login', createdAt: '2026-10-03T00:00:00Z', taskId: 'task', status: 'waiting' },
   { id: 'reply', roomId: 'room', threadId: 'goal', sender: 'dev', recipient: null, kind: 'message', text: 'Waiting for design', createdAt: '2026-10-03T00:01:00Z', taskId: 'task', status: 'waiting' },
 ] });
+test('Chats opens Homie management from its header and participants without submitting or losing a draft', async () => {
+  await withDOM(async ui => {
+    const requests: ChatsRequest[] = [], selections: (string | undefined)[] = [];
+    const api = { request: async (request: ChatsRequest) => { requests.push(request); return snapshot(); } };
+    await ui.render(<ChatsView active api={api} onManageHomies={id => selections.push(id)} />);
+    await ui.type('Message', 'Keep the room draft');
+    const timeline = document.querySelector('[aria-label="Room messages"]');
+    await ui.click('Manage Homies');
+    await ui.click('Manage Homie: Development');
+    expect(selections).toEqual([undefined, 'dev']);
+    expect(document.querySelector('[aria-label="Room messages"]')).toBe(timeline);
+    expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')?.value).toBe('Keep the room draft');
+    expect(requests.every(request => request.action === 'list')).toBe(true);
+  });
+});
 test('phone dialog binds pairing to this room and requires explicit approval before showing a linked device', async () => {
   await withDOM(async ui => {
     const requests: VoiceRequest[] = [];

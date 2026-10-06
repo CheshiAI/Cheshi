@@ -10,7 +10,8 @@ import { AgentTaskDetail } from './AgentTaskDetail';
 import common from '../../shared/agent-management/agentManagement.module.css';
 import styles from './AgentTaskResults.module.css';
 
-export function AgentTaskResults({ requestedTaskId, onBackToChats, tasks, loading, running, onRecover, onInspectApplication, recoveryDisabled }: {
+export function AgentTaskResults({ requestedTaskId, onBackToChats, listTitle = 'TASKS', emptyText, tasks, loading, running, onRecover, onInspectApplication, recoveryDisabled }: {
+  listTitle?: string; emptyText?: string;
   requestedTaskId?: string; onBackToChats?(): void;
   onInspectApplication?(taskId: string, roomId: string, candidateId: string, hash: string): void;
   onRecover?(taskId: string, roomId: string): void; recoveryDisabled?: boolean;
@@ -42,7 +43,7 @@ export function AgentTaskResults({ requestedTaskId, onBackToChats, tasks, loadin
       {task && !onBackToChats && <TooltipButton variant="ghost" size="icon" aria-label="Back to task list" title="Back to task list"
         onClick={() => setTaskId(null)}><ArrowLeft aria-hidden="true" /></TooltipButton>}
       <TooltipTarget content={task?.id}><h2 className={`${common.sectionTitle} ${styles.heading}`}>
-        {task ? 'Task details' : 'TASKS'}
+        {task ? 'Task details' : listTitle}
       </h2></TooltipTarget>
     </div>
     {requestedTaskId && !task && <p className={styles.empty}>The linked task is not available yet. Start its worker or check the queued message in Chats.</p>}
@@ -61,8 +62,8 @@ export function AgentTaskResults({ requestedTaskId, onBackToChats, tasks, loadin
           </span>
         </NeumorphicButton>;
       })}
-      {tasks.length === 0 && <p className={styles.empty}>{loading ? 'Loading task results…' : running
-        ? 'No task results available.' : 'Start the worker to read its stored task results.'}</p>}
+      {tasks.length === 0 && <p className={styles.empty}>{loading ? 'Loading task results…' : emptyText ?? (running
+        ? 'No task results available.' : 'Start the worker to read its stored task results.')}</p>}
     </div>
     {task && <div ref={content} className={styles.content} aria-label="Task result content" tabIndex={-1}>
       {task.status === 'unknown' && task.inspection?.recoveryRoomId && onRecover && <section aria-label={task.inspection.recoveryKind === 'delegation' ? 'Delegation recovery' : task.inspection.recoveryKind === 'verification' ? 'Verification recovery' : 'Consultation recovery'}>

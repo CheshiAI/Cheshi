@@ -1,6 +1,5 @@
 import {
   Blocks,
-  Bot,
   MessagesSquare,
   CalendarDays,
   Crosshair,
@@ -28,7 +27,6 @@ const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceVi
   { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
   { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },
   { label: 'Chats', icon: <MessagesSquare aria-hidden="true" />, view: 'chats' },
-  { label: 'Agents', icon: <Bot aria-hidden="true" />, view: 'agents' },
   { label: 'Docker', icon: <DockerIcon />, view: 'docker' },
   { label: 'Settings', icon: <Settings aria-hidden="true" />, view: 'settings' },
 ];

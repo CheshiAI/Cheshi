@@ -38,9 +38,9 @@ import { useChatsScroll } from './useChatsScroll';
 
 const ChatsMessageContent = memo(MessageContent);
 
-export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpenRoom, reviewedMessageId, onReviewFileChanges, reviewedVerificationId, onReviewVerification, api = cheshiDesktop?.agentChats,
+export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpenRoom, onManageHomies, reviewedMessageId, onReviewFileChanges, reviewedVerificationId, onReviewVerification, api = cheshiDesktop?.agentChats,
   registry = cheshiDesktop?.agentRegistry, management = cheshiDesktop?.agentManagement }: {
-  active: boolean; sidebarTarget?: HTMLElement | null; sidebarActive?: boolean; onOpenRoom?(): void;
+  active: boolean; sidebarTarget?: HTMLElement | null; sidebarActive?: boolean; onOpenRoom?(): void; onManageHomies?(agentId?: string): void;
   reviewedMessageId?: string; onReviewFileChanges?: (item: ChatActivityItem | null, path?: string) => void;
   reviewedVerificationId?: string; onReviewVerification?: (review: VerificationReview | null, open?: boolean) => void;
   api?: AgentChatsApi; registry?: Pick<AgentRegistryApi, 'list' | 'onDidChange'>; management?: Pick<AgentManagementApi, 'engines'>;
@@ -212,6 +212,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     </article>;
   }
   const roomList = <ChatsRoomList snapshot={snapshot} selectedId={roomId} phase={data.phase} loaded={data.loaded} refreshing={data.refreshing} disabled={!api} error={data.error ?? pinError}
+    onManageHomies={onManageHomies ? () => { onManageHomies(); } : undefined}
     pinningRoomId={pinningRoomId} onPin={(id, pinned) => { void pinRoom(id, pinned); }}
     onDelete={id => { setDeleteRoomId(id); onOpenRoom?.(); }}
     onSelect={id => { setRoomId(id); onOpenRoom?.(); }} onNew={() => { setDialog('new'); onOpenRoom?.(); }} onRefresh={() => { void data.refresh(); }} />;
@@ -223,7 +224,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
         <header className={styles.header}>
           {room ? <div className={styles.participants} aria-label="Room participants">
             {room.members.map(member => <TooltipTarget key={member.id} content={member.name}>
-              <span className={styles.participant} tabIndex={0}><AgentAvatar id={member.id} avatar={agents.find(agent => agent.id === member.id)?.avatar} /><span>{member.name}</span></span>
+              <NeumorphicButton variant="ghost" className={styles.participant} aria-label={`Manage Homie: ${member.name}`} disabled={!onManageHomies} onClick={() => onManageHomies?.(member.id)}><AgentAvatar id={member.id} avatar={agents.find(agent => agent.id === member.id)?.avatar} /><span>{member.name}</span></NeumorphicButton>
             </TooltipTarget>)}
           </div> : <h2>Chats</h2>}
         </header>

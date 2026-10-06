@@ -1,24 +1,24 @@
 .sidebar {
   --liquid-glass-radius: 0;
   display: flex;
-  flex: 0 0 var(--sidebar-width);
+  flex: 1;
   flex-direction: column;
-  width: var(--sidebar-width);
+  width: 100%;
   min-height: 0;
-  border-width: 0 1px 0 0;
+  border-width: 0;
   overflow: hidden;
 }
-.sidebarHeading, .detailHeader {
+.detailHeader {
   display: flex;
-  flex: 0 0 var(--header-height);
+  flex: 0 0 auto;
+  flex-wrap: wrap;
   min-width: 0;
   align-items: center;
   gap: var(--icon-default);
-  padding: 0 var(--space-default);
+  padding: var(--space-default);
   border-bottom: 1px solid var(--divider);
 }
 .agentList { flex: 1; min-height: 0; overflow: auto; }
-.createButton { margin-left: auto; }
 .agentRow { display: flex; box-sizing: border-box; width: 100%; min-width: 0; align-items: center; padding-right: var(--space-default); gap: var(--icon-default); background: var(--control-surface-ghost); transition: background-color var(--button-transition-duration) ease; }
 .agentRow[data-selected='true'] { background: var(--control-surface); }
 .agentRow:has(.agent:not(:disabled)):is(:hover, :active) { background: var(--control-surface-interactive); }
@@ -48,13 +48,18 @@
 .detailsPane { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 .name { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-label); font-weight: 600; }
 .detailHeader > span { flex-shrink: 0; }
-.detailBody { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
+.detailBody { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: auto; }
 .section { display: flex; flex: 0 0 auto; flex-direction: column; gap: var(--space-default); min-width: 0; padding: var(--space-default); overflow-wrap: anywhere; }
 .empty { margin: 0; padding: var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
 
 .runtimeActions { display: flex; align-items: center; gap: var(--icon-default); margin-left: auto; }
-.taskComposer { display: flex; flex-direction: column; gap: var(--space-default); }
+.settingsPane { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.settingsPane[hidden] { display: none; }
+.logs { padding: var(--space-default); }
+.logs > summary { cursor: pointer; color: var(--sidebar-section-label-color); margin-bottom: var(--space-default); }
 
 @media (prefers-reduced-motion: reduce) {
   .agentRow { transition: none; }
 }
+
+.recovery { display: flex; flex: 1 0 var(--sidebar-width); min-height: 0; }

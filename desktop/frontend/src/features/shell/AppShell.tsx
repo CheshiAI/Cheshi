@@ -55,7 +55,7 @@ import { CalendarView } from '../calendar/CalendarView';
 import { appleNoteDraftText } from '../notes/appleNotesModel';
 import type { AppleNote } from '../../../../shared/apple-notes';
 
-const fullWidthViews: readonly WorkspaceView[] = ['chats', 'git', 'plugins', 'notes', 'calendar', 'settings', 'agents', 'docker'];
+const fullWidthViews: readonly WorkspaceView[] = ['chats', 'git', 'plugins', 'notes', 'calendar', 'settings', 'docker'];
 
 export function AppShell() {
   const notificationSceneRef = useRef<HTMLDivElement>(null);
@@ -84,12 +84,13 @@ export function AppShell() {
   const [activeView, setActiveView] = useState<WorkspaceView>('chat');
   const [historyChoice, setHistoryChoice] = useState<{ sessionId: string; title: string; paneId: string } | null>(null);
   const [deleteChoice, setDeleteChoice] = useState<{ sessionId: string; title: string } | null>(null);
+  const [homies, setHomies] = useState<{ agentId: string | null } | null>(null);
   const [fileReview, setFileReview] = useState<{ paneId: string; itemId: string; path: string | null; item?: never }
     | { paneId?: never; itemId: string; path: string | null; item: ChatActivityItem } | null>(null);
   const [verificationReview, setVerificationReview] = useState<VerificationReview | null>(null);
   const [lineCommitTarget, setLineCommitTarget] = useState<GitLineBlameRequest | null>(null);
   const [localHistoryPath, setLocalHistoryPath] = useState<string | null>(null);
-  const closeReview = useCallback(() => { setFileReview(null); setVerificationReview(null); setLineCommitTarget(null); setLocalHistoryPath(null); }, []);
+  const closeReview = useCallback(() => { setHomies(null); setFileReview(null); setVerificationReview(null); setLineCommitTarget(null); setLocalHistoryPath(null); }, []);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [chatsSidebarTarget, setChatsSidebarTarget] = useState<HTMLDivElement | null>(null);
@@ -100,6 +101,7 @@ export function AppShell() {
     splitPaneIds(customLayout ?? visibleWorkspaceLayout('primary', false))) ?? readSidebarPanel());
   useEffect(() => { saveSidebarPanel(sidebarPanel); }, [sidebarPanel]);
   const openFileReview = useCallback((paneId: string, itemId: string, path?: string) => {
+    setHomies(null);
     setLineCommitTarget(null);
     setLocalHistoryPath(null);
     setRightSidebarOpen(true);
@@ -109,6 +111,7 @@ export function AppShell() {
   const openChatsFileReview = useCallback((item: ChatActivityItem | null, path?: string) => {
     if (!item) { setFileReview(current => current?.item ? null : current); return; }
     if (path !== undefined) {
+      setHomies(null);
       setVerificationReview(null);
       setLineCommitTarget(null); setLocalHistoryPath(null); setRightSidebarOpen(true);
     }
@@ -121,11 +124,13 @@ export function AppShell() {
   }, []);
   const openVerificationReview = useCallback((review: VerificationReview | null, open = false) => {
     if (open) {
+      setHomies(null);
       setFileReview(null); setLineCommitTarget(null); setLocalHistoryPath(null); setRightSidebarOpen(true);
     }
     setVerificationReview(current => open || !review || current?.id === review.id ? review : current);
   }, []);
   const openLineCommit = useCallback((request: GitLineBlameRequest) => {
+    setHomies(null);
     setFileReview(null); setVerificationReview(null);
     setLocalHistoryPath(null);
     setLineCommitTarget(request);
@@ -243,6 +248,7 @@ export function AppShell() {
   };
 
   const openLocalHistory = (path: string): void => {
+    setHomies(null);
     setFileReview(null); setVerificationReview(null);
     setLineCommitTarget(null);
     setLocalHistoryPath(path);
@@ -449,12 +455,17 @@ export function AppShell() {
             />
           )}
           {activeView === 'settings' && <SettingsView contextId={workspace.activePaneId} onOpenChat={openWorkflowChat} />}
-          <ChatsView reviewedVerificationId={verificationReview?.id} onReviewVerification={openVerificationReview} reviewedMessageId={fileReview?.item?.id} onReviewFileChanges={openChatsFileReview} active={activeView === 'chats'} sidebarTarget={chatsSidebarTarget} sidebarActive={sidebarPanel === 'agent-chats' && leftSidebarOpen} onOpenRoom={() => navigate('chats')} />
-          <AgentManagementViews view={activeView === 'docker' || activeView === 'agents' ? activeView : null} />
+          <ChatsView onManageHomies={agentId => { navigate('chats'); setHomies({ agentId: agentId ?? null }); setRightSidebarOpen(true); }}
+            reviewedVerificationId={verificationReview?.id} onReviewVerification={openVerificationReview}
+            reviewedMessageId={fileReview?.item?.id} onReviewFileChanges={openChatsFileReview}
+            active={activeView === 'chats'} sidebarTarget={chatsSidebarTarget}
+            sidebarActive={sidebarPanel === 'agent-chats' && leftSidebarOpen} onOpenRoom={() => navigate('chats')} />
+          <AgentManagementViews view={activeView === 'docker' ? 'docker' : null} />
           {activeView === 'blank' && <BlankView />}
           </WorkspaceEditorSplit>
         </div>
         <ReviewSidebar
+          homies={homies}
           onOpenFile={openWorkspaceFile}
           verification={verificationReview}
           open={rightSidebarOpen}

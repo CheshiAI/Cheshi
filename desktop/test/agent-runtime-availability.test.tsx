@@ -32,7 +32,7 @@ const engines = [{ id: 'docker:local', name: 'local', supported: true, reason: n
 const button = (label: string) => document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
 const details: AgentDetails = { agent: { id: 'worker', name: 'Worker', state: 'running', image: 'fixture' },
   ready: true, busy: false, authenticated: true, threadId: 'thread', error: null, logs: '', tasks: [
-    { id: 'task', status: 'completed', prompt: 'Old task', output: 'Old result', error: null, createdAt: '2026-10-04' },
+    { id: 'task', status: 'unknown', prompt: 'Old task', output: 'Old result', error: null, createdAt: '2026-10-04' },
   ] };
 
 test('deletion fallback to an unassigned agent shows guidance without querying or starting it', async () => {
@@ -52,15 +52,18 @@ test('deletion fallback to an unassigned agent shows guidance without querying o
     details: async () => details, control: async () => { throw Error('Must not execute'); },
   };
   await withDOM(async render => {
-    await render(<AgentManagementViews view="agents" api={management} registryApi={registry} />);
+    await render(<AgentManagementViews view="homies" api={management} registryApi={registry} />);
+    await act(async () => button(assigned.name).click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === 'Advanced')!.click());
     expect(calls).toEqual([assigned.id]);
     snapshot = { ...snapshot, agents: [other] };
     await act(async () => publish(snapshot));
-    expect(document.body.textContent).toContain('Assign this agent to the current project in Agent settings.');
+    expect(document.querySelector('form')).toBeNull();
     expect(document.body.textContent).not.toContain('Old task');
+    await act(async () => button(other.name).click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === 'Advanced')!.click());
+    expect(document.body.textContent).toContain('Assign this agent to the current project in Agent settings.');
     expect(button('Start agent').disabled).toBe(true);
-    expect(button('Refresh agent').disabled).toBe(true);
-    expect(button('Agent settings').disabled).toBe(false);
     await act(async () => { button('Start agent').click(); button('Refresh agent').click(); });
     expect(calls).toEqual([assigned.id]);
     snapshot = { ...snapshot, agents: [{ ...other, revision: 2, assignments: assigned.assignments }] };

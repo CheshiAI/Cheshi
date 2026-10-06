@@ -7,7 +7,7 @@
 .body { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .content { --composer-overlay-height: 0px; --composer-overlay-top-padding: 0px; --chat-content-max-width: 100%; --chat-content-padding: var(--space-default); position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 .toolsRail { display: flex; box-sizing: border-box; width: 42px; flex: 0 0 42px; align-items: center; flex-direction: column; gap: var(--icon-default); border-left: 1px solid var(--divider); padding: var(--space-default) 0; }
-.participant { display: inline-flex; align-items: center; gap: var(--icon-default); min-width: 0; max-width: 100%; }
+.participant[data-variant] { display: inline-flex; align-items: center; gap: var(--icon-default); min-width: 0; max-width: 100%; font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
 .participant > :first-child { flex-shrink: 0; }
 .participant > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .participants { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--space-default); overflow: hidden; font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }

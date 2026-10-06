@@ -1,5 +1,7 @@
 import { expect, mock, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { act, useState } from 'react';
+import { withDOM } from './agent-chats-test-dom';
 import type { ChatActivityItem } from '../frontend/src/features/chat/model';
 import type { GitLineBlameRequest } from '../shared/git-line-blame';
 
@@ -10,6 +12,32 @@ const item: ChatActivityItem = {
   id: 'change', kind: 'activity', activity: 'files', label: 'Files', detail: '', status: 'completed',
   changes: [{ path: 'sample.ts', kind: 'update', diff: '@@ -1 +1 @@\n-old\n+new', movePath: null }],
 };
+
+test('Homies uses the sliding sidebar and restores focus before hiding its controls', async () => {
+  function Workspace() {
+    const [homies, setHomies] = useState<{ agentId: string | null } | null>(null);
+    return <div>
+      <button onClick={() => setHomies({ agentId: null })}>Manage Homies</button>
+      <ReviewSidebar open homies={homies} item={null} initialPath={null} onCloseReview={() => setHomies(null)} />
+    </div>;
+  }
+  await withDOM(async ui => {
+    await ui.render(<Workspace />);
+    const opener = document.querySelector<HTMLButtonElement>('button')!;
+    await act(async () => opener.focus());
+    await ui.click('Manage Homies');
+    const sidebar = document.querySelector('[aria-label="Homies sidebar"]')!;
+    expect(sidebar.getAttribute('data-open')).toBe('true');
+    expect(sidebar.getAttribute('aria-hidden')).toBe('false');
+    const close = sidebar.querySelector<HTMLButtonElement>('[aria-label="Close Homies"]')!;
+    await act(async () => close.focus());
+    await ui.click('Close Homies');
+    expect(sidebar.getAttribute('data-open')).toBe('false');
+    expect(sidebar.getAttribute('aria-hidden')).toBe('true');
+    expect(sidebar.hasAttribute('inert')).toBe(true);
+    expect(document.activeElement).toBe(opener);
+  });
+});
 
 function render(open: boolean, review: ChatActivityItem | null, lineCommit: GitLineBlameRequest | null = null) {
   const html = renderToStaticMarkup(<ReviewSidebar open={open} item={review} lineCommit={lineCommit} initialPath="sample.ts" onCloseReview={() => {}} />);

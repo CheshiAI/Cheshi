@@ -25,8 +25,8 @@ function initialProfile(agent?: SpecialistAgent): SpecialistProfile {
   };
 }
 
-export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack }: {
-  onBack?: () => void;
+export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack, onAdvanced }: {
+  onBack?: () => void; onAdvanced?: () => void;
   agent?: SpecialistAgent; model: AgentRegistryModel; state: AgentRegistryState;
   accountsApi?: Pick<CodexAccountsApi, 'list' | 'onDidChange'>;
 }) {
@@ -80,9 +80,10 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack }
     }, () => { /* The model exposes the error without discarding the draft. */ });
   }}>
     <div className={styles.heading}>
-      {onBack && <TooltipButton variant="ghost" size="icon" aria-label="Back to agent" title="Back to agent"
+      {onBack && <TooltipButton variant="ghost" size="icon" aria-label="All Homies" title="All Homies"
         disabled={disabled} onClick={onBack}><ArrowLeft aria-hidden="true" /></TooltipButton>}
       <h2>{agent ? agent.name : 'Create agent'}</h2>
+      {onAdvanced && <NeumorphicButton variant="ghost" disabled={disabled} onClick={onAdvanced}>Advanced</NeumorphicButton>}
       {!agent && <span>Cheshi-wide agent</span>}
     </div>
     <fieldset disabled={disabled} className={styles.fields}>
@@ -125,7 +126,7 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack }
           value={instructions} onChange={event => { setInstructions(event.target.value); setSaved(false); }} /></label>}
         {assigned && <InstructionFiles label="Project instruction files" paths={instructionFiles} model={model} disabled={disabled}
           onBusy={setFilePending} onChange={paths => { setInstructionFiles(paths); setSaved(false); }} />}
-        <p className={styles.description}>Save settings, then return to the agent to start its project worker.</p>
+        <p className={styles.description}>Save settings, then use Advanced to manage the project worker.</p>
       </div>
     </fieldset>
     {outdated && <p className={styles.description} role="status">This agent changed in another window. Reopen its settings to load the latest version; your current draft is preserved.</p>}
