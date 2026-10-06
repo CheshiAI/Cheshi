@@ -1,4 +1,5 @@
 import { finalizeExploreResponse } from './explore-source';
+import { awaitManagedCodeGraphSync } from './managed-sync';
 import {
   type ReadToolResult,
   type ToolResult
@@ -126,6 +127,8 @@ export async function execute(this: ToolHandlerState, toolName: string, args: Re
       const check = this.validateOptionalPath(args.pattern, 'pattern');
       if (typeof check === 'object' && check !== undefined) return check;
     }
+
+    if (this.readOnly) await awaitManagedCodeGraphSync(pathCheck ?? undefined);
 
     // codegraph_status reports watcher state (pending files, degraded mode,
     // worktree warning) and embeds its own sections — it must run on the MAIN

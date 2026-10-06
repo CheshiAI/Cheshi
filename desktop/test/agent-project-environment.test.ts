@@ -35,10 +35,44 @@ test('manifest plan excludes host dependencies and credentials, preserves linker
       expect(readFileSync(join(context, 'manifests/bunfig.toml'), 'utf8')).not.toContain('private');
     }
     return '';
-  }, ['--context', 'test'], 'cheshi-specialist:1', before);
+  }, ['--context', 'test'], 'cheshi-specialist:1', before, 'cheshi-specialist-environment:1');
   expect(prepared.mounts).toHaveLength(4);
+  expect(prepared.image).toBe('cheshi-specialist:1');
   expect(prepared.mounts.filter(m => m.startsWith('type=' )).every(m => m.endsWith(',readonly'))).toBe(true);
   expect(calls.some(c => c.includes('build'))).toBe(true);
+});
+test('worker code upgrades reuse dependency images and volumes; manifests and environment changes invalidate them', async () => {
+  const root = temporary();
+  writeFileSync(join(root, 'package.json'), '{}'); writeFileSync(join(root, 'bun.lock'), '{}');
+  const images = new Set<string>(), builds: string[] = [], seeds: string[][] = [];
+  let environment = 'sha256:environment-v1';
+  const run = async (args: string[]) => {
+    if (args.includes('info')) return 'linux/arm64';
+    if (args.includes('inspect')) { expect(args).toContain('environment'); return environment; }
+    if (args.includes('ls')) return images.has(args.at(-1)!) ? 'cached' : '';
+    if (args.includes('build')) {
+      const image = args[args.indexOf('--tag') + 1]!; builds.push(image); images.add(image);
+      expect(readFileSync(join(args.at(-1)!, 'Dockerfile'), 'utf8')).toStartWith('FROM environment\n');
+    }
+    if (args.includes('run')) seeds.push(args);
+    return '';
+  };
+  const first = await prepareDependencies(run, [], 'worker-v1', projectDependencies(root), 'environment');
+  const upgraded = await prepareDependencies(run, [], 'worker-v2', projectDependencies(root), 'environment');
+  expect(builds).toHaveLength(1);
+  expect(upgraded.image).toBe('worker-v2'); expect(upgraded.mounts).toEqual(first.mounts);
+  expect(seeds).toHaveLength(2);
+  expect(seeds[1]).toContain('--read-only'); expect(seeds[1]).toContain('none');
+  writeFileSync(join(root, 'bun.lock'), '{"changed":true}');
+  const changed = await prepareDependencies(run, [], 'worker-v2', projectDependencies(root), 'environment');
+  expect(builds).toHaveLength(2); expect(changed.mounts).not.toEqual(first.mounts);
+  environment = 'sha256:environment-v2';
+  await prepareDependencies(run, [], 'worker-v2', projectDependencies(root), 'environment');
+  expect(builds).toHaveLength(3);
+});
+test('a worker without command dependencies needs no dependency Docker operations', async () => {
+  const prepared = await prepareDependencies(async () => { throw new Error('Unexpected dependency operation'); }, [], 'worker', null, 'environment');
+  expect(prepared).toEqual({ image: 'worker', mounts: [] });
 });
 test('dependency preparation rejects manifests outside the project and frozen-lock failures', async () => {
   const root = temporary(), outside = temporary();
@@ -46,7 +80,7 @@ test('dependency preparation rejects manifests outside the project and frozen-lo
   createSymbolicLink(join(outside, 'package.json'), join(root, 'package.json'));
   writeFileSync(join(root, 'bun.lock'), '{}');
   expect(() => projectDependencies(root)).toThrow('inside');
-  await failure(prepareDependencies(async () => { throw new Error('offline'); }, [], 'worker', { workspace: root, fingerprint: 'hash', files: [], directories: [] }), 'offline');
+  await failure(prepareDependencies(async () => { throw new Error('offline'); }, [], 'worker', { workspace: root, fingerprint: 'hash', files: [], directories: [] }, 'environment'), 'offline');
 });
 test('project share changes only the exact project and does not alter unrelated mounts', () => {
   const source = 'cpu: 4\nmounts:\n  - location: /project\n    writable: false\n  - location: /other\n    writable: false\nssh:\n  agent: false\n';

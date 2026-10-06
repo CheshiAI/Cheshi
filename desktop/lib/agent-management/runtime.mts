@@ -1,3 +1,4 @@
+import type { CodeGraphQuery } from '../agent-orchestration/codegraph-source.mts';
 import { assertProjectEnvironment, prepareProjectEnvironment } from './project-environment.mts';
 import { projectDependencies, prepareDependencies } from './dependencies.mts';
 import { coversPermissions, type PermissionRequest } from '../../../experiments/codex-specialists/src/execution-permissions.ts';
@@ -33,11 +34,14 @@ interface RuntimeOptions {
   checkProjectEnvironment?: typeof assertProjectEnvironment;
   collaborationExchange?: typeof exchangeWorker;
   history?: AgentHistoryOptions;
+  codegraph?: CodeGraphQuery;
+  prepareCodeGraph?: (workspace: string) => Promise<void>;
   lifecycleControl?: (connection: { endpoint: string; token: string }, action: string, body?: unknown) => Promise<unknown>;
   idleMs?: number; now?(): number;
   rooms?: Parameters<typeof createAgentOrchestration>[0]['rooms'];
 }
 const image = 'cheshi-specialist:1';
+const environmentImage = 'cheshi-specialist-environment:1';
 const marker = 'ai.cheshi.worker';
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const installAuth = "const fs=require('node:fs');const v=JSON.parse(await Bun.stdin.text());fs.mkdirSync('/agent/codex',{recursive:true});fs.writeFileSync('/agent/codex/auth.json',v.auth,{mode:0o600});if(v.configuration){fs.writeFileSync('/agent/runtime.json.tmp',JSON.stringify(v.configuration),{mode:0o600});fs.renameSync('/agent/runtime.json.tmp','/agent/runtime.json');}";
@@ -80,7 +84,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   const pending = new Set<string>();
   const builds = new Map<string, Promise<void>>();
   const orchestration = createAgentOrchestration({ filename: join(options.directory, 'collaboration.json'),
-    exchange: options.collaborationExchange, history: options.history, rooms: options.rooms,
+    exchange: options.collaborationExchange, history: options.history, codegraph: options.codegraph, rooms: options.rooms,
     peer: binding => {
       const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId && a.accountId === binding.accountId
         && projectAssignment(a, binding.workspace));
@@ -182,11 +186,14 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     if (worker.id !== ids[0]) throw new Error('Worker identity changed.');
     return { ...worker, externalBusy: !(raw.ExecIDs === null || Array.isArray(raw.ExecIDs) && raw.ExecIDs.length === 0), fingerprint: labels['ai.cheshi.configuration'] };
   }
-  async function build(prefix: string[]) {
-    const key = prefix.join('/');
+  async function build(prefix: string[], dependencies: boolean) {
+    const key = `${prefix.join('/')}/${dependencies}`;
     let flight = builds.get(key);
     if (!flight) {
-      flight = run([...prefix, 'build', '--tag', image, options.buildContext]).then(() => {});
+      flight = (async () => {
+        if (dependencies) await run([...prefix, 'build', '--target', 'specialist-environment', '--tag', environmentImage, options.buildContext]);
+        await run([...prefix, 'build', '--tag', image, options.buildContext]);
+      })();
       builds.set(key, flight);
       void flight.catch(() => builds.delete(key));
     }
@@ -283,9 +290,9 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       if (request.action === 'start') {
         await rememberEngine(directory, request.engineId, prefix[1]!);
         const auth = selectedAuth;
-        if (!worker || worker.fingerprint !== fingerprint) await build(prefix);
+        if (!worker || worker.fingerprint !== fingerprint) await build(prefix, dependencies !== null);
         if (agent.permissions.fileWrite) await (options.checkProjectEnvironment ?? assertProjectEnvironment)(request.engineId, prefix, workspace);
-        const environment = !worker || worker.fingerprint !== fingerprint ? await prepareDependencies(run, prefix, image, dependencies) : { image, mounts: [] };
+        const environment = !worker || worker.fingerprint !== fingerprint ? await prepareDependencies(run, prefix, image, dependencies, environmentImage) : { image, mounts: [] };
         assertCurrent();
         if (worker && worker.fingerprint !== fingerprint) {
           const details = await options.management.details(request.engineId, worker.id);
@@ -311,7 +318,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint, projectDocMaxBytes,
-            ...profileConfiguration(agent), permissionProtocol: 1, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, activityProtocol: 1, inputQueueProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+            ...profileConfiguration(agent), codegraphProtocol: 1, permissionProtocol: 1, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, activityProtocol: 1, inputQueueProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [workspace];
@@ -371,10 +378,14 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         return { details: await options.management.details(request.engineId, worker.id) };
       }
       if (request.action === 'recover') {
+        await options.prepareCodeGraph?.(workspace);
+        assertCurrent();
         await post(worker.endpoint, configuration.token, `/tasks/${request.taskId}/recover`, { roomId: request.roomId }, true);
         return { details: await options.management.details(request.engineId, worker.id) };
       }
       if (chat?.automatic && configuration.conversationProtocol !== 1) throw new Error('Start the agent to enable conversational tasks.');
+      await options.prepareCodeGraph?.(workspace);
+      assertCurrent();
       await post(worker.endpoint, configuration.token, chat?.inputId ? `/tasks/${request.taskId}/input` : '/tasks',
         chat?.inputId ? { id: chat.inputId, prompt: request.prompt, roomId: chat.roomId, ...(chat.questionId ? { questionId: chat.questionId } : {}) }
           : { id: request.taskId, prompt: request.prompt, ...(chat ? { chat } : {}) });
@@ -523,5 +534,5 @@ function profileConfiguration(agent: SpecialistAgent) {
 }
 
 function runtimeSettingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], projectDocMaxBytes = DEFAULT_PROJECT_DOC_MAX_BYTES, dependencies = (assignment.permissions ?? agent.permissions).commandExecution ? projectDependencies(workspace) : null) {
-  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}`);
+  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}\ncodegraph=2\ndependency_volumes=1`);
 }

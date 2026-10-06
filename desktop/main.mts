@@ -1,3 +1,5 @@
+import { createCodeGraphSynchronization } from './lib/codegraph-synchronization.mts';
+import { createAgentCodeGraph } from './lib/agent-orchestration/codegraph-source.mts';
 import { createAgentChats } from './lib/agent-chats/service.mts';
 import { registerAgentChatsIpc } from './lib/agent-chats/ipc.mts';
 import { createSpecialistRuntime } from './lib/agent-management/runtime.mts';
@@ -105,8 +107,14 @@ const agentChats = createAgentChats({ roomChanged: () => specialistRuntime.notif
   recover: (workspace, input) => specialistRuntime.request(workspace, input),
   dispatch: (workspace, input, context) => specialistRuntime.chat(workspace, input, context),
 });
+const codeGraphCommand = createCodeGraphCommands({ packaged: app.isPackaged, resourcesPath: process.resourcesPath,
+  rootDirectory: path.resolve(import.meta.dirname, '..'), bunExecutable: process.env.CHESHI_BUN }).cli();
+const codeGraphDataRoot = resolveCodeGraphDataRoot() ?? app.getPath('userData');
+const codeGraphSynchronization = createCodeGraphSynchronization({ command: codeGraphCommand, dataRoot: codeGraphDataRoot });
 const specialistRuntime = createSpecialistRuntime({
   rooms: agentChats.rooms,
+  codegraph: createAgentCodeGraph({ cli: codeGraphCommand, dataRoot: codeGraphDataRoot, beforeQuery: codeGraphSynchronization.ensure }),
+  prepareCodeGraph: codeGraphSynchronization.ensure,
   getProjectDocMaxBytes: () => apiSettings.getProjectDocMaxBytes(),
   history: { enabled: () => apiSettings.isHistoryRecallEnabled(), getKey: () => apiSettings.getKey(),
     subscribe: listener => apiSettings.subscribe(() => listener()) },
@@ -121,7 +129,7 @@ const specialistRuntime = createSpecialistRuntime({
 const unsubscribeChatsRuntime = specialistRuntime.subscribe(binding => agentChats.changed(binding));
 const unsubscribeChatsRegistry = agentRegistry.subscribe(() => agentChats.changed());
 void app.whenReady().then(() => { specialistRuntime.start(); agentChats.start(); });
-app.on('will-quit', () => { unsubscribeChatsRuntime(); unsubscribeChatsRegistry(); void specialistRuntime.dispose(); void agentChats.dispose(); });
+app.on('will-quit', () => { unsubscribeChatsRuntime(); unsubscribeChatsRegistry(); void specialistRuntime.dispose(); void agentChats.dispose(); void codeGraphSynchronization.dispose(); });
 const apiSettings = createSettingsService({
   directory: path.join(app.getPath('userData'), 'api-keys'),
   settingsPath: path.join(app.getPath('userData'), 'settings.json'),
@@ -283,7 +291,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try {
     runtime = createWorkspaceRuntime({ ...options, notifications, messageCommands, discord, getTypeSafeKey: apiSettings.getKey,
-      getProjectDocMaxBytes: apiSettings.getProjectDocMaxBytes,
+      getProjectDocMaxBytes: apiSettings.getProjectDocMaxBytes, codeGraphSynchronization,
       voiceChats: request => agentChats.request(options.workspaceRoot, request),
       historyRecall: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) },
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
@@ -436,7 +444,7 @@ app.whenReady().then(async () => {
   const commands = createCodeGraphCommands({ packaged: app.isPackaged, resourcesPath: process.resourcesPath,
     rootDirectory: path.resolve(import.meta.dirname, '..'), bunExecutable: process.env.CHESHI_BUN });
   scheduler = await startScheduler({ userDataDirectory: app.getPath('userData'), home: app.getPath('home'),
-    openExternal: url => shell.openExternal(url), codeGraph: { cli: commands.cli(), dataRoot },
+    openExternal: url => shell.openExternal(url), codeGraph: { cli: commands.cli(), dataRoot, synchronization: codeGraphSynchronization },
     historyDirectory: workspace => path.join(path.dirname(codeGraphStorageDirectory(dataRoot, workspace)), 'chat-history-index'),
     accountSelection: apiSettings.workspaceAccountSelection, getKey: apiSettings.getKey,
     getProjectDocMaxBytes: apiSettings.getProjectDocMaxBytes,

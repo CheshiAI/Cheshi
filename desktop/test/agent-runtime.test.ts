@@ -18,7 +18,7 @@ async function fails(operation: Promise<unknown>, message: string) {
   try { await operation; } catch (reason) { error = reason; }
   expect(error).toBeInstanceOf(Error); expect((error as Error).message).toContain(message);
 }
-function fixture(linkedWorkspace = false) {
+function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string) => Promise<void>) {
   const directory = mkdtempSync(join(tmpdir(), 'cheshi-runtime-')); directories.push(directory);
   const project = join(directory, 'project'), home = join(directory, 'account');
   mkdirSync(project); mkdirSync(home);
@@ -51,6 +51,9 @@ function fixture(linkedWorkspace = false) {
       seeded = true; return '';
     }
     if (args[0] === 'context') return JSON.stringify([{ Endpoints: { docker: { Host: remote ? 'ssh://other' : 'unix:///tmp/docker.sock' } } }]);
+    if (args.includes('info')) return 'linux/arm64';
+    if (args.includes('image') && args.includes('inspect')) return 'sha256:environment';
+    if (args.includes('image') && args.includes('ls')) return 'cached-dependencies';
     if (args.includes('ls')) return created ? id : '';
     if (args.includes('inspect')) return JSON.stringify([{ Id: id, ExecIDs: null, Name: '/worker', Config: { Image: 'worker', Labels: labels },
       State: { Status: state }, NetworkSettings: { Ports: { '8787/tcp': [{ HostIp: '127.0.0.1', HostPort: '49831' }] } } }]);
@@ -68,7 +71,7 @@ function fixture(linkedWorkspace = false) {
   const details = (): AgentDetails => ({ agent: { id, name: 'worker', image: 'worker', state },
     ready: seeded, busy, authenticated: true, threadId: null, error: null, logs: '', tasks });
   const exchanges: unknown[] = [];
-  const runtime = createSpecialistRuntime({ getProjectDocMaxBytes: () => projectDocMaxBytes, directory: join(directory, 'runtime'), buildContext: '/build', registry, run, checkProjectEnvironment: async () => {},
+  const runtime = createSpecialistRuntime({ prepareCodeGraph, getProjectDocMaxBytes: () => projectDocMaxBytes, directory: join(directory, 'runtime'), buildContext: '/build', registry, run, checkProjectEnvironment: async () => {},
     lifecycleControl: async () => ({ protocol: 1, idle: false, nextWakeAt: null }),
     collaborationExchange: async (_connection, body) => { exchanges.push(body); return { protocol: 1, received: [], outgoing: [] }; },
     account: async () => ({ home, models: [] }), management: { details: async () => { await beforeDetails?.(); return details(); },
@@ -123,6 +126,27 @@ function fixture(linkedWorkspace = false) {
     setTasks: (value: AgentDetails['tasks']) => { tasks = value; }, setContextMissing: (missing: boolean) => { contextMissing = missing; }, setDockerFailure: (error: Error | null) => { dockerFailure = error; }, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
     request: () => ({ agentId, engineId: 'docker:colima-cheshi', action: 'start' as const }) };
 }
+test('command-enabled worker uses separate dependency volumes and unchanged starts and status do not rebuild', async () => {
+  const f = fixture();
+  const agent = f.registry.snapshot(f.workspace).agents[0]!;
+  f.registry.save({ id: agent.id, revision: agent.revision,
+    profile: { ...agent, permissions: { fileWrite: true, commandExecution: true } },
+    assignment: { assigned: true, instructions: '' } }, f.workspace);
+  writeFileSync(join(f.workspace, 'package.json'), '{}'); writeFileSync(join(f.workspace, 'bun.lock'), '{}');
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    const builds = f.calls.filter(c => c.args.includes('build'));
+    expect(builds).toHaveLength(2);
+    expect(builds[0]!.args).toContain('specialist-environment');
+    const create = f.calls.find(c => c.args.includes('create'))!.args;
+    expect(create.at(-1)).toBe('cheshi-specialist:1');
+    expect(create.some(a => a.startsWith('type=volume,src=cheshi-deps-'))).toBe(true);
+    const start = f.calls.length;
+    await f.runtime.request(f.workspace, { ...f.request(), action: 'status' });
+    await f.runtime.request(f.workspace, f.request());
+    expect(f.calls.slice(start).some(c => c.args.includes('build') || c.args.includes('run'))).toBe(false);
+  } finally { await f.runtime.dispose(); }
+});
 test('manual control preserves the latest runtime task list while status reports confirmed stop', async () => {
   const f = fixture();
   try {
@@ -373,6 +397,33 @@ test('unreadable files block first startup and changed instruction files cannot 
   f.setBusy(); writeFileSync(path, 'second');
   await fails(f.runtime.request(f.workspace, f.request()), 'Wait for this worker');
   expect(f.calls.some(call => call.args.includes('stop') || call.args.includes('rm'))).toBe(false);
+});
+
+test('Homie task submission waits for host synchronization; failure never dispatches the task', async () => {
+  const entered = registryDeferred<void>(), release = registryDeferred<void>();
+  let fail = false, synchronized = false;
+  const f = fixture(false, async workspace => {
+    expect(workspace).toBe(realpathSync(f.workspace));
+    entered.resolve(); await release.promise;
+    if (fail) throw new Error('index synchronization failed');
+    synchronized = true;
+  });
+  const posted: string[] = [];
+  const fakeFetch = Object.assign(async (input: Parameters<typeof fetch>[0]) => {
+    expect(synchronized).toBe(true); posted.push(String(input)); return Response.json({});
+  }, { preconnect: fetch.preconnect });
+  const mock = spyOn(globalThis, 'fetch').mockImplementation(fakeFetch);
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    const input = { ...f.request(), action: 'submit' as const, taskId: 'task', prompt: 'work' };
+    const submitted = f.runtime.request(f.workspace, input);
+    await entered.promise; expect(posted).toEqual([]);
+    release.resolve(); await submitted;
+    expect(posted).toEqual(['http://127.0.0.1:49831/tasks']);
+    fail = true;
+    await fails(f.runtime.request(f.workspace, input), 'synchronization failed');
+    expect(posted).toHaveLength(1);
+  } finally { release.resolve(); mock.mockRestore(); await f.runtime.dispose(); }
 });
 
 test('status and submission reject a saved configuration that does not match the actual worker', async () => {

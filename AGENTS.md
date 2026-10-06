@@ -111,10 +111,14 @@ when a documented command is unavailable.
   complete source reads merely to verify the tool's output.
 - Git metadata, documentation, configuration, and the explicit file-length check
   below can be inspected directly without a CodeGraph query.
-- Keep viewer inspection read-only. Do not initiate index creation, sync,
-  rebuild, unlock, or removal without authorization; do not run a writer against
-  an index being viewed. CLI, MCP, and app storage must resolve to the same
-  workspace index. Never co-index it with a different engine implementation.
+- Cheshi manages incremental synchronization of existing indexes before SESSION
+  and Docker Homie tasks and CodeGraph queries. This automatic path is authorized;
+  concurrent requests share the workspace writer and wait for completion. It may
+  update the same-engine WAL index while the Viewer remains read-only.
+- Keep viewer inspection read-only. Outside that managed path, do not initiate
+  index creation, sync, rebuild, unlock, or removal without authorization, or run
+  a writer against an index being viewed. CLI, MCP, and app storage must resolve
+  to the same workspace index. Never co-index it with a different engine implementation.
 - An explore response truncated by its output budget does not prove an indexing
   failure. Narrow the query or inspect the remaining source range.
 

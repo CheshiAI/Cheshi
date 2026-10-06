@@ -1,5 +1,7 @@
+import { WorkerCodeGraphQueue } from './codegraph-queue.ts';
+import { codegraphTools, codegraphInstructions } from './codegraph-tools.ts';
 import { randomUUID } from 'node:crypto';
-import { coversPermissions, parsePermissionRequest, permissionTools, permissionInstructions } from './execution-permissions.ts';
+import { coversPermissions, shouldRequestPermissions, parsePermissionRequest, permissionTools, permissionInstructions } from './execution-permissions.ts';
 import { projectTaskActivities, recordTaskActivity } from './activity.ts';
 import { readNativeTurnUsage } from './native-usage.ts';
 import { mergeTurnUsage } from './usage-contract.ts';
@@ -72,8 +74,9 @@ export class SpecialistAgent {
   private readonly verification: WorkerVerification | undefined;
   private readonly historyQueue: WorkerHistoryQueue | undefined;
   private readonly history: WorkerHistory | undefined;
+  private readonly codegraph: WorkerCodeGraphQueue | undefined;
   private readonly collaboration: WorkerCollaboration | undefined;
-  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; historyQueue?: WorkerHistoryQueue; history?: WorkerHistory }) {
+  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; historyQueue?: WorkerHistoryQueue; history?: WorkerHistory; codegraph?: WorkerCodeGraphQueue }) {
     this.configuration = options.configuration;
     this.conversations = new WorkerConversation(options.store, options.configuration?.verificationProtocol === 1);
     this.work = options.configuration?.workProtocol === 1 ? new WorkerWork(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite) : undefined;
@@ -81,18 +84,18 @@ export class SpecialistAgent {
     this.verification = options.configuration?.verificationProtocol === 1 ? new WorkerVerification(options.store, options.workspace) : undefined;
     this.client = options.client; this.store = options.store; this.profile = options.profile;
     this.workspace = options.workspace;
-    this.collaboration = options.collaboration; this.historyQueue = options.historyQueue; this.history = options.history;
+    this.collaboration = options.collaboration; this.historyQueue = options.historyQueue; this.history = options.history; this.codegraph = options.codegraph;
     if (this.configuration?.permissionProtocol === 1) this.client.handleApprovals?.((method, params) => {
       const active = this.active;
       if (!active || active.stopRequested || params.threadId !== active.threadId || (active.turnId && params.turnId !== active.turnId)) return;
       const task = this.store.task(active.id);
-      if (!task?.roomId || task.permissionRequest) return;
+      if (!task?.roomId) return;
       const fileWrite = method === 'item/fileChange/requestApproval' && !this.configuration!.permissions.fileWrite;
       const commandExecution = method === 'item/commandExecution/requestApproval' && !this.configuration!.permissions.commandExecution;
-      if (fileWrite || commandExecution) this.store.update(task.id, { permissionRequest: { id: randomUUID(), fileWrite, commandExecution, status: 'pending',
+      if (shouldRequestPermissions(task.permissionRequest, { fileWrite, commandExecution })) this.store.update(task.id, { permissionRequest: { id: randomUUID(), fileWrite, commandExecution, status: 'pending',
         reason: fileWrite ? 'This task needs permission to modify project files.' : 'This task needs permission to run commands.' } });
     });
-    if (this.collaboration || this.historyQueue || this.configuration?.decisionProtocol === 1 || this.configuration?.permissionProtocol === 1) {
+    if (this.collaboration || this.historyQueue || this.codegraph || this.configuration?.decisionProtocol === 1 || this.configuration?.permissionProtocol === 1) {
       if (!this.client.handleTools) throw new Error('Collaboration requires dynamic tool support.');
       this.client.handleTools(async params => {
         const active = this.active;
@@ -107,15 +110,18 @@ export class SpecialistAgent {
           if (!task.roomId) throw new Error('Permission requests require a Chats task.');
           const requested = parsePermissionRequest({ ...record(params.arguments), id: randomUUID(), status: 'pending' });
           if (coversPermissions(this.configuration.permissions, requested)) return { status: 'already-allowed', message: 'These permissions are already enabled. Other sandbox boundaries and saved instructions still apply.' };
-          if (!task.permissionRequest) this.store.update(task.id, { permissionRequest: requested });
-          return { ...this.store.task(task.id)!.permissionRequest, message: 'End this turn. The user must decide in Chats.' };
+          const missing = { ...requested, fileWrite: requested.fileWrite && !this.configuration.permissions.fileWrite,
+            commandExecution: requested.commandExecution && !this.configuration.permissions.commandExecution };
+          if (shouldRequestPermissions(task.permissionRequest, missing)) this.store.update(task.id, { permissionRequest: missing });
+          const saved = this.store.task(task.id)!.permissionRequest!;
+          return { ...saved, message: saved.status === 'denied' ? 'The user denied these permissions. Do not repeat the same request or treat it as approval.' : 'End this turn. The user must decide in Chats.' };
         }
         if (task.dialogue && conversationTools.some(t => t.name === tool)) {
           const result = this.conversations.call(task, tool, params.arguments);
           if (tool !== 'conversation_status') active.observations.add({ tool, result });
           return result;
         }
-        if (task.dialogue && (!task.goal || task.goal.turns === 0) && !['list_agents', 'ask_agent', 'collaboration_status', 'history_search', 'history_read'].includes(tool)) throw new Error('Intake is read-only. Record the work goal, then end this turn.');
+        if (task.dialogue && (!task.goal || task.goal.turns === 0) && ![...codegraphTools.map(t => t.name), 'list_agents', 'ask_agent', 'collaboration_status', 'history_search', 'history_read'].includes(tool)) throw new Error('Intake is read-only. Record the work goal, then end this turn.');
         if (task.goal) {
           if (tool === 'goal_status') return { originalGoal: task.dialogue?.objective ?? task.prompt, ...goalContext(task.goal) };
           if (tool === 'record_decision') {
@@ -150,6 +156,11 @@ export class SpecialistAgent {
         }
         if (task.verificationDraft) throw new Error('End the turn after submitting verification.');
         if (this.verification && task.verification && ['verification_read', 'verification_status', 'submit_verification'].includes(tool)) return this.verification.call(task, tool, params.arguments);
+        if (this.codegraph && codegraphTools.some(t => t.name === tool)) {
+          const result = record(await this.codegraph.call(tool, params.arguments, active.controller.signal));
+          if (result.isError !== true) active.observations.add({ tool, result });
+          return result;
+        }
         if (this.historyQueue && ['history_search', 'history_read'].includes(tool)) {
           const result = record(await this.historyQueue.call(active.id, active.threadId!, textValue(params.turnId, 'turn id'),
             textValue(params.callId, 'call id'), tool, params.arguments, active.controller.signal));
@@ -337,7 +348,8 @@ export class SpecialistAgent {
     // Native resumed conversations retain the dynamic tool set from their creation.
     const integrationAvailable = this.integration && (!savedThread || task.integrationTools === true);
     const applicationAvailable = integrationAvailable && settings?.applicationProtocol === 1 && (!savedThread || task.applicationTools === true);
-    const profile = this.profile + (settings?.permissionProtocol === 1 ? permissionInstructions : '') + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
+    const codegraphAvailable = this.codegraph && (!savedThread || saved.tasks.some(t => t.threadId === savedThread && t.codegraphTools === true));
+    const profile = this.profile + (codegraphAvailable ? codegraphInstructions : this.codegraph ? '\nThis older conversation has no CodeGraph tools. Use scoped source reads within existing permissions; a new conversation is required for CodeGraph tools.\n' : '') + (settings?.permissionProtocol === 1 ? permissionInstructions : '') + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
       + (integrationAvailable && settings?.candidateVerificationProtocol === 1 ? candidateVerificationInstructions : '') + (applicationAvailable ? applicationInstructions : '');
     const params: JsonRecord = { cwd: workspace,
       ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: !intake && !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
@@ -351,7 +363,7 @@ export class SpecialistAgent {
       } } : {}) };
     const result = savedThread
       ? await this.client.request('thread/resume', { ...params, threadId: savedThread })
-      : await this.client.request('thread/start', { ...params, dynamicTools: [...(settings?.permissionProtocol === 1 ? permissionTools : []), ...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal || task.dialogue ? decisionTools : []), ...(task.dialogue ? conversationTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])] });
+      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.codegraph ? codegraphTools : []), ...(settings?.permissionProtocol === 1 ? permissionTools : []), ...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal || task.dialogue ? decisionTools : []), ...(task.dialogue ? conversationTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])] });
     const threadId = textValue(record(result.thread).id, 'thread id');
     assertResumedThread(savedThread, threadId);
     const nativePath = record(result.thread).path;
@@ -370,6 +382,7 @@ export class SpecialistAgent {
       });
     }
     this.store.saveThread(threadId, typeof result.model === 'string' ? result.model : saved.model, task.conversation, !task.consultation && !task.verification && !task.delegation);
+    if (codegraphAvailable) this.store.update(task.id, { codegraphTools: true });
     if (integrationAvailable) this.store.update(task.id, { integrationTools: true, ...(applicationAvailable ? { applicationTools: true as const } : {}) });
     this.loadedThreads.add(threadId);
     return threadId;

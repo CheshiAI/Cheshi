@@ -30,7 +30,7 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 2 && (!grandchildEntry || !packagedIcons.has(grandchildEntry) || segments.length > 3);
   }
   if (rootEntry === 'experiments') {
-    const contracts = ['project-instructions.ts', 'execution-permissions.ts', 'usage-contract.ts', 'activity-contract.ts', 'conversation-contract.ts', 'application-storage.ts', 'application-contract.ts', 'work-contract.ts', 'work-files.ts', 'integration-contract.ts', 'integration-plan.ts', 'verification-contract.ts', 'candidate-verification-contract.ts', 'protocol.ts'].map(name => `experiments/codex-specialists/src/${name}`);
+    const contracts = ['codegraph-tools.ts', 'codegraph-queue.ts', 'project-instructions.ts', 'execution-permissions.ts', 'usage-contract.ts', 'activity-contract.ts', 'conversation-contract.ts', 'application-storage.ts', 'application-contract.ts', 'work-contract.ts', 'work-files.ts', 'integration-contract.ts', 'integration-plan.ts', 'verification-contract.ts', 'candidate-verification-contract.ts', 'protocol.ts'].map(name => `experiments/codex-specialists/src/${name}`);
     return !contracts.some(contract => normalizedPath === contract || contract.startsWith(`${normalizedPath}/`));
   }
   if (rootEntry === 'connect') {
@@ -61,7 +61,7 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 3 && (segments.length !== 4 || !agentFiles.has(segments[3] ?? ''));
   }
   if (grandchildEntry === 'agent-orchestration') {
-    const files = new Set(['mailbox.mts', 'candidate-verification.mts', 'service.mts', 'history-source.mts', 'history-relay.mts', 'worker-events.mts', 'event-queue.mts']);
+    const files = new Set(['codegraph-source.mts', 'codegraph-relay.mts', 'mailbox.mts', 'candidate-verification.mts', 'service.mts', 'history-source.mts', 'history-relay.mts', 'worker-events.mts', 'event-queue.mts']);
     return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
   }
   if (grandchildEntry === 'scheduler') {
@@ -164,6 +164,7 @@ function shouldIgnore(packagePath: string): boolean {
     'chat-question-dismissals-ipc.mts',
     'codex-chat-turn-controls.mts',
     'codegraph-service.mts',
+    'codegraph-synchronization.mts',
     'codegraph-initial-index.mts',
     'account-usage-tray.mts',
     'account-usage-popover.mts',

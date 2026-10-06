@@ -17,6 +17,7 @@ export interface WorkspaceRuntimeOptions {
   historyRecall?: HistoryRecallAccess;
   accountSelection?: WorkspaceAccountSelection;
   getProjectDocMaxBytes?(): number;
+  codeGraphSynchronization?: import('./codegraph-synchronization.mts').CodeGraphSynchronization;
   managementOnly?: boolean;
   initial: boolean;
   deferShow?: boolean;

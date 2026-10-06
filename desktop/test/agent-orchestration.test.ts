@@ -6,9 +6,10 @@ import { AgentMailbox, bindingFor, type Peer, type Message } from '../lib/agent-
 import { createAgentOrchestration } from '../lib/agent-orchestration/service.mts';
 import { AgentStore } from '../../experiments/codex-specialists/src/store.ts';
 import { WorkerCollaboration } from '../../experiments/codex-specialists/src/collaboration.ts';
+import { SCRATCH_PROFILE } from '../../experiments/codex-specialists/src/task-scratch.ts';
 import { SpecialistAgent } from '../../experiments/codex-specialists/src/agent.ts';
 import type { RpcClient } from '../../experiments/codex-specialists/src/app-server-client.ts';
-import type { JsonRecord, Notification } from '../../experiments/codex-specialists/src/protocol.ts';
+import { record, type JsonRecord, type Notification } from '../../experiments/codex-specialists/src/protocol.ts';
 
 const directories: string[] = [];
 function temporary() { const directory = mkdtempSync(join(tmpdir(), 'cheshi-orchestration-')); directories.push(directory); return directory; }
@@ -26,8 +27,16 @@ class ModelFixture implements RpcClient {
   async request(method: string, params: JsonRecord): Promise<JsonRecord> {
     this.calls.push({ method, params });
     if (method === 'account/read') return { account: { type: 'chatgpt' } };
-    if (method === 'thread/start') return { thread: { id: `thread-${++this.sequence}` } };
-    if (method === 'thread/resume') return { thread: { id: params.threadId } };
+    if (method === 'thread/start' || method === 'thread/resume') {
+      if (params.permissions !== SCRATCH_PROFILE) return { thread: { id: method === 'thread/start' ? `thread-${++this.sequence}` : params.threadId } };
+      const filesystem = record(record(record(params.config)[`permissions.${SCRATCH_PROFILE}`]).filesystem);
+      return { thread: { id: method === 'thread/start' ? `thread-${++this.sequence}` : params.threadId },
+        activePermissionProfile: { id: SCRATCH_PROFILE }, sandbox: { type: 'workspaceWrite',
+          writableRoots: Object.entries(filesystem).filter(([, access]) => access === 'write').map(([path]) => path),
+          networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true } };
+    }
+    if (method === 'thread/unsubscribe') return { status: 'unsubscribed' };
+    if (method === 'thread/backgroundTerminals/list') return { data: [], nextCursor: null };
     if (method === 'thread/inject_items') return {};
     if (method === 'turn/start') {
       const turnId = `turn-${++this.sequence}`;
@@ -60,7 +69,7 @@ test.each([undefined, 'expired'] as const)('mailbox persists closure reason %s a
 });
 function worker(directory: string, id: string) {
   const store = new AgentStore(directory), client = new ModelFixture(), collaboration = new WorkerCollaboration(store, id);
-  const agent = new SpecialistAgent({ client, store, workspace: '/workspace', profile: 'Follow the assigned goal.', collaboration,
+  const agent = new SpecialistAgent({ client, store, workspace: directory, profile: 'Follow the assigned goal.', collaboration,
     configuration: { profileId: id, accountId: 'default', role: 'development', token: 'a'.repeat(64), instructions: 'Follow the assigned goal.',
       model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: true, commandExecution: true } } });
   return { store, client, collaboration, agent };

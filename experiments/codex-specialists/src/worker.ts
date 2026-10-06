@@ -1,3 +1,4 @@
+import { WorkerCodeGraphQueue } from './codegraph-queue.ts';
 import { WorkerChangeStream } from './change-stream.ts';
 import { timingSafeEqual } from 'node:crypto';
 import { parseRuntimeConfiguration } from './runtime-config.ts';
@@ -29,9 +30,10 @@ client.onFailure(error => { transportError = error.message; });
 const collaboration = configuration ? new WorkerCollaboration(store, configuration.profileId, workspace) : undefined;
 const history = new WorkerHistory(store, client, process.env.AGENT_DATA_DIRECTORY ?? '/agent', workspace);
 const historyQueue = configuration ? new WorkerHistoryQueue(process.env.AGENT_DATA_DIRECTORY ?? '/agent') : undefined;
-const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration, history, historyQueue });
+const codegraph = configuration?.codegraphProtocol === 1 ? new WorkerCodeGraphQueue() : undefined;
+const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration, history, historyQueue, codegraph });
 const lifecycle = new IdleLifecycle({ store, client, blocked: () => agent.busy || !!agent.error || !!transportError
-  || collaboration?.next() != null || historyQueue?.pending === true });
+  || collaboration?.next() != null || historyQueue?.pending === true || codegraph?.pending === true });
 const changes = new WorkerChangeStream();
 let pumping = false, expiry: ReturnType<typeof setTimeout> | undefined;
 const schedulePump = () => {
@@ -48,6 +50,7 @@ const schedulePump = () => {
 };
 store.subscribe(() => { changes.changed(); schedulePump(); });
 historyQueue?.subscribe(() => changes.changed());
+codegraph?.subscribe(() => changes.changed());
 client.onFailure(() => changes.changed());
 const health = setInterval(() => { if (!lifecycle.draining) void agent.checkHealth(); }, 120_000);
 schedulePump();
@@ -86,6 +89,9 @@ const server = Bun.serve({
         const body = await request.text();
         if (body.length > 2 * 1024 * 1024) throw new TypeError('Request is too large.');
         return Response.json(collaboration.exchange(JSON.parse(body)));
+      }
+      if (path === '/codegraph/exchange' && request.method === 'POST' && codegraph) {
+        return Response.json(codegraph.exchange(await request.json()));
       }
       if (path.startsWith('/history/') && request.method === 'POST' && configuration) {
         const body = await request.text();

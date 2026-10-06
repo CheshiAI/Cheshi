@@ -115,6 +115,9 @@ if (codeGraphDataRoot === null) {
 
 const codeGraphDirectory = codeGraphStorageDirectory(codeGraphDataRoot, workspaceRoot);
 const codeGraphDatabasePath = path.join(codeGraphDirectory, 'codegraph.db');
+function withCodeGraphWriter<T>(operation: () => Promise<T>): Promise<T> {
+  return options.codeGraphSynchronization ? options.codeGraphSynchronization.exclusive(workspaceRoot, operation) : operation();
+}
 const localHistory = acquireLocalHistory({
   workspaceRoot, directory: path.join(path.dirname(codeGraphDirectory), 'local-history'),
   onError: error => process.stderr.write(`[cheshi] Local history: ${error.message}\n`),
@@ -183,7 +186,7 @@ function codexChatAttachmentPreviewUrl(attachmentPath: unknown): string | null {
 
 const { accounts: workspaceAccounts, search: chatHistorySearch, mcp: historyMcp } = createWorkspaceChatHistory({
   cwd: workspaceRoot, userDataDirectory, home: app.getPath('home'), openExternal: url => shell.openExternal(url),
-  codeGraph: { cli: codeGraphCommands.cli(), dataRoot: codeGraphDataRoot },
+  codeGraph: { cli: codeGraphCommands.cli(), dataRoot: codeGraphDataRoot, synchronization: options.codeGraphSynchronization },
   historyDirectory: path.join(path.dirname(codeGraphDirectory), 'chat-history-index'),
   getKey: options.getTypeSafeKey, access: options.historyRecall,
   accountSelection: options.accountSelection, getProjectDocMaxBytes: options.getProjectDocMaxBytes,
@@ -745,7 +748,7 @@ async function startCodeGraphServer() {
     log: (event, details) => process.stdout.write(`[cheshi] ${event} ${JSON.stringify(details)}\n`),
   });
   try {
-    const url = await codeGraphService.start(workspaceRoot, frontendAssetsDirectory(), userDataDirectory);
+    const url = await codeGraphService.start(workspaceRoot, frontendAssetsDirectory(), codeGraphDataRoot!);
     if (!codeGraphServerPort) {
       codeGraphServerPort = new URL(url).port || null;
     }
@@ -765,7 +768,7 @@ async function performCodeGraphReindex(): Promise<{ reindexed: true }> {
   let indexingError = null;
   codeGraphIndexer = new CodeGraphIndexer({ command: codeGraphCommands.cli() });
   try {
-    await codeGraphIndexer.reindex(workspaceRoot, userDataDirectory);
+    await codeGraphIndexer.reindex(workspaceRoot, codeGraphDataRoot!);
   } catch (error) {
     indexingError = error;
   } finally {
@@ -782,7 +785,7 @@ async function performCodeGraphReindex(): Promise<{ reindexed: true }> {
 
 async function reindexCodeGraph() {
   if (codeGraphReindexPromise) return await codeGraphReindexPromise;
-  codeGraphReindexPromise = performCodeGraphReindex();
+  codeGraphReindexPromise = withCodeGraphWriter(performCodeGraphReindex);
   try {
     return await codeGraphReindexPromise;
   } finally {
@@ -924,14 +927,14 @@ async function initialize(): Promise<BrowserWindow> {
   });
   if (options.initial) await startupScreen.setStatus('Preparing workspace…');
   if (!options.deferShow) registerWorkspace(userDataDirectory, workspaceRoot, { setCurrent: true });
-  const index = await prepareInitialCodeGraph({
+  const index = await withCodeGraphWriter(() => prepareInitialCodeGraph({
     databasePath: codeGraphDatabasePath,
     workspaceRoot,
     dataRoot: codeGraphDataRoot!,
     command: codeGraphCommands.cli(),
     signal: initialIndexAbort.signal,
     onIndexing: () => { if (options.initial) void startupScreen.setStatus('Indexing workspace…'); },
-  });
+  }));
   const codeGraphUrl = index.ready ? await startCodeGraphServer() : null;
   logStartup('codegraph ready');
   await initializeWorkspaceFileWatcher();

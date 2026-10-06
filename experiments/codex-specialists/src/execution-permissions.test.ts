@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { SpecialistAgent } from './agent.ts';
 import { AgentStore } from './store.ts';
 import { FakeClient } from './agent-test-client.ts';
-import { coversPermissions, parsePermissionRequest } from './execution-permissions.ts';
+import { coversPermissions, shouldRequestPermissions, parsePermissionRequest } from './execution-permissions.ts';
 import type { RuntimeConfiguration } from './runtime-config.ts';
 import { TaskScratch, SCRATCH_PROFILE } from './task-scratch.ts';
 
@@ -108,4 +108,46 @@ test('failed app-server spawn rejects requests and can close without waiting for
   expect(error).toBeInstanceOf(Error);
   expect((error as Error).message).toContain('Could not start');
   await client.close();
+});
+
+test('a prior command grant permits a later file-write request without requesting granted permissions again', async () => {
+  const f = fixture({ fileWrite: false, commandExecution: true });
+  f.client.onStart = async () => {
+    f.store.update('task', { permissionRequest: { id: 'previous', reason: 'Run tests', status: 'allowed', fileWrite: false, commandExecution: true } });
+    const result = await f.client.toolHandler!({ threadId: 'thread', turnId: 'turn', tool: 'request_execution_permissions', arguments: args });
+    expect(result).toMatchObject({ status: 'pending', fileWrite: true, commandExecution: false });
+    expect(result.id).not.toBe('previous');
+    f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.submit('task', 'Implement', { roomId: 'room', conversation: 'conversation', goal: false }); await f.agent.settled();
+  expect(f.store.task('task')?.status).toBe('waiting');
+  expect(f.configuration.permissions).toEqual({ fileWrite: false, commandExecution: true });
+});
+test('a denied request is returned as denied without another approval card', async () => {
+  const f = fixture();
+  f.client.onStart = async () => {
+    f.store.update('task', { permissionRequest: { ...args, id: 'denied', status: 'denied' } });
+    const result = await f.client.toolHandler!({ threadId: 'thread', turnId: 'turn', tool: 'request_execution_permissions', arguments: args });
+    expect(result).toMatchObject({ id: 'denied', status: 'denied' });
+    expect(result.message).toContain('Do not repeat');
+    f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.submit('task', 'Implement', { roomId: 'room', conversation: 'conversation', goal: false }); await f.agent.settled();
+  expect(f.store.task('task')?.permissionRequest?.id).toBe('denied');
+});
+test('native file request after command approval records only the missing capability', async () => {
+  const f = fixture({ fileWrite: false, commandExecution: true });
+  f.client.onStart = async () => {
+    f.store.update('task', { permissionRequest: { id: 'old', reason: 'Run tests', status: 'allowed', fileWrite: false, commandExecution: true } });
+    f.client.approvalHandler!('item/fileChange/requestApproval', { threadId: 'thread', turnId: 'turn' });
+    f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.submit('task', 'Implement', { roomId: 'room', conversation: 'conversation', goal: false }); await f.agent.settled();
+  expect(f.store.task('task')?.permissionRequest).toMatchObject({ status: 'pending', fileWrite: true, commandExecution: false });
+});
+
+test('a denied capability cannot be requested again by changing the other flag', () => {
+  const denied = { ...args, id: 'denied', status: 'denied' as const };
+  expect(shouldRequestPermissions(denied, { fileWrite: true, commandExecution: false })).toBe(false);
+  expect(shouldRequestPermissions({ ...denied, fileWrite: false }, { fileWrite: true, commandExecution: false })).toBe(true);
 });

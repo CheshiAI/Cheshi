@@ -54,12 +54,12 @@ export function projectDependencies(workspace: string): ProjectDependencies | nu
   return { workspace: root, fingerprint, files, directories: [...directories].sort() };
 }
 
-export async function prepareDependencies(run: DockerCommand, prefix: string[], baseImage: string, plan: ProjectDependencies | null) {
+export async function prepareDependencies(run: DockerCommand, prefix: string[], baseImage: string, plan: ProjectDependencies | null, environmentImage: string) {
   if (!plan) return { image: baseImage, mounts: [] as string[] };
   const platform = (await run([...prefix, 'info', '--format', '{{.OSType}}/{{.Architecture}}'])).trim();
   if (!platform.startsWith('linux/')) throw new Error('A Linux Docker engine is required.');
-  const base = (await run([...prefix, 'image', 'inspect', baseImage, '--format', '{{.Id}}'])).trim();
-  const key = createHash('sha256').update(`2/${platform}/${base}/${plan.fingerprint}`).digest('hex').slice(0, 32);
+  const base = (await run([...prefix, 'image', 'inspect', environmentImage, '--format', '{{.Id}}'])).trim();
+  const key = createHash('sha256').update(`3/${platform}/${base}/${plan.fingerprint}`).digest('hex').slice(0, 32);
   const image = `cheshi-project-deps:${key}`;
   const existing = (await run([...prefix, 'image', 'ls', '--quiet', image])).trim();
   if (!existing) {
@@ -72,7 +72,7 @@ export async function prepareDependencies(run: DockerCommand, prefix: string[], 
       const folders = JSON.stringify(plan.directories);
       const prepare = `for(const p of ${folders})require('node:fs').mkdirSync(p,{recursive:true});`;
       const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
-      await writeFile(join(context, 'Dockerfile'), `FROM ${baseImage}\nUSER root\nRUN mkdir -p /workspace /home/node/dependency-tmp /home/node/dependency-cache && chown -R node:node /workspace /home/node/dependency-tmp /home/node/dependency-cache\nCOPY --chown=node:node manifests/ /workspace/\nUSER node\nWORKDIR /workspace\nRUN TMPDIR=/home/node/dependency-tmp BUN_INSTALL_CACHE_DIR=/home/node/dependency-cache bun install --frozen-lockfile --ignore-scripts && bun -e ${quote(prepare)}\nWORKDIR /app\n`);
+      await writeFile(join(context, 'Dockerfile'), `FROM ${environmentImage}\nUSER root\nRUN mkdir -p /workspace /home/node/dependency-tmp /home/node/dependency-cache && chown -R node:node /workspace /home/node/dependency-tmp /home/node/dependency-cache\nCOPY --chown=node:node manifests/ /workspace/\nUSER node\nWORKDIR /workspace\nRUN TMPDIR=/home/node/dependency-tmp BUN_INSTALL_CACHE_DIR=/home/node/dependency-cache bun install --frozen-lockfile --ignore-scripts && bun -e ${quote(prepare)}\nWORKDIR /app\n`);
       await run([...prefix, 'build', '--tag', image, context]);
     } finally { await rm(context, { recursive: true, force: true }); }
   }
@@ -86,7 +86,10 @@ export async function prepareDependencies(run: DockerCommand, prefix: string[], 
     const resolved = relative(plan.workspace, realpathSync(target));
     if (resolved.startsWith('..') || isAbsolute(resolved)) throw new Error('Dependency mountpoints must stay inside the project.');
   }
-  // Docker seeds new named volumes from the image before covering /workspace with the host bind.
+  // Seed dependency volumes independently of the worker image. Code-only worker
+  // upgrades reuse these volumes; manifests or the execution environment invalidate them.
   const mounts = plan.directories.flatMap((directory, index) => ['--mount', `type=volume,src=cheshi-deps-${key}-${index},dst=/workspace/${directory},readonly`]);
-  return { image, mounts };
+  await run([...prefix, 'run', '--rm', '--network', 'none', '--read-only', '--cap-drop', 'ALL',
+    '--security-opt', 'no-new-privileges:true', '--user', '1000:1000', ...mounts, image, 'bun', '-e', '']);
+  return { image: baseImage, mounts };
 }

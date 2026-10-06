@@ -15,6 +15,13 @@ export function parsePermissionRequest(value: unknown): PermissionRequest {
 export function coversPermissions(current: ExecutionPermissions, requested: ExecutionPermissions): boolean {
   return (!requested.fileWrite || current.fileWrite === true) && (!requested.commandExecution || current.commandExecution === true);
 }
+/** A resolved request must not prevent a later request for a different missing capability. */
+export function shouldRequestPermissions(previous: PermissionRequest | undefined, missing: ExecutionPermissions): boolean {
+  if (!missing.fileWrite && !missing.commandExecution) return false;
+  if (!previous) return true;
+  if (previous.status === 'pending') return false;
+  return previous.status === 'allowed' || !(previous.fileWrite && missing.fileWrite || previous.commandExecution && missing.commandExecution);
+}
 export const permissionTools = [{ type: 'function', name: 'request_execution_permissions', description: 'Ask the user in Chats for missing project file-write or command permissions. This does not grant permissions. End the turn and wait for the user.', inputSchema: {
   type: 'object', properties: { fileWrite: { type: 'boolean' }, commandExecution: { type: 'boolean' }, reason: { type: 'string', maxLength: 2000 } },
   required: ['fileWrite', 'commandExecution', 'reason'], additionalProperties: false,

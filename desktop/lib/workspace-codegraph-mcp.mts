@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import type { CodeGraphSyncConnection } from './codegraph-synchronization.mts';
 
 const execute = promisify(execFile);
 export const WORKSPACE_CODEGRAPH_MCP_NAME = 'cheshi_codegraph';
@@ -15,13 +16,14 @@ interface Options {
   cli: Pick<Command, 'executable' | 'args'>;
   workspaceRoot: string;
   dataRoot: string;
+  synchronization?: () => Promise<CodeGraphSyncConnection>;
 }
 
 function tomlString(value: string): string {
   return JSON.stringify(value).replaceAll('\u007f', '\\u007f');
 }
 
-export function workspaceCodeGraphMcpArgs(options: Options, legacyServer: boolean): string[] {
+export function workspaceCodeGraphMcpArgs(options: Options, legacyServer: boolean, synchronization?: CodeGraphSyncConnection): string[] {
   if (!path.isAbsolute(options.workspaceRoot) || !path.isAbsolute(options.dataRoot)) {
     throw new Error('CodeGraph workspace and data paths must be absolute.');
   }
@@ -35,6 +37,11 @@ export function workspaceCodeGraphMcpArgs(options: Options, legacyServer: boolea
     'env.CODEGRAPH_DATA_ROOT': tomlString(options.dataRoot),
     'env.CHESHI_USER_DATA_DIR': tomlString(options.dataRoot),
     'env.CODEGRAPH_MCP_READ_ONLY': '"1"',
+    ...(synchronization ? {
+      'env.CHESHI_CODEGRAPH_SYNC_URL': tomlString(synchronization.url),
+      'env.CHESHI_CODEGRAPH_SYNC_TOKEN': tomlString(synchronization.token),
+      'env.CHESHI_CODEGRAPH_SYNC_WORKSPACE': tomlString(synchronization.workspaceRoot),
+    } : {}),
   };
   const overrides = Object.entries(settings).flatMap(([key, value]) => ['-c', `mcp_servers.${WORKSPACE_CODEGRAPH_MCP_NAME}.${key}=${value}`]);
   // A disabled entry without a transport is invalid in a fresh Codex home.
@@ -66,7 +73,8 @@ export function createWorkspaceCodeGraphMcp(options: Options, inspect = hasLegac
     const key = JSON.stringify([command.executable, command.environment?.CODEX_HOME]);
     let pending = prepared.get(key);
     if (!pending) {
-      pending = inspect(command, options.workspaceRoot).then(legacy => workspaceCodeGraphMcpArgs(options, legacy));
+      pending = Promise.all([inspect(command, options.workspaceRoot), options.synchronization?.()])
+        .then(([legacy, synchronization]) => workspaceCodeGraphMcpArgs(options, legacy, synchronization));
       prepared.set(key, pending);
       void pending.catch(() => { if (prepared.get(key) === pending) prepared.delete(key); });
     }

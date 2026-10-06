@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { CodeGraphSynchronization } from './codegraph-synchronization.mts';
 import { product } from '../../config/product.mts';
 import { CodexAccountClients, type AccountClient } from './codex-account-clients.mts';
 import { getCodexAccountProfiles } from './codex-account-profiles.mts';
@@ -22,11 +23,12 @@ export function createWorkspaceCodexAccounts(options: {
   accountSelection?: WorkspaceAccountSelection;
   getProjectDocMaxBytes?(): number;
   historyMcp?: (command: { environment?: NodeJS.ProcessEnv }) => Promise<string[]>;
-  codeGraph: { cli: { executable: string; args: string[] }; dataRoot: string };
+  codeGraph: { cli: { executable: string; args: string[] }; dataRoot: string; synchronization?: CodeGraphSynchronization };
 }) {
   const defaultHome = process.env.CODEX_HOME?.trim() || path.join(options.home, '.codex');
   const codeGraphMcp = createWorkspaceCodeGraphMcp({
     cli: options.codeGraph.cli, dataRoot: options.codeGraph.dataRoot, workspaceRoot: options.cwd,
+    synchronization: options.codeGraph.synchronization ? () => options.codeGraph.synchronization!.connection(options.cwd) : undefined,
   });
   const clients = new CodexAccountClients({ CODEX_HOME: defaultHome }, async command => {
     const graphArgs = await codeGraphMcp(command);
@@ -134,6 +136,7 @@ export function createWorkspaceCodexAccounts(options: {
     const availability = chooseCodexAccount(snapshot);
     if (!availability.accountId) throw new Error(availability.message ?? 'No Codex account is available.');
     if (availability.accountId !== selection.activeId) await selection.select(availability.accountId);
+    await options.codeGraph.synchronization?.ensure(options.cwd);
   };
   return { createClient: () => createClient(), createVoiceClient: () => createClient(true), register, conversations, beforeMessage, stop: () => clients.stop() };
 }

@@ -65,6 +65,14 @@ test('configuration inspection is shared per account and retried after failure',
   expect(inspected).toEqual(['/default', '/default', '/new-account']);
 });
 
+test('SESSION keeps read-only MCP access and injects the workspace synchronization connection', async () => {
+  const synchronization = { url: 'http://127.0.0.1:1234/sync/test', token: 'fixture', workspaceRoot };
+  const prepare = createWorkspaceCodeGraphMcp({ ...options, synchronization: async () => synchronization }, async () => false);
+  const server = config(await prepare({ executable: 'codex', args: [] })).mcp_servers.cheshi_codegraph;
+  expect(server?.env).toMatchObject({ CODEGRAPH_MCP_READ_ONLY: '1', CHESHI_CODEGRAPH_SYNC_URL: synchronization.url,
+    CHESHI_CODEGRAPH_SYNC_TOKEN: 'fixture', CHESHI_CODEGRAPH_SYNC_WORKSPACE: workspaceRoot });
+});
+
 function transport(pool: CodexAccountClients) {
   return pool.create({
     command: { executable: process.execPath, args: [fileURLToPath(new URL('./fixtures/codex-shutdown-server.mts', import.meta.url)), 'graceful'], environment: {} },
