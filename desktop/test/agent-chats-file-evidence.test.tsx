@@ -1,11 +1,13 @@
 import { expect, test } from 'bun:test';
-import { act } from 'react';
+import { act, useCallback, useMemo, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MessageContent } from '../frontend/src/features/chat/MessageContent';
 import { fileEvidence } from '../frontend/src/features/chat/fileEvidenceModel';
 import { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
 import type { ChatsSnapshot, RoomMessage } from '../shared/agent-chats';
 import { specialistAgent } from './agent-registry-fixtures';
+import { ReviewSidebar } from '../frontend/src/features/shell/ReviewSidebar';
+import { verificationReview, verificationReportContext, type VerificationReview } from '../frontend/src/features/agent-chats/verificationReviewModel';
 import { withDOM } from './agent-chats-test-dom';
 
 const hash = 'a'.repeat(64);
@@ -37,20 +39,18 @@ test('partial hashes, mixed code and unsafe paths remain ordinary code', () => {
     .toEqual([{ file: 'ChatsView.tsx', sha256: hash }]);
 });
 
-test('review rendering groups evidence with file links and collapsed full hashes', async () => {
+test('review rendering shows a flat file list with links and omits hash details', async () => {
   await withDOM(async ui => {
     await ui.render(<MessageContent text={text} reviewFileContext={context} />);
     expect(document.querySelector('pre')).toBeNull();
     expect(document.querySelector('[aria-label="Evidence files"]')?.children.length).toBe(2);
     expect([...document.querySelectorAll('a')].map(a => a.getAttribute('href')))
       .toEqual(['desktop/frontend/ChatsView.tsx', 'package.json']);
-    const details = document.querySelector('details')!;
-    expect(details.open).toBe(false);
-    expect(details.textContent).toContain(hash);
+    expect(document.querySelector('h3')?.textContent).toBe('Files · 2');
+    expect(document.querySelector('details')).toBeNull();
+    expect(document.body.textContent).not.toContain(hash);
+    expect(document.body.textContent).not.toContain('SHA-256');
     expect(document.body.textContent).toContain('root');
-    await act(async () => details.querySelector('summary')!.click());
-    expect(details.open).toBe(true);
-    expect(details.querySelectorAll('dd').length).toBe(2);
     expect(document.body.textContent).toContain('Review complete.');
   });
 });
@@ -60,7 +60,7 @@ test('normal messages and description mode preserve literal code; unresolved fil
   expect(renderToStaticMarkup(<MessageContent text={text} presentation="description" reviewFileContext={context} />))
     .toContain('<pre');
   const unresolved = renderToStaticMarkup(<MessageContent text={text} reviewFileContext="" />);
-  expect(unresolved).toContain('File evidence');
+  expect(unresolved).toContain('Files · 2');
   expect(unresolved).not.toContain('<a ');
   expect(unresolved).not.toContain('Passed');
 });
@@ -90,9 +90,21 @@ test('Chats enables evidence only for review replies and Copy retains the comple
   await withDOM(async ui => {
     const writes: string[] = [];
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (value: string) => { writes.push(value); } } });
-    await ui.render(<ChatsView active api={{ request: async () => snapshot() }} registry={registry} />);
+    await ui.render(<ReportHarness data={snapshot()} />);
     const article = document.querySelector('[data-message-id="review"]')!;
-    expect(article.querySelectorAll('[aria-label="Evidence files"] a').length).toBe(2);
+    expect(article.textContent).toContain('Verification report');
+    expect(article.textContent).not.toContain('Review complete.');
+    expect(article.querySelector('[aria-label="Evidence files"]')).toBeNull();
+    await ui.type('Message', 'Keep review draft');
+    await openReport();
+    const panel = document.querySelector('[aria-label="Verification review"]')!;
+    expect(panel.querySelectorAll('[aria-label="Evidence files"] a').length).toBe(2);
+    expect(panel.textContent).toContain('Review complete.');
+    expect(panel.textContent).not.toContain(hash);
+    expect(panel.textContent).not.toContain('SHA-256 details');
+    expect(panel.querySelector('details')).toBeNull();
+    await ui.click('Close verification review');
+    expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')?.value).toBe('Keep review draft');
     expect(document.querySelector('[data-message-id="user-code"] pre')).not.toBeNull();
     expect(document.querySelector('[data-message-id="dev-code"] pre')).not.toBeNull();
     await act(async () => article.querySelector<HTMLButtonElement>('button[aria-label="Copy"]')!.click());
@@ -103,10 +115,49 @@ test('Chats enables evidence only for review replies and Copy retains the comple
 test.each<Partial<RoomMessage>>([{ taskId: 'other' }, { roomId: 'other' }, { recipient: 'other' }, { taskId: undefined }])(
   'Chats never uses unrelated request paths: %j', async patch => {
     await withDOM(async ui => {
-      await ui.render(<ChatsView active api={{ request: async () => snapshot(patch) }} registry={registry} />);
-      const article = document.querySelector('[data-message-id="review"]')!;
+      await ui.render(<ReportHarness data={snapshot(patch)} />);
+      await openReport();
+      const article = document.querySelector('[aria-label="Verification review"]')!;
       expect(article.querySelector('[aria-label="Evidence files"]')).not.toBeNull();
       expect(article.querySelectorAll('[aria-label="Evidence files"] a').length).toBe(0);
     });
   },
 );
+
+function ReportHarness({ data }: { data: ChatsSnapshot }) {
+  const api = useMemo(() => ({ request: async () => data }), [data]);
+  const [review, setReview] = useState<VerificationReview | null>(null);
+  const open = useCallback((value: VerificationReview | null, activate = false) => {
+    setReview(current => activate || !value || current?.id === value.id ? value : current);
+  }, []);
+  return <><ChatsView active api={api} registry={registry}
+    reviewedVerificationId={review?.id} onReviewVerification={open} />
+    <ReviewSidebar open={!!review} item={null} initialPath={null} verification={review} onCloseReview={() => setReview(null)} /></>;
+}
+
+test('report recognition leaves ordinary reviewer messages and other authors inline without inferring verdicts', async () => {
+  const data = snapshot(), message = data.messages[1]!;
+  const agents = (await registry.list()).agents;
+  for (const value of ['I will verify the changes.', '검증을 시작하겠습니다.', 'Passed is one possible outcome.', '```ts\nconst result = "Passed";\n```']) {
+    const progress = { ...message, text: value };
+    expect(verificationReview(progress, data.messages, verificationReportContext(progress, data.messages, agents))).toBeNull();
+  }
+  const report = { ...message, text: '| 기준 | 판정 | 근거 |\n| --- | --- | --- |\n| 테스트 | **Passed** | 실행 완료 |' };
+  const parsed = verificationReview(report, data.messages, verificationReportContext(report, data.messages, agents));
+  expect(parsed?.report?.message.text).toBe(report.text);
+  expect(parsed?.result).toBeUndefined();
+  expect(parsed?.status).toBe('Report');
+  expect(verificationReportContext({ ...report, sender: 'dev' }, data.messages, agents)).toBeUndefined();
+  await withDOM(async ui => {
+    await ui.render(<ReportHarness data={{ ...data, messages: [...data.messages, { ...message, id: 'progress', text: '검증을 시작하겠습니다.' }] }} />);
+    expect(document.querySelector('[data-message-id="progress"]')?.textContent).toContain('검증을 시작하겠습니다.');
+    expect(document.querySelector('[data-message-id="progress"]')?.textContent).not.toContain('Verification report');
+  });
+});
+
+async function openReport() {
+  const card = [...document.querySelectorAll<HTMLButtonElement>('[data-message-id="review"] button')]
+    .find(button => button.textContent?.includes('Verification report'))!;
+  expect(card).toBeDefined();
+  await act(async () => card.click());
+}

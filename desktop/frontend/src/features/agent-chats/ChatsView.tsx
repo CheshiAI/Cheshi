@@ -14,7 +14,7 @@ import { ChatMessageLabel } from '../chat/ChatMessageLabel';
 import { syncChatComposerOverlayHeight } from '../chat/chatComposerOverlay';
 import { isWorkKind } from '../../../../shared/agent-work';
 import { VerificationCard } from './VerificationReview';
-import { verificationReview, type VerificationReview } from './verificationReviewModel';
+import { verificationReview, verificationReportContext, type VerificationReview } from './verificationReviewModel';
 import { verificationQuote } from '../agents/verificationPresentation';
 import { WorkMessage } from '../agents/WorkMessage';
 import { isRoomWorkSettled, type AgentChatsApi, type ChatsRequest, type RoomMessage } from '../../../../shared/agent-chats';
@@ -110,8 +110,8 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   }, [active, reviewedMessageId, reviewedFiles, onReviewFileChanges]);
   const selectedVerification = useMemo(() => {
     const message = messages.find(message => message.id === reviewedVerificationId);
-    return message ? verificationReview(message, messages) : null;
-  }, [messages, reviewedVerificationId]);
+    return message ? verificationReview(message, messages, verificationReportContext(message, messages, agents)) : null;
+  }, [messages, reviewedVerificationId, agents]);
   useEffect(() => {
     if (reviewedVerificationId) onReviewVerification?.(active ? selectedVerification : null);
   }, [active, reviewedVerificationId, selectedVerification, onReviewVerification]);
@@ -204,14 +204,12 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
       ? resolveChatRecipient(message.text, room?.members ?? []).recipient : null;
     const mention = addressed && addressed === message.recipient ? room?.members.find(member => member.id === addressed) : undefined;
     const label = exchangeLabel(message, messages);
-    const verification = verificationReview(message, messages);
+    const reviewFileContext = verificationReportContext(message, messages, agents);
+    const verification = verificationReview(message, messages, reviewFileContext);
     const question = message.questionId && message.questionId !== message.id ? messages.find(m => m.id === message.questionId) : undefined;
     const ownRoot = messageRoot(message, messages);
     const context = messages.find(m => m.id === message.replyTo) ?? question ?? (ownRoot && ownRoot.id !== message.id && working.length > 1 ? ownRoot : undefined);
     const copyable = message.kind === 'message' && (!message.activity || message.activity.kind === 'message');
-    const reviewFileContext = copyable && agents.some(agent => agent.id === message.sender && agent.role === 'verification')
-      ? messages.find(request => request.sender === 'user' && request.recipient === message.sender
-        && request.roomId === message.roomId && message.taskId && request.taskId === message.taskId)?.text ?? '' : undefined;
     return <article key={message.id} className={styles.message} data-message-id={message.id} data-reply-action data-copy-action={copyable || undefined}>
       <ChatsMessageActions text={message.text} copyable={copyable}
         replyLabel={`Reply to ${(message.text || message.activity?.title || 'execution').slice(0, 80)}`}
