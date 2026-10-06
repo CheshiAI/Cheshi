@@ -20,6 +20,7 @@
 .messageActions { position: absolute; top: var(--space-default); right: var(--space-default); display: flex; gap: var(--icon-default); opacity: 0; pointer-events: none; }
 .message:hover .messageActions, .message:focus-within .messageActions { opacity: 1; pointer-events: auto; }
 .message[data-reply-action] .metadata { padding-right: calc(var(--icon-button-size) + var(--icon-default)); }
+.message[data-copy-action] .metadata { padding-right: calc(2 * (var(--icon-button-size) + var(--icon-default))); }
 @media (hover: none) { .messageActions { opacity: 1; pointer-events: auto; } }
 .messageBody { min-width: 0; }
 .metadata { flex-wrap: wrap; align-self: stretch; padding-right: 0; }

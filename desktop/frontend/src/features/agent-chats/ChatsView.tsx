@@ -2,7 +2,7 @@ import { ProjectEnvironmentSetup } from './ProjectEnvironmentSetup';
 import { PermissionRequestCard } from './PermissionRequestCard';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDown, Phone, Reply, Users } from 'lucide-react';
+import { ArrowDown, Phone, Users } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { EmptyState, NeumorphicButton, RegionalBlur } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
@@ -35,6 +35,7 @@ import { currentWork, exchangeLabel, messageRoot } from './roomTimeline';
 import styles from './ChatsView.module.css';
 import { useRoomTimeline } from './useRoomTimeline';
 import { useChatsScroll } from './useChatsScroll';
+import { ChatsMessageActions } from './ChatsMessageActions';
 
 const ChatsMessageContent = memo(MessageContent);
 
@@ -182,11 +183,11 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     const question = message.questionId && message.questionId !== message.id ? messages.find(m => m.id === message.questionId) : undefined;
     const ownRoot = messageRoot(message, messages);
     const context = messages.find(m => m.id === message.replyTo) ?? question ?? (ownRoot && ownRoot.id !== message.id && working.length > 1 ? ownRoot : undefined);
-    return <article key={message.id} className={styles.message} data-message-id={message.id} data-reply-action>
-      <div className={styles.messageActions}>
-        <TooltipButton variant="standard" size="icon" title="Reply" aria-label={`Reply to ${(message.text || message.activity?.title || 'execution').slice(0, 80)}`}
-          onClick={() => { if (room) setReplies(all => ({ ...all, [room.id]: message.id })); }}><Reply aria-hidden="true" /></TooltipButton>
-      </div>
+    const copyable = message.kind === 'message' && (!message.activity || message.activity.kind === 'message');
+    return <article key={message.id} className={styles.message} data-message-id={message.id} data-reply-action data-copy-action={copyable || undefined}>
+      <ChatsMessageActions text={message.text} copyable={copyable}
+        replyLabel={`Reply to ${(message.text || message.activity?.title || 'execution').slice(0, 80)}`}
+        onReply={() => { if (room) setReplies(all => ({ ...all, [room.id]: message.id })); }} />
       <div className={styles.messageBody}>
         <ChatMessageLabel author={message.sender === 'user' ? 'user' : 'assistant'} name={message.sender === 'user' ? undefined : name(message.sender)}
           avatar={message.sender === 'user' ? undefined : <AgentAvatar id={message.sender} avatar={agents.find(a => a.id === message.sender)?.avatar} />}
