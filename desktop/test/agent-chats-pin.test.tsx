@@ -24,18 +24,19 @@ test('room pins reorder both groups and search while preserving selection, draft
     const order = () => [...document.querySelectorAll('[aria-label="Rooms"] button[aria-current], [aria-label="Rooms"] button')]
       .map(button => button.getAttribute('aria-label')).filter(label => label?.startsWith('Login'));
     expect(order()).toEqual(['Login new pin', 'Login old pin', 'Login newest', 'Login']);
+    await ui.click('Login newest');
     await ui.type('Message', 'Keep pin draft');
     const timeline = document.querySelector('[aria-label="Room messages"]');
-    await ui.click('Room actions for Login'); await ui.click('Pin');
+    await ui.click('Pin room: Login');
     expect(requests.at(-1)).toEqual({ action: 'pin', roomId: 'room', pinned: true });
     expect(order()).toEqual(['Login', 'Login new pin', 'Login old pin', 'Login newest']);
-    expect(document.querySelectorAll('[aria-label="Pinned room"]')).toHaveLength(3);
-    expect(document.querySelector('button[aria-current="page"]')?.getAttribute('aria-label')).toBe('Login');
+    expect(document.querySelectorAll('[aria-label="Rooms"] button[aria-pressed="true"]')).toHaveLength(3);
+    expect(document.querySelector('button[aria-current="page"]')?.getAttribute('aria-label')).toBe('Login newest');
     expect(document.querySelector('[aria-label="Room messages"]')).toBe(timeline);
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Keep pin draft');
     await ui.type('Search rooms', 'Login'); expect(order()).toEqual(['Login', 'Login new pin', 'Login old pin', 'Login newest']);
     await ui.type('Search rooms', 'new'); expect(order()).toEqual(['Login new pin', 'Login newest']);
-    await ui.click('Clear room search'); await ui.click('Room actions for Login'); await ui.click('Unpin');
+    await ui.click('Clear room search'); await ui.click('Unpin room: Login');
     expect(order()).toEqual(['Login new pin', 'Login old pin', 'Login newest', 'Login']);
     expect(requests.at(-1)).toEqual({ action: 'pin', roomId: 'room', pinned: false });
   });
@@ -46,13 +47,12 @@ test('pin remains unconfirmed while pending and after a rejected save', async ()
     const api = { request: (request: ChatsRequest) => request.action === 'pin'
       ? new Promise<ChatsSnapshot>((_resolve, reject) => { rejectPin = reject; }) : Promise.resolve(snapshot()) };
     await ui.render(<ChatsView active api={api} />);
-    await ui.click('Room actions for Login'); await ui.click('Pin');
-    expect(document.querySelector('[aria-label="Pinned room"]')).toBeNull();
-    await ui.click('Room actions for Login');
-    expect((document.querySelector('[role="menuitem"][aria-label="Pin"]') as HTMLButtonElement).disabled).toBe(true);
+    await ui.click('Pin room: Login');
+    expect(document.querySelector('[aria-label="Rooms"] button[aria-pressed="true"]')).toBeNull();
+    expect((document.querySelector('[aria-label="Pin room: Login"]') as HTMLButtonElement).disabled).toBe(true);
     await act(async () => { rejectPin!(new Error('Pin save failed')); });
-    expect(document.querySelector('[aria-label="Pinned room"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Rooms"] button[aria-pressed="true"]')).toBeNull();
     expect(document.body.textContent).toContain('Pin save failed');
-    expect((document.querySelector('[role="menuitem"][aria-label="Pin"]') as HTMLButtonElement).disabled).toBe(false);
+    expect((document.querySelector('[aria-label="Pin room: Login"]') as HTMLButtonElement).disabled).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
 .root {
+  --room-meta-width: 80px;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -8,6 +9,23 @@
 .notice { margin: 0; padding: var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
 .empty { display: flex; flex: 1 1 auto; align-items: center; justify-content: center; text-align: center; }
 
-.actions { flex: 0 0 auto; padding-right: var(--space-default); }
-.pin { display: inline-flex; flex: 0 0 auto; margin-left: var(--icon-default); color: var(--text); }
-.pin svg { width: var(--icon-size-default); height: var(--icon-size-default); }
+.root .title { padding-right: var(--room-meta-width); }
+.root .metadata { display: grid; grid-template-columns: minmax(0, 1fr) var(--room-meta-width); gap: 0; }
+.time { text-align: right; }
+.actions {
+  position: absolute;
+  top: calc(17px - var(--icon-button-size) / 2);
+  right: var(--space-default);
+  width: var(--room-meta-width);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--icon-default);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s ease;
+}
+
+.row:is(:hover, :focus-within) .actions { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .actions { opacity: 1; pointer-events: auto; } }
+@media (prefers-reduced-motion: reduce) { .actions { transition: none; } }

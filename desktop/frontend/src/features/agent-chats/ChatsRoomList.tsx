@@ -6,7 +6,6 @@ import { LoadingState, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
-import { ToolbarMenu } from '../../shared/ui/ToolbarMenu';
 import { formatSessionElapsedTime, useChatSessionClock } from '../chat/chatSessionTime';
 import sessionStyles from '../chat/ChatSessionList.module.css';
 import searchStyles from '../chat/ChatHistorySearch.module.css';
@@ -46,19 +45,21 @@ export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing,
       {error && <p className={styles.notice} role="alert">{error}</p>}
       <OverlayScrollArea className={sessionStyles.listScroll} label="Rooms">
         <nav className={sessionStyles.list} aria-label="Rooms" aria-busy={phase === 'loading' || refreshing}>
-          {visible.map(({ room, preview, updated }) => <div key={room.id} className={sessionStyles.sessionRow}>
+          {visible.map(({ room, preview, updated }) => <div key={room.id} className={`${sessionStyles.sessionRow} ${styles.row}`}>
             <NeumorphicButton variant="ghost" className={sessionStyles.session} aria-label={room.name} aria-current={room.id === selectedId ? 'page' : undefined} onClick={() => onSelect(room.id)}>
-              <span className={sessionStyles.sessionTitleRow}><TooltipTarget content={room.name}><span className={sessionStyles.sessionTitle}>{room.name}</span></TooltipTarget>
-                {room.pinned === true && <TooltipTarget content="Pinned room"><span className={styles.pin} role="img" aria-label="Pinned room"><Pin aria-hidden="true" /></span></TooltipTarget>}
+              <span className={`${sessionStyles.sessionTitleRow} ${styles.title}`}><TooltipTarget content={room.name}><span className={sessionStyles.sessionTitle}>{room.name}</span></TooltipTarget>
               </span>
-              <span className={sessionStyles.sessionMetadata}><span className={sessionStyles.sessionId}>{preview}</span><span className={sessionStyles.sessionTime}>{formatSessionElapsedTime(updated / 1000, now)}</span></span>
+              <span className={`${sessionStyles.sessionMetadata} ${styles.metadata}`}><span className={sessionStyles.sessionId}>{preview}</span><span className={`${sessionStyles.sessionTime} ${styles.time}`}>{formatSessionElapsedTime(updated / 1000, now)}</span></span>
             </NeumorphicButton>
-            <div className={styles.actions}><ToolbarMenu label={`Room actions for ${room.name}`} items={[{
-              id: 'pin', label: room.pinned === true ? 'Unpin' : 'Pin', icon: room.pinned === true ? <PinOff aria-hidden="true" /> : <Pin aria-hidden="true" />,
-              disabled: disabled || pinningRoomId !== null, onSelect: () => onPin(room.id, room.pinned !== true),
-            }, { id: 'delete', label: 'Delete room', icon: <Trash2 aria-hidden="true" />, separatorBefore: true,
-              disabled: disabled || !onDelete, onSelect: () => onDelete?.(room.id),
-            }]} /></div>
+            <div className={styles.actions}>
+              <TooltipButton variant="ghost" size="icon" title="Delete room" aria-label={`Delete room: ${room.name}`}
+                disabled={disabled || !onDelete} onClick={() => onDelete?.(room.id)}><Trash2 aria-hidden="true" /></TooltipButton>
+              <TooltipButton variant="ghost" size="icon" title={room.pinned === true ? 'Unpin' : 'Pin'}
+                aria-label={`${room.pinned === true ? 'Unpin' : 'Pin'} room: ${room.name}`} aria-pressed={room.pinned === true}
+                disabled={disabled || pinningRoomId !== null} onClick={() => onPin(room.id, room.pinned !== true)}>
+                {room.pinned === true ? <PinOff aria-hidden="true" /> : <Pin aria-hidden="true" />}
+              </TooltipButton>
+            </div>
           </div>)}
           {!loaded && phase === 'loading' && <LoadingState className={sessionStyles.loading} label="Loading rooms…" />}
           {loaded && phase !== 'error' && !visible.length && <p className={`${styles.notice} ${styles.empty}`}>{query.trim() ? 'No matching rooms.' : 'Create a work room and invite your Homies to begin.'}</p>}

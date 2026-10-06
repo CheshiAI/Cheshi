@@ -22,12 +22,12 @@ test('room deletion cancels without requests, then removes selected room and pre
     await ui.render(<ChatsView active api={api} />);
     await ui.type('Message', 'discard draft'); await ui.click('Reply to Room note');
     await ui.click('other'); await ui.type('Message', 'keep draft'); await ui.click('room');
-    await ui.click('Room actions for room'); await ui.click('Delete room');
+    await ui.click('Delete room: room');
     expect(document.querySelector('dialog')?.textContent).toContain('This cannot be undone.');
     await ui.click('Cancel'); expect(requests.filter(request => request.action === 'delete')).toHaveLength(0);
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('discard draft');
     expect(document.body.textContent).toContain('Room note');
-    await ui.click('Room actions for room'); await ui.click('Delete room'); await ui.click('Delete room');
+    await ui.click('Delete room: room'); await ui.click('Delete room');
     expect(requests.filter(request => request.action === 'delete')).toEqual([{ action: 'delete', roomId: 'room' }]);
     expect(document.querySelector('dialog')).toBeNull();
     expect(document.querySelector('button[aria-current="page"]')?.getAttribute('aria-label')).toBe('other');
@@ -45,7 +45,7 @@ test('failed deletion retains the room, draft and confirmation and supports canc
       return snapshot();
     } };
     await ui.render(<ChatsView active api={api} />); await ui.type('Message', 'keep failed draft');
-    await ui.click('Room actions for room'); await ui.click('Delete room'); await ui.click('Delete room');
+    await ui.click('Delete room: room'); await ui.click('Delete room');
     expect(document.querySelector('dialog')?.textContent).toContain('Journal save failed');
     await ui.click('Cancel');
     expect(document.querySelector('button[aria-current="page"]')?.getAttribute('aria-label')).toBe('room');
@@ -58,7 +58,7 @@ test.each(['running', 'queued', 'unknown'])('confirmation blocks %s work', async
     let deletions = 0;
     const api = { request: async (request: ChatsRequest) => { if (request.action === 'delete') deletions++; return data; } };
     await ui.render(<ChatsView active api={api} />);
-    await ui.click('Room actions for room'); await ui.click('Delete room'); await ui.click('Delete room');
+    await ui.click('Delete room: room'); await ui.click('Delete room');
     expect(document.querySelector('dialog')?.textContent).toContain('pending or unresolved'); expect(deletions).toBe(0);
     await ui.click('Cancel');
   });
