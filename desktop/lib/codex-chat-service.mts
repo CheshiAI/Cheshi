@@ -1,3 +1,5 @@
+import { FlashToolRequests, flashTools, flashInstructions } from './flash/tools.mts';
+import type { SessionMemory } from './flash/session-memory.mts';
 import { chatMessageFailure, codexCollaborationOverride, setCodexCollaborationMode, steerCodexMessage } from './codex-chat-turn-controls.mts';
 import { assertWorkspaceThreadIdle } from './codex-workspace-activity.mts';
 import { closeDiscordSetup, discordSetupThreadOptions, handleDiscordSetupRequest } from './discord-setup-tools.mts';
@@ -105,6 +107,7 @@ export {
 export { permissionModesFromListResponse } from "./codex-chat-permissions.mts";
 
 export class CodexChatService {
+  readonly memoryRequests: FlashToolRequests | undefined;
   readonly agentTokenUsage = new CodexAgentTokenUsage();
   readonly conversations: CodexConversationAccess | undefined;
   createMcpProbeClient: (() => CodexMcpProbeClient) | undefined;
@@ -164,6 +167,7 @@ export class CodexChatService {
     log = noopLog,
     createMcpProbeClient,
     conversations,
+    memory,
   }: {
     client: CodexChatClient;
     cwd: string;
@@ -172,15 +176,17 @@ export class CodexChatService {
     log?: CodexChatLogger;
     createMcpProbeClient?: () => CodexMcpProbeClient;
     conversations?: CodexConversationAccess;
+    memory?: SessionMemory;
   }) {
     this.client = client;
+    this.memoryRequests = memory ? new FlashToolRequests(this, memory) : undefined;
     this.conversations = conversations;
     this.createMcpProbeClient = createMcpProbeClient;
     this.userInputs = new CodexChatUserInputs(client, event => this.emit(event));
     this.cwd = requiredString(cwd, "Chat working directory");
     this.serviceName = requiredString(serviceName, "Chat service name");
     this.developerInstructions = requiredString(
-      developerInstructions,
+      developerInstructions + (memory ? flashInstructions : ''),
       "Chat developer instructions",
     );
     this.log = log;
@@ -566,7 +572,8 @@ export class CodexChatService {
     }
     if (!threadId) {
       const raw = await this.client.request("thread/start", {
-        ...discordSetupThreadOptions(this),
+        ...(this.memoryRequests ? { dynamicTools: [...(discordSetupThreadOptions(this).dynamicTools ?? []), ...flashTools] }
+          : discordSetupThreadOptions(this)),
         cwd: this.cwd,
         ...this.permissionOverrides(),
         developerInstructions: this.developerInstructions,
@@ -825,7 +832,7 @@ export class CodexChatService {
           ? null
           : requiredString(targetThreadId, "Chat session id");
     const active = threadId ? this.activeTurns.get(threadId) : null;
-    if (threadId) await this.userInputs.cancel(threadId);
+    if (threadId) { this.memoryRequests?.cancel(threadId); await this.userInputs.cancel(threadId); }
     if (!active) return { requested: false };
     active.interruptRequested = true;
     if (active.turnId) await this.interrupt(active);
@@ -847,6 +854,7 @@ export class CodexChatService {
   }
 
   handleRequest(value: JsonObject) {
+    if (this.memoryRequests?.handle(value)) return;
     if (handleDiscordSetupRequest(this, value)) return;
     if (this.userInputs.handle(value)) return;
     return handleCodexRequest(this, value);
@@ -862,6 +870,7 @@ export class CodexChatService {
   }
 
   stop(): Promise<void> {
+    this.memoryRequests?.cancel();
     closeDiscordSetup(this);
     this.turnStartLifetime.abort(new Error('This chat pane has been closed.'));
     this.pendingSteers.clear();
@@ -998,6 +1007,7 @@ export class CodexChatService {
 
   /** @param {JsonObject} event */
   emit(event: JsonObject) {
+    if (event.type === 'turn-completed' && typeof event.threadId === 'string') this.memoryRequests?.cancel(event.threadId);
     for (const listener of this.listeners) listener(event);
   }
 }

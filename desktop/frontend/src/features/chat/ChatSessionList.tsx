@@ -3,8 +3,9 @@ import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { MessageCircleDashed, MessageSquareText, Plus, RefreshCw, Trash2 } from 'lucide-react';
 
-import { LoadingIndicator, LoadingState, NeumorphicButton, SidebarPanelHeader } from '../../shared/ui';
+import { LoadingIndicator, LoadingState, NeumorphicButton } from '../../shared/ui';
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
+import { FlashSessionHeader } from './FlashSessionHeader';
 import type { ChatSession } from './model';
 import { formatSessionElapsedTime, useChatSessionClock } from './chatSessionTime';
 import styles from './ChatSessionList.module.css';
@@ -84,7 +85,7 @@ export function ChatSessionList({
 
   return (
     <section className={styles.root} aria-label="Chat history">
-      <SidebarPanelHeader title="SESSION" icon={<MessageSquareText aria-hidden="true" />} actions={<>
+      <FlashSessionHeader actions={<>
         {onRefresh && <TooltipButton size="icon" aria-label="Refresh sessions" title="Refresh sessions"
           disabled={loading || refreshDisabled || refresh.refreshing} onClick={() => void refresh.refresh()}>
           <RefreshCw aria-hidden="true" />

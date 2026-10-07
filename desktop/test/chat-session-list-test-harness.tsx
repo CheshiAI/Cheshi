@@ -35,6 +35,7 @@ export function createSessionListHarness() {
   const jsx = (type: unknown, props: Record<string, unknown>) =>
     typeof type === 'function' ? type(props) : { type, props };
   const modules: Record<string, unknown> = {
+    './FlashSessionHeader': { FlashSessionHeader: 'sidebar-panel-header' },
     '../../shared/ui/TooltipButton': { TooltipButton: 'button' },
     '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
     react: {

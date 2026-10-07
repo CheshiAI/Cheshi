@@ -1,3 +1,4 @@
+import { createWorkspaceSessionMemory } from './lib/flash/workspace.mts';
 import { AppleNotesService } from './lib/apple-notes-service.mts';
 import { createWorkspaceVoice } from './lib/agent-voice/workspace.mts';
 import { createWorkspaceScheduler } from './lib/scheduler/workspace.mts';
@@ -40,7 +41,6 @@ import { createWorkspaceSessionStores } from './lib/workspace-session-stores.mts
 import { CodexChatContexts } from './lib/codex-chat-contexts.mts';
 import { CodexChatSessionDeletion } from './lib/codex-chat-session-deletion.mts';
 import { CodexChatService } from './lib/codex-chat-service.mts';
-import { workspaceChatServiceOptions } from './lib/workspace-chat-service-options.mts';
 import { GhosttySurfaceHost } from './lib/ghostty-surface-host.mts';
 import { GitService } from './lib/git-service.mts';
 import { LanguageServerManager } from './lib/language-server-manager.mts';
@@ -219,14 +219,15 @@ const codexAccountService = new CodexAccountService({
     process.stderr.write(`[cheshi] ${event} ${JSON.stringify(details)}\n`);
   },
 });
-const chatServiceOptions = workspaceChatServiceOptions(workspaceRoot, workspaceAccounts.conversations, createChatClient);
+const sessionHistory = createWorkspaceSessionMemory(workspaceRoot, userDataDirectory, workspaceAccounts.conversations, chatHistorySearch, createChatClient, ipcMain, assertCheshiSender);
+const chatServiceOptions = sessionHistory.serviceOptions;
 
 const codexChatService = new CodexChatService({ ...chatServiceOptions, client: codexAppServerClient });
 const codexChatContexts = new CodexChatContexts({
   createClient: createChatClient,
   service: chatServiceOptions,
   emit: (ownerId, event) => {
-    chatHistorySearch.changed(event);
+    sessionHistory.changed(event);
     notifications.event(String(event.contextId ?? 'main'), event);
     const window = workspaceWindows().find((candidate) => candidate.webContents.id === ownerId);
     rendererEvents.send(window ?? null, CODEX_CHAT_EVENT_CHANNEL, event);
@@ -252,9 +253,9 @@ const accountSwitch = workspaceAccounts.register({
   relays: codexChatRelays, accountUsage: codexAccountService,
   temporaryBusy: () => temporaryChats.hasSessions || codeExplanation.busy || agentVoice.busy,
   schedulerBusy: () => workspaceScheduler.busy,
-  resetTemporary: () => { codeExplanation.reset(); agentVoice.resetAccount(); },
+  resetTemporary: () => { codeExplanation.reset(); agentVoice.resetAccount(); sessionHistory.memory.resetAccount(); },
   emit: snapshot => {
-    chatHistorySearch.changed({ type: 'sessions-changed' });
+    sessionHistory.accounts(snapshot);
     onAccountsChanged?.(snapshot);
     for (const window of workspaceWindows()) rendererEvents.send(window, 'cheshi:codex-accounts-changed', snapshot);
   },
@@ -298,7 +299,7 @@ const unsubscribeAccount = codexAccountService.onDidChange((status) => {
 });
 
 const unsubscribeChat = codexChatService.onEvent((event) => {
-  chatHistorySearch.changed(event);
+  sessionHistory.changed(event);
   notifications.event('main', event);
   for (const window of workspaceWindows()) {
     rendererEvents.send(window, CODEX_CHAT_EVENT_CHANNEL, event);
@@ -522,7 +523,7 @@ registerCodexChatIpc({
   notesService: appleNotesService,
   ipc: ipcMain, accountIpc, service: chatServiceFor, relays: codexChatRelays, assertSender: assertCheshiSender,
   savedTurns: codexChatSavedTurns,
-  historySearch: chatHistorySearch,
+  historySearch: sessionHistory.historySearch,
   beforeMessage: workspaceAccounts.beforeMessage,
   deletion: codexChatSessionDeletion,
   prepareMessage: async (value) => {
@@ -976,7 +977,7 @@ function dispose(): Promise<void> {
     });
     const results = await Promise.allSettled([
       codexChatService.stop(), agentVoice.dispose(),
-      chatHistorySearch.stop(), appleNotesService.stop(),
+      chatHistorySearch.stop(), sessionHistory.memory.dispose(), appleNotesService.stop(),
       temporaryChats.stop(),
       localHistory.dispose(),
       managementDisposal,

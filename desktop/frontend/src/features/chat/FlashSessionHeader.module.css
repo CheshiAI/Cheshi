@@ -1,0 +1,13 @@
+.status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-default);
+  padding: var(--space-default);
+  color: var(--sidebar-section-label-color);
+  font-size: 12px;
+  line-height: 1.5;
+  border-bottom: 1px solid var(--divider);
+}
+
+.status > span { flex: 1; min-width: 0; }
+.status > :last-child:not(:first-child) { flex-shrink: 0; }

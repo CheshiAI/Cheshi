@@ -1,3 +1,4 @@
+import { createFlashMemoryApi } from './flash-preload.cts';
 import { createAgentChatsApi } from './agent-chats-preload.cts';
 import { createAgentVoiceApi } from './agent-voice-preload.cts';
 import { createSchedulerApi } from './scheduler-preload.cts';
@@ -22,5 +23,6 @@ export function createWorkspaceFeatureApis(ipc: Pick<IpcRenderer, 'invoke' | 'on
     agentChats: createAgentChatsApi(ipc),
     agentVoice: createAgentVoiceApi(ipc),
     agentRegistry: createAgentRegistryApi(ipc),
+    flashMemory: createFlashMemoryApi(ipc),
   };
 }
