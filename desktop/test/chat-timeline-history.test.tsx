@@ -154,7 +154,7 @@ test('legacy recall records render without dedicated source cards, navigation or
       title: 'Old source title', text: 'Old source preview' }],
       metrics: { requests: 1, inputTokens: 5, outputTokens: 0, estimatedCostUsd: 0.01, knownEstimatedCostUsd: 0.01,
         unknownRequests: 0, modelMs: 1, totalMs: 2, cacheHits: 0 } } };
-  const html = renderHistory([legacy, { id: 'answer', kind: 'assistant', text: 'Saved answer' }]);
+  const html = renderHistory([legacy, { id: 'answer', kind: 'assistant', createdAt: 1, text: 'Saved answer' }]);
   expect(html).toContain('history_search');
   expect(html).toContain('Saved answer');
   for (const removed of ['History search', 'Open original message', 'Old source title', 'Old source preview', 'Jev estimated']) {
