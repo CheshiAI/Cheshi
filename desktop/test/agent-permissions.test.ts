@@ -38,7 +38,7 @@ test('Chats projects one durable permission card, binds decisions to the saved r
   const permission = { id: 'request', reason: 'Run tests', fileWrite: false, commandExecution: true, status: 'pending' as const };
   const details: AgentDetails = { agent: { id: 'container', name: 'Agent', image: 'worker', state: 'running' }, ready: true, authenticated: true, busy: false,
     error: null, logs: '', threadId: null, tasks: [{ id: 'task', prompt: 'Implement', status: 'waiting', roomId: room.id, createdAt: room.createdAt, output: '', error: null,
-      inspection: { permissionRequest: permission, finishedAt: null, threadId: null, conversation: null, goal: null, messages: [], evidence: [], recall: null, error: null } }] };
+      inspection: { permissionRequest: permission, finishedAt: null, threadId: null, conversation: null, goal: null, messages: [], evidence: [], error: null } }] };
   const messages: RoomMessage[] = [{ id: 'anchor', roomId: room.id, threadId: null, sender: 'user', recipient: agent.id, taskId: 'task', kind: 'message', text: 'Implement', createdAt: room.createdAt }];
   recordRoomTasks(messages, room, agent.id, details.tasks); recordRoomTasks(messages, room, agent.id, details.tasks);
   expect(messages.filter(m => m.kind === 'permission_request')).toHaveLength(1);

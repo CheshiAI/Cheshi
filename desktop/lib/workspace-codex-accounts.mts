@@ -22,7 +22,6 @@ export function createWorkspaceCodexAccounts(options: {
   cwd: string; userDataDirectory: string; home: string; openExternal(url: string): Promise<unknown>;
   accountSelection?: WorkspaceAccountSelection;
   getProjectDocMaxBytes?(): number;
-  historyMcp?: (command: { environment?: NodeJS.ProcessEnv }) => Promise<string[]>;
   codeGraph: { cli: { executable: string; args: string[] }; dataRoot: string; synchronization?: CodeGraphSynchronization };
 }) {
   const defaultHome = process.env.CODEX_HOME?.trim() || path.join(options.home, '.codex');
@@ -30,10 +29,7 @@ export function createWorkspaceCodexAccounts(options: {
     cli: options.codeGraph.cli, dataRoot: options.codeGraph.dataRoot, workspaceRoot: options.cwd,
     synchronization: options.codeGraph.synchronization ? () => options.codeGraph.synchronization!.connection(options.cwd) : undefined,
   });
-  const clients = new CodexAccountClients({ CODEX_HOME: defaultHome }, async command => {
-    const graphArgs = await codeGraphMcp(command);
-    return [...graphArgs, ...(await options.historyMcp?.(command) ?? [])];
-  }, options.getProjectDocMaxBytes);
+  const clients = new CodexAccountClients({ CODEX_HOME: defaultHome }, codeGraphMcp, options.getProjectDocMaxBytes);
   const profiles = getCodexAccountProfiles({
     directory: path.join(options.userDataDirectory, 'codex-accounts'),
     defaultHome, cwd: options.home, openExternal: options.openExternal,

@@ -602,7 +602,6 @@ function historyHarness() {
     'lucide-react': { History: 'svg' },
     '../../shared/ui': { NeumorphicButton: 'button', ContentCard: 'content-card' },
     './ChatTimelineItem': { ChatTimelineItem: 'timeline-item' },
-    './HistoryRecallActivity': { HistoryRecallTotals: 'history-recall-totals', recallTurnMetrics: () => new Map() },
     './chatHistoryWindow': { captureChatHistoryAnchor, previousChatHistoryStart },
     './chatReasoningPresentation': { groupReasoningItems },
     './ChatView.module.css': { default: { reasoningGroup: 'reasoning-group' } },

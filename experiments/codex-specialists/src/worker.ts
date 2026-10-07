@@ -11,8 +11,6 @@ import { AppServerClient } from './app-server-client.ts';
 import { record, textValue } from './protocol.ts';
 import { AgentStore, validateTaskId } from './store.ts';
 import { WorkerCollaboration } from './collaboration.ts';
-import { WorkerHistory } from './history.ts';
-import { WorkerHistoryQueue } from './history-queue.ts';
 import { IdleLifecycle, WorkerSleepingError } from './idle-lifecycle.ts';
 
 const workspace = process.env.AGENT_WORKSPACE ?? '/workspace';
@@ -31,13 +29,11 @@ await client.initialize();
 let transportError: string | null = null;
 client.onFailure(error => { transportError = error.message; });
 const collaboration = configuration ? new WorkerCollaboration(store, configuration.profileId, workspace) : undefined;
-const history = new WorkerHistory(store, client, process.env.AGENT_DATA_DIRECTORY ?? '/agent', workspace);
-const historyQueue = configuration ? new WorkerHistoryQueue(process.env.AGENT_DATA_DIRECTORY ?? '/agent') : undefined;
 const codegraph = configuration?.codegraphProtocol === 1 ? new WorkerCodeGraphQueue() : undefined;
 const customTools = new WorkerCustomToolQueue();
-const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration, history, historyQueue, codegraph, customTools });
+const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration, codegraph, customTools });
 const lifecycle = new IdleLifecycle({ store, client, blocked: () => agent.busy || !!agent.error || !!transportError
-  || collaboration?.next() != null || historyQueue?.pending === true || codegraph?.pending === true || customTools.pending });
+  || collaboration?.next() != null || codegraph?.pending === true || customTools.pending });
 const changes = new WorkerChangeStream();
 let pumping = false, expiry: ReturnType<typeof setTimeout> | undefined;
 const schedulePump = () => {
@@ -53,7 +49,6 @@ const schedulePump = () => {
   });
 };
 store.subscribe(() => { changes.changed(); schedulePump(); });
-historyQueue?.subscribe(() => changes.changed());
 codegraph?.subscribe(() => changes.changed());
 customTools.subscribe(() => changes.changed());
 client.onFailure(() => changes.changed());
@@ -103,14 +98,6 @@ const server = Bun.serve({
       if (path === '/codegraph/exchange' && request.method === 'POST' && codegraph) {
         return Response.json(codegraph.exchange(await request.json()));
       }
-      if (path.startsWith('/history/') && request.method === 'POST' && configuration) {
-        const body = await request.text();
-        if (body.length > 2 * 1024 * 1024) throw new TypeError('Request is too large.');
-        const input = JSON.parse(body);
-        if (path === '/history/exchange') return Response.json(historyQueue!.exchange(input));
-        if (path === '/history/catalog') return Response.json(history.catalog());
-        if (path === '/history/read') return Response.json(await history.read(input));
-      }
       if (path === '/health' && request.method === 'GET') {
         return Response.json({ chatsProtocol: 1, ready: error === null, role: configuration?.role ?? 'verifier', busy: agent.busy,
           threadId: store.snapshot().threadId, execution: agent.executionHealth, deniedRequests: client.deniedRequests, error },
@@ -128,7 +115,7 @@ const server = Bun.serve({
       }
       if (path === '/activity' && request.method === 'GET') {
         if (!lifecycle.draining) collaboration?.expire();
-        return Response.json({ ...agent.activity(), ...(historyQueue ? { recall: historyQueue.inspection() } : {}) });
+        return Response.json(agent.activity());
       }
       if (path === '/tasks' && request.method === 'POST') {
         if (!request.headers.get('content-type')?.startsWith('application/json')) throw new TypeError('Use application/json.');

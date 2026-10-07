@@ -7,7 +7,6 @@ import { FakeClient } from './agent-test-client.ts';
 import { createDeferred, record, type JsonRecord } from './protocol.ts';
 import { SCRATCH_PROFILE } from './task-scratch.ts';
 import { AgentStore } from './store.ts';
-import { WorkerHistoryQueue } from './history-queue.ts';
 import { WorkerCollaboration } from './collaboration.ts';
 import { expireQuestions } from './question-control.ts';
 import { newGoal } from './decision.ts';
@@ -220,22 +219,6 @@ test('registered profiles carry model, effort, tier and command restrictions int
     sandboxPolicy: { type: 'readOnly', networkAccess: false } });
 });
 
-
-test('native history calls bind to the active task and stop cancels pending relay work', async () => {
-  const directory = temporary(), store = new AgentStore(directory), historyQueue = new WorkerHistoryQueue(directory);
-  const client = new FakeClient(); client.onStart = async () => ({ turn: { id: 'turn' } });
-  const agent = new SpecialistAgent({ client, store, workspace: '/workspace', profile: 'Test', historyQueue });
-  agent.submit('recall', 'Find the policy.'); await client.started.promise;
-  await Bun.sleep(0);
-  const tools = client.calls.find(c => c.method === 'thread/start')!.params.dynamicTools as { name: string }[];
-  expect(tools.map(t => t.name)).toEqual(['history_search', 'history_read']);
-  await expectFailure(client.toolHandler!({ threadId: 'foreign', turnId: 'turn', callId: 'bad', tool: 'history_search', arguments: { query: 'policy' } }), 'active task');
-  await expectFailure(client.toolHandler!({ threadId: 'thread', turnId: 'wrong', callId: 'bad', tool: 'history_search', arguments: { query: 'policy' } }), 'active task');
-  const pending = client.toolHandler!({ threadId: 'thread', turnId: 'turn', callId: 'call', tool: 'history_read', arguments: { threadId: 'past', turnId: 't', itemId: 'i' } });
-  expect(historyQueue.exchange({ protocol: 1, enabled: true, results: [] }).requests[0]).toMatchObject({ taskId: 'recall', threadId: 'thread', tool: 'history_read' });
-  await agent.stop('recall'); expect((await pending).status).toBe('error'); await agent.settled();
-  expect(historyQueue.exchange({ protocol: 1, enabled: true, results: [] }).requests).toHaveLength(0);
-});
 
 function goalSetup(directory = temporary(), withPeer = false) {
   const store = new AgentStore(directory), client = new FakeClient();
@@ -931,4 +914,20 @@ test('quarantines failed command cleanup and blocks subsequent work and recovery
   expect(agent.error).toContain('Restart the worker');
   expect(() => agent.submit('next', 'inspect')).toThrow('Restart the worker');
   expect(client.calls.some(c => c.method === 'thread/unsubscribe')).toBe(false);
+});
+
+test('Homie collaboration exposes no legacy recall tools and rejects their invocation', async () => {
+  const store = new AgentStore(temporary()), client = new FakeClient();
+  const collaboration = new WorkerCollaboration(store, 'dev');
+  const agent = new SpecialistAgent({ client, store, workspace: '/workspace', profile: 'Test', collaboration });
+  client.onStart = async () => ({ turn: { id: 'turn' } });
+  agent.submit('work', 'Inspect the task.'); await client.started.promise;
+  try {
+    const params = client.calls.find(c => c.method === 'thread/start')!.params;
+    const names = (params.dynamicTools as { name: string }[]).map(t => t.name);
+    expect(names).toContain('list_agents');
+    expect(names).not.toContain('history_search'); expect(names).not.toContain('history_read');
+    expect(JSON.stringify(params)).not.toContain('Jev');
+    await expectFailure(client.toolHandler!({ threadId: 'thread', turnId: 'turn', callId: 'old-call', tool: 'history_search', arguments: { query: 'policy' } }), 'Unsupported collaboration tool');
+  } finally { await agent.stop('work'); await agent.settled(); }
 });

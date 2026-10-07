@@ -3,7 +3,6 @@ import { execFileSync } from 'node:child_process';
 import { inspectAgentTasks } from '../lib/agent-management/task-inspection.mts';
 import { parseAgentTasks } from '../shared/agent-management.ts';
 import { parseTaskGoal, parseTaskEvidence } from '../shared/agent-task-inspection.ts';
-import { inspectHistoryJob } from '../../experiments/codex-specialists/src/history-inspection.ts';
 import config from '../../forge.config.mts';
 import { WORK_MESSAGE_LIMIT } from '../shared/agent-work.ts';
 
@@ -63,7 +62,7 @@ test('malformed detail leaves base task output available and booleans are litera
   expect(result.inspection?.error).toContain('invalid');
   expect(parseTaskEvidence({ id: 'receipt', kind: 'command', detail: 'bun test', output: '', exitCode: 0, successful: false }).successful).toBe(false);
   const legacy = inspectAgentTasks({ tasks: [task] })[0]!;
-  expect(legacy.inspection?.goal).toBeNull(); expect(legacy.inspection?.recall).toBeNull();
+  expect(legacy.inspection?.goal).toBeNull(); expect(legacy.inspection).not.toHaveProperty('recall');
 });
 test('independent verdicts and observed evidence survive projection separately from self report', () => {
   const input = snapshot();
@@ -75,19 +74,10 @@ test('independent verdicts and observed evidence survive projection separately f
   expect(inspection.messages.at(-1)?.verification?.evidence[0]?.exitCode).toBe(1);
   expect(inspection.goal?.criteria[0]?.met).toBe(false);
 });
-test('recall inspection strips arbitrary fields and isolates each task without inventing usage', () => {
-  const recall = inspectHistoryJob({ id: 'recall', taskId: 'goal', tool: 'history_search', status: 'done', args: { query: 'Login policy', secret: 'HIDDEN_FIELD' },
-    result: { status: 'ok', token: 'HIDDEN_FIELD', originals: [{ threadId: 'past', turnId: 'turn', itemId: 'item', title: 'Policy', text: 'Use 401', secret: 'HIDDEN_FIELD' }] } });
-  const tasks = parseAgentTasks(inspectAgentTasks({ tasks: [task], recall: [recall, { ...recall, id: 'other', taskId: 'other' }] }));
-  expect(tasks[0]?.inspection?.recall).toHaveLength(1);
-  expect(tasks[0]?.inspection?.recall?.[0]?.activity.sources[0]?.text).toBe('Use 401');
-  expect(tasks[0]?.inspection?.recall?.[0]?.activity.metrics).toBeNull();
-  expect(JSON.stringify(tasks)).not.toContain('HIDDEN_FIELD');
-});
 test('inspection modules and their transitive contracts are packaged and load with native Node', async () => {
   const ignore = (await config()).packagerConfig?.ignore;
   if (typeof ignore !== 'function') throw new Error('Missing package filter');
-  for (const path of ['experiments/codex-specialists/src/usage-contract.ts', 'experiments/codex-specialists/src/activity-contract.ts', 'desktop/lib/agent-chats/records.mts', 'desktop/shared/agent-activity.ts', 'desktop/shared/agent-question.ts', 'desktop/shared/agent-task-inspection.ts', 'desktop/shared/history-recall.ts', 'desktop/lib/agent-management/task-inspection.mts']) expect(ignore(`/${path}`)).toBe(false);
+  for (const path of ['experiments/codex-specialists/src/usage-contract.ts', 'experiments/codex-specialists/src/activity-contract.ts', 'desktop/lib/agent-chats/records.mts', 'desktop/shared/agent-activity.ts', 'desktop/shared/agent-question.ts', 'desktop/shared/agent-task-inspection.ts', 'desktop/lib/agent-management/task-inspection.mts']) expect(ignore(`/${path}`)).toBe(false);
   execFileSync('node', ['--input-type=module', '-e', "await import('./desktop/lib/agent-management/service.mts')"], { stdio: 'pipe' });
 });
 
@@ -125,4 +115,11 @@ test('long-lived goals expose cumulative usage and unknown legacy usage without 
   expect(parseTaskGoal({ ...goal, turns: 1201, usage })).toMatchObject({ turns: 1201, usage });
   expect(parseTaskGoal({ ...goal, turns: 1201 }).usage).toBeUndefined();
   expect(() => parseTaskGoal({ ...goal, usage: { ...usage, totalTokens: '120' } })).toThrow('usage');
+});
+
+test('old worker recall payloads are discarded while task output remains available', () => {
+  const result = inspectAgentTasks({ tasks: [task], recall: [{ taskId: task.id, activity: { sources: [{ text: 'OLD_PRIVATE_SOURCE' }] } }] });
+  expect(result[0]?.output).toBe(task.output);
+  expect(result[0]?.inspection).not.toHaveProperty('recall');
+  expect(JSON.stringify(result)).not.toContain('OLD_PRIVATE_SOURCE');
 });

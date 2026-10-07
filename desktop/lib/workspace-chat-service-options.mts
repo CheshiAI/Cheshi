@@ -12,7 +12,6 @@ export function workspaceChatServiceOptions(cwd: string, conversations: ServiceO
     createMcpProbeClient,
     cwd,
     serviceName: product.internalName,
-    historyToolsEnabled: true,
     developerInstructions: workspaceChatInstructions(product.displayName),
     log: (event: string, details: Record<string, unknown>) => {
       process.stderr.write(`[cheshi] ${event} ${JSON.stringify(details)}\n`);

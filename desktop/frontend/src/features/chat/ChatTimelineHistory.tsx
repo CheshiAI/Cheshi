@@ -1,9 +1,8 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { History } from 'lucide-react';
 import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
 import { ContentCard } from '../../shared/ui';
 import { ChatTimelineItem } from './ChatTimelineItem';
-import { HistoryRecallTotals, recallTurnMetrics } from './HistoryRecallActivity';
 import { captureChatHistoryAnchor, previousChatHistoryStart } from './chatHistoryWindow';
 import { groupReasoningItems } from './chatReasoningPresentation';
 import styles from './ChatView.module.css';
@@ -34,7 +33,6 @@ export const ChatTimelineHistory = memo(function ChatTimelineHistory({
   const [searchMatch, setSearchMatch] = useState<ChatHistorySearchTarget | null>(null);
   const restoreAnchorRef = useRef<(() => void) | null>(null);
   const previousScrollTopRef = useRef(0);
-  const usageByItem = useMemo(() => recallTurnMetrics(items), [items]);
 
   useLayoutEffect(() => {
     if (loading || !historyTarget) return;
@@ -104,7 +102,6 @@ export const ChatTimelineHistory = memo(function ChatTimelineHistory({
       streaming={streaming && item === visibleItems.at(-1)}
       turn={completedTurns.get(item.id)}
       savedTurns={savedTurns}
-      usageDetails={usageByItem.has(item.id) ? <HistoryRecallTotals metrics={usageByItem.get(item.id)} /> : undefined}
       onReviewFileChanges={onReviewFileChanges}
     />;
 

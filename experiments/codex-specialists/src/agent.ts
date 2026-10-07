@@ -28,9 +28,6 @@ import { ExecutionHealth } from './execution-health.ts';
 import { inspectRecovery } from './recovery.ts';
 import { WorkerCollaboration } from './collaboration.ts';
 import { collaborationInstructions, collaborationTools } from './collaboration-tools.ts';
-import { historyInstructions, historyTools } from './history-tools.ts';
-import type { WorkerHistoryQueue } from './history-queue.ts';
-import type { WorkerHistory } from './history.ts';
 import { decisionInstructions, decisionTools, finishGoal, goalContext, newGoal, parseDecision, validateDecision } from './decision.ts';
 import { GoalObservations, isStalled, STALLED_GOAL } from './goal-progress.ts';
 
@@ -75,12 +72,10 @@ export class SpecialistAgent {
   private readonly work: WorkerWork | undefined;
   private readonly integration: WorkerIntegration | undefined;
   private readonly verification: WorkerVerification | undefined;
-  private readonly historyQueue: WorkerHistoryQueue | undefined;
-  private readonly history: WorkerHistory | undefined;
   private readonly customTools: WorkerCustomToolQueue | undefined;
   private readonly codegraph: WorkerCodeGraphQueue | undefined;
   private readonly collaboration: WorkerCollaboration | undefined;
-  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; historyQueue?: WorkerHistoryQueue; history?: WorkerHistory; codegraph?: WorkerCodeGraphQueue; customTools?: WorkerCustomToolQueue }) {
+  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; codegraph?: WorkerCodeGraphQueue; customTools?: WorkerCustomToolQueue }) {
     this.configuration = options.configuration; this.customTools = options.customTools;
     this.conversations = new WorkerConversation(options.store, options.configuration?.verificationProtocol === 1 && packToolAllowed(options.configuration.enabledTools, 'request_verification'));
     this.work = options.configuration?.workProtocol === 1 ? new WorkerWork(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite) : undefined;
@@ -88,7 +83,7 @@ export class SpecialistAgent {
     this.verification = options.configuration?.verificationProtocol === 1 ? new WorkerVerification(options.store, options.workspace) : undefined;
     this.client = options.client; this.store = options.store; this.profile = options.profile;
     this.workspace = options.workspace;
-    this.collaboration = options.collaboration; this.historyQueue = options.historyQueue; this.history = options.history; this.codegraph = options.codegraph;
+    this.collaboration = options.collaboration; this.codegraph = options.codegraph;
     if (this.configuration?.permissionProtocol === 1) this.client.handleApprovals?.((method, params) => {
       const active = this.active;
       if (!active || active.stopRequested || params.threadId !== active.threadId || (active.turnId && params.turnId !== active.turnId)) return;
@@ -99,7 +94,7 @@ export class SpecialistAgent {
       if (shouldRequestPermissions(task.permissionRequest, { fileWrite, commandExecution })) this.store.update(task.id, { permissionRequest: { id: randomUUID(), fileWrite, commandExecution, status: 'pending',
         reason: fileWrite ? 'This task needs permission to modify project files.' : 'This task needs permission to run commands.' } });
     });
-    if (this.customTools || this.collaboration || this.historyQueue || this.codegraph || this.configuration?.decisionProtocol === 1 || this.configuration?.permissionProtocol === 1) {
+    if (this.customTools || this.collaboration || this.codegraph || this.configuration?.decisionProtocol === 1 || this.configuration?.permissionProtocol === 1) {
       if (!this.client.handleTools) throw new Error('Collaboration requires dynamic tool support.');
       this.client.handleTools(async params => {
         const active = this.active;
@@ -126,7 +121,7 @@ export class SpecialistAgent {
           if (tool !== 'conversation_status') active.observations.add({ tool, result });
           return result;
         }
-        if (task.dialogue && (!task.goal || task.goal.turns === 0) && ![...codegraphTools.map(t => t.name), 'list_agents', 'ask_agent', 'collaboration_status', 'history_search', 'history_read'].includes(tool)) throw new Error('Intake is read-only. Record the work goal, then end this turn.');
+        if (task.dialogue && (!task.goal || task.goal.turns === 0) && ![...codegraphTools.map(t => t.name), 'list_agents', 'ask_agent', 'collaboration_status'].includes(tool)) throw new Error('Intake is read-only. Record the work goal, then end this turn.');
         if (task.goal) {
           if (tool === 'goal_status') return { originalGoal: task.dialogue?.objective ?? task.prompt, ...goalContext(task.goal) };
           if (tool === 'record_decision') {
@@ -172,12 +167,6 @@ export class SpecialistAgent {
         if (this.codegraph && codegraphTools.some(t => t.name === tool)) {
           const result = record(await this.codegraph.call(tool, params.arguments, active.controller.signal));
           if (result.isError !== true) active.observations.add({ tool, result });
-          return result;
-        }
-        if (this.historyQueue && ['history_search', 'history_read'].includes(tool)) {
-          const result = record(await this.historyQueue.call(active.id, active.threadId!, textValue(params.turnId, 'turn id'),
-            textValue(params.callId, 'call id'), tool, params.arguments, active.controller.signal));
-          if (result.isError !== true && result.error == null) active.observations.history(result);
           return result;
         }
         if (!this.collaboration) throw new Error('Unknown tool.');
@@ -335,7 +324,7 @@ export class SpecialistAgent {
     const next = this.collaboration?.next();
     if (!next) {
       const ready = this.store.snapshot().tasks.find(t => t.status === 'waiting' && t.goal?.phase === 'ready');
-      if (ready) this.launch(ready, `Continue the original goal: ${ready.prompt}\nSaved goal state (reference data):\n${JSON.stringify(goalContext(ready.goal!))}\nPerform the next action within the original authority. Retrieve missing past decisions with history_search.`);
+      if (ready) this.launch(ready, `Continue the original goal: ${ready.prompt}\nSaved goal state (reference data):\n${JSON.stringify(goalContext(ready.goal!))}\nPerform the next action within the original authority.`);
       return;
     }
     if (next.resume) {
@@ -362,7 +351,7 @@ export class SpecialistAgent {
     const integrationAvailable = this.integration && packToolAllowed(settings?.enabledTools, integrationTools[0]!.name) && (!savedThread || task.integrationTools === true);
     const applicationAvailable = integrationAvailable && settings?.applicationProtocol === 1 && (!savedThread || task.applicationTools === true);
     const codegraphAvailable = this.codegraph && packToolAllowed(settings?.enabledTools, codegraphTools[0]!.name) && (!savedThread || saved.tasks.some(t => t.threadId === savedThread && t.codegraphTools === true));
-    const profile = this.profile + (settings?.enabledTools ? `\nEnabled Homie tool groups: ${settings.enabledTools.join(', ') || 'none'}. Disabled groups are unavailable even if older instructions mention them.\n` : '') + (codegraphAvailable ? codegraphInstructions : this.codegraph ? '\nThis older conversation has no CodeGraph tools. Use scoped source reads within existing permissions; a new conversation is required for CodeGraph tools.\n' : '') + (settings?.permissionProtocol === 1 ? permissionInstructions : '') + (this.collaboration ? collaborationInstructions : '') + (this.historyQueue ? historyInstructions : '') + (task.goal ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
+    const profile = this.profile + (settings?.enabledTools ? `\nEnabled Homie tool groups: ${settings.enabledTools.join(', ') || 'none'}. Disabled groups are unavailable even if older instructions mention them.\n` : '') + (codegraphAvailable ? codegraphInstructions : this.codegraph ? '\nThis older conversation has no CodeGraph tools. Use scoped source reads within existing permissions; a new conversation is required for CodeGraph tools.\n' : '') + (settings?.permissionProtocol === 1 ? permissionInstructions : '') + (this.collaboration ? collaborationInstructions : '') + (task.goal ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
       + (integrationAvailable && settings?.candidateVerificationProtocol === 1 ? candidateVerificationInstructions : '') + (applicationAvailable ? applicationInstructions : '');
     const params: JsonRecord = { cwd: workspace,
       ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: !intake && !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
@@ -376,7 +365,7 @@ export class SpecialistAgent {
       } } : {}) };
     const result = savedThread
       ? await this.client.request('thread/resume', { ...params, threadId: savedThread })
-      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.configuration?.customTools ?? []).filter(t => t.enabled).map(customToolDefinition), ...(this.codegraph ? codegraphTools : []), ...(settings?.permissionProtocol === 1 ? permissionTools : []), ...(this.collaboration ? collaborationTools : []), ...(this.historyQueue ? historyTools : []), ...(task.goal || task.dialogue ? decisionTools : []), ...(task.dialogue ? conversationTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])].filter(tool => packToolAllowed(settings?.enabledTools, tool.name)) });
+      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.configuration?.customTools ?? []).filter(t => t.enabled).map(customToolDefinition), ...(this.codegraph ? codegraphTools : []), ...(settings?.permissionProtocol === 1 ? permissionTools : []), ...(this.collaboration ? collaborationTools : []), ...(task.goal || task.dialogue ? decisionTools : []), ...(task.dialogue ? conversationTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])].filter(tool => packToolAllowed(settings?.enabledTools, tool.name)) });
     const threadId = textValue(record(result.thread).id, 'thread id');
     assertResumedThread(savedThread, threadId);
     const nativePath = record(result.thread).path;
@@ -448,7 +437,6 @@ export class SpecialistAgent {
         ...(this.configuration ? { model: this.configuration.model, effort: this.configuration.reasoningEffort, serviceTier: this.configuration.serviceTier } : {}),
       });
       active.turnId = textValue(record(response.turn).id, 'turn id');
-      this.history?.remember(active.threadId, active.turnId, active.input === task.prompt ? task.prompt : null);
       this.store.update(task.id, { threadId: active.threadId, turnId: active.turnId, status: 'running' });
       observer.identify(active.threadId, active.turnId);
       if (active.stopRequested) {

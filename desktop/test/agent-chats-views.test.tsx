@@ -289,7 +289,7 @@ test('Chats and task details inspect exact application identity without sending 
     const inspected: string[][] = [];
     for (const status of ['unknown', 'interrupted'] as const) {
       await ui.render(<AgentTaskResults tasks={[{ id: 'task', roomId: 'room', prompt: 'Implement login', status, createdAt: integration.createdAt, output: '', error: null,
-        inspection: { integration, finishedAt: null, threadId: 'native', conversation: 'task', goal: null, messages: [], evidence: [], recall: null, error: null } }]}
+        inspection: { integration, finishedAt: null, threadId: 'native', conversation: 'task', goal: null, messages: [], evidence: [], error: null } }]}
         requestedTaskId="task" loading={false} running onInspectApplication={(...args) => inspected.push(args)} />);
       const button = [...document.querySelectorAll('button')].find(b => b.textContent === 'Inspect application')!;
       expect(button.disabled).toBe(status === 'unknown'); await ui.click('Inspect application');
@@ -310,7 +310,7 @@ test('Chats and task details expose integration conflicts and hashes without an 
     expect(document.body.textContent).toContain('login.ts');
     await ui.render(<AgentTaskResults tasks={[{ id: 'task', prompt: 'Implement login', status: 'interrupted', createdAt: integration.createdAt, output: '', error: null,
       inspection: { integration: { ...integration, status: 'prepared', candidateHash: 'c'.repeat(64), issues: [], files: [{ path: 'login.ts', before: null, sha256: 'd'.repeat(64) }] },
-        finishedAt: null, threadId: 'native', conversation: 'task', goal: null, messages: [], evidence: [], recall: null, error: null } }]}
+        finishedAt: null, threadId: 'native', conversation: 'task', goal: null, messages: [], evidence: [], error: null } }]}
       requestedTaskId="task" loading={false} running={false} />);
     const panel = document.querySelector('[aria-label="Integration candidate"]');
     expect(panel?.textContent).toContain('Integration candidate prepared');
@@ -585,7 +585,7 @@ test('unknown delegated task exposes execution inspection without claiming integ
   await withDOM(async ui => {
     const recovered: string[] = [];
     await ui.render(<AgentTaskResults tasks={[{ id: 'work', prompt: 'Implement greeting', status: 'unknown', createdAt: '2026-10-04T00:00:00Z', output: '', error: null,
-      inspection: { recoveryKind: 'delegation', recoveryRoomId: 'room', finishedAt: null, threadId: 'native', conversation: 'work', goal: null, messages: [], evidence: [], recall: null, error: null } }]}
+      inspection: { recoveryKind: 'delegation', recoveryRoomId: 'room', finishedAt: null, threadId: 'native', conversation: 'work', goal: null, messages: [], evidence: [], error: null } }]}
       requestedTaskId="work" loading={false} running onRecover={(id, room) => recovered.push(`${id}/${room}`)} />);
     expect(document.body.textContent).toContain('without replaying the task or applying project files');
     await ui.click('Inspect execution'); expect(recovered).toEqual(['work/room']);

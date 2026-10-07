@@ -96,7 +96,7 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
     if (application) config.applicationProtocol = 1;
     if (applicationInspection) config.applicationInspectionProtocol = 1;
     config.settingsFingerprint = createHash('sha256').update(JSON.stringify({ ...(activity ? { activityProtocol: 1 } : {}), ...(conversation ? { conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1 } : {}), sandboxProtocol: 2, collaborationProtocol: 1,
-      historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: protocol, questionProtocol: 2, ...(progress ? { progressProtocol: 1 } : {}),
+      decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: protocol, questionProtocol: 2, ...(progress ? { progressProtocol: 1 } : {}),
       ...(work ? { workProtocol: 1 } : {}), ...(integration ? { integrationProtocol: 1 } : {}), ...(candidate ? { candidateVerificationProtocol: 1 } : {}), ...(application ? { applicationProtocol: 1 } : {}), ...(applicationInspection ? { applicationInspectionProtocol: 1 } : {}), agent: profile, workspace: realpathSync(workspace), instructions: assignment.instructions })).digest('hex');
     config.revision = config.settingsFingerprint;
     labels['ai.cheshi.configuration'] = config.revision;
@@ -109,7 +109,7 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
     const assignment = agent.assignments.find(a => a.workspaceRoot === workspace)!;
     // Historical fingerprint before project_doc_max_bytes was included; no dependency plan in this fixture.
     const settings = { inputQueueProtocol: 1, activityProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1,
-      sandboxProtocol: 3, permissionProtocol: 1, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1,
+      sandboxProtocol: 3, permissionProtocol: 1, collaborationProtocol: 1, decisionProtocol: 1, verificationProtocol: 1,
       chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1,
       candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1,
       agent: { role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,
@@ -121,7 +121,14 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
     labels['ai.cheshi.configuration'] = config.revision;
     writeFileSync(filename, JSON.stringify(config));
   };
-  return { runtime, registry, workspace, home, runtimePath, agentId, calls, exchanges, legacyRecovery, previousInstructionLimit,
+  const legacyHistory = () => {
+    const filename = join(runtimePath, 'runtime.json');
+    const previous = JSON.parse(readFileSync(filename, 'utf8'));
+    const fingerprint = createHash('sha256').update(`retired-history:${previous.settingsFingerprint}`).digest('hex');
+    labels['ai.cheshi.configuration'] = fingerprint;
+    writeFileSync(filename, JSON.stringify({ ...previous, historyProtocol: 1, settingsFingerprint: fingerprint, revision: fingerprint }));
+  };
+  return { runtime, registry, workspace, home, runtimePath, agentId, calls, exchanges, legacyRecovery, previousInstructionLimit, legacyHistory,
     setProjectDocMaxBytes: (value: number) => { projectDocMaxBytes = value; },
     onDetails: (callback: () => Promise<void>) => { beforeDetails = callback; },
     setState: (value: string) => { state = value; },
@@ -647,7 +654,7 @@ test('Chats permission decisions verify saved requests, refuse busy work, and gr
   const f = fixture();
   const permission = { id: 'permission', fileWrite: true, commandExecution: true, reason: 'Implement and test', status: 'pending' as const };
   const task = { id: 'permission-task', roomId: 'room', status: 'waiting', createdAt: '2026-10-06', prompt: 'Implement', output: '', error: null,
-    inspection: { permissionRequest: permission, finishedAt: null, threadId: null, conversation: null, goal: null, messages: [], evidence: [], recall: null, error: null } };
+    inspection: { permissionRequest: permission, finishedAt: null, threadId: null, conversation: null, goal: null, messages: [], evidence: [], error: null } };
   const posts: { url: string; body: unknown }[] = [];
   const fakeFetch = Object.assign(async (url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     posts.push({ url: String(url), body: JSON.parse(String(init?.body)) }); return Response.json({ status: 'allowed' });
@@ -677,7 +684,7 @@ test('failed permission application restores the previous project grant without 
     await f.runtime.request(f.workspace, f.request());
     const permission = { id: 'request', fileWrite: true, commandExecution: true, reason: 'Implement', status: 'pending' as const };
     f.setTasks([{ id: 'task', roomId: 'room', status: 'waiting', createdAt: '2026-10-06', prompt: 'Implement', output: '', error: null,
-      inspection: { permissionRequest: permission, finishedAt: null, threadId: null, conversation: null, goal: null, messages: [], evidence: [], recall: null, error: null } }]);
+      inspection: { permissionRequest: permission, finishedAt: null, threadId: null, conversation: null, goal: null, messages: [], evidence: [], error: null } }]);
     f.failBootstrap();
     await fails(f.runtime.permissions(f.workspace, { ...f.request(), accountId: 'default', taskId: 'task', roomId: 'room', request: permission, decision: 'allow' }), 'bootstrap interrupted');
     const agent = f.registry.snapshot(f.workspace).agents[0]!;
@@ -717,5 +724,20 @@ test('custom tool calls without a saved enabled definition are blocked before Do
   try {
     await fails(f.runtime.testTool(f.workspace, { agentId: f.agentId, engineId: 'docker:colima-cheshi', tool: 'missing', args: {} }), 'saved definition');
     expect(f.calls).toEqual([]);
+  } finally { await f.runtime.dispose(); }
+});
+
+test('explicit Start replaces workers that still advertise the retired history protocol', async () => {
+  const f = fixture();
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    const filename = join(f.runtimePath, 'runtime.json');
+    const saved = JSON.parse(readFileSync(filename, 'utf8'));
+    expect(saved.historyProtocol).toBeUndefined();
+    f.legacyHistory();
+    const before = f.calls.filter(c => c.args.includes('create')).length;
+    await f.runtime.request(f.workspace, f.request());
+    expect(JSON.parse(readFileSync(filename, 'utf8')).historyProtocol).toBeUndefined();
+    expect(f.calls.filter(c => c.args.includes('create')).length).toBe(before + 1);
   } finally { await f.runtime.dispose(); }
 });

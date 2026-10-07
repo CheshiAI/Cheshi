@@ -62,15 +62,3 @@ test('a new command diagnostic is information but repeating the same failure is 
   diagnostic.item('item/completed', { type: 'commandExecution', status: 'completed', command: 'test', exitCode: 1, aggregatedOutput: 'Wrong result after import fixed' });
   expect(diagnostic.finish(state).unchanged).toBe(0);
 });
-
-test('recall snapshot ids and telemetry cannot disguise rereading the same source', () => {
-  let state: GoalProgress | undefined;
-  for (let i = 0; i < 4; i++) {
-    const observed = new GoalObservations();
-    observed.history({ snapshot: String(i), metrics: { totalMs: i }, originals: [{ itemId: String(i), text: 'Use email login' }] });
-    state = observed.finish(state);
-  }
-  expect(state?.unchanged).toBe(3);
-  const empty = new GoalObservations(); empty.history({ snapshot: 'new', originals: [], matches: [] });
-  expect(empty.finish(undefined).observations).toEqual([]);
-});

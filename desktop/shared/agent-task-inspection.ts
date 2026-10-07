@@ -4,7 +4,6 @@ import { parseConversation, type ConversationState } from '../../experiments/cod
 import { collaborationTextLimit, WORK_KINDS, parseWorkRequest, parseWorkDraft, type WorkKind, type WorkRequest, type WorkDraft } from './agent-work.ts';
 import { candidateReference, type CandidateReference } from '../../experiments/codex-specialists/src/candidate-verification-contract.ts';
 import { parseIntegration, type IntegrationSummary } from './agent-work.ts';
-import { normalizeHistoryRecallActivity, type HistoryRecallActivity } from './history-recall.ts';
 import { parseQuestionDeadline } from './agent-question.ts';
 
 export interface TaskCriterion { criterion: string; met: boolean; evidence: string }
@@ -35,7 +34,6 @@ export interface TaskMessage {
   delivery: 'queued' | 'delivered' | 'received' | 'processed';
   verification: TaskVerification | null; request: TaskVerificationRequest | null;
 }
-export interface TaskRecall { id: string; activity: HistoryRecallActivity }
 export interface TaskInspection {
   permissionRequest?: PermissionRequest;
   activity?: TaskActivity[]; activityTruncated?: boolean;
@@ -46,7 +44,7 @@ export interface TaskInspection {
   work?: { request: WorkRequest; draft: WorkDraft | null };
   finishedAt: string | null; threadId: string | null; conversation: string | null;
   goal: TaskGoal | null; messages: TaskMessage[]; evidence: TaskEvidence[];
-  recall: TaskRecall[] | null; error: string | null;
+  error: string | null;
 }
 export function inspectionRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Invalid task detail.');
@@ -134,10 +132,5 @@ export function parseTaskInspection(value: unknown): TaskInspection {
         delivery: choice(m.delivery, ['queued', 'delivered', 'received', 'processed']),
         request: m.request === null ? null : parseTaskVerificationRequest(m.request),
         verification: m.verification === null ? null : parseTaskVerification(m.verification) };
-    }, 128),
-    recall: v.recall === null ? null : inspectionList(v.recall, raw => {
-      const r = inspectionRecord(raw), activity = normalizeHistoryRecallActivity(r.activity);
-      if (!activity) throw new TypeError('Invalid recall detail.');
-      return { id: inspectionText(r.id, 200), activity };
-    }, 64) };
+    }, 128) };
 }

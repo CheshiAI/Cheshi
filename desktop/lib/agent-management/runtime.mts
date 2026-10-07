@@ -23,7 +23,6 @@ import { workerOperations } from './operations.mts';
 import { resolveAgentInstructions } from './instruction-files.mts';
 import { DEFAULT_PROJECT_DOC_MAX_BYTES, parseProjectDocMaxBytes } from '../../../experiments/codex-specialists/src/project-instructions.ts';
 import { createAgentOrchestration, type exchangeWorker } from '../agent-orchestration/service.mts';
-import type { AgentHistoryOptions } from '../agent-orchestration/history-relay.mts';
 import { WorkerLifecycle } from './lifecycle.mts';
 import { bindingFor, type Binding } from '../agent-orchestration/mailbox.mts';
 
@@ -36,7 +35,6 @@ interface RuntimeOptions {
   run?: DockerCommand;
   checkProjectEnvironment?: typeof assertProjectEnvironment;
   collaborationExchange?: typeof exchangeWorker;
-  history?: AgentHistoryOptions;
   codegraph?: CodeGraphQuery;
   toolCredential?: ToolCredential;
   prepareCodeGraph?: (workspace: string) => Promise<void>;
@@ -82,13 +80,13 @@ export async function readRuntimeAuth(home: string): Promise<string> {
 
 export function createSpecialistRuntime(options: RuntimeOptions) {
   const listeners = new Set<(binding: Binding) => void>();
-  let started = false, unsubscribeRegistry: (() => void) | undefined, unsubscribeHistory: (() => void) | undefined;
+  let started = false, unsubscribeRegistry: (() => void) | undefined;
   const changed = (binding: Binding) => { for (const listener of listeners) listener(binding); };
   const run = options.run ?? runDocker;
   const pending = new Set<string>();
   const builds = new Map<string, Promise<void>>();
   const orchestration = createAgentOrchestration({ filename: join(options.directory, 'collaboration.json'),
-    exchange: options.collaborationExchange, history: options.history, codegraph: options.codegraph, rooms: options.rooms,
+    exchange: options.collaborationExchange, codegraph: options.codegraph, rooms: options.rooms,
     customTools: runCustomTool,
     customToolsAvailable: binding => Boolean(options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId)?.package?.tools?.some(t => t.enabled)),
     peer: binding => {
@@ -144,7 +142,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     if (!worker || worker.state !== 'running' || !worker.endpoint) return null;
     const saved = agentRecord(JSON.parse(await readFile(join(options.directory, digest(binding.engineId), key, 'runtime.json'), 'utf8')));
     if (saved.accountId !== binding.accountId || saved.profileId !== binding.agentId || saved.revision !== worker.fingerprint
-      || saved.applicationInspectionProtocol !== 1 || saved.applicationProtocol !== 1 || saved.candidateVerificationProtocol !== 1 || saved.integrationProtocol !== 1 || saved.workProtocol !== 1 || saved.progressProtocol !== 1 || saved.recoveryProtocol !== 3 || saved.questionProtocol !== 2 || saved.collaborationProtocol !== 1 || saved.historyProtocol !== 1 || saved.decisionProtocol !== 1 || saved.verificationProtocol !== 1 || typeof saved.token !== 'string' || !/^[a-f0-9]{64}$/.test(saved.token)) {
+      || saved.applicationInspectionProtocol !== 1 || saved.applicationProtocol !== 1 || saved.candidateVerificationProtocol !== 1 || saved.integrationProtocol !== 1 || saved.workProtocol !== 1 || saved.progressProtocol !== 1 || saved.recoveryProtocol !== 3 || saved.questionProtocol !== 2 || saved.collaborationProtocol !== 1 || saved.historyProtocol !== undefined || saved.decisionProtocol !== 1 || saved.verificationProtocol !== 1 || typeof saved.token !== 'string' || !/^[a-f0-9]{64}$/.test(saved.token)) {
       throw new Error('Start the agent to reconnect collaboration with its current settings.');
     }
     const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId);
@@ -341,7 +339,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint, projectDocMaxBytes,
-            ...profileConfiguration(agent), codegraphProtocol: 1, permissionProtocol: 1, collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, activityProtocol: 1, inputQueueProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+            ...profileConfiguration(agent), codegraphProtocol: 1, permissionProtocol: 1, collaborationProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, activityProtocol: 1, inputQueueProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [workspace];
@@ -524,8 +522,8 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       const result = await workerOperations.run(() => lifecycle.exclusive(b, () => request(workspace, input, context)));
       orchestration.notify(b); changed(b); return result;
     },
-    start() { if (!started) { started = true; unsubscribeRegistry = options.registry.subscribe(() => orchestration.notify()); unsubscribeHistory = options.history?.subscribe?.(() => orchestration.notify()); orchestration.start(); } },
-    async dispose() { started = false; unsubscribeRegistry?.(); unsubscribeHistory?.(); await orchestration.dispose(); await lifecycle.settled(); listeners.clear(); },
+    start() { if (!started) { started = true; unsubscribeRegistry = options.registry.subscribe(() => orchestration.notify()); orchestration.start(); } },
+    async dispose() { started = false; unsubscribeRegistry?.(); await orchestration.dispose(); await lifecycle.settled(); listeners.clear(); },
     request: async (workspaceRoot: string, input: AgentRuntimeRequest) => {
       const parsed = parseAgentRuntimeRequest(input);
       if (parsed.action === 'status') return status(workspaceRoot, parsed);
@@ -551,7 +549,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   };
 }
 function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], recoveryProtocol = 3, progressProtocol = true, workProtocol = true, integrationProtocol = true, candidateVerificationProtocol = true, applicationProtocol = true, applicationInspectionProtocol = true, conversationProtocol = true, activityProtocol = true, inputQueueProtocol = true) {
-  return digest(JSON.stringify({ ...(inputQueueProtocol ? { inputQueueProtocol: 1 } : {}), ...(activityProtocol ? { activityProtocol: 1 } : {}), ...(conversationProtocol ? { conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1 } : {}), ...(inputQueueProtocol ? { sandboxProtocol: 3, permissionProtocol: 1 } : { sandboxProtocol: 2 }), collaborationProtocol: 1, historyProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol, questionProtocol: 2, ...(progressProtocol ? { progressProtocol: 1 } : {}), ...(workProtocol ? { workProtocol: 1 } : {}), ...(integrationProtocol ? { integrationProtocol: 1 } : {}), ...(candidateVerificationProtocol ? { candidateVerificationProtocol: 1 } : {}), ...(applicationProtocol ? { applicationProtocol: 1 } : {}), ...(applicationInspectionProtocol ? { applicationInspectionProtocol: 1 } : {}), agent: profileConfiguration({ ...agent, permissions: assignment.permissions ?? agent.permissions }), workspace, instructions: assignment.instructions,
+  return digest(JSON.stringify({ ...(inputQueueProtocol ? { inputQueueProtocol: 1 } : {}), ...(activityProtocol ? { activityProtocol: 1 } : {}), ...(conversationProtocol ? { conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1 } : {}), ...(inputQueueProtocol ? { sandboxProtocol: 3, permissionProtocol: 1 } : { sandboxProtocol: 2 }), collaborationProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol, questionProtocol: 2, ...(progressProtocol ? { progressProtocol: 1 } : {}), ...(workProtocol ? { workProtocol: 1 } : {}), ...(integrationProtocol ? { integrationProtocol: 1 } : {}), ...(candidateVerificationProtocol ? { candidateVerificationProtocol: 1 } : {}), ...(applicationProtocol ? { applicationProtocol: 1 } : {}), ...(applicationInspectionProtocol ? { applicationInspectionProtocol: 1 } : {}), agent: profileConfiguration({ ...agent, permissions: assignment.permissions ?? agent.permissions }), workspace, instructions: assignment.instructions,
     ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
 }
 function profileConfiguration(agent: SpecialistAgent) {

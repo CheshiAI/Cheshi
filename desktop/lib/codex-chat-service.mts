@@ -1,5 +1,4 @@
 import { chatMessageFailure, codexCollaborationOverride, setCodexCollaborationMode, steerCodexMessage } from './codex-chat-turn-controls.mts';
-import { historyTurnContext } from './codex-chat-history-tools.mts';
 import { assertWorkspaceThreadIdle } from './codex-workspace-activity.mts';
 import { closeDiscordSetup, discordSetupThreadOptions, handleDiscordSetupRequest } from './discord-setup-tools.mts';
 import { CodexChatUserInputs } from './codex-chat-user-input.mts';
@@ -106,7 +105,6 @@ export {
 export { permissionModesFromListResponse } from "./codex-chat-permissions.mts";
 
 export class CodexChatService {
-  private readonly historyToolsEnabled: boolean;
   readonly agentTokenUsage = new CodexAgentTokenUsage();
   readonly conversations: CodexConversationAccess | undefined;
   createMcpProbeClient: (() => CodexMcpProbeClient) | undefined;
@@ -163,7 +161,6 @@ export class CodexChatService {
     cwd,
     serviceName,
     developerInstructions,
-    historyToolsEnabled = false,
     log = noopLog,
     createMcpProbeClient,
     conversations,
@@ -172,13 +169,11 @@ export class CodexChatService {
     cwd: string;
     serviceName: string;
     developerInstructions: string;
-    historyToolsEnabled?: boolean;
     log?: CodexChatLogger;
     createMcpProbeClient?: () => CodexMcpProbeClient;
     conversations?: CodexConversationAccess;
   }) {
     this.client = client;
-    this.historyToolsEnabled = historyToolsEnabled === true;
     this.conversations = conversations;
     this.createMcpProbeClient = createMcpProbeClient;
     this.userInputs = new CodexChatUserInputs(client, event => this.emit(event));
@@ -681,7 +676,6 @@ export class CodexChatService {
           threadId,
           clientUserMessageId: messageId,
           input,
-          ...(this.historyToolsEnabled ? { additionalContext: historyTurnContext(threadId) } : {}),
           ...collaborationOverride,
           ...this.permissionOverrides(),
           effort: this.selectedReasoningEffort,

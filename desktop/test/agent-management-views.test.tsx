@@ -839,7 +839,7 @@ test('task inspection shows blocked progress, independent failures and refreshes
     expect(document.querySelector('[aria-label="Independent verification"]')?.textContent).toContain('fail');
     expect(document.querySelector('[aria-label="Independent verification"]')?.textContent).toContain('expected 401');
     expect(document.querySelector('[aria-label="Task progress"]')?.textContent).toContain('Fix status code');
-    expect(document.querySelector('[aria-label="Task memory recall"]')?.textContent).toContain('No retained recall entries');
+    expect(document.querySelector('[aria-label="Task memory recall"]')).toBeNull();
     await render(screen('Refreshed evidence'));
     expect(document.querySelector('[aria-label="Task output"]')?.textContent).toContain('Refreshed evidence');
     await click('Back to task list');

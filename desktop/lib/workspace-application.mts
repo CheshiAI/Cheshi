@@ -2,7 +2,6 @@ import type { BrowserWindow, Dialog, Event, Rectangle } from 'electron';
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import type { WorkspaceIpcRouter } from './workspace-ipc-router.mts';
-import type { HistoryRecallAccess } from './workspace-history-mcp.mts';
 import type { WorkspaceAccountSelection } from './settings-service.mts';
 import { withWorkspaceFolderDeletion } from './codex-workspace-activity.mts';
 
@@ -12,9 +11,7 @@ export interface WorkspaceRuntimeOptions {
   notifications?: import('./imessage-notifications.mts').NotificationSink;
   discord?: import('./discord-service.mts').DiscordBridge;
   messageCommands?: import('./imessage-commands.mts').IMessageCommandRegistry;
-  getTypeSafeKey?(): string | null;
   voiceChats?: import('./agent-voice/chats.mts').ChatAccess;
-  historyRecall?: HistoryRecallAccess;
   accountSelection?: WorkspaceAccountSelection;
   getProjectDocMaxBytes?(): number;
   codeGraphSynchronization?: import('./codegraph-synchronization.mts').CodeGraphSynchronization;

@@ -184,11 +184,10 @@ function codexChatAttachmentPreviewUrl(attachmentPath: unknown): string | null {
   return attachmentPreviewUrl(attachmentPath);
 }
 
-const { accounts: workspaceAccounts, search: chatHistorySearch, mcp: historyMcp } = createWorkspaceChatHistory({
+const { accounts: workspaceAccounts, search: chatHistorySearch } = createWorkspaceChatHistory({
   cwd: workspaceRoot, userDataDirectory, home: app.getPath('home'), openExternal: url => shell.openExternal(url),
   codeGraph: { cli: codeGraphCommands.cli(), dataRoot: codeGraphDataRoot, synchronization: options.codeGraphSynchronization },
   historyDirectory: path.join(path.dirname(codeGraphDirectory), 'chat-history-index'),
-  getKey: options.getTypeSafeKey, access: options.historyRecall,
   accountSelection: options.accountSelection, getProjectDocMaxBytes: options.getProjectDocMaxBytes,
 });
 const createChatClient = workspaceAccounts.createClient;
@@ -977,7 +976,7 @@ function dispose(): Promise<void> {
     });
     const results = await Promise.allSettled([
       codexChatService.stop(), agentVoice.dispose(),
-      historyMcp.stop(), chatHistorySearch.stop(), appleNotesService.stop(),
+      chatHistorySearch.stop(), appleNotesService.stop(),
       temporaryChats.stop(),
       localHistory.dispose(),
       managementDisposal,

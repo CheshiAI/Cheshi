@@ -60,6 +60,10 @@ test('authenticated application endpoint inspects a persisted crash after cold r
       const body = JSON.stringify({ roomId: 'room', candidateId: f.candidate.id, hash: f.candidate.hash });
       expect((await fetch(`${endpoint}/tasks/goal/application`, { method: 'POST', body })).status).toBe(401);
       const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+      for (const route of ['/history/catalog', '/history/read', '/history/exchange']) {
+        expect((await fetch(`${endpoint}${route}`, { method: 'POST', headers, body: '{}' })).status).toBe(404);
+      }
+      expect(await (await fetch(`${endpoint}/activity`)).json()).not.toHaveProperty('recall');
       expect((await fetch(`${endpoint}/tasks/goal/application`, { method: 'POST', headers: { ...headers, Origin: 'http://example.test' }, body })).status).toBe(403);
       expect((await fetch(`${endpoint}/tasks/goal/application`, { method: 'POST', headers, body: JSON.stringify({ roomId: 'foreign', candidateId: f.candidate.id, hash: f.candidate.hash }) })).ok).toBe(false);
       const response = await fetch(`${endpoint}/tasks/goal/application`, { method: 'POST', headers, body });

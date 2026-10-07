@@ -1,23 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { parseHistoryRecallEnabled, parseTypeSafeKey } from '../shared/settings.ts';
 import { DEFAULT_PROJECT_DOC_MAX_BYTES, parseProjectDocMaxBytes } from '../../experiments/codex-specialists/src/project-instructions.ts';
-import type { TypeSafeSettings } from '../shared/settings.ts';
 import { isCodexAccountId } from '../shared/codex-accounts.ts';
 
-interface Encryption {
-  isEncryptionAvailable(): boolean;
-  encryptString(value: string): Buffer;
-  decryptString(value: Buffer): string;
-}
-interface Options {
-  directory: string;
-  settingsPath: string;
-  encryption: Encryption;
-  fallback(): string | null;
-  checkKey(key: string): Promise<void>;
-}
+interface Options { settingsPath: string }
 export interface WorkspaceAccountSelection {
   read(): string | null;
   write(id: string): void;
@@ -28,11 +15,8 @@ function accountSelections(preferences: Record<string, unknown>): Record<string,
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
-/** The ciphertext is stored in app data; the encryption key belongs to the OS credential store. */
+/** Shared app preferences, updated atomically across workspace windows. */
 export function createSettingsService(options: Options) {
-  const filename = path.join(options.directory, 'typesafe-api-key.enc');
-  let cached: string | undefined;
-  const listeners = new Set<(state: TypeSafeSettings) => void>();
   const projectDocListeners = new Set<(bytes: number) => void>();
   const readPreferences = (): Record<string, unknown> => {
     try {
@@ -53,44 +37,7 @@ export function createSettingsService(options: Options) {
     } catch { throw new Error(message); }
     finally { try { rmSync(temporary, { force: true }); } catch { /* A failed write does not replace the saved preference. */ } }
   };
-  const writeRecallPreference = (visible: boolean) => updatePreferences(
-    preferences => ({ ...preferences, historyRecallEnabled: visible }),
-    'Could not save the history recall setting. Try again.',
-  );
-  const available = () => { try { return options.encryption.isEncryptionAvailable() === true; } catch { return false; } };
-  const saved = () => existsSync(filename);
-  const readSaved = () => {
-    if (!available()) throw new Error('Secure storage is unavailable. Unlock your system credential store and try again.');
-    if (cached !== undefined) return cached;
-    try {
-      const encrypted = readFileSync(filename);
-      assertEncryptedSize(encrypted);
-      cached = parseTypeSafeKey(options.encryption.decryptString(encrypted));
-      return cached;
-    } catch { throw new Error('The saved API key could not be unlocked. Try again or replace the key.'); }
-  };
-  const getKey = (): string | null => {
-    if (!saved()) { cached = undefined; return options.fallback(); }
-    try { return readSaved(); } catch { return null; }
-  };
-  const snapshot = (): TypeSafeSettings => {
-    const source = saved() ? 'saved' : options.fallback() ? 'environment' : 'none';
-    let key: string | null = null, error: string | null = null;
-    let historyRecallEnabled = false;
-    try { key = source === 'saved' ? readSaved() : options.fallback(); }
-    catch (cause) { error = (cause as Error).message; }
-    try { historyRecallEnabled = readPreferences().historyRecallEnabled === true; }
-    catch (cause) { error ??= (cause as Error).message; }
-    return { source, maskedKey: key ? `••••${key.length > 8 ? key.slice(-4) : ''}` : null, canSave: available(), error,
-      historyRecallEnabled };
-  };
-  const publish = () => {
-    const state = snapshot();
-    for (const listener of listeners) listener(state);
-    return state;
-  };
   return {
-    getKey, snapshot,
     getProjectDocMaxBytes() {
       const value = readPreferences().projectDocMaxBytes;
       return value === undefined ? DEFAULT_PROJECT_DOC_MAX_BYTES : parseProjectDocMaxBytes(value);
@@ -105,9 +52,6 @@ export function createSettingsService(options: Options) {
     subscribeProjectDocMaxBytes(listener: (bytes: number) => void) {
       projectDocListeners.add(listener);
       return () => { projectDocListeners.delete(listener); };
-    },
-    isHistoryRecallEnabled() {
-      try { return readPreferences().historyRecallEnabled === true; } catch { return false; }
     },
     workspaceAccountSelection(workspaceRoot: string): WorkspaceAccountSelection {
       const workspace = path.resolve(workspaceRoot);
@@ -125,52 +69,7 @@ export function createSettingsService(options: Options) {
         },
       };
     },
-    subscribe(listener: (state: TypeSafeSettings) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    setHistoryRecallEnabled(value: unknown) {
-      const visible = parseHistoryRecallEnabled(value);
-      writeRecallPreference(visible);
-      return publish();
-    },
-    save(value: unknown) {
-      const key = parseTypeSafeKey(value);
-      if (!available()) throw new Error('Secure storage is unavailable. The API key was not saved.');
-      const temporary = `${filename}.${randomUUID()}.tmp`;
-      try {
-        const encrypted = options.encryption.encryptString(key);
-        mkdirSync(options.directory, { recursive: true, mode: 0o700 });
-        writeFileSync(temporary, encrypted, { mode: 0o600, flag: 'wx' });
-        renameSync(temporary, filename);
-        cached = key;
-      } catch { throw new Error('Could not securely save the API key. The previous key was retained.'); }
-      finally { try { rmSync(temporary, { force: true }); } catch { /* No plaintext is written to this path. */ } }
-      return publish();
-    },
-    remove() {
-      try { rmSync(filename, { force: true }); }
-      catch { throw new Error('Could not remove the saved API key.'); }
-      cached = undefined;
-      return publish();
-    },
-    async check() {
-      const key = getKey();
-      if (!key) throw new Error('Register or unlock a TypeSafe API key first.');
-      try { await options.checkKey(key); }
-      catch (cause) {
-        const message = cause instanceof Error ? cause.message : '';
-        const safeMessages = [
-          'TypeSafe rejected the API key or model access.',
-          'TypeSafe usage limit reached. Try again later.',
-          'Could not reach TypeSafe. Check your connection and try again.',
-        ];
-        throw new Error(safeMessages.includes(message) ? message : 'Could not verify the TypeSafe connection. Try again later.');
-      }
-      return true;
-    },
   };
-}
-
-function assertEncryptedSize(value: Buffer): void {
-  if (!value.length || value.length > 32_768) throw new Error('Invalid encrypted data.');
 }
 
 function assertPreferences(value: unknown): Record<string, unknown> {

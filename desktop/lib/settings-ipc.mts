@@ -8,22 +8,19 @@ export function registerSettingsIpc(options: {
 }) {
   const owner = options.window.webContents;
   const channels: string[] = [];
-  let disposed = false, checking = false;
+  let disposed = false;
   const assertOwner = (event: IpcMainInvokeEvent) => {
     if (disposed || owner.isDestroyed() || event.sender !== owner || event.senderFrame !== owner.mainFrame) {
       throw new Error('Settings are only available to their workspace window.');
     }
   };
-  const unsubscribe = options.service.subscribe(state => {
-    if (!disposed && !owner.isDestroyed()) owner.send(SETTINGS_CHANNELS.changed, state);
-  });
   const unsubscribeProjectDoc = options.service.subscribeProjectDocMaxBytes(bytes => {
     if (!disposed && !owner.isDestroyed()) owner.send(SETTINGS_CHANNELS.projectDocMaxBytesChanged, bytes);
   });
   let unsubscribeClosed = () => {};
   const dispose = () => {
     if (disposed) return;
-    disposed = true; unsubscribe(); unsubscribeProjectDoc();
+    disposed = true; unsubscribeProjectDoc();
     unsubscribeClosed();
     for (const channel of channels) options.ipc.removeHandler(channel);
   };
@@ -34,16 +31,6 @@ export function registerSettingsIpc(options: {
   try {
     handle(SETTINGS_CHANNELS.getProjectDocMaxBytes, () => options.service.getProjectDocMaxBytes());
     handle(SETTINGS_CHANNELS.setProjectDocMaxBytes, (_event, bytes: unknown) => options.service.setProjectDocMaxBytes(bytes));
-    handle(SETTINGS_CHANNELS.get, () => options.service.snapshot());
-    handle(SETTINGS_CHANNELS.save, (_event, key: unknown) => options.service.save(key));
-    handle(SETTINGS_CHANNELS.remove, () => options.service.remove());
-    handle(SETTINGS_CHANNELS.setHistoryRecallEnabled, (_event, visible: unknown) => options.service.setHistoryRecallEnabled(visible));
-    handle(SETTINGS_CHANNELS.check, async () => {
-      if (checking) throw new Error('A connection check is already running.');
-      checking = true;
-      try { return await options.service.check(); }
-      finally { checking = false; }
-    });
     unsubscribeClosed = onWindowClosed(options.window, dispose);
   } catch (error) { dispose(); throw error; }
   return { dispose };

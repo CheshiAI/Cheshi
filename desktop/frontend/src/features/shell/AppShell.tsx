@@ -20,7 +20,6 @@ import { useChatHistorySearch } from '../chat/useChatHistorySearch';
 import type { ChatHistorySearchHit } from '../../../../shared/chat-history-search';
 import type { GitLineBlameRequest } from '../../../../shared/git-line-blame';
 import type { ChatHistorySearchTarget } from '../chat/chatHistorySearchNavigation';
-import { HistoryRecallNavigation } from '../chat/HistoryRecallActivity';
 import { useChatWorkspace } from '../chat/useChatWorkspace';
 import { WindowTabs } from '../chrome/WindowChrome';
 import {
@@ -431,20 +430,17 @@ export function AppShell() {
             attachmentDisabled={chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />
-          <HistoryRecallNavigation.Provider value={{ open: openHistorySearchHit,
-            disabled: chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running || workspace.responseThreadIds.length > 0 }}>
-            <ChatWorkspace
-              workspace={workspace}
-              active={activeView === 'chat' && visiblePanes.includes('primary')}
-              onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}
-              sessionSyncEnabled={workspace.sessionHistory.loading || sidebarPanel === 'chats'}
-              onReviewFileChanges={openFileReview}
-              historyTarget={historyTarget}
-              onHistoryTargetHandled={handleHistoryTarget}
-              rightSidebarOpen={rightSidebarOpen}
-              onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
-            />
-          </HistoryRecallNavigation.Provider>
+          <ChatWorkspace
+            workspace={workspace}
+            active={activeView === 'chat' && visiblePanes.includes('primary')}
+            onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}
+            sessionSyncEnabled={workspace.sessionHistory.loading || sidebarPanel === 'chats'}
+            onReviewFileChanges={openFileReview}
+            historyTarget={historyTarget}
+            onHistoryTargetHandled={handleHistoryTarget}
+            rightSidebarOpen={rightSidebarOpen}
+            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
+          />
           {activeView === 'codegraph' && (
             <CodeGraphView
               onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}

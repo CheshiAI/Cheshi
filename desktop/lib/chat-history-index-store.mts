@@ -1,5 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CompiledChatHistoryThread } from './chat-history-compiler.mts';
 import { isChatHistoryFileReferences, isChatHistoryItemKind } from '../shared/chat-history-search.ts';
@@ -56,20 +56,6 @@ export class ChatHistoryIndexStore {
     return validRecord(value) && value.sourceKey === sourceKey && value.cwd === cwd ? value : null;
   }
 
-  async save(record: ChatHistoryIndexRecord): Promise<void> {
-    await mkdir(this.directory, { recursive: true, mode: 0o700 });
-    const key = chatHistoryIndexKey(record.sourceKey);
-    const temporary = join(this.directory, `.${key}-${randomUUID()}.tmp`);
-    try {
-      await writeFile(temporary, `${JSON.stringify(record)}\n`, { flag: 'wx', mode: 0o600 });
-      await rename(temporary, join(this.directory, `${key}.json`));
-    } finally { await rm(temporary, { force: true }); }
-  }
-
-  async remove(sourceKey: string): Promise<void> {
-    await rm(join(this.directory, `${chatHistoryIndexKey(sourceKey)}.json`), { force: true });
-  }
-
   async removeThreads(threadIds: ReadonlySet<string>): Promise<void> {
     let names: string[];
     try { names = await readdir(this.directory); }
@@ -83,16 +69,6 @@ export class ChatHistoryIndexStore {
         if (!(error instanceof SyntaxError)) throw error;
       }
       if (!validRecord(value) || threadIds.has(value.thread.threadId)) await rm(join(this.directory, name), { force: true });
-    }
-  }
-
-  async retain(sourceKeys: readonly string[]): Promise<void> {
-    let names: string[];
-    try { names = await readdir(this.directory); }
-    catch (error) { if (recordValue(error)?.code === 'ENOENT') return; throw error; }
-    const retained = new Set(sourceKeys.map(key => `${chatHistoryIndexKey(key)}.json`));
-    for (const name of names) {
-      if (/^[a-f0-9]{64}\.json$/.test(name) && !retained.has(name)) await rm(join(this.directory, name), { force: true });
     }
   }
 }

@@ -85,7 +85,7 @@ export function createBackgroundScheduler(options: BackgroundOptions, makeHistor
             }
             finally {
               remove(); active = undefined; changed(); removeServices();
-              const cleanup = await Promise.allSettled([contexts?.stop(), primary?.stop(), history.mcp.stop()]);
+              const cleanup = await Promise.allSettled([contexts?.stop(), primary?.stop(), history.search.stop()]);
               if (selection) await selection.stop(); else await accounts.stop();
               for (const result of cleanup) if (result.status === 'rejected') console.warn('[cheshi:scheduler] Background cleanup failed:', String(result.reason));
             }

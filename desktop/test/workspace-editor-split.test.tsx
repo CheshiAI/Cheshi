@@ -153,7 +153,6 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
       saveSidebarPanel: (panel: SidebarPanel) => { preference.panel = panel; },
     },
     '../../cheshiDesktop': { cheshiDesktop: undefined },
-    '../chat/HistoryRecallActivity': { HistoryRecallNavigation: { Provider: 'HistoryRecallNavigation' } },
     '../chat/chatDraftAttachments': { ...draftAttachmentModule, createChatDraftAttachments: () => attachments },
     '../notes/appleNotesModel': { appleNoteDraftText },
     '../chat/useChatWorkspace': { useChatWorkspace: () => ({ activePaneId: 'chat-a', controllers: {}, activeController: { state: { phase: 'ready' } }, relay: { running: false },

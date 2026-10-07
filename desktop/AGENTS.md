@@ -276,7 +276,7 @@ Text uses one of the following three styles according to its role.
 ## Settings detail layout
 
 Keep settings detail pages on the shared spacing rhythm used by the Appearance
-and TypeSafe views in `frontend/src/features/settings/`.
+and Agents views in `frontend/src/features/settings/`.
 
 - Apply `var(--space-default)` as the detail scroll area's inner padding and as
   the gap between direct form sections. Do not replace this rhythm with

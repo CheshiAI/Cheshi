@@ -4,7 +4,6 @@ import { IntegrationDetail } from './IntegrationDetail';
 import type { AgentTask } from '../../../../shared/agent-management';
 import type { TaskEvidence, TaskMessage } from '../../../../shared/agent-task-inspection';
 import { MessageContent } from '../chat/MessageContent';
-import { formatRecallCost } from '../chat/HistoryRecallActivity';
 import styles from './AgentTaskResults.module.css';
 
 function Evidence({ items }: { items: TaskEvidence[] }) {
@@ -99,22 +98,6 @@ export function AgentTaskDetail({ task, onInspectApplication, inspectionDisabled
     <section aria-label="Execution evidence"><h3>File and command evidence</h3>
       <p>Recorded verification receipts; this is not a complete execution log.</p>
       {detail?.evidence.length ? <Evidence items={detail.evidence} /> : <p>No separate receipts recorded. Verification result receipts appear above.</p>}
-    </section>
-    <section aria-label="Task memory recall"><h3>Jev memory recall</h3>
-      <p>Available entries from the worker’s latest 64 recall requests. Usage is per request and separate from the agent model.</p>
-      {detail?.recall === null || !detail ? <p>Recall inspection is unavailable for this worker. Start the agent with the updated worker to enable it.</p>
-        : !detail.recall.length ? <p>No retained recall entries for this task. This does not establish that no earlier lookup occurred.</p>
-        : detail.recall.map(({ id, activity }) => <details key={id} className={styles.record}>
-          <summary>{activity.operation} · {activity.query || 'Read source'} · {activity.status}{activity.partial ? ' · partial' : ''}</summary>
-          {activity.error && <p>{activity.error}</p>}
-          {activity.metrics ? <p>Jev requests: {activity.metrics.requests} · Input: {activity.metrics.inputTokens ?? 'Unknown'} · Output: {activity.metrics.outputTokens ?? 'Unknown'} · Estimated cost: {formatRecallCost(activity.metrics)}</p>
-            : <p>Usage: Unknown</p>}
-          {activity.metrics?.luna && <p>Luna fallback requests: {activity.metrics.luna.requests} · Input: {activity.metrics.luna.inputTokens ?? 'Unknown'} · Output: {activity.metrics.luna.outputTokens ?? 'Unknown'}</p>}
-          {activity.sources.map(source => <div key={`${source.threadId}/${source.turnId}/${source.itemId}`} className={styles.criterion}>
-            <strong>{source.title || 'Source'}</strong><p>Conversation: {source.threadId} · Turn: {source.turnId} · Message: {source.itemId}</p>
-            <MessageContent text={source.text} />
-          </div>)}
-        </details>)}
     </section>
     <section aria-label="Task output"><h3>Latest output</h3><div className={styles.markdown}><MessageContent text={task.output || 'No output yet.'} /></div></section>
     {(detail?.threadId || detail?.conversation) && <details className={styles.record}><summary>Conversation references</summary>

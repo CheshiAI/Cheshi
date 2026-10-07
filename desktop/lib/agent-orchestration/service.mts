@@ -4,7 +4,6 @@ import type { CodeGraphQuery } from './codegraph-source.mts';
 import { watchWorker, type WatchWorker } from './worker-events.mts';
 import { createEventQueue } from './event-queue.mts';
 import { AgentMailbox, type Binding, type Peer, type Message } from './mailbox.mts';
-import { AgentHistoryRelay, type AgentHistoryOptions } from './history-relay.mts';
 import { workerOperations } from '../agent-management/operations.mts';
 
 export interface CollaborationConnection { endpoint: string; token: string }
@@ -13,13 +12,12 @@ interface Options {
   peer(binding: Binding): Peer | null;
   connect(binding: Binding, demand: boolean): Promise<CollaborationConnection | null>;
   around?(binding: Binding, operation: () => Promise<void>): Promise<void>;
-  rest?(binding: Binding, connection: CollaborationConnection, historyBusy: boolean): Promise<void>;
+  rest?(binding: Binding, connection: CollaborationConnection, toolsBusy: boolean): Promise<void>;
   exchange?: typeof exchangeWorker;
   watch?: WatchWorker;
   changed?(binding: Binding): void;
   nextCheck?(binding: Binding): number | null;
   sleeping?(binding: Binding): boolean;
-  history?: AgentHistoryOptions;
   codegraph?: CodeGraphQuery;
   customTools?: CustomToolQuery;
   customToolsAvailable?(binding: Binding): boolean;
@@ -50,12 +48,10 @@ export async function exchangeWorker(connection: CollaborationConnection, body: 
   } finally { await reader.cancel(); }
 }
 export function createAgentOrchestration(options: Options) {
-  const history = options.history ? new AgentHistoryRelay(`${options.filename}.history`, options.history, binding => notify(binding)) : null;
   const codegraph = options.codegraph ? new AgentCodeGraphRelay(options.codegraph, binding => notify(binding)) : null;
   const customTools = options.customTools ? new AgentCustomToolRelay(options.customTools, binding => notify(binding), undefined, `${options.filename}.custom-tools`) : null;
   const customToolErrors = new Map<string, string>();
   const codegraphErrors = new Map<string, string>();
-  const historyErrors = new Map<string, string>();
   let journal: AgentMailbox | null = null;
   const mailbox = () => journal ??= new AgentMailbox(options.filename);
   let journalError: string | null = null;
@@ -111,8 +107,6 @@ export function createAgentOrchestration(options: Options) {
             () => customToolErrors.delete(binding.id), () => customToolErrors.set(binding.id, 'Custom tool relay unavailable. Restart the worker.'));
           const codegraphFlight = codegraph?.tick(binding, connection, () => options.peer(binding) !== null).then(
             () => codegraphErrors.delete(binding.id), () => codegraphErrors.set(binding.id, 'CodeGraph relay unavailable. Start the worker to update it.'));
-          const historyFlight = history?.tick(binding, connection, () => options.peer(binding) !== null).then(
-            () => historyErrors.delete(binding.id), () => historyErrors.set(binding.id, 'History relay is unavailable. Retry after checking the worker.'));
           const peers = bindings.filter(b => b.scope === binding.scope).flatMap(b => {
             const peer = options.peer(b); return peer ? [peer] : [];
           });
@@ -131,12 +125,12 @@ export function createAgentOrchestration(options: Options) {
           }
           errors.delete(binding.id);
           const rest = async () => {
-            await options.rest?.(binding, connection, (history?.busy ?? false) || (codegraph?.busy ?? false) || (customTools?.busy ?? false));
+            await options.rest?.(binding, connection, (codegraph?.busy ?? false) || (customTools?.busy ?? false));
             if (options.sleeping?.(binding)) unwatch(binding.id);
           };
-          if ((historyFlight || codegraphFlight || customToolFlight) && options.rest) {
+          if ((codegraphFlight || customToolFlight) && options.rest) {
             // Read-only tool transport must not hold up collaboration or coordinator shutdown.
-            const idle = Promise.all([historyFlight, codegraphFlight, customToolFlight]).then(async () => {
+            const idle = Promise.all([codegraphFlight, customToolFlight]).then(async () => {
               if (!started || !options.peer(binding)) return;
               await workerOperations.run(() => options.around ? options.around(binding, rest) : rest());
               arm(binding);
@@ -158,11 +152,11 @@ export function createAgentOrchestration(options: Options) {
   return {
     pending: (binding: Binding) => mailbox().request(binding, [], m => options.rooms?.allowed(binding, m) ?? !m.roomId).messages.length > 0,
     register: (binding: Binding) => mailbox().register(binding),
-    error: (id: string) => journalError ?? errors.get(id) ?? historyErrors.get(id) ?? customToolErrors.get(id) ?? codegraphErrors.get(id) ?? null,
+    error: (id: string) => journalError ?? errors.get(id) ?? customToolErrors.get(id) ?? codegraphErrors.get(id) ?? null,
     tick, notify, settled: () => queue.settled(),
     start() { if (!started) { started = true; notify(); queue.start(); } },
     async dispose() { started = false; for (const w of watches.values()) w.stop(); watches.clear();
       for (const timer of deadlines.values()) clearTimeout(timer); deadlines.clear();
-      await customTools?.dispose(); await codegraph?.dispose(); await history?.dispose(); await queue.dispose(); await flight; await Promise.allSettled(resting); },
+      await customTools?.dispose(); await codegraph?.dispose(); await queue.dispose(); await flight; await Promise.allSettled(resting); },
   };
 }

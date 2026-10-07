@@ -1,5 +1,5 @@
 import { Check, ClipboardClock, Copy } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NeumorphicButton, Tooltip } from '../../shared/ui';
 import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
 import type { SavedChatTurnsController } from './useSavedChatTurns';
@@ -7,8 +7,8 @@ import styles from './ChatTurnActions.module.css';
 import { AppleNotesSaveAction } from '../notes/AppleNotesSaveAction';
 import { ChatTurnMetrics } from './ChatTurnMetrics';
 
-export function ChatTurnActions({ turn, savedTurns, usageDetails }: {
-  turn: ChatSavedTurnInput; savedTurns: SavedChatTurnsController; usageDetails?: ReactNode;
+export function ChatTurnActions({ turn, savedTurns }: {
+  turn: ChatSavedTurnInput; savedTurns: SavedChatTurnsController;
 }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -42,7 +42,6 @@ export function ChatTurnActions({ turn, savedTurns, usageDetails }: {
   return (
     <div className={styles.root}>
       <ChatTurnMetrics itemId={turn.itemId} />
-      {usageDetails}
       <div className={styles.actions} role="group" aria-label="Response actions">
         <Tooltip content={copied ? 'Copied' : 'Copy response'}>{(props) => (
           <NeumorphicButton {...props} variant="ghost" size="icon" type="button" aria-label={copied ? 'Copied' : 'Copy response'} onClick={() => void copy()}>

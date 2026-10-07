@@ -1,42 +1,18 @@
-import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { registerSettingsIpc } from '../lib/settings-ipc.mts';
 import { EventEmitter } from 'node:events';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent, IpcRenderer } from 'electron';
+import { expect, test } from 'bun:test';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { createSettingsService } from '../lib/settings-service.mts';
-import { registerSettingsIpc } from '../lib/settings-ipc.mts';
 import { createSettingsApi } from '../lib/settings-preload.cts';
-import { SETTINGS_CHANNELS, parseTypeSafeSettings, type TypeSafeSettings } from '../shared/settings.ts';
+import { SETTINGS_CHANNELS } from '../shared/settings.ts';
 
-const key = 'fixture-secret-typesafe-key-12345';
 function fixture() {
   const directory = mkdtempSync(path.join(tmpdir(), 'cheshi-settings-'));
-  const encryptionKey = randomBytes(32);
-  let available = true, failEncryption = false;
-  const encryption = {
-    isEncryptionAvailable: () => available,
-    encryptString(value: string) {
-      if (failEncryption) throw new Error(value);
-      const iv = randomBytes(16), cipher = createCipheriv('aes-256-cbc', encryptionKey, iv);
-      return Buffer.concat([iv, cipher.update(value, 'utf8'), cipher.final()]);
-    },
-    decryptString(value: Buffer) {
-      const decipher = createDecipheriv('aes-256-cbc', encryptionKey, value.subarray(0, 16));
-      return Buffer.concat([decipher.update(value.subarray(16)), decipher.final()]).toString('utf8');
-    },
-  };
-  const options = { directory, settingsPath: path.join(directory, 'settings.json'), encryption, fallback: () => 'environment-fixture-key', checkKey: async (_key: string) => {} };
-  return { options, service: createSettingsService(options), filename: path.join(directory, 'typesafe-api-key.enc'),
-    lock() { available = false; }, failEncryption() { failEncryption = true; }, close() { rmSync(directory, { recursive: true, force: true }); } };
-}
-async function rejected(operation: Promise<unknown>, expected: string) {
-  let failure: unknown;
-  try { await operation; } catch (error) { failure = error; }
-  expect(failure).toBeInstanceOf(Error);
-  expect((failure as Error).message).toContain(expected);
-  expect((failure as Error).message).not.toContain(key);
+  const options = { directory, settingsPath: path.join(directory, 'settings.json') };
+  return { options, service: createSettingsService(options), close: () => rmSync(directory, { recursive: true, force: true }) };
 }
 
 test('workspace account selections survive restart and preserve other windows and settings', async () => {
@@ -49,14 +25,14 @@ test('workspace account selections survive restart and preserve other windows an
     await Promise.all([
       Promise.resolve().then(() => first.write('first-account')),
       Promise.resolve().then(() => second.write('second-account')),
-      Promise.resolve().then(() => f.service.setHistoryRecallEnabled(true)),
+      Promise.resolve().then(() => f.service.setProjectDocMaxBytes(65536)),
     ]);
     first.write('replacement-account');
     const restarted = createSettingsService(f.options);
     expect(restarted.workspaceAccountSelection('/projects/first').read()).toBe('replacement-account');
     expect(restarted.workspaceAccountSelection('/projects/second').read()).toBe('second-account');
     expect(JSON.parse(readFileSync(f.options.settingsPath, 'utf8'))).toEqual({
-      otherSetting: { keep: true }, historyRecallEnabled: true,
+      otherSetting: { keep: true }, projectDocMaxBytes: 65536,
       workspaceAccountSelections: {
         '/projects/first': 'replacement-account', '/projects/second': 'second-account',
       },
@@ -98,264 +74,14 @@ test('failure to create the temporary settings file retains the previous selecti
   } finally { f.close(); }
 });
 
-test('keys persist encrypted, survive restart and only expose masked metadata', () => {
-  const f = fixture();
-  try {
-    const saved = f.service.save(key);
-    expect(saved).toEqual({ source: 'saved', maskedKey: '••••2345', canSave: true, error: null, historyRecallEnabled: false });
-    expect(readFileSync(f.filename).includes(Buffer.from(key))).toBe(false);
-    expect(statSync(f.filename).mode & 0o777).toBe(0o600);
-    expect(createSettingsService(f.options).getKey()).toBe(key);
-    expect(JSON.stringify(parseTypeSafeSettings(saved))).not.toContain(key);
-    expect(f.service.remove().source).toBe('environment');
-    expect(f.service.getKey()).toBe('environment-fixture-key');
-    expect(createSettingsService({ ...f.options, fallback: () => null }).snapshot().source).toBe('none');
-  } finally { f.close(); }
-});
-
-test('failed replacement retains the previous key and unavailable storage never writes plaintext', () => {
-  const f = fixture();
-  try {
-    f.service.save(key);
-    const previous = readFileSync(f.filename);
-    f.failEncryption();
-    expect(() => f.service.save('replacement-fixture')).toThrow('previous key was retained');
-    expect(readFileSync(f.filename)).toEqual(previous);
-    expect(f.service.getKey()).toBe(key);
-    f.lock();
-    expect(() => f.service.save(key)).toThrow('not saved');
-    expect(f.service.snapshot().canSave).toBe(false);
-    expect(f.service.getKey()).toBeNull();
-  } finally { f.close(); }
-});
-
-test('damaged ciphertext fails closed and short keys never appear in full', () => {
-  const f = fixture();
-  try {
-    expect(f.service.save('tiny').maskedKey).toBe('••••');
-    writeFileSync(f.filename, Buffer.from('damaged'));
-    const restarted = createSettingsService(f.options);
-    expect(restarted.getKey()).toBeNull();
-    expect(restarted.snapshot().error).toContain('could not be unlocked');
-    expect(() => f.service.save('bad\nkey')).toThrow('without spaces');
-    expect(() => f.service.save('x'.repeat(4097))).toThrow();
-    expect(() => parseTypeSafeSettings({ ...f.service.snapshot(), maskedKey: key })).toThrow();
-    expect(() => parseTypeSafeSettings({ ...f.service.snapshot(), canSave: 'true' })).toThrow();
-  } finally { f.close(); }
-});
-
-test('provider connection failures never expose arbitrary messages or keys', async () => {
-  const f = fixture();
-  try {
-    const failing = createSettingsService({ ...f.options, checkKey: async value => { throw new Error(value); } });
-    failing.save(key);
-    await rejected(failing.check(), 'Could not verify');
-    const limited = createSettingsService({ ...f.options, checkKey: async () => { throw new Error('TypeSafe usage limit reached. Try again later.'); } });
-    await rejected(limited.check(), 'usage limit');
-  } finally { f.close(); }
-});
-
-test('settings IPC rejects foreign renderers and subframes and cleans up handlers and subscriptions', async () => {
-  const f = fixture();
-  const routes = new Map<string, Parameters<IpcMain['handle']>[1]>();
-  const sent: unknown[] = [];
-  const owner = { mainFrame: {}, isDestroyed: () => false, send: (_channel: string, value: unknown) => sent.push(value) };
-  const window = Object.assign(new EventEmitter(), { webContents: owner });
-  const registration = registerSettingsIpc({ window: window as unknown as BrowserWindow, service: f.service,
-    ipc: { handle: (channel, listener) => { routes.set(channel, listener); }, removeHandler: channel => { routes.delete(channel); } } });
-  const invoke = (channel: string, value?: unknown, sender: unknown = owner, frame: unknown = owner.mainFrame) =>
-    routes.get(channel)!({ sender, senderFrame: frame } as IpcMainInvokeEvent, value);
-  try {
-    expect(() => invoke(SETTINGS_CHANNELS.save, key, {})).toThrow('workspace window');
-    expect(() => invoke(SETTINGS_CHANNELS.save, key, owner, {})).toThrow('workspace window');
-    expect(invoke(SETTINGS_CHANNELS.save, key).source).toBe('saved');
-    expect(() => invoke(SETTINGS_CHANNELS.setHistoryRecallEnabled, true, {})).toThrow('workspace window');
-    expect(() => invoke(SETTINGS_CHANNELS.setHistoryRecallEnabled, true, owner, {})).toThrow('workspace window');
-    expect(() => invoke(SETTINGS_CHANNELS.setHistoryRecallEnabled, 'true')).toThrow('Invalid');
-    expect(invoke(SETTINGS_CHANNELS.setHistoryRecallEnabled, true).historyRecallEnabled).toBe(true);
-    expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072, {})).toThrow('workspace window');
-    expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072, owner, {})).toThrow('workspace window');
-    expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, '131072')).toThrow('whole number');
-    expect(invoke(SETTINGS_CHANNELS.getProjectDocMaxBytes)).toBe(32768);
-    expect(invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072)).toBe(131072);
-    expect(await invoke(SETTINGS_CHANNELS.check)).toBe(true);
-    expect(JSON.stringify(sent)).not.toContain(key);
-    registration.dispose();
-    const count = sent.length;
-    f.service.remove();
-    f.service.setProjectDocMaxBytes(32768);
-    expect(sent).toHaveLength(count);
-    expect(routes.size).toBe(0);
-  } finally { registration.dispose(); f.close(); }
-});
-
-test('preload validates both requests and status replies without exposing full keys', async () => {
-  const calls: unknown[][] = [];
-  let response: unknown = { source: 'saved', maskedKey: '••••2345', canSave: true, error: null, historyRecallEnabled: false };
-  const ipc = { invoke: async (...values: unknown[]) => { calls.push(values); return response; },
-    on() {}, removeListener() {} } as unknown as Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>;
-  const api = createSettingsApi(ipc);
-  expect((await api.saveTypeSafe(key)).maskedKey).toBe('••••2345');
-  expect(calls[0]).toEqual([SETTINGS_CHANNELS.save, key]);
-  expect((await api.setHistoryRecallEnabled(false)).historyRecallEnabled).toBe(false);
-  expect(calls[1]).toEqual([SETTINGS_CHANNELS.setHistoryRecallEnabled, false]);
-  await rejected(api.setHistoryRecallEnabled('true' as unknown as boolean), 'Invalid');
-  await rejected(api.saveTypeSafe('invalid key'), 'valid');
-  response = { source: 'saved', maskedKey: key, canSave: true, error: null, historyRecallEnabled: false };
-  await rejected(api.getTypeSafe(), 'Invalid');
-  response = 'true';
-  await rejected(api.checkTypeSafe(), 'Invalid');
-  response = 131072;
-  expect(await api.setProjectDocMaxBytes(131072)).toBe(131072);
-  expect(calls.at(-1)).toEqual([SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072]);
-  await rejected(api.setProjectDocMaxBytes(1025), 'whole number');
-  response = '131072';
-  await rejected(api.getProjectDocMaxBytes(), 'whole number');
-});
-
-test('recall preferences survive service restart and retain unrelated app settings', () => {
-  const f = fixture();
-  try {
-    expect(f.service.snapshot().historyRecallEnabled).toBe(false);
-    writeFileSync(f.options.settingsPath, JSON.stringify({ otherSetting: 'retained' }));
-    f.service.save(key);
-    const states: TypeSafeSettings[] = [];
-    const unsubscribe = f.service.subscribe(state => states.push(state));
-    expect(f.service.setHistoryRecallEnabled(true).historyRecallEnabled).toBe(true);
-    expect(states.at(-1)?.historyRecallEnabled).toBe(true);
-    expect(JSON.parse(readFileSync(f.options.settingsPath, 'utf8'))).toEqual({ otherSetting: 'retained', historyRecallEnabled: true });
-    expect(readFileSync(f.options.settingsPath, 'utf8')).not.toContain(key);
-    expect(statSync(f.options.settingsPath).mode & 0o777).toBe(0o600);
-    const restarted = createSettingsService(f.options);
-    expect(restarted.snapshot().historyRecallEnabled).toBe(true);
-    restarted.setHistoryRecallEnabled(false);
-    expect(createSettingsService(f.options).snapshot().historyRecallEnabled).toBe(false);
-    unsubscribe();
-  } finally { f.close(); }
-});
-
-test('only literal true enables the saved preference and invalid requests never overwrite it', () => {
-  const f = fixture();
-  try {
-    for (const invalid of ['true', 1, null, [], {}]) {
-      writeFileSync(f.options.settingsPath, JSON.stringify({ historyRecallEnabled: invalid }));
-      expect(createSettingsService(f.options).snapshot().historyRecallEnabled).toBe(false);
-      expect(() => f.service.setHistoryRecallEnabled(invalid)).toThrow('Invalid');
-      expect(() => parseTypeSafeSettings({ ...f.service.snapshot(), historyRecallEnabled: invalid })).toThrow('Invalid');
-    }
-    f.service.setHistoryRecallEnabled(true);
-    expect(() => f.service.setHistoryRecallEnabled('false')).toThrow('Invalid');
-    expect(createSettingsService(f.options).snapshot().historyRecallEnabled).toBe(true);
-  } finally { f.close(); }
-});
-
-test('recall consent is independent of missing, locked or deleted keys', () => {
-  const f = fixture();
-  try {
-    const service = createSettingsService({ ...f.options, fallback: () => null });
-    expect(service.setHistoryRecallEnabled(true).historyRecallEnabled).toBe(true);
-    service.save(key);
-    service.setHistoryRecallEnabled(true);
-    f.lock();
-    expect(service.snapshot().historyRecallEnabled).toBe(true);
-    expect(service.snapshot().maskedKey).toBeNull();
-    expect(service.setHistoryRecallEnabled(true).historyRecallEnabled).toBe(true);
-    service.remove();
-    expect(createSettingsService(f.options).snapshot().historyRecallEnabled).toBe(true);
-  } finally { f.close(); }
-});
-
-test('removing a saved key preserves the recall preference when an environment key remains', () => {
-  const f = fixture();
-  try {
-    f.service.save(key);
-    f.service.setHistoryRecallEnabled(true);
-    expect(f.service.remove()).toMatchObject({ source: 'environment', historyRecallEnabled: true });
-    expect(createSettingsService(f.options).snapshot().historyRecallEnabled).toBe(true);
-  } finally { f.close(); }
-});
-
-test('failed preference writes do not publish success or damage the existing settings', () => {
-  const f = fixture();
-  try {
-    writeFileSync(f.options.settingsPath, '{damaged');
-    const states: TypeSafeSettings[] = [];
-    f.service.subscribe(state => states.push(state));
-    expect(f.service.snapshot().error).toContain('Could not read');
-    expect(() => f.service.setHistoryRecallEnabled(true)).toThrow('Could not save');
-    expect(readFileSync(f.options.settingsPath, 'utf8')).toBe('{damaged');
-    expect(states).toHaveLength(0);
-    rmSync(f.options.settingsPath);
-    mkdirSync(f.options.settingsPath);
-    expect(() => f.service.setHistoryRecallEnabled(true)).toThrow('Could not save');
-    expect(states).toHaveLength(0);
-  } finally { f.close(); }
-});
-
-test('separate workspace IPC clients share recall changes and a fresh client restores them', async () => {
-  const f = fixture();
-  const registrations: Array<ReturnType<typeof registerSettingsIpc>> = [];
-  const client = (service = f.service) => {
-    const routes = new Map<string, Parameters<IpcMain['handle']>[1]>();
-    const events = new EventEmitter();
-    const owner = { mainFrame: {}, isDestroyed: () => false,
-      send: (channel: string, value: unknown) => events.emit(channel, {}, value) };
-    const window = Object.assign(new EventEmitter(), { webContents: owner });
-    registrations.push(registerSettingsIpc({ window: window as unknown as BrowserWindow, service,
-      ipc: { handle: (channel, handler) => { routes.set(channel, handler); }, removeHandler: channel => { routes.delete(channel); } } }));
-    return createSettingsApi({
-      invoke: async (channel: string, ...args: unknown[]) => routes.get(channel)!({ sender: owner, senderFrame: owner.mainFrame } as unknown as IpcMainInvokeEvent, ...args),
-      on: events.on.bind(events), removeListener: events.removeListener.bind(events),
-    } as Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>);
-  };
-  try {
-    const first = client(), second = client();
-    const limits: number[] = [];
-    const stopLimits = second.onProjectDocMaxBytesChanged(value => limits.push(value));
-    expect(await first.getProjectDocMaxBytes()).toBe(32768);
-    await first.setProjectDocMaxBytes(131072);
-    expect(limits).toEqual([131072]);
-    expect(await second.getProjectDocMaxBytes()).toBe(131072);
-    expect(await client(createSettingsService(f.options)).getProjectDocMaxBytes()).toBe(131072);
-    stopLimits(); await first.setProjectDocMaxBytes(32768);
-    expect(limits).toEqual([131072]);
-    const seen: TypeSafeSettings[] = [];
-    const unsubscribe = second.onTypeSafeChanged(state => seen.push(state));
-    await first.setHistoryRecallEnabled(true);
-    expect(seen.at(-1)?.historyRecallEnabled).toBe(true);
-    expect((await second.getTypeSafe()).historyRecallEnabled).toBe(true);
-    expect((await client(createSettingsService(f.options)).getTypeSafe()).historyRecallEnabled).toBe(true);
-    unsubscribe();
-  } finally { for (const registration of registrations) registration.dispose(); f.close(); }
-});
-
-
-test('existing Autopilot preferences and saved keys never opt users into recall', () => {
-  const f = fixture();
-  try {
-    writeFileSync(f.options.settingsPath, JSON.stringify({ autopilotMenuVisible: true }));
-    f.service.save(key);
-    expect(f.service.snapshot().historyRecallEnabled).toBe(false);
-    expect(f.service.isHistoryRecallEnabled()).toBe(false);
-    expect(createSettingsService(f.options).isHistoryRecallEnabled()).toBe(false);
-    f.service.setHistoryRecallEnabled(true);
-    expect(f.service.isHistoryRecallEnabled()).toBe(true);
-    writeFileSync(f.options.settingsPath, '{damaged');
-    expect(f.service.isHistoryRecallEnabled()).toBe(false);
-  } finally { f.close(); }
-});
-
-
 test('instruction limit defaults to 32 KiB, persists independently and rejects invalid values', () => {
   const f = fixture();
   try {
     expect(f.service.getProjectDocMaxBytes()).toBe(32768);
-    f.service.setHistoryRecallEnabled(true);
     const seen: number[] = [];
     const unsubscribe = f.service.subscribeProjectDocMaxBytes(value => seen.push(value));
     expect(f.service.setProjectDocMaxBytes(131072)).toBe(131072);
     expect(createSettingsService(f.options).getProjectDocMaxBytes()).toBe(131072);
-    expect(f.service.isHistoryRecallEnabled()).toBe(true);
     for (const value of [null, undefined, true, '131072', 0, -1024, 1.5, 1025, Infinity, Number.MAX_SAFE_INTEGER]) {
       expect(() => f.service.setProjectDocMaxBytes(value)).toThrow('whole number');
     }
@@ -377,4 +103,43 @@ test('instruction preference failures leave saved data untouched and do not publ
     expect(readFileSync(f.options.settingsPath, 'utf8')).toBe('{damaged');
     expect(seen).toEqual([]);
   } finally { f.close(); }
+});
+
+test('settings preload exposes only instruction size preferences and validates replies', async () => {
+  const calls: string[] = [];
+  let reply: unknown = 32768;
+  const ipc = Object.assign(new EventEmitter(), { invoke: async (channel: string) => { calls.push(channel); return reply; } });
+  const api = createSettingsApi(ipc as IpcRenderer);
+  expect(Object.keys(api).sort()).toEqual(['getProjectDocMaxBytes', 'onProjectDocMaxBytesChanged', 'setProjectDocMaxBytes']);
+  expect(await api.getProjectDocMaxBytes()).toBe(32768);
+  expect(await api.setProjectDocMaxBytes(32768)).toBe(32768);
+  expect(calls).toEqual([SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes]);
+  reply = '32768';
+  let failure: unknown;
+  try { await api.getProjectDocMaxBytes(); } catch (error) { failure = error; }
+  expect(failure).toBeInstanceOf(Error);
+});
+
+test('settings IPC retains owner checks and subscriptions without provider routes', () => {
+  const f = fixture();
+  const routes = new Map<string, Parameters<IpcMain['handle']>[1]>();
+  const sent: number[] = [];
+  const owner = { mainFrame: {}, isDestroyed: () => false, send: (_channel: string, value: number) => sent.push(value) };
+  const window = Object.assign(new EventEmitter(), { webContents: owner });
+  const registration = registerSettingsIpc({ window: window as unknown as BrowserWindow, service: f.service,
+    ipc: { handle: (channel, listener) => { routes.set(channel, listener); }, removeHandler: channel => { routes.delete(channel); } } });
+  const invoke = (channel: string, value?: unknown, sender: unknown = owner, frame: unknown = owner.mainFrame) =>
+    routes.get(channel)!({ sender, senderFrame: frame } as IpcMainInvokeEvent, value);
+  try {
+    expect([...routes.keys()].sort()).toEqual([SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes].sort());
+    expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072, {})).toThrow('workspace window');
+    expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072, owner, {})).toThrow('workspace window');
+    expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, '131072')).toThrow('whole number');
+    expect(invoke(SETTINGS_CHANNELS.getProjectDocMaxBytes)).toBe(32768);
+    expect(invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072)).toBe(131072);
+    expect(sent).toEqual([131072]);
+    registration.dispose();
+    f.service.setProjectDocMaxBytes(32768);
+    expect(sent).toEqual([131072]); expect(routes.size).toBe(0);
+  } finally { registration.dispose(); f.close(); }
 });

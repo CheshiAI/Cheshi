@@ -33,14 +33,6 @@ export class GoalObservations {
   add(value: unknown): void {
     if (this.values.size < 64) this.values.add(createHash('sha256').update(JSON.stringify(content(value))).digest('hex'));
   }
-  history(result: JsonRecord): void {
-    const sources = [result, ...(Array.isArray(result.originals) ? result.originals : []), ...(Array.isArray(result.matches) ? result.matches : [])];
-    for (const source of sources) {
-      if (source && typeof source === 'object' && typeof source.text === 'string' && source.text.trim()) {
-        this.add({ kind: 'memory', text: source.text });
-      }
-    }
-  }
   item(method: string, item: JsonRecord): void {
     if (method !== 'item/completed') return;
     if (item.type === 'commandExecution' && ['completed', 'failed'].includes(String(item.status)) && Number.isSafeInteger(item.exitCode)) {

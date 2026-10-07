@@ -6,7 +6,7 @@ import {
   Search,
   Wrench,
 } from 'lucide-react';
-import { memo, type ReactNode } from 'react';
+import { memo } from 'react';
 
 import { parseChatRelayMessage } from '../../../../shared/chat-relay';
 import { parseSavedChatTurnPrompt } from '../../../../shared/chat-saved-turn-continuation';
@@ -24,7 +24,6 @@ import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
 import type { SavedChatTurnsController } from './useSavedChatTurns';
 import { ChatInlineQuestion } from './ChatInlineQuestion';
 import { AgentActivity } from './AgentActivity';
-import { HistoryRecallActivity } from './HistoryRecallActivity';
 import { reasoningMarkdown } from './chatReasoningPresentation';
 
 function ActivityIcon({ item }: { item: ChatActivityItem }) {
@@ -43,14 +42,13 @@ interface ChatTimelineItemProps {
   turn?: ChatSavedTurnInput;
   savedTurns?: SavedChatTurnsController;
   searchMatch?: boolean;
-  usageDetails?: ReactNode;
 }
 
-export const ChatTimelineItem = memo(function ChatTimelineItem({ turn, savedTurns, searchMatch, usageDetails, ...props }: ChatTimelineItemProps) {
+export const ChatTimelineItem = memo(function ChatTimelineItem({ turn, savedTurns, searchMatch, ...props }: ChatTimelineItemProps) {
   return <div className={styles.timelineItem} data-chat-item-id={props.item.id} tabIndex={-1}
     data-history-search-match={searchMatch ? 'true' : undefined}>
     <TimelineItemContent {...props} />
-    {turn && savedTurns ? <ChatTurnActions turn={turn} savedTurns={savedTurns} usageDetails={usageDetails} /> : usageDetails}
+    {turn && savedTurns && <ChatTurnActions turn={turn} savedTurns={savedTurns} />}
   </div>;
 });
 
@@ -95,7 +93,6 @@ function TimelineItemContent({
     return <CommandActivity item={item} />;
   }
   if (item.kind === 'activity' && item.activity === 'agent') return <AgentActivity item={item} />;
-  if (item.kind === 'activity' && item.recall) return <HistoryRecallActivity item={item} />;
   if (item.kind === 'activity') {
     return <ContentCard className={styles.activity} icon={<ActivityIcon item={item} />} title={item.label} description={item.detail}
       data-activity={item.activity} data-status={item.status}

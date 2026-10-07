@@ -62,7 +62,7 @@ function backgroundFixture(gate?: Promise<void>, failRegistration = false) {
       },
       async beforeMessage() { calls.push('available-account'); }, async stop() { calls.push('accounts-stop'); },
     },
-    mcp: { async stop() { calls.push('mcp-stop'); } },
+    search: { async stop() { calls.push('search-stop'); } },
   } as unknown as ReturnType<NonNullable<Parameters<typeof createBackgroundScheduler>[1]>>);
   return { root, calls, clients, initialized, background: createBackgroundScheduler(options, makeHistory) };
 }
@@ -73,7 +73,7 @@ test('background execution uses shared history and account selection without any
   expect(f.calls).toContain('account-b'); expect(f.calls).toContain('available-account'); expect(f.calls).toContain('old-account-thread');
   expect(patches).toContainEqual(expect.objectContaining({ profileId: 'account-b' }));
   expect(patches.at(-1)).toMatchObject({ status: 'completed', summary: 'Finished' });
-  expect(f.calls).toContain('selection-stop'); expect(f.calls).toContain('mcp-stop');
+  expect(f.calls).toContain('selection-stop'); expect(f.calls).toContain('search-stop');
   expect(codexWorkspaceActivity(f.root).services.size).toBe(0);
   expect(f.clients.flatMap(client => client.requests).filter(item => item.method === 'turn/start')).toHaveLength(1);
   await withWorkspaceFolderDeletion(f.root, async () => true);
@@ -91,7 +91,7 @@ test('partial background startup failures clean up before reporting failure', as
   const f = backgroundFixture(undefined, true); const patches: Partial<ScheduleRun>[] = [];
   await f.background.get(f.root).run(runRecord(f.root), patch => patches.push(patch));
   expect(patches.at(-1)).toMatchObject({ status: 'failed', summary: 'Error: Registration failed' });
-  expect(f.calls).toContain('accounts-stop'); expect(f.calls).toContain('mcp-stop');
+  expect(f.calls).toContain('accounts-stop'); expect(f.calls).toContain('search-stop');
   expect(codexWorkspaceActivity(f.root).services.size).toBe(0);
 });
 test('folder deletion and starting a background task are mutually exclusive, including nested folders', async () => {

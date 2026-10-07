@@ -1,5 +1,5 @@
 import type { IpcRenderer, IpcRendererEvent } from 'electron';
-import { SETTINGS_CHANNELS, parseProjectDocMaxBytes, parseHistoryRecallEnabled, parseTypeSafeKey, parseTypeSafeSettings } from '../shared/settings.ts';
+import { SETTINGS_CHANNELS, parseProjectDocMaxBytes } from '../shared/settings.ts';
 import type { SettingsApi } from '../shared/settings.ts';
 
 export function createSettingsApi(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>): SettingsApi {
@@ -12,22 +12,6 @@ export function createSettingsApi(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'remo
       const listener = (_event: IpcRendererEvent, value: unknown) => handler(parseProjectDocMaxBytes(value));
       ipc.on(SETTINGS_CHANNELS.projectDocMaxBytesChanged, listener);
       return () => { ipc.removeListener(SETTINGS_CHANNELS.projectDocMaxBytesChanged, listener); };
-    },
-    async getTypeSafe() { return parseTypeSafeSettings(await ipc.invoke(SETTINGS_CHANNELS.get)); },
-    async saveTypeSafe(key) { return parseTypeSafeSettings(await ipc.invoke(SETTINGS_CHANNELS.save, parseTypeSafeKey(key))); },
-    async removeTypeSafe() { return parseTypeSafeSettings(await ipc.invoke(SETTINGS_CHANNELS.remove)); },
-    async setHistoryRecallEnabled(visible) {
-      return parseTypeSafeSettings(await ipc.invoke(SETTINGS_CHANNELS.setHistoryRecallEnabled, parseHistoryRecallEnabled(visible)));
-    },
-    async checkTypeSafe() {
-      const result: unknown = await ipc.invoke(SETTINGS_CHANNELS.check);
-      if (result !== true && result !== false) throw new TypeError('Invalid connection check result.');
-      return result;
-    },
-    onTypeSafeChanged(handler) {
-      const listener = (_event: IpcRendererEvent, value: unknown) => handler(parseTypeSafeSettings(value));
-      ipc.on(SETTINGS_CHANNELS.changed, listener);
-      return () => { ipc.removeListener(SETTINGS_CHANNELS.changed, listener); };
     },
   };
 }

@@ -3,6 +3,8 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ChatHistorySearch } from '../lib/chat-history-search.mts';
+import { chatHistoryIndexKey } from '../lib/chat-history-index-store.mts';
+import { compileSearchRecord, searchSessions } from '../lib/chat-search-source.mts';
 import { chatHistorySearchRequest, chatHistorySearchResponse } from '../shared/chat-history-search.ts';
 
 const directories: string[] = [];
@@ -65,6 +67,15 @@ async function fixture() {
   const options = { directory, cwd, source, now: () => now };
   return { directory, threads, versions, active, failed, reads, ownerReads, source, options,
     advance: (ms: number) => { now += ms; }, search: createSearch(options) };
+}
+
+async function writeLegacyCache(options: ConstructorParameters<typeof ChatHistorySearch>[0], threadId: string) {
+  const session = searchSessions(await options.source.list()).find(session => session.id === threadId)!;
+  const raw = await options.source.read(session.id, session.profileId);
+  const record = compileSearchRecord(raw, options.cwd, session, options.now?.() ?? Date.now());
+  const filename = join(options.directory, `${chatHistoryIndexKey(session.sourceKey)}.json`);
+  await writeFile(filename, JSON.stringify(record));
+  return filename;
 }
 
 test('indexes Korean source text with exact source ids and workspace file filtering', async () => {
@@ -171,6 +182,7 @@ test('prunes missing sessions and removes derived copies even when the catalog b
   const f = await fixture();
   f.threads.set('one', thread('one', 'keep'));
   f.threads.set('two', thread('two', 'remove'));
+  const cachePath = await writeLegacyCache(f.options, 'one');
   await f.search.search({ query: 'keep' });
   f.threads.delete('two');
   await f.search.synchronize();
@@ -178,6 +190,7 @@ test('prunes missing sessions and removes derived copies even when the catalog b
   const originalList = f.source.list;
   f.source.list = async () => { throw new Error('Catalog unavailable after deletion.'); };
   await f.search.remove(['one']);
+  await failure(() => readFile(cachePath, 'utf8'), /ENOENT/);
   f.source.list = originalList;
   expect((await f.search.search({ query: 'keep' })).total).toBe(0);
 });
@@ -185,12 +198,11 @@ test('prunes missing sessions and removes derived copies even when the catalog b
 test('preserves legacy JSON during migration and removes stale indexed matches after a failed refresh', async () => {
   const f = await fixture();
   f.threads.set('one', thread('one', 'needle'));
-  await f.search.readRecords();
-  const [name] = await readdir(f.directory);
-  const original = await readFile(join(f.directory, name!), 'utf8');
+  const cachePath = await writeLegacyCache(f.options, 'one');
+  const original = await readFile(cachePath, 'utf8');
   expect((await f.search.search({ query: 'needle' })).total).toBe(1);
   expect(f.reads).toHaveLength(1);
-  expect(await readFile(join(f.directory, name!), 'utf8')).toBe(original);
+  expect(await readFile(cachePath, 'utf8')).toBe(original);
   f.failed.add('one');
   const result = await f.search.search({ query: 'needle', refresh: true });
   expect(result).toMatchObject({ hits: [], total: 0, indexedSessions: 0, unavailableSessions: ['one'] });
@@ -199,9 +211,7 @@ test('preserves legacy JSON during migration and removes stale indexed matches a
 test.each([1, 2, 3])('recompiles cache version %i before returning stale file references without requiring refresh', async (version) => {
   const f = await fixture();
   f.threads.set('one', thread('one', 'needle "Use the model APIs/pricing", Array.isArray and `src/정상 파일.ts`'));
-  await f.search.readRecords();
-  const [name] = await readdir(f.directory);
-  const cachePath = join(f.directory, name!);
+  const cachePath = await writeLegacyCache(f.options, 'one');
   const oldRecord = JSON.parse(await readFile(cachePath, 'utf8'));
   oldRecord.version = version;
   oldRecord.thread.entries[0].files = [{ path: 'Array.isArray', kind: 'mentioned' }];
@@ -237,9 +247,7 @@ test('deletion during indexing cannot resurrect a cached item or return its matc
 test('recompiles older spaced-path references before unified search can return a fabricated filename', async () => {
   const f = await fixture();
   f.threads.set('one', changedFileThread('one', '검색 파일.ts', '- old\n+ fixed'));
-  await f.search.readRecords();
-  const [name] = await readdir(f.directory);
-  const cachePath = join(f.directory, name!);
+  const cachePath = await writeLegacyCache(f.options, 'one');
   const oldRecord = JSON.parse(await readFile(cachePath, 'utf8'));
   oldRecord.version = 3;
   oldRecord.thread.entries[0].files.push({ path: 'src/파일.ts', kind: 'mentioned' });
@@ -255,9 +263,7 @@ test('rebuilds version four command references and retains command text and actu
   const f = await fixture();
   const command = 'wc -l src/first.ts src/second.ts';
   f.threads.set('one', thread('one', `Count lines with \`${command}\`.`));
-  await f.search.readRecords();
-  const [name] = await readdir(f.directory);
-  const cachePath = join(f.directory, name!);
+  const cachePath = await writeLegacyCache(f.options, 'one');
   const oldRecord = JSON.parse(await readFile(cachePath, 'utf8'));
   oldRecord.version = 4;
   oldRecord.thread.entries[0].files = [{ path: command, kind: 'mentioned' }];

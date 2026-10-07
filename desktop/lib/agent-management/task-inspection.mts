@@ -37,8 +37,6 @@ export function inspectAgentTasks(value: unknown, owner?: { id: string; name: st
             verification: m.kind === 'verification_result' ? parseTaskVerification(JSON.parse(text)) : null });
         }
       }
-      const recall = state.recall === undefined ? null : inspectionList(state.recall, inspectionRecord, 64)
-        .filter(item => item.taskId === task.id).map(({ id, activity }) => ({ id, activity }));
       const workRequest = typeof original.delegation === 'string' && c ? inspectionList(c.incoming, inspectionRecord, 10_000).find(m => m.id === original.delegation && m.kind === 'work_request') : null;
       const detail = parseTaskInspection({
         ...(original.permissionRequest === undefined ? {} : { permissionRequest: original.permissionRequest }),
@@ -51,10 +49,10 @@ export function inspectAgentTasks(value: unknown, owner?: { id: string; name: st
             || (typeof original.verification === 'string' && original.verification && original.consultation === undefined) || (typeof original.delegation === 'string' && original.delegation && original.consultation === undefined && original.verification === undefined))
           ? { recoveryRoomId: original.roomId, recoveryKind: original.delegation ? 'delegation' : original.verification ? 'verification' : 'consultation' } : {}),
         goal: original.goal === undefined ? null : parseTaskGoal(original.goal), messages,
-        evidence: original.verificationEvidence === undefined ? [] : inspectionList(original.verificationEvidence, parseTaskEvidence, 64), recall, error: null });
+        evidence: original.verificationEvidence === undefined ? [] : inspectionList(original.verificationEvidence, parseTaskEvidence, 64), error: null });
       return { ...task, inspection: detail };
     } catch {
-      const inspection: TaskInspection = { finishedAt: null, threadId: null, conversation: null, goal: null, messages: [], evidence: [], recall: null,
+      const inspection: TaskInspection = { finishedAt: null, threadId: null, conversation: null, goal: null, messages: [], evidence: [],
         error: 'Some task detail records are invalid or exceed the inspection limit. The saved request and output remain available.' };
       return { ...task, inspection };
     }

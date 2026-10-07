@@ -45,8 +45,6 @@ import { registerAgentManagementIpc } from './lib/agent-management/ipc.mts';
 import { AgentTerminalManager } from './lib/agent-management/terminal.mts';
 import { createAgentRegistry } from './lib/agent-management/registry.mts';
 import { registerAgentRegistryIpc } from './lib/agent-management/registry-ipc.mts';
-import { checkTypeSafeConnection } from './lib/typesafe-connection.mts';
-import { readTypeSafeKey } from './lib/typesafe-key.mts';
 import { findAppRelease } from './lib/app-release-checker.mts';
 import { createAppUpdateService } from './lib/app-update-service.mts';
 import { createAppUpdatePreview } from './lib/app-update-preview.mts';
@@ -118,8 +116,6 @@ const specialistRuntime = createSpecialistRuntime({
   codegraph: createAgentCodeGraph({ cli: codeGraphCommand, dataRoot: codeGraphDataRoot, beforeQuery: codeGraphSynchronization.ensure }),
   prepareCodeGraph: codeGraphSynchronization.ensure,
   getProjectDocMaxBytes: () => apiSettings.getProjectDocMaxBytes(),
-  history: { enabled: () => apiSettings.isHistoryRecallEnabled(), getKey: () => apiSettings.getKey(),
-    subscribe: listener => apiSettings.subscribe(() => listener()) },
   directory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement,
   buildContext: app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'specialist-worker') : path.join(app.getAppPath(), 'experiments', 'codex-specialists'),
   account: async id => {
@@ -132,20 +128,7 @@ const unsubscribeChatsRuntime = specialistRuntime.subscribe(binding => agentChat
 const unsubscribeChatsRegistry = agentRegistry.subscribe(() => agentChats.changed());
 void app.whenReady().then(() => { specialistRuntime.start(); agentChats.start(); });
 app.on('will-quit', () => { unsubscribeChatsRuntime(); unsubscribeChatsRegistry(); void specialistRuntime.dispose(); void agentChats.dispose(); void codeGraphSynchronization.dispose(); });
-const apiSettings = createSettingsService({
-  directory: path.join(app.getPath('userData'), 'api-keys'),
-  settingsPath: path.join(app.getPath('userData'), 'settings.json'),
-  encryption: {
-    isEncryptionAvailable: () => safeStorage.isEncryptionAvailable()
-      && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
-    encryptString: value => safeStorage.encryptString(value),
-    decryptString: value => safeStorage.decryptString(value),
-  },
-  fallback: () => readTypeSafeKey({
-    developmentFile: app.isPackaged ? undefined : path.resolve(import.meta.dirname, '..', '.env.signing'),
-  }),
-  checkKey: checkTypeSafeConnection,
-});
+const apiSettings = createSettingsService({ settingsPath: path.join(app.getPath('userData'), 'settings.json') });
 const toolCredentials = createToolCredentials(path.join(app.getPath('userData'), 'api-keys', 'homie-tools'), {
   isEncryptionAvailable: () => safeStorage.isEncryptionAvailable() && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
   encryptString: value => safeStorage.encryptString(value), decryptString: value => safeStorage.decryptString(value),
@@ -296,10 +279,9 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   let notificationEventsIpc: ReturnType<typeof registerNotificationEventsIpc> | undefined;
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try {
-    runtime = createWorkspaceRuntime({ ...options, notifications, messageCommands, discord, getTypeSafeKey: apiSettings.getKey,
+    runtime = createWorkspaceRuntime({ ...options, notifications, messageCommands, discord,
       getProjectDocMaxBytes: apiSettings.getProjectDocMaxBytes, codeGraphSynchronization,
       voiceChats: request => agentChats.request(options.workspaceRoot, request),
-      historyRecall: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) },
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
       agentChatsIpc = registerAgentChatsIpc({ window, ipc: options.scope.ipc, workspaceRoot: options.workspaceRoot, service: agentChats });
@@ -466,9 +448,8 @@ app.whenReady().then(async () => {
   scheduler = await startScheduler({ userDataDirectory: app.getPath('userData'), home: app.getPath('home'),
     openExternal: url => shell.openExternal(url), codeGraph: { cli: commands.cli(), dataRoot, synchronization: codeGraphSynchronization },
     historyDirectory: workspace => path.join(path.dirname(codeGraphStorageDirectory(dataRoot, workspace)), 'chat-history-index'),
-    accountSelection: apiSettings.workspaceAccountSelection, getKey: apiSettings.getKey,
-    getProjectDocMaxBytes: apiSettings.getProjectDocMaxBytes,
-    access: { enabled: apiSettings.isHistoryRecallEnabled, subscribe: listener => apiSettings.subscribe(() => listener()) } });
+    accountSelection: apiSettings.workspaceAccountSelection,
+    getProjectDocMaxBytes: apiSettings.getProjectDocMaxBytes });
   schedulerNotifications = createSchedulerNotifications({ engine: scheduler,
     shouldNotify: run => !workspaces.hasFocusedWorkspace(run.workspace === '*' ? undefined : run.workspace),
     open: run => { void openScheduledRun(run).catch(reportStartupError); },

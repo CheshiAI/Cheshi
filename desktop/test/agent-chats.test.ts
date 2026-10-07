@@ -276,7 +276,7 @@ async function blockedFixture() {
   const f = fixture(); f.send('goal'); await f.service.tick();
   const task = f.details.tasks[0]!;
   task.status = 'interrupted'; task.error = 'Which sign-in method?';
-  task.inspection = { finishedAt: null, threadId: 'native-thread', conversation: task.id, messages: [], evidence: [], recall: [], error: null,
+  task.inspection = { finishedAt: null, threadId: 'native-thread', conversation: task.id, messages: [], evidence: [], error: null,
     goal: { phase: 'blocked', turns: 2, verificationRequired: true, criteria: [{ criterion: 'Login works', met: false, evidence: '' }], pending: null,
       decisions: [{ action: 'blocked', progress: 'Requirements reviewed', reason: 'Which sign-in method?', nextAction: 'Provide the sign-in method', criteria: [] }] } };
   await f.service.tick();
@@ -514,7 +514,7 @@ test('Chats permits follow-up at high turn counts and reports known usage withou
 test('automatic intake becomes a goal only after worker judgment; promotion and questions survive host restart', async () => {
   const f = fixture(); f.send('intake', { goal: false, automatic: true }); await f.service.tick();
   const task = f.details.tasks[0]!;
-  task.inspection = { finishedAt: null, threadId: 'native', conversation: task.id, goal: null, messages: [], evidence: [], recall: null, error: null,
+  task.inspection = { finishedAt: null, threadId: 'native', conversation: task.id, goal: null, messages: [], evidence: [], error: null,
     dialogue: { userText: 'Build login', questions: [{ id: 'method', text: 'Email or social?', answer: null }], revisions: [] } };
   await f.service.tick();
   expect(f.request({ action: 'list' }).messages[0]?.kind).toBe('message');
@@ -542,7 +542,7 @@ test('automatic dispatch preserves source text, isolates the native conversation
   await service.tick();
   const task = f.details.tasks[0]!;
   expect(contexts[0]).toMatchObject({ automatic: true, userText: 'Login please', conversation: task.id, goal: false });
-  task.inspection = { finishedAt: null, threadId: 'native', conversation: task.id, goal: null, messages: [], evidence: [], recall: null, error: null,
+  task.inspection = { finishedAt: null, threadId: 'native', conversation: task.id, goal: null, messages: [], evidence: [], error: null,
     dialogue: { userText: 'Login please', questions: [{ id: 'scope', text: 'Email only?', answer: null }], revisions: [] } };
   await service.tick();
   service.request(f.workspace, { action: 'send', id: 'answer', roomId: 'room', threadId: null, recipient: null, text: 'Yes', goal: false, automatic: true, answerTo: 'auto', questionId: 'scope' });
@@ -605,7 +605,7 @@ test('started Chats delivers on request and worker events without periodic reads
 test('room execution timeline retains real timestamps, updates entries, suppresses duplicate finals and survives restart', async () => {
   const f = fixture(); f.send('goal'); await f.service.tick();
   const task = f.details.tasks[0]!;
-  task.inspection = { finishedAt: null, threadId: 'native', conversation: 'task', goal: null, messages: [], evidence: [], recall: null, error: null,
+  task.inspection = { finishedAt: null, threadId: 'native', conversation: 'task', goal: null, messages: [], evidence: [], error: null,
     activity: [{ id: 'command', turnId: 'turn', kind: 'command', title: 'bun test', text: '', status: 'running', createdAt: '2026-10-05T01:00:00Z', final: false, truncated: false }] };
   await f.service.tick();
   const initial = f.request({ action: 'list' }).messages.find(m => m.activity)!;
@@ -628,7 +628,7 @@ test('peer worker execution is projected only into its invited room and unknown 
   const binding = bindingFor(f.workspace, 'docker:test', 'dev', 'account-0');
   f.service.rooms.record(binding, [{ id: 'question', kind: 'question', from: 'dev', to: 'planner', taskId, questionId: 'question', text: 'Plan login', roomId: 'room' }]);
   const peerTask = { id: 'q_question', roomId: 'room', prompt: 'Plan login', status: 'unknown', createdAt: '2026-10-05', output: '', error: null,
-    inspection: { recoveryRoomId: 'room', recoveryKind: 'consultation' as const, finishedAt: null, threadId: 'native', conversation: 'question', goal: null, messages: [], evidence: [], recall: null, error: null,
+    inspection: { recoveryRoomId: 'room', recoveryKind: 'consultation' as const, finishedAt: null, threadId: 'native', conversation: 'question', goal: null, messages: [], evidence: [], error: null,
       activity: [{ id: 'tool', turnId: 'turn', kind: 'command' as const, title: 'Read plan', text: 'Login plan', status: 'completed' as const, createdAt: '2026-10-05T00:00:00Z', final: false, truncated: false }] } };
   const calls: AgentRuntimeRequest[] = [];
   const peer = { ...f.details, tasks: [peerTask, { ...peerTask, id: 'private', roomId: 'other-room' }] };
@@ -650,7 +650,7 @@ test('reply keeps the exact message context and queues a correction to the runni
   const f = fixture(); f.send('goal'); await f.service.tick();
   const task = f.details.tasks[0]!;
   task.status = 'running';
-  task.inspection = { finishedAt: null, threadId: 'native', conversation: task.id, goal: null, messages: [], evidence: [], recall: null, error: null,
+  task.inspection = { finishedAt: null, threadId: 'native', conversation: task.id, goal: null, messages: [], evidence: [], error: null,
     dialogue: { userText: 'Build login', questions: [], revisions: [] },
     activity: [{ id: 'progress', turnId: 'turn', kind: 'message', title: '', text: 'I will use browser storage.', status: 'completed', createdAt: '2026-10-05T01:00:00Z', final: false, truncated: false }] };
   f.details.busy = true; await f.service.tick();
@@ -668,7 +668,7 @@ test('reply keeps the exact message context and queues a correction to the runni
 test('user questions are durable chronological messages with a stable receipt and answer state', async () => {
   const f = fixture(); f.send('goal'); await f.service.tick();
   const task = f.details.tasks[0]!;
-  task.inspection = { finishedAt: null, threadId: 'native', conversation: task.id, goal: null, messages: [], evidence: [], recall: null, error: null,
+  task.inspection = { finishedAt: null, threadId: 'native', conversation: task.id, goal: null, messages: [], evidence: [], error: null,
     dialogue: { userText: 'Build login', questions: [{ id: 'method', text: 'Email or social?', answer: null }], revisions: [] } };
   await f.service.tick();
   const first = f.request({ action: 'list' }).messages.find(m => m.userQuestion)!;
