@@ -34,7 +34,7 @@ async function connection(directory: string): Promise<FlashConnection> {
 }
 
 function assertCompatible(status: Status): void {
-  if (!['source.ingest.v1', 'sources.list.v1', 'sessions.delete.v1'].every(capability => status.capabilities?.includes(capability))) {
+  if (!['source.ingest.v1', 'sources.list.v1', 'sessions.delete.v1', 'search.ranges.v1', 'memory.turns.v1'].every(capability => status.capabilities?.includes(capability))) {
     throw new FlashError('unavailable', 'Update the local Flash service to enable session ingestion');
   }
 }

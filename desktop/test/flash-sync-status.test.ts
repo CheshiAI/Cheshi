@@ -8,10 +8,90 @@ import { registerFlashMemoryIpc } from '../lib/flash/ipc.mts';
 import { createFlashMemoryApi } from '../lib/flash-preload.cts';
 import { FLASH_MEMORY_CHANNEL, type FlashMemoryStatus } from '../shared/flash-memory.ts';
 import { observeFlashMemory, flashStatusPresentation } from '../frontend/src/features/chat/flashMemoryStatus.ts';
-import { account, deferred, flashFixture, history, rejection, session } from './flash-test-helpers.ts';
+import { account, deferred, fixtureSummary, flashFixture, history, readRequest, rejection, session } from './flash-test-helpers.ts';
 
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const ready: FlashMemoryStatus = { state: 'ready', processed: 1, total: 1, waiting: 0, error: null };
+
+test('ready searches and reads do not synchronize while a new reply is being written', async () => {
+  const f = await flashFixture();
+  const raw = history();
+  const memory = new FlashSessionMemory({ workspace: '/workspace', host: f.host, summarize: fixtureSummary,
+    source: { list: async () => ({ sessions: [session()] }), read: async () => raw } });
+  memory.accounts(account());
+  try {
+    await memory.synchronize();
+    const initialSyncs = f.methods.filter(method => method === 'sync.complete').length;
+    raw.thread.turns.push({ id: 'new-turn', status: 'inProgress', items: [
+      { id: 'new-message', type: 'agentMessage', text: 'Partial answer' },
+    ] });
+    for (const type of ['session-created', 'sessions-changed', 'text-delta', 'activity']) {
+      memory.changed({ type, threadId: 's', turnId: 'new-turn' });
+      expect(memory.status()).toEqual(ready);
+    }
+    f.searchHook(async () => { expect(memory.status()).toEqual(ready); });
+    for (let i = 0; i < 2; i++) {
+      await memory.execute('memory_search', { query: 'memory' }, 's', new AbortController().signal, 'new-turn');
+      expect(await memory.execute('memory_read', readRequest(), 's', new AbortController().signal))
+        .toMatchObject({ summary: 'A saved decision about local memory.' });
+    }
+    await pause(1100); // Beyond the background-sync debounce: ignored events must not queue work.
+    expect(memory.status()).toEqual(ready);
+    expect(f.methods.filter(method => method === 'sync.complete')).toHaveLength(initialSyncs);
+    expect(f.methods.filter(method => method === 'sources.list')).toHaveLength(1);
+    expect(f.methods.filter(method => method === 'source.ingest')).toHaveLength(1);
+  } finally { await memory.dispose(); await f.close(); }
+});
+
+test('turn completion schedules one sync of the final text despite the following catalog notification', async () => {
+  const f = await flashFixture();
+  const raw = history();
+  const entered = deferred<void>(); const resume = deferred<void>();
+  let block = false;
+  const memory = new FlashSessionMemory({ workspace: '/workspace', host: f.host,
+    source: { list: async () => {
+      if (block) { entered.resolve(); await resume.promise; }
+      return { sessions: [session()] };
+    }, read: async () => raw } });
+  memory.accounts(account());
+  try {
+    await memory.synchronize();
+    raw.thread.turns.push({ id: 'new-turn', status: 'completed', items: [
+      { id: 'new-message', type: 'agentMessage', text: 'The complete final answer.' },
+    ] });
+    block = true;
+    memory.changed({ type: 'turn-completed', threadId: 's', turnId: 'new-turn', status: 'completed' });
+    expect(memory.status().state).toBe('preparing');
+    await entered.promise; // The completion timer, not a search/read, starts this sync.
+    const pending = memory.synchronize();
+    memory.changed({ type: 'sessions-changed' });
+    resume.resolve(); await pending;
+    expect(memory.status()).toMatchObject({ state: 'ready', processed: 2, total: 2 });
+    expect(f.methods.filter(method => method === 'sync.complete')).toHaveLength(2);
+    expect(f.methods.filter(method => method === 'source.ingest')).toHaveLength(2);
+    const docs = [...f.stored.values()].flatMap(scope => [...scope.values()].map(item => item.document));
+    expect(docs.map(doc => doc.text)).toEqual(['A saved decision about local memory.', 'The complete final answer.']);
+  } finally { resume.resolve(); await memory.dispose(); await f.close(); }
+});
+
+test('catalog and session creation events do not cancel a running memory summary', async () => {
+  const f = await flashFixture();
+  const entered = deferred<void>(); const resume = deferred<void>();
+  const memory = new FlashSessionMemory({ workspace: '/workspace', host: f.host,
+    source: { list: async () => ({ sessions: [session()] }), read: async () => history() },
+    summarize: async value => { entered.resolve(); await resume.promise; return fixtureSummary(value); } });
+  memory.accounts(account());
+  try {
+    const pending = memory.execute('memory_read', readRequest(), 's', new AbortController().signal);
+    await entered.promise;
+    memory.changed({ type: 'sessions-changed' });
+    memory.changed({ type: 'session-created', session: { id: 'other' } });
+    expect(memory.status()).toEqual(ready);
+    resume.resolve();
+    expect(await pending).toMatchObject({ summary: 'A saved decision about local memory.' });
+    expect(f.methods.filter(method => method === 'sync.complete')).toHaveLength(1);
+  } finally { resume.resolve(); await memory.dispose(); await f.close(); }
+});
 
 test('a search waits beyond one second and continues automatically with acknowledged progress', async () => {
   const f = await flashFixture();

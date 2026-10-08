@@ -61,7 +61,7 @@ function shouldIgnore(packagePath: string): boolean {
   if (segments.length === 2) return false;
   if (grandchildEntry === 'electron-libghostty') return false;
   if (grandchildEntry === 'flash') {
-    const files = new Set(['client.mts', 'runtime.mts', 'sources.mts', 'session-memory.mts', 'tools.mts', 'workspace.mts', 'wait.mts', 'ipc.mts']);
+    const files = new Set(['client.mts', 'runtime.mts', 'sources.mts', 'session-memory.mts', 'tools.mts', 'workspace.mts', 'wait.mts', 'ipc.mts', 'summary.mts']);
     return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
   }
   if (grandchildEntry === 'agent-chats') return segments.length > 4 || (segments.length === 4 && !new Set(['ipc.mts', 'service.mts', 'store.mts', 'changes.mts', 'records.mts', 'coordination.mts']).has(segments[3]!));

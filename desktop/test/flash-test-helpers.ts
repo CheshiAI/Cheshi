@@ -2,10 +2,17 @@ import { createServer, type Socket } from 'node:net';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import type { SummaryInput } from '../lib/flash/summary.mts';
 import type { FlashDocument } from '../lib/flash/sources.mts';
 import type { FlashHost } from '../lib/flash/runtime.mts';
 import type { CodexAccountsSnapshot } from '../shared/codex-accounts.ts';
 
+export async function fixtureSummary(input: SummaryInput) {
+  const messages = input.turns.flatMap(turn => turn.messages);
+  return { summary: messages.map(item => item.text).join('\n'), insufficient_evidence: false,
+    evidence: messages.map(item => ({ source_id: item.source_id, quote: item.text })) };
+}
+export const readRequest = (session_id = 's', turn_id = 'turn') => ({ question: 'What was decided?', turns: [{ session_id, turn_id }] });
 export function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(done => { resolve = done; });
@@ -67,12 +74,16 @@ export async function flashFixture() {
         else if (method === 'sync.complete') result = { generation };
         else if (method === 'grant.create') { grants.set(p.homie, scope); result = { token: p.homie }; }
         else if (method === 'grant.revoke') { grants.delete(p.homie); result = { revoked: true }; }
-        else if (method === 'memory_search' || method === 'memory_read') {
+        else if (method === 'memory_search' || method === 'memory_read_turns') {
           await beforeSearch?.();
           const docs = stored.get(grants.get(token) ?? '') ?? new Map();
-          const matches = [...docs].filter(([id, item]) => method === 'memory_read' ? id === p.source_id : !p.session_id || item.document.threadId === p.session_id)
-            .map(([source_id, item]) => ({ source_id, session_id: item.document.threadId, text: item.document.text }));
-          result = method === 'memory_search' ? { matches } : { source: matches[0], context: [] };
+          const matches = [...docs].filter(([, item]) => !p.session_id || item.document.threadId === p.session_id)
+            .map(([source_id, item]) => ({ source_id, session_id: item.document.threadId, turn_id: item.document.turnId,
+              message_id: item.document.itemId, kind: item.document.kind, entry: item.document.entry,
+              text: item.document.text, offset: 0, next_offset: null, total_characters: [...item.document.text].length }));
+          result = method === 'memory_search' ? { matches } : { turns: p.turns.map((ref: { session_id: string; turn_id: string }) => ({
+            ...ref, messages: matches.filter(item => item.session_id === ref.session_id && item.turn_id === ref.turn_id).sort((a, b) => a.entry - b.entry),
+          })) };
         } else throw new Error('Unexpected fixture request');
         if (!socket.destroyed) socket.end(JSON.stringify({ version: 1, id: request.id, result }) + '\n');
       })().catch(() => socket.destroy());

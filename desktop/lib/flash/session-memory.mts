@@ -1,3 +1,4 @@
+import { parseMemoryTurns, validateSummary, type SummarizeMemory, type TurnReference } from './summary.mts';
 import { randomUUID } from 'node:crypto';
 import type { FlashMemoryStatus } from '../../shared/flash-memory.ts';
 import { waitForSync } from './wait.mts';
@@ -6,16 +7,18 @@ import type { SearchSource } from '../chat-search-source.mts';
 import type { JsonObject } from '../codex-chat-types.mts';
 import { callFlash, FlashError } from './client.mts';
 import type { FlashHost } from './runtime.mts';
-import { digest, FlashSources, reconcileSources, type FlashBinding, type FlashSource } from './sources.mts';
+import { digest, FlashSources, reconcileSources, workspaceMemoryAccount, type FlashBinding, type FlashSource } from './sources.mts';
 
 export interface SessionMemory {
-  execute(method: string, params: Record<string, unknown>, session: string, signal: AbortSignal): Promise<unknown>;
+  execute(method: string, params: Record<string, unknown>, session: string, signal: AbortSignal, turnId?: string): Promise<unknown>;
 }
 
 export class FlashSessionMemory implements SessionMemory {
-  private readonly options: { workspace: string; source: SearchSource; host: FlashHost; syncWaitMs?: number; blocked?(): boolean; onError?(code: string): void };
+  private readonly options: { workspace: string; source: SearchSource; host: FlashHost; syncWaitMs?: number; summarize?: SummarizeMemory;
+    blocked?(): boolean; onError?(code: string): void };
   private readonly sources: FlashSources;
   private binding: FlashBinding | null = null;
+  private bindings: readonly FlashBinding[] = [];
   private lifetime = new AbortController();
   private syncing: Promise<void> | null = null;
   private readonly cleanupLifetime = new AbortController();
@@ -29,7 +32,7 @@ export class FlashSessionMemory implements SessionMemory {
   status(): FlashMemoryStatus { return { ...this.progress, waiting: this.waiters.size }; }
 
   retry(): FlashMemoryStatus {
-    if (!this.binding || this.closed) return this.status();
+    if (!this.bindings.length || this.closed) return this.status();
     void this.synchronize().catch(() => {});
     return this.status();
   }
@@ -39,17 +42,19 @@ export class FlashSessionMemory implements SessionMemory {
   }
 
   accounts(snapshot: CodexAccountsSnapshot): void {
-    const profile = snapshot.profiles.find(item => item.id === snapshot.activeId);
-    const next = profile?.usage.authenticated === true
-      ? { profileId: profile.id, account: digest([profile.id, profile.email]) } : null;
-    if (next?.account === this.binding?.account) return;
+    const bindings = snapshot.profiles.filter(profile => profile.usage.authenticated === true)
+      .map(profile => ({ profileId: profile.id, account: digest([profile.id, profile.email]) }))
+      .sort((a, b) => a.profileId.localeCompare(b.profileId));
+    const next = bindings.find(binding => binding.profileId === snapshot.activeId) ?? null;
+    if (next?.account === this.binding?.account && JSON.stringify(bindings) === JSON.stringify(this.bindings)) return;
     this.invalidate();
     this.binding = next;
+    this.bindings = bindings;
     this.sources.clear();
     this.schedule();
   }
 
-  resetAccount(): void { this.invalidate(); this.binding = null; this.sources.clear(); }
+  resetAccount(): void { this.invalidate(); this.binding = null; this.bindings = []; this.sources.clear(); }
 
   private invalidate(): void {
     this.lifetime.abort();
@@ -62,7 +67,9 @@ export class FlashSessionMemory implements SessionMemory {
   }
 
   changed(event: JsonObject): void {
-    if (!['sessions-changed', 'sessions-deleted', 'session-created', 'turn-completed'].includes(String(event.type))) return;
+    // Catalog/creation notifications also arrive while a reply is being written.
+    // Index new conversation content only once the turn has ended; deletion is immediate.
+    if (!['sessions-deleted', 'turn-completed'].includes(String(event.type))) return;
     this.invalidate();
     if (event.type === 'sessions-deleted' && Array.isArray(event.threadIds)) {
       const ids = event.threadIds.filter((id): id is string => typeof id === 'string');
@@ -93,7 +100,7 @@ export class FlashSessionMemory implements SessionMemory {
   }
 
   private schedule(): void {
-    if (this.closed || !this.binding) return;
+    if (this.closed || !this.bindings.length) return;
     this.progress = { state: 'preparing', processed: 0, total: null, error: null };
     clearTimeout(this.timer);
     this.timer = setTimeout(() => {
@@ -105,25 +112,30 @@ export class FlashSessionMemory implements SessionMemory {
   }
 
   synchronize(): Promise<void> {
-    if (this.closed || !this.binding) return Promise.reject(new FlashError('unavailable', 'Sign in to use session memory'));
+    if (this.closed || !this.bindings.length) return Promise.reject(new FlashError('unavailable', 'Sign in to use session memory'));
     if (this.syncing) return this.syncing;
     clearTimeout(this.timer);
     this.progress = { state: 'preparing', processed: 0, total: null, error: null };
-    const binding = this.binding;
+    const bindings = this.bindings;
     const signal = this.lifetime.signal;
     const operation = this.options.host.transaction(async connection => {
-      this.assertCurrent(binding, signal);
+      this.assertSyncCurrent(bindings, signal);
       this.progress = { state: 'syncing', processed: 0, total: null, error: null };
-      const sources = await this.sources.collect(binding, signal);
-      const synced = await reconcileSources(connection, this.options.workspace, binding, sources, signal, (processed, total) => {
-        this.assertCurrent(binding, signal);
-        this.progress = { state: 'syncing', processed, total, error: null };
-      });
-      this.assertCurrent(binding, signal);
+      const groups = await this.sources.collect(bindings, signal);
+      const sources = groups.flatMap(group => group.sources);
+      if (new Set(sources.map(source => source.source_id)).size !== sources.length) {
+        throw new FlashError('stale_source', 'The conversation catalog contains duplicate sources. Retry.');
+      }
+      const synced = await reconcileSources(connection, this.options.workspace, workspaceMemoryAccount(this.options.workspace),
+        sources, signal, (processed, total) => {
+          this.assertSyncCurrent(bindings, signal);
+          this.progress = { state: 'syncing', processed, total, error: null };
+        });
+      this.assertSyncCurrent(bindings, signal);
       this.synced = synced;
       this.progress = { state: 'ready', processed: sources.length, total: sources.length, error: null };
     }, signal).catch(error => {
-      if (!signal.aborted && this.binding === binding && !this.closed) {
+      if (!signal.aborted && this.bindings === bindings && !this.closed) {
         const errorMessage = this.progress.state === 'preparing'
           ? 'Flash could not start. Check the local Flash installation and offline model, then retry.'
           : 'Saved conversations could not finish synchronizing. Retry; if this persists, check Flash diagnostics.';
@@ -136,6 +148,13 @@ export class FlashSessionMemory implements SessionMemory {
     return operation;
   }
 
+  private assertSyncCurrent(bindings: readonly FlashBinding[], signal: AbortSignal): void {
+    signal.throwIfAborted();
+    if (this.closed || this.bindings !== bindings || this.options.blocked?.()) {
+      throw new FlashError('stale_source', 'The accounts or conversation state changed. Retry.');
+    }
+  }
+
   private assertCurrent(binding: FlashBinding, signal: AbortSignal): void {
     signal.throwIfAborted();
     if (this.closed || this.binding !== binding || this.options.blocked?.()) {
@@ -143,24 +162,32 @@ export class FlashSessionMemory implements SessionMemory {
     }
   }
 
-  async execute(method: string, params: Record<string, unknown>, session: string, caller: AbortSignal): Promise<unknown> {
+  async execute(method: string, params: Record<string, unknown>, session: string, caller: AbortSignal, turnId?: string): Promise<unknown> {
     if (!['memory_search', 'memory_read'].includes(method)) throw new FlashError('invalid_request', 'Unknown memory tool');
     const binding = this.binding;
     if (!binding) throw new FlashError('unavailable', 'Sign in to use session memory');
     const signal = AbortSignal.any([caller, this.lifetime.signal]);
     signal.throwIfAborted();
-    const waiter = Symbol();
-    this.waiters.add(waiter);
-    try { await waitForSync(this.synchronize(), signal, this.options.syncWaitMs ?? 300_000); }
-    finally { this.waiters.delete(waiter); }
+    // Ready data already represents the last completed turns. Reading it must not
+    // start another catalog reconciliation or expose a transient syncing banner.
+    if (this.progress.state !== 'ready') {
+      const waiter = Symbol();
+      this.waiters.add(waiter);
+      try { await waitForSync(this.synchronize(), signal, this.options.syncWaitMs ?? 300_000); }
+      finally { this.waiters.delete(waiter); }
+    }
     this.assertCurrent(binding, signal);
-    return this.options.host.transaction(async connection => {
+    const result = await this.options.host.transaction(async connection => {
       this.assertCurrent(binding, signal);
-      const scope = { workspace: this.options.workspace, account: binding.account, homie: `session:${session}:${randomUUID()}` };
+      const scope = { workspace: this.options.workspace, account: workspaceMemoryAccount(this.options.workspace), homie: `session:${session}:${randomUUID()}` };
       const grant = await callFlash<{ token: string }>(connection, 'grant.create', { ...scope, ttl_seconds: 60 }, signal);
       try {
-        const result = await callFlash({ ...connection, token: grant.token }, method, params, signal);
-        await this.sources.verify(binding, result, this.synced);
+        const request = method === 'memory_search' && turnId
+          ? { ...params, exclude_turn: { session_id: session, turn_id: turnId } } : params;
+        const result = await callFlash({ ...connection, token: grant.token },
+          method === 'memory_read' ? 'memory_read_turns' : method,
+          method === 'memory_read' ? { turns: params.turns } : request, signal);
+        await this.sources.verify(this.bindings, result, this.synced);
         this.assertCurrent(binding, signal);
         return result;
       } finally {
@@ -168,6 +195,15 @@ export class FlashSessionMemory implements SessionMemory {
         await callFlash({ ...connection, timeoutMs: 2000 }, 'grant.revoke', scope).catch(() => {});
       }
     }, signal);
+    if (method !== 'memory_read') return result;
+    if (!this.options.summarize) throw new FlashError('unavailable', 'Memory summarization is not configured');
+    const turns = parseMemoryTurns(result, params.turns as TurnReference[]);
+    const summary = validateSummary(await this.options.summarize({ question: params.question as string, turns }, signal), turns);
+    // Provider inference never holds Flash's serialized administrative transaction.
+    this.assertCurrent(binding, signal);
+    await this.sources.verify(this.bindings, result, this.synced);
+    this.assertCurrent(binding, signal);
+    return { ...summary, model: 'gpt-6-luna', effort: 'low' };
   }
 
   async dispose(): Promise<void> {

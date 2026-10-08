@@ -8,6 +8,8 @@ export interface EphemeralRunOptions {
   outputSchema?: unknown;
   serviceTier?: 'default';
   disableTools?: boolean;
+  /** Reduce automatic context for self-contained background tasks; does not disable tools. */
+  minimalContext?: boolean;
   webSearchOnly?: boolean;
   onWebSearch?: () => void;
   requireSubscription?: boolean;
@@ -159,6 +161,13 @@ export class EphemeralSessionService {
           'features.shell_tool': false, 'features.multi_agent': false,
           'web_search': options.disableTools ? 'disabled' : 'live' };
       }
+      if (options.minimalContext === true) {
+        // Per-thread overrides leave the account configuration and ordinary chats intact.
+        config = { ...config, project_doc_max_bytes: 0, 'memories.use_memories': false,
+          // Codex requires a positive catalog budget. Generic skill guidance may remain.
+          'skills.max_context_tokens': 1,
+          'features.apps': false, 'features.plugins': false, 'features.remote_plugin': false };
+      }
       const models = modelsFromListResponse(await abortable(this.client.request('model/list', { limit: 100, includeHidden: false }), signal));
       signal.throwIfAborted();
       const model = models.find((entry) => entry.model === request.model);
@@ -170,7 +179,8 @@ export class EphemeralSessionService {
         ...(config ? { config } : {}),
         ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
         cwd: this.cwd, ephemeral: true, approvalPolicy: 'never', sandbox: 'read-only',
-        baseInstructions: request.instructions, developerInstructions: request.instructions,
+        baseInstructions: request.instructions,
+        developerInstructions: options.minimalContext === true ? '' : request.instructions,
         environments: [], selectedCapabilityRoots: [], dynamicTools: [],
       }), signal, (late) => this.release(stringValue(recordValue(recordValue(late)?.thread)?.id))));
       active.threadId = stringValue(recordValue(started?.thread)?.id);
