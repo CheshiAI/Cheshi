@@ -10,6 +10,7 @@ import {
   type ChatActivityItem,
 } from '../chat';
 import { ChatWorkspace } from '../chat/ChatWorkspace';
+import { FlashSourceNavigationContext } from '../chat/FlashSourceLink';
 import { CHAT_PANE_MIN_WIDTH } from '../chat/chatWorkspaceModel';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { ChatDeleteSessionDialog } from '../chat/ChatDeleteSessionDialog';
@@ -430,17 +431,19 @@ export function AppShell() {
             attachmentDisabled={chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />
-          <ChatWorkspace
-            workspace={workspace}
-            active={activeView === 'chat' && visiblePanes.includes('primary')}
-            onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}
-            sessionSyncEnabled={workspace.sessionHistory.loading || sidebarPanel === 'chats'}
-            onReviewFileChanges={openFileReview}
-            historyTarget={historyTarget}
-            onHistoryTargetHandled={handleHistoryTarget}
-            rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
-          />
+          <FlashSourceNavigationContext.Provider value={openHistorySearchHit}>
+            <ChatWorkspace
+              workspace={workspace}
+              active={activeView === 'chat' && visiblePanes.includes('primary')}
+              onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}
+              sessionSyncEnabled={workspace.sessionHistory.loading || sidebarPanel === 'chats'}
+              onReviewFileChanges={openFileReview}
+              historyTarget={historyTarget}
+              onHistoryTargetHandled={handleHistoryTarget}
+              rightSidebarOpen={rightSidebarOpen}
+              onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
+            />
+          </FlashSourceNavigationContext.Provider>
           {activeView === 'codegraph' && (
             <CodeGraphView
               onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}

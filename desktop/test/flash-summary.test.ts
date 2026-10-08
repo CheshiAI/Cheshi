@@ -3,6 +3,7 @@ import { createLunaSummary, parseMemoryTurns, validateSummary, type SummaryInput
 import { FlashSessionMemory } from '../lib/flash/session-memory.mts';
 import { account, deferred, fixtureSummary, flashFixture, history, readRequest, rejection, session } from './flash-test-helpers.ts';
 import { createFakeCodexClient } from './codex-chat-test-helpers.ts';
+import { flashSourceTarget } from '../shared/flash-memory';
 
 const input: SummaryInput = { question: '배경은?', turns: [{ session_id: 's', turn_id: 't', messages: [
   { session_id: 's', turn_id: 't', source_id: 'q', message_id: 'q', kind: 'user', entry: 0, text: '배경은 어떻게 할까?' },
@@ -16,6 +17,16 @@ test('summaries require exact original quotes and valid sources; insufficient ev
     expect(() => validateSummary({ ...valid, evidence }, input.turns)).toThrow();
   }
   expect(validateSummary({ summary: '근거 부족', insufficient_evidence: true, evidence: [] }, input.turns).insufficient_evidence).toBe(true);
+});
+
+test('source links are built from the validated original message rather than provider-supplied targets', () => {
+  const value = { summary: '투명 배경', insufficient_evidence: false,
+    evidence: [{ source_id: 'a', quote: '투명하게 유지합니다.' }] };
+  const result = validateSummary(value, input.turns);
+  expect(flashSourceTarget(result.evidence[0]!.source_url)).toEqual({ threadId: 's', itemId: 'a' });
+  expect(result.evidence[0]!.source_id).toBe('a');
+  expect(() => validateSummary({ ...value, evidence: [{ ...value.evidence[0],
+    source_url: 'cheshi-source://message?threadId=foreign&itemId=other' }] }, input.turns)).toThrow();
 });
 
 function validateQuote(original: string, quote: string, sourceId = 'a') {

@@ -33,6 +33,8 @@ export const ChatTimelineHistory = memo(function ChatTimelineHistory({
   const [searchMatch, setSearchMatch] = useState<ChatHistorySearchTarget | null>(null);
   const restoreAnchorRef = useRef<(() => void) | null>(null);
   const previousScrollTopRef = useRef(0);
+  const navigationCallbacks = useRef({ onRevealHistoryItem, onHistoryTargetHandled });
+  navigationCallbacks.current = { onRevealHistoryItem, onHistoryTargetHandled };
 
   useLayoutEffect(() => {
     if (loading || !historyTarget) return;
@@ -42,21 +44,34 @@ export const ChatTimelineHistory = memo(function ChatTimelineHistory({
 
   useEffect(() => {
     if (loading || !historyTarget || (targetIndex >= 0 && targetIndex < start)) return;
-    // Run after the view resets its session scroll state and the modal releases focus.
-    const frame = window.requestAnimationFrame(() => {
-      const timeline = timelineRef.current;
-      if (!timeline) return;
+    // Older rows use estimated heights. Recenter after they have laid out, while
+    // keeping the request cancellable when the user scrolls or changes sessions.
+    let frame = 0;
+    const timeline = timelineRef.current;
+    if (!timeline) return;
+    const removeListeners = () => {
+      timeline.removeEventListener('wheel', interrupt);
+      timeline.removeEventListener('pointerdown', interrupt);
+    };
+    const finish = (found: boolean) => {
+      window.cancelAnimationFrame(frame);
+      removeListeners();
+      navigationCallbacks.current.onHistoryTargetHandled?.(historyTarget.requestId, found);
+    };
+    const interrupt = () => finish(true);
+    const reveal = (remaining: number) => {
       const item = findChatHistoryTarget(timeline, targetElementId ?? historyTarget.itemId);
-      if (item) {
-        setSearchMatch(historyTarget);
-        onRevealHistoryItem?.(item);
-      } else {
-        setSearchMatch(null);
-      }
-      onHistoryTargetHandled?.(historyTarget.requestId, item !== undefined);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [historyTarget, loading, onHistoryTargetHandled, onRevealHistoryItem, start, targetIndex, targetElementId, timelineRef]);
+      if (!item) { setSearchMatch(null); finish(false); return; }
+      setSearchMatch(historyTarget);
+      navigationCallbacks.current.onRevealHistoryItem?.(item);
+      if (remaining > 0) frame = window.requestAnimationFrame(() => reveal(remaining - 1));
+      else finish(true);
+    };
+    timeline.addEventListener('wheel', interrupt, { passive: true });
+    timeline.addEventListener('pointerdown', interrupt, { passive: true });
+    frame = window.requestAnimationFrame(() => reveal(2));
+    return () => { window.cancelAnimationFrame(frame); removeListeners(); };
+  }, [historyTarget, loading, start, targetIndex, targetElementId, timelineRef]);
 
   useEffect(() => {
     if (!searchMatch) return;
@@ -82,7 +97,7 @@ export const ChatTimelineHistory = memo(function ChatTimelineHistory({
 
   useEffect(() => {
     const timeline = timelineRef.current;
-    if (!timeline || loading || start === 0) return;
+    if (!timeline || loading || start === 0 || historyTarget) return;
     previousScrollTopRef.current = timeline.scrollTop;
     const onScroll = () => {
       const top = timeline.scrollTop;
@@ -92,7 +107,7 @@ export const ChatTimelineHistory = memo(function ChatTimelineHistory({
     };
     timeline.addEventListener('scroll', onScroll, { passive: true });
     return () => timeline.removeEventListener('scroll', onScroll);
-  }, [loading, revealEarlier, start, timelineRef]);
+  }, [historyTarget, loading, revealEarlier, start, timelineRef]);
 
   const visibleItems = items.slice(start);
   const renderItem = (item: TimelineItem) => <ChatTimelineItem

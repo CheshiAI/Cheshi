@@ -3,6 +3,7 @@ import type { CodexChatClient } from '../codex-chat-types.mts';
 import { recordValue } from '../codex-service-utils.mts';
 import { EphemeralSessionService } from '../ephemeral-session-service.mts';
 import { FlashError } from './client.mts';
+import { flashSourceHref } from '../../shared/flash-memory.ts';
 
 export interface TurnReference { session_id: string; turn_id: string }
 export interface TurnMessage extends TurnReference {
@@ -154,7 +155,8 @@ export function validateSummary(value: unknown, turns: MemoryTurn[]) {
     const quote = restoreOriginalQuote(original.text, item.quote);
     if (quote === null) throw new FlashError('invalid_summary', 'Summary citation does not match the original');
     return { source_id: original.source_id, session_id: original.session_id, turn_id: original.turn_id,
-      message_id: original.message_id, kind: original.kind, quote };
+      message_id: original.message_id, kind: original.kind, quote,
+      source_url: flashSourceHref({ threadId: original.session_id, itemId: original.message_id }) };
   });
   return { summary: result.summary, insufficient_evidence: result.insufficient_evidence, evidence,
     sources: turns.map(turn => ({ session_id: turn.session_id, turn_id: turn.turn_id,

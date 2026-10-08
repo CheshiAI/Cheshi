@@ -11,6 +11,8 @@ import styles from './ChatView.module.css';
 import markdownStyles from './MessageContent.module.css';
 import { FileEvidence } from './FileEvidence';
 import { fileEvidence } from './fileEvidenceModel';
+import { flashSourceTarget } from '../../../../shared/flash-memory';
+import { FlashSourceLink } from './FlashSourceLink';
 
 interface MessageContentProps {
   text: string;
@@ -67,6 +69,8 @@ function LocalFileAnchor({ href, children }: { href: string; children: ReactNode
 }
 
 function MessageAnchor({ href, children }: { href: string; children: ReactNode }) {
+  const source = flashSourceTarget(href);
+  if (source) return <FlashSourceLink href={href} target={source}>{children}</FlashSourceLink>;
   if (!/^https?:\/\//i.test(href)) {
     return localFileLinkPath(href) ? <LocalFileAnchor href={href}>{children}</LocalFileAnchor> : <>{children}</>;
   }
@@ -223,7 +227,7 @@ export function MessageContent({ renderLocalImages = false, text, presentation =
       <ReactMarkdown
         components={mentionComponents}
         remarkPlugins={[remarkGfm]}
-        urlTransform={(url, key) => key === 'href' && localFileLinkPath(url) ? url : defaultUrlTransform(url)}
+        urlTransform={(url, key) => key === 'href' && (flashSourceTarget(url) || localFileLinkPath(url)) ? url : defaultUrlTransform(url)}
       >
         {text}
       </ReactMarkdown>

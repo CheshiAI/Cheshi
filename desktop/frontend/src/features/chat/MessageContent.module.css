@@ -64,6 +64,14 @@
 .markdown blockquote { border-left: 2px solid var(--divider); color: var(--sub-text); padding-left: 12px; }
 .markdown a { color: var(--sub-text); text-decoration: none; }
 .markdown a:is(:hover, :focus-visible) { color: var(--dropdown-selection-text); text-decoration: underline; }
+.sourceLink { cursor: pointer; }
+.sourceLink[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
+.sourceLinkIcon {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  margin-right: 4px;
+  vertical-align: -3px;
+}
 .markdown hr { margin: 14px 0; border: 0; border-top: 1px solid var(--divider); }
 
 .tableScroll {

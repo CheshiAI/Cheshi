@@ -620,6 +620,10 @@ function navigableHistoryProps(): HistoryProps {
       addEventListener() {}, removeEventListener() {} } as unknown as HTMLElement } };
 }
 
+function flushHistoryReveal(harness: { flushFrames(): void }) {
+  for (let frame = 0; frame < 3; frame += 1) harness.flushFrames();
+}
+
 describe('chat search original message navigation', () => {
   test('reveals a live user message by its provider id without replacing its mounted row', () => {
     const harness = historyHarness();
@@ -634,19 +638,19 @@ describe('chat search original message navigation', () => {
     props.onHistoryTargetHandled = (_request, found) => { outcomes.push(found); };
     for (const requestId of [1, 2]) {
       props.historyTarget = { threadId: 'thread', itemId: 'server-user', requestId };
-      harness.render(props); harness.flushEffects(); harness.flushFrames();
+      harness.render(props); harness.flushEffects(); flushHistoryReveal(harness);
       expect(highlightedHistoryItems(harness.render({ ...props, historyTarget: null }))).toEqual(['client:local-user']);
       harness.flushEffects();
     }
     expect(outcomes).toEqual([true, true]);
-    expect(revealed).toEqual(['client:local-user', 'client:local-user']);
+    expect(revealed).toEqual(Array(6).fill('client:local-user'));
     harness.dispose();
   });
 
   test('clears the destination highlight after two seconds even when navigation has been acknowledged', () => {
     const harness = historyHarness();
     const props = navigableHistoryProps();
-    harness.render(props); harness.flushEffects(); harness.flushFrames();
+    harness.render(props); harness.flushEffects(); flushHistoryReveal(harness);
     const acknowledged = { ...props, historyTarget: null };
     expect(highlightedHistoryItems(harness.render(acknowledged))).toEqual(['item-4']);
     harness.flushEffects();
@@ -660,11 +664,11 @@ describe('chat search original message navigation', () => {
   test('revisiting the same result restarts the highlight without the old timer clearing it early', () => {
     const harness = historyHarness();
     const props = navigableHistoryProps();
-    harness.render(props); harness.flushEffects(); harness.flushFrames();
+    harness.render(props); harness.flushEffects(); flushHistoryReveal(harness);
     harness.render({ ...props, historyTarget: null }); harness.flushEffects();
     harness.advanceTime(1_000);
     const next = { ...props, historyTarget: { threadId: 'thread', itemId: 'item-4', requestId: 2 } };
-    harness.render(next); harness.flushEffects(); harness.flushFrames();
+    harness.render(next); harness.flushEffects(); flushHistoryReveal(harness);
     const acknowledged = { ...next, historyTarget: null };
     harness.render(acknowledged); harness.flushEffects();
     expect(harness.pendingTimers()).toBe(1);
@@ -678,7 +682,7 @@ describe('chat search original message navigation', () => {
   test('removing the conversation cancels pending highlight cleanup', () => {
     const harness = historyHarness();
     const props = navigableHistoryProps();
-    harness.render(props); harness.flushEffects(); harness.flushFrames();
+    harness.render(props); harness.flushEffects(); flushHistoryReveal(harness);
     harness.render({ ...props, historyTarget: null }); harness.flushEffects();
     expect(harness.pendingTimers()).toBe(1);
     harness.dispose();
@@ -701,8 +705,44 @@ describe('chat search original message navigation', () => {
       timelineRef: { current: { scrollTop: 0, querySelectorAll: () => [element], addEventListener() {}, removeEventListener() {} } as unknown as HTMLElement },
       onRevealHistoryItem(item) { expect(item.dataset.chatItemId).toBe(element.dataset.chatItemId); events.push('reveal'); },
       onHistoryTargetHandled(id) { events.push(`handled:${id}`); } };
+    harness.render(props); harness.flushEffects(); flushHistoryReveal(harness);
+    expect(events).toEqual(['reveal', 'reveal', 'reveal', 'handled:5']);
+  });
+
+  test('layout corrections finish before acknowledgement and stop on user input', () => {
+    const harness = historyHarness();
+    const listeners = new Map<string, () => void>();
+    const events: string[] = [];
+    const props = navigableHistoryProps();
+    props.timelineRef.current!.addEventListener = ((name: string, handler: () => void) => {
+      listeners.set(name, handler);
+    }) as HTMLElement['addEventListener'];
+    props.timelineRef.current!.removeEventListener = ((name: string) => {
+      listeners.delete(name);
+    }) as HTMLElement['removeEventListener'];
+    props.onRevealHistoryItem = () => { events.push('reveal'); };
+    props.onHistoryTargetHandled = () => { events.push('handled'); };
     harness.render(props); harness.flushEffects(); harness.flushFrames();
-    expect(events).toEqual(['reveal', 'handled:5']);
+    expect(events).toEqual(['reveal']);
+    expect(listeners.has('scroll')).toBe(false);
+    listeners.get('wheel')!();
+    flushHistoryReveal(harness);
+    expect(events).toEqual(['reveal', 'handled']);
+    expect(listeners.has('wheel')).toBe(false);
+    expect(listeners.has('pointerdown')).toBe(false);
+    harness.dispose();
+    expect(listeners.size).toBe(0);
+  });
+
+  test('unmount cancels pending corrections after the first reveal', () => {
+    const harness = historyHarness();
+    const events: string[] = [];
+    const props = navigableHistoryProps();
+    props.onRevealHistoryItem = () => { events.push('reveal'); };
+    props.onHistoryTargetHandled = () => { events.push('handled'); };
+    harness.render(props); harness.flushEffects(); harness.flushFrames();
+    harness.dispose(); flushHistoryReveal(harness);
+    expect(events).toEqual(['reveal']);
   });
 
   test('missing original items report navigation failure without scrolling elsewhere', () => {
@@ -712,7 +752,7 @@ describe('chat search original message navigation', () => {
       timelineRef: { current: { scrollTop: 0, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {} } as unknown as HTMLElement },
       onRevealHistoryItem() { throw new Error('Unexpected navigation'); },
       onHistoryTargetHandled(_requestId, found) { outcomes.push(found); } };
-    harness.render(props); harness.flushEffects(); harness.flushFrames();
+    harness.render(props); harness.flushEffects(); flushHistoryReveal(harness);
     expect(outcomes).toEqual([false]);
   });
 
@@ -725,8 +765,8 @@ describe('chat search original message navigation', () => {
       onRevealHistoryItem(item) { revealed.push(item.dataset.chatItemId!); } };
     harness.render(props); harness.flushEffects();
     harness.render({ ...props, historyTarget: { threadId: 'thread', itemId: 'item-8', requestId: 2 } }); harness.flushEffects();
-    harness.flushFrames();
-    expect(revealed).toEqual(['item-8']);
+    flushHistoryReveal(harness);
+    expect(revealed).toEqual(['item-8', 'item-8', 'item-8']);
   });
 });
 
