@@ -749,6 +749,7 @@ export class CodexChatService {
     if (!response || !thread || !session)
       throw new Error("The forked Codex thread response format is invalid.");
 
+    await this.conversations?.registerCreated?.(thread);
     await this.releaseThreadSubscription(sourceThreadId, "fork-session");
     this.availableAgentThreadIds.clear();
     const sessionId = requiredString(session.id, "Chat session id");

@@ -12,6 +12,7 @@ export interface CodexConversationAccess {
   agents?: Pick<CodexConversationAgents, 'read' | 'descendants' | 'assertWritable'>;
   list(): Promise<{ sessions: JsonObject[] }>;
   resolve(threadId: string, client: CodexChatClient): Promise<string>;
+  registerCreated?(thread: JsonObject): Promise<void>;
   assertWritable?(threadId: string): Promise<void>;
   takeLoaded?(threadId: string, client: CodexChatClient): boolean;
   read?(threadId: string, method: 'thread/read' | 'thread/goal/get', params?: JsonObject): Promise<unknown>;

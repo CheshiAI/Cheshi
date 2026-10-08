@@ -23,6 +23,7 @@ interface Chain {
   pending?: true | HandoffIntent;
   confirmedDeletions?: CodexConversationDeletion[];
   deletionCwd?: string;
+  registeredCwd?: string;
 }
 interface HandoffIntent {
   source: ConversationLocation;
@@ -238,7 +239,11 @@ export class CodexConversationCatalog {
       const deletionCwd = stringValue(item?.deletionCwd);
       if (confirmedDeletions.length ? !deletionCwd || !isAbsolute(deletionCwd) || resolve(deletionCwd) !== deletionCwd
         : item?.deletionCwd !== undefined) throw new Error('The conversation deletion workspace record is invalid.');
+      const registeredCwd = stringValue(item?.registeredCwd);
+      if (item?.registeredCwd !== undefined && (!registeredCwd || !isAbsolute(registeredCwd)
+        || resolve(registeredCwd) !== registeredCwd)) throw new Error('The registered conversation workspace is invalid.');
       return { current, locations: locations as ConversationLocation[],
+        ...(registeredCwd ? { registeredCwd } : {}),
         ...(item?.deleted === true ? { deleted: true as const } : {}),
         ...(confirmedDeletions.length ? { confirmedDeletions, deletionCwd: deletionCwd! } : {}),
         ...(pending ? { pending } : {}) };
@@ -255,6 +260,30 @@ export class CodexConversationCatalog {
     } finally {
       await unlink(temporary).catch(error => { if (recordValue(error)?.code !== 'ENOENT') throw error; });
     }
+  }
+
+  /** A successful creation RPC is authoritative even before thread/list includes the new history. */
+  registerCreated(profileId: string, thread: JsonObject): Promise<void> {
+    return serial(this.directory, async () => {
+      const id = stringValue(thread.id);
+      const profiles = await this.options.profiles();
+      const profile = profiles.find(item => item.id === profileId);
+      if (!profile || !id || isSubagentThread(thread) || typeof thread.cwd !== 'string'
+        || !isAbsolute(thread.cwd) || resolve(thread.cwd) !== resolve(this.options.cwd)
+        || typeof thread.path !== 'string' || !isAbsolute(thread.path) || !within(profile.home, thread.path)) {
+        throw new Error('The created conversation has an invalid account or workspace.');
+      }
+      const ledger = await this.load();
+      const owner = { profileId, threadId: id };
+      const existing = availableChain(ledger, id);
+      if (existing) {
+        if (!sameLocation(existing.current, owner) || existing.locations.length !== 1) {
+          throw new Error('The created conversation already belongs to another account mapping.');
+        }
+        existing.registeredCwd = resolve(this.options.cwd);
+      } else ledger.chains.push({ current: owner, locations: [owner], registeredCwd: resolve(this.options.cwd) });
+      await this.save(ledger);
+    });
   }
 
   private async discover(profiles: ConversationProfile[]): Promise<LocatedThread[]> {
@@ -372,6 +401,17 @@ export class CodexConversationCatalog {
       const profiles = await this.options.profiles();
       for (const chain of ledger.chains) await this.tryRecover(ledger, chain, profiles);
       const entries = await this.discover(profiles);
+      for (const chain of ledger.chains) {
+        if (chain.registeredCwd !== resolve(this.options.cwd) || chain.deleted || chain.confirmedDeletions?.length
+          || chain.pending || !profiles.some(profile => profile.id === chain.current.profileId)
+          || entries.some(entry => sameLocation(entry.location, chain.current))) continue;
+        const thread = threadResponse(await this.options.request(chain.current.profileId, 'thread/read', {
+          threadId: chain.current.threadId, includeTurns: false,
+        }));
+        if (thread.id !== chain.current.threadId || isSubagentThread(thread) || typeof thread.cwd !== 'string'
+          || resolve(thread.cwd) !== resolve(this.options.cwd)) throw new Error('The registered conversation history is invalid.');
+        entries.push({ location: chain.current, thread });
+      }
       const sessions = new Map<string, JsonObject>();
       for (const entry of entries) {
         const chain = chainFor(ledger, entry.location.threadId);

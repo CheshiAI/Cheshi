@@ -542,3 +542,40 @@ test('single conversations without a handoff chain do not create unnecessary del
   await failure(stat(join(f.options.directory, 'conversations.json')), 'ENOENT');
   expect(f.calls).toHaveLength(0);
 });
+
+test('registers a created fork independently before list discovery and keeps it readable after restart', async () => {
+  const f = await fixture();
+  const fork = { ...f.source, id: 'fresh-fork', forkedFromId: 'source', turns: [], preview: '',
+    path: join(f.a, 'sessions/fresh-fork.jsonl') };
+  f.threads.get('a')!.push(fork);
+  f.pages(profile => ({ data: profile === 'a' ? [f.source] : [], nextCursor: null }));
+  await f.catalog.registerCreated('a', fork);
+  expect(await f.catalog.locations('fresh-fork')).toEqual([{ profileId: 'a', threadId: 'fresh-fork' }]);
+  expect(await f.catalog.locations('source')).toEqual([{ profileId: 'a', threadId: 'source' }]);
+  expect(recordValue(recordValue(await f.catalog.read('fresh-fork', 'thread/read'))?.thread)?.id).toBe('fresh-fork');
+  expect((await f.catalog.list()).sessions.some(session => session.id === 'fresh-fork')).toBe(true);
+  const restarted = new CodexConversationCatalog(f.options);
+  expect(await restarted.resolve('fresh-fork', 'a', f.client('a'))).toBe('fresh-fork');
+  expect((await restarted.list()).sessions.some(session => session.id === 'fresh-fork')).toBe(true);
+  await restarted.confirmDeletion('fresh-fork', { profileId: 'a', threadId: 'fresh-fork', threadIds: ['fresh-fork'] });
+  await restarted.forget('fresh-fork');
+  expect((await restarted.list()).sessions.some(session => session.id === 'fresh-fork')).toBe(false);
+  await failure(restarted.registerCreated('a', fork), 'deleted');
+});
+
+test('rejects registering created histories outside their owner or workspace and does not duplicate visible forks', async () => {
+  const f = await fixture();
+  for (const thread of [{ ...f.source, cwd: '/other' }, { ...f.source, parentThreadId: 'parent' },
+    { ...f.source, path: join(f.b, 'sessions/foreign.jsonl') }, { ...f.source, id: '' }]) {
+    await failure(f.catalog.registerCreated('a', thread), 'invalid account or workspace');
+  }
+  await failure(f.catalog.registerCreated('missing', f.source), 'invalid account or workspace');
+  await f.catalog.registerCreated('a', f.source);
+  await f.catalog.registerCreated('a', f.source);
+  f.calls.length = 0;
+  expect((await f.catalog.list()).sessions.map(session => session.id)).toEqual(['source']);
+  expect(f.calls.some(call => call.method === 'thread/read')).toBe(false);
+  const otherWorkspace = new CodexConversationCatalog({ ...f.options, cwd: '/other' });
+  f.pages(() => ({ data: [], nextCursor: null }));
+  expect((await otherWorkspace.list()).sessions).toEqual([]);
+});

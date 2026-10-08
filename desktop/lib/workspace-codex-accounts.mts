@@ -52,6 +52,7 @@ export function createWorkspaceCodexAccounts(options: {
       loaded.set(client, ids);
     }),
     takeLoaded: (id, client) => loaded.get(client)?.delete(id) === true,
+    registerCreated: thread => catalog.registerCreated(selection?.activeId ?? 'default', thread),
     assertWritable: id => catalog.assertWritable(id),
     read: (id, method, params) => catalog.read(id, method, params),
     locations: id => catalog.locations(id), request,

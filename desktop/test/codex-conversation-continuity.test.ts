@@ -266,3 +266,27 @@ test('handoff remaps the pending response and failure target without clearing tr
     message: 'Unknown delivery', uncertain: true, steering: false });
   expect(failed.responseThreadIds).toEqual([]);
 });
+
+test('registers fork ownership before publishing creation and leaves selection intact on registration failure', async () => {
+  const h = fixture();
+  try {
+    h.service.viewedThreadId = 'source';
+    let registered = false;
+    h.conversations.registerCreated = async thread => {
+      expect(thread.id).toBe('branch');
+      expect(h.events.some(event => event.type === 'session-created')).toBe(false);
+      registered = true;
+    };
+    expect((await h.service.forkSession()).session.id).toBe('branch');
+    expect(registered).toBe(true);
+    h.events.length = 0;
+    h.service.viewedThreadId = 'source';
+    h.conversations.registerCreated = async () => { throw new Error('Registration failed'); };
+    let error: unknown;
+    try { await h.service.forkSession(); } catch (cause) { error = cause; }
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe('Registration failed');
+    expect(h.service.viewedThreadId).toBe('source');
+    expect(h.events.some(event => event.type === 'session-created' || event.type === 'session-selected')).toBe(false);
+  } finally { await h.stop(); }
+});
