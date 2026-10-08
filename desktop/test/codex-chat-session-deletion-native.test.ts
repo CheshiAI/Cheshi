@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { CodexAccountClients } from '../lib/codex-account-clients.mts';
 import { CodexAppServerClient } from '../lib/codex-app-server-client.mts';
 import type { CodexConversationAccess } from '../lib/codex-chat-account-continuity.mts';
 import { CodexChatContexts } from '../lib/codex-chat-contexts.mts';
@@ -67,6 +68,9 @@ runtimeTest('deletes a real paginated fork chain through the catalog in dependen
     capabilities: { experimentalApi: true },
     requestTimeoutMs: 10_000,
   });
+  const writers = new CodexAccountClients(isolatedCodexTestEnvironment(directory));
+  const writer = writers.create({ command: client.command, cwd: directory, clientInfo: client.clientInfo,
+    capabilities: client.capabilities, requestTimeoutMs: 10_000 });
   let service: CodexChatService | undefined;
   let contexts: CodexChatContexts | undefined;
   try {
@@ -99,6 +103,7 @@ runtimeTest('deletes a real paginated fork chain through the catalog in dependen
       async list() { return { sessions: [] }; },
       async resolve(id) { return id; },
       async locations() { return chain.map(thread => ({ profileId: 'fixture', threadId: thread.id })); },
+      releaseWriters: ids => writers.releaseThreadWriters(ids),
       async forget(id) { forgotten.push(id); },
       async request(profileId, method, params) {
         expect(profileId).toBe('fixture');
@@ -108,11 +113,22 @@ runtimeTest('deletes a real paginated fork chain through the catalog in dependen
     };
     const options = { cwd: directory, serviceName: 'test', developerInstructions: 'Offline fixture.' };
     service = new CodexChatService({ ...options, client, conversations });
-    contexts = new CodexChatContexts({ service: options, emit() {},
-      createClient() { throw new Error('This fixture must not open additional chat clients.'); } });
+    contexts = new CodexChatContexts({ service: options, emit() {}, createClient: () => writer });
     const deletion = new CodexChatSessionDeletion({ service, contexts, relays: { get: () => null } });
     const currentId = chain.at(-1)!.id;
+    const pane = contexts.get(1, 'opened');
+    await client.stop(); // Fork creation loads its writer; reopen on the chat-pane transport.
+    await writer.request('thread/resume', { threadId: currentId, cwd: directory,
+      model: 'offline-test', modelProvider: 'offline', approvalPolicy: 'never', sandbox: 'read-only' });
+    pane.viewedThreadId = currentId;
+    pane.subscribedThreadIds.add(currentId);
+    pane.subscribedThreadIds.add('previously-opened');
+    const conflict = await failure(client.request('thread/delete', { threadId: currentId }));
+    expect(conflict.message).toContain('active writer');
     const result = await deletion.deleteSession(service, currentId);
+    expect(writer.pid).toBeNull();
+    expect(pane.subscribedThreadIds.size).toBe(0);
+    expect(pane.viewedThreadId).toBeNull();
     expect(new Set(result.threadIds)).toEqual(new Set(chain.map(thread => thread.id)));
     expect(deletions).toEqual(chain.map(thread => thread.id).reverse());
     expect(forgotten).toEqual([currentId]);
@@ -120,7 +136,7 @@ runtimeTest('deletes a real paginated fork chain through the catalog in dependen
     expect(recordValue(await client.request('thread/list', { modelProviders: [], limit: 100 }))?.data).toEqual([]);
     expect(recordValue(await client.request('thread/loaded/list', {}))?.data).toEqual([]);
   } finally {
-    await Promise.all([service?.stop(), contexts?.stop(), client.stop()]);
+    await Promise.all([service?.stop(), contexts?.stop(), client.stop(), writers.stop()]);
     await rm(directory, { recursive: true, force: true });
   }
 }, 30_000);

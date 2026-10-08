@@ -27,6 +27,8 @@ function contextClient(client: ContextClient): ContextClient {
     respond: async (id, result) => { assertOpen(); await client.respond(id, result); },
     onNotification: (listener) => client.onNotification(listener),
     onRequest: (listener) => client.onRequest(listener),
+    onDidReleaseWriters: client.onDidReleaseWriters
+      ? listener => client.onDidReleaseWriters!(listener) : undefined,
     onDidFail: (listener) => client.onDidFail(listener),
     stop: async () => { disposed = true; await client.stop(); },
   };

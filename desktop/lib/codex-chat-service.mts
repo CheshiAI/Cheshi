@@ -229,9 +229,12 @@ export class CodexChatService {
 
   private subscribeClient(): void {
     const client = this.client;
-    this.removeNotificationListener = client.onNotification((value) =>
-      this.handleNotification(value),
-    );
+    const removeNotification = client.onNotification((value) => this.handleNotification(value));
+    const removeRelease = client.onDidReleaseWriters?.(() => {
+      this.subscribedThreadIds.clear();
+      this.pendingTurnNotifications.clear();
+    });
+    this.removeNotificationListener = () => { removeNotification(); removeRelease?.(); };
     this.removeRequestListener = client.onRequest((value) =>
       this.handleRequest(value),
     );

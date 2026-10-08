@@ -207,6 +207,7 @@ export interface CodexChatClient {
   respond: (id: string | number, result: unknown) => Promise<void>;
   onNotification: (listener: (value: JsonObject) => void) => () => void;
   onRequest: (listener: (value: JsonObject) => void) => () => void;
+  onDidReleaseWriters?: (listener: () => void) => () => void;
   onDidFail: (listener: (error: Error) => void) => () => void;
 }
 

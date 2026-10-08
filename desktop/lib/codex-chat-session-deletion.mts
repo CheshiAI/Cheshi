@@ -205,7 +205,9 @@ export class CodexChatSessionDeletion {
     }
     const threadIds = [...new Set([threadId, ...[...confirmed.values()].flat(), ...[...plans.values()].flatMap(plan => plan.threadIds)])];
     this.assertAvailable(threadIds);
-    for (const [key, plan] of orderDeletionPlans(plans)) {
+    const orderedPlans = orderDeletionPlans(plans);
+    await conversations.releaseWriters?.(threadIds);
+    for (const [key, plan] of orderedPlans) {
       await requestThreadDeletion({ request: (method, params) => conversations.request(plan.profileId, method, params) }, plan.threadId);
       confirmed.set(key, plan.threadIds);
       this.confirmedDeletions.set(threadId, confirmed);

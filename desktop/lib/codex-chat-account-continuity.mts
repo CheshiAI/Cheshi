@@ -16,6 +16,7 @@ export interface CodexConversationAccess {
   takeLoaded?(threadId: string, client: CodexChatClient): boolean;
   read?(threadId: string, method: 'thread/read' | 'thread/goal/get', params?: JsonObject): Promise<unknown>;
   locations(threadId: string): Promise<Array<{ profileId: string; threadId: string }>>;
+  releaseWriters?(threadIds: readonly string[]): Promise<void>;
   deletionProgress?(threadId: string): Promise<CodexConversationDeletion[]>;
   confirmDeletion?(threadId: string, deletion: CodexConversationDeletion): Promise<void>;
   request(profileId: string, method: string, params?: unknown): Promise<unknown>;

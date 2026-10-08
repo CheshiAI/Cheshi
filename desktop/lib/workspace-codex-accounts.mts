@@ -55,6 +55,10 @@ export function createWorkspaceCodexAccounts(options: {
     assertWritable: id => catalog.assertWritable(id),
     read: (id, method, params) => catalog.read(id, method, params),
     locations: id => catalog.locations(id), request,
+    releaseWriters: async ids => {
+      try { await clients.releaseThreadWriters(ids); }
+      finally { loaded = new WeakMap(); }
+    },
     deletionProgress: id => catalog.deletionProgress(id),
     confirmDeletion: (id, deletion) => catalog.confirmDeletion(id, deletion),
     forget: id => catalog.forget(id),

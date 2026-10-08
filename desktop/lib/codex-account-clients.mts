@@ -13,6 +13,7 @@ export class CodexAccountClients {
   generation = 0;
   switching = false;
   private closed = false;
+  private releasingWriters = false;
   readonly prepareCommand: PrepareCommand | undefined;
   private readonly projectDocMaxBytes: () => number;
 
@@ -41,8 +42,38 @@ export class CodexAccountClients {
     if (this.switching) throw new Error('Wait for the account switch to finish.');
   }
 
+  async releaseThreadWriters(threadIds: readonly string[]): Promise<void> {
+    this.assertAvailable();
+    if (this.releasingWriters) throw new Error('Wait for the conversation deletion to finish.');
+    const targets = new Set(threadIds);
+    const owners = [];
+    for (const client of this.clients) {
+      if (!client.ready) continue;
+      const response = recordValue(await client.request('thread/loaded/list', {}));
+      if (!response || !Array.isArray(response.data) || response.data.some(id => typeof id !== 'string')) {
+        throw new Error('Codex returned an invalid loaded session list.');
+      }
+      if (response.data.some(id => targets.has(id))) owners.push(client);
+    }
+    this.assertAvailable();
+    if (this.releasingWriters) throw new Error('Wait for the conversation deletion to finish.');
+    if (owners.some(client => client.busy)) throw new Error('Stop all work in the session owner before deleting it.');
+    this.releasingWriters = true;
+    for (const client of owners) client.releasingWriters = true;
+    try {
+      for (const client of owners) {
+        await client.stop();
+        client.writersReleased();
+      }
+    } finally {
+      for (const client of owners) client.releasingWriters = false;
+      this.releasingWriters = false;
+    }
+  }
+
   async change(environment: Record<string, string | undefined>, retained: AccountClient[], reset: () => Promise<void>): Promise<void> {
     this.assertAvailable();
+    if (this.releasingWriters) throw new Error('Wait for the conversation deletion to finish.');
     if ([...this.clients].some(client => client.busy)) throw new Error('Wait for all Codex requests and responses to finish before switching accounts.');
     this.switching = true;
     try {
@@ -69,7 +100,9 @@ export class AccountClient extends CodexAppServerClient {
   private readonly pool: CodexAccountClients;
   private readonly originalArgs: string[];
   private generation: number;
+  releasingWriters = false;
   private calls = 0;
+  private readonly writerReleaseListeners = new Set<() => void>();
   private readonly turns = new Set<string>();
   private preparationRevision = 0;
   private readonly environmentOverrides: Record<string, string | undefined>;
@@ -91,6 +124,15 @@ export class AccountClient extends CodexAppServerClient {
     this.onDidFail(() => this.turns.clear());
   }
 
+  onDidReleaseWriters(listener: () => void): () => void {
+    this.writerReleaseListeners.add(listener);
+    return () => { this.writerReleaseListeners.delete(listener); };
+  }
+
+  writersReleased(): void {
+    for (const listener of this.writerReleaseListeners) listener();
+  }
+
   get busy(): boolean { return this.calls > 0 || this.turns.size > 0 || this.startFlight.operation !== null; }
 
   rebind(): void {
@@ -101,6 +143,7 @@ export class AccountClient extends CodexAppServerClient {
 
   override async start(): Promise<Record<string, unknown>> {
     this.pool.assertAvailable();
+    if (this.releasingWriters) throw new Error('Wait for the conversation deletion to finish.');
     if (this.generation !== this.pool.generation) throw new Error('This conversation belongs to the previous account. Open a new chat.');
     this.pool.clients.add(this);
     return super.start();

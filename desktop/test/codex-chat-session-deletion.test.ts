@@ -414,3 +414,39 @@ test('IPC exposes explicit deletion and protects in-flight message preparation',
     expect(await handlers.get('cheshi:delete-codex-chat-session')!(event, 'root', 'pane')).toEqual({ threadIds: ['root'] });
   } finally { await f.close(); }
 });
+
+
+test('catalog waits for writer release and preserves viewed history when deletion fails', async () => {
+  const f = catalogFixture();
+  const releasing = createDeferred<void>();
+  const release = createDeferred<void>();
+  f.conversations.releaseWriters = async ids => {
+    expect(ids).toContain('root');
+    releasing.resolve();
+    await release.promise;
+  };
+  f.failedDeletions.add('a:root');
+  f.service.viewedThreadId = 'root';
+  try {
+    const deletion = f.deletion.deleteSession(f.service, 'root');
+    await releasing.promise;
+    expect(f.requests.some(request => request.method === 'thread/delete')).toBe(false);
+    release.resolve();
+    expect((await failure(deletion)).message).toBe('Delete failed');
+    expect(f.service.viewedThreadId).toBe('root');
+    expect(f.forgotten).toEqual([]);
+    expect(f.events.some(event => event.type === 'sessions-deleted')).toBe(false);
+  } finally { await f.close(); }
+});
+
+test('writer release failure prevents catalog deletion and pane reset', async () => {
+  const f = catalogFixture();
+  f.conversations.releaseWriters = async () => { throw new Error('Writer shutdown failed'); };
+  f.service.viewedThreadId = 'root';
+  try {
+    expect((await failure(f.deletion.deleteSession(f.service, 'root'))).message).toBe('Writer shutdown failed');
+    expect(f.requests.some(request => request.method === 'thread/delete')).toBe(false);
+    expect(f.service.viewedThreadId).toBe('root');
+    expect(f.forgotten).toEqual([]);
+  } finally { await f.close(); }
+});
