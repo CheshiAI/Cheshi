@@ -1,5 +1,4 @@
 .root {
-  --sidebar-tab-gap: 4px;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -16,7 +15,7 @@
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
-  scroll-padding-inline: var(--icon-default);
+  scroll-padding-inline: 0;
   scrollbar-width: none;
   border-bottom: 1px solid var(--divider);
   box-sizing: border-box;
@@ -32,22 +31,21 @@
   isolation: isolate;
   box-sizing: border-box;
   height: 100%;
-  width: calc((100% - 2 * var(--icon-default) + var(--sidebar-tab-gap)) * var(--sidebar-tab-count) / var(--sidebar-visible-tabs) - var(--sidebar-tab-gap) + 2 * var(--icon-default));
+  width: calc(100% * var(--sidebar-tab-count) / var(--sidebar-visible-tabs));
   overflow: visible;
-  gap: var(--sidebar-tab-gap);
-  padding: 0 var(--icon-default);
+  gap: 0;
+  padding: 0;
 }
 
 .root .tabs::before {
   content: '';
   position: absolute;
-  z-index: 0;
-  top: calc(50% - 16px);
-  left: var(--icon-default);
-  width: calc((100% - 2 * var(--icon-default) - (var(--sidebar-tab-count) - 1) * var(--sidebar-tab-gap)) / var(--sidebar-tab-count));
-  height: 32px;
-  border-radius: 8px;
-  background: var(--control-surface);
+  z-index: 2;
+  bottom: 0;
+  left: 0;
+  width: calc(100% / var(--sidebar-tab-count));
+  height: var(--tab-indicator-height);
+  background: var(--divider);
   pointer-events: none;
   /* Share the content's native scroll timeline, including reversals and snap-back. */
   animation: sidebar-selection linear both;
@@ -56,16 +54,18 @@
 
 @keyframes sidebar-selection {
   from { transform: translateX(0); }
-  to { transform: translateX(calc((100% + var(--sidebar-tab-gap)) * (var(--sidebar-tab-count) - 1))); }
+  to { transform: translateX(calc(100% * (var(--sidebar-tab-count) - 1))); }
 }
 
 .root .tabs .tab {
   position: relative;
   z-index: 1;
   box-sizing: border-box;
+  height: 100%;
   flex: 1 1 0;
   min-width: 0;
   justify-content: center;
+  border-radius: 0;
   padding: 0 var(--icon-default);
   font-family: var(--font-ui), sans-serif;
   font-size: var(--font-size-small);
