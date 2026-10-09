@@ -1,4 +1,20 @@
-import type { ChatMember, RoomMessage } from './agent-chats.ts';
+import type { AgentRoom, ChatMember, RoomMessage } from './agent-chats.ts';
+import type { SpecialistAgent } from './agent-registry.ts';
+
+/** Refresh labels without rebinding saved membership or rewriting conversation history. */
+export function resolveRoomMemberNames(room: AgentRoom, agents: SpecialistAgent[]): AgentRoom {
+  const registered = new Map(agents.filter(agent => agent.assignments.some(assignment => assignment.workspaceRoot === room.workspace))
+    .map(agent => [agent.id, agent]));
+  const resolve = (member: ChatMember): ChatMember => {
+    const agent = registered.get(member.id);
+    return agent && agent.accountId === member.accountId && agent.name !== member.name
+      ? { ...member, name: agent.name } : member;
+  };
+  const members = room.members.map(resolve), formerMembers = room.formerMembers?.map(resolve);
+  if (members.every((member, index) => member === room.members[index])
+    && formerMembers?.every((member, index) => member === room.formerMembers?.[index]) !== false) return room;
+  return { ...room, members, ...(formerMembers ? { formerMembers } : {}) };
+}
 
 export interface ChatRecipient { recipient: string | null; error: string | null }
 const escapePattern = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

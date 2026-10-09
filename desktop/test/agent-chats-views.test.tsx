@@ -14,7 +14,8 @@ import { VerificationMessage } from '../frontend/src/features/agents/Verificatio
 import type { ChatsRequest, ChatsSnapshot } from '../shared/agent-chats';
 import type { IntegrationSummary } from '../shared/agent-work';
 const registeredHomies = { list: async () => ({ workspaceRoot: '/project', agents: ['dev', 'planner'].map(id => ({
-  ...specialistAgent(), id, accountId: id === 'dev' ? 'account' : 'planner-account', assignments: [{ workspaceRoot: '/project', instructions: '' }],
+  ...specialistAgent(), id, name: id === 'dev' ? 'Development' : 'Planning Homie',
+  accountId: id === 'dev' ? 'account' : 'planner-account', assignments: [{ workspaceRoot: '/project', instructions: '' }],
 })) }), onDidChange: () => () => {} };
 function ChatsView(props: ComponentProps<typeof WorkerView>) {
   return <WorkerView registry={registeredHomies} {...props} />;

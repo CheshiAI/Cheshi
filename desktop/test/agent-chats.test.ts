@@ -34,6 +34,37 @@ function fixture() {
   const send = (id: string, patch: Partial<Extract<ChatsRequest, { action: 'send' }>> = {}) => request({ action: 'send', id, roomId: 'room', threadId: null, recipient: 'dev', text: 'Build login', goal: true, ...patch });
   return { workspace, filename, agents, details, sent, options, service, request, send, uncertain: () => { uncertain = true; } };
 }
+test('renamed members appear in snapshots and receive current-name mentions without rewriting history', async () => {
+  const f = fixture(), saved = readFileSync(f.filename, 'utf8');
+  const before = f.request({ action: 'list' });
+  f.agents[1]!.name = 'Cheshi-Evaluate';
+  const after = f.request({ action: 'list' });
+  expect(after.rooms[0]?.members[1]).toEqual({ id: 'planner', accountId: 'account-1', name: 'Cheshi-Evaluate' });
+  expect(after.cursor!.sequence).toBeGreaterThan(before.cursor!.sequence);
+  expect(readFileSync(f.filename, 'utf8')).toBe(saved);
+  expect(() => f.send('old-name', { goal: false, recipient: null, text: '@planner check this' })).toThrow('exact name');
+  f.send('new-name', { goal: false, recipient: null, text: '@Cheshi-Evaluate check this' });
+  await f.service.tick(); expect(f.sent).toMatchObject([{ agent: 'planner' }]);
+  expect(new ChatsStore(f.filename).snapshot(f.workspace).rooms[0]?.members[1]?.name).toBe('planner');
+});
+test.each(['deleted', 'unassigned', 'account-replaced'])('name projection preserves saved membership when the agent is %s', reason => {
+  const f = fixture();
+  f.agents[1]!.name = 'Different identity';
+  if (reason === 'deleted') f.agents.splice(1, 1);
+  else if (reason === 'unassigned') f.agents[1]!.assignments = [];
+  else f.agents[1]!.accountId = 'replacement';
+  expect(f.request({ action: 'list' }).rooms[0]?.members[1]).toEqual({ id: 'planner', accountId: 'account-1', name: 'planner' });
+  expect(() => f.send('invalid', { goal: false, recipient: null, text: '@planner check this' })).toThrow('available room participant');
+});
+test('former members use their current matching identity name and fall back to the saved name after deletion', () => {
+  const f = fixture();
+  f.request({ action: 'participants', roomId: 'room', members: ['dev'], defaultAgentId: 'dev',
+    expectedMembers: ['dev', 'planner'], expectedDefaultAgentId: 'dev' });
+  f.agents[1]!.name = 'Cheshi-Evaluate';
+  expect(f.request({ action: 'list' }).rooms[0]?.formerMembers?.[0]?.name).toBe('Cheshi-Evaluate');
+  f.agents.splice(1, 1);
+  expect(f.request({ action: 'list' }).rooms[0]?.formerMembers?.[0]?.name).toBe('planner');
+});
 test('pin requests require literal booleans and legacy rooms load unpinned', () => {
   const f = fixture();
   expect(parseChatsRequest({ action: 'pin', roomId: 'room', pinned: false })).toEqual({ action: 'pin', roomId: 'room', pinned: false });

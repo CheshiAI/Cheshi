@@ -51,6 +51,7 @@ function shouldIgnore(packagePath: string): boolean {
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
+    if (grandchildEntry === 'worker-workspace.ts') return segments.length > 3;
     if ((grandchildEntry === 'agent-package.ts' || grandchildEntry === 'homie-pack.ts' || grandchildEntry === 'homie-tools.ts')) return segments.length > 3;
     if (grandchildEntry === 'agent-voice.ts' || grandchildEntry === 'agent-execution-health.ts') return segments.length > 3;
     if (grandchildEntry === 'agent-chat-recipient.ts' || grandchildEntry === 'agent-activity.ts' || grandchildEntry === 'agent-work.ts' || grandchildEntry === 'agent-question.ts' || grandchildEntry === 'agent-chats.ts' || grandchildEntry === 'agent-task-inspection.ts' || grandchildEntry === 'agent-avatar.ts' || grandchildEntry === 'agent-management.ts' || grandchildEntry === 'agent-terminal.ts' || grandchildEntry === 'agent-registry.ts' || grandchildEntry === 'agent-models.ts' || grandchildEntry === 'agent-runtime.ts') return segments.length > 3;
@@ -65,6 +66,7 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
   }
   if (grandchildEntry === 'agent-platform') {
+    if (segments[3] === 'worker-workspace-inspection.mts') return segments.length > 4;
     const files = new Set(['worker-file-links.mts', 'worker-workspaces.mts', 'chat-service.mts', 'homie-executor.mts', 'contracts.mts', 'service.mts', 'store.mts', 'git-workspaces.mts', 'managed-worktrees.mts']);
     return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
   }

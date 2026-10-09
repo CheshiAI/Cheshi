@@ -21,7 +21,7 @@ import { verificationReview, verificationReportContext, type VerificationReview 
 import { verificationQuote } from '../agents/verificationPresentation';
 import { WorkMessage } from '../agents/WorkMessage';
 import { isRoomWorkSettled, type AgentChatsApi, type ChatsRequest, type RoomMessage } from '../../../../shared/agent-chats';
-import { resolveChatRecipient } from '../../../../shared/agent-chat-recipient';
+import { resolveChatRecipient, resolveRoomMemberNames } from '../../../../shared/agent-chat-recipient';
 import type { AgentRegistryApi } from '../../../../shared/agent-registry';
 import { DELETED_HOMIE, useRoomAgents } from './useRoomAgents';
 import type { AgentEngineInfo, AgentManagementApi } from '../../../../shared/agent-management';
@@ -40,6 +40,8 @@ import styles from './ChatsView.module.css';
 import { useRoomTimeline } from './useRoomTimeline';
 import { useChatsScroll } from './useChatsScroll';
 import { ChatsMessageActions } from './ChatsMessageActions';
+import { TaskWorkspace } from './TaskWorkspace';
+import { workerWorkspaceTarget } from '../../../../shared/worker-workspace';
 
 const ChatsMessageContent = memo(MessageContent);
 
@@ -75,10 +77,13 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     }
     wasHomiesOpen.current = homiesOpen;
   }, [active, homiesOpen]);
-  const data = useChatsSnapshot(api, active || sidebarActive), { snapshot } = data;
+  const data = useChatsSnapshot(api, active || sidebarActive), { snapshot: savedSnapshot } = data;
   const [roomId, setRoomId] = useState<string | null>(null);
   const [replies, setReplies] = useState<Record<string, string | null>>({});
   const { agents, status: memberStatus } = useRoomAgents(registry, active || sidebarActive);
+  const snapshot = useMemo(() => ({ ...savedSnapshot,
+    rooms: savedSnapshot.rooms.map(room => resolveRoomMemberNames(room, agents)),
+  }), [savedSnapshot, agents]);
   const [engines, setEngines] = useState<AgentEngineInfo[]>([]);
   const [dialog, setDialog] = useState<'new' | null>(null), [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false), [voiceOpen, setVoiceOpen] = useState(false);
@@ -103,6 +108,17 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     return () => { stopped = true; };
   }, [active, management]);
   const room = snapshot.rooms.find(r => r.id === roomId), messages = useRoomTimeline(snapshot.messages, roomId);
+  const workspaceMessages = useMemo(() => {
+    const seen = new Set<string>(), ids = new Set<string>();
+    for (const message of messages) {
+      if (message.activity || (message.sender !== 'user' && !message.relatedTask)) continue;
+      const target = workerWorkspaceTarget(message);
+      if (!target) continue;
+      const key = `${target.agentId}/${target.taskId}`;
+      if (!seen.has(key)) { seen.add(key); ids.add(message.id); }
+    }
+    return ids;
+  }, [messages]);
   const reviewedMessage = messages.find(message => message.id === reviewedMessageId);
   const reviewedFiles = useMemo(() => reviewedMessage?.activity
     ? fileChangesItem(reviewedMessage.activity, reviewedMessage.id) : null, [reviewedMessage?.activity, reviewedMessage?.id]);
@@ -233,6 +249,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
             : verification ? <VerificationCard review={verification} onOpen={() => onReviewVerification?.(verification, true)} />
               : <div className={styles.text}><ChatsMessageContent text={message.text || 'No text response.'} mention={mention} reviewFileContext={reviewFileContext} /></div>}
         {message.isolated && <IsolatedTaskCard message={message} mutate={mutate} />}
+        {workspaceMessages.has(message.id) && <TaskWorkspace message={message} owner={name(workerWorkspaceTarget(message)!.agentId)} mutate={mutate} />}
         {message.error && !message.goalProgress && <p role="status" className={styles.description}>{message.error}</p>}
         {message.error?.includes('Project setup required:') && <ProjectEnvironmentSetup roomId={message.roomId} mutate={mutate} />}
         {message.activity?.kind === 'message' && message.activity.truncated && <p className={styles.description}>Message shortened to the retained excerpt.</p>}

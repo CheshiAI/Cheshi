@@ -16,6 +16,7 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   const registration = registerAgentChatsIpc({ window, workspaceRoot: '/project', ipc: {
     handle: (name, fn) => { handlers.set(name, fn); }, removeHandler: name => { handlers.delete(name); },
   }, service: {
+    inspectWorkspace: async root => { calls.push(`${root}/workspace`); return { rooms: [], messages: [] }; },
     openFile: async root => { calls.push(`${root}/open-file`); return { rooms: [], messages: [] }; },
     isolated: async root => { calls.push(`${root}/isolated`); return { rooms: [], messages: [] }; },
     isolatedSettled: async () => {},
@@ -68,6 +69,12 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   expect(calls.at(-1)).toBe('/project/delete');
   await api.request({ action: 'open-file', roomId: 'room', messageId: 'reply', href: '/workspace/result.txt' });
   expect(calls.at(-1)).toBe('/project/open-file');
+  for (const action of ['workspace-inspect', 'workspace-open'] as const) {
+    await api.request({ action, roomId: 'room', messageId: 'reply' });
+    expect(calls.at(-1)).toBe('/project/workspace');
+    expect(() => invoke(owner, {}, { action, roomId: 'room', messageId: 'reply' })).toThrow('workspace');
+    expect(() => invoke(owner, mainFrame, { action, roomId: 'room', messageId: '../escape' })).toThrow('Invalid agent ID');
+  }
   expect(() => invoke(owner, {}, { action: 'open-file', roomId: 'room', messageId: 'reply', href: '/workspace/result.txt' })).toThrow('workspace');
   expect(() => invoke(owner, mainFrame, { action: 'open-file', roomId: 'room', messageId: 'reply', href: 'file:///etc/passwd' })).toThrow('file link');
   expect(() => invoke(owner, {}, { action: 'delete', roomId: 'room' })).toThrow('workspace');

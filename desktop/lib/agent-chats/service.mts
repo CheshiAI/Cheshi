@@ -7,7 +7,8 @@ import { isWorkKind } from '../../shared/agent-work.ts';
 import { realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { ChatsStore } from './store.mts';
-import { resolveChatRecipient } from '../../shared/agent-chat-recipient.ts';
+import { resolveChatRecipient, resolveRoomMemberNames } from '../../shared/agent-chat-recipient.ts';
+import { workerWorkspaceTarget, type WorkerWorkspaceInspection } from '../../shared/worker-workspace.ts';
 import { roomCoordination } from './coordination.mts';
 import { isRoomWorkSettled, parseChatsRequest, type AgentRoom, type ChatMember, type RoomJob, type RoomMessage, type RoomGoalProgress } from '../../shared/agent-chats.ts';
 import type { AgentDetails, AgentTask } from '../../shared/agent-management.ts';
@@ -16,6 +17,7 @@ import { projectPermissions } from '../../shared/agent-registry.ts';
 import type { AgentRegistrySnapshot } from '../../shared/agent-registry.ts';
 import { bindingFor, type Binding, type Message } from '../agent-orchestration/mailbox.mts';
 interface Options {
+  workspace?(binding: Binding, taskId: string, action: 'inspect' | 'open'): Promise<WorkerWorkspaceInspection>;
   openFile?(binding: Binding, href: string, taskId?: string): Promise<void>;
   platform?: PlatformChats;
   permissions?(workspace: string, input: { agentId: string; engineId: string; accountId: string; roomId: string; taskId: string; request: NonNullable<RoomMessage['permissionRequest']>; decision: 'allow' | 'deny' }): Promise<AgentRuntimeState>;
@@ -64,6 +66,7 @@ export function createAgentChats(options: Options) {
   const deleting = new Set<string>();
   const isolated = createIsolatedChatTasks({ store, platform: options.platform, room: (workspace, id) => roomFor(workspace, id), assertMember: assertCurrentMember });
   const progress = new Map<string, { checkedAt: number; value: RoomGoalProgress }>();
+  const workspaceInspections = new Map<string, WorkerWorkspaceInspection>();
   function resumeBlock(details: AgentDetails | null | undefined, task: AgentTask | undefined, sleeping = false): string | null {
     if (details?.tasks.some(t => t.status === 'unknown')) return 'Execution outcome is unknown. Inspect the saved task before resuming.';
     const waiting = sleeping ? null : workerWaitReason(details);
@@ -104,11 +107,13 @@ export function createAgentChats(options: Options) {
   }
   function project(workspace: string) {
     const data = store().snapshot(workspace), state = store().all();
-    return { ...data, messages: data.messages.map(m => {
+    const agents = options.registry(workspace).agents;
+    return { ...data, rooms: data.rooms.map(room => resolveRoomMemberNames(room, agents)), messages: data.messages.map(m => {
       const room = data.rooms.find(r => r.id === m.roomId), member = room?.members.find(p => p.id === m.recipient);
       const worker = !m.isolated && m.sender === 'user' && member && room && current(room, member.id) && !['completed', 'held'].includes(m.status ?? '')
         ? options.lifecycle?.(bindingFor(room.workspace, room.engineId, member.id, member.accountId)) : undefined;
-      return { ...m, ...(worker ? { worker } : {}), ...((m.kind === 'goal' || m.dialogue) ? { goalProgress: goalProgress(m, state) } : {}) };
+      const workspaceInspection = workspaceInspections.get(`${m.roomId}/${m.id}`);
+      return { ...m, ...(workspaceInspection ? { workspaceInspection } : {}), ...(worker ? { worker } : {}), ...((m.kind === 'goal' || m.dialogue) ? { goalProgress: goalProgress(m, state) } : {}) };
     }) };
   }
   function members(workspace: string, ids: string[]): ChatMember[] {
@@ -131,11 +136,12 @@ export function createAgentChats(options: Options) {
     const room = store().all().rooms.find(r => r.workspace === workspace && r.id === id);
     if (!room) throw new Error('Unknown room in this project.');
     if (deleting.has(id)) throw new Error('Room deletion is in progress.');
-    return room;
+    return resolveRoomMemberNames(room, options.registry(workspace).agents);
   };
   function request(workspaceRoot: string, value: unknown) {
     const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
     if (input.action === 'open-file') throw new Error('Use the asynchronous Worker file handler.');
+    if (input.action === 'workspace-inspect' || input.action === 'workspace-open') throw new Error('Use the asynchronous worktree handler.');
     if (input.action.startsWith('isolated-')) throw new Error('Use the asynchronous isolated task handler.');
     if (input.action === 'pin') {
       const room = roomFor(workspace, input.roomId);
@@ -608,6 +614,7 @@ export function createAgentChats(options: Options) {
         state.jobs = state.jobs.filter(job => job.roomId !== room.id);
       });
       removedJobs.forEach(job => progress.delete(job.id));
+      for (const key of workspaceInspections.keys()) if (key.startsWith(`${room.id}/`)) workspaceInspections.delete(key);
       return snapshot(workspace);
     } finally { deleting.delete(room.id); keys.forEach(key => inspecting.delete(key)); }
   }
@@ -622,7 +629,24 @@ export function createAgentChats(options: Options) {
     await options.openFile(bindingFor(workspace, room.engineId, member.id, member.accountId), input.href, message.taskId ?? (message.relatedTask?.agentId === member.id ? message.relatedTask.taskId : undefined));
     return snapshot(workspace);
   }
-  return { openFile, isolated: async (workspace: string, value: unknown) => { await isolated.request(workspace, value); return snapshot(realpathSync(workspace)); },
+  async function inspectWorkspace(workspaceRoot: string, value: unknown) {
+    const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
+    if (input.action !== 'workspace-inspect' && input.action !== 'workspace-open') throw new Error('Invalid worktree request.');
+    const room = roomFor(workspace, input.roomId);
+    const message = store().all().messages.find(m => m.roomId === room.id && m.id === input.messageId);
+    const target = message && workerWorkspaceTarget(message);
+    const member = target && [...room.members, ...(room.formerMembers ?? [])].find(m => m.id === target.agentId);
+    if (!target || !member) throw new Error('This message has no saved task workspace identity.');
+    if (!options.workspace) throw new Error('Restart Cheshi to inspect task worktrees.');
+    const result = await options.workspace(bindingFor(workspace, room.engineId, member.id, member.accountId), target.taskId,
+      input.action === 'workspace-open' ? 'open' : 'inspect');
+    roomFor(workspace, room.id);
+    const key = `${room.id}/${input.messageId}`;
+    workspaceInspections.delete(key); workspaceInspections.set(key, result);
+    if (workspaceInspections.size > 64) workspaceInspections.delete(workspaceInspections.keys().next().value!);
+    return snapshot(workspace);
+  }
+  return { inspectWorkspace, openFile, isolated: async (workspace: string, value: unknown) => { await isolated.request(workspace, value); return snapshot(realpathSync(workspace)); },
     isolatedSettled: () => isolated.settled(),
     deleteRoom, prepareProject, permissions, retry, inspectApplication, request, recover, question, rooms, tick,
     settled: () => queue.settled(),

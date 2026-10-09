@@ -47,7 +47,7 @@ test('isolated chat modules and their local runtime imports are packaged and loa
   if (typeof ignore !== 'function') throw new Error('Expected the packaging allowlist.');
   const shouldIgnore = ignore;
   const entrypoints = ['desktop/lib/agent-platform/chat-service.mts', 'desktop/lib/agent-chats/isolated-tasks.mts',
-    'desktop/lib/agent-management/runtime.mts', 'desktop/lib/agent-chats/ipc.mts'];
+    'desktop/lib/agent-management/runtime.mts', 'desktop/lib/agent-chats/ipc.mts', 'desktop/lib/agent-platform/worker-workspace-inspection.mts'];
   const seen = new Set<string>();
   function visit(filename: string) {
     if (seen.has(filename)) return;

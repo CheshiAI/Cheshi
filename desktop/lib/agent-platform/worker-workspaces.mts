@@ -3,12 +3,13 @@ import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, readdir, rename, rmdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Binding } from '../agent-orchestration/mailbox.mts';
-import { platformPaths, revision } from './git-workspaces.mts';
+import { git, platformPaths, revision } from './git-workspaces.mts';
 import { assertWorktree, createWorktree, initializeRepository } from './managed-worktrees.mts';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 type Identity = Pick<Binding, 'workspace' | 'engineId' | 'agentId' | 'accountId'>;
 export interface WorkerWorkspace { workspace: string; branch: string; baseCommit: string }
+export interface WorkerWorkspaceRecord extends WorkerWorkspace { baseBranch: string | null; kind: 'task' | 'intake' | 'legacy' }
 
 /** Task worktrees share objects, never working files. Null addresses the retained legacy workspace. */
 export class WorkerWorkspaces {
@@ -26,6 +27,12 @@ export class WorkerWorkspaces {
       workspace: join(directory, `repository-${kind}-${id}`), branch: `worktree/feature/${kind}-${id}` };
   }
   async existing(binding: Identity, taskId: string | null = null): Promise<WorkerWorkspace | null> {
+    const saved = await this.record(binding, taskId);
+    if (!saved) return null;
+    await assertWorktree(this.location(binding, taskId).directory, saved);
+    return { workspace: saved.workspace, branch: saved.branch, baseCommit: saved.baseCommit };
+  }
+  private async record(binding: Identity, taskId: string | null): Promise<WorkerWorkspaceRecord | null> {
     const location = this.location(binding, taskId);
     let text: string;
     try { text = await readFile(location.filename, 'utf8'); }
@@ -35,11 +42,12 @@ export class WorkerWorkspaces {
       || saved.source !== binding.workspace || saved.engineId !== binding.engineId
       || saved.agentId !== binding.agentId || saved.accountId !== binding.accountId
       || saved.workspace !== location.workspace || saved.branch !== location.branch
-      || typeof saved.baseCommit !== 'string' || !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/.test(saved.baseCommit)) {
+      || typeof saved.baseCommit !== 'string' || !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/.test(saved.baseCommit)
+      || (saved.baseBranch != null && (typeof saved.baseBranch !== 'string' || !saved.baseBranch.startsWith('refs/heads/') || saved.baseBranch.length > 1000))) {
       throw new Error('Saved Homie workspace needs inspection. Its files will not be replaced.');
     }
-    await assertWorktree(location.directory, location);
-    return { workspace: location.workspace, branch: location.branch, baseCommit: saved.baseCommit };
+    return { workspace: location.workspace, branch: location.branch, baseCommit: saved.baseCommit,
+      baseBranch: saved.baseBranch as string | null ?? null, kind: taskId === null ? 'legacy' : isIntakeWorkspace(taskId) ? 'intake' : 'task' };
   }
   private legacyFile(binding: Identity) { return `${this.location(binding).filename}.legacy-tasks`; }
   async retainLegacyTasks(binding: Identity, taskIds: string[]): Promise<void> {
@@ -55,25 +63,31 @@ export class WorkerWorkspaces {
     await rename(`${filename}.tmp`, filename);
   }
   async forTask(binding: Identity, taskId: string): Promise<WorkerWorkspace | null> {
-    const saved = await this.existing(binding, taskId);
+    return this.resolveTask(binding, taskId, key => this.existing(binding, key));
+  }
+  async describeTask(binding: Identity, taskId: string): Promise<WorkerWorkspaceRecord | null> {
+    return this.resolveTask(binding, taskId, key => this.record(binding, key));
+  }
+  private async resolveTask<T>(binding: Identity, taskId: string, load: (key: string | null) => Promise<T | null>): Promise<T | null> {
+    const saved = await load(taskId);
     if (saved) return saved;
     let view: Record<string, unknown> | null = null;
     try { view = JSON.parse(await readFile(`${this.location(binding, taskId).filename}.view`, 'utf8')); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     if (view) {
       if (view.taskId !== taskId || typeof view.key !== 'string' || !isIntakeWorkspace(view.key)) throw new Error('Invalid saved intake view.');
-      return this.existing(binding, view.key);
+      return load(view.key);
     }
     let legacy: unknown;
     try { legacy = JSON.parse(await readFile(this.legacyFile(binding), 'utf8')); }
     catch (error) {
       // Before the first upgrade, every saved Worker message belongs to the legacy workspace.
       // Once the migration allowlist exists, missing new tasks must never fall back to it.
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return this.existing(binding);
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return load(null);
       throw error;
     }
     if (!Array.isArray(legacy) || !legacy.every(id => typeof id === 'string')) throw new Error('Invalid retained task identities.');
-    return legacy.includes(taskId) ? this.existing(binding) : null;
+    return legacy.includes(taskId) ? load(null) : null;
   }
   async ensure(binding: Identity, taskId: string | null = null): Promise<WorkerWorkspace> {
     const location = this.location(binding, taskId);
@@ -95,8 +109,10 @@ export class WorkerWorkspaces {
       const hasHistory = (await readdir(location.directory)).some(file => file.endsWith('.json') || file.startsWith('repository-homie-') || file.startsWith('repository-task-'));
       await initializeRepository(location.directory, binding.workspace, hasHistory);
       const baseCommit = isIntakeWorkspace(taskId) ? taskId.slice('@intake:'.length) : await revision(binding.workspace, 'HEAD');
+      const reference = (await git(binding.workspace, ['rev-parse', '--symbolic-full-name', 'HEAD'])).trim();
+      const baseBranch = reference.startsWith('refs/heads/') && await revision(binding.workspace, 'HEAD') === baseCommit ? reference : null;
       const record = { version: 1, state: 'preparing', source: binding.workspace, engineId: binding.engineId,
-        agentId: binding.agentId, accountId: binding.accountId, ...(taskId === null ? {} : { taskId }), workspace: location.workspace, branch: location.branch, baseCommit };
+        agentId: binding.agentId, accountId: binding.accountId, ...(taskId === null ? {} : { taskId }), workspace: location.workspace, branch: location.branch, baseCommit, baseBranch };
       await writeFile(location.filename, JSON.stringify(record), { flag: 'wx', mode: 0o600 });
       await createWorktree(location.directory, binding.workspace, baseCommit, location);
       await writeFile(`${location.filename}.tmp`, JSON.stringify({ ...record, state: 'ready' }), { mode: 0o600 });

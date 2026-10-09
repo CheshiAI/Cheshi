@@ -4,6 +4,7 @@ import { createCodeGraphSynchronization } from './lib/codegraph-synchronization.
 import { createAgentCodeGraph } from './lib/agent-orchestration/codegraph-source.mts';
 import { createAgentChats } from './lib/agent-chats/service.mts';
 import { createWorkerFileLinks } from './lib/agent-platform/worker-file-links.mts';
+import { createWorkerWorkspaceInspection } from './lib/agent-platform/worker-workspace-inspection.mts';
 import { registerAgentChatsIpc } from './lib/agent-chats/ipc.mts';
 import { createSpecialistRuntime } from './lib/agent-management/runtime.mts';
 import { createAgentDeletion } from './lib/agent-management/deletion.mts';
@@ -105,6 +106,7 @@ const platformChats = createPlatformChats({ directory: path.join(app.getPath('us
 });
 const agentChats = createAgentChats({ platform: platformChats, roomChanged: () => specialistRuntime.notify(), filename: path.join(app.getPath('userData'), 'agents', 'chats.json'),
   openFile: createWorkerFileLinks({ directory: path.join(app.getPath('userData'), 'agents', 'platform'), openPath: target => shell.openPath(target) }),
+  workspace: createWorkerWorkspaceInspection({ directory: path.join(app.getPath('userData'), 'agents', 'platform'), openPath: target => shell.openPath(target) }),
   registry: workspace => agentRegistry.snapshot(workspace),
   permissions: (workspace, input) => specialistRuntime.permissions(workspace, input),
   lifecycle: binding => specialistRuntime.lifecycle(binding),

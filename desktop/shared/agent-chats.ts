@@ -9,6 +9,7 @@ import type { WorkKind } from './agent-work.ts';
 import { isWorkKind, parseIntegration, type IntegrationSummary } from './agent-work.ts';
 import { agentRecord, agentText, parseAgentEngineId, parseAgentId, parseExecutionRecovery, type ExecutionRecovery } from './agent-management.ts';
 import { parseQuestionDeadline } from './agent-question.ts';
+import { parseWorkerWorkspaceInspection, type WorkerWorkspaceInspection } from './worker-workspace.ts';
 
 import { parseGoalUsage, type TaskGoalUsage } from './agent-task-inspection.ts';
 
@@ -32,6 +33,7 @@ export interface AgentRoom {
   id: string; workspace: string; name: string; engineId: string; members: ChatMember[]; defaultAgentId: string; createdAt: string;
 }
 export interface RoomMessage {
+  workspaceInspection?: WorkerWorkspaceInspection;
   isolated?: IsolatedWork;
   permissionRequest?: PermissionRequest;
   replyTo?: string; userQuestion?: { rootId: string; id: string; answered: boolean };
@@ -55,6 +57,7 @@ export function isRoomWorkSettled(status: string | undefined): boolean {
   return ['completed', 'failed', 'interrupted', 'blocked', 'held', 'cancelled'].includes(status ?? '');
 }
 export type ChatsRequest = { action: 'list' }
+  | { action: 'workspace-inspect' | 'workspace-open'; roomId: string; messageId: string }
   | { action: 'open-file'; roomId: string; messageId: string; href: string }
   | ({ action: 'isolated-submit'; id: string; roomId: string; agentId: string; prompt: string } & IsolatedWorkSpec)
   | { action: 'isolated-inspect' | 'isolated-cancel'; roomId: string; messageId: string }
@@ -85,6 +88,7 @@ function required(value: unknown, max: number): string {
 }
 export function parseChatsRequest(value: unknown): ChatsRequest {
   const v = agentRecord(value);
+  if (v.action === 'workspace-inspect' || v.action === 'workspace-open') return { action: v.action, roomId: chatId(v.roomId), messageId: chatId(v.messageId) };
   if (v.action === 'open-file') {
     if (!localFileLinkPath(v.href)) throw new Error('Invalid Worker file link.');
     return { action: 'open-file', roomId: chatId(v.roomId), messageId: chatId(v.messageId), href: v.href as string };
@@ -178,6 +182,7 @@ export function parseRoomMessage(value: unknown): RoomMessage {
     ...(userQuestion ? { userQuestion: { rootId: chatId(userQuestion.rootId), id: chatId(userQuestion.id), answered: userQuestion.answered as boolean } } : {}),
     ...(v.activity === undefined ? {} : { activity: parseTaskActivity(v.activity) }),
     ...(v.inspection === undefined ? {} : { inspection: parseTaskInspection(v.inspection) }),
+    ...(v.workspaceInspection === undefined ? {} : { workspaceInspection: parseWorkerWorkspaceInspection(v.workspaceInspection) }),
     ...(v.executionStatus === undefined ? {} : { executionStatus: required(v.executionStatus, 100) }),
     ...(v.questionId === undefined ? {} : { questionId: chatId(v.questionId) }), ...(v.worker === undefined ? {} : { worker: parseWorkerLifecycle(v.worker) }), ...(v.dialogue === undefined ? {} : { dialogue: parseConversation(v.dialogue) }), id: chatId(v.id), roomId: chatId(v.roomId), threadId: optionalId(v.threadId), sender: chatId(v.sender), recipient: optionalId(v.recipient),
     kind: v.kind as RoomMessage['kind'], text: agentText(v.text, 500_000), createdAt: required(v.createdAt, 100),

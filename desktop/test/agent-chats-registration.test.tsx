@@ -21,6 +21,42 @@ function fixture() {
 }
 const sendButton = () => document.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!;
 
+test('renaming a registered Homie updates participants, authors, replies and mentions without losing the draft', async () => {
+  await withDOM(async ui => {
+    const f = fixture();
+    await ui.render(<ChatsView active api={f.api} registry={f.registry} onManageHomies={() => {}} />);
+    await ui.click('Reply to Saved reply'); await ui.type('Message', 'Keep this draft');
+    await act(async () => { f.agents[0]!.name = 'Cheshi-Development'; f.update(); });
+    expect(document.querySelector('[aria-label="Manage Homie: Cheshi-Development"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Room messages"]')?.textContent).toContain('Cheshi-Development');
+    expect(document.querySelector('[aria-label="Reply context"]')?.textContent).toContain('Cheshi-Development');
+    expect(document.querySelector('[aria-label="Delivery target"]')?.textContent).toBe('To: Cheshi-Development');
+    expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')?.value).toBe('Keep this draft');
+    await ui.click('Cancel reply');
+    await ui.type('Message', '@Cheshi'); await ui.click('@Cheshi-Development');
+    await ui.type('Message', '@Cheshi-Development check this'); await ui.click('Send message');
+    expect(f.requests.filter(request => request.action === 'send')).toMatchObject([{ recipient: 'dev', text: '@Cheshi-Development check this' }]);
+    expect(f.data.rooms[0]?.members[0]?.name).toBe('dev');
+    expect(f.data.messages[0]?.text).toBe('Saved reply');
+  });
+});
+
+test.each(['deleted', 'unassigned', 'account-replaced'])('renamed %s Homies retain their saved identity and cannot receive work', async reason => {
+  await withDOM(async ui => {
+    const f = fixture();
+    f.agents[0]!.name = 'Different identity';
+    if (reason === 'deleted') f.agents.splice(0, 1);
+    else if (reason === 'unassigned') f.agents[0]!.assignments = [];
+    else f.agents[0]!.accountId = 'replacement';
+    await ui.render(<ChatsView active api={f.api} registry={f.registry} />);
+    const participants = document.querySelector('[aria-label="Room participants"]')?.textContent;
+    expect(participants).toContain('dev'); expect(participants).not.toContain('Different identity');
+    await ui.type('Message', '@dev check this');
+    expect(sendButton().disabled).toBe(true);
+    expect(f.requests.some(request => request.action === 'send')).toBe(false);
+  });
+});
+
 test('registry deletion preserves the room, history and draft, blocks click and Enter, and permits a registered peer', async () => {
   await withDOM(async ui => {
     const f = fixture();
