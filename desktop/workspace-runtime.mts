@@ -4,7 +4,8 @@ import { createWorkspaceVoice } from './lib/agent-voice/workspace.mts';
 import { createWorkspaceScheduler } from './lib/scheduler/workspace.mts';
 import { createWorkspaceNotifications } from './lib/workspace-notifications.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
-import { chatWindowOptions } from './lib/chat-window-options.mts';
+import { workspaceWindowOptions } from './lib/workspace-window-options.mts';
+import { createWindowTrafficLights } from './lib/window-traffic-lights.mts';
 import { createWorkspaceTemporaryChat } from './lib/workspace-temporary-chat.mts';
 import { createWorkspaceWindowReadiness } from './lib/workspace-window-readiness.mts';
 import { createWorkspaceRendererEvents } from './lib/workspace-renderer-events.mts';
@@ -799,17 +800,11 @@ let pendingIndexWarning: string | null = null;
 async function createMainWindow(contentUrl: string | null): Promise<BrowserWindow> {
   if (appQuitting) throw new Error('Workspace startup was canceled.');
   const shouldShowWindow = process.env.CHESHI_E2E_HEADLESS !== '1';
-  const window = new BrowserWindow({
-    show: false,
-    width: 1440,
-    height: 900,
-    minWidth: 1280,
-    minHeight: 750,
-    title: product.displayName,
-    ...chatWindowOptions(preloadPath),
-    fullscreenable: process.platform !== 'darwin',
-  });
+  const window = new BrowserWindow(workspaceWindowOptions(preloadPath, product.displayName));
   logStartup('window created');
+  createWindowTrafficLights({ window,
+    onError: error => process.stderr.write(`[cheshi] Traffic light scaling failed: ${String(error)}\n`),
+  });
   registerWorkspaceWindowCloseConfirmation(window, dialog);
   windowAppearance = createWindowAppearance({
     window, ipc: ipcMain, filename: path.join(userDataDirectory, 'appearance.json'),

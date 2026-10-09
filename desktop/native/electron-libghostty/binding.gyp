@@ -2,7 +2,7 @@
   "targets": [
     {
       "target_name": "cheshi_ghostty",
-      "sources": ["src/native_host.mm", "src/window_glass.mm"],
+      "sources": ["src/native_host.mm", "src/window_glass.mm", "src/window_traffic_lights.mm"],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",
         "include"

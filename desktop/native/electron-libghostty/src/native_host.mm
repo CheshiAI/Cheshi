@@ -1,10 +1,13 @@
 #include <napi.h>
 
 #include <cstdint>
+#include <cmath>
+#include <cstring>
 #include <mutex>
 #include <string>
 
 #include "cheshi_ghostty_bridge.h"
+#include "window_traffic_lights.h"
 
 void RegisterWindowGlass(Napi::Env env, Napi::Object exports);
 
@@ -198,9 +201,32 @@ Napi::Value SetEventHandler(const Napi::CallbackInfo &info) {
   return env.Undefined();
 }
 
+Napi::Value SetTrafficLightScale(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (info.Length() != 2 || !info[0].IsBuffer() || !info[1].IsNumber()) {
+    Napi::TypeError::New(env, "Expected (native window handle, scale)").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  auto handle = info[0].As<Napi::Buffer<unsigned char>>();
+  double scale = info[1].As<Napi::Number>().DoubleValue();
+  if (handle.Length() != sizeof(void *) || !std::isfinite(scale) || scale <= 0 || scale > 1) {
+    Napi::TypeError::New(env, "Invalid window handle or traffic light scale").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  if (![NSThread isMainThread]) {
+    Napi::Error::New(env, "Traffic light scaling must run on the main thread").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  void *pointer = nullptr;
+  std::memcpy(&pointer, handle.Data(), sizeof(pointer));
+  NSView *root = (__bridge NSView *)pointer;
+  return Napi::Boolean::New(env, SetWindowTrafficLightScale(root.window, scale));
+}
+
 Napi::Object InitializeModule(Napi::Env env, Napi::Object exports) {
   cheshi_ghostty_set_event_callback(&BridgeEvent);
   RegisterWindowGlass(env, exports);
+  exports.Set("setWindowTrafficLightScale", Napi::Function::New(env, SetTrafficLightScale));
   exports.Set("initialize", Napi::Function::New(env, Initialize));
   exports.Set("createSurface", Napi::Function::New(env, CreateSurface));
   exports.Set("supportsCommand", Napi::Boolean::New(env, true));

@@ -215,6 +215,8 @@ function shouldIgnore(packagePath: string): boolean {
     'ephemeral-session-service.mts',
     'temporary-chat-service.mts',
     'chat-window-options.mts',
+    'window-traffic-lights.mts',
+    'workspace-window-options.mts',
     'temporary-chat-window.mts',
     'workspace-temporary-chat.mts',
     'temporary-chat-ipc.mts',

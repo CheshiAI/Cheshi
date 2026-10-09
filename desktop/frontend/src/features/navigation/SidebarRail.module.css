@@ -25,7 +25,7 @@
   justify-items: center;
   gap: 4px;
   overflow: visible;
-  padding: var(--space-default) 0;
+  padding: 0 0 var(--space-default);
 }
 
 .bottomControls {
