@@ -5,6 +5,11 @@ import { AgentStore, validateTaskId, type Task } from './store.ts';
 
 const strings = { type: 'array', minItems: 1, maxItems: 16, items: { type: 'string', maxLength: 4000 } };
 const text = { type: 'string', maxLength: 4000 };
+export const intakeGuidance = 'This is the read-only intake stage, not the execution stage. Writes and shell tools are temporarily disabled here regardless of saved project permissions. Read conversation_status, then use start_goal for requested work or continue_goal for an existing unfinished goal. End the turn after recording that action; the worker will start execution with the saved permissions. Do not report the intake sandbox as a missing project grant or ask the user to repeat the task or change Docker. Answer ordinary questions normally; use ask_user for an actual unresolved user decision. No new authority is granted by this guidance.';
+export function intakeNeedsAction(task: Task): boolean {
+  return !!task.dialogue && !task.goal && (!task.dialogue.route || task.dialogue.route.held === true)
+    && !waitingForUser(task) && (!task.permissionRequest || task.permissionRequest.status === 'allowed');
+}
 function tool(name: string, description: string, properties: Record<string, unknown>, required = Object.keys(properties)) {
   return { type: 'function', name, description, inputSchema: { type: 'object', additionalProperties: false, properties, required } };
 }

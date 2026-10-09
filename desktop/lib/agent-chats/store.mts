@@ -17,6 +17,9 @@ function parseSavedState(value: unknown): State {
     if (!room || (m.sender !== 'user' && !identities.some(p => p.id === m.sender))
       || (m.recipient !== null && !(m.recipient === 'user' && (m.userQuestion || (m.kind === 'permission_request' && m.permissionRequest)) && m.sender !== 'user') && !identities.some(p => p.id === m.recipient))) throw new Error('Invalid saved participant.');
     if (m.threadId && !state.messages.some(root => root.id === m.threadId && root.roomId === room.id && (root.kind === 'goal' || (root.sender === 'user' && root.dialogue)) && root.threadId === null)) throw new Error('Invalid saved goal thread.');
+    if (m.isolated && (m.sender !== 'user' || m.kind !== 'message' || m.threadId !== null || m.taskId !== m.isolated.taskId
+      || !m.recipient
+      || state.jobs.some(j => j.id === m.id))) throw new Error('Invalid saved isolated task identity.');
   }
   for (const j of state.jobs) {
     const message = state.messages.find(m => m.id === j.id);
@@ -39,6 +42,12 @@ export class ChatsStore {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       this.state = { version: 1, rooms: [], messages: [], jobs: [] };
     }
+    this.update(s => { for (const m of s.messages) {
+      if (m.isolated && ['preparing', 'running', 'checking'].includes(m.isolated.phase)) {
+        m.isolated.phase = 'unknown'; m.status = 'unknown';
+        m.isolated.error = 'Desktop restarted during this task. Inspect the saved result; it will not run again automatically.';
+      }
+    } });
     this.update(s => { for (const j of s.jobs) if (j.state === 'sending') { j.state = 'unknown'; j.error = 'Delivery interrupted. Checking the saved worker task.'; } });
   }
   update(mutator: (state: State) => void): void {

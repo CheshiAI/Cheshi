@@ -1,0 +1,15 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-default);
+  font-size: 12px;
+  min-width: 0;
+}
+.card p { margin: 0; overflow-wrap: anywhere; }
+.card { padding: var(--space-default); margin-top: var(--space-default); }
+.actions { display: flex; justify-content: flex-end; gap: var(--space-default); }
+.card summary { cursor: pointer; }
+.card details > pre, .card dl { margin: var(--space-default) 0; }
+.card pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.card dd { margin: 0 0 var(--space-default); overflow-wrap: anywhere; }
+.card dt { color: var(--sidebar-section-label-color); }

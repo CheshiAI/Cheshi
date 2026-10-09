@@ -1,7 +1,9 @@
+import { createPlatformChats } from './lib/agent-platform/chat-service.mts';
 import { createToolCredentials } from './lib/agent-management/tool-credentials.mts';
 import { createCodeGraphSynchronization } from './lib/codegraph-synchronization.mts';
 import { createAgentCodeGraph } from './lib/agent-orchestration/codegraph-source.mts';
 import { createAgentChats } from './lib/agent-chats/service.mts';
+import { createWorkerFileLinks } from './lib/agent-platform/worker-file-links.mts';
 import { registerAgentChatsIpc } from './lib/agent-chats/ipc.mts';
 import { createSpecialistRuntime } from './lib/agent-management/runtime.mts';
 import { createAgentDeletion } from './lib/agent-management/deletion.mts';
@@ -96,7 +98,13 @@ const agentManagement: ReturnType<typeof createAgentManagementService> = createA
 const agentRegistry = createAgentRegistry(path.join(app.getPath('userData'), 'agents', 'registry.json'));
 const agentDeletion = createAgentDeletion({ directory: path.join(app.getPath('userData'), 'agents', 'deletions'),
   runtimeDirectory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement });
-const agentChats = createAgentChats({ roomChanged: () => specialistRuntime.notify(), filename: path.join(app.getPath('userData'), 'agents', 'chats.json'),
+const platformChats = createPlatformChats({ directory: path.join(app.getPath('userData'), 'agents', 'platform'),
+  buildContext: app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'specialist-worker') : path.join(app.getAppPath(), 'experiments', 'codex-specialists'),
+  profile: (workspace, agentId, accountId) => specialistRuntime.platformProfile(workspace, agentId, accountId),
+  prepareEnvironment: (engineId, directory) => specialistRuntime.preparePlatformEnvironment(engineId, directory),
+});
+const agentChats = createAgentChats({ platform: platformChats, roomChanged: () => specialistRuntime.notify(), filename: path.join(app.getPath('userData'), 'agents', 'chats.json'),
+  openFile: createWorkerFileLinks({ directory: path.join(app.getPath('userData'), 'agents', 'platform'), openPath: target => shell.openPath(target) }),
   registry: workspace => agentRegistry.snapshot(workspace),
   permissions: (workspace, input) => specialistRuntime.permissions(workspace, input),
   lifecycle: binding => specialistRuntime.lifecycle(binding),
@@ -111,6 +119,7 @@ const codeGraphCommand = createCodeGraphCommands({ packaged: app.isPackaged, res
 const codeGraphDataRoot = resolveCodeGraphDataRoot() ?? app.getPath('userData');
 const codeGraphSynchronization = createCodeGraphSynchronization({ command: codeGraphCommand, dataRoot: codeGraphDataRoot });
 const specialistRuntime = createSpecialistRuntime({
+  workspaceDirectory: path.join(app.getPath('userData'), 'agents', 'platform'),
   rooms: agentChats.rooms,
   toolCredential: (origin, name) => toolCredentials.get(origin, name),
   codegraph: createAgentCodeGraph({ cli: codeGraphCommand, dataRoot: codeGraphDataRoot, beforeQuery: codeGraphSynchronization.ensure }),

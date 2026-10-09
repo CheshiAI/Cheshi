@@ -3,9 +3,10 @@ import { realpath } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { codegraphArguments } from '../../../experiments/codex-specialists/src/codegraph-tools.ts';
 import { codegraphFailure } from '../../../experiments/codex-specialists/src/codegraph-queue.ts';
+import type { Binding } from './mailbox.mts';
 
 export interface AgentCodeGraphOptions { cli: { executable: string; args: string[] }; dataRoot: string; beforeQuery?: (workspace: string, signal?: AbortSignal) => Promise<void> }
-export type CodeGraphQuery = (workspace: string, tool: string, args: unknown, signal: AbortSignal) => Promise<unknown>;
+export type CodeGraphQuery = (workspace: string, tool: string, args: unknown, signal: AbortSignal, binding?: Binding) => Promise<unknown>;
 /** Use the same packaged CLI and central data root as SESSION; never load Bun SQLite in Electron. */
 export function createAgentCodeGraph(options: AgentCodeGraphOptions): CodeGraphQuery {
   return async (workspace, tool, value, signal) => {

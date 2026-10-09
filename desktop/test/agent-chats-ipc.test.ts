@@ -16,6 +16,9 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   const registration = registerAgentChatsIpc({ window, workspaceRoot: '/project', ipc: {
     handle: (name, fn) => { handlers.set(name, fn); }, removeHandler: name => { handlers.delete(name); },
   }, service: {
+    openFile: async root => { calls.push(`${root}/open-file`); return { rooms: [], messages: [] }; },
+    isolated: async root => { calls.push(`${root}/isolated`); return { rooms: [], messages: [] }; },
+    isolatedSettled: async () => {},
     deleteRoom: async root => { calls.push(`${root}/delete`); return { rooms: [], messages: [] }; },
     settled: async () => {}, subscribe: (root, listener) => { subscribed = root; publish = listener; return () => { removed++; }; }, changed: () => {},
     permissions: async root => { calls.push(`${root}/permission`); return { rooms: [], messages: [] }; },
@@ -57,8 +60,16 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   expect(calls.at(-1)).toBe('/project/permission');
   await api.request({ action: 'project-setup', roomId: 'room' });
   expect(calls.at(-1)).toBe('/project/project-setup');
+  await api.request({ action: 'isolated-submit', id: 'isolated', roomId: 'room', agentId: 'homie', prompt: 'Implement the requested change', scope: ['src/'], check: 'bun test' });
+  expect(calls.at(-1)).toBe('/project/isolated');
+  expect(() => invoke(owner, {}, { action: 'isolated-setup', roomId: 'room' })).toThrow('workspace');
+  expect(() => invoke(owner, mainFrame, { action: 'isolated-submit', id: 'invalid', roomId: 'room', agentId: 'homie', prompt: 'Change', scope: ['../outside'], check: 'true' })).toThrow('Scope');
   await api.request({ action: 'delete', roomId: 'room' });
   expect(calls.at(-1)).toBe('/project/delete');
+  await api.request({ action: 'open-file', roomId: 'room', messageId: 'reply', href: '/workspace/result.txt' });
+  expect(calls.at(-1)).toBe('/project/open-file');
+  expect(() => invoke(owner, {}, { action: 'open-file', roomId: 'room', messageId: 'reply', href: '/workspace/result.txt' })).toThrow('workspace');
+  expect(() => invoke(owner, mainFrame, { action: 'open-file', roomId: 'room', messageId: 'reply', href: 'file:///etc/passwd' })).toThrow('file link');
   expect(() => invoke(owner, {}, { action: 'delete', roomId: 'room' })).toThrow('workspace');
   expect(() => invoke(owner, {}, { action: 'permission', roomId: 'room', messageId: 'pending', decision: 'allow' })).toThrow('workspace');
   events.emit('closed'); registration.dispose();

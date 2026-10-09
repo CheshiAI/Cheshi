@@ -25,10 +25,12 @@ import { DEFAULT_PROJECT_DOC_MAX_BYTES, parseProjectDocMaxBytes } from '../../..
 import { createAgentOrchestration, type exchangeWorker } from '../agent-orchestration/service.mts';
 import { WorkerLifecycle } from './lifecycle.mts';
 import { bindingFor, type Binding } from '../agent-orchestration/mailbox.mts';
+import type { HomieExecutionProfile } from '../agent-platform/homie-executor.mts';
+import { WorkerWorkspaces } from '../agent-platform/worker-workspaces.mts';
 
 export interface RuntimeAccount { home: string; models: AgentModel[]; }
 interface RuntimeOptions {
-  directory: string; buildContext: string;
+  directory: string; buildContext: string; workspaceDirectory?: string;
   getProjectDocMaxBytes?(): number;
   registry: ReturnType<typeof createAgentRegistry>; management: AgentManagementApi;
   account(id: string): Promise<RuntimeAccount>;
@@ -85,8 +87,19 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   const run = options.run ?? runDocker;
   const pending = new Set<string>();
   const builds = new Map<string, Promise<void>>();
+  const workspaces = options.workspaceDirectory ? new WorkerWorkspaces(options.workspaceDirectory) : null;
+  async function executionWorkspace(binding: Binding) {
+    if (!workspaces) return binding.workspace;
+    const saved = await workspaces.existing(binding);
+    if (!saved) throw new Error('Start the Homie to prepare its isolated workspace.');
+    return saved.workspace;
+  }
+  const isolatedFingerprint = (settings: string, workspace: string) => workspaces ? digest(`${settings}\nisolated_workspace=1:${workspace}`) : settings;
   const orchestration = createAgentOrchestration({ filename: join(options.directory, 'collaboration.json'),
-    exchange: options.collaborationExchange, codegraph: options.codegraph, rooms: options.rooms,
+    exchange: options.collaborationExchange, codegraph: options.codegraph ? async (workspace, tool, args, signal, binding) => {
+      if (workspaces && !binding) throw new Error('A Homie binding is required for isolated CodeGraph queries.');
+      return options.codegraph!(binding ? await executionWorkspace(binding) : workspace, tool, args, signal);
+    } : undefined, rooms: options.rooms,
     customTools: runCustomTool,
     customToolsAvailable: binding => Boolean(options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId)?.package?.tools?.some(t => t.enabled)),
     peer: binding => {
@@ -147,7 +160,10 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     }
     const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId);
     const assignment = agent && projectAssignment(agent, binding.workspace);
-    if (!agent || !assignment || saved.settingsFingerprint !== runtimeSettingsDigest(agent, binding.workspace, assignment, options.getProjectDocMaxBytes?.())) {
+    const execution = await executionWorkspace(binding);
+    if (!agent || !assignment || saved.settingsFingerprint !== isolatedFingerprint(runtimeSettingsDigest(agent, binding.workspace, assignment, options.getProjectDocMaxBytes?.(),
+      (assignment.permissions ?? agent.permissions).commandExecution ? projectDependencies(execution) : null), execution)
+      || workspaces && saved.executionWorkspace !== execution) {
       throw new Error('Settings changed. Start the agent to resume collaboration.');
     }
     return { externalBusy: worker.externalBusy, connection: { endpoint: worker.endpoint, token: saved.token }, details: await options.management.details(binding.engineId, worker.id) };
@@ -259,10 +275,14 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     try {
       const directory = join(options.directory, digest(request.engineId), key);
       const configPath = join(directory, 'runtime.json');
-      const dependencies = agent.permissions.commandExecution ? projectDependencies(workspace) : null;
+      const identity = bindingFor(workspace, request.engineId, agent.id, agent.accountId ?? '');
+      const isolated = workspaces && (request.action === 'start' ? await workspaces.ensure(identity) : await workspaces.existing(identity));
+      const execution = isolated ? isolated.workspace : workspace;
+      const dependencies = agent.permissions.commandExecution ? projectDependencies(execution) : null;
       const projectDocMaxBytes = parseProjectDocMaxBytes(options.getProjectDocMaxBytes?.() ?? DEFAULT_PROJECT_DOC_MAX_BYTES);
-      const settingsFingerprint = runtimeSettingsDigest(agent, workspace, assignment, projectDocMaxBytes, dependencies);
-      const instructions = request.action === 'start' ? (await resolveAgentInstructions(agent, assignment)) + packInstructions(agent.package) : null;
+      const settingsFingerprint = isolatedFingerprint(runtimeSettingsDigest(agent, workspace, assignment, projectDocMaxBytes, dependencies), isolated ? execution : 'unprepared');
+      const instructions = request.action === 'start' ? (await resolveAgentInstructions(agent, assignment)) + packInstructions(agent.package)
+        + (workspaces ? '\nYour /workspace is this Homie’s persistent isolated Git worktree. Follow-up requests retain these files. Other Homies have separate workspaces. The host manages Git; do not repair .git or access the source checkout. Report changes and verification in this chat; source publication is separate.\n' : '') : null;
       const hasFiles = Boolean(agent.instructionFiles?.length || assignment.instructionFiles?.length);
       const fingerprint = hasFiles && instructions !== null ? digest(`${settingsFingerprint}\n${instructions}`) : settingsFingerprint;
       const prefix = await local(request.engineId);
@@ -311,12 +331,15 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         await rememberEngine(directory, request.engineId, prefix[1]!);
         const auth = selectedAuth;
         if (!worker || worker.fingerprint !== fingerprint) await build(prefix, dependencies !== null);
-        if (agent.permissions.fileWrite) await (options.checkProjectEnvironment ?? assertProjectEnvironment)(request.engineId, prefix, workspace);
+        if (agent.permissions.fileWrite) await (options.checkProjectEnvironment ?? assertProjectEnvironment)(request.engineId, prefix, execution);
         const environment = !worker || worker.fingerprint !== fingerprint ? await prepareDependencies(run, prefix, image, dependencies, environmentImage) : { image, mounts: [] };
         if (!worker || worker.fingerprint !== fingerprint) environment.image = await preparePackEnvironment(run, prefix, environment.image, agent.package);
         assertCurrent();
         if (worker && worker.fingerprint !== fingerprint) {
           const details = await options.management.details(request.engineId, worker.id);
+          if (workspaces && (details.busy || details.tasks.some(task => ['accepted', 'running', 'unknown'].includes(task.status)))) {
+            throw new Error('Inspect unfinished execution before switching this Homie to its isolated workspace.');
+          }
           if (worker.externalBusy) throw new Error('Wait for retained container commands before applying settings.');
           if (worker.state === 'running') {
             const previous = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
@@ -339,20 +362,27 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint, projectDocMaxBytes,
+            ...(workspaces ? { executionWorkspace: execution, isolatedWorkspaceProtocol: 1 } : {}),
             ...profileConfiguration(agent), codegraphProtocol: 1, permissionProtocol: 1, collaborationProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, activityProtocol: 1, inputQueueProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
-          const mounts = [workspace];
+          const mounts = [execution];
           if (mounts.some(value => /[,\n\r]/.test(value))) throw new Error('This project path cannot be mounted by Docker.');
           const security = ['--security-opt', `seccomp=${join(options.buildContext, 'security', 'codex-bwrap.json')}`];
           if (request.engineId.startsWith('docker:colima')) security.push('--security-opt', 'apparmor=cheshi-codex-bwrap');
-          await run([...prefix, 'container', 'create', '--name', `cheshi-agent-${key}`, '--init', '--user', '1000:1000', '--read-only',
+          const volume = `cheshi-agent-${key}-${digest(agent.accountId).slice(0, 8)}`;
+          const user = workspaces ? `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}` : '1000:1000';
+          if (workspaces) await run([...prefix, 'run', '--rm', '--network', 'none', '--read-only', '--user', '0:0',
+            '--cap-drop', 'ALL', '--cap-add', 'CHOWN', '--cap-add', 'DAC_OVERRIDE', '--security-opt', 'no-new-privileges:true',
+            '--mount', `type=volume,src=${volume},dst=/agent`, '--entrypoint', 'chown', environment.image, '-R', user, '/agent']);
+          await run([...prefix, 'container', 'create', '--name', `cheshi-agent-${key}`, '--init', '--user', user, '--read-only',
             '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', ...security,
             '--pids-limit', '256', '--cpus', '2', '--memory', '2g', '--publish', '127.0.0.1::8787',
             '--label', `${marker}=specialist-v1`, '--label', `ai.cheshi.agent=${agent.id}`, '--label', `ai.cheshi.binding=${key}`,
             '--label', `ai.cheshi.configuration=${fingerprint}`,
-            '--mount', `type=volume,src=cheshi-agent-${key}-${digest(agent.accountId).slice(0, 8)},dst=/agent`,
-            '--mount', `type=bind,src=${workspace},dst=/workspace${agent.permissions.fileWrite ? '' : ',readonly'}`,
+            '--mount', `type=volume,src=${volume},dst=/agent`,
+            '--mount', `type=bind,src=${execution},dst=/workspace${agent.permissions.fileWrite ? '' : ',readonly'}`,
+            ...(workspaces ? ['--mount', `type=bind,src=${join(execution, '.git')},dst=/workspace/.git,readonly`] : []),
             '--tmpfs', '/tmp:rw,nosuid,nodev,size=128m,mode=1777',
             '--env', 'CODEX_HOME=/agent/codex', '--env', 'AGENT_DATA_DIRECTORY=/agent', '--env', 'AGENT_WORKSPACE=/workspace',
             '--env', 'AGENT_RUNTIME_CONFIG=/agent/runtime.json', '--env', `AGENT_RUNTIME_REVISION=${fingerprint}`, ...environment.mounts, environment.image]);
@@ -399,13 +429,13 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         return { details: await options.management.details(request.engineId, worker.id) };
       }
       if (request.action === 'recover') {
-        await options.prepareCodeGraph?.(workspace);
+        await options.prepareCodeGraph?.(execution);
         assertCurrent();
         await post(worker.endpoint, configuration.token, `/tasks/${request.taskId}/recover`, { roomId: request.roomId }, true);
         return { details: await options.management.details(request.engineId, worker.id) };
       }
       if (chat?.automatic && configuration.conversationProtocol !== 1) throw new Error('Start the agent to enable conversational tasks.');
-      await options.prepareCodeGraph?.(workspace);
+      await options.prepareCodeGraph?.(execution);
       assertCurrent();
       await post(worker.endpoint, configuration.token, chat?.inputId ? `/tasks/${request.taskId}/input` : '/tasks',
         chat?.inputId ? { id: chat.inputId, prompt: request.prompt, roomId: chat.roomId, ...(chat.questionId ? { questionId: chat.questionId } : {}) }
@@ -460,6 +490,36 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     orchestration.notify(b); changed(b); return result;
   }
   return {
+    async platformProfile(workspaceRoot: string, agentId: string, accountId: string): Promise<HomieExecutionProfile> {
+      const workspace = await realpath(workspaceRoot);
+      const agent = options.registry.snapshot(workspace).agents.find(a => a.id === agentId && a.accountId === accountId);
+      const assignment = agent && projectAssignment(agent, workspace);
+      if (!agent || !assignment) throw new Error('Restore the selected Homie account and project assignment.');
+      const permissions = assignment.permissions ?? agent.permissions;
+      if (permissions.fileWrite !== true || permissions.commandExecution !== true) throw new Error('Isolated tasks require the Homie’s saved file and command permissions.');
+      if (agent.package?.requiredTools.length || agent.package?.tools?.some(t => t.enabled)) {
+        throw new Error('This Homie requires external tools. Choose a Homie without required external tools for an isolated task.');
+      }
+      const account = await options.account(accountId);
+      assertAgentModelSelection(agent, account.models);
+      const instructions = await resolveAgentInstructions(agent, assignment);
+      const assertCurrent = () => {
+        const current = options.registry.snapshot(workspace).agents.find(a => a.id === agentId);
+        if (!current || current.accountId !== accountId || current.revision !== agent.revision || !projectAssignment(current, workspace)) {
+          throw new Error('Homie settings changed. Start a new isolated task with the current settings.');
+        }
+      };
+      assertCurrent();
+      return { agentId, accountId, assertCurrent,
+        configuration: { profileId: agentId, accountId, role: agent.role, model: agent.model, reasoningEffort: agent.reasoningEffort,
+          serviceTier: agent.serviceTier, permissions, enabledTools: [], instructions: `${instructions}\n\nThis is an isolated code task. Use local file and shell tools. Host Cheshi handles Git, collaboration and verification.`,
+          projectDocMaxBytes: parseProjectDocMaxBytes(options.getProjectDocMaxBytes?.() ?? DEFAULT_PROJECT_DOC_MAX_BYTES) },
+        credentials: async () => { assertCurrent(); const auth = await readRuntimeAuth(account.home); assertCurrent(); return auth; } };
+    },
+    async preparePlatformEnvironment(engineId: string, directory: string) {
+      const prefix = await local(engineId);
+      await workerOperations.exclusive(() => prepareProjectEnvironment(engineId, prefix, directory, run));
+    },
     async testTool(workspaceRoot: string, input: ToolTestRequest) {
       const b = await binding(workspaceRoot, { action: 'status', engineId: input.engineId, agentId: input.agentId });
       return runCustomTool(b, `homie_${input.tool}`, input.args, AbortSignal.timeout(60_000));
@@ -482,7 +542,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         const permissions = assignment.permissions ?? agent.permissions;
         let grantedRevision: number | undefined;
         if (input.decision === 'allow' && !coversPermissions(permissions, current)) {
-          if (current.fileWrite) await (options.checkProjectEnvironment ?? assertProjectEnvironment)(input.engineId, await local(input.engineId), b.workspace);
+          if (current.fileWrite) await (options.checkProjectEnvironment ?? assertProjectEnvironment)(input.engineId, await local(input.engineId), await executionWorkspace(b));
           const granted = options.registry.save({ id: agent.id, revision: agent.revision, profile: agent, assignment: { ...assignment, assigned: true, permissions: {
             fileWrite: permissions.fileWrite || current.fileWrite, commandExecution: permissions.commandExecution || current.commandExecution,
           } } }, workspaceRoot);
@@ -530,7 +590,9 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       if (parsed.action === 'project-setup') {
         await binding(workspaceRoot, parsed);
         const workspace = await realpath(workspaceRoot), prefix = await local(parsed.engineId);
-        await workerOperations.exclusive(() => prepareProjectEnvironment(parsed.engineId, prefix, workspace, run));
+        const shared = workspaces ? workspaces.root({ workspace, engineId: parsed.engineId }) : workspace;
+        if (workspaces) await mkdir(shared, { recursive: true, mode: 0o700 });
+        await workerOperations.exclusive(() => prepareProjectEnvironment(parsed.engineId, prefix, shared, run));
         return { details: null };
       }
       const b = await binding(workspaceRoot, parsed);
@@ -559,5 +621,5 @@ function profileConfiguration(agent: SpecialistAgent) {
 }
 
 function runtimeSettingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], projectDocMaxBytes = DEFAULT_PROJECT_DOC_MAX_BYTES, dependencies = (assignment.permissions ?? agent.permissions).commandExecution ? projectDependencies(workspace) : null) {
-  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}\ncodegraph=2\ndependency_volumes=1`);
+  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}\ncodegraph=2\ndependency_volumes=1\nintake_recovery=1`);
 }

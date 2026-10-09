@@ -53,7 +53,7 @@ export class AgentCodeGraphRelay {
       if (this.running.size >= 4 || this.jobs.size >= 64 && !this.jobs.has(scope)) continue;
       const job: Job = { request, controller: new AbortController() }; jobs.set(request.id, job); this.jobs.set(scope, jobs);
       const signal = AbortSignal.any([job.controller.signal, this.lifetime.signal, AbortSignal.timeout(Math.max(1, request.deadline - Date.now()))]);
-      const run = this.query(binding.workspace, request.tool, args, signal).then(result => {
+      const run = this.query(binding.workspace, request.tool, args, signal, binding).then(result => {
         job.result = valid() && !signal.aborted ? result : codegraphFailure('CodeGraph assignment changed or request expired.');
       }, () => { job.result = codegraphFailure('CodeGraph is unavailable. Use scoped project reads.'); }).finally(() => {
         this.running.delete(run); if (!this.lifetime.signal.aborted) this.notify(binding);

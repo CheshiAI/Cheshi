@@ -1,3 +1,5 @@
+import { createIsolatedChatTasks } from './isolated-tasks.mts';
+import type { PlatformChats } from '../agent-platform/chat-service.mts';
 import { hasRecordedResponse, recordRoomTasks } from './records.mts';
 import { ChatsChanges } from './changes.mts';
 import { createEventQueue } from '../agent-orchestration/event-queue.mts';
@@ -14,6 +16,8 @@ import { projectPermissions } from '../../shared/agent-registry.ts';
 import type { AgentRegistrySnapshot } from '../../shared/agent-registry.ts';
 import { bindingFor, type Binding, type Message } from '../agent-orchestration/mailbox.mts';
 interface Options {
+  openFile?(binding: Binding, href: string): Promise<void>;
+  platform?: PlatformChats;
   permissions?(workspace: string, input: { agentId: string; engineId: string; accountId: string; roomId: string; taskId: string; request: NonNullable<RoomMessage['permissionRequest']>; decision: 'allow' | 'deny' }): Promise<AgentRuntimeState>;
   filename: string;
   roomChanged?(): void;
@@ -58,6 +62,7 @@ export function createAgentChats(options: Options) {
   let failure: string | null = null;
   const inspecting = new Set<string>();
   const deleting = new Set<string>();
+  const isolated = createIsolatedChatTasks({ store, platform: options.platform, room: (workspace, id) => roomFor(workspace, id), assertMember: assertCurrentMember });
   const progress = new Map<string, { checkedAt: number; value: RoomGoalProgress }>();
   function resumeBlock(details: AgentDetails | null | undefined, task: AgentTask | undefined, sleeping = false): string | null {
     if (details?.tasks.some(t => t.status === 'unknown')) return 'Execution outcome is unknown. Inspect the saved task before resuming.';
@@ -101,7 +106,7 @@ export function createAgentChats(options: Options) {
     const data = store().snapshot(workspace), state = store().all();
     return { ...data, messages: data.messages.map(m => {
       const room = data.rooms.find(r => r.id === m.roomId), member = room?.members.find(p => p.id === m.recipient);
-      const worker = m.sender === 'user' && member && room && current(room, member.id) && !['completed', 'held'].includes(m.status ?? '')
+      const worker = !m.isolated && m.sender === 'user' && member && room && current(room, member.id) && !['completed', 'held'].includes(m.status ?? '')
         ? options.lifecycle?.(bindingFor(room.workspace, room.engineId, member.id, member.accountId)) : undefined;
       return { ...m, ...(worker ? { worker } : {}), ...((m.kind === 'goal' || m.dialogue) ? { goalProgress: goalProgress(m, state) } : {}) };
     }) };
@@ -130,6 +135,8 @@ export function createAgentChats(options: Options) {
   };
   function request(workspaceRoot: string, value: unknown) {
     const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
+    if (input.action === 'open-file') throw new Error('Use the asynchronous Worker file handler.');
+    if (input.action.startsWith('isolated-')) throw new Error('Use the asynchronous isolated task handler.');
     if (input.action === 'pin') {
       const room = roomFor(workspace, input.roomId);
       if ((room.pinned === true) !== input.pinned) {
@@ -195,7 +202,7 @@ export function createAgentChats(options: Options) {
       const addressing = resolveChatRecipient(input.text, room.members, replied);
       if (addressing.error) throw new Error(addressing.error);
       if (input.recipient && addressing.recipient && input.recipient !== addressing.recipient) throw new Error('Recipient does not match the addressed participant.');
-      const agentId = input.recipient ?? addressing.recipient ?? answerRoot?.recipient ?? null;
+      const agentId = input.recipient ?? addressing.recipient ?? answerRoot?.recipient ?? (input.automatic === true ? room.defaultAgentId : null);
       if (!agentId) {
         if (input.goal || input.answerTo) throw new Error('Choose a recipient for this work request.');
         store().update(s => {
@@ -594,11 +601,24 @@ export function createAgentChats(options: Options) {
       return snapshot(workspace);
     } finally { deleting.delete(room.id); keys.forEach(key => inspecting.delete(key)); }
   }
-  return { deleteRoom, prepareProject, permissions, retry, inspectApplication, request, recover, question, rooms, tick,
+  async function openFile(workspaceRoot: string, value: unknown) {
+    const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
+    if (input.action !== 'open-file') throw new Error('Invalid Worker file request.');
+    const room = roomFor(workspace, input.roomId);
+    const message = store().all().messages.find(m => m.roomId === room.id && m.id === input.messageId);
+    const member = message && [...room.members, ...(room.formerMembers ?? [])].find(m => m.id === message.sender);
+    if (!message || message.sender === 'user' || message.isolated || !member) throw new Error('The file link has no saved Worker identity.');
+    if (!options.openFile) throw new Error('Worker file links are unavailable. Restart Cheshi.');
+    await options.openFile(bindingFor(workspace, room.engineId, member.id, member.accountId), input.href);
+    return snapshot(workspace);
+  }
+  return { openFile, isolated: async (workspace: string, value: unknown) => { await isolated.request(workspace, value); return snapshot(realpathSync(workspace)); },
+    isolatedSettled: () => isolated.settled(),
+    deleteRoom, prepareProject, permissions, retry, inspectApplication, request, recover, question, rooms, tick,
     settled: () => queue.settled(),
     subscribe: (workspace: string, listener: Parameters<ChatsChanges['subscribe']>[1]) => changes.subscribe(workspace, listener),
     changed(binding?: Binding) { notify(binding); publish(); },
     start() { if (!started) { started = true; notify(); queue.start(); } },
-    async dispose() { started = false; await queue.dispose(); await flight; changes.dispose(); },
+    async dispose() { started = false; await isolated.dispose(); await queue.dispose(); await flight; changes.dispose(); },
   };
 }

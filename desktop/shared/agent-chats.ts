@@ -1,3 +1,5 @@
+import { parseIsolatedWork, parseIsolatedWorkSpec, type IsolatedWork, type IsolatedWorkSpec } from './isolated-work.ts';
+import { localFileLinkPath } from './local-file-link.ts';
 import { parsePermissionRequest, type PermissionRequest } from '../../experiments/codex-specialists/src/execution-permissions.ts';
 import { parseTaskActivity, type TaskActivity } from './agent-activity.ts';
 import { parseTaskInspection, type TaskInspection } from './agent-task-inspection.ts';
@@ -30,6 +32,7 @@ export interface AgentRoom {
   id: string; workspace: string; name: string; engineId: string; members: ChatMember[]; defaultAgentId: string; createdAt: string;
 }
 export interface RoomMessage {
+  isolated?: IsolatedWork;
   permissionRequest?: PermissionRequest;
   replyTo?: string; userQuestion?: { rootId: string; id: string; answered: boolean };
   activity?: TaskActivity; inspection?: TaskInspection; executionStatus?: string; questionId?: string;
@@ -52,6 +55,10 @@ export function isRoomWorkSettled(status: string | undefined): boolean {
   return ['completed', 'failed', 'interrupted', 'blocked', 'held', 'cancelled'].includes(status ?? '');
 }
 export type ChatsRequest = { action: 'list' }
+  | { action: 'open-file'; roomId: string; messageId: string; href: string }
+  | ({ action: 'isolated-submit'; id: string; roomId: string; agentId: string; prompt: string } & IsolatedWorkSpec)
+  | { action: 'isolated-inspect' | 'isolated-cancel'; roomId: string; messageId: string }
+  | { action: 'isolated-setup'; roomId: string }
   | { action: 'delete'; roomId: string }
   | { action: 'project-setup'; roomId: string }
   | { action: 'permission'; roomId: string; messageId: string; decision: 'allow' | 'deny' }
@@ -78,6 +85,13 @@ function required(value: unknown, max: number): string {
 }
 export function parseChatsRequest(value: unknown): ChatsRequest {
   const v = agentRecord(value);
+  if (v.action === 'open-file') {
+    if (!localFileLinkPath(v.href)) throw new Error('Invalid Worker file link.');
+    return { action: 'open-file', roomId: chatId(v.roomId), messageId: chatId(v.messageId), href: v.href as string };
+  }
+  if (v.action === 'isolated-submit') return { action: 'isolated-submit', id: chatId(v.id), roomId: chatId(v.roomId), agentId: chatId(v.agentId), prompt: required(v.prompt, 4000), ...parseIsolatedWorkSpec(v) };
+  if (v.action === 'isolated-inspect' || v.action === 'isolated-cancel') return { action: v.action, roomId: chatId(v.roomId), messageId: chatId(v.messageId) };
+  if (v.action === 'isolated-setup') return { action: 'isolated-setup', roomId: chatId(v.roomId) };
   if (v.action === 'delete') return { action: 'delete', roomId: chatId(v.roomId) };
   if (v.action === 'project-setup') return { action: 'project-setup', roomId: chatId(v.roomId) };
   if (v.action === 'permission') {
@@ -160,7 +174,7 @@ export function parseRoomMessage(value: unknown): RoomMessage {
   if (!isWorkKind(v.kind) && !['permission_request', 'message', 'goal', 'question', 'question_closed', 'reply', 'verification_request', 'verification_result'].includes(String(v.kind))) throw new Error('Invalid room message.');
   const userQuestion = v.userQuestion === undefined ? undefined : agentRecord(v.userQuestion);
   if (userQuestion && typeof userQuestion.answered !== 'boolean') throw new Error('Invalid user question state.');
-  return { ...(v.permissionRequest === undefined ? {} : { permissionRequest: parsePermissionRequest(v.permissionRequest) }), ...(v.replyTo === undefined ? {} : { replyTo: chatId(v.replyTo) }),
+  return { ...(v.isolated === undefined ? {} : { isolated: parseIsolatedWork(v.isolated) }), ...(v.permissionRequest === undefined ? {} : { permissionRequest: parsePermissionRequest(v.permissionRequest) }), ...(v.replyTo === undefined ? {} : { replyTo: chatId(v.replyTo) }),
     ...(userQuestion ? { userQuestion: { rootId: chatId(userQuestion.rootId), id: chatId(userQuestion.id), answered: userQuestion.answered as boolean } } : {}),
     ...(v.activity === undefined ? {} : { activity: parseTaskActivity(v.activity) }),
     ...(v.inspection === undefined ? {} : { inspection: parseTaskInspection(v.inspection) }),

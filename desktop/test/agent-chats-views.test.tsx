@@ -176,7 +176,7 @@ test('send failure keeps the draft and retry uses the same message identity', as
     await ui.render(<ChatsView active api={api} />);
     await ui.type('Message', 'Hello'); await ui.click('Send message');
     expect(requests).toHaveLength(1);
-    expect(requests[0]).toMatchObject({ recipient: null, threadId: null });
+    expect(requests[0]).toMatchObject({ recipient: 'dev', threadId: null });
     expect(document.querySelector('[aria-label="Message recipient"]')).toBeNull();
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('Hello');
     fail = false; await ui.click('Send message');
@@ -212,7 +212,7 @@ test('shared composer grows with the draft, caps its height and resets after sen
     expect(button.disabled).toBe(false);
     height = 44;
     await ui.click('Send message');
-    expect(requests.filter(request => request.action === 'send')).toMatchObject([{ text: 'First line\nSecond line', recipient: null }]);
+    expect(requests.filter(request => request.action === 'send')).toMatchObject([{ text: 'First line\nSecond line', recipient: 'dev' }]);
     expect(input.value).toBe('');
     expect(input.style.height).toBe('44px');
     expect(button.disabled).toBe(true);
@@ -229,14 +229,14 @@ test('composer previews natural calls and selected mentions, and replies keep th
     await ui.type('Message', '@Dev'); await ui.click('@Development');
     expect((document.querySelector('[aria-label="Message"]') as HTMLTextAreaElement).value).toBe('@Development ');
     await ui.type('Message', 'Development가 담당합니다');
-    expect(document.querySelector('[aria-label="Delivery target"]')?.textContent).toContain('Room message');
-    await ui.click('Send message'); expect(requests.at(-1)).toMatchObject({ recipient: null });
+    expect(document.querySelector('[aria-label="Delivery target"]')?.textContent).toBe('To: Development');
+    await ui.click('Send message'); expect(requests.at(-1)).toMatchObject({ recipient: 'dev' });
     await ui.click('Reply to Build login'); await ui.type('Message', 'Use email');
     expect(document.querySelector('[aria-label="Delivery target"]')?.textContent).toBe('To: Development');
     await ui.click('Send message'); expect(requests.at(-1)).toMatchObject({ recipient: 'dev', replyTo: 'goal' });
   });
 });
-test('new room invites an assigned agent and requires an explicit call to deliver work', async () => {
+test('new room invites an assigned agent and delivers plain messages to its default Homie', async () => {
   await withDOM(async ui => {
     const agent = { ...specialistAgent(), name: 'Developer', accountId: 'account', assignments: [{ workspaceRoot: '/project', instructions: '' }] };
     const requests: ChatsRequest[] = [];
@@ -259,7 +259,7 @@ test('new room invites an assigned agent and requires an explicit call to delive
     expect(requests.some(r => r.action === 'send')).toBe(false);
     expect(document.body.textContent).toContain('invited agent');
     expect(document.body.textContent).not.toContain('recipient menu');
-    await ui.type('Message', '@Developer hello'); await ui.click('Send message');
+    await ui.type('Message', 'hello'); await ui.click('Send message');
     expect(requests.find(r => r.action === 'send')).toMatchObject({ recipient: agent.id, goal: false, automatic: true });
     expect(document.querySelector('[aria-label="Message type"]')).toBeNull();
     expect(document.body.textContent).not.toContain('New goal');

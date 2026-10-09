@@ -486,7 +486,7 @@ export function AppShell() {
           </WorkspaceEditorSplit>
         </div>
         <ReviewSidebar
-          onOpenFile={openWorkspaceFile}
+          onOpenFile={verificationReview ? undefined : openWorkspaceFile}
           verification={verificationReview}
           open={rightSidebarOpen}
           item={reviewedItem}

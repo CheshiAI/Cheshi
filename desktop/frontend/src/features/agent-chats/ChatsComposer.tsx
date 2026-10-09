@@ -45,7 +45,7 @@ export function ChatsComposer({ areaRef, active, draft, sending, resumeGoal, sen
         </div>}
       </div>
       <ChatComposerInput ref={inputRef} aria-label="Message" value={draft} maxLength={16000}
-        placeholder={resumeGoal ? 'Add the missing information to resume this goal…' : 'Message the room, or @mention an agent…'}
+        placeholder={resumeGoal ? 'Add the missing information to resume this goal…' : 'Give your Homie a task, or @mention another agent…'}
         onChange={event => onDraftChange(event.target.value)}
         onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
         onKeyDown={event => {

@@ -1,6 +1,6 @@
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { Image as ImageIcon } from 'lucide-react';
-import { Children, useEffect, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react';
+import { Children, createContext, useContext, useEffect, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform, type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -13,6 +13,8 @@ import { FileEvidence } from './FileEvidence';
 import { fileEvidence } from './fileEvidenceModel';
 import { flashSourceTarget } from '../../../../shared/flash-memory';
 import { FlashSourceLink } from './FlashSourceLink';
+
+export const LocalFileLinkContext = createContext<((href: string) => Promise<void>) | null>(null);
 
 interface MessageContentProps {
   text: string;
@@ -48,13 +50,14 @@ function isGitHubUrl(href: string): boolean {
 
 function LocalFileAnchor({ href, children }: { href: string; children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
+  const openLocalFile = useContext(LocalFileLinkContext) ?? cheshiDesktop?.openLocalFileLink;
   const openFile = async () => {
     setError(null);
-    if (!cheshiDesktop?.openLocalFileLink) {
+    if (!openLocalFile) {
       setError('File links are available in the desktop app.');
       return;
     }
-    try { await cheshiDesktop.openLocalFileLink(href); }
+    try { await openLocalFile(href); }
     catch { setError('Could not open this file. It may have been moved or deleted.'); }
   };
   return <>

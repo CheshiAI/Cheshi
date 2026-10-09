@@ -8,7 +8,7 @@ import { coversPermissions, shouldRequestPermissions, parsePermissionRequest, pe
 import { projectTaskActivities, recordTaskActivity } from './activity.ts';
 import { readNativeTurnUsage } from './native-usage.ts';
 import { mergeTurnUsage } from './usage-contract.ts';
-import { WorkerConversation, conversationTools, conversationInstructions } from './conversation.ts';
+import { WorkerConversation, conversationTools, conversationInstructions, intakeGuidance, intakeNeedsAction } from './conversation.ts';
 import { waitingForUser } from './conversation-contract.ts';
 import { WorkerWork } from './work.ts';
 import { workTools, workInstructions } from './work-tools.ts';
@@ -53,6 +53,7 @@ type ActiveTask = {
   done: Promise<void>; observer: TurnObserver; interrupting: Promise<void> | null;
   observations: GoalObservations; messages: string[]; input: string; controller: AbortController;
   health: ExecutionHealth; commands: CommandSessions;
+  intakePermissionsConfirmed?: true; intakeRetry: boolean;
 };
 
 export class SpecialistAgent {
@@ -109,7 +110,13 @@ export class SpecialistAgent {
         if (tool === 'request_execution_permissions' && this.configuration?.permissionProtocol === 1) {
           if (!task.roomId) throw new Error('Permission requests require a Chats task.');
           const requested = parsePermissionRequest({ ...record(params.arguments), id: randomUUID(), status: 'pending' });
-          if (coversPermissions(this.configuration.permissions, requested)) return { status: 'already-allowed', message: 'These permissions are already enabled. Other sandbox boundaries and saved instructions still apply.' };
+          if (coversPermissions(this.configuration.permissions, requested)) {
+            const intake = !!task.dialogue && !task.goal;
+            if (intake) active.intakePermissionsConfirmed = true;
+            return { status: 'already-allowed', phase: intake ? 'intake' : 'execution',
+              permissions: this.configuration.permissions,
+              message: intake ? intakeGuidance : 'These permissions are already enabled. Continue within the saved permissions, sandbox boundaries and instructions.' };
+          }
           const missing = { ...requested, fileWrite: requested.fileWrite && !this.configuration.permissions.fileWrite,
             commandExecution: requested.commandExecution && !this.configuration.permissions.commandExecution };
           if (shouldRequestPermissions(task.permissionRequest, missing)) this.store.update(task.id, { permissionRequest: missing });
@@ -240,7 +247,8 @@ export class SpecialistAgent {
     if (task.status === 'completed') throw new TaskConflict('This goal is completed. Start a new goal.');
     const question = questionId ? task.dialogue?.questions.find(q => q.id === questionId) : undefined;
     if (questionId && (!question || question.answer)) throw new TaskConflict('Unknown or already answered user question.');
-    const dialogue = task.dialogue && { ...task.dialogue, ...(task.dialogue.route && !task.dialogue.route.delivered ? { route: { ...task.dialogue.route, held: true as const } } : {}),
+    const dialogue = task.dialogue && { ...task.dialogue, ...(task.dialogue.intakeRecovery === 'queued' ? { intakeRecovery: undefined } : {}),
+      ...(task.dialogue.route && !task.dialogue.route.delivered ? { route: { ...task.dialogue.route, held: true as const } } : {}),
       questions: task.dialogue.questions.map(q => question && q.id === questionId ? { ...q, answer: { id: inputId, text: prompt } } : q) };
     if (this.active?.id === id) {
       this.store.update(id, { ...(dialogue ? { dialogue } : {}), inputs: [...(task.inputs ?? []), { id: inputId, prompt, pending: true, ...(questionId ? { questionId } : {}) }] });
@@ -260,7 +268,7 @@ export class SpecialistAgent {
     return setQuestionDeadline(this.store, this.collaboration.agentId, taskId, roomId, questionId, expiresAt);
   }
 
-  private launch(task: Task, input: string, messages: string[] = []): Task {
+  private launch(task: Task, input: string, messages: string[] = [], intakeRetry = false): Task {
     const id = task.id;
     // A lost acknowledgement must never reuse the preceding turn's identity.
     this.store.update(id, { threadId: null, turnId: null, recovery: undefined });
@@ -276,7 +284,7 @@ export class SpecialistAgent {
       }
     }
     const commands = new CommandSessions();
-    const active: ActiveTask = { commands, id, threadId: null, turnId: null, observations, health: new ExecutionHealth(id),
+    const active: ActiveTask = { commands, id, threadId: null, turnId: null, observations, health: new ExecutionHealth(id), intakeRetry,
       stopRequested: false, done: Promise.resolve(), observer: new TurnObserver((method, item, turnId) => {
         recordTaskActivity(this.store, id, method, item, turnId); commands.observe(method, item); observations.item(method, item);
         if (this.configuration?.permissions.commandExecution === true) this.verification?.observe(task, method, item);
@@ -302,6 +310,13 @@ export class SpecialistAgent {
       this.store.update(queued.id, { status: 'accepted', finishedAt: null, inputs: queued.inputs!.map(({ pending, ...input }) => input),
         ...(queued.goal ? { goal: { ...queued.goal, pending: null, progressCheck: { unchanged: 0, observations: [] } } } : {}) });
       this.launch(this.store.task(queued.id)!, `User corrections received during the preceding turn. Apply these before continuing; explain what already ran and what you will change.\n${inputs.map(i => i.prompt).join('\n\n')}`);
+      return;
+    }
+    const intake = this.store.snapshot().tasks.find(t => t.status === 'waiting' && t.dialogue?.intakeRecovery === 'queued' && intakeNeedsAction(t));
+    if (intake) {
+      this.store.update(intake.id, { status: 'accepted', finishedAt: null,
+        dialogue: { ...intake.dialogue!, intakeRecovery: 'attempted' } });
+      this.launch(this.store.task(intake.id)!, `Reassess the previous intake once. The requested project permissions were already allowed, but no work action was recorded. ${intakeGuidance}\nUser request (unchanged authority):\n${intake.inputs?.at(-1)?.prompt ?? intake.dialogue!.userText}`, [], true);
       return;
     }
     const routed = this.store.snapshot().tasks.find(t => t.status === 'completed' && t.dialogue?.route && !t.dialogue.route.delivered && !t.dialogue.route.held);
@@ -352,7 +367,8 @@ export class SpecialistAgent {
     const applicationAvailable = integrationAvailable && settings?.applicationProtocol === 1 && (!savedThread || task.applicationTools === true);
     const codegraphAvailable = this.codegraph && packToolAllowed(settings?.enabledTools, codegraphTools[0]!.name) && (!savedThread || saved.tasks.some(t => t.threadId === savedThread && t.codegraphTools === true));
     const profile = this.profile + (settings?.enabledTools ? `\nEnabled Homie tool groups: ${settings.enabledTools.join(', ') || 'none'}. Disabled groups are unavailable even if older instructions mention them.\n` : '') + (codegraphAvailable ? codegraphInstructions : this.codegraph ? '\nThis older conversation has no CodeGraph tools. Use scoped source reads within existing permissions; a new conversation is required for CodeGraph tools.\n' : '') + (settings?.permissionProtocol === 1 ? permissionInstructions : '') + (this.collaboration ? collaborationInstructions : '') + (task.goal ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
-      + (integrationAvailable && settings?.candidateVerificationProtocol === 1 ? candidateVerificationInstructions : '') + (applicationAvailable ? applicationInstructions : '');
+      + (integrationAvailable && settings?.candidateVerificationProtocol === 1 ? candidateVerificationInstructions : '') + (applicationAvailable ? applicationInstructions : '')
+      + (intake ? `\nCurrent stage: intake. Saved project permissions: fileWrite=${settings?.permissions.fileWrite === true}, commandExecution=${settings?.permissions.commandExecution === true}. ${intakeGuidance}\n` : '');
     const params: JsonRecord = { cwd: workspace,
       ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: !intake && !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
       approvalsReviewer: 'user', developerInstructions: profile,
@@ -462,6 +478,13 @@ export class SpecialistAgent {
       } else if (!active.stopRequested && result.status === 'completed' && this.store.task(task.id)?.inputs?.some(i => i.pending === true)) {
         this.store.complete(task.id, { ...result, status: 'waiting',
           ...(savedGoal ? { goal: { ...savedGoal, phase: 'ready', pending: null } } : {}) }, active.messages);
+      } else if (!active.stopRequested && result.status === 'completed' && (active.intakePermissionsConfirmed || active.intakeRetry)
+        && intakeNeedsAction(this.store.task(task.id)!)) {
+        const current = this.store.task(task.id)!;
+        const attempted = current.dialogue!.intakeRecovery === 'attempted';
+        if (!attempted) this.store.update(task.id, { dialogue: { ...current.dialogue!, intakeRecovery: 'queued' } });
+        this.store.complete(task.id, { ...result, status: attempted ? 'interrupted' : 'waiting',
+          error: attempted ? 'The Homie did not transition from intake to work after one recheck. No work completion was established. Inspect the conversation before continuing.' : null }, active.messages);
       } else if (task.delegation && this.work) {
         const outgoing = this.work.resultMessage(this.store.task(task.id)!, result.status, result.error || result.output);
         this.store.complete(task.id, result, active.messages, outgoing);

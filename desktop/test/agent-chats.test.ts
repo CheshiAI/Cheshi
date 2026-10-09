@@ -76,18 +76,21 @@ test('pin rejects foreign and missing rooms and preserves memory and journal on 
   expect(readFileSync(f.filename, 'utf8')).toBe(before);
   expect(new ChatsStore(f.filename).snapshot(f.workspace).rooms[0]?.pinned).toBe(false);
 });
-test('unaddressed room messages persist without jobs, worker wakes or model requests', async () => {
+test('plain automatic messages dispatch once to the default Homie', async () => {
   const f = fixture(); let wakes = 0;
   const service = createAgentChats({ ...f.options, wake: async () => { wakes++; return { details: f.details }; } });
   const input = { action: 'send', id: 'note', roomId: 'room', threadId: null, recipient: null, text: 'Hello everyone', goal: false, automatic: true } as const;
   service.request(f.workspace, input); service.request(f.workspace, input);
   await service.tick();
-  expect(wakes).toBe(0); expect(f.sent).toHaveLength(0);
+  expect(wakes).toBe(1); expect(f.sent).toMatchObject([{ agent: 'dev' }]);
   const persisted = new ChatsStore(f.filename);
-  expect(persisted.all().jobs).toHaveLength(0);
-  expect(persisted.snapshot(f.workspace).messages).toMatchObject([{ id: 'note', recipient: null, text: 'Hello everyone' }]);
-  expect(persisted.all().messages[0]?.taskId).toBeUndefined();
-  expect(() => service.request(f.workspace, { ...input, recipient: 'dev' })).toThrow('identity');
+  expect(persisted.all().jobs).toHaveLength(1);
+  expect(persisted.snapshot(f.workspace).messages[0]).toMatchObject({ id: 'note', recipient: 'dev', text: 'Hello everyone' });
+  expect(persisted.all().messages[0]?.taskId).toBeDefined();
+  expect(() => service.request(f.workspace, { ...input, recipient: 'planner' })).toThrow('identity');
+  expect(() => service.request(f.workspace, { ...input, id: 'unknown', text: '@stranger do it' })).toThrow('exact name');
+  service.request(f.workspace, { ...input, id: 'room-note', automatic: undefined });
+  await service.tick(); expect(wakes).toBe(1); expect(f.sent).toHaveLength(1);
 });
 test.each(['@planner Build login', 'planner 호출해서 로그인 만들어줘'])('calls only the addressed participant: %s', async text => {
   const f = fixture();

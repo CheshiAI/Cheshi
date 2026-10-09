@@ -1,3 +1,4 @@
+import { IsolatedTaskCard } from './IsolatedTaskCard';
 import { ProjectEnvironmentSetup } from './ProjectEnvironmentSetup';
 import { PermissionRequestCard } from './PermissionRequestCard';
 import { memo, useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
@@ -9,7 +10,7 @@ import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import { AgentAvatar } from '../../shared/agent-management/AgentAvatar';
-import { MessageContent } from '../chat/MessageContent';
+import { LocalFileLinkContext, MessageContent } from '../chat/MessageContent';
 import { ChatMessageLabel } from '../chat/ChatMessageLabel';
 import { syncChatComposerOverlayHeight } from '../chat/chatComposerOverlay';
 import { isWorkKind } from '../../../../shared/agent-work';
@@ -150,7 +151,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     || goalState?.phase === 'blocked' || goalState?.phase === 'unknown');
   const messageText = draft.trim();
   const addressing = resolveChatRecipient(messageText, room?.members ?? [], replyMessage);
-  const recipient = addressing.recipient;
+  const recipient = addressing.recipient ?? (addressing.error ? null : room?.defaultAgentId ?? null);
   const ownerSelected = recipient !== null && recipient === owner;
   const mentionChoices = messageText.startsWith('@') && !recipient
     ? room?.members.filter(member => member.name.toLocaleLowerCase().startsWith(messageText.slice(1).toLocaleLowerCase())) ?? [] : [];
@@ -210,7 +211,10 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     const ownRoot = messageRoot(message, messages);
     const context = messages.find(m => m.id === message.replyTo) ?? question ?? (ownRoot && ownRoot.id !== message.id && working.length > 1 ? ownRoot : undefined);
     const copyable = message.kind === 'message' && (!message.activity || message.activity.kind === 'message');
-    return <article key={message.id} className={styles.message} data-message-id={message.id} data-reply-action data-copy-action={copyable || undefined}>
+    return <LocalFileLinkContext.Provider key={message.id} value={message.sender === 'user' ? null : async href => {
+      if (!api) throw new Error('Worker file links are unavailable.');
+      await api.request({ action: 'open-file', roomId: message.roomId, messageId: message.id, href });
+    }}><article className={styles.message} data-message-id={message.id} data-reply-action data-copy-action={copyable || undefined}>
       <ChatsMessageActions text={message.text} copyable={copyable}
         replyLabel={`Reply to ${(message.text || message.activity?.title || 'execution').slice(0, 80)}`}
         onReply={() => { if (room) setReplies(all => ({ ...all, [room.id]: message.id })); }} />
@@ -226,6 +230,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
           : isWorkKind(message.kind) ? <WorkMessage kind={message.kind} text={message.text} />
             : verification ? <VerificationCard review={verification} onOpen={() => onReviewVerification?.(verification, true)} />
               : <div className={styles.text}><ChatsMessageContent text={message.text || 'No text response.'} mention={mention} reviewFileContext={reviewFileContext} /></div>}
+        {message.isolated && <IsolatedTaskCard message={message} mutate={mutate} />}
         {message.error && !message.goalProgress && <p role="status" className={styles.description}>{message.error}</p>}
         {message.error?.includes('Project setup required:') && <ProjectEnvironmentSetup roomId={message.roomId} mutate={mutate} />}
         {message.activity?.kind === 'message' && message.activity.truncated && <p className={styles.description}>Message shortened to the retained excerpt.</p>}
@@ -236,7 +241,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
               finally { if (alive.current) setSending(false); } }}>Retry worker</NeumorphicButton>
         </div>}
       </div>
-    </article>;
+    </article></LocalFileLinkContext.Provider>;
   }
   const roomList = <ChatsRoomList snapshot={snapshot} selectedId={roomId} phase={data.phase} loaded={data.loaded} refreshing={data.refreshing} disabled={!api} error={data.error ?? pinError}
     pinningRoomId={pinningRoomId} onPin={(id, pinned) => { void pinRoom(id, pinned); }}
@@ -301,7 +306,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
           </aside>
         </div>
       </section>
-      {active && dialog && <RoomDialog agents={agents} engines={engines} onSave={mutate} onClose={() => setDialog(null)} />}
+      {active && dialog === 'new' && <RoomDialog agents={agents} engines={engines} onSave={mutate} onClose={() => setDialog(null)} />}
       {active && voiceOpen && room && <VoiceDialog key={room.id} roomId={room.id} onClose={() => setVoiceOpen(false)} />}
       {active && deleteTarget && <DeleteRoomDialog key={deleteTarget.id} name={deleteTarget.name}
         blocked={sending || snapshot.messages.some(message => message.roomId === deleteTarget.id && message.sender === 'user'
