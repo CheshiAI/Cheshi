@@ -1,3 +1,4 @@
+import { preloadRefreshQueue } from '../../scripts/preload-dependencies.mts';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
@@ -69,6 +70,7 @@ function createRunner(options: { holdPreload?: boolean; holdCalendar?: boolean; 
   const preload = createDeferred<void>();
   const calendar = createDeferred<void>();
   const readiness = createDeferred<{ ok: boolean }>();
+  let rebuild: ReturnType<typeof createDeferred<void>> | null = null;
   const children: FakeChild[] = [];
   const events: string[] = [];
   const directories = new Map<string, FakeChild>();
@@ -111,7 +113,12 @@ function createRunner(options: { holdPreload?: boolean; holdCalendar?: boolean; 
       }),
     },
     './forward-desktop-dev-output.mts': { forwardDesktopDevOutput: () => {} },
-    './build-desktop-preload.mts': { buildDesktopPreload: () => options.holdPreload ? preload.promise : Promise.resolve() },
+    './preload-dependencies.mts': { preloadDependencies: () => [], preloadRefreshQueue },
+    './build-desktop-preload.mts': { buildDesktopPreload: async () => {
+      events.push('preload:build');
+      await (rebuild?.promise ?? (options.holdPreload ? preload.promise : Promise.resolve()));
+      events.push('preload:ready');
+    } },
     './build-apple-calendar.mts': { buildAppleCalendar: () => {
       events.push('calendar:build');
       return options.holdCalendar ? calendar.promise : Promise.resolve();
@@ -170,10 +177,12 @@ function createRunner(options: { holdPreload?: boolean; holdCalendar?: boolean; 
     releasePreload: () => preload.resolve(),
     releaseCalendar: () => calendar.resolve(),
     releaseReadiness: () => readiness.resolve({ ok: true }),
-    changeSource: () => { assert.ok(changed); changed(new URL('../../desktop/main.mts', import.meta.url).pathname); },
+    holdRebuild: () => { rebuild = createDeferred<void>(); return () => { rebuild!.resolve(); rebuild = null; }; },
+    changeSource: (filename = 'desktop/main.mts') => { assert.ok(changed); changed(new URL(`../../${filename}`, import.meta.url).pathname); },
     async cleanup() {
       signals.emit('SIGTERM');
       preload.resolve();
+      rebuild?.resolve();
       calendar.resolve();
       readiness.resolve({ ok: true });
       for (const child of children) child.close();
@@ -257,5 +266,22 @@ test('macOS shutdown uses the launched app signal instead of killing the open wa
   await runner.completion;
   assert.ok(runner.events.includes('signal:mac-app:SIGTERM'));
   assert.equal(runner.events.includes('signal:forge:SIGTERM'), false);
+  assert.equal(runner.errors, '');
+});
+
+test('shared worker contract edits rebuild preload before the development app restarts', async (t) => {
+  const runner = createRunner();
+  t.after(() => runner.cleanup());
+  await waitUntil(() => runner.children.length === 2);
+  const release = runner.holdRebuild();
+  const offset = runner.events.length;
+  runner.changeSource('desktop/shared/agent-management.ts');
+  await waitUntil(() => runner.events.slice(offset).includes('preload:build'));
+  await new Promise(resolve => setTimeout(resolve, 200));
+  assert.equal(runner.requests, 0, 'old preload must not restart the app while a rebuild is pending');
+  release();
+  await waitUntil(() => runner.children.length === 3);
+  const events = runner.events.slice(offset);
+  assert.ok(events.indexOf('preload:ready') < events.indexOf('request:quit'));
   assert.equal(runner.errors, '');
 });

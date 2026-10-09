@@ -8,7 +8,7 @@ import { parseQuestionDeadline } from './agent-question.ts';
 
 export interface TaskCriterion { criterion: string; met: boolean; evidence: string }
 export interface TaskDecision {
-  action: 'continue' | 'wait' | 'blocked' | 'complete'; reason: string; progress: string; nextAction: string; criteria: TaskCriterion[];
+  action: 'continue' | 'wait' | 'pause' | 'blocked' | 'complete'; reason: string; progress: string; nextAction: string; criteria: TaskCriterion[];
 }
 export interface TaskGoalUsage { reportedThroughTurn: number; inputTokens: number; outputTokens: number; totalTokens: number }
 export function parseGoalUsage(value: unknown): TaskGoalUsage {
@@ -26,7 +26,7 @@ export interface TaskVerification {
   verdicts: { criterion: string; verdict: 'pass' | 'fail' | 'inconclusive'; reason: string; evidenceIds: string[] }[];
   evidence: TaskEvidence[];
 }
-export interface TaskVerificationRequest { candidate?: CandidateReference; goal: string; criteria: string[]; artifacts: { path: string; sha256: string | null }[] }
+export interface TaskVerificationRequest { candidate?: CandidateReference; sourceHash?: string; goal: string; criteria: string[]; artifacts: { path: string; sha256: string | null }[] }
 export interface TaskMessage {
   expiresAt?: string | null; closureReason?: 'expired';
   id: string; kind: WorkKind | 'question' | 'question_closed' | 'reply' | 'verification_request' | 'verification_result';
@@ -73,13 +73,13 @@ function criterion(value: unknown): TaskCriterion {
 }
 function decision(value: unknown): TaskDecision {
   const v = inspectionRecord(value);
-  return { action: choice(v.action, ['continue', 'wait', 'blocked', 'complete']), reason: inspectionText(v.reason),
+  return { action: choice(v.action, ['continue', 'wait', 'pause', 'blocked', 'complete']), reason: inspectionText(v.reason),
     progress: inspectionText(v.progress), nextAction: inspectionText(v.nextAction), criteria: inspectionList(v.criteria, criterion, 16) };
 }
 export function parseTaskGoal(value: unknown): TaskGoal {
   const v = inspectionRecord(value);
   if (!Number.isSafeInteger(v.turns) || Number(v.turns) < 0) throw new TypeError('Invalid goal turns.');
-  return { phase: choice(v.phase, ['active', 'ready', 'waiting', 'blocked', 'completed']), turns: Number(v.turns),
+  return { phase: choice(v.phase, ['active', 'ready', 'waiting', 'paused', 'blocked', 'completed']), turns: Number(v.turns),
     ...(v.usage === undefined ? {} : { usage: parseGoalUsage(v.usage) }),
     verificationRequired: v.verificationRequired === undefined ? false : flag(v.verificationRequired),
     criteria: inspectionList(v.criteria, criterion, 16), decisions: inspectionList(v.decisions, decision, 1000),
@@ -103,9 +103,11 @@ export function parseTaskVerification(value: unknown): TaskVerification {
 export function parseTaskVerificationRequest(value: unknown): TaskVerificationRequest {
   const v = inspectionRecord(value);
   const candidate = v.candidate === undefined ? undefined : candidateReference(v.candidate);
-  return { ...(candidate ? { candidate } : {}), goal: inspectionText(v.goal, 20_000), criteria: inspectionList(v.criteria, c => inspectionText(c), 16),
+  const sourceHash = v.source === undefined ? v.sourceHash : inspectionRecord(v.source).hash;
+  if ((v.source !== undefined || sourceHash !== undefined) && (candidate || typeof sourceHash !== 'string' || !/^[a-f0-9]{64}$/.test(sourceHash))) throw new TypeError('Invalid verification source digest.');
+  return { ...(candidate ? { candidate } : {}), ...(typeof sourceHash === 'string' ? { sourceHash } : {}), goal: inspectionText(v.goal, 20_000), criteria: inspectionList(v.criteria, c => inspectionText(c), 16),
     artifacts: inspectionList(v.artifacts, raw => {
-      const a = inspectionRecord(raw), sha256 = candidate && a.sha256 === null ? null : inspectionText(a.sha256, 64);
+      const a = inspectionRecord(raw), sha256 = (candidate || sourceHash) && a.sha256 === null ? null : inspectionText(a.sha256, 64);
       if (sha256 !== null && !/^[a-f0-9]{64}$/.test(sha256)) throw new TypeError('Invalid artifact digest.');
       return { path: inspectionText(a.path, 300), sha256 };
     }, candidate ? 32 : 16) };

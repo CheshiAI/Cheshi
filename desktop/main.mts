@@ -94,6 +94,7 @@ const aboutWindow = createAboutWindow({
 const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'updates'));
 const agentEngines = [createDockerAgentEngine()];
 const agentManagement: ReturnType<typeof createAgentManagementService> = createAgentManagementService({ engines: agentEngines,
+  displayLifecycle: (engine, agent) => specialistRuntime.displayLifecycle(engine, agent),
   control: (engine, id, action, operation) => specialistRuntime.manualControl(engine, id, action, operation),
   pendingDeletions: engineId => agentDeletion.pending(engineId) });
 const agentRegistry = createAgentRegistry(path.join(app.getPath('userData'), 'agents', 'registry.json'));

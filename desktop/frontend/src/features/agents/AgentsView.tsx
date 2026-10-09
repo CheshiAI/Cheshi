@@ -1,5 +1,4 @@
 import { useHomieParticipants } from './useHomieParticipants';
-import { ToolbarMenu } from '../../shared/ui/ToolbarMenu';
 import type { AgentPackage } from '../../../../shared/agent-package';
 import { duplicateHomieDraft, type HomieEditorDraft } from './homieEditorDraft';
 import type { AgentChatsApi, ChatTaskTarget } from '../../../../shared/agent-chats';
@@ -123,8 +122,8 @@ export function AgentsView({ active = true, chatTask, onBackToChats, selectionRe
                   <Container aria-hidden="true" />
                 </span>
               </TooltipTarget>)}
-              <ToolbarMenu disabled={locked} label={`Homie actions: ${item.name}`} items={[{ id: 'delete', label: `Delete agent: ${item.name}`,
-                icon: <Trash2 aria-hidden="true" />, disabled: locked, onSelect: () => setDeletion(item) }]} />
+              <TooltipButton variant="ghost" size="icon" aria-label={`Delete agent: ${item.name}`} title={`Delete ${item.name}`}
+                disabled={locked} onClick={() => setDeletion(item)}><Trash2 aria-hidden="true" /></TooltipButton>
             </div>
           </div>;
         })}

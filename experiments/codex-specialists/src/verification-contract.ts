@@ -1,8 +1,9 @@
 import { candidateReference, candidateSnapshot, sameCandidate, type CandidateReference, type CandidateSnapshot } from './candidate-verification-contract.ts';
+import { verificationSource, type VerificationSource } from './verification-source-contract.ts';
 import { record, textValue } from './protocol.ts';
 
 export type Artifact = { path: string; sha256: string | null };
-export type VerificationRequest = { goal: string; criteria: string[]; artifacts: Artifact[]; candidate?: CandidateSnapshot; context?: VerificationContext };
+export type VerificationRequest = { goal: string; criteria: string[]; artifacts: Artifact[]; candidate?: CandidateSnapshot; source?: VerificationSource; context?: VerificationContext };
 export type Evidence = { id: string; kind: 'file' | 'command'; detail: string; output: string; exitCode: number | null; successful?: boolean };
 export type Verdict = { criterion: string; verdict: 'pass' | 'fail' | 'inconclusive'; reason: string; evidenceIds: string[] };
 export type VerificationResult = { verdicts: Verdict[]; evidence: Evidence[]; candidate?: CandidateReference };
@@ -47,7 +48,7 @@ export function verificationContext(value: unknown): VerificationContext {
     const r = record(raw), candidate = r.candidate === undefined ? undefined : candidateReference(r.candidate);
     if (typeof r.superseded !== 'boolean') throw new Error('Invalid prior verification state.');
     const round: VerificationRound = { requestId: contextId(r.requestId), resultId: contextId(r.resultId), verifierId: contextId(r.verifierId),
-      criteria: list(r.criteria, c => boundedText(c)), artifacts: artifacts(r.artifacts, !!candidate),
+      criteria: list(r.criteria, c => boundedText(c)), artifacts: artifacts(r.artifacts, true),
       ...(candidate ? { candidate } : {}), result: verificationResult(r.result), superseded: r.superseded };
     assertResult(round, round.result);
     return round;
@@ -84,11 +85,14 @@ export function artifactPath(value: unknown): string {
 export function verificationRequest(value: unknown): VerificationRequest {
   const v = record(value);
   const candidate = v.candidate === undefined ? undefined : candidateSnapshot(v.candidate);
+  const source = v.source === undefined ? undefined : verificationSource(v.source);
+  if (candidate && source) throw new Error('Choose one verification snapshot.');
   const criteria = list(v.criteria, item => boundedText(item));
-  const files = artifacts(v.artifacts, !!candidate, candidate ? 32 : 16);
+  const files = artifacts(v.artifacts, !!candidate || !!source, candidate ? 32 : 16);
   if (candidate && JSON.stringify(files) !== JSON.stringify(candidate.files.map(({ path, sha256 }) => ({ path, sha256 })))) throw new Error('Verify every candidate file, including deleted files.');
+  if (source && JSON.stringify(files) !== JSON.stringify(source.files.map(({ path, sha256 }) => ({ path, sha256 })))) throw new Error('Verify every source file.');
   if (new Set(criteria).size !== criteria.length) throw new Error('Duplicate verification target.');
-  return { goal: boundedText(v.goal, 20_000), criteria, artifacts: files, ...(candidate ? { candidate } : {}),
+  return { goal: boundedText(v.goal, 20_000), criteria, artifacts: files, ...(source ? { source } : {}), ...(candidate ? { candidate } : {}),
     ...(v.context === undefined ? {} : { context: verificationContext(v.context) }) };
 }
 export function evidence(value: unknown): Evidence {

@@ -57,9 +57,7 @@ test('Homies edits participation in its list, saves additions and removals, and 
     }]);
     expect(checkbox('Development').checked).toBe(false);
     expect(document.querySelector(`[aria-label="${f.first.name}"]`)).not.toBeNull();
-    expect(document.querySelector('[aria-label^="Delete agent:"]')).toBeNull();
-    await ui.click('Homie actions: Development');
-    expect(document.querySelector('[role="menuitem"][aria-label="Delete agent: Development"]')).not.toBeNull();
+    expect(document.querySelector('button[aria-label="Delete agent: Development"]')).not.toBeNull();
   });
 });
 
@@ -106,7 +104,7 @@ test('participation retains the draft on failure and prevents duplicate saves wh
     expect(f.snapshot().rooms[0]!.members).toHaveLength(1);
     waiting = true; await ui.click('Save participants');
     expect(checkbox('Review').disabled).toBe(true);
-    expect(document.querySelector<HTMLButtonElement>('[aria-label="Homie actions: Review"]')?.disabled).toBe(true);
+    expect(document.querySelector<HTMLButtonElement>('[aria-label="Delete agent: Review"]')?.disabled).toBe(true);
     await ui.click('Saving…'); expect(pendingCalls).toBe(1);
     f.fail(false);
     const result = await request({ action: 'participants', roomId: 'room', members: [f.first.id, f.second.id], defaultAgentId: f.first.id,

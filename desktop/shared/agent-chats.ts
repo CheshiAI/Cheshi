@@ -54,7 +54,7 @@ export interface RoomJob {
 export interface ChatsSnapshot { cursor?: ChatsCursor; rooms: AgentRoom[]; messages: RoomMessage[] }
 export interface ChatTaskTarget { roomId: string; threadId: string | null; agentId: string; engineId: string; taskId: string }
 export function isRoomWorkSettled(status: string | undefined): boolean {
-  return ['completed', 'failed', 'interrupted', 'blocked', 'held', 'cancelled'].includes(status ?? '');
+  return ['completed', 'failed', 'interrupted', 'paused', 'blocked', 'held', 'cancelled'].includes(status ?? '');
 }
 export type ChatsRequest = { action: 'list' }
   | { action: 'workspace-inspect' | 'workspace-open'; roomId: string; messageId: string }

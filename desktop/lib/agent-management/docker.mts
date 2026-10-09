@@ -70,6 +70,8 @@ export function parseDockerAgent(value: unknown): RuntimeAgent {
   }
   return { id: containerId(agentText(raw.Id)), name: agentText(raw.Name).replace(/^\//, ''),
     image: agentText(config.Image), state: agentText(state.Status, 100), endpoint,
+    ...(typeof state.StartedAt === 'string' && Number.isFinite(Date.parse(state.StartedAt)) && Date.parse(state.StartedAt) > 0
+      ? { startedAt: agentText(state.StartedAt, 100) } : {}),
     ...(specialist ? { profileId: parseAgentId(metadata['ai.cheshi.agent']) } : {}) };
 }
 

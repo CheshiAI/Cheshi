@@ -1,14 +1,16 @@
 import type { AgentAction, AgentCatalog, AgentDetails, AgentManagementApi, AgentSnapshot } from '../../../../shared/agent-management';
+import { sameWorkerExecution } from './workerStatus';
 
 export interface AgentManagementState {
   catalog: AgentCatalog; engineId: string; agentId: string; snapshot: AgentSnapshot | null;
   details: AgentDetails | null; loading: boolean; changing: boolean; error: string | null;
+  pendingControl: { engineId: string; agentId: string; action: AgentAction } | null;
 }
 function message(error: unknown) { return error instanceof Error ? error.message : 'Could not inspect workers.'; }
 
 export class AgentManagementModel {
   private state: AgentManagementState = { catalog: { engines: [], error: null }, engineId: '', agentId: '',
-    snapshot: null, details: null, loading: false, changing: false, error: null };
+    snapshot: null, details: null, loading: false, changing: false, pendingControl: null, error: null };
   private readonly api: AgentManagementApi;
   private readonly listeners = new Set<() => void>();
   private revision = 0;
@@ -47,13 +49,13 @@ export class AgentManagementModel {
   async connect(engineId: string) {
     if (this.state.changing) return;
     this.revision++; this.refreshing = false;
-    this.publish({ engineId, agentId: '', snapshot: null, details: null, error: null, loading: false });
+    this.publish({ engineId, agentId: '', snapshot: null, details: null, error: null, loading: false, pendingControl: null });
     if (engineId) await this.refresh();
   }
   async select(agentId: string) {
     if (this.state.changing) return;
     this.revision++; this.refreshing = false;
-    this.publish({ agentId, details: null, error: null });
+    this.publish({ agentId, details: null, error: null, pendingControl: null });
     await this.refresh();
   }
   async refresh({ background = false } = {}) {
@@ -68,11 +70,18 @@ export class AgentManagementModel {
       const agent = snapshot.agents.find(item => item.id === this.state.agentId) ?? snapshot.agents[0];
       // Clear an old selection as soon as the engine says it no longer exists.
       this.publish({ snapshot, agentId: agent?.id ?? '',
-        details: agent?.id === this.state.details?.agent.id ? this.state.details : null, error: null });
+        details: agent && this.state.details && sameWorkerExecution(agent, this.state.details.agent) ? this.state.details : null, error: null });
       if (agent?.pendingDeletion) this.publish({ details: null });
       else if (agent) {
         const details = await this.api.details(engineId, agent.id);
-        if (revision === this.revision) this.publish({ details });
+        if (revision === this.revision && this.state.engineId === engineId && this.state.agentId === agent.id) {
+          if (sameWorkerExecution(agent, details.agent)) this.publish({ details });
+          else this.publish({ details: null, snapshot: { ...snapshot, agents: snapshot.agents.map(item => {
+            if (item.id !== agent.id) return item;
+            const { status: _status, ...unconfirmed } = item;
+            return unconfirmed;
+          }) } });
+        }
       }
     } catch (error) { if (revision === this.revision) this.publish({ error: message(error) }); }
     finally { if (revision === this.revision) { this.refreshing = false; if (!background) this.publish({ loading: false }); } }
@@ -82,14 +91,14 @@ export class AgentManagementModel {
     if (this.state.changing || !agentId || error || !snapshot?.online || !this.active) return;
     const revision = ++this.revision;
     this.refreshing = false;
-    this.publish({ changing: true, loading: false, error: null });
+    this.publish({ changing: true, loading: false, error: null, pendingControl: { engineId, agentId, action } });
     try {
       const result = await this.api.control(engineId, agentId, action);
       if (!this.active || revision !== this.revision) return;
-      this.publish({ snapshot: result, details: null, changing: false });
+      this.publish({ snapshot: result, details: null, changing: false, pendingControl: null });
       await this.refresh();
     } catch (error) {
-      if (revision === this.revision) this.publish({ error: message(error), changing: false });
+      if (revision === this.revision) this.publish({ error: message(error), changing: false, pendingControl: null });
     }
   }
   async remove(engineId: string, containerId: string, deleteData: boolean) {
@@ -97,7 +106,7 @@ export class AgentManagementModel {
     if (!this.api.remove) throw new Error('Container deletion is unavailable. Restart Cheshi.');
     const revision = ++this.revision;
     this.refreshing = false;
-    this.publish({ changing: true, loading: false, error: null });
+    this.publish({ changing: true, loading: false, error: null, pendingControl: null });
     try {
       await this.api.remove({ engineId, containerId, deleteData });
       if (!this.active || revision !== this.revision) return;

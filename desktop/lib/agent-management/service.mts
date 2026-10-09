@@ -1,5 +1,5 @@
 import { agentBoolean, agentNullableText, agentRecord, parseAgentAction, parseAgentEngineId, parseAgentId } from '../../shared/agent-management.ts';
-import type { AgentCatalog, AgentDetails, AgentManagementApi, AgentSnapshot, DeleteContainer } from '../../shared/agent-management.ts';
+import type { AgentCatalog, AgentDetails, AgentManagementApi, AgentSnapshot, DeleteContainer, ManagedAgent, WorkerLifecycleDisplay, WorkerStatusObservation } from '../../shared/agent-management.ts';
 import { inspectAgentTasks } from './task-inspection.mts';
 import type { AgentEngine, RuntimeAgent } from './engine.mts';
 import { workerOperations } from './operations.mts';
@@ -44,11 +44,20 @@ function assertIdle(busy: boolean): void {
 function publicAgent({ endpoint: _endpoint, ...agent }: RuntimeAgent) { return agent; }
 
 export function createAgentManagementService(options: { engines: AgentEngine[]; read?: ReadWorker;
+  now?(): number;
+  displayLifecycle?(engineId: string, agent: ManagedAgent): WorkerLifecycleDisplay | undefined;
   control?<T>(engineId: string, agentId: string, action: string, operation: () => Promise<T>): Promise<T>;
   pendingDeletions?: (engineId: string) => Promise<DeleteContainer[]> }): AgentManagementApi {
   const adapters = new Map(options.engines.map(engine => [engine.kind, engine]));
   const pending = new Set<string>();
   const read = options.read ?? readWorker;
+  const now = options.now ?? Date.now;
+  const observation = (engineId: string, agent: ManagedAgent, observedAt: number): WorkerStatusObservation => {
+    // A damaged/legacy journal must not turn a successful Docker inspection into an engine failure.
+    let lifecycle: WorkerLifecycleDisplay | undefined;
+    try { lifecycle = options.displayLifecycle?.(engineId, agent); } catch { /* No trustworthy lifecycle observation. */ }
+    return { observedAt, ...(lifecycle ? { lifecycle: { ...lifecycle } } : {}) };
+  };
   const adapter = (input: string) => {
     const id = parseAgentEngineId(input);
     const found = adapters.get(id.split(':')[0]!);
@@ -58,7 +67,8 @@ export function createAgentManagementService(options: { engines: AgentEngine[]; 
   const snapshot = async (engineId: string): Promise<AgentSnapshot> => {
     const engine = adapter(engineId);
     try {
-      const agents = await engine.list(engineId);
+      const observedAt = now();
+      const agents = (await engine.list(engineId)).map(agent => ({ ...agent, status: observation(engineId, agent, observedAt) } as ManagedAgent));
       for (const pending of await options.pendingDeletions?.(engineId) ?? []) {
         const agent = agents.find(item => item.id === pending.containerId);
         if (agent) agent.pendingDeletion = { deleteData: pending.deleteData };
@@ -78,15 +88,18 @@ export function createAgentManagementService(options: { engines: AgentEngine[]; 
     snapshot,
     async details(engineId, agentId): Promise<AgentDetails> {
       const engine = adapter(engineId);
+      const observedAt = now();
       const agent = await engine.inspect(engineId, parseAgentId(agentId));
       const result: AgentDetails = { agent: publicAgent(agent), ready: false, busy: false, authenticated: null,
         threadId: null, error: null, logs: '', tasks: [] };
       const notices: string[] = [];
+      let observedHealth: WorkerStatusObservation['health'];
       const logs = engine.logs(engineId, agent.id).then(value => { result.logs = value; }, () => { notices.push('Could not read worker logs.'); });
       if (agent.state === 'running' && agent.endpoint) {
         await Promise.all([
           read(agent.endpoint, '/health').then(value => {
             const state = health(value);
+            observedHealth = { ready: state.ready, busy: state.busy, error: state.error };
             Object.assign(result, { ready: state.ready, busy: state.busy, threadId: state.threadId,
               ...(state.execution === undefined ? {} : { execution: state.execution }) });
             if (state.error) notices.push('Worker reported an error. Inspect its logs.');
@@ -100,6 +113,14 @@ export function createAgentManagementService(options: { engines: AgentEngine[]; 
         ]);
       } else if (agent.state === 'running') notices.push('Worker API needs one port bound to 127.0.0.1.');
       await logs;
+      // Pin health and lifecycle to the same Docker execution, including same-ID restarts.
+      // This inspection never starts a worker or invokes lifecycle reconciliation.
+      try {
+        const latest = await engine.inspect(engineId, agent.id);
+        if (agent.startedAt && latest.id === agent.id && latest.startedAt === agent.startedAt && latest.state === agent.state) {
+          result.agent.status = { ...observation(engineId, latest, observedAt), ...(observedHealth ? { health: observedHealth } : {}) };
+        }
+      } catch { /* Keep details/logs, but leave display status unconfirmed. */ }
       result.error = notices.length ? notices.join(' ') : null;
       return result;
     },

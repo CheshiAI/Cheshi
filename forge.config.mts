@@ -35,7 +35,7 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 2 && (!grandchildEntry || !packagedIcons.has(grandchildEntry) || segments.length > 3);
   }
   if (rootEntry === 'experiments') {
-    const contracts = ['task-workspace.ts', 'custom-tool-contract.ts', 'custom-tool-queue.ts', 'codegraph-tools.ts', 'codegraph-queue.ts', 'project-instructions.ts', 'execution-permissions.ts', 'usage-contract.ts', 'activity-contract.ts', 'conversation-contract.ts', 'application-storage.ts', 'application-contract.ts', 'work-contract.ts', 'work-files.ts', 'integration-contract.ts', 'integration-plan.ts', 'verification-contract.ts', 'candidate-verification-contract.ts', 'protocol.ts'].map(name => `experiments/codex-specialists/src/${name}`);
+    const contracts = ['task-workspace.ts', 'custom-tool-contract.ts', 'custom-tool-queue.ts', 'codegraph-tools.ts', 'codegraph-queue.ts', 'project-instructions.ts', 'execution-permissions.ts', 'usage-contract.ts', 'activity-contract.ts', 'conversation-contract.ts', 'application-storage.ts', 'application-contract.ts', 'work-contract.ts', 'work-files.ts', 'integration-contract.ts', 'integration-plan.ts', 'verification-source-contract.ts', 'verification-source-files.ts', 'verification-contract.ts', 'candidate-verification-contract.ts', 'protocol.ts'].map(name => `experiments/codex-specialists/src/${name}`);
     return !contracts.some(contract => normalizedPath === contract || contract.startsWith(`${normalizedPath}/`));
   }
   if (rootEntry === 'connect') {

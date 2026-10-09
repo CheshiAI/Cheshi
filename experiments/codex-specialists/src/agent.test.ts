@@ -291,7 +291,7 @@ test('canceling queued continuation prevents execution after restart', async () 
   f.client.onStart = async () => { await f.decide('continue'); f.client.complete(); return { turn: { id: 'turn' } }; };
   f.agent.submit('goal', 'Verify the requested result.'); await f.agent.settled(); await f.agent.stop('goal');
   const restored = goalSetup(f.directory); restored.agent.pump();
-  expect(restored.agent.busy).toBe(false); expect(restored.store.task('goal')?.status).toBe('interrupted');
+  expect(restored.agent.busy).toBe(false); expect(restored.store.task('goal')).toMatchObject({ status: 'interrupted', goal: { phase: 'paused' } });
 });
 
 test('a recorded decision cannot cause continuation if transport fails before turn completion', async () => {
@@ -317,7 +317,7 @@ test('canceling during a recorded continuation never schedules its next turn', a
   f.agent.submit('goal', 'Verify the requested result.'); await ready.promise;
   await f.agent.stop('goal'); f.client.complete(); acknowledgement.resolve({ turn: { id: 'turn' } }); await f.agent.settled();
   f.agent.pump();
-  expect(f.store.task('goal')).toMatchObject({ status: 'interrupted', goal: { phase: 'blocked', pending: null } });
+  expect(f.store.task('goal')).toMatchObject({ status: 'interrupted', goal: { phase: 'paused', pending: null } });
   expect(f.client.calls.filter(c => c.method === 'turn/start')).toHaveLength(1);
 });
 
@@ -930,4 +930,28 @@ test('Homie collaboration exposes no legacy recall tools and rejects their invoc
     expect(JSON.stringify(params)).not.toContain('Jev');
     await expectFailure(client.toolHandler!({ threadId: 'thread', turnId: 'turn', callId: 'old-call', tool: 'history_search', arguments: { query: 'policy' } }), 'Unsupported collaboration tool');
   } finally { await agent.stop('work'); await agent.settled(); }
+});
+
+test('Cheshi pause survives restart and peer delivery, and only a user follow-up resumes judgment', async () => {
+  let f = goalSetup(temporary(), true);
+  f.collaboration!.exchange({ peers: f.peers, rooms: { room: ['dev', 'planner'] }, messages: [], acknowledged: [] });
+  f.client.onStart = async () => {
+    await f.client.toolHandler!({ threadId: 'thread', turnId: 'turn', tool: 'ask_agent',
+      arguments: { agentId: 'planner', requestId: 'question', question: 'Review the plan.' } });
+    await f.decide('pause'); f.client.complete(); return { turn: { id: 'turn' } };
+  };
+  f.agent.submit('goal', 'Do the task; pause until I resume.', { roomId: 'room', conversation: 'goal', goal: true });
+  await f.agent.settled();
+  expect(f.store.task('goal')).toMatchObject({ status: 'interrupted', error: null, goal: { phase: 'paused' } });
+  const question = f.store.snapshot().collaboration.outgoing[0]!;
+  f = goalSetup(f.directory, true);
+  f.collaboration!.exchange({ peers: f.peers, rooms: { room: ['dev', 'planner'] }, acknowledged: [], messages: [{
+    ...question, id: 'reply', from: 'planner', to: 'dev', kind: 'reply', text: 'Plan reviewed.' }], });
+  f.agent.pump(); await f.agent.settled();
+  expect(f.client.calls).toHaveLength(0); expect(f.store.task('goal')?.goal?.phase).toBe('paused');
+  f.client.onStart = async () => { await f.decide('pause'); f.client.complete(); return { turn: { id: 'turn' } }; };
+  f.agent.input('goal', 'resume', 'Resume and report.', 'room'); await f.agent.settled();
+  expect(f.client.calls.filter(c => c.method === 'turn/start')).toHaveLength(1);
+  expect(f.store.task('goal')?.goal?.turns).toBe(2);
+  expect(f.store.task('goal')?.goal?.phase).toBe('paused');
 });

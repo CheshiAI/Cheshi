@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { forwardDesktopDevOutput } from './forward-desktop-dev-output.mts';
+import { preloadDependencies, preloadRefreshQueue } from './preload-dependencies.mts';
 import { buildDesktopPreload } from './build-desktop-preload.mts';
 import { buildAppleCalendar } from './build-apple-calendar.mts';
 import { prepareCalendarDevelopment } from './prepare-calendar-development.mts';
@@ -43,7 +44,16 @@ let shutdownPromise: Promise<void> | null = null;
 let sourceWatchers: FSWatcher[] = [];
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
 let restartRequested = false;
-let preloadBuildQueue = Promise.resolve();
+const refreshPreload = preloadRefreshQueue(async () => {
+  if (shuttingDown) return;
+  await buildDesktopPreload();
+  // Imports added by the edit become watched as soon as the new bundle is ready.
+  const next = watchMainSources();
+  for (const watcher of sourceWatchers) watcher.close();
+  sourceWatchers = next;
+}, changedPath => { if (!shuttingDown) scheduleForgeRestart(changedPath); }, error => {
+  process.stderr.write(`[cheshi] ${error instanceof Error ? error.message : String(error)}\n`);
+});
 let forgeShutdownRequest: ReturnType<typeof createDevelopmentShutdownRequest> | null = null;
 let forgeStopping: Promise<void> | null = null;
 let developmentBundle: string | undefined;
@@ -181,32 +191,9 @@ function scheduleForgeRestart(changedPath: string): void {
 }
 
 function handleMainSourceChange(changedPath: string): void {
-  if (![preloadSourcePath, rendererReadinessSourcePath,
-    path.join(rootDirectory, 'desktop', 'lib', 'window-appearance-preload.cts'),
-    path.join(rootDirectory, 'desktop', 'shared', 'window-appearance.ts'),
-    path.join(rootDirectory, 'desktop', 'lib', 'apple-calendar-preload.cts'),
-    path.join(rootDirectory, 'desktop', 'shared', 'apple-calendar.ts'),
-    path.join(rootDirectory, 'desktop', 'lib', 'settings-preload.cts'),
-    path.join(rootDirectory, 'desktop', 'lib', 'workspace-feature-preload.cts'),
-    path.join(rootDirectory, 'desktop', 'shared', 'settings.ts'),
-    path.join(rootDirectory, 'desktop', 'lib', 'app-update-preload.cts'),
-    path.join(rootDirectory, 'desktop', 'shared', 'app-update.ts')].includes(changedPath)) {
-    scheduleForgeRestart(changedPath);
-    return;
-  }
-
-  preloadBuildQueue = preloadBuildQueue
-    .catch(() => undefined)
-    .then(async () => {
-      if (shuttingDown) return;
-      await buildDesktopPreload();
-      scheduleForgeRestart(changedPath);
-    })
-    .catch((error: unknown) => {
-      process.stderr.write(
-        `[cheshi] ${error instanceof Error ? error.message : String(error)}\n`,
-      );
-    });
+  // Always finish rebuilding before restarting; transitive preload imports may share main modules.
+  if (restartTimer !== null) { clearTimeout(restartTimer); restartTimer = null; restartRequested = false; }
+  void refreshPreload(changedPath);
 }
 
 function watchMainSources(): FSWatcher[] {
@@ -289,7 +276,7 @@ function watchMainSources(): FSWatcher[] {
     path.join(rootDirectory, '.env.product'),
     path.join(rootDirectory, 'forge.config.mts'),
   ];
-  return watchFileContents(sourcePaths, handleMainSourceChange);
+  return watchFileContents([...new Set([...sourcePaths, ...preloadDependencies(rootDirectory)])], handleMainSourceChange);
 }
 
 function trackProcessOutput(child: ChildProcess): Promise<ProcessResult> {

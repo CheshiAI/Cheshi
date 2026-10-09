@@ -1,5 +1,5 @@
-import { agentRecord, agentText, parseAgentDetails, parseAgentEngineId } from './agent-management.ts';
-import type { AgentDetails } from './agent-management.ts';
+import { agentRecord, agentText, parseAgentDetails, parseAgentEngineId, parseWorkerStopReason } from './agent-management.ts';
+import type { AgentDetails, WorkerLifecycleDisplay } from './agent-management.ts';
 import { parseQuestionDeadline } from './agent-question.ts';
 
 export const AGENT_RUNTIME_CHANNEL = 'cheshi:agent-registry:runtime';
@@ -9,7 +9,7 @@ export interface AgentRuntimeRequest {
 }
 export interface AgentRuntimeState {
   details: AgentDetails | null;
-  lifecycle?: { phase: 'starting' | 'running' | 'draining' | 'sleeping' | 'disabled' | 'error'; error: string | null };
+  lifecycle?: WorkerLifecycleDisplay;
   unavailable?: { kind: 'engine-unavailable' | 'agent-unassigned' | 'agent-removed'; message: string };
 }
 export function parseAgentRuntimeRequest(value: unknown): AgentRuntimeRequest {
@@ -64,5 +64,7 @@ export function parseAgentRuntimeState(value: unknown): AgentRuntimeState {
 export function parseWorkerLifecycle(value: unknown): NonNullable<AgentRuntimeState['lifecycle']> {
   const l = agentRecord(value);
   if (!['starting', 'running', 'draining', 'sleeping', 'disabled', 'error'].includes(String(l.phase))) throw new TypeError('Invalid worker lifecycle.');
-  return { phase: l.phase as NonNullable<AgentRuntimeState['lifecycle']>['phase'], error: l.error === null ? null : agentText(l.error, 20000) };
+  const stopReason = parseWorkerStopReason(l.stopReason);
+  return { phase: l.phase as NonNullable<AgentRuntimeState['lifecycle']>['phase'], error: l.error === null ? null : agentText(l.error, 20000),
+    ...(stopReason ? { stopReason } : {}) };
 }

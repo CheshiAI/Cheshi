@@ -3,14 +3,14 @@ import { record, textValue } from './protocol.ts';
 import { parseProgress, parseUsage, isStalled, STALLED_GOAL, type GoalProgress, type GoalUsage } from './goal-progress.ts';
 
 export const GOAL_DECISION_HISTORY = 64;
-export const DECISION_ACTIONS = ['continue', 'wait', 'blocked', 'complete'] as const;
+export const DECISION_ACTIONS = ['continue', 'wait', 'pause', 'blocked', 'complete'] as const;
 export type DecisionAction = typeof DECISION_ACTIONS[number];
 export type Criterion = { criterion: string; met: boolean; evidence: string };
 export type Decision = { action: DecisionAction; reason: string; progress: string; nextAction: string; criteria: Criterion[] };
 export type GoalState = {
   verificationRequired?: true;
   progressCheck?: GoalProgress; usage?: GoalUsage;
-  version: 1; turns: number; phase: 'active' | 'ready' | 'waiting' | 'blocked' | 'completed';
+  version: 1; turns: number; phase: 'active' | 'ready' | 'waiting' | 'paused' | 'blocked' | 'completed';
   criteria: Criterion[]; decisions: Decision[]; pending: Decision | null;
 };
 export const newGoal = (verificationRequired = false): GoalState => ({ ...(verificationRequired ? { verificationRequired: true as const } : {}), version: 1, turns: 0, phase: 'active', criteria: [], decisions: [], pending: null });
@@ -54,7 +54,7 @@ export function validateDecision(goal: GoalState, decision: Decision, pendingQue
 export function parseGoal(value: unknown): GoalState {
   const v = record(value);
   if (v.version !== 1 || !Number.isSafeInteger(v.turns) || Number(v.turns) < 0
-    || !['active', 'ready', 'waiting', 'blocked', 'completed'].includes(String(v.phase))
+    || !['active', 'ready', 'waiting', 'paused', 'blocked', 'completed'].includes(String(v.phase))
     || !Array.isArray(v.decisions) || v.decisions.length > GOAL_DECISION_HISTORY) throw new Error('Invalid saved goal.');
   if (v.verificationRequired !== undefined && v.verificationRequired !== true) throw new Error('Invalid verification requirement.');
   return { ...(v.verificationRequired === true ? { verificationRequired: true as const } : {}), version: 1, turns: Number(v.turns), phase: v.phase as GoalState['phase'],
@@ -70,6 +70,7 @@ export function finishGoal(goal: GoalState, pendingQuestions: boolean): { goal: 
   validateDecision(goal, decision, pendingQuestions);
   const next = { ...goal, criteria: decision.criteria, decisions: [...goal.decisions, decision].slice(-GOAL_DECISION_HISTORY), pending: null };
   if (decision.action === 'complete') return { goal: { ...next, phase: 'completed' }, status: 'completed', error: null };
+  if (decision.action === 'pause') return { goal: { ...next, phase: 'paused' }, status: 'interrupted', error: null };
   if (decision.action === 'blocked' || isStalled(next.progressCheck)) return {
     goal: { ...next, phase: 'blocked' }, status: 'interrupted',
     error: decision.action === 'blocked' ? decision.reason : STALLED_GOAL,
@@ -88,7 +89,8 @@ export const decisionTools = [
     } } },
 ];
 export const decisionInstructions = `
-For a task with a persistent goal, use goal_status to inspect its original scope and saved decisions.
+For a Cheshi persistent task, use goal_status and record_decision. This task is managed by Cheshi, separately from native model goals. Never use native create_goal, get_goal or update_goal to control it; a native 'no goal' response does not mean this Cheshi task is missing.
+When the user explicitly asks to pause or stop further work, record_decision with action pause, retain the criteria, then end the turn. Do not substitute blocked or complete for an intentional pause. Paused tasks resume only on a new user follow-up, not peer replies.
 At the end of every persistent goal execution turn call record_decision, then end the turn without further tool calls. This does not apply to ordinary conversation, consultation, or goal intake turns.
 Derive completion criteria from the user's original goal, not just the work you chose to do. Preserve these criteria on later turns.
 Choose continue with a concrete next action if useful independent work remains; choose wait only for outstanding peer answers.

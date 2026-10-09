@@ -1,4 +1,8 @@
 import { expect, test } from 'bun:test';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { DockerView } from '../frontend/src/features/docker/DockerView';
+import { AgentManagementModel, type AgentManagementState } from '../frontend/src/shared/agent-management/agentManagementModel';
+import type { WorkerLifecycleDisplay } from '../shared/agent-management';
 import { Window } from 'happy-dom';
 import { act, type ReactNode } from 'react';
 import { AgentManagementViews } from '../frontend/src/features/shell/AgentManagementViews';
@@ -164,9 +168,9 @@ test('worker labels follow registered names and renames while retaining containe
     const containerHeader = () => document.querySelector('[aria-label="Container status"] h2');
     await render(screen('docker'));
     expect(containerRow()?.textContent).toBe(profile.name);
-    expect(containerRow()?.getAttribute('aria-description')).toBe(`${workers[0]!.name} · running`);
+    expect(containerRow()?.getAttribute('aria-description')).toBe(`${workers[0]!.name} · 상태 확인 필요\nDocker: running`);
     expect(containerHeader()?.textContent).toBe(profile.name);
-    expect(containerHeader()?.getAttribute('aria-description')).toBe(`${workers[0]!.name}\nImage: fixture`);
+    expect(containerHeader()?.getAttribute('aria-description')).toBe(`${workers[0]!.name}\nImage: fixture\nDocker: running`);
     stored = { ...stored, agents: [{ ...profile, name: 'Updated from another window', revision: 2 }] };
     await act(async () => publish(stored));
     expect(containerRow()?.textContent).toBe('Updated from another window');
@@ -659,7 +663,6 @@ test('agent deletion preserves registration and shows application blocks until a
   };
   await withDOM(async ({ render, click }) => {
     await render(<AgentManagementViews api={api} registryApi={registryApi} view="homies" />);
-    await click(`Homie actions: ${profile.name}`);
     await click(`Delete agent: ${profile.name}`);
     await click('Also delete saved data'); await click('Delete agent');
     expect(requests).toEqual([{ id: profile.id, revision: profile.revision, deleteData: true }]);
@@ -699,8 +702,7 @@ test('row deletion targets only the chosen Homie and preserves the remaining reg
     await render(<AgentManagementViews api={api} registryApi={registryApi} view="homies" />);
     const list = document.querySelector('[aria-label="Agent selection"]');
     expect(document.querySelector('[aria-label="Delete selected agent"]')).toBeNull();
-    expect(document.querySelectorAll('[aria-label="Agent selection"] button[aria-label^="Homie actions:"]')).toHaveLength(2);
-    await click(`Homie actions: ${other.name}`);
+    expect(document.querySelectorAll('[aria-label="Agent selection"] button[aria-label^="Delete agent:"]')).toHaveLength(2);
     await click(`Delete agent: ${other.name}`);
     expect(document.querySelector('dialog')?.textContent).toContain(other.name);
     await act(async () => {
@@ -708,7 +710,6 @@ test('row deletion targets only the chosen Homie and preserves the remaining reg
     });
     expect(requests).toHaveLength(0);
     expect(document.querySelector('[aria-label="Agent selection"]')).toBe(list);
-    await click(`Homie actions: ${other.name}`);
     await click(`Delete agent: ${other.name}`); await click('Delete agent');
     expect(requests).toEqual([{ id: other.id, revision: other.revision, deleteData: false }]);
     expect([...document.querySelectorAll<HTMLButtonElement>('[aria-label="Agent selection"] button')]
@@ -884,4 +885,59 @@ test.each(['consultation', 'verification'])('%s inspection uses the saved room, 
       expect([...document.querySelectorAll('button')].some(b => b.textContent === 'Inspect execution')).toBe(false);
     });
   } finally { registry.dispose(); }
+});
+
+test('Docker presents semantic worker guidance with existing controls and no inspection or start during render', () => {
+  const calls: string[] = [];
+  const unused = async () => { calls.push('unexpected'); throw Error('Render must not call an API'); };
+  const api: AgentManagementApi = { engines: unused, snapshot: unused, details: unused, control: unused };
+  const model = new AgentManagementModel(api);
+  const examples: { state: string; lifecycle?: WorkerLifecycleDisplay; health?: { ready: boolean; busy: boolean; error: string | null }; text: string }[] = [
+    { state: 'exited', lifecycle: { phase: 'sleeping', stopReason: 'sleep', error: null }, text: '수면 중(작업이 오면 자동 시작)' },
+    { state: 'running', lifecycle: { phase: 'starting', error: null }, text: '시작 중' },
+    { state: 'running', health: { ready: true, busy: true, error: null }, text: '작업 중' },
+    { state: 'running', health: { ready: true, busy: false, error: null }, text: '대기 중' },
+    { state: 'exited', lifecycle: { phase: 'disabled', stopReason: 'manual', error: 'Manual' }, text: '수동 중지' },
+    { state: 'exited', lifecycle: { phase: 'disabled', stopReason: 'unexpected', error: 'Unexpected' }, text: '오류' },
+    { state: 'running', text: '상태 확인 필요' },
+  ];
+  for (const example of examples) {
+    const agent = { id: 'worker', name: 'Worker', image: 'test', state: example.state, startedAt: '2026-10-09T00:00:00Z',
+      status: { observedAt: Date.now(), lifecycle: example.lifecycle, health: example.health } };
+    const state: AgentManagementState = { catalog: { engines: [], error: null }, engineId: 'docker:test', agentId: agent.id,
+      snapshot: { engineId: 'docker:test', online: true, error: null, agents: [agent] }, details: null,
+      changing: false, pendingControl: null, loading: false, error: null };
+    const html = renderToStaticMarkup(<DockerView model={model} state={state} />);
+    expect(html).toContain(example.text);
+    expect(html).toContain('aria-label="Start"'); expect(html).toContain('aria-label="Stop"');
+    expect(html).not.toContain('복구 중');
+  }
+  expect(calls).toEqual([]); model.dispose();
+});
+
+test('Docker marks only the actual start/restart target as a pending request and keeps raw diagnostics', async () => {
+  const unused = async () => { throw Error('Rendering must not call an API'); };
+  const model = new AgentManagementModel({ engines: unused, snapshot: unused, details: unused, control: unused });
+  const agent = { id: 'worker', name: 'Worker', image: 'test', state: 'exited' };
+  const state: AgentManagementState = { catalog: { engines: [], error: null }, engineId: 'docker:test', agentId: agent.id,
+    snapshot: { engineId: 'docker:test', online: true, error: null, agents: [agent] }, details: null,
+    changing: true, pendingControl: null, loading: false, error: null };
+  await withDOM(async ({ render }) => {
+    for (const action of ['start', 'restart', 'stop'] as const) {
+      await render(<DockerView model={model} state={{ ...state, pendingControl: { engineId: state.engineId, agentId: agent.id, action } }} />);
+      const status = document.querySelector('[aria-label="Container status"] [role="status"]');
+      expect(status?.textContent).toBe(action === 'stop' ? '상태 확인 필요' : '시작 중 · 시작 요청 진행');
+      expect(document.querySelector('[aria-label="Container status"] h2')?.getAttribute('aria-description')).toContain('Docker: exited');
+      expect(document.querySelector('[aria-label="Container selection"] button')?.getAttribute('aria-description')).toContain('Docker: exited');
+    }
+    for (const pendingControl of [null, { engineId: 'docker:other', agentId: agent.id, action: 'start' as const },
+      { engineId: state.engineId, agentId: 'other', action: 'restart' as const }]) {
+      await render(<DockerView model={model} state={{ ...state, pendingControl }} />);
+      expect(document.body.textContent).not.toContain('시작 요청 진행');
+    }
+    await render(<DockerView model={model} state={{ ...state, changing: false,
+      pendingControl: { engineId: state.engineId, agentId: agent.id, action: 'start' } }} />);
+    expect(document.body.textContent).not.toContain('시작 요청 진행');
+  });
+  model.dispose();
 });

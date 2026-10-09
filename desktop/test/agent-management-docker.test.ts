@@ -44,6 +44,16 @@ test('adopts only the labelled verifier and discovers only loopback worker APIs'
   expect(() => parseDockerAgent(raw)).toThrow('not a managed');
 });
 
+test('preserves exact Docker execution identity through IPC and rejects unusable start timestamps', () => {
+  const raw = container();
+  const first = '2026-10-09T01:00:00.123456789Z', second = '2026-10-09T01:00:00.123456790Z';
+  const inspect = (StartedAt: unknown) => parseManagedAgent(parseDockerAgent({ ...raw, State: { ...raw.State, StartedAt } }));
+  expect(inspect(first).startedAt).toBe(first);
+  expect(inspect(second).startedAt).toBe(second);
+  expect(inspect(first).id).toBe(inspect(second).id);
+  for (const invalid of [undefined, null, true, 'invalid', '0001-01-01T00:00:00Z']) expect(inspect(invalid).startedAt).toBeUndefined();
+});
+
 test('carries a specialist label through the public contract without deriving identity from its name', async () => {
   const f = fixture();
   const profileId = 'a1234567-1234-1234-1234-123456789abc';

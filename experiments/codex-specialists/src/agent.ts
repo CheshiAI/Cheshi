@@ -457,7 +457,7 @@ export class SpecialistAgent {
       active.threadId = await this.thread(task, scratch, workspace);
       if (active.stopRequested) {
         this.store.complete(task.id, { status: 'interrupted', output: '', error: null,
-          ...(task.goal ? { goal: { ...task.goal, phase: 'blocked', pending: null } } : {}) }, active.messages,
+          ...(task.goal ? { goal: { ...task.goal, phase: 'paused', pending: null } } : {}) }, active.messages,
           task.delegation && this.work ? this.work.resultMessage(task, 'interrupted', 'Stopped before execution.') : undefined); return;
       }
       const memory = this.workspaceGate || task.consultation || task.verification || task.delegation ? '' : this.store.memory();
@@ -510,7 +510,7 @@ export class SpecialistAgent {
         this.store.complete(task.id, result, active.messages, outgoing);
       } else if (active.stopRequested && savedGoal && !(result.status === 'completed' && savedGoal.pending?.action === 'complete')) {
         this.store.complete(task.id, { status: 'interrupted', output: result.output, error: null,
-          goal: { ...savedGoal, phase: 'blocked', pending: null } }, active.messages);
+          goal: { ...savedGoal, phase: 'paused', pending: null } }, active.messages);
       } else if (result.status === 'completed' && savedGoal && !task.goal) {
         this.store.complete(task.id, { ...result, goal: savedGoal, status: 'waiting' }, active.messages);
       } else if (result.status === 'completed' && task.goal) {
@@ -655,7 +655,7 @@ export class SpecialistAgent {
       const task = this.store.task(id);
       if (task?.workspaceRun) { this.store.update(id, { workspaceRun: undefined }); this.resumeWorkspace(); }
       if (task?.status === 'waiting') this.store.complete(id, { status: 'interrupted', output: task.output, error: null,
-        ...(task.goal ? { goal: { ...task.goal, phase: 'blocked', pending: null } } : {}) });
+        ...(task.goal ? { goal: { ...task.goal, phase: 'paused', pending: null } } : {}) });
       return;
     }
     active.stopRequested = true;

@@ -1,3 +1,4 @@
+import { verificationSourceDirectory, verificationSourceFiles } from './verification-source-files.ts';
 import { readWorkFile } from './work-files.ts';
 import { candidateReference } from './candidate-verification-contract.ts';
 import { createHash } from 'node:crypto';
@@ -38,7 +39,7 @@ export function snapshotArtifacts(workspace: string, paths: unknown): Artifact[]
   });
 }
 export function assertSnapshot(workspace: string, artifacts: Artifact[]): void {
-  if (JSON.stringify(snapshotArtifacts(workspace, artifacts.map(a => a.path))) !== JSON.stringify(artifacts)) {
+  if (JSON.stringify(artifacts.map(({ path }) => ({ path, sha256: readWorkFile(workspace, path).sha256 }))) !== JSON.stringify(artifacts)) {
     throw new Error('Verification artifacts changed. Request a new verification round.');
   }
 }
@@ -55,11 +56,13 @@ export class WorkerVerification {
     return request;
   }
   recoveryWorkspace(task: Task): string {
-    const candidate = this.request(task).candidate;
+    const request = this.request(task), candidate = request.candidate;
+    if (request.source) return verificationSourceDirectory(this.store.directory, task.verification!);
     return candidate && !candidate.applicationId ? join(realpathSync(this.store.directory), 'verification-candidates', task.verification!) : this.workspace;
   }
-  workspaceFor(task: Task, existing = true): string {
-    const candidate = this.request(task).candidate;
+  workspaceFor(task: Task, existing = Boolean(task.threadId || task.verificationEvidence?.length || task.verificationDraft)): string {
+    const request = this.request(task), candidate = request.candidate;
+    if (request.source) return verificationSourceFiles(this.store.directory, task.verification!, request.source, existing).directory;
     if (candidate?.applicationId) {
       if (candidate.files.some(file => readWorkFile(this.workspace, file.path).sha256 !== file.sha256)) throw new Error('Applied project changed. Request a new verification round.');
       return this.workspace;
@@ -68,7 +71,7 @@ export class WorkerVerification {
   }
   private assertCurrent(task: Task): void {
     const request = this.request(task);
-    if (request.candidate) this.workspaceFor(task);
+    if (request.candidate || request.source) this.workspaceFor(task);
     else assertSnapshot(this.workspace, request.artifacts);
   }
   private save(task: Task, receipt: Evidence): void {
@@ -107,7 +110,7 @@ export class WorkerVerification {
       const path = artifactPath(args.path);
       if (!request.artifacts.some(a => a.path === path)) throw new Error('Read only the requested artifacts through this tool.');
       this.assertCurrent(task);
-      const file = request.candidate ? request.candidate.applicationId ? readWorkFile(this.workspace, path) : verificationCandidateFiles(this.store.directory, task.verification!, request.candidate).read(path) : null;
+      const file = request.source ? readWorkFile(this.workspaceFor(task), path) : request.candidate ? request.candidate.applicationId ? readWorkFile(this.workspace, path) : verificationCandidateFiles(this.store.directory, task.verification!, request.candidate).read(path) : null;
       const bytes = file ? null : readArtifact(this.workspace, path), sha256 = file ? file.sha256 : hash(bytes!);
       if (request.artifacts.find(a => a.path === path)?.sha256 !== sha256) throw new Error('Artifact changed during read.');
       const receipt: Evidence = { id: `file-${sha256 ?? 'absent'}-${request.artifacts.findIndex(a => a.path === path)}`, kind: 'file', detail: path, output: sha256 ?? 'absent', exitCode: null };

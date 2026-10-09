@@ -16,7 +16,7 @@ import type { SpecialistAgent } from '../../shared/agent-registry.ts';
 import type { AgentRuntimeRequest, AgentRuntimeState } from '../../shared/agent-runtime.ts';
 import { parseAgentRuntimeRequest } from '../../shared/agent-runtime.ts';
 import { agentRecord } from '../../shared/agent-management.ts';
-import type { AgentManagementApi } from '../../shared/agent-management.ts';
+import type { AgentManagementApi, ManagedAgent } from '../../shared/agent-management.ts';
 import type { createAgentRegistry } from './registry.mts';
 import { parseDockerAgent, runDocker, type DockerCommand } from './docker.mts';
 import { DockerCommandError } from './docker-errors.mts';
@@ -623,6 +623,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     notify: (binding?: Binding) => orchestration.notify(binding),
     wake,
     lifecycle: (binding: Binding) => lifecycle.state(binding),
+    displayLifecycle: (engine: string, agent: ManagedAgent) => lifecycle.project(engine, agent),
     hold: (engine: string, id: string) => lifecycle.hold(engine, id),
     manualControl: <T,>(engine: string, id: string, action: string, operation: () => Promise<T>) =>
       lifecycle.manual(engine, id, action, operation, () => options.management.details(engine, id)),
@@ -670,5 +671,5 @@ function profileConfiguration(agent: SpecialistAgent) {
 }
 
 function runtimeSettingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], projectDocMaxBytes = DEFAULT_PROJECT_DOC_MAX_BYTES, dependencies = (assignment.permissions ?? agent.permissions).commandExecution ? projectDependencies(workspace) : null) {
-  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}\ncodegraph=2\ndependency_volumes=1\nintake_recovery=1\ngoal_revision_guidance=1\nworker_git_guidance=1`);
+  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}\ncodegraph=2\ndependency_volumes=1\nintake_recovery=1\ngoal_revision_guidance=1\nworker_git_guidance=1\nverification_source=1\ngoal_pause=1`);
 }

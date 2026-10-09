@@ -3,10 +3,10 @@ import { dirname } from 'node:path';
 import type { AgentRuntimeState } from '../../shared/agent-runtime.ts';
 import type { Binding } from '../agent-orchestration/mailbox.mts';
 import type { CollaborationConnection } from '../agent-orchestration/service.mts';
-import { agentRecord, parseAgentDetails, type AgentDetails } from '../../shared/agent-management.ts';
+import { agentRecord, parseAgentDetails, parseWorkerStopReason, type AgentDetails, type ManagedAgent, type WorkerLifecycleDisplay } from '../../shared/agent-management.ts';
 
 export type WorkerPhase = 'starting' | 'running' | 'draining' | 'sleeping' | 'disabled' | 'error';
-type Entry = { startAttempted?: true; binding: Binding; phase: WorkerPhase; details: AgentDetails | null; nextWakeAt: number | null;
+type Entry = { startAttempted?: true; stopReason?: WorkerLifecycleDisplay['stopReason']; binding: Binding; phase: WorkerPhase; details: AgentDetails | null; nextWakeAt: number | null;
   failures: number; retryAt: number; error: string | null };
 type Live = { externalBusy?: boolean; connection: CollaborationConnection; details: AgentDetails };
 interface Options {
@@ -43,7 +43,7 @@ export class WorkerLifecycle {
         || !(e.nextWakeAt === null || typeof e.nextWakeAt === 'number' && Number.isFinite(e.nextWakeAt))
         || !Number.isSafeInteger(e.failures) || Number(e.failures) < 0 || typeof e.retryAt !== 'number' || !Number.isFinite(e.retryAt)
         || !(e.error === null || typeof e.error === 'string')) throw new Error('Invalid worker lifecycle journal.');
-      entries[id] = { ...(e.startAttempted === true ? { startAttempted: true as const } : {}), binding: b as unknown as Binding, phase: e.phase as WorkerPhase,
+      entries[id] = { stopReason: parseWorkerStopReason(e.stopReason), ...(e.startAttempted === true ? { startAttempted: true as const } : {}), binding: b as unknown as Binding, phase: e.phase as WorkerPhase,
         details: e.details === null ? null : parseAgentDetails(e.details), nextWakeAt: e.nextWakeAt as number | null,
         failures: Number(e.failures), retryAt: e.retryAt, error: e.error as string | null };
     }
@@ -86,6 +86,22 @@ export class WorkerLifecycle {
     const e = this.entry(binding);
     return e ? { phase: e.phase === 'sleeping' && !this.reconciled.has(binding.id) ? 'draining' : e.phase, error: e.error } : undefined;
   }
+  /** Display only: no reconciliation, persistence, activity or wake side effects. */
+  project(engineId: string, agent: ManagedAgent): WorkerLifecycleDisplay | undefined {
+    if (!agent.startedAt || !Number.isFinite(Date.parse(agent.startedAt)) || Date.parse(agent.startedAt) <= 0) return;
+    const entries = Object.values(this.load()).filter(e => e.binding.engineId === engineId && e.details?.agent.id === agent.id);
+    if (entries.length !== 1) return;
+    const e = entries[0]!;
+    if (e.details?.agent.startedAt !== agent.startedAt) return;
+    // Persisted startup intent is not evidence that this host is still starting the worker.
+    if (e.phase === 'starting' && !this.reconciled.has(e.binding.id)) return;
+    return Object.freeze({ phase: e.phase === 'sleeping' && !this.reconciled.has(e.binding.id) ? 'draining' : e.phase,
+      error: e.error, ...(e.stopReason ? { stopReason: e.stopReason } : {}) });
+  }
+  private savedDetails(details: AgentDetails): AgentDetails {
+    const { status: _status, ...agent } = details.agent;
+    return { ...structuredClone(details), agent: structuredClone(agent), logs: '' };
+  }
   cached(binding: Binding): AgentRuntimeState | null {
     const e = this.entry(binding);
     if (e?.phase === 'sleeping' && !this.reconciled.has(binding.id)) return null;
@@ -95,11 +111,11 @@ export class WorkerLifecycle {
       lifecycle: { phase: e.phase, error: e.error } };
   }
   adopt(binding: Binding, details: AgentDetails) {
-    this.save(binding, { phase: 'running', details: { ...structuredClone(details), logs: '' }, nextWakeAt: null, failures: 0, retryAt: 0, error: null });
+    this.save(binding, { phase: 'running', stopReason: undefined, details: this.savedDetails(details), nextWakeAt: null, failures: 0, retryAt: 0, error: null });
     this.reconciled.add(binding.id); this.idle.delete(binding.id);
   }
   private remember(binding: Binding, details: AgentDetails, retryRecovered = false) {
-    this.save(binding, { details: { ...structuredClone(details), logs: '' },
+    this.save(binding, { details: this.savedDetails(details),
       ...(retryRecovered ? { failures: 0, retryAt: 0, error: null } : {}) });
   }
   private assertContainer(details: AgentDetails, containerId: string) {
@@ -108,7 +124,7 @@ export class WorkerLifecycle {
   private assertRetryRecovered(details: AgentDetails) {
     if (details.error !== null) throw new Error(details.error);
   }
-  disable(binding: Binding) { this.save(binding, { phase: 'disabled', error: 'Worker stopped. Start it explicitly in Agents.' }); }
+  disable(binding: Binding) { this.save(binding, { phase: 'disabled', stopReason: 'unexpected', error: 'Worker stopped. Start it explicitly in Agents.' }); }
   permitsStoppedWake(binding: Binding) { const e = this.entry(binding); return !!e && (['sleeping', 'starting'].includes(e.phase) || e.phase === 'error' && e.startAttempted === true); }
   retry(binding: Binding) {
     const entry = this.entry(binding);
@@ -158,13 +174,13 @@ export class WorkerLifecycle {
     if (e?.phase === 'sleeping' && e.details && !await this.options.stopped(binding, e.details.agent.id)) throw new Error('Worker sleep is not confirmed. Inspect its container.');
     this.reconciled.add(binding.id);
     if (e?.phase === 'running' || e?.phase === 'draining') {
-      this.save(binding, { phase: 'disabled', error: 'Worker stopped unexpectedly. Inspect and start it explicitly.' });
+      this.save(binding, { phase: 'disabled', stopReason: 'unexpected', error: 'Worker stopped unexpectedly. Inspect and start it explicitly.' });
       if (demand) throw new Error('Worker stopped unexpectedly. Inspect and start it explicitly.');
       return null;
     }
     if (!demand && !due) return null;
     this.demand(binding);
-    this.save(binding, { phase: 'starting', startAttempted: true, error: null });
+    this.save(binding, { phase: 'starting', stopReason: undefined, startAttempted: true, error: null });
     try {
       const started = await this.options.start(binding);
       this.adopt(binding, started.details);
@@ -210,7 +226,7 @@ export class WorkerLifecycle {
       this.nextProbe.set(binding.id, this.now() + (this.options.idleMs ?? 300_000)); return;
     }
     // Persist intent before commit. A restart reconciles Docker before treating it as asleep.
-    this.save(binding, { phase: 'sleeping', details: { ...structuredClone(live.details), logs: '' }, nextWakeAt: prepared.nextWakeAt as number | null });
+    this.save(binding, { phase: 'sleeping', stopReason: 'sleep', details: this.savedDetails(live.details), nextWakeAt: prepared.nextWakeAt as number | null });
     this.reconciled.delete(binding.id);
     await this.options.control(connection, 'commit', { lease: prepared.lease });
     if (!await this.options.stopped(binding, live.details.agent.id)) throw new Error('Worker sleep is not confirmed.');
@@ -251,15 +267,15 @@ export class WorkerLifecycle {
       }
       // Persist stop intent before issuing Docker control, even if its acknowledgement is lost.
       const saved = this.entry(entry.binding)!.details;
-      this.save(entry.binding, { phase: 'disabled', error: 'Worker stop is not confirmed. Refresh or start it explicitly.',
+      this.save(entry.binding, { phase: 'disabled', stopReason: undefined, error: 'Worker stop is not confirmed. Refresh or start it explicitly.',
         details: saved ? { ...saved, ready: false, busy: false, execution: null, agent: { ...saved.agent, state: 'unknown' } } : null });
       const result = await operation();
       if (action === 'stop') {
         if (!await this.options.stopped(entry.binding, containerId)) throw new Error('Worker stop is not confirmed. Inspect its container.');
         const details = this.entry(entry.binding)!.details;
-        this.save(entry.binding, { error: 'Worker manually stopped.',
+        this.save(entry.binding, { stopReason: 'manual', error: 'Worker manually stopped.',
           details: details ? { ...details, agent: { ...details.agent, state: 'exited' } } : null });
-      } else this.save(entry.binding, { phase: 'starting', error: null, failures: 0, retryAt: 0 });
+      } else this.save(entry.binding, { phase: 'starting', stopReason: undefined, error: null, failures: 0, retryAt: 0 });
       return result;
     });
   }

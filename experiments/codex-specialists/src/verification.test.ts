@@ -110,7 +110,7 @@ test('missing receipts, fabricated IDs and changed snapshots cannot pass', () =>
   expect(() => draft(f, taskId)).toThrow('successful command');
   expect(() => f.verifier.call(f.reviewer.task(taskId)!, 'submit_verification', { verdicts: [{ criterion: 'Login is correct', verdict: 'pass', reason: 'Claim', evidenceIds: ['invented'] }] })).toThrow('Unknown evidence');
   observe(f, taskId); draft(f, taskId);
-  writeFileSync(join(f.root, 'login.ts'), 'changed');
+  writeFileSync(join(f.verifier.workspaceFor(f.reviewer.task(taskId)!), 'login.ts'), 'changed');
   expect(f.verifier.finish(f.reviewer.task(taskId)!).verdicts[0]?.verdict).toBe('inconclusive');
 });
 

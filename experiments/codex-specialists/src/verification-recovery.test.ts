@@ -35,6 +35,7 @@ function setup() {
   peer.exchange({ peers, rooms, messages: [request], acknowledged: [] });
   const next = peer.next()!;
   store.create(next.taskId, next.prompt, { verification: request.id, roomId: 'room', conversation: next.taskId });
+  const reviewWorkspace = new WorkerVerification(store, root).workspaceFor(store.task(next.taskId)!, false);
   store.update(next.taskId, { status: 'unknown', threadId: 'thread', turnId: 'turn' });
   ownerStore.complete('goal', { status: 'waiting', output: 'Waiting for verification', error: null,
     goal: { ...ownerStore.task('goal')!.goal!, phase: 'waiting', turns: 2 } });
@@ -49,7 +50,7 @@ function setup() {
   };
   const runtime = (saved = store, status = 'completed') => {
     const calls: string[] = [];
-    const read = { thread: { id: 'thread', cwd: root, turns: [{ id: 'turn', status, items: [{ type: 'agentMessage', text: 'Native output' }] }] } };
+    const read = { thread: { id: 'thread', cwd: reviewWorkspace, turns: [{ id: 'turn', status, items: [{ type: 'agentMessage', text: 'Native output' }] }] } };
     const transport = { read: async (): Promise<JsonRecord> => read, unsubscribe: async (): Promise<JsonRecord> => ({}) };
     const client: RpcClient = {
       request: async method => {
@@ -67,7 +68,7 @@ function setup() {
     } });
     return { agent, calls, read, transport, collaboration };
   };
-  return { root, store, ownerStore, owner, peer, verifier, draft, runtime, taskId: next.taskId, request, args };
+  return { root, reviewWorkspace, store, ownerStore, owner, peer, verifier, draft, runtime, taskId: next.taskId, request, args };
 }
 
 test.each(['pass', 'fail'] as const)('restores a confirmed %s after restart without replay and lets the owner resume judgment', async verdict => {
@@ -96,7 +97,7 @@ test.each(['pass', 'fail'] as const)('restores a confirmed %s after restart with
 test.each(['interrupted', 'failed', 'no-draft', 'changed-file', 'missing-receipt', 'changed-receipt', 'invalid-draft'])('%s cannot become a pass and frees the pending round for re-verification', async reason => {
   const f = setup();
   if (reason !== 'no-draft') f.draft();
-  if (reason === 'changed-file') writeFileSync(join(f.root, 'login.ts'), 'changed');
+  if (reason === 'changed-file') writeFileSync(join(f.reviewWorkspace, 'login.ts'), 'changed');
   if (reason === 'missing-receipt') f.store.update(f.taskId, { verificationEvidence: undefined });
   if (reason === 'changed-receipt') f.store.update(f.taskId, { verificationEvidence: f.store.task(f.taskId)!.verificationEvidence!.map(e => ({ ...e, output: 'changed' })) });
   if (reason === 'invalid-draft') {

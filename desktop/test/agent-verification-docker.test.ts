@@ -60,7 +60,7 @@ for (const native of [false, true]) test.if(Boolean(context) && (native ? real &
         '--security-opt', 'no-new-privileges:true', ...(native ? ['--security-opt', `seccomp=${security}`, '--security-opt', 'apparmor=cheshi-codex-bwrap'] : []),
         '--memory', '1g', '--cpus', '2', '--pids-limit', '256', '--tmpfs', '/tmp:rw,nosuid,nodev,size=128m',
         '--publish', '127.0.0.1::8787', '--mount', `type=volume,src=${volume},dst=/agent`,
-        '--mount', `type=volume,src=${workspaceVolume},dst=/workspace${id === 'dev' ? '' : ',readonly'}`,
+        ...(id === 'dev' ? ['--mount', `type=volume,src=${workspaceVolume},dst=/workspace`] : []),
         ...(!native ? ['--env', 'PATH=/test:/opt/bun/bin:/usr/local/bin:/usr/bin:/bin', '--env', `FIXTURE_PROFILE=${id}`] : []),
         '--env', 'CODEX_HOME=/agent/codex', '--env', 'AGENT_RUNTIME_CONFIG=/agent/runtime.json', '--env', 'AGENT_RUNTIME_REVISION=test',
         '--env', 'AGENT_DATA_DIRECTORY=/agent', '--env', 'AGENT_WORKSPACE=/workspace', image);
@@ -142,6 +142,9 @@ for (const native of [false, true]) test.if(Boolean(context) && (native ? real &
       expect(results[0]!.verdicts.some(v => v.verdict === 'fail')).toBe(true);
       expect(results.at(-1)!.verdicts.every(v => v.verdict === 'pass')).toBe(true);
       expect(results.at(-1)!.evidence.some(e => e.kind === 'command' && e.exitCode === 0)).toBe(true);
+      expect(state.collaboration.outgoing.filter(m => m.kind === 'verification_request')
+        .every(m => JSON.parse(m.text).source?.files.length === 2)).toBe(true);
+      await docker('exec', `${prefix}-reviewer`, 'test', '!', '-e', '/workspace/login.ts');
       expect(await docker('exec', `${prefix}-dev`, 'cat', '/workspace/login.test.ts')).toBe(checks.trim());
       const report = join(tmpdir(), `${prefix}-report.json`);
       writeFileSync(report, JSON.stringify({ native, final, results, verificationRestarted }, null, 2), { mode: 0o600 });

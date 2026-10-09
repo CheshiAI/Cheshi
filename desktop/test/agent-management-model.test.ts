@@ -127,3 +127,60 @@ test('background errors retain logs and stale background replies cannot replace 
   expect(model.snapshot()).toBe(current);
   model.dispose();
 });
+
+test('same-ID restarts clear old health while pending and discard conflicting late detail execution', async () => {
+  const startedAt = '2026-10-09T00:00:00Z', restartedAt = '2026-10-09T00:01:00Z';
+  let run = startedAt;
+  let pending: ReturnType<typeof createDeferred<AgentDetails>> | null = null;
+  const worker = () => ({ ...details().agent, startedAt: run, status: { observedAt: Date.now() } });
+  const model = new AgentManagementModel(api({
+    snapshot: async engineId => ({ ...snapshot(engineId), agents: [worker()] }),
+    details: async () => pending ? pending.promise : { ...details(), agent: worker() },
+  }));
+  await model.discover();
+  run = restartedAt; pending = createDeferred<AgentDetails>();
+  const refresh = model.refresh({ background: true });
+  await Promise.resolve();
+  expect(model.snapshot().details).toBeNull();
+  pending.resolve({ ...details(), agent: { ...worker(), startedAt } }); await refresh;
+  expect(model.snapshot().details).toBeNull();
+  expect(model.snapshot().snapshot?.agents[0]?.status).toBeUndefined();
+  model.dispose();
+});
+
+test.each(['start', 'restart'] as const)('%s request identity clears before success refresh and cannot leak across selection changes', async action => {
+  const control = createDeferred<AgentSnapshot>(), inspected = createDeferred<AgentDetails>();
+  let subsequent = false;
+  const model = new AgentManagementModel(api({ control: () => control.promise,
+    snapshot: async id => ({ ...snapshot(id), agents: [details().agent, { ...details().agent, id: 'other' }] }),
+    details: async (_engine, id) => subsequent ? inspected.promise : { ...details(), agent: { ...details().agent, id } },
+  }));
+  await model.discover();
+  const pending = model.control(action);
+  expect(model.snapshot().pendingControl).toEqual({ engineId: 'test:one', agentId: 'worker', action });
+  await model.select('other'); await model.connect('test:two');
+  expect(model.snapshot().agentId).toBe('worker'); // Existing operation selection lock is preserved.
+  subsequent = true; control.resolve(snapshot('test:one'));
+  await Promise.resolve(); await Promise.resolve();
+  expect(model.snapshot().pendingControl).toBeNull();
+  expect(model.snapshot().loading).toBe(true);
+  inspected.resolve(details()); await pending;
+  expect(model.snapshot().pendingControl).toBeNull();
+  subsequent = false;
+  await model.select('other'); expect(model.snapshot().agentId).toBe('other'); expect(model.snapshot().pendingControl).toBeNull();
+  await model.connect('test:two'); expect(model.snapshot().engineId).toBe('test:two'); expect(model.snapshot().pendingControl).toBeNull();
+  model.dispose();
+});
+
+test.each(['start', 'restart'] as const)('%s failure and failed post-success inspection do not retain a request indicator', async action => {
+  let failControl = true, failDetails = false;
+  const model = new AgentManagementModel(api({ control: async id => {
+    if (failControl) throw Error('Control failed');
+    failDetails = true; return snapshot(id);
+  }, details: async () => { if (failDetails) throw Error('Inspection failed'); return details(); } }));
+  await model.discover(); await model.control(action);
+  expect(model.snapshot().error).toBe('Control failed'); expect(model.snapshot().pendingControl).toBeNull();
+  failControl = false; await model.refresh(); await model.control(action);
+  expect(model.snapshot().error).toBe('Inspection failed'); expect(model.snapshot().pendingControl).toBeNull();
+  model.dispose();
+});

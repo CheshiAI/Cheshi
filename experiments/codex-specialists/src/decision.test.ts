@@ -17,3 +17,11 @@ test('decision and progress survive serialization without committing a pending d
   expect(parseGoal({ ...goal, turns: 1001 }).turns).toBe(1001);
   expect(() => parseGoal({ ...goal, turns: -1 })).toThrow('Invalid saved goal');
 });
+
+test('intentional pause persists independently of errors, stalled progress and outstanding review', () => {
+  const pending = decision('pause'); pending.criteria[0]!.met = false; pending.criteria[0]!.evidence = '';
+  const result = finishGoal({ ...newGoal(true), pending, progressCheck: { unchanged: 3, observations: [] } }, true);
+  expect(result).toMatchObject({ status: 'interrupted', error: null, goal: { phase: 'paused', pending: null, verificationRequired: true } });
+  expect(parseGoal(JSON.parse(JSON.stringify(result.goal)))).toEqual(result.goal);
+  expect(result.goal.criteria[0]?.met).toBe(false);
+});

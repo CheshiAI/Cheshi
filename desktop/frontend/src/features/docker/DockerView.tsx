@@ -12,6 +12,7 @@ import viewStyles from './DockerView.module.css';
 import { ContainerTerminal } from './ContainerTerminal';
 import { workerDisplayName } from '../../shared/agent-management/workerDisplayName';
 import { WorkerDeleteDialog } from '../../shared/agent-management/WorkerDeleteDialog';
+import { workerStatusLabel } from '../../shared/agent-management/workerStatus';
 
 export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentScreenProps & {
   profiles?: readonly { id: string; name: string }[]; onRefreshProfiles?: () => void;
@@ -22,7 +23,20 @@ export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentS
   const [terminalTarget, setTerminalTarget] = useState('');
   const [deletion, setDeletion] = useState<{ id: string; engineId: string; name: string; retryDeleteData?: boolean } | null>(null);
   const { catalog, snapshot, details, changing, loading, error } = state;
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    // Local expiry only. The existing owner retains the 10-second network poll.
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   const agent = snapshot?.agents.find(item => item.id === state.agentId);
+  const statusLabel = (container: NonNullable<typeof agent>) => {
+    const pending = state.pendingControl;
+    if (changing && pending?.engineId === state.engineId && pending.agentId === container.id
+      && (pending.action === 'start' || pending.action === 'restart')) return '시작 중 · 시작 요청 진행';
+    return workerStatusLabel(container, container.id === state.agentId ? details : null,
+      Math.max(now, Date.now()), changing || !snapshot?.online || Boolean(error));
+  };
   const target = agent ? `${state.engineId}/${agent.id}` : '';
   useEffect(() => {
     if (agent?.state !== 'running') setTerminalTarget('');
@@ -59,7 +73,7 @@ export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentS
       <nav ref={listScrollbar} className={viewStyles.containerList} aria-label="Container selection">
         <div className={viewStyles.notice}><AgentManagementNotice state={state} /></div>
         {snapshot?.agents.map(container => <TooltipButton key={container.id} variant="ghost"
-          className={viewStyles.container} aria-label={workerDisplayName(container, profiles)} title={`${container.name} · ${container.state}`}
+          className={viewStyles.container} aria-label={workerDisplayName(container, profiles)} title={`${container.name} · ${statusLabel(container)}\nDocker: ${container.state}`}
           aria-current={container.id === state.agentId ? 'page' : undefined} disabled={changing}
           onClick={() => { void model.select(container.id); }}>
           <Box aria-hidden="true" /><span className={viewStyles.containerName}>{workerDisplayName(container, profiles)}</span>
@@ -70,10 +84,10 @@ export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentS
       {agent ? <>
         <div className={viewStyles.logHeader} aria-label="Container status">
           <div className={viewStyles.identity}>
-            <TooltipTarget content={`${agent.name}\nImage: ${agent.image}`}>
+            <TooltipTarget content={`${agent.name}\nImage: ${agent.image}\nDocker: ${agent.state}`}>
               <h2 className={viewStyles.name}>{workerDisplayName(agent, profiles)}</h2>
             </TooltipTarget>
-            <span className={styles.description}>{agent.state}</span>
+            <span className={styles.description} role="status">{statusLabel(agent)}</span>
           </div>
           <div className={styles.actions}>
             <TooltipButton variant="ghost" size="icon" aria-label="Delete selected container" title="Delete container"

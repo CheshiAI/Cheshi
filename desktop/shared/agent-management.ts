@@ -17,7 +17,42 @@ export interface AgentEngineInfo { id: string; name: string; supported: boolean;
 export interface AgentCatalog { engines: AgentEngineInfo[]; error: string | null }
 export interface ManagedAgent {
   id: string; name: string; state: string; image: string; profileId?: string;
+  startedAt?: string;
+  status?: WorkerStatusObservation;
   pendingDeletion?: { deleteData: boolean };
+}
+export interface WorkerLifecycleDisplay {
+  phase: 'starting' | 'running' | 'draining' | 'sleeping' | 'disabled' | 'error';
+  error: string | null;
+  stopReason?: 'sleep' | 'manual' | 'unexpected';
+}
+/** Read-only observations. Never used for power management or persisted as lifecycle input. */
+export interface WorkerStatusObservation {
+  observedAt: number;
+  lifecycle?: WorkerLifecycleDisplay;
+  health?: { ready: boolean; busy: boolean; error: string | null };
+}
+export function parseWorkerStopReason(value: unknown): WorkerLifecycleDisplay['stopReason'] {
+  if (value === undefined) return undefined;
+  if (value !== 'sleep' && value !== 'manual' && value !== 'unexpected') throw new TypeError('Invalid worker stop reason.');
+  return value;
+}
+export function parseWorkerStatus(value: unknown): WorkerStatusObservation {
+  const v = agentRecord(value);
+  if (typeof v.observedAt !== 'number' || !Number.isFinite(v.observedAt) || v.observedAt < 0) throw new TypeError('Invalid worker observation.');
+  const result: WorkerStatusObservation = { observedAt: v.observedAt };
+  if (v.lifecycle !== undefined) {
+    const l = agentRecord(v.lifecycle);
+    if (!['starting', 'running', 'draining', 'sleeping', 'disabled', 'error'].includes(String(l.phase))) throw new TypeError('Invalid worker lifecycle.');
+    const stopReason = parseWorkerStopReason(l.stopReason);
+    result.lifecycle = { phase: l.phase as WorkerLifecycleDisplay['phase'], error: agentNullableText(l.error, 20_000),
+      ...(stopReason ? { stopReason } : {}) };
+  }
+  if (v.health !== undefined) {
+    const h = agentRecord(v.health);
+    result.health = { ready: agentBoolean(h.ready), busy: agentBoolean(h.busy), error: agentNullableText(h.error, 20_000) };
+  }
+  return result;
 }
 export interface AgentSnapshot { engineId: string; online: boolean; error: string | null; agents: ManagedAgent[] }
 export interface ExecutionRecovery { threadId: string; turnId: string; status: 'completed' | 'interrupted' | 'failed'; checkedAt: string }
@@ -92,6 +127,8 @@ export function parseAgentAction(value: unknown): AgentAction {
 export function parseManagedAgent(value: unknown): ManagedAgent {
   const v = agentRecord(value);
   return { id: parseAgentId(v.id), name: agentText(v.name), state: agentText(v.state, 100), image: agentText(v.image),
+    ...(v.startedAt === undefined ? {} : { startedAt: agentText(v.startedAt, 100) }),
+    ...(v.status === undefined ? {} : { status: parseWorkerStatus(v.status) }),
     ...(v.profileId === undefined ? {} : { profileId: parseAgentId(v.profileId) }),
     ...(v.pendingDeletion === undefined ? {} : { pendingDeletion: { deleteData: agentBoolean(agentRecord(v.pendingDeletion).deleteData) } }) };
 }

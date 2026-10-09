@@ -1,3 +1,4 @@
+import { PRELOAD_ENTRYPOINTS } from './preload-dependencies.mts';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +11,7 @@ export const preloadOutputPath = path.join(preloadOutputDirectory, 'preload.cjs'
 export async function buildDesktopPreload(): Promise<void> {
   mkdirSync(preloadOutputDirectory, { recursive: true });
   const result = await Bun.build({
-    entrypoints: ['preload.cts', 'workspace-manager-preload.cts', 'selection-copy-preload.cts', 'account-usage-preload.cts', 'sticky-notes-preload.cts'].map((name) => path.join(rootDirectory, 'desktop', name)),
+    entrypoints: PRELOAD_ENTRYPOINTS.map((name) => path.join(rootDirectory, 'desktop', name)),
     outdir: preloadOutputDirectory,
     naming: '[name].cjs',
     target: 'node',

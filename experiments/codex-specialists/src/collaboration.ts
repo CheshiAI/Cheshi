@@ -3,8 +3,9 @@ import { WORK_MESSAGE_LIMIT, collaborationBatch, assertWorkRequest, assertWorkRe
 import { workDigest } from './work-files.ts';
 import { assertCandidate, candidateReference, type CandidateSnapshot } from './candidate-verification-contract.ts';
 import { expireQuestions, questionClosed } from './question-control.ts';
-import { assertSnapshot, snapshotArtifacts } from './verification.ts';
-import { VERIFICATION_CONTEXT_LIMIT, assertResult, list, boundedText, verificationContext, verificationRequest, verificationResult, type VerificationContext, type VerificationRequest, type VerificationResult } from './verification-contract.ts';
+import { assertSnapshot } from './verification.ts';
+import { VERIFICATION_CONTEXT_LIMIT, artifactPath, assertVerificationContextScope, assertResult, list, boundedText, verificationContext, verificationRequest, verificationResult, type VerificationContext, type VerificationRequest, type VerificationResult } from './verification-contract.ts';
+import { assertVerificationSource, captureVerificationSource } from './verification-source-files.ts';
 import { createHash } from 'node:crypto';
 import { AgentStore, type Task } from './store.ts';
 import { appendOutgoing, identifier, message, peers, roomRoster, type CollaborationMessage } from './collaboration-contract.ts';
@@ -43,6 +44,11 @@ export class WorkerCollaboration {
           const q = c.incoming.find(m => m.kind === 'question' && m.id === item.questionId);
           if (!q || q.from !== item.from || q.to !== item.to || q.taskId !== item.taskId || q.roomId !== item.roomId) throw new Error('Invalid question closure.');
           if (c.incoming.some(m => m.kind === 'question_closed' && m.questionId === item.questionId && m.id !== item.id)) throw new Error('Question already closed.');
+        }
+        if (item.kind === 'verification_request') {
+          const request = verificationRequest(JSON.parse(item.text));
+          assertVerificationContextScope(request, item);
+          if (request.source) assertVerificationSource(request.source);
         }
         if (item.kind === 'work_request') assertWorkRequest(parseWorkRequest(JSON.parse(item.text)), workDigest);
         if (item.kind === 'work_review') {
@@ -135,8 +141,9 @@ export class WorkerCollaboration {
       if (c.outgoing.some(m => m.kind === 'work_request' && candidate.requestIds.includes(m.id) && m.to === target)) throw new Error('Choose a verifier who did not author the candidate.');
       if (!Array.isArray(args.paths) || JSON.stringify([...args.paths].sort()) !== JSON.stringify(candidate.files.map(f => f.path).sort())) throw new Error('Include every candidate path in verification.');
     }
-    const base = verificationRequest({ goal: task.prompt, criteria, ...(candidate ? { candidate } : {}),
-      artifacts: candidate ? candidate.files.map(({ path, sha256 }) => ({ path, sha256 })) : snapshotArtifacts(this.workspace, args.paths) });
+    const source = candidate ? undefined : captureVerificationSource(this.workspace, list(args.paths, artifactPath));
+    const base = verificationRequest({ goal: task.prompt, criteria, ...(candidate ? { candidate } : { source }),
+      artifacts: (candidate?.files ?? source!.files).map(({ path, sha256 }) => ({ path, sha256 })) });
     const id = idFor(`verification/${this.agentId}/${task.id}/${requestId}`);
     const previous = c.outgoing.find(m => m.id === id);
     // A retry keeps the original context even if later replies or user inputs arrived.

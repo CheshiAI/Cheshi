@@ -58,9 +58,18 @@ async function turn(params: Value, turnId: string): Promise<void> {
 createInterface({ input: process.stdin }).on('line', line => {
   const m = JSON.parse(line) as Value, params = (m.params ?? {}) as Value;
   if (typeof m.id === 'string' && callbacks.has(m.id)) { const done = callbacks.get(m.id)!; callbacks.delete(m.id); done(m.result as Value); return; }
-  if (m.method === 'initialize' || m.method === 'thread/inject_items') { send({ id: m.id, result: {} }); return; }
+  if (m.method === 'initialize' || m.method === 'thread/inject_items' || m.method === 'thread/unsubscribe') { send({ id: m.id, result: {} }); return; }
   if (m.method === 'account/read') { send({ id: m.id, result: { account: { type: 'chatgpt' } } }); return; }
-  if (m.method === 'thread/start' || m.method === 'thread/resume') { send({ id: m.id, result: { thread: { id: params.threadId ?? `thread-${++sequence}` } } }); return; }
+  if (m.method === 'thread/start' || m.method === 'thread/resume') {
+    const config = params.config as Value | undefined, profile = config?.[`permissions.${params.permissions}`] as Value | undefined;
+    const filesystem = profile?.filesystem as Record<string, string> | undefined;
+    send({ id: m.id, result: { thread: { id: params.threadId ?? `thread-${++sequence}` },
+      ...(filesystem ? { activePermissionProfile: { id: params.permissions }, sandbox: {
+        type: 'workspaceWrite', writableRoots: Object.entries(filesystem).filter(([, access]) => access === 'write').map(([path]) => path),
+        networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true,
+      } } : {}),
+    } }); return;
+  }
   if (m.method === 'turn/start') {
     const turnId = `turn-${++sequence}`; send({ id: m.id, result: { turn: { id: turnId } } });
     void turn(params, turnId).catch(error => send({ method: 'turn/completed', params: { threadId: params.threadId,
