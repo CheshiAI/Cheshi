@@ -8,6 +8,7 @@ import {
   type SubmitEvent as ReactSubmitEvent,
 } from 'react';
 
+import type { WorkspaceProject } from '../../../../shared/workspace-projects';
 import { errorMessage } from '../../shared/errorMessage';
 import {
   isWorkspacePathAtOrBelow,
@@ -16,7 +17,8 @@ import {
   workspaceParentDirectory,
 } from '../../shared/workspacePaths';
 import {
-  cheshiDesktop as workspace,
+  cheshiDesktop as defaultWorkspace,
+  type CheshiDesktopApi,
   type CheshiWorkspaceEntry,
   type WorkspaceEntryMutation,
 } from '../../cheshiDesktop';
@@ -38,15 +40,11 @@ export type WorkspaceFileTreeEdit =
   | { mode: 'rename'; entry: CheshiWorkspaceEntry };
 
 interface WorkspaceFileTreeControllerOptions {
+  api?: CheshiDesktopApi;
+  project?: WorkspaceProject;
+  rootPath?: string;
   onEntryMutation: (mutation: WorkspaceEntryMutation) => void;
   onOpenFile: (path: string) => void;
-}
-
-function entriesForVisibility(
-  entries: CheshiWorkspaceEntry[],
-  showHiddenFiles: boolean,
-): CheshiWorkspaceEntry[] {
-  return showHiddenFiles ? entries : entries.filter((entry) => !entry.name.startsWith('.'));
 }
 
 function assertWorkspaceRootRefreshSucceeded<T>(
@@ -61,14 +59,15 @@ function workspaceBaseName(relativePath: string): string {
 }
 
 export function useWorkspaceFileTreeController({
+  api, project, rootPath = '.',
   onEntryMutation,
   onOpenFile,
 }: WorkspaceFileTreeControllerOptions) {
+  const workspace = api ?? defaultWorkspace;
   const listWorkspaceDirectory = workspace?.listWorkspaceDirectory;
-  const gitChangedPaths = useWorkspaceGitChangedPaths();
+  const gitChangedPaths = useWorkspaceGitChangedPaths(project, workspace);
   const [entriesByDirectory, setEntriesByDirectory] = useState<Record<string, CheshiWorkspaceEntry[]>>({});
-  const [expandedDirectories, setExpandedDirectories] = useState<Set<string>>(() => new Set(['.']));
-  const [showHiddenFiles, setShowHiddenFiles] = useState(false);
+  const [expandedDirectories, setExpandedDirectories] = useState<Set<string>>(() => new Set([rootPath]));
   const [loadingDirectory, setLoadingDirectory] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<WorkspaceFileContextMenuTarget | null>(null);
@@ -103,11 +102,11 @@ export function useWorkspaceFileTreeController({
     } finally {
       setLoadingDirectory((currentDirectory) => (currentDirectory === directory ? null : currentDirectory));
     }
-  }, [listWorkspaceDirectory]);
+  }, [listWorkspaceDirectory, rootPath]);
 
   useEffect(() => {
-    void loadDirectory('.');
-  }, [loadDirectory]);
+    void loadDirectory(rootPath);
+  }, [loadDirectory, rootPath]);
 
   const refreshWorkspaceFiles = useCallback(async (
     mode: WorkspaceFileTreeRefreshMode = 'interactive',
@@ -118,8 +117,8 @@ export function useWorkspaceFileTreeController({
       return;
     }
     const initialDirectories = [...new Set(requestedDirectories ?? [
-      '.',
-      ...Object.keys(entriesByDirectoryRef.current).filter((directory) => directory !== '.'),
+      rootPath,
+      ...Object.keys(entriesByDirectoryRef.current).filter((directory) => directory !== rootPath),
     ])];
     if (initialDirectories.length === 0) return;
     if (refreshInFlightRef.current) {
@@ -144,7 +143,7 @@ export function useWorkspaceFileTreeController({
       const results = await Promise.allSettled(
         uniqueDirectories.map((directory) => listWorkspaceDirectory(directory)),
       );
-      const rootDirectoryIndex = uniqueDirectories.indexOf('.');
+      const rootDirectoryIndex = uniqueDirectories.indexOf(rootPath);
       if (rootDirectoryIndex >= 0) assertWorkspaceRootRefreshSucceeded(results[rootDirectoryIndex]);
 
       const unavailableDirectories = new Set<string>();
@@ -200,7 +199,7 @@ export function useWorkspaceFileTreeController({
       refreshInFlightRef.current = false;
       setRefreshing(false);
     }
-  }, [listWorkspaceDirectory]);
+  }, [listWorkspaceDirectory, rootPath]);
 
   useEffect(() => {
     return workspace?.onWorkspaceFilesChanged?.((event) => {
@@ -251,7 +250,7 @@ export function useWorkspaceFileTreeController({
     event.stopPropagation();
     const directoryPath = entry?.kind === 'directory'
       ? entry.path
-      : workspaceParentDirectory(entry?.path ?? '.');
+      : entry ? workspaceParentDirectory(entry.path) : rootPath;
     setContextMenu({ directoryPath, entry, x: event.clientX, y: event.clientY });
     setError(null);
   };
@@ -500,18 +499,20 @@ export function useWorkspaceFileTreeController({
   const visibleEntries = useMemo<VisibleWorkspaceEntry[]>(() => {
     const result: VisibleWorkspaceEntry[] = [];
     const appendDirectory = (directory: string, depth: number): void => {
-      for (const entry of entriesForVisibility(entriesByDirectory[directory] ?? [], showHiddenFiles)) {
+      for (const entry of entriesByDirectory[directory] ?? []) {
         result.push({ entry, depth });
         if (entry.kind === 'directory' && expandedDirectories.has(entry.path)) {
           appendDirectory(entry.path, depth + 1);
         }
       }
     };
-    if (expandedDirectories.has('.')) appendDirectory('.', 0);
+    if (expandedDirectories.has(rootPath)) appendDirectory(rootPath, 0);
     return result;
-  }, [entriesByDirectory, expandedDirectories, showHiddenFiles]);
+  }, [entriesByDirectory, expandedDirectories, rootPath]);
 
   return {
+    rootPath,
+    workspaceRoot: workspace?.workspaceRoot ?? '',
     activateEntry,
     announcement,
     beginCreate,
@@ -533,11 +534,9 @@ export function useWorkspaceFileTreeController({
     openContextMenu,
     refreshWorkspaceFiles,
     refreshing,
-    rootEntries: entriesForVisibility(entriesByDirectory['.'] ?? [], showHiddenFiles),
-    rootExpanded: expandedDirectories.has('.'),
+    rootEntries: entriesByDirectory[rootPath] ?? [],
+    rootExpanded: expandedDirectories.has(rootPath),
     setEntryEditValue,
-    setShowHiddenFiles,
-    showHiddenFiles,
     submitCreate,
     submitMove,
     submitRename,

@@ -153,6 +153,7 @@ export class CodexChatService {
   listeners: Set<(event: JsonObject) => void>;
   log: CodexChatLogger;
   developerInstructions: string;
+  private readonly getWorkspaceProjects?: () => string[];
   serviceName: string;
   cwd: string;
   client: CodexChatClient;
@@ -164,6 +165,7 @@ export class CodexChatService {
     cwd,
     serviceName,
     developerInstructions,
+    getWorkspaceProjects,
     log = noopLog,
     createMcpProbeClient,
     conversations,
@@ -173,12 +175,14 @@ export class CodexChatService {
     cwd: string;
     serviceName: string;
     developerInstructions: string;
+    getWorkspaceProjects?: () => string[];
     log?: CodexChatLogger;
     createMcpProbeClient?: () => CodexMcpProbeClient;
     conversations?: CodexConversationAccess;
     memory?: SessionMemory;
   }) {
     this.client = client;
+    this.getWorkspaceProjects = getWorkspaceProjects;
     this.memoryRequests = memory ? new FlashToolRequests(this, memory) : undefined;
     this.conversations = conversations;
     this.createMcpProbeClient = createMcpProbeClient;
@@ -252,6 +256,18 @@ export class CodexChatService {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  private projectRootsOverride(): { runtimeWorkspaceRoots?: string[] } {
+    return this.getWorkspaceProjects ? { runtimeWorkspaceRoots: this.getWorkspaceProjects() } : {};
+  }
+
+  private projectInstructions(): string {
+    const roots = this.getWorkspaceProjects?.();
+    if (!roots || roots.length < 2) return this.developerInstructions;
+    return this.developerInstructions + '\nConnected workspace projects (separate repositories):\n'
+      + roots.map(root => '- ' + JSON.stringify(root)).join('\n')
+      + '\nUse the appropriate project directory for files, Git, commands and CodeGraph projectPath. Read each target project’s AGENTS.md before working there. Keep commits and deployment independent. The selected permission profile still applies.';
   }
 
   async listSessions() {
@@ -560,7 +576,8 @@ export class CodexChatService {
         ...(!isSubagent
           ? {
               cwd: this.cwd,
-              developerInstructions: this.developerInstructions,
+              ...this.projectRootsOverride(),
+              developerInstructions: this.projectInstructions(),
               ...(this.selectedModel ? { model: this.selectedModel } : {}),
               ...this.serviceTierOverride(),
             }
@@ -578,8 +595,9 @@ export class CodexChatService {
         ...(this.memoryRequests ? { dynamicTools: [...(discordSetupThreadOptions(this).dynamicTools ?? []), ...flashTools] }
           : discordSetupThreadOptions(this)),
         cwd: this.cwd,
+        ...this.projectRootsOverride(),
         ...this.permissionOverrides(),
-        developerInstructions: this.developerInstructions,
+        developerInstructions: this.projectInstructions(),
         ephemeral: false,
         serviceName: this.serviceName,
         sessionStartSource: "startup",
@@ -685,6 +703,11 @@ export class CodexChatService {
         const rawTurn = await this.client.request("turn/start", {
           threadId,
           clientUserMessageId: messageId,
+          ...this.projectRootsOverride(),
+          ...(this.getWorkspaceProjects ? { additionalContext: { workspace_projects: {
+            kind: 'application', value: 'Current connected project directories: ' + JSON.stringify(this.getWorkspaceProjects())
+              + '. Each is an independent repository. Read the target project AGENTS.md before working there. Use its path for commands and CodeGraph projectPath.',
+          } } } : {}),
           input,
           ...collaborationOverride,
           ...this.permissionOverrides(),
@@ -736,7 +759,7 @@ export class CodexChatService {
       threadId: sourceThreadId,
       cwd: this.cwd,
       ...this.permissionOverrides(),
-      developerInstructions: this.developerInstructions,
+      developerInstructions: this.projectInstructions(),
       ephemeral: false,
       excludeTurns: false,
       deferGoalContinuation: true,

@@ -89,6 +89,27 @@ test('freshness does not initialize a missing index', async () => {
   finally { await f.owner.dispose(); }
 });
 
+test('linked-project queries synchronize only current members and never initialize an index', async () => {
+  let calls = 0;
+  const f = fixture(async () => { calls++; });
+  const linked = join(f.root, 'linked');
+  const unindexed = join(f.root, 'unindexed');
+  mkdirSync(linked); mkdirSync(unindexed);
+  const database = join(codeGraphStorageDirectory(join(f.root, 'data'), linked), 'codegraph.db');
+  mkdirSync(join(database, '..'), { recursive: true }); writeFileSync(database, 'fixture');
+  let roots = [f.root, linked, unindexed];
+  try {
+    const connection = await f.owner.connection(f.root, () => roots);
+    const env = { CHESHI_CODEGRAPH_SYNC_URL: connection.url, CHESHI_CODEGRAPH_SYNC_TOKEN: connection.token,
+      CHESHI_CODEGRAPH_SYNC_WORKSPACE: f.root, CHESHI_CODEGRAPH_SYNC_MULTI_PROJECT: '1' };
+    await awaitManagedCodeGraphSync(linked, env); expect(calls).toBe(1);
+    await awaitManagedCodeGraphSync(unindexed, env); expect(calls).toBe(1);
+    roots = [f.root];
+    await awaitManagedCodeGraphSync(linked, env); expect(calls).toBe(1);
+    await awaitManagedCodeGraphSync(undefined, env); expect(calls).toBe(2);
+  } finally { await f.owner.dispose(); }
+});
+
 test('local MCP uses authenticated workspace-bound sync; errors prevent stale reads', async () => {
   let calls = 0, failed = false;
   const f = fixture(async () => { calls++; if (failed) throw new Error('private writer detail'); });

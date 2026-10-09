@@ -1,3 +1,5 @@
+import { registerWorkspaceTerminalIpc } from './lib/workspace-terminal-ipc.mts';
+import { createWorkspaceProjects } from './lib/workspace-project-runtime.mts';
 import { createWorkspaceSessionMemory } from './lib/flash/workspace.mts';
 import { AppleNotesService } from './lib/apple-notes-service.mts';
 import { createWorkspaceVoice } from './lib/agent-voice/workspace.mts';
@@ -62,7 +64,6 @@ const rendererEvents = createWorkspaceRendererEvents();
 function workspaceWindows(): BrowserWindow[] { return mainWindow && !mainWindow.isDestroyed() ? [mainWindow] : []; }
 
 type IpcSenderEvent = IpcMainEvent | IpcMainInvokeEvent;
-type TerminalSplitDirection = 'right' | 'left' | 'down' | 'up';
 type WindowTheme = keyof typeof INITIAL_WINDOW_BACKGROUND_COLORS;
 
 interface TerminalSurfaceRequest {
@@ -130,7 +131,6 @@ const LANGUAGE_SERVER_DIAGNOSTICS_CHANNEL = 'cheshi:language-server-diagnostics'
 const RENDERER_READY_CHANNEL = 'cheshi:renderer-ready';
 const TERMINAL_STATE_CHANNEL = 'cheshi:terminal-state-changed';
 const WORKSPACE_FILES_CHANGED_CHANNEL = 'cheshi:workspace-files-changed';
-const TERMINAL_SPLIT_DIRECTIONS = new Set<TerminalSplitDirection>(['right', 'left', 'down', 'up']);
 const MAX_CHAT_ATTACHMENTS = 20;
 const ATTACHMENT_PREVIEW_MAX_SIZE = 160;
 const languageServerModulesDirectory = app.isPackaged
@@ -157,6 +157,25 @@ const languageServerManager = new LanguageServerManager({
   }),
 });
 const gitService = new GitService({ workspaceRoot });
+const workspaceProjects = createWorkspaceProjects({
+  ipc: ipcMain, root: workspaceRoot, dataRoot: codeGraphDataRoot, clipboard, shell,
+  languageOptions: { settingsPath: languageServerManager.settingsPath, clientInfo: languageServerManager.clientInfo,
+    homeDirectory: languageServerManager.homeDirectory, bundledCommands: createBundledLanguageServerCommands({
+      runtimeExecutable: process.execPath, modulesDirectory: languageServerModulesDirectory }) },
+  assertSender: assertCheshiSender,
+  assertIdle: () => {
+    const chats = [codexChatService, ...codexChatContexts.allServices().map(entry => entry.service)];
+    if (chats.some(service => service.activeTurns.size || service.pendingTurnStarts.size || service.pendingNewTurnClientMessageId)) {
+      throw new Error('Wait for chat responses to finish before changing workspace projects.');
+    }
+  },
+  chooseDirectory: async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) throw new Error('The workspace window is unavailable.');
+    const result = await dialog.showOpenDialog(mainWindow, { title: 'Add project to workspace', properties: ['openDirectory'] });
+    return result.canceled ? null : result.filePaths[0] ?? null;
+  },
+  emit: (channel, value) => { for (const window of workspaceWindows()) rendererEvents.send(window, channel, value); },
+});
 
 function attachmentPreviewUrl(attachmentPath: string): string | null {
   const source = nativeImage.createFromPath(attachmentPath);
@@ -186,6 +205,7 @@ function codexChatAttachmentPreviewUrl(attachmentPath: unknown): string | null {
 }
 
 const { accounts: workspaceAccounts, search: chatHistorySearch } = createWorkspaceChatHistory({
+  projectRoots: () => workspaceProjects.store.list().map(project => project.rootPath),
   cwd: workspaceRoot, userDataDirectory, home: app.getPath('home'), openExternal: url => shell.openExternal(url),
   codeGraph: { cli: codeGraphCommands.cli(), dataRoot: codeGraphDataRoot, synchronization: options.codeGraphSynchronization },
   historyDirectory: path.join(path.dirname(codeGraphDirectory), 'chat-history-index'),
@@ -221,7 +241,9 @@ const codexAccountService = new CodexAccountService({
   },
 });
 const sessionHistory = createWorkspaceSessionMemory(workspaceRoot, userDataDirectory, workspaceAccounts.conversations, chatHistorySearch, createChatClient, ipcMain, assertCheshiSender);
-const chatServiceOptions = sessionHistory.serviceOptions;
+const chatServiceOptions = { ...sessionHistory.serviceOptions,
+  getWorkspaceProjects: () => workspaceProjects.store.list().map(({ rootPath }) => rootPath),
+};
 
 const codexChatService = new CodexChatService({ ...chatServiceOptions, client: codexAppServerClient });
 const codexChatContexts = new CodexChatContexts({
@@ -411,12 +433,12 @@ async function selectLanguageServerExecutable(
   return { canceled: false, statuses };
 }
 
-registerWorkspaceFileIpcHandlers({ ipcMain, workspaceRoot, clipboard, shell, localHistory });
+registerWorkspaceFileIpcHandlers({ ipcMain: workspaceProjects.ipc, workspaceRoot, clipboard, shell, localHistory });
 registerLocalFileLinkIpc({ ipcMain, workspaceRoot, shell, assertSender: assertCheshiSender });
-registerLocalHistoryIpc({ ipcMain, service: localHistory, assertSender: assertCheshiSender, onChanged: sendWorkspaceFilesChanged });
+registerLocalHistoryIpc({ ipcMain: workspaceProjects.ipc, service: localHistory, assertSender: assertCheshiSender, onChanged: sendWorkspaceFilesChanged });
 const management = registerWorkspaceManagementIpcHandlers({ ipcMain, app, dialog, trashItem: (root) => shell.trashItem(root), withWorkspaceDeletion: options.withWorkspaceDeletion, assertWorkspaceAvailable: options.assertWorkspaceAvailable, openExternal: (url) => shell.openExternal(url), getWindow: () => mainWindow, assertSender: assertCheshiSender, dataRoot: codeGraphDataRoot, onOpenWorkspace: options.onOpenWorkspace, onReplaceWorkspace: options.onReplaceWorkspace, manager: { createWindow: (configuration) => new BrowserWindow(configuration), rendererUrl, workspaceRoot, onWindowCreated: (window) => options.scope.addOwner(window.webContents, true) } });
-registerGitIpcHandlers({ ipcMain, gitService, assertCheshiSender, shell });
-registerLanguageServerIpcHandlers({ ipcMain, languageServerManager, assertCheshiSender, selectLanguageServerExecutable });
+registerGitIpcHandlers({ ipcMain: workspaceProjects.ipc, gitService, assertCheshiSender, shell });
+registerLanguageServerIpcHandlers({ ipcMain: workspaceProjects.ipc, languageServerManager, assertCheshiSender, selectLanguageServerExecutable });
 ipcMain.handle('cheshi:set-terminal-view-visible', (event, visible) => {
   assertTerminalSender(event);
   if (visible !== true && visible !== false) {
@@ -441,48 +463,10 @@ ipcMain.on('cheshi:update-terminal-surface-bounds', (event, value) => {
   if (!surface || !terminalController?.findPane(surface.paneId)) return;
   terminalSurfaces?.updatePane(surface.paneId, surface.frame, surface.visible);
 });
-ipcMain.handle('cheshi:new-terminal-session', (event) => {
-  assertTerminalSender(event);
-  if (terminalSurfaces?.available) terminalController?.newSession();
-  return terminalSnapshot();
-});
-ipcMain.handle('cheshi:select-terminal-session', (event, sessionId) => {
-  assertTerminalSender(event);
-  terminalController?.selectSession(sessionId);
-  return terminalSnapshot();
-});
-ipcMain.handle('cheshi:close-terminal-session', (event, sessionId) => {
-  assertTerminalSender(event);
-  terminalController?.closeSession(sessionId);
-  return terminalSnapshot();
-});
-ipcMain.handle('cheshi:select-terminal-pane', (event, sessionId, paneId) => {
-  assertTerminalSender(event);
-  terminalController?.selectPane(sessionId, paneId);
-  return terminalSnapshot();
-});
-ipcMain.handle('cheshi:split-terminal-pane', (event, sessionId, paneId, direction) => {
-  assertTerminalSender(event);
-  if (TERMINAL_SPLIT_DIRECTIONS.has(direction)) {
-    terminalController?.splitPane(sessionId, paneId, direction);
-  }
-  return terminalSnapshot();
-});
-ipcMain.handle('cheshi:resize-terminal-split', (event, sessionId, splitId, ratio) => {
-  assertTerminalSender(event);
-  if (typeof splitId !== 'string' || !splitId.trim()) {
-    throw new TypeError('Terminal split id must be a non-empty string.');
-  }
-  if (!Number.isFinite(ratio) || ratio < 0.1 || ratio > 0.9) {
-    throw new TypeError('Terminal split ratio must be between 0.1 and 0.9.');
-  }
-  terminalController?.resizeSplit(sessionId, splitId.trim(), ratio);
-  return terminalSnapshot();
-});
-ipcMain.handle('cheshi:close-terminal-pane', (event, sessionId, paneId) => {
-  assertTerminalSender(event);
-  terminalController?.closePane(sessionId, paneId);
-  return terminalSnapshot();
+registerWorkspaceTerminalIpc({
+  ipc: ipcMain, projects: workspaceProjects.store, controller: () => terminalController,
+  available: () => terminalSurfaces?.available === true,
+  snapshot: terminalSnapshot, assertSender: assertTerminalSender,
 });
 ipcMain.handle('cheshi:is-codegraph-indexed', () => hasReadyCodeGraphIndex(codeGraphDatabasePath));
 ipcMain.handle('cheshi:reindex-codegraph', () => reindexCodeGraph());
@@ -703,6 +687,7 @@ function initializeTerminal(window: BrowserWindow): void {
     terminalSurfaces = new GhosttySurfaceHost({
       owner: window,
       workingDirectory: workspaceRoot,
+      workingDirectoryForPane: paneId => terminalController?.findPane(paneId)?.cwd ?? workspaceRoot,
       dark: terminalDark,
       onFocus: (paneId) => {
         const controller = terminalController;
@@ -974,7 +959,7 @@ function dispose(): Promise<void> {
       codexChatService.stop(), agentVoice.dispose(),
       chatHistorySearch.stop(), sessionHistory.memory.dispose(), appleNotesService.stop(),
       temporaryChats.stop(),
-      localHistory.dispose(),
+      localHistory.dispose(), workspaceProjects.dispose(),
       managementDisposal,
       codexAccountService.stop(), accountSwitch.stop(), workspaceAccounts.stop(),
       codeGraphService?.stop(), codeGraphIndexer?.stop(), ephemeralSessionClient.stop(),

@@ -16,7 +16,7 @@ export interface TerminalController {
   state: TerminalRuntimeState;
   error: string;
   registerHost: (paneId: string, host: HTMLElement | null) => void;
-  newSession: () => void;
+  newSession: (projectId?: string) => void;
   selectSession: (sessionId: string) => void;
   closeSession: (sessionId: string) => void;
   closeAllSessions: () => void;
@@ -144,7 +144,7 @@ export function useTerminalController(active: boolean, previewActive = false): T
     state,
     error: clientError || state.error || '',
     registerHost,
-    newSession: () => invoke(desktopApi && (() => desktopApi.newTerminalSession())),
+    newSession: (projectId?: string) => invoke(desktopApi && (() => desktopApi.newTerminalSession(projectId))),
     selectSession: (sessionId) => invoke(
       desktopApi && (() => desktopApi.selectTerminalSession(sessionId)),
     ),

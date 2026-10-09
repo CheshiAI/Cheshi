@@ -22,12 +22,13 @@ export function createWorkspaceCodexAccounts(options: {
   cwd: string; userDataDirectory: string; home: string; openExternal(url: string): Promise<unknown>;
   accountSelection?: WorkspaceAccountSelection;
   getProjectDocMaxBytes?(): number;
+  projectRoots?(): string[];
   codeGraph: { cli: { executable: string; args: string[] }; dataRoot: string; synchronization?: CodeGraphSynchronization };
 }) {
   const defaultHome = process.env.CODEX_HOME?.trim() || path.join(options.home, '.codex');
   const codeGraphMcp = createWorkspaceCodeGraphMcp({
     cli: options.codeGraph.cli, dataRoot: options.codeGraph.dataRoot, workspaceRoot: options.cwd,
-    synchronization: options.codeGraph.synchronization ? () => options.codeGraph.synchronization!.connection(options.cwd) : undefined,
+    synchronization: options.codeGraph.synchronization ? () => options.codeGraph.synchronization!.connection(options.cwd, options.projectRoots) : undefined,
   });
   const clients = new CodexAccountClients({ CODEX_HOME: defaultHome }, codeGraphMcp, options.getProjectDocMaxBytes);
   const profiles = getCodexAccountProfiles({
@@ -137,7 +138,7 @@ export function createWorkspaceCodexAccounts(options: {
     const availability = chooseCodexAccount(snapshot);
     if (!availability.accountId) throw new Error(availability.message ?? 'No Codex account is available.');
     if (availability.accountId !== selection.activeId) await selection.select(availability.accountId);
-    await options.codeGraph.synchronization?.ensure(options.cwd);
+    await Promise.all((options.projectRoots?.() ?? [options.cwd]).map(root => options.codeGraph.synchronization?.ensure(root)));
   };
   return { createClient: () => createClient(), createVoiceClient: () => createClient(true), register, conversations, beforeMessage, stop: () => clients.stop() };
 }

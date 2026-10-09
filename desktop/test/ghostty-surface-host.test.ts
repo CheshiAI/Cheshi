@@ -76,6 +76,17 @@ function createHost(binding: TestBinding, callbacks: Partial<HostOptions> = {}):
   });
 }
 
+test('native terminals use each pane project directory', () => {
+  const binding = createBinding();
+  const host = createHost(binding, { workingDirectoryForPane: id => id === 'plugin' ? '/workspace/plugin' : '/workspace/app' });
+  host.sync({ paneIds: ['app', 'plugin'], visiblePaneIds: ['app', 'plugin'], activePaneId: 'plugin', pageVisible: true });
+  const frame = { x: 0, y: 0, width: 300, height: 200 };
+  host.updatePane('app', frame, true);
+  host.updatePane('plugin', frame, true);
+  assert.deepEqual(binding.calls.filter(call => call[0] === 'createSurface').map(call => call[3]), ['/workspace/app', '/workspace/plugin']);
+  host.close();
+});
+
 test('keeps inactive native panes occluded during synchronization', () => {
   const binding = createBinding();
   const host = createHost(binding);

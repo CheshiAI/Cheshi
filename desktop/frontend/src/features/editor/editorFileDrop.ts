@@ -1,3 +1,4 @@
+import { validWorkspaceFilePath } from '../../../../shared/workspace-projects';
 import { readWorkspaceFileTransfer, WORKSPACE_FILE_TRANSFER_TYPE } from '../../shared/workspaceFileTransfer';
 
 export const EDITOR_TAB_TRANSFER_TYPE = 'application/x-cheshi-editor-tab';
@@ -16,10 +17,10 @@ export function readEditorTabTransfer(data: Pick<DataTransfer, 'getData'>): Edit
   } catch { return null; }
 }
 
-export function droppedWorkspacePaths(data: Pick<DataTransfer, 'getData' | 'types'>, workspaceRoot: string): string[] {
+export function droppedWorkspacePaths(data: Pick<DataTransfer, 'getData' | 'types'>, workspaceRoot: string, linkedRoots: readonly string[] = []): string[] {
   const prefix = `${workspaceRoot.replace(/\/$/, '')}/`;
   return [...new Set(readWorkspaceFileTransfer(data).flatMap(path => {
-    if (!path.startsWith(prefix)) return [];
+    if (!path.startsWith(prefix)) return validWorkspaceFilePath(path) && linkedRoots.some(root => path.startsWith(root.replace(/\/$/, '') + '/')) ? [path] : [];
     const relative = path.slice(prefix.length);
     if (!relative || relative.includes('\\') || relative.includes('\0')
       || relative.split('/').some(part => !part || part === '.' || part === '..')) return [];

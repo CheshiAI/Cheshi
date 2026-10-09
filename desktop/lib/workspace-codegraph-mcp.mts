@@ -41,6 +41,7 @@ export function workspaceCodeGraphMcpArgs(options: Options, legacyServer: boolea
       'env.CHESHI_CODEGRAPH_SYNC_URL': tomlString(synchronization.url),
       'env.CHESHI_CODEGRAPH_SYNC_TOKEN': tomlString(synchronization.token),
       'env.CHESHI_CODEGRAPH_SYNC_WORKSPACE': tomlString(synchronization.workspaceRoot),
+      ...(synchronization.multiProject ? { 'env.CHESHI_CODEGRAPH_SYNC_MULTI_PROJECT': '"1"' } : {}),
     } : {}),
   };
   const overrides = Object.entries(settings).flatMap(([key, value]) => ['-c', `mcp_servers.${WORKSPACE_CODEGRAPH_MCP_NAME}.${key}=${value}`]);

@@ -1,3 +1,5 @@
+import { workspaceFullPath } from '../../../../shared/workspace-projects';
+import { useWorkspaceProjects } from '../../shared/workspaceProjects';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { ChevronRight } from 'lucide-react';
 
@@ -10,9 +12,12 @@ interface WorkspaceFileBreadcrumbsProps {
 }
 
 export function WorkspaceFileBreadcrumbs({ filePath }: WorkspaceFileBreadcrumbsProps) {
-  const segments = [cheshiDesktop?.workspaceName ?? 'Workspace', ...filePath.split('/').filter(Boolean)];
+  const { projects } = useWorkspaceProjects();
+  const project = projects.find(entry => filePath.startsWith(entry.rootPath + '/')) ?? projects[0];
+  const relative = project && filePath.startsWith(project.rootPath + '/') ? filePath.slice(project.rootPath.length + 1) : filePath;
+  const segments = [project?.name ?? 'Workspace', ...relative.split('/').filter(Boolean)];
   const fullPath = cheshiDesktop?.workspaceRoot
-    ? `${cheshiDesktop.workspaceRoot.replace(/\/$/, '')}/${filePath}`
+    ? workspaceFullPath(cheshiDesktop.workspaceRoot, filePath)
     : filePath;
 
   return (

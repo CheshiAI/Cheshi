@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { CircleDot, CircleCheck, ExternalLink, Search } from 'lucide-react';
-import { cheshiDesktop } from '../../cheshiDesktop';
+import { useGitDesktop } from './GitProjectContext';
 import { FilterTabList, LiquidGlassPanel, LoadingState, NeumorphicButton, NeumorphicTextField, SearchClearButton } from '../../shared/ui';
 import badgeStyles from '../../shared/ui/Badge.module.css';
 import type { GitHubIssueState } from '../../../../shared/github-issues';
@@ -13,6 +13,7 @@ export function GitIssuesWorkspace({ revision, active = true }: { revision: numb
   const [input, setInput] = useState('');
   const [search, setSearch] = useState('');
   const [state, setState] = useState<GitHubIssueState>('open');
+  const cheshiDesktop = useGitDesktop();
   const issues = useGitIssues(cheshiDesktop?.githubIssues, { search, state }, revision);
   const { list, detail, selected } = issues;
   return (

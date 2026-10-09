@@ -59,6 +59,7 @@ interface GhosttySurfaceHostOptions {
   owner: NativeWindowOwner;
   fontDirectory?: string;
   workingDirectory: string;
+  workingDirectoryForPane?: (paneId: string) => string;
   dark?: boolean;
   onFocus?: (paneId: string) => void;
   onSplit?: (paneId: string, direction: SplitDirection) => void;
@@ -149,6 +150,7 @@ export class GhosttySurfaceHost {
   onFocus?: (paneId: string) => void;
   dark: boolean;
   workingDirectory: string;
+  workingDirectoryForPane?: (paneId: string) => string;
   owner: NativeWindowOwner;
   command?: string;
   private unsubscribeNativeEvents: (() => void) | null = null;
@@ -156,6 +158,7 @@ export class GhosttySurfaceHost {
     owner,
     fontDirectory = "",
     workingDirectory,
+    workingDirectoryForPane,
     command,
     dark = false,
     onFocus,
@@ -167,6 +170,7 @@ export class GhosttySurfaceHost {
   }: GhosttySurfaceHostOptions) {
     this.owner = owner;
     this.workingDirectory = workingDirectory;
+    this.workingDirectoryForPane = workingDirectoryForPane;
     this.command = command;
     this.dark = isLiteralTrue(dark);
     this.onFocus = onFocus;
@@ -218,7 +222,7 @@ export class GhosttySurfaceHost {
         surfaceId = this.binding.createSurface(
           this.owner.getNativeWindowHandle(),
           frame,
-          this.workingDirectory,
+          this.workingDirectoryForPane?.(paneId) ?? this.workingDirectory,
           this.dark,
           this.command,
         );

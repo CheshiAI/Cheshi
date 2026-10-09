@@ -652,6 +652,7 @@ export interface CodexChatConfigurationRequest {
 }
 
 export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpdateResumeApi>, Partial<KeepAwakeApi> {
+  workspaceProjects?: import('../../shared/workspace-projects').WorkspaceProjectsApi;
   workspaceManagement?: WorkspaceManagementApi;
   settings?: import('../../shared/settings').SettingsApi;
   appearance?: import('../../shared/window-appearance').WindowAppearanceApi;
@@ -774,7 +775,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   setTerminalViewVisible: (visible: boolean) => Promise<unknown>;
   setTerminalTheme: (theme: 'dark' | 'light') => Promise<unknown>;
   updateTerminalSurfaceBounds: (bounds: TerminalSurfaceBounds) => void;
-  newTerminalSession: () => Promise<unknown>;
+  newTerminalSession: (projectId?: string) => Promise<unknown>;
   selectTerminalSession: (sessionId: string) => Promise<unknown>;
   closeTerminalSession: (sessionId: string) => Promise<unknown>;
   selectTerminalPane: (sessionId: string, paneId: string) => Promise<unknown>;

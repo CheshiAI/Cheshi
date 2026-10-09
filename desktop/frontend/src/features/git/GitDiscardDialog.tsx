@@ -1,9 +1,10 @@
+import { useGitDesktop } from './GitProjectContext';
 import { GitPullRequestClosed } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { errorMessage } from '../../shared/errorMessage';
 import { Modal, NeumorphicButton } from '../../shared/ui';
-import { cheshiDesktop, type GitDiscardPreview, type GitDiscardRequest, type GitDiscardTarget } from '../../cheshiDesktop';
+import { type GitDiscardPreview, type GitDiscardRequest, type GitDiscardTarget } from '../../cheshiDesktop';
 import styles from './GitDiscardDialog.module.css';
 
 interface GitDiscardDialogProps {
@@ -13,6 +14,7 @@ interface GitDiscardDialogProps {
 }
 
 export function GitDiscardDialog({ targets, onClose, onDiscard }: GitDiscardDialogProps) {
+  const cheshiDesktop = useGitDesktop();
   const [preview, setPreview] = useState<GitDiscardPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

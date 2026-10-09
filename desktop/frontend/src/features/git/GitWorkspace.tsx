@@ -1,4 +1,9 @@
-import { useEffect, useState } from 'react';
+import { GitProjectContext } from './GitProjectContext';
+import { cheshiDesktop } from '../../cheshiDesktop';
+import { useWorkspaceProjects, projectGitApi, primaryProject } from '../../shared/workspaceProjects';
+import { projectFilePath, type WorkspaceProject } from '../../../../shared/workspace-projects';
+import { LiquidGlassSelect } from '../../shared/ui';
+import { useEffect, useState, useMemo } from 'react';
 import { GitIssuesWorkspace } from './GitIssuesWorkspace';
 import { AlertTriangle } from 'lucide-react';
 
@@ -19,8 +24,8 @@ interface GitWorkspaceProps {
   onToggleRightSidebar: () => void;
 }
 
-export function GitWorkspace({ active = true, sidebarTarget, onOpenChanges,
-  rightSidebarOpen, onToggleRightSidebar, onOpenWorkspaceFile }: GitWorkspaceProps) {
+function ProjectGitWorkspace({ active = true, sidebarTarget, onOpenChanges,
+  rightSidebarOpen, onToggleRightSidebar, onOpenWorkspaceFile, project, projects, selectProject }: GitWorkspaceProps & { project: WorkspaceProject; projects: WorkspaceProject[]; selectProject(id: string): void }) {
   const [issueRevision, setIssueRevision] = useState(0);
   const [issuesVisited, setIssuesVisited] = useState(false);
   const controller = useGitWorkspaceController();
@@ -39,6 +44,11 @@ export function GitWorkspace({ active = true, sidebarTarget, onOpenChanges,
 
   return (
     <main className={styles.workspace} aria-label="Git workspace" hidden={!active}>
+      {projects.length > 1 && <div style={{ padding: 'var(--space-default)' }}>
+        <LiquidGlassSelect ariaLabel="Git project" value={project.id} disabled={controller.busy}
+          options={projects.map(entry => ({ value: entry.id, label: entry.name, description: entry.rootPath, disabled: !entry.available }))}
+          onChange={selectProject} />
+      </div>}
       <GitWorkspaceHeader
         controller={controller}
         onRefreshIssues={tab === 'issues' ? () => setIssueRevision(value => value + 1) : undefined}
@@ -61,4 +71,15 @@ export function GitWorkspace({ active = true, sidebarTarget, onOpenChanges,
       ) : null)}
     </main>
   );
+}
+
+export function GitWorkspace(props: GitWorkspaceProps) {
+  const { projects } = useWorkspaceProjects();
+  const [selected, setSelected] = useState('primary');
+  const project = projects.find(entry => entry.id === selected) ?? projects[0] ?? primaryProject;
+  const api = useMemo(() => projectGitApi(cheshiDesktop, project), [project.id, project.rootPath]);
+  return <GitProjectContext.Provider value={api}>
+    <ProjectGitWorkspace key={project.id} {...props} project={project} projects={projects} selectProject={setSelected}
+      onOpenWorkspaceFile={file => props.onOpenWorkspaceFile(projectFilePath(project, file))} />
+  </GitProjectContext.Provider>;
 }

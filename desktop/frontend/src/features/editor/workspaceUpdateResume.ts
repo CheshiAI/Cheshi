@@ -1,3 +1,4 @@
+import { validWorkspaceFilePath } from '../../../../shared/workspace-projects';
 import type { WorkspaceFileReadResult, WorkspaceFileVersion } from '../../cheshiDesktop';
 import { resumeRecord } from '../shell/updateWorkspaceResume';
 import type { WorkspaceTab } from './workspaceEditorModel';
@@ -10,10 +11,6 @@ export interface EditorUpdateSnapshot {
   problemsRatio: number;
 }
 
-function validPath(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && !value.startsWith('/')
-    && !value.includes('\\') && !value.includes('\0') && !value.split('/').includes('..');
-}
 
 function validFile(value: unknown, path: string): value is WorkspaceFileVersion {
   const file = resumeRecord(value);
@@ -28,7 +25,7 @@ function validFile(value: unknown, path: string): value is WorkspaceFileVersion 
 export function parseEditorUpdateSnapshot(value: unknown): EditorUpdateSnapshot {
   const record = resumeRecord(value);
   if (!record || !Array.isArray(record.tabs) || record.tabs.length > 500
-    || (record.selectedPath !== null && !validPath(record.selectedPath))
+    || (record.selectedPath !== null && !validWorkspaceFilePath(record.selectedPath))
     || typeof record.problemsOpen !== 'boolean' || typeof record.problemsRatio !== 'number'
     || !Number.isFinite(record.problemsRatio) || record.problemsRatio < 0 || record.problemsRatio > 1) {
     throw new Error('The saved editor workspace is invalid.');
@@ -36,7 +33,7 @@ export function parseEditorUpdateSnapshot(value: unknown): EditorUpdateSnapshot 
   const seen = new Set<string>();
   for (const value of record.tabs) {
     const tab = resumeRecord(value);
-    if (!tab || !validPath(tab.path) || seen.has(tab.path) || !validFile(tab.file, tab.path)
+    if (!tab || !validWorkspaceFilePath(tab.path) || seen.has(tab.path) || !validFile(tab.file, tab.path)
       || typeof tab.savedContent !== 'string' || typeof tab.draftContent !== 'string'
       || (tab.conflictMessage !== null && typeof tab.conflictMessage !== 'string')) {
       throw new Error('A saved editor tab is invalid.');

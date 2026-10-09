@@ -1,3 +1,4 @@
+import { useWorkspaceProjects } from '../../shared/workspaceProjects';
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cheshiDesktop } from '../../cheshiDesktop';
@@ -20,6 +21,7 @@ const ignoreSelection = () => {};
 
 /** Pane controllers remain mounted in stable portals as the split tree changes. */
 export function WorkspaceEditor(props: WorkspaceEditorProps) {
+  const { projects } = useWorkspaceProjects();
   // Portaled menus can overlap adjacent panes and sidebar borders.
   const menuBlurSourceRef = useRef(document.getElementById('app'));
   const visible = useContext(WorkspacePaneVisibilityContext);
@@ -86,7 +88,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
       return;
     }
     if (!cheshiDesktop) return;
-    const paths = droppedWorkspacePaths(data, cheshiDesktop.workspaceRoot);
+    const paths = droppedWorkspacePaths(data, cheshiDesktop.workspaceRoot, projects.filter(project => !project.primary).map(project => project.rootPath));
     if (!paths.length) return;
     const busyId = `drop-${sequence}`;
     store.setBusy(busyId, true);
@@ -111,7 +113,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
     })().catch((reason: unknown) => {
       if (sequence === dropSequence.current) setError(String(reason));
     }).finally(() => store.setBusy(busyId, false));
-  }, [store, setError]);
+  }, [store, setError, projects]);
   return <RegionalBlur sourceRef={menuBlurSourceRef}><div className={styles.root} style={!active ? { display: 'none' } : undefined}>
     {error && <p role="alert">{error}</p>}
     <SplitPaneLayout layout={shownLayout} onResizeSplit={store.resize} resizeLabel="Resize editor panes"

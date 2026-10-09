@@ -1,3 +1,5 @@
+import { useWorkspaceProjects } from '../../shared/workspaceProjects';
+import { ToolbarMenu } from '../../shared/ui/ToolbarMenu';
 import { useContext } from 'react';
 import { useSplitPreviewActive } from '../../shared/ui/splitPreviewState';
 import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
@@ -33,6 +35,7 @@ export function TerminalWorkspace({
   onToggleRightSidebar,
   onCloseWorkspace,
 }: TerminalWorkspaceProps) {
+  const { projects } = useWorkspaceProjects();
   const paneVisible = useContext(WorkspacePaneVisibilityContext);
   active = active && paneVisible;
   const previewActive = useSplitPreviewActive();
@@ -83,16 +86,18 @@ export function TerminalWorkspace({
               </FlatTabList>
             )}
             <div className="terminal-header-actions" style={nonDraggableWindowRegionStyle}>
-              <TooltipButton
+              {projects.length > 1 ? <ToolbarMenu label="New terminal in project" disabled={!state.available}
+                items={projects.map(project => ({ id: project.id, label: project.name, icon: <SquareTerminal aria-hidden="true" />,
+                  disabled: !project.available, onSelect: () => terminal.newSession(project.id) }))} /> : <TooltipButton
                 size="icon"
                 variant="ghost"
                 aria-label="New terminal session"
                 title="New terminal session"
                 disabled={!state.available}
-                onClick={terminal.newSession}
+                onClick={() => terminal.newSession()}
               >
                 <Plus aria-hidden="true" />
-              </TooltipButton>
+              </TooltipButton>}
               <span className="terminal-header-divider" aria-hidden="true" />
               <WorkspaceLayoutControls />
               <SidebarToggle
@@ -143,7 +148,7 @@ export function TerminalWorkspace({
               raised
               className="neumorphic-surface terminal-new-session"
               disabled={!state.available}
-              onClick={terminal.newSession}
+              onClick={() => terminal.newSession()}
             >
               <Plus aria-hidden="true" />
               <span>New session</span>

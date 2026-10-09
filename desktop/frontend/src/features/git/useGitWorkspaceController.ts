@@ -1,3 +1,4 @@
+import { useGitDesktop } from './GitProjectContext';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { errorMessage } from '../../shared/errorMessage';
@@ -6,7 +7,6 @@ import { refreshGitRepository, type GitRepositoryRefreshResult } from './gitRepo
 import { useGitBranchHistory } from './useGitBranchHistory';
 import { useGitPullRequestCommitDiff } from './useGitPullRequestCommitDiff';
 import {
-  cheshiDesktop,
   type GitDiffRequest,
   type GitDiffResult,
   type GitDiscardRequest,
@@ -41,7 +41,7 @@ import {
 import { parseUnifiedDiff, type UnifiedDiffFile } from './unifiedDiff';
 
 export function useGitWorkspaceController() {
-  const desktop = cheshiDesktop;
+  const desktop = useGitDesktop();
   const [tab, setTab] = useState<GitWorkspaceTab>('changes');
   const [snapshot, setSnapshot] = useState<GitRepositorySnapshot>(EMPTY_SNAPSHOT);
   const branchHistory = useGitBranchHistory(desktop, snapshot, tab === 'log');
@@ -392,7 +392,7 @@ export function useGitWorkspaceController() {
   const selectedDiffRevision = selection?.scope === 'commit' ? 0 : localDiffRevision;
 
   useEffect(() => {
-    if (!selection || !cheshiDesktop?.getGitDiff) {
+    if (!selection || !desktop?.getGitDiff) {
       setDiff(null);
       setDiffFiles([]);
       setSelectedDiffPath(null);
@@ -400,7 +400,7 @@ export function useGitWorkspaceController() {
     }
     let canceled = false;
     setDiffLoading(true);
-    void cheshiDesktop.getGitDiff(selection).then((result) => {
+    void desktop.getGitDiff(selection).then((result) => {
       if (canceled) return;
       const files = parseUnifiedDiff(result.patch);
       setDiff(result);
@@ -480,11 +480,11 @@ export function useGitWorkspaceController() {
   };
 
   const commit = async (): Promise<void> => {
-    if (!cheshiDesktop || !commitMessage.trim()) return;
+    if (!desktop || !commitMessage.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await cheshiDesktop.commitGitChanges(commitMessage);
+      const result = await desktop.commitGitChanges(commitMessage);
       acceptSnapshot(result.snapshot);
       setCommitMessage('');
       setNotice('Commit created.');

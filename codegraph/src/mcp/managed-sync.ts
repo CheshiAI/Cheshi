@@ -12,13 +12,17 @@ export async function awaitManagedCodeGraphSync(projectPath?: string, env: NodeJ
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password || !token || !workspace) {
     throw new Error('Invalid managed CodeGraph synchronization configuration.');
   }
+  let linkedProject: string | undefined;
   // Never turn a cross-project read into permission to index another project.
   if (projectPath) {
     const queryRoot = findNearestCodeGraphRoot(projectPath) ?? resolve(projectPath);
     // Preserve existing cross-project read access without granting it automatic writes.
-    if (resolve(queryRoot) !== resolve(workspace) && await realpath(queryRoot).catch(() => queryRoot) !== await realpath(workspace)) return;
+    if (resolve(queryRoot) !== resolve(workspace) && await realpath(queryRoot).catch(() => queryRoot) !== await realpath(workspace)) {
+      if (env.CHESHI_CODEGRAPH_SYNC_MULTI_PROJECT !== '1') return;
+      linkedProject = queryRoot;
+    }
   }
-  const response = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, redirect: 'error' });
+  const response = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, ...(linkedProject ? { 'X-Cheshi-CodeGraph-Project': encodeURIComponent(linkedProject) } : {}) }, redirect: 'error' });
   await response.body?.cancel();
   if (response.status !== 204) throw new Error('CodeGraph synchronization failed. Use source files until synchronization succeeds.');
 }

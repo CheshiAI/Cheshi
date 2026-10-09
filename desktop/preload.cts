@@ -577,9 +577,20 @@ function codexPluginReference(value: unknown) {
 }
 
 const cheshiDesktopApi = {
+  workspaceProjects: {
+    list: () => ipcRenderer.invoke('cheshi:workspace-projects:list'),
+    add: () => ipcRenderer.invoke('cheshi:workspace-projects:add'),
+    remove: (id: string) => ipcRenderer.invoke('cheshi:workspace-projects:remove', id),
+    invoke: (id: string, channel: string, args: unknown[]) => ipcRenderer.invoke('cheshi:workspace-projects:invoke', id, channel, args),
+    onChanged: (listener: () => void) => {
+      const changed = () => listener();
+      ipcRenderer.on('cheshi:workspace-projects-changed', changed);
+      return () => ipcRenderer.removeListener('cheshi:workspace-projects-changed', changed);
+    },
+  },
   ...createAppUpdateApi(ipcRenderer),
   ...createKeepAwakeApi(ipcRenderer),
-  ...createWorkspaceFileSearchApi(ipcRenderer),
+  ...createWorkspaceFileSearchApi(ipcRenderer, true),
   workspaceManagement: createWorkspaceManagementApi(ipcRenderer),
   ...createWorkspaceFeatureApis(ipcRenderer),
   platform: process.platform,
@@ -756,7 +767,7 @@ const cheshiDesktopApi = {
     'cheshi:update-terminal-surface-bounds',
     terminalSurfaceBounds(bounds),
   ),
-  newTerminalSession: () => ipcRenderer.invoke('cheshi:new-terminal-session'),
+  newTerminalSession: (projectId?: string) => ipcRenderer.invoke('cheshi:new-terminal-session', projectId),
   selectTerminalSession: (sessionId) => ipcRenderer.invoke(
     'cheshi:select-terminal-session',
     terminalId(sessionId, 'Terminal session id'),

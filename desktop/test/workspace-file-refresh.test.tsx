@@ -23,7 +23,7 @@ function explorerComponent(controller: WorkspaceFileTreeController) {
     jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023,
   } });
   const exports = {} as { WorkspaceFileTree: typeof WorkspaceFileTree };
-  vm.runInNewContext(source.outputText, { exports, require(name: string) {
+  vm.runInNewContext(source.outputText, { exports, document, require(name: string) {
     if (name === './useWorkspaceFileTreeController') return { useWorkspaceFileTreeController: () => controller };
     return require(name);
   } });
@@ -32,7 +32,7 @@ function explorerComponent(controller: WorkspaceFileTreeController) {
 
 async function withExplorer(run: (h: {
   document: Document; controller: WorkspaceFileTreeController; opened: string[];
-  viewport: HTMLElement; button: HTMLButtonElement; file: CheshiWorkspaceEntry;
+  viewport: HTMLElement; refreshItem: () => Promise<HTMLButtonElement>; file: CheshiWorkspaceEntry;
   render: () => Promise<void>; idle: () => Promise<void>;
   pointer: (target: Element, type: string, y: number, x?: number) => Promise<void>;
   wheel: (deltaY: number) => Promise<void>;
@@ -40,7 +40,9 @@ async function withExplorer(run: (h: {
   const window = new Window();
   const globals = { window, document: window.document, navigator: window.navigator,
     HTMLElement: window.HTMLElement, Element: window.Element, Node: window.Node,
-    ResizeObserver: window.ResizeObserver, IS_REACT_ACT_ENVIRONMENT: true };
+    ResizeObserver: window.ResizeObserver, MutationObserver: window.MutationObserver,
+    requestAnimationFrame: window.requestAnimationFrame.bind(window), cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
+    getComputedStyle: window.getComputedStyle.bind(window), IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
   const document = window.document as unknown as Document;
@@ -66,9 +68,15 @@ async function withExplorer(run: (h: {
   )); };
   try {
     await render();
-    const viewport = document.querySelector<HTMLElement>('[aria-label="Workspace files"]')!;
-    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Refresh project explorer"]')!;
-    await run({ document, controller, opened, viewport, button, file, render,
+    const viewport = document.querySelector<HTMLElement>('[aria-label="Workspace projects"]')!;
+    const refreshItem = async () => {
+      if (!document.querySelector('[role="menu"]')) {
+        const trigger = document.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!;
+        await act(async () => trigger.click());
+      }
+      return document.querySelector<HTMLButtonElement>('[role="menuitem"][aria-label="Refresh files"]')!;
+    };
+    await run({ document, controller, opened, viewport, refreshItem, file, render,
       idle: async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 220)); }); },
       pointer: async (target, type, y, x = 10) => { await act(async () => {
         const event = new window.PointerEvent(type, { pointerId: 1, pointerType: 'mouse', isPrimary: true,
@@ -90,7 +98,7 @@ async function withExplorer(run: (h: {
   }
 }
 
-test('Explorer overscroll starts only at the top and shares pending state with the refresh button', async () => {
+test('Explorer overscroll starts only at the top and shares controller pending state with the project menu', async () => {
   await withExplorer(async h => {
     const gate = createDeferred();
     let calls = 0;
@@ -107,16 +115,22 @@ test('Explorer overscroll starts only at the top and shares pending state with t
     expect(calls).toBe(0);
     await h.idle();
     expect(calls).toBe(1);
-    expect(h.button.disabled).toBe(true);
+    h.controller.refreshing = true;
+    await h.render();
+    const item = await h.refreshItem();
+    expect(item.disabled).toBe(true);
     expect(h.document.querySelector('[role="status"]')).toBe(status);
-    await act(async () => h.button.click());
+    await act(async () => item.click());
     await h.wheel(-100); await h.idle();
     expect(calls).toBe(1);
     expect(h.document.querySelector('[aria-selected="true"]')?.textContent).toBe('file.ts');
     await act(async () => gate.resolve());
+    h.controller.refreshing = false;
+    await h.render();
     expect(h.document.querySelector('[role="status"]')).toBeNull();
-    expect(h.button.disabled).toBe(false);
-    await act(async () => h.button.click());
+    const readyItem = await h.refreshItem();
+    expect(readyItem.disabled).toBe(false);
+    await act(async () => readyItem.click());
     expect(calls).toBe(2);
   });
 });
@@ -168,6 +182,6 @@ test('native file dragging and editing do not start Explorer refresh gestures', 
     await h.wheel(-100); await h.idle();
     expect(calls).toBe(0);
     expect(input.value).toBe('file.ts');
-    expect(h.button.disabled).toBe(true);
+    expect((await h.refreshItem()).disabled).toBe(true);
   });
 });

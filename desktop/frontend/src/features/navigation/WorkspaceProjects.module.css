@@ -1,0 +1,59 @@
+.projects {
+  flex: 1;
+  min-height: 0;
+}
+
+.project {
+  padding-top: var(--space-default);
+}
+
+.rootRow {
+  display: flex;
+  align-items: center;
+  gap: var(--icon-default);
+  padding-right: var(--space-default);
+  transition: background-color .16s ease;
+}
+
+.rootRow > button:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.rootRow svg {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex-shrink: 0;
+}
+
+.unavailable {
+  font-size: var(--font-size-small);
+  color: var(--sidebar-section-label-color);
+}
+
+.rootRow[data-active='true'] {
+  background: var(--control-surface-ghost);
+}
+
+.rootRow:is(:hover, :active) {
+  background: var(--control-surface-interactive);
+}
+
+.rootRow > button:first-child:not(:disabled):is(:hover, :active) {
+  background: transparent;
+}
+
+.projectMenu[role='menu'] [role='menuitem'] {
+  background: var(--control-surface-ghost);
+  color: var(--text);
+}
+
+.projectMenu[role='menu'] [role='menuitem']:not(:disabled):is(:focus-visible, [aria-selected='true'], [aria-checked='true'], [data-active='true']) {
+  background: var(--control-surface);
+  color: var(--text);
+}
+
+.projectMenu[role='menu'] [role='menuitem']:not(:disabled):is(:hover, :active) {
+  background: var(--control-surface-interactive);
+  color: var(--text);
+}

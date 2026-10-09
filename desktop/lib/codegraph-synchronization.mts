@@ -5,10 +5,10 @@ import path from 'node:path';
 import { codeGraphStorageDirectory } from '../../config/workspace-storage.mts';
 import { CodeGraphIndexer } from './codegraph-service.mts';
 
-export interface CodeGraphSyncConnection { url: string; token: string; workspaceRoot: string; }
+export interface CodeGraphSyncConnection { url: string; token: string; workspaceRoot: string; multiProject?: boolean; }
 export interface CodeGraphSynchronization {
   ensure(workspace: string, signal?: AbortSignal): Promise<void>;
-  connection(workspace: string): Promise<CodeGraphSyncConnection>;
+  connection(workspace: string, projectRoots?: () => string[]): Promise<CodeGraphSyncConnection>;
   exclusive<T>(workspace: string, operation: () => Promise<T>): Promise<T>;
   dispose(): Promise<void>;
 }
@@ -35,7 +35,7 @@ export function createCodeGraphSynchronization(options: {
   const tails = new Map<string, Promise<unknown>>();
   const syncs = new Map<string, Promise<void>>();
   const writers = new Set<Pick<CodeGraphIndexer, 'synchronize' | 'stop'>>();
-  const routes = new Map<string, string>();
+  const routes = new Map<string, { root: string; projectRoots?: () => string[] }>();
   const token = randomBytes(32).toString('hex');
   let closed = false;
   let server: Server | undefined;
@@ -73,11 +73,23 @@ export function createCodeGraphSynchronization(options: {
     server = createServer((request, response) => {
       const supplied = Buffer.from(request.headers.authorization ?? '');
       const expected = Buffer.from(`Bearer ${token}`);
-      const root = routes.get(request.url ?? '');
-      if (request.method !== 'POST' || request.headers.origin || !root || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+      const route = routes.get(request.url ?? '');
+      if (request.method !== 'POST' || request.headers.origin || !route || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
         response.writeHead(403).end(); request.resume(); return;
       }
       request.resume();
+      let root = route.root;
+      const requested = request.headers['x-cheshi-codegraph-project'];
+      if (requested !== undefined) {
+        try {
+          if (typeof requested !== 'string' || !route.projectRoots) throw new Error('Unsupported project scope.');
+          const target = realpathSync.native(decodeURIComponent(requested));
+          if (!route.projectRoots().some(candidate => realpathSync.native(candidate) === target)) {
+            response.writeHead(204).end(); return; // Existing cross-project reads do not grant synchronization.
+          }
+          root = target;
+        } catch { response.writeHead(403).end(); return; }
+      }
       void ensure(root).then(() => response.writeHead(204).end(), () => {
         response.writeHead(503, { 'Content-Type': 'text/plain' }).end('CodeGraph synchronization failed. Use source files until synchronization succeeds.');
       });
@@ -97,13 +109,14 @@ export function createCodeGraphSynchronization(options: {
   return {
     ensure: (workspace, signal) => joinSynchronization(() => ensure(workspace), signal),
     exclusive: async (workspace, operation) => enqueue(realpathSync.native(workspace), operation),
-    connection: async workspace => {
+    connection: async (workspace, projectRoots) => {
       const root = realpathSync.native(workspace);
       const origin = await listen();
       assertOpen();
-      let route = [...routes].find(([, value]) => value === root)?.[0];
-      if (!route) { route = `/sync/${randomBytes(24).toString('hex')}`; routes.set(route, root); }
-      return { url: `${origin}${route}`, token, workspaceRoot: root };
+      let route = [...routes].find(([, value]) => value.root === root)?.[0];
+      if (!route) { route = `/sync/${randomBytes(24).toString('hex')}`; routes.set(route, { root, projectRoots }); }
+      if (projectRoots) routes.set(route, { root, projectRoots });
+      return { url: `${origin}${route}`, token, workspaceRoot: root, ...(projectRoots ? { multiProject: true } : {}) };
     },
     dispose: async () => {
       closed = true;
