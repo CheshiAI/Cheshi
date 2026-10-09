@@ -19,7 +19,7 @@ import { WorkspaceSelector } from './WorkspaceSelector';
 import styles from './SidebarRail.module.css';
 
 const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceView }> = [
-  { label: 'Codex', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
+  { label: 'SESSION', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
   { label: 'Terminal', icon: <SquareTerminal aria-hidden="true" />, view: 'terminal' },
   { label: 'Relationship Graph', icon: <Crosshair aria-hidden="true" />, view: 'codegraph' },
   { label: 'Memo', icon: <StickyNote aria-hidden="true" />, view: 'notes' },

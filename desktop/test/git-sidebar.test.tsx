@@ -17,6 +17,9 @@ async function workspaceWithApi(api: Partial<CheshiDesktopApi>) {
   const modules: Record<string, unknown> = {
     react, 'react-dom': reactDOM, 'react/jsx-runtime': jsxRuntime, 'lucide-react': icons,
     '../../cheshiDesktop': { cheshiDesktop: api },
+    '../cheshiDesktop': { cheshiDesktop: api },
+    './GitProjectContext': await import('../frontend/src/features/git/GitProjectContext'),
+    '../../../../shared/workspace-projects': await import('../shared/workspace-projects'),
     '../../shared/ui': await import('../frontend/src/shared/ui'),
     '../../shared/errorMessage': await import('../frontend/src/shared/errorMessage'),
     './gitBranchCheckout': await import('../frontend/src/features/git/gitBranchCheckout'),
@@ -33,6 +36,7 @@ async function workspaceWithApi(api: Partial<CheshiDesktopApi>) {
     './GitIssuesWorkspace.module.css': { default: {} },
     './GitPullRequestsWorkspace': await import('../frontend/src/features/git/GitPullRequestsWorkspace'),
     './GitWorkspace.module.css': { default: {} },
+    './GitChangesSidebar.module.css': { default: { projectMenu: 'git-project-menu' } },
   };
   function load(filename: string) {
     const source = readFileSync(new URL(`../frontend/src/features/git/${filename}`, import.meta.url), 'utf8');
@@ -48,6 +52,7 @@ async function workspaceWithApi(api: Partial<CheshiDesktopApi>) {
     });
     return exports;
   }
+  modules['../../shared/workspaceProjects'] = load('../../shared/workspaceProjects.ts');
   modules['./useGitWorkspaceController'] = load('useGitWorkspaceController.ts');
   modules['./GitIssuesWorkspace'] = load('GitIssuesWorkspace.tsx');
   return load('GitWorkspace.tsx').GitWorkspace as typeof GitWorkspace;
@@ -131,6 +136,106 @@ async function toggleFile(label: string) {
   await act(async () => input.click());
 }
 
+test('Git project selection stays below commit controls and can return from an unavailable repository', async () => {
+  for (const portaled of [false, true]) await withDOM(async ui => {
+    const source = document.body.firstElementChild as HTMLElement;
+    source.id = 'app';
+    source.style.filter = 'brightness(0.9)';
+    Object.defineProperties(source, {
+      offsetWidth: { value: 1000 }, offsetHeight: { value: 800 },
+      getBoundingClientRect: { value: () => new window.DOMRect(0, 0, 1000, 800) },
+    });
+    const openProjectMenu = async () => {
+      await ui.click('Git project');
+      const menu = document.querySelector<HTMLElement>('[role="menu"][aria-label="Git project"]')!;
+      menu.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:16px';
+      Object.defineProperties(menu, {
+        getBoundingClientRect: { value: () => new window.DOMRect(200, 100, 280, 200) },
+        getClientRects: { value: () => [new window.DOMRect(200, 100, 280, 200)] },
+      });
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 40)); });
+      expect(menu.classList.contains('git-project-menu')).toBe(true);
+      expect(source.contains(menu)).toBe(false);
+      expect(menu.style.filter).toBe('');
+      expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
+      expect(source.style.filter).toContain('url(');
+      const filter = document.getElementById(source.getAttribute('data-regional-blur-source')!)!;
+      expect(filter.querySelector('feGaussianBlur')?.getAttribute('stdDeviation')).toBe('16');
+      return filter.id;
+    };
+    const expectBlurRestored = (filterId: string) => {
+      expect(source.style.filter).toBe('brightness(0.9)');
+      expect(source.hasAttribute('data-regional-blur-source')).toBe(false);
+      expect(document.getElementById(filterId)).toBeNull();
+      expect(document.querySelector('[role="menu"][aria-label="Git project"]')).toBeNull();
+    };
+    const scenario = fixture();
+    const projects = [
+      { id: 'primary', name: 'Primary project', rootPath: '/workspace', primary: true, available: true },
+      { id: 'linked', name: 'Linked project', rootPath: '/linked', primary: false, available: true },
+      { id: 'missing', name: 'Missing project', rootPath: '/missing', primary: false, available: false },
+    ];
+    const calls: string[] = [];
+    scenario.api.workspaceProjects = {
+      list: async () => projects,
+      add: async () => null,
+      remove: async () => projects,
+      onChanged: () => () => {},
+      invoke: async (id, channel) => {
+        calls.push(`${id}:${channel}`);
+        if (channel === 'cheshi:get-git-snapshot') return { available: false, message: 'Not a repository' };
+        throw new Error(`Unexpected project operation: ${channel}`);
+      },
+    };
+    const View = await workspaceWithApi(scenario.api);
+    const target = portaled ? document.createElement('aside') : undefined;
+    await ui.render(<View sidebarTarget={target} onOpenWorkspaceFile={() => {}}
+      rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    if (target) source.append(target);
+    await settleLoading();
+    const sidebar = document.querySelector<HTMLElement>('[aria-label="Git changes"]')!;
+    const selector = sidebar.querySelector<HTMLButtonElement>('[aria-label="Git project"]')!;
+    expect(selector).not.toBeNull();
+    expect(sidebar.lastElementChild?.contains(selector)).toBe(true);
+    expect(sidebar.lastElementChild?.previousElementSibling?.tagName).toBe('FOOTER');
+    expect(document.querySelectorAll('[aria-label="Git project"]')).toHaveLength(1);
+    if (target) expect(document.querySelector('main [aria-label="Git project"]')).toBeNull();
+
+    await ui.click('Stage all changes');
+    await ui.type('Commit message', '[fix] update files');
+    await ui.click('Commit');
+    expect(selector.disabled).toBe(true);
+    await act(async () => scenario.commitGate.resolve());
+    expect(selector.disabled).toBe(false);
+    const dismissedFilter = await openProjectMenu();
+    await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    expectBlurRestored(dismissedFilter);
+    expect(document.activeElement).toBe(selector);
+    const linkedFilter = await openProjectMenu();
+    const options = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
+    expect(options.find(option => option.textContent === 'Missing project')?.disabled).toBe(true);
+    await act(async () => options.find(option => option.textContent === 'Linked project')!.click());
+    expectBlurRestored(linkedFilter);
+    await settleLoading();
+    expect(calls).toEqual(['linked:cheshi:get-git-snapshot']);
+    expect(document.querySelector('[aria-label="Git changes"]')?.textContent).toContain('Not a repository');
+    const primaryFilter = await openProjectMenu();
+    const primary = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
+      .find(option => option.textContent === 'Primary project')!;
+    await act(async () => primary.click());
+    expectBlurRestored(primaryFilter);
+    await settleLoading();
+    expect(document.querySelector('[aria-label="Git project"]')?.textContent).toContain('Primary project');
+    expect(document.querySelector('[aria-label="Git changes"]')?.textContent).toContain('No unstaged changes');
+    const outsideFilter = await openProjectMenu();
+    await act(async () => document.body.dispatchEvent(new window.Event('pointerdown', { bubbles: true })));
+    expectBlurRestored(outsideFilter);
+    const unmountedFilter = await openProjectMenu();
+    await ui.render(null);
+    expectBlurRestored(unmountedFilter);
+  });
+});
+
 test('Git preloads before its first visit, retains draft and selection in a late sidebar portal, and opens the selected diff', async () => {
   await withDOM(async ui => {
     const scenario = fixture();
@@ -151,6 +256,7 @@ test('Git preloads before its first visit, retains draft and selection in a late
     expect(sidebar.querySelector('[aria-label="Git changes"]')).not.toBeNull();
     expect(document.querySelector('main [aria-label="Git changes"]')).toBeNull();
     expect(sidebar.querySelector('[aria-label="Commit message"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Git project"]')).toBeNull();
     await act(async () => row(sidebar, 'beta.ts').click());
     expect(opened).toBe(1);
     expect(scenario.diffs.at(-1)).toEqual({ scope: 'working', path: 'beta.ts' });

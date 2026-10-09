@@ -3,8 +3,12 @@
   min-height: 0;
 }
 
-.project {
+.project:first-child {
   padding-top: var(--space-default);
+}
+
+.project:has(> .rootRow > button:first-child[aria-expanded='false']) > [role='tree'] {
+  padding-bottom: 0;
 }
 
 .rootRow {

@@ -34,6 +34,7 @@ interface LiquidGlassSelectProps<Value extends string> {
   title?: string;
   placeholder?: string;
   menuLabel?: string;
+  menuClassName?: string;
   menuAppearance?: 'default' | 'toolbar';
   menuPlacement?: 'auto' | 'left';
   menuWidth?: number;
@@ -84,6 +85,7 @@ export function LiquidGlassSelect<Value extends string>({
   title,
   placeholder,
   menuLabel = ariaLabel,
+  menuClassName,
   menuAppearance = 'default',
   menuPlacement = 'auto',
   menuWidth,
@@ -194,7 +196,7 @@ export function LiquidGlassSelect<Value extends string>({
     >
       <LiquidGlassPanel
         id={menuId}
-        className={toolbarMenu ? menuStyles.menu : styles.popover}
+        className={[toolbarMenu ? menuStyles.menu : styles.popover, menuClassName].filter(Boolean).join(' ')}
         data-liquid-glass-surface={toolbarMenu ? undefined : 'side-panel'}
         role="menu"
         aria-label={menuLabel}

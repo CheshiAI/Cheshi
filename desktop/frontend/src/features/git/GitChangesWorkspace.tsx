@@ -1,5 +1,5 @@
 import { GitPullRequestClosed, ListChecks } from 'lucide-react';
-import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 import {
@@ -106,7 +106,8 @@ function GitChangeGroup({
   );
 }
 
-export function GitChangesWorkspace({ controller, onOpenWorkspaceFile, sidebarTarget, active = true, onOpenChanges }: {
+export function GitChangesWorkspace({ controller, onOpenWorkspaceFile, sidebarTarget, active = true, onOpenChanges, projectSelector }: {
+  projectSelector?: ReactNode;
   sidebarTarget?: HTMLElement | null;
   active?: boolean;
   onOpenChanges?: () => void;
@@ -227,6 +228,7 @@ export function GitChangesWorkspace({ controller, onOpenWorkspaceFile, sidebarTa
           Commit
         </NeumorphicButton>
       </footer>
+      {projectSelector && <div className={styles.projectSelector}>{projectSelector}</div>}
     </LiquidGlassPanel>
   );
   return <>

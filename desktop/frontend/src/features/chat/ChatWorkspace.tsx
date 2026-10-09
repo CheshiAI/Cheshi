@@ -169,7 +169,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
         className={viewStyles.header}
         style={draggableWindowRegionStyle}
         primary={<>
-          <SidebarPanelTitle as="h2" title="CODEX"
+          <SidebarPanelTitle as="h2" title="SESSION"
             icon={<span className={viewStyles.openAIMark} aria-hidden="true" />} />
           <div className={styles.headerActions} style={nonDraggableWindowRegionStyle}>
             <ChatRelayButton workspace={workspace} />

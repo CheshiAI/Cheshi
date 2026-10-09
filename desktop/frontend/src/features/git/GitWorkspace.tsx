@@ -3,7 +3,7 @@ import { cheshiDesktop } from '../../cheshiDesktop';
 import { useWorkspaceProjects, projectGitApi, primaryProject } from '../../shared/workspaceProjects';
 import { projectFilePath, type WorkspaceProject } from '../../../../shared/workspace-projects';
 import { LiquidGlassSelect } from '../../shared/ui';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { GitIssuesWorkspace } from './GitIssuesWorkspace';
 import { AlertTriangle } from 'lucide-react';
 
@@ -13,6 +13,7 @@ import { GitHistoryWorkspace } from './GitHistoryWorkspace';
 import { GitPullRequestsWorkspace } from './GitPullRequestsWorkspace';
 import { GitWorkspaceHeader } from './GitWorkspaceHeader';
 import styles from './GitWorkspace.module.css';
+import sidebarStyles from './GitChangesSidebar.module.css';
 import { useGitWorkspaceController } from './useGitWorkspaceController';
 
 interface GitWorkspaceProps {
@@ -28,6 +29,7 @@ function ProjectGitWorkspace({ active = true, sidebarTarget, onOpenChanges,
   rightSidebarOpen, onToggleRightSidebar, onOpenWorkspaceFile, project, projects, selectProject }: GitWorkspaceProps & { project: WorkspaceProject; projects: WorkspaceProject[]; selectProject(id: string): void }) {
   const [issueRevision, setIssueRevision] = useState(0);
   const [issuesVisited, setIssuesVisited] = useState(false);
+  const menuBlurSourceRef = useRef(document.getElementById('app'));
   const controller = useGitWorkspaceController();
   const { loading, snapshot, tab } = controller;
   const issuesActive = snapshot.available && tab === 'issues';
@@ -44,11 +46,6 @@ function ProjectGitWorkspace({ active = true, sidebarTarget, onOpenChanges,
 
   return (
     <main className={styles.workspace} aria-label="Git workspace" hidden={!active}>
-      {projects.length > 1 && <div style={{ padding: 'var(--space-default)' }}>
-        <LiquidGlassSelect ariaLabel="Git project" value={project.id} disabled={controller.busy}
-          options={projects.map(entry => ({ value: entry.id, label: entry.name, description: entry.rootPath, disabled: !entry.available }))}
-          onChange={selectProject} />
-      </div>}
       <GitWorkspaceHeader
         controller={controller}
         onRefreshIssues={tab === 'issues' ? () => setIssueRevision(value => value + 1) : undefined}
@@ -58,6 +55,13 @@ function ProjectGitWorkspace({ active = true, sidebarTarget, onOpenChanges,
 
       {!snapshot.available && unavailable}
       <GitChangesWorkspace controller={controller} onOpenWorkspaceFile={onOpenWorkspaceFile}
+        projectSelector={projects.length > 1 ? (
+          <LiquidGlassSelect ariaLabel="Git project" value={project.id} disabled={controller.busy}
+            triggerAppearance="standard" menuAppearance="toolbar"
+            menuClassName={sidebarStyles.projectMenu} menuBlurSourceRef={menuBlurSourceRef} menuBlurSourceMode="replace"
+            options={projects.map(entry => ({ value: entry.id, label: entry.name, description: entry.rootPath, disabled: !entry.available }))}
+            onChange={selectProject} />
+        ) : undefined}
         sidebarTarget={sidebarTarget} active={snapshot.available && tab === 'changes'} onOpenChanges={() => {
           if (tab !== 'changes') controller.selectTab('changes');
           onOpenChanges?.();

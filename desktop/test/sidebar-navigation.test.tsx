@@ -24,17 +24,17 @@ function elements(node: ReactNode): ReactElement<ElementProps>[] {
   return [node, ...elements(node.props.children)];
 }
 
-test('Codex rail item uses page navigation when returning from another view or selecting it again', () => {
+test('SESSION rail item uses page navigation when returning from another view or selecting it again', () => {
   for (const activeView of ['notes', 'calendar', 'terminal', 'git', 'plugins', 'editor', 'codegraph', 'chat', 'search'] as const) {
     const destinations: WorkspaceView[] = [];
     const rail = SidebarRail({ activeView, sidebarOpen: true, onNavigate: view => destinations.push(view), onToggleSidebar() {} });
-    const codex = elements(rail).find(element => element.type === SidebarRailButton && element.props.label === 'Codex');
-    expect(codex).toBeDefined();
-    codex?.props.onClick?.();
+    const session = elements(rail).find(element => element.type === SidebarRailButton && element.props.label === 'SESSION');
+    expect(session).toBeDefined();
+    session?.props.onClick?.();
     expect(destinations).toEqual(['chat']);
-    expect(codex?.props.active).toBe(activeView === 'chat');
-    expect(codex?.props['aria-current']).toBe(activeView === 'chat' ? 'page' : undefined);
-    expect(codex?.props['aria-label']).toBe('Codex');
+    expect(session?.props.active).toBe(activeView === 'chat');
+    expect(session?.props['aria-current']).toBe(activeView === 'chat' ? 'page' : undefined);
+    expect(session?.props['aria-label']).toBe('SESSION');
   }
 });
 
@@ -44,10 +44,10 @@ test('rail management items retain their order and destinations', () => {
     onNavigate: view => destinations.push(view), onToggleSidebar() {} });
   const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 10);
   expect(navigation.map(element => element.props.label)).toEqual([
-      'Codex', 'Terminal', 'Relationship Graph', 'Memo', 'Calendar',
+      'SESSION', 'Terminal', 'Relationship Graph', 'Memo', 'Calendar',
       'Worker', 'Docker', 'Github', 'Plugins', 'Settings',
     ]);
-  for (const element of navigation) if (element.props.label !== 'Codex') element.props.onClick?.();
+  for (const element of navigation) if (element.props.label !== 'SESSION') element.props.onClick?.();
   expect(destinations).toEqual(['terminal', 'codegraph', 'notes', 'calendar', 'chats', 'docker', 'git', 'plugins', 'settings']);
 });
 
