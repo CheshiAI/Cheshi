@@ -572,8 +572,15 @@ export function createAgentChats(options: Options) {
     try {
       await flight;
       assertIdle();
+      const deletedMembers = new Set<string>();
       // Read only worker status. Audit records and worker profiles remain intact.
       for (const member of room.members) {
+        // A removed profile has already passed worker deletion preflight. Its
+        // conversation can be removed without recreating a worker to inspect it.
+        if (!options.registry(workspace).agents.some(agent => agent.id === member.id)) {
+          deletedMembers.add(member.id);
+          continue;
+        }
         assertCurrentMember(room, member.id);
         const runtime = await options.status(workspace, { action: 'status', engineId: room.engineId, agentId: member.id });
         assertCurrentMember(room, member.id);
@@ -590,7 +597,10 @@ export function createAgentChats(options: Options) {
       }
       await flight;
       assertIdle();
-      room.members.forEach(member => assertCurrentMember(room, member.id));
+      room.members.forEach(member => {
+        if (!deletedMembers.has(member.id)) return assertCurrentMember(room, member.id);
+        if (options.registry(workspace).agents.some(agent => agent.id === member.id)) throw new Error('Room participant identity changed. Refresh before deleting the room.');
+      });
       const removedJobs = store().all().jobs.filter(job => job.roomId === room.id);
       store().update(state => {
         state.rooms = state.rooms.filter(saved => saved.id !== room.id);

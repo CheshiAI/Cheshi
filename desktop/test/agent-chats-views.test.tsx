@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import { expect, test } from 'bun:test';
-import { act, useState } from 'react';
+import { act, useState, type ComponentProps } from 'react';
 import { createPortal } from 'react-dom';
 import { withDOM } from './agent-chats-test-dom';
 import { specialistAgent } from './agent-registry-fixtures';
 import { GoalQuestions } from '../frontend/src/features/agent-chats/GoalQuestions';
-import { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
+import { ChatsView as WorkerView } from '../frontend/src/features/agent-chats/ChatsView';
 import { VoiceDialog } from '../frontend/src/features/agent-chats/VoiceDialog';
 import type { VoiceRequest, VoiceSnapshot } from '../shared/agent-voice';
 import { AgentTaskResults } from '../frontend/src/features/agents/AgentTaskResults';
@@ -13,6 +13,12 @@ import { IntegrationDetail } from '../frontend/src/features/agents/IntegrationDe
 import { VerificationMessage } from '../frontend/src/features/agents/VerificationMessage';
 import type { ChatsRequest, ChatsSnapshot } from '../shared/agent-chats';
 import type { IntegrationSummary } from '../shared/agent-work';
+const registeredHomies = { list: async () => ({ workspaceRoot: '/project', agents: ['dev', 'planner'].map(id => ({
+  ...specialistAgent(), id, accountId: id === 'dev' ? 'account' : 'planner-account', assignments: [{ workspaceRoot: '/project', instructions: '' }],
+})) }), onDidChange: () => () => {} };
+function ChatsView(props: ComponentProps<typeof WorkerView>) {
+  return <WorkerView registry={registeredHomies} {...props} />;
+}
 const snapshot = (): ChatsSnapshot => ({ rooms: [{ id: 'room', workspace: '/project', name: 'Login', engineId: 'docker:test', defaultAgentId: 'dev',
   members: [{ id: 'dev', accountId: 'account', name: 'Development' }], createdAt: '2026-10-03T00:00:00Z' }], messages: [
   { id: 'goal', roomId: 'room', threadId: null, sender: 'user', recipient: 'dev', kind: 'goal', text: 'Build login', createdAt: '2026-10-03T00:00:00Z', taskId: 'task', status: 'waiting' },

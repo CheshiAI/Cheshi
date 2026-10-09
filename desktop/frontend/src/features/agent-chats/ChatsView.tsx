@@ -6,6 +6,8 @@ import { createPortal } from 'react-dom';
 import { ArrowDown, Bot, Phone } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { EmptyState, NeumorphicButton, RegionalBlur, SlidingSidePanel } from '../../shared/ui';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
+import { WorkerIcon } from '../../shared/ui/WorkerIcon';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
@@ -20,7 +22,8 @@ import { verificationQuote } from '../agents/verificationPresentation';
 import { WorkMessage } from '../agents/WorkMessage';
 import { isRoomWorkSettled, type AgentChatsApi, type ChatsRequest, type RoomMessage } from '../../../../shared/agent-chats';
 import { resolveChatRecipient } from '../../../../shared/agent-chat-recipient';
-import type { AgentRegistryApi, SpecialistAgent } from '../../../../shared/agent-registry';
+import type { AgentRegistryApi } from '../../../../shared/agent-registry';
+import { DELETED_HOMIE, useRoomAgents } from './useRoomAgents';
 import type { AgentEngineInfo, AgentManagementApi } from '../../../../shared/agent-management';
 import { useChatsSnapshot } from './useChatsSnapshot';
 import { ChatsRoomList } from './ChatsRoomList';
@@ -75,7 +78,8 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   const data = useChatsSnapshot(api, active || sidebarActive), { snapshot } = data;
   const [roomId, setRoomId] = useState<string | null>(null);
   const [replies, setReplies] = useState<Record<string, string | null>>({});
-  const [agents, setAgents] = useState<SpecialistAgent[]>([]), [engines, setEngines] = useState<AgentEngineInfo[]>([]);
+  const { agents, status: memberStatus } = useRoomAgents(registry, active || sidebarActive);
+  const [engines, setEngines] = useState<AgentEngineInfo[]>([]);
   const [dialog, setDialog] = useState<'new' | null>(null), [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false), [voiceOpen, setVoiceOpen] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -95,13 +99,9 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   useEffect(() => {
     if (!active) return;
     let stopped = false;
-    const update = () => { void registry?.list().then(data => {
-      if (!stopped) setAgents(data.agents.filter(a => a.accountId && a.assignments.some(x => x.workspaceRoot === data.workspaceRoot)));
-    }, () => { if (!stopped) setError('Agent catalog is unavailable.'); }); };
-    update(); const unsubscribe = registry?.onDidChange(update);
     void management?.engines().then(data => { if (!stopped) setEngines(data.engines); }, () => { if (!stopped) setError('Engine catalog is unavailable.'); });
-    return () => { stopped = true; unsubscribe?.(); };
-  }, [active, registry, management]);
+    return () => { stopped = true; };
+  }, [active, management]);
   const room = snapshot.rooms.find(r => r.id === roomId), messages = useRoomTimeline(snapshot.messages, roomId);
   const reviewedMessage = messages.find(message => message.id === reviewedMessageId);
   const reviewedFiles = useMemo(() => reviewedMessage?.activity
@@ -152,9 +152,10 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   const messageText = draft.trim();
   const addressing = resolveChatRecipient(messageText, room?.members ?? [], replyMessage);
   const recipient = addressing.recipient ?? (addressing.error ? null : room?.defaultAgentId ?? null);
+  const recipientBlock = recipient && room ? memberStatus(room.members.find(m => m.id === recipient), room.workspace) : null;
   const ownerSelected = recipient !== null && recipient === owner;
   const mentionChoices = messageText.startsWith('@') && !recipient
-    ? room?.members.filter(member => member.name.toLocaleLowerCase().startsWith(messageText.slice(1).toLocaleLowerCase())) ?? [] : [];
+    ? room?.members.filter(member => !memberStatus(member, room.workspace) && member.name.toLocaleLowerCase().startsWith(messageText.slice(1).toLocaleLowerCase())) ?? [] : [];
   const recoveryBlock = needsRecovery ? goalState ? goalState.resumeBlocked : 'Checking the saved goal and worker state.' : null;
   const resumeGoal = needsRecovery && ownerSelected && !recoveryBlock;
   const working = currentWork(messages);
@@ -168,6 +169,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     if (!room || sending || sendingRef.current || !draft.trim()) return;
     const text = messageText, to = recipient;
     if (addressing.error) { setError(addressing.error); return; }
+    if (recipientBlock) { setError(recipientBlock); return; }
     if (needsRecovery && ownerSelected && recoveryBlock) { setError(recoveryBlock); return; }
     const question = replyMessage?.userQuestion;
     const answer = question && !question.answered ? { answerTo: question.rootId, questionId: question.id } : {};
@@ -244,6 +246,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     </article></LocalFileLinkContext.Provider>;
   }
   const roomList = <ChatsRoomList snapshot={snapshot} selectedId={roomId} phase={data.phase} loaded={data.loaded} refreshing={data.refreshing} disabled={!api} error={data.error ?? pinError}
+    roomStatus={saved => memberStatus(saved.members.find(member => member.id === saved.defaultAgentId), saved.workspace) === DELETED_HOMIE ? 'Deleted Homie · Conversation saved' : null}
     pinningRoomId={pinningRoomId} onPin={(id, pinned) => { void pinRoom(id, pinned); }}
     onDelete={id => { setDeleteRoomId(id); onOpenRoom?.(); }}
     onSelect={id => { setRoomId(id); onOpenRoom?.(); }} onNew={() => { setDialog('new'); onOpenRoom?.(); }} onRefresh={data.refresh} />;
@@ -255,9 +258,9 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
         <header className={styles.header}>
           {room ? <div className={styles.participants} aria-label="Room participants">
             {room.members.map(member => <TooltipTarget key={member.id} content={member.name}>
-              <NeumorphicButton variant="ghost" className={styles.participant} aria-label={`Manage Homie: ${member.name}`} disabled={!onManageHomies} onClick={() => onManageHomies?.(member.id, room.id)}><AgentAvatar id={member.id} avatar={agents.find(agent => agent.id === member.id)?.avatar} /><span>{member.name}</span></NeumorphicButton>
+              <NeumorphicButton variant="ghost" className={styles.participant} aria-label={`Manage Homie: ${member.name}`} disabled={!onManageHomies || memberStatus(member, room.workspace) === DELETED_HOMIE} onClick={() => onManageHomies?.(member.id, room.id)}><AgentAvatar id={member.id} avatar={agents.find(agent => agent.id === member.id)?.avatar} /><span>{member.name}{memberStatus(member, room.workspace) === DELETED_HOMIE ? ' · Deleted Homie' : ''}</span></NeumorphicButton>
             </TooltipTarget>)}
-          </div> : <h2>Worker</h2>}
+          </div> : <SidebarPanelTitle as="h2" icon={<WorkerIcon />} title="WORKER" />}
           <TooltipButton variant="ghost" size="icon" title="Phone calls" aria-label="Phone calls" aria-haspopup="dialog" disabled={!room} onClick={() => setVoiceOpen(true)}><Phone aria-hidden="true" /></TooltipButton>
         </header>
         <div className={styles.body}>
@@ -279,9 +282,9 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
                 </NeumorphicButton>
               </div>}
               {room && <ChatsComposer key={`composer-${room.id}`} areaRef={setComposerArea} active={active} draft={draft} sending={sending} resumeGoal={resumeGoal}
-                sendDisabled={sending || !draft.trim() || !api || (ownerSelected && !!recoveryBlock)}
+                sendDisabled={sending || !draft.trim() || !api || !!addressing.error || !!recipientBlock || (ownerSelected && !!recoveryBlock)}
                 onSend={() => { void send(); }} onDraftChange={text => setDrafts(all => ({ ...all, [draftKey]: text }))}
-                deliveryTarget={addressing.error ?? (recipient ? `To: ${name(recipient)}` : 'Room message · Mention an agent with @ to call them')}
+                deliveryTarget={addressing.error ?? (recipientBlock ? `${name(recipient)} · ${recipientBlock}` : recipient ? `To: ${name(recipient)}` : 'Room message · Mention an agent with @ to call them')}
                 replyMessage={replyMessage} replyName={replyMessage ? name(replyMessage.sender) : ''}
                 onCancelReply={() => setReplies(all => ({ ...all, [room.id]: null }))}
                 mentionChoices={mentionChoices} onMention={member => { setDrafts(all => ({ ...all, [draftKey]: `@${member.name} ` })); setError(null); }}>
@@ -292,6 +295,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
                   </NeumorphicButton>)}
                 </div>}
                 {root && <RoomWorkState message={root} room={room} agents={agents} mutate={mutate} />}
+                {recipientBlock === DELETED_HOMIE && <p role="status" className={styles.description}>This Homie was deleted. Conversation history is preserved; tasks cannot be sent to it.</p>}
                 {recoveryBlock && <p role="status" className={styles.description}>{recoveryBlock}</p>}
               </ChatsComposer>}
             </RegionalBlur>

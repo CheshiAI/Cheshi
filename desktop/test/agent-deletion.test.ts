@@ -55,6 +55,22 @@ test('container deletion stops an idle owned worker and retains registry, data a
     expect(f.calls.flat()).not.toContain('--force'); expect(f.calls.flat()).not.toContain('image');
   } finally { f.close(); }
 });
+test.each(['command failure', 'empty output', 'malformed output'])('storage inspection %s preserves the worker, registry and volume', async mode => {
+  const f = deletionFixture();
+  try {
+    const docker = createDockerDeletion(async args => {
+      if (args[2] !== 'run') return f.run(args);
+      if (mode === 'command failure') throw new Error('Storage unavailable');
+      return mode === 'empty output' ? '' : '{broken';
+    });
+    const deletion = createAgentDeletion({ ...f.options, docker });
+    f.worker.State.Status = 'exited';
+    await fails(deletion.agent(f.workspace, f.agentRequest(true)), 'Check Docker availability and storage access');
+    expect(f.containers.size).toBe(1); expect(f.volumes.has(f.volume)).toBe(true);
+    expect(f.registry.snapshot(f.workspace).agents).toHaveLength(1);
+    expect(f.calls.some(args => args[3] === 'stop' || args[3] === 'rm')).toBe(false);
+  } finally { f.close(); }
+});
 test('delegation deletion waits for queued work and durable result acknowledgement', async () => {
   const f = deletionFixture();
   try {

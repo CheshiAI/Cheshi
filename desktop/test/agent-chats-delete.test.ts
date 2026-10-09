@@ -6,7 +6,7 @@ import { createAgentChats } from '../lib/agent-chats/service.mts';
 import { ChatsStore } from '../lib/agent-chats/store.mts';
 import { parseChatsRequest } from '../shared/agent-chats';
 import type { AgentDetails } from '../shared/agent-management';
-import { specialistAgent } from './agent-registry-fixtures';
+import { registryDeferred, specialistAgent } from './agent-registry-fixtures';
 
 const directories: string[] = [];
 afterEach(() => { directories.splice(0).forEach(path => rmSync(path, { recursive: true, force: true })); });
@@ -58,6 +58,55 @@ test('delete removes only the selected room journal and reloads without changing
   expect(createAgentChats(f.options).request(f.workspace, { action: 'list' }).messages).toEqual(result.messages);
   expect(f.agents).toEqual(agents); expect(f.details.tasks).toEqual(tasks);
   expect(readFileSync(projectFile, 'utf8')).toBe('export const keep = true;');
+});
+test('deleted Homie history can be removed without waking a worker or removing other rooms', async () => {
+  const f = fixture(); f.completed(); f.agents.splice(0);
+  let inspections = 0;
+  const service = createAgentChats({ ...f.options, status: async () => { inspections++; throw new Error('Deleted worker'); } });
+  const before = service.request(f.workspace, { action: 'list' });
+  const result = await service.deleteRoom(f.workspace, { action: 'delete', roomId: 'room' });
+  expect(result.rooms.map(room => room.id)).toEqual(['other']);
+  expect(result.messages).toEqual(before.messages.filter(message => message.roomId === 'other'));
+  expect(inspections).toBe(0);
+  expect(new ChatsStore(f.filename).all().jobs).toEqual([]);
+  expect(createAgentChats(f.options).request(f.workspace, { action: 'list' }).rooms).toEqual(result.rooms);
+});
+test.each(['running', 'unknown'])('deleted Homie history still blocks saved %s work', async status => {
+  const f = fixture(); f.completed(); f.agents.splice(0);
+  new ChatsStore(f.filename).update(state => { state.messages.find(message => message.id === 'work')!.status = status; });
+  const before = readFileSync(f.filename, 'utf8');
+  await fails(createAgentChats(f.options).deleteRoom(f.workspace, { action: 'delete', roomId: 'room' }), 'pending or unresolved');
+  expect(readFileSync(f.filename, 'utf8')).toBe(before);
+});
+test.each(['unassigned', 'account-replaced'])('an existing but %s Homie is not treated as deleted', async reason => {
+  const f = fixture();
+  if (reason === 'unassigned') f.agents[0]!.assignments = [];
+  else f.agents[0]!.accountId = 'other-account';
+  const before = readFileSync(f.filename, 'utf8');
+  await fails(f.remove(), 'identity is unavailable');
+  expect(readFileSync(f.filename, 'utf8')).toBe(before);
+});
+test.each(['queued', 'sending', 'unknown'] as const)('deleted Homie still blocks %s deliveries', async state => {
+  const f = fixture(); f.completed(); f.agents.splice(0);
+  new ChatsStore(f.filename).update(saved => { saved.jobs[0]!.state = state; });
+  const service = createAgentChats(f.options); service.request(f.workspace, { action: 'list' });
+  const before = readFileSync(f.filename, 'utf8');
+  await fails(service.deleteRoom(f.workspace, { action: 'delete', roomId: 'room' }), 'pending or unresolved');
+  expect(readFileSync(f.filename, 'utf8')).toBe(before);
+});
+test('a deleted identity restored while inspecting another participant blocks deletion', async () => {
+  const f = fixture(), original = f.agents[0]!, peer = { ...original, id: 'peer' };
+  f.agents.push(peer);
+  f.service.request(f.workspace, { action: 'invite', roomId: 'room', members: ['dev', 'peer'], defaultAgentId: 'dev' });
+  f.agents.splice(0, 1);
+  const inspected = registryDeferred<void>(), release = registryDeferred<void>();
+  const service = createAgentChats({ ...f.options, status: async () => { inspected.resolve(); await release.promise; return { details: f.details }; } });
+  const before = readFileSync(f.filename, 'utf8');
+  const removal = service.deleteRoom(f.workspace, { action: 'delete', roomId: 'room' });
+  await inspected.promise;
+  f.agents.push(original); release.resolve();
+  await fails(removal, 'identity changed');
+  expect(readFileSync(f.filename, 'utf8')).toBe(before);
 });
 test.each(['queued', 'sending', 'unknown'] as const)('delete blocks %s delivery and preserves the journal', async state => {
   const f = fixture();

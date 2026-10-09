@@ -1,7 +1,7 @@
 import { Pin, PinOff, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { WorkerIcon } from '../../shared/ui/WorkerIcon';
 import { useMemo, useRef, useState } from 'react';
-import type { ChatsSnapshot } from '../../../../shared/agent-chats';
+import type { AgentRoom, ChatsSnapshot } from '../../../../shared/agent-chats';
 import { LoadingState, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader } from '../../shared/ui';
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
 import { PullToRefreshStatus } from '../../shared/ui/PullToRefreshStatus';
@@ -14,11 +14,12 @@ import searchStyles from '../chat/ChatHistorySearch.module.css';
 import styles from './ChatsRoomList.module.css';
 import type { ChatsLoadPhase } from './useChatsSnapshot';
 
-export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing, disabled, error, pinningRoomId, onPin, onDelete, onSelect, onNew, onRefresh }: {
+export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing, disabled, error, pinningRoomId, onPin, onDelete, onSelect, onNew, onRefresh, roomStatus }: {
   snapshot: ChatsSnapshot; selectedId: string | null; phase: ChatsLoadPhase; loaded: boolean; refreshing: boolean; disabled: boolean; error: string | null;
   onSelect(id: string): void; onNew(): void; onRefresh(): Promise<void>;
   pinningRoomId: string | null; onPin(id: string, pinned: boolean): void;
   onDelete?(id: string): void;
+  roomStatus?(room: AgentRoom): string | null;
 }) {
   const [query, setQuery] = useState('');
   const searchInput = useRef<HTMLInputElement>(null);
@@ -57,7 +58,7 @@ export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing,
             <NeumorphicButton variant="ghost" className={sessionStyles.session} aria-label={room.name} aria-current={room.id === selectedId ? 'page' : undefined} onClick={() => onSelect(room.id)}>
               <span className={`${sessionStyles.sessionTitleRow} ${styles.title}`}><TooltipTarget content={room.name}><span className={sessionStyles.sessionTitle}>{room.name}</span></TooltipTarget>
               </span>
-              <span className={`${sessionStyles.sessionMetadata} ${styles.metadata}`}><span className={sessionStyles.sessionId}>{preview}</span><span className={`${sessionStyles.sessionTime} ${styles.time}`}>{formatSessionElapsedTime(updated / 1000, now)}</span></span>
+              <span className={`${sessionStyles.sessionMetadata} ${styles.metadata}`}><span className={sessionStyles.sessionId}>{roomStatus?.(room) ?? preview}</span><span className={`${sessionStyles.sessionTime} ${styles.time}`}>{formatSessionElapsedTime(updated / 1000, now)}</span></span>
             </NeumorphicButton>
             <div className={styles.actions}>
               <TooltipButton variant="ghost" size="icon" title="Delete room" aria-label={`Delete room: ${room.name}`}
