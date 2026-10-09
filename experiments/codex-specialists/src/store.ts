@@ -1,3 +1,4 @@
+import { parseWorkspaceRun, parseWorkspaceKey, type WorkspaceRun } from './task-workspace.ts';
 import { parsePermissionRequest, type PermissionRequest } from './execution-permissions.ts';
 import { parseTaskActivities, type TaskActivity } from './activity-contract.ts';
 import { parseTaskUsage, type TaskUsage } from './usage-contract.ts';
@@ -28,6 +29,7 @@ export type Task = {
   integration?: IntegrationSummary;
   integrationTools?: true; applicationTools?: true; codegraphTools?: true;
   recovery?: RecoveryReceipt;
+  workspaceKey?: string | null; workspaceRun?: WorkspaceRun;
 };
 type SavedState = { version: 1; threadId: string | null; model: string | null; tasks: Task[];
   threads: Record<string, string>; collaboration: CollaborationState };
@@ -57,6 +59,8 @@ function savedTask(value: unknown): Task {
     throw new TypeError('Invalid saved task.');
   }
   return {
+    ...(task.workspaceKey === undefined ? {} : { workspaceKey: parseWorkspaceKey(task.workspaceKey) }),
+    ...(task.workspaceRun === undefined ? {} : { workspaceRun: parseWorkspaceRun(task.workspaceRun) }),
     id: validateTaskId(task.id), prompt: textValue(task.prompt, 'saved prompt'), status: task.status as TaskStatus,
     createdAt: textValue(task.createdAt, 'creation time'), finishedAt: nullableText(task.finishedAt),
     threadId: nullableText(task.threadId), turnId: nullableText(task.turnId), output: task.output,

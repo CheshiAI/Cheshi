@@ -1,3 +1,5 @@
+import { revision } from '../agent-platform/git-workspaces.mts';
+import { INTAKE_WORKSPACE, isIntakeWorkspace, parseWorkspaceKey } from '../../../experiments/codex-specialists/src/task-workspace.ts';
 import { executeCustomTool, type ToolCredential } from './custom-tool-execution.mts';
 import type { ToolTestRequest } from '../../shared/homie-tools.ts';
 import { packInstructions, preparePackEnvironment } from './pack-environment.mts';
@@ -47,6 +49,12 @@ interface RuntimeOptions {
 const image = 'cheshi-specialist:1';
 const environmentImage = 'cheshi-specialist-environment:1';
 const marker = 'ai.cheshi.worker';
+const isolatedWorkspaceInstructions = `
+Your /workspace is the current task’s isolated Git worktree. Follow-ups to this task retain its files; independent tasks use separate worktrees from the source commit at task creation.
+The host manages Git. The shared Git metadata is intentionally not mounted in this container, so repository Git commands, including git status, git diff and git log, are unavailable. Do not run repository Git commands, repair .git, initialize a replacement repository or access the source checkout.
+Verify your work by reading the affected files directly and running the relevant available tests. A Git metadata path error alone does not indicate missing file permissions, repository corruption or task failure; continue with file and test verification within existing permissions.
+Report the files you changed, checks actually performed and any verification limits in this chat. Do not claim a Git status or diff check passed when it was unavailable. Source publication is separate.
+`;
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const installAuth = "const fs=require('node:fs');const v=JSON.parse(await Bun.stdin.text());fs.mkdirSync('/agent/codex',{recursive:true});fs.writeFileSync('/agent/codex/auth.json',v.auth,{mode:0o600});if(v.configuration){fs.writeFileSync('/agent/runtime.json.tmp',JSON.stringify(v.configuration),{mode:0o600});fs.renameSync('/agent/runtime.json.tmp','/agent/runtime.json');}";
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -88,13 +96,22 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   const pending = new Set<string>();
   const builds = new Map<string, Promise<void>>();
   const workspaces = options.workspaceDirectory ? new WorkerWorkspaces(options.workspaceDirectory) : null;
+  function runtimeConfigPath(binding: Binding) {
+    return join(options.directory, digest(binding.engineId), `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`, 'runtime.json');
+  }
+  async function workspaceKey(binding: Binding): Promise<string | null> {
+    let saved: Record<string, unknown>;
+    try { saved = agentRecord(JSON.parse(await readFile(runtimeConfigPath(binding), 'utf8'))); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
+    return saved.taskWorkspace === undefined ? null : parseWorkspaceKey(agentRecord(saved.taskWorkspace).key);
+  }
   async function executionWorkspace(binding: Binding) {
     if (!workspaces) return binding.workspace;
-    const saved = await workspaces.existing(binding);
+    const saved = await workspaces.existing(binding, await workspaceKey(binding));
     if (!saved) throw new Error('Start the Homie to prepare its isolated workspace.');
     return saved.workspace;
   }
-  const isolatedFingerprint = (settings: string, workspace: string) => workspaces ? digest(`${settings}\nisolated_workspace=1:${workspace}`) : settings;
+  const isolatedFingerprint = (settings: string, workspace: string) => workspaces ? digest(`${settings}\nisolated_workspace=2:${workspace}`) : settings;
   const orchestration = createAgentOrchestration({ filename: join(options.directory, 'collaboration.json'),
     exchange: options.collaborationExchange, codegraph: options.codegraph ? async (workspace, tool, args, signal, binding) => {
       if (workspaces && !binding) throw new Error('A Homie binding is required for isolated CodeGraph queries.');
@@ -108,7 +125,10 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       return agent ? { id: agent.id, name: agent.name, role: agent.role, fileWrite: projectPermissions(agent, binding.workspace).fileWrite, workProtocol: 1 } : null;
     },
     around: (binding, operation) => lifecycle.exclusive(binding, operation),
-    connect: (binding, demand) => lifecycle.connection(binding, demand),
+    connect: async (binding, demand) => {
+      const connection = await lifecycle.connection(binding, demand);
+      return connection && workspaces ? advanceWorkspace(binding, connection) : connection;
+    },
     rest: (binding, connection, busy) => lifecycle.rest(binding, connection, busy),
     nextCheck: binding => lifecycle.nextCheck(binding),
     sleeping: binding => ['sleeping', 'disabled'].includes(lifecycle.state(binding)?.phase ?? ''),
@@ -136,6 +156,32 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       return false;
     },
   });
+  async function advanceWorkspace(binding: Binding, connection: { endpoint: string; token: string }) {
+    const response = await fetch(`${connection.endpoint}/workspace/prepare`, { method: 'POST', redirect: 'error',
+      headers: { Authorization: `Bearer ${connection.token}` }, signal: AbortSignal.timeout(5000) });
+    if (!response.ok) { await response.body?.cancel(); throw new Error('Start the Homie to enable task workspaces.'); }
+    const value = agentRecord(await response.json());
+    if (value.pending === null) return connection;
+    const pending = agentRecord(value.pending), key = parseWorkspaceKey(pending.key);
+    if (typeof pending.taskId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(pending.taskId) || (key !== null && key !== INTAKE_WORKSPACE && key !== pending.taskId)) {
+      throw new Error('Invalid task workspace handoff.');
+    }
+    try {
+      const selected = key === INTAKE_WORKSPACE ? `${INTAKE_WORKSPACE}:${await revision(binding.workspace, 'HEAD')}` : key;
+      const workspace = await workspaces!.ensure(binding, selected);
+      if (selected && isIntakeWorkspace(selected)) await workspaces!.recordIntakeView(binding, pending.taskId, selected);
+      await options.prepareCodeGraph?.(workspace.workspace);
+      const state = await request(binding.workspace, { action: 'start', agentId: binding.agentId, engineId: binding.engineId }, undefined, selected);
+      if (state.details) lifecycle.adopt(binding, state.details);
+      const live = await readLive(binding);
+      if (!live) throw new Error('Task workspace did not become available.');
+      return live.connection;
+    } catch (error) {
+      // A failed preflight leaves the queued run intact. Never replay an acknowledged turn.
+      await post(connection.endpoint, connection.token, '/workspace/resume', {}).catch(() => {});
+      throw error;
+    }
+  }
   async function lifecycleControl(connection: { endpoint: string; token: string }, action: string, body: unknown = {}) {
     const response = await fetch(`${connection.endpoint}/lifecycle/${action}`, { method: 'POST', redirect: 'error',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${connection.token}` },
@@ -254,7 +300,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     }
     throw new Error('Worker is still starting or needs sign-in. Refresh its status in a moment.');
   }
-  async function request(workspaceRoot: string, input: AgentRuntimeRequest, chat?: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }): Promise<AgentRuntimeState> {
+  async function request(workspaceRoot: string, input: AgentRuntimeRequest, chat?: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }, selectedWorkspace?: string | null): Promise<AgentRuntimeState> {
     const request = parseAgentRuntimeRequest(input);
     const workspace = await realpath(workspaceRoot);
     const agent = options.registry.snapshot(workspaceRoot).agents.find(item => item.id === request.agentId);
@@ -276,13 +322,14 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       const directory = join(options.directory, digest(request.engineId), key);
       const configPath = join(directory, 'runtime.json');
       const identity = bindingFor(workspace, request.engineId, agent.id, agent.accountId ?? '');
-      const isolated = workspaces && (request.action === 'start' ? await workspaces.ensure(identity) : await workspaces.existing(identity));
+      const taskKey = selectedWorkspace === undefined ? await workspaceKey(identity) : selectedWorkspace;
+      const isolated = workspaces && (request.action === 'start' ? await workspaces.ensure(identity, taskKey) : await workspaces.existing(identity, taskKey));
       const execution = isolated ? isolated.workspace : workspace;
       const dependencies = agent.permissions.commandExecution ? projectDependencies(execution) : null;
       const projectDocMaxBytes = parseProjectDocMaxBytes(options.getProjectDocMaxBytes?.() ?? DEFAULT_PROJECT_DOC_MAX_BYTES);
       const settingsFingerprint = isolatedFingerprint(runtimeSettingsDigest(agent, workspace, assignment, projectDocMaxBytes, dependencies), isolated ? execution : 'unprepared');
       const instructions = request.action === 'start' ? (await resolveAgentInstructions(agent, assignment)) + packInstructions(agent.package)
-        + (workspaces ? '\nYour /workspace is this Homie’s persistent isolated Git worktree. Follow-up requests retain these files. Other Homies have separate workspaces. The host manages Git; do not repair .git or access the source checkout. Report changes and verification in this chat; source publication is separate.\n' : '') : null;
+        + (workspaces ? isolatedWorkspaceInstructions : '') : null;
       const hasFiles = Boolean(agent.instructionFiles?.length || assignment.instructionFiles?.length);
       const fingerprint = hasFiles && instructions !== null ? digest(`${settingsFingerprint}\n${instructions}`) : settingsFingerprint;
       const prefix = await local(request.engineId);
@@ -362,7 +409,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint, projectDocMaxBytes,
-            ...(workspaces ? { executionWorkspace: execution, isolatedWorkspaceProtocol: 1 } : {}),
+            ...(workspaces ? { executionWorkspace: execution, isolatedWorkspaceProtocol: 2, taskWorkspace: { key: taskKey } } : {}),
             ...profileConfiguration(agent), codegraphProtocol: 1, permissionProtocol: 1, collaborationProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, activityProtocol: 1, inputQueueProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
@@ -381,7 +428,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
             '--label', `${marker}=specialist-v1`, '--label', `ai.cheshi.agent=${agent.id}`, '--label', `ai.cheshi.binding=${key}`,
             '--label', `ai.cheshi.configuration=${fingerprint}`,
             '--mount', `type=volume,src=${volume},dst=/agent`,
-            '--mount', `type=bind,src=${execution},dst=/workspace${agent.permissions.fileWrite ? '' : ',readonly'}`,
+            '--mount', `type=bind,src=${execution},dst=/workspace${agent.permissions.fileWrite && !isIntakeWorkspace(taskKey) ? '' : ',readonly'}`,
             ...(workspaces ? ['--mount', `type=bind,src=${join(execution, '.git')},dst=/workspace/.git,readonly`] : []),
             '--tmpfs', '/tmp:rw,nosuid,nodev,size=128m,mode=1777',
             '--env', 'CODEX_HOME=/agent/codex', '--env', 'AGENT_DATA_DIRECTORY=/agent', '--env', 'AGENT_WORKSPACE=/workspace',
@@ -407,6 +454,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
           }
         }
         const details = await waitReady(request.engineId, worker.id);
+        if (workspaces && taskKey === null) await workspaces.retainLegacyTasks(identity, details.tasks.map(task => task.id));
         orchestration.register(bindingFor(workspace, request.engineId, agent.id, agent.accountId));
         return { details };
       }
@@ -437,6 +485,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       if (chat?.automatic && configuration.conversationProtocol !== 1) throw new Error('Start the agent to enable conversational tasks.');
       await options.prepareCodeGraph?.(execution);
       assertCurrent();
+      if (workspaces && request.taskId && taskKey && isIntakeWorkspace(taskKey)) await workspaces.recordIntakeView(identity, request.taskId, taskKey);
       await post(worker.endpoint, configuration.token, chat?.inputId ? `/tasks/${request.taskId}/input` : '/tasks',
         chat?.inputId ? { id: chat.inputId, prompt: request.prompt, roomId: chat.roomId, ...(chat.questionId ? { questionId: chat.questionId } : {}) }
           : { id: request.taskId, prompt: request.prompt, ...(chat ? { chat } : {}) });
@@ -621,5 +670,5 @@ function profileConfiguration(agent: SpecialistAgent) {
 }
 
 function runtimeSettingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], projectDocMaxBytes = DEFAULT_PROJECT_DOC_MAX_BYTES, dependencies = (assignment.permissions ?? agent.permissions).commandExecution ? projectDependencies(workspace) : null) {
-  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}\ncodegraph=2\ndependency_volumes=1\nintake_recovery=1`);
+  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}\ncodegraph=2\ndependency_volumes=1\nintake_recovery=1\ngoal_revision_guidance=1\nworker_git_guidance=1`);
 }

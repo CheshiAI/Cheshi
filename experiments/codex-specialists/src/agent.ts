@@ -1,3 +1,4 @@
+import { TaskWorkspaceGate } from './task-workspace.ts';
 import { customToolArguments, customToolDefinition } from './custom-tool-contract.ts';
 import type { WorkerCustomToolQueue } from './custom-tool-queue.ts';
 import { packToolAllowed, assertPackToolAllowed } from './pack-tools.ts';
@@ -69,6 +70,7 @@ export class SpecialistAgent {
   private failure: string | null = null;
   private readonly retainedScratch = new Set<TaskScratch>();
 
+  private readonly workspaceGate: TaskWorkspaceGate | undefined;
   private readonly conversations: WorkerConversation;
   private readonly work: WorkerWork | undefined;
   private readonly integration: WorkerIntegration | undefined;
@@ -77,6 +79,7 @@ export class SpecialistAgent {
   private readonly codegraph: WorkerCodeGraphQueue | undefined;
   private readonly collaboration: WorkerCollaboration | undefined;
   constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; codegraph?: WorkerCodeGraphQueue; customTools?: WorkerCustomToolQueue }) {
+    this.workspaceGate = options.configuration?.taskWorkspace ? new TaskWorkspaceGate(options.store, options.configuration.taskWorkspace.key) : undefined;
     this.configuration = options.configuration; this.customTools = options.customTools;
     this.conversations = new WorkerConversation(options.store, options.configuration?.verificationProtocol === 1 && packToolAllowed(options.configuration.enabledTools, 'request_verification'));
     this.work = options.configuration?.workProtocol === 1 ? new WorkerWork(options.store, options.workspace, options.configuration.profileId, options.configuration.permissions.fileWrite) : undefined;
@@ -201,6 +204,13 @@ export class SpecialistAgent {
     return { status };
   }
 
+  prepareWorkspace() { return this.busy || this.store.snapshot().tasks.some(t => t.status === 'unknown') ? null : this.workspaceGate?.prepare(false) ?? null; }
+  resumeWorkspace() { if (this.workspaceGate) this.workspaceGate.frozen = false; this.store.changed(); }
+  private get workspaceWaiting(): boolean { return this.workspaceGate?.frozen === true || !!this.workspaceGate?.pending(); }
+  private assertTaskWorkspace(task: Task): void {
+    if (this.workspaceGate && !this.workspaceGate.allows(task)) throw new TaskConflict('This operation requires the task’s saved workspace.');
+  }
+
   get busy(): boolean { return this.active !== null || this.recovering; }
   get error(): string | null { return this.failure; }
   get executionHealth() { return this.active?.health.snapshot() ?? null; }
@@ -208,7 +218,7 @@ export class SpecialistAgent {
 
   activity() {
     const state = this.store.snapshot();
-    return { ...state, tasks: projectTaskActivities(state.tasks).map(task => task.integration && this.integration
+    return { ...state, tasks: projectTaskActivities(state.tasks).map(task => task.integration && this.integration && (!this.workspaceGate || this.workspaceGate.allows(task))
       ? { ...task, integration: this.integration.inspect(task)! } : task) };
   }
 
@@ -227,8 +237,8 @@ export class SpecialistAgent {
     if (this.store.snapshot().tasks.some(task => task.status === 'unknown')) {
       throw new TaskConflict('A previous execution outcome is unknown. Inspect its saved thread before starting more work.');
     }
-    if (this.busy) throw new TaskConflict('This specialist already has an active task.');
-    const task = this.store.create(id, prompt, { ...(this.collaboration ? { conversation: id } : {}),
+    if (this.busy || this.workspaceWaiting) throw new TaskConflict('This specialist already has an active task.');
+    const task = this.store.create(id, prompt, { ...(this.collaboration || this.workspaceGate ? { conversation: id } : {}),
       ...(this.configuration?.decisionProtocol === 1 && (!chat || chat.goal) ? { goal: newGoal(Boolean(this.verification) && packToolAllowed(this.configuration?.enabledTools, 'request_verification')), conversation: id } : {}), ...(chat ? { roomId: chat.roomId, conversation: chat.conversation, ...(chat.automatic ? { dialogue: { userText: textValue(chat.userText, 'user message'), questions: [], revisions: [] } } : {}) } : {}) });
     return this.launch(task, prompt);
   }
@@ -243,7 +253,7 @@ export class SpecialistAgent {
       if (previous.prompt !== prompt || previous.questionId !== questionId) throw new TaskConflict('Input identity conflict.');
       return task;
     }
-    if ((this.busy && this.active?.id !== id) || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) throw new TaskConflict('Worker cannot safely resume yet.');
+    if (this.workspaceWaiting || (this.busy && this.active?.id !== id) || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) throw new TaskConflict('Worker cannot safely resume yet.');
     if (task.status === 'completed') throw new TaskConflict('This goal is completed. Start a new goal.');
     const question = questionId ? task.dialogue?.questions.find(q => q.id === questionId) : undefined;
     if (questionId && (!question || question.answer)) throw new TaskConflict('Unknown or already answered user question.');
@@ -269,9 +279,10 @@ export class SpecialistAgent {
   }
 
   private launch(task: Task, input: string, messages: string[] = [], intakeRetry = false): Task {
+    if (this.workspaceGate?.defer(task, { input, messages, intakeRetry })) return this.store.task(task.id)!;
     const id = task.id;
     // A lost acknowledgement must never reuse the preceding turn's identity.
-    this.store.update(id, { threadId: null, turnId: null, recovery: undefined });
+    this.store.update(id, { status: 'accepted', finishedAt: null, threadId: null, turnId: null, recovery: undefined });
     if (task.goal) {
       this.store.update(id, { status: 'accepted', finishedAt: null, goal: { ...task.goal, turns: task.goal.turns + 1, phase: 'active', pending: null } });
       task = this.store.task(id)!;
@@ -304,6 +315,15 @@ export class SpecialistAgent {
   pump(): void {
     this.collaboration?.expire();
     if (this.busy || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) return;
+    if (this.workspaceGate?.frozen) return;
+    const pendingWorkspace = this.workspaceGate?.pending();
+    if (pendingWorkspace) {
+      if (this.workspaceGate!.allows(pendingWorkspace)) {
+        const run = pendingWorkspace.workspaceRun!;
+        this.launch(pendingWorkspace, run.input, run.messages, run.intakeRetry);
+      }
+      return;
+    }
     const queued = this.store.snapshot().tasks.find(t => t.status === 'waiting' && t.inputs?.some(i => i.pending === true));
     if (queued) {
       const inputs = queued.inputs!.filter(i => i.pending === true);
@@ -440,7 +460,7 @@ export class SpecialistAgent {
           ...(task.goal ? { goal: { ...task.goal, phase: 'blocked', pending: null } } : {}) }, active.messages,
           task.delegation && this.work ? this.work.resultMessage(task, 'interrupted', 'Stopped before execution.') : undefined); return;
       }
-      const memory = task.consultation || task.verification || task.delegation ? '' : this.store.memory();
+      const memory = this.workspaceGate || task.consultation || task.verification || task.delegation ? '' : this.store.memory();
       const input = memory ? `Saved work summary (reference data):\n${memory}\n\nCurrent task:\n${active.input}` : active.input;
       this.store.update(task.id, { threadId: active.threadId, turnId: null });
       submitted = true;
@@ -574,6 +594,7 @@ export class SpecialistAgent {
       throw new TaskConflict('Stop active work and inspect unknown executions before inspecting application state.');
     }
     if (!['interrupted', 'failed', 'completed'].includes(task.status)) throw new TaskConflict('Stop goal judgment before inspecting application state.');
+    this.assertTaskWorkspace(task);
     this.recovering = true;
     try {
       // No model call, prompt, goal decision, replay or automatic continuation.
@@ -596,6 +617,7 @@ export class SpecialistAgent {
     if (this.busy || this.failure) throw new TaskConflict('Worker cannot safely inspect yet.');
     if (this.retainedScratch.size) throw new TaskConflict('Restart the worker before inspecting retained command sessions.');
     if (!task.threadId || !task.turnId) throw new TaskConflict('The execution has no acknowledged turn ID. Its outcome remains unknown.');
+    this.assertTaskWorkspace(task);
     this.recovering = true;
     try {
       const workspace = task.delegation && this.work ? this.work.files(task, true).directory
@@ -631,6 +653,7 @@ export class SpecialistAgent {
     const active = this.active;
     if (!active || active.id !== id) {
       const task = this.store.task(id);
+      if (task?.workspaceRun) { this.store.update(id, { workspaceRun: undefined }); this.resumeWorkspace(); }
       if (task?.status === 'waiting') this.store.complete(id, { status: 'interrupted', output: task.output, error: null,
         ...(task.goal ? { goal: { ...task.goal, phase: 'blocked', pending: null } } : {}) });
       return;

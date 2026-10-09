@@ -72,3 +72,42 @@ test('a changed branch cannot silently rebind a Homie to another workspace', asy
     expect((await git(saved.workspace, ['symbolic-ref', '--short', 'HEAD'])).trim()).toBe('unexpected');
   } finally { f.dispose(); }
 });
+
+test('independent tasks of the same Homie get current committed baselines; follow-ups keep their own changes', async () => {
+  const f = await fixture();
+  try {
+    const first = await f.manager.ensure(f.binding, 'first');
+    writeFileSync(join(first.workspace, 'only-first.txt'), 'uncommitted task output');
+    writeFileSync(join(f.source, 'file.txt'), 'new baseline');
+    await git(f.source, ['add', '.']); await git(f.source, ['commit', '-m', '[test] advance baseline']);
+    writeFileSync(join(f.source, 'uncommitted.txt'), 'private draft');
+    const second = await f.manager.ensure(f.binding, 'second');
+    expect(second.workspace).not.toBe(first.workspace);
+    expect(second.baseCommit).toBe(await revision(f.source, 'HEAD'));
+    expect(second.baseCommit).not.toBe(first.baseCommit);
+    expect(readFileSync(join(second.workspace, 'file.txt'), 'utf8')).toBe('new baseline');
+    expect(existsSync(join(second.workspace, 'only-first.txt'))).toBe(false);
+    expect(existsSync(join(second.workspace, 'uncommitted.txt'))).toBe(false);
+    const restored = await new WorkerWorkspaces(f.directory).ensure(f.binding, 'first');
+    expect(restored).toEqual(first);
+    expect(readFileSync(join(restored.workspace, 'only-first.txt'), 'utf8')).toBe('uncommitted task output');
+    expect(readFileSync(join(restored.workspace, 'file.txt'), 'utf8')).toBe('committed');
+  } finally { f.dispose(); }
+});
+
+test('legacy task allowlist never redirects a missing new task into the old shared workspace', async () => {
+  const f = await fixture();
+  try {
+    const legacy = await f.manager.ensure(f.binding);
+    writeFileSync(join(legacy.workspace, 'retained.txt'), 'legacy draft');
+    await f.manager.retainLegacyTasks(f.binding, ['old']);
+    await f.manager.retainLegacyTasks(f.binding, ['new']);
+    expect(await f.manager.forTask(f.binding, 'old')).toEqual(legacy);
+    expect(await f.manager.forTask(f.binding, 'new')).toBeNull();
+    const fresh = await f.manager.ensure(f.binding, 'new');
+    expect(existsSync(join(fresh.workspace, 'retained.txt'))).toBe(false);
+    expect(await f.manager.forTask(f.binding, 'new')).toEqual(fresh);
+    expect(readFileSync(join(legacy.workspace, 'retained.txt'), 'utf8')).toBe('legacy draft');
+    await assertFailure(f.manager.ensure(f.binding, '../escape'), /identity/);
+  } finally { f.dispose(); }
+});

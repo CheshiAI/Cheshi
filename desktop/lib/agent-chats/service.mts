@@ -16,7 +16,7 @@ import { projectPermissions } from '../../shared/agent-registry.ts';
 import type { AgentRegistrySnapshot } from '../../shared/agent-registry.ts';
 import { bindingFor, type Binding, type Message } from '../agent-orchestration/mailbox.mts';
 interface Options {
-  openFile?(binding: Binding, href: string): Promise<void>;
+  openFile?(binding: Binding, href: string, taskId?: string): Promise<void>;
   platform?: PlatformChats;
   permissions?(workspace: string, input: { agentId: string; engineId: string; accountId: string; roomId: string; taskId: string; request: NonNullable<RoomMessage['permissionRequest']>; decision: 'allow' | 'deny' }): Promise<AgentRuntimeState>;
   filename: string;
@@ -609,7 +609,7 @@ export function createAgentChats(options: Options) {
     const member = message && [...room.members, ...(room.formerMembers ?? [])].find(m => m.id === message.sender);
     if (!message || message.sender === 'user' || message.isolated || !member) throw new Error('The file link has no saved Worker identity.');
     if (!options.openFile) throw new Error('Worker file links are unavailable. Restart Cheshi.');
-    await options.openFile(bindingFor(workspace, room.engineId, member.id, member.accountId), input.href);
+    await options.openFile(bindingFor(workspace, room.engineId, member.id, member.accountId), input.href, message.taskId ?? (message.relatedTask?.agentId === member.id ? message.relatedTask.taskId : undefined));
     return snapshot(workspace);
   }
   return { openFile, isolated: async (workspace: string, value: unknown) => { await isolated.request(workspace, value); return snapshot(realpathSync(workspace)); },

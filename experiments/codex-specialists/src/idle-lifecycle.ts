@@ -33,7 +33,7 @@ export class IdleLifecycle {
       .flatMap(q => c.questionDeadlines?.[q.id] ? [Date.parse(c.questionDeadlines[q.id]!)] : []);
     const nextWakeAt = deadlines.length ? Math.min(...deadlines) : null;
     const idle = !this.active && !this.options.blocked()
-      && !s.tasks.some(t => ['accepted', 'running', 'unknown'].includes(t.status)
+      && !s.tasks.some(t => t.workspaceRun !== undefined || ['accepted', 'running', 'unknown'].includes(t.status)
         || (t.status === 'waiting' && (t.goal?.phase === 'ready' || t.dialogue?.intakeRecovery === 'queued'))
         || (t.dialogue?.route && !t.dialogue.route.delivered && !t.dialogue.route.held))
       && c.outgoing.every(m => c.acknowledged.includes(m.id))

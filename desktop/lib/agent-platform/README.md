@@ -11,9 +11,23 @@ automatic merging remain separate integration work.
 The separate **Isolated task** button and submission dialog have been removed.
 Existing task cards still show their saved results and support inspection and stop
 actions. Ordinary Worker messages go to the room's default Homie unless an explicit
-mention or reply selects another participant. Each Homie uses a persistent isolated
-worktree keyed by project, Docker engine, Homie and account. Follow-ups and container
-restarts retain its files; the source checkout is not mounted into the Worker.
+mention or reply selects another participant. Worktrees are keyed by project,
+Docker engine, Homie, account and task ID. Independent tasks start from the source
+checkout's committed HEAD when their workspace is created. A follow-up routed to
+an existing task reuses that task's files and native conversation, including after
+restart. Read-only intake uses a separate baseline worktree, shared by intake requests
+using that source commit. Only promotion to a new goal creates a task worktree;
+routing a follow-up resumes the existing goal's workspace.
+There is no automatic remote pull or update of an ongoing task's baseline.
+
+Before a turn can run, the Worker durably queues its input and required workspace.
+If the mount differs, the host freezes admission, prepares the task worktree and
+replaces the idle container with that worktree mounted at `/workspace`. Its private
+conversation volume survives replacement. The queued turn starts only in the
+matching workspace. Unknown executions block switching and are never replayed.
+Only the selected worktree is mounted; the source and other tasks are not exposed.
+Existing tasks retain their legacy workspace without resetting uncommitted files;
+new tasks do not inherit it. SESSION behavior is unchanged.
 
 Intake is temporarily read-only even when saved project permissions allow writes.
 The Homie records or routes the work before execution begins. If it confirms that
@@ -22,7 +36,7 @@ Worker rechecks intake once. A second actionless response is interrupted rather
 than reported as completed. Actual permission requests still wait for the user.
 
 Worker message file links resolve `/workspace/` and relative paths against the
-message author's saved worktree, including while its container is stopped. Links
+producing task's saved worktree, including while its container is stopped. Links
 cannot escape that workspace through parent traversal or symlinks. Normal SESSION
 file links retain their existing local-file behavior.
 

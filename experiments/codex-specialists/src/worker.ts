@@ -90,6 +90,12 @@ const server = Bun.serve({
         if (body.length > 2 * 1024 * 1024) throw new TypeError('Request is too large.');
         return Response.json(collaboration.exchange(JSON.parse(body)));
       }
+      if (path === '/workspace/prepare' && request.method === 'POST' && configuration?.taskWorkspace) {
+        return Response.json({ pending: agent.prepareWorkspace() });
+      }
+      if (path === '/workspace/resume' && request.method === 'POST' && configuration?.taskWorkspace) {
+        agent.resumeWorkspace(); return Response.json({ resumed: true });
+      }
       if (path === '/custom-tools/exchange' && request.method === 'POST') {
         const body = await request.text();
         if (body.length > 2 * 1024 * 1024) throw new TypeError('Request is too large.');

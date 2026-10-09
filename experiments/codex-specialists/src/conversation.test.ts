@@ -10,25 +10,38 @@ import { candidateFixture } from './candidate-verification-fixture.ts';
 const directories: string[] = [];
 const temporary = () => { const p = mkdtempSync(join(tmpdir(), 'cheshi-conversation-')); directories.push(p); return p; };
 afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }); });
-function fixture() {
-  const store = new AgentStore(temporary()), control = new WorkerConversation(store, true);
+function fixture(verificationRequired = true, verifyNewGoals = verificationRequired) {
+  const store = new AgentStore(temporary()), control = new WorkerConversation(store, verifyNewGoals);
   store.create('goal', 'Build login', { roomId: 'room', dialogue: { userText: 'Build login', questions: [], revisions: [] },
-    goal: { ...newGoal(true), turns: 1, criteria: [{ criterion: 'Login works', met: false, evidence: '' }] } });
+    goal: { ...newGoal(verificationRequired), turns: 1, criteria: [{ criterion: 'Login works', met: false, evidence: '' }] } });
   store.update('goal', { status: 'waiting' });
   return { store, control, call: (name: string, args: unknown) => control.call(store.task('goal')!, name, args) };
 }
 test('requirement changes need the latest actual user input and reset evidence without weakening verification', () => {
-  const f = fixture();
+  const f = fixture(true, false);
   const change = { inputId: 'email', criteria: ['Email login works'], reason: 'User limits login to email' };
   expect(() => f.call('revise_goal', change)).toThrow('latest user input');
   f.store.update('goal', { inputs: [{ id: 'old', prompt: 'Use social login' }, { id: 'email', prompt: 'Email only' }] });
   expect(() => f.call('revise_goal', { ...change, inputId: 'old' })).toThrow('latest user input');
-  f.call('revise_goal', change);
+  expect(f.call('revise_goal', change)).toMatchObject({ verificationRequired: true, guidance: 'Obtain new independent verification before completion.' });
   const saved = new AgentStore(f.store.directory).task('goal')!;
   expect(saved.goal).toMatchObject({ verificationRequired: true, criteria: [{ criterion: 'Email login works', met: false, evidence: '' }] });
   expect(saved.dialogue?.revisions).toMatchObject([{ inputId: 'email', source: 'Email only', before: ['Login works'], after: ['Email login works'] }]);
   expect(() => f.call('revise_goal', change)).toThrow('unused');
   expect(() => validateDecision(saved.goal!, { action: 'complete', reason: 'Done', progress: 'Done', nextAction: '', criteria: [{ criterion: 'Easier goal', met: true, evidence: 'Claim' }] }, false)).toThrow('original completion criteria');
+});
+test('revising a directly verified goal resets evidence without introducing independent verification', () => {
+  const f = fixture(false, true);
+  f.store.update('goal', { inputs: [{ id: 'email', prompt: 'Email only' }], goal: { ...f.store.task('goal')!.goal!,
+    criteria: [{ criterion: 'Login works', met: true, evidence: 'Old login check passed' }] } });
+  expect(f.call('revise_goal', { inputId: 'email', criteria: ['Email login works'], reason: 'User limits login to email' }))
+    .toMatchObject({ verificationRequired: false, guidance: 'Recheck all revised criteria directly and record fresh evidence before completion.' });
+  const saved = new AgentStore(f.store.directory).task('goal')!;
+  expect(saved.goal?.verificationRequired).toBeUndefined();
+  expect(saved.goal?.criteria).toEqual([{ criterion: 'Email login works', met: false, evidence: '' }]);
+  const decision = { action: 'complete' as const, reason: 'Checked revised criteria', progress: 'Email login tested', nextAction: '',
+    criteria: [{ criterion: 'Email login works', met: true, evidence: 'Fresh email login check passed' }] };
+  expect(() => validateDecision(saved.goal!, decision, false)).not.toThrow();
 });
 test('same-room goal selection cannot redirect work to a different room or completed goal', () => {
   const f = fixture();
@@ -41,9 +54,11 @@ test('changed then reverted criteria cannot reuse an old candidate verification 
   const f = candidateFixture(temporary());
   const request = f.requestVerification(); f.observe(request.taskId); f.draft(request.taskId); f.deliver(request.taskId);
   expect(f.inspect().verification?.status).toBe('pass');
-  f.store.update('goal', { goal: { ...f.store.task('goal')!.goal!, turns: 1 }, dialogue: { userText: 'Build login', questions: [], revisions: [] }, inputs: [{ id: 'change', prompt: 'Check email login instead' }] });
-  const control = new WorkerConversation(f.store, true);
-  control.call(f.store.task('goal')!, 'revise_goal', { inputId: 'change', reason: 'New requirement', criteria: ['Email login works'] });
+  f.store.update('goal', { goal: { ...f.store.task('goal')!.goal!, verificationRequired: undefined, turns: 1 }, dialogue: { userText: 'Build login', questions: [], revisions: [] }, inputs: [{ id: 'change', prompt: 'Check email login instead' }] });
+  const control = new WorkerConversation(f.store, false);
+  expect(f.store.task('goal')!.integration).toBeDefined();
+  expect(control.call(f.store.task('goal')!, 'revise_goal', { inputId: 'change', reason: 'New requirement', criteria: ['Email login works'] }))
+    .toMatchObject({ verificationRequired: true, guidance: 'Obtain new independent verification before completion.' });
   expect(f.inspect().verification?.status).toBe('stale');
   f.store.update('goal', { inputs: [{ id: 'revert', prompt: 'Restore the original criteria' }] });
   control.call(f.store.task('goal')!, 'revise_goal', { inputId: 'revert', reason: 'User restores original', criteria: ['Candidate is correct'] });

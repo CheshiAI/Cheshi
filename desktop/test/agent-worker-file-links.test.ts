@@ -65,19 +65,21 @@ test('Chats derives file identity from the saved room and message, never the def
   try {
     const filename = join(f.root, 'chats.json');
     const agents = ['dev', 'peer'].map(id => ({ ...specialistAgent(), id, name: id, accountId: 'account', assignments: [{ workspaceRoot: f.source, instructions: '' }] }));
-    const bindings: string[] = [];
+    const bindings: string[] = [], tasks: (string | undefined)[] = [];
+    await f.manager.retainLegacyTasks(f.binding, ['recorded']);
     const options = { filename, registry: () => ({ workspaceRoot: f.source, agents }),
       status: async () => { throw new Error('Must not start or inspect a container.'); },
       dispatch: async () => { throw new Error('Must not dispatch model work.'); },
-      openFile: async (binding: ReturnType<typeof bindingFor>, href: string) => { bindings.push(binding.id); await f.open(binding, href); } };
+      openFile: async (binding: ReturnType<typeof bindingFor>, href: string, taskId?: string) => { bindings.push(binding.id); tasks.push(taskId); await f.open(binding, href, taskId); } };
     const initial = createAgentChats(options);
     initial.request(f.source, { action: 'create', id: 'room', name: 'Test', engineId: 'docker:test', members: ['dev', 'peer'], defaultAgentId: 'peer' });
     new ChatsStore(filename).update(s => { s.messages.push(
-      { id: 'result', roomId: 'room', sender: 'dev', recipient: null, threadId: null, kind: 'message', text: '[result](/workspace/result.txt)', createdAt: new Date().toISOString() },
+      { id: 'result', taskId: 'recorded', roomId: 'room', sender: 'dev', recipient: null, threadId: null, kind: 'message', text: '[result](/workspace/result.txt)', createdAt: new Date().toISOString() },
       { id: 'user', roomId: 'room', sender: 'user', recipient: 'dev', threadId: null, kind: 'message', text: 'request', createdAt: new Date().toISOString() }); });
     await initial.dispose();
     const service = createAgentChats(options), request = { action: 'open-file', roomId: 'room', messageId: 'result', href: '/workspace/result.txt' };
     await service.openFile(f.source, { ...request, agentId: 'peer', accountId: 'other' });
+    expect(tasks).toEqual(['recorded']);
     expect(bindings).toEqual([f.binding.id]); expect(f.opened).toEqual([join(f.saved.workspace, 'result.txt')]);
     await assertFailure(service.openFile(f.source, { ...request, messageId: 'user' }), /identity/);
     await assertFailure(service.openFile(f.source, { ...request, messageId: 'missing' }), /identity/);
@@ -101,4 +103,47 @@ test('packaging retains the Worker link resolver and its workspace dependencies'
     expect(ignore(`/desktop/lib/agent-platform/${path}`)).toBe(false);
   }
   expect(ignore('/desktop/shared/local-file-link.ts')).toBe(false);
+  expect(ignore('/experiments/codex-specialists/src/task-workspace.ts')).toBe(false);
+});
+
+test('historic messages resolve their producing task even after the same Homie starts another task', async () => {
+  const f = await fixture();
+  try {
+    await f.manager.retainLegacyTasks(f.binding, ['old']);
+    const first = await f.manager.ensure(f.binding, 'first'), second = await f.manager.ensure(f.binding, 'second');
+    writeFileSync(join(first.workspace, 'result.txt'), 'first output');
+    writeFileSync(join(second.workspace, 'result.txt'), 'second output');
+    const restored = createWorkerFileLinks({ directory: f.directory, openPath: async path => { f.opened.push(path); return ''; } });
+    await restored(f.binding, '/workspace/result.txt', 'second');
+    await restored(f.binding, '/workspace/result.txt', 'first');
+    expect(f.opened).toEqual([join(second.workspace, 'result.txt'), join(first.workspace, 'result.txt')]);
+    await assertFailure(restored(f.binding, '/workspace/result.txt', 'missing'), /unavailable/);
+    await f.manager.retainLegacyTasks(f.binding, ['old']);
+    await restored(f.binding, '/workspace/result.txt', 'old');
+    expect(f.opened.at(-1)).toBe(join(f.saved.workspace, 'result.txt'));
+  } finally { f.dispose(); }
+});
+
+test('ordinary intake links retain their read-only baseline until a goal gets its own worktree', async () => {
+  const f = await fixture();
+  try {
+    const key = `@intake:${f.saved.baseCommit}`, baseline = await f.manager.ensure(f.binding, key);
+    await f.manager.recordIntakeView(f.binding, 'question', key);
+    await f.open(f.binding, '/workspace/result.txt', 'question');
+    expect(f.opened.at(-1)).toBe(join(baseline.workspace, 'result.txt'));
+    const task = await f.manager.ensure(f.binding, 'question');
+    await f.open(f.binding, '/workspace/result.txt', 'question');
+    expect(f.opened.at(-1)).toBe(join(task.workspace, 'result.txt'));
+  } finally { f.dispose(); }
+});
+
+
+test('pre-upgrade task links remain readable without starting or migrating the old container', async () => {
+  const f = await fixture();
+  try {
+    await f.open(f.binding, '/workspace/result.txt', 'old-message-task');
+    expect(f.opened).toEqual([join(f.saved.workspace, 'result.txt')]);
+    await f.manager.retainLegacyTasks(f.binding, ['old-message-task']);
+    await assertFailure(f.open(f.binding, '/workspace/result.txt', 'new-missing-task'), /unavailable/);
+  } finally { f.dispose(); }
 });

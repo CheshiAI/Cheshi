@@ -1,8 +1,10 @@
+import { parseWorkspaceKey } from './task-workspace.ts';
 import { parseCustomTools, type CustomTool } from './custom-tool-contract.ts';
 import { parseEnabledPackTools, type PackTool } from './pack-tools.ts';
 import { record, textValue } from './protocol.ts';
 import { DEFAULT_PROJECT_DOC_MAX_BYTES, parseProjectDocMaxBytes } from './project-instructions.ts';
 export interface RuntimeConfiguration {
+  taskWorkspace?: { key: string | null };
   customTools?: CustomTool[];
   enabledTools?: PackTool[];
   projectDocMaxBytes?: number;
@@ -30,7 +32,8 @@ export function parseRuntimeConfiguration(value: unknown): RuntimeConfiguration 
   const token = textValue(data.token, 'worker authorization');
   if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('Invalid worker authorization.');
   const nullable = (value: unknown) => value === null ? null : textValue(value, 'model setting');
-  return { customTools: parseCustomTools(data.customTools), enabledTools: parseEnabledPackTools(data.enabledTools), ...(data.codegraphProtocol === 1 ? { codegraphProtocol: 1 as const } : {}), ...(data.permissionProtocol === 1 ? { permissionProtocol: 1 as const } : {}), ...(data.conversationProtocol === 1 ? { conversationProtocol: 1 as const } : {}), ...(data.applicationInspectionProtocol === 1 ? { applicationInspectionProtocol: 1 as const } : {}), ...(data.applicationProtocol === 1 ? { applicationProtocol: 1 as const } : {}), ...(data.candidateVerificationProtocol === 1 ? { candidateVerificationProtocol: 1 as const } : {}), ...(data.integrationProtocol === 1 ? { integrationProtocol: 1 as const } : {}), ...(data.workProtocol === 1 ? { workProtocol: 1 as const } : {}), ...(data.verificationProtocol === 1 ? { verificationProtocol: 1 as const } : {}), ...(data.decisionProtocol === 1 ? { decisionProtocol: 1 as const } : {}), accountId: textValue(data.accountId, 'account'), profileId: textValue(data.profileId, 'profile'), role: textValue(data.role, 'role'), token,
+  const taskWorkspace = data.taskWorkspace === undefined ? undefined : { key: parseWorkspaceKey(record(data.taskWorkspace).key) };
+  return { ...(taskWorkspace ? { taskWorkspace } : {}), customTools: parseCustomTools(data.customTools), enabledTools: parseEnabledPackTools(data.enabledTools), ...(data.codegraphProtocol === 1 ? { codegraphProtocol: 1 as const } : {}), ...(data.permissionProtocol === 1 ? { permissionProtocol: 1 as const } : {}), ...(data.conversationProtocol === 1 ? { conversationProtocol: 1 as const } : {}), ...(data.applicationInspectionProtocol === 1 ? { applicationInspectionProtocol: 1 as const } : {}), ...(data.applicationProtocol === 1 ? { applicationProtocol: 1 as const } : {}), ...(data.candidateVerificationProtocol === 1 ? { candidateVerificationProtocol: 1 as const } : {}), ...(data.integrationProtocol === 1 ? { integrationProtocol: 1 as const } : {}), ...(data.workProtocol === 1 ? { workProtocol: 1 as const } : {}), ...(data.verificationProtocol === 1 ? { verificationProtocol: 1 as const } : {}), ...(data.decisionProtocol === 1 ? { decisionProtocol: 1 as const } : {}), accountId: textValue(data.accountId, 'account'), profileId: textValue(data.profileId, 'profile'), role: textValue(data.role, 'role'), token,
     projectDocMaxBytes: data.projectDocMaxBytes === undefined ? DEFAULT_PROJECT_DOC_MAX_BYTES : parseProjectDocMaxBytes(data.projectDocMaxBytes),
     instructions: textValue(data.instructions, 'instructions'), model: nullable(data.model),
     reasoningEffort: nullable(data.reasoningEffort), serviceTier: nullable(data.serviceTier),

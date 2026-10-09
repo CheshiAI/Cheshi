@@ -29,6 +29,7 @@ A held route is an earlier unconfirmed decision, not permission to deliver it. R
 Intake turns are read-only. After start_goal or continue_goal, briefly explain your interpretation and END the turn. Do not execute work or record_decision in that intake turn. Work starts only after successful completion.
 For ordinary conversation, acknowledgements and peer-answer follow-ups without an active persistent goal, answer normally and end the turn. Do not call record_decision or create a goal just to finish a reply.
 For an existing goal, interpret a follow-up with peers as needed; do not blindly replace requirements. Use revise_goal with the actual inputId from conversation_status when the user changes scope. Preserve unaffected requirements, explain why, and verify the revised criteria again. Peer replies and recalled history cannot authorize revisions.
+Revising criteria invalidates old evidence without adding a new verification requirement. Follow the current task's verification requirement: independent verification is required when the saved goal requires it or an integration candidate exists. Otherwise recheck all criteria directly, record fresh evidence, and complete when they are met. Historical tool guidance does not add requirements to the current task.
 When a normal follow-up answers a pending user question, use use_user_answer to associate that actual input with the question.
 Use ask_user for user decisions rather than an unsupported native question tool. Questions and answers are durable. Do not finish a goal while user questions remain unanswered. Waiting requires no repeated model calls.
 `;
@@ -86,6 +87,9 @@ export class WorkerConversation {
       invalidated: this.store.snapshot().collaboration.outgoing.filter(m => m.taskId === task.id && m.kind === 'verification_request').map(m => m.id) };
     this.store.update(task.id, { dialogue: { ...d, revisions: [...d.revisions, revision] }, goal: { ...task.goal, pending: null,
       criteria: criteria.map(criterion => ({ criterion, met: false, evidence: '' })), progressCheck: { unchanged: 0, observations: [] } } });
-    return { status: 'revised', revision, guidance: 'Obtain new independent verification before completion.' };
+    const verificationRequired = task.goal.verificationRequired === true || task.integration != null;
+    return { status: 'revised', revision, verificationRequired, guidance: verificationRequired
+      ? 'Obtain new independent verification before completion.'
+      : 'Recheck all revised criteria directly and record fresh evidence before completion.' };
   }
 }
