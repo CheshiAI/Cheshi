@@ -220,7 +220,7 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
     finishInitialHistory: () => { historyLoading = false; } };
 }
 
-test('Worker keeps the conversation beside the Homies list and opens settings centrally', () => {
+test('Worker keeps the conversation beside Homie settings and reserves the central editor for creation', () => {
   const app = shellHarness();
   const chats = () => props<ComponentProps<typeof ChatsView>>(app.render(), 'ChatsView');
   const management = () => props<ComponentProps<typeof AgentManagementViews>>(app.render(), 'AgentManagementViews');
@@ -249,7 +249,8 @@ test('Worker keeps the conversation beside the Homies list and opens settings ce
   chats().onManageHomies?.();
   expect(chats().homiesOpen).toBe(false);
   chats().onManageHomies?.('development');
-  expect(chats().active).toBe(false);
+  expect(chats().active).toBe(true);
+  expect(chats().homiesOpen).toBe(true);
   expect(management().selectionRequest).toEqual({ agentId: 'development' });
   chats().onOpenRoom?.();
   expect(chats().active).toBe(true);

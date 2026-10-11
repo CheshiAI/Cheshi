@@ -6,7 +6,7 @@ import { SpecialistRuntimePanel } from '../frontend/src/features/agents/Speciali
 import { createHomiePack } from '../frontend/src/features/agents/homiePackAuthoring';
 import type { AgentRegistryApi, AgentRegistrySnapshot, SaveSpecialistAgent } from '../shared/agent-registry';
 import type { AgentRuntimeRequest, AgentRuntimeState } from '../shared/agent-runtime';
-import { registryDeferred, specialistAgent, specialistInput } from './agent-registry-fixtures';
+import { registryDeferred, specialistAgent, specialistInput, specialistModels } from './agent-registry-fixtures';
 import { withDOM } from './agent-chats-test-dom';
 
 const workspaceRoot = '/projects/one';
@@ -25,7 +25,7 @@ function fixture(options: { beforeSave?(): Promise<void>; runtime?: AgentRegistr
   const saves: SaveSpecialistAgent[] = [], requests: AgentRuntimeRequest[] = [];
   let data: AgentRegistrySnapshot = { workspaceRoot, agents: [] };
   const model = new AgentRegistryModel({
-    list: async () => data, models: async () => [], onDidChange: () => () => {},
+    list: async () => data, models: async () => specialistModels(), onDidChange: () => () => {},
     save: async input => {
       saves.push(input);
       await options.beforeSave?.();
@@ -155,16 +155,15 @@ test('the creation form shows preparation, preserves a failed creation across re
     return ++attempts === 1 ? pending.promise : ready;
   } });
   const profile = creationInput().profile;
-  const draft = { profile, permissions: profile.permissions, revision: null, assigned: true, instructions: '',
-    instructionFiles: [], localPack: createHomiePack(profile, profile.permissions), section: 'basic' };
+  const draft = { profile, permissions: profile.permissions, revision: null, assigned: true, localPack: createHomiePack(profile, profile.permissions), section: 'basic' };
   function Editor() {
     const state = useSyncExternalStore(f.model.subscribe, f.model.snapshot);
     const agent = state.data?.agents.find(item => item.id === state.selection);
     return <SpecialistAgentForm key={agent?.id ?? 'new'} agent={agent} model={f.model} state={state} engineId={engineId}
       draft={agent ? undefined : draft}
-      runtime={agent ? (onSettings, headerTarget) => <SpecialistRuntimePanel agent={agent} model={f.model} assigned
+      runtime={agent ? (headerTarget, disabled) => <SpecialistRuntimePanel agent={agent} model={f.model} assigned
         engineId={engineId} engines={[{ id: engineId, name: 'Local', supported: true, reason: null }]}
-        onSettings={onSettings} headerTarget={headerTarget} /> : undefined} />;
+        disabled={disabled} headerTarget={headerTarget} /> : undefined} />;
   }
   try {
     await f.model.refresh();
@@ -179,14 +178,14 @@ test('the creation form shows preparation, preserves a failed creation across re
       expect(f.requests).toEqual([{ action: 'start', agentId: specialistAgent().id, engineId }]);
       await act(async () => pending.reject(new Error('Docker disconnected')));
       expect(document.querySelector('form[aria-label="Agent settings"]')).not.toBeNull();
-      expect(document.querySelector<HTMLInputElement>('[aria-label="Agent name"]')?.value).toBe('Automatic Homie');
-      expect(document.querySelector('[role="alert"]')?.textContent).toContain('Homie saved, but its worker did not start. Docker disconnected');
+      expect(document.querySelector('h2')?.textContent).toBe('Automatic Homie');
+      expect(document.body.textContent).toContain('Homie saved, but its worker did not start. Docker disconnected');
       await ui.click('Start agent');
       expect(document.body.textContent).toContain('Ready');
       expect(document.body.textContent).not.toContain('Homie saved, but its worker did not start.');
       expect(f.saves).toHaveLength(1);
       expect(f.requests.filter(request => request.action === 'start')).toHaveLength(2);
-      await ui.click('Save agent');
+      await ui.click('Save local settings');
       expect(f.saves).toHaveLength(2);
       expect(f.saves[1]?.id).toBe(specialistAgent().id);
       expect(f.requests.filter(request => request.action === 'start')).toHaveLength(2);

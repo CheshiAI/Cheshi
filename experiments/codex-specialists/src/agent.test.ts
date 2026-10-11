@@ -206,16 +206,16 @@ test('exposes persistence failure to worker health instead of silently accepting
   expect(() => agent.submit('next', 'inspect')).toThrow('Could not persist');
 });
 
-test('registered profiles carry model, effort, tier and command restrictions into the native thread and turn', async () => {
+for (const serviceTier of [null, 'priority']) test(`registered profiles carry model, effort and ${serviceTier ?? 'standard'} speed into the native thread and turn`, async () => {
   const client = new FakeClient(), store = new AgentStore(temporary());
   const agent = new SpecialistAgent({ client, store, profile: 'project instructions', workspace: '/workspace', configuration: {
     profileId: 'profile', accountId: 'default', role: 'development', token: 'a'.repeat(64), instructions: 'project instructions',
-    model: 'gpt-6-astra', reasoningEffort: 'high', serviceTier: null, permissions: { fileWrite: false, commandExecution: false },
+    model: 'gpt-6-astra', reasoningEffort: 'high', serviceTier, permissions: { fileWrite: false, commandExecution: false },
   } });
   agent.submit('model-check', 'test'); await agent.settled();
-  expect(client.calls.find(call => call.method === 'thread/start')?.params).toMatchObject({ model: 'gpt-6-astra', serviceTier: null,
+  expect(client.calls.find(call => call.method === 'thread/start')?.params).toMatchObject({ model: 'gpt-6-astra', serviceTier,
     sandbox: 'read-only', config: { model_reasoning_effort: 'high', 'features.shell_tool': false, 'features.unified_exec': false, 'features.multi_agent': false } });
-  expect(client.calls.find(call => call.method === 'turn/start')?.params).toMatchObject({ model: 'gpt-6-astra', effort: 'high', serviceTier: null,
+  expect(client.calls.find(call => call.method === 'turn/start')?.params).toMatchObject({ model: 'gpt-6-astra', effort: 'high', serviceTier,
     sandboxPolicy: { type: 'readOnly', networkAccess: false } });
 });
 

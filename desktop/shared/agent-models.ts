@@ -8,6 +8,18 @@ export interface AgentModel {
 export interface AgentModelSelection {
   model: string | null; reasoningEffort: string | null; serviceTier: string | null;
 }
+export function sameAgentModelSelection(left: AgentModelSelection, right: AgentModelSelection): boolean {
+  return left.model === right.model && left.reasoningEffort === right.reasoningEffort && left.serviceTier === right.serviceTier;
+}
+
+/** Resolve missing choices once before saving; never replace an explicit, unsupported choice. */
+export function resolveAgentModelSelection(selection: AgentModelSelection, models: readonly AgentModel[]): AgentModelSelection {
+  const model = selection.model === null ? models.find(item => item.isDefault) ?? models[0]
+    : models.find(item => item.model === selection.model);
+  if (!model) return { model: selection.model, reasoningEffort: selection.reasoningEffort, serviceTier: selection.serviceTier };
+  return { model: model.model, reasoningEffort: selection.reasoningEffort ?? model.defaultReasoningEffort,
+    serviceTier: selection.serviceTier };
+}
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Invalid agent model catalog.');

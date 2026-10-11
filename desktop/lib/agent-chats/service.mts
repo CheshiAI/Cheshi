@@ -1,3 +1,4 @@
+import { agentDisplayName } from '../../shared/agent-registry.ts';
 import { createIsolatedChatTasks } from './isolated-tasks.mts';
 import type { PlatformChats } from '../agent-platform/chat-service.mts';
 import { hasRecordedResponse, recordRoomTasks } from './records.mts';
@@ -123,7 +124,7 @@ export function createAgentChats(options: Options) {
         try { return realpathSync(a.workspaceRoot) === workspace; } catch { return false; }
       }));
       if (!agent?.accountId) throw new Error('Invite a registered agent assigned to this project with an account.');
-      return { id, accountId: agent.accountId, name: agent.name };
+      return { id, accountId: agent.accountId, name: agentDisplayName(agent) };
     });
   }
   function current(room: AgentRoom, id: string): boolean {

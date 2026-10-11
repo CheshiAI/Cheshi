@@ -6,18 +6,21 @@ import { parseAgentPackage } from '../../shared/agent-package.ts';
 import { AGENT_RUNTIME_CHANNEL, parseAgentRuntimeRequest } from '../../shared/agent-runtime.ts';
 import type { AgentRuntimeRequest, AgentRuntimeState } from '../../shared/agent-runtime.ts';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
-import { AGENT_REGISTRY_CHANNELS, parseSaveSpecialistAgent, parseDeleteSpecialistAgent } from '../../shared/agent-registry.ts';
+import { AGENT_REGISTRY_CHANNELS, parseSaveSpecialistAgent, parseDeleteSpecialistAgent, type SaveSpecialistAgent } from '../../shared/agent-registry.ts';
 import { onWindowClosed } from '../window-close-cleanup.mts';
 import type { createAgentRegistry } from './registry.mts';
 import { isCodexAccountId } from '../../shared/codex-accounts.ts';
-import { assertAgentModelSelection, parseAgentModels } from '../../shared/agent-models.ts';
+import { assertAgentModelSelection, parseAgentModels, sameAgentModelSelection, resolveAgentModelSelection } from '../../shared/agent-models.ts';
 import type { AgentModel } from '../../shared/agent-models.ts';
 import { parseInstructionFiles, parseInstructionFilePath } from '../../shared/agent-registry.ts';
-import { readInstructionFile } from './instruction-files.mts';
+import { assertFileManagedInstructions, readInstructionFile } from './instruction-files.mts';
 import { deletionReply } from './operations.mts';
 import { officialAgentPackages, readAgentPackage } from './packages.mts';
+import { HOMIE_SOURCE_CHANNEL, parseHomieSourceRequest, type HomieSourceRequest, type HomieSourceState } from '../../shared/homie-source.ts';
 
 export function registerAgentRegistryIpc(options: {
+  source?(input: HomieSourceRequest): Promise<HomieSourceState>;
+  saveSettings?(input: SaveSpecialistAgent, assertAvailable: () => void): Promise<ReturnType<ReturnType<typeof createAgentRegistry>['save']>>;
   window: BrowserWindow; workspaceRoot: string; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>;
   registry: Pick<ReturnType<typeof createAgentRegistry>, 'snapshot' | 'subscribe' | 'save'>;
   remove?: (request: import('../../shared/agent-registry.ts').DeleteSpecialistAgent) => Promise<import('../../shared/agent-registry.ts').AgentRegistrySnapshot>;
@@ -90,6 +93,7 @@ export function registerAgentRegistryIpc(options: {
       resources: { files, programs: definition.resources?.programs ?? [] } }) : definition;
   };
   try {
+    if (options.source) handle(HOMIE_SOURCE_CHANNEL, value => options.source!(parseHomieSourceRequest(value)));
     handle(AGENT_REGISTRY_CHANNELS.packages, async () => {
       const packages = await officialAgentPackages();
       if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
@@ -150,10 +154,33 @@ export function registerAgentRegistryIpc(options: {
     handle(AGENT_REGISTRY_CHANNELS.models, models);
     handle(AGENT_REGISTRY_CHANNELS.save, async value => {
       const input = parseSaveSpecialistAgent(value);
-      const catalog = input.profile.model === null ? [] : await models(input.profile.accountId);
+      assertFileManagedInstructions(input.profile, input.assignment);
+      const existing = input.id ? options.registry.snapshot(options.workspaceRoot).agents.find(a => a.id === input.id) : undefined;
+      if (existing) assertFileManagedInstructions(existing, existing.assignments.find(a => a.workspaceRoot === options.workspaceRoot));
+      if (input.id && options.source) {
+        const saved = options.registry.snapshot(options.workspaceRoot).agents.find(a => a.id === input.id);
+        if (!saved) throw new Error('Homie is no longer registered.');
+        // Only model controls may update portable fields through the file-backed save path.
+        input.profile = { ...saved, displayName: input.profile.displayName ?? saved.displayName, accountId: input.profile.accountId, avatar: input.profile.avatar,
+          permissions: input.profile.permissions, model: input.profile.model, reasoningEffort: input.profile.reasoningEffort, serviceTier: input.profile.serviceTier };
+      }
+      const catalog = input.profile.accountId === null ? [] : await models(input.profile.accountId);
+      if (input.profile.accountId !== null) {
+        const selection = resolveAgentModelSelection(input.profile, catalog);
+        input.profile = { ...input.profile, ...selection,
+          ...(input.profile.package ? { package: { ...input.profile.package, model: selection } } : {}) };
+      }
       assertAgentModelSelection(input.profile, catalog);
-      if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
-      const result = options.registry.save(input, options.workspaceRoot);
+      if (input.profile.accountId !== null && (input.profile.model === null || input.profile.reasoningEffort === null)) {
+        throw new Error('Choose an available model and effort before saving.');
+      }
+      if (existing && options.source && !options.saveSettings && !sameAgentModelSelection(existing, input.profile)) {
+        throw new Error('Restart Cheshi to edit Homie model settings.');
+      }
+      const assertAvailable = () => { if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.'); };
+      assertAvailable();
+      const result = input.id && options.source && options.saveSettings
+        ? await options.saveSettings(input, assertAvailable) : options.registry.save(input, options.workspaceRoot);
       if (input.id === null && options.prepareCreation) {
         const agent = result.snapshot.agents.find(item => item.id === result.agentId)!;
         try { await options.prepareCreation(agent); }

@@ -61,9 +61,10 @@ test('Homie repository setup bundles its service and exact seed resources', asyn
   const configuration = await createForgeConfiguration();
   const shouldIgnore = configuration.packagerConfig?.ignore;
   if (typeof shouldIgnore !== 'function') throw new Error('Forge ignore configuration is unavailable.');
-  for (const name of ['homie-repository', 'homie-repository-command', 'homie-repository-template', 'homie-repository-project']) {
+  for (const name of ['homie-repository', 'homie-repository-command', 'homie-repository-template', 'homie-repository-project', 'homie-source-files', 'homie-sources']) {
     assert.equal(shouldIgnore(`/desktop/lib/agent-management/${name}.mts`), false);
   }
+  assert.equal(shouldIgnore('/desktop/shared/homie-source.ts'), false);
   for (const name of ['README.md', 'gitignore']) {
     assert.equal(shouldIgnore(`/resources/homie-repository/${name}`), false);
     assert.ok(existsSync(path.join(rootDirectory, 'resources/homie-repository', name)));

@@ -79,6 +79,11 @@ export class HomieRepositoryProjects {
     githubRepositoryName(repository);
     return { agentId, repository, directory: plan.directory, ...(plan.accountId === undefined ? {} : { accountId: plan.accountId }) };
   }
+  async local(agentId: string): Promise<RepositoryPlan | null> {
+    if (!validAgentId.test(agentId)) throw new Error('Invalid Homie ID.');
+    try { return this.parsePlan(JSON.parse(await readFile(path.join(this.stateDirectory, `${agentId}.json`), 'utf8')), agentId); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
+  }
   async plan(agent: Pick<SpecialistAgent, 'id' | 'name'>): Promise<RepositoryPlan> {
     if (!validAgentId.test(agent.id)) throw new Error('Invalid Homie ID.');
     const previous = planning.get(this.stateDirectory) ?? Promise.resolve();

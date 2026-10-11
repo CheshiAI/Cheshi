@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { act, useState } from 'react';
 import { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
 import type { AgentChatsApi, ChatsSnapshot, ChatsUpdate, RoomMessage } from '../shared/agent-chats';
+import { specialistAgent } from './agent-registry-fixtures';
 import { withDOM } from './agent-chats-test-dom';
 
 test('opening Homies and typing a draft do not reread message bodies; live updates and replies still work', async () => {
@@ -18,9 +19,11 @@ test('opening Homies and typing a draft do not reread message bodies; live updat
   let receive: ((update: ChatsUpdate) => void) | undefined;
   const api: AgentChatsApi = { request: async () => snapshot,
     onDidChange: listener => { receive = listener; return () => { receive = undefined; }; } };
+  const agent = specialistAgent();
+  const registry = { list: async () => ({ workspaceRoot: '/project', agents: [agent] }), onDidChange: () => () => {} };
   function Harness() {
     const [open, setOpen] = useState(false);
-    return <ChatsView active api={api} homiesOpen={open} onManageHomies={() => setOpen(value => !value)} />;
+    return <ChatsView active api={api} registry={registry} selectedHomieId={agent.id} homiesOpen={open} onManageHomies={() => setOpen(value => !value)} />;
   }
   await withDOM(async ui => {
     await ui.render(<Harness />);
@@ -28,10 +31,10 @@ test('opening Homies and typing a draft do not reread message bodies; live updat
     const initialReads = bodyReads;
     expect(initialReads).toBeGreaterThan(0);
     const timeline = document.querySelector('[aria-label="Room messages"]');
-    await ui.click('Manage Homies');
-    expect(document.querySelector('[aria-label="Manage Homies"]')?.getAttribute('aria-expanded')).toBe('true');
+    await ui.click(`Open Homie: ${agent.name}`);
+    expect(document.querySelector(`[aria-label="Open Homie: ${agent.name}"]`)?.getAttribute('aria-expanded')).toBe('true');
     await ui.type('Message', 'Keep my draft');
-    await ui.click('Manage Homies');
+    await ui.click(`Open Homie: ${agent.name}`);
     expect(bodyReads).toBe(initialReads);
     expect(document.querySelector('[aria-label="Room messages"]')).toBe(timeline);
     expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')?.value).toBe('Keep my draft');

@@ -1,3 +1,4 @@
+import { agentDisplayName } from '../../shared/agent-registry.ts';
 import { revision } from '../agent-platform/git-workspaces.mts';
 import { INTAKE_WORKSPACE, isIntakeWorkspace, parseWorkspaceKey } from '../../../experiments/codex-specialists/src/task-workspace.ts';
 import { executeCustomTool, type ToolCredential } from './custom-tool-execution.mts';
@@ -22,7 +23,7 @@ import { parseDockerAgent, runDocker, type DockerCommand } from './docker.mts';
 import { DockerCommandError } from './docker-errors.mts';
 import { assertAgentModelSelection, type AgentModel } from '../../shared/agent-models.ts';
 import { workerOperations } from './operations.mts';
-import { resolveAgentInstructions } from './instruction-files.mts';
+import { assertFileManagedInstructions, readProjectInstructions, resolveAgentInstructions } from './instruction-files.mts';
 import { DEFAULT_PROJECT_DOC_MAX_BYTES, parseProjectDocMaxBytes } from '../../../experiments/codex-specialists/src/project-instructions.ts';
 import { createAgentOrchestration, type exchangeWorker } from '../agent-orchestration/service.mts';
 import { WorkerLifecycle } from './lifecycle.mts';
@@ -32,6 +33,8 @@ import { WorkerWorkspaces } from '../agent-platform/worker-workspaces.mts';
 
 export interface RuntimeAccount { home: string; models: AgentModel[]; }
 interface RuntimeOptions {
+  prepareSource?(workspace: string, agentId: string): Promise<{ hash: string }>;
+  sourceApplied?(workspace: string, agentId: string, engineId: string, hash: string): Promise<void>;
   directory: string; buildContext: string; workspaceDirectory?: string;
   getProjectDocMaxBytes?(): number;
   registry: ReturnType<typeof createAgentRegistry>; management: AgentManagementApi;
@@ -122,7 +125,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     peer: binding => {
       const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId && a.accountId === binding.accountId
         && projectAssignment(a, binding.workspace));
-      return agent ? { id: agent.id, name: agent.name, role: agent.role, fileWrite: projectPermissions(agent, binding.workspace).fileWrite, workProtocol: 1 } : null;
+      return agent ? { id: agent.id, name: agentDisplayName(agent), role: agent.role, fileWrite: projectPermissions(agent, binding.workspace).fileWrite, workProtocol: 1 } : null;
     },
     around: (binding, operation) => lifecycle.exclusive(binding, operation),
     connect: async (binding, demand) => {
@@ -303,9 +306,11 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   async function request(workspaceRoot: string, input: AgentRuntimeRequest, chat?: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }, selectedWorkspace?: string | null): Promise<AgentRuntimeState> {
     const request = parseAgentRuntimeRequest(input);
     const workspace = await realpath(workspaceRoot);
+    const source = request.action === 'start' ? await options.prepareSource?.(workspace, request.agentId) : undefined;
     const agent = options.registry.snapshot(workspaceRoot).agents.find(item => item.id === request.agentId);
     const assignment = agent && projectAssignment(agent, workspace);
     if (!agent || !assignment) throw new Error('Assign this agent to the current project first.');
+    if (request.action === 'start' || request.action === 'submit') assertFileManagedInstructions(agent, assignment);
     if (request.action === 'start' && agent.package?.requiredTools.includes('codegraph') && !options.codegraph) {
       throw new Error('This agent package requires CodeGraph. Connect CodeGraph before starting the worker.');
     }
@@ -328,9 +333,10 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       const dependencies = agent.permissions.commandExecution ? projectDependencies(execution) : null;
       const projectDocMaxBytes = parseProjectDocMaxBytes(options.getProjectDocMaxBytes?.() ?? DEFAULT_PROJECT_DOC_MAX_BYTES);
       const settingsFingerprint = isolatedFingerprint(runtimeSettingsDigest(agent, workspace, assignment, projectDocMaxBytes, dependencies), isolated ? execution : 'unprepared');
-      const instructions = request.action === 'start' ? (await resolveAgentInstructions(agent, assignment)) + packInstructions(agent.package)
+      const projectInstructions = request.action === 'start' ? await readProjectInstructions(workspace) : null;
+      const instructions = request.action === 'start' ? (await resolveAgentInstructions(agent, assignment, projectInstructions)) + packInstructions(agent.package)
         + (workspaces ? isolatedWorkspaceInstructions : '') : null;
-      const hasFiles = Boolean(agent.instructionFiles?.length || assignment.instructionFiles?.length);
+      const hasFiles = projectInstructions !== null;
       const fingerprint = hasFiles && instructions !== null ? digest(`${settingsFingerprint}\n${instructions}`) : settingsFingerprint;
       const prefix = await local(request.engineId);
       let worker = await find(prefix, key);
@@ -454,6 +460,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
           }
         }
         const details = await waitReady(request.engineId, worker.id);
+        if (source) await options.sourceApplied?.(workspace, agent.id, request.engineId, source.hash);
         if (workspaces && taskKey === null) await workspaces.retainLegacyTasks(identity, details.tasks.map(task => task.id));
         orchestration.register(bindingFor(workspace, request.engineId, agent.id, agent.accountId));
         return { details };
@@ -541,6 +548,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   return {
     async platformProfile(workspaceRoot: string, agentId: string, accountId: string): Promise<HomieExecutionProfile> {
       const workspace = await realpath(workspaceRoot);
+      await options.prepareSource?.(workspace, agentId);
       const agent = options.registry.snapshot(workspace).agents.find(a => a.id === agentId && a.accountId === accountId);
       const assignment = agent && projectAssignment(agent, workspace);
       if (!agent || !assignment) throw new Error('Restore the selected Homie account and project assignment.');

@@ -1,5 +1,6 @@
 .field { display: flex; flex-direction: column; align-items: flex-start; gap: var(--icon-default); font-size: var(--font-size-label); }
-.trigger[data-variant] { height: 48px; gap: var(--icon-default); }
+.trigger[data-variant] { width: 80px; height: 80px; min-height: 80px; padding: 8px; border-radius: 50%; background: var(--control-surface); }
+.trigger[data-variant] > [data-agent-avatar] { width: 64px; height: 64px; }
 .dialog { --modal-width: 384px; }
 .content { display: flex; flex-direction: column; gap: var(--space-default); }
 .preview { display: flex; align-items: center; gap: var(--icon-default); font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
@@ -13,3 +14,5 @@
 .choice[aria-pressed='true'], .color[aria-pressed='true'] { background: var(--control-surface); outline: 1px solid var(--text); outline-offset: -1px; }
 .choice:focus-visible, .color:focus-visible { outline: 1px solid var(--text); outline-offset: -1px; }
 .actions { display: flex; justify-content: flex-end; gap: var(--icon-default); }
+
+.hint { margin: 0; font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }

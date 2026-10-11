@@ -32,12 +32,16 @@ export function projectPermissions(agent: SpecialistAgent, workspace: string): E
   return agent.assignments.find(a => a.workspaceRoot === workspace)?.permissions ?? agent.permissions;
 }
 export interface SpecialistProfile extends AgentModelSelection {
-  name: string; role: SpecialistRole; instructions: string;
+  name: string; displayName?: string; role: SpecialistRole; instructions: string;
   accountId: string | null;
   avatar?: AgentAvatarValue;
   instructionFiles?: string[];
   package?: AgentPackage;
   permissions: ExecutionPermissions;
+}
+/** Local presentation identity; repository names and durable IDs remain separate. */
+export function agentDisplayName(agent: Pick<SpecialistProfile, 'name' | 'displayName'>): string {
+  return agent.displayName ?? agent.name;
 }
 export interface SpecialistAssignment { permissions?: ExecutionPermissions; workspaceRoot: string; instructions: string; instructionFiles?: string[]; }
 export interface SpecialistAgent extends SpecialistProfile {
@@ -49,6 +53,7 @@ export interface SaveSpecialistAgent {
   assignment: { assigned: boolean; instructions: string; instructionFiles?: string[]; permissions?: ExecutionPermissions | null };
 }
 export interface AgentRegistryApi {
+  source?(input: import('./homie-source.ts').HomieSourceRequest): Promise<import('./homie-source.ts').HomieSourceState>;
   onRepositoryReady?(listener: () => void): () => void;
   toolCredential?(input: import('./homie-tools.ts').ToolCredentialRequest): Promise<boolean>;
   testTool?(input: import('./homie-tools.ts').ToolTestRequest): Promise<unknown>;
@@ -113,7 +118,7 @@ function profile(value: unknown): SpecialistProfile {
   const data = record(value), permissions = record(data.permissions);
   if (!SPECIALIST_ROLES.some(role => role === data.role)) throw new TypeError('Invalid specialist role.');
   if (data.accountId !== null && !isCodexAccountId(data.accountId)) throw new TypeError('Invalid agent account.');
-  return { ...instructionFiles(data), ...(data.package === undefined ? {} : { package: parseAgentPackage(data.package) }), ...(data.avatar === undefined ? {} : { avatar: parseAgentAvatar(data.avatar) }), name: text(data.name, 100, true).trim(), role: data.role as SpecialistRole,
+  return { ...(data.displayName === undefined ? {} : { displayName: text(data.displayName, 100, true).trim() }), ...instructionFiles(data), ...(data.package === undefined ? {} : { package: parseAgentPackage(data.package) }), ...(data.avatar === undefined ? {} : { avatar: parseAgentAvatar(data.avatar) }), name: text(data.name, 100, true).trim(), role: data.role as SpecialistRole,
     instructions: text(data.instructions, 20_000, true), accountId: data.accountId as string | null,
     model: data.model === null ? null : text(data.model, 200, true).trim(),
     reasoningEffort: data.reasoningEffort == null ? null : text(data.reasoningEffort, 100, true).trim(),

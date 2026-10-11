@@ -18,10 +18,11 @@ export interface ToolbarMenuItem {
   onSelect(): void;
 }
 
-function MenuContents({ anchor, id, label, items, className, onClose }: {
+function MenuContents({ anchor, id, label, heading, items, className, onClose }: {
   anchor: HTMLButtonElement;
   id: string;
   label: string;
+  heading: string;
   items: readonly ToolbarMenuItem[];
   className?: string;
   onClose(): void;
@@ -45,7 +46,7 @@ function MenuContents({ anchor, id, label, items, className, onClose }: {
         focusAdjacentMenuItem(event);
         if (event.key === 'Tab') onClose();
       }}>
-      <div className={styles.title}>{label}</div>
+      <div className={styles.title}>{heading}</div>
       {items.map(item => <Fragment key={item.id}>
         {item.separatorBefore && <div role="separator" className={styles.separator} />}
         <NeumorphicButton size="standard" role="menuitem" aria-label={item.label} className={styles.item}
@@ -57,9 +58,10 @@ function MenuContents({ anchor, id, label, items, className, onClose }: {
   </div>, anchor.ownerDocument.body);
 }
 
-export function ToolbarMenu({ label, items, icon = <Ellipsis aria-hidden="true" />, raised = false, disabled = false,
+export function ToolbarMenu({ label, heading = label, items, icon = <Ellipsis aria-hidden="true" />, raised = false, disabled = false,
   menuClassName, menuBlurSourceRef, menuBlurSourceMode = 'add' }: {
   label: string;
+  heading?: string;
   items: readonly ToolbarMenuItem[];
   icon?: ReactNode;
   raised?: boolean;
@@ -75,7 +77,7 @@ export function ToolbarMenu({ label, items, icon = <Ellipsis aria-hidden="true" 
     setAnchor(null);
     if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true });
   }, []);
-  const menu = anchor && <MenuContents anchor={anchor} id={id} label={label} items={items} className={menuClassName} onClose={close} />;
+  const menu = anchor && <MenuContents anchor={anchor} id={id} label={label} heading={heading} items={items} className={menuClassName} onClose={close} />;
   return <>
     <NeumorphicButton size="icon" raised={raised} disabled={disabled} aria-label={label} title={label}
       aria-haspopup="menu" aria-expanded={!!anchor} aria-controls={anchor ? id : undefined}

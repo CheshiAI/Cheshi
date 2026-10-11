@@ -1,3 +1,4 @@
+import { agentDisplayName } from '../../../../shared/agent-registry';
 import { useEffect, useRef, useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { AgentChatsApi } from '../../../../shared/agent-chats';
@@ -25,7 +26,7 @@ export function useHomieParticipants(roomId: string | undefined, agents: Special
     const member = [...(room?.members ?? []), ...(room?.formerMembers ?? [])].find(item => item.id === agent.id);
     const available = Boolean(agent.accountId && agent.assignments.some(item => item.workspaceRoot === workspaceRoot)
       && (!member || member.accountId === agent.accountId));
-    return { id: agent.id, name: agent.name, available, existing: Boolean(room?.members.some(item => item.id === agent.id)) };
+    return { id: agent.id, name: agentDisplayName(agent), available, existing: Boolean(room?.members.some(item => item.id === agent.id)) };
   });
   for (const member of room?.members ?? []) {
     if (!candidates.some(item => item.id === member.id)) candidates.push({ ...member, available: false, existing: true });

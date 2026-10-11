@@ -35,10 +35,10 @@ test('Worker opens Homie management from its right tools rail and participants a
     const timeline = document.querySelector('[aria-label="Room messages"]');
     expect(document.querySelector('[aria-label="Worker rooms"] [aria-label="Manage Homies"]')).toBeNull();
     expect(document.querySelector('[aria-label="Worker"] header [aria-label="Manage Homies"]')).toBeNull();
-    const manage = document.querySelector<HTMLButtonElement>('[aria-label="Room tools"] [aria-label="Manage Homies"]')!;
+    const manage = document.querySelector<HTMLButtonElement>('[aria-label="Room tools"] [aria-label="Open Homie: Development"]')!;
     await act(async () => manage.click());
     await ui.click('Manage Homie: Development');
-    expect(selections).toEqual([undefined, 'dev']);
+    expect(selections).toEqual(['dev', 'dev']);
     await render(false);
     expect(document.querySelector<HTMLElement>('[aria-label="Worker"]')?.hidden).toBe(true);
     await render();
@@ -55,7 +55,7 @@ test('Worker offers Homie management before a room exists with the room sidebar 
     await ui.render(<ChatsView active sidebarTarget={null} onManageHomies={() => { opened++; }}
       api={{ request: async request => { requests.push(request); return { rooms: [], messages: [] }; } }} />);
     expect(document.querySelector('[aria-label="Worker rooms"]')).toBeNull();
-    await ui.click('Manage Homies');
+    await ui.click('Open Homie: Development');
     expect(opened).toBe(1);
     expect(requests.every(request => request.action === 'list')).toBe(true);
   });
@@ -876,7 +876,7 @@ test('Homies slides inside Worker before its fixed tools rail and closes through
     const [open, setOpen] = useState(false);
     const [target, setTarget] = useState<HTMLDivElement | null>(null);
     return <>
-      <ChatsView active api={api} homiesOpen={open} onHomiesTarget={setTarget}
+      <ChatsView active api={api} homiesOpen={open} selectedHomieId="dev" onHomiesTarget={setTarget}
         onManageHomies={() => setOpen(value => !value)} onCloseHomies={() => setOpen(false)} />
       {target && createPortal(<button onKeyDown={event => {
         if (event.key === 'Escape' && event.shiftKey) event.preventDefault();
@@ -885,15 +885,15 @@ test('Homies slides inside Worker before its fixed tools rail and closes through
   }
   await withDOM(async ui => {
     await ui.render(<Harness />);
-    await ui.type('Message', 'Keep sliding draft');
+    await ui.type('Message', 'Keep panel draft');
     const timeline = document.querySelector('[aria-label="Room messages"]');
     const rail = document.querySelector('[aria-label="Room tools"]')!;
     const panel = document.querySelector<HTMLElement>('[aria-label="Homies sidebar"]')!;
-    const trigger = document.querySelector<HTMLButtonElement>('[aria-label="Manage Homies"]')!;
+    const trigger = document.querySelector<HTMLButtonElement>('[aria-label="Open Homie: Development"]')!;
     expect(panel.parentElement?.nextElementSibling).toBe(rail);
     expect(panel.closest('[aria-label="Worker"]')).not.toBeNull();
     expect(panel.getAttribute('aria-hidden')).toBe('true');
-    await ui.click('Manage Homies');
+    await ui.click('Open Homie: Development');
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
     expect(panel.hasAttribute('inert')).toBe(false);
     const content = document.getElementById(trigger.getAttribute('aria-controls')!)!.querySelector('button')!;
@@ -909,10 +909,10 @@ test('Homies slides inside Worker before its fixed tools rail and closes through
     expect(document.activeElement).toBe(trigger);
     expect(panel.hasAttribute('inert')).toBe(true);
     expect(panel.contains(content)).toBe(true);
-    await ui.click('Manage Homies'); await ui.click('Manage Homies');
+    await ui.click('Open Homie: Development'); await ui.click('Open Homie: Development');
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     expect(document.querySelector('[aria-label="Room tools"]')).toBe(rail);
     expect(document.querySelector('[aria-label="Room messages"]')).toBe(timeline);
-    expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')?.value).toBe('Keep sliding draft');
+    expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')?.value).toBe('Keep panel draft');
   });
 });

@@ -1,3 +1,4 @@
+import { agentDisplayName } from './agent-registry.ts';
 import type { AgentRoom, ChatMember, RoomMessage } from './agent-chats.ts';
 import type { SpecialistAgent } from './agent-registry.ts';
 
@@ -7,8 +8,8 @@ export function resolveRoomMemberNames(room: AgentRoom, agents: SpecialistAgent[
     .map(agent => [agent.id, agent]));
   const resolve = (member: ChatMember): ChatMember => {
     const agent = registered.get(member.id);
-    return agent && agent.accountId === member.accountId && agent.name !== member.name
-      ? { ...member, name: agent.name } : member;
+    return agent && agent.accountId === member.accountId && agentDisplayName(agent) !== member.name
+      ? { ...member, name: agentDisplayName(agent) } : member;
   };
   const members = room.members.map(resolve), formerMembers = room.formerMembers?.map(resolve);
   if (members.every((member, index) => member === room.members[index])

@@ -1,5 +1,7 @@
+import { specialistAgent } from './agent-registry-fixtures';
+import type { AgentRoom } from '../shared/agent-chats';
 import { expect, test } from 'bun:test';
-import { resolveChatRecipient } from '../shared/agent-chat-recipient';
+import { resolveChatRecipient, resolveRoomMemberNames } from '../shared/agent-chat-recipient';
 import type { RoomMessage } from '../shared/agent-chats';
 
 const members = [
@@ -34,4 +36,18 @@ test('reply addresses its author or the recipient of a user request; explicit ca
   expect(resolveChatRecipient('수정해줘', members, { ...reply, sender: 'user', recipient: 'dev' }).recipient).toBe('dev');
   expect(resolveChatRecipient('좋아요', members, { ...reply, sender: 'user' }).recipient).toBeNull();
   expect(resolveChatRecipient('기획 호미 호출해서 검토해줘', members, reply).recipient).toBe('plan');
+});
+
+
+test('local display names update mentions and calls while keeping the saved member and project identities', () => {
+  const agent = { ...specialistAgent(), displayName: 'Dwight', accountId: 'default', assignments: [{ workspaceRoot: '/project', instructions: '' }] };
+  const room: AgentRoom = { id: 'room', workspace: '/project', name: 'Room', engineId: 'docker:test', defaultAgentId: agent.id,
+    members: [{ id: agent.id, accountId: 'default', name: agent.name }], createdAt: '2026-10-12T00:00:00Z' };
+  const resolved = resolveRoomMemberNames(room, [agent]);
+  expect(resolved.members[0]).toEqual({ ...room.members[0]!, name: 'Dwight' });
+  expect(resolved.defaultAgentId).toBe(agent.id); expect(room.members[0]?.name).toBe(agent.name);
+  expect(resolveChatRecipient('@Dwight hello', resolved.members)).toEqual({ recipient: agent.id, error: null });
+  expect(resolveChatRecipient('Dwight 호출해줘', resolved.members)).toEqual({ recipient: agent.id, error: null });
+  expect(resolveChatRecipient(`@${agent.name} hello`, resolved.members).recipient).toBeNull();
+  expect(resolveRoomMemberNames(room, [{ ...agent, accountId: 'other' }])).toBe(room);
 });

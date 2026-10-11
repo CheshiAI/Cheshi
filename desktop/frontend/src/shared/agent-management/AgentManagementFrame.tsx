@@ -6,14 +6,14 @@ import styles from './agentManagement.module.css';
 
 export interface AgentScreenProps { model: AgentManagementModel; state: AgentManagementState }
 
-export function AgentManagementFrame({ title, icon, actions, bodyLayout = 'scroll', children }: {
-  title: string; icon: ReactNode; actions?: ReactNode; bodyLayout?: 'scroll' | 'fill'; children: ReactNode;
+export function AgentManagementFrame({ title, icon, titleContent, actions, bodyLayout = 'scroll', children }: {
+  title: string; icon: ReactNode; titleContent?: ReactNode; actions?: ReactNode; bodyLayout?: 'scroll' | 'fill'; children: ReactNode;
 }) {
   const sourceRef = useRef<HTMLElement>(null);
   const scrollbar = useAutoHideScrollbars<HTMLDivElement>();
   return <RegionalBlur sourceRef={sourceRef}>
     <main ref={sourceRef} className={styles.workspace} aria-label={title}>
-      <SidebarPanelHeader title={title.toUpperCase()} icon={icon} actions={actions} />
+      <SidebarPanelHeader title={title.toUpperCase()} titleContent={titleContent} icon={icon} actions={actions} />
       <div ref={scrollbar} className={bodyLayout === 'fill' ? styles.fill : styles.scroll}>{children}</div>
     </main>
   </RegionalBlur>;

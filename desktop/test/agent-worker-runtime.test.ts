@@ -18,6 +18,7 @@ async function fixture(realContext?: string) {
   const source = join(root, 'source'), home = join(root, 'account'); mkdirSync(source); mkdirSync(home);
   await git(source, ['init', '-b', 'main']);
   writeFileSync(join(source, 'file.txt'), 'baseline');
+  writeFileSync(join(source, 'AGENTS.md'), 'Follow this project’s AGENTS.md.');
   await git(source, ['add', '.']); await git(source, ['commit', '-m', '[test] fixture']);
   writeFileSync(join(home, 'auth.json'), JSON.stringify({ tokens: { access_token: 'test-only', refresh_token: 'test-only', id_token: 'test-only', account_id: 'fixture' } }));
   const registry = createAgentRegistry(join(root, 'registry.json')), input = specialistInput();

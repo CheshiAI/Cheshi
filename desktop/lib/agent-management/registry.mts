@@ -3,8 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { workerOperations } from './operations.mts';
-import { parseDeleteSpecialistAgent, parseSaveSpecialistAgent, parseSpecialistAgents } from '../../shared/agent-registry.ts';
+import { agentDisplayName, parseDeleteSpecialistAgent, parseSaveSpecialistAgent, parseSpecialistAgents } from '../../shared/agent-registry.ts';
 import type { AgentRegistrySnapshot, SpecialistAgent } from '../../shared/agent-registry.ts';
+import { parseAgentPackage, type AgentPackage } from '../../shared/agent-package.ts';
 
 const MAX_REGISTRY_BYTES = 16 * 1024 * 1024;
 function assertRegistrySize(bytes: number): void {
@@ -47,6 +48,17 @@ export function createAgentRegistry(filename: string) {
   }
   return {
     snapshot,
+    applySource(id: string, revision: number, definition: AgentPackage) {
+      const agents = read(), agent = agents.find(a => a.id === id);
+      if (!agent || agent.revision !== revision) throw new Error('Homie settings changed. Reload and retry.');
+      const pack = parseAgentPackage(definition);
+      const next = { ...agent, name: pack.name, role: pack.role, ...pack.model, instructions: pack.instructions, package: pack };
+      if (agents.some(a => a.id !== id && agentDisplayName(a).toLowerCase() === agentDisplayName(next).toLowerCase())) throw new Error('Another Homie already uses this name.');
+      if (JSON.stringify(next) === JSON.stringify(agent)) return agent;
+      next.revision++; next.updatedAt = new Date().toISOString();
+      write(parseSpecialistAgents(agents.map(a => a.id === id ? next : a)));
+      return next;
+    },
     remove(value: unknown, workspaceRoot: string) {
       const input = parseDeleteSpecialistAgent(value), workspace = root(workspaceRoot), agents = read();
       const previous = agents.find(agent => agent.id === input.id);
@@ -63,7 +75,9 @@ export function createAgentRegistry(filename: string) {
       if (input.id && (!previous || previous.revision !== input.revision)) {
         throw new Error('This agent was changed in another window. Reopen its settings before saving.');
       }
-      if (agents.some(agent => agent.id !== input.id && agent.name.toLocaleLowerCase() === input.profile.name.toLocaleLowerCase())) {
+      const displayName = input.profile.displayName ?? previous?.displayName;
+      if (agents.some(agent => agent.id !== input.id && agentDisplayName(agent).toLowerCase()
+        === agentDisplayName({ ...input.profile, displayName }).toLowerCase())) {
         throw new Error('An agent with this name already exists.');
       }
       const now = new Date().toISOString();
@@ -73,7 +87,7 @@ export function createAgentRegistry(filename: string) {
       const projectFiles = input.assignment.instructionFiles ?? previous?.assignments.find(item => item.workspaceRoot === workspace)?.instructionFiles;
       if (input.assignment.assigned) assignments.push({ ...(permissions ? { permissions } : {}), workspaceRoot: workspace, instructions: input.assignment.instructions,
         ...(projectFiles === undefined ? {} : { instructionFiles: projectFiles }) });
-      const agent: SpecialistAgent = { ...input.profile, package: input.profile.package ?? previous?.package, instructionFiles: input.profile.instructionFiles ?? previous?.instructionFiles,
+      const agent: SpecialistAgent = { ...input.profile, ...(displayName === undefined ? {} : { displayName }), package: input.profile.package ?? previous?.package, instructionFiles: input.profile.instructionFiles ?? previous?.instructionFiles,
         avatar: input.profile.avatar ?? previous?.avatar ?? randomAgentAvatar(), id: previous?.id ?? randomUUID(), revision: (previous?.revision ?? 0) + 1,
         createdAt: previous?.createdAt ?? now, updatedAt: now, assignments };
       const next = parseSpecialistAgents([...agents.filter(item => item.id !== agent.id), agent]);

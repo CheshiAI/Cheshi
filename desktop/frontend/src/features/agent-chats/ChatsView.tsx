@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDown, Bot, Phone } from 'lucide-react';
+import { ArrowDown, Phone, Plus } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { EmptyState, NeumorphicButton, RegionalBlur, SlidingSidePanel } from '../../shared/ui';
 import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
@@ -13,7 +13,7 @@ import { syncChatComposerOverlayHeight } from '../chat/chatComposerOverlay';
 import { verificationReview, verificationReportContext, type VerificationReview } from './verificationReviewModel';
 import { isRoomWorkSettled, type AgentChatsApi, type ChatsRequest, type RoomMessage } from '../../../../shared/agent-chats';
 import { resolveChatRecipient, resolveRoomMemberNames } from '../../../../shared/agent-chat-recipient';
-import type { AgentRegistryApi } from '../../../../shared/agent-registry';
+import { agentDisplayName, type AgentRegistryApi } from '../../../../shared/agent-registry';
 import { DELETED_HOMIE, useRoomAgents } from './useRoomAgents';
 import type { AgentEngineInfo, AgentManagementApi } from '../../../../shared/agent-management';
 import { useChatsSnapshot } from './useChatsSnapshot';
@@ -31,10 +31,10 @@ import styles from './ChatsView.module.css';
 import { useRoomTimeline } from './useRoomTimeline';
 import { useChatsScroll } from './useChatsScroll';
 
-export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpenRoom, onManageHomies, homiesOpen = false, onHomiesTarget, onCloseHomies, reviewedMessageId, onReviewFileChanges, reviewedVerificationId, onReviewVerification, api = cheshiDesktop?.agentChats,
+export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpenRoom, onManageHomies, homiesOpen = false, selectedHomieId, homiesBusy = false, onHomiesTarget, onCloseHomies, reviewedMessageId, onReviewFileChanges, reviewedVerificationId, onReviewVerification, api = cheshiDesktop?.agentChats,
   registry = cheshiDesktop?.agentRegistry, management = cheshiDesktop?.agentManagement }: {
   active: boolean; sidebarTarget?: HTMLElement | null; sidebarActive?: boolean; onOpenRoom?(): void; onManageHomies?(agentId?: string, roomId?: string): void;
-  homiesOpen?: boolean; onHomiesTarget?(target: HTMLDivElement | null): void; onCloseHomies?(): void;
+  homiesOpen?: boolean; selectedHomieId?: string | null; homiesBusy?: boolean; onHomiesTarget?(target: HTMLDivElement | null): void; onCloseHomies?(): void;
   reviewedMessageId?: string; onReviewFileChanges?: (item: ChatActivityItem | null, path?: string) => void;
   reviewedVerificationId?: string; onReviewVerification?: (review: VerificationReview | null, open?: boolean) => void;
   api?: AgentChatsApi; registry?: Pick<AgentRegistryApi, 'list' | 'onDidChange'>; management?: Pick<AgentManagementApi, 'engines'>;
@@ -56,17 +56,29 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     return () => panel.removeEventListener('keydown', closeOnEscape);
   }, [active, homiesOpen, onCloseHomies]);
   const toolsRailRef = useRef<HTMLElement>(null);
+  const railScrollbar = useAutoHideScrollbars<HTMLDivElement>();
   const wasHomiesOpen = useRef(homiesOpen);
   useEffect(() => {
     if (active && wasHomiesOpen.current && !homiesOpen) {
-      toolsRailRef.current?.querySelector<HTMLButtonElement>('[aria-label="Manage Homies"]')?.focus();
+      toolsRailRef.current?.querySelector<HTMLButtonElement>('[aria-current="page"], [aria-label="New Homie"]')?.focus();
     }
     wasHomiesOpen.current = homiesOpen;
   }, [active, homiesOpen]);
   const data = useChatsSnapshot(api, active || sidebarActive), { snapshot: savedSnapshot } = data;
+  const workingHomies = useMemo(() => {
+    const working = new Set<string>();
+    for (const message of savedSnapshot.messages) {
+      // Only task anchors carry current execution state; activity rows are historical.
+      if ((message.executionStatus ?? message.status) !== 'running') continue;
+      const agentId = message.sender === 'user' && message.taskId
+        ? message.recipient : message.relatedTask?.agentId;
+      if (agentId) working.add(agentId);
+    }
+    return working;
+  }, [savedSnapshot.messages]);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [replies, setReplies] = useState<Record<string, string | null>>({});
-  const { agents, status: memberStatus } = useRoomAgents(registry, active || sidebarActive);
+  const { agents, allAgents, status: memberStatus } = useRoomAgents(registry, active || sidebarActive);
   const snapshot = useMemo(() => ({ ...savedSnapshot,
     rooms: savedSnapshot.rooms.map(room => resolveRoomMemberNames(room, agents)),
   }), [savedSnapshot, agents]);
@@ -267,7 +279,22 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
               <div id={homiesId} ref={attachHomiesTarget} className={styles.homiesPanelContent} />
             </SlidingSidePanel>
             <aside ref={toolsRailRef} className={styles.toolsRail} aria-label="Room tools">
-              {onManageHomies && <TooltipButton variant="ghost" size="icon" title="Manage Homies" aria-label="Manage Homies" active={homiesOpen} aria-expanded={homiesOpen} aria-controls={homiesId} onClick={() => onManageHomies(undefined, room?.id)}><Bot aria-hidden="true" /></TooltipButton>}
+              {onManageHomies && <>
+                <div ref={railScrollbar} className={styles.homieIcons} role="navigation" aria-label="Homie selection">
+                  {allAgents.map(agent => <TooltipButton key={agent.id} variant="ghost" className={styles.homieIcon}
+                    data-working={workingHomies.has(agent.id) ? 'true' : undefined}
+                    title={agentDisplayName(agent)} aria-label={`Open Homie: ${agentDisplayName(agent)}`}
+                    aria-current={selectedHomieId === agent.id ? 'page' : undefined}
+                    active={homiesOpen && selectedHomieId === agent.id} aria-expanded={homiesOpen && selectedHomieId === agent.id}
+                    aria-controls={homiesId} disabled={homiesBusy} onClick={() => onManageHomies(agent.id, room?.id)}>
+                    <AgentAvatar id={agent.id} avatar={agent.avatar} />
+                  </TooltipButton>)}
+                </div>
+                <TooltipButton variant="ghost" size="icon" className={styles.homieIcon} title="New Homie"
+                  aria-label="New Homie" disabled={homiesBusy} onClick={() => onManageHomies('new', room?.id)}>
+                  <Plus aria-hidden="true" />
+                </TooltipButton>
+              </>}
             </aside>
           </aside>
         </div>

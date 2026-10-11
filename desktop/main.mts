@@ -48,6 +48,9 @@ import { registerAgentManagementIpc } from './lib/agent-management/ipc.mts';
 import { AgentTerminalManager } from './lib/agent-management/terminal.mts';
 import { createAgentRegistry } from './lib/agent-management/registry.mts';
 import { HomieRepositoryProjects } from './lib/agent-management/homie-repository-project.mts';
+import { HomieSources } from './lib/agent-management/homie-sources.mts';
+import { AGENT_REGISTRY_CHANNELS } from './shared/agent-registry.ts';
+import { existsSync } from 'node:fs';
 import { WorkspaceProjectStore } from './lib/workspace-project-store.mts';
 import { registerAgentRegistryIpc } from './lib/agent-management/registry-ipc.mts';
 import { findAppRelease } from './lib/app-release-checker.mts';
@@ -101,6 +104,8 @@ const agentManagement: ReturnType<typeof createAgentManagementService> = createA
   pendingDeletions: engineId => agentDeletion.pending(engineId) });
 const agentRegistry = createAgentRegistry(path.join(app.getPath('userData'), 'agents', 'registry.json'));
 const homieRepositories = new HomieRepositoryProjects({ stateDirectory: path.join(app.getPath('userData'), 'agents', 'repositories') });
+const homieSources = new HomieSources({ directory: path.join(app.getPath('userData'), 'agents', 'sources'),
+  repositories: homieRepositories, registry: agentRegistry });
 const agentDeletion = createAgentDeletion({ directory: path.join(app.getPath('userData'), 'agents', 'deletions'),
   runtimeDirectory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement });
 const platformChats = createPlatformChats({ directory: path.join(app.getPath('userData'), 'agents', 'platform'),
@@ -125,6 +130,8 @@ const codeGraphCommand = createCodeGraphCommands({ packaged: app.isPackaged, res
 const codeGraphDataRoot = resolveCodeGraphDataRoot() ?? app.getPath('userData');
 const codeGraphSynchronization = createCodeGraphSynchronization({ command: codeGraphCommand, dataRoot: codeGraphDataRoot });
 const specialistRuntime = createSpecialistRuntime({
+  prepareSource: (workspace, id) => homieSources.prepare(workspace, id),
+  sourceApplied: (workspace, id, engine, hash) => homieSources.applied(workspace, id, engine, hash),
   workspaceDirectory: path.join(app.getPath('userData'), 'agents', 'platform'),
   rooms: agentChats.rooms,
   toolCredential: (origin, name) => toolCredentials.get(origin, name),
@@ -301,8 +308,18 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
       agentChatsIpc = registerAgentChatsIpc({ window, ipc: options.scope.ipc, workspaceRoot: options.workspaceRoot, service: agentChats });
       agentRegistryIpc = registerAgentRegistryIpc({ window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot,
+        saveSettings: (input, assertAvailable) => homieSources.saveSettings(options.workspaceRoot, input, assertAvailable),
+        source: async input => {
+          const state = await homieSources.status(options.workspaceRoot, input.agentId, input.engineId, input.action === 'use-files');
+          if (input.action === 'open' && state.directory) {
+            await new WorkspaceProjectStore(app.getPath('userData'), options.workspaceRoot).add(state.directory);
+            window.webContents.send(AGENT_REGISTRY_CHANNELS.repositoryReady);
+          }
+          return state;
+        },
         prepareCreation: async agent => {
-          const repository = await homieRepositories.ensure(agent);
+          const local = await homieRepositories.local(agent.id);
+          const repository = local && existsSync(local.directory) ? local : await homieRepositories.ensure(agent);
           await new WorkspaceProjectStore(app.getPath('userData'), options.workspaceRoot).add(repository.directory);
         },
         testTool: input => specialistRuntime.testTool(options.workspaceRoot, input),

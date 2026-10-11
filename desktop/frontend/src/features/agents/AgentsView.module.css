@@ -43,6 +43,9 @@
 }
 .agentRow:has(> .participationCheckbox) .agent { padding-left: 0; }
 .agentName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inlineSettings { min-width: 0; border-bottom: 1px solid var(--divider); }
+.inlineSettings .detailsPane, .inlineSettings .settingsPane { flex: none; overflow: visible; }
+.inlineSettings .detailHeader { flex-wrap: wrap; }
 .detailsPane { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 .name { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-label); font-weight: 600; }
 .detailHeader > span { flex-shrink: 0; }
@@ -63,11 +66,13 @@
 
 .recovery { display: flex; flex: 1 0 var(--sidebar-width); min-height: 0; }
 
-.detailHeader[data-inline='true'] { padding: 0; border: 0; width: 100%; }
+.detailHeader[data-inline='true'] { padding: 0; border: 0; width: 100%; flex-direction: column; align-items: stretch; gap: var(--space-default); }
 .detailHeader[data-inline='true'] .runtimeActions { flex-wrap: wrap; }
 
 .workerActions { display: flex; flex: 0 0 auto; align-items: center; gap: var(--icon-default); }
-.containerIndicator { display: inline-flex; flex: 0 0 var(--icon-button-size); align-items: center; justify-content: center; width: var(--icon-button-size); height: var(--icon-button-size); border-radius: 50%; background: var(--control-surface); color: var(--text); }
+.runtimeControlSlot { display: contents; }
+.containerIndicator { display: inline-flex; flex: 0 0 var(--icon-button-size); align-items: center; justify-content: center; width: var(--icon-button-size); height: var(--icon-button-size); border-radius: 50%; background: var(--control-surface-ghost); color: var(--text); }
+.containerIndicator:hover { background: var(--control-surface-interactive); }
 .containerIndicator > svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); stroke-width: var(--icon-button-stroke-width); }
 
 .participationCheckbox { flex: 0 0 auto; margin-left: var(--space-default); }
@@ -76,3 +81,24 @@
 .participation p { margin: 0; color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
 .roomName, .participation > label { font-size: var(--font-size-small); font-weight: 400; color: var(--sidebar-section-label-color); }
 .roomName { overflow-wrap: anywhere; }
+
+.runtimeSection { display: flex; align-items: center; gap: var(--icon-default); min-width: 0; min-height: 36px; width: 100%; }
+.detailHeader .runtimeSection > h3 { flex: 0 0 auto; margin: 0; min-height: 0; font-size: var(--font-size-small); font-weight: 400; color: var(--text); }
+.runtimeSection > :last-child { flex: 1; min-width: 0; width: 0; }
+.runtimeSection > .runtimeActions { margin-left: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+.agentList[data-detail='true'] { display: flex; flex-direction: column; overflow: hidden; }
+.selectedHomie { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.inlineSettings[data-fill='true'] { display: flex; flex: 1; min-height: 0; border-bottom: 0; }
+.inlineSettings[data-fill='true'] .detailsPane, .inlineSettings[data-fill='true'] .settingsPane { flex: 1; overflow: hidden; }
+
+.headerIdentity { display: flex; flex: 1; align-items: center; gap: var(--icon-default); min-width: 0; margin: 0; color: var(--text); font-size: var(--font-size-label); font-weight: 400; }
+.headerIdentity > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.statusAvatar { position: relative; display: inline-flex; flex: 0 0 auto; }
+.statusBadge { position: absolute; right: -3px; bottom: -3px; display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; border-radius: 50%; background: var(--control-surface); color: var(--text); }
+.statusBadge > svg { width: 9px; height: 9px; stroke-width: var(--icon-button-stroke-width); }
+.homieMenu [role='menuitem'] > span { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.homieMenu [role='menuitem'] { height: auto; min-height: 32px; padding-block: var(--space-8); }
+
+.participation .participationChoice { flex-direction: row; align-items: center; }
+.participationChoice > .participationCheckbox { margin-left: 0; }

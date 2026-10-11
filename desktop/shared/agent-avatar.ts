@@ -1,3 +1,4 @@
+import { parseAvatarImage } from './agent-avatar-image.ts';
 export const AGENT_AVATAR_CHARACTERS = [
   'sprout', 'orbit', 'bolt', 'comet', 'nova', 'lunar', 'radar', 'rocket',
   'cosmo', 'pixel', 'spark', 'aster', 'moss', 'coral', 'pebble', 'puff',
@@ -9,7 +10,7 @@ export const AGENT_AVATAR_COLORS = {
 } as const;
 export type AgentAvatarCharacter = typeof AGENT_AVATAR_CHARACTERS[number];
 export type AgentAvatarColor = keyof typeof AGENT_AVATAR_COLORS;
-export interface AgentAvatarValue { character: AgentAvatarCharacter; color: AgentAvatarColor }
+export interface AgentAvatarValue { character: AgentAvatarCharacter; color: AgentAvatarColor; image?: string }
 export const AGENT_AVATAR_COLOR_NAMES = Object.keys(AGENT_AVATAR_COLORS) as AgentAvatarColor[];
 
 export function parseAgentAvatar(value: unknown): AgentAvatarValue {
@@ -17,7 +18,8 @@ export function parseAgentAvatar(value: unknown): AgentAvatarValue {
   const avatar = value as Record<string, unknown>;
   if (!AGENT_AVATAR_CHARACTERS.some(character => character === avatar.character)
     || !AGENT_AVATAR_COLOR_NAMES.some(color => color === avatar.color)) throw new TypeError('Invalid agent icon.');
-  return { character: avatar.character as AgentAvatarCharacter, color: avatar.color as AgentAvatarColor };
+  return { character: avatar.character as AgentAvatarCharacter, color: avatar.color as AgentAvatarColor,
+    ...(avatar.image === undefined ? {} : { image: parseAvatarImage(avatar.image) }) };
 }
 function fromIndex(index: number): AgentAvatarValue {
   return { character: AGENT_AVATAR_CHARACTERS[index % AGENT_AVATAR_CHARACTERS.length]!,

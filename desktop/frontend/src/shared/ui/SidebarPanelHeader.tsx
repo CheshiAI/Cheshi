@@ -23,15 +23,16 @@ export function SidebarPanelTitle({ icon, title, description, count, as: Tag = '
   </Tag>;
 }
 
-export function SidebarPanelHeader({ icon, title, description, count, actions }: {
+export function SidebarPanelHeader({ icon, title, titleContent, description, count, actions }: {
   icon?: ReactNode;
   title: string;
   description?: string;
   count?: number;
   actions?: ReactNode;
+  titleContent?: ReactNode;
 }) {
   return <TieredHeader className={styles.header} primary={<>
-    <SidebarPanelTitle icon={icon} title={title} description={description} count={count} />
+    {titleContent ?? <SidebarPanelTitle icon={icon} title={title} description={description} count={count} />}
     {actions && <div className={styles.actions}>{actions}</div>}
   </>} />;
 }

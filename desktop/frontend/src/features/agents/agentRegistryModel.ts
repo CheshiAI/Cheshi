@@ -1,5 +1,6 @@
 import type { AgentRegistryApi, AgentRegistrySnapshot, SaveSpecialistAgent, DeleteSpecialistAgent, SpecialistAgent } from '../../../../shared/agent-registry';
 import type { AgentRuntimeRequest, AgentRuntimeState } from '../../../../shared/agent-runtime';
+import { HomieCatalog } from './homieCatalog';
 
 function workerStartError(result: AgentRuntimeState): string | null {
   return result.unavailable?.message ?? result.lifecycle?.error ?? result.details?.error
@@ -11,6 +12,7 @@ export interface AgentRegistryState {
   starting?: boolean;
 }
 export class AgentRegistryModel {
+  readonly catalog: HomieCatalog;
   private readonly api: AgentRegistryApi;
   private readonly unsubscribe: () => void;
   private readonly listeners = new Set<() => void>();
@@ -20,12 +22,17 @@ export class AgentRegistryModel {
   private publication = 0;
   constructor(api: AgentRegistryApi) {
     this.api = api;
+    this.catalog = new HomieCatalog(id => api.models(id));
     this.unsubscribe = api.onDidChange(data => {
       this.request++; this.publication++;
       this.publish({ data, loading: false, error: null });
     });
   }
   snapshot = () => this.state;
+  source = (input: import('../../../../shared/homie-source').HomieSourceRequest) => {
+    if (!this.api.source) return Promise.reject(new Error('Restart Cheshi to use repository configuration.'));
+    return this.api.source(input);
+  };
   runtime = async (request: AgentRuntimeRequest) => {
     if (!this.api.runtime) throw new Error('Agent runtime is unavailable. Restart Cheshi.');
     const result = await this.api.runtime(request);
@@ -36,7 +43,6 @@ export class AgentRegistryModel {
   };
   toolCredential = (input: import('../../../../shared/homie-tools').ToolCredentialRequest) => this.api.toolCredential?.(input) ?? Promise.reject(new Error('Restart Cheshi to configure tool credentials.'));
   testTool = (input: import('../../../../shared/homie-tools').ToolTestRequest) => this.api.testTool?.(input) ?? Promise.reject(new Error('Restart Cheshi to test tools.'));
-  models = (accountId: string) => this.api.models(accountId);
   installPackage = (definition: import('../../../../shared/agent-package').AgentPackage, instructionFiles: string[] = []) => {
     if (!this.api.installPackage) return Promise.reject(new Error('Pack installation is unavailable. Restart Cheshi.'));
     return this.api.installPackage(definition, instructionFiles);
@@ -49,14 +55,6 @@ export class AgentRegistryModel {
   importPackage = () => {
     if (!this.api.importPackage) return Promise.reject(new Error('Package import is unavailable. Restart Cheshi.'));
     return this.api.importPackage();
-  };
-  selectInstructionFiles = () => {
-    if (!this.api.selectInstructionFiles) return Promise.reject(new Error('Instruction file selection is unavailable. Restart Cheshi.'));
-    return this.api.selectInstructionFiles();
-  };
-  openInstructionFile = (path: string) => {
-    if (!this.api.openInstructionFile) return Promise.reject(new Error('Opening instruction files is unavailable. Restart Cheshi.'));
-    return this.api.openInstructionFile(path);
   };
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<AgentRegistryState>) {
@@ -133,5 +131,5 @@ export class AgentRegistryModel {
       throw error;
     }
   }
-  dispose() { this.active = false; this.request++; this.unsubscribe(); this.listeners.clear(); }
+  dispose() { this.active = false; this.request++; this.unsubscribe(); this.listeners.clear(); this.catalog.dispose(); }
 }

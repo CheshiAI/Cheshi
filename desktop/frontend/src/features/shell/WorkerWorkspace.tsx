@@ -20,6 +20,8 @@ export function WorkerWorkspace({ ref, view, onBeforeOpenHomies, api, registryAp
 }) {
   const [homies, setHomies] = useState<{ agentId: string | null; roomId?: string } | null>(null);
   const [editing, setEditing] = useState(false);
+  const [selectedHomieId, setSelectedHomieId] = useState<string | null>(null);
+  const [homiesBusy, setHomiesBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [listTarget, setListTarget] = useState<HTMLDivElement | null>(null);
   const closeHomies = useCallback(() => { setHomies(null); setEditing(false); setOpen(false); }, []);
@@ -29,19 +31,21 @@ export function WorkerWorkspace({ ref, view, onBeforeOpenHomies, api, registryAp
     if (value) setOpen(true);
   }, []);
   const manage = (agentId?: string, roomId?: string) => {
-    if (!agentId && homies && !editing && open) { setOpen(false); return; }
+    if (homiesBusy) return;
+    if ((!agentId || agentId === selectedHomieId) && homies && !editing && open) { setOpen(false); return; }
     onBeforeOpenHomies();
-    setEditing(Boolean(agentId)); setOpen(true);
+    setEditing(false); setOpen(true);
     setHomies({ agentId: agentId ?? null, ...(roomId ? { roomId } : {}) });
   };
   return <>
     <ChatsView {...conversation} api={api} registry={registryApi} management={managementApi}
       active={view === 'chats' && !(homies && editing)} onManageHomies={manage}
-      homiesOpen={homies !== null && !editing && open}
-      onHomiesTarget={setListTarget} onCloseHomies={() => setOpen(false)} />
+      homiesOpen={homies !== null && !editing && open} selectedHomieId={selectedHomieId} homiesBusy={homiesBusy}
+      onHomiesTarget={setListTarget} onCloseHomies={() => { if (!homiesBusy) setOpen(false); }} />
     <AgentManagementViews api={managementApi} registryApi={registryApi} chatsApi={api}
+      active={view === 'docker' || editing || open}
       view={view === 'docker' ? 'docker' : view === 'chats' && homies ? 'homies' : null}
-      listTarget={listTarget} onEditingChange={onEditingChange} selectionRequest={homies ?? undefined}
+      listTarget={listTarget} onSelectionChange={setSelectedHomieId} onBusyChange={setHomiesBusy} onEditingChange={onEditingChange} selectionRequest={homies ?? undefined}
       onClose={homies ? () => { if (editing) closeHomies(); else setOpen(false); } : undefined} />
   </>;
 }

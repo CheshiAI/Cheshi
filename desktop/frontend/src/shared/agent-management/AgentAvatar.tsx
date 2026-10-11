@@ -5,6 +5,9 @@ import styles from './AgentAvatar.module.css';
 
 export function AgentAvatar({ avatar, id = '', preview = false }: { avatar?: AgentAvatarValue; id?: string; preview?: boolean }) {
   const value = avatar ?? defaultAgentAvatar(id);
+  if (value.image) return <span className={styles.avatar} data-preview={preview || undefined} data-agent-avatar="image" aria-hidden="true">
+    <img src={value.image} alt="" draggable={false} />
+  </span>;
   const pixels = agentAvatarPixels[value.character].flatMap((row, y) => Array.from({ length: 11 }, (_, x) =>
     row & (1 << (10 - x)) ? { x: x + 1, y: y + 1 } : null).filter(pixel => pixel !== null));
   const xs = pixels.map(pixel => pixel.x), ys = pixels.map(pixel => pixel.y);

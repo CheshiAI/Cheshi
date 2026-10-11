@@ -5,7 +5,7 @@ export function specialistInput(): SaveSpecialistAgent {
   return { id: null, revision: null,
     profile: { name: 'Development', role: 'development', instructions: 'Implement approved changes and verify them.',
       accountId: null, model: null, reasoningEffort: null, serviceTier: null, permissions: { fileWrite: false, commandExecution: false } },
-    assignment: { assigned: true, instructions: 'Follow this project’s AGENTS.md.' } };
+    assignment: { assigned: true, instructions: '' } };
 }
 export function specialistModels(): AgentModel[] {
   return [{ id: 'fixture', model: 'model-fixture', displayName: 'Fixture model', description: 'Model fixture', isDefault: true,

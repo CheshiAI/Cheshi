@@ -19,7 +19,8 @@ async function fails(operation: Promise<unknown>, message: string) {
   try { await operation; } catch (reason) { error = reason; }
   expect(error).toBeInstanceOf(Error); expect((error as Error).message).toContain(message);
 }
-function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string) => Promise<void>, withCodeGraph = false) {
+function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string) => Promise<void>, withCodeGraph = false,
+  source: Pick<Parameters<typeof createSpecialistRuntime>[0], 'prepareSource' | 'sourceApplied'> = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'cheshi-runtime-')); directories.push(directory);
   const project = join(directory, 'project'), home = join(directory, 'account');
   mkdirSync(project); mkdirSync(home);
@@ -72,7 +73,7 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
   const details = (): AgentDetails => ({ agent: { id, name: 'worker', image: 'worker', state },
     ready: seeded, busy, authenticated: true, threadId: null, error: null, logs: '', tasks });
   const exchanges: unknown[] = [];
-  const runtime = createSpecialistRuntime({ prepareCodeGraph, getProjectDocMaxBytes: () => projectDocMaxBytes, directory: join(directory, 'runtime'), buildContext: '/build', registry, run, checkProjectEnvironment: async () => {},
+  const runtime = createSpecialistRuntime({ ...source, prepareCodeGraph, getProjectDocMaxBytes: () => projectDocMaxBytes, directory: join(directory, 'runtime'), buildContext: '/build', registry, run, checkProjectEnvironment: async () => {},
     codegraph: withCodeGraph ? async () => ({ result: 'fixture' }) : undefined,
     lifecycleControl: async () => ({ protocol: 1, idle: false, nextWakeAt: null }),
     collaborationExchange: async (_connection, body) => { exchanges.push(body); return { protocol: 1, received: [], outgoing: [] }; },
@@ -147,22 +148,23 @@ test('required package tools are checked before Docker operations', async () => 
 
 test('package instructions reach the worker and updates wait for explicit Start', async () => {
   const f = fixture(false, undefined, true);
+  writeFileSync(join(f.workspace, 'AGENTS.md'), 'Local project rules.');
   let agent = f.registry.snapshot(f.workspace).agents[0]!;
   const [definition] = await officialAgentPackages();
   agent = f.registry.save({ id: agent.id, revision: agent.revision,
     profile: { ...agent, instructions: definition!.instructions, package: definition },
-    assignment: { assigned: true, instructions: 'Local project rules.' } }, f.workspace).snapshot.agents[0]!;
+    assignment: { assigned: true, instructions: '' } }, f.workspace).snapshot.agents[0]!;
   try {
     await f.runtime.request(f.workspace, f.request());
     const configured = () => JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8'));
-    expect(configured().instructions).toBe(`${definition!.instructions}\n\nProject instructions:\nLocal project rules.`);
+    expect(configured().instructions).toBe(`${definition!.instructions}\n\nProject instructions (AGENTS.md):\nLocal project rules.`);
     expect(configured().codegraphProtocol).toBe(1);
     f.registry.save({ id: agent.id, revision: agent.revision,
       profile: { ...agent, instructions: 'Updated package instructions', package: { ...definition!, version: '1.1.0', instructions: 'Updated package instructions' } },
-      assignment: { assigned: true, instructions: 'Local project rules.' } }, f.workspace);
+      assignment: { assigned: true, instructions: '' } }, f.workspace);
     expect(configured().instructions).toContain(definition!.instructions);
     await f.runtime.request(f.workspace, f.request());
-    expect(configured().instructions).toBe('Updated package instructions\n\nProject instructions:\nLocal project rules.');
+    expect(configured().instructions).toBe('Updated package instructions\n\nProject instructions (AGENTS.md):\nLocal project rules.');
     expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(2);
   } finally { f.runtime.dispose(); }
 });
@@ -277,7 +279,7 @@ test('starts one project worker with isolated storage, readonly mount, private a
   expect(config.recoveryProtocol).toBe(3);
   expect(config.verificationProtocol).toBe(1); expect(config.candidateVerificationProtocol).toBe(1); expect(config.applicationProtocol).toBe(1);
   expect(config.permissions).toEqual({ fileWrite: false, commandExecution: false });
-  expect(config.instructions).toContain('Project instructions:');
+  expect(config.instructions).toBe(specialistInput().profile.instructions);
   expect(config).not.toHaveProperty('tokens');
   expect(f.calls.map(call => call.args.join(' ')).join('\n')).not.toContain('fixture-access');
   expect(f.calls.find(call => call.input)?.input).toContain('fixture-access');
@@ -422,22 +424,20 @@ test('changing only the avatar does not invalidate or recreate a running worker'
   const f = fixture(); await f.runtime.request(f.workspace, f.request());
   const agent = f.registry.snapshot(f.workspace).agents[0]!;
   f.registry.save({ id: agent.id, revision: agent.revision, profile: { ...agent, avatar: { character: 'crab', color: 'pink' } },
-    assignment: { assigned: true, instructions: 'Follow this project’s AGENTS.md.' } }, f.workspace);
+    assignment: { assigned: true, instructions: '' } }, f.workspace);
   expect((await f.runtime.request(f.workspace, { ...f.request(), action: 'status' })).details?.error).toBeNull();
   await f.runtime.request(f.workspace, f.request());
   expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(1);
   expect(f.calls.some(call => call.args.includes('rm'))).toBe(false);
 });
 
-test('Start rereads linked instructions and refreshes the worker without rewriting source files', async () => {
+test('Start rereads project AGENTS.md and refreshes the worker without rewriting source files', async () => {
   const f = fixture(), common = join(f.home, 'common.md'), project = join(f.workspace, 'AGENTS.md');
   writeFileSync(common, 'Common rules'); writeFileSync(project, 'Project first');
-  const agent = f.registry.snapshot(f.workspace).agents[0]!;
-  f.registry.save({ id: agent.id, revision: agent.revision, profile: { ...agent, instructionFiles: [common] },
-    assignment: { assigned: true, instructions: 'Project text', instructionFiles: [project] } }, f.workspace);
+
   await f.runtime.request(f.workspace, f.request());
   const installed = () => JSON.parse(f.calls.filter(call => call.input).at(-1)!.input!).configuration;
-  expect(installed().instructions).toContain('Common rules'); expect(installed().instructions).toContain('Project first');
+  expect(installed().instructions).not.toContain('Common rules'); expect(installed().instructions).toContain('Project first');
   const previous = installed().revision;
   await f.runtime.request(f.workspace, f.request());
   expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(1);
@@ -449,7 +449,7 @@ test('Start rereads linked instructions and refreshes the worker without rewriti
   expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(2);
   expect(readFileSync(common, 'utf8')).toBe('Common rules'); expect(readFileSync(project, 'utf8')).toBe('Project second');
   const calls = f.calls.length;
-  rmSync(project);
+  writeFileSync(project, Buffer.from([0xff]));
   await fails(f.runtime.request(f.workspace, f.request()), project);
   expect(f.calls).toHaveLength(calls); // Read failure precedes even Docker discovery, let alone stop/remove.
   expect((await f.runtime.request(f.workspace, { ...f.request(), action: 'status' })).details?.ready).toBe(true);
@@ -457,9 +457,7 @@ test('Start rereads linked instructions and refreshes the worker without rewriti
 
 test('unreadable files block first startup and changed instruction files cannot replace a busy worker', async () => {
   const f = fixture(), path = join(f.workspace, 'AGENTS.md');
-  const agent = f.registry.snapshot(f.workspace).agents[0]!;
-  f.registry.save({ id: agent.id, revision: agent.revision, profile: agent,
-    assignment: { assigned: true, instructions: '', instructionFiles: [path] } }, f.workspace);
+  writeFileSync(path, Buffer.from([0xff]));
   await fails(f.runtime.request(f.workspace, f.request()), path); expect(f.calls).toHaveLength(0);
   writeFileSync(path, 'first'); await f.runtime.request(f.workspace, f.request());
   f.setBusy(); writeFileSync(path, 'second');
@@ -739,5 +737,32 @@ test('explicit Start replaces workers that still advertise the retired history p
     await f.runtime.request(f.workspace, f.request());
     expect(JSON.parse(readFileSync(filename, 'utf8')).historyProtocol).toBeUndefined();
     expect(f.calls.filter(c => c.args.includes('create')).length).toBe(before + 1);
+  } finally { await f.runtime.dispose(); }
+});
+
+test('file configuration is loaded before start and marked applied only after a ready worker', async () => {
+  let instructions = 'Instructions from repository files.', fail = false;
+  const applied: string[] = [];
+  const f = fixture(false, undefined, false, {
+    prepareSource: async workspace => {
+      if (fail) throw new Error('agent.json: invalid repository definition.');
+      const agent = f.registry.snapshot(workspace).agents[0]!;
+      f.registry.save({ id: agent.id, revision: agent.revision, profile: { ...agent, instructions },
+        assignment: { ...agent.assignments[0]!, assigned: true } }, workspace);
+      return { hash: instructions };
+    }, sourceApplied: async (_workspace, _id, _engine, hash) => { applied.push(hash); },
+  });
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    expect(JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8')).instructions).toContain(instructions);
+    expect(applied).toEqual([instructions]);
+    const calls = f.calls.length;
+    fail = true;
+    await fails(f.runtime.request(f.workspace, f.request()), 'invalid repository');
+    expect(f.calls).toHaveLength(calls); expect(applied).toHaveLength(1);
+    fail = false; f.setBusy(); instructions = 'Changed while busy.';
+    await fails(f.runtime.request(f.workspace, f.request()), 'Wait for this worker');
+    expect(applied).toHaveLength(1);
+    expect(f.calls.slice(calls).some(call => call.args.includes('stop') || call.args.includes('rm'))).toBe(false);
   } finally { await f.runtime.dispose(); }
 });

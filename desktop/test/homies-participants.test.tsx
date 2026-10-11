@@ -37,18 +37,22 @@ function fixture() {
 const checkbox = (name: string) => document.querySelector<HTMLInputElement>(`[aria-label="Participate: ${name}"]`)!;
 const selection = { agentId: null, roomId: 'room' };
 
-test('Homies edits participation in its list, saves additions and removals, and keeps settings central', async () => {
+test('Homies retains participation drafts while switching between full-height sidebar settings', async () => {
   const f = fixture();
   await withDOM(async ui => {
-    await ui.render(<AgentManagementViews view="homies" selectionRequest={selection} {...f} />);
+    const target = document.createElement('aside');
+    document.body.append(target);
+    const render = (agentId: string) => ui.render(<AgentManagementViews view="homies" listTarget={target}
+      selectionRequest={{ agentId, roomId: 'room' }} {...f} />);
+    await render(f.first.id);
     expect(checkbox('Development').checked).toBe(true);
     expect(checkbox('Development').disabled).toBe(false);
+    await render(f.second.id);
     await act(async () => { checkbox('Review').click(); });
     expect(f.requests.every(item => item.action === 'list')).toBe(true);
-    await ui.click('Review');
-    expect(document.querySelector('[aria-label="Agent details"]')).not.toBeNull();
-    await ui.click('All Homies');
+    expect(target.querySelectorAll('[aria-label="Agent details"]').length).toBe(1);
     expect(checkbox('Review').checked).toBe(true);
+    await render(f.first.id);
     await act(async () => { checkbox('Development').click(); });
     await ui.click('Save participants');
     expect(f.requests.filter(item => item.action === 'participants')).toEqual([{
@@ -56,7 +60,8 @@ test('Homies edits participation in its list, saves additions and removals, and 
       expectedMembers: [f.first.id], expectedDefaultAgentId: f.first.id,
     }]);
     expect(checkbox('Development').checked).toBe(false);
-    expect(document.querySelector(`[aria-label="${f.first.name}"]`)).not.toBeNull();
+    expect(target.querySelector('header h2')?.textContent).toBe(f.first.name);
+    await ui.click('More actions: Development');
     expect(document.querySelector('button[aria-label="Delete agent: Development"]')).not.toBeNull();
   });
 });

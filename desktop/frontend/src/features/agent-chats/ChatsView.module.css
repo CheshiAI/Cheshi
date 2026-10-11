@@ -6,7 +6,7 @@
 .conversation { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .body { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .content { --composer-overlay-height: 0px; --composer-overlay-top-padding: 0px; --chat-content-max-width: 100%; --chat-content-padding: var(--space-default); position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
-.toolsRail { display: flex; box-sizing: border-box; width: 42px; flex: 0 0 42px; align-items: center; flex-direction: column; gap: var(--icon-default); border-left: 1px solid var(--divider); padding: var(--space-default) 0; }
+.toolsRail { min-height: 0; display: flex; box-sizing: border-box; width: 42px; flex: 0 0 42px; align-items: center; flex-direction: column; gap: var(--icon-default); border-left: 1px solid var(--divider); padding: 4.5px 0; }
 .participant[data-variant] { display: inline-flex; align-items: center; gap: var(--icon-default); min-width: 0; max-width: 100%; font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
 .participant > :first-child { flex-shrink: 0; }
 .participant > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -69,3 +69,7 @@
 @media (prefers-reduced-motion: reduce) {
   .inspector .homiesStage, .homiesPanel { transition: none; }
 }
+.homieIcons { --scrollbar-size: var(--auto-hide-scrollbar-size); scrollbar-width: auto; scrollbar-color: auto; display: flex; flex: 1; min-height: 0; width: 100%; flex-direction: column; align-items: center; gap: var(--icon-default); overflow: auto; }
+.toolsRail .homieIcon { width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: var(--button-radius); }
+.toolsRail .homieIcon[data-variant='ghost'][data-working='true'] { background: var(--control-surface); }
+.toolsRail .homieIcon[data-working='true']:not(:disabled):is(:hover, :active) { background: var(--control-surface-interactive); }

@@ -8,9 +8,11 @@ import { isCodexAccountId } from '../shared/codex-accounts.ts';
 import { parseInstructionFiles, parseInstructionFilePath } from '../shared/agent-registry.ts';
 import { unwrapAgentDeletion } from '../shared/agent-management.ts';
 import { parseAgentPackage, parseAgentPackages } from '../shared/agent-package.ts';
+import { HOMIE_SOURCE_CHANNEL, parseHomieSourceRequest, parseHomieSourceState } from '../shared/homie-source.ts';
 
 export function createAgentRegistryApi(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>): AgentRegistryApi {
   return {
+    async source(input) { return parseHomieSourceState(await ipc.invoke(HOMIE_SOURCE_CHANNEL, parseHomieSourceRequest(input))); },
     onRepositoryReady(listener) {
       const receive = () => listener();
       ipc.on(AGENT_REGISTRY_CHANNELS.repositoryReady, receive);

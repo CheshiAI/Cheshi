@@ -1,11 +1,10 @@
 import { constants } from 'node:fs';
-import { open, realpath } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { open, realpath, lstat } from 'node:fs/promises';
+import { isAbsolute, join } from 'node:path';
 import { parseInstructionFilePath } from '../../shared/agent-registry.ts';
 import type { SpecialistProfile, SpecialistAssignment } from '../../shared/agent-registry.ts';
 
 const MAX_FILE_BYTES = 256 * 1024;
-const MAX_TOTAL_BYTES = 1024 * 1024;
 function assertReadableFile(isFile: boolean, size: number): void {
   if (!isFile) throw new Error('Not a regular file.');
   if (size > MAX_FILE_BYTES) throw new Error('File exceeds 256 KiB.');
@@ -41,23 +40,26 @@ export async function readInstructionFile(filename: string): Promise<{ path: str
   }
 }
 
-/** Resolve a fresh snapshot before changing any running worker. Never rewrite the source files. */
-export async function resolveAgentInstructions(profile: SpecialistProfile, assignment: SpecialistAssignment): Promise<string> {
-  const seen = new Set<string>();
-  let bytes = 0;
-  const sections = [profile.instructions];
-  const append = async (paths: string[] = []) => {
-    for (const filename of paths) {
-      const file = await readInstructionFile(filename);
-      if (seen.has(file.path)) continue;
-      seen.add(file.path);
-      bytes += Buffer.byteLength(file.content);
-      if (bytes > MAX_TOTAL_BYTES) throw new Error('Linked instruction files exceed 1 MiB in total.');
-      sections.push(`Instruction file: ${filename}\n${file.content}`);
-    }
-  };
-  await append(profile.instructionFiles);
-  sections.push(`Project instructions:\n${assignment.instructions}`);
-  await append(assignment.instructionFiles);
-  return sections.join('\n\n');
+export function assertFileManagedInstructions(profile: Pick<SpecialistProfile, 'instructionFiles'>, assignment?: Pick<SpecialistAssignment, 'instructions' | 'instructionFiles'>): void {
+  if (profile.instructionFiles?.length || assignment?.instructionFiles?.length || assignment?.instructions.trim()) {
+    throw new Error('Legacy instruction overrides need migration to the Homie instructions.md and project AGENTS.md. Saved values are preserved; move them to files and clear the legacy settings before applying or starting.');
+  }
+}
+
+export async function readProjectInstructions(workspace: string): Promise<string | null> {
+  const root = await realpath(workspace), filename = join(root, 'AGENTS.md');
+  let info;
+  try { info = await lstat(filename); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
+  if (info.isSymbolicLink()) throw new Error('AGENTS.md must be a regular file inside the project, without symbolic links.');
+  const file = await readInstructionFile(filename);
+  if (file.path !== filename) throw new Error('AGENTS.md changed location while being read.');
+  return file.content;
+}
+
+/** Read file sources before worker changes; legacy overrides never run invisibly. */
+export async function resolveAgentInstructions(profile: SpecialistProfile, assignment: SpecialistAssignment, project?: string | null): Promise<string> {
+  assertFileManagedInstructions(profile, assignment);
+  const content = project === undefined ? await readProjectInstructions(assignment.workspaceRoot) : project;
+  return content === null ? profile.instructions : `${profile.instructions}\n\nProject instructions (AGENTS.md):\n${content}`;
 }

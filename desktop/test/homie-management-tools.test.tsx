@@ -1,103 +1,134 @@
 import { expect, test } from 'bun:test';
 import { act, useSyncExternalStore } from 'react';
+import type { HomieEditorDraft } from '../frontend/src/features/agents/homieEditorDraft';
 import { SpecialistAgentForm } from '../frontend/src/features/agents/SpecialistAgentForm';
 import { HomieParticipation } from '../frontend/src/features/agents/HomieParticipation';
 import { AgentRegistryModel } from '../frontend/src/features/agents/agentRegistryModel';
 import type { SaveSpecialistAgent } from '../shared/agent-registry';
-import type { AgentPackage } from '../shared/agent-package';
 import type { AgentRoom, ChatsRequest } from '../shared/agent-chats';
-import { specialistAgent } from './agent-registry-fixtures';
+import type { HomieSourceState } from '../shared/homie-source';
+import { registryDeferred, specialistAgent } from './agent-registry-fixtures';
 import { withDOM } from './agent-chats-test-dom';
 
-const field = (label: string) => document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[aria-label="${label}"]`)!;
-const agent = { ...specialistAgent(), model: null, reasoningEffort: null, serviceTier: null,
-  assignments: [{ workspaceRoot: '/project', instructions: 'Project only' }] };
-function fixture(options: { failSave?: boolean; cancelExport?: boolean } = {}) {
-  const saves: SaveSpecialistAgent[] = [], exports: AgentPackage[] = [];
+const agent = { ...specialistAgent(), assignments: [{ workspaceRoot: '/project', instructions: '' }] };
+function fixture(failSave = false) {
+  let currentAgent = agent;
+  const saves: SaveSpecialistAgent[] = [], actions: string[] = [];
   let failed = false;
-  const model = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [agent] }), models: async () => [],
-    onDidChange: () => () => {}, packages: async () => [],
-    save: async input => {
-      if (options.failSave && !failed) { failed = true; throw new Error('Disk unavailable'); }
-      saves.push(input);
-      return { agentId: agent.id, snapshot: { workspaceRoot: '/project', agents: [{ ...agent, ...input.profile, revision: 2 }] } };
-    }, exportPackage: async pack => { exports.push(pack); return !options.cancelExport; },
-    installPackage: async () => { throw new Error('Saving a Homie must not separately install a pack'); },
-  });
-  function Editor({ creating = false }: { creating?: boolean }) {
+  const source: HomieSourceState = { directory: '/homie', phase: 'pending', message: 'Changes pending.', hash: 'a'.repeat(64) };
+  const model = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [currentAgent] }), models: async () => [],
+    source: async input => { actions.push(input.action); return { ...source }; },
+    runtime: async input => { actions.push(input.action); throw new Error('Wait for active work.'); },
+    onDidChange: () => () => {}, save: async input => {
+      if (failSave && !failed) { failed = true; throw new Error('Disk unavailable'); }
+      saves.push(input); return { agentId: agent.id, snapshot: { workspaceRoot: '/project', agents: [{ ...agent, ...input.profile, revision: 2 }] } };
+    } });
+  function Editor({ creating = false, draft, onDraft }: { creating?: boolean; draft?: HomieEditorDraft; onDraft?(value: HomieEditorDraft): void }) {
     const state = useSyncExternalStore(model.subscribe, model.snapshot);
-    return <SpecialistAgentForm agent={creating ? undefined : state.data?.agents[0]} model={model} state={state} />;
+    return <SpecialistAgentForm draft={draft} onDraft={onDraft} agent={creating ? undefined : state.data?.agents[0]} model={model} state={state} engineId="docker:test" />;
   }
-  return { model, saves, exports, Editor };
+  return { model, saves, actions, source, Editor, update: async (next: typeof agent) => { currentAgent = next; await model.refresh(); } };
 }
 
-test('the unified editor saves all sections directly and exports only portable current settings', async () => {
-  const { model, saves, exports, Editor } = fixture();
-  await model.refresh();
-  try {
-    await withDOM(async ui => {
-      await ui.render(<Editor />);
-      expect(document.querySelector('[aria-label="Homie sections"]')).not.toBeNull();
-      expect(document.body.textContent).not.toContain('Apply to Homie');
-      expect(document.body.textContent).not.toContain('Save pack');
-      await ui.type('Agent name', 'Unified Homie');
-      await ui.type('Homie description', 'Reusable reviewer');
-      await ui.click('Instructions');
-      expect(document.querySelector<HTMLElement>('[aria-label="Basic information settings"]')!.hidden).toBe(true);
-      expect(document.querySelector<HTMLElement>('[aria-label="Instruction settings"]')!.hidden).toBe(false);
-      await ui.type('Agent instructions', 'Review current changes.');
-      await ui.type('Project instructions', 'Keep local only.');
-      await ui.click('Skills'); await ui.type('Skill name', 'Check'); await ui.type('Skill description', 'Check changes.');
-      await ui.type('Skill instructions', 'Inspect the diff.'); await ui.click('Add skill');
-      await ui.click('Tools'); await ui.click('Enable codegraph');
-      await ui.click('Allow agent commands');
-      await ui.click('Files and environment'); await ui.click('Add python3'); await ui.click('Add jq');
-      await ui.click('Basic information'); expect(field('Agent name').value).toBe('Unified Homie');
-      await ui.click('Save agent');
-      expect(saves).toHaveLength(1);
-      expect(saves[0]!.profile.package!.resources!.programs).toEqual(['python3', 'jq']);
-      expect(saves[0]!.profile.package!.resources!.files[0]!.content).toContain('Inspect the diff.');
-      expect(saves[0]!.assignment.instructions).toBe('Keep local only.');
-      await ui.click('Instructions'); await ui.type('Agent instructions', 'Latest unsaved instructions.');
-      await ui.click('Homie actions'); await ui.click('Export…');
-      expect(exports).toHaveLength(1);
-      expect(exports[0]!.name).toBe('Unified Homie');
-      expect(exports[0]!.instructions).toBe('Latest unsaved instructions.');
-      expect(exports[0]!.enabledTools).not.toContain('codegraph');
-      expect(exports[0]!.requestedPermissions).toEqual(saves[0]!.assignment.permissions!);
-      expect(exports[0]).not.toHaveProperty('accountId');
-      expect(exports[0]).not.toHaveProperty('assignments');
-      expect(JSON.stringify(exports[0])).not.toContain('Keep local only.');
-      expect(saves).toHaveLength(1);
-    });
-  } finally { model.dispose(); }
+test('an untouched editor refreshes after repository application and saves against the latest revision', async () => {
+  const f = fixture(); await f.model.refresh();
+  try { await withDOM(async ui => {
+    await ui.render(<f.Editor />);
+    await act(async () => f.update({ ...agent, revision: 2, instructions: 'New file instructions',
+      assignments: [{ workspaceRoot: '/project', instructions: '' }] }));
+    expect(document.body.textContent).not.toContain('Your local draft is preserved');
+    expect(document.querySelector('[aria-label="Project instructions"]')).toBeNull();
+    await ui.click('Save local settings'); expect(f.saves[0]?.revision).toBe(2);
+    expect(f.saves[0]?.profile.instructions).toBe('New file instructions');
+  }); } finally { f.model.dispose(); }
 });
 
-test('new Homies use the same section layout without entering a pack editor', async () => {
-  const { model, saves, exports, Editor } = fixture(); await model.refresh();
-  try {
-    await withDOM(async ui => {
-      await ui.render(<Editor creating />);
-      const exportButton = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Export')!;
-      expect(exportButton.disabled).toBe(true);
-      await ui.type('Agent name', 'New Homie');
-      await ui.click('Skills'); await ui.type('Skill name', 'draft');
-      await ui.click('Instructions'); await ui.type('Agent instructions', 'New instructions.');
-      await ui.click('Skills'); expect(field('Skill name').value).toBe('draft');
-      await ui.click('Export');
-      expect(exports).toHaveLength(1);
-      expect(exports[0]!.name).toBe('New Homie');
-      expect(exports[0]!.instructions).toBe('New instructions.');
-      expect(saves).toHaveLength(0);
-      expect(field('Skill name').value).toBe('draft');
-      await ui.click('Create agent');
-      expect(saves[0]!.id).toBeNull();
-      expect(saves[0]!.profile.instructions).toBe('New instructions.');
-      expect(saves[0]!.profile.package!.name).toBe('New Homie');
-    });
-  } finally { model.dispose(); }
+test('unsaved local settings survive external updates and reopening, then refresh after reverting the edit', async () => {
+  const f = fixture(); await f.model.refresh();
+  let draft: HomieEditorDraft | undefined;
+  const remember = (value: HomieEditorDraft) => { draft = value; };
+  try { await withDOM(async ui => {
+    await ui.render(<f.Editor onDraft={remember} />);
+    await ui.click('Allow agent file changes');
+    await act(async () => f.update({ ...agent, revision: 2, instructions: 'Changed in file' }));
+    expect(document.body.textContent).toContain('Your local draft is preserved');
+    await ui.render(null); await ui.render(<f.Editor draft={draft} onDraft={remember} />);
+    expect(document.querySelector('[aria-label="Allow agent file changes"]')?.getAttribute('aria-checked')).toBe('true');
+    await ui.click('Save local settings'); expect(f.saves).toHaveLength(0);
+    await ui.click('Allow agent file changes');
+    expect(document.body.textContent).not.toContain('Your local draft is preserved');
+    await ui.click('Save local settings'); expect(f.saves[0]?.revision).toBe(2);
+  }); } finally { f.model.dispose(); }
 });
 
+test('existing Homies expose repository actions and retain local permissions without portable editors', async () => {
+  const f = fixture(); await f.model.refresh();
+  try { await withDOM(async ui => {
+    await ui.render(<f.Editor />);
+    expect(document.querySelector('[aria-label="Agent instructions"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Agent name"]')).toBeNull();
+    expect(document.body.textContent).not.toContain('Project instruction overrides');
+    expect(document.body.textContent).not.toContain('Link MD files');
+    await ui.click('Allow agent commands'); await ui.click('Allow agent file changes');
+    await ui.click('Save local settings');
+    expect(f.saves[0]?.assignment.permissions?.commandExecution).toBe(true);
+    expect(f.saves[0]?.assignment.instructions).toBe('');
+    expect(f.saves[0]?.assignment.instructionFiles).toBeUndefined();
+    expect(f.saves[0]?.profile.instructions).toBe(agent.instructions);
+    expect(f.actions).not.toContain('start');
+  }); } finally { f.model.dispose(); }
+});
+
+test('applying files reports busy workers and never claims successful application', async () => {
+  const f = fixture(); await f.model.refresh();
+  const pending = registryDeferred<Awaited<ReturnType<AgentRegistryModel['runtime']>>>();
+  f.model.runtime = async input => { f.actions.push(input.action); return pending.promise; };
+  try { await withDOM(async ui => {
+    await ui.render(<f.Editor />);
+    const actions = document.querySelector('[aria-label="Homie actions"]')!;
+    const apply = [...actions.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Apply changes')!;
+    await act(async () => apply.click());
+    expect([...actions.querySelectorAll<HTMLButtonElement>('button')].every(button => button.disabled)).toBe(true);
+    await ui.click('Save local settings'); await act(async () => apply.click());
+    expect(f.actions.filter(action => action === 'start')).toHaveLength(1);
+    expect(f.saves).toHaveLength(0);
+    await act(async () => pending.reject(new Error('Wait for active work.')));
+    expect(f.actions).toContain('start'); expect(document.body.textContent).toContain('Wait for active work.');
+    expect(apply.disabled).toBe(false);
+    expect(document.body.textContent).not.toContain('configuration is applied');
+    expect(f.saves).toHaveLength(0);
+  }); } finally { f.model.dispose(); }
+});
+
+test('conflicts require selecting repository files before applying and invalid files block application', async () => {
+  const f = fixture(); f.source.phase = 'conflict'; f.source.message = 'Versions differ.'; await f.model.refresh();
+  try { await withDOM(async ui => {
+    await ui.render(<f.Editor />);
+    expect(document.querySelector('[aria-label="Repository configuration"] [role="alert"]')?.textContent).toBe('Versions differ.');
+    expect([...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === 'Apply changes')?.disabled).toBe(true);
+    f.source.phase = 'pending'; await ui.click('Use repository files');
+    expect(f.actions).toContain('use-files'); expect(f.actions).not.toContain('start');
+    expect([...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === 'Apply changes')?.disabled).toBe(false);
+    await ui.render(null); f.source.phase = 'invalid'; f.source.message = 'agent.json is invalid.';
+    await ui.render(<f.Editor />);
+    expect(document.querySelector('[aria-label="Repository configuration"] [role="alert"]')?.textContent).toBe('agent.json is invalid.');
+    expect([...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === 'Apply changes')?.disabled).toBe(true);
+    await ui.render(null); f.source.phase = 'missing'; f.source.message = 'Repository is missing.';
+    await ui.render(<f.Editor />);
+    expect(document.querySelector('[aria-label="Repository configuration"] [role="alert"]')?.textContent).toBe('Repository is missing.');
+    expect([...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === 'Apply changes')?.disabled).toBe(true);
+  }); } finally { f.model.dispose(); }
+});
+
+test('a failed local save keeps the user draft and can be retried', async () => {
+  const f = fixture(true); await f.model.refresh();
+  try { await withDOM(async ui => {
+    await ui.render(<f.Editor />); await ui.click('Allow agent file changes'); await ui.click('Save local settings');
+    expect(document.body.textContent).toContain('Disk unavailable');
+    expect(document.querySelector('[aria-label="Allow agent file changes"]')?.getAttribute('aria-checked')).toBe('true');
+    await ui.click('Save local settings'); expect(f.saves).toHaveLength(1);
+  }); } finally { f.model.dispose(); }
+});
 test('room participation rechecks current membership and never sends work or replaces the default agent', async () => {
   const agent = { ...specialistAgent(), accountId: 'default', assignments: [{ workspaceRoot: '/project', instructions: '' }] };
   let room: AgentRoom = { id: 'room', name: 'Current work', workspace: '/project', engineId: 'docker:test', defaultAgentId: 'owner', createdAt: '2026-10-06',
@@ -118,39 +149,31 @@ test('room participation rechecks current membership and never sends work or rep
 });
 
 
-test('failed saves retain all section drafts and cancelled exports do not show success', async () => {
-  const { model, saves, Editor } = fixture({ failSave: true, cancelExport: true }); await model.refresh();
-  try {
-    await withDOM(async ui => {
-      await ui.render(<Editor />); await ui.type('Homie description', 'Keep my description.');
-      await ui.click('Save agent');
-      expect(document.querySelector('[role="alert"]')?.textContent).toBe('Disk unavailable');
-      expect(field('Homie description').value).toBe('Keep my description.');
-      await ui.click('Homie actions'); await ui.click('Export…'); expect(document.body.textContent).not.toContain('Homie pack exported.');
-      await ui.click('Save agent'); expect(saves).toHaveLength(1);
-      await ui.type('Homie pack version', 'bad'); await ui.click('Save agent');
-      expect(document.querySelector('[role="alert"]')?.textContent).toContain('version');
-      expect(saves).toHaveLength(1);
-    });
-  } finally { model.dispose(); }
+test('display name edits preserve the repository name and survive saving and reopening', async () => {
+  const f = fixture(); await f.model.refresh();
+  try { await withDOM(async ui => {
+    await ui.render(<f.Editor />);
+    expect(document.querySelector<HTMLInputElement>('[aria-label="Homie display name"]')?.value).toBe(agent.name);
+    await ui.type('Homie display name', 'Dwight');
+    await ui.click('Save local settings');
+    expect(f.saves[0]?.profile.displayName).toBe('Dwight');
+    expect(f.saves[0]?.profile.name).toBe(agent.name);
+    expect(f.saves[0]?.id).toBe(agent.id);
+    await ui.render(null); await ui.render(<f.Editor />);
+    expect(document.querySelector<HTMLInputElement>('[aria-label="Homie display name"]')?.value).toBe('Dwight');
+    expect(document.querySelector('h2')?.textContent).toBe('Dwight');
+    await ui.type('Homie display name', '   '); await ui.click('Save local settings');
+    expect(f.saves).toHaveLength(1);
+  }); } finally { f.model.dispose(); }
 });
 
-test('file selection preserves existing assets on duplicate import in the unified form', async () => {
-  const { model, exports, Editor } = fixture(); await model.refresh();
-  try {
-    await withDOM(async ui => {
-      await ui.render(<Editor />); await ui.click('Files and environment');
-      const input = document.querySelector<HTMLInputElement>('input[type="file"][aria-label="Add files"]')!;
-      const choose = async (content: string) => {
-        Object.defineProperty(input, 'files', { configurable: true, value: [new File([content], 'check.ts', { type: 'text/plain' })] });
-        await act(async () => { input.dispatchEvent(new window.Event('change', { bubbles: true })); });
-      };
-      await choose('console.log("first");'); await ui.click('scripts/check.ts');
-      expect(field('Homie pack file content').value).toContain('first');
-      await choose('replacement');
-      expect(document.querySelector('[role="alert"]')?.textContent).toContain('Duplicate');
-      await ui.click('Homie actions'); await ui.click('Export…');
-      expect(exports[0]!.resources!.files).toEqual([{ path: 'scripts/check.ts', content: 'console.log("first");' }]);
-    });
-  } finally { model.dispose(); }
+test('unsaved display names remain drafts when a repository update arrives', async () => {
+  const f = fixture(); await f.model.refresh();
+  try { await withDOM(async ui => {
+    await ui.render(<f.Editor />); await ui.type('Homie display name', 'Local draft');
+    await act(async () => f.update({ ...agent, revision: 2, instructions: 'Changed in files' }));
+    expect(document.body.textContent).toContain('Your local draft is preserved');
+    expect(document.querySelector<HTMLInputElement>('[aria-label="Homie display name"]')?.value).toBe('Local draft');
+    await ui.click('Save local settings'); expect(f.saves).toHaveLength(0);
+  }); } finally { f.model.dispose(); }
 });

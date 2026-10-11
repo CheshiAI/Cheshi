@@ -4,6 +4,7 @@ import type { AgentChatsApi, AgentRoom } from '../../../../shared/agent-chats';
 import type { SpecialistAgent } from '../../../../shared/agent-registry';
 import { LiquidGlassSelect, NeumorphicButton } from '../../shared/ui';
 import styles from './SpecialistAgentForm.module.css';
+import layout from './HomieSettings.module.css';
 
 function assertJoinableRoom(room: AgentRoom | undefined, agent: SpecialistAgent): asserts room is AgentRoom {
   if (!room) throw new Error('This room was removed. Choose another room.');
@@ -46,17 +47,16 @@ export function HomieParticipation({ agent, workspaceRoot, roomId, api = cheshiD
     finally { pending.current = false; if (active.current) setBusy(false); }
   }
   return <section className={styles.field} aria-label="Homie participation">
-    <h3>Work participation</h3>
     <LiquidGlassSelect ariaLabel="Homie work room" menuAppearance="toolbar" triggerAppearance="standard" value={selected}
       disabled={busy || loading} options={[{ value: '', label: loading ? 'Loading rooms…' : 'Choose a work room' }, ...rooms.map(item => ({ value: item.id, label: item.name }))]}
       onChange={value => { setSelected(value); setError(null); }} />
-    <NeumorphicButton variant="ghost" disabled={!api || busy || !room || !assigned || !agent.accountId || Boolean(member)} onClick={() => { void join(); }}>
-      {busy ? 'Joining…' : member ? 'Participating' : 'Join work room'}
-    </NeumorphicButton>
+    <div className={layout.joinAction}>
+      <NeumorphicButton variant="standard" disabled={!api || busy || !room || !assigned || !agent.accountId || Boolean(member)} onClick={() => { void join(); }}>
+        {busy ? 'Joining…' : member ? 'Participating' : 'Join work room'}
+      </NeumorphicButton>
+    </div>
     {member && member.accountId !== agent.accountId && <p role="status" className={styles.description}>This room retains an earlier account identity.</p>}
-    {!assigned || !agent.accountId ? <p className={styles.description}>Save a project assignment and account before joining a room.</p>
-      : <p className={styles.description}>Joining makes this Homie available for mentions and collaboration. It does not send a task.</p>}
-    {!loading && !rooms.length && <p className={styles.description}>Create a work room from the Worker sidebar first.</p>}
+    {(!assigned || !agent.accountId) && <p className={styles.description}>Save a project assignment and account before joining a room.</p>}
     {error && <p role="alert" className={styles.description}>{error}</p>}
   </section>;
 }

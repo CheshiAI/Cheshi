@@ -1,3 +1,6 @@
+import { avatarPng } from './agent-avatar-image-fixtures';
+import { agentDisplayName } from '../shared/agent-registry';
+import { portableAgent } from '../lib/agent-management/homie-source-files.mts';
 import { defaultAgentAvatar } from '../shared/agent-avatar';
 import { specialistAgent } from './agent-registry-fixtures';
 import { expect, test } from 'bun:test';
@@ -246,4 +249,33 @@ test('file IPC validates ownership and only opens selected or linked Markdown fi
     window.emit('closed'); expect(handlers.size).toBe(0);
     expect(() => select(event)).toThrow('workspace window');
   } finally { registration.dispose(); f.close(); }
+});
+
+
+test('local display names and image icons survive restarts and source application without renaming the project identity', () => {
+  const f = fixture();
+  try {
+    const input = specialistInput();
+    const created = f.registry.save(input, '/project').snapshot.agents[0]!;
+    const pack = portableAgent(created);
+    const avatar = { character: 'sprout', color: 'mint', image: avatarPng } as const;
+    const saved = f.registry.save({ ...input, id: created.id, revision: created.revision,
+      profile: { ...created, displayName: '  Dwight  ', avatar, package: pack } }, '/project').snapshot.agents[0]!;
+    expect(saved.name).toBe(created.name); expect(saved.package?.name).toBe(pack.name);
+    expect(saved.displayName).toBe('Dwight'); expect(agentDisplayName(saved)).toBe('Dwight');
+    const restarted = createAgentRegistry(f.filename);
+    expect(restarted.snapshot('/project').agents[0]).toEqual(saved);
+    const applied = restarted.applySource(saved.id, saved.revision, { ...pack, instructions: 'Updated from files.' });
+    expect(applied.displayName).toBe('Dwight'); expect(applied.avatar).toEqual(avatar);
+    expect(applied.id).toBe(created.id); expect(applied.name).toBe(created.name);
+    expect(applied.assignments).toEqual(created.assignments);
+    expect(portableAgent(applied).name).toBe(pack.name);
+    expect(JSON.stringify(portableAgent(applied))).not.toContain(avatarPng);
+    const legacySave = restarted.save({ ...input, id: applied.id, revision: applied.revision }, '/project').snapshot.agents[0]!;
+    expect(legacySave.displayName).toBe('Dwight'); expect(legacySave.avatar).toEqual(avatar);
+    expect(() => restarted.save({ ...input, profile: { ...input.profile, name: 'Different project', displayName: 'dwight' } }, '/project')).toThrow('name');
+    for (const displayName of ['', '   ', 'x'.repeat(101), 'bad\0name']) {
+      expect(() => parseSaveSpecialistAgent({ ...input, profile: { ...input.profile, displayName } })).toThrow();
+    }
+  } finally { f.close(); }
 });

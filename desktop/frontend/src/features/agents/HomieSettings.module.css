@@ -1,4 +1,9 @@
-.editor { container-type: inline-size; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; font-size: 12px; }
+.editor { --font-size-label: var(--font-size-small); container-type: inline-size; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; font-size: var(--font-size-small); }
+.editor[data-inline='true'] { flex: none; width: 100%; }
+.editor[data-inline='true'] > .header { height: auto; flex: none; flex-wrap: wrap; padding: var(--icon-default) var(--space-default); }
+.editor[data-inline='true'] > .header > .title { display: none; }
+.editor[data-inline='true'] > .header:has(> .title:only-child) { display: none; }
+.editor[data-inline='true'] > .scroll { flex: none; overflow: visible; }
 .header { display: flex; box-sizing: border-box; height: var(--header-height); flex: 0 0 var(--header-height); align-items: center; gap: var(--icon-default); padding: 0 var(--space-default); border-bottom: 1px solid var(--divider); }
 .title { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-label); }
 .body { display: flex; flex: 1; min-height: 0; }
@@ -15,6 +20,10 @@
 .row > :first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .list { display: flex; flex-direction: column; gap: var(--icon-default); }
 .actions { display: flex; gap: var(--icon-default); flex-wrap: wrap; }
+.actionSection { display: flex; flex-direction: column; gap: var(--icon-default); }
+.joinAction, .saveActions { display: grid; gap: var(--icon-default); grid-template-columns: minmax(0, 1fr); }
+.saveActions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.joinAction > button, .saveActions > button { width: 100%; min-width: 0; }
 .status { margin: 0; padding: var(--space-default); font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
 .advanced { display: flex; flex-direction: column; gap: var(--space-default); padding-top: var(--space-default); }
 @media (max-width: 640px) {
@@ -24,11 +33,12 @@
   .navItem[data-variant='ghost'] { width: auto; flex: 1 0 auto; }
 }
 
-.runtime { display: flex; flex-direction: column; min-height: 400px; margin-top: var(--space-default); border-top: 1px solid var(--divider); }
+.runtime { display: flex; flex-direction: column; min-width: 0; margin: 0; padding: 0; border: 0; }
+.runtime:empty { display: none; }
 
 .toolResult { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 
-.runtimeHeader { flex: 0 0 auto; border: 0; border-bottom: 1px solid var(--divider); padding: var(--icon-default) var(--space-default); margin: 0; min-width: 0; }
+.runtimeHeader { flex: 0 0 auto; border: 0; padding: 0; margin: 0; min-width: 0; }
 .runtime[hidden] { display: none; }
 @container (max-width: 700px) {
   .body { flex-direction: column; }
@@ -36,3 +46,6 @@
   .navigation { width: 100%; max-width: none; flex: 0 0 auto; border-width: 0 0 1px; }
   .navItem[data-variant='ghost'] { width: auto; flex: 0 0 auto; }
 }
+
+.editor[data-inline='true'][data-fill='true'] { flex: 1; }
+.editor[data-inline='true'][data-fill='true'] > .scroll { flex: 1; min-height: 0; overflow: auto; }

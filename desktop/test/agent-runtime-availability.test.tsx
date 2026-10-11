@@ -1,4 +1,5 @@
-import { expect, spyOn, test } from 'bun:test';
+import { withRuntimePolling } from './agent-runtime-test-polling';
+import { expect, test } from 'bun:test';
 import { act, type ReactNode } from 'react';
 import { Window } from 'happy-dom';
 import { AgentManagementViews } from '../frontend/src/features/shell/AgentManagementViews';
@@ -35,6 +36,28 @@ const details: AgentDetails = { agent: { id: 'worker', name: 'Worker', state: 'r
     { id: 'task', status: 'unknown', prompt: 'Old task', output: 'Old result', error: null, createdAt: '2026-10-04' },
   ] };
 
+test('compact settings show runtime status without duplicate diagnostics and retain errors', async () => {
+  const agent = specialistAgent();
+  let current: AgentRuntimeState = { details };
+  const registry = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [agent] }),
+    models: async () => [], save: async () => { throw Error('unused'); }, onDidChange: () => () => {}, runtime: async () => current });
+  await withRuntimePolling(async poll => {
+    try { await withDOM(async render => {
+      await render(<SpecialistRuntimePanel compact assigned agent={agent} model={registry} engines={engines} engineId="docker:local" />);
+      expect(document.querySelector('[aria-label="Worker status"]')?.textContent).toBe('Ready');
+      for (const text of ['Worker logs', 'Active tasks and recovery', 'Old task', 'Signed']) expect(document.body.textContent).not.toContain(text);
+      expect(button('Stop worker')).not.toBeNull();
+      current = { details: { ...details, ready: false }, lifecycle: { phase: 'sleeping', error: null } };
+      await poll();
+      expect(document.querySelector('[aria-label="Worker status"]')?.textContent).toBe('Sleeping');
+      current = { details: { ...details, error: 'Worker configuration is invalid.' } };
+      await poll();
+      expect(document.querySelector('[aria-label="Worker status"]')?.textContent).toBe('Error');
+      expect(document.querySelector('[role="alert"]')?.textContent).toBe('Worker configuration is invalid.');
+    }); } finally { registry.dispose(); }
+  });
+});
+
 test('deletion fallback to an unassigned agent shows guidance without querying or starting it', async () => {
   const assigned = { ...specialistAgent(), assignments: [{ workspaceRoot: '/project', instructions: '' }] };
   const other = { ...specialistAgent(), id: 'b1234567-1234-1234-1234-123456789abc', name: 'Other agent' };
@@ -54,22 +77,20 @@ test('deletion fallback to an unassigned agent shows guidance without querying o
   await withDOM(async render => {
     await render(<AgentManagementViews view="homies" api={management} registryApi={registry} />);
     await act(async () => button(assigned.name).click());
-    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === 'Files and environment')!.click());
     expect(calls).toEqual([assigned.id]);
     snapshot = { ...snapshot, agents: [other] };
     await act(async () => publish(snapshot));
     expect(document.querySelector('form')).toBeNull();
     expect(document.body.textContent).not.toContain('Old task');
     await act(async () => button(other.name).click());
-    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === 'Files and environment')!.click());
     expect(document.body.textContent).toContain('Assign this agent to the current project in Agent settings.');
     expect(button('Start agent').disabled).toBe(true);
-    await act(async () => { button('Start agent').click(); button('Refresh agent').click(); });
+    await act(async () => { button('Start agent').click(); });
     expect(calls).toEqual([assigned.id]);
     snapshot = { ...snapshot, agents: [{ ...other, revision: 2, assignments: assigned.assignments }] };
     await act(async () => publish(snapshot));
     expect(calls).toEqual([assigned.id, other.id]);
-    expect(button('Start agent').disabled).toBe(false);
+    expect(button('Stop worker').disabled).toBe(true);
     snapshot = { ...snapshot, workspaceRoot: '/other-project' };
     await act(async () => publish(snapshot));
     expect(button('Start agent').disabled).toBe(true);
@@ -84,30 +105,29 @@ test.each(['agent-unassigned', 'agent-removed'] as const)('in-flight %s clears o
   const registry = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [agent] }),
     models: async () => [], save: async () => { throw Error('unused'); }, onDidChange: () => () => {},
     runtime: async () => { calls++; return current; } });
-  const timers = spyOn(globalThis, 'setInterval');
-  try {
-    await withDOM(async render => {
-      const panel = (revision: number) => <SpecialistRuntimePanel agent={{ ...agent, revision }} assigned
-        model={registry} engines={engines} engineId="docker:local" onSettings={() => {}} />;
-      await render(panel(1));
-      expect(document.body.textContent).toContain('Old task');
-      current = { details: null, unavailable: { kind, message: 'Binding unavailable' } };
-      await act(async () => button('Refresh agent').click());
-      expect(document.body.textContent).not.toContain('Old task');
-      expect(document.querySelector('[role="status"]')?.textContent).toBe('Binding unavailable');
-      expect(document.querySelector('[role="alert"]')).toBeNull();
-      expect(button('Start agent').disabled).toBe(true);
-      const poll = timers.mock.calls.find(call => call[1] === 10_000)?.[0];
-      if (typeof poll !== 'function') throw Error('Polling callback not found');
-      await act(async () => { poll(); poll(); });
-      expect(calls).toBe(2);
-      current = { details };
-      await render(panel(2));
-      expect(calls).toBe(3);
-      expect(document.body.textContent).toContain('Old task');
-      expect(button('Start agent').disabled).toBe(false);
-    });
-  } finally { timers.mockRestore(); registry.dispose(); }
+  await withRuntimePolling(async poll => {
+    try {
+      await withDOM(async render => {
+        const panel = (revision: number) => <SpecialistRuntimePanel agent={{ ...agent, revision }} assigned
+          model={registry} engines={engines} engineId="docker:local" />;
+        await render(panel(1));
+        expect(document.body.textContent).toContain('Old task');
+        current = { details: null, unavailable: { kind, message: 'Binding unavailable' } };
+        await poll();
+        expect(document.body.textContent).not.toContain('Old task');
+        expect(document.querySelector('[role="status"]')?.textContent).toBe('Binding unavailable');
+        expect(document.querySelector('[role="alert"]')).toBeNull();
+        expect(button('Start agent').disabled).toBe(true);
+        await poll(); await poll();
+        expect(calls).toBe(2);
+        current = { details };
+        await render(panel(2));
+        expect(calls).toBe(3);
+        expect(document.body.textContent).toContain('Old task');
+        expect(button('Stop worker').disabled).toBe(true);
+      });
+    } finally { registry.dispose(); }
+  });
 });
 
 test('a late status result cannot restore details after unassignment', async () => {
@@ -119,7 +139,7 @@ test('a late status result cannot restore details after unassignment', async () 
   try {
     await withDOM(async render => {
       const panel = (assigned: boolean) => <SpecialistRuntimePanel agent={agent} assigned={assigned}
-        model={registry} engines={engines} engineId="docker:local" onSettings={() => {}} />;
+        model={registry} engines={engines} engineId="docker:local" />;
       await render(panel(true)); await render(panel(false));
       await act(async () => pending.resolve({ details }));
       expect(document.body.textContent).not.toContain('Old task');

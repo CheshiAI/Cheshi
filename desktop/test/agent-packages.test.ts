@@ -71,11 +71,11 @@ test('installed snapshot survives source removal and registry reload without loc
   expect(input.profile.permissions).toEqual({ fileWrite: false, commandExecution: false });
   expect(input.profile.accountId).toBeNull();
   const filename = join(root, 'registry.json'), registry = createAgentRegistry(filename);
-  const created = registry.save(input, '/project').snapshot.agents[0]!;
+  const created = registry.save(input, root).snapshot.agents[0]!;
   rmSync(folder, { recursive: true });
-  const restored = createAgentRegistry(filename).snapshot('/project').agents[0]!;
+  const restored = createAgentRegistry(filename).snapshot(root).agents[0]!;
   expect(restored.package).toEqual(imported);
-  expect(await resolveAgentInstructions(restored, restored.assignments[0]!)).toBe(`${instructions}\n\nProject instructions:\n${input.assignment.instructions}`);
+  expect(await resolveAgentInstructions(restored, restored.assignments[0]!)).toBe(instructions);
   const customized = { ...restored, instructions: 'My reviewed instructions', accountId: 'default', model: 'custom-model' };
   const update = { ...imported, version: '1.1.0', instructions: 'New package rules' };
   const kept = applyAgentPackage(customized, update, true, true);
@@ -84,7 +84,7 @@ test('installed snapshot survives source removal and registry reload without loc
   expect(kept.package?.instructions).toBe('New package rules');
   const replaced = applyAgentPackage(customized, update, true, false);
   expect(replaced.instructions).toBe('New package rules');
-  const saved = registry.save({ ...input, id: created.id, revision: created.revision, profile: kept }, '/project');
+  const saved = registry.save({ ...input, id: created.id, revision: created.revision, profile: kept }, root);
   expect(saved.snapshot.agents[0]!.package?.version).toBe('1.1.0');
   expect(() => applyAgentPackage(customized, { ...update, id: 'other.package' }, true, false)).toThrow('same package ID');
 });

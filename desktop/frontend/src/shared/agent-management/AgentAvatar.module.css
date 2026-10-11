@@ -1,3 +1,6 @@
 .avatar { display: inline-flex; width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; }
 .avatar[data-preview] { width: 32px; height: 32px; }
 .avatar > svg { display: block; width: 100%; height: 100%; }
+
+.avatar:has(> img) { border-radius: 50%; overflow: hidden; }
+.avatar > img { display: block; width: 100%; height: 100%; object-fit: cover; }

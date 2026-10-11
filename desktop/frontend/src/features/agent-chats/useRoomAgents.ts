@@ -37,5 +37,5 @@ export function useRoomAgents(registry: Pick<AgentRegistryApi, 'list' | 'onDidCh
     if (agent.accountId !== member?.accountId || !agent.assignments.some(a => a.workspaceRoot === workspace)) return 'Homie unavailable · Check its project assignment and account';
     return null;
   }
-  return { agents, status };
+  return { agents, allAgents: snapshot?.agents ?? [], status };
 }

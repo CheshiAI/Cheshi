@@ -1,3 +1,5 @@
+import { HomieCatalog } from '../frontend/src/features/agents/homieCatalog';
+import { withRuntimePolling } from './agent-runtime-test-polling';
 import { expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DockerView } from '../frontend/src/features/docker/DockerView';
@@ -188,7 +190,7 @@ test('worker labels follow registered names and renames while retaining containe
     stored = { ...stored, agents: [{ ...profile, name: 'Renamed Specialist', revision: 2 }] };
     await act(async () => publish(stored));
     expect(header()?.textContent).toBe('Renamed Specialist');
-    await click('All Homies');
+    await click('Renamed Specialist');
     expect(document.querySelector('[aria-label="Agent selection"]')?.textContent).toContain('Renamed Specialist');
     expect(document.querySelector('[aria-label^="Container connection:"]')).not.toBeNull();
     await render(screen('docker'));
@@ -242,7 +244,8 @@ test('agent names open settings and container indicators never navigate', async 
     expect(document.querySelector('[aria-label="Back to agent settings"]')).toBeNull();
     expect(nav().textContent).not.toContain('CONNECTED WORKER CONTAINERS');
     expect(nav().querySelectorAll('[data-agent-avatar]')).toHaveLength(2);
-    expect(nav().querySelectorAll('button')).toHaveLength(4);
+    expect(nav().querySelectorAll('button')).toHaveLength(6);
+    expect(nav().querySelectorAll('button[aria-label^="Homie status:"]')).toHaveLength(2);
     expect(nav().querySelectorAll('[aria-label^="Container connection:"]')).toHaveLength(2);
     expect(nav().textContent).not.toContain('Stopped');
     expect(nav().querySelector('button button')).toBeNull();
@@ -253,14 +256,12 @@ test('agent names open settings and container indicators never navigate', async 
     expect(document.querySelector('form[aria-label="Agent settings"]')).not.toBeNull();
     expect(runtimeAgents).toEqual([agent.id]);
     expect(inspections).toHaveLength(before);
-    await click('Files and environment');
     expect(runtimeAgents.at(-1)).toBe(agent.id);
-    await click('Agent settings'); await click('All Homies');
+     await click(agent.name);
     await click('Unlinked agent');
-    expect(document.querySelector<HTMLInputElement>('[aria-label="Agent name"]')?.value).toBe(unlinked.name);
-    await click('Files and environment');
+    expect(document.querySelector('[aria-label="Agent details"] h2')?.textContent).toBe(unlinked.name);
     expect(runtimeAgents.at(-1)).toBe(unlinked.id);
-    await click('Agent settings'); await click('All Homies');
+     await click(unlinked.name);
     workers = []; await click('Refresh');
     expect(nav().querySelectorAll('[aria-label^="Container connection:"]')).toHaveLength(0);
     expect(nav().querySelectorAll('[data-agent-avatar]')).toHaveLength(2);
@@ -380,69 +381,33 @@ test('agents can be created and assigned without an engine, edited, and recovere
     await click('Verification');
     expect(document.querySelector('[aria-label="Allow agent file changes"]')?.getAttribute('aria-checked')).toBe('false');
     expect(document.querySelector('[aria-label="Allow agent commands"]')?.getAttribute('aria-checked')).toBe('true');
-    await click('Execution permission preset');
-    await click('Review · Read only');
+    await click('Allow agent commands');
     expect(document.querySelector('[aria-label="Allow agent commands"]')?.getAttribute('aria-checked')).toBe('false');
-    expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Agent instructions"]')?.value).toContain('Reproduce reported issues');
-    await click('Agent account');
-    await click('first@example.test');
-    expect(document.querySelector('[aria-label="Agent account"]')?.textContent).toContain('first@example.test');
-    await click('Agent account');
-    await click('second@example.test');
-    expect(document.querySelector('[aria-label="Agent account"]')?.textContent).toContain('second@example.test');
+    await click('Agent account'); await click('Default account');
+    await click('Agent account'); await click('Account 2');
     await fill('Agent name', 'Cheshi developer');
-    await fill('Agent instructions', 'Follow AGENTS.md and verify changes.');
-    await fill('Project instructions', 'Work in a dedicated worktree.');
-    await click('Agent model');
-    await click('Fixture model');
-    await click('Agent reasoning effort');
-    await click('High');
-    await click('Agent service tier');
-    await click('Fast');
-    await click('Agent model');
-    await click('Small model');
-    expect(document.querySelector('[aria-label="Agent reasoning effort"]')?.textContent).toContain('Low');
-    expect(document.querySelector('[aria-label="Agent service tier"]')?.textContent).toContain('Standard');
-    await click('Agent model');
-    await click('Fixture model');
-    expect(document.querySelector('[aria-label="Agent reasoning effort"]')?.textContent).toContain('Medium');
-    await click('Agent reasoning effort');
-    await click('High');
-    await click('Agent service tier');
-    await click('Fast');
     await click('Allow agent file changes');
     await click('Create agent');
     expect(writes).toHaveLength(1);
     expect(writes[0]).toMatchObject({ profile: { name: 'Cheshi developer', role: 'verification', model: 'model-fixture', accountId: 'fixture-account',
-      reasoningEffort: 'high', serviceTier: 'priority', permissions: { fileWrite: false, commandExecution: false } },
-      assignment: { assigned: true, instructions: 'Work in a dedicated worktree.', permissions: { fileWrite: true, commandExecution: false } } });
+      reasoningEffort: 'medium', serviceTier: null, permissions: { fileWrite: false, commandExecution: false } },
+      assignment: { assigned: true, instructions: '', permissions: { fileWrite: true, commandExecution: false } } });
     expect(modelAccounts).toContain('default');
     expect(modelAccounts).toContain('fixture-account');
-    expect(document.querySelector<HTMLInputElement>('[aria-label="Agent name"]')?.value).toBe('Cheshi developer');
-    expect(document.querySelector('[aria-label="Agent task"]')).toBeNull();
+    expect(document.querySelector('[aria-label="Agent details"] h2')?.textContent).toBe('Cheshi developer');
     expect(document.querySelector('form')?.getAttribute('aria-label')).toBe('Agent settings');
-    expect(document.querySelector('form')?.textContent).not.toContain('Open agent');
-    await fill('Agent name', 'Updated developer');
-    failSave = true;
-    await click('Save agent');
-    expect(document.querySelector('[role="alert"]')?.textContent).toContain('Could not save agent registry');
-    expect(document.querySelector<HTMLInputElement>('[aria-label="Agent name"]')?.value).toBe('Updated developer');
+    await click('Allow agent commands');
+    failSave = true; await click('Save local settings');
+    expect(document.body.textContent).toContain('Could not save agent registry');
+    expect(document.querySelector('[aria-label="Allow agent commands"]')?.getAttribute('aria-checked')).toBe('true');
     expect(stored.agents[0]?.name).toBe('Cheshi developer');
-    failSave = false;
-    await click('Assign agent to this project');
-    await click('Save agent');
+    failSave = false; await click('Assign agent to this project'); await click('Save local settings');
     expect(stored.agents[0]?.assignments).toEqual([]);
-    expect(stored.agents[0]?.name).toBe('Updated developer');
-    await render(screen(null));
-    await render(screen('homies'));
-    expect(document.querySelector<HTMLInputElement>('[aria-label="Agent name"]')?.value).toBe('Updated developer');
-    expect(document.querySelector('[aria-label="Agent model"]')?.textContent).toContain('Fixture model');
-    expect(document.querySelector('[aria-label="Agent reasoning effort"]')?.textContent).toContain('High');
-    expect(document.querySelector('[aria-label="Agent service tier"]')?.textContent).toContain('Fast');
-    await click('Agent account');
-    await click('first@example.test');
-    expect(document.querySelector('[aria-label="Agent model"]')?.textContent).toContain('Runtime default');
-    expect(document.querySelector<HTMLButtonElement>('[aria-label="Agent reasoning effort"]')?.disabled).toBe(true);
+    await render(screen(null)); await render(screen('homies'));
+    expect(document.querySelector('[aria-label="Agent details"] h2')?.textContent).toBe('Cheshi developer');
+    expect(document.querySelector('[aria-label="Agent model"]')).not.toBeNull();
+    await click('Agent account'); await click('Default account'); await click('Save local settings');
+    expect(stored.agents[0]?.accountId).toBe('default');
   });
   expect(listeners.size).toBe(0);
 });
@@ -455,8 +420,9 @@ test('model catalogs ignore late account responses and recover from a failed loa
     if (id === 'failed' && failed) throw new Error('Catalog unavailable');
     return [specialistModels()[1]!];
   };
+  const store = new HomieCatalog(load);
   function Catalog({ accountId }: { accountId: string | null }) {
-    const catalog = useSpecialistModels(accountId, load);
+    const catalog = useSpecialistModels(accountId, store);
     return <><output>{JSON.stringify(catalog)}</output><button onClick={catalog.retry}>Retry</button></>;
   }
   await withDOM(async ({ render, click }) => {
@@ -491,22 +457,24 @@ test('registered runtime starts explicitly and shows acknowledged tasks without 
       if (request.action === 'start') { started = true; return pending.promise; }
       return { details: started ? ready : null };
     } });
-  try {
-    await withDOM(async ui => {
-      await ui.render(<SpecialistRuntimePanel assigned agent={agent} model={registry} engineId="docker:local"
-        engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} onSettings={() => {}} />);
-      expect(actions).toEqual(['status']);
-      await ui.click('Start agent');
-      expect(document.body.textContent).toContain('Processing…');
-      expect((document.querySelector('[aria-label="Start agent"]') as HTMLButtonElement).disabled).toBe(true);
-      expect(document.querySelector<HTMLButtonElement>('[aria-label="Agent settings"]')?.disabled).toBe(true);
-      await act(async () => pending.resolve({ details: ready }));
-      expect(document.body.textContent).toContain('Ready'); expect(document.body.textContent).toContain('Signed');
-      await ui.click('Refresh agent');
-      expect(actions).toEqual(['status', 'start', 'status']);
-      expect(document.body.textContent).toContain('Ready');
-    });
-  } finally { registry.dispose(); }
+  await withRuntimePolling(async poll => {
+    try {
+      await withDOM(async ui => {
+        await ui.render(<SpecialistRuntimePanel assigned agent={agent} model={registry} engineId="docker:local"
+          engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} />);
+        expect(actions).toEqual(['status']);
+        await ui.click('Start agent');
+        expect(document.body.textContent).toContain('Processing…');
+        expect((document.querySelector('[aria-label="Start agent"]') as HTMLButtonElement).disabled).toBe(true);
+        expect(document.querySelector('button[aria-label="Agent settings"]')).toBeNull();
+        await act(async () => pending.resolve({ details: ready }));
+        expect(document.body.textContent).toContain('Ready'); expect(document.body.textContent).toContain('Signed');
+        await poll();
+        expect(actions).toEqual(['status', 'start', 'status']);
+        expect(document.body.textContent).toContain('Ready');
+      });
+    } finally { registry.dispose(); }
+  });
 });
 
 test('engine disconnection preserves recovery details, disables actions, and recovers on refresh', async () => {
@@ -523,24 +491,26 @@ test('engine disconnection preserves recovery details, disables actions, and rec
       expect(request.action).toBe('status');
       return offline ? { details: null, unavailable: { kind: 'engine-unavailable', message: 'Engine disconnected; retrying.' } } : { details };
     } });
-  try {
-    await withDOM(async ui => {
-      await ui.render(<SpecialistRuntimePanel assigned agent={agent} model={registry} engineId="docker:local"
-        engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} onSettings={() => {}} />);
-      expect(document.querySelector('textarea')).toBeNull();
-      offline = true; await ui.click('Refresh agent');
-      expect(document.body.textContent).toContain('Engine disconnected');
-      expect(document.body.textContent).toContain('Previous result');
-      expect(document.querySelector('textarea')).toBeNull();
-      expect(document.querySelector<HTMLButtonElement>('[aria-label="Start agent"]')?.disabled).toBe(true);
-      expect(document.querySelector('button[type="submit"]')).toBeNull();
-      offline = false; await ui.click('Refresh agent');
-      expect(document.body.textContent).toContain('Ready');
-      expect(document.querySelector('[role="alert"]')).toBeNull();
-      expect(document.querySelector<HTMLButtonElement>('[aria-label="Start agent"]')?.disabled).toBe(false);
-      expect(document.querySelector('textarea')).toBeNull();
-    });
-  } finally { registry.dispose(); }
+  await withRuntimePolling(async poll => {
+    try {
+      await withDOM(async ui => {
+        await ui.render(<SpecialistRuntimePanel assigned agent={agent} model={registry} engineId="docker:local"
+          engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} />);
+        expect(document.querySelector('textarea')).toBeNull();
+        offline = true; await poll();
+        expect(document.body.textContent).toContain('Engine disconnected');
+        expect(document.body.textContent).toContain('Previous result');
+        expect(document.querySelector('textarea')).toBeNull();
+        expect(document.querySelector<HTMLButtonElement>('[aria-label="Stop worker"]')?.disabled).toBe(true);
+        expect(document.querySelector('button[type="submit"]')).toBeNull();
+        offline = false; await poll();
+        expect(document.body.textContent).toContain('Ready');
+        expect(document.querySelector('[role="alert"]')).toBeNull();
+        expect(document.querySelector<HTMLButtonElement>('[aria-label="Stop worker"]')?.disabled).toBe(true);
+        expect(document.querySelector('textarea')).toBeNull();
+      });
+    } finally { registry.dispose(); }
+  });
 });
 
 test('waiting collaboration is visible and can be stopped while the worker is idle', async () => {
@@ -560,7 +530,7 @@ test('waiting collaboration is visible and can be stopped while the worker is id
   try {
     await withDOM(async ui => {
       await ui.render(<SpecialistRuntimePanel assigned agent={agent} model={registry} engineId="docker:local"
-        engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} onSettings={() => {}} />);
+        engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} />);
       expect(document.body.textContent).toContain('Waiting for reply');
       await ui.click('Stop task');
       expect(document.body.textContent).toContain('interrupted');
@@ -595,18 +565,16 @@ test('Runtime preserves settings drafts and never starts or cancels a running ta
     await render(<AgentManagementViews api={api} registryApi={registryApi} view="homies" />);
     await click(agent.name);
     const form = document.querySelector('form');
-    await click('Files and environment');
-    expect(document.body.textContent).toContain('Working');
-    await click('Agent settings');
+    expect(document.querySelectorAll('[aria-label^="Homie status:"][aria-description="Working"]')).toHaveLength(1);
+
     expect(document.querySelector('form[aria-label="Agent settings"]')).not.toBeNull();
-    expect(document.querySelector<HTMLInputElement>('[aria-label="Agent name"]')?.value).toBe(agent.name);
+    expect(document.querySelector('[aria-label="Agent details"] h2')?.textContent).toBe(agent.name);
     expect(document.querySelector('[aria-label="Agent task"]')).toBeNull();
     expect(actions).toEqual(['status']);
     expect(document.querySelector('form')).toBe(form);
-    await click('Files and environment');
-    expect(document.body.textContent).toContain('Working');
-    expect(document.body.textContent).toContain('retained-thread');
-    expect(document.querySelector('[aria-label="Open task: running-task"]')).not.toBeNull();
+    expect(document.querySelectorAll('[aria-label^="Homie status:"][aria-description="Working"]')).toHaveLength(1);
+    expect(document.body.textContent).not.toContain('retained-thread');
+    expect(document.querySelector('[aria-label="Open task: running-task"]')).toBeNull();
     expect(actions).toEqual(['status']);
   });
 });
@@ -761,62 +729,18 @@ test('agent icon selection supports cancellation, rerolls and persistence in the
     });
     expect(preview()).toBe(initial); expect(writes).toHaveLength(0);
     await click('Choose agent icon');
-    await click('Randomize agent icon'); await click('Use icon');
+    await click('Randomize agent icon'); await click('Save');
     expect(preview()).not.toBe(initial);
-    await click('Choose agent icon'); await click('Character crab'); await click('Color pink'); await click('Use icon');
+    await click('Choose agent icon'); await click('Character crab'); await click('Color pink'); await click('Save');
     expect(preview()).toBe('crab:pink');
-    await click('Save agent');
+    await click('Save local settings');
     expect(writes[0]!.profile.avatar).toEqual({ character: 'crab', color: 'pink' });
-    await click('All Homies');
+    await click(profile.name);
     expect(icons()).toEqual(['crab:pink']);
     await click('Refresh'); expect(icons()).toEqual(['crab:pink']);
     await render(<div />); await render(screen());
     expect(icons()).toEqual(['crab:pink']);
     await click(profile.name); expect(preview()).toBe('crab:pink');
-  });
-});
-
-test('instruction file controls preserve draft links through cancellation and errors and save each scope separately', async () => {
-  const profile = specialistAgent();
-  let stored: AgentRegistrySnapshot = { workspaceRoot: '/project', agents: [profile] };
-  let selected: string[] = [], openError = false;
-  const writes: SaveSpecialistAgent[] = [], opened: string[] = [];
-  const registryApi: AgentRegistryApi = {
-    list: async () => stored, models: async () => [], onDidChange: () => () => {},
-    selectInstructionFiles: async () => selected,
-    openInstructionFile: async path => { if (openError) throw new Error('File is unavailable'); opened.push(path); },
-    save: async input => {
-      writes.push(input);
-      stored = { ...stored, agents: [{ ...profile, ...input.profile, revision: profile.revision + writes.length,
-        assignments: [{ workspaceRoot: '/project', instructions: input.assignment.instructions, instructionFiles: input.assignment.instructionFiles }] }] };
-      return { agentId: profile.id, snapshot: stored };
-    },
-  };
-  const api: AgentManagementApi = {
-    engines: async () => ({ error: null, engines: [] }),
-    snapshot: async engineId => ({ engineId, online: false, error: null, agents: [] }),
-    details: async () => { throw new Error('unused'); }, control: async () => { throw new Error('unused'); },
-  };
-  await withDOM(async ({ render, click }) => {
-    const screen = () => <AgentManagementViews api={api} registryApi={registryApi} view="homies" />;
-    await render(screen()); await click(profile.name);
-    await click('Link common instruction files'); expect(writes).toHaveLength(0);
-    selected = ['/common/RULES.md']; await click('Link common instruction files'); await click('Link common instruction files');
-    expect(document.querySelectorAll('[aria-label="Common instruction files"] [aria-label="Open /common/RULES.md"]')).toHaveLength(1);
-    await click('Assign agent to this project');
-    selected = ['/project/AGENTS.md']; await click('Link project instruction files');
-    expect(document.querySelector('[aria-label="Project instruction files"]')?.textContent).toContain('/project/AGENTS.md');
-    await click('Open /common/RULES.md'); expect(opened).toEqual(['/common/RULES.md']);
-    openError = true; await click('Open /project/AGENTS.md');
-    expect(document.querySelector('[role="alert"]')?.textContent).toContain('File is unavailable');
-    await click('Save agent');
-    expect(writes[0]?.profile.instructionFiles).toEqual(['/common/RULES.md']);
-    expect(writes[0]?.assignment.instructionFiles).toEqual(['/project/AGENTS.md']);
-    await render(<div />); await render(screen()); await click(profile.name);
-    expect(document.querySelector('[aria-label="Open /project/AGENTS.md"]')).not.toBeNull();
-    await click('Unlink /project/AGENTS.md'); await click('Save agent');
-    expect(writes[1]?.assignment.instructionFiles).toEqual([]);
-    expect(writes[1]?.profile.instructionFiles).toEqual(['/common/RULES.md']);
   });
 });
 
@@ -867,7 +791,7 @@ test.each(['consultation', 'verification'])('%s inspection uses the saved room, 
   try {
     await withDOM(async ui => {
       await ui.render(<SpecialistRuntimePanel assigned agent={agent} model={registry} engineId="docker:local"
-        engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} onSettings={() => {}} />);
+        engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} />);
       await ui.click('Open task: q_question');
       expect(document.querySelector(kind === 'verification' ? '[aria-label="Verification recovery"]' : '[aria-label="Consultation recovery"]')).not.toBeNull();
       if (kind === 'verification') expect(document.body.textContent).toContain('execution ending alone does not mean verification passed');

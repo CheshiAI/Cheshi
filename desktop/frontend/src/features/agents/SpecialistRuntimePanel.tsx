@@ -1,6 +1,8 @@
+import { agentDisplayName } from '../../../../shared/agent-registry';
+import type { HomieStatusLabel } from './HomieStatusIcon';
 import { createPortal } from 'react-dom';
 import type { ChatTaskTarget } from '../../../../shared/agent-chats';
-import { Play, RefreshCw, Settings, Square } from 'lucide-react';
+import { Play, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { AgentRuntimeState } from '../../../../shared/agent-runtime';
 import type { SpecialistAgent } from '../../../../shared/agent-registry';
@@ -13,13 +15,18 @@ import { ExecutionHealth } from './ExecutionHealth';
 import styles from './AgentsView.module.css';
 import shared from '../../shared/agent-management/agentManagement.module.css';
 
-export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigned, model, engines, engineId, onSettings, onStopWorker, headerTarget }: {
-  headerTarget?: HTMLElement | null;
+export function SpecialistRuntimePanel({ compact = false, chatTask, onBackToChats, agent, assigned, model, engines, engineId, disabled = false, onStopWorker, headerTarget, actionsTarget, onStatusChange }: {
+  compact?: boolean;
+  disabled?: boolean; actionsTarget?: HTMLElement | null;
+  headerTarget?: HTMLElement | null; onStatusChange?(label: HomieStatusLabel | null): void;
   chatTask?: ChatTaskTarget | null; onBackToChats?(): void;
-  agent: SpecialistAgent; assigned: boolean; model: AgentRegistryModel; engines: AgentEngineInfo[]; engineId: string; onSettings(): void;
+  agent: SpecialistAgent; assigned: boolean; model: AgentRegistryModel; engines: AgentEngineInfo[]; engineId: string;
   onStopWorker?(engineId: string, workerId: string): Promise<void>;
 }) {
   const [engine, setEngine] = useState(chatTask?.engineId ?? engineId);
+  const statusContext = JSON.stringify([agent.id, agent.revision, engine, assigned]);
+  const [observedContext, setObservedContext] = useState<string | null>(null);
+  const [verifiedContext, setVerifiedContext] = useState<string | null>(null);
   const [loadedDetails, setDetails] = useState<AgentDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lifecycle, setLifecycle] = useState<string | null>(null);
@@ -37,6 +44,10 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigne
   const canStopWorker = Boolean(onStopWorker && details && details.agent.state === 'running'
     && !details.busy && !stoppable && !details.tasks.some(item => item.status === 'unknown')
     && !blocked && !error && !details.error);
+  const running = details?.agent.state === 'running';
+  const transitioning = lifecycle === 'starting' || lifecycle === 'draining';
+  const powerDisabled = disabled || pending || blocked || !engine || verifiedContext !== statusContext || transitioning
+    || (running ? !canStopWorker : Boolean(details?.busy || stoppable || details?.tasks.some(item => item.status === 'unknown')));
   const recoveryTasks = (details?.tasks ?? []).filter(item => item.id === chatTask?.taskId
     || item.status !== 'completed' || Boolean(item.inspection?.integration?.candidateHash));
   useEffect(() => {
@@ -46,6 +57,8 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigne
   useEffect(() => { if (!engine && engineId) setEngine(engineId); }, [engine, engineId]);
   useEffect(() => { if (chatTask) setEngine(chatTask.engineId); }, [chatTask]);
   const applyRuntime = (result: AgentRuntimeState) => {
+    setObservedContext(statusContext);
+    setVerifiedContext(statusContext);
     bindingUnavailable.current = Boolean(result.unavailable && result.unavailable.kind !== 'engine-unavailable');
     setLifecycle(result.lifecycle?.phase ?? null);
     setUnavailable(result.unavailable);
@@ -61,11 +74,16 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigne
         applyRuntime(result);
       }
     } catch (reason) {
-      if (active.current && version === revision.current) setError(reason instanceof Error ? reason.message : 'Could not read this agent.');
+      if (active.current && version === revision.current) {
+        setObservedContext(statusContext);
+        setVerifiedContext(null);
+        setError(reason instanceof Error ? reason.message : 'Could not read this agent.');
+      }
     }
   };
   useEffect(() => {
     revision.current++;
+    setVerifiedContext(null);
     setDetails(null); setLifecycle(null); setError(null); setPending(false); setUnavailable(undefined); bindingUnavailable.current = false; busy.current = false;
     if (!assigned) return;
     void refresh();
@@ -73,8 +91,9 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigne
     return () => { clearInterval(timer); revision.current++; };
   }, [agent.id, agent.revision, engine, assigned]);
   const operate = async (action: 'project-setup' | 'start' | 'stop' | 'cancel' | 'recover' | 'application-inspect', recovery?: { taskId: string; roomId: string; candidateId?: string; hash?: string }) => {
-    if (busy.current || !engine || blocked || bindingUnavailable.current) return;
-    busy.current = true; setPending(true); setError(null);
+    if (busy.current || disabled || !engine || blocked || bindingUnavailable.current
+      || ((action === 'start' || action === 'stop') && powerDisabled)) return;
+    busy.current = true; setObservedContext(statusContext); setPending(true); setError(null);
     const version = ++revision.current;
     try {
       if (action === 'stop') {
@@ -93,26 +112,39 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigne
       if (active.current && version === revision.current) { busy.current = false; setPending(false); }
     }
   };
+  const statusLabel: HomieStatusLabel = notice ? unavailable?.kind === 'agent-removed' ? 'Agent unavailable' : 'Not assigned' : pending ? 'Processing…' : disconnected ? 'Engine disconnected' : error || details?.error || lifecycle === 'error' ? 'Error' : lifecycle === 'sleeping' ? 'Sleeping' : lifecycle === 'starting' ? 'Starting…' : lifecycle === 'disabled' ? 'Manually stopped' : details?.busy ? 'Working' : stoppable?.status === 'waiting' ? 'Waiting for reply' : details?.authenticated === false ? 'Sign-in required' : details?.ready ? 'Ready' : 'Not running';
+  // An unobserved runtime is not evidence of a stopped worker. Keep the list's
+  // fresh observation until this binding has a response, including a failure.
+  const reportedStatus = notice || observedContext === statusContext ? statusLabel : null;
+  useEffect(() => { onStatusChange?.(reportedStatus); }, [onStatusChange, reportedStatus]);
+  const powerLabel = running ? 'Stop worker' : 'Start agent';
+  const powerButton = <TooltipButton variant="ghost" size="icon" title={powerLabel} aria-label={powerLabel} disabled={powerDisabled}
+    onClick={() => { void operate(running ? 'stop' : 'start'); }}>
+    {running ? <Square aria-hidden="true" /> : <Play aria-hidden="true" />}
+  </TooltipButton>;
   const header = <div className={styles.detailHeader} data-inline={headerTarget ? 'true' : undefined}>
-      {!headerTarget && <h2 className={styles.name}>{agent.name}</h2>}
-      <span className={shared.description}>{notice ? unavailable?.kind === 'agent-removed' ? 'Agent unavailable' : 'Not assigned' : pending ? 'Processing…' : disconnected ? 'Engine disconnected' : lifecycle === 'sleeping' ? 'Sleeping · wakes on request' : lifecycle === 'starting' ? 'Starting…' : lifecycle === 'disabled' ? 'Manually stopped' : details?.busy ? 'Working' : stoppable?.status === 'waiting' ? 'Waiting for reply' : details?.ready ? 'Ready' : 'Not running'}</span>
-      <div className={styles.runtimeActions}>
+      {!headerTarget && <h2 className={styles.name}>{agentDisplayName(agent)}</h2>}
+      {!onStatusChange && <span className={shared.description} aria-label="Worker status">{reportedStatus ?? 'Status unknown'}</span>}
+      <section className={styles.runtimeSection} aria-label="Container">
+        <h3>Container</h3>
         <LiquidGlassSelect ariaLabel="Agent execution engine" triggerAppearance="standard" value={engine} disabled={pending || Boolean(notice)}
           options={engines.filter(item => item.supported).map(item => ({ value: item.id, label: item.name }))}
           onChange={value => { revision.current++; setEngine(value); }} menuAppearance="toolbar" />
-        <TooltipButton variant="ghost" size="icon" title="Start agent" aria-label="Start agent" disabled={pending || blocked || !engine || details?.busy}
-          onClick={() => { void operate('start'); }}><Play aria-hidden="true" /></TooltipButton>
-        {onStopWorker && <TooltipButton variant="ghost" size="icon" title="Stop worker" aria-label="Stop worker"
-          disabled={pending || !canStopWorker}
-          onClick={() => { void operate('stop'); }}><Square aria-hidden="true" /></TooltipButton>}
-        <TooltipButton variant="ghost" size="icon" title="Refresh agent" aria-label="Refresh agent" disabled={pending || Boolean(notice) || !engine}
-          onClick={() => { void refresh(); }}><RefreshCw aria-hidden="true" /></TooltipButton>
-        <TooltipButton variant="ghost" size="icon" title="Agent settings" aria-label="Agent settings" disabled={pending} onClick={onSettings}><Settings aria-hidden="true" /></TooltipButton>
-      </div>
+      </section>
+      {actionsTarget === undefined && <section className={styles.runtimeSection} aria-label="Status">
+        <h3>Status</h3>
+        <div className={styles.runtimeActions}>
+          {powerButton}
+        </div>
+      </section>}
     </div>;
   return <>
+    {actionsTarget ? createPortal(powerButton, actionsTarget) : null}
     {headerTarget ? createPortal(header, headerTarget) : header}
-    <div className={styles.detailBody}>
+    {compact ? <>
+      {notice && <p className={shared.description} role="status">{notice}</p>}
+      {!notice && (error || details?.error) && <p className={shared.description} role="alert">{error || details?.error}</p>}
+    </> : <div className={styles.detailBody}>
       {notice ? <p className={shared.description} role="status">{notice}</p> : <>
         <div className={styles.section}>
           <span className={shared.description}>{details?.authenticated ? 'Signed' : 'Not signed in'}{details?.threadId ? ` · ${details.threadId}` : ''}</span>
@@ -139,6 +171,6 @@ export function SpecialistRuntimePanel({ chatTask, onBackToChats, agent, assigne
           <CodePanel code={details?.logs || 'No worker logs available.'} label="Worker logs" ariaLabel="Worker log output" />
         </details>
       </>}
-    </div>
+    </div>}
   </>;
 }
