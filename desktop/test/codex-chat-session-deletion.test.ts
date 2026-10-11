@@ -36,7 +36,7 @@ function fixture(responses: Record<string, unknown> = {}, conversations?: CodexC
     async close() { service.stop(); await contexts.stop(); } };
 }
 
-test('deletes a workspace root and all paginated archived descendants once, resetting only affected panes', async () => {
+test('deletes a workspace root and all paginated archived descendants once, clearing affected panes while retaining permission choices', async () => {
   const f = fixture({ 'thread/list': (params: Record<string, unknown>) => params.archived
     ? { data: [codexThread('archived', { cwd, parentThreadId: 'child' })], nextCursor: null }
     : params.cursor ? { data: [childThread()], nextCursor: null } : { data: [], nextCursor: 'next' } });
@@ -52,7 +52,7 @@ test('deletes a workspace root and all paginated archived descendants once, rese
     expect(f.client.requests.filter(request => request.method === 'thread/list')).toHaveLength(3);
     expect(f.client.requests.find(request => request.method === 'thread/list')?.params).toMatchObject({ modelProviders: [], sourceKinds: expect.arrayContaining(['subAgentThreadSpawn']) });
     expect(f.service.viewedThreadId).toBeNull();
-    expect(f.service.selectedPermissionModeId).toBe('read-only');
+    expect(f.service.selectedPermissionModeId).toBe('full-access');
     expect(f.service.subscribedThreadIds.has('root')).toBe(false);
     expect(sameRoot.viewedThreadId).toBeNull();
     expect(child.viewedThreadId).toBeNull();

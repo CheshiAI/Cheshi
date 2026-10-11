@@ -4,7 +4,6 @@ import {
   modelsFromListResponse,
 } from "./codex-chat-catalog.mts";
 import {
-  DEFAULT_PERMISSION_MODE_ID,
   defaultPermissionMode,
   permissionModeSettings,
   permissionModesFromListResponse,
@@ -176,23 +175,13 @@ export async function configureCodexChat(context: CodexChatConfigurationContext,
 
 /** @returns {ChatPermissionMode} */
 export function currentCodexPermissionMode(context: CodexChatConfigurationContext): ChatPermissionMode {
-  return (
-    context.permissionModes.get(context.selectedPermissionModeId) ??
-    defaultPermissionMode()
-  );
+  const mode = context.permissionModes.get(context.selectedPermissionModeId);
+  return mode?.allowed === true ? mode : defaultPermissionMode();
 }
 
 /** @returns {JsonObject} */
 export function codexPermissionOverrides(context: CodexChatConfigurationContext): JsonObject {
   return permissionModeSettings(context.currentPermissionMode());
-}
-
-export function resetCodexPermissionMode(context: CodexChatConfigurationContext) {
-  context.selectedPermissionModeId = DEFAULT_PERMISSION_MODE_ID;
-  context.emit({
-    type: "permission-mode-changed",
-    mode: context.currentPermissionMode(),
-  });
 }
 
 /** @returns {ChatModel | null} */

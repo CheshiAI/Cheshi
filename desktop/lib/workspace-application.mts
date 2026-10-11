@@ -13,6 +13,7 @@ export interface WorkspaceRuntimeOptions {
   messageCommands?: import('./imessage-commands.mts').IMessageCommandRegistry;
   voiceChats?: import('./agent-voice/chats.mts').ChatAccess;
   accountSelection?: WorkspaceAccountSelection;
+  chatPreferences?: import('./chat-preferences.mts').ChatPreferenceStore;
   getProjectDocMaxBytes?(): number;
   codeGraphSynchronization?: import('./codegraph-synchronization.mts').CodeGraphSynchronization;
   managementOnly?: boolean;

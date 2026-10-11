@@ -242,6 +242,7 @@ const codexAccountService = new CodexAccountService({
 });
 const sessionHistory = createWorkspaceSessionMemory(workspaceRoot, userDataDirectory, workspaceAccounts.conversations, chatHistorySearch, createChatClient, ipcMain, assertCheshiSender);
 const chatServiceOptions = { ...sessionHistory.serviceOptions,
+  chatPreferences: options.chatPreferences,
   getWorkspaceProjects: () => workspaceProjects.store.list().map(({ rootPath }) => rootPath),
 };
 

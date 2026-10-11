@@ -130,6 +130,7 @@ function shouldIgnore(packagePath: string): boolean {
     'window-close-cleanup.mts',
     'window-appearance-store.mts',
     'settings-service.mts',
+    'chat-preferences.mts',
     'settings-ipc.mts',
     'codex-chat-turn-metrics.mts',
     'codex-turn-metrics-reader.mts',

@@ -303,6 +303,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   try {
     runtime = createWorkspaceRuntime({ ...options, notifications, messageCommands, discord,
       getProjectDocMaxBytes: apiSettings.getProjectDocMaxBytes, codeGraphSynchronization,
+      chatPreferences: apiSettings.workspaceChatPreferences(options.workspaceRoot),
       voiceChats: request => agentChats.request(options.workspaceRoot, request),
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });

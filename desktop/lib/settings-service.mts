@@ -3,6 +3,8 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { DEFAULT_PROJECT_DOC_MAX_BYTES, parseProjectDocMaxBytes } from '../../experiments/codex-specialists/src/project-instructions.ts';
 import { isCodexAccountId } from '../shared/codex-accounts.ts';
+import { chatPreferences, type ChatPreferenceStore } from './chat-preferences.mts';
+import { recordValue } from './codex-service-utils.mts';
 
 interface Options { settingsPath: string }
 export interface WorkspaceAccountSelection {
@@ -38,6 +40,21 @@ export function createSettingsService(options: Options) {
     finally { try { rmSync(temporary, { force: true }); } catch { /* A failed write does not replace the saved preference. */ } }
   };
   return {
+    workspaceChatPreferences(workspaceRoot: string): ChatPreferenceStore {
+      const workspace = path.resolve(workspaceRoot);
+      const savedChats = (preferences: Record<string, unknown>) => recordValue(preferences.workspaceChatPreferences) ?? {};
+      return {
+        read: () => chatPreferences(savedChats(readPreferences())[workspace]),
+        write(update) {
+          updatePreferences(preferences => {
+            const chats = savedChats(preferences);
+            return { ...preferences, workspaceChatPreferences: {
+              ...chats, [workspace]: chatPreferences({ ...chatPreferences(chats[workspace]), ...update }),
+            } };
+          }, 'Could not save the chat defaults. Try again.');
+        },
+      };
+    },
     getProjectDocMaxBytes() {
       const value = readPreferences().projectDocMaxBytes;
       return value === undefined ? DEFAULT_PROJECT_DOC_MAX_BYTES : parseProjectDocMaxBytes(value);
