@@ -6,9 +6,10 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { isValidElement, type ComponentProps, type CSSProperties, type HTMLAttributes, type PointerEvent, type ReactElement, type ReactNode } from 'react';
+import { cloneElement, isValidElement, type ComponentProps, type CSSProperties, type HTMLAttributes, type PointerEvent, type ReactElement, type ReactNode } from 'react';
 import * as jsxRuntime from 'react/jsx-runtime';
 import type { AppShell } from '../frontend/src/features/shell/AppShell';
+import type { WorkerWorkspace } from '../frontend/src/features/shell/WorkerWorkspace';
 import type { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
 import type { AgentManagementViews } from '../frontend/src/features/shell/AgentManagementViews';
 import type { WorkspaceEditorSplit } from '../frontend/src/features/shell/WorkspaceEditorSplit';
@@ -54,6 +55,9 @@ function hooks() {
       },
       useRef(current: unknown) { return slots[cursor++] ??= { current }; },
       useCallback(callback: unknown) { return callback; },
+      useImperativeHandle(ref: { current: unknown } | undefined, create: () => unknown) {
+        if (ref) ref.current = create();
+      },
       useEffect: effect, useLayoutEffect: effect,
     },
     render<T>(run: () => T) {
@@ -143,6 +147,8 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
   const modules: Record<string, unknown> = {
     '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
     './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },
+    './WorkerWorkspace': { WorkerWorkspace: 'WorkerWorkspace' },
+    '../chat/FlashSourceLink': { FlashSourceNavigationContext: { Provider: 'FlashSourceNavigationContext' } },
     './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => initialLayout, saveWorkspaceLayout() {} },
     '../chat/chatWorkspaceModel': { CHAT_PANE_MIN_WIDTH },
     '../../shared/ui/splitPaneModel': splitModel,
@@ -186,10 +192,21 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
   })) modules[path] = Object.fromEntries(names.map(name => [name, name]));
   modules['../../shared/ui'] = { RegionalBlur: 'RegionalBlur', LiquidGlassPanel: 'LiquidGlassPanel', SlidingSidePanel: 'SlidingSidePanel',
     SidebarToggleVisibility: { Provider: 'SidebarToggleVisibility' } };
+  const worker = hooks();
+  const Worker = load<typeof WorkerWorkspace>('features/shell/WorkerWorkspace.tsx', 'WorkerWorkspace', {
+    react: worker.react, '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
+    './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },
+  });
+  const expandWorker = (node: ReactNode): ReactNode => {
+    if (Array.isArray(node)) return node.map(expandWorker);
+    if (!isValidElement<{ children?: ReactNode }>(node)) return node;
+    if (node.type === 'WorkerWorkspace') return worker.render(() => Worker(node.props as ComponentProps<typeof WorkerWorkspace>));
+    return cloneElement(node, { children: expandWorker(node.props.children) });
+  };
   const Shell = load<typeof AppShell>('features/shell/AppShell.tsx', 'AppShell', modules, { document: {} });
   return { attachments, render: () => {
     app.render(() => Shell());
-    return app.render(() => Shell());
+    return expandWorker(app.render(() => Shell()));
   }, openSearch: () => openSearch(),
     beginRestore: () => { editorSessionMode = 'waiting'; },
     restoreShell: (view: Parameters<typeof resumeOptions.setActiveView>[0], panel: SidebarPanel) => {

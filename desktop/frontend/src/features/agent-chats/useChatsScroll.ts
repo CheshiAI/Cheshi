@@ -22,9 +22,18 @@ export function useChatsScroll(snapshot: ChatsSnapshot, loaded: boolean, roomId:
   };
   const capture = (node: HTMLDivElement, position: ReadingPosition) => {
     position.top = node.scrollTop;
+    // Following the bottom has no reading anchor. Avoid measuring every message
+    // on each resize and on the scroll event produced by restoring the bottom.
+    if (position.pinned) { position.anchor = undefined; return; }
     const top = node.getBoundingClientRect().top;
-    const articles = [...node.querySelectorAll<HTMLElement>('[data-message-id]')];
-    const anchor = articles.find(article => article.getBoundingClientRect().bottom > top);
+    const articles = node.querySelectorAll<HTMLElement>('[data-message-id]');
+    let low = 0, high = articles.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (articles[middle]!.getBoundingClientRect().bottom > top) high = middle;
+      else low = middle + 1;
+    }
+    const anchor = articles[low];
     position.anchor = anchor ? { id: anchor.dataset.messageId!, offset: anchor.getBoundingClientRect().top - top } : undefined;
   };
   const restore = () => {
@@ -69,7 +78,6 @@ export function useChatsScroll(snapshot: ChatsSnapshot, loaded: boolean, roomId:
   return {
     unreadCount,
     awayFromBottom,
-    isPinned: () => current()?.pinned ?? true,
     restore,
     onScroll: () => {
       const node = scrollNode.current, position = current();

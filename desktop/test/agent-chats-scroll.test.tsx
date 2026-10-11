@@ -13,7 +13,7 @@ async function withChats(run: (ui: {
   click(label: string): Promise<void>;
   resize(): Promise<void>;
   timeline(): HTMLDivElement;
-  geometry: { height: number; growth: number };
+  geometry: { height: number; growth: number; messageMeasurements: number };
 }) => Promise<void>) {
   const window = new Window();
   const observers = new Map<ResizeObserver, { callback: ResizeObserverCallback; targets: Set<Element> }>();
@@ -30,7 +30,7 @@ async function withChats(run: (ui: {
     IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
-  const geometry = { height: 1500, growth: 0 };
+  const geometry = { height: 1500, growth: 0, messageMeasurements: 0 };
   const scrollTops = new WeakMap<object, number>(), pendingScrolls = new Set<HTMLElement>();
   const prototype = window.HTMLElement.prototype;
   const previousProperties = new Map(['scrollHeight', 'clientHeight', 'scrollTop', 'getBoundingClientRect']
@@ -58,6 +58,7 @@ async function withChats(run: (ui: {
   };
   window.HTMLElement.prototype.getBoundingClientRect = function () {
     const node = this as unknown as HTMLElement;
+    if (node.dataset.messageId) geometry.messageMeasurements++;
     const index = node.dataset.messageId ? [...node.parentElement!.children].indexOf(node) : -1;
     const top = index < 0 ? 0 : index * 100 + (index > 0 ? geometry.growth : 0) - node.closest('[aria-label="Room messages"]')!.scrollTop;
     const height = index < 0 ? 0 : 100 + (index === 0 ? geometry.growth : 0);
@@ -153,5 +154,24 @@ test('jump button appears without new arrivals and clears after clicking or reac
     expect(ui.timeline().scrollTop).toBe(1000); expect(jump()).toBeNull();
     await ui.scroll(100); expect(jump()).not.toBeNull();
     await ui.scroll(1000); expect(jump()).toBeNull();
+  });
+});
+
+
+test('large room resizes skip message geometry at the bottom and locate reading anchors without a linear scan', async () => {
+  await withChats(async ui => {
+    ui.geometry.height = 100400;
+    await ui.update(Array.from({ length: 1000 }, (_, index) => message(`large-${index}`)));
+    ui.geometry.messageMeasurements = 0;
+    await ui.resize();
+    expect(ui.geometry.messageMeasurements).toBe(0);
+    expect(ui.timeline().scrollTop).toBe(99900);
+    await ui.scroll(90000);
+    expect(ui.geometry.messageMeasurements).toBeLessThanOrEqual(14);
+    ui.geometry.messageMeasurements = 0;
+    ui.geometry.growth = 80; ui.geometry.height += 80;
+    await ui.resize();
+    expect(ui.timeline().scrollTop).toBe(90080);
+    expect(ui.geometry.messageMeasurements).toBeLessThanOrEqual(30);
   });
 });

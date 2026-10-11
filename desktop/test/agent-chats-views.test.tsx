@@ -151,9 +151,13 @@ test('room composer reconnects shared blur and resizes its overlay without movin
     area.getBoundingClientRect = () => ({ x: 0, y: 320, width: 640, height, top: 320, right: 640, bottom: 320 + height, left: 0, toJSON() { return {}; } });
     await resize(area);
     expect(content.style.getPropertyValue('--composer-overlay-height')).toBe('180px');
-    expect(content.style.getPropertyValue('--chat-viewport-width')).toBe('640px');
+    expect(area.style.getPropertyValue('--chat-viewport-width')).toBe('640px');
     expect(timeline.scrollTop).toBe(1200);
-    timeline.scrollTop = 100; timeline.dispatchEvent(new window.Event('scroll', { bubbles: true }));
+    let scrollHeightReads = 0;
+    Object.defineProperty(timeline, 'scrollHeight', { configurable: true, get: () => { scrollHeightReads++; return 1200; } });
+    await resize(area);
+    expect(scrollHeightReads).toBe(0);
+    await act(async () => { timeline.scrollTop = 100; timeline.dispatchEvent(new window.Event('scroll', { bubbles: true })); });
     height = 260; await resize(area);
     expect(content.style.getPropertyValue('--composer-overlay-height')).toBe('260px');
     expect(timeline.scrollTop).toBe(100);

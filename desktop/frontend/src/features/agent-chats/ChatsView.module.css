@@ -16,7 +16,9 @@
 .latestMessages > button { pointer-events: auto; }
 .timelineContent { padding-bottom: calc(var(--composer-overlay-height) + 16px); }
 .timeline { --scrollbar-size: var(--auto-hide-scrollbar-size); scrollbar-width: auto; scrollbar-color: auto; }
-.message { position: relative; padding: var(--space-default); }
+/* Retain message DOM and measured heights while skipping offscreen layout and
+   paint when the Homies panel changes the conversation width. */
+.message { position: relative; padding: var(--space-default); content-visibility: auto; contain-intrinsic-block-size: auto 180px; }
 .messageActions { position: absolute; top: var(--space-default); right: var(--space-default); display: flex; gap: var(--icon-default); opacity: 0; pointer-events: none; }
 .message:hover .messageActions, .message:focus-within .messageActions { opacity: 1; pointer-events: auto; }
 .message[data-reply-action] .metadata { padding-right: calc(var(--icon-button-size) + var(--icon-default)); }
@@ -56,5 +58,14 @@
 .execution { margin: var(--space-default) 0; }
 
 .inspector { --sliding-side-panel-width: min(var(--sidebar-width), 60cqw); display: flex; min-height: 0; flex: 0 0 auto; }
-.homiesPanel { --liquid-glass-radius: 0; border-top: 0; border-right: 0; border-bottom: 0; }
+/* Reserve space once on open, and release it after the closing slide. The room
+   must not reflow and restore its reading position on every animation frame. */
+.inspector .homiesStage { transition: width 0s var(--motion-panel-duration); }
+.inspector .homiesStage[data-open='true'] { transition: none; }
+.homiesPanel { --liquid-glass-radius: 0; border-top: 0; border-right: 0; border-bottom: 0; transform: translateX(100%); transition: transform var(--motion-panel-duration) ease; }
+.homiesStage[data-open='true'] .homiesPanel { transform: translateX(0); }
 .homiesPanelContent { display: flex; height: 100%; min-width: 0; min-height: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .inspector .homiesStage, .homiesPanel { transition: none; }
+}
