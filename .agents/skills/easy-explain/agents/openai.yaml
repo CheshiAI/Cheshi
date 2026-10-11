@@ -1,0 +1,4 @@
+interface:
+  display_name: "쉽고 간결하게 설명하기"
+  short_description: "10살도 이해할 쉬운 말로 핵심과 필요한 조건을 빠짐없이 설명"
+  default_prompt: "$easy-explain 이 내용을 쉬운 말로, 핵심부터, 중요한 조건은 빠뜨리지 않고 설명해줘."
