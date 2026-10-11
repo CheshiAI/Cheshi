@@ -26,6 +26,8 @@ test('bundled preload exposes keep awake calls and cleans up state subscriptions
     },
   });
   assert.ok(api);
+  const initialListeners = new Map(listeners);
+  assert.equal(initialListeners.has(`${KEEP_AWAKE_CHANNEL}:changed`), false);
   await api.getKeepAwake();
   await api.setKeepAwake(true);
   await api.setKeepAwake(false);
@@ -36,5 +38,6 @@ test('bundled preload exposes keep awake calls and cleans up state subscriptions
   listeners.get(`${KEEP_AWAKE_CHANNEL}:changed`)?.({ privateEvent: true }, state);
   assert.deepEqual(received, [state]);
   unsubscribe();
-  assert.equal(listeners.size, 0);
+  assert.equal(listeners.has(`${KEEP_AWAKE_CHANNEL}:changed`), false);
+  assert.deepEqual(listeners, initialListeners);
 });
