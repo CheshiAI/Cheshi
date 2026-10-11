@@ -4,8 +4,8 @@ import type { AgentDetails, ManagedAgent, WorkerStatusObservation } from '../../
 export const WORKER_STATUS_MAX_AGE_MS = 30_000;
 export type WorkerStatus = 'sleeping' | 'starting' | 'busy' | 'idle' | 'manual' | 'error' | 'unknown';
 const labels: Record<WorkerStatus, string> = {
-  sleeping: '수면 중(작업이 오면 자동 시작)', starting: '시작 중', busy: '작업 중', idle: '대기 중',
-  manual: '수동 중지', error: '오류', unknown: '상태 확인 필요',
+  sleeping: 'Sleeping · wakes on request', starting: 'Starting', busy: 'Working', idle: 'Idle',
+  manual: 'Manually stopped', error: 'Error', unknown: 'Status unknown',
 };
 function fresh(observation: WorkerStatusObservation | undefined, now: number): observation is WorkerStatusObservation {
   return !!observation && Number.isFinite(observation.observedAt) && observation.observedAt <= now

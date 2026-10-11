@@ -47,6 +47,8 @@ import { createDockerAgentEngine } from './lib/agent-management/docker.mts';
 import { registerAgentManagementIpc } from './lib/agent-management/ipc.mts';
 import { AgentTerminalManager } from './lib/agent-management/terminal.mts';
 import { createAgentRegistry } from './lib/agent-management/registry.mts';
+import { HomieRepositoryProjects } from './lib/agent-management/homie-repository-project.mts';
+import { WorkspaceProjectStore } from './lib/workspace-project-store.mts';
 import { registerAgentRegistryIpc } from './lib/agent-management/registry-ipc.mts';
 import { findAppRelease } from './lib/app-release-checker.mts';
 import { createAppUpdateService } from './lib/app-update-service.mts';
@@ -98,6 +100,7 @@ const agentManagement: ReturnType<typeof createAgentManagementService> = createA
   control: (engine, id, action, operation) => specialistRuntime.manualControl(engine, id, action, operation),
   pendingDeletions: engineId => agentDeletion.pending(engineId) });
 const agentRegistry = createAgentRegistry(path.join(app.getPath('userData'), 'agents', 'registry.json'));
+const homieRepositories = new HomieRepositoryProjects({ stateDirectory: path.join(app.getPath('userData'), 'agents', 'repositories') });
 const agentDeletion = createAgentDeletion({ directory: path.join(app.getPath('userData'), 'agents', 'deletions'),
   runtimeDirectory: path.join(app.getPath('userData'), 'agents', 'runtimes'), registry: agentRegistry, management: agentManagement });
 const platformChats = createPlatformChats({ directory: path.join(app.getPath('userData'), 'agents', 'platform'),
@@ -298,6 +301,10 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings });
       agentChatsIpc = registerAgentChatsIpc({ window, ipc: options.scope.ipc, workspaceRoot: options.workspaceRoot, service: agentChats });
       agentRegistryIpc = registerAgentRegistryIpc({ window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot,
+        prepareCreation: async agent => {
+          const repository = await homieRepositories.ensure(agent);
+          await new WorkspaceProjectStore(app.getPath('userData'), options.workspaceRoot).add(repository.directory);
+        },
         testTool: input => specialistRuntime.testTool(options.workspaceRoot, input),
         toolCredential: input => input.action === 'save' ? toolCredentials.save(input.origin, input.name, input.value!)
           : input.action === 'remove' ? toolCredentials.remove(input.origin, input.name) : toolCredentials.status(input.origin, input.name),

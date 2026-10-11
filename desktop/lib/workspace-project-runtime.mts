@@ -4,7 +4,7 @@ import path from 'node:path';
 import { codeGraphStorageDirectory } from '../../config/workspace-storage.mts';
 import type { WorkspaceProject } from '../shared/workspace-projects.ts';
 import { WorkspaceProjectStore } from './workspace-project-store.mts';
-import { mapProjectPaths, projectForPath, qualifiedProjectPath, relativeProjectPath } from './workspace-project-paths.mts';
+import { filterProjectEditorSession, mapProjectPaths, projectForPath, qualifiedProjectPath, relativeProjectPath } from './workspace-project-paths.mts';
 import { registerWorkspaceFileIpcHandlers } from './workspace-file-ipc.mts';
 import { registerGitIpcHandlers } from './git-ipc.mts';
 import { registerLocalHistoryIpc } from './local-history-ipc.mts';
@@ -113,6 +113,13 @@ export function createWorkspaceProjects(options: Options) {
     primaryHandlers.set(channel, handler);
     options.ipc.handle(channel, async (event, ...args: unknown[]) => {
       options.assertSender(event);
+      if (channel === 'cheshi:read-editor-session') {
+        const session: unknown = await handler(event, ...args);
+        return session === null ? null : filterProjectEditorSession(store.list(), session);
+      }
+      if (channel === 'cheshi:save-editor-session') {
+        return handler(event, filterProjectEditorSession(store.list(), args[0]));
+      }
       if (channel === 'cheshi:search-workspace-files') {
         const results = await Promise.all(store.list().filter(project => project.available).map(async project => {
           const run = await handlerFor(project, channel);

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import { WorkspaceProjectStore } from '../lib/workspace-project-store.mts';
-import { mapProjectPaths, projectForPath, relativeProjectPath } from '../lib/workspace-project-paths.mts';
+import { filterProjectEditorSession, mapProjectPaths, projectForPath, relativeProjectPath } from '../lib/workspace-project-paths.mts';
 import { createWorkspaceProjects } from '../lib/workspace-project-runtime.mts';
 import { registerWorkspaceFileIpcHandlers } from '../lib/workspace-file-ipc.mts';
 import { registerGitIpcHandlers } from '../lib/git-ipc.mts';
@@ -15,6 +15,9 @@ import { projectGitApi } from '../frontend/src/shared/workspaceProjects';
 import type { CheshiDesktopApi } from '../frontend/src/cheshiDesktop';
 import { TerminalController } from '../lib/terminal-controller.mts';
 import { registerWorkspaceTerminalIpc } from '../lib/workspace-terminal-ipc.mts';
+import { createEditorSessionIpc } from '../lib/editor-session-ipc.mts';
+import { EditorSessionStore } from '../lib/editor-session.mts';
+import { restoreEditorSession } from '../frontend/src/features/editor/workspaceEditorSession';
 
 async function rejected(operation: Promise<unknown>, pattern: RegExp) {
   let error: unknown;
@@ -153,6 +156,89 @@ test('editor session paths retain project identity and reject traversal', () => 
   const paths = ['same.ts', '/projects/plugin/same.ts'];
   expect(parseEditorSession({ version: 1, paths, selectedPath: paths[1] }).paths).toEqual(paths);
   expect(() => parseEditorSession({ version: 1, paths: ['/projects/plugin/../other.ts'], selectedPath: null })).toThrow();
+});
+
+test('session filtering preserves connected paths and selection without accepting malformed metadata', () => {
+  const projects = [
+    { id: 'primary', rootPath: '/projects/app', name: 'app', primary: true, available: true },
+    { id: 'homie', rootPath: '/projects/homie-development', name: 'homie', primary: false, available: false },
+  ];
+  const connected = ['same.ts', '/projects/app/other.ts', '/projects/homie-development/agent.json'] as const;
+  const paths = ['/projects/homies/agent.json', ...connected, '/projects/homie-development-other/agent.json'];
+  expect(filterProjectEditorSession(projects, { version: 1, paths, selectedPath: paths[0] }))
+    .toEqual({ version: 1, paths: [...connected], selectedPath: connected[0] });
+  expect(filterProjectEditorSession(projects, { version: 1, paths, selectedPath: connected[2] }).selectedPath).toBe(connected[2]);
+  expect(filterProjectEditorSession(projects, { version: 1, paths, selectedPath: null }).selectedPath).toBeNull();
+  expect(filterProjectEditorSession(projects, { version: 1, paths: [paths[0]], selectedPath: paths[0] }))
+    .toEqual({ version: 1, paths: [], selectedPath: null });
+  for (const invalid of ['../secret', '/projects/app/../secret', '/projects/app/file\0']) {
+    expect(() => filterProjectEditorSession(projects, { version: 1, paths: [invalid], selectedPath: invalid })).toThrow();
+  }
+});
+
+test('restart excludes disconnected editor tabs before file reads and filters late session saves', async () => {
+  await fixture(async ({ base, root, linked, data }) => {
+    const separate = path.join(base, 'homie-development');
+    await mkdir(separate);
+    const oldFile = path.join(linked, 'agent.json'), newFile = path.join(separate, 'agent.json');
+    await Promise.all([writeFile(path.join(root, 'same.ts'), 'main'), writeFile(oldFile, 'old'), writeFile(newFile, 'new')]);
+    const directory = path.join(data, 'session');
+    let allowed = true;
+    const start = () => {
+      const handlers = new Map<string, Parameters<IpcMain['handle']>[1]>();
+      const ipc: Pick<IpcMain, 'handle'> = { handle(channel, handler) { handlers.set(channel, handler); } };
+      const shell = { trashItem: async () => {}, openExternal: async () => {} };
+      const assertSender = () => { if (!allowed) throw new Error('Unauthorized'); };
+      const runtime = createWorkspaceProjects({ ipc, root, dataRoot: data, clipboard: { writeText() {} }, shell,
+        languageOptions: { settingsPath: path.join(data, 'languages.json'), clientInfo: { name: 'test', version: '1' } },
+        assertSender, assertIdle() {}, chooseDirectory: async () => null, emit() {} });
+      const session = createEditorSessionIpc(runtime.ipc, directory, assertSender);
+      registerWorkspaceFileIpcHandlers({ ipcMain: runtime.ipc, workspaceRoot: root, clipboard: { writeText() {} }, shell });
+      const invoke = async (name: string, ...args: unknown[]) => {
+        const handler = handlers.get(`cheshi:${name}`);
+        if (!handler) throw new Error('Missing handler');
+        return handler({} as IpcMainInvokeEvent, ...args);
+      };
+      return { runtime, session, invoke };
+    };
+    const saved = { version: 1 as const, paths: [oldFile, 'same.ts', newFile], selectedPath: oldFile };
+    const expected = { version: 1 as const, paths: ['same.ts', newFile], selectedPath: 'same.ts' };
+    const first = start();
+    try {
+      expect(await first.invoke('read-editor-session')).toBeNull();
+      const projects = await first.runtime.store.add(linked);
+      await first.runtime.store.add(separate);
+      await first.invoke('save-editor-session', saved);
+      await first.invoke('workspace-projects:remove', projects[1]!.id);
+    } finally { await first.session.flush(); await first.runtime.dispose(); }
+    // The saved session predates the disconnection, as with older app versions.
+    expect(await new EditorSessionStore(directory).read()).toEqual(saved);
+    const restarted = start();
+    try {
+      const recovered = parseEditorSession(await restarted.invoke('read-editor-session'));
+      expect(recovered).toEqual(expected);
+      const reads: string[] = [];
+      const restored = await restoreEditorSession(recovered, async file => {
+        reads.push(file); return restarted.invoke('read-workspace-file', file);
+      }, () => 1);
+      expect(reads).toEqual(expected.paths);
+      expect(restored.tabs.map(tab => tab.draftContent)).toEqual(['main', 'new']);
+      expect(restored.selectedPath).toBe('same.ts');
+      await rejected(restarted.invoke('read-workspace-file', oldFile), /outside/);
+      await restarted.invoke('save-editor-session', saved);
+      expect(await new EditorSessionStore(directory).read()).toEqual(expected);
+      await rejected(restarted.invoke('save-editor-session', { ...saved, paths: ['../secret'], selectedPath: '../secret' }), /Invalid/);
+      allowed = false;
+      await rejected(restarted.invoke('read-editor-session'), /Unauthorized/);
+      await rejected(restarted.invoke('save-editor-session', saved), /Unauthorized/);
+      expect(await new EditorSessionStore(directory).read()).toEqual(expected);
+      allowed = true;
+      await restarted.runtime.store.add(linked);
+      await restarted.invoke('save-editor-session', saved);
+      expect(await restarted.invoke('read-editor-session')).toEqual(saved);
+      expect(await readFile(oldFile, 'utf8')).toBe('old');
+    } finally { await restarted.session.flush(); await restarted.runtime.dispose(); }
+  });
 });
 
 test('Git adapter binds asynchronous requests to its project without mutable global selection', async () => {

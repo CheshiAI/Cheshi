@@ -100,6 +100,10 @@ export function AppShell() {
   const [sidebarPanel, setSidebarPanel] = useState(() => sidebarPanelForWorkspace(activeView,
     splitPaneIds(customLayout ?? visibleWorkspaceLayout('primary', false))) ?? readSidebarPanel());
   useEffect(() => { saveSidebarPanel(sidebarPanel); }, [sidebarPanel]);
+  useEffect(() => cheshiDesktop?.agentRegistry?.onRepositoryReady?.(() => {
+    setSidebarPanel('files');
+    setLeftSidebarOpen(true);
+  }), []);
   const openFileReview = useCallback((paneId: string, itemId: string, path?: string) => {
     workerWorkspace.current?.closeHomies();
     setLineCommitTarget(null);

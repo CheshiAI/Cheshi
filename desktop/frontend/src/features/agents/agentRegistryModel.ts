@@ -1,7 +1,14 @@
-import type { AgentRegistryApi, AgentRegistrySnapshot, SaveSpecialistAgent, DeleteSpecialistAgent } from '../../../../shared/agent-registry';
+import type { AgentRegistryApi, AgentRegistrySnapshot, SaveSpecialistAgent, DeleteSpecialistAgent, SpecialistAgent } from '../../../../shared/agent-registry';
+import type { AgentRuntimeRequest, AgentRuntimeState } from '../../../../shared/agent-runtime';
+
+function workerStartError(result: AgentRuntimeState): string | null {
+  return result.unavailable?.message ?? result.lifecycle?.error ?? result.details?.error
+    ?? (result.details?.ready === true ? null : 'Worker is not ready. Check its status and retry.');
+}
 
 export interface AgentRegistryState {
   data: AgentRegistrySnapshot | null; loading: boolean; saving: boolean; error: string | null; selection: string | null;
+  starting?: boolean;
 }
 export class AgentRegistryModel {
   private readonly api: AgentRegistryApi;
@@ -19,9 +26,13 @@ export class AgentRegistryModel {
     });
   }
   snapshot = () => this.state;
-  runtime = (request: import('../../../../shared/agent-runtime').AgentRuntimeRequest) => {
-    if (!this.api.runtime) return Promise.reject(new Error('Agent runtime is unavailable. Restart Cheshi.'));
-    return this.api.runtime(request);
+  runtime = async (request: AgentRuntimeRequest) => {
+    if (!this.api.runtime) throw new Error('Agent runtime is unavailable. Restart Cheshi.');
+    const result = await this.api.runtime(request);
+    if (request.action === 'start' && request.agentId === this.state.selection && workerStartError(result) === null) {
+      this.publish({ error: null });
+    }
+    return result;
   };
   toolCredential = (input: import('../../../../shared/homie-tools').ToolCredentialRequest) => this.api.toolCredential?.(input) ?? Promise.reject(new Error('Restart Cheshi to configure tool credentials.'));
   testTool = (input: import('../../../../shared/homie-tools').ToolTestRequest) => this.api.testTool?.(input) ?? Promise.reject(new Error('Restart Cheshi to test tools.'));
@@ -81,9 +92,22 @@ export class AgentRegistryModel {
       if (request === this.request) this.publish({ loading: false, error: error instanceof Error ? error.message : 'Could not read agents.' });
     }
   }
-  async save(input: SaveSpecialistAgent) {
+  private async startCreatedAgent(agent: SpecialistAgent, workspaceRoot: string, engineId?: string | null): Promise<string | null> {
+    if (!agent.accountId) return 'Choose an account in Agent settings, then use Start agent.';
+    if (!agent.assignments.some(assignment => assignment.workspaceRoot === workspaceRoot)) {
+      return 'Assign this Homie to the current project, then use Start agent.';
+    }
+    if (!engineId?.startsWith('docker:')) return 'Choose a Docker execution engine, then use Start agent.';
+    this.publish({ starting: true });
+    try {
+      return workerStartError(await this.runtime({ agentId: agent.id, engineId, action: 'start' }));
+    } catch (error) {
+      return error instanceof Error ? error.message : 'Could not start the worker.';
+    }
+  }
+  async save(input: SaveSpecialistAgent, engineId?: string | null) {
     if (!this.active || this.state.saving) throw new Error('An agent save is already in progress.');
-    this.publish({ saving: true, error: null });
+    this.publish({ saving: true, starting: false, error: null });
     const publication = this.publication;
     try {
       const result = await this.api.save(input);
@@ -96,11 +120,16 @@ export class AgentRegistryModel {
         }
       }
       this.request++;
-      this.publish({ data: { ...result.snapshot, agents: [...agents.values()] },
-        selection: result.agentId, saving: false, loading: false });
+      this.publish({ data: { ...result.snapshot, agents: [...agents.values()] }, loading: false });
+      const repositoryError = result.repositoryError;
+      const startError = !repositoryError && input.id === null && this.active
+        ? await this.startCreatedAgent(agents.get(result.agentId)!, result.snapshot.workspaceRoot, engineId) : null;
+      this.publish({ selection: result.agentId, saving: false, starting: false,
+        error: repositoryError ? `Homie saved, but its GitHub repository is not ready. ${repositoryError} Use Start agent to retry.`
+          : startError ? `Homie saved, but its worker did not start. ${startError}` : null });
       return result.snapshot.agents.find(agent => agent.id === result.agentId)!;
     } catch (error) {
-      this.publish({ saving: false, error: error instanceof Error ? error.message : 'Could not save agent.' });
+      this.publish({ saving: false, starting: false, error: error instanceof Error ? error.message : 'Could not save agent.' });
       throw error;
     }
   }

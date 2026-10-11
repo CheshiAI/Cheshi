@@ -141,6 +141,7 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
   const app = hooks();
   let historyLoading = initialHistoryLoading;
   let openSearch = () => {};
+  let revealHomieRepository = () => {};
   let resumeOptions: Parameters<typeof useAppUpdateResume>[0];
   let editorSessionMode: ReturnType<typeof useAppUpdateResume>['editorSessionMode'] = 'restore';
   const attachments = draftAttachmentModule.createChatDraftAttachments();
@@ -158,7 +159,9 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
       readSidebarPanel: () => preference.panel,
       saveSidebarPanel: (panel: SidebarPanel) => { preference.panel = panel; },
     },
-    '../../cheshiDesktop': { cheshiDesktop: undefined },
+    '../../cheshiDesktop': { cheshiDesktop: { agentRegistry: {
+      onRepositoryReady(listener: () => void) { revealHomieRepository = listener; return () => { revealHomieRepository = () => {}; }; },
+    } } },
     '../chat/chatDraftAttachments': { ...draftAttachmentModule, createChatDraftAttachments: () => attachments },
     '../notes/appleNotesModel': { appleNoteDraftText },
     '../chat/useChatWorkspace': { useChatWorkspace: () => ({ activePaneId: 'chat-a', controllers: {}, activeController: { state: { phase: 'ready' } }, relay: { running: false },
@@ -207,7 +210,7 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
   return { attachments, render: () => {
     app.render(() => Shell());
     return expandWorker(app.render(() => Shell()));
-  }, openSearch: () => openSearch(),
+  }, openSearch: () => openSearch(), revealHomieRepository: () => revealHomieRepository(),
     beginRestore: () => { editorSessionMode = 'waiting'; },
     restoreShell: (view: Parameters<typeof resumeOptions.setActiveView>[0], panel: SidebarPanel) => {
       resumeOptions.setActiveView(view);
@@ -251,6 +254,18 @@ test('Worker keeps the conversation beside the Homies list and opens settings ce
   chats().onOpenRoom?.();
   expect(chats().active).toBe(true);
   expect(management().view).toBeNull();
+});
+
+test('successful Homie repository preparation reveals Explorer while retaining the Worker view', () => {
+  const app = shellHarness();
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chats');
+  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('agent-chats');
+  app.revealHomieRepository();
+  const tree = app.render();
+  expect(props<ComponentProps<typeof Sidebar>>(tree, 'Sidebar').activePanel).toBe('files');
+  expect(props<ComponentProps<typeof ChatsView>>(tree, 'ChatsView').active).toBe(true);
+  expect(elements(tree).find(node => (node.props as { id?: string }).id === 'workspace-sidebar')?.props)
+    .toMatchObject({ open: true });
 });
 
 test('sidebar tabs retain navigation and load initial chats before limiting refresh to Sessions', () => {

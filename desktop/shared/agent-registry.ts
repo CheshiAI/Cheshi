@@ -7,6 +7,7 @@ export const AGENT_REGISTRY_CHANNELS = {
   toolCredential: 'cheshi:agent-registry:tool-credential', testTool: 'cheshi:agent-registry:test-tool',
   list: 'cheshi:agent-registry:list', save: 'cheshi:agent-registry:save', changed: 'cheshi:agent-registry:changed',
   models: 'cheshi:agent-registry:models',
+  repositoryReady: 'cheshi:agent-registry:repository-ready',
   remove: 'cheshi:agent-registry:remove',
   selectInstructionFiles: 'cheshi:agent-registry:select-instruction-files',
   openInstructionFile: 'cheshi:agent-registry:open-instruction-file',
@@ -48,6 +49,7 @@ export interface SaveSpecialistAgent {
   assignment: { assigned: boolean; instructions: string; instructionFiles?: string[]; permissions?: ExecutionPermissions | null };
 }
 export interface AgentRegistryApi {
+  onRepositoryReady?(listener: () => void): () => void;
   toolCredential?(input: import('./homie-tools.ts').ToolCredentialRequest): Promise<boolean>;
   testTool?(input: import('./homie-tools.ts').ToolTestRequest): Promise<unknown>;
   installPackage?(definition: AgentPackage, instructionFiles?: string[]): Promise<AgentPackage>;
@@ -60,7 +62,7 @@ export interface AgentRegistryApi {
   runtime?(request: import('./agent-runtime.ts').AgentRuntimeRequest): Promise<import('./agent-runtime.ts').AgentRuntimeState>;
   models(accountId: string): Promise<AgentModel[]>;
   list(): Promise<AgentRegistrySnapshot>;
-  save(input: SaveSpecialistAgent): Promise<{ agentId: string; snapshot: AgentRegistrySnapshot }>;
+  save(input: SaveSpecialistAgent): Promise<{ agentId: string; snapshot: AgentRegistrySnapshot; repositoryError?: string }>;
   onDidChange(listener: (snapshot: AgentRegistrySnapshot) => void): () => void;
 }
 
@@ -149,8 +151,8 @@ export function parseAgentRegistrySnapshot(value: unknown): AgentRegistrySnapsho
   const data = record(value);
   return { agents: parseSpecialistAgents(data.agents), workspaceRoot: text(data.workspaceRoot, 4096, true) };
 }
-export function parseAgentRegistrySaveResult(value: unknown): { agentId: string; snapshot: AgentRegistrySnapshot } {
+export function parseAgentRegistrySaveResult(value: unknown): { agentId: string; snapshot: AgentRegistrySnapshot; repositoryError?: string } {
   const data = record(value), id = agentId(data.agentId), snapshot = parseAgentRegistrySnapshot(data.snapshot);
   if (!snapshot.agents.some(agent => agent.id === id)) throw new TypeError('Saved agent is missing from registry.');
-  return { agentId: id, snapshot };
+  return { agentId: id, snapshot, ...(data.repositoryError === undefined ? {} : { repositoryError: text(data.repositoryError, 2000, true) }) };
 }

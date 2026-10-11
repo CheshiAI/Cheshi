@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { runRendererSession, type SessionResult } from '../scripts/renderer-session.mts';
 
 function fixture(alreadyAttached = false) {
-  const renderer = vm.createContext({ value: 'original' });
+  const renderer = vm.createContext({ value: 'original', setTimeout });
   let attached = alreadyAttached;
   let detached = 0;
   const debug = Object.assign(new EventEmitter(), {
@@ -89,4 +89,84 @@ test('renderer expressions work without unsafe-eval permission', async () => {
   const result = await h.run('async ui => await ui.evaluate("2 + 2")');
   expect(result.ok).toBe(true);
   expect(result.result).toBe(4);
+});
+
+test('default wait succeeds after five seconds within the scenario deadline', async () => {
+  const h = fixture();
+  const result = await h.run(`async ui => {
+    ui.cleanup('delete globalThis.readyAt');
+    await ui.evaluate('globalThis.readyAt = Date.now() + 5200');
+    await ui.waitFor('Date.now() >= globalThis.readyAt');
+    return { ready: true };
+  }`, 8000);
+  expect(result.ok).toBe(true);
+  expect(result.result).toEqual({ ready: true });
+  expect(h.renderer.readyAt).toBeUndefined();
+  expect(h.detached()).toBe(1);
+}, 10000);
+
+test('explicit wait limits fail and restore state even for a pending renderer evaluation', async () => {
+  for (const expression of ['false', '"truthy"', 'new Promise(resolve => setTimeout(() => resolve(true), 150))']) {
+    const h = fixture();
+    const result = await h.run(`async ui => {
+      ui.cleanup('globalThis.value = "original"');
+      await ui.evaluate('globalThis.value = "changed"');
+      await ui.waitFor(${JSON.stringify(expression)}, 20);
+      await ui.evaluate('globalThis.value = "late write"');
+    }`);
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('UI condition did not become true within 20 ms');
+    await Bun.sleep(170);
+    expect(h.renderer.value).toBe('original');
+    expect(h.detached()).toBe(1);
+    expect(result.cleanupErrors).toEqual([]);
+  }
+});
+
+test('default and longer explicit waits share the remaining scenario deadline', async () => {
+  for (const extra of ['', ', 1000']) {
+    const h = fixture();
+    const result = await h.run(`async ui => {
+      ui.cleanup('globalThis.value = "original"');
+      await ui.evaluate('globalThis.value = "changed"');
+      await new Promise(resolve => setTimeout(resolve, 30));
+      await ui.waitFor('false'${extra});
+      await ui.evaluate('globalThis.value = "late write"');
+    }`, 60);
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('timed out');
+    await Bun.sleep(60);
+    expect(h.renderer.value).toBe('original');
+    expect(h.detached()).toBe(1);
+    expect(h.main.testSession).toBeUndefined();
+  }
+});
+
+test('cancelling a pending wait restores state and stops further polling', async () => {
+  const h = fixture();
+  const result = await h.run(`async ui => {
+    ui.cleanup('globalThis.value = "original"');
+    await ui.evaluate('globalThis.value = "changed"');
+    setTimeout(() => globalThis.testSession.abort(), 10);
+    await ui.waitFor('(globalThis.polls = (globalThis.polls || 0) + 1, false)');
+    await ui.evaluate('globalThis.value = "late write"');
+  }`);
+  const polls = h.renderer.polls;
+  expect(result.ok).toBe(false);
+  expect(result.error).toContain('cancelled');
+  await Bun.sleep(60);
+  expect(h.renderer.polls).toBe(polls);
+  expect(h.renderer.value).toBe('original');
+  expect(h.detached()).toBe(1);
+});
+
+test('wait rejects invalid limits without evaluating the condition', async () => {
+  for (const limit of ['0', '-1', '1.5', 'NaN', 'Infinity', '"20"', 'null']) {
+    const h = fixture();
+    const result = await h.run(`async ui => await ui.waitFor('(globalThis.value = "unexpected", true)', ${limit})`);
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('positive integer');
+    expect(h.renderer.value).toBe('original');
+    expect(h.detached()).toBe(1);
+  }
 });

@@ -44,6 +44,7 @@
 }
 .identity { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--icon-default); }
 .name { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-label); font-weight: 600; }
+.name, .identity > .status { line-height: 16px; }
 .logOutput {
   flex: 1;
   min-width: 0;

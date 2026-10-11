@@ -49,6 +49,7 @@
 .detailBody { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: auto; }
 .section { display: flex; flex: 0 0 auto; flex-direction: column; gap: var(--space-default); min-width: 0; padding: var(--space-default); overflow-wrap: anywhere; }
 .empty { margin: 0; padding: var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
+.notice > .empty { padding: 0; line-height: 1.6; }
 
 .runtimeActions { display: flex; align-items: center; gap: var(--icon-default); margin-left: auto; }
 .settingsPane { display: flex; flex: 1; min-width: 0; min-height: 0; }

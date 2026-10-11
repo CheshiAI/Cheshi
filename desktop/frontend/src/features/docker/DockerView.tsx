@@ -33,7 +33,7 @@ export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentS
   const statusLabel = (container: NonNullable<typeof agent>) => {
     const pending = state.pendingControl;
     if (changing && pending?.engineId === state.engineId && pending.agentId === container.id
-      && (pending.action === 'start' || pending.action === 'restart')) return '시작 중 · 시작 요청 진행';
+      && (pending.action === 'start' || pending.action === 'restart')) return 'Starting · request in progress';
     return workerStatusLabel(container, container.id === state.agentId ? details : null,
       Math.max(now, Date.now()), changing || !snapshot?.online || Boolean(error));
   };
@@ -87,7 +87,7 @@ export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentS
             <TooltipTarget content={`${agent.name}\nImage: ${agent.image}\nDocker: ${agent.state}`}>
               <h2 className={viewStyles.name}>{workerDisplayName(agent, profiles)}</h2>
             </TooltipTarget>
-            <span className={styles.description} role="status">{statusLabel(agent)}</span>
+            <span className={`${styles.description} ${viewStyles.status}`} role="status">{statusLabel(agent)}</span>
           </div>
           <div className={styles.actions}>
             <TooltipButton variant="ghost" size="icon" aria-label="Delete selected container" title="Delete container"

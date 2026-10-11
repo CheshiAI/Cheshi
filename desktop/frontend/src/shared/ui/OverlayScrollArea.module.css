@@ -2,7 +2,8 @@
   position: relative;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  /* Only the inner viewport may scroll, including focus and scrollIntoView. */
+  overflow: clip;
 }
 
 .viewport,

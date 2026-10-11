@@ -17,24 +17,29 @@ async function rejected(operation: Promise<unknown>, text: string) {
   expect(failure).toBeInstanceOf(Error);
   expect((failure as Error).message).toContain(text);
 }
-function fixture() {
+function fixture(runtime: RuntimeAgent = agent) {
   let busy: unknown = false, online = true;
+  let readError = false;
   let execution: unknown = undefined;
   const actions: string[] = [];
+  const reads: string[] = [];
   let gate: Promise<void> | null = null;
   const engine: AgentEngine = {
     kind: 'test', engines: async () => [{ id: 'test:local', name: 'Test', supported: true, reason: null }],
-    list: async () => { if (!online) throw new Error('offline'); return [agent]; },
-    inspect: async () => agent,
+    list: async () => { if (!online) throw new Error('offline'); return [runtime]; },
+    inspect: async () => runtime,
     control: async (_engine, _id, action) => { actions.push(action); if (gate) await gate; },
     logs: async () => 'ready',
   };
   const service = createAgentManagementService({ engines: [engine], read: async (_endpoint, path) => {
+    reads.push(path);
+    if (readError) throw new Error('Worker API unavailable');
     if (path === '/health') return { role: 'verifier', ready: true, busy, threadId: 'thread-1', error: null, execution };
     if (path === '/account') return { authenticated: true, access_token: 'must-not-leave-main' };
     return { tasks: [{ id: 'task-1', prompt: 'review', status: 'completed', createdAt: '2026-10-02', output: 'done', error: null }] };
   } });
-  return { service, actions, busy: (value: unknown) => { busy = value; }, offline: () => { online = false; },
+  return { service, actions, reads, failRead: () => { readError = true; },
+    busy: (value: unknown) => { busy = value; }, offline: () => { online = false; },
     hold: (value: Promise<void>) => { gate = value; }, execution: (value: unknown) => { execution = value; } };
 }
 
@@ -84,6 +89,33 @@ test('serializes control across workspace windows and releases the lock after ac
   gate.resolve(); await first;
   await f.service.control('test:local', 'worker', 'stop');
   expect(f.actions).toEqual(['restart', 'stop']);
+});
+
+test('repeated stop of an inspected exited worker succeeds without HTTP or engine control', async () => {
+  const f = fixture({ ...agent, state: 'exited', endpoint: null });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const snapshot = await f.service.control('test:local', 'worker', 'stop');
+    expect(snapshot.online).toBe(true);
+    expect(snapshot.agents[0]?.state).toBe('exited');
+  }
+  expect(f.reads).toEqual([]);
+  expect(f.actions).toEqual([]);
+  await rejected(f.service.control('test:local', 'worker', 'restart'), 'Cannot verify');
+});
+
+test.each(['running', 'unknown', 'paused', 'restarting', 'created', 'dead'])(
+  'a missing API alone does not authorize stopping a worker in state %s', async state => {
+    const f = fixture({ ...agent, state, endpoint: null });
+    await rejected(f.service.control('test:local', 'worker', 'stop'), 'No loopback API');
+    expect(f.actions).toEqual([]);
+  },
+);
+
+test('an unreachable API on a running worker still blocks stop', async () => {
+  const f = fixture(); f.failRead();
+  await rejected(f.service.control('test:local', 'worker', 'stop'), 'Cannot verify');
+  expect(f.reads).toEqual(['/health']);
+  expect(f.actions).toEqual([]);
 });
 
 test('HTTP inspection rejects remote endpoints, redirects and oversized responses', async () => {

@@ -21,6 +21,10 @@ function shouldIgnore(packagePath: string): boolean {
   }
   if (rootEntry === 'resources') {
     if (segments.length === 1) return false;
+    if (childEntry === 'homie-repository') {
+      const files = ['README.md', 'gitignore'].map(file => `resources/homie-repository/${file}`);
+      return !files.some(file => normalizedPath === file || file.startsWith(`${normalizedPath}/`));
+    }
     if (childEntry === 'agent-packages') {
       const files = ['cheshi-development', 'cheshi-review'].flatMap(id =>
         ['agent.json', 'instructions.md'].map(file => `resources/agent-packages/${id}/${file}`));
@@ -74,6 +78,7 @@ function shouldIgnore(packagePath: string): boolean {
   if (grandchildEntry === 'agent-voice') return segments.length > 4 || (segments.length === 4 && !new Set(['workspace.mts', 'service.mts', 'storage.mts', 'chats.mts', 'realtime.mts', 'diagnostics.mts']).has(segments[3]!));
   if (grandchildEntry === 'agent-management') {
     if (segments[3] === 'packages.mts') return segments.length > 4;
+    if (['homie-repository.mts', 'homie-repository-command.mts', 'homie-repository-template.mts', 'homie-repository-project.mts'].includes(segments[3] ?? '')) return segments.length > 4;
     const agentFiles = new Set(['platform-executor.mts', 'custom-tool-execution.mts', 'tool-credentials.mts', 'homie-packs.mts', 'pack-environment.mts', 'dependencies.mts', 'project-environment.mts', 'lifecycle.mts', 'engine.mts', 'docker.mts', 'docker-errors.mts', 'task-inspection.mts', 'service.mts', 'ipc.mts', 'terminal.mts', 'registry.mts', 'registry-ipc.mts', 'runtime.mts', 'instruction-files.mts', 'operations.mts', 'application-deletion.mts', 'docker-deletion.mts', 'deletion.mts']);
     return segments.length > 3 && (segments.length !== 4 || !agentFiles.has(segments[3] ?? ''));
   }

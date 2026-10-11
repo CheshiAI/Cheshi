@@ -133,9 +133,10 @@ export function AgentsView({ active = true, chatTask, onBackToChats, selectionRe
               onChange={event => participation.toggle(item.id, event.target.checked)} />
             <span className={viewStyles.empty}>{item.name} · Unavailable</span>
           </div>)}
-        {registered.data?.agents.length === 0 && <p className={viewStyles.empty}>Create a Homie to begin.</p>}
-        <div className={viewStyles.notice}><AgentManagementNotice state={state} /></div>
-
+        <div className={viewStyles.notice}>
+          {registered.data?.agents.length === 0 && <p className={viewStyles.empty}>Create a Homie to begin.</p>}
+          <AgentManagementNotice state={state} />
+        </div>
       </nav>
       {selectionRequest?.roomId && <section ref={connectParticipationBackdrop} className={viewStyles.participation} aria-label="Room participation">
         {participation.loading && <p>Loading participants…</p>}

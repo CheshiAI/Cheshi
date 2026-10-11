@@ -64,7 +64,10 @@ then evaluates the function in Electron's main process with these helpers:
   Offscreen/obscured targets fail explicitly; scroll the relevant container into
   position first when needed, and preserve its original scroll state.
 - `cdp(method, params)`: other CDP input/read commands within the review scope.
-- `waitFor(expression)`: bounded polling of a renderer boolean expression.
+- `waitFor(expression, timeoutMs?)`: poll until a renderer expression returns
+  literal `true`. By default, use the scenario's remaining time; an optional
+  positive integer sets a shorter per-wait limit in milliseconds. A wait never
+  extends the overall scenario deadline.
 - `cleanup(expression)`: register renderer restoration before the first action.
   Cleanup runs in reverse order on success, exception, timeout, or handled SIGINT.
 - `key`: unique renderer-memory key for private snapshots. Return only checks,
@@ -78,8 +81,12 @@ if it changes the expected state, report the inconclusive result.
 
 The default deadline is 20 seconds (`--timeout-ms`, 1–60 seconds). Helpers stop
 accepting actions after cancellation/deadline and restoration is attempted for
-up to 5 seconds per cleanup. JavaScript already running in the renderer cannot
-be forcibly cancelled: use bounded expressions and never infinite loops or
+up to 5 seconds per cleanup. For slow setup, choose a sufficient scenario deadline
+(for example, `--timeout-ms 60000`) and use `await ui.waitFor(expression)`;
+use `await ui.waitFor(expression, 2000)` for a short UI transition. Each individual
+renderer evaluation or CDP command still has a 5-second operation limit: poll a
+quick condition instead of evaluating a long-running Promise. JavaScript already
+running in the renderer cannot be forcibly cancelled: use bounded expressions and never infinite loops or
 unbounded timers. Abrupt process termination/app crashes cannot guarantee
 restoration; report cleanup failures and inspect the current state before retrying.
 

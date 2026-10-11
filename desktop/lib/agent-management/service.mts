@@ -132,6 +132,8 @@ export function createAgentManagementService(options: { engines: AgentEngine[]; 
         pending.add(key);
         const execute = async () => {
           const agent = await engine.inspect(engineId, id);
+          // Keep the lifecycle wrapper so an already sleeping worker becomes manually stopped.
+          if (action === 'stop' && agent.state === 'exited') return await snapshot(engineId);
           if (action !== 'start') {
             if (!agent.endpoint) throw new Error('Cannot verify worker activity. No loopback API is available.');
             let busy: boolean;

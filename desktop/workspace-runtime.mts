@@ -502,7 +502,7 @@ ipcMain.handle(
   'cheshi:get-codex-chat-attachment-preview',
   (_event, attachmentPath) => codexChatAttachmentPreviewUrl(attachmentPath),
 );
-const sessionStores = createWorkspaceSessionStores(ipcMain, codeGraphDirectory, assertCheshiSender);
+const sessionStores = createWorkspaceSessionStores(workspaceProjects.ipc, codeGraphDirectory, assertCheshiSender);
 const appleNotesService = new AppleNotesService({ activationEvents: app, searchFilename: path.join(userDataDirectory, 'apple-notes', 'search.sqlite') });
 registerCodexChatIpc({
   notesService: appleNotesService,

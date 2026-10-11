@@ -5,7 +5,7 @@ export interface DesktopUI {
   evaluate<T = unknown>(expression: string): Promise<T>;
   click(selector: string): Promise<void>;
   cdp(method: string, params?: Record<string, unknown>): Promise<unknown>;
-  waitFor(expression: string): Promise<void>;
+  waitFor(expression: string, timeoutMs?: number): Promise<void>;
   cleanup(expression: string): void;
 }
 
@@ -38,15 +38,16 @@ export async function runRendererSession(options: SessionOptions, scenarioSource
   let attached = false;
   let runtimeExceptions = 0;
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let scenarioDeadline = Infinity;
   const check = () => {
-    if (finished || abort.signal.aborted) throw new Error('UI check cancelled or timed out');
+    if (finished || abort.signal.aborted || Date.now() >= scenarioDeadline) throw new Error('UI check cancelled or timed out');
     if (contents.isDestroyed()) throw new Error('Workspace renderer closed');
   };
-  const limited = async <T,>(operation: Promise<T>, milliseconds: number): Promise<T> => {
+  const limited = async <T,>(operation: Promise<T>, milliseconds: number, message = 'Renderer operation timed out'): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([operation, new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('Renderer operation timed out')), milliseconds);
+        timer = setTimeout(() => reject(new Error(message)), milliseconds);
       })]);
     } finally { clearTimeout(timer); }
   };
@@ -102,18 +103,33 @@ export async function runRendererSession(options: SessionOptions, scenarioSource
         type: 'mouseReleased', button: 'left', clickCount: 1, ...position,
       }), 3000);
     },
-    async waitFor(expression) {
-      const deadline = Date.now() + 5000;
-      while (Date.now() < deadline) {
-        if (await evaluate(expression) === true) return;
-        await new Promise(resolve => setTimeout(resolve, 40));
+    async waitFor(expression, timeoutMs) {
+      check();
+      if (timeoutMs !== undefined && (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0)) {
+        throw new Error('waitFor timeout must be a positive integer in milliseconds');
       }
-      throw new Error('UI condition did not become true within 5 seconds');
+      const started = Date.now();
+      const deadline = Math.min(scenarioDeadline, timeoutMs === undefined ? Infinity : started + timeoutMs);
+      const message = `UI condition did not become true within ${deadline - started} ms`;
+      const remaining = () => {
+        check();
+        const milliseconds = deadline - Date.now();
+        if (milliseconds <= 0) throw new Error(message);
+        return milliseconds;
+      };
+      while (true) {
+        const milliseconds = remaining();
+        const ready = await limited(evaluate(expression), milliseconds, message);
+        remaining();
+        if (ready === true) return;
+        await new Promise(resolve => setTimeout(resolve, Math.min(40, remaining())));
+      }
     },
   };
   const report: SessionResult = { ok: false, runtimeExceptions: 0, cleanupErrors: [] };
   try {
     await attach();
+    scenarioDeadline = Date.now() + options.timeoutMs;
     const cancelled = new Promise<never>((_, reject) => {
       abort.signal.addEventListener('abort', () => reject(new Error('UI check cancelled or timed out')), { once: true });
       timeout = setTimeout(() => abort.abort(), options.timeoutMs);

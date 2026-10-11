@@ -168,7 +168,7 @@ test('worker labels follow registered names and renames while retaining containe
     const containerHeader = () => document.querySelector('[aria-label="Container status"] h2');
     await render(screen('docker'));
     expect(containerRow()?.textContent).toBe(profile.name);
-    expect(containerRow()?.getAttribute('aria-description')).toBe(`${workers[0]!.name} · 상태 확인 필요\nDocker: running`);
+    expect(containerRow()?.getAttribute('aria-description')).toBe(`${workers[0]!.name} · Status unknown\nDocker: running`);
     expect(containerHeader()?.textContent).toBe(profile.name);
     expect(containerHeader()?.getAttribute('aria-description')).toBe(`${workers[0]!.name}\nImage: fixture\nDocker: running`);
     stored = { ...stored, agents: [{ ...profile, name: 'Updated from another window', revision: 2 }] };
@@ -893,13 +893,13 @@ test('Docker presents semantic worker guidance with existing controls and no ins
   const api: AgentManagementApi = { engines: unused, snapshot: unused, details: unused, control: unused };
   const model = new AgentManagementModel(api);
   const examples: { state: string; lifecycle?: WorkerLifecycleDisplay; health?: { ready: boolean; busy: boolean; error: string | null }; text: string }[] = [
-    { state: 'exited', lifecycle: { phase: 'sleeping', stopReason: 'sleep', error: null }, text: '수면 중(작업이 오면 자동 시작)' },
-    { state: 'running', lifecycle: { phase: 'starting', error: null }, text: '시작 중' },
-    { state: 'running', health: { ready: true, busy: true, error: null }, text: '작업 중' },
-    { state: 'running', health: { ready: true, busy: false, error: null }, text: '대기 중' },
-    { state: 'exited', lifecycle: { phase: 'disabled', stopReason: 'manual', error: 'Manual' }, text: '수동 중지' },
-    { state: 'exited', lifecycle: { phase: 'disabled', stopReason: 'unexpected', error: 'Unexpected' }, text: '오류' },
-    { state: 'running', text: '상태 확인 필요' },
+    { state: 'exited', lifecycle: { phase: 'sleeping', stopReason: 'sleep', error: null }, text: 'Sleeping · wakes on request' },
+    { state: 'running', lifecycle: { phase: 'starting', error: null }, text: 'Starting' },
+    { state: 'running', health: { ready: true, busy: true, error: null }, text: 'Working' },
+    { state: 'running', health: { ready: true, busy: false, error: null }, text: 'Idle' },
+    { state: 'exited', lifecycle: { phase: 'disabled', stopReason: 'manual', error: 'Manual' }, text: 'Manually stopped' },
+    { state: 'exited', lifecycle: { phase: 'disabled', stopReason: 'unexpected', error: 'Unexpected' }, text: 'Error' },
+    { state: 'running', text: 'Status unknown' },
   ];
   for (const example of examples) {
     const agent = { id: 'worker', name: 'Worker', image: 'test', state: example.state, startedAt: '2026-10-09T00:00:00Z',
@@ -910,7 +910,7 @@ test('Docker presents semantic worker guidance with existing controls and no ins
     const html = renderToStaticMarkup(<DockerView model={model} state={state} />);
     expect(html).toContain(example.text);
     expect(html).toContain('aria-label="Start"'); expect(html).toContain('aria-label="Stop"');
-    expect(html).not.toContain('복구 중');
+    expect(html).not.toContain('Recovering');
   }
   expect(calls).toEqual([]); model.dispose();
 });
@@ -926,18 +926,18 @@ test('Docker marks only the actual start/restart target as a pending request and
     for (const action of ['start', 'restart', 'stop'] as const) {
       await render(<DockerView model={model} state={{ ...state, pendingControl: { engineId: state.engineId, agentId: agent.id, action } }} />);
       const status = document.querySelector('[aria-label="Container status"] [role="status"]');
-      expect(status?.textContent).toBe(action === 'stop' ? '상태 확인 필요' : '시작 중 · 시작 요청 진행');
+      expect(status?.textContent).toBe(action === 'stop' ? 'Status unknown' : 'Starting · request in progress');
       expect(document.querySelector('[aria-label="Container status"] h2')?.getAttribute('aria-description')).toContain('Docker: exited');
       expect(document.querySelector('[aria-label="Container selection"] button')?.getAttribute('aria-description')).toContain('Docker: exited');
     }
     for (const pendingControl of [null, { engineId: 'docker:other', agentId: agent.id, action: 'start' as const },
       { engineId: state.engineId, agentId: 'other', action: 'restart' as const }]) {
       await render(<DockerView model={model} state={{ ...state, pendingControl }} />);
-      expect(document.body.textContent).not.toContain('시작 요청 진행');
+      expect(document.body.textContent).not.toContain('request in progress');
     }
     await render(<DockerView model={model} state={{ ...state, changing: false,
       pendingControl: { engineId: state.engineId, agentId: agent.id, action: 'start' } }} />);
-    expect(document.body.textContent).not.toContain('시작 요청 진행');
+    expect(document.body.textContent).not.toContain('request in progress');
   });
   model.dispose();
 });

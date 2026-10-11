@@ -34,6 +34,7 @@ const desktopLibraryNames = [
   'workspace-file-service',
 ] as const;
 const desktopScriptNames = [
+  'ensure-homie-repository',
   'build-desktop-preload',
   'build-desktop-runtime',
   'forward-desktop-dev-output',
@@ -55,6 +56,28 @@ function runtimeImportSpecifiers(sourcePath: string): string[] {
     .map(({ fileName }) => fileName)
     .filter((specifier) => specifier.startsWith('.'));
 }
+
+test('Homie repository setup bundles its service and exact seed resources', async () => {
+  const configuration = await createForgeConfiguration();
+  const shouldIgnore = configuration.packagerConfig?.ignore;
+  if (typeof shouldIgnore !== 'function') throw new Error('Forge ignore configuration is unavailable.');
+  for (const name of ['homie-repository', 'homie-repository-command', 'homie-repository-template', 'homie-repository-project']) {
+    assert.equal(shouldIgnore(`/desktop/lib/agent-management/${name}.mts`), false);
+  }
+  for (const name of ['README.md', 'gitignore']) {
+    assert.equal(shouldIgnore(`/resources/homie-repository/${name}`), false);
+    assert.ok(existsSync(path.join(rootDirectory, 'resources/homie-repository', name)));
+  }
+  assert.equal(shouldIgnore('/resources/homie-repository/auth.json'), true);
+  for (const filename of ['/agents/repositories/owners/123.json', '/agents/registry.json',
+    '/.config/gh/hosts.yml', '/.codex/auth.json', '/.env.local', '/.env.signing']) {
+    assert.equal(shouldIgnore(filename), true, `${filename} must remain outside the application package`);
+  }
+  for (const name of ['homie-repository-template', 'homie-repository-project']) {
+    const source = readFileSync(path.join(rootDirectory, `desktop/lib/agent-management/${name}.mts`), 'utf8');
+    assert.doesNotMatch(source, /['"`]\/(?:Users|home)\//u);
+  }
+});
 
 test('uses typed Electron entrypoints and a generated sandboxed preload', async () => {
   const packageSource = readFileSync(path.join(rootDirectory, 'package.json'), 'utf8');

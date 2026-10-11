@@ -36,7 +36,7 @@ test('sleep, manual stop and unexpected exit require the corresponding lifecycle
   expect(workerStatus(agent('exited', { phase: 'disabled', error: 'Worker manually stopped.' }), null, now)).toBe('unknown');
   expect(workerStatus(agent('exited'), null, now)).toBe('unknown');
   expect(workerStatus(agent('exited', { phase: 'draining', stopReason: 'sleep', error: null }), null, now)).toBe('unknown');
-  expect(workerStatusLabel(agent('exited', { phase: 'sleeping', stopReason: 'sleep', error: null }), null, now)).toBe('수면 중(작업이 오면 자동 시작)');
+  expect(workerStatusLabel(agent('exited', { phase: 'sleeping', stopReason: 'sleep', error: null }), null, now)).toBe('Sleeping · wakes on request');
 });
 test('starting must be observed and conflicting, stale or missing evidence stays unknown', () => {
   const worker = agent('running', { phase: 'starting', error: null });

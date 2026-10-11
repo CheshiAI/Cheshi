@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { WorkspaceProject } from '../shared/workspace-projects.ts';
+import { parseEditorSession, type EditorSession } from '../shared/editor-session.ts';
 import { normalizeRelativePath } from './workspace-file-paths.mts';
 
 const pathFields = new Set(['path', 'previousPath', 'directoryPath', 'destinationDirectory']);
@@ -22,6 +23,17 @@ export function projectForPath(projects: WorkspaceProject[], value: string): Wor
   // Reject traversal even if its normalized destination falls inside a project.
   if (value.split(/[\\/]/u).includes('..') || value.includes('\0')) throw new Error('Invalid project path.');
   return project;
+}
+
+/** Keep session metadata inside current project membership without changing file access rules. */
+export function filterProjectEditorSession(projects: WorkspaceProject[], value: unknown): EditorSession {
+  const session = parseEditorSession(value);
+  const paths = session.paths.filter(file => {
+    try { return Boolean(projectForPath(projects, file)); }
+    catch { return false; }
+  });
+  return { ...session, paths, selectedPath: session.selectedPath === null || paths.includes(session.selectedPath)
+    ? session.selectedPath : paths[0] ?? null };
 }
 
 export function relativeProjectPath(project: WorkspaceProject, value: string): string {

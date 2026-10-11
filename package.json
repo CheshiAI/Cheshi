@@ -17,6 +17,7 @@
     "connect/test"
   ],
   "scripts": {
+    "homies:ensure": "bun run scripts/ensure-homie-repository.mts",
     "connect:start": "bun run --cwd connect/server start",
     "connect:test": "bun test connect/test desktop/test/agent-voice.test.ts",
     "connect:typecheck": "bun run --bun tsc -p connect/tsconfig.json --noEmit",

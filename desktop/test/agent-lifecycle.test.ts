@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WorkerLifecycle } from '../lib/agent-management/lifecycle.mts';
+import { createAgentManagementService } from '../lib/agent-management/service.mts';
 import { bindingFor } from '../lib/agent-orchestration/mailbox.mts';
 import type { AgentDetails } from '../shared/agent-management.ts';
 import { parseAgentRuntimeState } from '../shared/agent-runtime.ts';
@@ -81,6 +82,29 @@ test('manual stop persists across restart, and uncertain shutdown is never repor
   f.lifecycle.adopt(f.binding, f.details); f.setRunning(true); f.unconfirmed();
   await f.rest(); f.setNow(300000); await f.rest(); expect(f.lifecycle.cached(f.binding)).toBeNull();
   expect(f.lifecycle.nextCheck(f.binding)).toBe(420000);
+});
+test('management stop of a sleeping worker persists manual stop across restart without HTTP or Docker control', async () => {
+  const f = fixture(); await f.connect(); await f.rest(); f.setNow(300000); await f.rest();
+  expect(f.lifecycle.state(f.binding)?.phase).toBe('sleeping');
+  const stopped = { ...f.details.agent, state: 'exited', endpoint: null };
+  const calls: string[] = [];
+  const service = createAgentManagementService({
+    engines: [{ kind: 'docker', engines: async () => [], list: async () => [stopped],
+      inspect: async () => stopped, logs: async () => '',
+      control: async () => { calls.push('docker'); } }],
+    read: async () => { calls.push('http'); throw new Error('Sleeping worker has no API'); },
+    control: (engineId, id, action, operation) => f.lifecycle.manual(engineId, id, action, operation),
+  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    expect((await service.control('docker:test', 'container', 'stop')).online).toBe(true);
+  }
+  expect(calls).toEqual([]);
+  f.restart();
+  expect(f.lifecycle.cached(f.binding)).toMatchObject({ lifecycle: { phase: 'disabled' },
+    details: { agent: { state: 'exited' }, threadId: 'saved-thread' } });
+  expect(f.lifecycle.nextCheck(f.binding)).toBeNull();
+  await fails(f.connect(), 'manually stopped');
+  expect(f.startCount()).toBe(1);
 });
 test('manual stop captures newer activity and persists confirmed stopped details without waking', async () => {
   const f = fixture(); await f.connect();

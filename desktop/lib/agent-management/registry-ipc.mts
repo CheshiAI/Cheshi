@@ -26,6 +26,7 @@ export function registerAgentRegistryIpc(options: {
   selectInstructionFiles?: () => Promise<string[]>;
   openInstructionFile?: (path: string) => Promise<void>;
   packsDirectory?: string;
+  prepareCreation?(agent: import('../../shared/agent-registry.ts').SpecialistAgent): Promise<void>;
   toolCredential?(input: ToolCredentialRequest): Promise<boolean>;
   testTool?(input: ToolTestRequest): Promise<unknown>;
   exportPackagePath?: (name: string) => Promise<string | null>;
@@ -134,7 +135,17 @@ export function registerAgentRegistryIpc(options: {
       const input = parseDeleteSpecialistAgent(value);
       return deletionReply(() => options.remove!(input));
     });
-    if (options.runtime) handle(AGENT_RUNTIME_CHANNEL, value => options.runtime!(parseAgentRuntimeRequest(value)));
+    if (options.runtime) handle(AGENT_RUNTIME_CHANNEL, async value => {
+      const request = parseAgentRuntimeRequest(value);
+      if (request.action === 'start' && options.prepareCreation) {
+        const agent = options.registry.snapshot(options.workspaceRoot).agents.find(item => item.id === request.agentId);
+        if (!agent) throw new Error('This Homie is no longer available.');
+        await options.prepareCreation(agent);
+        if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
+        owner.send(AGENT_REGISTRY_CHANNELS.repositoryReady);
+      }
+      return options.runtime!(request);
+    });
     handle(AGENT_REGISTRY_CHANNELS.list, () => options.registry.snapshot(options.workspaceRoot));
     handle(AGENT_REGISTRY_CHANNELS.models, models);
     handle(AGENT_REGISTRY_CHANNELS.save, async value => {
@@ -142,7 +153,17 @@ export function registerAgentRegistryIpc(options: {
       const catalog = input.profile.model === null ? [] : await models(input.profile.accountId);
       assertAgentModelSelection(input.profile, catalog);
       if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
-      return options.registry.save(input, options.workspaceRoot);
+      const result = options.registry.save(input, options.workspaceRoot);
+      if (input.id === null && options.prepareCreation) {
+        const agent = result.snapshot.agents.find(item => item.id === result.agentId)!;
+        try { await options.prepareCreation(agent); }
+        catch (error) {
+          return { ...result, repositoryError: (error instanceof Error ? error.message : 'Could not prepare the Homie repository.').slice(0, 2000) };
+        }
+        if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
+        owner.send(AGENT_REGISTRY_CHANNELS.repositoryReady);
+      }
+      return result;
     });
     unsubscribeClosed = onWindowClosed(options.window, dispose);
   } catch (error) { dispose(); throw error; }

@@ -132,7 +132,7 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack, 
     catch (error) { setPackError(error instanceof Error ? error.message : 'Invalid Homie pack.'); return; }
     operation.current = true;
     void model.save({ id: agent?.id ?? null, revision, profile: savedProfile,
-      assignment: { assigned, instructions, instructionFiles, permissions } }).then(result => {
+      assignment: { assigned, instructions, instructionFiles, permissions } }, engineId).then(result => {
       onSaved?.();
       if (active.current) { setRevision(result.revision); setSaved(true); setNotice(null); }
     }, () => { /* The model exposes the error without discarding the draft. */ }).finally(() => { operation.current = false; });
@@ -143,7 +143,7 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack, 
       {!agent && <NeumorphicButton variant="standard" disabled={profileActionDisabled}
         onClick={() => { void exportPack(); }}>Export</NeumorphicButton>}
       <NeumorphicButton type="submit" variant="standard" disabled={profileActionDisabled || Boolean(outdated)}>
-        {state.saving ? 'Saving…' : agent ? 'Save agent' : 'Create agent'}</NeumorphicButton>
+        {state.starting ? 'Preparing environment…' : state.saving ? agent ? 'Saving…' : 'Creating Homie…' : agent ? 'Save agent' : 'Create agent'}</NeumorphicButton>
       {agent && <ToolbarMenu label="Homie actions" items={[
         { id: 'export', label: 'Export…', icon: <Download aria-hidden="true" />, disabled: profileActionDisabled, onSelect: () => { void exportPack(); } },
         ...(onDuplicate ? [{ id: 'duplicate', label: 'Duplicate Homie', icon: <Copy aria-hidden="true" />, disabled: disabled || !profile.name.trim(),
@@ -231,7 +231,9 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack, 
               <p className={styles.description}>{workspaceRoot}</p>
               <div className={styles.switchRow}><span>Assign to this project</span><ToggleSwitch aria-label="Assign agent to this project" checked={assigned}
                 disabled={disabled} onChange={value => { setAssigned(value); setSaved(false); }} /></div>
-              <p className={styles.description}>Save settings before starting the worker. Docker uses the saved configuration; saving does not start or restart it.</p>
+              <p className={styles.description}>{agent
+                ? 'Docker uses the saved configuration. Saving changes does not start or restart the worker.'
+                : 'Creating this Homie prepares its private GitHub repository, adds it to Explorer and starts its Docker worker when an account, project and engine are configured.'}</p>
             </div>
             {agent && <HomieParticipation key={agent.id} agent={agent} workspaceRoot={workspaceRoot} roomId={roomId} />}
 
@@ -240,12 +242,14 @@ export function SpecialistAgentForm({ agent, model, state, accountsApi, onBack, 
           </section>
         </fieldset>
         {runtime && <fieldset hidden={section !== 'environment'} disabled={disabled} className={`${styles.fields} ${layout.runtime}`} aria-label="Docker runtime">{runtime(() => setSection('basic'), runtimeHeader)}</fieldset>}
-        {section === 'environment' && !agent && <p className={styles.description}>Create this Homie to manage its Docker worker.</p>}
+        {section === 'environment' && !agent && <p className={styles.description}>Its Docker environment is prepared after this Homie is saved.</p>}
       </div>
     </div>
     {outdated && <p className={styles.description} role="status">This agent changed in another window. Your current draft is preserved. {onReload && <NeumorphicButton variant="ghost" disabled={disabled} onClick={onReload}>Reload saved settings</NeumorphicButton>}</p>}
     {packError && <p role="alert" className={styles.description}>{packError}</p>}
     {state.error && <p role="alert" className={styles.description}>{state.error}</p>}
+    {state.saving && !state.starting && !agent && <p className={styles.description} role="status">Saving this Homie and preparing its private GitHub repository…</p>}
+    {state.starting && <p className={styles.description} role="status">Homie saved. Preparing its environment and starting the worker…</p>}
     {saved && !outdated && <p role="status" className={styles.description}>Agent saved.</p>}
     {notice && <p className={layout.status} role="status">{notice}</p>}
   </form>;
