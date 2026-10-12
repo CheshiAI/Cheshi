@@ -217,6 +217,17 @@ describe('single-turn ephemeral sessions', () => {
     expectReleased(client);
   });
 
+  test('preserves structured overload metadata for bounded recovery', async () => {
+    const client = createClient();
+    const pending = new EphemeralSessionService(client.client, '/workspace').run(REQUEST);
+    const caught = pending.catch((error: unknown) => error);
+    await client.started();
+    client.notify('turn/completed', { threadId: 'ephemeral-thread', turn: { id: 'ephemeral-turn', status: 'failed',
+      error: { message: 'Busy', codexErrorInfo: 'serverOverloaded', retryAfterMs: 2000 } } });
+    expect(await caught).toMatchObject({ failure: { code: 'serverOverloaded', retryable: true, retryAfterMs: 2000 } });
+    expectReleased(client);
+  });
+
   test('only literal true makes an error retryable', async () => {
     const client = createClient();
     const result = new EphemeralSessionService(client.client, '/workspace').run(REQUEST);

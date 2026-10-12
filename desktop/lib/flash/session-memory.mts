@@ -1,3 +1,5 @@
+import { rankWithRecovery } from './ranking-recovery.mts';
+import type { RerankMemory } from './rerank.mts';
 import { parseMemoryTurns, validateSummary, type SummarizeMemory, type TurnReference } from './summary.mts';
 import { randomUUID } from 'node:crypto';
 import type { FlashMemoryStatus } from '../../shared/flash-memory.ts';
@@ -10,11 +12,12 @@ import type { FlashHost } from './runtime.mts';
 import { digest, FlashSources, reconcileSources, workspaceMemoryAccount, type FlashBinding, type FlashSource } from './sources.mts';
 
 export interface SessionMemory {
+  searchCandidates?(params: Record<string, unknown>, session: string, signal: AbortSignal, turnId?: string): Promise<unknown>;
   execute(method: string, params: Record<string, unknown>, session: string, signal: AbortSignal, turnId?: string): Promise<unknown>;
 }
 
 export class FlashSessionMemory implements SessionMemory {
-  private readonly options: { workspace: string; source: SearchSource; host: FlashHost; syncWaitMs?: number; summarize?: SummarizeMemory;
+  private readonly options: { workspace: string; source: SearchSource; host: FlashHost; syncWaitMs?: number; summarize?: SummarizeMemory; rerank?: RerankMemory;
     blocked?(): boolean; onError?(code: string): void };
   private readonly sources: FlashSources;
   private binding: FlashBinding | null = null;
@@ -28,6 +31,19 @@ export class FlashSessionMemory implements SessionMemory {
   private closed = false;
   private progress: Omit<FlashMemoryStatus, 'waiting'> = { state: 'signed_out', processed: 0, total: null, error: null };
   private readonly waiters = new Set<symbol>();
+
+  hasAccount(profileId: string): boolean { return !this.closed && this.bindings.some(b => b.profileId === profileId); }
+
+  async original(target: { threadId: string; itemId: string }): Promise<string> {
+    const binding = this.binding, signal = this.lifetime.signal;
+    if (!binding) throw new FlashError('unavailable', 'Sign in to read the original.');
+    const session = (await this.sources.sessions(this.bindings)).find(s => s.id === target.threadId);
+    if (!session) throw new FlashError('stale_source', 'The source is unavailable.');
+    const entry = (await this.sources.documents(session, true)).find(s => s.document.itemId === target.itemId);
+    this.assertCurrent(binding, signal);
+    if (!entry) throw new FlashError('stale_source', 'The source is unavailable.');
+    return entry.document.text;
+  }
 
   status(): FlashMemoryStatus { return { ...this.progress, waiting: this.waiters.size }; }
 
@@ -162,7 +178,22 @@ export class FlashSessionMemory implements SessionMemory {
     }
   }
 
-  async execute(method: string, params: Record<string, unknown>, session: string, caller: AbortSignal, turnId?: string): Promise<unknown> {
+  async verifyCandidates(matches: Record<string, unknown>[], caller: AbortSignal): Promise<void> {
+    const binding = this.binding;
+    if (!binding) throw new FlashError('unavailable', 'Sign in to verify memory.');
+    const signal = AbortSignal.any([caller, this.lifetime.signal]);
+    this.assertCurrent(binding, signal);
+    await this.sources.verify(this.bindings, { matches }, this.synced);
+    this.assertCurrent(binding, signal);
+  }
+
+  searchCandidates(params: Record<string, unknown>, session: string, signal: AbortSignal, turnId?: string): Promise<unknown> {
+    return this.run('memory_search', params, session, signal, turnId, false);
+  }
+  execute(method: string, params: Record<string, unknown>, session: string, signal: AbortSignal, turnId?: string): Promise<unknown> {
+    return this.run(method, params, session, signal, turnId, true);
+  }
+  private async run(method: string, params: Record<string, unknown>, session: string, caller: AbortSignal, turnId: string | undefined, rank: boolean): Promise<unknown> {
     if (!['memory_search', 'memory_read'].includes(method)) throw new FlashError('invalid_request', 'Unknown memory tool');
     const binding = this.binding;
     if (!binding) throw new FlashError('unavailable', 'Sign in to use session memory');
@@ -177,13 +208,14 @@ export class FlashSessionMemory implements SessionMemory {
       finally { this.waiters.delete(waiter); }
     }
     this.assertCurrent(binding, signal);
+    const searchParams = method === 'memory_search' && rank && this.options.rerank ? { ...params, limit: 30 } : params;
     const result = await this.options.host.transaction(async connection => {
       this.assertCurrent(binding, signal);
       const scope = { workspace: this.options.workspace, account: workspaceMemoryAccount(this.options.workspace), homie: `session:${session}:${randomUUID()}` };
       const grant = await callFlash<{ token: string }>(connection, 'grant.create', { ...scope, ttl_seconds: 60 }, signal);
       try {
         const request = method === 'memory_search' && turnId
-          ? { ...params, exclude_turn: { session_id: session, turn_id: turnId } } : params;
+          ? { ...searchParams, exclude_turn: { session_id: session, turn_id: turnId } } : searchParams;
         const result = await callFlash({ ...connection, token: grant.token },
           method === 'memory_read' ? 'memory_read_turns' : method,
           method === 'memory_read' ? { turns: params.turns } : request, signal);
@@ -195,7 +227,15 @@ export class FlashSessionMemory implements SessionMemory {
         await callFlash({ ...connection, timeoutMs: 2000 }, 'grant.revoke', scope).catch(() => {});
       }
     }, signal);
-    if (method !== 'memory_read') return result;
+    if (method !== 'memory_read') {
+      if (!rank || !this.options.rerank) return result;
+      const found = result as { matches: Record<string, unknown>[] };
+      const ranked = await rankWithRecovery(params.query as string, found.matches, signal, this.options.rerank);
+      this.assertCurrent(binding, signal);
+      await this.sources.verify(this.bindings, result, this.synced);
+      this.assertCurrent(binding, signal);
+      return { ...found, ...ranked, matches: ranked.matches.slice(0, Number(params.limit ?? 10)) };
+    }
     if (!this.options.summarize) throw new FlashError('unavailable', 'Memory summarization is not configured');
     const turns = parseMemoryTurns(result, params.turns as TurnReference[]);
     const summary = validateSummary(await this.options.summarize({ question: params.question as string, turns }, signal), turns);

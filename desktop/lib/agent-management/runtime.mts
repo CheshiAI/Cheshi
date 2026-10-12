@@ -1,3 +1,4 @@
+import type { AgentFlashMemory } from '../flash/agent-memory.mts';
 import { agentDisplayName } from '../../shared/agent-registry.ts';
 import { revision } from '../agent-platform/git-workspaces.mts';
 import { INTAKE_WORKSPACE, isIntakeWorkspace, parseWorkspaceKey } from '../../../experiments/codex-specialists/src/task-workspace.ts';
@@ -42,6 +43,7 @@ interface RuntimeOptions {
   run?: DockerCommand;
   checkProjectEnvironment?: typeof assertProjectEnvironment;
   collaborationExchange?: typeof exchangeWorker;
+  flash?: AgentFlashMemory;
   codegraph?: CodeGraphQuery;
   toolCredential?: ToolCredential;
   prepareCodeGraph?: (workspace: string) => Promise<void>;
@@ -114,9 +116,12 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     if (!saved) throw new Error('Start the Homie to prepare its isolated workspace.');
     return saved.workspace;
   }
-  const isolatedFingerprint = (settings: string, workspace: string) => workspaces ? digest(`${settings}\nisolated_workspace=2:${workspace}`) : settings;
+  const isolatedFingerprint = (settings: string, workspace: string) => {
+    const base = workspaces ? digest(`${settings}\nisolated_workspace=2:${workspace}`) : settings;
+    return options.flash ? digest(`${base}\nflash_protocol=1`) : base;
+  };
   const orchestration = createAgentOrchestration({ filename: join(options.directory, 'collaboration.json'),
-    exchange: options.collaborationExchange, codegraph: options.codegraph ? async (workspace, tool, args, signal, binding) => {
+    exchange: options.collaborationExchange, flash: options.flash, codegraph: options.codegraph ? async (workspace, tool, args, signal, binding) => {
       if (workspaces && !binding) throw new Error('A Homie binding is required for isolated CodeGraph queries.');
       return options.codegraph!(binding ? await executionWorkspace(binding) : workspace, tool, args, signal);
     } : undefined, rooms: options.rooms,
@@ -203,7 +208,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     }
     if (!worker || worker.state !== 'running' || !worker.endpoint) return null;
     const saved = agentRecord(JSON.parse(await readFile(join(options.directory, digest(binding.engineId), key, 'runtime.json'), 'utf8')));
-    if (saved.accountId !== binding.accountId || saved.profileId !== binding.agentId || saved.revision !== worker.fingerprint
+    if (options.flash && saved.flashProtocol !== 1 || saved.accountId !== binding.accountId || saved.profileId !== binding.agentId || saved.revision !== worker.fingerprint
       || saved.applicationInspectionProtocol !== 1 || saved.applicationProtocol !== 1 || saved.candidateVerificationProtocol !== 1 || saved.integrationProtocol !== 1 || saved.workProtocol !== 1 || saved.progressProtocol !== 1 || saved.recoveryProtocol !== 3 || saved.questionProtocol !== 2 || saved.collaborationProtocol !== 1 || saved.historyProtocol !== undefined || saved.decisionProtocol !== 1 || saved.verificationProtocol !== 1 || typeof saved.token !== 'string' || !/^[a-f0-9]{64}$/.test(saved.token)) {
       throw new Error('Start the agent to reconnect collaboration with its current settings.');
     }
@@ -416,7 +421,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint, projectDocMaxBytes,
             ...(workspaces ? { executionWorkspace: execution, isolatedWorkspaceProtocol: 2, taskWorkspace: { key: taskKey } } : {}),
-            ...profileConfiguration(agent), codegraphProtocol: 1, permissionProtocol: 1, collaborationProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, activityProtocol: 1, inputQueueProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+            ...profileConfiguration(agent), ...(options.flash ? { flashProtocol: 1 } : {}), codegraphProtocol: 1, permissionProtocol: 1, collaborationProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, activityProtocol: 1, inputQueueProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
           await rename(`${configPath}.tmp`, configPath);
           const mounts = [execution];
@@ -428,6 +433,13 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
           if (workspaces) await run([...prefix, 'run', '--rm', '--network', 'none', '--read-only', '--user', '0:0',
             '--cap-drop', 'ALL', '--cap-add', 'CHOWN', '--cap-add', 'DAC_OVERRIDE', '--security-opt', 'no-new-privileges:true',
             '--mount', `type=volume,src=${volume},dst=/agent`, '--entrypoint', 'chown', environment.image, '-R', user, '/agent']);
+          // A retained volume can contain the same revision but an older token. Seed it
+          // before starting any worker process; revision equality cannot gate this race.
+          await run([...prefix, 'run', '--rm', '--interactive', '--network', 'none', '--read-only', '--user', user,
+            '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
+            '--mount', `type=volume,src=${volume},dst=/agent`, '--entrypoint', 'bun', environment.image, '-e', installAuth],
+          JSON.stringify({ auth, configuration }));
+          assertCurrent();
           await run([...prefix, 'container', 'create', '--name', `cheshi-agent-${key}`, '--init', '--user', user, '--read-only',
             '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', ...security,
             '--pids-limit', '256', '--cpus', '2', '--memory', '2g', '--publish', '127.0.0.1::8787',
@@ -442,7 +454,6 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
           worker = await find(prefix, key);
           if (!worker) throw new Error('Created worker could not be verified.');
           await run([...prefix, 'container', 'start', worker.id]);
-          await run([...prefix, 'exec', '--interactive', worker.id, 'bun', '-e', installAuth], JSON.stringify({ auth, configuration }));
         } else {
           const wasStopped = worker.state !== 'running';
           if (wasStopped) await run([...prefix, 'container', 'start', worker.id]);
@@ -567,8 +578,8 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         }
       };
       assertCurrent();
-      return { agentId, accountId, assertCurrent,
-        configuration: { profileId: agentId, accountId, role: agent.role, model: agent.model, reasoningEffort: agent.reasoningEffort,
+      return { agentId, accountId, assertCurrent, flash: options.flash, workspace,
+        configuration: { ...(options.flash ? { flashProtocol: 1 } : {}), profileId: agentId, accountId, role: agent.role, model: agent.model, reasoningEffort: agent.reasoningEffort,
           serviceTier: agent.serviceTier, permissions, enabledTools: [], instructions: `${instructions}\n\nThis is an isolated code task. Use local file and shell tools. Host Cheshi handles Git, collaboration and verification.`,
           projectDocMaxBytes: parseProjectDocMaxBytes(options.getProjectDocMaxBytes?.() ?? DEFAULT_PROJECT_DOC_MAX_BYTES) },
         credentials: async () => { assertCurrent(); const auth = await readRuntimeAuth(account.home); assertCurrent(); return auth; } };

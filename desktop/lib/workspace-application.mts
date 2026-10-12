@@ -7,6 +7,7 @@ import { withWorkspaceFolderDeletion } from './codex-workspace-activity.mts';
 
 export interface WorkspaceWindowState { bounds: Rectangle; maximized: boolean; fullscreen: boolean; }
 export interface WorkspaceRuntimeOptions {
+  agentFlash?: import('./flash/agent-memory.mts').AgentFlashMemory;
   workspaceRoot: string;
   notifications?: import('./imessage-notifications.mts').NotificationSink;
   discord?: import('./discord-service.mts').DiscordBridge;

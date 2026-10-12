@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Window } from 'happy-dom';
 import { flashSourceHref, flashSourceTarget, type FlashSourceTarget } from '../shared/flash-memory';
 import { MessageContent } from '../frontend/src/features/chat/MessageContent';
-import { FlashSourceNavigationContext } from '../frontend/src/features/chat/FlashSourceLink';
+import { FlashSourceLink, FlashSourceNavigationContext } from '../frontend/src/features/chat/FlashSourceLink';
 
 const target = { threadId: 'session-123', itemId: 'message_456' };
 const href = flashSourceHref(target);
@@ -20,6 +20,8 @@ test('source URLs accept only a canonical internal message destination', () => {
     href.replace('cheshi-source:', 'other:'), href.replace('message?', 'message.evil?'),
   ]) expect(flashSourceTarget(value)).toBeNull();
   expect(() => flashSourceHref({ ...target, itemId: '../secret' })).toThrow();
+  expect(flashSourceTarget(flashSourceHref({ ...target, owner: 'a'.repeat(64) }))).toEqual({ ...target, owner: 'a'.repeat(64) });
+  expect(flashSourceTarget(href + '&owner=other')).toBeNull();
 });
 
 test('Markdown source quotes render an internal icon link while unsafe links stay inert', () => {
@@ -63,12 +65,24 @@ test('source clicks navigate only on activation and expose unavailable or failed
     await act(async () => { link.dispatchEvent(event); });
     expect(event.defaultPrevented).toBe(true);
     expect(opened).toEqual([target]);
+    let originalReads = 0;
+    const dockerTarget = { ...target, owner: 'a'.repeat(64) };
+    await act(async () => root.render(<FlashSourceLink href={flashSourceHref(dockerTarget)} target={dockerTarget}
+      readOriginal={async value => { expect(value).toEqual(dockerTarget); originalReads++; return '<script>literal source</script>\nsecond line'; }}>
+      대화 원문 보기
+    </FlashSourceLink>));
+    expect(originalReads).toBe(0);
+    await act(async () => { container.querySelector('a')!.dispatchEvent(click()); });
+    expect(originalReads).toBe(1);
+    expect(container.querySelector('[role="note"]')?.textContent).toBe('<script>literal source</script>\nsecond line');
+    expect(container.querySelector('script')).toBeNull();
+    await act(async () => root.render(<FlashSourceNavigationContext.Provider value={open}><MessageContent text={text} /></FlashSourceNavigationContext.Provider>));
     expect(window.location.href).toBe('http://localhost/');
     outcome = 'blocked';
-    await act(async () => { link.dispatchEvent(click()); });
+    await act(async () => { container.querySelector('a')!.dispatchEvent(click()); });
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('잠시 후');
     outcome = 'error';
-    await act(async () => { link.dispatchEvent(click()); });
+    await act(async () => { container.querySelector('a')!.dispatchEvent(click()); });
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('접근할 수 없는');
     await act(async () => root.render(<MessageContent text={text} />));
     await act(async () => { container.querySelector('a')!.dispatchEvent(click()); });

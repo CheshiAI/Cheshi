@@ -240,7 +240,7 @@ const codexAccountService = new CodexAccountService({
     process.stderr.write(`[cheshi] ${event} ${JSON.stringify(details)}\n`);
   },
 });
-const sessionHistory = createWorkspaceSessionMemory(workspaceRoot, userDataDirectory, workspaceAccounts.conversations, chatHistorySearch, createChatClient, ipcMain, assertCheshiSender);
+const sessionHistory = createWorkspaceSessionMemory(workspaceRoot, userDataDirectory, workspaceAccounts.conversations, chatHistorySearch, createChatClient, ipcMain, assertCheshiSender, options.agentFlash);
 const chatServiceOptions = { ...sessionHistory.serviceOptions,
   chatPreferences: options.chatPreferences,
   getWorkspaceProjects: () => workspaceProjects.store.list().map(({ rootPath }) => rootPath),
@@ -958,7 +958,7 @@ function dispose(): Promise<void> {
     });
     const results = await Promise.allSettled([
       codexChatService.stop(), agentVoice.dispose(),
-      chatHistorySearch.stop(), sessionHistory.memory.dispose(), appleNotesService.stop(),
+      chatHistorySearch.stop(), sessionHistory.dispose(), appleNotesService.stop(),
       temporaryChats.stop(),
       localHistory.dispose(), workspaceProjects.dispose(),
       managementDisposal,

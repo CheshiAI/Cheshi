@@ -4,6 +4,9 @@ import { join } from 'node:path';
 import { createHomieExecutor, type HomieExecutionProfile } from '../lib/agent-platform/homie-executor.mts';
 import type { DockerCommand } from '../lib/agent-management/docker.mts';
 import { fixture, plan, taskInput, assertFailure } from './agent-platform-fixtures.ts';
+import { AgentFlashMemory } from '../lib/flash/agent-memory.mts';
+import { dockerMemoryOwner } from '../lib/flash/docker-archive.mts';
+import { bindingFor } from '../lib/agent-orchestration/mailbox.mts';
 
 export const homieProfile = (): HomieExecutionProfile => ({ agentId: 'agent-feature', accountId: 'fixture-account',
   assertCurrent() {}, credentials: async () => JSON.stringify({ tokens: { access_token: 'fixture-secret' } }),
@@ -37,6 +40,12 @@ function mockDocker(options: { loseReceipt?: boolean; wrongTask?: boolean; uncon
       if (payload.auth) return '';
       if (payload.route === '/health') return JSON.stringify({ status: 200, body: { ready: true } });
       if (payload.route === '/account') return JSON.stringify({ status: 200, body: { authenticated: true } });
+      if (payload.route === '/flash/history') return JSON.stringify({ status: 200, body: {
+        revision: 'a'.repeat(64), session: { threadId: 'native-thread', title: 'Isolated original', entries: [
+          { turnId: 'turn', itemId: 'message', kind: 'assistant', text: 'Preserved isolated decision' },
+        ] }, next: null,
+      } });
+      if (payload.route === '/flash/exchange') return JSON.stringify({ status: 200, body: { protocol: 1, requests: [] } });
       if (payload.route === '/tasks') {
         requests++; writeFileSync(join(workspace, 'feature.txt'), 'from Homie');
         if (options.loseReceipt) throw new Error('Lost task acknowledgement');
@@ -71,6 +80,27 @@ test('real Git admits Homie results only after the owned isolated container stop
     expect(mock.requests()).toBe(1);
     await homie.cleanup(attempt.id);
   } finally { f.dispose(); }
+});
+
+test('isolated task archives completed originals before tmpfs is stopped and retains them after container cleanup', async () => {
+  const mock = mockDocker(), profile = homieProfile();
+  const homie = await createHomieExecutor({ engineId: 'docker:test', buildContext: '/worker', profile, run: mock.run, pollMs: 1 });
+  const f = await fixture(homie);
+  const memory = new AgentFlashMemory(f.root, () => true, { transaction: async () => { throw new Error('No model query expected.'); }, release: async () => {} });
+  profile.flash = memory; profile.workspace = f.repository;
+  profile.configuration.flashProtocol = 1;
+  const binding = bindingFor(f.repository, 'docker:test', profile.agentId, profile.accountId);
+  try {
+    f.platform.enqueue(taskInput('feature'));
+    const result = await f.platform.runTask('feature');
+    expect(result.status).toBe('succeeded');
+    const exportIndex = mock.calls.findLastIndex(c => c.input && JSON.parse(c.input).route === '/flash/history');
+    expect(exportIndex).toBeGreaterThan(-1);
+    expect(exportIndex).toBeLessThan(mock.calls.findIndex(c => c.args[3] === 'stop'));
+    await homie.cleanup(result.attempts[0]!.id);
+    const sources = (await memory.archive.sources(dockerMemoryOwner(binding))).sources;
+    expect(sources).toHaveLength(1); expect(sources[0]!.document.text).toBe('Preserved isolated decision');
+  } finally { await memory.dispose(); f.dispose(); }
 });
 
 for (const kind of ['loseReceipt', 'wrongTask', 'unconfirmedStop', 'waiting'] as const) {

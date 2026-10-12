@@ -1,8 +1,9 @@
+import { providerFailure, type ProviderFailure } from './provider-recovery.ts';
 import { parseUsage, type GoalUsage } from './goal-progress.ts';
 import { parseTokenTotals, type TokenTotals } from './usage-contract.ts';
 import { createDeferred, record, type JsonRecord, type Notification } from './protocol.ts';
 
-export type TurnResult = { status: 'completed' | 'interrupted' | 'failed'; output: string; error: string | null };
+export type TurnResult = { status: 'completed' | 'interrupted' | 'failed'; output: string; error: string | null; providerFailure?: ProviderFailure };
 
 /** Subscribe before turn/start; completion can precede its acknowledgement. */
 export class TurnObserver {
@@ -101,6 +102,7 @@ export class TurnObserver {
     this.deferred.resolve({
       status: status as TurnResult['status'], output: [...this.messages.values()].join('\n\n'),
       error: typeof error?.message === 'string' ? error.message : null,
+      ...(error ? { providerFailure: providerFailure(error) } : {}),
     });
   }
 }

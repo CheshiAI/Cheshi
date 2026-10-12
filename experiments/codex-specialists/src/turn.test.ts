@@ -27,7 +27,7 @@ test('preserves provider failure and excludes commentary from final output', asy
   observer.receive({ method: 'item/completed', params: { threadId: 'thread', turnId: 'turn',
     item: { id: 'progress', type: 'agentMessage', phase: 'commentary', text: 'progress' } } });
   observer.receive(completion('failed'));
-  expect(await observer.result).toEqual({ status: 'failed', output: '검증 결과', error: 'provider failed' });
+  expect(await observer.result).toEqual({ status: 'failed', output: '검증 결과', error: 'provider failed', providerFailure: { code: 'unknown', retryable: false } });
 });
 
 test('never grants approval, permissions, elicitation, or interactive input', () => {

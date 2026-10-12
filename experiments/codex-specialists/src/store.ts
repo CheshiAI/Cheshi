@@ -1,3 +1,4 @@
+import { parseProviderCheckpoint, type ProviderCheckpoint, type ProviderFailure } from './provider-recovery.ts';
 import { parseWorkspaceRun, parseWorkspaceKey, type WorkspaceRun } from './task-workspace.ts';
 import { parsePermissionRequest, type PermissionRequest } from './execution-permissions.ts';
 import { parseTaskActivities, type TaskActivity } from './activity-contract.ts';
@@ -27,8 +28,11 @@ export type Task = {
   verification?: string; verificationEvidence?: Evidence[]; verificationDraft?: VerificationResult;
   delegation?: string; workDraft?: WorkDraft;
   integration?: IntegrationSummary;
-  integrationTools?: true; applicationTools?: true; codegraphTools?: true;
+  integrationTools?: true; applicationTools?: true; codegraphTools?: true; flashTools?: true;
   recovery?: RecoveryReceipt;
+  providerFailure?: ProviderFailure;
+  providerCheckpoint?: ProviderCheckpoint;
+  recoveryUnsafe?: true;
   workspaceKey?: string | null; workspaceRun?: WorkspaceRun;
 };
 type SavedState = { version: 1; threadId: string | null; model: string | null; tasks: Task[];
@@ -50,8 +54,16 @@ function chatEntries<T>(value: unknown, parse: (value: unknown) => T): T[] {
   return value.map(parse);
 }
 
+function parseSavedProviderFailure(value: unknown): ProviderFailure {
+  const v = record(value);
+  if (typeof v.code !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_]{0,79}$/.test(v.code) || typeof v.retryable !== 'boolean'
+    || (v.retryAfterMs !== undefined && (typeof v.retryAfterMs !== 'number' || !Number.isFinite(v.retryAfterMs) || v.retryAfterMs < 0))) throw new TypeError('Invalid provider failure.');
+  return { code: v.code, retryable: v.retryable, ...(typeof v.retryAfterMs === 'number' ? { retryAfterMs: v.retryAfterMs } : {}) };
+}
 function savedTask(value: unknown): Task {
   const task = record(value);
+  if (task.recoveryUnsafe !== undefined && task.recoveryUnsafe !== true) throw new TypeError('Invalid recovery safety marker.');
+  if (task.flashTools !== undefined && task.flashTools !== true) throw new TypeError('Invalid Flash capability.');
   if (task.codegraphTools !== undefined && task.codegraphTools !== true) throw new TypeError('Invalid CodeGraph tool capability.');
   if (task.applicationTools !== undefined && task.applicationTools !== true) throw new TypeError('Invalid application tool capability.');
   if (task.integrationTools !== undefined && task.integrationTools !== true) throw new TypeError('Invalid integration tool capability.');
@@ -65,12 +77,16 @@ function savedTask(value: unknown): Task {
     createdAt: textValue(task.createdAt, 'creation time'), finishedAt: nullableText(task.finishedAt),
     threadId: nullableText(task.threadId), turnId: nullableText(task.turnId), output: task.output,
     error: nullableText(task.error),
+    ...(task.providerCheckpoint === undefined ? {} : { providerCheckpoint: parseProviderCheckpoint(task.providerCheckpoint) }),
+    ...(task.recoveryUnsafe === true ? { recoveryUnsafe: true as const } : {}),
+    ...(task.providerFailure === undefined ? {} : { providerFailure: parseSavedProviderFailure(task.providerFailure) }),
     ...(task.permissionRequest === undefined ? {} : { permissionRequest: parsePermissionRequest(task.permissionRequest) }),
     ...(task.usage === undefined ? {} : { usage: parseTaskUsage(task.usage) }),
     ...(task.activity === undefined ? {} : { activity: parseTaskActivities(task.activity), activityTruncated: task.activityTruncated === true }),
     ...(task.delegation === undefined ? {} : { delegation: validateTaskId(task.delegation) }),
     ...(task.workDraft === undefined ? {} : { workDraft: parseWorkDraft(task.workDraft) }),
     ...(task.integration === undefined ? {} : { integration: parseIntegration(task.integration) }),
+    ...(task.flashTools === true ? { flashTools: true as const } : {}),
     ...(task.codegraphTools === true ? { codegraphTools: true as const } : {}),
     ...(task.applicationTools === true ? { applicationTools: true as const } : {}),
     ...(task.integrationTools === true ? { integrationTools: true as const } : {}),
@@ -161,7 +177,7 @@ export class AgentStore {
     });
   }
 
-  complete(id: string, patch: Pick<Task, 'status' | 'output' | 'error' | 'goal' | 'recovery'>, consumed: string[] = [], outgoing?: CollaborationMessage): void {
+  complete(id: string, patch: Pick<Task, 'status' | 'output' | 'error' | 'goal' | 'recovery' | 'providerFailure' | 'providerCheckpoint'>, consumed: string[] = [], outgoing?: CollaborationMessage): void {
     const task = this.task(id);
     if (!task) throw new Error('Unknown task.');
     const result = { ...task, ...patch,

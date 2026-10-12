@@ -1,3 +1,5 @@
+import { WorkerFlashQueue } from './flash-queue.ts';
+import { WorkerFlashHistory, FlashHistoryChanged } from './flash-history.ts';
 import { WorkerCustomToolQueue } from './custom-tool-queue.ts';
 import { installHomieSkills } from './homie-pack-skills.ts';
 import { WorkerCodeGraphQueue } from './codegraph-queue.ts';
@@ -30,10 +32,12 @@ let transportError: string | null = null;
 client.onFailure(error => { transportError = error.message; });
 const collaboration = configuration ? new WorkerCollaboration(store, configuration.profileId, workspace) : undefined;
 const codegraph = configuration?.codegraphProtocol === 1 ? new WorkerCodeGraphQueue() : undefined;
+const flash = configuration?.flashProtocol === 1 ? new WorkerFlashQueue() : undefined;
+const flashHistory = new WorkerFlashHistory(store, threadId => client.request('thread/read', { threadId, includeTurns: true }));
 const customTools = new WorkerCustomToolQueue();
-const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration, codegraph, customTools });
+const agent = new SpecialistAgent({ client, store, workspace, profile, configuration, collaboration, codegraph, customTools, flash });
 const lifecycle = new IdleLifecycle({ store, client, blocked: () => agent.busy || !!agent.error || !!transportError
-  || collaboration?.next() != null || codegraph?.pending === true || customTools.pending });
+  || flash?.pending === true || collaboration?.next() != null || codegraph?.pending === true || customTools.pending });
 const changes = new WorkerChangeStream();
 let pumping = false, expiry: ReturnType<typeof setTimeout> | undefined;
 const schedulePump = () => {
@@ -49,6 +53,7 @@ const schedulePump = () => {
   });
 };
 store.subscribe(() => { changes.changed(); schedulePump(); });
+flash?.subscribe(() => changes.changed());
 codegraph?.subscribe(() => changes.changed());
 customTools.subscribe(() => changes.changed());
 client.onFailure(() => changes.changed());
@@ -100,6 +105,11 @@ const server = Bun.serve({
         const body = await request.text();
         if (body.length > 2 * 1024 * 1024) throw new TypeError('Request is too large.');
         return Response.json(customTools.exchange(JSON.parse(body)));
+      }
+      if (flash && request.method === 'POST' && ['/flash/exchange', '/flash/history'].includes(path)) {
+        const body = await request.text();
+        if (body.length > 2 * 1024 * 1024) throw new TypeError('Flash request is too large.');
+        return Response.json(path === '/flash/exchange' ? flash.exchange(JSON.parse(body)) : await flashHistory.page(JSON.parse(body)));
       }
       if (path === '/codegraph/exchange' && request.method === 'POST' && codegraph) {
         return Response.json(codegraph.exchange(await request.json()));
@@ -183,7 +193,7 @@ const server = Bun.serve({
       return Response.json({ error: 'Unknown route.' }, { status: 404 });
     } catch (error) {
       return Response.json({ error: error instanceof Error ? error.message : String(error) },
-        { status: error instanceof TaskConflict || error instanceof WorkerSleepingError ? 409 : error instanceof TypeError || error instanceof SyntaxError ? 400 : 502 });
+        { status: error instanceof FlashHistoryChanged || error instanceof TaskConflict || error instanceof WorkerSleepingError ? 409 : error instanceof TypeError || error instanceof SyntaxError ? 400 : 502 });
     } finally { leave?.(); }
   },
 });

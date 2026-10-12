@@ -1,3 +1,5 @@
+import { AgentFlashRelay } from './flash-relay.mts';
+import type { AgentFlashMemory } from '../flash/agent-memory.mts';
 import { AgentCustomToolRelay, type CustomToolQuery } from './custom-tool-relay.mts';
 import { AgentCodeGraphRelay } from './codegraph-relay.mts';
 import type { CodeGraphQuery } from './codegraph-source.mts';
@@ -18,6 +20,7 @@ interface Options {
   changed?(binding: Binding): void;
   nextCheck?(binding: Binding): number | null;
   sleeping?(binding: Binding): boolean;
+  flash?: AgentFlashMemory;
   codegraph?: CodeGraphQuery;
   customTools?: CustomToolQuery;
   customToolsAvailable?(binding: Binding): boolean;
@@ -48,6 +51,8 @@ export async function exchangeWorker(connection: CollaborationConnection, body: 
   } finally { await reader.cancel(); }
 }
 export function createAgentOrchestration(options: Options) {
+  const flash = options.flash ? new AgentFlashRelay(options.flash, binding => notify(binding)) : null;
+  const flashErrors = new Map<string, string>();
   const codegraph = options.codegraph ? new AgentCodeGraphRelay(options.codegraph, binding => notify(binding)) : null;
   const customTools = options.customTools ? new AgentCustomToolRelay(options.customTools, binding => notify(binding), undefined, `${options.filename}.custom-tools`) : null;
   const customToolErrors = new Map<string, string>();
@@ -63,7 +68,7 @@ export function createAgentOrchestration(options: Options) {
   const queue = createEventQueue<string>(async id => { await dispatch(id); journalError = null; }, error => { journalError = String(error); });
   function notify(binding?: Binding) {
     try {
-      if (binding) { if (!options.peer(binding)) { unwatch(binding.id); return; } mailbox().register(binding); queue.notify(binding.id); }
+      if (binding) { if (!options.peer(binding)) { void flash?.cancel(binding.id); unwatch(binding.id); return; } mailbox().register(binding); queue.notify(binding.id); }
       else {
         for (const item of options.rooms?.bindings?.() ?? []) mailbox().register(item);
         for (const item of mailbox().bindings()) queue.notify(item.id);
@@ -97,7 +102,7 @@ export function createAgentOrchestration(options: Options) {
     for (const binding of bindings) {
       if (only && binding.id !== only) continue;
       try {
-        if (!options.peer(binding)) { unwatch(binding.id); clearTimeout(deadlines.get(binding.id)); deadlines.delete(binding.id); continue; }
+        if (!options.peer(binding)) { void flash?.cancel(binding.id); unwatch(binding.id); clearTimeout(deadlines.get(binding.id)); deadlines.delete(binding.id); continue; }
         const operation = async () => {
           const demand = mailbox().request(binding, [], m => options.rooms?.allowed(binding, m) ?? !m.roomId).messages.length > 0;
           const connection = await options.connect(binding, demand);
@@ -105,6 +110,8 @@ export function createAgentOrchestration(options: Options) {
           watch(binding, connection);
           const customToolFlight = (options.customToolsAvailable?.(binding) === false ? undefined : customTools)?.tick(binding, connection, () => options.peer(binding) !== null).then(
             () => customToolErrors.delete(binding.id), () => customToolErrors.set(binding.id, 'Custom tool relay unavailable. Restart the worker.'));
+          const flashFlight = flash?.tick(binding, connection, () => options.peer(binding) !== null).then(
+            () => flashErrors.delete(binding.id), () => flashErrors.set(binding.id, 'Flash relay unavailable. Start the worker to update it.'));
           const codegraphFlight = codegraph?.tick(binding, connection, () => options.peer(binding) !== null).then(
             () => codegraphErrors.delete(binding.id), () => codegraphErrors.set(binding.id, 'CodeGraph relay unavailable. Start the worker to update it.'));
           const peers = bindings.filter(b => b.scope === binding.scope).flatMap(b => {
@@ -125,12 +132,12 @@ export function createAgentOrchestration(options: Options) {
           }
           errors.delete(binding.id);
           const rest = async () => {
-            await options.rest?.(binding, connection, (codegraph?.busy ?? false) || (customTools?.busy ?? false));
+            await options.rest?.(binding, connection, (flash?.busy ?? false) || (codegraph?.busy ?? false) || (customTools?.busy ?? false));
             if (options.sleeping?.(binding)) unwatch(binding.id);
           };
-          if ((codegraphFlight || customToolFlight) && options.rest) {
+          if ((flashFlight || codegraphFlight || customToolFlight) && options.rest) {
             // Read-only tool transport must not hold up collaboration or coordinator shutdown.
-            const idle = Promise.all([codegraphFlight, customToolFlight]).then(async () => {
+            const idle = Promise.all([flashFlight, codegraphFlight, customToolFlight]).then(async () => {
               if (!started || !options.peer(binding)) return;
               await workerOperations.run(() => options.around ? options.around(binding, rest) : rest());
               arm(binding);
@@ -152,11 +159,11 @@ export function createAgentOrchestration(options: Options) {
   return {
     pending: (binding: Binding) => mailbox().request(binding, [], m => options.rooms?.allowed(binding, m) ?? !m.roomId).messages.length > 0,
     register: (binding: Binding) => mailbox().register(binding),
-    error: (id: string) => journalError ?? errors.get(id) ?? customToolErrors.get(id) ?? codegraphErrors.get(id) ?? null,
+    error: (id: string) => journalError ?? flashErrors.get(id) ?? errors.get(id) ?? customToolErrors.get(id) ?? codegraphErrors.get(id) ?? null,
     tick, notify, settled: () => queue.settled(),
     start() { if (!started) { started = true; notify(); queue.start(); } },
     async dispose() { started = false; for (const w of watches.values()) w.stop(); watches.clear();
       for (const timer of deadlines.values()) clearTimeout(timer); deadlines.clear();
-      await customTools?.dispose(); await codegraph?.dispose(); await queue.dispose(); await flight; await Promise.allSettled(resting); },
+      await flash?.dispose(); await customTools?.dispose(); await codegraph?.dispose(); await queue.dispose(); await flight; await Promise.allSettled(resting); },
   };
 }

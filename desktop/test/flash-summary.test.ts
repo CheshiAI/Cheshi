@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { createLunaSummary, parseMemoryTurns, validateSummary, type SummaryInput } from '../lib/flash/summary.mts';
+import { createLunaSummary, parseMemoryTurns, summaryPassages, validateSummary, type SummaryInput } from '../lib/flash/summary.mts';
 import { FlashSessionMemory } from '../lib/flash/session-memory.mts';
 import { account, deferred, fixtureSummary, flashFixture, history, readRequest, rejection, session } from './flash-test-helpers.ts';
 import { createFakeCodexClient } from './codex-chat-test-helpers.ts';
@@ -135,7 +135,15 @@ test('Luna receives only the selected turns and question in a minimal tool-free 
   await started.promise;
   await new Promise(resolve => setTimeout(resolve, 0));
   client.emit('turn/completed', { threadId: 'temporary', turn: { id: 'summary-turn', status: 'completed', items: [
-    { id: 'final', type: 'agentMessage', phase: 'final_answer', text: JSON.stringify(await fixtureSummary(input)) },
+    { id: 'final', type: 'agentMessage', phase: 'final_answer', text: JSON.stringify({ ...await fixtureSummary(input), evidence: ['p0', 'p1'] }) },
+  ] } });
+  for (let attempt = 0; client.requests.filter(item => item.method === 'turn/start').length < 2 && attempt < 100; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 1));
+  }
+  expect(client.requests.filter(item => item.method === 'turn/start')).toHaveLength(2);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  client.emit('turn/completed', { threadId: 'temporary', turn: { id: 'summary-turn', status: 'completed', items: [
+    { id: 'reviewed', type: 'agentMessage', phase: 'final_answer', text: JSON.stringify({ ...await fixtureSummary(input), evidence: ['p0', 'p1'] }) },
   ] } });
   expect(await pending).toEqual(await fixtureSummary(input));
   const start = client.requests.find(item => item.method === 'thread/start')!.params;
@@ -143,7 +151,7 @@ test('Luna receives only the selected turns and question in a minimal tool-free 
     project_doc_max_bytes: 0, 'memories.use_memories': false, 'features.apps': false, 'features.plugins': false,
   } });
   const turn = client.requests.find(item => item.method === 'turn/start')!.params;
-  expect(turn).toMatchObject({ effort: 'low', input: [{ type: 'text', text: JSON.stringify(input) }] });
+  expect(turn).toMatchObject({ effort: 'low', input: [{ type: 'text', text: JSON.stringify(summaryPassages(input).payload) }] });
   expect(stopped).toBe(true);
 });
 

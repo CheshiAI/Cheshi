@@ -36,6 +36,7 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
   let labels: Record<string, string> = {};
   let tasks: AgentDetails['tasks'] = [];
   let state = 'running';
+  let volumeToken: string | undefined, loadedToken: string | undefined;
   let beforeDetails: (() => Promise<void>) | undefined;
   const calls: { args: string[]; input?: string }[] = [];
   const runtimePath = join(directory, 'runtime', createHash('sha256').update('docker:colima-cheshi').digest('hex'),
@@ -46,10 +47,12 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
     if (dockerFailure) throw dockerFailure;
     if (args[0] === 'context' && contextMissing) throw dockerCommandError(Object.assign(new Error(), { code: 1 }),
       'context "colima-cheshi": context not found: open /fixture/contexts/meta/id/meta.json: no such file or directory', args);
-    if (args.includes('exec')) {
+    if (args.includes('exec') || (args[2] === 'run' && input)) {
       if (args.at(-1)?.includes('createHash')) return seeded ? createHash('sha256').update('fixture-account').digest('hex') : '';
       if (!input) return seeded ? 'configured' : 'pending';
       if (failSeed) { failSeed = false; throw new Error('bootstrap interrupted'); }
+      const configuration = JSON.parse(input).configuration;
+      if (configuration) volumeToken = configuration.token;
       seeded = true; return '';
     }
     if (args[0] === 'context') return JSON.stringify([{ Endpoints: { docker: { Host: remote ? 'ssh://other' : 'unix:///tmp/docker.sock' } } }]);
@@ -67,6 +70,7 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
       args.forEach((arg, index) => { if (arg === '--label') { const [key, value] = args[index + 1]!.split('='); labels[key!] = value!; } });
       return id;
     }
+    if (args[2] === 'container' && ['start', 'restart'].includes(args[3]!)) loadedToken = volumeToken;
     if (args.includes('rm')) created = false;
     return '';
   };
@@ -130,6 +134,7 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
     writeFileSync(filename, JSON.stringify({ ...previous, historyProtocol: 1, settingsFingerprint: fingerprint, revision: fingerprint }));
   };
   return { runtime, registry, workspace, home, runtimePath, agentId, calls, exchanges, legacyRecovery, previousInstructionLimit, legacyHistory,
+    removeContainer: () => { created = false; }, loadedToken: () => loadedToken,
     setProjectDocMaxBytes: (value: number) => { projectDocMaxBytes = value; },
     onDetails: (callback: () => Promise<void>) => { beforeDetails = callback; },
     setState: (value: string) => { state = value; },
@@ -403,8 +408,32 @@ test('validates task identities and rejects incomplete credential files without 
 test('retries an interrupted bootstrap without creating a duplicate container', async () => {
   const f = fixture(); f.failBootstrap();
   await fails(f.runtime.request(f.workspace, f.request()), 'bootstrap interrupted');
+  expect(f.calls.some(call => call.args[2] === 'container' && call.args[3] === 'start')).toBe(false);
   expect((await f.runtime.request(f.workspace, f.request())).details?.ready).toBe(true);
   expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(1);
+});
+
+test('same-revision replacement loads the new token on its first start from a retained volume', async () => {
+  const f = fixture();
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    const before = JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8'));
+    f.removeContainer();
+    const offset = f.calls.length;
+    await f.runtime.request(f.workspace, f.request());
+    const after = JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8'));
+    expect(after.revision).toBe(before.revision);
+    expect(after.token).not.toBe(before.token);
+    expect(f.loadedToken()).toBe(after.token);
+    const calls = f.calls.slice(offset), seed = calls.findIndex(call => !!call.input);
+    expect(seed).toBeGreaterThanOrEqual(0);
+    expect(seed).toBeLessThan(calls.findIndex(call => call.args[2] === 'container' && call.args[3] === 'start'));
+    expect(calls[seed]!.args).toContain('--interactive');
+    expect(calls[seed]!.args).toContain('none');
+    expect(calls[seed]!.args.some(arg => arg.includes('type=bind'))).toBe(false);
+    expect(calls.some(call => call.args.includes(after.token))).toBe(false);
+    expect(calls.some(call => call.args[3] === 'restart')).toBe(false);
+  } finally { await f.runtime.dispose(); }
 });
 
 test('does not submit work through a previous login under the same account profile', async () => {

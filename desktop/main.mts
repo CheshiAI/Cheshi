@@ -1,3 +1,4 @@
+import { AgentFlashMemory } from './lib/flash/agent-memory.mts';
 import { createPlatformChats } from './lib/agent-platform/chat-service.mts';
 import { createToolCredentials } from './lib/agent-management/tool-credentials.mts';
 import { createCodeGraphSynchronization } from './lib/codegraph-synchronization.mts';
@@ -50,7 +51,7 @@ import { createAgentRegistry } from './lib/agent-management/registry.mts';
 import { HomieRepositoryProjects } from './lib/agent-management/homie-repository-project.mts';
 import { HomieSources } from './lib/agent-management/homie-sources.mts';
 import { AGENT_REGISTRY_CHANNELS } from './shared/agent-registry.ts';
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { WorkspaceProjectStore } from './lib/workspace-project-store.mts';
 import { registerAgentRegistryIpc } from './lib/agent-management/registry-ipc.mts';
 import { findAppRelease } from './lib/app-release-checker.mts';
@@ -129,7 +130,9 @@ const codeGraphCommand = createCodeGraphCommands({ packaged: app.isPackaged, res
   rootDirectory: path.resolve(import.meta.dirname, '..'), bunExecutable: process.env.CHESHI_BUN }).cli();
 const codeGraphDataRoot = resolveCodeGraphDataRoot() ?? app.getPath('userData');
 const codeGraphSynchronization = createCodeGraphSynchronization({ command: codeGraphCommand, dataRoot: codeGraphDataRoot });
+const agentFlash = new AgentFlashMemory(app.getPath('userData'), binding => agentRegistry.snapshot(binding.workspace).agents.some(agent => agent.id === binding.agentId && agent.accountId === binding.accountId && agent.assignments.some(a => { try { return realpathSync(a.workspaceRoot) === binding.workspace; } catch { return false; } })));
 const specialistRuntime = createSpecialistRuntime({
+  flash: agentFlash,
   prepareSource: (workspace, id) => homieSources.prepare(workspace, id),
   sourceApplied: (workspace, id, engine, hash) => homieSources.applied(workspace, id, engine, hash),
   workspaceDirectory: path.join(app.getPath('userData'), 'agents', 'platform'),
@@ -149,7 +152,7 @@ const specialistRuntime = createSpecialistRuntime({
 const unsubscribeChatsRuntime = specialistRuntime.subscribe(binding => agentChats.changed(binding));
 const unsubscribeChatsRegistry = agentRegistry.subscribe(() => agentChats.changed());
 void app.whenReady().then(() => { specialistRuntime.start(); agentChats.start(); });
-app.on('will-quit', () => { unsubscribeChatsRuntime(); unsubscribeChatsRegistry(); void specialistRuntime.dispose(); void agentChats.dispose(); void codeGraphSynchronization.dispose(); });
+app.on('will-quit', () => { unsubscribeChatsRuntime(); unsubscribeChatsRegistry(); void specialistRuntime.dispose().finally(() => agentFlash.dispose()); void agentChats.dispose(); void codeGraphSynchronization.dispose(); });
 const apiSettings = createSettingsService({ settingsPath: path.join(app.getPath('userData'), 'settings.json') });
 const toolCredentials = createToolCredentials(path.join(app.getPath('userData'), 'api-keys', 'homie-tools'), {
   isEncryptionAvailable: () => safeStorage.isEncryptionAvailable() && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
@@ -301,7 +304,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
   let notificationEventsIpc: ReturnType<typeof registerNotificationEventsIpc> | undefined;
   let runtime: ReturnType<typeof createWorkspaceRuntime>;
   try {
-    runtime = createWorkspaceRuntime({ ...options, notifications, messageCommands, discord,
+    runtime = createWorkspaceRuntime({ ...options, agentFlash, notifications, messageCommands, discord,
       getProjectDocMaxBytes: apiSettings.getProjectDocMaxBytes, codeGraphSynchronization,
       chatPreferences: apiSettings.workspaceChatPreferences(options.workspaceRoot),
       voiceChats: request => agentChats.request(options.workspaceRoot, request),

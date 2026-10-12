@@ -1,3 +1,6 @@
+import { ProviderRequestError, assertRetryCheckpoint, readOnlyItem, retryDelay } from './provider-recovery.ts';
+import { WorkerFlashQueue } from './flash-queue.ts';
+import { flashTools, flashInstructions } from './flash-tools.ts';
 import { TaskWorkspaceGate } from './task-workspace.ts';
 import { customToolArguments, customToolDefinition } from './custom-tool-contract.ts';
 import type { WorkerCustomToolQueue } from './custom-tool-queue.ts';
@@ -67,6 +70,7 @@ export class SpecialistAgent {
   private readonly threadPaths = new Map<string, string>();
   private active: ActiveTask | null = null;
   private recovering = false;
+  private providerTimer: ReturnType<typeof setTimeout> | undefined;
   private failure: string | null = null;
   private readonly retainedScratch = new Set<TaskScratch>();
 
@@ -76,9 +80,10 @@ export class SpecialistAgent {
   private readonly integration: WorkerIntegration | undefined;
   private readonly verification: WorkerVerification | undefined;
   private readonly customTools: WorkerCustomToolQueue | undefined;
+  private readonly flash: WorkerFlashQueue | undefined;
   private readonly codegraph: WorkerCodeGraphQueue | undefined;
   private readonly collaboration: WorkerCollaboration | undefined;
-  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; codegraph?: WorkerCodeGraphQueue; customTools?: WorkerCustomToolQueue }) {
+  constructor(options: { client: RpcClient; store: AgentStore; profile: string; workspace: string; configuration?: RuntimeConfiguration; collaboration?: WorkerCollaboration; codegraph?: WorkerCodeGraphQueue; flash?: WorkerFlashQueue; customTools?: WorkerCustomToolQueue }) {
     this.workspaceGate = options.configuration?.taskWorkspace ? new TaskWorkspaceGate(options.store, options.configuration.taskWorkspace.key) : undefined;
     this.configuration = options.configuration; this.customTools = options.customTools;
     this.conversations = new WorkerConversation(options.store, options.configuration?.verificationProtocol === 1 && packToolAllowed(options.configuration.enabledTools, 'request_verification'));
@@ -87,7 +92,7 @@ export class SpecialistAgent {
     this.verification = options.configuration?.verificationProtocol === 1 ? new WorkerVerification(options.store, options.workspace) : undefined;
     this.client = options.client; this.store = options.store; this.profile = options.profile;
     this.workspace = options.workspace;
-    this.collaboration = options.collaboration; this.codegraph = options.codegraph;
+    this.flash = options.flash; this.collaboration = options.collaboration; this.codegraph = options.codegraph;
     if (this.configuration?.permissionProtocol === 1) this.client.handleApprovals?.((method, params) => {
       const active = this.active;
       if (!active || active.stopRequested || params.threadId !== active.threadId || (active.turnId && params.turnId !== active.turnId)) return;
@@ -98,7 +103,7 @@ export class SpecialistAgent {
       if (shouldRequestPermissions(task.permissionRequest, { fileWrite, commandExecution })) this.store.update(task.id, { permissionRequest: { id: randomUUID(), fileWrite, commandExecution, status: 'pending',
         reason: fileWrite ? 'This task needs permission to modify project files.' : 'This task needs permission to run commands.' } });
     });
-    if (this.customTools || this.collaboration || this.codegraph || this.configuration?.decisionProtocol === 1 || this.configuration?.permissionProtocol === 1) {
+    if (this.flash || this.customTools || this.collaboration || this.codegraph || this.configuration?.decisionProtocol === 1 || this.configuration?.permissionProtocol === 1) {
       if (!this.client.handleTools) throw new Error('Collaboration requires dynamic tool support.');
       this.client.handleTools(async params => {
         const active = this.active;
@@ -108,6 +113,7 @@ export class SpecialistAgent {
         if (active.stopRequested) throw new Error('Task is stopping.');
         active.health.activity('tool');
         const tool = textValue(params.tool, 'tool');
+        if (!['memory_search', 'memory_read'].includes(tool)) this.store.update(active.id, { recoveryUnsafe: true });
         assertPackToolAllowed(this.configuration?.enabledTools, tool);
         const task = this.store.task(active.id)!;
         if (tool === 'request_execution_permissions' && this.configuration?.permissionProtocol === 1) {
@@ -131,7 +137,7 @@ export class SpecialistAgent {
           if (tool !== 'conversation_status') active.observations.add({ tool, result });
           return result;
         }
-        if (task.dialogue && (!task.goal || task.goal.turns === 0) && ![...codegraphTools.map(t => t.name), 'list_agents', 'ask_agent', 'collaboration_status'].includes(tool)) throw new Error('Intake is read-only. Record the work goal, then end this turn.');
+        if (task.dialogue && (!task.goal || task.goal.turns === 0) && ![...flashTools.map(t => t.name), ...codegraphTools.map(t => t.name), 'list_agents', 'ask_agent', 'collaboration_status'].includes(tool)) throw new Error('Intake is read-only. Record the work goal, then end this turn.');
         if (task.goal) {
           if (tool === 'goal_status') return { originalGoal: task.dialogue?.objective ?? task.prompt, ...goalContext(task.goal) };
           if (tool === 'record_decision') {
@@ -173,6 +179,10 @@ export class SpecialistAgent {
           const result = record(await this.customTools.call(tool, customToolArguments(definition, params.arguments), active.controller.signal));
           active.observations.add({ tool, result });
           return result;
+        }
+        if (this.flash && flashTools.some(t => t.name === tool)) {
+          if (params.namespace != null) throw new Error('Invalid Flash tool namespace.');
+          return record(await this.flash.call(tool, params.arguments, active.threadId!, textValue(params.turnId, 'turn id'), active.controller.signal));
         }
         if (this.codegraph && codegraphTools.some(t => t.name === tool)) {
           const result = record(await this.codegraph.call(tool, params.arguments, active.controller.signal));
@@ -297,6 +307,7 @@ export class SpecialistAgent {
     const commands = new CommandSessions();
     const active: ActiveTask = { commands, id, threadId: null, turnId: null, observations, health: new ExecutionHealth(id), intakeRetry,
       stopRequested: false, done: Promise.resolve(), observer: new TurnObserver((method, item, turnId) => {
+        if (!readOnlyItem(item)) this.store.update(id, { recoveryUnsafe: true });
         recordTaskActivity(this.store, id, method, item, turnId); commands.observe(method, item); observations.item(method, item);
         if (this.configuration?.permissions.commandExecution === true) this.verification?.observe(task, method, item);
       }, (threadTotals, threadId, turnId) => {
@@ -316,6 +327,14 @@ export class SpecialistAgent {
     this.collaboration?.expire();
     if (this.busy || this.failure || this.store.snapshot().tasks.some(t => t.status === 'unknown')) return;
     if (this.workspaceGate?.frozen) return;
+    const providerTask = this.store.snapshot().tasks.find(t => t.status === 'waiting' && t.providerCheckpoint?.pending === true);
+    if (providerTask) {
+      clearTimeout(this.providerTimer);
+      const wait = providerTask.providerCheckpoint!.retryAt - Date.now();
+      if (wait > 0) { this.providerTimer = setTimeout(() => this.pump(), Math.min(wait, 30_000)); this.providerTimer.unref(); }
+      else void this.resumeProviderTask(providerTask);
+      return;
+    }
     const pendingWorkspace = this.workspaceGate?.pending();
     if (pendingWorkspace) {
       if (this.workspaceGate!.allows(pendingWorkspace)) {
@@ -368,9 +387,34 @@ export class SpecialistAgent {
     this.launch(this.store.task(next.taskId)!, next.prompt, next.messages);
   }
 
+  private safeProviderResume(task: Task): boolean {
+    return !task.recoveryUnsafe && !task.delegation && !task.verification && !task.consultation
+      && this.configuration?.permissions.fileWrite !== true && this.configuration?.permissions.commandExecution !== true;
+  }
+
+  private async resumeProviderTask(task: Task): Promise<void> {
+    this.recovering = true;
+    const checkpoint = task.providerCheckpoint!;
+    try {
+      if (!this.safeProviderResume(task)) throw new Error('Inspect previous actions before resuming this task.');
+      const native = await this.client.request('thread/read', { threadId: checkpoint.threadId, includeTurns: true });
+      assertRetryCheckpoint(native, checkpoint, this.workspace);
+      const current = this.store.task(task.id)!;
+      if (current.status !== 'waiting' || current.providerCheckpoint?.pending !== true) return;
+      this.store.update(task.id, { providerCheckpoint: { ...checkpoint, pending: false } });
+      this.launch(this.store.task(task.id)!, 'Continue only the unfinished read-only work in this same conversation. Preserve completed tool results and answers; do not repeat completed work or any external action. The preceding turn stopped because the model was temporarily unavailable. Use its recorded results, and report what remains uncertain.');
+    } catch (error) {
+      const current = this.store.task(task.id)!;
+      if (current.status === 'waiting' && current.providerCheckpoint?.pending === true) this.store.complete(task.id, {
+        status: 'interrupted', output: current.output, error: error instanceof Error ? error.message : String(error),
+        providerCheckpoint: { ...checkpoint, pending: false },
+      });
+    } finally { this.recovering = false; this.store.changed(); }
+  }
+
   private async thread(task: Task, scratch?: TaskScratch, workspace = this.workspace): Promise<string> {
     const saved = this.store.snapshot();
-    const savedThread = task.conversation ? saved.threads[task.conversation] ?? null : saved.threadId;
+    const savedThread = task.providerCheckpoint?.threadId ?? (task.conversation ? saved.threads[task.conversation] ?? null : saved.threadId);
     // Reload turn-specific permission roots and TMPDIR, including warm resumes.
     if (!scratch && !task.dialogue && savedThread && this.loadedThreads.has(savedThread)) return savedThread;
     if ((scratch || task.dialogue) && savedThread && this.loadedThreads.has(savedThread)) {
@@ -386,7 +430,8 @@ export class SpecialistAgent {
     const integrationAvailable = this.integration && packToolAllowed(settings?.enabledTools, integrationTools[0]!.name) && (!savedThread || task.integrationTools === true);
     const applicationAvailable = integrationAvailable && settings?.applicationProtocol === 1 && (!savedThread || task.applicationTools === true);
     const codegraphAvailable = this.codegraph && packToolAllowed(settings?.enabledTools, codegraphTools[0]!.name) && (!savedThread || saved.tasks.some(t => t.threadId === savedThread && t.codegraphTools === true));
-    const profile = this.profile + (settings?.enabledTools ? `\nEnabled Homie tool groups: ${settings.enabledTools.join(', ') || 'none'}. Disabled groups are unavailable even if older instructions mention them.\n` : '') + (codegraphAvailable ? codegraphInstructions : this.codegraph ? '\nThis older conversation has no CodeGraph tools. Use scoped source reads within existing permissions; a new conversation is required for CodeGraph tools.\n' : '') + (settings?.permissionProtocol === 1 ? permissionInstructions : '') + (this.collaboration ? collaborationInstructions : '') + (task.goal ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
+    const flashAvailable = this.flash && (!savedThread || saved.tasks.some(t => t.threadId === savedThread && t.flashTools === true));
+    const profile = this.profile + (flashAvailable ? flashInstructions + '\nSearch your own Docker sessions and the assigned project local SESSION. Keep docker/local origins distinct. A partial result does not cover both sources. memory_read returns separate results with validated evidence.\n' : this.flash ? '\nThis older conversation has no Flash tools. Start a new conversation to use Flash memory.\n' : '') + (settings?.enabledTools ? `\nEnabled Homie tool groups: ${settings.enabledTools.join(', ') || 'none'}. Disabled groups are unavailable even if older instructions mention them.\n` : '') + (codegraphAvailable ? codegraphInstructions : this.codegraph ? '\nThis older conversation has no CodeGraph tools. Use scoped source reads within existing permissions; a new conversation is required for CodeGraph tools.\n' : '') + (settings?.permissionProtocol === 1 ? permissionInstructions : '') + (this.collaboration ? collaborationInstructions : '') + (task.goal ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
       + (integrationAvailable && settings?.candidateVerificationProtocol === 1 ? candidateVerificationInstructions : '') + (applicationAvailable ? applicationInstructions : '')
       + (intake ? `\nCurrent stage: intake. Saved project permissions: fileWrite=${settings?.permissions.fileWrite === true}, commandExecution=${settings?.permissions.commandExecution === true}. ${intakeGuidance}\n` : '');
     const params: JsonRecord = { cwd: workspace,
@@ -401,7 +446,7 @@ export class SpecialistAgent {
       } } : {}) };
     const result = savedThread
       ? await this.client.request('thread/resume', { ...params, threadId: savedThread })
-      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.configuration?.customTools ?? []).filter(t => t.enabled).map(customToolDefinition), ...(this.codegraph ? codegraphTools : []), ...(settings?.permissionProtocol === 1 ? permissionTools : []), ...(this.collaboration ? collaborationTools : []), ...(task.goal || task.dialogue ? decisionTools : []), ...(task.dialogue ? conversationTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])].filter(tool => packToolAllowed(settings?.enabledTools, tool.name)) });
+      : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.configuration?.customTools ?? []).filter(t => t.enabled).map(customToolDefinition), ...(this.flash ? flashTools : []), ...(this.codegraph ? codegraphTools : []), ...(settings?.permissionProtocol === 1 ? permissionTools : []), ...(this.collaboration ? collaborationTools : []), ...(task.goal || task.dialogue ? decisionTools : []), ...(task.dialogue ? conversationTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])].filter(tool => packToolAllowed(settings?.enabledTools, tool.name)) });
     const threadId = textValue(record(result.thread).id, 'thread id');
     assertResumedThread(savedThread, threadId);
     const nativePath = record(result.thread).path;
@@ -420,6 +465,7 @@ export class SpecialistAgent {
       });
     }
     this.store.saveThread(threadId, typeof result.model === 'string' ? result.model : saved.model, task.conversation, !task.consultation && !task.verification && !task.delegation);
+    if (flashAvailable) this.store.update(task.id, { flashTools: true });
     if (codegraphAvailable) this.store.update(task.id, { codegraphTools: true });
     if (integrationAvailable) this.store.update(task.id, { integrationTools: true, ...(applicationAvailable ? { applicationTools: true as const } : {}) });
     this.loadedThreads.add(threadId);
@@ -480,7 +526,18 @@ export class SpecialistAgent {
         catch (error) { if (!observer.finished) observer.fail(error instanceof Error ? error : new Error(String(error))); }
       }
       const result = await observer.result;
+      const previous = this.store.task(task.id)!;
+      if (previous.providerCheckpoint && previous.output) result.output = [previous.output, result.output].filter(Boolean).join('\n\n');
       await this.saveUsage(active);
+      if (result.providerFailure) this.store.update(task.id, { providerFailure: result.providerFailure });
+      const attempts = previous.providerCheckpoint?.attempts ?? 0;
+      const wait = result.providerFailure ? retryDelay(result.providerFailure, attempts) : null;
+      if (!active.stopRequested && result.status === 'failed' && wait !== null && this.safeProviderResume(this.store.task(task.id)!)) {
+        this.store.complete(task.id, { ...result, status: 'waiting', providerCheckpoint: {
+          attempts: attempts + 1, retryAt: Date.now() + wait, threadId: active.threadId, turnId: active.turnId, pending: true,
+        } });
+        return;
+      }
       if (active.stopRequested || result.status === 'interrupted') {
         active.health.activity('stopping');
         try { await active.commands.stop(this.client, active.threadId); }
@@ -541,10 +598,11 @@ export class SpecialistAgent {
       } else this.store.complete(task.id, { ...result, ...(result.status === 'completed' && waitingForUser(this.store.task(task.id)!) ? { status: 'waiting' as const } : {}), ...(savedGoal ? { goal: { ...savedGoal, phase: 'blocked', pending: null } } : {}) });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
+      if (error instanceof ProviderRequestError) this.store.update(task.id, { providerFailure: error.failure });
       await this.saveUsage(active);
       const outgoing = !submitted && task.delegation && this.work ? this.work.resultMessage(task, 'failed', reason) : undefined;
       this.store.complete(task.id, { status: submitted ? 'unknown' : active.stopRequested ? 'interrupted' : 'failed',
-        output: '', error: reason }, outgoing ? active.messages : [], outgoing);
+        output: task.providerCheckpoint ? this.store.task(task.id)?.output ?? '' : '', error: reason }, outgoing ? active.messages : [], outgoing);
     } finally {
       active.controller.abort(); remove(); removeFailure();
       // Unknown executions may still own child processes. Retain their scratch until

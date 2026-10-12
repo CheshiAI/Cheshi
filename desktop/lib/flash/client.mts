@@ -1,3 +1,4 @@
+import type { ProviderFailure } from '../../../experiments/codex-specialists/src/provider-recovery.ts';
 import { randomUUID } from 'node:crypto';
 import { createConnection } from 'node:net';
 
@@ -9,10 +10,17 @@ export interface FlashConnection {
 
 export class FlashError extends Error {
   readonly code: string;
-  constructor(code: string, message: string) {
+  readonly provider?: ProviderFailure;
+  constructor(code: string, message: string, provider?: ProviderFailure) {
     super(message);
     this.code = code;
+    this.provider = provider;
   }
+}
+
+export function flashProviderDetails(error: unknown, signal: AbortSignal) {
+  return !signal.aborted && error instanceof FlashError && error.provider
+    ? { provider_failure: error.provider, retryable: error.provider.retryable } : {};
 }
 
 /** Trusted host boundary. Credentials never enter model-visible tool arguments. */

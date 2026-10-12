@@ -40,7 +40,7 @@ async function fixture(realContext?: string) {
       return runDocker(args, stdin);
     }
     if (args[0] === 'context') return JSON.stringify([{ Endpoints: { docker: { Host: 'unix:///fixture/docker.sock' } } }]);
-    if (args[2] === 'exec') {
+    if (args[2] === 'exec' || (args[2] === 'run' && stdin)) {
       if (stdin) {
         configured = true;
         const { configuration } = JSON.parse(stdin);

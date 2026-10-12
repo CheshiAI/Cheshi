@@ -39,7 +39,7 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 2 && (!grandchildEntry || !packagedIcons.has(grandchildEntry) || segments.length > 3);
   }
   if (rootEntry === 'experiments') {
-    const contracts = ['task-workspace.ts', 'custom-tool-contract.ts', 'custom-tool-queue.ts', 'codegraph-tools.ts', 'codegraph-queue.ts', 'project-instructions.ts', 'execution-permissions.ts', 'usage-contract.ts', 'activity-contract.ts', 'conversation-contract.ts', 'application-storage.ts', 'application-contract.ts', 'work-contract.ts', 'work-files.ts', 'integration-contract.ts', 'integration-plan.ts', 'verification-source-contract.ts', 'verification-source-files.ts', 'verification-contract.ts', 'candidate-verification-contract.ts', 'protocol.ts'].map(name => `experiments/codex-specialists/src/${name}`);
+    const contracts = ['provider-recovery.ts', 'flash-tools.ts', 'flash-history.ts', 'flash-queue.ts', 'task-workspace.ts', 'custom-tool-contract.ts', 'custom-tool-queue.ts', 'codegraph-tools.ts', 'codegraph-queue.ts', 'project-instructions.ts', 'execution-permissions.ts', 'usage-contract.ts', 'activity-contract.ts', 'conversation-contract.ts', 'application-storage.ts', 'application-contract.ts', 'work-contract.ts', 'work-files.ts', 'integration-contract.ts', 'integration-plan.ts', 'verification-source-contract.ts', 'verification-source-files.ts', 'verification-contract.ts', 'candidate-verification-contract.ts', 'protocol.ts'].map(name => `experiments/codex-specialists/src/${name}`);
     return !contracts.some(contract => normalizedPath === contract || contract.startsWith(`${normalizedPath}/`));
   }
   if (rootEntry === 'connect') {
@@ -66,7 +66,7 @@ function shouldIgnore(packagePath: string): boolean {
   if (segments.length === 2) return false;
   if (grandchildEntry === 'electron-libghostty') return false;
   if (grandchildEntry === 'flash') {
-    const files = new Set(['client.mts', 'runtime.mts', 'sources.mts', 'session-memory.mts', 'tools.mts', 'workspace.mts', 'wait.mts', 'ipc.mts', 'summary.mts']);
+    const files = new Set(['ranking-recovery.mts', 'agent-memory.mts', 'docker-archive.mts', 'client.mts', 'runtime.mts', 'sources.mts', 'session-memory.mts', 'tools.mts', 'workspace.mts', 'wait.mts', 'ipc.mts', 'summary.mts', 'luna.mts', 'rerank.mts']);
     return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
   }
   if (grandchildEntry === 'agent-platform') {
@@ -83,7 +83,7 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 3 && (segments.length !== 4 || !agentFiles.has(segments[3] ?? ''));
   }
   if (grandchildEntry === 'agent-orchestration') {
-    const files = new Set(['custom-tool-relay.mts', 'codegraph-source.mts', 'codegraph-relay.mts', 'mailbox.mts', 'candidate-verification.mts', 'service.mts', 'worker-events.mts', 'event-queue.mts']);
+    const files = new Set(['flash-relay.mts', 'custom-tool-relay.mts', 'codegraph-source.mts', 'codegraph-relay.mts', 'mailbox.mts', 'candidate-verification.mts', 'service.mts', 'worker-events.mts', 'event-queue.mts']);
     return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
   }
   if (grandchildEntry === 'scheduler') {

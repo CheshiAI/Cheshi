@@ -1,3 +1,4 @@
+import { ProviderRequestError } from '../../experiments/codex-specialists/src/provider-recovery.ts';
 import { ephemeralSessionRequest, type EphemeralSessionResult } from '../shared/ephemeral-session.ts';
 import { modelsFromListResponse } from './codex-chat-catalog.mts';
 import type { CodexChatClient, JsonObject } from './codex-chat-types.mts';
@@ -124,13 +125,13 @@ export class EphemeralSessionService {
       if (event.method === 'item/completed' && itemType === 'webSearch') options.onWebSearch?.();
       if (event.method === 'item/completed') remember(params.item);
       if (event.method === 'error' && params.willRetry !== true) {
-        finish({ error: new Error(stringValue(recordValue(params.error)?.message) ?? 'Temporary session failed.') });
+        finish({ error: new ProviderRequestError(params.error, 'Temporary session failed.') });
       }
       if (event.method !== 'turn/completed') return;
       turnCompleted = true;
       if (Array.isArray(turn?.items)) turn.items.forEach(remember);
       if (turn?.status !== 'completed') {
-        finish({ error: new Error(stringValue(recordValue(turn?.error)?.message) ?? 'Temporary session was interrupted.') });
+        finish({ error: new ProviderRequestError(turn?.error, 'Temporary session was interrupted.') });
         return;
       }
       const text = [...messages.values()].filter((item) => item.phase !== 'commentary').map((item) => item.text).join('\n\n').trim();

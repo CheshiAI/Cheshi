@@ -1,3 +1,7 @@
+import { FlashHistoryChanged } from '../../../experiments/codex-specialists/src/flash-history.ts';
+import { FlashWorkerConnection } from '../agent-orchestration/flash-relay.mts';
+import type { AgentFlashMemory } from '../flash/agent-memory.mts';
+import { bindingFor } from '../agent-orchestration/mailbox.mts';
 import { randomBytes } from 'node:crypto';
 import { lstat, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -6,6 +10,8 @@ import { redactAgentLogs, runDocker, type DockerCommand } from '../agent-managem
 import { executionPlan, identifier, imageId, record, type ExecutionReceipt, type ExecutionRequest } from './contracts.mts';
 
 export interface HomieExecutionProfile {
+  flash?: AgentFlashMemory;
+  workspace?: string;
   agentId: string;
   accountId: string;
   configuration: Omit<RuntimeConfiguration, 'token'>;
@@ -97,9 +103,14 @@ export async function createHomieExecutor(options: {
         assertContainer(await inspect(id), rawId, plan.image);
         const response = record(JSON.parse(await run([...prefix, 'exec', '--interactive', rawId, 'bun', '-e', exchangeScript],
           JSON.stringify({ route, token, ...(body === undefined ? {} : { body }) }))));
+        if (route === '/flash/history' && response.status === 409) throw new FlashHistoryChanged('Flash history changed. Retry.');
         if (response.status !== 200 && response.status !== 202) throw new Error('Homie worker did not confirm the request. Inspect the retained task.');
         return record(response.body);
       }
+      const flash = profile.flash && profile.workspace ? new FlashWorkerConnection(profile.flash,
+        bindingFor(profile.workspace, options.engineId, profile.agentId, profile.accountId),
+        async (route, body, requestSignal) => { requestSignal.throwIfAborted(); const result = await exchange(route, body); requestSignal.throwIfAborted(); return result; },
+        () => { try { profile.assertCurrent(); return !signal?.aborted; } catch { return false; } }, () => {}, `isolated:${id}`) : null;
       let stopped = false;
       try {
         const auth = await profile.credentials();
@@ -121,12 +132,14 @@ export async function createHomieExecutor(options: {
         assertTask(accepted, id);
         for (;;) {
           signal?.throwIfAborted(); profile.assertCurrent();
+          await flash?.tick();
           const task = await exchange(`/tasks/${id}`); assertTask(task, id);
           const sessionId = typeof task.threadId === 'string' ? task.threadId : null;
           const output = redactAgentLogs(typeof task.output === 'string' ? task.output : '');
           options.changed?.({ sessionId, output });
           if (['completed', 'failed', 'interrupted'].includes(String(task.status))) {
             assertFinishedTask(task, sessionId);
+            await flash?.flush();
             // Stop all processes before the host snapshots or commits any worker changes.
             await stop(id, rawId, plan.image); stopped = true;
             return { id, image: plan.image, exitCode: task.status === 'completed' ? 0 : 1,
@@ -138,6 +151,7 @@ export async function createHomieExecutor(options: {
         }
       } finally {
         // No retry or fabricated completion after transport loss. Stopping also discards the tmpfs credentials.
+        await flash?.dispose();
         if (!stopped) await stop(id, rawId, plan.image);
       }
     },

@@ -1,3 +1,4 @@
+import { ProviderRequestError } from './provider-recovery.ts';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { DEFAULT_PROJECT_DOC_MAX_BYTES, projectDocConfigOverride } from './project-instructions.ts';
@@ -101,7 +102,7 @@ export class AppServerClient implements RpcClient {
       this.pending.delete(message.id);
       if (message.error) {
         const error = record(message.error);
-        request.reject(new Error(typeof error.message === 'string' ? error.message : 'App-server request failed.'));
+        request.reject(new ProviderRequestError(error, 'App-server request failed.'));
       } else request.resolve(record(message.result));
       return;
     }
