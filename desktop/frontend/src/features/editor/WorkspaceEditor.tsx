@@ -58,7 +58,8 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
   const onDetach = useCallback((element: HTMLElement) => { detachedFocus.current = element; }, []);
   const [routedTarget, setRoutedTarget] = useState<{ id: string; target: WorkspaceEditorTarget } | null>(null);
   useEffect(() => {
-    if (props.target && active && ready) setRoutedTarget({ id: store.getSnapshot().activeId, target: props.target });
+    if (!props.target) setRoutedTarget(null);
+    else if (active && ready) setRoutedTarget({ id: store.getSnapshot().activeId, target: props.target });
   }, [props.target, active, ready, store]);
   for (const id of Object.keys(state.groups)) {
     if (!hosts.has(id)) {
@@ -129,7 +130,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           maximized: maximized === id,
           toggle: () => toggleMaximized(id),
         } : undefined}
-        target={routedTarget?.id === id ? routedTarget.target : null}
+        target={routedTarget?.target === props.target && routedTarget?.id === id ? routedTarget.target : null}
         onSelectedPathChange={ignoreSelection} onDirtyPathsChange={undefined}
         onAllTabsClosed={() => {
           store.closeEmpty(id);

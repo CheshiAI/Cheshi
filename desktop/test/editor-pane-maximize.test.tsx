@@ -43,6 +43,8 @@ async function withEditor(run: (h: {
   closed: string[];
   outerMaximized: string[];
   window: Window;
+  requests: string[];
+  renderRequest(active: boolean, target: React.ComponentProps<typeof WorkspaceEditor>['target']): Promise<void>;
 }) => Promise<void>, singlePane = false, mixedWorkspace = false, menus?: (id: string) => React.ReactNode) {
   const window = new Window();
   const globals = { window, document: window.document, navigator: window.navigator, Node: window.Node,
@@ -66,8 +68,10 @@ async function withEditor(run: (h: {
   const ids = Object.keys(store.getSnapshot().groups);
   const closed: string[] = [];
   const outerMaximized: string[] = [];
-  function Pane({ pane, active, maximizeControl }: React.ComponentProps<typeof WorkspaceEditorPane>) {
+  const requests: string[] = [];
+  function Pane({ pane, active, target, maximizeControl }: React.ComponentProps<typeof WorkspaceEditorPane>) {
     React.useEffect(() => () => { closed.push(pane.id); }, [pane.id]);
+    React.useEffect(() => { if (active && target) requests.push(target.path); }, [active, target]);
     return <section data-content={pane.id} data-active={String(active)}>
       <layoutControls.WorkspaceLayoutControls maximizeControl={maximizeControl} />
       <textarea aria-label={`${pane.id} draft`} defaultValue="unsaved text" />
@@ -77,6 +81,7 @@ async function withEditor(run: (h: {
   const modules: Record<string, unknown> = {
     react: React, 'react/jsx-runtime': jsxRuntime, 'react-dom': { createPortal },
     '../../cheshiDesktop': { cheshiDesktop: null },
+    '../../shared/workspaceProjects': { useWorkspaceProjects: () => ({ projects: [] }) },
     '../../shared/ui/SplitPaneLayout': { SplitPaneLayout },
     '../../shared/ui/RegionalBlur': { RegionalBlur },
     '../shell/WorkspaceLayoutControls': layoutControls,
@@ -96,8 +101,18 @@ async function withEditor(run: (h: {
     return modules[name];
   } });
   const Editor = exports.WorkspaceEditor!;
-  const editor = <Editor active mutation={null} target={null} onAllTabsClosed={() => {}}
-    onSelectedPathChange={() => {}} onShowLineCommit={() => {}} />;
+  let setRequest: React.Dispatch<React.SetStateAction<{
+    active: boolean; target: React.ComponentProps<typeof WorkspaceEditor>['target'];
+  }>>;
+  function RequestedEditor() {
+    const [request, updateRequest] = React.useState<{
+      active: boolean; target: React.ComponentProps<typeof WorkspaceEditor>['target'];
+    }>({ active: true, target: null });
+    setRequest = updateRequest;
+    return <Editor {...request} mutation={null} onAllTabsClosed={() => {}}
+      onSelectedPathChange={() => {}} onShowLineCommit={() => {}} />;
+  }
+  const editor = <RequestedEditor />;
   function Workspace() {
     const [layout, setLayout] = React.useState<React.ComponentProps<typeof WorkspaceEditorSplit>['layout']>({
       type: 'split', id: 'workspace', axis: 'columns', ratio: .6,
@@ -118,7 +133,10 @@ async function withEditor(run: (h: {
           {editor}
         </layoutControls.WorkspacePaneContext.Provider>
       </layoutControls.WorkspaceLayoutContext.Provider>));
-    await run({ store, ids, closed, outerMaximized, window,
+    await run({ store, ids, closed, outerMaximized, window, requests,
+      renderRequest: async (active, target) => {
+        await React.act(async () => { setRequest({ active, target }); });
+      },
       visible: () => [...container.querySelectorAll<HTMLElement>('[data-editor-pane]')]
         .filter(element => !element.closest('[hidden]')).map(element => element.dataset.editorPane!),
       toggle: async (id, restore = false) => {
@@ -137,6 +155,34 @@ async function withEditor(run: (h: {
     }
   }
 }
+
+test('cancelled file requests stay cleared when the empty explorer is shown again', async () => {
+  await withEditor(async h => {
+    const target = { path: 'a.ts', line: null, requestId: 1 };
+    await h.renderRequest(true, target);
+    expect(h.requests).toEqual(['a.ts']);
+    await React.act(async () => { h.store.replace(h.ids[0]!, () => []); });
+    await h.renderRequest(false, null);
+    h.requests.length = 0;
+    await h.renderRequest(true, null);
+    expect(h.requests).toEqual([]);
+    expect(h.store.allTabs()).toEqual([]);
+  }, true);
+});
+
+test('revealing the explorer routes only the new file request and never replays the old one', async () => {
+  await withEditor(async h => {
+    const first = { path: 'a.ts', line: null, requestId: 1 };
+    const next = { path: 'b.ts', line: 3, requestId: 2 };
+    await h.renderRequest(true, first);
+    await h.renderRequest(false, first);
+    h.requests.length = 0;
+    await h.renderRequest(false, next);
+    expect(h.requests).toEqual([]);
+    await h.renderRequest(true, next);
+    expect(h.requests).toEqual(['b.ts']);
+  }, true);
+});
 
 test('each nested file pane maximizes and restores its exact layout without unmounting drafts', async () => {
   await withEditor(async h => {
