@@ -19,6 +19,7 @@ desktop/native/electron-libghostty/native-deps/
 desktop/native/ghostty-bridge/.build/
 
 # Local diagnostics and credentials
+/.docs/validation/
 *.log
 *.tsbuildinfo
 coverage/
