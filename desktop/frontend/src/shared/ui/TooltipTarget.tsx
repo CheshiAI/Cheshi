@@ -5,16 +5,17 @@ import { Tooltip } from './Tooltip';
 type TargetProps = HTMLAttributes<HTMLElement> & { disabled?: boolean };
 
 /** Keep the target's layout, ref and handlers while replacing its native title. */
-export function TooltipTarget({ content, placement, children }: {
+export function TooltipTarget({ content, placement, horizontalOffset, children }: {
   content?: string;
   placement?: 'above' | 'below';
+  horizontalOffset?: number;
   children: ReactElement<TargetProps>;
 }) {
   const props = children.props;
   // Keep the wrapper stable when a pending operation enables/disables its target.
   const wrapped = 'disabled' in props;
   const description = props['aria-description'] ?? content;
-  return <Tooltip content={content} placement={placement}
+  return <Tooltip content={content} placement={placement} horizontalOffset={horizontalOffset}
     resolveAnchor={wrapped ? element => element.firstElementChild ?? element : undefined}>
     {trigger => wrapped ? (
       <span {...trigger} data-tooltip-wrapper="true" style={{ display: 'contents' }}>

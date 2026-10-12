@@ -10,6 +10,7 @@ import { act, useState, type ReactNode } from 'react';
 import { parseWorkspaceLayout, placeWorkspacePane, visibleWorkspaceLayout, workspaceDropDirection } from '../frontend/src/features/shell/workspaceLayoutModel';
 import { splitPaneIds, type SplitLayoutNode } from '../frontend/src/shared/ui/splitPaneModel';
 import { beginSplitPreview } from '../frontend/src/shared/ui/splitPreviewState';
+import type { WorkspacePaneId } from '../frontend/src/features/shell/workspaceLayoutModel';
 
 mock.module('../frontend/src/shared/ui/SplitPaneLayout.module.css', () => ({ default: { split: 'split', region: 'region', separator: 'separator' } }));
 mock.module('../frontend/src/shared/ui/Tooltip.module.css', () => ({ default: { anchor: 'tooltip-anchor', content: 'tooltip-content' } }));
@@ -74,6 +75,74 @@ function Fixture({ opened }: { opened: string[] }) {
     editor={area('editor')} terminal={area('terminal')}>{area('primary')}</WorkspaceEditorSplit>;
 }
 
+test('native pointer and keyboard focus select visible portal panes without recreating drafts', async () => {
+  await withDOM(async ({ render, window }) => {
+    const selected: WorkspacePaneId[] = [];
+    const show = (mode: 'split' | 'editor', disabled = false) => render(
+      <WorkspaceEditorSplit mode={mode} disabled={disabled} onPaneActivate={pane => selected.push(pane)}
+        editor={<div><p>Editor space</p><input aria-label="Editor draft" defaultValue="unsaved" /></div>}
+        terminal={<input aria-label="Terminal draft" />}>
+        <input aria-label="Chat draft" defaultValue="unsent" />
+      </WorkspaceEditorSplit>);
+    await show('split');
+    const editor = document.querySelector<HTMLInputElement>('[aria-label="Editor draft"]')!;
+    const chat = document.querySelector<HTMLInputElement>('[aria-label="Chat draft"]')!;
+    editor.value = 'edited file'; chat.value = 'unfinished message';
+    await act(async () => {
+      editor.previousElementSibling!.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true }) as unknown as Event);
+    });
+    expect(selected.at(-1)).toBe('editor');
+    await act(async () => chat.focus());
+    expect(selected.at(-1)).toBe('primary');
+    await act(async () => editor.focus());
+    expect(selected.at(-1)).toBe('editor');
+    await show('editor');
+    const count = selected.length;
+    await act(async () => chat.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true }) as unknown as Event));
+    expect(selected).toHaveLength(count);
+    await show('split', true);
+    const disabledCount = selected.length;
+    await act(async () => chat.focus());
+    expect(selected).toHaveLength(disabledCount);
+    await show('split');
+    expect(document.querySelector('[aria-label="Editor draft"]')).toBe(editor);
+    expect(document.querySelector('[aria-label="Chat draft"]')).toBe(chat);
+    expect(editor.value).toBe('edited file');
+    expect(chat.value).toBe('unfinished message');
+  });
+});
+
+test('rail focus requests reveal a maximized sibling and preserve split ratios and inputs', async () => {
+  await withDOM(async ({ render }) => {
+    const layout = visibleWorkspaceLayout('split', false, .37);
+    const changes: SplitLayoutNode[] = [];
+    const show = (focusRequest?: { paneId: WorkspacePaneId; requestId: number }) => render(
+      <WorkspaceEditorSplit mode="split" layout={layout} focusRequest={focusRequest}
+        onLayoutChange={next => changes.push(next)}
+        editor={<><WorkspaceLayoutControls /><input aria-label="Editor draft" /></>}>
+        <input aria-label="Chat draft" />
+      </WorkspaceEditorSplit>);
+    await show();
+    const editor = document.querySelector<HTMLInputElement>('[aria-label="Editor draft"]')!;
+    const chat = document.querySelector<HTMLInputElement>('[aria-label="Chat draft"]')!;
+    editor.value = 'unsaved file'; chat.value = 'unsent chat';
+    const maximize = document.querySelector<HTMLButtonElement>('[aria-label="Maximize pane"]')!;
+    await act(async () => maximize.click());
+    expect(chat.closest('[hidden]')).not.toBeNull();
+    await show({ paneId: 'primary', requestId: 1 });
+    expect(chat.closest('[hidden]')).toBeNull();
+    expect(document.activeElement).toBe(chat.parentElement);
+    expect(changes).toEqual([]);
+    await show({ paneId: 'editor', requestId: 2 });
+    expect(document.activeElement).toBe(editor.parentElement);
+    expect(document.querySelector('[aria-label="Editor draft"]')).toBe(editor);
+    expect(document.querySelector('[aria-label="Chat draft"]')).toBe(chat);
+    expect(editor.value).toBe('unsaved file');
+    expect(chat.value).toBe('unsent chat');
+    expect(layout.type === 'split' && layout.ratio).toBe(.37);
+  });
+});
+
 test('workspace reserves the Codex minimum through nested rows and restored split ratios', async () => {
   await withDOM(async ({ render, window }) => {
     const changes: SplitLayoutNode[] = [];
@@ -124,6 +193,7 @@ test.each(['right', 'down'] as const)('pane %s preview cancels without opening o
     await click(`Split area ${direction}`);
     expect(opened).toEqual([]);
     expect(document.querySelector('dialog[open]')).not.toBeNull();
+    expect([...document.querySelectorAll('dialog button')].some(button => button.textContent?.startsWith('Explorer'))).toBe(true);
     expect(document.querySelector('dialog')?.getAttribute('data-backdrop')).toBe('regional');
     expect(document.querySelector('dialog [data-liquid-glass-backdrop]')?.getAttribute('data-regional-blur-surface')).toBe('true');
     expect(editorHost.parentElement?.parentElement?.getAttribute('style')).toBe(initialStyle);

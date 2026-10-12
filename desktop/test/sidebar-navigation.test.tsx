@@ -13,6 +13,8 @@ type ElementProps = {
   onClick?: () => void;
   'aria-current'?: string;
   'aria-label'?: string;
+  'aria-controls'?: string;
+  'aria-expanded'?: boolean;
   'data-active'?: string;
   active?: boolean;
   label?: string;
@@ -27,7 +29,8 @@ function elements(node: ReactNode): ReactElement<ElementProps>[] {
 test('SESSION rail item uses page navigation when returning from another view or selecting it again', () => {
   for (const activeView of ['notes', 'calendar', 'terminal', 'git', 'plugins', 'editor', 'codegraph', 'chat', 'search'] as const) {
     const destinations: WorkspaceView[] = [];
-    const rail = SidebarRail({ activeView, sidebarOpen: true, onNavigate: view => destinations.push(view), onToggleSidebar() {} });
+    const rail = SidebarRail({ activeView, sidebarOpen: true,
+      onNavigate: view => destinations.push(view), onToggleSidebar() {} });
     const session = elements(rail).find(element => element.type === SidebarRailButton && element.props.label === 'SESSION');
     expect(session).toBeDefined();
     session?.props.onClick?.();
@@ -42,18 +45,19 @@ test('rail management items retain their order and destinations', () => {
   const destinations: WorkspaceView[] = [];
   const rail = SidebarRail({ activeView: 'chat', sidebarOpen: true,
     onNavigate: view => destinations.push(view), onToggleSidebar() {} });
-  const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 10);
+  const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 11);
   expect(navigation.map(element => element.props.label)).toEqual([
-      'SESSION', 'Terminal', 'Relationship Graph', 'Memo', 'Calendar',
+      'Explorer', 'SESSION', 'Terminal', 'Relationship Graph', 'Memo', 'Calendar',
       'Worker', 'Docker', 'Github', 'Plugins', 'Settings',
     ]);
   for (const element of navigation) if (element.props.label !== 'SESSION') element.props.onClick?.();
-  expect(destinations).toEqual(['terminal', 'codegraph', 'notes', 'calendar', 'chats', 'docker', 'git', 'plugins', 'settings']);
+  expect(destinations).toEqual(['explorer', 'terminal', 'codegraph', 'notes', 'calendar', 'chats', 'docker', 'git', 'plugins', 'settings']);
 });
 
 test('rail bottom controls retain caffeine, sidebar and project actions without a help launcher', () => {
   let toggles = 0;
-  const rail = SidebarRail({ activeView: 'chat', sidebarOpen: true, onNavigate() {}, onToggleSidebar() { toggles++; } });
+  const rail = SidebarRail({ activeView: 'chat', sidebarOpen: true,
+    onNavigate() {}, onToggleSidebar() { toggles++; } });
   expect(elements(rail).find(element => element.type === KeepAwakeButton)?.props.variant).toBe('rail');
   expect(elements(rail).some(element => element.type === HelpCenter)).toBe(false);
   expect(elements(rail).some(element => element.type === WorkspaceSelector)).toBe(true);
@@ -61,4 +65,23 @@ test('rail bottom controls retain caffeine, sidebar and project actions without 
   expect(collapse?.props['aria-label']).toBe('Collapse sidebar');
   collapse?.props.onClick?.();
   expect(toggles).toBe(1);
+});
+
+test('only the focused view has an active rail icon even when the sidebar is collapsed', () => {
+  for (const sidebarOpen of [true, false]) {
+    for (const activeView of ['explorer', 'editor', 'chat', 'terminal', 'notes', 'git'] as const) {
+      const destinations: WorkspaceView[] = [];
+      const rail = SidebarRail({ activeView, sidebarOpen,
+        onNavigate: view => destinations.push(view), onToggleSidebar() {} });
+      const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 11);
+      expect(navigation.filter(element => element.props.active)).toHaveLength(1);
+      const explorer = elements(rail).find(element => element.type === SidebarRailButton);
+      expect(explorer?.props.label).toBe('Explorer');
+      expect(explorer?.props.active).toBe(activeView === 'explorer' || activeView === 'editor');
+      expect(explorer?.props['aria-expanded']).toBe(sidebarOpen);
+      expect(explorer?.props['aria-controls']).toBe('workspace-sidebar');
+      explorer?.props.onClick?.();
+      expect(destinations).toEqual(['explorer']);
+    }
+  }
 });

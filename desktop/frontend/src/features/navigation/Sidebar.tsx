@@ -6,7 +6,7 @@ import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import { WorkspaceFileTree } from './WorkspaceFileTree';
 import { normalizeSidebarPanel, type SidebarPanel } from './sidebarPanel';
 
-export type WorkspaceView = 'chats' | 'chat' | 'notes' | 'calendar' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'local-history' | 'settings' | 'docker';
+export type WorkspaceView = 'chats' | 'chat' | 'explorer' | 'notes' | 'calendar' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'local-history' | 'settings' | 'docker';
 
 interface SidebarProps {
   chatPanel?: ReactNode;
@@ -43,8 +43,8 @@ export function Sidebar({
           {chatPanel && onPanelChange ? <SidebarTabs activeId={activePanel}
             onSelect={panel => onPanelChange(normalizeSidebarPanel(panel))}
             tabs={[
-              { id: 'chats', label: 'SESSION', content: chatPanel },
               { id: 'files', label: 'EXPLORER', content: files },
+              { id: 'chats', label: 'SESSION', content: chatPanel },
               { id: 'agent-chats', label: 'WORKER', content: <div ref={chatsPanelRef} className="sidebar-content-primary" /> },
               { id: 'memos', label: 'MEMO', content: <div ref={memoPanelRef} className="sidebar-content-primary" /> },
               { id: 'github', label: 'GITHUB', content: <div ref={githubPanelRef} className="sidebar-content-primary" /> },

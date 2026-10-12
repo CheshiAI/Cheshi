@@ -1,0 +1,18 @@
+.view {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.empty {
+  --empty-text: var(--sidebar-section-label-color);
+  --empty-muted: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
+}
+
+.empty > strong { font-size: var(--font-size-section-title); }
+.empty > p { font-size: var(--font-size-small); }

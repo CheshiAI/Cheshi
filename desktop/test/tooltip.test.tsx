@@ -155,14 +155,14 @@ test.each(['button', 'disabled-button', 'text', 'nested', 'svg'] as const)('shar
       };
       let bubble = await show();
       expect(bubble.dataset.placement).toBe('above');
-      expect(bubble.style.top).toBe('52px');
+      expect(bubble.style.top).toBe('44px');
       expect(bubble.style.left).toBe(`${window.innerWidth - 208}px`);
       expect(nativeSurfacesHidden).toBe(false);
       await act(async () => { trigger.dispatchEvent(new window.PointerEvent('pointerout', { bubbles: true }) as unknown as Event); });
       trigger.getBoundingClientRect = () => new window.DOMRect(8, 5, 22, 22) as unknown as DOMRect;
       bubble = await show();
       expect(bubble.dataset.placement).toBe('below');
-      expect(bubble.style.top).toBe('35px');
+      expect(bubble.style.top).toBe('43px');
       expect(bubble.style.left).toBe('8px');
       expect(nativeSurfacesHidden).toBe(false);
     }

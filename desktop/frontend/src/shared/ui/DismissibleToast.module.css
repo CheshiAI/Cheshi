@@ -88,6 +88,9 @@
 }
 
 .title {
+  display: flex;
+  align-items: center;
+  min-height: var(--icon-button-size);
   margin: 0;
   font-size: 10px;
   font-weight: 500;

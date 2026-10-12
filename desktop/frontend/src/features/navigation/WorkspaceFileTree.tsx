@@ -1,4 +1,4 @@
-import { Folder, FolderOpen, FolderPlus, LayersPlus, FilePlus2, List, RefreshCw, Unlink } from 'lucide-react';
+import { Folder, FolderOpen, FolderPlus, FolderTree, LayersPlus, FilePlus2, List, RefreshCw, Unlink } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cheshiDesktop, type CheshiDesktopApi, type CheshiWorkspaceEntry, type WorkspaceEntryMutation } from '../../cheshiDesktop';
 import { SidebarPanelHeader, Tooltip } from '../../shared/ui';
@@ -81,7 +81,7 @@ export function WorkspaceFileTree({ api = cheshiDesktop, ...props }: WorkspaceFi
     finally { setBusy(false); }
   };
   return <section className="workspace-file-tree" aria-label="File explorer">
-    <SidebarPanelHeader title="EXPLORER" icon={<Folder aria-hidden="true" />} actions={
+    <SidebarPanelHeader title="EXPLORER" icon={<FolderTree aria-hidden="true" />} actions={
       <TooltipButton size="icon" aria-label="Add project to workspace" title="Add project to workspace"
         disabled={busy || !api?.workspaceProjects} onClick={() => { void run(() => api!.workspaceProjects!.add()); }}>
         <LayersPlus aria-hidden="true" />

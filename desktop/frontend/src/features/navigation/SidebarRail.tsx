@@ -2,6 +2,7 @@ import {
   Blocks,
   CalendarDays,
   Crosshair,
+  FolderTree,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -19,6 +20,7 @@ import { WorkspaceSelector } from './WorkspaceSelector';
 import styles from './SidebarRail.module.css';
 
 const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceView }> = [
+  { label: 'Explorer', icon: <FolderTree aria-hidden="true" />, view: 'explorer' },
   { label: 'SESSION', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
   { label: 'Terminal', icon: <SquareTerminal aria-hidden="true" />, view: 'terminal' },
   { label: 'Relationship Graph', icon: <Crosshair aria-hidden="true" />, view: 'codegraph' },
@@ -41,8 +43,10 @@ export function SidebarRail({ activeView, sidebarOpen, onNavigate, onToggleSideb
     <div className={styles.chrome} aria-hidden="true" />
     <nav className={styles.navigation} aria-label="Primary navigation">
       {navigationItems.map(item => {
-        const active = item.view === activeView;
+        const active = item.view === (activeView === 'editor' ? 'explorer' : activeView);
         return <SidebarRailButton key={item.label} active={active} icon={item.icon} label={item.label}
+          aria-controls={item.view === 'explorer' ? 'workspace-sidebar' : undefined}
+          aria-expanded={item.view === 'explorer' ? sidebarOpen : undefined}
           aria-label={item.label} aria-current={active ? 'page' : undefined} onClick={() => onNavigate(item.view)} />;
       })}
     </nav>

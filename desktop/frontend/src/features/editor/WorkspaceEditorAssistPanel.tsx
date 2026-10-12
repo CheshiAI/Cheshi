@@ -167,7 +167,7 @@ export function WorkspaceEditorAssistPanel({
               <li className="workspace-editor-assist-empty" role="alert">{state.error}</li>
             ) : state.actions.length > 0 ? state.actions.map((action, index) => (
               <li key={`${action.title}:${index}`}>
-                <TooltipTarget content={action.disabledReason ?? action.kind ?? action.title}>
+                <TooltipTarget content={action.disabledReason ?? action.kind ?? action.title} horizontalOffset={16}>
                   <button
                     disabled={Boolean(action.disabledReason) || !action.edit}
                     type="button"

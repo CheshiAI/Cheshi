@@ -104,7 +104,7 @@ function renderFilePane(loading: boolean, ready = true, existingFile = false) {
     '../../shared/file-icons/FileTypeIcon', '../../shared/ui', '../../shared/ui/TooltipButton',
     './WorkspaceEditorFileToolbar', './WorkspaceCodeExplanationMenu', './WorkspaceCodeExplanationToast',
     './WorkspaceEditorAssistPanel', './WorkspaceEditorSearchPanel', './WorkspaceProblemsPanel',
-    './WorkspaceProblemsResizer', './workspaceEditorModel']) {
+    './WorkspaceProblemsResizer', './workspaceEditorModel', '../navigation/ExplorerView']) {
     modules[path] = new Proxy({}, { get: (_target, name) => String(name) });
   }
   modules.react = { useContext: () => true };
@@ -122,11 +122,11 @@ test('file pane shows shared loading instead of the empty prompt during opening 
   for (const [loading, ready, label] of [[true, true, 'Opening file…'], [false, false, 'Restoring files…']] as const) {
     const tree = renderFilePane(loading, ready);
     expect(props<{ label: string }>(tree, 'LoadingState').label).toBe(label);
-    expect(elements(tree).some(node => node.props.children === 'Choose a file')).toBe(false);
+    expect(elements(tree).some(node => node.type === 'ExplorerEmptyState')).toBe(false);
     expect(props<HTMLAttributes<HTMLElement>>(tree, 'main')['aria-busy']).toBe(true);
   }
   const idle = renderFilePane(false);
-  expect(elements(idle).some(node => node.props.children === 'Choose a file')).toBe(true);
+  expect(elements(idle).some(node => node.type === 'ExplorerEmptyState')).toBe(true);
   expect(elements(idle).some(node => node.type === 'LoadingState')).toBe(false);
 });
 
@@ -134,6 +134,20 @@ test('file pane retains the current preview while another file is opening', () =
   const tree = renderFilePane(true, true, true);
   expect(props<{ label: string }>(tree, 'LoadingState').label).toBe('Opening file…');
   expect(props<{ alt: string }>(tree, 'img').alt).toBe('preview.png');
+});
+
+test('the empty Explorer header is replaced by the file tab header while pane controls stay available', () => {
+  for (const existingFile of [false, true, false]) {
+    const tree = renderFilePane(false, true, existingFile);
+    expect(elements(tree).filter(node => node.type === 'ExplorerHeader')).toHaveLength(existingFile ? 0 : 1);
+    expect(elements(tree).filter(node => node.type === 'TieredHeader')).toHaveLength(existingFile ? 1 : 0);
+    const headerContent = existingFile
+      ? props<{ primary: ReactNode }>(tree, 'TieredHeader').primary
+      : props<{ actions: ReactNode }>(tree, 'ExplorerHeader').actions;
+    expect(elements(headerContent).filter(node => node.type === 'FlatTabList')).toHaveLength(existingFile ? 1 : 0);
+    expect(elements(headerContent).filter(node => node.type === 'WorkspaceLayoutControls')).toHaveLength(1);
+    expect(props<{ 'aria-label': string }>(headerContent, 'TooltipButton')['aria-label']).toBe('Close all file tabs');
+  }
 });
 
 function shellHarness(initialHistoryLoading = false, preference: { panel: SidebarPanel } = { panel: 'files' },
@@ -184,6 +198,7 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
     '../editor': ['WorkspaceEditor'], '../git': ['GitWorkspace'], '../graph': ['CodeGraphView'],
     '../home/BlankView': ['BlankView'], '../navigation/Sidebar': ['Sidebar'], '../navigation/SidebarRail': ['SidebarRail'],
     '../plugins': ['PluginsView'],
+    '../navigation/ExplorerView': ['ExplorerView'],
     '../terminal': ['TerminalWorkspace'],
     '../settings/SettingsView': ['SettingsView'],
     '../scheduler/SchedulerNotifications': ['SchedulerNotifications'],
@@ -217,6 +232,7 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
       resumeOptions.setSidebarPanel(panel);
     },
     finishRestore: () => { editorSessionMode = 'preserve'; },
+    finishOrdinaryStartup: () => { editorSessionMode = 'restore'; },
     finishInitialHistory: () => { historyLoading = false; } };
 }
 
@@ -274,7 +290,7 @@ test('sidebar tabs retain navigation and load initial chats before limiting refr
   const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
   const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
   const chat = () => props<ComponentProps<typeof ChatWorkspace>>(app.render(), 'ChatWorkspace');
-  expect(sidebar().activePanel).toBe('chats');
+  expect(sidebar().activePanel).toBe('files');
   expect(chat().sessionSyncEnabled).toBe(true);
   expect(sidebar().chatPanel).toBeDefined();
   expect(props<{ value: boolean }>(app.render(), 'SidebarToggleVisibility').value).toBe(false);
@@ -294,15 +310,15 @@ test('sidebar tabs retain navigation and load initial chats before limiting refr
   expect(chat().sessionSyncEnabled).toBe(false);
 });
 
-test('shell saves manual tab selections but prioritizes the visible scene when reopened', () => {
+test('shell saves manual tab selections but opens Explorer on ordinary startup', () => {
   const preference: { panel: SidebarPanel } = { panel: 'chats' };
   const app = shellHarness(false, preference);
-  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('chats');
+  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('files');
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onPanelChange!('memos');
   app.render();
   expect(preference.panel).toBe('memos');
   expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('memos');
-  expect(props<ComponentProps<typeof Sidebar>>(shellHarness(false, preference).render(), 'Sidebar').activePanel).toBe('chats');
+  expect(props<ComponentProps<typeof Sidebar>>(shellHarness(false, preference).render(), 'Sidebar').activePanel).toBe('files');
 });
 
 test.each(['editor', 'split'] as const)('saved %s layouts open the explorer before restoring editor files', mode => {
@@ -310,8 +326,155 @@ test.each(['editor', 'split'] as const)('saved %s layouts open the explorer befo
   expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('files');
 });
 
+test('ordinary startup keeps Explorer after the update snapshot check finishes', () => {
+  const app = shellHarness();
+  app.beginRestore();
+  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('files');
+  app.finishOrdinaryStartup();
+  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('files');
+  const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
+  rail().onNavigate('chat');
+  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('chats');
+});
+
+test('Explorer startup opens files in the editor and returns to its empty page after the last tab closes', () => {
+  const app = shellHarness();
+  const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  expect(rail().activeView).toBe('explorer');
+  expect(elements(split().children).some(node => node.type === 'ExplorerView')).toBe(true);
+  expect(props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace').active).toBe(false);
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('draft.ts');
+  expect(split().mode).toBe('editor');
+  expect(rail().activeView).toBe('editor');
+  const editor = props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
+  expect(editor.target?.path).toBe('draft.ts');
+  editor.onAllTabsClosed();
+  expect(rail().activeView).toBe('explorer');
+  expect(elements(split().children).some(node => node.type === 'ExplorerView')).toBe(true);
+  expect(props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor').target).toBeNull();
+});
+
+test('opening Explorer from the split chooser without files retains the chat and uses the empty pane', () => {
+  const app = shellHarness();
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  split().onLayoutChange!(layoutModel.placeWorkspacePane({ type: 'pane', paneId: 'primary' }, 'primary', 'editor', 'right'));
+  split().onOpenPane!('editor');
+  const editor = props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
+  expect(editor.active).toBe(true);
+  expect(editor.target).toBeNull();
+  expect(props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace').active).toBe(true);
+  const empty = renderFilePane(false);
+  expect(elements(empty).some(node => node.type === 'ExplorerHeader')).toBe(true);
+  expect(elements(empty).some(node => node.type === 'ExplorerEmptyState')).toBe(true);
+  expect(elements(empty).some(node => node.type === 'TieredHeader')).toBe(false);
+});
+
+test.each(['primary', 'terminal-left', 'terminal-below'] as const)(
+  'Explorer replaces its empty area when opening or restoring files with a saved %s layout', name => {
+    const initial: splitModel.SplitLayoutNode = name === 'primary' ? { type: 'pane', paneId: 'primary' } : {
+      type: 'split', id: 'saved-layout', axis: name === 'terminal-left' ? 'columns' : 'rows', ratio: .63,
+      first: { type: 'pane', paneId: name === 'terminal-left' ? 'terminal' : 'primary' },
+      second: { type: 'pane', paneId: name === 'terminal-left' ? 'primary' : 'terminal' },
+    };
+    for (const restore of [false, true]) {
+      const app = shellHarness(false, { panel: 'files' }, initial);
+      const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+      const editor = () => props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
+      const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
+      if (restore) editor().onSessionRestored!();
+      else sidebar().onOpenWorkspaceFile('first.ts');
+      const openedLayout = split().layout!;
+      expect(splitModel.splitPaneIds(openedLayout).sort()).toEqual(name === 'primary' ? ['editor'] : ['editor', 'terminal']);
+      expect(editor().active).toBe(true);
+      expect(elements(split().children).some(node => node.type === 'ExplorerView')).toBe(false);
+      if (initial.type === 'split') {
+        expect(openedLayout).toMatchObject({ id: initial.id, axis: initial.axis, ratio: initial.ratio });
+        if (openedLayout.type !== 'split') throw new Error('Terminal split was removed.');
+        expect(name === 'terminal-left' ? openedLayout.first : openedLayout.second)
+          .toBe(name === 'terminal-left' ? initial.first : initial.second);
+      }
+      sidebar().onOpenWorkspaceFile('second.ts');
+      expect(split().layout).toBe(openedLayout);
+      expect(editor().target?.path).toBe('second.ts');
+      editor().onAllTabsClosed();
+      expect(split().layout).toEqual(initial);
+      expect(elements(split().children).some(node => node.type === 'ExplorerView')).toBe(true);
+      expect(props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').activeView).toBe('explorer');
+      sidebar().onOpenWorkspaceFile('reopened.ts');
+      expect(split().layout).toEqual(openedLayout);
+    }
+  },
+);
+
+test('opening a file removes a duplicate empty Explorer area and reuses an existing editor', () => {
+  const app = shellHarness();
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  split().onLayoutChange!({ type: 'split', id: 'duplicate-explorer', axis: 'columns', ratio: .5,
+    first: { type: 'pane', paneId: 'primary' }, second: { type: 'pane', paneId: 'editor' } });
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('file.ts');
+  expect(split().layout).toEqual({ type: 'pane', paneId: 'editor' });
+  expect(elements(split().children).some(node => node.type === 'ExplorerView')).toBe(false);
+});
+
+test.each([false, true])('split pane focus owns rail selection without replacing the scene (custom layout: %s)', custom => {
+  const savedLayout = custom ? layoutModel.visibleWorkspaceLayout('split', false, .37) : null;
+  const app = shellHarness(false, { panel: 'files' }, savedLayout);
+  const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  rail().onNavigate('chat');
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onPanelChange!('files');
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('unsaved.ts');
+  const target = props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor').target;
+  expect(rail().activeView).toBe('editor');
+  expect(props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace').active).toBe(true);
+  split().onPaneActivate!('primary');
+  expect(rail().activeView).toBe('chat');
+  expect(props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').activePanel).toBe('files');
+  split().onPaneActivate!('editor');
+  expect(rail().activeView).toBe('editor');
+  rail().onNavigate('chat');
+  expect(rail().activeView).toBe('chat');
+  expect(split().focusRequest?.paneId).toBe('primary');
+  rail().onToggleSidebar();
+  rail().onNavigate('explorer');
+  expect(rail().activeView).toBe('editor');
+  expect(rail().sidebarOpen).toBe(true);
+  expect(split().focusRequest?.paneId).toBe('editor');
+  expect(split().layout).toBe(savedLayout);
+  expect(split().mode).toBe('split');
+  expect(props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace').active).toBe(true);
+  expect(props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor').target).toBe(target);
+});
+
+test.each(['chat', 'terminal', 'notes', 'git'] as const)(
+  'Explorer rail opens its empty page from %s when no file is open', view => {
+    const app = shellHarness();
+    const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
+    const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
+    rail().onNavigate(view);
+    sidebar().onPanelChange!('memos');
+    expect(rail().activeView).toBe(view);
+    rail().onNavigate('explorer');
+    expect(sidebar().activePanel).toBe('files');
+    expect(rail().activeView).toBe('explorer');
+    expect(elements(app.render()).some(node => node.type === 'ExplorerView')).toBe(true);
+    rail().onToggleSidebar();
+    expect(rail().sidebarOpen).toBe(false);
+    rail().onNavigate('explorer');
+    expect(rail().sidebarOpen).toBe(true);
+    expect(rail().activeView).toBe('explorer');
+    expect(sidebar().activePanel).toBe('files');
+    rail().onNavigate('explorer');
+    expect(rail().sidebarOpen).toBe(true);
+    expect(rail().activeView).toBe('explorer');
+  },
+);
+
 test('sidebar follows opening, closing and restoring editor panes while preserving manual choices within a scene', () => {
   const app = shellHarness();
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
   const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
   const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   const editor = () => props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
@@ -356,7 +519,7 @@ test('the fixed navigation rail precedes the left sidebar', () => {
   expect(sidebar.anchor).toBe('end');
   expect(sidebar.open).toBe(true);
   const railControl = props<ComponentProps<typeof SidebarRail>>(rail?.children, 'SidebarRail');
-  expect(railControl.activeView).toBe('chat');
+  expect(railControl.activeView).toBe('explorer');
   expect(railControl.sidebarOpen).toBe(true);
 });
 
@@ -399,6 +562,7 @@ test('file search keeps the current page until a result opens in the standalone 
 
 test('Explorer file opening keeps the chat visible and reuses the same editor for subsequent files', () => {
   const app = shellHarness();
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
   let tree = app.render();
   expect(props<ComponentProps<typeof WorkspaceEditorSplit>>(tree, 'WorkspaceEditorSplit').mode).toBe('primary');
   props<ComponentProps<typeof Sidebar>>(tree, 'Sidebar').onOpenWorkspaceFile('first.ts');
@@ -475,18 +639,19 @@ test.each([
 });
 
 
-test('restored file sessions reveal the editor split without an Explorer click', () => {
+test('restored file sessions reveal the editor from the Explorer startup page', () => {
   const app = shellHarness();
   const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   props<ComponentProps<typeof WorkspaceEditor>>(split.editor, 'WorkspaceEditor').onSessionRestored?.();
   const restored = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
-  expect(restored.mode).toBe('split');
+  expect(restored.mode).toBe('editor');
   expect(props<ComponentProps<typeof WorkspaceEditor>>(restored.editor, 'WorkspaceEditor').active).toBe(true);
-  expect(props<ComponentProps<typeof ChatWorkspace>>(restored.children, 'ChatWorkspace').active).toBe(true);
+  expect(props<ComponentProps<typeof ChatWorkspace>>(restored.children, 'ChatWorkspace').active).toBe(false);
 });
 
 test('closing Codex keeps file tabs and sidebar controls, and navigation restores the split', () => {
   const app = shellHarness();
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
   const initial = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   expect(props<ComponentProps<typeof ChatWorkspace>>(initial.children, 'ChatWorkspace').onCloseWorkspace).toBeUndefined();
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
@@ -540,6 +705,7 @@ test('collapsed split keeps both panes mounted while hiding the separator and re
 
 test('only the standalone editor controls the shared right sidebar and preserves its state on reopening Codex', () => {
   const app = shellHarness();
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
   const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   const editor = () => props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
   expect(editor().onToggleRightSidebar).toBeUndefined();
@@ -587,6 +753,7 @@ test('files and chats switch without shell resize handles while review controls 
 
 test('line commits remain independent of the selected left panel and keep chats available on close', () => {
   const app = shellHarness();
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
   const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   const editor = () => props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
   const review = () => props<ComponentProps<typeof ReviewSidebar>>(app.render(), 'ReviewSidebar');
@@ -725,6 +892,7 @@ test('GitHub rail and sidebar tab share the changes panel and preserve the mount
 
 test('Memo tab browses alongside the current scene and opening a note activates the Memo page', () => {
   const app = shellHarness();
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
   const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
   const notes = () => props<ComponentProps<typeof NotesView>>(app.render(), 'NotesView');
   expect(notes().active).toBe(false);
@@ -774,6 +942,7 @@ test('failed Notes attachment keeps the Notes page and late success does not ove
 
 test('custom workspace layout keeps editor, chat and terminal visible together and closing only hides the chosen area', () => {
   const app = shellHarness();
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
   const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   const layout = layoutModel.placeWorkspacePane(layoutModel.visibleWorkspaceLayout('split', false), 'workspace', 'terminal', 'down');
   split().onLayoutChange!(layout);

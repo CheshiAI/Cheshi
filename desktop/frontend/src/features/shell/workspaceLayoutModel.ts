@@ -44,6 +44,16 @@ export function revealWorkspacePane(layout: SplitLayoutNode, paneId: WorkspacePa
   return splitPaneIds(layout).includes(paneId) ? layout : placeWorkspacePane(layout, 'workspace', paneId, 'right');
 }
 
+/** Replace an empty area in place, retaining any other panes and their sizes. */
+export function replaceWorkspacePane(layout: SplitLayoutNode, from: WorkspacePaneId, to: WorkspacePaneId): SplitLayoutNode {
+  if (from === to) return layout;
+  if (splitPaneIds(layout).includes(to)) return removeSplitPane(layout, from) ?? layout;
+  if (layout.type === 'pane') return layout.paneId === from ? { type: 'pane', paneId: to } : layout;
+  const first = replaceWorkspacePane(layout.first, from, to);
+  const second = replaceWorkspacePane(layout.second, from, to);
+  return first === layout.first && second === layout.second ? layout : { ...layout, first, second };
+}
+
 export function parseWorkspaceLayout(value: unknown): SplitLayoutNode | null {
   const seen = new Set<string>();
   const splits = new Set<string>();

@@ -18,15 +18,17 @@ function isNearestTrigger(target: EventTarget, current: Element): boolean {
 interface TooltipProps<T extends Element> {
   content?: string;
   placement?: 'above' | 'below';
+  horizontalOffset?: number;
   delay?: number;
   blurSourceRef?: RefObject<HTMLElement | null>;
   resolveAnchor?: (element: T) => Element;
   children: (props: TooltipTriggerProps<T>) => ReactNode;
 }
 
-function TooltipContent({ anchor, content, id, blurSourceRef, placement }: {
+function TooltipContent({ anchor, content, id, blurSourceRef, placement, horizontalOffset }: {
   anchor: Element; content: string; id: string; blurSourceRef?: RefObject<HTMLElement | null>;
   placement: 'above' | 'below';
+  horizontalOffset: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ left: number; top: number; above: boolean } | null>(null);
@@ -36,17 +38,18 @@ function TooltipContent({ anchor, content, id, blurSourceRef, placement }: {
     if (!tooltip) return;
     const bounds = anchor.getBoundingClientRect();
     const { width, height } = tooltip.getBoundingClientRect();
-    const gap = 8;
+    const gap = 16;
+    const viewportMargin = 8;
     const below = bounds.bottom + gap;
     const aboveTop = bounds.top - height - gap;
-    const above = placement === 'above' ? aboveTop >= gap : below + height > window.innerHeight - gap;
-    const left = Math.max(gap, Math.min(bounds.left, window.innerWidth - width - gap));
+    const above = placement === 'above' ? aboveTop >= viewportMargin : below + height > window.innerHeight - viewportMargin;
+    const left = Math.max(viewportMargin, Math.min(bounds.left + horizontalOffset, window.innerWidth - width - viewportMargin));
     setPosition({
       left,
-      top: Math.max(gap, above ? aboveTop : below),
+      top: Math.max(viewportMargin, above ? aboveTop : below),
       above,
     });
-  }, [anchor, content, placement]);
+  }, [anchor, content, placement, horizontalOffset]);
 
   useLayoutEffect(() => {
     const panel = ref.current?.firstElementChild as HTMLElement | null;
@@ -65,7 +68,7 @@ function TooltipContent({ anchor, content, id, blurSourceRef, placement }: {
   );
 }
 
-export function Tooltip<T extends Element = HTMLElement>({ content, placement = 'below', delay = 1000, blurSourceRef, resolveAnchor, children }: TooltipProps<T>) {
+export function Tooltip<T extends Element = HTMLElement>({ content, placement = 'below', horizontalOffset = 0, delay = 1000, blurSourceRef, resolveAnchor, children }: TooltipProps<T>) {
   const id = useId();
   const [anchor, setAnchor] = useState<Element | null>(null);
   const [visible, setVisible] = useState(false);
@@ -104,7 +107,7 @@ export function Tooltip<T extends Element = HTMLElement>({ content, placement = 
     setAnchor(null);
   };
 
-  const tooltip = visible && anchor && content ? <TooltipContent anchor={anchor} content={content} id={id} blurSourceRef={blurSourceRef} placement={placement} /> : null;
+  const tooltip = visible && anchor && content ? <TooltipContent anchor={anchor} content={content} id={id} blurSourceRef={blurSourceRef} placement={placement} horizontalOffset={horizontalOffset} /> : null;
   return <>
     {children({
       'data-tooltip-trigger': content ? id : undefined,

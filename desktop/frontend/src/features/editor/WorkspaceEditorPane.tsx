@@ -1,7 +1,6 @@
 import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext, type PaneMaximizeControl } from '../shell/WorkspaceLayoutControls';
 import {
   AlertTriangle,
-  FileCode2,
   FileText,
   X,
 } from 'lucide-react';
@@ -20,6 +19,7 @@ import {
   TieredHeader,
 } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { ExplorerEmptyState, ExplorerHeader } from '../navigation/ExplorerView';
 import { WorkspaceEditorFileToolbar } from './WorkspaceEditorFileToolbar';
 import { WorkspaceCodeExplanationMenu } from './WorkspaceCodeExplanationMenu';
 import type { GitLineBlameRequest } from '../../../../shared/git-line-blame';
@@ -138,11 +138,20 @@ export function WorkspaceEditorPane({
 
   if (!active) return explanationToast;
 
+  const headerActions = <>
+    <WorkspaceLayoutControls maximizeControl={maximizeControl} />
+    <TooltipButton variant="ghost" size="icon"
+      aria-label="Close all file tabs" title="Close all file tabs in this pane"
+      disabled={tabs.length === 0} onClick={closeAllTabs}>
+      <X aria-hidden="true" />
+    </TooltipButton>
+  </>;
+
   return (
     <main className="workspace-editor" aria-label="Workspace editor" aria-busy={loading || !pane.ready}
       onFocusCapture={() => pane.store.activate(pane.id)}
       onPointerDownCapture={() => pane.store.activate(pane.id)}>
-      <TieredHeader
+      {(tabs.length > 0 || currentFile) ? <TieredHeader
         className="workspace-editor-header"
         primaryClassName="workspace-editor-tab-row"
         primary={(
@@ -177,16 +186,8 @@ export function WorkspaceEditorPane({
                 );
               })}
             </FlatTabList>
-            <div
-              className="workspace-editor-header-actions"
-              style={nonDraggableWindowRegionStyle}
-            >
-              <WorkspaceLayoutControls maximizeControl={maximizeControl} />
-              <TooltipButton variant="ghost" size="icon"
-                aria-label="Close all file tabs" title="Close all file tabs in this pane"
-                disabled={tabs.length === 0} onClick={closeAllTabs}>
-                <X aria-hidden="true" />
-              </TooltipButton>
+            <div className="workspace-editor-header-actions" style={nonDraggableWindowRegionStyle}>
+              {headerActions}
             </div>
           </>
         )}
@@ -207,7 +208,7 @@ export function WorkspaceEditorPane({
           />
         ) : undefined}
         style={draggableWindowRegionStyle}
-      />
+      /> : <ExplorerHeader actions={headerActions} />}
 
       {errorMessage && (
         <div className="workspace-editor-error" role="alert">
@@ -286,13 +287,7 @@ export function WorkspaceEditorPane({
             <LoadingState label={pane.ready ? 'Opening file…' : 'Restoring files…'} />
           </div>
         ) : (
-          <div className="workspace-editor-empty">
-            <span className="workspace-editor-empty-mark">
-              <FileCode2 aria-hidden="true" />
-            </span>
-            <strong>Choose a file</strong>
-            <p>Open a file from the Explorer to inspect or edit it.</p>
-          </div>
+          <ExplorerEmptyState />
         )}
         {assistState && (
           <WorkspaceEditorAssistPanel

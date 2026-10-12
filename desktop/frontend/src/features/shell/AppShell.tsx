@@ -32,8 +32,9 @@ import { GitWorkspace } from '../git';
 import { CodeGraphView } from '../graph';
 import { BlankView } from '../home/BlankView';
 import { Sidebar, type WorkspaceView } from '../navigation/Sidebar';
-import { readSidebarPanel, saveSidebarPanel, sidebarPanelForWorkspace } from '../navigation/sidebarPanel';
+import { saveSidebarPanel, sidebarPanelForWorkspace, type SidebarPanel } from '../navigation/sidebarPanel';
 import { SidebarRail } from '../navigation/SidebarRail';
+import { ExplorerView } from '../navigation/ExplorerView';
 import { PluginsView } from '../plugins';
 import { TerminalWorkspace } from '../terminal';
 import { SettingsView } from '../settings/SettingsView';
@@ -44,7 +45,7 @@ import styles from './AppShell.module.css';
 import { useAppUpdateResume } from './useAppUpdateResume';
 import { useWorkflowChatNavigation } from './useWorkflowChatNavigation';
 import { WorkspaceEditorSplit } from './WorkspaceEditorSplit';
-import { readWorkspaceLayout, revealWorkspacePane, saveWorkspaceLayout, visibleWorkspaceLayout } from './workspaceLayoutModel';
+import { readWorkspaceLayout, replaceWorkspacePane, revealWorkspacePane, saveWorkspaceLayout, visibleWorkspaceLayout, type WorkspacePaneId } from './workspaceLayoutModel';
 import { removeSplitPane, splitPaneIds } from '../../shared/ui/splitPaneModel';
 import { WorkspaceFileSearch } from '../navigation/WorkspaceFileSearch';
 import { installFileSearchShortcut } from '../navigation/fileSearchShortcut';
@@ -54,7 +55,7 @@ import { CalendarView } from '../calendar/CalendarView';
 import { appleNoteDraftText } from '../notes/appleNotesModel';
 import type { AppleNote } from '../../../../shared/apple-notes';
 
-const fullWidthViews: readonly WorkspaceView[] = ['chats', 'git', 'plugins', 'notes', 'calendar', 'settings', 'docker'];
+const fullWidthViews: readonly WorkspaceView[] = ['explorer', 'chats', 'git', 'plugins', 'notes', 'calendar', 'settings', 'docker'];
 
 export function AppShell() {
   const notificationSceneRef = useRef<HTMLDivElement>(null);
@@ -80,7 +81,22 @@ export function AppShell() {
   const accountReady = useCallback(() => setAccountLoaded(true), []);
   const indexReady = useCallback(() => setIndexLoaded(true), []);
   const startupReported = useRef(false);
-  const [activeView, setActiveView] = useState<WorkspaceView>('chat');
+  const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
+  const [activeView, setActiveView] = useState<WorkspaceView>(() =>
+    customLayout && ['editor', 'primary'].every(pane => splitPaneIds(customLayout).includes(pane)) ? 'chat' : 'explorer');
+  const [focusedPane, setFocusedPane] = useState<WorkspacePaneId>(() =>
+    customLayout && splitPaneIds(customLayout).includes('editor') ? 'editor' : 'primary');
+  const [paneFocusRequest, setPaneFocusRequest] = useState<{ paneId: WorkspacePaneId; requestId: number } | null>(null);
+  const focusWorkspacePane = useCallback((paneId: WorkspacePaneId) => {
+    setFocusedPane(paneId);
+    setPaneFocusRequest(current => ({ paneId, requestId: (current?.requestId ?? 0) + 1 }));
+  }, []);
+  const previousView = useRef(activeView);
+  useEffect(() => {
+    if (previousView.current === activeView) return;
+    previousView.current = activeView;
+    setFocusedPane(activeView === 'editor' ? 'editor' : activeView === 'terminal' ? 'terminal' : 'primary');
+  }, [activeView]);
   const [historyChoice, setHistoryChoice] = useState<{ sessionId: string; title: string; paneId: string } | null>(null);
   const [deleteChoice, setDeleteChoice] = useState<{ sessionId: string; title: string } | null>(null);
   const workerWorkspace = useRef<WorkerWorkspaceHandle>(null);
@@ -95,10 +111,8 @@ export function AppShell() {
   const [chatsSidebarTarget, setChatsSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [memoSidebarTarget, setMemoSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [githubSidebarTarget, setGithubSidebarTarget] = useState<HTMLDivElement | null>(null);
-  const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
   useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
-  const [sidebarPanel, setSidebarPanel] = useState(() => sidebarPanelForWorkspace(activeView,
-    splitPaneIds(customLayout ?? visibleWorkspaceLayout('primary', false))) ?? readSidebarPanel());
+  const [sidebarPanel, setSidebarPanel] = useState<SidebarPanel>('files');
   useEffect(() => { saveSidebarPanel(sidebarPanel); }, [sidebarPanel]);
   useEffect(() => cheshiDesktop?.agentRegistry?.onRepositoryReady?.(() => {
     setSidebarPanel('files');
@@ -229,10 +243,24 @@ export function AppShell() {
   };
 
   const navigate = (view: WorkspaceView): void => {
-    if (view === 'chats') { setSidebarPanel('agent-chats'); setLeftSidebarOpen(true); }
-    if (view === 'git') { setSidebarPanel('github'); setLeftSidebarOpen(true); }
     historyRequestId.current += 1;
     closeReview();
+    if (view === 'explorer' || view === 'editor') {
+      setSidebarPanel('files'); setLeftSidebarOpen(true);
+      if (editorSplitOpen || (customLayout && splitPaneIds(customLayout).includes('editor'))) {
+        focusWorkspacePane('editor');
+        setCustomLayout(current => current && revealWorkspacePane(current, 'editor'));
+        if (!customLayout && fullWidthViews.includes(activeView)) {
+          editorReturnView.current = 'explorer';
+          setActiveView('editor');
+        }
+        if (view === 'explorer' || customLayout) return;
+      }
+    }
+    if (view === 'chat') { setSidebarPanel('chats'); setLeftSidebarOpen(true); }
+    if (view === 'chats') { setSidebarPanel('agent-chats'); setLeftSidebarOpen(true); }
+    if (view === 'git') { setSidebarPanel('github'); setLeftSidebarOpen(true); }
+    focusWorkspacePane(view === 'terminal' ? 'terminal' : view === 'editor' ? 'editor' : 'primary');
     if (customLayout) {
       const pane = view === 'terminal' ? 'terminal' : view === 'editor' ? 'editor' : 'primary';
       setCustomLayout(current => current && revealWorkspacePane(current, pane));
@@ -275,12 +303,25 @@ export function AppShell() {
     void historySearch.search({ query, refresh, limit: 50 });
   };
 
+  const replaceExplorerWithEditor = (): void => {
+    editorReturnView.current = 'explorer';
+    setCustomLayout(current => current && revealWorkspacePane(replaceWorkspacePane(current, 'primary', 'editor'), 'editor'));
+    setPrimaryPaneClosed(false);
+    setActiveView('editor');
+    focusWorkspacePane('editor');
+  };
+
   const openWorkspaceFile = (path: string, line: number | null = null): void => {
     historyRequestId.current += 1;
     editorRequestId.current += 1;
     closeReview();
+    focusWorkspacePane('editor');
     setEditorTarget({ path, line, requestId: editorRequestId.current });
     setEditorSplitOpen(true);
+    if (activeView === 'explorer') {
+      replaceExplorerWithEditor();
+      return;
+    }
     setCustomLayout(current => current && revealWorkspacePane(current, 'editor'));
     if (!customLayout && fullWidthViews.includes(activeView)) {
       editorReturnView.current = activeView;
@@ -292,10 +333,18 @@ export function AppShell() {
   const closeEditorSplit = (): void => {
     setLineCommitTarget(null);
     setEditorSplitOpen(false);
-    setCustomLayout(current => current ? removeSplitPane(current, 'editor') : null);
+    const returnToExplorer = activeView === 'editor' && editorReturnView.current === 'explorer';
+    setCustomLayout(current => current && (returnToExplorer
+      ? replaceWorkspacePane(current, 'editor', 'primary') : removeSplitPane(current, 'editor')));
     setPrimaryPaneClosed(false);
     setEditorTarget(null);
-    if (activeView === 'editor') navigate(editorReturnView.current);
+    if (activeView === 'editor') {
+      if (editorReturnView.current === 'explorer') {
+        setActiveView('explorer');
+        focusWorkspacePane('primary');
+        setSidebarPanel('files');
+      } else navigate(editorReturnView.current);
+    }
   };
 
   const handleWorkspaceEntryMutation = (mutation: WorkspaceEntryMutation): void => {
@@ -309,12 +358,19 @@ export function AppShell() {
 
   const visiblePanes = splitPaneIds(customLayout ?? visibleWorkspaceLayout(editorLayoutMode, activeView === 'terminal'));
   const visiblePaneKey = [...visiblePanes].sort().join(':');
+  const selectedPane = visiblePanes.includes(focusedPane) ? focusedPane : visiblePanes[0];
+  const railView = selectedPane === 'editor' ? 'editor' : selectedPane === 'terminal' ? 'terminal' : activeView;
   const automaticSidebarPanel = sidebarPanelForWorkspace(activeView, visiblePanes);
+  const sidebarScene = `${activeView}:${visiblePaneKey}`;
+  const previousSidebarScene = useRef(sidebarScene);
   useEffect(() => {
-    // Restore the main scene first; later manual tab choices survive ordinary rerenders.
-    if (updateResume.editorSessionMode === 'waiting' || !automaticSidebarPanel) return;
+    if (updateResume.editorSessionMode === 'waiting') return;
+    const sceneChanged = previousSidebarScene.current !== sidebarScene;
+    previousSidebarScene.current = sidebarScene;
+    // Keep Explorer on ordinary startup; follow later scene changes and update recovery.
+    if (!automaticSidebarPanel || (!sceneChanged && updateResume.editorSessionMode !== 'preserve')) return;
     setSidebarPanel(automaticSidebarPanel);
-  }, [activeView, visiblePaneKey, automaticSidebarPanel, updateResume.editorSessionMode]);
+  }, [sidebarScene, automaticSidebarPanel, updateResume.editorSessionMode]);
   const closePane = (pane: 'primary' | 'terminal') => {
     if (customLayout) setCustomLayout(current => removeSplitPane(current, pane));
     else setPrimaryPaneClosed(true);
@@ -334,7 +390,7 @@ export function AppShell() {
         data-right-sidebar-open={rightSidebarOpen && reviewing ? 'true' : 'false'}
       >
         <LiquidGlassPanel as="aside" className={styles.sidebarRail} aria-label="Application navigation">
-          <SidebarRail activeView={activeView} sidebarOpen={leftSidebarOpen} onNavigate={navigate}
+          <SidebarRail activeView={railView} sidebarOpen={leftSidebarOpen} onNavigate={navigate}
             onToggleSidebar={() => setLeftSidebarOpen(open => !open)} />
         </LiquidGlassPanel>
         <SlidingSidePanel open={leftSidebarOpen} anchor="end" stageClassName={styles.sidebarPanelStage}
@@ -383,9 +439,11 @@ export function AppShell() {
         </SlidingSidePanel>
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
           <WorkspaceEditorSplit mode={editorLayoutMode} layout={customLayout} onLayoutChange={setCustomLayout}
+            onPaneActivate={setFocusedPane} focusRequest={paneFocusRequest}
             minimumPrimaryWidth={activeView === 'chat' ? CHAT_PANE_MIN_WIDTH : undefined}
             terminalPrimary={activeView === 'terminal'} disabled={updateResume.busy || workspace.accountSwitchPending}
             onOpenPane={pane => {
+              focusWorkspacePane(pane);
               if (pane === 'editor') setEditorSplitOpen(true);
               if (pane === 'primary') { setActiveView('chat'); setPrimaryPaneClosed(false); }
             }}
@@ -398,7 +456,10 @@ export function AppShell() {
             />} editor={
             <WorkspaceEditor
               sessionMode={updateResume.editorSessionMode}
-              onSessionRestored={() => setEditorSplitOpen(true)}
+              onSessionRestored={() => {
+                setEditorSplitOpen(true);
+                if (activeView === 'explorer') replaceExplorerWithEditor();
+              }}
               active={visiblePanes.includes('editor')}
               rightSidebarOpen={rightSidebarOpen}
               onToggleRightSidebar={editorLayoutMode === 'editor'
@@ -412,6 +473,7 @@ export function AppShell() {
               onShowLineCommit={openLineCommit}
             />
           }>
+          {activeView === 'explorer' && <ExplorerView />}
           {activeView === 'search' && <ChatHistorySearchPage query={submittedSearchQuery}
             result={historySearch.result} loading={historySearch.loading} error={historySearch.error}
             loadingMore={historySearch.loadingMore} moreError={historySearch.moreError} onLoadMore={historySearch.loadMore}

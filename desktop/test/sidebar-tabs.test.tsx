@@ -124,22 +124,29 @@ async function withTabs(run: (h: {
   }
 }
 
-test('sidebar exposes five ordered tabs with a GitHub portal target', () => {
-  const html = renderToStaticMarkup(<Sidebar activePanel="memos" onPanelChange={() => {}}
-    chatPanel={<div>Session list</div>} selectedFilePath={null} onWorkspaceEntryMutation={() => {}}
-    onOpenWorkspaceFile={() => {}} />);
+test('sidebar exposes five ordered tabs with a GitHub portal target', async () => {
   const window = new Window();
-  window.document.body.innerHTML = html;
-  const tabs = [...window.document.querySelectorAll('[role="tab"]')];
-  expect(tabs.map(tab => tab.textContent)).toEqual(['SESSION', 'EXPLORER', 'WORKER', 'MEMO', 'GITHUB']);
-  const selected = window.document.querySelector('[role="tab"][aria-selected="true"]')!;
-  expect(selected.textContent).toBe('MEMO');
-  const panel = window.document.getElementById(selected.getAttribute('aria-controls')!)!;
-  expect(panel.querySelector('.sidebar-content-primary')).not.toBeNull();
-  expect(panel.hasAttribute('inert')).toBe(false);
-  expect(window.document.querySelector('[aria-roledescription="carousel"]')).toBeNull();
-  const github = tabs.find(tab => tab.textContent === 'GITHUB')!;
-  expect(window.document.getElementById(github.getAttribute('aria-controls')!)?.querySelector('.sidebar-content-primary')).not.toBeNull();
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: window.document });
+  try {
+    window.document.body.innerHTML = renderToStaticMarkup(<Sidebar activePanel="memos" onPanelChange={() => {}}
+      chatPanel={<div>Session list</div>} selectedFilePath={null} onWorkspaceEntryMutation={() => {}}
+      onOpenWorkspaceFile={() => {}} />);
+    const tabs = [...window.document.querySelectorAll('[role="tab"]')];
+    expect(tabs.map(tab => tab.textContent)).toEqual(['EXPLORER', 'SESSION', 'WORKER', 'MEMO', 'GITHUB']);
+    const selected = window.document.querySelector('[role="tab"][aria-selected="true"]')!;
+    expect(selected.textContent).toBe('MEMO');
+    const panel = window.document.getElementById(selected.getAttribute('aria-controls')!)!;
+    expect(panel.querySelector('.sidebar-content-primary')).not.toBeNull();
+    expect(panel.hasAttribute('inert')).toBe(false);
+    expect(window.document.querySelector('[aria-roledescription="carousel"]')).toBeNull();
+    const github = tabs.find(tab => tab.textContent === 'GITHUB')!;
+    expect(window.document.getElementById(github.getAttribute('aria-controls')!)?.querySelector('.sidebar-content-primary')).not.toBeNull();
+  } finally {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else Reflect.deleteProperty(globalThis, 'document');
+    await window.happyDOM.close();
+  }
 });
 
 test('Activity appears progressively during the content swipe before selection settles', async () => {

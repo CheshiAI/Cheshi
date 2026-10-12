@@ -1,4 +1,4 @@
-import { FileCode2, MessageSquare, SquareTerminal } from 'lucide-react';
+import { FolderTree, MessageSquare, SquareTerminal } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { SplitPaneLayout } from '../../shared/ui/SplitPaneLayout';
@@ -73,7 +73,7 @@ function PaneHost({ host, paneId, onMove, onDetach, dragSource }: {
 
 /** Persistent portal hosts keep drafts, editor controllers and terminal sessions alive during rearrangement. */
 export function WorkspaceEditorSplit({ mode, children, editor, terminal, terminalPrimary = false,
-  layout: customLayout, onLayoutChange, onOpenPane, minimumPrimaryWidth, disabled = false }: {
+  layout: customLayout, onLayoutChange, onOpenPane, onPaneActivate, focusRequest, minimumPrimaryWidth, disabled = false }: {
   mode: LayoutMode;
   children: ReactNode;
   editor: ReactNode;
@@ -83,6 +83,8 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, termina
   layout?: SplitLayoutNode | null;
   onLayoutChange?: (layout: SplitLayoutNode) => void;
   onOpenPane?: (pane: WorkspacePaneId) => void;
+  onPaneActivate?: (pane: WorkspacePaneId) => void;
+  focusRequest?: { paneId: WorkspacePaneId; requestId: number } | null;
   disabled?: boolean;
 }) {
   const dragSource = useRef<WorkspacePaneId | null>(null);
@@ -161,6 +163,33 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, termina
   });
   const contents = { primary: children, editor, terminal };
   const shownIds = splitPaneIds(shownLayout);
+  const activation = useRef({ onPaneActivate, shownIds, disabled });
+  activation.current = { onPaneActivate, shownIds, disabled };
+  useEffect(() => {
+    // Native capture follows the DOM of portaled panes, including nested editor splits.
+    const subscriptions = Object.entries(hosts).map(([id, host]) => {
+      const activate = () => {
+        const current = activation.current;
+        if (!current.disabled && current.shownIds.includes(id)) current.onPaneActivate?.(id as WorkspacePaneId);
+      };
+      host.addEventListener('pointerdown', activate, true);
+      host.addEventListener('focusin', activate, true);
+      return () => {
+        host.removeEventListener('pointerdown', activate, true);
+        host.removeEventListener('focusin', activate, true);
+      };
+    });
+    return () => subscriptions.forEach(unsubscribe => unsubscribe());
+  }, [hosts]);
+  const handledFocusRequest = useRef<number | null>(null);
+  const shownKey = shownIds.join(':');
+  useLayoutEffect(() => {
+    if (!focusRequest || disabled || handledFocusRequest.current === focusRequest.requestId) return;
+    if (maximized && maximized !== focusRequest.paneId) { setMaximized(null); return; }
+    if (!shownIds.includes(focusRequest.paneId)) return;
+    handledFocusRequest.current = focusRequest.requestId;
+    hosts[focusRequest.paneId].focus({ preventScroll: true });
+  }, [focusRequest, shownKey, disabled, hosts, maximized]);
   const minimumPaneWidth = minimumPrimaryWidth && shownIds.includes('primary')
     ? (paneId: string) => paneId === 'primary' ? minimumPrimaryWidth : SPLIT_PANE_MIN_SIZE
     : undefined;
@@ -180,7 +209,7 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, termina
     {preview && <SplitPreview target={preview.target} direction={preview.direction} backdrop="regional"
       title={preview.direction === 'right' ? 'Split right' : 'Split down'} onClose={() => setPreview(null)} onCommitted={focusDestination}
       choices={[
-        { id: 'editor', label: 'Editor', icon: <FileCode2 aria-hidden="true" /> },
+        { id: 'editor', label: 'Explorer', icon: <FolderTree aria-hidden="true" /> },
         { id: 'primary', label: 'Codex', icon: <MessageSquare aria-hidden="true" /> },
         { id: 'terminal', label: 'Terminal', icon: <SquareTerminal aria-hidden="true" /> },
       ].map(choice => ({ ...choice,
