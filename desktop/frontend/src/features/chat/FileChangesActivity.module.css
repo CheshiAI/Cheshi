@@ -8,6 +8,13 @@
 
 .card .cardBody { padding: 0; gap: 0; }
 .card .fileList { border-top: 0; }
+.card .fileRow { grid-template-columns: 16px minmax(0, 1fr) auto; }
+.card .changeKind {
+  width: 16px;
+  height: 16px;
+  font-size: 8px;
+  line-height: 1;
+}
 
 .cardTitle {
   display: flex;

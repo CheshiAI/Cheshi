@@ -6,6 +6,7 @@
 .plainHeader { display: flex; flex-wrap: wrap; align-items: center; gap: var(--icon-default); color: var(--text); }
 .plainHeader button { margin-left: -4px; }
 .copyButton[data-size='standard'] { font-size: 10px; font-weight: 400; }
+.panel .copyButton[data-size='standard'] { color: var(--sidebar-section-label-color); }
 .copyButton[data-size='standard'] > svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); }
 .label { font-size: 10px; font-weight: 400; }
 .code {
