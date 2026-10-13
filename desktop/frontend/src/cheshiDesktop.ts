@@ -849,7 +849,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   compactCodexChatSession: (contextId?: string) => Promise<unknown>;
   reviewCodexChatSession: (contextId?: string) => Promise<unknown>;
   selectCodexChatAttachments: () => Promise<CodexChatAttachment[]>;
-  appleNotes?: import('../../shared/apple-notes').AppleNotesApi;
+  notes?: import('../../shared/sticky-notes').WorkspaceNotesApi;
   appleCalendar?: import('../../shared/apple-calendar').AppleCalendarApi;
   scheduler?: import('../../shared/scheduler').SchedulerApi;
   agentManagement?: import('../../shared/agent-management').AgentManagementApi;

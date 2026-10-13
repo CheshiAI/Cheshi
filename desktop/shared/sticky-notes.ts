@@ -1,6 +1,7 @@
 import type { WindowAppearanceState } from './window-appearance.ts';
 
 export const STICKY_NOTES_CHANNEL = 'cheshi:sticky-notes';
+export const STICKY_NOTES_LIBRARY_CHANNEL = 'cheshi:sticky-notes-library';
 export const STICKY_NOTES_SHORTCUT = 'CommandOrControl+Shift+N';
 export const STICKY_NOTES_LIST_SHORTCUT = 'CommandOrControl+Shift+M';
 export const STICKY_NOTE_TEXT_LIMIT = 200_000;
@@ -12,24 +13,32 @@ export function hasStickyNoteContent(note: StickyNoteContent): boolean {
 }
 export interface StickyNote extends StickyNoteContent {
   id: string;
+  createdAt: number;
   updatedAt: number;
   pinned: boolean;
   bounds: StickyNoteBounds | null;
 }
-export interface StickyNoteSummary { id: string; title: string; preview: string; updatedAt: number }
+export interface StickyNoteSummary { id: string; title: string; preview: string; createdAt: number; updatedAt: number }
 export interface StickyNoteDeleteResult { deletedIds: string[]; failedIds: string[] }
-export type StickyNoteRequest = { kind: 'close' } | { kind: 'resume' } | { kind: 'flush'; token: string };
-export interface StickyNotesApi {
-  read(): Promise<{ note: StickyNote | null; shortcutAvailable: boolean; listShortcutAvailable: boolean }>;
-  save(content: StickyNoteContent): Promise<void>;
-  list(): Promise<StickyNoteSummary[]>;
+export type StickyNoteRequest = { kind: 'close' } | { kind: 'resume' } | { kind: 'flush'; token: string } | { kind: 'rename'; token: string; title: string };
+export interface StickyNotesLibraryApi {
+  list(query?: string): Promise<StickyNoteSummary[]>;
+  rename(id: string, title: string): Promise<void>;
   create(): Promise<void>;
   open(id: string): Promise<void>;
+  deleteSelected(ids: string[]): Promise<StickyNoteDeleteResult>;
+  onChanged(listener: () => void): () => void;
+}
+export interface WorkspaceNotesApi extends StickyNotesLibraryApi {
+  onOpenListRequested(listener: () => void): () => void;
+}
+export interface StickyNotesApi extends StickyNotesLibraryApi {
+  read(): Promise<{ note: StickyNote | null; shortcutAvailable: boolean; listShortcutAvailable: boolean }>;
+  save(content: StickyNoteContent): Promise<void>;
+  openList(): Promise<void>;
   pin(enabled: boolean): Promise<void>;
   close(): Promise<void>;
   delete(): Promise<void>;
-  deleteSelected(ids: string[]): Promise<StickyNoteDeleteResult>;
-  onChanged(listener: () => void): () => void;
   acknowledge(token: string, error?: string): Promise<void>;
   onRequest(listener: (request: StickyNoteRequest) => void): () => void;
   appearance(): Promise<WindowAppearanceState>;
@@ -71,6 +80,24 @@ export function parseStickyNote(value: unknown): StickyNote {
   const input = value as StickyNote | null;
   if (!input || (input.pinned !== true && input.pinned !== false)
     || !Number.isSafeInteger(input.updatedAt) || input.updatedAt < 0) throw new TypeError('Invalid saved note.');
-  return { ...stickyNoteContent(input), id: stickyNoteId(input.id), updatedAt: input.updatedAt,
+  const createdAt = input.createdAt === undefined ? input.updatedAt : input.createdAt;
+  if (!Number.isSafeInteger(createdAt) || createdAt < 0) throw new TypeError('Invalid note creation date.');
+  return { ...stickyNoteContent(input), createdAt, id: stickyNoteId(input.id), updatedAt: input.updatedAt,
     pinned: input.pinned, bounds: stickyNoteBounds(input.bounds) };
+}
+
+export function stickyNoteTitle(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim() || value.trim().length > 120) throw new TypeError('Enter a title between 1 and 120 characters.');
+  return value.trim();
+}
+
+export function stickyNoteQuery(value: unknown): string {
+  if (value === undefined) return '';
+  if (typeof value !== 'string' || value.length > STICKY_NOTE_TEXT_LIMIT) throw new TypeError('Invalid note search.');
+  return value.trim().toLocaleLowerCase();
+}
+
+export function stickyNoteRename(value: unknown): { id: string; title: string } {
+  const input = value as { id?: unknown; title?: unknown } | null;
+  return { id: stickyNoteId(input?.id), title: stickyNoteTitle(input?.title) };
 }

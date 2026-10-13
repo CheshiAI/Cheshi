@@ -52,12 +52,10 @@ import { removeSplitPane, splitPaneIds } from '../../shared/ui/splitPaneModel';
 import { WorkspaceFileSearch } from '../navigation/WorkspaceFileSearch';
 import { installFileSearchShortcut } from '../navigation/fileSearchShortcut';
 import { ChatDraftAttachmentsContext, createChatDraftAttachments } from '../chat/chatDraftAttachments';
-import { NotesView } from '../notes/NotesView';
+import { MemoSidebar } from '../sticky-notes/MemoSidebar';
 import { CalendarView } from '../calendar/CalendarView';
-import { appleNoteDraftText } from '../notes/appleNotesModel';
-import type { AppleNote } from '../../../../shared/apple-notes';
 
-const fullWidthViews: readonly WorkspaceView[] = ['explorer', 'chats', 'git', 'plugins', 'notes', 'calendar', 'settings', 'docker'];
+const fullWidthViews: readonly WorkspaceView[] = ['explorer', 'chats', 'git', 'plugins', 'calendar', 'settings', 'docker'];
 
 export function AppShell() {
   const notificationSceneRef = useRef<HTMLDivElement>(null);
@@ -122,6 +120,9 @@ export function AppShell() {
   useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
   const [sidebarPanel, setSidebarPanel] = useState<SidebarPanel>('files');
   useEffect(() => { saveSidebarPanel(sidebarPanel); }, [sidebarPanel]);
+  useEffect(() => cheshiDesktop?.notes?.onOpenListRequested(() => {
+    setSidebarPanel('memos'); setLeftSidebarOpen(true);
+  }), []);
   useEffect(() => cheshiDesktop?.agentRegistry?.onRepositoryReady?.(() => {
     setSidebarPanel('files');
     setLeftSidebarOpen(true);
@@ -173,8 +174,6 @@ export function AppShell() {
   const editorMutationRequestId = useRef(0);
   const workspace = useChatWorkspace();
   const [draftAttachments] = useState(createChatDraftAttachments);
-  const attachmentDestination = useRef({ activeView, paneId: workspace.activePaneId });
-  attachmentDestination.current = { activeView, paneId: workspace.activePaneId };
   const historySearch = useChatHistorySearch(workspace.activePaneId, workspace.paneIds);
   const updateResume = useAppUpdateResume({ activeView, rightSidebarOpen, setActiveView, setRightSidebarOpen, sidebarPanel, setSidebarPanel,
     blockedReason: temporaryChatOpen ? 'Close the temporary chat before updating.'
@@ -253,6 +252,7 @@ export function AppShell() {
   };
 
   const navigate = (view: WorkspaceView, options: { preserveFocus?: boolean } = {}): void => {
+    if (view === 'notes') { setSidebarPanel('memos'); setLeftSidebarOpen(true); return; }
     historyRequestId.current += 1;
     closeReview();
     if (view === 'explorer' || view === 'editor') {
@@ -283,16 +283,6 @@ export function AppShell() {
   };
 
   useRelationshipGraphMenu(navigate);
-
-  const attachNote = async (note: AppleNote): Promise<boolean> => {
-    if (chatSessionSelectionDisabled || updateResume.busy) return false;
-    const destination = attachmentDestination.current;
-    const requestId = historyRequestId.current;
-    const attached = await draftAttachments.appendText(destination.paneId, appleNoteDraftText(note));
-    if (attached && historyRequestId.current === requestId && attachmentDestination.current.activeView === 'notes'
-      && attachmentDestination.current.paneId === destination.paneId) navigate('chat');
-    return attached;
-  };
 
   const openLocalHistory = (path: string): void => {
     workerWorkspace.current?.closeHomies();
@@ -407,9 +397,10 @@ export function AppShell() {
         data-right-sidebar-open={rightSidebarOpen && reviewing ? 'true' : 'false'}
       >
         <LiquidGlassPanel as="aside" className={styles.sidebarRail} aria-label="Application navigation">
-          <SidebarRail activeView={railView} sidebarOpen={leftSidebarOpen} onNavigate={navigate}
+          <SidebarRail activeView={leftSidebarOpen && sidebarPanel === 'memos' ? 'notes' : railView} sidebarOpen={leftSidebarOpen} onNavigate={navigate}
             onToggleSidebar={() => setLeftSidebarOpen(open => !open)} />
         </LiquidGlassPanel>
+        <MemoSidebar api={cheshiDesktop?.notes} target={memoSidebarTarget} />
         <SlidingSidePanel open={leftSidebarOpen} anchor="end" stageClassName={styles.sidebarPanelStage}
           id="workspace-sidebar" className={`sidebar-column ${styles.sidebarPanel}`}
           inert={workspace.accountSwitchPending}>
@@ -510,11 +501,6 @@ export function AppShell() {
           {primaryView === 'blank' && <WindowTabs />}
           {primaryView === 'calendar' && <CalendarView rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
-          <NotesView onAttach={attachNote} active={primaryView === 'notes'}
-            sidebarTarget={memoSidebarTarget} onOpen={() => navigate('notes')}
-            attachmentDisabled={chatSessionSelectionDisabled || updateResume.busy}
-            rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />
           <FlashSourceNavigationContext.Provider value={openHistorySearchHit}>
             <ChatWorkspace
               workspace={workspace}

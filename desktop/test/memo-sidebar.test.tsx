@@ -1,42 +1,13 @@
 import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { act } from 'react';
-import * as react from 'react';
-import * as reactDOM from 'react-dom';
-import * as jsxRuntime from 'react/jsx-runtime';
-import * as icons from 'lucide-react';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import ts from 'typescript';
-import type { AppleNotesApi, AppleNotesFolder } from '../shared/apple-notes';
-import type { AppleNoteDocument } from '../shared/apple-notes-document';
-import type { NotesView } from '../frontend/src/features/notes/NotesView';
+import { MemoSidebar } from '../frontend/src/features/sticky-notes/MemoSidebar';
+import type { StickyNotesLibraryApi, StickyNoteSummary } from '../shared/sticky-notes';
 
-async function notesViewWithApi(api: AppleNotesApi) {
-  // Inject only the native bridge; exercise the real view, hooks, browser and portals.
-  const modules: Record<string, unknown> = {
-    react, 'react-dom': reactDOM, 'react/jsx-runtime': jsxRuntime, 'lucide-react': icons,
-    '../../cheshiDesktop': { cheshiDesktop: { appleNotes: api } },
-    '../../shared/ui': await import('../frontend/src/shared/ui'),
-    './AppleNotesBrowser': await import('../frontend/src/features/notes/AppleNotesBrowser'),
-    './AppleNotes.module.css': { default: {} },
-  };
-  const source = readFileSync(new URL('../frontend/src/features/notes/NotesView.tsx', import.meta.url), 'utf8');
-  const compiled = ts.transpileModule(source, { compilerOptions: {
-    module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023, jsx: ts.JsxEmit.ReactJSX,
-  } });
-  const exports: { NotesView?: typeof NotesView } = {};
-  vm.runInNewContext(compiled.outputText, { exports, require(name: string) {
-    if (!Object.hasOwn(modules, name)) throw new Error(`Unexpected NotesView dependency: ${name}`);
-    return modules[name];
-  } });
-  if (!exports.NotesView) throw new Error('NotesView export is unavailable');
-  return exports.NotesView;
-}
-
-test('Memo preloads before its first visit, shows pending UI in a late sidebar portal and retains state across scenes', async () => {
+test('Memo sidebar searches, renames inline, refreshes and deletes only the confirmed note', async () => {
   const window = new Window();
   const globals = { window, document: window.document, navigator: window.navigator,
+    Event: window.Event, KeyboardEvent: window.KeyboardEvent,
     Node: window.Node, Element: window.Element, HTMLElement: window.HTMLElement,
     DOMParser: window.DOMParser, MutationObserver: window.MutationObserver, ResizeObserver: window.ResizeObserver,
     getComputedStyle: window.getComputedStyle.bind(window),
@@ -49,64 +20,87 @@ test('Memo preloads before its first visit, shows pending UI in a late sidebar p
   const content = document.createElement('div');
   document.body.append(sidebar, content);
   const root = createRoot(content);
-  const note: AppleNoteDocument = { id: 'note', title: 'Selected memo', plaintext: 'Memo body', html: '<p>Memo body</p>',
-    modifiedAt: '2026-09-16T00:00:00Z', locked: false, attachmentCount: 0 };
-  let folderReads = 0, bodyReads = 0, opened = 0;
-  let resolveFolders!: (folders: AppleNotesFolder[]) => void;
-  const pendingFolders = new Promise<AppleNotesFolder[]>(resolve => { resolveFolders = resolve; });
-  const api: AppleNotesApi = {
-    available: true,
-    open: async () => {},
-    folders: async () => { folderReads++; return pendingFolders; },
-    list: async () => ({ notes: [note], nextOffset: null }),
-    read: async () => { bodyReads++; return note; }, document: async () => { bodyReads++; return note; },
-    update: async () => { throw new Error('Unexpected save'); },
-    create: async () => { throw new Error('Unexpected create'); },
-    delete: async () => { throw new Error('Unexpected delete'); },
+
+  let notes: StickyNoteSummary[] = [{ id: 'one', title: 'First', preview: 'Preview', createdAt: 1_700_000_000_000, updatedAt: Date.now() },
+    { id: 'two', title: 'Second', preview: 'Other', createdAt: 1_700_000_000_000, updatedAt: Date.now() }];
+  let changed = () => {};
+  let created = 0, unsubscribed = false;
+  const opened: string[] = [], deleted: string[][] = [];
+  const queries: (string | undefined)[] = [];
+  let failingRename = true, failingDelete = true;
+  const api: StickyNotesLibraryApi = {
+    list: async query => { queries.push(query); return query?.trim() ? notes.filter(note => note.id === 'two') : notes; },
+    rename: async (id, title) => {
+      if (failingRename) throw new Error('Rename fixture failure');
+      notes = notes.map(note => note.id === id ? { ...note, title } : note);
+    },
+    create: async () => { created++; },
+    open: async id => { opened.push(id); },
+    deleteSelected: async ids => { if (failingDelete) return { deletedIds: [], failedIds: ids }; deleted.push(ids); notes = notes.filter(note => !ids.includes(note.id)); return { deletedIds: ids, failedIds: [] }; },
+    onChanged: listener => { changed = listener; return () => { unsubscribed = true; }; },
   };
-  const View = await notesViewWithApi(api);
-  const render = async (active: boolean, sidebarTarget: HTMLElement | null = sidebar) => {
-    await act(async () => root.render(<View active={active} sidebarTarget={sidebarTarget}
-      onAttach={async () => false} attachmentDisabled={false} rightSidebarOpen={false}
-      onToggleRightSidebar={() => {}} onOpen={() => { opened++; }} />));
+  const click = async (selector: string, scope: ParentNode = sidebar) => {
+    const button = scope.querySelector<HTMLElement>(selector);
+    if (!button) throw new Error(`Missing ${selector}`);
+    await act(async () => button.click());
+  };
+  const clickText = async (text: string) => {
+    const button = [...document.querySelectorAll('button')].find(button => button.textContent === text);
+    if (!button) throw new Error(`Missing button ${text}`);
+    await act(async () => button.click());
   };
   try {
-    await render(false, null);
-    expect(folderReads).toBe(1);
-    expect(content.querySelector('main')?.hidden).toBe(true);
-    await render(false);
-    const folders = sidebar.querySelector('[aria-label="Memo folders"]')!;
-    const input = sidebar.querySelector<HTMLInputElement>('[aria-label="Search all notes"]')!;
-    expect(input.placeholder).toBe('Search…');
-    expect(folders.textContent).toContain('MEMO');
-    expect(folders.querySelector('[role="search"]')).not.toBeNull();
-    expect(content.querySelector('[role="search"]')).toBeNull();
-    expect(content.querySelector('[aria-label="Memo folders"]')).toBeNull();
-    expect(sidebar.querySelector('[aria-label="Refresh Apple Notes"]')).not.toBeNull();
-    expect(sidebar.querySelector('[role="status"][aria-label="Loading notes…"]')).not.toBeNull();
-    await act(async () => resolveFolders([{ id: 'folder', name: 'Notes', path: 'Notes', account: 'iCloud', isDefault: true }]));
-    expect(sidebar.querySelector('[aria-label="iCloud / Notes"]')).not.toBeNull();
-    expect(bodyReads).toBe(0);
-    expect(folderReads).toBe(1);
-    await render(false);
-    expect(sidebar.querySelector('[aria-label="Search all notes"]')).toBe(input);
-    await act(async () => sidebar.querySelector<HTMLButtonElement>('[aria-label="iCloud / Notes"]')!.click());
-    const row = sidebar.querySelector<HTMLButtonElement>('button[aria-pressed]')!;
-    expect(row.hasAttribute('title')).toBe(false);
-    await act(async () => row.click());
-    expect(opened).toBe(1);
-    await render(true);
-    const editor = content.querySelector('[role="textbox"]')!;
-    expect(editor.textContent).toBe('Memo body');
-    expect(row.getAttribute('aria-pressed')).toBe('true');
-    await render(false);
-    await render(true);
-    expect(sidebar.querySelector('[aria-label="Search all notes"]')).toBe(input);
-    expect(content.querySelector('[role="textbox"]')).toBe(editor);
-    expect(folderReads).toBe(1);
-    expect(bodyReads).toBeGreaterThan(0);
+    await act(async () => root.render(<MemoSidebar api={api} target={null} />));
+    expect(content.textContent).toBe('');
+    await act(async () => root.render(<MemoSidebar api={api} target={sidebar} />));
+    expect(content.textContent).toBe('');
+    expect(sidebar.querySelectorAll('[data-note-id]')).toHaveLength(2);
+    await click('[data-note-id="one"] button');
+    expect(opened).toEqual(['one']);
+    await click('[aria-label="New note"]');
+    expect(created).toBe(1);
+    expect(sidebar.querySelector('input[type="checkbox"]')).toBeNull();
+    expect(sidebar.textContent).not.toContain('Preview');
+    const createdAt = sidebar.querySelector('[data-note-id="one"] time')!.getAttribute('datetime');
+    await click('[aria-label="Rename note: First"]');
+    const input = sidebar.querySelector<HTMLInputElement>('[aria-label="Note title"]')!;
+    expect(document.activeElement).toBe(input);
+    await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, 'Renamed'); input.dispatchEvent(new Event('input', { bubbles: true })); });
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+    expect(sidebar.textContent).toContain('Rename fixture failure');
+    expect(sidebar.querySelector('[aria-label="Note title"]')).toBe(input);
+    failingRename = false;
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+    expect(sidebar.querySelector('[aria-label="Note title"]')).toBeNull();
+    expect(sidebar.querySelector('[data-note-id="one"] time')!.getAttribute('datetime')).toBe(createdAt);
+    await click('[aria-label="Rename note: Renamed"]');
+    await act(async () => sidebar.querySelector('[aria-label="Note title"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    expect(sidebar.querySelector('[aria-label="Note title"]')).toBeNull();
+    const search = sidebar.querySelector<HTMLInputElement>('[aria-label="Search notes"]')!;
+    await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(search, 'Full body query'); search.dispatchEvent(new Event('input', { bubbles: true })); });
+    expect(queries.at(-1)).toBe('Full body query');
+    expect(sidebar.querySelectorAll('[data-note-id]')).toHaveLength(1);
+    await click('[aria-label="Clear note search"]');
+    expect(sidebar.querySelectorAll('[data-note-id]')).toHaveLength(2);
+    const reads = queries.length;
+    await click('[aria-label="Refresh notes"]');
+    expect(queries.length).toBeGreaterThan(reads);
+    await act(async () => changed());
+    await click('[aria-label="Delete note: Renamed"]');
+    await clickText('Cancel');
+    expect(deleted).toEqual([]);
+    await click('[aria-label="Delete note: Renamed"]');
+    await clickText('Delete');
+    expect(document.querySelector('dialog[open]')?.textContent).toContain('could not be deleted');
+    expect(deleted).toEqual([]);
+    failingDelete = false;
+    await clickText('Delete');
+    expect(deleted).toEqual([['one']]);
+    expect(sidebar.querySelectorAll('[data-note-id]')).toHaveLength(1);
+    expect(sidebar.textContent).toContain('Second');
   } finally {
     await act(async () => root.unmount());
+    expect(unsubscribed).toBe(true);
     expect(sidebar.childNodes).toHaveLength(0);
     await window.happyDOM.abort();
     for (const [key, descriptor] of previous) {

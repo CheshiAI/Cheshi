@@ -181,3 +181,51 @@ test('selected deletion validates every id first and leaves unselected and faile
     await rejects(store.save(first.id, { title: '', text: 'late debounce' }), /no longer exists/);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test('search matches case-insensitive titles and the complete body beyond the preview', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'cheshi-notes-search-'));
+  try {
+    const store = new StickyNotesStore(directory);
+    const first = await store.create(), second = await store.create();
+    await store.save(first.id, { title: 'Meeting', text: 'x'.repeat(300) + '\nDeep BODY 한국어' });
+    await store.save(second.id, { title: 'Other', text: 'Ordinary text' });
+    expect((await store.list(' meeting ')).map(note => note.id)).toEqual([first.id]);
+    expect((await store.list('deep body 한국어')).map(note => note.id)).toEqual([first.id]);
+    expect((await store.list('not present'))).toEqual([]);
+    expect((await store.list(' '))).toHaveLength(2);
+    expect((await store.list('deep body'))[0]!.preview).not.toContain('Deep');
+    expect(() => store.list(42 as unknown as string)).toThrow('search');
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('creation dates survive edits, renames and restarts, and legacy dates use the recorded modification time', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'cheshi-notes-date-'));
+  try {
+    const store = new StickyNotesStore(directory);
+    const note = await store.create();
+    await store.save(note.id, { title: 'First', text: 'Body must survive' });
+    await store.rename(note.id, ' Renamed ');
+    const saved = await new StickyNotesStore(directory).get(note.id);
+    expect(saved).toMatchObject({ title: 'Renamed', text: 'Body must survive', createdAt: note.createdAt });
+    expect(() => store.rename(note.id, ' ')).toThrow('title');
+    const { createdAt: _created, ...legacy } = saved;
+    await writeFile(path.join(directory, `${note.id}.json`), JSON.stringify({ ...legacy, updatedAt: 1234 }));
+    const restored = new StickyNotesStore(directory);
+    expect((await restored.get(note.id)).createdAt).toBe(1234);
+    await restored.rename(note.id, 'Legacy rename');
+    expect((await new StickyNotesStore(directory).get(note.id)).createdAt).toBe(1234);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('renaming a draft preserves pending body text and persists the new title', async () => {
+  const writes: { title: string; text: string }[] = [];
+  const draft = new StickyNoteDraft({ title: 'Before', text: 'Original' }, async value => { writes.push(value); }, () => {});
+  try {
+    draft.update({ title: 'Before', text: 'Pending body' });
+    await draft.flush();
+    draft.renameTitle('After');
+    await draft.flush();
+    expect(writes.at(-1)).toEqual({ title: 'After', text: 'Pending body' });
+    expect(draft.dirty).toBe(false);
+  } finally { draft.dispose(); }
+});

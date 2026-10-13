@@ -4,7 +4,6 @@ import { NeumorphicButton, Tooltip } from '../../shared/ui';
 import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
 import type { SavedChatTurnsController } from './useSavedChatTurns';
 import styles from './ChatTurnActions.module.css';
-import { AppleNotesSaveAction } from '../notes/AppleNotesSaveAction';
 import { ChatTurnMetrics } from './ChatTurnMetrics';
 
 export function ChatTurnActions({ turn, savedTurns }: {
@@ -54,7 +53,6 @@ export function ChatTurnActions({ turn, savedTurns }: {
             <ClipboardClock aria-hidden="true" />
           </NeumorphicButton>
         )}</Tooltip>
-        <AppleNotesSaveAction key={`${turn.threadId}:${turn.itemId}`} body={turn.assistantText} />
         <span className={styles.feedback} role="status">{copied ? 'Copied' : saved ? 'Saved' : saving ? 'Saving…' : ''}</span>
       </div>
       {(copyError || saveError) && <p className={styles.error} role="alert">{copyError || 'Could not save this turn. Please try again.'}</p>}

@@ -18,9 +18,8 @@ import type { WorkspaceEditorPane } from '../frontend/src/features/editor/Worksp
 import type { ChatWorkspace } from '../frontend/src/features/chat/ChatWorkspace';
 import type { WorkspaceFileSearch } from '../frontend/src/features/navigation/WorkspaceFileSearch';
 import type { CodeGraphView } from '../frontend/src/features/graph/CodeGraphView';
-import type { NotesView } from '../frontend/src/features/notes/NotesView';
+import type { MemoSidebar } from '../frontend/src/features/sticky-notes/MemoSidebar';
 import type { GitWorkspace } from '../frontend/src/features/git/GitWorkspace';
-import type { AppleNote } from '../shared/apple-notes';
 import type { TerminalWorkspace } from '../frontend/src/features/terminal/TerminalWorkspace';
 import type { ReviewSidebar } from '../frontend/src/features/shell/ReviewSidebar';
 
@@ -319,14 +318,14 @@ test.each([null, layoutModel.visibleWorkspaceLayout('split', false, .37)])('hist
   expect(split().focusRequest?.requestId).not.toBe(previousRequest?.requestId);
 });
 
-test.each(['chat', 'terminal', 'notes', 'git'] as const)(
+test.each(['chat', 'terminal', 'git'] as const)(
   'Explorer rail opens its empty page from %s when no file is open', view => {
     const app = shellHarness();
     const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
     const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
     rail().onNavigate(view);
     sidebar().onPanelChange!('memos');
-    expect(rail().activeView).toBe(view);
+    expect(rail().activeView).toBe('notes');
     rail().onNavigate('explorer');
     expect(sidebar().activePanel).toBe('files');
     expect(rail().activeView).toBe('explorer');
@@ -723,7 +722,6 @@ for (const view of ['git', 'plugins'] as const) {
   });
 }
 
-const appleNote: AppleNote = { id: 'note', title: 'Meeting', plaintext: 'Agenda', locked: false, modifiedAt: '2026-09-16T00:00:00Z' };
 
 test('GitHub tab changes only the sidebar while rail and changes selection open the workspace', () => {
   const app = shellHarness();
@@ -755,54 +753,31 @@ test('GitHub tab changes only the sidebar while rail and changes selection open 
   expect(sidebarPanelForWorkspace('git', ['editor'])).toBe('files');
 });
 
-test('Memo tab browses alongside the current scene and opening a note activates the Memo page', () => {
+test('Memo rail and sidebar tab preserve the central editor and chat layout', () => {
   const app = shellHarness();
-  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
   const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
-  const notes = () => props<ComponentProps<typeof NotesView>>(app.render(), 'NotesView');
-  expect(notes().active).toBe(false);
+  const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  rail().onNavigate('chat');
+  sidebar().onOpenWorkspaceFile('draft.ts');
+  const mode = split().mode;
+  const layout = split().layout;
   sidebar().onPanelChange!('memos');
+  expect(split().mode).toBe(mode);
+  rail().onNavigate('notes');
   expect(sidebar().activePanel).toBe('memos');
-  expect(notes().active).toBe(false);
-  expect(props<ComponentProps<typeof ChatWorkspace>>(app.render(), 'ChatWorkspace').active).toBe(true);
-  notes().onOpen!();
-  expect(notes().active).toBe(true);
-  expect(sidebar().activePanel).toBe('memos');
-  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
-  expect(notes().active).toBe(false);
+  expect(rail().sidebarOpen).toBe(true);
+  expect(rail().activeView).toBe('notes');
+  expect(split().mode).toBe(mode);
+  expect(split().layout).toEqual(layout);
+  expect(props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor').target?.path).toBe('draft.ts');
+  const target = {} as HTMLDivElement;
+  const attach = sidebar().memoPanelRef;
+  if (typeof attach !== 'function') throw new Error('Expected Memo panel callback ref');
+  attach(target);
+  expect(props<ComponentProps<typeof MemoSidebar>>(app.render(), 'MemoSidebar').target).toBe(target);
+  rail().onNavigate('chat');
   expect(sidebar().activePanel).toBe('chats');
-});
-
-test('Notes uses a full page while preserving the mounted chat and adds text to its selected draft', async () => {
-  const app = shellHarness();
-  const imports: (File | string)[][] = [];
-  const texts: string[] = [];
-  app.attachments.register('chat-a', async files => { imports.push(files); return true; }, text => { texts.push(text); return true; });
-  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('draft.ts');
-  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('notes');
-  const tree = app.render();
-  expect(props<ComponentProps<typeof Sidebar>>(tree, 'Sidebar').activePanel).toBe('memos');
-  expect(props<ComponentProps<typeof WorkspaceEditorSplit>>(tree, 'WorkspaceEditorSplit').mode).toBe('page');
-  expect(props<ComponentProps<typeof ChatWorkspace>>(tree, 'ChatWorkspace').active).toBe(false);
-  expect(await props<ComponentProps<typeof NotesView>>(tree, 'NotesView').onAttach(appleNote)).toBe(true);
-  expect(texts).toEqual(['Agenda']);
-  expect(imports).toEqual([]);
-  expect(props<ComponentProps<typeof ChatWorkspace>>(app.render(), 'ChatWorkspace').active).toBe(true);
-});
-
-test('failed Notes attachment keeps the Notes page and late success does not override navigation', async () => {
-  const app = shellHarness();
-  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('notes');
-  expect(await props<ComponentProps<typeof NotesView>>(app.render(), 'NotesView').onAttach(appleNote)).toBe(false);
-  expect(props<ComponentProps<typeof NotesView>>(app.render(), 'NotesView')).toBeDefined();
-  let complete!: (value: boolean) => void;
-  app.attachments.register('chat-a', async () => false, () => new Promise<boolean>(resolve => { complete = resolve; }));
-  const attaching = props<ComponentProps<typeof NotesView>>(app.render(), 'NotesView').onAttach(appleNote);
-  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('git');
-  app.render();
-  complete(true);
-  expect(await attaching).toBe(true);
-  expect(props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').activeView).toBe('git');
 });
 
 test('custom workspace layout keeps editor, chat and terminal visible together and closing only hides the chosen area', () => {
@@ -829,7 +804,7 @@ test.each(['files', 'chats', 'agent-chats', 'memos', 'github'] as const)('sideba
   const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
   sidebar().onPanelChange!(panel);
   expect(sidebar().activePanel).toBe(panel);
-  expect(rail().activeView).toBe('explorer');
+  expect(rail().activeView).toBe(panel === 'memos' ? 'notes' : 'explorer');
   const target = {} as HTMLDivElement;
   (sidebar().chatsPanelRef as (node: HTMLDivElement) => void)(target);
   expect(props<ComponentProps<typeof ChatsView>>(app.render(), 'ChatsView')).toMatchObject({ active: false, sidebarActive: panel === 'agent-chats', sidebarTarget: target });

@@ -8,7 +8,9 @@ function subscribe<T>(suffix: string, listener: (value: T) => void) {
   return () => { ipcRenderer.removeListener(`${channel}:${suffix}`, handler); };
 }
 const api: StickyNotesApi = {
-  read: () => invoke('read'), save: content => invoke('save', content), list: () => invoke('list'),
+  openList: () => invoke('open-list'),
+  read: () => invoke('read'), save: content => invoke('save', content), list: query => invoke('list', query),
+  rename: (id, title) => invoke('rename', { id, title }),
   create: () => invoke('create'), open: id => invoke('open', id), pin: enabled => invoke('pin', enabled),
   close: () => invoke('close'), delete: () => invoke('delete'),
   deleteSelected: ids => invoke('delete-selected', ids), onChanged: listener => subscribe('changed', listener),

@@ -135,14 +135,14 @@ test('a failed update recovery allows file use without overwriting saved metadat
 });
 
 test('app update recovery selects normal restore or update preservation only after restoration completes', async () => {
-  for (const mode of ['normal', 'update', 'memos', 'legacy', 'explorer'] as const) {
+  for (const mode of ['normal', 'update', 'memos', 'legacy', 'explorer', 'retired-notes'] as const) {
     const update = mode !== 'normal';
     const coordinator = createUpdateResumeCoordinator();
     const restored = createDeferred<void>();
     coordinator.register('editor', { capture() {}, restore: () => restored.promise });
     const snapshot = update ? { schemaVersion: 1, workspaceRoot: '/workspace', createdAt: Date.now(), sections: {
-      editor: {}, shell: { activeView: mode === 'explorer' ? 'explorer' : 'chat', rightSidebarOpen: true,
-        ...(mode === 'update' ? { sidebarPanel: 'chats' } : mode === 'memos' ? { sidebarPanel: 'memos' } : {}) },
+      editor: {}, shell: { activeView: mode === 'explorer' ? 'explorer' : mode === 'retired-notes' ? 'notes' : 'chat', rightSidebarOpen: true,
+        ...(mode === 'update' ? { sidebarPanel: 'chats' } : (mode === 'memos' || mode === 'retired-notes') ? { sidebarPanel: 'memos' } : {}) },
     } } : null;
     let restoredPanel: string | undefined;
     let restoredView: string | undefined;
@@ -163,7 +163,7 @@ test('app update recovery selects normal restore or update preservation only aft
     restored.resolve();
     await tick();
     expect(render().editorSessionMode).toBe(update ? 'preserve' : 'restore');
-    expect(restoredPanel).toBe(mode === 'update' ? 'chats' : mode === 'memos' ? 'memos' : update ? 'files' : undefined);
+    expect(restoredPanel).toBe(mode === 'update' ? 'chats' : (mode === 'memos' || mode === 'retired-notes') ? 'memos' : update ? 'files' : undefined);
     expect(restoredView).toBe(mode === 'explorer' ? 'explorer' : update ? 'chat' : undefined);
   }
 });

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { hasStickyNoteContent, parseStickyNote, stickyNoteBounds, stickyNoteContent, stickyNoteId, stickyNoteIds,
+import { hasStickyNoteContent, parseStickyNote, stickyNoteBounds, stickyNoteContent, stickyNoteId, stickyNoteIds, stickyNoteTitle, stickyNoteQuery,
   type StickyNote, type StickyNoteBounds, type StickyNoteSummary, type StickyNoteDeleteResult } from '../shared/sticky-notes.ts';
 
 /** Serialize disk mutations and publish only after the atomic replacement succeeds. */
@@ -65,9 +65,11 @@ export class StickyNotesStore {
     } finally { await unlink(temporary).catch(() => undefined); }
   }
 
-  list(): Promise<StickyNoteSummary[]> {
-    return this.run(() => [...this.notes.values()].filter(hasStickyNoteContent).sort((a, b) => b.updatedAt - a.updatedAt).map(note => ({
-      id: note.id, title: note.title, preview: note.text.slice(0, 160), updatedAt: note.updatedAt,
+  list(query?: string): Promise<StickyNoteSummary[]> {
+    const search = stickyNoteQuery(query);
+    return this.run(() => [...this.notes.values()].filter(hasStickyNoteContent)
+      .filter(note => !search || note.title.toLocaleLowerCase().includes(search) || note.text.toLocaleLowerCase().includes(search)).sort((a, b) => b.updatedAt - a.updatedAt).map(note => ({
+      id: note.id, title: note.title, preview: note.text.slice(0, 160), createdAt: note.createdAt, updatedAt: note.updatedAt,
     })));
   }
 
@@ -75,7 +77,8 @@ export class StickyNotesStore {
 
   create(): Promise<StickyNote> {
     return this.run(async () => {
-      const note: StickyNote = { id: randomUUID(), title: '', text: '', pinned: false, bounds: null, updatedAt: Date.now() };
+      const now = Date.now();
+      const note: StickyNote = { createdAt: now, id: randomUUID(), title: '', text: '', pinned: false, bounds: null, updatedAt: now };
       await this.write(note);
       return structuredClone(note);
     });
@@ -84,6 +87,11 @@ export class StickyNotesStore {
   save(id: string, content: unknown): Promise<void> {
     const validated = stickyNoteContent(content);
     return this.run(() => this.write({ ...this.current(id), ...validated, updatedAt: Date.now() }));
+  }
+
+  rename(id: string, title: unknown): Promise<void> {
+    const validated = stickyNoteTitle(title);
+    return this.run(() => this.write({ ...this.current(id), title: validated, updatedAt: Date.now() }));
   }
 
   pin(id: string, enabled: unknown): Promise<void> {

@@ -6,7 +6,6 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { createChatDraftAttachments } from '../frontend/src/features/chat/chatDraftAttachments';
-import { appleNoteDraftText } from '../frontend/src/features/notes/appleNotesModel';
 
 interface TestElement {
   type: string;
@@ -50,6 +49,11 @@ function createHarness() {
   const modules: Record<string, unknown> = {
     '../chat/chatWorkspaceModel': { CHAT_PANE_MIN_WIDTH: 400 },
     '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
+    '../chat/FlashSourceLink': { FlashSourceNavigationContext: { Provider: 'FlashSourceNavigationContext' } },
+    './WorkerWorkspace': { WorkerWorkspace: 'WorkerWorkspace' },
+    './useRelationshipGraphMenu': { useRelationshipGraphMenu() {} },
+    '../navigation/ExplorerView': { ExplorerView: 'ExplorerView' },
+    '../graph/useCodeGraphIndex': { useCodeGraphIndex: () => ({ status: { state: 'ready' } }) },
     './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },
     '../scheduler/SchedulerNotifications': { SchedulerNotifications: 'SchedulerNotifications' },
     '../settings/DiscordSetupConfirmation': { DiscordSetupConfirmation: 'DiscordSetupConfirmation' },
@@ -100,8 +104,7 @@ function createHarness() {
     '../navigation/SidebarRail': { SidebarRail: 'SidebarRail' },
     '../navigation/WorkspaceFileSearch': { WorkspaceFileSearch: 'WorkspaceFileSearch' },
     '../navigation/fileSearchShortcut': { installFileSearchShortcut() { return () => {}; } },
-    '../notes/NotesView': { NotesView: 'NotesView' },
-    '../notes/appleNotesModel': { appleNoteDraftText },
+    '../sticky-notes/MemoSidebar': { MemoSidebar: 'MemoSidebar' },
     '../calendar/CalendarView': { CalendarView: 'CalendarView' },
     '../plugins': { PluginsView: 'PluginsView' },
     '../terminal': { TerminalWorkspace: 'TerminalWorkspace' },
@@ -156,6 +159,7 @@ test('closing history after switching files leaves the editor open and preserves
   const harness = createHarness();
   let tree = harness.render();
   invoke(element(tree, 'SidebarRail'), 'onNavigate', 'terminal');
+  tree = harness.render();
   invoke(element(tree, 'Sidebar'), 'onOpenWorkspaceFile', 'src/dirty.ts');
   invoke(element(tree, 'WorkspaceEditor'), 'onDirtyPathsChange', ['src/dirty.ts']);
   invoke(element(tree, 'WorkspaceEditor'), 'onSelectedPathChange', 'src/dirty.ts');
@@ -164,11 +168,11 @@ test('closing history after switching files leaves the editor open and preserves
   const splitBefore = element(workspaceColumn(tree), 'WorkspaceEditorSplit');
   expect(splitBefore.props.mode).toBe('split');
   expect(splitBefore.props.editor).toBe(editorBefore);
-  expect(element(tree, 'SidebarRail').props.activeView).toBe('terminal');
+  expect(element(tree, 'SidebarRail').props.activeView).toBe('editor');
   invoke(editorBefore, 'onOpenLocalHistory', 'src/dirty.ts');
   tree = harness.render();
   expect(element(tree, 'ReviewSidebar').props.localHistoryDirty).toBe(true);
-  expect(element(tree, 'SidebarRail').props.activeView).toBe('terminal');
+  expect(element(tree, 'SidebarRail').props.activeView).toBe('editor');
   invoke(element(tree, 'Sidebar'), 'onOpenLocalHistory', 'src/clean.ts');
   tree = harness.render();
   const history = element(tree, 'ReviewSidebar');
@@ -184,7 +188,7 @@ test('closing history after switching files leaves the editor open and preserves
   expect(splitDuring.props.editor).toBe(editorDuring);
   invoke(history, 'onCloseReview');
   tree = harness.render();
-  expect(element(tree, 'SidebarRail').props.activeView).toBe('terminal');
+  expect(element(tree, 'SidebarRail').props.activeView).toBe('editor');
   expect(element(tree, 'Sidebar').props.selectedFilePath).toBe('src/dirty.ts');
   expect(element(tree, 'TerminalWorkspace').props.active).toBe(true);
   expect(element(tree, 'ChatWorkspace').props.active).toBe(false);
@@ -200,6 +204,8 @@ test('closing history after switching files leaves the editor open and preserves
 test('closing history after all editor tabs close preserves the previous chat workspace', () => {
   const harness = createHarness();
   let tree = harness.render();
+  invoke(element(tree, 'SidebarRail'), 'onNavigate', 'chat');
+  tree = harness.render();
   invoke(element(tree, 'Sidebar'), 'onOpenWorkspaceFile', 'src/file.ts');
   tree = harness.render();
   invoke(element(tree, 'WorkspaceEditor'), 'onOpenLocalHistory', 'src/file.ts');

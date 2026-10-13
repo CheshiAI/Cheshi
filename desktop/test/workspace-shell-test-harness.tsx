@@ -12,7 +12,6 @@ import type { WorkspaceEditorSplit } from '../frontend/src/features/shell/Worksp
 import type { useAppUpdateResume } from '../frontend/src/features/shell/useAppUpdateResume';
 import { sidebarPanelForWorkspace, type SidebarPanel } from '../frontend/src/features/navigation/sidebarPanel';
 import * as draftAttachmentModule from '../frontend/src/features/chat/chatDraftAttachments';
-import { appleNoteDraftText } from '../frontend/src/features/notes/appleNotesModel';
 
 export function hooks() {
   const slots: unknown[] = [];
@@ -104,7 +103,6 @@ export function shellHarness(initialHistoryLoading = false, preference: { panel:
       onRepositoryReady(listener: () => void) { revealHomieRepository = listener; return () => { revealHomieRepository = () => {}; }; },
     } } },
     '../chat/chatDraftAttachments': { ...draftAttachmentModule, createChatDraftAttachments: () => attachments },
-    '../notes/appleNotesModel': { appleNoteDraftText },
     '../chat/useChatWorkspace': { useChatWorkspace: () => ({ activePaneId: 'chat-a', controllers: {}, dismissError() {}, activeController: { state: { phase: 'ready', sessions: [] } }, relay: { running: false },
       sessionHistory: { loading: historyLoading, sessions: [] }, responseThreadIds: [], accountSwitchPending: false }) },
     '../chat/useChatHistorySearch': { useChatHistorySearch: () => ({ clear() {} }) },
@@ -135,7 +133,7 @@ export function shellHarness(initialHistoryLoading = false, preference: { panel:
     '../calendar/CalendarView': ['CalendarView'],
     './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],
     '../editor/LocalHistoryPage': ['LocalHistoryPage'], './WorkspaceEditorSplit': ['WorkspaceEditorSplit'],
-    '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'], '../notes/NotesView': ['NotesView'],
+    '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'], '../sticky-notes/MemoSidebar': ['MemoSidebar'],
   })) modules[path] = Object.fromEntries(names.map(name => [name, name]));
   modules['../../shared/ui'] = { RegionalBlur: 'RegionalBlur', LiquidGlassPanel: 'LiquidGlassPanel', SlidingSidePanel: 'SlidingSidePanel',
     SidebarToggleVisibility: { Provider: 'SidebarToggleVisibility' } };

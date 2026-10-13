@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { BrowserWindow, BrowserWindowConstructorOptions, GlobalShortcut, IpcMain, IpcMainInvokeEvent, Screen } from 'electron';
-import { STICKY_NOTES_CHANNEL as channel, STICKY_NOTES_SHORTCUT, STICKY_NOTES_LIST_SHORTCUT, stickyNoteId, stickyNoteIds,
+import { STICKY_NOTES_CHANNEL as channel, STICKY_NOTES_SHORTCUT, STICKY_NOTES_LIST_SHORTCUT, stickyNoteId, stickyNoteIds, stickyNoteQuery, stickyNoteRename,
   type StickyNoteBounds, type StickyNoteRequest } from '../shared/sticky-notes.ts';
 import { StickyNotesStore } from './sticky-notes-store.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './window-appearance.mts';
@@ -16,9 +16,10 @@ interface Options {
   screen: Pick<Screen, 'getCursorScreenPoint' | 'getDisplayNearestPoint' | 'getDisplayMatching'>;
   createAppearance?: typeof createWindowAppearance;
   onError(error: unknown): void;
+  onOpenList(): Promise<void>;
 }
 interface Entry {
-  id: string | null;
+  id: string;
   window: BrowserWindow;
   ready: boolean;
   appearance: ReturnType<typeof createWindowAppearance>;
@@ -44,6 +45,8 @@ export function createStickyNotesRuntime(options: Options) {
   const opening = new Map<string, Promise<void>>();
   const pending = new Map<string, PendingFlush>();
   const deleting = new Set<string>();
+  const renaming = new Map<string, Promise<void>>();
+  const listeners = new Set<() => void>();
   let disposed = false;
   let frozen = false;
   let shortcutAvailable = false;
@@ -64,18 +67,19 @@ export function createStickyNotesRuntime(options: Options) {
     if (entry.id && !deleting.has(entry.id) && !entry.window.isDestroyed()) await store.move(entry.id, entry.window.getNormalBounds());
   }
   function changed() {
+    for (const listener of listeners) listener();
     for (const entry of entries.values()) if (!entry.window.isDestroyed()) entry.window.webContents.send(`${channel}:changed`);
   }
 
-  async function open(id: string | null): Promise<void> {
+  async function open(id: string): Promise<void> {
     if (disposed || frozen) return;
-    const key = id ?? 'list';
+    const key = stickyNoteId(id);
     const existing = entries.get(key);
     if (existing) { if (existing.ready) reveal(existing); return; }
     const inFlight = opening.get(key);
     if (inFlight) return inFlight;
     const flight = (async () => {
-      const note = id ? await store.get(id) : null;
+      const note = await store.get(id);
       if (disposed || frozen) return;
       const area = note?.bounds ? options.screen.getDisplayMatching(note.bounds).workArea
         : options.screen.getDisplayNearestPoint(options.screen.getCursorScreenPoint()).workArea;
@@ -112,7 +116,7 @@ export function createStickyNotesRuntime(options: Options) {
       });
       window.on('blur', () => { void remember(entry).catch(report); });
       window.webContents.on('render-process-gone', () => {
-        report(new Error('A note window stopped responding. Saved notes are available from the Notes menu.'));
+        report(new Error('A note window stopped responding. Saved notes are available from the Memo sidebar.'));
         window.destroy();
       });
       const url = new URL(options.rendererUrl);
@@ -142,7 +146,7 @@ export function createStickyNotesRuntime(options: Options) {
     const entry = owner(event);
     switch (action) {
       case 'read': {
-        const note = entry.id ? await store.get(entry.id) : null;
+        const note = await store.get(entry.id);
         entry.ready = true;
         reveal(entry);
         return { note, shortcutAvailable, listShortcutAvailable };
@@ -153,7 +157,8 @@ export function createStickyNotesRuntime(options: Options) {
         await store.save(noteId(entry), value);
         changed();
         return;
-      case 'list': return store.list();
+      case 'list': return store.list(stickyNoteQuery(value));
+      case 'rename': { const input = stickyNoteRename(value); return rename(input.id, input.title); }
       case 'create': return create();
       case 'open': return open(stickyNoteId(value));
       case 'pin':
@@ -171,26 +176,8 @@ export function createStickyNotesRuntime(options: Options) {
         entry.window.destroy();
         changed();
         return;
-      case 'delete-selected': {
-        if (frozen) throw new Error('Notes are preparing to close.');
-        const ids = stickyNoteIds(value);
-        if (ids.some(id => deleting.has(id))) throw new Error('A selected note is already being deleted.');
-        for (const id of ids) deleting.add(id);
-        try {
-          const result = await store.deleteSelected(ids);
-          for (const id of result.deletedIds) {
-            const opened = entries.get(id);
-            if (!opened) continue;
-            if (opened === entry) {
-              entries.delete(id);
-              opened.id = null;
-              entries.set(`list:${opened.window.id}`, opened);
-            } else opened.window.destroy();
-          }
-          changed();
-          return result;
-        } finally { for (const id of ids) deleting.delete(id); }
-      }
+      case 'delete-selected': return deleteSelected(value);
+      case 'open-list': return openList();
       case 'acknowledge': {
         const reply = value as { token?: unknown; error?: unknown } | null;
         if (!reply || typeof reply.token !== 'string'
@@ -204,29 +191,64 @@ export function createStickyNotesRuntime(options: Options) {
     }
   });
 
+  async function deleteSelected(value: unknown) {
+    if (frozen || disposed) throw new Error('Notes are preparing to close.');
+    const ids = stickyNoteIds(value);
+    if (ids.some(id => deleting.has(id) || renaming.has(id))) throw new Error('A selected note is already being deleted.');
+    for (const id of ids) deleting.add(id);
+    try {
+      const result = await store.deleteSelected(ids);
+      for (const id of result.deletedIds) entries.get(id)?.window.destroy();
+      changed();
+      return result;
+    } finally { for (const id of ids) deleting.delete(id); }
+  }
+  function requestCompletion(entry: Entry, action: { kind: 'flush' } | { kind: 'rename'; title: string }): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const token = randomUUID();
+      const timer = setTimeout(() => finish('A note did not finish saving. Try again.'), 10_000);
+      function finish(error?: string) {
+        clearTimeout(timer); pending.delete(token);
+        if (error) reject(new Error(error)); else resolve();
+      }
+      pending.set(token, { entry, finish });
+      request(entry, { ...action, token });
+    });
+  }
+  function rename(id: string, title: string): Promise<void> {
+    const input = stickyNoteRename({ id, title });
+    if (frozen || disposed || deleting.has(input.id) || renaming.has(input.id)) return Promise.reject(new Error('This note is busy. Try again.'));
+    const entry = entries.get(input.id);
+    if (entry && !entry.ready) return Promise.reject(new Error('This note is still opening. Try again.'));
+    // Open editors flush their current draft and apply the title before acknowledging.
+    const operation = (entry ? requestCompletion(entry, { kind: 'rename', title: input.title }) : store.rename(input.id, input.title))
+      .then(changed).finally(() => { renaming.delete(input.id); });
+    renaming.set(input.id, operation);
+    return operation;
+  }
+  async function openList() {
+    if (!disposed && !frozen) await options.onOpenList();
+  }
+
   return {
-    create, openList: () => open(null),
+    create, openList,
+    library: {
+      list: (query?: string) => store.list(query), create, open, rename, deleteSelected,
+      onChanged(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    },
     start() {
       try { shortcutAvailable = options.shortcuts.register(STICKY_NOTES_SHORTCUT, () => { void create().catch(report); }); }
       catch (error) { report(error); }
-      if (!shortcutAvailable) report(new Error('The Notes shortcut is unavailable. Use Notes → New Note in the application menu.'));
-      try { listShortcutAvailable = options.shortcuts.register(STICKY_NOTES_LIST_SHORTCUT, () => { void open(null).catch(report); }); }
+      if (!shortcutAvailable) report(new Error('The Notes shortcut is unavailable. Use + in the Memo sidebar.'));
+      try { listShortcutAvailable = options.shortcuts.register(STICKY_NOTES_LIST_SHORTCUT, () => { void openList().catch(report); }); }
       catch (error) { report(error); }
-      if (!listShortcutAvailable) report(new Error('The Notes list shortcut is unavailable. Use Notes → All Notes in the application menu.'));
+      if (!listShortcutAvailable) report(new Error('The Notes list shortcut is unavailable. Open Memo from the navigation rail.'));
     },
     async prepareToQuit() {
       frozen = true;
+      await Promise.all(renaming.values());
       const results = await Promise.allSettled([...entries.values()].map(async entry => {
-        if (entry.ready) await new Promise<void>((resolve, reject) => {
-          const token = randomUUID();
-          const timer = setTimeout(() => finish('A note did not finish saving. Try again.'), 10_000);
-          function finish(error?: string) {
-            clearTimeout(timer); pending.delete(token);
-            if (error) reject(new Error(error)); else resolve();
-          }
-          pending.set(token, { entry, finish });
-          request(entry, { kind: 'flush', token });
-        });
+        if (entry.ready) await requestCompletion(entry, { kind: 'flush' });
         await remember(entry);
       }));
       const failure = results.find(result => result.status === 'rejected');
@@ -239,6 +261,7 @@ export function createStickyNotesRuntime(options: Options) {
     },
     dispose() {
       disposed = true;
+      listeners.clear();
       if (shortcutAvailable) options.shortcuts.unregister(STICKY_NOTES_SHORTCUT);
       if (listShortcutAvailable) options.shortcuts.unregister(STICKY_NOTES_LIST_SHORTCUT);
       options.ipc.removeHandler(channel);

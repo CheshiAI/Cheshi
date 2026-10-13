@@ -1,7 +1,6 @@
 import { registerWorkspaceTerminalIpc } from './lib/workspace-terminal-ipc.mts';
 import { createWorkspaceProjects } from './lib/workspace-project-runtime.mts';
 import { createWorkspaceSessionMemory } from './lib/flash/workspace.mts';
-import { AppleNotesService } from './lib/apple-notes-service.mts';
 import { createWorkspaceVoice } from './lib/agent-voice/workspace.mts';
 import { createWorkspaceScheduler } from './lib/scheduler/workspace.mts';
 import { createWorkspaceNotifications } from './lib/workspace-notifications.mts';
@@ -495,9 +494,7 @@ ipcMain.handle(
   (_event, attachmentPath) => codexChatAttachmentPreviewUrl(attachmentPath),
 );
 const sessionStores = createWorkspaceSessionStores(workspaceProjects.ipc, codeGraphDirectory, assertCheshiSender);
-const appleNotesService = new AppleNotesService({ activationEvents: app, searchFilename: path.join(userDataDirectory, 'apple-notes', 'search.sqlite') });
 registerCodexChatIpc({
-  notesService: appleNotesService,
   ipc: ipcMain, accountIpc, service: chatServiceFor, assertSender: assertCheshiSender,
   savedTurns: codexChatSavedTurns,
   historySearch: sessionHistory.historySearch,
@@ -892,7 +889,6 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
 
 async function initialize(): Promise<BrowserWindow> {
   logStartup('electron ready');
-  void appleNotesService.start().catch(error => chatServiceOptions.log('memo-search-start-failed', { message: String(error) }));
   void accountSwitch.ready().then(() => {
     void chatHistorySearch.start().catch(error => {
       if (!initialIndexAbort.signal.aborted) chatServiceOptions.log('chat-history-index-initialization-failed', { message: String(error) });
@@ -952,7 +948,7 @@ function dispose(): Promise<void> {
     });
     const results = await Promise.allSettled([
       codexChatService.stop(), agentVoice.dispose(),
-      chatHistorySearch.stop(), sessionHistory.dispose(), appleNotesService.stop(),
+      chatHistorySearch.stop(), sessionHistory.dispose(),
       temporaryChats.stop(),
       localHistory.dispose(), workspaceProjects.dispose(),
       managementDisposal,

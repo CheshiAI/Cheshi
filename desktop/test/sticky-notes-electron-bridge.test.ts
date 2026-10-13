@@ -19,6 +19,7 @@ test('sticky notes bridge saves the last edit on native close, restores notes, p
 import { createRequire } from 'node:module';
 const { app, BrowserWindow, ipcMain, screen } = createRequire(import.meta.url)('electron');
 import { createStickyNotesRuntime } from ${JSON.stringify(source('../lib/sticky-notes-runtime.mts'))};
+import { registerStickyNotesLibrary } from ${JSON.stringify(source('../lib/sticky-notes-library.mts'))};
 import { StickyNotesStore } from ${JSON.stringify(source('../lib/sticky-notes-store.mts'))};
 import { createWindowAppearance } from ${JSON.stringify(source('../lib/window-appearance.mts'))};
 app.setPath('userData', ${JSON.stringify(path.join(directory, 'user-data'))});
@@ -30,13 +31,13 @@ app.whenReady().then(async () => {
   app.dock?.hide();
   const windows = [], errors = [];
   const shortcuts = new Map(), unregistered = [], raised = [];
-  let hidden = 0;
+  let hidden = 0, listRequests = 0;
   const options = {
     directory: ${JSON.stringify(path.join(directory, 'notes'))},
     rendererUrl: ${JSON.stringify(source('../frontend/dist/index.html'))},
     preload: ${JSON.stringify(fileURLToPath(new URL('../runtime/sticky-notes-preload.cjs', import.meta.url)))},
     appearanceFile: ${JSON.stringify(path.join(directory, 'appearance.json'))},
-    ipc: ipcMain, screen,
+    ipc: ipcMain, screen, onOpenList: async () => { listRequests++; },
     shortcuts: { register(name, action) { shortcuts.set(name, action); return true; }, unregister(name) { unregistered.push(name); } },
     createAppearance: input => createWindowAppearance({ ...input, binding: null }),
     createWindow(configuration) {
@@ -53,6 +54,11 @@ app.whenReady().then(async () => {
     onError: error => errors.push(String(error)),
   };
   let runtime = createStickyNotesRuntime(options);
+  ipcMain.on('cheshi:get-workspace-metadata', event => { event.returnValue = { workspaceName: 'Fixture', workspaceRoot: options.directory, userName: 'Test' }; });
+  const workspace = new BrowserWindow({ show: false, webPreferences: {
+    preload: ${JSON.stringify(fileURLToPath(new URL('../runtime/preload.cjs', import.meta.url)))}, contextIsolation: true, sandbox: true } });
+  let disposeLibrary = registerStickyNotesLibrary({ ipc: ipcMain, windows: () => [workspace], service: runtime.library });
+  await workspace.loadURL('about:blank');
   const wait = async operation => {
     for (let i = 0; i < 150; i++) { if (await operation()) return; await new Promise(resolve => setTimeout(resolve, 20)); }
     throw new Error('Condition not reached');
@@ -74,17 +80,14 @@ app.whenReady().then(async () => {
     const saved = await new StickyNotesStore(options.directory).get(id);
     const survivedClose = !first.isDestroyed();
     phase = 'open list'; shortcuts.get('CommandOrControl+Shift+M')();
-    await wait(() => windows.length === 2);
-    const list = windows[1];
-    await wait(() => evaluate(list, '!!document.querySelector("[data-note-id] button")'));
-    const listed = await evaluate(list, 'document.querySelector("section[aria-label]").textContent');
-    await evaluate(list, 'document.querySelector("[data-note-id] button").click()');
-    await new Promise(resolve => setTimeout(resolve, 80));
-    const reused = windows.length === 2;
+    await wait(() => listRequests === 1);
+    const listed = await evaluate(workspace, 'window.cheshiDesktop.notes.list()');
+    await evaluate(workspace, 'window.cheshiDesktop.notes.open(' + JSON.stringify(id) + ')');
+    const reused = windows.length === 1;
     const raisedNote = raised.at(-1) === first.id;
     shortcuts.get('CommandOrControl+Shift+M')();
-    await wait(() => raised.at(-1) === list.id);
-    const reusedList = windows.length === 2;
+    await wait(() => listRequests === 2);
+    const reusedList = windows.length === 1;
     await evaluate(first, 'document.querySelector("[aria-label^=Keep]").click()');
     await wait(() => evaluate(first, '!!document.querySelector("[aria-label^=Unpin]")'));
     const pinned = first.isAlwaysOnTop();
@@ -98,18 +101,25 @@ app.whenReady().then(async () => {
     runtime.resume();
     await wait(() => evaluate(first, '!document.querySelector("textarea").readOnly'));
     phase = 'prepare to quit'; await runtime.prepareToQuit();
-    runtime.dispose();
+    disposeLibrary(); runtime.dispose();
     runtime = createStickyNotesRuntime(options);
-    phase = 'open list'; await runtime.openList();
-    const restoredList = windows[2];
-    await wait(() => evaluate(restoredList, '!!document.querySelector("[data-note-id] button")'));
-    await evaluate(restoredList, 'document.querySelector("[data-note-id] button").click()');
-    await wait(() => windows.length === 4);
-    const restored = windows[3];
+    disposeLibrary = registerStickyNotesLibrary({ ipc: ipcMain, windows: () => [workspace], service: runtime.library });
+    phase = 'restore note';
+    await evaluate(workspace, 'window.cheshiDesktop.notes.open(' + JSON.stringify(id) + ')');
+    const restored = windows[1];
     await wait(() => evaluate(restored, '!!document.querySelector("textarea")'));
     const text = await evaluate(restored, 'document.querySelector("textarea").value');
     const bounds = restored.getBounds();
     const restoredPin = restored.isAlwaysOnTop();
+    phase = 'rename with a pending editor draft';
+    await evaluate(restored, 'Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(document.querySelector("textarea"), "Pending full body 한글"); document.querySelector("textarea").dispatchEvent(new Event("input", { bubbles: true }));');
+    await evaluate(workspace, 'window.cheshiDesktop.notes.rename(' + JSON.stringify(id) + ', "Renamed from sidebar")');
+    const renamed = await new StickyNotesStore(options.directory).get(id);
+    const editorTitle = await evaluate(restored, 'document.querySelector("input").value');
+    const bodyMatches = await evaluate(workspace, 'window.cheshiDesktop.notes.list("FULL BODY 한글").then(notes => notes.length)');
+    await evaluate(restored, 'Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(document.querySelector("textarea"), "Body edited after rename"); document.querySelector("textarea").dispatchEvent(new Event("input", { bubbles: true }));');
+    await wait(async () => (await new StickyNotesStore(options.directory).get(id)).text === 'Body edited after rename');
+    const afterRenameEdit = await new StickyNotesStore(options.directory).get(id);
     phase = 'selected deletion';
     const seed = async text => {
       await runtime.create();
@@ -120,38 +130,24 @@ app.whenReady().then(async () => {
       return { window, id };
     };
     const middle = await seed('Middle'), latest = await seed('Latest must survive');
-    await wait(() => evaluate(restoredList, 'document.querySelectorAll("[data-note-id]").length === 3'));
-    const click = (window, selector) => evaluate(window, 'document.querySelector(' + JSON.stringify(selector) + ').click()');
-    const checkbox = id => '[data-note-id="' + id + '"] input[type=checkbox]';
-    await click(restoredList, checkbox(id));
-    await click(restoredList, checkbox(middle.id));
-    const askDelete = window => evaluate(window, 'Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Delete selected").click()');
-    const confirmDelete = window => evaluate(window, 'Array.from(document.querySelectorAll("dialog[open] button")).find(button => button.textContent === "Delete").click()');
-    await askDelete(restoredList);
-    await wait(() => evaluate(restoredList, '!!document.querySelector("dialog[open]")'));
-    await evaluate(restoredList, 'Array.from(document.querySelectorAll("dialog[open] button")).find(button => button.textContent === "Cancel").click()');
-    const countAfterCancel = (await new StickyNotesStore(options.directory).list()).length;
-    await askDelete(restoredList);
-    await wait(() => evaluate(restoredList, '!!document.querySelector("dialog[open]")'));
-    await confirmDelete(restoredList);
-    await wait(() => evaluate(restoredList, 'document.querySelectorAll("[data-note-id]").length === 1 && !document.querySelector("dialog[open]")'));
-    const selectedDeletion = { countAfterCancel, deletedWindows: restored.isDestroyed() && middle.window.isDestroyed(),
+    await evaluate(workspace, 'window.notesChanges = 0; window.cheshiDesktop.notes.onChanged(() => window.notesChanges++); true');
+    await evaluate(workspace, 'window.cheshiDesktop.notes.deleteSelected(' + JSON.stringify([id, middle.id]) + ')');
+    await wait(() => restored.isDestroyed() && middle.window.isDestroyed());
+    const selectedDeletion = { deletedWindows: restored.isDestroyed() && middle.window.isDestroyed(),
       survivor: (await new StickyNotesStore(options.directory).list()).map(note => note.id), expected: latest.id };
-    // A note's own list must stay open when its underlying note is selected for deletion.
+    const changes = await evaluate(workspace, 'window.notesChanges');
+    const narrowLibrary = await evaluate(workspace, '!window.cheshiDesktop.notes.save && !window.cheshiDesktop.notes.read && !window.cheshiDesktop.appleNotes');
+    const click = (window, selector) => evaluate(window, 'document.querySelector(' + JSON.stringify(selector) + ').click()');
     await click(latest.window, '[aria-label="Note actions"]');
     await wait(() => evaluate(latest.window, '!!document.querySelector("[role=menu]")'));
     await click(latest.window, '[role=menuitem][aria-label="All notes"]');
-    await wait(() => evaluate(latest.window, '!!document.querySelector("[data-note-id]")'));
-    await click(latest.window, checkbox(latest.id));
-    await askDelete(latest.window);
-    await wait(() => evaluate(latest.window, '!!document.querySelector("dialog[open]")'));
-    await confirmDelete(latest.window);
-    await wait(() => evaluate(latest.window, 'document.body.textContent.includes("No notes yet") && !document.querySelector("dialog[open]")'));
-    selectedDeletion.keptListWindow = !latest.window.isDestroyed();
+    await wait(() => listRequests === 3);
+    const editorPreserved = await evaluate(latest.window, '!!document.querySelector("textarea") && !document.querySelector("[data-note-id]")');
+    await evaluate(workspace, 'window.cheshiDesktop.notes.deleteSelected(' + JSON.stringify([latest.id]) + ')');
     const remaining = await new StickyNotesStore(options.directory).list();
-    phase = 'prepare to quit'; await runtime.prepareToQuit(); runtime.dispose();
+    phase = 'prepare to quit'; await runtime.prepareToQuit(); disposeLibrary(); runtime.dispose(); workspace.destroy();
     console.log('RESULT:' + JSON.stringify({ shortcutNames: [...shortcuts.keys()], unregistered, raisedNote, reusedList, overflow, wideBridge, initialCount, initialStatus, saved, survivedClose, listed,
-      reused, pinned, denied, frozen, text, bounds, restoredPin, selectedDeletion, remaining, errors }));
+      reused, pinned, denied, frozen, text, bounds, restoredPin, selectedDeletion, remaining, errors, changes, narrowLibrary, editorPreserved, renamed, editorTitle, bodyMatches, afterRenameEdit }));
     clearTimeout(timeout); app.exit(0);
   } catch (error) { console.error(error); runtime.dispose(); clearTimeout(timeout); app.exit(1); }
 }).catch(error => { console.error(error); clearTimeout(timeout); app.exit(1); });
@@ -174,7 +170,7 @@ app.whenReady().then(async () => {
     assert.equal(value.initialStatus, 'Write something to save this note');
     assert.equal(value.saved.text, 'Last edit before close 한글');
     assert.equal(value.survivedClose, true);
-    assert.match(value.listed, /Last edit before close/);
+    assert.equal(value.listed[0].preview, 'Last edit before close 한글');
     assert.equal(value.reused, true);
     assert.equal(value.pinned, true);
     assert.equal(value.denied, true);
@@ -183,10 +179,18 @@ app.whenReady().then(async () => {
     assert.equal(value.restoredPin, true);
     assert.equal(value.bounds.width, 400);
     assert.equal(value.bounds.height, 460);
-    assert.equal(value.selectedDeletion.countAfterCancel, 3);
     assert.equal(value.selectedDeletion.deletedWindows, true);
     assert.deepEqual(value.selectedDeletion.survivor, [value.selectedDeletion.expected]);
-    assert.equal(value.selectedDeletion.keptListWindow, true);
+    assert.ok(value.changes > 0);
+    assert.equal(value.narrowLibrary, true);
+    assert.equal(value.editorPreserved, true);
+    assert.equal(value.renamed.title, 'Renamed from sidebar');
+    assert.equal(value.renamed.text, 'Pending full body 한글');
+    assert.equal(value.renamed.createdAt, value.saved.createdAt);
+    assert.equal(value.editorTitle, 'Renamed from sidebar');
+    assert.equal(value.bodyMatches, 1);
+    assert.equal(value.afterRenameEdit.title, 'Renamed from sidebar');
+    assert.equal(value.afterRenameEdit.createdAt, value.saved.createdAt);
     assert.deepEqual(value.remaining, []);
     assert.deepEqual(value.errors, []);
   } finally { await rm(directory, { recursive: true, force: true }); }

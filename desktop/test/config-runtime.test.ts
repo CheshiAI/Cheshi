@@ -270,7 +270,7 @@ test('packages every relative runtime import reachable from the Electron entrypo
   if (typeof shouldIgnore !== 'function') throw new Error('Forge ignore configuration is unavailable.');
 
   const { main } = JSON.parse(readFileSync(path.join(rootDirectory, 'package.json'), 'utf8'));
-  const pending = [main, 'desktop/lib/chat-search-worker.mts', 'desktop/lib/apple-notes-search-worker.mts']
+  const pending = [main, 'desktop/lib/chat-search-worker.mts']
     .map(entry => path.join(rootDirectory, entry));
   const visited = new Set<string>();
   while (pending.length > 0) {
@@ -290,10 +290,11 @@ test('packages every relative runtime import reachable from the Electron entrypo
   }
   assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'shared', 'plugin-actions.ts')));
   assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', 'skill-recording-store.mts')));
-  for (const name of ['service', 'script', 'process', 'ipc']) {
-    assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', `apple-notes-${name}.mts`)));
+  for (const name of ['runtime', 'library', 'store']) {
+    assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', `sticky-notes-${name}.mts`)));
   }
-  assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'shared', 'apple-notes.ts')));
+  assert.equal(shouldIgnore('/desktop/lib/apple-notes-service.mts'), true);
+  assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'shared', 'sticky-notes.ts')));
   for (const name of ['service', 'process', 'ipc']) {
     assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', `apple-calendar-${name}.mts`)));
   }

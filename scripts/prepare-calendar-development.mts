@@ -7,7 +7,7 @@ import { product } from '../config/product.mts';
 import { macOSAppLanguage, retainEnglishAppResources } from './macos-app-language.mts';
 
 const usage = 'Cheshi displays your calendars and creates, edits, or deletes the events you choose.';
-const automationUsage = 'Cheshi reads or saves Apple Notes when you ask.';
+const automationUsage = 'Cheshi sends iMessage notifications you enable or test.';
 const rootDirectory = fileURLToPath(new URL('..', import.meta.url));
 
 export function developmentAppIdentity(root: string) {

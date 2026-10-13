@@ -58,6 +58,8 @@ export class StickyNoteDraft {
     return this.flight;
   }
 
+  renameTitle(title: string) { this.update({ ...this.value, title }); }
+
   async flush(): Promise<void> {
     this.cancelTimer();
     if (this.flight) await this.flight;

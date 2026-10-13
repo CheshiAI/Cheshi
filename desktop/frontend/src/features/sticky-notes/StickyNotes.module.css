@@ -29,13 +29,5 @@
 .title::placeholder, .editor textarea::placeholder { color: var(--sub-text); }
 .status { font-size: var(--font-size-small); color: var(--sub-text); }
 .notice { margin: 0; padding: var(--space-default); overflow-wrap: anywhere; }
-.list { display: flex; flex-direction: column; gap: var(--icon-default); padding: var(--space-default); overflow: auto; }
-.listActions { display: flex; align-items: center; gap: var(--icon-default); }
-.listActions > span { flex: 1; }
-.listRow { display: flex; align-items: center; gap: var(--icon-default); }
-.listRow > button { flex: 1; min-width: 0; }
-.item[data-variant] { height: auto; min-height: 72px; flex-shrink: 0; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: var(--space-default); text-align: left; }
-.item strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.item span { overflow: hidden; white-space: pre-wrap; max-height: 3em; overflow-wrap: anywhere; }
-.item small { color: var(--sub-text); }
+.sidebar { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
 .dialogActions { display: flex; justify-content: flex-end; gap: var(--icon-default); }

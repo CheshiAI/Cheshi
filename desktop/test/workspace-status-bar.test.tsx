@@ -64,7 +64,6 @@ function harness(props: ComponentProps<typeof WorkspaceStatusBar>) {
     '../account/AccountUsagePanel': { AccountUsagePanel: 'AccountUsagePanel' },
     '../account/AddAccountDialog': { AddAccountDialog: 'AddAccountDialog' },
     '../updates/AppUpdateIndicator': { AppUpdateIndicator: 'AppUpdateIndicator' },
-    '../notes/NotesSearchStatus': { NotesSearchStatus: 'NotesSearchStatus' },
     './LanguageSelector': { LanguageSelector: 'LanguageSelector' },
     './statusBarModel': { accountStatusSummary, accountUsageTotals },
     './WorkspaceStatusBar.module.css': { default: {} },
@@ -108,7 +107,7 @@ test('keeps account startup mounted with only the account popover in the status 
   const tree = harness({ onAccountInitialLoad: () => { accountReady++; } }).render();
   const footerItems = elements(tree).map(element => element.type);
   expect(footerItems).not.toContain('WorkspaceGitBranch');
-  expect(elements(tree.props.children)[0]?.type).toBe('NotesSearchStatus');
+  expect(elements(tree.props.children)[0]?.type).toBe('AppUpdateIndicator');
   const triggers = elements(tree).filter(element => element.type === 'button');
   const popovers = elements(tree).filter(element => element.props.popover === 'auto');
   expect(triggers).toHaveLength(1);

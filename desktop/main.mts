@@ -19,8 +19,8 @@ import { codeGraphStorageDirectory, resolveCodeGraphDataRoot } from '../config/w
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { app, autoUpdater, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, screen, safeStorage, shell, Tray } from 'electron';
+import { createStickyNotesMenuAction, registerStickyNotesLibrary } from './lib/sticky-notes-library.mts';
 import { createStickyNotesRuntime } from './lib/sticky-notes-runtime.mts';
-import { STICKY_NOTES_SHORTCUT, STICKY_NOTES_LIST_SHORTCUT } from './shared/sticky-notes.ts';
 import { product } from '../config/product.mts';
 import { aboutBackgroundColor, aboutPage } from './lib/about-page.mts';
 import { registerSelectionCopy } from './lib/selection-copy.mts';
@@ -77,6 +77,7 @@ process.env.PATH = desktopToolPath(process.env.PATH);
 const selectionCopyPreload = path.join(import.meta.dirname, 'runtime', 'selection-copy-preload.cjs');
 const usagePopoverPreload = path.join(app.isPackaged ? process.resourcesPath : import.meta.dirname, 'runtime', 'account-usage-preload.cjs');
 const stickyNotes = createStickyNotesRuntime({
+  onOpenList: () => openNotesList(),
   directory: path.join(app.getPath('userData'), 'sticky-notes'),
   appearanceFile: path.join(app.getPath('userData'), 'appearance.json'),
   rendererUrl: process.env.CHESHI_RENDERER_URL?.trim() || pathToFileURL(app.isPackaged
@@ -249,6 +250,14 @@ const workspaces = new WorkspaceApplication({
   initialRoot: '',
 });
 
+const openNotesList = createStickyNotesMenuAction({
+  windows: () => workspaces.readyProjectWindows, focused: () => BrowserWindow.getFocusedWindow(),
+  openWorkspace: async () => {
+    if (!workspaces.lastWorkspaceRoot) throw new Error('Open a workspace to view saved notes.');
+    await workspaces.reveal(workspaces.lastWorkspaceRoot);
+  },
+});
+
 function createApplicationRuntime(options: WorkspaceRuntimeOptions) {
   const recovery = updateResume.register(options);
   options.scope.ipc.handle(`${APP_UPDATE_CHANNEL}:get`, () => updates.snapshot());
@@ -295,6 +304,7 @@ let cleanupComplete = false;
 let openingStartupWindow = false;
 
 function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntime>[0]) {
+  let disposeNotesLibrary: (() => void) | undefined;
   const source = usageTray?.register();
   let settingsIpc: ReturnType<typeof registerSettingsIpc> | undefined;
   let agentManagementIpc: ReturnType<typeof registerAgentManagementIpc> | undefined;
@@ -360,6 +370,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       agentManagementIpc = registerAgentManagementIpc({ window, ipc: options.scope.ipc, service: agentManagement,
         remove: request => agentDeletion.container(request),
         terminal: new AgentTerminalManager({ window, hold: (engine, id) => specialistRuntime.hold(engine, id), engines: agentEngines, workingDirectory: options.workspaceRoot }) });
+      disposeNotesLibrary = registerStickyNotesLibrary({ ipc: options.scope.ipc, windows: () => [window], service: stickyNotes.library });
       notificationEventsIpc = registerNotificationEventsIpc({ window, ipc: options.scope.ipc, service: notificationEvents });
       discordIpc = registerDiscordIpc({ window, ipc: options.scope.ipc, service: discord,
         setup: context => runtime.startDiscordSetup(context, () => createDiscordSetupBrowser({ parent: window,
@@ -380,7 +391,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
     },
     show: () => runtime.show(),
     async dispose() {
-      try { agentChatsIpc?.dispose(); agentRegistryIpc?.dispose(); agentManagementIpc?.dispose(); notificationEventsIpc?.dispose(); discordIpc?.dispose(); notificationIpc?.dispose(); settingsIpc?.dispose(); }
+      try { disposeNotesLibrary?.(); agentChatsIpc?.dispose(); agentRegistryIpc?.dispose(); agentManagementIpc?.dispose(); notificationEventsIpc?.dispose(); discordIpc?.dispose(); notificationIpc?.dispose(); settingsIpc?.dispose(); }
       finally { try { await runtime.dispose(); } finally { source?.dispose(); } }
     },
   };
@@ -443,12 +454,6 @@ app.whenReady().then(async () => {
     const menuItems = applicationMenu.items.filter(item => item.role?.toLowerCase() !== 'filemenu');
     const template = helpMenuTemplate(aboutMenuTemplate(menuItems, product.displayName, aboutWindow.open, items => Menu.buildFromTemplate(items)),
       () => { void openHelp().catch(error => dialog.showErrorBox('Cheshi Help', String(error))); }, items => Menu.buildFromTemplate(items));
-    template.push({ label: 'Notes', submenu: [
-      { label: 'New Note', accelerator: STICKY_NOTES_SHORTCUT, registerAccelerator: false,
-        click: () => { void stickyNotes.create().catch(error => dialog.showErrorBox('Cheshi Notes', String(error))); } },
-      { label: 'All Notes', accelerator: STICKY_NOTES_LIST_SHORTCUT, registerAccelerator: false,
-        click: () => { void stickyNotes.openList().catch(error => dialog.showErrorBox('Cheshi Notes', String(error))); } },
-    ] });
     const tools = createToolsMenu(template, { focused: () => BrowserWindow.getFocusedWindow(),
       windows: () => workspaces.readyProjectWindows, onWindowsChanged: listener => workspaces.onWindowsChanged(listener),
       buildMenu: items => Menu.buildFromTemplate(items) });

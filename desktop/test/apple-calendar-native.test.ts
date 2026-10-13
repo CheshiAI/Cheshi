@@ -61,7 +61,7 @@ test.skipIf(process.platform !== 'darwin')('built native helper runs from packag
     expect(first).toContain('NSCalendarsFullAccessUsageDescription');
     expect(first).toContain('NSCalendarsUsageDescription');
     expect(first).toContain('NSAppleEventsUsageDescription');
-    expect(first).toContain('reads or saves Apple Notes');
+    expect(first).toContain('sends iMessage notifications');
     expect(first).toContain(developmentAppIdentity(process.cwd()).bundleId);
     expect(first).toContain('Cheshi Development');
     expect(first).toContain('CFBundleDevelopmentRegion');
@@ -90,7 +90,7 @@ test.skipIf(process.platform !== 'darwin')('built native helper runs from packag
     expect(config.packagerConfig?.extendInfo).toMatchObject({
       CFBundleDevelopmentRegion: 'en',
       NSCalendarsFullAccessUsageDescription: expect.any(String), NSCalendarsUsageDescription: expect.any(String),
-      NSAppleEventsUsageDescription: expect.stringContaining('reads or saves Apple Notes'),
+      NSAppleEventsUsageDescription: expect.stringContaining('sends iMessage notifications'),
     });
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }, 60_000);
