@@ -39,6 +39,54 @@ test('file review restores focus before hiding its sidebar controls', async () =
   });
 });
 
+test('overlay review focuses its close control, respects nested dialogs and restores the opener on Escape', async () => {
+  function Workspace() {
+    const [review, setReview] = useState<ChatActivityItem | null>(null);
+    return <div className="app-layout">
+      <div className="workspace-column"><div style={{ minWidth: 596 }}>
+        <button onClick={() => setReview(item)}>Review changes</button>
+      </div></div>
+      <ReviewSidebar open item={review} initialPath={null} onCloseReview={() => setReview(null)} />
+    </div>;
+  }
+  await withDOM(async ui => {
+    const geometry = spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const left = this.className === 'workspace-column' ? 398 : 0;
+      return { x: left, y: 0, left, right: 1280, top: 0, bottom: 700, width: 1280 - left, height: 700, toJSON: () => ({}) };
+    });
+    try {
+      await ui.render(<Workspace />);
+      const opener = document.querySelector<HTMLButtonElement>('button')!;
+      opener.focus();
+      await ui.click('Review changes');
+      const slot = document.querySelector<HTMLElement>('[aria-label="Review sidebar"]')!;
+      expect(slot.dataset.overlay).toBe('true');
+      expect(document.activeElement?.getAttribute('aria-label')).toBe('Close file changes review');
+      const escape = async (prevented = false) => {
+        const event = new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+        if (prevented) event.preventDefault();
+        await act(async () => document.activeElement!.dispatchEvent(event));
+      };
+      await escape(true);
+      expect(slot.dataset.open).toBe('true');
+      const dialog = document.createElement('dialog');
+      dialog.setAttribute('open', '');
+      document.body.append(dialog);
+      await escape();
+      expect(slot.dataset.open).toBe('true');
+      dialog.remove();
+      await escape();
+      expect(slot.dataset.open).toBe('false');
+      expect(slot.hasAttribute('inert')).toBe(true);
+      expect(document.activeElement).toBe(opener);
+      await ui.click('Review changes');
+      await ui.click('Close file changes review');
+      expect(slot.dataset.open).toBe('false');
+      expect(document.activeElement).toBe(opener);
+    } finally { geometry.mockRestore(); }
+  });
+});
+
 function render(open: boolean, review: ChatActivityItem | null, lineCommit: GitLineBlameRequest | null = null) {
   const html = renderToStaticMarkup(<ReviewSidebar open={open} item={review} lineCommit={lineCommit} initialPath="sample.ts" onCloseReview={() => {}} />);
   return [...html.matchAll(/<aside\b([^>]*)>([\s\S]*?)<\/aside>/g)].map((match) => ({ attributes: match[1]!, body: match[2]! }));
@@ -135,10 +183,31 @@ for (const panel of ['files', 'line commit'] as const) {
         expect(width()).toBeCloseTo(407);
         await ui.render(render(true, 596)); // Chat and another workspace pane.
         await resized();
-        expect(width()).toBeCloseTo(286);
-        expect(layoutWidth - workspaceLeft - width()).toBeCloseTo(596);
+        expect(slot.dataset.overlay).toBe('true');
+        expect(width()).toBeCloseTo(441);
+        expect(slot.querySelector('[role="separator"]')).toBeNull();
+        await ui.render(render(true, 475));
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+        expect(slot.dataset.overlay).toBeUndefined();
+        expect(width()).toBeCloseTo(407);
+        await ui.render(render(true, 596));
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+        expect(slot.dataset.overlay).toBe('true');
+        layoutWidth = 1600;
+        await resized();
+        expect(slot.dataset.overlay).toBeUndefined();
+        expect(width()).toBeCloseTo(601);
+        layoutWidth = 1280;
+        await resized();
+        expect(slot.dataset.overlay).toBe('true');
+        expect(width()).toBeCloseTo(441);
+        layoutWidth = 650;
+        await resized();
+        expect(width()).toBeCloseTo(252);
+        expect(slot.querySelector('[aria-label="Close file changes review"], [aria-label="Close line commit"]')).not.toBeNull();
         await ui.render(render(false));
         expect(slot.dataset.open).toBe('false');
+        layoutWidth = 1280;
         workspaceLeft = 78;
         await ui.render(render());
         expect(width()).toBeCloseTo(601);

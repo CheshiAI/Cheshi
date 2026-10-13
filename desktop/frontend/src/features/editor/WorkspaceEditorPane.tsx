@@ -63,6 +63,7 @@ export interface WorkspaceEditorProps {
 export function WorkspaceEditorPane({
   pane,
   maximizeControl,
+  canCloseEmptyPane = false,
   active,
   rightSidebarOpen = false,
   onToggleRightSidebar,
@@ -71,7 +72,7 @@ export function WorkspaceEditorPane({
   onAllTabsClosed,
   onOpenLocalHistory,
   onShowLineCommit,
-}: WorkspaceEditorProps & { pane: EditorPaneBinding; maximizeControl?: PaneMaximizeControl }) {
+}: WorkspaceEditorProps & { pane: EditorPaneBinding; maximizeControl?: PaneMaximizeControl; canCloseEmptyPane?: boolean }) {
   const paneVisible = useContext(WorkspacePaneVisibilityContext);
   active = active && paneVisible;
   const controller = useWorkspaceEditorController({
@@ -141,8 +142,8 @@ export function WorkspaceEditorPane({
   const headerActions = <>
     <WorkspaceLayoutControls maximizeControl={maximizeControl} />
     <TooltipButton variant="ghost" size="icon"
-      aria-label="Close all file tabs" title="Close all file tabs in this pane"
-      disabled={tabs.length === 0} onClick={closeAllTabs}>
+      aria-label="Close Explorer pane" title="Close Explorer pane"
+      disabled={!pane.ready || (tabs.length === 0 && !canCloseEmptyPane)} onClick={closeAllTabs}>
       <X aria-hidden="true" />
     </TooltipButton>
   </>;

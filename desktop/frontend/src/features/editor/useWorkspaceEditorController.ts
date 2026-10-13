@@ -356,7 +356,6 @@ export function useWorkspaceEditorController({
 
   const closeAllTabs = useCallback((): void => {
     const current = tabsRef.current;
-    if (current.length === 0) return;
     if (!confirmWorkspaceTabsClose(current, candidate => isTabDirty(candidate) && !pane.store.sharedElsewhere(pane.id, candidate.path), (path) => window.confirm(`Discard unsaved changes in ${path}?`))) return;
     invalidatePendingFileLoad();
     replaceTabs(() => []);

@@ -24,7 +24,7 @@ function restoreFocus(slot: HTMLElement, previous: HTMLElement | null): void {
   active.blur();
 }
 
-export function useReviewSidebarFocus(visible: boolean, slotRef: RefObject<HTMLElement | null>) {
+export function useReviewSidebarFocus(visible: boolean, slotRef: RefObject<HTMLElement | null>, overlay = false, onClose?: () => void) {
   const returnFocus = useRef<HTMLElement | null>(null);
   const [exposed, setExposed] = useState(visible);
 
@@ -42,6 +42,27 @@ export function useReviewSidebarFocus(visible: boolean, slotRef: RefObject<HTMLE
     }
     setExposed(visible);
   }, [visible, slotRef]);
+
+  useLayoutEffect(() => {
+    if (!visible || !overlay) return;
+    const slot = slotRef.current;
+    if (slot && !slot.contains(slot.ownerDocument.activeElement)) {
+      (slot.querySelector<HTMLElement>('button[aria-label^="Close"]') ?? slot).focus({ preventScroll: true });
+    }
+  }, [visible, overlay, slotRef]);
+
+  useLayoutEffect(() => {
+    const document = slotRef.current?.ownerDocument;
+    if (!visible || !onClose || !document) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing
+        || document.querySelector('dialog[open], [role="menu"], [role="listbox"]')) return;
+      event.preventDefault();
+      onClose();
+    };
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [visible, onClose, slotRef]);
 
   const onFocusCapture = (event: FocusEvent<HTMLElement>): void => {
     const previous = event.relatedTarget;

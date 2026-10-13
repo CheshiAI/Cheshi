@@ -125,6 +125,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
     </div>
     {Object.keys(state.groups).map(id => createPortal(
       <WorkspaceEditorPane {...props} active={active} pane={{ store, id, ready }}
+        canCloseEmptyPane={canMaximize || workspaceLayout?.canMaximize === true}
         maximizeControl={canMaximize ? {
           enabled: true,
           maximized: maximized === id,

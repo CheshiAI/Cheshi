@@ -134,6 +134,17 @@
   white-space: nowrap;
 }
 
+.reviewHeader { flex: 0 0 var(--header-height); }
+.reviewHeader:not(:global([inert]) *) { -webkit-app-region: drag; }
+.reviewHeaderRow > :first-child { flex: 1 1 0; overflow: hidden; }
+.reviewActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--icon-default);
+  -webkit-app-region: no-drag;
+}
+
 .reviewFileCount { font: inherit; }
 
 .reviewFiles {

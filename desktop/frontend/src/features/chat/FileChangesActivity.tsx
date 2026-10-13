@@ -2,7 +2,8 @@ import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { FileCode2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-import { CodePanel, ContentCard, LiquidGlassPanel, NeumorphicButton, NeumorphicSurface, SidebarPanelHeader } from '../../shared/ui';
+import { CodePanel, ContentCard, LiquidGlassPanel, NeumorphicButton, NeumorphicSurface, TieredHeader } from '../../shared/ui';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { ChatActivityItem, ChatFileChange } from './model';
 import styles from './FileChangesActivity.module.css';
@@ -35,6 +36,7 @@ interface FileChangesReviewPanelProps {
   item: ChatActivityItem;
   initialPath: string | null;
   onClose: () => void;
+  compactHeader?: boolean;
 }
 
 function displayPath(value: string): string {
@@ -212,7 +214,7 @@ export function FileChangesActivity({ item, onReview }: FileChangesActivityProps
   );
 }
 
-export function FileChangesReviewPanel({ item, initialPath, onClose }: FileChangesReviewPanelProps) {
+export function FileChangesReviewPanel({ item, initialPath, onClose, compactHeader = false }: FileChangesReviewPanelProps) {
   const changes = item.changes ?? [];
   const [selectedPath, setSelectedPath] = useState(initialPath ?? changes[0]?.path ?? '');
   const totals = useMemo(() => aggregateMetrics(changes), [changes]);
@@ -242,23 +244,27 @@ export function FileChangesReviewPanel({ item, initialPath, onClose }: FileChang
       data-liquid-glass-surface="side-panel"
       aria-label="File changes review"
     >
-      <SidebarPanelHeader icon={<FileCode2 aria-hidden="true" />} title={selectedChange?.diffFormat === 'plain' ? 'FILE CONTENTS' : 'REVIEW'} description={activityTitle(item, changes.length)} actions={<>
-        <div className={styles.reviewHeaderStats}>
-          <span className={styles.reviewFileCount}>
-            {hasPlainContents(changes)
-              ? `${changes.length} ${changes.length === 1 ? 'file' : 'files'}`
-              : changes.length === 1 ? '1 changed file' : `${changes.length} changed files`}
-          </span>
-          <ChangeStats additions={totals.additions} deletions={totals.deletions} unavailable={hasPlainContents(changes)} />
+      <TieredHeader className={styles.reviewHeader} primaryClassName={styles.reviewHeaderRow} primary={<>
+        <SidebarPanelTitle icon={<FileCode2 aria-hidden="true" />} title={selectedChange?.diffFormat === 'plain' ? 'FILE CONTENTS' : 'REVIEW'}
+          description={compactHeader ? undefined : activityTitle(item, changes.length)} />
+        <div className={styles.reviewActions}>
+          <div className={styles.reviewHeaderStats}>
+            <span className={styles.reviewFileCount} hidden={compactHeader}>
+              {hasPlainContents(changes)
+                ? `${changes.length} ${changes.length === 1 ? 'file' : 'files'}`
+                : changes.length === 1 ? '1 changed file' : `${changes.length} changed files`}
+            </span>
+            <ChangeStats additions={totals.additions} deletions={totals.deletions} unavailable={hasPlainContents(changes)} />
+          </div>
+          <NeumorphicButton
+            variant="ghost"
+            size="icon"
+            aria-label="Close file changes review"
+            onClick={onClose}
+          >
+            <X aria-hidden="true" />
+          </NeumorphicButton>
         </div>
-        <NeumorphicButton
-          variant="ghost"
-          size="icon"
-          aria-label="Close file changes review"
-          onClick={onClose}
-        >
-          <X aria-hidden="true" />
-        </NeumorphicButton>
       </>} />
       <nav className={styles.reviewFiles} aria-label="Changed files">
         {changes.map((change) => (

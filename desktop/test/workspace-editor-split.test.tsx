@@ -96,7 +96,7 @@ function props<T>(tree: ReactNode, name: string): T {
   return node.props as T;
 }
 
-function renderFilePane(loading: boolean, ready = true, existingFile = false) {
+function renderFilePane(loading: boolean, ready = true, existingFile = false, canCloseEmptyPane = false, closeAllTabs = () => {}) {
   const modules: Record<string, unknown> = {
     '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
     './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },};
@@ -110,12 +110,12 @@ function renderFilePane(loading: boolean, ready = true, existingFile = false) {
   modules.react = { useContext: () => true };
   modules['./workspaceProblemsLayout'] = { useWorkspaceProblemsLayout: () => ({ stageRef: null }) };
   modules['./useWorkspaceEditorController'] = { useWorkspaceEditorController: () => ({
-    loading, tabs: [], codeExplanation: {},
+    loading, tabs: [], codeExplanation: {}, closeAllTabs,
     currentFile: existingFile ? { path: 'preview.png', fileKind: 'image' } : null,
     activeTab: existingFile ? { previewDataUrl: 'data:image/png;base64,test' } : null,
   }) };
   const Pane = load<typeof WorkspaceEditorPane>('features/editor/WorkspaceEditorPane.tsx', 'WorkspaceEditorPane', modules);
-  return Pane({ active: true, pane: { id: 'editor-main', ready, store: {} } } as ComponentProps<typeof WorkspaceEditorPane>);
+  return Pane({ active: true, canCloseEmptyPane, pane: { id: 'editor-main', ready, store: {} } } as ComponentProps<typeof WorkspaceEditorPane>);
 }
 
 test('file pane shows shared loading instead of the empty prompt during opening and session recovery', () => {
@@ -146,8 +146,21 @@ test('the empty Explorer header is replaced by the file tab header while pane co
       : props<{ actions: ReactNode }>(tree, 'ExplorerHeader').actions;
     expect(elements(headerContent).filter(node => node.type === 'FlatTabList')).toHaveLength(existingFile ? 1 : 0);
     expect(elements(headerContent).filter(node => node.type === 'WorkspaceLayoutControls')).toHaveLength(1);
-    expect(props<{ 'aria-label': string }>(headerContent, 'TooltipButton')['aria-label']).toBe('Close all file tabs');
+    expect(props<{ 'aria-label': string }>(headerContent, 'TooltipButton')['aria-label']).toBe('Close Explorer pane');
   }
+});
+
+test('empty split Explorer can close after restoration, including while a file is opening', () => {
+  let closed = 0;
+  for (const [ready, split, loading, disabled] of [[true, true, false, false], [true, true, true, false],
+    [true, false, false, true], [false, true, false, true]] as const) {
+    const tree = renderFilePane(loading, ready, false, split, () => { closed++; });
+    const header = props<{ actions: ReactNode }>(tree, 'ExplorerHeader');
+    const close = props<{ disabled: boolean; onClick: () => void }>(header.actions, 'TooltipButton');
+    expect(close.disabled).toBe(disabled);
+    if (!disabled) close.onClick();
+  }
+  expect(closed).toBe(2);
 });
 
 function shellHarness(initialHistoryLoading = false, preference: { panel: SidebarPanel } = { panel: 'files' },

@@ -20,6 +20,17 @@ export function useReviewSidebarResize(enabled: boolean, panelName: string, resi
   const drag = useRef<{ id: number; x: number; width: number; previous: number } | null>(null);
   const { minimum, maximum } = ratioLimits(availableWidth, workspaceMinimum);
   const ratio = Math.min(maximum, Math.max(minimum, resizable ? preferredRatio : DEFAULT_RATIO));
+  const overlay = availableWidth > 0 && availableWidth < Math.max(MIN_PANE_WIDTH, workspaceMinimum) + MIN_PANE_WIDTH;
+  const width = overlay
+    ? Math.min(availableWidth, Math.max(MIN_PANE_WIDTH, Math.min(480, availableWidth / 2)))
+    : availableWidth * ratio;
+
+  useLayoutEffect(() => {
+    if (!overlay) return;
+    if (drag.current) setPreferredRatio(drag.current.previous);
+    drag.current = null;
+    setResizing(false);
+  }, [overlay]);
 
   useLayoutEffect(() => {
     if (!enabled) {
@@ -45,7 +56,10 @@ export function useReviewSidebarResize(enabled: boolean, panelName: string, resi
     observer.observe(layout);
     observer.observe(workspace);
     if (content) observer.observe(content);
-    return () => observer.disconnect();
+    // A changed split minimum may not resize a workspace covered by the overlay.
+    const minimumObserver = new MutationObserver(measure);
+    if (content) minimumObserver.observe(content, { attributes: true, attributeFilter: ['style'] });
+    return () => { observer.disconnect(); minimumObserver.disconnect(); };
   }, [enabled]);
 
   const apply = (next: number) => setPreferredRatio(Math.min(maximum, Math.max(minimum, next)));
@@ -70,7 +84,7 @@ export function useReviewSidebarResize(enabled: boolean, panelName: string, resi
     'aria-valuetext': `${Math.round(ratio * 100)}% for the ${panelName} panel`,
     title: `Drag to resize the ${panelName} panel; double-click to reset`,
     onPointerDown(event) {
-      if (!enabled || !resizable || event.button !== 0 || availableWidth <= 0) return;
+      if (!enabled || !resizable || overlay || event.button !== 0 || availableWidth <= 0) return;
       event.preventDefault();
       event.stopPropagation();
       drag.current = { id: event.pointerId, x: event.clientX,
@@ -116,9 +130,11 @@ export function useReviewSidebarResize(enabled: boolean, panelName: string, resi
 
   return {
     slotRef,
+    overlay,
+    compact: width < 440,
     resizing: enabled && resizing,
     separatorProps,
-    style: { '--review-ratio': ratio, '--review-width': `${availableWidth * ratio}px`,
-      '--review-max-width': `${availableWidth * maximum}px` } as CSSProperties,
+    style: { '--review-ratio': ratio, '--review-width': `${width}px`,
+      '--review-max-width': `${overlay ? width : availableWidth * maximum}px` } as CSSProperties,
   };
 }

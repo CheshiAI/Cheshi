@@ -8,6 +8,7 @@ import styles from './ReviewSidebar.module.css';
 import { useReviewSidebarResize } from './useReviewSidebarResize';
 import { LocalHistoryPage } from '../editor/LocalHistoryPage';
 import { useReviewSidebarFocus } from './useReviewSidebarFocus';
+import { LiquidGlassPanel } from '../../shared/ui';
 
 interface ReviewSidebarProps {
   open: boolean;
@@ -44,15 +45,17 @@ export function ReviewSidebar({ open, item, initialPath, lineCommit = null, loca
   const resizableOpen = open && reviewing && resizable;
   const resize = useReviewSidebarResize(open && reviewing,
     retainedReview.localHistoryPath !== null ? 'local history' : 'line commit', resizable);
-  const focus = useReviewSidebarFocus(open && reviewing, resize.slotRef);
+  const focus = useReviewSidebarFocus(open && reviewing, resize.slotRef, resize.overlay, onCloseReview);
 
-  return <aside ref={resize.slotRef} className={styles.reviewSlot} data-open={open && reviewing ? 'true' : 'false'}
+  return <aside ref={resize.slotRef} className={`${styles.reviewSlot} ${resize.overlay ? styles.overlayAnchor : ''}`} data-open={open && reviewing ? 'true' : 'false'}
+      data-overlay={resize.overlay ? 'true' : undefined} tabIndex={-1}
       data-resizable={retainedReview.lineCommit || retainedReview.localHistoryPath !== null ? 'true' : undefined}
       data-resizing={resize.resizing ? 'true' : undefined} style={resize.style}
       aria-label="Review sidebar"
       aria-hidden={focus.hidden} inert={focus.hidden} onFocusCapture={focus.onFocusCapture}>
-      <div className={styles.reviewContent}>
-        {resizableOpen && <div className={styles.resizer} {...resize.separatorProps} />}
+      <LiquidGlassPanel className={`${styles.reviewContent} ${resize.overlay ? styles.overlaySurface : ''}`}
+        data-liquid-glass-backdrop={resize.overlay ? 'true' : undefined}>
+        {resizableOpen && !resize.overlay && <div className={styles.resizer} {...resize.separatorProps} />}
         {retainedReview.localHistoryPath !== null ? <LocalHistoryPage
           key={retainedReview.localHistoryPath} path={retainedReview.localHistoryPath}
           draftDirty={localHistoryDirty} onClose={onCloseReview} />
@@ -62,8 +65,9 @@ export function ReviewSidebar({ open, item, initialPath, lineCommit = null, loca
           key={retainedReview.revision}
           item={retainedReview.item}
           initialPath={retainedReview.initialPath}
+          compactHeader={resize.compact}
           onClose={onCloseReview}
         />}
-      </div>
+      </LiquidGlassPanel>
     </aside>;
 }
