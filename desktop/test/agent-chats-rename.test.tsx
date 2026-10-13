@@ -24,6 +24,8 @@ test('room rename preserves selected room and draft, persists through refresh an
       return data;
     } };
     await ui.render(<ChatsView active api={api} onOpenRoom={() => { opened++; }} />);
+    const title = () => document.querySelector('[aria-label="Worker"] header h2');
+    expect(title()?.textContent).toBe('first');
     await ui.type('Message', 'Keep my draft');
     await ui.click('Rename room: second');
     expect(opened).toBe(0);
@@ -42,6 +44,15 @@ test('room rename preserves selected room and draft, persists through refresh an
     await ui.click('Refresh rooms');
     expect(document.querySelector('[aria-label="Rename room: Short"]')).not.toBeNull();
     expect(data.rooms[1]?.members).toEqual(snapshot().rooms[1]?.members);
+    expect(title()?.textContent).toBe('first');
+    await ui.click('Short');
+    expect(title()?.textContent).toBe('Short');
+    const longTitle = '한글 방 제목과 긴 프로젝트 이름 '.repeat(4).trim();
+    await ui.click('Rename room: Short'); await ui.type('Room title', longTitle); await key('Enter');
+    expect(title()?.textContent).toBe(longTitle);
+    expect(title()?.getAttribute('aria-description')).toBe(longTitle);
+    await ui.click('Refresh rooms');
+    expect(title()?.textContent).toBe(longTitle);
   });
 });
 

@@ -25,7 +25,7 @@ const snapshot = (): ChatsSnapshot => ({ rooms: [{ id: 'room', workspace: '/proj
   { id: 'goal', roomId: 'room', threadId: null, sender: 'user', recipient: 'dev', kind: 'goal', text: 'Build login', createdAt: '2026-10-03T00:00:00Z', taskId: 'task', status: 'waiting' },
   { id: 'reply', roomId: 'room', threadId: 'goal', sender: 'dev', recipient: null, kind: 'message', text: 'Waiting for design', createdAt: '2026-10-03T00:01:00Z', taskId: 'task', status: 'waiting' },
 ] });
-test('Worker opens Homie management from its right tools rail and participants and preserves the hidden conversation', async () => {
+test('Worker shows the room title and opens Homie management from its right tools rail while preserving the hidden conversation', async () => {
   await withDOM(async ui => {
     const requests: ChatsRequest[] = [], selections: (string | undefined)[] = [];
     const api = { request: async (request: ChatsRequest) => { requests.push(request); return snapshot(); } };
@@ -37,8 +37,9 @@ test('Worker opens Homie management from its right tools rail and participants a
     expect(document.querySelector('[aria-label="Worker"] header [aria-label="Manage Homies"]')).toBeNull();
     const manage = document.querySelector<HTMLButtonElement>('[aria-label="Room tools"] [aria-label="Open Homie: Development"]')!;
     await act(async () => manage.click());
-    await ui.click('Manage Homie: Development');
-    expect(selections).toEqual(['dev', 'dev']);
+    expect(document.querySelector('[aria-label="Worker"] header h2')?.textContent).toBe('Login');
+    expect(document.querySelector('[aria-label="Worker"] header h2')?.getAttribute('aria-description')).toBe('Login');
+    expect(selections).toEqual(['dev']);
     await render(false);
     expect(document.querySelector<HTMLElement>('[aria-label="Worker"]')?.hidden).toBe(true);
     await render();

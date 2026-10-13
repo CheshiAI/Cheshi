@@ -232,11 +232,9 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
       {sidebarTarget === undefined && <aside className={styles.sidebar}>{roomList}</aside>}
       <section className={styles.conversation} aria-label={room?.name ?? 'Room conversation'}>
         <header className={styles.header}>
-          {room ? <div className={styles.participants} aria-label="Room participants">
-            {room.members.map(member => <TooltipTarget key={member.id} content={member.name}>
-              <NeumorphicButton variant="ghost" className={styles.participant} aria-label={`Manage Homie: ${member.name}`} disabled={!onManageHomies || memberStatus(member, room.workspace) === DELETED_HOMIE} onClick={() => onManageHomies?.(member.id, room.id)}><AgentAvatar id={member.id} avatar={agents.find(agent => agent.id === member.id)?.avatar} /><span>{member.name}{memberStatus(member, room.workspace) === DELETED_HOMIE ? ' · Deleted Homie' : ''}</span></NeumorphicButton>
-            </TooltipTarget>)}
-          </div> : <SidebarPanelTitle as="h2" icon={<WorkerIcon />} title="WORKER" />}
+          {room ? <TooltipTarget content={room.name} placement="below">
+            <h2 className={styles.roomTitle}>{room.name}</h2>
+          </TooltipTarget> : <SidebarPanelTitle as="h2" icon={<WorkerIcon />} title="WORKER" />}
           <div className={styles.headerActions}>
             <TooltipButton variant="ghost" size="icon" title="Phone calls" aria-label="Phone calls" aria-haspopup="dialog" disabled={!room} onClick={() => setVoiceOpen(true)}><Phone aria-hidden="true" /></TooltipButton>
             <WorkspaceLayoutControls />

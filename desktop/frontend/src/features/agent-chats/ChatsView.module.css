@@ -1,7 +1,8 @@
 .root { display: flex; flex: 1; min-width: 0; min-height: 0; height: 100%; font-size: 12px; }
 .root[hidden] { display: none; }
 .sidebar { --liquid-glass-radius: 0; width: var(--sidebar-width); flex: 0 0 var(--sidebar-width); min-height: 0; display: flex; flex-direction: column; border-left: 0; border-top: 0; border-bottom: 0; }
-.header { height: 42px; flex: 0 0 42px; box-sizing: border-box; display: flex; align-items: center; gap: var(--icon-default); padding: 0 var(--space-default); border-bottom: 1px solid var(--divider); }
+/* Keep the header above filtered, scrolled messages when tooltip blur is active. */
+.header { position: relative; z-index: 1; height: 42px; flex: 0 0 42px; box-sizing: border-box; display: flex; align-items: center; gap: var(--icon-default); padding: 0 var(--space-default); border-bottom: 1px solid var(--divider); }
 .header > h2 { flex: 1; min-width: 0; overflow: hidden; }
 .headerActions { display: flex; flex: 0 0 auto; align-items: center; gap: var(--icon-default); }
 .headerActions > [aria-label='Pane layout'] { position: relative; padding-left: calc(var(--icon-default) + 1px); }
@@ -10,10 +11,7 @@
 .body { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .content { --composer-overlay-height: 0px; --composer-overlay-top-padding: 0px; --chat-content-max-width: 100%; --chat-content-padding: var(--space-default); position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 .toolsRail { min-height: 0; display: flex; box-sizing: border-box; width: 42px; flex: 0 0 42px; align-items: center; flex-direction: column; gap: var(--icon-default); border-left: 1px solid var(--divider); padding: 4.5px 0; }
-.participant[data-variant] { display: inline-flex; align-items: center; gap: var(--icon-default); min-width: 0; max-width: 100%; font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
-.participant > :first-child { flex-shrink: 0; }
-.participant > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.participants { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--space-default); overflow: hidden; font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
+.roomTitle { margin: 0; font-size: var(--font-size-small); font-weight: 400; color: var(--sidebar-section-label-color); text-overflow: ellipsis; white-space: nowrap; }
 .timeline { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; scroll-padding-bottom: calc(var(--composer-overlay-height) + var(--space-default)); }
 .latestMessages { position: absolute; bottom: calc(var(--composer-overlay-height) + var(--space-default)); left: var(--space-default); right: var(--space-default); display: flex; justify-content: center; pointer-events: none; z-index: 2; }
 .latestMessages > button { pointer-events: auto; }

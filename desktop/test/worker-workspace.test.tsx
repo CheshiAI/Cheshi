@@ -54,7 +54,7 @@ test('Homies opens, closes and edits locally without rendering shell siblings or
     const panel = document.querySelector('[aria-label="Homies sidebar"]')!;
     await act(async () => panel.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
     expect(open()).toBe('false');
-    await ui.click(`Manage Homie: ${agent.name}`);
+    await ui.click(`Open Homie: ${agent.name}`);
     expect(document.querySelector<HTMLElement>('[aria-label="Worker"]')?.hidden).toBe(false);
     expect(document.querySelector('[aria-label="Agent details"]')).not.toBeNull();
     expect(Boolean(panel.querySelector('[aria-label="Agent details"]'))).toBe(true);
