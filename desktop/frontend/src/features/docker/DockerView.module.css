@@ -18,6 +18,11 @@
   border-bottom: 1px solid var(--divider);
 }
 .containerList { flex: 1; min-height: 0; overflow: auto; }
+.containerList, .logOutput {
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
 .notice:not(:empty) { padding: var(--space-default); }
 .container[data-variant='ghost'] {
   width: 100%;
@@ -59,7 +64,10 @@
   color: var(--sidebar-section-label-color);
   line-height: 1.6;
 }
-.logNotice, .empty { margin: 0; padding: var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
+.logNotice { margin: 0; padding: var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
+.loading { display: flex; align-items: center; gap: var(--icon-default); }
+.empty { --empty-text: var(--sidebar-section-label-color); --empty-muted: var(--sidebar-section-label-color); }
+.empty > strong { font-size: var(--font-size-section-title); }
 .terminalView { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .terminalView[hidden], .logOutput[hidden] { display: none; }
 .terminalHost { flex: 1; min-height: 0; min-width: 0; }

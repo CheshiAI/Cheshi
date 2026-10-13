@@ -19,11 +19,12 @@ function harness() {
   let dependencies: unknown[] | undefined;
   let cleanup: (() => void) | undefined;
   const timers = new Map<number, { at: number; callback: () => void }>();
-  const ref = { current: undefined as unknown };
+  const refs: { current: unknown }[] = [];
+  let refCursor = 0;
   const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
   const modules: Record<string, unknown> = {
     react: {
-      useRef: () => ref,
+      useRef: (value: unknown) => refs[refCursor++] ?? (refs[refCursor - 1] = { current: value }),
       useEffect(effect: () => () => void, values: unknown[]) {
         if (dependencies && values.every((value, index) => value === dependencies![index])) return;
         cleanup?.();
@@ -35,7 +36,8 @@ function harness() {
     'react-dom': { createPortal: (node: unknown) => node },
     'lucide-react': { CircleCheck: 'CircleCheck', CircleAlert: 'CircleAlert', CircleX: 'CircleX', X: 'X' },
     './LiquidGlassPanel': { LiquidGlassPanel: 'Panel' },
-    './NeumorphicButton': { NeumorphicButton: 'Button' },
+    './TooltipButton': { TooltipButton: 'Button' },
+    './RegionalBlur': { RegionalBlur: 'RegionalBlur' },
     './StatusToast.module.css': { default: {} },
   };
   const source = readFileSync(new URL('../frontend/src/shared/ui/StatusToast.tsx', import.meta.url), 'utf8');
@@ -43,14 +45,14 @@ function harness() {
     jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023,
   } });
   const exports: Record<string, unknown> = {};
-  vm.runInNewContext(compiled.outputText, { exports, document: { body: {} }, window: {
+  vm.runInNewContext(compiled.outputText, { exports, document: { body: {}, getElementById: () => null }, window: {
     setTimeout(callback: () => void, delay: number) { const id = ++nextTimer; timers.set(id, { at: now + delay, callback }); return id; },
     clearTimeout(id: number) { timers.delete(id); },
   }, require(name: string) { assert.ok(Object.hasOwn(modules, name), `Unexpected dependency: ${name}`); return modules[name]; } });
   const component = exports.StatusToast;
   assert.ok(typeof component === 'function');
   return {
-    render(props: StatusToastProps): Element { return component(props); },
+    render(props: StatusToastProps): Element { refCursor = 0; return component(props); },
     advance(ms: number) {
       now += ms;
       for (const [id, timer] of timers) if (timer.at <= now) { timers.delete(id); timer.callback(); }

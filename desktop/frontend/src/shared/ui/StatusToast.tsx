@@ -2,7 +2,8 @@ import { CircleCheck, CircleAlert, CircleX, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { LiquidGlassPanel } from './LiquidGlassPanel';
-import { NeumorphicButton } from './NeumorphicButton';
+import { TooltipButton } from './TooltipButton';
+import { RegionalBlur } from './RegionalBlur';
 import styles from './StatusToast.module.css';
 
 export interface StatusToastMessage {
@@ -18,6 +19,7 @@ export interface StatusToastProps {
 }
 
 export function StatusToast({ message, onDismiss }: StatusToastProps) {
+  const sourceRef = useRef(document.getElementById('app'));
   const dismiss = useRef(onDismiss);
   dismiss.current = onDismiss;
   useEffect(() => {
@@ -27,16 +29,20 @@ export function StatusToast({ message, onDismiss }: StatusToastProps) {
   const Icon = { success: CircleCheck, warning: CircleAlert, error: CircleX }[message.variant];
 
   return createPortal(
-    <LiquidGlassPanel as="aside" className={styles.card} data-variant={message.variant}>
-      <span className={styles.icon} aria-hidden="true"><Icon /></span>
-      <div className={styles.content} role={message.variant === 'error' ? 'alert' : 'status'} aria-atomic="true">
-        <strong className={styles.title}>{message.title}</strong>
-        <p className={styles.description}>{message.description}</p>
+    <RegionalBlur sourceRef={sourceRef} sourceMode="replace">
+      <div className={styles.anchor}>
+        <LiquidGlassPanel as="aside" className={styles.card} data-liquid-glass-backdrop="true" data-variant={message.variant}>
+          <span className={styles.icon} aria-hidden="true"><Icon /></span>
+          <div className={styles.content} role={message.variant === 'error' ? 'alert' : 'status'} aria-atomic="true">
+            <strong className={styles.title}>{message.title}</strong>
+            <p className={styles.description}>{message.description}</p>
+          </div>
+          <TooltipButton variant="ghost" size="icon" aria-label="Close notification" title="Close notification" onClick={onDismiss}>
+            <X aria-hidden="true" />
+          </TooltipButton>
+        </LiquidGlassPanel>
       </div>
-      <NeumorphicButton raised className={styles.close} aria-label="Close notification" onClick={onDismiss}>
-        <X aria-hidden="true" />
-      </NeumorphicButton>
-    </LiquidGlassPanel>,
+    </RegionalBlur>,
     document.body,
   );
 }

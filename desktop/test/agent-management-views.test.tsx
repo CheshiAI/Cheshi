@@ -3,6 +3,8 @@ import { withRuntimePolling } from './agent-runtime-test-polling';
 import { expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DockerView } from '../frontend/src/features/docker/DockerView';
+import { ContainerTerminal } from '../frontend/src/features/docker/ContainerTerminal';
+import type { AgentTerminalSession } from '../shared/agent-terminal';
 import { AgentManagementModel, type AgentManagementState } from '../frontend/src/shared/agent-management/agentManagementModel';
 import type { WorkerLifecycleDisplay } from '../shared/agent-management';
 import { Window } from 'happy-dom';
@@ -47,6 +49,55 @@ async function withDOM(run: (ui: { render(node: ReactNode): Promise<void>; click
     }
   }
 }
+
+test('Docker distinguishes loading from empty states and retains logs during refresh', async () => {
+  const unused = async () => { throw Error('Rendering must not call an API'); };
+  const model = new AgentManagementModel({ engines: unused, snapshot: unused, details: unused, control: unused });
+  const agent = { id: 'worker', name: 'Worker', image: 'test', state: 'running' };
+  const state: AgentManagementState = { catalog: { engines: [], error: null }, engineId: 'docker:test', agentId: agent.id,
+    snapshot: { engineId: 'docker:test', online: true, error: null, agents: [agent] }, details: null,
+    changing: false, pendingControl: null, loading: true, error: null };
+  try {
+    await withDOM(async ({ render }) => {
+      await render(<DockerView model={model} state={{ ...state, agentId: '' }} />);
+      expect(document.body.textContent).toContain('Loading containers…');
+      expect(document.body.textContent).not.toContain('Choose a container');
+      await render(<DockerView model={model} state={{ ...state, agentId: '', loading: false }} />);
+      expect(document.querySelector('[aria-label="Container logs"] strong')?.textContent).toBe('Select a container');
+      await render(<DockerView model={model} state={state} />);
+      expect(document.body.textContent).toContain('Loading logs…');
+      expect(document.body.textContent).not.toContain('No logs available');
+      const details = { agent, ready: true, busy: false, authenticated: true, threadId: null, error: null, logs: 'Retained log', tasks: [] };
+      await render(<DockerView model={model} state={{ ...state, details, loading: false }} />);
+      const logs = document.querySelector<HTMLPreElement>('[aria-label="Container log output"]')!;
+      logs.scrollTop = 80;
+      await render(<DockerView model={model} state={{ ...state, details, changing: true }} />);
+      expect(document.body.textContent).toContain('Refreshing…');
+      expect(document.body.textContent).toContain('Applying container operation…');
+      expect(document.querySelector('[aria-label="Container log output"]')).toBe(logs);
+      expect(logs.hidden).toBe(false);
+      expect(logs.textContent).toBe('Retained log');
+      expect(logs.scrollTop).toBe(80);
+      await render(<DockerView model={model} state={{ ...state, loading: false }} />);
+      expect(document.querySelector('[aria-label="Container logs"] strong')?.textContent).toBe('No logs available');
+      expect(logs.hidden).toBe(true);
+    });
+  } finally { model.dispose(); }
+});
+
+test('container connection status clears after opening and unmount closes the shell', async () => {
+  const connection = registryDeferred<AgentTerminalSession>();
+  const closed: string[] = [];
+  const api = { open: () => connection.promise, update: async () => {},
+    close: async (id: string) => { closed.push(id); }, onChanged: () => () => {} };
+  await withDOM(async ({ render }) => {
+    await render(<ContainerTerminal api={api} engineId="docker:test" agentId="worker" active />);
+    expect(document.querySelector('[role="status"]')?.textContent).toBe('Connecting to container…');
+    await act(async () => connection.resolve({ id: 'shell', engineId: 'docker:test', agentId: 'worker', ended: false, error: null }));
+    expect(document.querySelector('[role="status"]')).toBeNull();
+  });
+  expect(closed).toEqual(['shell']);
+});
 
 test('execution health distinguishes engine responses, task activity and unavailable snapshots', async () => {
   const health = { taskId: 'task', startedAt: '2026-10-04T00:00:00Z', lastActivityAt: '2026-10-04T00:01:00Z',

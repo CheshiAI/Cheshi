@@ -44,8 +44,9 @@
   color: var(--codegraph-disabled);
 }
 
+.spacer { flex: 1; }
+
 .account {
-  margin-left: auto;
   max-width: 60%;
   margin-right: var(--space-10);
 }

@@ -64,6 +64,7 @@ function harness(props: ComponentProps<typeof WorkspaceStatusBar>) {
     '../account/AccountUsagePanel': { AccountUsagePanel: 'AccountUsagePanel' },
     '../account/AddAccountDialog': { AddAccountDialog: 'AddAccountDialog' },
     '../updates/AppUpdateIndicator': { AppUpdateIndicator: 'AppUpdateIndicator' },
+    '../chrome/KeepAwakeStatus': { KeepAwakeStatus: 'KeepAwakeStatus' },
     './LanguageSelector': { LanguageSelector: 'LanguageSelector' },
     './statusBarModel': { accountStatusSummary, accountUsageTotals },
     './WorkspaceStatusBar.module.css': { default: {} },

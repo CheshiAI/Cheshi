@@ -6,6 +6,7 @@ import { LiquidGlassPanel } from '../../shared/ui';
 import { AccountUsagePanel } from '../account/AccountUsagePanel';
 import { AddAccountDialog } from '../account/AddAccountDialog';
 import { AppUpdateIndicator } from '../updates/AppUpdateIndicator';
+import { KeepAwakeStatus } from '../chrome/KeepAwakeStatus';
 import { accountStatusSummary, accountUsageTotals } from './statusBarModel';
 import styles from './WorkspaceStatusBar.module.css';
 
@@ -47,6 +48,8 @@ export function WorkspaceStatusBar({ onAccountInitialLoad, ...accountProps }: Wo
   return (
     <footer className={styles.bar} aria-label="Workspace status">
       <AppUpdateIndicator />
+      <span className={styles.spacer} aria-hidden="true" />
+      <KeepAwakeStatus />
       <button ref={accountButton} type="button" className={`${styles.item} ${styles.account}`} popoverTarget={accountId}
         aria-haspopup="dialog" aria-expanded={accountOpen} aria-controls={accountId}
         data-account-state={accountReady ? 'ready' : 'disabled'}

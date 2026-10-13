@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AgentTerminalApi, AgentTerminalSession } from '../../../../shared/agent-terminal';
-import { NeumorphicButton } from '../../shared/ui';
+import { LoadingIndicator, NeumorphicButton } from '../../shared/ui';
 import styles from './DockerView.module.css';
 
 /** Remains mounted while viewing logs; changing containers closes the old shell. */
@@ -66,10 +66,10 @@ export function ContainerTerminal({ api, engineId, agentId, active }: {
   }, [api, session, active]);
 
   return <div className={styles.terminalView} hidden={!active} aria-label="Container terminal">
-    {error || session?.ended ? <div className={styles.empty}>
+    {error || session?.ended ? <div className={styles.logNotice}>
       <p role="status">{error || session?.error || 'Shell exited.'}</p>
       {api && <NeumorphicButton variant="ghost" onClick={() => setAttempt(value => value + 1)}>Reconnect</NeumorphicButton>}
-    </div> : !session ? <p className={styles.empty} role="status">Connecting to container…</p> : null}
+    </div> : !session ? <p className={`${styles.logNotice} ${styles.loading}`} role="status"><LoadingIndicator />Connecting to container…</p> : null}
     <div ref={host} className={styles.terminalHost} aria-label="Interactive container shell" />
   </div>;
 }

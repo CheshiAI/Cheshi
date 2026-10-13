@@ -1,6 +1,6 @@
 import { Box, Logs, Play, RefreshCw, RotateCw, Square, SquareTerminal, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { LiquidGlassPanel, LiquidGlassSelect } from '../../shared/ui';
+import { EmptyState, LiquidGlassPanel, LiquidGlassSelect, LoadingIndicator } from '../../shared/ui';
 import { DockerIcon } from '../../shared/ui/DockerIcon';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
@@ -47,7 +47,8 @@ export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentS
   const canStop = agent?.state === 'running' && details?.ready === true && details.busy === false;
   const engineStatus = loading ? 'Refreshing…' : snapshot?.online ? 'Engine connected' : 'Engine offline';
   return <AgentManagementFrame title="Docker" icon={<DockerIcon />} bodyLayout="fill" actions={<>
-      {snapshot?.online === true && <span className={styles.description} role="status">connected</span>}
+      {loading ? <span className={`${styles.description} ${viewStyles.loading}`} role="status"><LoadingIndicator />Refreshing…</span>
+        : snapshot?.online === true && <span className={styles.description} role="status">connected</span>}
       <LiquidGlassSelect className={styles.headerEngineSelect} ariaLabel="Execution engine" title={engineStatus}
         value={state.engineId} menuAppearance="toolbar"
         triggerAppearance="standard" placeholder="Select engine" disabled={changing || catalog.engines.length === 0}
@@ -103,14 +104,19 @@ export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentS
               onClick={() => { void model.control('restart'); }}><RotateCw aria-hidden="true" /></TooltipButton>
           </div>
         </div>
-        {changing && <p className={viewStyles.logNotice} role="status">Applying container operation…</p>}
+        {changing && <p className={`${viewStyles.logNotice} ${viewStyles.loading}`} role="status"><LoadingIndicator />Applying container operation…</p>}
         {agent.pendingDeletion && <p className={viewStyles.logNotice}>Deletion is unfinished. Use Delete container to retry cleanup.</p>}
         {details?.error && <p role="alert" className={viewStyles.logNotice}>{details.error}</p>}
-        <pre ref={logScrollbar} className={viewStyles.logOutput} hidden={mode !== 'logs'} aria-label="Container log output">{details?.logs || (loading ? 'Loading logs…' : 'No logs available.')}</pre>
+        <pre ref={logScrollbar} className={viewStyles.logOutput} hidden={mode !== 'logs' || !details?.logs} aria-label="Container log output">{details?.logs}</pre>
+        {mode === 'logs' && !details?.logs && (loading
+          ? <p className={`${viewStyles.logNotice} ${viewStyles.loading}`} role="status"><LoadingIndicator />Loading logs…</p>
+          : <EmptyState className={viewStyles.empty} title="No logs available" description="Container logs will appear here when available." />)}
         {terminalTarget === target && agent.state === 'running' && <ContainerTerminal key={target}
           api={model.terminal} engineId={state.engineId} agentId={agent.id} active={mode === 'terminal'} />}
-        {mode === 'terminal' && agent.state !== 'running' && <p className={viewStyles.empty}>Start the container to connect to its shell.</p>}
-      </> : <p className={viewStyles.empty}>Select a container to view its logs.</p>}
+        {mode === 'terminal' && agent.state !== 'running' && <EmptyState className={viewStyles.empty}
+          title="Container stopped" description="Start the container to connect to its shell." />}
+      </> : loading ? <p className={`${viewStyles.logNotice} ${viewStyles.loading}`} role="status"><LoadingIndicator />Loading containers…</p>
+        : <EmptyState className={viewStyles.empty} title="Select a container" description="Choose a container from the list to view its logs." />}
     </section>
     {deletion && <WorkerDeleteDialog kind="container" name={deletion.name} retryDeleteData={deletion.retryDeleteData} onClose={() => setDeletion(null)}
       onDelete={deleteData => model.remove(deletion.engineId, deletion.id, deleteData)} />}

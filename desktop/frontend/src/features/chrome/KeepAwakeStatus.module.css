@@ -1,0 +1,15 @@
+.status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--icon-default);
+  color: var(--sidebar-section-label-color);
+  white-space: nowrap;
+}
+.status > svg {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  stroke-width: var(--icon-button-stroke-width);
+}
+.status[data-enabled='true'] > svg { color: var(--codegraph-default); }
+.status:focus-visible { outline: 1px solid var(--active-text); outline-offset: 2px; }

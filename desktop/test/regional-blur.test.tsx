@@ -7,15 +7,21 @@ import { RegionalBlur } from '../frontend/src/shared/ui/RegionalBlur';
 import { LiquidGlassPanel } from '../frontend/src/shared/ui/LiquidGlassPanel';
 import { LiquidGlassSelect } from '../frontend/src/shared/ui/LiquidGlassSelect';
 import { Tooltip } from '../frontend/src/shared/ui/Tooltip';
+import { StatusToast } from '../frontend/src/shared/ui/StatusToast';
 import { ChatUserInputPrompt } from '../frontend/src/features/chat/ChatUserInputPrompt';
 import { regionalBlurMask } from '../frontend/src/shared/ui/regionalBlurGeometry';
 
 mock.module('../frontend/src/shared/ui/Tooltip.module.css', () => ({
   default: { anchor: 'tooltip-anchor', content: 'tooltip-content' },
 }));
+mock.module('../frontend/src/shared/ui/StatusToast.module.css', () => ({
+  default: { anchor: 'toast-anchor', card: 'toast-card', icon: 'toast-icon', content: 'toast-content',
+    title: 'toast-title', description: 'toast-description', close: 'toast-close' },
+}));
 
-function Fixture({ portal, thread = 'one', menu = true, composer = true, nested = false, layered = false, select = false, fullSceneSelect = false, mcp = false, tooltip = false }: {
+function Fixture({ portal, thread = 'one', menu = true, composer = true, nested = false, layered = false, select = false, fullSceneSelect = false, mcp = false, tooltip = false, toast = false }: {
   portal: HTMLElement; thread?: string; menu?: boolean; composer?: boolean; nested?: boolean; layered?: boolean; select?: boolean; fullSceneSelect?: boolean; mcp?: boolean; tooltip?: boolean;
+  toast?: boolean;
 }) {
   const sourceRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -46,6 +52,7 @@ function Fixture({ portal, thread = 'one', menu = true, composer = true, nested 
           onChange={() => {}} />}
       </LiquidGlassPanel></div>}
     {menu && (layered ? <RegionalBlur sourceRef={composerRef}>{popup}</RegionalBlur> : popup)}
+    {toast && <StatusToast message={{ id: 'toast', variant: 'success', title: 'Saved', description: 'Changes saved.' }} onDismiss={() => {}} />}
   </>;
   return tooltip ? scene : <RegionalBlur sourceRef={sourceRef}>
     {fullSceneSelect ? <div ref={fullSceneRef} data-full-scene="true" data-box="100,50,600,500">{scene}</div> : scene}
@@ -95,6 +102,7 @@ async function withDOM(run: (h: {
     getClientRects: { configurable: true, value(this: TestElement) { return this.hidden ? [] : [box(this)]; } },
   });
   const container = window.document.createElement('div'), portal = window.document.createElement('div');
+  container.id = 'app';
   window.document.body.append(container, portal);
   const root = createRoot(container as unknown as HTMLElement);
   let mounted = true;
@@ -127,6 +135,29 @@ async function withDOM(run: (h: {
 function mask(document: Document) {
   return decodeURIComponent(document.querySelector('feImage')?.getAttribute('href')?.split(',').slice(1).join(',') ?? '');
 }
+
+test('status toast blurs the app behind its portal and restores the source when dismissed', async () => {
+  await withDOM(async h => {
+    const app = h.document.getElementById('app')!;
+    app.dataset.box = '0,0,800,600';
+    app.style.filter = 'brightness(1)';
+    await h.render({ toast: true, menu: false, composer: false });
+    const toast = h.document.querySelector<HTMLElement>('aside[data-variant="success"]')!;
+    toast.dataset.box = '400,450,360,100';
+    Object.assign(toast.style, { display: 'flex', visibility: 'visible', opacity: '1', borderRadius: '12px' });
+    h.invalidate(); await h.flush();
+    expect(toast.getAttribute('data-regional-blur-surface')).toBe('true');
+    expect(app.contains(toast)).toBe(false);
+    expect(app.style.filter).toContain('url(');
+    expect(toast.style.filter).toBe('');
+    expect(h.document.querySelector<HTMLElement>('[data-source]')!.style.filter).toBe('');
+    expect([...h.document.querySelectorAll('feGaussianBlur')].some(node => node.getAttribute('stdDeviation') === '16')).toBe(true);
+    await h.render({ toast: false, menu: false, composer: false });
+    expect(app.style.filter).toBe('brightness(1)');
+    expect(toast.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(h.document.querySelector('aside[data-variant="success"]')).toBeNull();
+  });
+});
 
 test('portal menus and composer share a source while inline foregrounds stay outside registration', async () => {
   await withDOM(async h => {
