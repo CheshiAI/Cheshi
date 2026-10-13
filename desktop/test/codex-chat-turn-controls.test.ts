@@ -1,7 +1,6 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { registerCodexChatIpc } from '../lib/codex-chat-ipc.mts';
 import { CodexChatContexts } from '../lib/codex-chat-contexts.mts';
-import { CodexChatRelays } from '../lib/codex-chat-relay.mts';
 import { expect, test } from 'bun:test';
 import { textFromReasoningItem, timelineFromThread } from '../lib/codex-chat-thread-data.mts';
 import { codexThread, createCodexChatService, createFakeCodexClient } from './codex-chat-test-helpers.ts';
@@ -181,16 +180,16 @@ test('IPC forwards mode and steering to the correct pane and retains structured 
   const { service, client } = fixture();
   const contexts = new CodexChatContexts({ service: { cwd: '/workspace', serviceName: 'test', developerInstructions: 'Test.' },
     createClient: () => ({ ...client, async stop() {} }), emit() {} });
-  const relays = new CodexChatRelays({ contexts, emit() {} });
   const handlers = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();
   const event = { sender: { id: 1 } } as IpcMainInvokeEvent;
   registerCodexChatIpc({ ipc: { handle(channel, handler) { handlers.set(channel, handler); } },
-    service(_event, contextId) { expect(contextId).toBe('pane'); return service; }, relays,
+    service(_event, contextId) { expect(contextId).toBe('pane'); return service; },
     savedTurns: { async list() { return []; }, async save() { throw new Error('Unused'); }, async delete() { throw new Error('Unused'); } },
     assertSender(candidate) { expect(candidate).toBe(event); },
     async prepareMessage(value) { if (value === 'invalid') throw new TypeError('Invalid attachment'); return { text: String(value), clientMessageId: 'ipc-message', skill: null, attachments: [], threadId: 'thread' }; },
   });
   try {
+    expect([...handlers.keys()].some(channel => channel.includes('chat-relay'))).toBe(false);
     const mode = handlers.get('cheshi:set-codex-collaboration-mode')!;
     const steer = handlers.get('cheshi:steer-codex-chat-message')!;
     expect(await mode(event, 'default', 'pane')).toMatchObject({ collaborationMode: 'default' });

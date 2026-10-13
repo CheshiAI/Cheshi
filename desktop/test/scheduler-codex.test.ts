@@ -51,7 +51,7 @@ function setup(options: { beforeMessage?: () => Promise<void>; immediate?: boole
     return { ...client, async stop() {} };
   } });
   const primary = new CodexChatService({ ...configuration, client: createFakeCodexClient() });
-  const deletion = new CodexChatSessionDeletion({ service: primary, contexts, relays: { get: () => null } });
+  const deletion = new CodexChatSessionDeletion({ service: primary, contexts });
   const runner = new SchedulerCodexRunner({ contexts, deletion, profileId: () => profileId,
     async beforeMessage() { await options.beforeMessage?.(); selected.push('selected'); profileId = 'account-b'; } });
   const patches: Partial<ScheduleRun>[] = [];

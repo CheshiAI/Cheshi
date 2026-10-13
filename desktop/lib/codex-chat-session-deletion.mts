@@ -1,6 +1,5 @@
 import path from 'node:path';
 import type { CodexChatContexts } from './codex-chat-contexts.mts';
-import type { CodexChatRelays } from './codex-chat-relay.mts';
 import type { CodexChatService } from './codex-chat-service.mts';
 import type { CodexChatClient, JsonObject } from './codex-chat-types.mts';
 import { recordValue, stringValue } from './codex-service-utils.mts';
@@ -127,11 +126,11 @@ async function requestThreadDeletion(client: DeletionAccess['client'], threadId:
   }
 }
 
-/** A short workspace-wide gate prevents selection, send and relay-start races during deletion. */
+/** A short workspace-wide gate prevents selection and send races during deletion. */
 export class CodexChatSessionDeletion {
   private get activity() { return codexWorkspaceActivity(this.options.service.cwd); }
   private readonly confirmedDeletions = new Map<string, ConfirmedDeletion>();
-  private readonly options: { contexts: CodexChatContexts; service: CodexChatService; relays: Pick<CodexChatRelays, 'get'> };
+  private readonly options: { contexts: CodexChatContexts; service: CodexChatService };
   constructor(options: CodexChatSessionDeletion['options']) { this.options = options; }
 
   async exclusive<T>(operation: () => Promise<T>): Promise<T> {
@@ -154,13 +153,7 @@ export class CodexChatSessionDeletion {
         throw new Error('Stop the session in every chat pane before deleting it.');
       }
     }
-    for (const ownerId of new Set(entries.map(entry => entry.ownerId))) {
-      const relay = this.options.relays.get(ownerId);
-      if (relay && (relay.status === 'running' || relay.status === 'stopping')
-        && [relay.sourceThreadId, relay.targetThreadId, relay.moderatorThreadId].some(id => id && targets.has(id))) {
-        throw new Error('Stop the conversation relay before deleting this session.');
-      }
-    }
+
   }
 
   async deleteSession(service: CodexChatService, value: unknown): Promise<{ threadIds: string[] }> {

@@ -75,13 +75,12 @@ test('pending or newly blocked deletion cannot be submitted by Enter', () => {
 
 test('workspace deletion waits for operations and responses in every pane, including a hidden thread', () => {
   const idle = { state: INITIAL_CHAT_STATE, isOperationPending: () => false };
-  expect(chatSessionDeletionReason('thread', true, false, false, [idle])).toBeNull();
-  expect(chatSessionDeletionReason('thread', false, false, false, [])).not.toBeNull();
-  expect(chatSessionDeletionReason('thread', true, true, false, [idle])).not.toBeNull();
-  expect(chatSessionDeletionReason('thread', true, false, true, [idle])).not.toBeNull();
-  expect(chatSessionDeletionReason('thread', true, false, false, [idle, { ...idle, isOperationPending: () => true }])).not.toBeNull();
-  expect(chatSessionDeletionReason('thread', true, false, false,
+  expect(chatSessionDeletionReason('thread', true, false, [idle])).toBeNull();
+  expect(chatSessionDeletionReason('thread', false, false, [])).not.toBeNull();
+  expect(chatSessionDeletionReason('thread', true, true, [idle])).not.toBeNull();
+  expect(chatSessionDeletionReason('thread', true, false, [idle, { ...idle, isOperationPending: () => true }])).not.toBeNull();
+  expect(chatSessionDeletionReason('thread', true, false,
     [idle, { ...idle, state: { ...INITIAL_CHAT_STATE, activeSessionId: 'other', responseThreadIds: ['hidden'] } }])).not.toBeNull();
-  expect(chatSessionDeletionReason('thread', true, false, false,
+  expect(chatSessionDeletionReason('thread', true, false,
     [{ ...idle, state: { ...INITIAL_CHAT_STATE, sessions: [{ ...session, status: 'active' }] } }])).not.toBeNull();
 });

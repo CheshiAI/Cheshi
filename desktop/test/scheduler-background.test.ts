@@ -105,8 +105,8 @@ test('foreground sends and deletions respect a background conversation and share
   const client = createFakeCodexClient(); const service = new CodexChatService({ cwd: root, serviceName: 'cheshi', developerInstructions: 'Follow workspace instructions.', client });
   const other = new CodexChatService({ cwd: root, serviceName: 'cheshi', developerInstructions: 'Follow workspace instructions.', client: createFakeCodexClient() });
   const contexts = new CodexChatContexts({ service: { cwd: root, serviceName: 'cheshi', developerInstructions: 'Follow workspace instructions.' }, createClient: () => ({ ...createFakeCodexClient(), async stop() {} }), emit() {} });
-  const deletion = new CodexChatSessionDeletion({ service, contexts, relays: { get: () => null } });
-  const otherDeletion = new CodexChatSessionDeletion({ service: other, contexts, relays: { get: () => null } });
+  const deletion = new CodexChatSessionDeletion({ service, contexts });
+  const otherDeletion = new CodexChatSessionDeletion({ service: other, contexts });
   const remove = registerWorkspaceChatServices(root, () => [other]);
   try {
     other.pendingTurnStarts.add('shared');

@@ -118,7 +118,6 @@ test('agent details IPC checks the sender and routes reads to the requested pane
         return { agents: [] };
       } } as unknown as ReturnType<Options['service']>;
     },
-    relays: {} as Options['relays'],
     savedTurns: { async list() { return []; }, async save() { throw new Error('Unused'); }, async delete() { return { id: '' }; } },
     async prepareMessage() { throw new Error('Reading details must not send a message'); },
   };

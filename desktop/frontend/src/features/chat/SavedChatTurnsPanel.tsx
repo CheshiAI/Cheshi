@@ -86,7 +86,7 @@ export function SavedChatTurnsPanel({ savedTurns, onClose, onContinue, continuat
           onClick={() => setDeleteRecord(record)}><Trash2 aria-hidden="true" /></TooltipButton>
       </div>)}
     </div>
-    {deleteRecord && <ChatDeleteRecordDialog recordTitle={deleteRecord.sessionTitle || 'Untitled conversation'} kind="turn"
+    {deleteRecord && <ChatDeleteRecordDialog recordTitle={deleteRecord.sessionTitle || 'Untitled conversation'}
       pending={savedTurns.deleting} error={savedTurns.error}
       onDelete={() => savedTurns.remove(deleteRecord.id)} onClose={() => setDeleteRecord(null)} />}
   </section>;

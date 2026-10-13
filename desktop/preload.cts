@@ -1,7 +1,6 @@
 import { createIMessageApi } from './lib/imessage-preload.cts';
 import { createGitHubIssuesApi } from './lib/github-issue-preload.cts';
 import { chatUserInputRequest, chatUserInputResponse } from './shared/chat-user-input.ts';
-import { chatRelayHistoryRecord, chatRelayRequest, chatRelayState } from './shared/chat-relay.ts';
 import { chatSavedTurn, chatSavedTurnInput } from './shared/chat-saved-turns.ts';
 import { chatHistorySearchRequest, chatHistorySearchResponse } from './shared/chat-history-search.ts';
 import { codeExplanationRequest, codeExplanationRequestId } from './shared/workspace-code-explanation.ts';
@@ -966,37 +965,15 @@ const cheshiDesktopApi = {
     }
     return ipcRenderer.invoke('cheshi:cancel-codex-chat-response', threadId, contextId);
   },
-  startCodexChatRelay: (request) => ipcRenderer.invoke('cheshi:start-codex-chat-relay', chatRelayRequest(request)),
   saveCodexTurn: async (input) => chatSavedTurn(await ipcRenderer.invoke('cheshi:save-codex-turn', chatSavedTurnInput(input))),
   githubIssues: createGitHubIssuesApi(ipcRenderer),
   editorSession: createEditorSessionApi(ipcRenderer),
   chatQuestionDismissals: createChatQuestionDismissalsApi(ipcRenderer),
   deleteCodexSavedTurn: (id) => deleteStoredChatRecord('cheshi:delete-codex-saved-turn', id, /^[a-f0-9]{64}$/),
-  deleteCodexChatRelayHistory: (id) => deleteStoredChatRecord('cheshi:delete-codex-chat-relay-history', id, /^[a-zA-Z0-9_-]{1,128}$/),
   listCodexSavedTurns: async () => {
     const value: unknown = await ipcRenderer.invoke('cheshi:list-codex-saved-turns');
     if (!Array.isArray(value)) throw new TypeError('Invalid saved turns response.');
     return value.map(chatSavedTurn);
-  },
-  stopCodexChatRelay: () => ipcRenderer.invoke('cheshi:stop-codex-chat-relay'),
-  getCodexChatRelay: () => ipcRenderer.invoke('cheshi:get-codex-chat-relay'),
-  listCodexChatRelayHistory: async () => {
-    const value: unknown = await ipcRenderer.invoke('cheshi:list-codex-chat-relay-history');
-    if (!Array.isArray(value)) throw new TypeError('Invalid conversation history response.');
-    return value.map((entry) => {
-      const record = chatRelayHistoryRecord(entry);
-      if (!record) throw new TypeError('Invalid conversation history record.');
-      return record;
-    });
-  },
-  onCodexChatRelayEvent: (handler) => {
-    if (typeof handler !== 'function') throw new TypeError('Relay event handler must be a function.');
-    const listener = (_event: IpcRendererEvent, value: unknown) => {
-      const state = chatRelayState(value);
-      if (state) handler(state);
-    };
-    ipcRenderer.on('cheshi:codex-chat-relay-event', listener);
-    return () => ipcRenderer.removeListener('cheshi:codex-chat-relay-event', listener);
   },
   disposeCodexChatContext: (contextId) => ipcRenderer.invoke('cheshi:dispose-codex-chat-context', contextId),
   onCodexChatEvent: (handler, contextId) => {

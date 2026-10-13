@@ -4,7 +4,6 @@ import { CodexChatService } from '../lib/codex-chat-service.mts';
 import type { CodexConversationAccess } from '../lib/codex-chat-account-continuity.mts';
 import { registerCodexChatIpc } from '../lib/codex-chat-ipc.mts';
 import { CodexChatContexts } from '../lib/codex-chat-contexts.mts';
-import { CodexChatRelays } from '../lib/codex-chat-relay.mts';
 import { CodexChatSessionDeletion } from '../lib/codex-chat-session-deletion.mts';
 import { codexThread, createFakeCodexClient } from './codex-chat-test-helpers.ts';
 import { INITIAL_CHAT_STATE, chatReducer, normalizeChatEvent } from '../frontend/src/features/chat/model.ts';
@@ -30,8 +29,7 @@ function fixture() {
   const options = { cwd: '/workspace/cheshi', serviceName: 'test', developerInstructions: 'Test.', conversations };
   const service = new CodexChatService({ ...options, client });
   const contexts = new CodexChatContexts({ service: options, createClient: () => ({ ...client, async stop() {} }), emit() {} });
-  const relays = new CodexChatRelays({ contexts, emit() {} });
-  const deletion = new CodexChatSessionDeletion({ service, contexts, relays });
+  const deletion = new CodexChatSessionDeletion({ service, contexts });
   const events: Record<string, unknown>[] = [];
   service.onEvent(event => events.push(event));
   const handlers = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();
@@ -39,7 +37,7 @@ function fixture() {
   let prepared = 0;
   let destroyed = false;
   registerCodexChatIpc({ ipc: { handle(channel, handler) { handlers.set(channel, handler); } },
-    service: () => service, relays, deletion,
+    service: () => service, deletion,
     savedTurns: { async list() { return []; }, async save() { throw new Error('Unused'); }, async delete() { throw new Error('Unused'); } },
     assertSender() {}, beforeMessage: () => before(),
     async prepareMessage() { prepared += 1; return { text: 'Next request', clientMessageId: 'next', skill: null, attachments: [] }; },

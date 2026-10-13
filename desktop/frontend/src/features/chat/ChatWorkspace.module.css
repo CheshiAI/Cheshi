@@ -113,12 +113,6 @@
   letter-spacing: normal;
 }
 .headerActions { display: flex; align-items: center; gap: var(--icon-default); }
-.headerDivider {
-  width: 1px;
-  height: var(--icon-button-size);
-  flex: 0 0 1px;
-  background: var(--divider);
-}
 .actions {
   display: flex;
   flex: 0 0 auto;

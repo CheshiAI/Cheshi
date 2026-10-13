@@ -114,7 +114,7 @@ runtimeTest('deletes a real paginated fork chain through the catalog in dependen
     const options = { cwd: directory, serviceName: 'test', developerInstructions: 'Offline fixture.' };
     service = new CodexChatService({ ...options, client, conversations });
     contexts = new CodexChatContexts({ service: options, emit() {}, createClient: () => writer });
-    const deletion = new CodexChatSessionDeletion({ service, contexts, relays: { get: () => null } });
+    const deletion = new CodexChatSessionDeletion({ service, contexts });
     const currentId = chain.at(-1)!.id;
     const pane = contexts.get(1, 'opened');
     await client.stop(); // Fork creation loads its writer; reopen on the chat-pane transport.

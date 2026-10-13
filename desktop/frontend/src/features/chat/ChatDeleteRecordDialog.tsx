@@ -6,27 +6,25 @@ import styles from './ChatSplitDialog.module.css';
 
 interface DeleteRecordProps {
   recordTitle: string;
-  kind: 'history' | 'turn';
   pending: boolean;
   error: string | null;
   onClose: () => void;
 }
 
-export function ChatDeleteRecordForm({ recordTitle, kind, pending, error, onDelete, onClose, formRef }:
+export function ChatDeleteRecordForm({ recordTitle, pending, error, onDelete, onClose, formRef }:
   DeleteRecordProps & { onDelete: () => void; formRef?: RefObject<HTMLFormElement | null> }) {
   return <form ref={formRef} className={styles.form} onSubmit={(event) => {
     event.preventDefault();
     if (!pending) onDelete();
   }}>
     <TooltipTarget content={recordTitle}><p className={styles.sessionTitle}>{recordTitle}</p></TooltipTarget>
-    <p>{kind === 'history' ? 'This deletes only the saved conversation history record.' : 'This deletes only the saved turn.'}
-      {kind === 'history' ? <br /> : ' '}Your original chat sessions are unaffected.<br />This cannot be undone.</p>
+    <p>This deletes only the saved turn. Your original chat sessions are unaffected.<br />This cannot be undone.</p>
     {error && <p role="alert">{error}</p>}
     <div className={styles.deletionActions}>
       {pending && <LoadingState type="processing" label="Deleting saved record…" className={styles.deletionProgress} />}
       <div className={styles.buttons}>
         <NeumorphicButton name="cancel" variant="standard" disabled={pending} onClick={onClose}>Cancel</NeumorphicButton>
-        <NeumorphicButton variant="standard" type="submit" disabled={pending} aria-busy={pending}>{kind === 'history' ? 'Delete history' : 'Delete saved turn'}</NeumorphicButton>
+        <NeumorphicButton variant="standard" type="submit" disabled={pending} aria-busy={pending}>Delete saved turn</NeumorphicButton>
       </div>
     </div>
   </form>;
@@ -59,7 +57,7 @@ export function ChatDeleteRecordDialog({ onDelete, ...props }: DeleteRecordProps
     }
   };
   return <Modal className={styles.recordDeletionDialog} headerVariant="section" closeButtonVariant="ghost"
-    title={props.kind === 'history' ? 'DELETE CONVERSATION HISTORY' : 'DELETE SAVED TURN'}
+    title="DELETE SAVED TURN"
     titleIcon={<Trash2 aria-hidden="true" />} closeDisabled={busy} onClose={close}>
     <ChatDeleteRecordForm {...props} formRef={formRef} pending={busy} error={failure ? props.error || failure : null}
       onDelete={() => void remove()} onClose={close} />

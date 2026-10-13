@@ -6,25 +6,23 @@ import { chatReducer, INITIAL_CHAT_STATE } from '../frontend/src/features/chat/m
 describe('chat workspace', () => {
   test('history forks can open in an empty pane but require idle source and destination', () => {
     const ready = { ...INITIAL_CHAT_STATE, phase: 'idle' as const };
-    expect(chatHistoryForkUnavailableReason(ready, false, false)).toBeNull();
-    expect(chatHistoryForkUnavailableReason(ready, false, true)).toContain('selected conversation');
-    expect(chatHistoryForkUnavailableReason(ready, true, false)).toContain('relay');
-    expect(chatHistoryForkUnavailableReason(undefined, false, false)).toContain('unavailable');
-    expect(chatHistoryForkUnavailableReason({ ...ready, phase: 'loading' }, false, false)).not.toBeNull();
-    expect(chatHistoryForkUnavailableReason({ ...ready, responseThreadIds: ['destination'] }, false, false)).not.toBeNull();
+    expect(chatHistoryForkUnavailableReason(ready, false)).toBeNull();
+    expect(chatHistoryForkUnavailableReason(ready, true)).toContain('selected conversation');
+    expect(chatHistoryForkUnavailableReason(undefined, false)).toContain('unavailable');
+    expect(chatHistoryForkUnavailableReason({ ...ready, phase: 'loading' }, false)).not.toBeNull();
+    expect(chatHistoryForkUnavailableReason({ ...ready, responseThreadIds: ['destination'] }, false)).not.toBeNull();
   });
-  test('fork requires a ready saved conversation outside a relay', () => {
+  test('fork requires a ready saved conversation', () => {
     const ready = { ...INITIAL_CHAT_STATE, activeSessionId: 'source', phase: 'idle' as const };
-    expect(chatForkUnavailableReason(ready, false)).toBeNull();
-    expect(chatForkUnavailableReason(ready, true)).toContain('relay');
-    expect(chatForkUnavailableReason(undefined, false)).toContain('Send a message');
-    expect(chatForkUnavailableReason(INITIAL_CHAT_STATE, false)).toContain('Send a message');
-    expect(chatForkUnavailableReason({ ...ready, phase: 'loading' }, false)).not.toBeNull();
-    expect(chatForkUnavailableReason({ ...ready, phase: 'streaming' }, false)).not.toBeNull();
-    expect(chatForkUnavailableReason({ ...ready, pendingNewResponse: true }, false)).not.toBeNull();
-    expect(chatForkUnavailableReason({ ...ready, responseThreadIds: ['other'] }, false)).not.toBeNull();
+    expect(chatForkUnavailableReason(ready)).toBeNull();
+    expect(chatForkUnavailableReason(undefined)).toContain('Send a message');
+    expect(chatForkUnavailableReason(INITIAL_CHAT_STATE)).toContain('Send a message');
+    expect(chatForkUnavailableReason({ ...ready, phase: 'loading' })).not.toBeNull();
+    expect(chatForkUnavailableReason({ ...ready, phase: 'streaming' })).not.toBeNull();
+    expect(chatForkUnavailableReason({ ...ready, pendingNewResponse: true })).not.toBeNull();
+    expect(chatForkUnavailableReason({ ...ready, responseThreadIds: ['other'] })).not.toBeNull();
     expect(chatForkUnavailableReason({ ...ready, approvals: [{ id: 'approval', threadId: 'source', kind: 'command',
-      title: 'Run', detail: '', canAllowForSession: false }] }, false)).not.toBeNull();
+      title: 'Run', detail: '', canAllowForSession: false }] })).not.toBeNull();
   });
   test('nested splits retain existing pane identities and focus the new pane', () => {
     const initial = createChatWorkspace('first');

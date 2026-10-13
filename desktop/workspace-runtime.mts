@@ -37,8 +37,6 @@ import { hasReadyCodeGraphIndex, prepareInitialCodeGraph } from './lib/codegraph
 import { CodexAccountService } from './lib/codex-account-service.mts';
 import { createWorkspaceChatHistory } from './lib/workspace-chat-history.mts';
 import { registerCodexChatIpc, registerCodexPluginIpc } from './lib/codex-chat-ipc.mts';
-import { CodexChatRelays } from './lib/codex-chat-relay.mts';
-import { CodexChatRelayHistory } from './lib/codex-chat-relay-history.mts';
 import { CodexChatSavedTurns } from './lib/codex-chat-saved-turns.mts';
 import { createWorkspaceSessionStores } from './lib/workspace-session-stores.mts';
 import { CodexChatContexts } from './lib/codex-chat-contexts.mts';
@@ -258,23 +256,15 @@ const codexChatContexts = new CodexChatContexts({
   },
 });
 const unsubscribeNotificationContext = codexChatContexts.onDispose((_ownerId, contextId) => { if (contextId) notifications.remove(contextId); });
-const codexChatRelays = new CodexChatRelays({
-  contexts: codexChatContexts,
-  history: new CodexChatRelayHistory(path.join(path.dirname(codeGraphDirectory), 'chat-relays')),
-  emit: (ownerId, state) => {
-    const window = workspaceWindows().find((candidate) => candidate.webContents.id === ownerId);
-    rendererEvents.send(window ?? null, 'cheshi:codex-chat-relay-event', state);
-  },
-});
 const codexChatSavedTurns = new CodexChatSavedTurns(path.join(path.dirname(codeGraphDirectory), 'saved-chat-turns'));
-const codexChatSessionDeletion = new CodexChatSessionDeletion({ contexts: codexChatContexts, service: codexChatService, relays: codexChatRelays });
+const codexChatSessionDeletion = new CodexChatSessionDeletion({ contexts: codexChatContexts, service: codexChatService });
 const accountSwitch = workspaceAccounts.register({
   ipc: ipcMain, assertSender: assertCheshiSender,
   startup: { signal: initialIndexAbort.signal, onPhase: phase => { logStartup(phase); if (phase === 'account selection ready') agentVoice.accountsReady(); },
     onError: error => chatServiceOptions.log('codex-account-initialization-failed', { message: String(error) }) },
   retained: [codexAppServerClient, ephemeralSessionClient],
   service: codexChatService, contexts: codexChatContexts, deletion: codexChatSessionDeletion,
-  relays: codexChatRelays, accountUsage: codexAccountService,
+  accountUsage: codexAccountService,
   temporaryBusy: () => temporaryChats.hasSessions || codeExplanation.busy || agentVoice.busy,
   schedulerBusy: () => workspaceScheduler.busy,
   resetTemporary: () => { codeExplanation.reset(); agentVoice.resetAccount(); sessionHistory.memory.resetAccount(); },
@@ -481,7 +471,7 @@ accountIpc.handle('cheshi:start-plugin-workflow', async (event, value, contextId
   assertCheshiSender(event, 'Plugin workflow');
   const request = pluginWorkflowRequest(value);
   const attachments = request.recordingId ? await skillRecordingStore.attachments(request.recordingId) : [];
-  return codexChatRelays.mutation(event.sender.id, contextId, () => chatServiceFor(event, contextId).startPluginWorkflow(request, attachments));
+  return codexChatSessionDeletion.mutation(() => chatServiceFor(event, contextId).startPluginWorkflow(request, attachments));
 });
 accountIpc.handle('cheshi:explain-code', (event, request) => {
   assertCheshiSender(event);
@@ -507,7 +497,7 @@ const sessionStores = createWorkspaceSessionStores(workspaceProjects.ipc, codeGr
 const appleNotesService = new AppleNotesService({ activationEvents: app, searchFilename: path.join(userDataDirectory, 'apple-notes', 'search.sqlite') });
 registerCodexChatIpc({
   notesService: appleNotesService,
-  ipc: ipcMain, accountIpc, service: chatServiceFor, relays: codexChatRelays, assertSender: assertCheshiSender,
+  ipc: ipcMain, accountIpc, service: chatServiceFor, assertSender: assertCheshiSender,
   savedTurns: codexChatSavedTurns,
   historySearch: sessionHistory.historySearch,
   beforeMessage: workspaceAccounts.beforeMessage,
@@ -964,7 +954,7 @@ function dispose(): Promise<void> {
       managementDisposal,
       codexAccountService.stop(), accountSwitch.stop(), workspaceAccounts.stop(),
       codeGraphService?.stop(), codeGraphIndexer?.stop(), ephemeralSessionClient.stop(),
-      codexChatRelays.shutdown(), codexChatContexts.stop(), codexChatSavedTurns.flush(), sessionStores.flush(), languageServerManager.stop(),
+      codexChatContexts.stop(), codexChatSavedTurns.flush(), sessionStores.flush(), languageServerManager.stop(),
     ]);
     options.scope.dispose();
     for (const result of results) {

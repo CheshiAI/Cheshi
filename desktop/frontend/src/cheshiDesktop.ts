@@ -871,15 +871,9 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   cancelCodexChatResponse: (threadId?: string | null, contextId?: string) => Promise<unknown>;
   editorSession?: import('../../shared/editor-session').EditorSessionApi;
   chatQuestionDismissals: import('../../shared/chat-question-dismissals').ChatQuestionDismissalsApi;
-  startCodexChatRelay: (request: import('../../shared/chat-relay').ChatRelayRequest) => Promise<import('../../shared/chat-relay').ChatRelayState>;
-  stopCodexChatRelay: () => Promise<import('../../shared/chat-relay').ChatRelayState | null>;
-  getCodexChatRelay: () => Promise<import('../../shared/chat-relay').ChatRelayState | null>;
-  listCodexChatRelayHistory: () => Promise<import('../../shared/chat-relay').ChatRelayHistoryRecord[]>;
-  deleteCodexChatRelayHistory: (id: string) => Promise<{ id: string }>;
   deleteCodexSavedTurn: (id: string) => Promise<{ id: string }>;
   listCodexSavedTurns: () => Promise<import('../../shared/chat-saved-turns').ChatSavedTurn[]>;
   saveCodexTurn: (input: import('../../shared/chat-saved-turns').ChatSavedTurnInput) => Promise<import('../../shared/chat-saved-turns').ChatSavedTurn>;
-  onCodexChatRelayEvent: (handler: (state: import('../../shared/chat-relay').ChatRelayState) => void) => () => void;
   disposeCodexChatContext: (contextId: string) => Promise<void>;
   onCodexChatEvent: (handler: (value: unknown) => void, contextId?: string) => () => void;
 }

@@ -3,21 +3,19 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ChatDeleteRecordForm } from '../frontend/src/features/chat/ChatDeleteRecordDialog';
 
 test('record deletion explains the scope and keeps original conversations intact', () => {
-  for (const kind of ['history', 'turn'] as const) {
-    const html = renderToStaticMarkup(<ChatDeleteRecordForm recordTitle="Saved discussion" kind={kind}
-      pending={false} error="Storage failed." onDelete={() => {}} onClose={() => {}} />);
-    expect(html).toContain('aria-description="Saved discussion"');
-    expect(html).toContain('Your original chat sessions are unaffected.<br/>This cannot be undone.');
-    expect(html).toContain('role="alert">Storage failed.');
-    expect(html).toContain('name="cancel"');
-    expect(html).toContain(kind === 'history' ? 'Delete history' : 'Delete saved turn');
-    expect(html).not.toContain('aria-label="Deleting saved record…"');
-  }
+  const html = renderToStaticMarkup(<ChatDeleteRecordForm recordTitle="Saved discussion"
+    pending={false} error="Storage failed." onDelete={() => {}} onClose={() => {}} />);
+  expect(html).toContain('aria-description="Saved discussion"');
+  expect(html).toContain('Your original chat sessions are unaffected.<br/>This cannot be undone.');
+  expect(html).toContain('role="alert">Storage failed.');
+  expect(html).toContain('name="cancel"');
+  expect(html).toContain('Delete saved turn');
+  expect(html).not.toContain('aria-label="Deleting saved record…"');
 });
 
 test('pending deletion blocks Enter submissions and exposes progress', () => {
   let calls = 0;
-  const props = { recordTitle: 'Saved discussion', kind: 'turn' as const, pending: true, error: null,
+  const props = { recordTitle: 'Saved discussion', pending: true, error: null,
     onDelete: () => { calls += 1; }, onClose: () => {} };
   const view = ChatDeleteRecordForm(props);
   view.props.onSubmit({ preventDefault() {} });

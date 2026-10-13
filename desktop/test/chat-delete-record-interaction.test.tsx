@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ChatDeleteRecordDialog } from '../frontend/src/features/chat/ChatDeleteRecordDialog';
 
-async function withDialog(kind: 'turn' | 'history', run: (h: {
+async function withDialog(run: (h: {
   render(pending: boolean): Promise<void>;
   escape(): Promise<void>;
   calls: { panelClosed: number; dialogClosed: number; deleted: number };
@@ -29,7 +29,7 @@ async function withDialog(kind: 'turn' | 'history', run: (h: {
     await act(async () => root.render(<section onKeyDown={event => {
       if (event.key === 'Escape') { event.preventDefault(); calls.panelClosed++; }
     }}>
-      <ChatDeleteRecordDialog kind={kind} recordTitle="Synthetic saved record" pending={pending} error={null}
+      <ChatDeleteRecordDialog recordTitle="Synthetic saved record" pending={pending} error={null}
         onDelete={async () => { calls.deleted++; return true; }} onClose={() => { calls.dialogClosed++; }} />
     </section>));
   };
@@ -54,8 +54,8 @@ async function withDialog(kind: 'turn' | 'history', run: (h: {
   }
 }
 
-test.each(['turn', 'history'] as const)('%s deletion focuses Cancel after opening and confines Escape to the modal', async kind => {
-  await withDialog(kind, async h => {
+test('saved turn deletion focuses Cancel after opening and confines Escape to the modal', async () => {
+  await withDialog( async h => {
     expect(document.querySelector('dialog')?.open).toBe(true);
     expect(document.activeElement === document.querySelector('button[name="cancel"]')).toBe(true);
     await h.escape();
@@ -64,7 +64,7 @@ test.each(['turn', 'history'] as const)('%s deletion focuses Cancel after openin
 });
 
 test('pending deletion blocks Escape without closing the panel behind the modal', async () => {
-  await withDialog('turn', async h => {
+  await withDialog( async h => {
     await h.render(true);
     document.querySelector('dialog')!.focus();
     await h.escape();

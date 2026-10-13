@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { IpcMainInvokeEvent } from 'electron';
 import { CodexChatContexts } from '../lib/codex-chat-contexts.mts';
-import { CodexChatRelays } from '../lib/codex-chat-relay.mts';
 import { CodexChatSessionDeletion } from '../lib/codex-chat-session-deletion.mts';
 import { CodexChatService } from '../lib/codex-chat-service.mts';
 import type { CodexConversationAccess } from '../lib/codex-chat-account-continuity.mts';
@@ -30,9 +29,8 @@ function fixture(responses: Record<string, unknown> = {}, conversations?: CodexC
   const contexts = new CodexChatContexts({ service: { cwd, serviceName: 'test', developerInstructions: 'Test.' },
     createClient: () => ({ ...createFakeCodexClient(defaults), async stop() {} }),
     emit(ownerId, event) { events.push({ ownerId, ...event }); } });
-  const relays = new CodexChatRelays({ contexts, emit() {} });
-  const deletion = new CodexChatSessionDeletion({ service, contexts, relays });
-  return { client, service, contexts, relays, deletion, events,
+  const deletion = new CodexChatSessionDeletion({ service, contexts });
+  return { client, service, contexts, deletion, events,
     async close() { service.stop(); await contexts.stop(); } };
 }
 
@@ -311,16 +309,6 @@ test('rejects active or pending affected panes including descendants', async () 
   }
 });
 
-test('rejects a related running relay even between turns', async () => {
-  const f = fixture();
-  try {
-    f.contexts.get(1, 'pane');
-    const deletion = new CodexChatSessionDeletion({ service: f.service, contexts: f.contexts,
-      relays: { get: () => ({ status: 'running', sourceThreadId: 'root', targetThreadId: 'other' }) as ReturnType<CodexChatRelays['get']> } });
-    expect((await failure(deletion.deleteSession(f.service, 'root'))).message).toContain('relay');
-    expect(f.client.requests).toHaveLength(0);
-  } finally { await f.close(); }
-});
 
 test('fails closed for malformed pages, repeating cursors and unrelated descendants', async () => {
   for (const page of [{ data: null, nextCursor: null }, { data: [], nextCursor: 1 }, { data: [], nextCursor: 'repeat' },
@@ -401,7 +389,7 @@ test('IPC exposes explicit deletion and protects in-flight message preparation',
   const ready = createDeferred<void>();
   const event = { sender: { id: 1 } } as IpcMainInvokeEvent;
   registerCodexChatIpc({ ipc: { handle(channel, handler) { handlers.set(channel, handler); } },
-    service() { return f.service; }, relays: f.relays, deletion: f.deletion, assertSender() {},
+    service() { return f.service; }, deletion: f.deletion, assertSender() {},
     savedTurns: { async list() { return []; }, async save() { throw new Error('Unused'); }, async delete() { throw new Error('Unused'); } },
     async prepareMessage() { entered.resolve(); await ready.promise; throw new Error('Attachment canceled'); },
   });

@@ -1,12 +1,10 @@
 import { useSchedulerSessionSync } from '../scheduler/useSchedulerSessionSync';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { chatRelayContextIds } from '../../../../shared/chat-relay';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { splitPaneIds } from '../../shared/ui/splitPaneModel';
 import { CHAT_PANE_LIMIT, closeChatPane, createChatWorkspace, resizeChatPane, splitChatPane } from './chatWorkspaceModel';
 import type { ChatController } from './useChatController';
 import type { ChatDraftSnapshot } from './chatDraftRecovery';
-import { useChatRelay } from './useChatRelay';
 import { prepareChatFork } from './prepareChatSplit';
 import { chatForkUnavailableReason, chatHistoryForkUnavailableReason } from './chatWorkspaceModel';
 import { openChatHistoryFork } from './openChatHistoryFork';
@@ -23,7 +21,6 @@ export function useChatWorkspace() {
   const [sessionCache, setSessionCache] = useState(createChatSessionCache);
   useSchedulerSessionSync(sessionCache);
   const sessionHistory = useSyncExternalStore(sessionCache.subscribe, sessionCache.getSnapshot);
-  const relay = useChatRelay();
   const savedTurns = useSavedChatTurns();
   const [state, setState] = useState(() => createChatWorkspace(crypto.randomUUID()));
   const [controllers, setControllers] = useState<Record<string, ChatController>>({});
@@ -45,8 +42,8 @@ export function useChatWorkspace() {
   const mountedRef = useRef(true);
   const currentStateRef = useRef(state);
   currentStateRef.current = state;
-  const latestRef = useRef({ controllers, relay });
-  latestRef.current = { controllers, relay };
+  const latestRef = useRef({ controllers });
+  latestRef.current = { controllers };
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
@@ -66,9 +63,7 @@ export function useChatWorkspace() {
     const current = latestRef.current;
     const ids = splitPaneIds(currentStateRef.current.layout);
     return chatAccountSwitchReason({
-      pending: accountSwitchRef.current || splitPendingRef.current || deletePendingRef.current
-        || current.relay.pending || current.relay.historyDeleting,
-      relayRunning: current.relay.running,
+      pending: accountSwitchRef.current || splitPendingRef.current || deletePendingRef.current,
       paneCount: ids.length,
       controllers: ids.flatMap((id) => current.controllers[id] ? [current.controllers[id]!] : []),
       composerReasons: ids.flatMap((id) => composerGuards.current.has(id) ? [composerGuards.current.get(id)!()] : []),
@@ -105,7 +100,7 @@ export function useChatWorkspace() {
     },
   }), [getAccountSwitchReason]);
   const accountSwitchReason = useMemo(() => getAccountSwitchReason(),
-    [getAccountSwitchReason, controllers, paneIds, relay, splitPending, deletePending, accountSwitchPending, composerRevision]);
+    [getAccountSwitchReason, controllers, paneIds, splitPending, deletePending, accountSwitchPending, composerRevision]);
   const beginAccountSwitch = useCallback(() => {
     const reason = getAccountSwitchReason();
     if (reason) return reason;
@@ -156,8 +151,7 @@ export function useChatWorkspace() {
       return true;
     }
     const source = controllers[targetId]?.state;
-    const locked = relay.running && relay.state !== null && chatRelayContextIds(relay.state).includes(targetId);
-    const unavailable = chatForkUnavailableReason(source, locked);
+    const unavailable = chatForkUnavailableReason(source);
     if (unavailable || !sourceThreadId || source?.activeSessionId !== sourceThreadId) {
       setError(unavailable ?? 'The source conversation changed. Reopen the split dialog.');
       return false;
@@ -183,7 +177,7 @@ export function useChatWorkspace() {
       splitPendingRef.current = false;
       if (mountedRef.current) setSplitPending(false);
     }
-  }, [controllers, relay.running, relay.state]);
+  }, [controllers]);
   const openTemporaryChat = useCallback(async (input: ChatDraftSnapshot): Promise<void> => {
     if (accountSwitchRef.current || deletePendingRef.current) throw new Error('The workspace is busy. Try again shortly.');
     if (!cheshiDesktop?.temporaryChat) throw new Error('Temporary chat is unavailable. Restart the app.');
@@ -226,7 +220,7 @@ export function useChatWorkspace() {
     const current = latestRef.current;
     const active = current.controllers[currentStateRef.current.activePaneId];
     return chatSessionDeletionReason(sessionId, Boolean(active), splitPendingRef.current || deletePendingRef.current,
-      current.relay.running, Object.values(current.controllers));
+      Object.values(current.controllers));
   }, []);
   const deleteSession = useCallback(async (sessionId: string): Promise<boolean> => {
     const reason = deleteSessionReason(sessionId);
@@ -251,14 +245,10 @@ export function useChatWorkspace() {
     if (deletePendingRef.current) return 'Wait for the conversation deletion to finish.';
     const current = latestRef.current;
     const target = current.controllers[targetId]?.state;
-    const relayState = current.relay.state;
-    const locked = current.relay.running && relayState !== null
-      && (chatRelayContextIds(relayState).includes(targetId)
-        || [relayState.sourceThreadId, relayState.targetThreadId, relayState.moderatorThreadId].includes(sessionId));
     const sourceResponding = Object.values(current.controllers).some((controller) =>
       controller.state.responseThreadIds.includes(sessionId)
       || controller.state.sessions.some((session) => session.id === sessionId && session.status === 'active'));
-    return chatHistoryForkUnavailableReason(target, locked, sourceResponding);
+    return chatHistoryForkUnavailableReason(target, sourceResponding);
   }, []);
 
   const forkHistorySession = useCallback(async (sessionId: string, targetId: string): Promise<boolean> => {
@@ -295,8 +285,7 @@ export function useChatWorkspace() {
   const savedTurnContinuationReason = !activeController ? 'Wait for the chat pane to be ready.'
     : activeController.state.phase === 'loading' || isViewedSessionResponding(activeController.state) || splitPending || deletePending
       ? 'Wait for the current operation to finish.'
-      : relay.running && relay.state !== null && chatRelayContextIds(relay.state).includes(state.activePaneId)
-        ? 'Wait for the linked conversation to finish.' : null;
+      : null;
   const continueSavedTurn = async (record: ChatSavedTurn): Promise<boolean> => {
     if (deletePendingRef.current || savedTurnContinuationReason || !activeController) return false;
     return activeController.continueSavedTurn(record);
@@ -305,7 +294,7 @@ export function useChatWorkspace() {
   return {
     ...state, paneIds, controllers, activeController, responseThreadIds, sessionCache, sessionHistory,
     registerController, selectPane, splitPane, closePane, resizeSplit, openSession, openTemporaryChat,
-    error, dismissError, relay, initialSessionIds, splitPending, historyForkReason, forkHistorySession, savedTurns,
+    error, dismissError, initialSessionIds, splitPending, historyForkReason, forkHistorySession, savedTurns,
     continueSavedTurn, savedTurnContinuationReason, deleteSession, deleteSessionReason, deletePending,
     registerAccountSwitchGuard, accountSwitchPending, accountSwitchReason, beginAccountSwitch, completeAccountSwitch,
   };

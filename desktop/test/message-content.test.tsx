@@ -2,23 +2,15 @@ import { describe, expect, mock, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { act } from 'react';
 import { Window } from 'happy-dom';
-import type { ChatWorkspaceController } from '../frontend/src/features/chat/useChatWorkspace';
-import type { ChatRelayState } from '../shared/chat-relay';
 import { timelineFromThread } from '../lib/codex-chat-thread-data.mts';
 import { normalizeOpenSessionResponse } from '../frontend/src/features/chat/model';
 
 const desktop: { openLocalFileLink?: (href: string) => Promise<void> } = {};
 mock.module('../frontend/src/cheshiDesktop', () => ({ cheshiDesktop: desktop }));
 const { MessageContent } = await import('../frontend/src/features/chat/MessageContent');
-const { ChatRelayStatus } = await import('../frontend/src/features/chat/ChatRelayControls');
 
 const table = '| 방식 | 주요 이점 |\n|---|---|\n| **상시 표시** | 초안 비교 |\n| 활성 패널 | 읽기 공간 |';
 const render = (text: string, renderLocalImages = false) => renderToStaticMarkup(<MessageContent text={text} renderLocalImages={renderLocalImages} />);
-
-function resultWorkspace(state: ChatRelayState): ChatWorkspaceController {
-  // Only the relay status boundary is exercised; other workspace operations are not mounted.
-  return { relay: { state, displayedState: state, selectedResult: null, error: null, running: false, pending: false, dismissResult() {}, dismissError() {} } } as ChatWorkspaceController;
-}
 
 describe('chat Markdown rendering', () => {
   test('renders Korean comparison tables and inline formatting as semantic elements', () => {
@@ -171,15 +163,4 @@ describe('chat Markdown rendering', () => {
     expect(html).not.toContain('[Image:');
   });
 
-  test('uses the same Markdown rendering for completed relay summaries, proposals and issues', () => {
-    const state: ChatRelayState = { id: 'relay', sourceContextId: 'a', sourceThreadId: 'thread-a', targetContextId: 'b',
-      targetThreadId: 'thread-b', mode: 'debate', maxRounds: 2, round: 2, step: 4, speaker: 'B', phase: 'discussion',
-      status: 'completed', outcome: 'debated', proposalVersion: null, proposal: '## Proposal\n\n**Keep drafts.**',
-      issues: ['Check *focus*.'], summary: table, message: null };
-    const html = renderToStaticMarkup(<ChatRelayStatus workspace={resultWorkspace(state)} />);
-    expect(html).toContain('<table>');
-    expect(html).toContain('<strong>Keep drafts.</strong>');
-    expect(html).toContain('<em>focus</em>');
-    expect(html).not.toContain('|---|');
-  });
 });

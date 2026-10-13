@@ -7,7 +7,6 @@ import { registerCodexAccountsIpc } from './codex-accounts-ipc.mts';
 import type { CodexChatContexts } from './codex-chat-contexts.mts';
 import type { CodexChatService } from './codex-chat-service.mts';
 import type { CodexChatSessionDeletion } from './codex-chat-session-deletion.mts';
-import type { CodexChatRelays } from './codex-chat-relay.mts';
 import type { CodexAccountService } from './codex-account-service.mts';
 import { CodexConversationCatalog } from './codex-conversation-catalog.mts';
 import { chooseCodexAccount } from './codex-account-availability.mts';
@@ -77,7 +76,6 @@ export function createWorkspaceCodexAccounts(options: {
     service: CodexChatService;
     contexts: CodexChatContexts;
     deletion: CodexChatSessionDeletion;
-    relays: Pick<CodexChatRelays, 'get'>;
     accountUsage: Pick<CodexAccountService, 'stop'>;
     temporaryBusy(): boolean;
     schedulerBusy?(): boolean;
@@ -111,10 +109,6 @@ export function createWorkspaceCodexAccounts(options: {
           if (service.activeTurns.size || service.pendingTurnStarts.size || service.pendingNewTurnClientMessageId) {
             throw new Error('Wait for all chat responses to finish before switching accounts.');
           }
-        }
-        for (const ownerId of new Set(entries.map(entry => entry.ownerId))) {
-          const relay = configuration.relays.get(ownerId);
-          if (relay?.status === 'running' || relay?.status === 'stopping') throw new Error('Stop the linked conversation before switching accounts.');
         }
       },
       reset: async (preserveConversation = false) => {

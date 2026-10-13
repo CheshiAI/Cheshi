@@ -1,5 +1,4 @@
 import { GitFork, Plus } from 'lucide-react';
-import { chatRelayContextIds } from '../../../../shared/chat-relay';
 import { SplitPreview } from '../../shared/ui/SplitPreview';
 import { CHAT_PANE_LIMIT, CHAT_PANE_MIN_WIDTH, chatForkUnavailableReason } from './chatWorkspaceModel';
 import type { ChatWorkspaceController } from './useChatWorkspace';
@@ -12,10 +11,8 @@ export function ChatSplitDialog({ workspace, paneId, sourceThreadId, target, onC
   onClose: () => void;
 }) {
   const source = workspace.controllers[paneId]?.state;
-  const locked = workspace.relay.running && workspace.relay.state !== null
-    && chatRelayContextIds(workspace.relay.state).includes(paneId);
   const forkReason = source?.activeSessionId !== sourceThreadId ? 'The source conversation changed. Reopen this preview.'
-    : chatForkUnavailableReason(source, locked);
+    : chatForkUnavailableReason(source);
   const unavailable = workspace.splitPending || !workspace.paneIds.includes(paneId) || workspace.paneIds.length >= CHAT_PANE_LIMIT;
   return <SplitPreview target={target} direction="right" minimumTargetWidth={CHAT_PANE_MIN_WIDTH}
     title="Split chat right" onClose={onClose} backdrop="regional"

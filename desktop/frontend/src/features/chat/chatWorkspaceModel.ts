@@ -7,14 +7,13 @@ import type { ChatState } from './model';
 export const CHAT_PANE_MIN_WIDTH = 475;
 export const CHAT_PANE_LIMIT = 10;
 
-export function chatForkUnavailableReason(state: Pick<ChatState, 'activeSessionId' | 'phase' | 'pendingNewResponse' | 'responseThreadIds' | 'approvals'> | undefined, locked: boolean): string | null {
+export function chatForkUnavailableReason(state: Pick<ChatState, 'activeSessionId' | 'phase' | 'pendingNewResponse' | 'responseThreadIds' | 'approvals'> | undefined): string | null {
   if (!state?.activeSessionId) return 'Send a message first to create a session.';
-  return chatHistoryForkUnavailableReason(state, locked, false);
+  return chatHistoryForkUnavailableReason(state, false);
 }
 
-export function chatHistoryForkUnavailableReason(state: Pick<ChatState, 'phase' | 'pendingNewResponse' | 'responseThreadIds' | 'approvals'> | undefined, locked: boolean, sourceResponding: boolean): string | null {
+export function chatHistoryForkUnavailableReason(state: Pick<ChatState, 'phase' | 'pendingNewResponse' | 'responseThreadIds' | 'approvals'> | undefined, sourceResponding: boolean): string | null {
   if (!state) return 'The destination pane is unavailable.';
-  if (locked) return 'Wait for the conversation relay to finish before forking.';
   if (sourceResponding) return 'Wait for the selected conversation to finish responding before forking.';
   if (state.phase !== 'idle' || state.pendingNewResponse || state.responseThreadIds.length > 0 || state.approvals.length > 0) {
     return 'Wait for this pane to finish its current operation before forking.';

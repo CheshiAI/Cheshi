@@ -2,7 +2,6 @@ import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext } from '../shel
 import { ArrowLeft, Columns2, X } from 'lucide-react';
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { chatRelayContextIds } from '../../../../shared/chat-relay';
 import {
   LiquidGlassPanel, NeumorphicButton, TwoTierHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle,
 } from '../../shared/ui';
@@ -12,8 +11,7 @@ import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { ChatView } from './ChatView';
 import { ChatErrorNotice } from './ChatErrorNotice';
 import { ChatPaneIcon } from './ChatPaneIcon';
-import { ChatRelayButton, ChatRelayStatus } from './ChatRelayControls';
-import { ChatRelayHistoryPanel } from './ChatRelayHistoryPanel';
+import { ChatSavedTurnsSidebar } from './ChatSavedTurnsSidebar';
 import { ChatSplitDialog } from './ChatSplitDialog';
 import { CHAT_PANE_LIMIT } from './chatWorkspaceModel';
 import { useChatController } from './useChatController';
@@ -85,7 +83,7 @@ function ChatPane({
           {controller.agentBackThreadId && (
             <TooltipButton variant="ghost" size="icon" aria-label="Back to previous conversation" title="Back to previous conversation"
               disabled={controller.agentNavigationPending || controller.configurationPending || workspace.accountSwitchPending
-                || workspace.relay.running || controller.state.phase === 'loading'}
+                || controller.state.phase === 'loading'}
               onClick={() => void controller.goBackFromAgent()}>
               <ArrowLeft aria-hidden="true" />
             </TooltipButton>
@@ -127,8 +125,7 @@ function ChatPane({
         onOpenTemporaryChat={workspace.openTemporaryChat}
         onAccountSwitchGuard={updateAccountSwitchGuard}
         savedTurns={workspace.savedTurns}
-        interactionsLocked={workspace.accountSwitchPending || (workspace.relay.running && workspace.relay.state !== null
-          && chatRelayContextIds(workspace.relay.state).includes(paneId))}
+        interactionsLocked={workspace.accountSwitchPending}
         active={active && selected}
         visible={active}
         onNewSession={() => void controller.newSession()}
@@ -169,8 +166,6 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
           <SidebarPanelTitle as="h2" title="SESSION"
             icon={<span className={viewStyles.openAIMark} aria-hidden="true" />} />
           <div className={styles.headerActions} style={nonDraggableWindowRegionStyle}>
-            <ChatRelayButton workspace={workspace} />
-            <span className={styles.headerDivider} aria-hidden="true" />
             <WorkspaceLayoutControls />
             {props.onCloseWorkspace && <TooltipButton variant="ghost" size="icon"
               aria-label="Close Codex workspace" title="Close Codex workspace"
@@ -180,13 +175,12 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
       />
       <div className={styles.body}>
         <div className={styles.content}>
-          <ChatRelayStatus workspace={workspace} />
           {workspace.error && <ChatErrorNotice onDismiss={workspace.dismissError} dismissLabel="Dismiss chat error">{workspace.error}</ChatErrorNotice>}
           <ChatPaneViewport layout={workspace.layout} activePaneId={workspace.activePaneId}
             onSelectPane={workspace.selectPane} onResizeSplit={workspace.resizeSplit}
             renderPane={(id) => <PaneMount paneId={id} host={hosts.current.get(id)!} />} />
         </div>
-        <ChatRelayHistoryPanel blurSourceRef={blurSourceRef} relay={workspace.relay} savedTurns={workspace.savedTurns}
+        <ChatSavedTurnsSidebar blurSourceRef={blurSourceRef} savedTurns={workspace.savedTurns}
           onContinueSavedTurn={workspace.continueSavedTurn} continuationDisabledReason={workspace.savedTurnContinuationReason} />
       </div>
       {workspace.paneIds.map((paneId) => (

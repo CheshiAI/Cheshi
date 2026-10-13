@@ -66,11 +66,11 @@ export function createBackgroundScheduler(options: BackgroundOptions, makeHistor
               const serviceOptions = workspaceChatServiceOptions(workspace, accounts.conversations, accounts.createClient);
               primary = new CodexChatService({ ...serviceOptions, client });
               contexts = new CodexChatContexts({ createClient: accounts.createClient, service: serviceOptions, emit() {} });
-              const deletion = new CodexChatSessionDeletion({ service: primary, contexts, relays: { get: () => null } });
+              const deletion = new CodexChatSessionDeletion({ service: primary, contexts });
               const service = primary; const panes = contexts;
               removeServices = registerWorkspaceChatServices(workspace, () => [service, ...panes.allServices().map(item => item.service)]);
               const accountSelection = accounts.register({ ipc: { handle() {} }, assertSender() {}, retained: [client], service: primary,
-                contexts, deletion, relays: { get: () => null }, accountUsage: { async stop() {} }, temporaryBusy: () => false,
+                contexts, deletion, accountUsage: { async stop() {} }, temporaryBusy: () => false,
                 resetTemporary() {}, emit() {} });
               selection = accountSelection;
               active = new SchedulerCodexRunner({ contexts, deletion, profileId: () => accountSelection.activeId,

@@ -219,7 +219,7 @@ export function AppShell() {
   });
 
   const openHistorySearchHit = async (hit: Pick<ChatHistorySearchHit, 'threadId' | 'itemId'>): Promise<boolean> => {
-    if (chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running) return false;
+    if (chatSessionSelectionDisabled || updateResume.busy) return false;
     const requestId = ++historyRequestId.current;
     workspace.dismissError();
     const opened = await workspace.openSession(hit.threadId);
@@ -271,7 +271,7 @@ export function AppShell() {
   };
 
   const attachNote = async (note: AppleNote): Promise<boolean> => {
-    if (chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running) return false;
+    if (chatSessionSelectionDisabled || updateResume.busy) return false;
     const destination = attachmentDestination.current;
     const requestId = historyRequestId.current;
     const attached = await draftAttachments.appendText(destination.paneId, appleNoteDraftText(note));
@@ -486,7 +486,7 @@ export function AppShell() {
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
           <NotesView onAttach={attachNote} active={activeView === 'notes'}
             sidebarTarget={memoSidebarTarget} onOpen={() => navigate('notes')}
-            attachmentDisabled={chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running}
+            attachmentDisabled={chatSessionSelectionDisabled || updateResume.busy}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />
           <FlashSourceNavigationContext.Provider value={openHistorySearchHit}>
@@ -564,7 +564,7 @@ export function AppShell() {
     </div>
       <RegionalBlur sourceRef={notificationSceneRef}>
         <SchedulerNotifications onOpenThread={id => {
-          if (!chatSessionSelectionDisabled && !updateResume.busy && !workspace.relay.running) void openWorkflowChat(id);
+          if (!chatSessionSelectionDisabled && !updateResume.busy) void openWorkflowChat(id);
         }} />
       </RegionalBlur>
     </SidebarToggleVisibility.Provider>

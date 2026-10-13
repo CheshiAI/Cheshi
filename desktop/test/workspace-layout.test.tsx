@@ -535,7 +535,7 @@ test.each(['chat', 'right', 'down'] as const)('%s split blurs only the destinati
     draft.value = 'Preserve my draft';
     target.append(draft);
     const workspace = {
-      splitPending: false, paneIds: ['chat'], relay: { running: false, state: null }, controllers: {},
+      splitPending: false, paneIds: ['chat'], controllers: {},
       async splitPane() { return true; },
     };
     function Preview() {
