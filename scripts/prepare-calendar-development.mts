@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { product } from '../config/product.mts';
+import { macOSAppLanguage, retainEnglishAppResources } from './macos-app-language.mts';
 
 const usage = 'Cheshi displays your calendars and creates, edits, or deletes the events you choose.';
 const automationUsage = 'Cheshi reads or saves Apple Notes when you ask.';
@@ -32,7 +33,7 @@ export function prepareDevelopmentApp(sourceBundle: string, root: string): strin
   const icon = path.join(root, 'resources', 'icons', 'app-icon.icns');
   const executable = statSync(path.join(sourceBundle, 'Contents', 'MacOS', 'Electron'));
   const fingerprint = createHash('sha256')
-    .update(JSON.stringify({ identity, usage, automationUsage, revision: 3, sourceBundle, size: executable.size, mtime: executable.mtimeMs }))
+    .update(JSON.stringify({ identity, usage, automationUsage, language: macOSAppLanguage, revision: 4, sourceBundle, size: executable.size, mtime: executable.mtimeMs }))
     .update(readFileSync(path.join(sourceBundle, 'Contents', 'Info.plist')))
     .update(readFileSync(icon)).digest('hex');
   if (existsSync(marker) && existsSync(bundle) && readFileSync(marker, 'utf8') === fingerprint) {
@@ -69,11 +70,12 @@ export function prepareCalendarDevelopmentBundle(bundle: string, identity = deve
     CFBundleName: identity.name,
     CFBundleDisplayName: identity.name,
     CFBundleIconFile: 'cheshi.icns',
+    CFBundleDevelopmentRegion: macOSAppLanguage,
     NSCalendarsFullAccessUsageDescription: usage,
     NSCalendarsUsageDescription: usage,
     NSAppleEventsUsageDescription: automationUsage,
   };
-  let changed = false;
+  let changed = retainEnglishAppResources(path.join(bundle, 'Contents', 'Resources'));
   for (const [key, value] of Object.entries(values)) {
     const current = Bun.spawnSync(['/usr/libexec/PlistBuddy', '-c', `Print :${key}`, plist], { stdout: 'pipe', stderr: 'pipe' });
     if (current.exitCode === 0 && current.stdout.toString().trim() === value) continue;

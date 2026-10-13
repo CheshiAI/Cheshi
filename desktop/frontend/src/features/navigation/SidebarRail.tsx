@@ -1,7 +1,6 @@
 import {
   Blocks,
   CalendarDays,
-  Crosshair,
   FolderTree,
   PanelLeftClose,
   PanelLeftOpen,
@@ -23,7 +22,6 @@ const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceVi
   { label: 'Explorer', icon: <FolderTree aria-hidden="true" />, view: 'explorer' },
   { label: 'SESSION', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
   { label: 'Terminal', icon: <SquareTerminal aria-hidden="true" />, view: 'terminal' },
-  { label: 'Relationship Graph', icon: <Crosshair aria-hidden="true" />, view: 'codegraph' },
   { label: 'Memo', icon: <StickyNote aria-hidden="true" />, view: 'notes' },
   { label: 'Calendar', icon: <CalendarDays aria-hidden="true" />, view: 'calendar' },
   { label: 'Worker', icon: <WorkerIcon />, view: 'chats' },

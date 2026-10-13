@@ -113,6 +113,7 @@ export class WorkspaceApplication {
   private readonly router: WorkspaceIpcRouter;
   private readonly createRuntime: (options: WorkspaceRuntimeOptions) => WorkspaceRuntime;
   private readonly entries = new Set<WorkspaceEntry>();
+  private readonly windowListeners = new Set<() => void>();
   private readonly cleanups = new Set<Promise<void>>();
   private readonly closingRoots = new Set<WorkspaceEntry>();
   private readonly deletingRoots = new Set<string>();
@@ -133,6 +134,17 @@ export class WorkspaceApplication {
   get readyWindows(): BrowserWindow[] {
     return [...this.entries].flatMap(entry =>
       !entry.closing && !entry.switching && entry.window && !entry.window.isDestroyed() ? [entry.window] : []);
+  }
+  get readyProjectWindows(): BrowserWindow[] {
+    const projects = new Set([...this.entries].filter(entry => !entry.managementOnly).map(entry => entry.window));
+    return this.readyWindows.filter(window => projects.has(window));
+  }
+  onWindowsChanged(listener: () => void): () => void {
+    this.windowListeners.add(listener);
+    return () => { this.windowListeners.delete(listener); };
+  }
+  private emitWindowsChanged(): void {
+    for (const listener of this.windowListeners) listener();
   }
   get isTransitioning(): boolean { return this.transitions > 0; }
   hasFocusedWorkspace(root?: string): boolean {
@@ -190,6 +202,7 @@ export class WorkspaceApplication {
         entry.window = await runtime.start();
         this.assertEntryReady(entry);
         if (!managementOnly && !source) this.lastWorkspaceRoot = root;
+        this.emitWindowsChanged();
         return entry;
       }
       catch (error) { await this.disposeEntry(entry); throw error; }
@@ -199,6 +212,7 @@ export class WorkspaceApplication {
   private disposeEntry(entry: WorkspaceEntry): Promise<void> {
     if (entry.closing) return entry.closing;
     this.entries.delete(entry);
+    this.emitWindowsChanged();
     this.closingRoots.add(entry);
     const replacement = entry.replacement;
     entry.replacement = null;
@@ -240,6 +254,7 @@ export class WorkspaceApplication {
     if (root === entry.root) throw new Error('This workspace is already open in the original window.');
     const state = { bounds: window.getNormalBounds(), maximized: window.isMaximized(), fullscreen: window.isFullScreen() };
     entry.switching = true;
+    this.emitWindowsChanged();
     this.transitions += 1;
     let replacement: WorkspaceEntry | null = null;
     let sourceClosedForSwitch = false;
@@ -271,6 +286,7 @@ export class WorkspaceApplication {
     } finally {
       entry.replacement = null;
       entry.switching = false;
+      this.emitWindowsChanged();
       this.transitions -= 1;
     }
     // The replacement is already visible while the old services finish shutting down.

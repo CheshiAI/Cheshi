@@ -1,21 +1,28 @@
 import type { IpcRenderer } from 'electron';
 import type { GitHubRepositoryListResponse, WorkspaceManagementApi } from '../shared/workspace-management.ts';
-import { OPEN_HELP_CHANNEL } from '../shared/workspace-management.ts';
+import { OPEN_HELP_CHANNEL, OPEN_RELATIONSHIP_GRAPH_CHANNEL } from '../shared/workspace-management.ts';
 
-export function createWorkspaceManagementApi(ipc: Pick<IpcRenderer, 'invoke'> & { on?(channel: string, listener: () => void): unknown }): WorkspaceManagementApi {
-  const helpListeners = new Set<() => void>();
-  let pendingHelp = false;
-  // Retain a menu request arriving before React mounts, including a newly opened manager.
-  ipc.on?.(OPEN_HELP_CHANNEL, () => {
-    if (!helpListeners.size) pendingHelp = true;
-    else for (const listener of helpListeners) listener();
+type MenuIpc = Pick<IpcRenderer, 'invoke'> & { on?(channel: string, listener: () => void): unknown };
+
+function bufferedMenuRequest(ipc: MenuIpc, channel: string) {
+  const listeners = new Set<() => void>();
+  let pending = false;
+  // Retain a menu request arriving before React mounts or while it remounts.
+  ipc.on?.(channel, () => {
+    if (!listeners.size) pending = true;
+    else for (const listener of listeners) listener();
   });
+  return (listener: () => void) => {
+    listeners.add(listener);
+    if (pending) { pending = false; listener(); }
+    return () => { listeners.delete(listener); };
+  };
+}
+
+export function createWorkspaceManagementApi(ipc: MenuIpc): WorkspaceManagementApi {
   return {
-    onHelpRequested(listener) {
-      helpListeners.add(listener);
-      if (pendingHelp) { pendingHelp = false; listener(); }
-      return () => { helpListeners.delete(listener); };
-    },
+    onHelpRequested: bufferedMenuRequest(ipc, OPEN_HELP_CHANNEL),
+    onRelationshipGraphRequested: bufferedMenuRequest(ipc, OPEN_RELATIONSHIP_GRAPH_CHANNEL),
     getCodexLogin: () => ipc.invoke('cheshi:workspace-management:get-codex-login'),
     startCodexLogin: () => ipc.invoke('cheshi:workspace-management:start-codex-login'),
     cancelCodexLogin: () => ipc.invoke('cheshi:workspace-management:cancel-codex-login'),

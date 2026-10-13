@@ -45,6 +45,7 @@ import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import styles from './AppShell.module.css';
 import { useAppUpdateResume } from './useAppUpdateResume';
 import { useWorkflowChatNavigation } from './useWorkflowChatNavigation';
+import { useRelationshipGraphMenu } from './useRelationshipGraphMenu';
 import { WorkspaceEditorSplit } from './WorkspaceEditorSplit';
 import { readWorkspaceLayout, replaceWorkspacePane, revealWorkspacePane, saveWorkspaceLayout, visibleWorkspaceLayout, type WorkspacePaneId } from './workspaceLayoutModel';
 import { removeSplitPane, splitPaneIds } from '../../shared/ui/splitPaneModel';
@@ -270,6 +271,8 @@ export function AppShell() {
     setActiveView(view);
     setPrimaryPaneClosed(false);
   };
+
+  useRelationshipGraphMenu(navigate);
 
   const attachNote = async (note: AppleNote): Promise<boolean> => {
     if (chatSessionSelectionDisabled || updateResume.busy) return false;

@@ -27,6 +27,7 @@ import { registerSelectionCopy } from './lib/selection-copy.mts';
 import { createAboutWindow } from './lib/about-window.mts';
 import { aboutMenuTemplate } from './lib/about-menu.mts';
 import { createHelpMenuAction, helpMenuTemplate } from './lib/help-menu.mts';
+import { createToolsMenu } from './lib/tools-menu.mts';
 import { startupScreen } from './lib/startup-screen.mts';
 import { WorkspaceApplication, WorkspaceWindowCloseCancelledError } from './lib/workspace-application.mts';
 import { WorkspaceIpcRouter } from './lib/workspace-ipc-router.mts';
@@ -447,7 +448,11 @@ app.whenReady().then(async () => {
       { label: 'All Notes', accelerator: STICKY_NOTES_LIST_SHORTCUT, registerAccelerator: false,
         click: () => { void stickyNotes.openList().catch(error => dialog.showErrorBox('Cheshi Notes', String(error))); } },
     ] });
-    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+    const tools = createToolsMenu(template, { focused: () => BrowserWindow.getFocusedWindow(),
+      windows: () => workspaces.readyProjectWindows, onWindowsChanged: listener => workspaces.onWindowsChanged(listener),
+      buildMenu: items => Menu.buildFromTemplate(items) });
+    Menu.setApplicationMenu(Menu.buildFromTemplate(tools.template));
+    app.once('will-quit', tools.dispose);
   }
   stickyNotes.start();
   if (process.platform === 'darwin') {

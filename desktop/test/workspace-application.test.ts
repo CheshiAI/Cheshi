@@ -461,9 +461,29 @@ test('scheduled task review reuses its workspace and concurrent clicks share one
 test('ready windows includes workspace and manager renderers and excludes closed windows', async () => {
   const { application, instances } = fixture();
   assert.deepEqual(application.readyWindows, []);
+  assert.deepEqual(application.readyProjectWindows, []);
   await application.open('/project');
   await application.openManager();
   assert.deepEqual(application.readyWindows, instances.map(instance => instance.window));
+  assert.deepEqual(application.readyProjectWindows, [instances[0]!.window]);
   instances[0]!.state.destroyed = true;
   assert.deepEqual(application.readyWindows, [instances[1]!.window]);
+  assert.deepEqual(application.readyProjectWindows, []);
+});
+
+test('project window notifications track readiness, closing and unsubscribe', async () => {
+  const f = fixture();
+  const counts: number[] = [];
+  const unsubscribe = f.application.onWindowsChanged(() => counts.push(f.application.readyProjectWindows.length));
+  await f.application.openManager();
+  assert.equal(counts.at(-1), 0);
+  await f.application.open('/project');
+  assert.equal(counts.at(-1), 1);
+  await f.application.closeAll();
+  assert.equal(counts.at(-1), 0);
+  unsubscribe();
+  const notifications = counts.length;
+  await f.application.open('/another');
+  assert.equal(counts.length, notifications);
+  await f.application.closeAll();
 });

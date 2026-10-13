@@ -8,6 +8,7 @@ import type { CheshiDesktopApi } from '../frontend/src/cheshiDesktop.ts';
 test('built sandboxed preload exposes workspace actions through the intended IPC channels', async () => {
   let api: WorkspaceManagementApi | undefined;
   const calls: unknown[][] = [];
+  const menuListeners = new Map<string, () => void>();
   let repositories: GitHubRepositoryListResponse = { status: 'ready', page: { repositories: [], nextPage: null, login: 'example' } };
   vm.runInNewContext(readFileSync(new URL('../runtime/preload.cjs', import.meta.url), 'utf8'), {
     process: { platform: process.platform },
@@ -22,6 +23,7 @@ test('built sandboxed preload exposes workspace actions through the intended IPC
           },
         },
         ipcRenderer: {
+          on(channel: string, listener: () => void) { menuListeners.set(channel, listener); },
           sendSync() { return { workspaceName: 'Original', workspaceRoot: '/original' }; },
           invoke(...args: unknown[]) {
             calls.push(args);
@@ -32,6 +34,16 @@ test('built sandboxed preload exposes workspace actions through the intended IPC
     },
   });
   assert.ok(api);
+  let graphRequests = 0;
+  menuListeners.get('cheshi:open-relationship-graph')?.();
+  assert.ok(api.onRelationshipGraphRequested);
+  const unsubscribeGraph = api.onRelationshipGraphRequested(() => { graphRequests++; });
+  assert.equal(graphRequests, 1);
+  menuListeners.get('cheshi:open-relationship-graph')?.();
+  assert.equal(graphRequests, 2);
+  unsubscribeGraph();
+  menuListeners.get('cheshi:open-relationship-graph')?.();
+  assert.equal(graphRequests, 2);
   const clone = { url: 'https://github.com/example/project.git', parentPath: '/projects', directoryName: 'project' };
   const project = { parentPath: '/projects', directoryName: 'new project' };
   const worktree = { repositoryPath: '/project', branch: 'feature/test', baseRef: 'main', directoryName: 'project-test' };

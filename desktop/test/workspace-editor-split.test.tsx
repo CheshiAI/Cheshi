@@ -199,6 +199,8 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
       return { busy: editorSessionMode === 'waiting', error: null, editorSessionMode };
     } },
     './useWorkflowChatNavigation': { useWorkflowChatNavigation: () => async () => false },
+    './useRelationshipGraphMenu': { useRelationshipGraphMenu() {} },
+    '../graph/useCodeGraphIndex': { useCodeGraphIndex: () => ({ status: { state: 'ready' } }) },
     '../navigation/fileSearchShortcut': { installFileSearchShortcut: (_document: unknown, open: () => void) => {
       openSearch = open; return () => {};
     } },

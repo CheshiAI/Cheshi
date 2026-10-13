@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { macOSSigningOptions } from './config/macos-signing.mts';
+import { macOSAppLanguage, retainEnglishAppResources } from './scripts/macos-app-language.mts';
 
 const rootDirectory = fileURLToPath(new URL('.', import.meta.url));
 
@@ -148,6 +149,7 @@ function shouldIgnore(packagePath: string): boolean {
     'about-window.mts',
     'about-menu.mts',
     'help-menu.mts',
+    'tools-menu.mts',
     'workspace-codegraph-mcp.mts',
     'workspace-chat-instructions.mts',
     'app-release-checker.mts',
@@ -312,7 +314,17 @@ export default async function createForgeConfiguration(): Promise<ForgeConfig> {
       appBundleId: product.bundleId,
       appVersion: product.version,
       buildVersion: product.buildNumber,
+      afterCopy: [(buildPath, _electronVersion, platform, _arch, done) => {
+        try {
+          if (platform === 'darwin' || platform === 'mas') retainEnglishAppResources(path.dirname(buildPath));
+        } catch (error) {
+          done(error instanceof Error ? error : new Error(String(error)));
+          return;
+        }
+        done();
+      }],
       extendInfo: {
+        CFBundleDevelopmentRegion: macOSAppLanguage,
         NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
         NSAppleEventsUsageDescription: 'Cheshi reads or saves Apple Notes when you ask and sends iMessage notifications you enable or test.',
         NSCalendarsFullAccessUsageDescription: 'Cheshi displays your calendars and creates, edits, or deletes the events you choose.',

@@ -45,13 +45,13 @@ test('rail management items retain their order and destinations', () => {
   const destinations: WorkspaceView[] = [];
   const rail = SidebarRail({ activeView: 'chat', sidebarOpen: true,
     onNavigate: view => destinations.push(view), onToggleSidebar() {} });
-  const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 11);
+  const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 10);
   expect(navigation.map(element => element.props.label)).toEqual([
-      'Explorer', 'SESSION', 'Terminal', 'Relationship Graph', 'Memo', 'Calendar',
+      'Explorer', 'SESSION', 'Terminal', 'Memo', 'Calendar',
       'Worker', 'Docker', 'Github', 'Plugins', 'Settings',
     ]);
   for (const element of navigation) if (element.props.label !== 'SESSION') element.props.onClick?.();
-  expect(destinations).toEqual(['explorer', 'terminal', 'codegraph', 'notes', 'calendar', 'chats', 'docker', 'git', 'plugins', 'settings']);
+  expect(destinations).toEqual(['explorer', 'terminal', 'notes', 'calendar', 'chats', 'docker', 'git', 'plugins', 'settings']);
 });
 
 test('rail bottom controls retain caffeine, sidebar and project actions without a help launcher', () => {
@@ -73,7 +73,7 @@ test('only the focused view has an active rail icon even when the sidebar is col
       const destinations: WorkspaceView[] = [];
       const rail = SidebarRail({ activeView, sidebarOpen,
         onNavigate: view => destinations.push(view), onToggleSidebar() {} });
-      const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 11);
+      const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 10);
       expect(navigation.filter(element => element.props.active)).toHaveLength(1);
       const explorer = elements(rail).find(element => element.type === SidebarRailButton);
       expect(explorer?.props.label).toBe('Explorer');

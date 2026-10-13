@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,6 +47,9 @@ test.skipIf(process.platform !== 'darwin')('built native helper runs from packag
     const resources = path.join(contents, 'Resources', 'runtime', `${process.platform}-${process.arch}`);
     mkdirSync(macos, { recursive: true });
     mkdirSync(resources, { recursive: true });
+    for (const language of ['en', 'ko']) {
+      mkdirSync(path.join(contents, 'Resources', `${language}.lproj`));
+    }
     copyFileSync(calendarExecutable(), path.join(macos, 'Electron'));
     const packaged = path.join(resources, 'cheshi-calendar');
     copyFileSync(calendarExecutable(), packaged);
@@ -61,8 +64,17 @@ test.skipIf(process.platform !== 'darwin')('built native helper runs from packag
     expect(first).toContain('reads or saves Apple Notes');
     expect(first).toContain(developmentAppIdentity(process.cwd()).bundleId);
     expect(first).toContain('Cheshi Development');
+    expect(first).toContain('CFBundleDevelopmentRegion');
+    expect(existsSync(path.join(contents, 'Resources', 'en.lproj'))).toBe(true);
+    expect(existsSync(path.join(contents, 'Resources', 'ko.lproj'))).toBe(false);
     prepareCalendarDevelopmentBundle(bundle);
     expect(readFileSync(info, 'utf8')).toBe(first);
+    expect(spawnSync('/usr/bin/codesign', ['--verify', '--strict', bundle]).status).toBe(0);
+    // Resource-only changes must also refresh the signature when metadata already matches.
+    mkdirSync(path.join(contents, 'Resources', 'ko.lproj'));
+    writeFileSync(path.join(contents, 'Resources', 'ko.lproj', 'MainMenu.nib'), 'fixture');
+    prepareCalendarDevelopmentBundle(bundle);
+    expect(existsSync(path.join(contents, 'Resources', 'ko.lproj'))).toBe(false);
     expect(spawnSync('/usr/bin/codesign', ['--verify', '--strict', bundle]).status).toBe(0);
     const checkout = path.join(directory, 'checkout');
     const icons = path.join(checkout, 'resources', 'icons');
@@ -76,6 +88,7 @@ test.skipIf(process.platform !== 'darwin')('built native helper runs from packag
     expect(developmentAppIdentity(`${checkout}-other`).bundleId).not.toBe(developmentAppIdentity(checkout).bundleId);
     const config = await createForgeConfiguration();
     expect(config.packagerConfig?.extendInfo).toMatchObject({
+      CFBundleDevelopmentRegion: 'en',
       NSCalendarsFullAccessUsageDescription: expect.any(String), NSCalendarsUsageDescription: expect.any(String),
       NSAppleEventsUsageDescription: expect.stringContaining('reads or saves Apple Notes'),
     });
