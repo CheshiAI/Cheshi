@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDown, Phone, Plus } from 'lucide-react';
+import { ArrowDown, Phone, Plus, X } from 'lucide-react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { EmptyState, NeumorphicButton, RegionalBlur, SlidingSidePanel } from '../../shared/ui';
 import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
@@ -10,6 +10,7 @@ import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import { AgentAvatar } from '../../shared/agent-management/AgentAvatar';
 import { syncChatComposerOverlayHeight } from '../chat/chatComposerOverlay';
+import { WorkspaceLayoutControls } from '../shell/WorkspaceLayoutControls';
 import { verificationReview, verificationReportContext, type VerificationReview } from './verificationReviewModel';
 import { isRoomWorkSettled, type AgentChatsApi, type ChatsRequest, type RoomMessage } from '../../../../shared/agent-chats';
 import { resolveChatRecipient, resolveRoomMemberNames } from '../../../../shared/agent-chat-recipient';
@@ -19,7 +20,6 @@ import type { AgentEngineInfo, AgentManagementApi } from '../../../../shared/age
 import { useChatsSnapshot } from './useChatsSnapshot';
 import { ChatsRoomList } from './ChatsRoomList';
 import { DeleteRoomDialog } from './DeleteRoomDialog';
-import { RenameDialog } from '../../shared/ui/RenameDialog';
 import { VoiceDialog } from './VoiceDialog';
 import { RoomDialog } from './RoomDialog';
 import { ChatsComposer } from './ChatsComposer';
@@ -32,9 +32,9 @@ import styles from './ChatsView.module.css';
 import { useRoomTimeline } from './useRoomTimeline';
 import { useChatsScroll } from './useChatsScroll';
 
-export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpenRoom, onManageHomies, homiesOpen = false, selectedHomieId, homiesBusy = false, onHomiesTarget, onCloseHomies, reviewedMessageId, onReviewFileChanges, reviewedVerificationId, onReviewVerification, api = cheshiDesktop?.agentChats,
+export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpenRoom, onCloseWorkspace, onManageHomies, homiesOpen = false, selectedHomieId, homiesBusy = false, onHomiesTarget, onCloseHomies, reviewedMessageId, onReviewFileChanges, reviewedVerificationId, onReviewVerification, api = cheshiDesktop?.agentChats,
   registry = cheshiDesktop?.agentRegistry, management = cheshiDesktop?.agentManagement }: {
-  active: boolean; sidebarTarget?: HTMLElement | null; sidebarActive?: boolean; onOpenRoom?(): void; onManageHomies?(agentId?: string, roomId?: string): void;
+  active: boolean; sidebarTarget?: HTMLElement | null; sidebarActive?: boolean; onOpenRoom?(): void; onCloseWorkspace?(): void; onManageHomies?(agentId?: string, roomId?: string): void;
   homiesOpen?: boolean; selectedHomieId?: string | null; homiesBusy?: boolean; onHomiesTarget?(target: HTMLDivElement | null): void; onCloseHomies?(): void;
   reviewedMessageId?: string; onReviewFileChanges?: (item: ChatActivityItem | null, path?: string) => void;
   reviewedVerificationId?: string; onReviewVerification?: (review: VerificationReview | null, open?: boolean) => void;
@@ -93,7 +93,6 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   const [pinError, setPinError] = useState<string | null>(null);
   const pinning = useRef(false);
   const [deleteRoomId, setDeleteRoomId] = useState<string | null>(null);
-  const [renameChoice, setRenameChoice] = useState<{ id: string; name: string } | null>(null);
   const deleteTarget = snapshot.rooms.find(saved => saved.id === deleteRoomId);
   const timeline = useAutoHideScrollbars<HTMLDivElement>();
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -225,12 +224,10 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     roomStatus={saved => memberStatus(saved.members.find(member => member.id === saved.defaultAgentId), saved.workspace) === DELETED_HOMIE ? 'Deleted Homie · Conversation saved' : null}
     pinningRoomId={pinningRoomId} onPin={(id, pinned) => { void pinRoom(id, pinned); }}
     onDelete={id => { setDeleteRoomId(id); onOpenRoom?.(); }}
-    onRename={room => setRenameChoice({ id: room.id, name: room.name })}
+    onRename={(roomId, name) => mutate({ action: 'rename', roomId, name })}
     onSelect={id => { setRoomId(id); onOpenRoom?.(); }} onNew={() => { setDialog('new'); onOpenRoom?.(); }} onRefresh={data.refresh} />;
   return <>
     {sidebarTarget && createPortal(roomList, sidebarTarget)}
-    {renameChoice && <RenameDialog initialTitle={renameChoice.name} heading="RENAME ROOM" inputLabel="Room title" maxLength={100}
-      onSave={name => mutate({ action: 'rename', roomId: renameChoice.id, name })} onClose={() => setRenameChoice(null)} />}
     <main className={styles.root} hidden={!active} aria-label="Worker">
       {sidebarTarget === undefined && <aside className={styles.sidebar}>{roomList}</aside>}
       <section className={styles.conversation} aria-label={room?.name ?? 'Room conversation'}>
@@ -240,7 +237,11 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
               <NeumorphicButton variant="ghost" className={styles.participant} aria-label={`Manage Homie: ${member.name}`} disabled={!onManageHomies || memberStatus(member, room.workspace) === DELETED_HOMIE} onClick={() => onManageHomies?.(member.id, room.id)}><AgentAvatar id={member.id} avatar={agents.find(agent => agent.id === member.id)?.avatar} /><span>{member.name}{memberStatus(member, room.workspace) === DELETED_HOMIE ? ' · Deleted Homie' : ''}</span></NeumorphicButton>
             </TooltipTarget>)}
           </div> : <SidebarPanelTitle as="h2" icon={<WorkerIcon />} title="WORKER" />}
-          <TooltipButton variant="ghost" size="icon" title="Phone calls" aria-label="Phone calls" aria-haspopup="dialog" disabled={!room} onClick={() => setVoiceOpen(true)}><Phone aria-hidden="true" /></TooltipButton>
+          <div className={styles.headerActions}>
+            <TooltipButton variant="ghost" size="icon" title="Phone calls" aria-label="Phone calls" aria-haspopup="dialog" disabled={!room} onClick={() => setVoiceOpen(true)}><Phone aria-hidden="true" /></TooltipButton>
+            <WorkspaceLayoutControls />
+            {onCloseWorkspace && <TooltipButton size="icon" title="Close Worker pane" aria-label="Close Worker pane" onClick={onCloseWorkspace}><X aria-hidden="true" /></TooltipButton>}
+          </div>
         </header>
         <div className={styles.body}>
           <div className={styles.content} ref={contentRef}>

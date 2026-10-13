@@ -38,7 +38,14 @@ export function createSessionListHarness() {
     './FlashSessionHeader': { FlashSessionHeader: 'sidebar-panel-header' },
     '../../shared/ui/TooltipButton': { TooltipButton: 'button' },
     '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
+    '../../shared/ui/InlineRenameField': { InlineRenameField: 'inline-rename-field' },
     react: {
+      useState: (initial: unknown) => {
+        const index = cursor++;
+        if (!(index in slots)) slots[index] = initial;
+        return [slots[index], (value: unknown) => { slots[index] = value; }];
+      },
+      useEffect: (effect: () => void) => { effects.push(effect); },
       useRef: (current: unknown) => {
         const index = cursor++;
         return slots[index] ??= { current };

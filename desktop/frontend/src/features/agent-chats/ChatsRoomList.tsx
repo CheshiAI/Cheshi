@@ -14,6 +14,7 @@ import searchStyles from '../chat/ChatHistorySearch.module.css';
 import styles from './ChatsRoomList.module.css';
 import type { ChatsLoadPhase } from './useChatsSnapshot';
 import type { SpecialistAgent } from '../../../../shared/agent-registry';
+import { InlineRenameField } from '../../shared/ui/InlineRenameField';
 import { RoomParticipantsPreview } from './RoomParticipantsPreview';
 
 export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, refreshing, disabled, error, pinningRoomId, onPin, onDelete, onRename, onSelect, onNew, onRefresh, roomStatus }: {
@@ -22,10 +23,11 @@ export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, ref
   onSelect(id: string): void; onNew(): void; onRefresh(): Promise<void>;
   pinningRoomId: string | null; onPin(id: string, pinned: boolean): void;
   onDelete?(id: string): void;
-  onRename?(room: AgentRoom): void;
+  onRename?(roomId: string, title: string): Promise<unknown>;
   roomStatus?(room: AgentRoom): string | null;
 }) {
   const [query, setQuery] = useState('');
+  const [editing, setEditing] = useState<{ id: string; title: string } | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const refreshDisabled = disabled || refreshing || phase === 'loading';
   const refresh = usePullToRefresh(onRefresh, refreshDisabled);
@@ -59,7 +61,13 @@ export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, ref
         <PullToRefreshStatus {...refresh} />
         <nav className={sessionStyles.list} aria-label="Rooms" aria-busy={phase === 'loading' || refreshing || refresh.refreshing}>
           {visible.map(({ room, updated }) => <div key={room.id} className={`${sessionStyles.sessionRow} ${styles.row}`}>
-            <NeumorphicButton variant="ghost" className={sessionStyles.session} aria-label={room.name} aria-current={room.id === selectedId ? 'page' : undefined} onClick={() => onSelect(room.id)}>
+            {editing?.id === room.id && onRename ? <InlineRenameField initialTitle={editing.title} inputLabel="Room title" maxLength={100}
+              onSave={title => onRename(room.id, title)} onClose={() => setEditing(null)}>
+              <span className={`${sessionStyles.sessionMetadata} ${styles.metadata}`}>
+                <span className={sessionStyles.sessionId}>{roomStatus?.(room) ?? <RoomParticipantsPreview members={room.members} agents={agents} />}</span>
+                <span className={`${sessionStyles.sessionTime} ${styles.time}`}>{formatSessionElapsedTime(updated / 1000, now)}</span>
+              </span>
+            </InlineRenameField> : <><NeumorphicButton variant="ghost" className={sessionStyles.session} aria-label={room.name} aria-current={room.id === selectedId ? 'page' : undefined} onClick={() => onSelect(room.id)}>
               <span className={`${sessionStyles.sessionTitleRow} ${styles.title}`}><TooltipTarget content={room.name}><span className={sessionStyles.sessionTitle}>{room.name}</span></TooltipTarget>
               </span>
               <span className={`${sessionStyles.sessionMetadata} ${styles.metadata}`}>
@@ -68,8 +76,8 @@ export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, ref
               </span>
             </NeumorphicButton>
             <div className={styles.actions}>
-              <TooltipButton variant="ghost" size="icon" title="Rename room" aria-label={`Rename room: ${room.name}`} aria-haspopup="dialog"
-                disabled={disabled || !onRename} onClick={() => onRename?.(room)}><Pencil aria-hidden="true" /></TooltipButton>
+              <TooltipButton variant="ghost" size="icon" title="Rename room" aria-label={`Rename room: ${room.name}`}
+                disabled={disabled || !onRename || editing !== null} onClick={() => setEditing({ id: room.id, title: room.name })}><Pencil aria-hidden="true" /></TooltipButton>
               <TooltipButton variant="ghost" size="icon" title="Delete room" aria-label={`Delete room: ${room.name}`}
                 disabled={disabled || !onDelete} onClick={() => onDelete?.(room.id)}><Trash2 aria-hidden="true" /></TooltipButton>
               <TooltipButton variant="ghost" size="icon" title={room.pinned === true ? 'Unpin' : 'Pin'}
@@ -77,7 +85,7 @@ export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, ref
                 disabled={disabled || pinningRoomId !== null} onClick={() => onPin(room.id, room.pinned !== true)}>
                 {room.pinned === true ? <PinOff aria-hidden="true" /> : <Pin aria-hidden="true" />}
               </TooltipButton>
-            </div>
+            </div></>}
           </div>)}
           {!loaded && phase === 'loading' && <LoadingState className={sessionStyles.loading} label="Loading rooms…" />}
           {loaded && phase !== 'error' && !visible.length && <p className={`${styles.notice} ${styles.empty}`}>{query.trim() ? 'No matching rooms.' : 'Create a work room and invite your Homies to begin.'}</p>}

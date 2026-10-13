@@ -1,0 +1,30 @@
+.root {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 48px;
+  margin: 0;
+  padding: 6px var(--space-default);
+  gap: 2px;
+  background: var(--control-surface);
+  color: var(--text);
+}
+
+.root .field {
+  --neumorphic-button-surface: transparent;
+  --neumorphic-button-hover-background: transparent;
+  --field-padding-inline: 0px;
+  height: 22px;
+  border: 0;
+  font-size: var(--font-size-label);
+}
+
+.error {
+  margin: 0;
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}

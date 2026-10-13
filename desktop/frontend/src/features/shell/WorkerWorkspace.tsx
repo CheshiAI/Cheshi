@@ -7,7 +7,7 @@ import type { AgentManagementApi } from '../../../../shared/agent-management';
 
 export interface WorkerWorkspaceHandle { closeHomies(): void }
 type ConversationProps = Pick<ComponentProps<typeof ChatsView>, 'sidebarTarget' | 'sidebarActive' | 'onOpenRoom'
-  | 'reviewedMessageId' | 'onReviewFileChanges' | 'reviewedVerificationId' | 'onReviewVerification'>;
+  | 'reviewedMessageId' | 'onReviewFileChanges' | 'reviewedVerificationId' | 'onReviewVerification' | 'onCloseWorkspace'>;
 
 /** Keep panel interactions inside Worker so they do not render every workspace view. */
 export function WorkerWorkspace({ ref, view, onBeforeOpenHomies, api, registryApi, managementApi, ...conversation }: ConversationProps & {

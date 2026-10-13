@@ -2,6 +2,7 @@ import { FolderTree, MessageSquare, SquareTerminal } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { SplitPaneLayout } from '../../shared/ui/SplitPaneLayout';
+import { WorkerIcon } from '../../shared/ui/WorkerIcon';
 import { SplitPreview, type SplitPreviewDirection } from '../../shared/ui/SplitPreview';
 import { resizeSplitPane, splitPaneIds, type SplitLayoutNode, type SplitPaneDirection } from '../../shared/ui/splitPaneModel';
 import { placeWorkspacePane, visibleWorkspaceLayout, workspaceDropDirection, type LayoutMode, type WorkspacePaneId } from './workspaceLayoutModel';
@@ -72,13 +73,15 @@ function PaneHost({ host, paneId, onMove, onDetach, dragSource }: {
 }
 
 /** Persistent portal hosts keep drafts, editor controllers and terminal sessions alive during rearrangement. */
-export function WorkspaceEditorSplit({ mode, children, editor, terminal, terminalPrimary = false,
+export function WorkspaceEditorSplit({ mode, children, editor, terminal, worker, terminalPrimary = false, workerPrimary = false,
   layout: customLayout, onLayoutChange, onOpenPane, onPaneActivate, focusRequest, minimumPrimaryWidth, disabled = false }: {
   mode: LayoutMode;
   children: ReactNode;
   editor: ReactNode;
   terminal?: ReactNode;
+  worker?: ReactNode;
   terminalPrimary?: boolean;
+  workerPrimary?: boolean;
   minimumPrimaryWidth?: number;
   layout?: SplitLayoutNode | null;
   onLayoutChange?: (layout: SplitLayoutNode) => void;
@@ -109,11 +112,11 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, termina
   const focusPane = useRef<WorkspacePaneId | null>(null);
   const detachedFocus = useRef<HTMLElement | null>(null);
   const onDetach = useCallback((element: HTMLElement) => { detachedFocus.current = element; }, []);
-  const [hosts] = useState(() => ({ primary: document.createElement('div'), editor: document.createElement('div'), terminal: document.createElement('div') }));
+  const [hosts] = useState(() => ({ primary: document.createElement('div'), editor: document.createElement('div'), terminal: document.createElement('div'), worker: document.createElement('div') }));
   const [ratio, setRatio] = useState(.5);
   const [maximized, setMaximized] = useState<WorkspacePaneId | null>(null);
   const [preview, setPreview] = useState<{ target: HTMLElement; pane: WorkspacePaneId; direction: SplitPreviewDirection } | null>(null);
-  const layout = customLayout ?? visibleWorkspaceLayout(mode, terminalPrimary, ratio);
+  const layout = customLayout ?? visibleWorkspaceLayout(mode, terminalPrimary, ratio, workerPrimary);
   const ids = splitPaneIds(layout);
   const canMaximize = ids.length > 1;
   useEffect(() => { if (!canMaximize) setMaximized(null); }, [canMaximize]);
@@ -161,7 +164,7 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, termina
     if (previousPane && visible.includes(previousPane)) previous.focus({ preventScroll: true });
     else hosts[visible[0] as WorkspacePaneId]?.focus({ preventScroll: true });
   });
-  const contents = { primary: children, editor, terminal };
+  const contents = { primary: children, editor, terminal, worker };
   const shownIds = splitPaneIds(shownLayout);
   const activation = useRef({ onPaneActivate, shownIds, disabled });
   activation.current = { onPaneActivate, shownIds, disabled };
@@ -211,11 +214,13 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, termina
       choices={[
         { id: 'editor', label: 'Explorer', icon: <FolderTree aria-hidden="true" /> },
         { id: 'primary', label: 'Codex', icon: <MessageSquare aria-hidden="true" /> },
+        ...(worker ? [{ id: 'worker', label: 'Worker', icon: <WorkerIcon /> }] : []),
         { id: 'terminal', label: 'Terminal', icon: <SquareTerminal aria-hidden="true" /> },
       ].map(choice => ({ ...choice,
         description: ids.includes(choice.id) ? 'Move this area here' : 'Open this area',
         disabledReason: preview.pane === choice.id || (ids.length === 1 && ids[0] === choice.id)
-          ? 'Already in this area. Use its session split controls to add another session.' : undefined,
+          ? choice.id === 'primary' ? 'Already in this area. Use its session split controls to add another session.'
+            : 'Already in this area.' : undefined,
       }))} onChoose={id => {
         const pane = id as WorkspacePaneId;
         const next = placeWorkspacePane(layout, preview.pane, pane, preview.direction);

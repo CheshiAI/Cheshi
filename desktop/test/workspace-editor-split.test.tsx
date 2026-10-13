@@ -1,15 +1,9 @@
+import { hooks, load, elements, props, shellHarness } from './workspace-shell-test-harness';
 import * as layoutModel from '../frontend/src/features/shell/workspaceLayoutModel';
 import * as splitModel from '../frontend/src/shared/ui/splitPaneModel';
 import * as splitSizing from '../frontend/src/shared/ui/splitPaneSizing';
-import { CHAT_PANE_MIN_WIDTH } from '../frontend/src/features/chat/chatWorkspaceModel';
 import { expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import ts from 'typescript';
-import { cloneElement, isValidElement, type ComponentProps, type CSSProperties, type HTMLAttributes, type PointerEvent, type ReactElement, type ReactNode } from 'react';
-import * as jsxRuntime from 'react/jsx-runtime';
-import type { AppShell } from '../frontend/src/features/shell/AppShell';
-import type { WorkerWorkspace } from '../frontend/src/features/shell/WorkerWorkspace';
+import type { ComponentProps, CSSProperties, HTMLAttributes, PointerEvent, ReactElement, ReactNode } from 'react';
 import type { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
 import type { AgentManagementViews } from '../frontend/src/features/shell/AgentManagementViews';
 import type { WorkspaceEditorSplit } from '../frontend/src/features/shell/WorkspaceEditorSplit';
@@ -18,83 +12,17 @@ import type { SlidingSidePanel } from '../frontend/src/shared/ui/SlidingSidePane
 import type { Sidebar } from '../frontend/src/features/navigation/Sidebar';
 import type { SidebarPanel } from '../frontend/src/features/navigation/sidebarPanel';
 import { sidebarPanelForWorkspace } from '../frontend/src/features/navigation/sidebarPanel';
-import type { useAppUpdateResume } from '../frontend/src/features/shell/useAppUpdateResume';
 import type { SidebarRail } from '../frontend/src/features/navigation/SidebarRail';
 import type { WorkspaceEditor } from '../frontend/src/features/editor/WorkspaceEditor';
 import type { WorkspaceEditorPane } from '../frontend/src/features/editor/WorkspaceEditorPane';
 import type { ChatWorkspace } from '../frontend/src/features/chat/ChatWorkspace';
 import type { WorkspaceFileSearch } from '../frontend/src/features/navigation/WorkspaceFileSearch';
 import type { CodeGraphView } from '../frontend/src/features/graph/CodeGraphView';
-import * as draftAttachmentModule from '../frontend/src/features/chat/chatDraftAttachments';
-import { appleNoteDraftText } from '../frontend/src/features/notes/appleNotesModel';
 import type { NotesView } from '../frontend/src/features/notes/NotesView';
 import type { GitWorkspace } from '../frontend/src/features/git/GitWorkspace';
 import type { AppleNote } from '../shared/apple-notes';
 import type { TerminalWorkspace } from '../frontend/src/features/terminal/TerminalWorkspace';
 import type { ReviewSidebar } from '../frontend/src/features/shell/ReviewSidebar';
-
-function hooks() {
-  const slots: unknown[] = [];
-  const dependencies: (readonly unknown[] | undefined)[] = [];
-  const pending: (() => void)[] = [];
-  let cursor = 0;
-  let effectIndex = 0;
-  function effect(run: () => void, deps: readonly unknown[]) {
-    const index = effectIndex++;
-    const previous = dependencies[index];
-    if (previous && previous.length === deps.length && deps.every((value, i) => Object.is(value, previous[i]))) return;
-    dependencies[index] = deps;
-    pending.push(run);
-  }
-  return {
-    react: {
-      useState(initial: unknown) {
-        const index = cursor++;
-        if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial;
-        return [slots[index], (value: unknown) => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; }];
-      },
-      useRef(current: unknown) { return slots[cursor++] ??= { current }; },
-      useCallback(callback: unknown) { return callback; },
-      useImperativeHandle(ref: { current: unknown } | undefined, create: () => unknown) {
-        if (ref) ref.current = create();
-      },
-      useEffect: effect, useLayoutEffect: effect,
-    },
-    render<T>(run: () => T) {
-      cursor = 0; effectIndex = 0;
-      const result = run();
-      pending.splice(0).forEach(effect => effect());
-      return result;
-    },
-  };
-}
-
-function load<T>(path: string, name: string, modules: Record<string, unknown>, globals: Record<string, unknown> = {}): T {
-  const exports: Record<string, unknown> = {};
-  const source = readFileSync(new URL(`../frontend/src/${path}`, import.meta.url), 'utf8');
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023, jsx: ts.JsxEmit.ReactJSX },
-  });
-  vm.runInNewContext(compiled.outputText, { exports, ...globals, require: (dependency: string) => {
-    if (dependency === 'react/jsx-runtime') return jsxRuntime;
-    if (dependency.endsWith('.module.css')) return { default: new Proxy({}, { get: (_target, key) => key }) };
-    if (!Object.hasOwn(modules, dependency)) throw new Error(`Unexpected dependency: ${dependency}`);
-    return modules[dependency];
-  } });
-  return exports[name] as T;
-}
-
-function elements(node: ReactNode): ReactElement<{ children?: ReactNode }>[] {
-  if (Array.isArray(node)) return node.flatMap(elements);
-  if (!isValidElement<{ children?: ReactNode }>(node)) return [];
-  return [node, ...elements(node.props.children)];
-}
-
-function props<T>(tree: ReactNode, name: string): T {
-  const node = elements(tree).find(element => element.type === name);
-  if (!node) throw new Error(`Missing component: ${name}`);
-  return node.props as T;
-}
 
 function renderFilePane(loading: boolean, ready = true, existingFile = false, canCloseEmptyPane = false, closeAllTabs = () => {}) {
   const modules: Record<string, unknown> = {
@@ -163,94 +91,6 @@ test('empty split Explorer can close after restoration, including while a file i
   expect(closed).toBe(2);
 });
 
-function shellHarness(initialHistoryLoading = false, preference: { panel: SidebarPanel } = { panel: 'files' },
-  initialLayout: splitModel.SplitLayoutNode | null = null) {
-  const app = hooks();
-  let historyLoading = initialHistoryLoading;
-  let openSearch = () => {};
-  let revealHomieRepository = () => {};
-  let resumeOptions: Parameters<typeof useAppUpdateResume>[0];
-  let editorSessionMode: ReturnType<typeof useAppUpdateResume>['editorSessionMode'] = 'restore';
-  const attachments = draftAttachmentModule.createChatDraftAttachments();
-  const modules: Record<string, unknown> = {
-    '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
-    './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },
-    './WorkerWorkspace': { WorkerWorkspace: 'WorkerWorkspace' },
-    '../chat/FlashSourceLink': { FlashSourceNavigationContext: { Provider: 'FlashSourceNavigationContext' } },
-    './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => initialLayout, saveWorkspaceLayout() {} },
-    '../chat/chatWorkspaceModel': { CHAT_PANE_MIN_WIDTH },
-    '../../shared/ui/splitPaneModel': splitModel,
-    react: app.react,
-    '../navigation/sidebarPanel': {
-      sidebarPanelForWorkspace,
-      readSidebarPanel: () => preference.panel,
-      saveSidebarPanel: (panel: SidebarPanel) => { preference.panel = panel; },
-    },
-    '../../cheshiDesktop': { cheshiDesktop: { agentRegistry: {
-      onRepositoryReady(listener: () => void) { revealHomieRepository = listener; return () => { revealHomieRepository = () => {}; }; },
-    } } },
-    '../chat/chatDraftAttachments': { ...draftAttachmentModule, createChatDraftAttachments: () => attachments },
-    '../notes/appleNotesModel': { appleNoteDraftText },
-    '../chat/useChatWorkspace': { useChatWorkspace: () => ({ activePaneId: 'chat-a', controllers: {}, activeController: { state: { phase: 'ready' } }, relay: { running: false },
-      sessionHistory: { loading: historyLoading, sessions: [] }, responseThreadIds: [], accountSwitchPending: false }) },
-    '../chat/useChatHistorySearch': { useChatHistorySearch: () => ({ clear() {} }) },
-    './useAppUpdateResume': { useAppUpdateResume: (options: typeof resumeOptions) => {
-      resumeOptions = options;
-      return { busy: editorSessionMode === 'waiting', error: null, editorSessionMode };
-    } },
-    './useWorkflowChatNavigation': { useWorkflowChatNavigation: () => async () => false },
-    './useRelationshipGraphMenu': { useRelationshipGraphMenu() {} },
-    '../graph/useCodeGraphIndex': { useCodeGraphIndex: () => ({ status: { state: 'ready' } }) },
-    '../navigation/fileSearchShortcut': { installFileSearchShortcut: (_document: unknown, open: () => void) => {
-      openSearch = open; return () => {};
-    } },
-  };
-  for (const [path, names] of Object.entries({
-    '../../shared/ui': ['LiquidGlassPanel', 'SlidingSidePanel'], '../chat': ['ChatSessionList'], '../chat/ChatWorkspace': ['ChatWorkspace'],
-    '../chat/ChatRenameSessionDialog': ['ChatRenameSessionDialog'], '../chat/ChatDeleteSessionDialog': ['ChatDeleteSessionDialog'],
-    '../chat/ChatHistoryOpenDialog': ['ChatHistoryOpenDialog'], '../chat/ChatHistorySearchBar': ['ChatHistorySearchBar'],
-    '../chat/ChatHistorySearchPage': ['ChatHistorySearchPage'], '../chrome/WindowChrome': ['WindowChrome', 'WindowTabs'],
-    '../editor': ['WorkspaceEditor'], '../git': ['GitWorkspace'], '../graph': ['CodeGraphView'],
-    '../home/BlankView': ['BlankView'], '../navigation/Sidebar': ['Sidebar'], '../navigation/SidebarRail': ['SidebarRail'],
-    '../plugins': ['PluginsView'],
-    '../navigation/ExplorerView': ['ExplorerView'],
-    '../terminal': ['TerminalWorkspace'],
-    '../settings/SettingsView': ['SettingsView'],
-    '../scheduler/SchedulerNotifications': ['SchedulerNotifications'],
-    '../settings/DiscordSetupConfirmation': ['DiscordSetupConfirmation'],
-    '../calendar/CalendarView': ['CalendarView'],
-    './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],
-    '../editor/LocalHistoryPage': ['LocalHistoryPage'], './WorkspaceEditorSplit': ['WorkspaceEditorSplit'],
-    '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'], '../notes/NotesView': ['NotesView'],
-  })) modules[path] = Object.fromEntries(names.map(name => [name, name]));
-  modules['../../shared/ui'] = { RegionalBlur: 'RegionalBlur', LiquidGlassPanel: 'LiquidGlassPanel', SlidingSidePanel: 'SlidingSidePanel',
-    SidebarToggleVisibility: { Provider: 'SidebarToggleVisibility' } };
-  const worker = hooks();
-  const Worker = load<typeof WorkerWorkspace>('features/shell/WorkerWorkspace.tsx', 'WorkerWorkspace', {
-    react: worker.react, '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
-    './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },
-  });
-  const expandWorker = (node: ReactNode): ReactNode => {
-    if (Array.isArray(node)) return node.map(expandWorker);
-    if (!isValidElement<{ children?: ReactNode }>(node)) return node;
-    if (node.type === 'WorkerWorkspace') return worker.render(() => Worker(node.props as ComponentProps<typeof WorkerWorkspace>));
-    return cloneElement(node, { children: expandWorker(node.props.children) });
-  };
-  const Shell = load<typeof AppShell>('features/shell/AppShell.tsx', 'AppShell', modules, { document: {} });
-  return { attachments, render: () => {
-    app.render(() => Shell());
-    return expandWorker(app.render(() => Shell()));
-  }, openSearch: () => openSearch(), revealHomieRepository: () => revealHomieRepository(),
-    beginRestore: () => { editorSessionMode = 'waiting'; },
-    restoreShell: (view: Parameters<typeof resumeOptions.setActiveView>[0], panel: SidebarPanel) => {
-      resumeOptions.setActiveView(view);
-      resumeOptions.setSidebarPanel(panel);
-    },
-    finishRestore: () => { editorSessionMode = 'preserve'; },
-    finishOrdinaryStartup: () => { editorSessionMode = 'restore'; },
-    finishInitialHistory: () => { historyLoading = false; } };
-}
-
 test('Worker keeps the conversation beside Homie settings and reserves the central editor for creation', () => {
   const app = shellHarness();
   const chats = () => props<ComponentProps<typeof ChatsView>>(app.render(), 'ChatsView');
@@ -264,7 +104,7 @@ test('Worker keeps the conversation beside Homie settings and reserves the centr
   expect(chats().homiesOpen).toBe(true);
   expect(management()).toMatchObject({ view: 'homies', selectionRequest: { agentId: null } });
   const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
-  expect(props<ComponentProps<typeof AgentManagementViews>>(split.children, 'AgentManagementViews').view).toBe('homies');
+  expect(props<ComponentProps<typeof AgentManagementViews>>(split.worker, 'AgentManagementViews').view).toBe('homies');
   expect(props<{ value: boolean }>(app.render(), 'SidebarToggleVisibility').value).toBe(false);
   expect(props<ComponentProps<typeof ReviewSidebar>>(app.render(), 'ReviewSidebar').item).toBeNull();
   management().onEditingChange?.(true);

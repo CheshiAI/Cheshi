@@ -1,13 +1,13 @@
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { insertSplitPane, removeSplitPane, splitPaneIds, type SplitLayoutNode, type SplitPaneDirection } from '../../shared/ui/splitPaneModel';
 
-export type WorkspacePaneId = 'primary' | 'editor' | 'terminal';
+export type WorkspacePaneId = 'primary' | 'editor' | 'terminal' | 'worker';
 export type WorkspaceSplitTarget = WorkspacePaneId | 'workspace';
-const paneIds: readonly string[] = ['primary', 'editor', 'terminal'];
+const paneIds: readonly string[] = ['primary', 'editor', 'terminal', 'worker'];
 
 export type LayoutMode = 'primary' | 'split' | 'editor' | 'page';
-export function visibleWorkspaceLayout(mode: LayoutMode, terminalPrimary: boolean, ratio = .5): SplitLayoutNode {
-  const primary: SplitLayoutNode = { type: 'pane', paneId: terminalPrimary ? 'terminal' : 'primary' };
+export function visibleWorkspaceLayout(mode: LayoutMode, terminalPrimary: boolean, ratio = .5, workerPrimary = false): SplitLayoutNode {
+  const primary: SplitLayoutNode = { type: 'pane', paneId: workerPrimary ? 'worker' : terminalPrimary ? 'terminal' : 'primary' };
   if (mode === 'primary' || mode === 'page') return primary;
   if (mode === 'editor') return { type: 'pane', paneId: 'editor' };
   return { type: 'split', id: 'workspace-editor', axis: 'columns', ratio,
@@ -58,7 +58,7 @@ export function parseWorkspaceLayout(value: unknown): SplitLayoutNode | null {
   const seen = new Set<string>();
   const splits = new Set<string>();
   const parse = (input: unknown, depth: number): SplitLayoutNode | null => {
-    if (!input || typeof input !== 'object' || depth > 2) return null;
+    if (!input || typeof input !== 'object' || depth >= paneIds.length) return null;
     const node = input as Record<string, unknown>;
     if (node.type === 'pane') {
       if (typeof node.paneId !== 'string' || !paneIds.includes(node.paneId) || seen.has(node.paneId)) return null;

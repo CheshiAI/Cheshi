@@ -14,7 +14,6 @@ import { FlashSourceNavigationContext } from '../chat/FlashSourceLink';
 import { CHAT_PANE_MIN_WIDTH } from '../chat/chatWorkspaceModel';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { ChatDeleteSessionDialog } from '../chat/ChatDeleteSessionDialog';
-import { ChatRenameSessionDialog } from '../chat/ChatRenameSessionDialog';
 import { ChatHistoryOpenDialog } from '../chat/ChatHistoryOpenDialog';
 import { ChatHistorySearchBar } from '../chat/ChatHistorySearchBar';
 import { ChatHistorySearchPage } from '../chat/ChatHistorySearchPage';
@@ -86,9 +85,12 @@ export function AppShell() {
   const startupReported = useRef(false);
   const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
   const [activeView, setActiveView] = useState<WorkspaceView>(() =>
-    customLayout && ['editor', 'primary'].every(pane => splitPaneIds(customLayout).includes(pane)) ? 'chat' : 'explorer');
+    customLayout && splitPaneIds(customLayout).includes('primary') && ['editor', 'worker'].some(pane => splitPaneIds(customLayout).includes(pane)) ? 'chat'
+      : customLayout && splitPaneIds(customLayout).includes('worker') ? 'chats' : 'explorer');
+  const [workerView, setWorkerView] = useState<'chats' | 'docker'>('chats');
   const [focusedPane, setFocusedPane] = useState<WorkspacePaneId>(() =>
-    customLayout && splitPaneIds(customLayout).includes('editor') ? 'editor' : 'primary');
+    customLayout && splitPaneIds(customLayout).includes('editor') ? 'editor'
+      : customLayout && splitPaneIds(customLayout).includes('worker') && !splitPaneIds(customLayout).includes('primary') ? 'worker' : 'primary');
   const [paneFocusRequest, setPaneFocusRequest] = useState<{ paneId: WorkspacePaneId; requestId: number } | null>(null);
   const focusWorkspacePane = useCallback((paneId: WorkspacePaneId) => {
     setFocusedPane(paneId);
@@ -98,11 +100,13 @@ export function AppShell() {
   useEffect(() => {
     if (previousView.current === activeView) return;
     previousView.current = activeView;
-    setFocusedPane(activeView === 'editor' ? 'editor' : activeView === 'terminal' ? 'terminal' : 'primary');
+    if (activeView === 'chats' || activeView === 'docker') setWorkerView(activeView);
+    setFocusedPane(activeView === 'editor' ? 'editor' : activeView === 'terminal' ? 'terminal'
+      : activeView === 'chats' || activeView === 'docker' ? 'worker' : 'primary');
   }, [activeView]);
   const [historyChoice, setHistoryChoice] = useState<{ sessionId: string; title: string; paneId: string } | null>(null);
   const [deleteChoice, setDeleteChoice] = useState<{ sessionId: string; title: string } | null>(null);
-  const [renameChoice, setRenameChoice] = useState<{ sessionId: string; title: string } | null>(null);
+  const [renamingSession, setRenamingSession] = useState(false);
   const workerWorkspace = useRef<WorkerWorkspaceHandle>(null);
   const [fileReview, setFileReview] = useState<{ paneId: string; itemId: string; path: string | null; item?: never }
     | { paneId?: never; itemId: string; path: string | null; item: ChatActivityItem } | null>(null);
@@ -174,9 +178,11 @@ export function AppShell() {
   const historySearch = useChatHistorySearch(workspace.activePaneId, workspace.paneIds);
   const updateResume = useAppUpdateResume({ activeView, rightSidebarOpen, setActiveView, setRightSidebarOpen, sidebarPanel, setSidebarPanel,
     blockedReason: temporaryChatOpen ? 'Close the temporary chat before updating.'
-      : historyChoice || deleteChoice || renameChoice ? 'Close the conversation dialog before updating.' : null });
+      : renamingSession ? 'Finish renaming the session before updating.'
+        : historyChoice || deleteChoice ? 'Close the conversation dialog before updating.' : null });
   const accountSwitchReason = updateResume.busy ? 'Wait for update preparation or workspace recovery to finish.' : temporaryChatOpen ? 'Close the temporary chat before switching accounts.'
-    : historyChoice || deleteChoice || renameChoice ? 'Close the conversation dialog before switching accounts.'
+    : renamingSession ? 'Finish renaming the session before switching accounts.'
+      : historyChoice || deleteChoice ? 'Close the conversation dialog before switching accounts.'
       : workspace.accountSwitchReason;
   const beforeAccountSelect = (): string | null => accountSwitchReason ?? workspace.beginAccountSwitch();
   const accountSelectionFinished = (changed: boolean, preserveConversation = false): void => {
@@ -263,12 +269,14 @@ export function AppShell() {
     }
     if (view === 'chat') { setSidebarPanel('chats'); setLeftSidebarOpen(true); }
     if (view === 'chats') { setSidebarPanel('agent-chats'); setLeftSidebarOpen(true); }
+    if (view === 'chats' || view === 'docker') setWorkerView(view);
     if (view === 'git') { setSidebarPanel('github'); setLeftSidebarOpen(true); }
-    if (!options.preserveFocus) focusWorkspacePane(view === 'terminal' ? 'terminal' : view === 'editor' ? 'editor' : 'primary');
+    const pane = view === 'terminal' ? 'terminal' : view === 'editor' ? 'editor'
+      : view === 'chats' || view === 'docker' ? 'worker' : 'primary';
+    if (!options.preserveFocus) focusWorkspacePane(pane);
     if (customLayout) {
-      const pane = view === 'terminal' ? 'terminal' : view === 'editor' ? 'editor' : 'primary';
       setCustomLayout(current => current && revealWorkspacePane(current, pane));
-      if (view === 'terminal') return;
+      if (pane === 'terminal' || pane === 'worker') return;
     }
     setActiveView(view);
     setPrimaryPaneClosed(false);
@@ -362,11 +370,14 @@ export function AppShell() {
       : fullWidthViews.includes(activeView) ? 'page'
         : primaryPaneClosed ? 'editor' : 'split';
 
-  const visiblePanes = splitPaneIds(customLayout ?? visibleWorkspaceLayout(editorLayoutMode, activeView === 'terminal'));
+  const workerPrimary = activeView === 'chats' || activeView === 'docker';
+  const primaryView = workerPrimary ? 'chat' : activeView;
+  const visiblePanes = splitPaneIds(customLayout ?? visibleWorkspaceLayout(editorLayoutMode, activeView === 'terminal', .5, workerPrimary));
   const visiblePaneKey = [...visiblePanes].sort().join(':');
   const selectedPane = visiblePanes.includes(focusedPane) ? focusedPane : visiblePanes[0];
-  const railView = selectedPane === 'editor' ? 'editor' : selectedPane === 'terminal' ? 'terminal' : activeView;
-  const automaticSidebarPanel = sidebarPanelForWorkspace(activeView, visiblePanes);
+  const railView = selectedPane === 'editor' ? 'editor' : selectedPane === 'terminal' ? 'terminal'
+    : selectedPane === 'worker' ? workerView : primaryView;
+  const automaticSidebarPanel = sidebarPanelForWorkspace(railView, visiblePanes);
   const sidebarScene = `${activeView}:${visiblePaneKey}`;
   const previousSidebarScene = useRef(sidebarScene);
   useEffect(() => {
@@ -377,7 +388,7 @@ export function AppShell() {
     if (!automaticSidebarPanel || (!sceneChanged && updateResume.editorSessionMode !== 'preserve')) return;
     setSidebarPanel(automaticSidebarPanel);
   }, [sidebarScene, automaticSidebarPanel, updateResume.editorSessionMode]);
-  const closePane = (pane: 'primary' | 'terminal') => {
+  const closePane = (pane: 'primary' | 'terminal' | 'worker') => {
     if (customLayout) setCustomLayout(current => removeSplitPane(current, pane));
     else setPrimaryPaneClosed(true);
   };
@@ -425,7 +436,11 @@ export function AppShell() {
                 onTemporaryChat={() => { if (!workspace.accountSwitchPending) void cheshiDesktop?.temporaryChat.openWindow().catch(error => window.alert(String(error))); }}
                 temporaryChatOpen={temporaryChatOpen}
                 onOpen={openChat}
-                onRename={cheshiDesktop?.renameCodexChatSession ? session => setRenameChoice({ sessionId: session.id, title: session.title }) : undefined}
+                onRenamingChange={setRenamingSession}
+                onRename={cheshiDesktop?.renameCodexChatSession ? (sessionId, title) => {
+                  if (!cheshiDesktop?.renameCodexChatSession) throw new Error('Session renaming is unavailable. Restart Cheshi.');
+                  return cheshiDesktop.renameCodexChatSession(sessionId, title, workspace.activePaneId);
+                } : undefined}
                 deleteReason={workspace.deleteSessionReason}
                 onDelete={(sessionId) => {
                   if (workspace.deleteSessionReason(sessionId)) return;
@@ -443,13 +458,21 @@ export function AppShell() {
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
           <WorkspaceEditorSplit mode={editorLayoutMode} layout={customLayout} onLayoutChange={setCustomLayout}
             onPaneActivate={setFocusedPane} focusRequest={paneFocusRequest}
-            minimumPrimaryWidth={activeView === 'chat' ? CHAT_PANE_MIN_WIDTH : undefined}
-            terminalPrimary={activeView === 'terminal'} disabled={updateResume.busy || workspace.accountSwitchPending}
+            minimumPrimaryWidth={primaryView === 'chat' ? CHAT_PANE_MIN_WIDTH : undefined}
+            terminalPrimary={activeView === 'terminal'} workerPrimary={workerPrimary} disabled={updateResume.busy || workspace.accountSwitchPending}
             onOpenPane={pane => {
               focusWorkspacePane(pane);
               if (pane === 'editor') setEditorSplitOpen(true);
               if (pane === 'primary') { setActiveView('chat'); setPrimaryPaneClosed(false); }
+              if (pane === 'worker') setWorkerView('chats');
             }}
+            worker={<WorkerWorkspace ref={workerWorkspace} view={visiblePanes.includes('worker') ? workerView : null}
+              onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('worker') : undefined}
+              onBeforeOpenHomies={closeReview}
+              reviewedVerificationId={verificationReview?.id} onReviewVerification={openVerificationReview}
+              reviewedMessageId={fileReview?.item?.id} onReviewFileChanges={openChatsFileReview}
+              sidebarTarget={chatsSidebarTarget} sidebarActive={sidebarPanel === 'agent-chats' && leftSidebarOpen}
+              onOpenRoom={() => navigate('chats')} />}
             terminal={<TerminalWorkspace
               active={visiblePanes.includes('terminal')}
               onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('terminal') : undefined}
@@ -476,18 +499,18 @@ export function AppShell() {
               onShowLineCommit={openLineCommit}
             />
           }>
-          {activeView === 'explorer' && <ExplorerView />}
-          {activeView === 'search' && <ChatHistorySearchPage query={submittedSearchQuery}
+          {primaryView === 'explorer' && <ExplorerView />}
+          {primaryView === 'search' && <ChatHistorySearchPage query={submittedSearchQuery}
             result={historySearch.result} loading={historySearch.loading} error={historySearch.error}
             loadingMore={historySearch.loadingMore} moreError={historySearch.moreError} onLoadMore={historySearch.loadMore}
             selectionDisabled={chatSessionSelectionDisabled} onOpen={openHistorySearchHit}
             onRefresh={() => submitHistorySearch(true)} onClose={() => navigate('chat')}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />}
-          {activeView === 'blank' && <WindowTabs />}
-          {activeView === 'calendar' && <CalendarView rightSidebarOpen={rightSidebarOpen}
+          {primaryView === 'blank' && <WindowTabs />}
+          {primaryView === 'calendar' && <CalendarView rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
-          <NotesView onAttach={attachNote} active={activeView === 'notes'}
+          <NotesView onAttach={attachNote} active={primaryView === 'notes'}
             sidebarTarget={memoSidebarTarget} onOpen={() => navigate('notes')}
             attachmentDisabled={chatSessionSelectionDisabled || updateResume.busy}
             rightSidebarOpen={rightSidebarOpen}
@@ -495,7 +518,7 @@ export function AppShell() {
           <FlashSourceNavigationContext.Provider value={openHistorySearchHit}>
             <ChatWorkspace
               workspace={workspace}
-              active={activeView === 'chat' && visiblePanes.includes('primary')}
+              active={primaryView === 'chat' && visiblePanes.includes('primary')}
               onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}
               sessionSyncEnabled={workspace.sessionHistory.loading || sidebarPanel === 'chats'}
               onReviewFileChanges={openFileReview}
@@ -503,7 +526,7 @@ export function AppShell() {
               onHistoryTargetHandled={handleHistoryTarget}
             />
           </FlashSourceNavigationContext.Provider>
-          {activeView === 'codegraph' && (
+          {primaryView === 'codegraph' && (
             <CodeGraphView
               index={codeGraphIndex}
               onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}
@@ -513,13 +536,13 @@ export function AppShell() {
             />
           )}
             <GitWorkspace
-              active={activeView === 'git'}
+              active={primaryView === 'git'}
               sidebarTarget={githubSidebarTarget} onOpenChanges={() => navigate('git')}
               onOpenWorkspaceFile={openWorkspaceFile}
               rightSidebarOpen={rightSidebarOpen}
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
-          {activeView === 'plugins' && (
+          {primaryView === 'plugins' && (
             <PluginsView
               chatContextId={workspace.activePaneId}
               onOpenChat={openWorkflowChat}
@@ -527,14 +550,8 @@ export function AppShell() {
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
           )}
-          {activeView === 'settings' && <SettingsView contextId={workspace.activePaneId} onOpenChat={openWorkflowChat} />}
-          <WorkerWorkspace ref={workerWorkspace} view={activeView === 'chats' || activeView === 'docker' ? activeView : null}
-            onBeforeOpenHomies={closeReview}
-            reviewedVerificationId={verificationReview?.id} onReviewVerification={openVerificationReview}
-            reviewedMessageId={fileReview?.item?.id} onReviewFileChanges={openChatsFileReview}
-            sidebarTarget={chatsSidebarTarget} sidebarActive={sidebarPanel === 'agent-chats' && leftSidebarOpen}
-            onOpenRoom={() => navigate('chats')} />
-          {activeView === 'blank' && <BlankView />}
+          {primaryView === 'settings' && <SettingsView contextId={workspace.activePaneId} onOpenChat={openWorkflowChat} />}
+          {primaryView === 'blank' && <BlankView />}
           </WorkspaceEditorSplit>
         </div>
         <ReviewSidebar
@@ -554,11 +571,6 @@ export function AppShell() {
         onBeforeSelect={beforeAccountSelect} onSelectionFinished={accountSelectionFinished} />
       {fileSearchOpen && <WorkspaceFileSearch onOpenFile={openWorkspaceFile} onClose={() => setFileSearchOpen(false)} />}
       <DiscordSetupConfirmation api={cheshiDesktop?.discord} />
-      {renameChoice && <ChatRenameSessionDialog sessionTitle={renameChoice.title}
-        onSave={title => {
-          if (!cheshiDesktop?.renameCodexChatSession) throw new Error('Session renaming is unavailable. Restart Cheshi.');
-          return cheshiDesktop.renameCodexChatSession(renameChoice.sessionId, title, workspace.activePaneId);
-        }} onClose={() => setRenameChoice(null)} />}
       {deleteChoice && <ChatDeleteSessionDialog sessionTitle={deleteChoice.title}
         reason={workspace.deletePending ? null : workspace.deleteSessionReason(deleteChoice.sessionId)}
         pending={workspace.deletePending} error={workspace.error ?? chat?.state.error ?? null}
@@ -568,7 +580,10 @@ export function AppShell() {
       {historyChoice && <ChatHistoryOpenDialog workspace={workspace} sessionId={historyChoice.sessionId}
         sessionTitle={historyChoice.title} paneId={historyChoice.paneId}
         onResume={() => workspace.openSession(historyChoice.sessionId)}
-        onOpened={() => { setHistoryChoice(null); closeReview(); setActiveView('chat'); setPrimaryPaneClosed(false); }}
+        onOpened={() => {
+          setHistoryChoice(null); closeReview(); setActiveView('chat'); setPrimaryPaneClosed(false);
+          setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
+        }}
         onClose={() => setHistoryChoice(null)} />}
     </div>
       <RegionalBlur sourceRef={notificationSceneRef}>

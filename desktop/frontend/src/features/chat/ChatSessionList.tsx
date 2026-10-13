@@ -1,10 +1,11 @@
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MessageCircleDashed, MessageSquareText, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
 
 import { LoadingIndicator, LoadingState, NeumorphicButton } from '../../shared/ui';
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
+import { InlineRenameField } from '../../shared/ui/InlineRenameField';
 import { FlashSessionHeader } from './FlashSessionHeader';
 import type { ChatSession } from './model';
 import { formatSessionElapsedTime, useChatSessionClock } from './chatSessionTime';
@@ -28,7 +29,8 @@ interface ChatSessionListProps {
   onTemporaryChat?: () => void;
   temporaryChatOpen?: boolean;
   onDelete: (sessionId: string) => void;
-  onRename?: (session: ChatSession) => void;
+  onRename?: (sessionId: string, title: string) => Promise<unknown>;
+  onRenamingChange?: (renaming: boolean) => void;
   deleteReason: (sessionId: string) => string | null;
 }
 
@@ -72,8 +74,11 @@ export function ChatSessionList({
   temporaryChatOpen = false,
   onDelete,
   onRename,
+  onRenamingChange,
   deleteReason,
 }: ChatSessionListProps) {
+  const [editing, setEditing] = useState<{ id: string; title: string } | null>(null);
+  useEffect(() => { onRenamingChange?.(editing !== null); return () => onRenamingChange?.(false); }, [editing, onRenamingChange]);
   const refresh = usePullToRefresh(onRefresh, loading || refreshDisabled);
   // Keep the row callback stable while invoking only the latest committed pane handlers.
   const interaction = useRef({ onOpen, selectionDisabled });
@@ -133,21 +138,27 @@ export function ChatSessionList({
             const reason = deleteReason(session.id);
             return (
               <div className={styles.sessionRow} key={session.id} data-rename={onRename ? 'true' : undefined}>
-                <ChatSessionButton id={session.id} title={session.title}
+                {editing?.id === session.id && onRename ? <InlineRenameField initialTitle={editing.title} inputLabel="Session title"
+                  onSave={title => onRename(session.id, title)} onClose={() => setEditing(null)}>
+                  <span className={styles.sessionMetadata}>
+                    <span className={styles.sessionId}>{session.id}</span>
+                    <span className={styles.sessionTime}>{formatSessionElapsedTime(session.updatedAt, now)}</span>
+                  </span>
+                </InlineRenameField> : <><ChatSessionButton id={session.id} title={session.title}
                   elapsed={formatSessionElapsedTime(session.updatedAt, now)}
                   active={session.id === activeSessionId}
                   responding={session.status === 'active' || respondingSessions.has(session.id)}
                   onOpen={openSession} />
                 {onRename && <TooltipButton variant="ghost" size="icon" className={styles.renameButton}
-                  type="button" aria-label={`Rename chat: ${session.title}`} title="Rename chat" aria-haspopup="dialog"
-                  onClick={() => onRename(session)}><Pencil aria-hidden="true" /></TooltipButton>}
+                  type="button" aria-label={`Rename chat: ${session.title}`} title="Rename chat" disabled={editing !== null}
+                  onClick={() => setEditing({ id: session.id, title: session.title })}><Pencil aria-hidden="true" /></TooltipButton>}
                 <TooltipButton variant="ghost" size="icon" className={styles.deleteButton}
                   type="button" aria-label={`Delete chat: ${session.title}`} aria-haspopup="dialog"
                   title={reason ?? 'Delete chat'}
                   disabled={reason !== null}
                   onClick={() => onDelete(session.id)}>
                   <Trash2 size={11} strokeWidth={1.7} aria-hidden="true" />
-                </TooltipButton>
+                </TooltipButton></>}
               </div>
             );
           })}
