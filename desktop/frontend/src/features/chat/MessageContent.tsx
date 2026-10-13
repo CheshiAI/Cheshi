@@ -1,3 +1,4 @@
+import { ChatImagePreview } from './ChatImagePreview';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { Image as ImageIcon } from 'lucide-react';
 import { Children, createContext, useContext, useEffect, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react';
@@ -113,9 +114,9 @@ function LocalImage({ imagePath }: { imagePath: string }) {
 
   if (previewUrl) {
     return (
-      <span className={styles.messageImageAttachment}>
+      <ChatImagePreview imagePath={imagePath} name={name} className={styles.messageImageAttachment}>
         <img alt={name} src={previewUrl} />
-      </span>
+      </ChatImagePreview>
     );
   }
   return (

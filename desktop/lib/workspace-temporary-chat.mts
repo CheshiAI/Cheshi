@@ -1,3 +1,4 @@
+import { registerChatAttachmentImageIpc, type createChatAttachmentImageReader } from './chat-attachment-image.mts';
 import path from 'node:path';
 import { temporaryChatDraft } from '../shared/temporary-chat.ts';
 import type { BrowserWindow, BrowserWindowConstructorOptions, IpcMainInvokeEvent, Shell } from 'electron';
@@ -10,6 +11,7 @@ import { registerLocalFileLinkIpc } from './local-file-link.mts';
 /** Connects the workspace account to an isolated, non-persistent chat window. */
 export function createWorkspaceTemporaryChat(options: {
   scope: WorkspaceIpcScope;
+  readImage: ReturnType<typeof createChatAttachmentImageReader>;
   getParent(): BrowserWindow | null;
   createWindow(configuration: BrowserWindowConstructorOptions): BrowserWindow;
   preload: string;
@@ -32,6 +34,7 @@ export function createWorkspaceTemporaryChat(options: {
           throw new Error('Temporary chat sender is not its window.');
         }
       };
+      registerChatAttachmentImageIpc({ ipc: scope.ipc, assertSender, readImage: options.readImage });
       registerLocalFileLinkIpc({ ipcMain: scope.ipc, workspaceRoot: options.workspaceRoot, shell: options.shell, assertSender });
       return registerTemporaryChatIpc({
         ipc: scope.ipc, assertSender,

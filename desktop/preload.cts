@@ -955,6 +955,12 @@ const cheshiDesktopApi = {
     const payload = await prepareChatAttachmentTransfers(files, (file) => webUtils.getPathForFile(file as File));
     return ipcRenderer.invoke('cheshi:import-codex-chat-attachments', payload);
   },
+  getCodexChatAttachmentImage: (attachmentPath) => {
+    if (typeof attachmentPath !== 'string' || !attachmentPath.trim()) {
+      throw new TypeError('Chat attachment path must be a non-empty string.');
+    }
+    return ipcRenderer.invoke('cheshi:get-codex-chat-attachment-image', attachmentPath);
+  },
   getCodexChatAttachmentPreview: (attachmentPath) => {
     if (typeof attachmentPath !== 'string' || !attachmentPath.trim()) {
       throw new TypeError('Chat attachment path must be a non-empty string.');

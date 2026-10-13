@@ -1,3 +1,4 @@
+import { ChatImagePreview } from './ChatImagePreview';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { FileText, X } from 'lucide-react';
@@ -17,7 +18,9 @@ export function ChatComposerAttachments({ attachments, removeAttachment }: Pick<
               className={`${styles.attachmentCard} ${showImage ? styles.imageAttachmentCard : styles.fileAttachmentCard}`}
             >
               {showImage ? (
-                <img alt={attachment.name} src={attachment.previewUrl} />
+                <ChatImagePreview imagePath={attachment.path} name={attachment.name} className={styles.attachmentImageButton}>
+                  <img alt={attachment.name} src={attachment.previewUrl} />
+                </ChatImagePreview>
               ) : (
                 <div className={styles.attachmentFileContent}>
                   <FileText aria-hidden="true" />

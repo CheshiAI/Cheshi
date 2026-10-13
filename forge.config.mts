@@ -161,6 +161,7 @@ function shouldIgnore(packagePath: string): boolean {
     'development-shutdown.mts',
     'development-devtools.mts',
     'chat-attachment-store.mts',
+    'chat-attachment-image.mts',
     'chat-attachment-transfer.mts',
     'chat-history-compiler.mts',
     'chat-history-index-store.mts',

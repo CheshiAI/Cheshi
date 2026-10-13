@@ -1,3 +1,4 @@
+import { createChatAttachmentImageReader, registerChatAttachmentImageIpc } from './lib/chat-attachment-image.mts';
 import { registerWorkspaceTerminalIpc } from './lib/workspace-terminal-ipc.mts';
 import { createWorkspaceProjects } from './lib/workspace-project-runtime.mts';
 import { createWorkspaceSessionMemory } from './lib/flash/workspace.mts';
@@ -31,7 +32,7 @@ import {
   registerWorkspace,
   resolveCodeGraphDataRoot,
 } from '../config/workspace-storage.mts';
-import { chatAttachmentKind, ChatAttachmentStore } from './lib/chat-attachment-store.mts';
+import { ChatAttachmentStore } from './lib/chat-attachment-store.mts';
 import { CodeGraphIndexer, CodeGraphService, createCodeGraphCommands } from './lib/codegraph-service.mts';
 import { hasReadyCodeGraphIndex, prepareInitialCodeGraph } from './lib/codegraph-initial-index.mts';
 import { CodexAccountService } from './lib/codex-account-service.mts';
@@ -130,7 +131,6 @@ const RENDERER_READY_CHANNEL = 'cheshi:renderer-ready';
 const TERMINAL_STATE_CHANNEL = 'cheshi:terminal-state-changed';
 const WORKSPACE_FILES_CHANGED_CHANNEL = 'cheshi:workspace-files-changed';
 const MAX_CHAT_ATTACHMENTS = 20;
-const ATTACHMENT_PREVIEW_MAX_SIZE = 160;
 const languageServerModulesDirectory = app.isPackaged
   ? path.join(
       process.resourcesPath,
@@ -175,32 +175,8 @@ const workspaceProjects = createWorkspaceProjects({
   emit: (channel, value) => { for (const window of workspaceWindows()) rendererEvents.send(window, channel, value); },
 });
 
-function attachmentPreviewUrl(attachmentPath: string): string | null {
-  const source = nativeImage.createFromPath(attachmentPath);
-  if (source.isEmpty()) return null;
-  const { width, height } = source.getSize();
-  if (width <= 0 || height <= 0) return null;
-  const preview = Math.max(width, height) > ATTACHMENT_PREVIEW_MAX_SIZE
-    ? source.resize({
-      ...(width >= height
-        ? { width: ATTACHMENT_PREVIEW_MAX_SIZE }
-        : { height: ATTACHMENT_PREVIEW_MAX_SIZE }),
-      quality: 'good',
-    })
-    : source;
-  return preview.toDataURL();
-}
-
-function codexChatAttachmentPreviewUrl(attachmentPath: unknown): string | null {
-  if (typeof attachmentPath !== 'string' || !attachmentPath.trim()) {
-    throw new TypeError('Chat attachment path must be a non-empty string.');
-  }
-  if (!path.isAbsolute(attachmentPath)) {
-    throw new TypeError('Chat attachment path must be absolute.');
-  }
-  if (chatAttachmentKind(attachmentPath) !== 'image') return null;
-  return attachmentPreviewUrl(attachmentPath);
-}
+const readAttachmentImage = createChatAttachmentImageReader(nativeImage);
+const attachmentPreviewUrl = (attachmentPath: string) => readAttachmentImage(attachmentPath, true);
 
 const { accounts: workspaceAccounts, search: chatHistorySearch } = createWorkspaceChatHistory({
   projectRoots: () => workspaceProjects.store.list().map(project => project.rootPath),
@@ -221,6 +197,7 @@ const preloadPath = app.isPackaged ? path.join(process.resourcesPath, 'runtime',
 const notifications = createWorkspaceNotifications({ workspaceRoot, scope: options.scope, getParent: () => mainWindow, sink: options.notifications,
   discord: options.discord, commands: options.messageCommands, services: () => [{ contextId: 'main', service: codexChatService }, ...codexChatContexts.allServices()] });
 const temporaryChats = createWorkspaceTemporaryChat({
+  readImage: readAttachmentImage,
   wrapService: (service, window) => notifications.temporary(service, window),
   scope: options.scope, getParent: () => mainWindow, createWindow: configuration => new BrowserWindow(configuration),
   workspaceRoot, userName: currentUserName(), createClient: createChatClient, shell,
@@ -489,10 +466,7 @@ ipcMain.handle('cheshi:import-codex-chat-attachments', async (_event, payload: u
     ...(attachment.kind === 'image' ? { previewUrl: attachmentPreviewUrl(attachment.path) ?? undefined } : {}),
   }));
 });
-ipcMain.handle(
-  'cheshi:get-codex-chat-attachment-preview',
-  (_event, attachmentPath) => codexChatAttachmentPreviewUrl(attachmentPath),
-);
+registerChatAttachmentImageIpc({ ipc: ipcMain, assertSender: assertCheshiSender, readImage: readAttachmentImage });
 const sessionStores = createWorkspaceSessionStores(workspaceProjects.ipc, codeGraphDirectory, assertCheshiSender);
 registerCodexChatIpc({
   ipc: ipcMain, accountIpc, service: chatServiceFor, assertSender: assertCheshiSender,
