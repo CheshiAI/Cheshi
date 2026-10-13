@@ -885,7 +885,7 @@ for (const view of ['git', 'plugins'] as const) {
 
 const appleNote: AppleNote = { id: 'note', title: 'Meeting', plaintext: 'Agenda', locked: false, modifiedAt: '2026-09-16T00:00:00Z' };
 
-test('GitHub rail and sidebar tab share the changes panel and preserve the mounted workspace across scenes', () => {
+test('GitHub tab changes only the sidebar while rail and changes selection open the workspace', () => {
   const app = shellHarness();
   const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
   const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
@@ -905,7 +905,7 @@ test('GitHub rail and sidebar tab share the changes panel and preserve the mount
   expect(git().active).toBe(false);
   expect(git().sidebarTarget).toBe(target);
   sidebar().onPanelChange!('github');
-  expect(git().active).toBe(true);
+  expect(git().active).toBe(false);
   expect(sidebar().activePanel).toBe('github');
   sidebar().onPanelChange!('memos');
   expect(sidebar().activePanel).toBe('memos');
@@ -983,18 +983,18 @@ test('custom workspace layout keeps editor, chat and terminal visible together a
   expect(props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace').active).toBe(true);
 });
 
-test('Chats tab opens the conversation and rail navigation restores its sidebar without losing the list target', () => {
+test.each(['files', 'chats', 'agent-chats', 'memos', 'github'] as const)('sidebar tab %s preserves the scene and Worker rail opens its page', panel => {
   const app = shellHarness();
   const sidebar = () => props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar');
   const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
-  sidebar().onPanelChange!('agent-chats');
-  expect(sidebar().activePanel).toBe('agent-chats');
-  expect(props<{ active: boolean }>(app.render(), 'ChatsView').active).toBe(true);
+  sidebar().onPanelChange!(panel);
+  expect(sidebar().activePanel).toBe(panel);
+  expect(rail().activeView).toBe('explorer');
   const target = {} as HTMLDivElement;
   (sidebar().chatsPanelRef as (node: HTMLDivElement) => void)(target);
-  expect(props<{ sidebarTarget: HTMLDivElement }>(app.render(), 'ChatsView').sidebarTarget).toBe(target);
+  expect(props<ComponentProps<typeof ChatsView>>(app.render(), 'ChatsView')).toMatchObject({ active: false, sidebarActive: panel === 'agent-chats', sidebarTarget: target });
   sidebar().onPanelChange!('files'); rail().onToggleSidebar();
   rail().onNavigate('chats');
   expect(sidebar().activePanel).toBe('agent-chats'); expect(rail().sidebarOpen).toBe(true);
-  expect(props<{ sidebarTarget: HTMLDivElement }>(app.render(), 'ChatsView').sidebarTarget).toBe(target);
+  expect(props<ComponentProps<typeof ChatsView>>(app.render(), 'ChatsView')).toMatchObject({ active: true, sidebarActive: true, sidebarTarget: target });
 });

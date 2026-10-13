@@ -13,9 +13,12 @@ import sessionStyles from '../chat/ChatSessionList.module.css';
 import searchStyles from '../chat/ChatHistorySearch.module.css';
 import styles from './ChatsRoomList.module.css';
 import type { ChatsLoadPhase } from './useChatsSnapshot';
+import type { SpecialistAgent } from '../../../../shared/agent-registry';
+import { RoomParticipantsPreview } from './RoomParticipantsPreview';
 
-export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing, disabled, error, pinningRoomId, onPin, onDelete, onSelect, onNew, onRefresh, roomStatus }: {
+export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, refreshing, disabled, error, pinningRoomId, onPin, onDelete, onSelect, onNew, onRefresh, roomStatus }: {
   snapshot: ChatsSnapshot; selectedId: string | null; phase: ChatsLoadPhase; loaded: boolean; refreshing: boolean; disabled: boolean; error: string | null;
+  agents: readonly SpecialistAgent[];
   onSelect(id: string): void; onNew(): void; onRefresh(): Promise<void>;
   pinningRoomId: string | null; onPin(id: string, pinned: boolean): void;
   onDelete?(id: string): void;
@@ -31,7 +34,7 @@ export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing,
     const messages = snapshot.messages.filter(message => message.roomId === room.id);
     const latest = messages.reduce<typeof messages[number] | undefined>((last, message) =>
       !last || Date.parse(message.createdAt) > Date.parse(last.createdAt) ? message : last, undefined);
-    return { room, preview: latest?.text ?? 'No messages yet', updated: Date.parse(latest?.createdAt ?? room.createdAt) };
+    return { room, updated: Date.parse(latest?.createdAt ?? room.createdAt) };
   }).sort((a, b) => Number(b.room.pinned === true) - Number(a.room.pinned === true) || b.updated - a.updated), [snapshot]);
   const visible = rooms.filter(({ room }) => room.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <section className={`${sessionStyles.root} ${styles.root}`} aria-label="Worker rooms">
@@ -54,11 +57,14 @@ export function ChatsRoomList({ snapshot, selectedId, phase, loaded, refreshing,
       <OverlayScrollArea className={sessionStyles.listScroll} label="Rooms" viewportRef={refresh.viewportRef}>
         <PullToRefreshStatus {...refresh} />
         <nav className={sessionStyles.list} aria-label="Rooms" aria-busy={phase === 'loading' || refreshing || refresh.refreshing}>
-          {visible.map(({ room, preview, updated }) => <div key={room.id} className={`${sessionStyles.sessionRow} ${styles.row}`}>
+          {visible.map(({ room, updated }) => <div key={room.id} className={`${sessionStyles.sessionRow} ${styles.row}`}>
             <NeumorphicButton variant="ghost" className={sessionStyles.session} aria-label={room.name} aria-current={room.id === selectedId ? 'page' : undefined} onClick={() => onSelect(room.id)}>
               <span className={`${sessionStyles.sessionTitleRow} ${styles.title}`}><TooltipTarget content={room.name}><span className={sessionStyles.sessionTitle}>{room.name}</span></TooltipTarget>
               </span>
-              <span className={`${sessionStyles.sessionMetadata} ${styles.metadata}`}><span className={sessionStyles.sessionId}>{roomStatus?.(room) ?? preview}</span><span className={`${sessionStyles.sessionTime} ${styles.time}`}>{formatSessionElapsedTime(updated / 1000, now)}</span></span>
+              <span className={`${sessionStyles.sessionMetadata} ${styles.metadata}`}>
+                <span className={sessionStyles.sessionId}>{roomStatus?.(room) ?? <RoomParticipantsPreview members={room.members} agents={agents} />}</span>
+                <span className={`${sessionStyles.sessionTime} ${styles.time}`}>{formatSessionElapsedTime(updated / 1000, now)}</span>
+              </span>
             </NeumorphicButton>
             <div className={styles.actions}>
               <TooltipButton variant="ghost" size="icon" title="Delete room" aria-label={`Delete room: ${room.name}`}

@@ -47,11 +47,11 @@ test('rail management items retain their order and destinations', () => {
     onNavigate: view => destinations.push(view), onToggleSidebar() {} });
   const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 10);
   expect(navigation.map(element => element.props.label)).toEqual([
-      'Explorer', 'SESSION', 'Terminal', 'Memo', 'Calendar',
-      'Worker', 'Docker', 'Github', 'Plugins', 'Settings',
+      'Explorer', 'SESSION', 'Worker', 'Terminal', 'Memo',
+      'Calendar', 'Docker', 'Github', 'Plugins', 'Settings',
     ]);
   for (const element of navigation) if (element.props.label !== 'SESSION') element.props.onClick?.();
-  expect(destinations).toEqual(['explorer', 'terminal', 'notes', 'calendar', 'chats', 'docker', 'git', 'plugins', 'settings']);
+  expect(destinations).toEqual(['explorer', 'chats', 'terminal', 'notes', 'calendar', 'docker', 'git', 'plugins', 'settings']);
 });
 
 test('rail bottom controls retain caffeine, sidebar and project actions without a help launcher', () => {

@@ -219,7 +219,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     if (roomId === id) { setRoomId(null); setVoiceOpen(false); setDialog(null); setError(null); }
   }
   const name = (id: string | null) => id === 'user' ? 'You' : [...(room?.members ?? []), ...(room?.formerMembers ?? [])].find(m => m.id === id)?.name ?? id ?? '';
-  const roomList = <ChatsRoomList snapshot={snapshot} selectedId={roomId} phase={data.phase} loaded={data.loaded} refreshing={data.refreshing} disabled={!api} error={data.error ?? pinError}
+  const roomList = <ChatsRoomList snapshot={snapshot} agents={agents} selectedId={roomId} phase={data.phase} loaded={data.loaded} refreshing={data.refreshing} disabled={!api} error={data.error ?? pinError}
     roomStatus={saved => memberStatus(saved.members.find(member => member.id === saved.defaultAgentId), saved.workspace) === DELETED_HOMIE ? 'Deleted Homie · Conversation saved' : null}
     pinningRoomId={pinningRoomId} onPin={(id, pinned) => { void pinRoom(id, pinned); }}
     onDelete={id => { setDeleteRoomId(id); onOpenRoom?.(); }}

@@ -405,11 +405,7 @@ export function AppShell() {
               chatsPanelRef={setChatsSidebarTarget}
               githubPanelRef={setGithubSidebarTarget}
               activePanel={sidebarPanel}
-              onPanelChange={panel => {
-                setSidebarPanel(panel);
-                if (panel === 'agent-chats') navigate('chats');
-                if (panel === 'github') navigate('git');
-              }}
+              onPanelChange={setSidebarPanel}
               chatPanel={<ChatSessionList
                 search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
                   onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}

@@ -15,6 +15,10 @@
 .root .title { padding-right: var(--room-meta-width); }
 .root .metadata { display: grid; grid-template-columns: minmax(0, 1fr) var(--room-meta-width); gap: 0; }
 .time { text-align: right; }
+.participants { display: flex; align-items: center; min-width: 0; gap: var(--icon-default); }
+.participant { display: inline-flex; align-items: center; min-width: 0; gap: var(--icon-default); }
+.participantName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.moreParticipants { flex-shrink: 0; white-space: nowrap; }
 .actions {
   position: absolute;
   top: calc(17px - var(--icon-button-size) / 2);

@@ -21,10 +21,10 @@ import styles from './SidebarRail.module.css';
 const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceView }> = [
   { label: 'Explorer', icon: <FolderTree aria-hidden="true" />, view: 'explorer' },
   { label: 'SESSION', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
+  { label: 'Worker', icon: <WorkerIcon />, view: 'chats' },
   { label: 'Terminal', icon: <SquareTerminal aria-hidden="true" />, view: 'terminal' },
   { label: 'Memo', icon: <StickyNote aria-hidden="true" />, view: 'notes' },
   { label: 'Calendar', icon: <CalendarDays aria-hidden="true" />, view: 'calendar' },
-  { label: 'Worker', icon: <WorkerIcon />, view: 'chats' },
   { label: 'Docker', icon: <DockerIcon />, view: 'docker' },
   { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
   { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },
