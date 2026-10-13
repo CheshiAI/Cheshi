@@ -21,7 +21,13 @@ export function SavedChatTurnsPanel({ savedTurns, onClose, onContinue, continuat
   const [continuingId, setContinuingId] = useState<string | null>(null);
   const [continuationError, setContinuationError] = useState<{ id: string; message: string } | null>(null);
   const pendingRef = useRef(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
   const [deleteRecord, setDeleteRecord] = useState<ChatSavedTurn | null>(null);
+  const refresh = () => {
+    // The refresh/retry button becomes disabled while loading and loses native focus.
+    actionsRef.current?.querySelector<HTMLButtonElement>('button[aria-label="Close saved turns panel"]')?.focus({ preventScroll: true });
+    void savedTurns.refresh();
+  };
   const continueTurn = async (record: ChatSavedTurn) => {
     if (!onContinue || continuationDisabledReason || pendingRef.current || savedTurns.deleting) return;
     pendingRef.current = true;
@@ -41,9 +47,9 @@ export function SavedChatTurnsPanel({ savedTurns, onClose, onContinue, continuat
   return <section className={styles.content} aria-label="Saved turns">
     <header className={styles.heading}>
       <SidebarPanelTitle title="SAVED TURNS" />
-      <div className={styles.actions}>
+      <div ref={actionsRef} className={styles.actions}>
         <TooltipButton variant="ghost" size="icon" aria-label="Refresh saved turns" title="Refresh saved turns"
-          disabled={savedTurns.loading || savedTurns.deleting} onClick={() => void savedTurns.refresh()}><RefreshCw aria-hidden="true" /></TooltipButton>
+          disabled={savedTurns.loading || savedTurns.deleting} onClick={refresh}><RefreshCw aria-hidden="true" /></TooltipButton>
         <NeumorphicButton variant="ghost" size="icon" aria-label="Close saved turns panel"
           onClick={onClose}><X aria-hidden="true" /></NeumorphicButton>
       </div>
@@ -51,7 +57,7 @@ export function SavedChatTurnsPanel({ savedTurns, onClose, onContinue, continuat
     <div className={styles.list} aria-busy={savedTurns.loading}>
       {savedTurns.error && <div className={styles.notice} role="alert">
         <p>{savedTurns.error}</p>
-        <NeumorphicButton variant="standard" disabled={savedTurns.loading || savedTurns.deleting} onClick={() => void savedTurns.refresh()}>Retry</NeumorphicButton>
+        <NeumorphicButton variant="standard" disabled={savedTurns.loading || savedTurns.deleting} onClick={refresh}>Retry</NeumorphicButton>
       </div>}
       {savedTurns.loading && <LoadingState label="loading saved turns…"
         className={savedTurns.records.length === 0 && !savedTurns.error ? styles.emptyState : undefined} />}

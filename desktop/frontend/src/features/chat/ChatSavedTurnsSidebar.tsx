@@ -19,12 +19,14 @@ export function ChatSavedTurnsSidebar({ savedTurns, onContinueSavedTurn, continu
     railRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
     setOpen(false);
   };
-  return <aside className={styles.inspector} data-open={open} aria-label="Conversation tools">
-    <SlidingSidePanel open={open} className={styles.panel} onKeyDown={event => {
-      if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
+  return <aside className={styles.inspector} data-open={open} aria-label="Conversation tools"
+    onKeyDown={event => {
+      if (!open || event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
       event.preventDefault();
+      event.stopPropagation();
       close();
     }}>
+    <SlidingSidePanel open={open} className={styles.panel}>
       <section className={styles.content} id={id} aria-labelledby={`${id}-button`}>
         <SavedChatTurnsPanel savedTurns={savedTurns} onClose={close}
           onContinue={onContinueSavedTurn} continuationDisabledReason={continuationDisabledReason} />

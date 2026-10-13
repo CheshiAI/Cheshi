@@ -15,6 +15,13 @@ function isNearestTrigger(target: EventTarget, current: Element): boolean {
     && target.closest('[data-tooltip-trigger]') === current;
 }
 
+function isVisibleAnchor(anchor: Element): boolean {
+  if (!anchor.isConnected || anchor.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+  const visibility = anchor.ownerDocument.defaultView?.getComputedStyle(anchor).visibility;
+  return visibility !== 'hidden' && visibility !== 'collapse'
+    && Array.from(anchor.getClientRects()).some(rect => rect.width > 0 && rect.height > 0);
+}
+
 interface TooltipProps<T extends Element> {
   content?: string;
   placement?: 'above' | 'below';
@@ -75,15 +82,32 @@ export function Tooltip<T extends Element = HTMLElement>({ content, placement = 
 
   useEffect(() => {
     if (!anchor || !content) return;
+    let timer: number | undefined;
     const dismiss = () => {
+      window.clearTimeout(timer);
       setVisible(false);
       setAnchor(null);
     };
+    if (!isVisibleAnchor(anchor)) {
+      dismiss();
+      return;
+    }
+    const checkAnchor = () => { if (!isVisibleAnchor(anchor)) dismiss(); };
+    // Kept-alive workspace panes can hide without pointerleave or blur events.
+    // Watch only the anchor's ancestor chain, not all document mutations.
+    const observer = new window.MutationObserver(checkAnchor);
+    for (let element: Element | null = anchor; element; element = element.parentElement) {
+      observer.observe(element, { attributes: true, childList: true,
+        attributeFilter: ['hidden', 'inert', 'aria-hidden', 'class', 'style'] });
+    }
+    const resizeObserver = new window.ResizeObserver(checkAnchor);
+    resizeObserver.observe(anchor);
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') dismiss();
     };
-    const timer = window.setTimeout(() => {
-      if (anchor.isConnected) setVisible(true);
+    timer = window.setTimeout(() => {
+      if (isVisibleAnchor(anchor)) setVisible(true);
+      else dismiss();
     }, delay);
     window.addEventListener('scroll', dismiss, true);
     window.addEventListener('resize', dismiss);
@@ -93,6 +117,8 @@ export function Tooltip<T extends Element = HTMLElement>({ content, placement = 
     document.addEventListener('keydown', onKeyDown);
     return () => {
       window.clearTimeout(timer);
+      observer.disconnect();
+      resizeObserver.disconnect();
       window.removeEventListener('scroll', dismiss, true);
       window.removeEventListener('resize', dismiss);
       window.removeEventListener('blur', dismiss);

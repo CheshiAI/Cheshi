@@ -461,6 +461,22 @@ test.each([false, true])('split pane focus owns rail selection without replacing
   expect(props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor').target).toBe(target);
 });
 
+test.each([null, layoutModel.visibleWorkspaceLayout('split', false, .37)])('history search keeps input focus in layout %j', layout => {
+  const app = shellHarness(false, { panel: 'chats' }, layout);
+  const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  rail().onNavigate('chat');
+  const previousRequest = split().focusRequest;
+  const panel = props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').chatPanel;
+  const search = props<{ search: ReactNode }>(panel, 'ChatSessionList').search;
+  props<{ onFocus(): void }>(search, 'ChatHistorySearchBar').onFocus();
+  expect(elements(split().children).some(node => node.type === 'ChatHistorySearchPage')).toBe(true);
+  expect(split().focusRequest).toBe(previousRequest);
+  expect(split().layout).toBe(layout);
+  rail().onNavigate('chat');
+  expect(split().focusRequest?.requestId).not.toBe(previousRequest?.requestId);
+});
+
 test.each(['chat', 'terminal', 'notes', 'git'] as const)(
   'Explorer rail opens its empty page from %s when no file is open', view => {
     const app = shellHarness();

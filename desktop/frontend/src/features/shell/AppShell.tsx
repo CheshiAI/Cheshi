@@ -242,7 +242,7 @@ export function AppShell() {
     void chat?.newSession();
   };
 
-  const navigate = (view: WorkspaceView): void => {
+  const navigate = (view: WorkspaceView, options: { preserveFocus?: boolean } = {}): void => {
     historyRequestId.current += 1;
     closeReview();
     if (view === 'explorer' || view === 'editor') {
@@ -260,7 +260,7 @@ export function AppShell() {
     if (view === 'chat') { setSidebarPanel('chats'); setLeftSidebarOpen(true); }
     if (view === 'chats') { setSidebarPanel('agent-chats'); setLeftSidebarOpen(true); }
     if (view === 'git') { setSidebarPanel('github'); setLeftSidebarOpen(true); }
-    focusWorkspacePane(view === 'terminal' ? 'terminal' : view === 'editor' ? 'editor' : 'primary');
+    if (!options.preserveFocus) focusWorkspacePane(view === 'terminal' ? 'terminal' : view === 'editor' ? 'editor' : 'primary');
     if (customLayout) {
       const pane = view === 'terminal' ? 'terminal' : view === 'editor' ? 'editor' : 'primary';
       setCustomLayout(current => current && revealWorkspacePane(current, pane));
@@ -409,7 +409,7 @@ export function AppShell() {
               chatPanel={<ChatSessionList
                 search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
                   onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
-                  onFocus={() => { if (activeView !== 'search') navigate('search'); }} />}
+                  onFocus={() => { if (activeView !== 'search') navigate('search', { preserveFocus: true }); }} />}
                 activeSessionId={chat?.state.activeSessionId ?? null}
                 loading={workspace.sessionHistory.loading}
                 newChatDisabled={chatSessionSelectionDisabled}

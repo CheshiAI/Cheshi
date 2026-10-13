@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'bun:test';
-import { Window } from 'happy-dom';
+import { Window, type Element as TestElement } from 'happy-dom';
 import { act } from 'react';
 import { beginSplitPreview, useSplitPreviewActive } from '../frontend/src/shared/ui/splitPreviewState';
 
@@ -9,6 +9,11 @@ mock.module('../frontend/src/shared/ui/Tooltip.module.css', () => ({
 
 test.each(['button', 'disabled-button', 'text', 'nested', 'svg'] as const)('shared tooltip supports %s anchors, delay, dismissal and cleanup', async kind => {
   const window = new Window();
+  // Happy DOM has no layout; give visible HTML and SVG anchors real-sized boxes.
+  Object.defineProperties(window.Element.prototype, {
+    getBoundingClientRect: { configurable: true, value: () => new window.DOMRect(10, 10, 22, 22) },
+    getClientRects: { configurable: true, value: function (this: Element) { return [this.getBoundingClientRect()]; } },
+  });
   const globals = { window, document: window.document, navigator: window.navigator,
     HTMLElement: window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -179,3 +184,94 @@ test.each(['button', 'disabled-button', 'text', 'nested', 'svg'] as const)('shar
     }
   }
 });
+
+test.each(['hidden', 'inert', 'display', 'visibility', 'class', 'removed'] as const)(
+  'shared tooltip cancels pending and visible content when an ancestor becomes %s', async kind => {
+    const window = new Window();
+    const globals = { window, document: window.document, navigator: window.navigator,
+      HTMLElement: window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true };
+    const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+    for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
+    Object.defineProperties(window.Element.prototype, {
+      getBoundingClientRect: { configurable: true, value: () => new window.DOMRect(10, 10, 22, 22) },
+      getClientRects: { configurable: true, value: function (this: TestElement) {
+        for (let node: TestElement | null = this; node; node = node.parentElement) {
+          if (window.getComputedStyle(node).display === 'none') return [];
+        }
+        return [this.getBoundingClientRect()];
+      } },
+    });
+    const style = document.createElement('style');
+    style.textContent = '.hidden-pane { display: none; }';
+    document.head.append(style);
+    const timers = new Map<number, () => void>();
+    let sequence = 0;
+    Object.defineProperties(window, {
+      setTimeout: { configurable: true, value: (callback: () => void) => { timers.set(++sequence, callback); return sequence; } },
+      clearTimeout: { configurable: true, value: (id: number) => { timers.delete(id); } },
+    });
+    const advance = () => { const callbacks = [...timers.values()]; timers.clear(); callbacks.forEach(callback => callback()); };
+    const { createRoot } = await import('react-dom/client');
+    const { Tooltip } = await import('../frontend/src/shared/ui/Tooltip');
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const flushMutations = async () => { await new Promise(resolve => setTimeout(resolve, 0)); };
+    try {
+      await act(async () => root.render(<div data-pane="true"><Tooltip content="Saved turns">{trigger =>
+        <button {...trigger}>Saved turns</button>}</Tooltip></div>));
+      const pane = container.querySelector<HTMLElement>('[data-pane]')!;
+      const anchor = pane.querySelector('button')!;
+      const open = async () => {
+        await act(async () => { anchor.dispatchEvent(new window.PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }) as unknown as Event); });
+      };
+      const hide = () => {
+        if (kind === 'hidden') container.hidden = true;
+        else if (kind === 'inert') container.setAttribute('inert', '');
+        else if (kind === 'display') container.style.display = 'none';
+        else if (kind === 'visibility') container.style.visibility = 'hidden';
+        else if (kind === 'class') container.className = 'hidden-pane';
+        else container.remove();
+      };
+      const show = () => {
+        container.hidden = false;
+        container.removeAttribute('inert');
+        container.removeAttribute('style');
+        container.className = '';
+        if (!container.isConnected) document.body.append(container);
+      };
+      for (const alreadyVisible of [false, true]) {
+        await open();
+        expect(timers.size).toBe(1);
+        if (alreadyVisible) {
+          await act(async () => advance());
+          expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Saved turns');
+        }
+        // No pointerleave or blur: mounted panels may be hidden by their workspace.
+        await act(async () => { hide(); await flushMutations(); });
+        expect(document.querySelector('[role="tooltip"]')).toBeNull();
+        expect(anchor.hasAttribute('aria-describedby')).toBe(false);
+        expect(timers.size).toBe(0);
+        await act(async () => { advance(); show(); await flushMutations(); });
+        expect(document.querySelector('[role="tooltip"]')).toBeNull();
+      }
+      // Hidden triggers cannot schedule a new tooltip, even if a late event arrives.
+      await act(async () => { hide(); await flushMutations(); });
+      await open();
+      await act(async () => advance());
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+      expect(timers.size).toBe(0);
+      await act(async () => show());
+      await open();
+      await act(async () => advance());
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Saved turns');
+    } finally {
+      await act(async () => { root.unmount(); });
+      await window.happyDOM.close();
+      for (const [key, descriptor] of previous) {
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else Reflect.deleteProperty(globalThis, key);
+      }
+    }
+  },
+);
