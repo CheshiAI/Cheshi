@@ -23,10 +23,10 @@ const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceVi
   { label: 'SESSION', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
   { label: 'Worker', icon: <WorkerIcon />, view: 'chats' },
   { label: 'Memo', icon: <StickyNote aria-hidden="true" />, view: 'notes' },
+  { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
   { label: 'Terminal', icon: <SquareTerminal aria-hidden="true" />, view: 'terminal' },
   { label: 'Calendar', icon: <CalendarDays aria-hidden="true" />, view: 'calendar' },
   { label: 'Docker', icon: <DockerIcon />, view: 'docker' },
-  { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
   { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },
   { label: 'Settings', icon: <Settings aria-hidden="true" />, view: 'settings' },
 ];

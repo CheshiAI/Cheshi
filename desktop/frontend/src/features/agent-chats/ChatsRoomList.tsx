@@ -2,7 +2,7 @@ import { Pencil, Pin, PinOff, Plus, RefreshCw, Search, Trash2 } from 'lucide-rea
 import { WorkerIcon } from '../../shared/ui/WorkerIcon';
 import { useMemo, useRef, useState } from 'react';
 import type { AgentRoom, ChatsSnapshot } from '../../../../shared/agent-chats';
-import { LoadingState, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader } from '../../shared/ui';
+import { LoadingIndicator, LoadingState, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader } from '../../shared/ui';
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
 import { PullToRefreshStatus } from '../../shared/ui/PullToRefreshStatus';
 import { usePullToRefresh } from '../../shared/usePullToRefresh';
@@ -37,7 +37,10 @@ export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, ref
     const messages = snapshot.messages.filter(message => message.roomId === room.id);
     const latest = messages.reduce<typeof messages[number] | undefined>((last, message) =>
       !last || Date.parse(message.createdAt) > Date.parse(last.createdAt) ? message : last, undefined);
-    return { room, updated: Date.parse(latest?.createdAt ?? room.createdAt) };
+    // Activity messages retain historical statuses; only task anchors describe current work.
+    const working = messages.some(message => ((message.sender === 'user' && message.taskId) || message.relatedTask)
+      && (message.executionStatus ?? message.status) === 'running');
+    return { room, working, updated: Date.parse(latest?.createdAt ?? room.createdAt) };
   }).sort((a, b) => Number(b.room.pinned === true) - Number(a.room.pinned === true) || b.updated - a.updated), [snapshot]);
   const visible = rooms.filter(({ room }) => room.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <section className={`${sessionStyles.root} ${styles.root}`} aria-label="Worker rooms">
@@ -60,7 +63,7 @@ export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, ref
       <OverlayScrollArea className={sessionStyles.listScroll} label="Rooms" viewportRef={refresh.viewportRef}>
         <PullToRefreshStatus {...refresh} />
         <nav className={sessionStyles.list} aria-label="Rooms" aria-busy={phase === 'loading' || refreshing || refresh.refreshing}>
-          {visible.map(({ room, updated }) => <div key={room.id} className={`${sessionStyles.sessionRow} ${styles.row}`}>
+          {visible.map(({ room, updated, working }) => <div key={room.id} className={`${sessionStyles.sessionRow} ${styles.row}`}>
             {editing?.id === room.id && onRename ? <InlineRenameField initialTitle={editing.title} inputLabel="Room title" maxLength={100}
               onSave={title => onRename(room.id, title)} onClose={() => setEditing(null)}>
               <span className={`${sessionStyles.sessionMetadata} ${styles.metadata}`}>
@@ -69,6 +72,7 @@ export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, ref
               </span>
             </InlineRenameField> : <><NeumorphicButton variant="ghost" className={sessionStyles.session} aria-label={room.name} aria-current={room.id === selectedId ? 'page' : undefined} onClick={() => onSelect(room.id)}>
               <span className={`${sessionStyles.sessionTitleRow} ${styles.title}`}><TooltipTarget content={room.name}><span className={sessionStyles.sessionTitle}>{room.name}</span></TooltipTarget>
+                {working && <LoadingIndicator label="Active response" />}
               </span>
               <span className={`${sessionStyles.sessionMetadata} ${styles.metadata}`}>
                 <span className={sessionStyles.sessionId}>{roomStatus?.(room) ?? <RoomParticipantsPreview members={room.members} agents={agents} />}</span>
