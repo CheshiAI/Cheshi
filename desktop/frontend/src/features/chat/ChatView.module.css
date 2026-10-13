@@ -21,7 +21,6 @@
   flex: 0 0 var(--header-height);
 }
 
-.sidebarToggle svg { width: 11px; height: 11px; stroke-width: 1.7; }
 .openAIMark {
   display: block;
   width: var(--icon-button-icon-size);

@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'bun:test';
+import { expect, mock, spyOn, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { act, useState } from 'react';
 import { withDOM } from './agent-chats-test-dom';
@@ -82,3 +82,70 @@ test('closing the review keeps its content mounted but inaccessible', () => {
     expect(panel.body).toContain('Diff for sample.ts');
   }
 });
+
+for (const panel of ['files', 'line commit'] as const) {
+  test(`${panel} review uses the remaining space and preserves the workspace minimum on resize`, async () => {
+    await withDOM(async ui => {
+      let layoutWidth = 1280;
+      let workspaceLeft = 398; // 78px rail + 320px sidebar.
+      const observers = new Set<() => void>();
+      const previousObserver = Object.getOwnPropertyDescriptor(globalThis, 'ResizeObserver')!;
+      class Observer {
+        constructor(privateCallback: () => void) { this.callback = privateCallback; observers.add(privateCallback); }
+        callback: () => void;
+        observe() {}
+        disconnect() { observers.delete(this.callback); }
+      }
+      Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: Observer });
+      const geometry = spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        const left = this.className === 'workspace-column' ? workspaceLeft : 0;
+        const width = layoutWidth - left;
+        return { x: left, y: 0, left, right: layoutWidth, top: 0, bottom: 700, width, height: 700, toJSON: () => ({}) };
+      });
+      const render = (open = true, minimum = 475) => <div className="app-layout">
+        <div className="workspace-column"><div style={{ minWidth: minimum }} /></div>
+        <ReviewSidebar open={open} item={panel === 'files' ? item : null} initialPath={null}
+          lineCommit={panel === 'line commit' ? { path: 'sample.ts', line: 1, content: '' } : null}
+          onCloseReview={() => {}} />
+      </div>;
+      const resized = async () => { await act(async () => { for (const notify of observers) notify(); }); };
+      try {
+        await ui.render(render());
+        const slot = document.querySelector<HTMLElement>('[aria-label="Review sidebar"]')!;
+        const width = () => Number.parseFloat(slot.style.getPropertyValue('--review-width'));
+        expect(width()).toBeCloseTo(407);
+        expect(layoutWidth - workspaceLeft - width()).toBeCloseTo(475);
+        expect(slot.querySelector('[role="separator"]') !== null).toBe(panel === 'line commit');
+        if (panel === 'line commit') {
+          await act(async () => slot.querySelector('[role="separator"]')!.dispatchEvent(
+            new window.KeyboardEvent('keydown', { key: 'End', bubbles: true })));
+          expect(width()).toBeCloseTo(407);
+          await act(async () => slot.querySelector('[role="separator"]')!.dispatchEvent(
+            new window.MouseEvent('dblclick', { bubbles: true })));
+        }
+        workspaceLeft = 78;
+        await resized();
+        expect(width()).toBeCloseTo(601);
+        workspaceLeft = 398;
+        layoutWidth = 1600;
+        await resized();
+        expect(width()).toBeCloseTo(601);
+        layoutWidth = 1280;
+        await resized();
+        expect(width()).toBeCloseTo(407);
+        await ui.render(render(true, 596)); // Chat and another workspace pane.
+        await resized();
+        expect(width()).toBeCloseTo(286);
+        expect(layoutWidth - workspaceLeft - width()).toBeCloseTo(596);
+        await ui.render(render(false));
+        expect(slot.dataset.open).toBe('false');
+        workspaceLeft = 78;
+        await ui.render(render());
+        expect(width()).toBeCloseTo(601);
+      } finally {
+        geometry.mockRestore();
+        Object.defineProperty(globalThis, 'ResizeObserver', previousObserver);
+      }
+    });
+  });
+}

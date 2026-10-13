@@ -335,10 +335,12 @@ test(`${panelName} resizing clamps both panes, cancels safely, and retains the p
       await act(async () => root.render(render(false)));
       expect(handle()).toBeNull();
       expect(slot.hasAttribute('inert')).toBe(true);
+      expect(ratio()).toBe(preferred);
       await act(async () => root.render(render()));
       expect(ratio()).toBe(preferred);
       await act(async () => root.render(render(true, null)));
       expect(handle()).toBeNull();
+      expect(ratio()).toBe(preferred);
       await act(async () => root.render(render()));
       expect(ratio()).toBe(preferred);
 

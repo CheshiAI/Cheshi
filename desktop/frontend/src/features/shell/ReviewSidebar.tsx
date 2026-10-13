@@ -24,9 +24,6 @@ interface ReviewSidebarProps {
 export function ReviewSidebar({ open, item, initialPath, lineCommit = null, localHistoryPath = null,
   localHistoryDirty = false, verification = null, onCloseReview, onOpenFile }: ReviewSidebarProps) {
   const reviewing = verification !== null || item !== null || lineCommit !== null || localHistoryPath !== null;
-  const resizableOpen = open && (lineCommit !== null || localHistoryPath !== null);
-  const resize = useReviewSidebarResize(resizableOpen, localHistoryPath !== null ? 'local history' : 'line commit');
-  const focus = useReviewSidebarFocus(open && reviewing, resize.slotRef);
   const [retainedReview, setRetainedReview] = useState({ item, verification, initialPath, lineCommit, localHistoryPath, active: reviewing, revision: 0 });
   // Keep the last review mounted during closing, including interrupted transitions.
   if (retainedReview.active !== reviewing
@@ -43,6 +40,11 @@ export function ReviewSidebar({ open, item, initialPath, lineCommit = null, loca
       revision: retainedReview.revision + (reviewing && !retainedReview.active ? 1 : 0),
     });
   }
+  const resizable = retainedReview.lineCommit !== null || retainedReview.localHistoryPath !== null;
+  const resizableOpen = open && reviewing && resizable;
+  const resize = useReviewSidebarResize(open && reviewing,
+    retainedReview.localHistoryPath !== null ? 'local history' : 'line commit', resizable);
+  const focus = useReviewSidebarFocus(open && reviewing, resize.slotRef);
 
   return <aside ref={resize.slotRef} className={styles.reviewSlot} data-open={open && reviewing ? 'true' : 'false'}
       data-resizable={retainedReview.lineCommit || retainedReview.localHistoryPath !== null ? 'true' : undefined}

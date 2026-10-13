@@ -1,10 +1,9 @@
 import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
-import { ArrowLeft, Columns2, PanelRight, X } from 'lucide-react';
+import { ArrowLeft, Columns2, X } from 'lucide-react';
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { chatRelayContextIds } from '../../../../shared/chat-relay';
 import {
-  SidebarToggle,
   LiquidGlassPanel, NeumorphicButton, TwoTierHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle,
 } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
@@ -26,9 +25,7 @@ import styles from './ChatWorkspace.module.css';
 interface ChatWorkspaceProps extends ChatHistorySearchNavigation {
   workspace: ChatWorkspaceController;
   active: boolean;
-  rightSidebarOpen: boolean;
   sessionSyncEnabled: boolean;
-  onToggleRightSidebar: () => void;
   onCloseWorkspace?: () => void;
   onReviewFileChanges: (paneId: string, itemId: string, path?: string) => void;
 }
@@ -146,7 +143,7 @@ function ChatPane({
 }
 
 export function ChatWorkspace(props: ChatWorkspaceProps) {
-  const { workspace, rightSidebarOpen, onToggleRightSidebar } = props;
+  const { workspace } = props;
   const blurSourceRef = useRef<HTMLElement>(null);
   const paneVisible = useContext(WorkspacePaneVisibilityContext);
   const active = props.active && paneVisible;
@@ -175,15 +172,6 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
             <ChatRelayButton workspace={workspace} />
             <span className={styles.headerDivider} aria-hidden="true" />
             <WorkspaceLayoutControls />
-            <SidebarToggle
-              raised
-              aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-              aria-pressed={rightSidebarOpen}
-              className={`theme-toggle ${viewStyles.sidebarToggle}`}
-              onClick={onToggleRightSidebar}
-            >
-              <PanelRight aria-hidden="true" />
-            </SidebarToggle>
             {props.onCloseWorkspace && <TooltipButton variant="ghost" size="icon"
               aria-label="Close Codex workspace" title="Close Codex workspace"
               onClick={props.onCloseWorkspace}><X aria-hidden="true" /></TooltipButton>}

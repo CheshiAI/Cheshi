@@ -498,8 +498,6 @@ export function AppShell() {
               onReviewFileChanges={openFileReview}
               historyTarget={historyTarget}
               onHistoryTargetHandled={handleHistoryTarget}
-              rightSidebarOpen={rightSidebarOpen}
-              onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
           </FlashSourceNavigationContext.Provider>
           {activeView === 'codegraph' && (

@@ -671,14 +671,12 @@ test('closing Codex keeps file tabs and sidebar controls, and navigation restore
   expect(reopened.mode).toBe('split');
   const resumed = props<ComponentProps<typeof ChatWorkspace>>(reopened.children, 'ChatWorkspace');
   expect(resumed.active).toBe(true);
-  expect(resumed.rightSidebarOpen).toBe(true);
-  resumed.onToggleRightSidebar();
   resumed.onCloseWorkspace!();
   props<ComponentProps<typeof WorkspaceEditor>>(reopened.editor, 'WorkspaceEditor').onAllTabsClosed();
   const empty = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   expect(empty.mode).toBe('primary');
   expect(props<ComponentProps<typeof ChatWorkspace>>(empty.children, 'ChatWorkspace')).toMatchObject({
-    active: true, rightSidebarOpen: false, onCloseWorkspace: undefined,
+    active: true, onCloseWorkspace: undefined,
   });
 });
 
@@ -723,9 +721,10 @@ test('only the standalone editor controls the shared right sidebar and preserves
   expect(split().mode).toBe('split');
   expect(editor().onToggleRightSidebar).toBeUndefined();
   const chat = props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace');
-  expect(chat.rightSidebarOpen).toBe(false);
-  chat.onToggleRightSidebar();
+  expect(props<ComponentProps<typeof ReviewSidebar>>(app.render(), 'ReviewSidebar').open).toBe(false);
   chat.onCloseWorkspace!();
+  expect(editor().rightSidebarOpen).toBe(false);
+  editor().onToggleRightSidebar!();
   expect(editor().rightSidebarOpen).toBe(true);
 });
 
@@ -759,8 +758,7 @@ test('line commits remain independent of the selected left panel and keep chats 
   const review = () => props<ComponentProps<typeof ReviewSidebar>>(app.render(), 'ReviewSidebar');
   const chat = () => props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace');
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
-  chat().onToggleRightSidebar();
-  expect(review().open).toBe(false);
+  expect(review().lineCommit).toBeNull();
   const request = { path: 'first.ts', line: 1, content: 'draft\nsecond' };
   const editorTarget = editor().target;
   editor().onShowLineCommit(request);
@@ -775,10 +773,6 @@ test('line commits remain independent of the selected left panel and keep chats 
   const next = { ...request, line: 2 };
   editor().onShowLineCommit(next);
   expect(review().lineCommit).toBe(next);
-  chat().onToggleRightSidebar();
-  expect(review().open).toBe(false);
-  expect(review().lineCommit).toBe(next);
-  chat().onToggleRightSidebar();
   expect(review().open).toBe(true);
   review().onCloseReview();
   expect(review().lineCommit).toBeNull();

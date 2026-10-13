@@ -4,19 +4,22 @@ const MIN_PANE_WIDTH = 320;
 const DEFAULT_RATIO = 0.5;
 const KEYBOARD_STEP = 0.05;
 
-function ratioLimits(width: number) {
-  const minimum = width > 0 ? Math.min(0.5, MIN_PANE_WIDTH / width) : 0.1;
-  return { minimum, maximum: 1 - minimum };
+function ratioLimits(width: number, workspaceMinimum: number) {
+  if (width <= 0) return { minimum: 0.1, maximum: 0.9 };
+  const reserved = Math.max(Math.min(MIN_PANE_WIDTH, width / 2), workspaceMinimum);
+  const maximum = Math.max(0, 1 - reserved / width);
+  return { minimum: Math.min(maximum, MIN_PANE_WIDTH / width), maximum };
 }
 
-export function useReviewSidebarResize(enabled: boolean, panelName: string) {
+export function useReviewSidebarResize(enabled: boolean, panelName: string, resizable = true) {
   const slotRef = useRef<HTMLElement>(null);
   const [preferredRatio, setPreferredRatio] = useState(DEFAULT_RATIO);
-  const [availableWidth, setAvailableWidth] = useState(0);
+  const [geometry, setGeometry] = useState({ availableWidth: 0, workspaceMinimum: 0 });
+  const { availableWidth, workspaceMinimum } = geometry;
   const [resizing, setResizing] = useState(false);
   const drag = useRef<{ id: number; x: number; width: number; previous: number } | null>(null);
-  const { minimum, maximum } = ratioLimits(availableWidth);
-  const ratio = Math.min(maximum, Math.max(minimum, preferredRatio));
+  const { minimum, maximum } = ratioLimits(availableWidth, workspaceMinimum);
+  const ratio = Math.min(maximum, Math.max(minimum, resizable ? preferredRatio : DEFAULT_RATIO));
 
   useLayoutEffect(() => {
     if (!enabled) {
@@ -28,12 +31,20 @@ export function useReviewSidebarResize(enabled: boolean, panelName: string) {
     const layout = slot?.parentElement;
     const workspace = layout?.querySelector<HTMLElement>(':scope > .workspace-column');
     if (!layout || !workspace) return;
-    const measure = () => setAvailableWidth(Math.max(0,
-      layout.getBoundingClientRect().right - workspace.getBoundingClientRect().left));
+    const content = workspace.firstElementChild;
+    const measure = () => {
+      const availableWidth = Math.max(0, layout.getBoundingClientRect().right - workspace.getBoundingClientRect().left);
+      // The workspace split already declares the minimum needed by its visible panes.
+      const workspaceMinimum = content
+        ? Number.parseFloat(content.ownerDocument.defaultView!.getComputedStyle(content).minWidth) || 0 : 0;
+      setGeometry(current => current.availableWidth === availableWidth && current.workspaceMinimum === workspaceMinimum
+        ? current : { availableWidth, workspaceMinimum });
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(layout);
     observer.observe(workspace);
+    if (content) observer.observe(content);
     return () => observer.disconnect();
   }, [enabled]);
 
@@ -59,7 +70,7 @@ export function useReviewSidebarResize(enabled: boolean, panelName: string) {
     'aria-valuetext': `${Math.round(ratio * 100)}% for the ${panelName} panel`,
     title: `Drag to resize the ${panelName} panel; double-click to reset`,
     onPointerDown(event) {
-      if (!enabled || event.button !== 0 || availableWidth <= 0) return;
+      if (!enabled || !resizable || event.button !== 0 || availableWidth <= 0) return;
       event.preventDefault();
       event.stopPropagation();
       drag.current = { id: event.pointerId, x: event.clientX,
@@ -107,6 +118,7 @@ export function useReviewSidebarResize(enabled: boolean, panelName: string) {
     slotRef,
     resizing: enabled && resizing,
     separatorProps,
-    style: { '--review-ratio': ratio } as CSSProperties,
+    style: { '--review-ratio': ratio, '--review-width': `${availableWidth * ratio}px`,
+      '--review-max-width': `${availableWidth * maximum}px` } as CSSProperties,
   };
 }
