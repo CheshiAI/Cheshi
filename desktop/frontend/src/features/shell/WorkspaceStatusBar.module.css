@@ -36,21 +36,16 @@
   font-weight: 600;
 }
 
-.index {
-  margin-left: auto;
-}
-
-.index[data-index-state='ready'] > svg,
 .account[data-account-state='ready'] > svg {
   color: var(--codegraph-default);
 }
 
-.index[data-index-state='disabled'] > svg,
 .account[data-account-state='disabled'] > svg {
   color: var(--codegraph-disabled);
 }
 
 .account {
+  margin-left: auto;
   max-width: 60%;
   margin-right: var(--space-10);
 }
@@ -101,21 +96,4 @@
 .accountPopover {
   --panel-backdrop-blur: 16px;
   background: rgba(0, 0, 0, 0.75);
-}
-
-.busy {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 6px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: status-pulse 1s ease-in-out infinite alternate;
-}
-
-@keyframes status-pulse {
-  to { opacity: .35; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .busy { animation: none; }
 }

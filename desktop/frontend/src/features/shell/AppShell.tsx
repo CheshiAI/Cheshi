@@ -30,6 +30,7 @@ import {
 } from '../editor';
 import { GitWorkspace } from '../git';
 import { CodeGraphView } from '../graph';
+import { useCodeGraphIndex } from '../graph/useCodeGraphIndex';
 import { BlankView } from '../home/BlankView';
 import { Sidebar, type WorkspaceView } from '../navigation/Sidebar';
 import { saveSidebarPanel, sidebarPanelForWorkspace, type SidebarPanel } from '../navigation/sidebarPanel';
@@ -77,9 +78,9 @@ export function AppShell() {
   const handleHistoryTarget = useCallback((requestId: number) => {
     setHistoryTarget((current) => current?.requestId === requestId ? null : current);
   }, []);
-  const [indexLoaded, setIndexLoaded] = useState(false);
+  const codeGraphIndex = useCodeGraphIndex();
+  const indexLoaded = codeGraphIndex.status.state !== 'loading';
   const accountReady = useCallback(() => setAccountLoaded(true), []);
-  const indexReady = useCallback(() => setIndexLoaded(true), []);
   const startupReported = useRef(false);
   const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
   const [activeView, setActiveView] = useState<WorkspaceView>(() =>
@@ -502,6 +503,7 @@ export function AppShell() {
           </FlashSourceNavigationContext.Provider>
           {activeView === 'codegraph' && (
             <CodeGraphView
+              index={codeGraphIndex}
               onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}
               onOpenWorkspaceFile={openWorkspaceFile}
               rightSidebarOpen={rightSidebarOpen}
@@ -545,7 +547,7 @@ export function AppShell() {
           localHistoryDirty={localHistoryPath !== null && editorDirtyPaths.includes(localHistoryPath)}
         />
       </div>
-      <WorkspaceStatusBar onAccountInitialLoad={accountReady} onIndexInitialLoad={indexReady}
+      <WorkspaceStatusBar onAccountInitialLoad={accountReady}
         selectionDisabledReason={accountSwitchReason}
         onBeforeSelect={beforeAccountSelect} onSelectionFinished={accountSelectionFinished} />
       {fileSearchOpen && <WorkspaceFileSearch onOpenFile={openWorkspaceFile} onClose={() => setFileSearchOpen(false)} />}

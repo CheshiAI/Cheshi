@@ -18,7 +18,6 @@ import { createEditorSessionApi } from './lib/editor-session-preload.cts';
 import { createWorkspaceFileSearchApi } from './lib/workspace-file-search-preload.cts';
 import { createChatQuestionDismissalsApi } from './lib/chat-question-dismissals-preload.cts';
 import { installRendererReadiness } from './lib/renderer-readiness.mts';
-import { workspaceDiskUsage } from './shared/workspace-disk-usage.ts';
 
 import type { IpcRendererEvent } from 'electron';
 
@@ -596,7 +595,6 @@ const cheshiDesktopApi = {
   workspaceName: workspace.workspaceName,
   userName: typeof workspace.userName === 'string' ? workspace.userName : '',
   workspaceRoot: workspace.workspaceRoot,
-  getWorkspaceDiskUsage: async () => workspaceDiskUsage(await ipcRenderer.invoke('cheshi:get-workspace-disk-usage')),
   isCodeGraphIndexed: () => ipcRenderer.invoke('cheshi:is-codegraph-indexed'),
   reindexCodeGraph: () => ipcRenderer.invoke('cheshi:reindex-codegraph'),
   listWorkspaceDirectory: (relativePath = '.') => ipcRenderer.invoke('cheshi:list-workspace-directory', workspaceRelativePath(relativePath)),

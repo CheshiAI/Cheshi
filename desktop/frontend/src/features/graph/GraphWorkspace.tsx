@@ -17,9 +17,10 @@ interface GraphWorkspaceProps {
   rightSidebarOpen: boolean;
   onToggleRightSidebar: () => void;
   onCloseWorkspace?: () => void;
+  unavailable?: ReactNode;
 }
 
-export function GraphWorkspace({ graph, inspector, rightSidebarOpen, onToggleRightSidebar, onCloseWorkspace }: GraphWorkspaceProps) {
+export function GraphWorkspace({ graph, inspector, rightSidebarOpen, onToggleRightSidebar, onCloseWorkspace, unavailable }: GraphWorkspaceProps) {
   const scrollbarSurface = useAutoHideScrollbars<HTMLElement>();
   return (
     <section ref={scrollbarSurface} className="codegraph-workspace" aria-label="CodeGraph relationship graph">
@@ -70,7 +71,7 @@ export function GraphWorkspace({ graph, inspector, rightSidebarOpen, onToggleRig
               <span>{graph.errorMessage || graph.graphError}</span>
             </div>
           )}
-          {!graph.graph && !graph.loading ? (
+          {unavailable ?? (!graph.graph && !graph.loading ? (
             <EmptyState
               className="codegraph-empty-state"
               title="Open a relationship graph"
@@ -96,7 +97,7 @@ export function GraphWorkspace({ graph, inspector, rightSidebarOpen, onToggleRig
                 )}
               </div>
             </div>
-          )}
+          ))}
           {graph.graph && <GraphViewControls graph={graph} />}
         </div>
         {inspector}

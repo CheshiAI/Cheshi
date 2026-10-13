@@ -5,6 +5,7 @@
 #include <dlfcn.h>
 #include <cmath>
 #include <cstring>
+#include "window_top_highlight.h"
 
 namespace {
 using Connection = size_t;
@@ -42,6 +43,19 @@ NSVisualEffectView *Backing(NSWindow *window, bool create) {
 
 Napi::Value Supported(const Napi::CallbackInfo &info) {
   return Napi::Boolean::New(info.Env(), BlurFunction() && ConnectionFunction());
+}
+
+Napi::Value SetTopHighlight(const Napi::CallbackInfo &info) {
+  if (info.Length() != 2 || !info[0].IsBuffer() || !info[1].IsBoolean()) {
+    Napi::TypeError::New(info.Env(), "Expected (native window handle, hidden)").ThrowAsJavaScriptException();
+    return info.Env().Null();
+  }
+  auto handle = info[0].As<Napi::Buffer<unsigned char>>();
+  if (handle.Length() != sizeof(void *) || ![NSThread isMainThread]) return Napi::Boolean::New(info.Env(), false);
+  void *pointer = nullptr;
+  std::memcpy(&pointer, handle.Data(), sizeof(pointer));
+  NSView *view = (__bridge NSView *)pointer;
+  return Napi::Boolean::New(info.Env(), SetWindowTopHighlightHidden(view.window, info[1].As<Napi::Boolean>().Value()));
 }
 
 Napi::Value Apply(const Napi::CallbackInfo &info) {
@@ -87,4 +101,5 @@ Napi::Value Apply(const Napi::CallbackInfo &info) {
 void RegisterWindowGlass(Napi::Env env, Napi::Object exports) {
   exports.Set("windowGlassSupported", Napi::Function::New(env, Supported));
   exports.Set("setWindowGlass", Napi::Function::New(env, Apply));
+  exports.Set("setWindowTopHighlightHidden", Napi::Function::New(env, SetTopHighlight));
 }

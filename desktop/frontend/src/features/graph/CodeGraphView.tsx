@@ -1,58 +1,36 @@
-import { Network } from 'lucide-react';
-import { useEffect, useState } from 'react';
-
-import { LiquidGlassPanel, LoadingIndicator } from '../../shared/ui';
-import { cheshiDesktop as desktopApi } from '../../cheshiDesktop';
+import { LiquidGlassPanel, LoadingIndicator, EmptyState } from '../../shared/ui';
 import { GraphInspector } from './GraphInspector';
 import { GraphWorkspace } from './GraphWorkspace';
 import { useGraphController } from './useGraphController';
+import type { CodeGraphIndexController } from './useCodeGraphIndex';
 
 interface CodeGraphViewProps {
+  index: CodeGraphIndexController;
   onOpenWorkspaceFile: (path: string, line: number | null) => void;
   rightSidebarOpen: boolean;
   onToggleRightSidebar: () => void;
   onCloseWorkspace?: () => void;
 }
 
-export function CodeGraphView({ onOpenWorkspaceFile, rightSidebarOpen, onToggleRightSidebar, onCloseWorkspace }: CodeGraphViewProps) {
-  const [indexed, setIndexed] = useState<boolean | null>(null);
-  const graph = useGraphController(indexed === true);
-
-  useEffect(() => {
-    if (!desktopApi) {
-      setIndexed(true);
-      return;
-    }
-    void desktopApi.isCodeGraphIndexed()
-      .then(setIndexed)
-      .catch(() => setIndexed(false));
-  }, []);
-
-  if (indexed === null) {
-    return <main className="codegraph-unavailable" role="status">
-      <LoadingIndicator />
-      <span>Checking CodeGraph status</span>
-    </main>;
-  }
-
-  if (!indexed) {
-    return (
-      <main className="codegraph-unavailable">
-        <Network aria-hidden="true" />
-        <strong>CodeGraph index required</strong>
-        <span>Run cheshi-cli codegraph init for the current Workspace, then restart the app.</span>
-      </main>
-    );
-  }
+export function CodeGraphView({ index, onOpenWorkspaceFile, rightSidebarOpen, onToggleRightSidebar, onCloseWorkspace }: CodeGraphViewProps) {
+  const graph = useGraphController(index.status.state === 'ready');
+  const unavailable = index.status.state === 'loading'
+    ? <div className="codegraph-empty-state" role="status"><LoadingIndicator label="Checking CodeGraph status" /></div>
+    : index.status.state !== 'ready'
+      ? <EmptyState className="codegraph-empty-state"
+          title={index.status.state === 'not_indexed' ? 'CodeGraph index required' : 'CodeGraph unavailable'}
+          description={index.status.message} />
+      : undefined;
 
   return (
     <LiquidGlassPanel as="main" className="codegraph-view">
       <GraphWorkspace
         graph={graph}
+        unavailable={unavailable}
         rightSidebarOpen={rightSidebarOpen}
         onToggleRightSidebar={onToggleRightSidebar}
         onCloseWorkspace={onCloseWorkspace}
-        inspector={<GraphInspector graph={graph} openWorkspaceFile={onOpenWorkspaceFile} />}
+        inspector={<GraphInspector graph={graph} index={index} openWorkspaceFile={onOpenWorkspaceFile} />}
       />
     </LiquidGlassPanel>
   );

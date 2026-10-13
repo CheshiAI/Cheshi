@@ -1,91 +1,8 @@
-import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-
-import { cheshiDesktop as desktopApi } from '../../cheshiDesktop';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
+import type { CodeGraphIndexController, CodeGraphIndexStatus } from './useCodeGraphIndex';
 import styles from './CodeGraphIndexPanel.module.css';
-
-interface CodeGraphIndexSummary {
-  fileCount: number;
-  nodeCount: number;
-  relationshipCount: number;
-  lastIndexed: number | null;
-}
-
-type CodeGraphIndexStatus =
-  | { state: 'loading'; summary: null; message: null }
-  | { state: 'ready'; summary: CodeGraphIndexSummary; message: null }
-  | { state: 'not_indexed'; summary: null; message: string }
-  | { state: 'error'; summary: null; message: string };
-
-const INITIAL_STATUS: CodeGraphIndexStatus = { state: 'loading', summary: null, message: null };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function isCount(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
-}
-
-function isLiteralTrue(value: unknown): value is true {
-  return value === true;
-}
-
-function assertReindexResponse(value: unknown): asserts value is { reindexed: true } {
-  if (!isRecord(value) || !isLiteralTrue(value.reindexed)) {
-    throw new Error('CodeGraph returned an invalid reindex response.');
-  }
-}
-
-function normalizeIndexSummary(value: unknown): CodeGraphIndexSummary | null {
-  if (!isRecord(value) || !isRecord(value.stats)) return null;
-  const { fileCount, nodeCount, edgeCount } = value.stats;
-  if (!isCount(fileCount) || !isCount(nodeCount) || !isCount(edgeCount)) return null;
-  if (value.lastIndexed !== null && typeof value.lastIndexed !== 'number') return null;
-  if (typeof value.lastIndexed === 'number' && !Number.isFinite(value.lastIndexed)) return null;
-  return {
-    fileCount,
-    nodeCount,
-    relationshipCount: edgeCount,
-    lastIndexed: value.lastIndexed,
-  };
-}
-
-async function loadIndexStatus(): Promise<CodeGraphIndexStatus> {
-  try {
-    if (desktopApi?.isCodeGraphIndexed) {
-      const indexed = await desktopApi.isCodeGraphIndexed();
-      if (!isLiteralTrue(indexed)) {
-        return {
-          state: 'not_indexed',
-          summary: null,
-          message: 'Run cheshi-cli codegraph init to create an index.',
-        };
-      }
-    }
-
-    const response = await fetch('/api/meta', { cache: 'no-store', headers: { Accept: 'application/json' } });
-    if (!response.ok) {
-      return {
-        state: 'error',
-        summary: null,
-        message: `Index metadata unavailable (${response.status}).`,
-      };
-    }
-    const summary = normalizeIndexSummary(await response.json());
-    if (!summary) {
-      return { state: 'error', summary: null, message: 'Index metadata has an invalid format.' };
-    }
-    return { state: 'ready', summary, message: null };
-  } catch (error) {
-    return {
-      state: 'error',
-      summary: null,
-      message: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
 
 function indexedAtDetails(value: number | null): { label: string; dateTime?: string } {
   if (value === null) return { label: 'Index time unavailable' };
@@ -112,75 +29,19 @@ function statusLabel(status: CodeGraphIndexStatus, reindexing: boolean): string 
   }
 }
 
-export interface CodeGraphIndexIndicator {
-  label: string;
-  attention: boolean;
-  busy: boolean;
+export function CodeGraphReindexButton({ index }: { index: CodeGraphIndexController }) {
+  return <TooltipButton variant="ghost" size="icon" aria-label="Reindex CodeGraph" title="Reindex CodeGraph"
+    disabled={index.busy || index.status.state === 'not_indexed'} onClick={() => void index.reindex()}>
+    <RefreshCw className={index.reindexing ? styles.spinning : undefined} aria-hidden="true" />
+  </TooltipButton>;
 }
 
-export function CodeGraphIndexPanel({ onInitialLoad, onStatusChange }: {
-  onInitialLoad?: () => void;
-  onStatusChange?: (indicator: CodeGraphIndexIndicator) => void;
-} = {}) {
-  const [status, setStatus] = useState<CodeGraphIndexStatus>(INITIAL_STATUS);
-  const [reindexing, setReindexing] = useState(false);
-  useEffect(() => { if (status.state !== 'loading') onInitialLoad?.(); }, [status.state, onInitialLoad]);
-
-  const refreshStatus = useCallback(async (): Promise<void> => {
-    setStatus(await loadIndexStatus());
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void loadIndexStatus().then((nextStatus) => {
-      if (!cancelled) setStatus(nextStatus);
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  const reindex = async (): Promise<void> => {
-    if (!desktopApi?.reindexCodeGraph || reindexing) return;
-    setReindexing(true);
-    try {
-      const result = await desktopApi.reindexCodeGraph();
-      assertReindexResponse(result);
-      await refreshStatus();
-    } catch (error) {
-      setStatus({
-        state: 'error',
-        summary: null,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setReindexing(false);
-    }
-  };
-
+export function CodeGraphIndexPanel({ index }: { index: CodeGraphIndexController }) {
+  const { status, reindexing, busy } = index;
+  const surface = useAutoHideScrollbars<HTMLElement>();
   const indexedAt = status.summary ? indexedAtDetails(status.summary.lastIndexed) : null;
-  const busy = status.state === 'loading' || reindexing;
-  useEffect(() => {
-    onStatusChange?.({
-      label: statusLabel(status, reindexing),
-      attention: status.state === 'error' || status.state === 'not_indexed',
-      busy,
-    });
-  }, [status, reindexing, busy, onStatusChange]);
-
   return (
-    <section className={styles.panel} aria-label="CodeGraph index status">
-      <header className={styles.heading}>
-        <span className={styles.headingLabel}>CODEGRAPH INDEX</span>
-        <TooltipButton
-          raised
-          className={`sidebar-heading-action ${styles.refreshButton}`}
-          aria-label="Reindex CodeGraph"
-          title="Reindex CodeGraph"
-          disabled={busy || status.state === 'not_indexed'}
-          onClick={() => void reindex()}
-        >
-          <RefreshCw className={reindexing ? styles.spinning : undefined} aria-hidden="true" />
-        </TooltipButton>
-      </header>
+    <section ref={surface} className={styles.panel} aria-label="CodeGraph index status">
       <div className={styles.rows} aria-busy={busy}>
         <div className={styles.row}>
           {indexedAt

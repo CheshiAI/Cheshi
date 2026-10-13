@@ -1,14 +1,12 @@
-import { Activity, Gauge } from 'lucide-react';
+import { Gauge } from 'lucide-react';
 import { useCallback, useId, useRef, useState, type ComponentProps } from 'react';
 
 import type { CodexAccountsSnapshot } from '../../../../shared/codex-accounts';
 import { LiquidGlassPanel } from '../../shared/ui';
 import { AccountUsagePanel } from '../account/AccountUsagePanel';
 import { AddAccountDialog } from '../account/AddAccountDialog';
-import { CodeGraphIndexPanel, type CodeGraphIndexIndicator } from '../graph/CodeGraphIndexPanel';
 import { AppUpdateIndicator } from '../updates/AppUpdateIndicator';
 import { accountStatusSummary, accountUsageTotals } from './statusBarModel';
-import { WorkspaceStorageUsage } from './WorkspaceStorageUsage';
 import { WorkspaceGitBranch } from './WorkspaceGitBranch';
 import { NotesSearchStatus } from '../notes/NotesSearchStatus';
 import styles from './WorkspaceStatusBar.module.css';
@@ -16,17 +14,13 @@ import styles from './WorkspaceStatusBar.module.css';
 interface WorkspaceStatusBarProps extends Pick<NonNullable<ComponentProps<typeof AccountUsagePanel>>,
   'selectionDisabledReason' | 'onBeforeSelect' | 'onSelectionFinished'> {
   onAccountInitialLoad: () => void;
-  onIndexInitialLoad: () => void;
 }
 
-export function WorkspaceStatusBar({ onAccountInitialLoad, onIndexInitialLoad, ...accountProps }: WorkspaceStatusBarProps) {
+export function WorkspaceStatusBar({ onAccountInitialLoad, ...accountProps }: WorkspaceStatusBarProps) {
   const accountId = useId();
-  const indexId = useId();
   const [accounts, setAccounts] = useState<CodexAccountsSnapshot | null>(null);
   const [accountError, setAccountError] = useState<string | null>(null);
-  const [index, setIndex] = useState<CodeGraphIndexIndicator>({ label: 'CHECKING', attention: false, busy: true });
   const [accountOpen, setAccountOpen] = useState(false);
-  const [indexOpen, setIndexOpen] = useState(false);
   const [addingAccount, setAddingAccount] = useState(false);
   const accountButton = useRef<HTMLButtonElement>(null);
   const openAddAccount = () => {
@@ -54,18 +48,9 @@ export function WorkspaceStatusBar({ onAccountInitialLoad, onIndexInitialLoad, .
 
   return (
     <footer className={styles.bar} aria-label="Workspace status">
-      <WorkspaceStorageUsage />
       <WorkspaceGitBranch />
       <NotesSearchStatus />
       <AppUpdateIndicator />
-      <button type="button" className={`${styles.item} ${styles.index}`} popoverTarget={indexId}
-        aria-haspopup="dialog" aria-expanded={indexOpen} aria-controls={indexId}
-        data-index-state={index.busy ? 'pending' : index.attention ? 'disabled' : 'ready'}
-        data-attention={index.attention || undefined} title="CodeGraph index details">
-        <Activity aria-hidden="true" />
-        <span className={styles.label}>CodeGraph · {index.label}</span>
-        {index.busy && <span className={styles.busy} aria-label="Loading" />}
-      </button>
       <button ref={accountButton} type="button" className={`${styles.item} ${styles.account}`} popoverTarget={accountId}
         aria-haspopup="dialog" aria-expanded={accountOpen} aria-controls={accountId}
         data-account-state={accountReady ? 'ready' : 'disabled'}
@@ -82,12 +67,7 @@ export function WorkspaceStatusBar({ onAccountInitialLoad, onIndexInitialLoad, .
           <span className={styles.total}>{totals.remaining}%</span>
         </> : !accountError && hasAuthenticatedAccount && <span className={styles.total}>· Total unavailable</span>}
       </button>
-      {/* Keep data subscriptions and startup readiness alive while the native popovers are closed. */}
-      <LiquidGlassPanel id={indexId} popover="auto" role="dialog" aria-label="CodeGraph index details"
-        tabIndex={-1} className={styles.popover} data-liquid-glass-backdrop="true"
-        onToggle={(event) => setIndexOpen(event.newState === 'open')}>
-        <CodeGraphIndexPanel onInitialLoad={onIndexInitialLoad} onStatusChange={setIndex} />
-      </LiquidGlassPanel>
+      {/* Keep account subscriptions and startup readiness alive while the popover is closed. */}
       <LiquidGlassPanel id={accountId} popover="auto" role="dialog" aria-label="Account and usage details"
         tabIndex={-1} className={`${styles.popover} ${styles.accountPopover}`} data-liquid-glass-backdrop="true"
         onToggle={(event) => setAccountOpen(event.newState === 'open')}>

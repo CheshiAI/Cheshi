@@ -69,6 +69,20 @@
   text-transform: uppercase;
 }
 
+.headingActions {
+  display: flex;
+  align-items: center;
+  gap: var(--icon-default);
+}
+
+.rail [data-index-state='ready'] > svg {
+  color: var(--codegraph-default);
+}
+
+.rail [data-index-state='disabled'] > svg {
+  color: var(--codegraph-disabled);
+}
+
 .rail {
   display: flex;
   box-sizing: border-box;

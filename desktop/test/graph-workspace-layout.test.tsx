@@ -106,7 +106,7 @@ test.each(['right', 'down'] as const)('empty graph can open a %s split through t
   await withGraph(async h => {
     await h.click(`Split area ${direction}`);
     expect(document.querySelector('dialog[open]')).not.toBeNull();
-    await h.click('Editor');
+    await h.click('Explorer');
     expect(h.opened).toEqual(['editor']);
     expect(h.layout()).toMatchObject({ type: 'split', axis: direction === 'right' ? 'columns' : 'rows' });
     expect(splitPaneIds(h.layout())).toEqual(['primary', 'editor']);

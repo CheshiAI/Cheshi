@@ -660,7 +660,6 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   workspaceName: string;
   userName: string;
   workspaceRoot: string;
-  getWorkspaceDiskUsage?: () => Promise<import('../../shared/workspace-disk-usage').WorkspaceDiskUsage>;
   isCodeGraphIndexed: () => Promise<boolean>;
   reindexCodeGraph: () => Promise<unknown>;
   listWorkspaceDirectory: (relativePath?: string) => Promise<{

@@ -8,6 +8,7 @@ import { createWorkspaceNotifications } from './lib/workspace-notifications.mts'
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
 import { workspaceWindowOptions } from './lib/workspace-window-options.mts';
 import { createWindowTrafficLights } from './lib/window-traffic-lights.mts';
+import { createWindowTopHighlight } from './lib/window-top-highlight.mts';
 import { createWorkspaceTemporaryChat } from './lib/workspace-temporary-chat.mts';
 import { createWorkspaceWindowReadiness } from './lib/workspace-window-readiness.mts';
 import { createWorkspaceRendererEvents } from './lib/workspace-renderer-events.mts';
@@ -780,6 +781,9 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
   logStartup('window created');
   createWindowTrafficLights({ window,
     onError: error => process.stderr.write(`[cheshi] Traffic light scaling failed: ${String(error)}\n`),
+  });
+  createWindowTopHighlight({ window,
+    onError: error => process.stderr.write(`[cheshi] Window top highlight update failed: ${String(error)}\n`),
   });
   registerWorkspaceWindowCloseConfirmation(window, dialog);
   windowAppearance = createWindowAppearance({
