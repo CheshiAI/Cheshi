@@ -15,6 +15,7 @@ import {
   TieredHeader,
 } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { TerminalPaneLayout } from './TerminalPaneLayout';
 import { TerminalTabIcon } from './TerminalTabIcon';
 import { useTerminalController } from './useTerminalController';
@@ -53,17 +54,7 @@ export function TerminalWorkspace({
         primary={(
           <>
             {state.sessions.length === 0 ? (
-              <div className="terminal-header-title">
-                <NeumorphicButton
-                  raised
-                  aria-hidden="true"
-                  className="theme-toggle terminal-header-title-mark"
-                  disabled
-                >
-                  <SquareTerminal aria-hidden="true" />
-                </NeumorphicButton>
-                <h1>Terminal</h1>
-              </div>
+              <SidebarPanelTitle icon={<SquareTerminal aria-hidden="true" />} title="TERMINAL" />
             ) : (
               <FlatTabList aria-label="Terminal sessions" onCloseAll={terminal.closeAllSessions}>
                 {state.sessions.map((session) => {
@@ -145,8 +136,7 @@ export function TerminalWorkspace({
             <strong>{state.available ? 'Start a terminal session' : 'Terminal unavailable'}</strong>
             <p>{terminal.error || 'Open a shell in the current Workspace.'}</p>
             <NeumorphicButton
-              raised
-              className="neumorphic-surface terminal-new-session"
+              variant="standard"
               disabled={!state.available}
               onClick={() => terminal.newSession()}
             >

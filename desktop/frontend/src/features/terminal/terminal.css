@@ -30,34 +30,6 @@
   padding-left: 0;
 }
 
-.terminal-header-title {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 10px;
-}
-
-.terminal-header-title-mark {
-  cursor: default;
-  pointer-events: none;
-}
-
-.terminal-header-title-mark svg {
-  width: 11px;
-  height: 11px;
-}
-
-.terminal-header-title h1 {
-  overflow: hidden;
-  margin: 0;
-  color: var(--sidebar-section-label-color);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 15px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .terminal-header-actions {
   display: flex;
   min-width: 0;
@@ -77,11 +49,6 @@
   width: 11px;
   height: 11px;
   stroke-width: 1.7;
-}
-
-.terminal-new-session:disabled {
-  cursor: default;
-  opacity: .42;
 }
 
 .terminal-error {
@@ -259,38 +226,26 @@
   place-content: center;
   justify-items: center;
   gap: var(--space-default);
-  color: var(--terminal-muted);
+  padding: var(--space-default);
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
   text-align: center;
 }
 
 .terminal-empty strong {
-  color: var(--terminal-text);
-  font-size: 13px;
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-section-title);
   font-weight: 600;
 }
 
 .terminal-empty p {
   max-width: 360px;
   margin: -8px 0 0;
-  color: var(--terminal-muted);
-  font-size: 10px;
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+  font-weight: 400;
   line-height: 16px;
-}
-
-.terminal-new-session {
-  display: inline-flex;
-  min-height: 30px;
-  align-items: center;
-  gap: 8px;
-  color: var(--terminal-text);
-  cursor: pointer;
-  font-size: 10px;
-  padding: 6px 10px;
-}
-
-.terminal-new-session svg {
-  width: 13px;
-  height: 13px;
 }
 
 .terminal-pane-mount { display: flex; flex: 1 1 0; min-width: 0; min-height: 0; overflow: hidden; }
