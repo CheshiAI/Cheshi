@@ -65,6 +65,15 @@ export function registerCodexChatIpc({ ipc, accountIpc, service, deletion, saved
     }
     return result;
   });
+  ipc.handle('cheshi:rename-codex-chat-session', (event, sessionId, title, contextId) => mutation(event, async () => {
+    const selected = service(event, contextId);
+    if (!selected.conversations?.renameSession) throw new Error('Session renaming is unavailable. Restart Cheshi.');
+    const renamed = await selected.conversations.renameSession(sessionId, title);
+    selected.emit({ type: 'session-title', ...renamed });
+    if (sessionId !== renamed.threadId) selected.emit({ type: 'session-title', threadId: sessionId, title: renamed.title });
+    selected.emit({ type: 'sessions-changed' });
+    return renamed;
+  }));
   ipc.handle('cheshi:list-codex-chat-sessions', async (event, contextId) => {
     const selected = service(event, contextId);
     try {

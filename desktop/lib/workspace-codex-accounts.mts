@@ -46,6 +46,7 @@ export function createWorkspaceCodexAccounts(options: {
     agents: new CodexConversationAgents({ cwd: options.cwd, owner: id => catalog.owner(id), request,
       activeProfileId: () => selection?.activeId ?? 'default' }),
     list: () => catalog.list(),
+    renameSession: (threadId, title) => catalog.renameSession(threadId, title),
     resolve: (id, client) => catalog.resolve(id, selection?.activeId ?? 'default', client, threadId => {
       const ids = loaded.get(client) ?? new Set<string>();
       ids.add(threadId);

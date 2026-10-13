@@ -1,4 +1,4 @@
-import { Pin, PinOff, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { Pencil, Pin, PinOff, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { WorkerIcon } from '../../shared/ui/WorkerIcon';
 import { useMemo, useRef, useState } from 'react';
 import type { AgentRoom, ChatsSnapshot } from '../../../../shared/agent-chats';
@@ -16,12 +16,13 @@ import type { ChatsLoadPhase } from './useChatsSnapshot';
 import type { SpecialistAgent } from '../../../../shared/agent-registry';
 import { RoomParticipantsPreview } from './RoomParticipantsPreview';
 
-export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, refreshing, disabled, error, pinningRoomId, onPin, onDelete, onSelect, onNew, onRefresh, roomStatus }: {
+export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, refreshing, disabled, error, pinningRoomId, onPin, onDelete, onRename, onSelect, onNew, onRefresh, roomStatus }: {
   snapshot: ChatsSnapshot; selectedId: string | null; phase: ChatsLoadPhase; loaded: boolean; refreshing: boolean; disabled: boolean; error: string | null;
   agents: readonly SpecialistAgent[];
   onSelect(id: string): void; onNew(): void; onRefresh(): Promise<void>;
   pinningRoomId: string | null; onPin(id: string, pinned: boolean): void;
   onDelete?(id: string): void;
+  onRename?(room: AgentRoom): void;
   roomStatus?(room: AgentRoom): string | null;
 }) {
   const [query, setQuery] = useState('');
@@ -67,6 +68,8 @@ export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, ref
               </span>
             </NeumorphicButton>
             <div className={styles.actions}>
+              <TooltipButton variant="ghost" size="icon" title="Rename room" aria-label={`Rename room: ${room.name}`} aria-haspopup="dialog"
+                disabled={disabled || !onRename} onClick={() => onRename?.(room)}><Pencil aria-hidden="true" /></TooltipButton>
               <TooltipButton variant="ghost" size="icon" title="Delete room" aria-label={`Delete room: ${room.name}`}
                 disabled={disabled || !onDelete} onClick={() => onDelete?.(room.id)}><Trash2 aria-hidden="true" /></TooltipButton>
               <TooltipButton variant="ghost" size="icon" title={room.pinned === true ? 'Unpin' : 'Pin'}

@@ -6,6 +6,7 @@ import type { CodexChatClient, JsonObject } from './codex-chat-types.mts';
 import type { CodexConversationDeletion } from './codex-chat-account-continuity.mts';
 import { isSubagentThread, sessionFromThread } from './codex-chat-thread-data.mts';
 import { recordValue, stringValue } from './codex-service-utils.mts';
+import { requiredString } from './codex-chat-values.mts';
 
 export interface ConversationLocation { profileId: string; threadId: string }
 export interface ConversationProfile { id: string; home: string }
@@ -393,6 +394,25 @@ export class CodexConversationCatalog {
 
   owner(threadId: string): Promise<ConversationLocation> {
     return serial(this.directory, async () => this.locate(await this.load(), threadId, await this.options.profiles()));
+  }
+
+  /** Rename the current physical thread in its owning account without resuming or forking it. */
+  renameSession(value: unknown, title: unknown): Promise<{ threadId: string; title: string }> {
+    const threadId = requiredString(value, 'Session id');
+    const name = requiredString(title, 'Session title');
+    return serial(this.directory, async () => {
+      const owner = await this.locate(await this.load(), threadId, await this.options.profiles());
+      const thread = threadResponse(await this.options.request(owner.profileId, 'thread/read', {
+        threadId: owner.threadId, includeTurns: false,
+      }));
+      if (thread.id !== owner.threadId || isSubagentThread(thread) || typeof thread.cwd !== 'string'
+        || !isAbsolute(thread.cwd) || resolve(thread.cwd) !== resolve(this.options.cwd)) {
+        throw new Error('Only a session in the current workspace can be renamed.');
+      }
+      const result = await this.options.request(owner.profileId, 'thread/name/set', { threadId: owner.threadId, name });
+      if (!recordValue(result)) throw new Error('Codex did not confirm the title change. Refresh the session list before retrying.');
+      return { threadId: owner.threadId, title: name };
+    });
   }
 
   list(): Promise<{ sessions: JsonObject[] }> {

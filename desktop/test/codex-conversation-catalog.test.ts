@@ -46,6 +46,12 @@ async function fixture() {
       return listHandler ? listHandler(profileId, params) : { data: threads.get(profileId) ?? [], nextCursor: null };
     }
     if (method === 'thread/read') return { thread: threads.get(profileId)?.find(thread => thread.id === params.threadId) };
+    if (method === 'thread/name/set') {
+      const thread = threads.get(profileId)?.find(thread => thread.id === params.threadId);
+      if (!thread) throw new Error('Unknown thread');
+      thread.name = params.name;
+      return {};
+    }
     if (method === 'thread/goal/get') return { goal: { threadId: params.threadId, status: 'active', objective: 'Recorded objective' } };
     if (method === 'thread/fork') {
       forkCount += 1;
@@ -89,6 +95,41 @@ test('lists every page across accounts and excludes other workspaces and subagen
   expect(f.calls.filter(call => call.method === 'thread/list').every(call =>
     Array.isArray(call.params.modelProviders) && call.params.modelProviders.length === 0
     && Array.isArray(call.params.sourceKinds) && call.params.sourceKinds.includes('appServer'))).toBe(true);
+});
+
+test('renames in the owning account and retains the title across catalog recreation without resuming', async () => {
+  const f = await fixture();
+  expect(await f.catalog.renameSession('source', '  Short title  ')).toEqual({ threadId: 'source', title: 'Short title' });
+  expect((await new CodexConversationCatalog(f.options).list()).sessions[0]?.title).toBe('Short title');
+  expect(f.calls.filter(call => call.method === 'thread/name/set')).toEqual([
+    { profileId: 'a', method: 'thread/name/set', params: { threadId: 'source', name: 'Short title' } },
+  ]);
+  expect(f.calls.some(call => ['thread/resume', 'thread/fork', 'turn/start'].includes(call.method))).toBe(false);
+});
+
+test('renames the current account continuation when an older thread id is supplied', async () => {
+  const f = await fixture();
+  const current = await f.catalog.resolve('source', 'b', f.client('b'));
+  const renamed = await f.catalog.renameSession('source', 'Continued title');
+  expect(renamed).toEqual({ threadId: current, title: 'Continued title' });
+  expect(f.calls.filter(call => call.method === 'thread/name/set')).toEqual([
+    { profileId: 'b', method: 'thread/name/set', params: { threadId: current, name: 'Continued title' } },
+  ]);
+  expect((await f.catalog.list()).sessions[0]?.title).toBe('Continued title');
+});
+
+test('rename rejects blank titles, unknown sessions and changed workspace ownership before writing', async () => {
+  const f = await fixture();
+  expect(() => f.catalog.renameSession('source', '  ')).toThrow('non-empty');
+  expect(() => f.catalog.renameSession(null, 'Title')).toThrow('non-empty');
+  await failure(f.catalog.renameSession('unknown', 'Title'), 'not found');
+  f.source.cwd = '/other';
+  // The catalog list and actual read disagree: validate the read before any mutation.
+  f.pages(profile => ({ data: profile === 'a' ? [{ ...f.source, cwd: '/workspace' }] : [], nextCursor: null }));
+  await failure(f.catalog.renameSession('source', 'Title'), 'current workspace');
+  f.source.cwd = '';
+  await failure(f.catalog.renameSession('source', 'Title'), 'current workspace');
+  expect(f.calls.some(call => call.method === 'thread/name/set')).toBe(false);
 });
 
 test('refuses repeated pagination cursors instead of looping', async () => {

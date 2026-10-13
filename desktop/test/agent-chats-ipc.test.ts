@@ -52,6 +52,10 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
   expect(calls).toHaveLength(3);
   expect(await api.request({ action: 'question-deadline', roomId: 'room', goalId: 'goal', questionId: 'question', expiresAt: null })).toEqual({ rooms: [], messages: [] });
   expect(calls).toHaveLength(4);
+  expect(() => invoke(owner, {}, { action: 'rename', roomId: 'room', name: 'Short' })).toThrow('workspace');
+  expect(() => invoke(owner, mainFrame, { action: 'rename', roomId: 'room', name: ' ' })).toThrow();
+  await api.request({ action: 'rename', roomId: 'room', name: 'Short' });
+  expect(calls.at(-1)).toBe('/project');
   expect(() => invoke(owner, mainFrame, { action: 'application-inspect', roomId: 'room', goalId: 'goal', candidateId: '../bad', hash: 'b'.repeat(64) })).toThrow('identity');
   expect(await api.request({ action: 'application-inspect', roomId: 'room', goalId: 'goal', candidateId: 'a'.repeat(64), hash: 'b'.repeat(64) })).toEqual({ rooms: [], messages: [] });
   expect(calls.at(-1)).toBe('/project/application');

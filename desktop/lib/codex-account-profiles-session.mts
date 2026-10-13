@@ -28,7 +28,7 @@ export class CodexAccountProfileSession {
   private poll: ReturnType<typeof setInterval> | null = null;
   private revision = 0;
 
-  async historyRequest(method: 'thread/list' | 'thread/read' | 'thread/delete' | 'thread/goal/get', params: unknown): Promise<unknown> {
+  async historyRequest(method: 'thread/list' | 'thread/read' | 'thread/delete' | 'thread/goal/get' | 'thread/name/set', params: unknown): Promise<unknown> {
     this.assertOpen();
     if (this.loggingOut) throw new Error('Wait for account logout to finish.');
     return this.client.request(method, params);

@@ -14,6 +14,7 @@ import { FlashSourceNavigationContext } from '../chat/FlashSourceLink';
 import { CHAT_PANE_MIN_WIDTH } from '../chat/chatWorkspaceModel';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { ChatDeleteSessionDialog } from '../chat/ChatDeleteSessionDialog';
+import { ChatRenameSessionDialog } from '../chat/ChatRenameSessionDialog';
 import { ChatHistoryOpenDialog } from '../chat/ChatHistoryOpenDialog';
 import { ChatHistorySearchBar } from '../chat/ChatHistorySearchBar';
 import { ChatHistorySearchPage } from '../chat/ChatHistorySearchPage';
@@ -101,6 +102,7 @@ export function AppShell() {
   }, [activeView]);
   const [historyChoice, setHistoryChoice] = useState<{ sessionId: string; title: string; paneId: string } | null>(null);
   const [deleteChoice, setDeleteChoice] = useState<{ sessionId: string; title: string } | null>(null);
+  const [renameChoice, setRenameChoice] = useState<{ sessionId: string; title: string } | null>(null);
   const workerWorkspace = useRef<WorkerWorkspaceHandle>(null);
   const [fileReview, setFileReview] = useState<{ paneId: string; itemId: string; path: string | null; item?: never }
     | { paneId?: never; itemId: string; path: string | null; item: ChatActivityItem } | null>(null);
@@ -172,9 +174,9 @@ export function AppShell() {
   const historySearch = useChatHistorySearch(workspace.activePaneId, workspace.paneIds);
   const updateResume = useAppUpdateResume({ activeView, rightSidebarOpen, setActiveView, setRightSidebarOpen, sidebarPanel, setSidebarPanel,
     blockedReason: temporaryChatOpen ? 'Close the temporary chat before updating.'
-      : historyChoice || deleteChoice ? 'Close the conversation dialog before updating.' : null });
+      : historyChoice || deleteChoice || renameChoice ? 'Close the conversation dialog before updating.' : null });
   const accountSwitchReason = updateResume.busy ? 'Wait for update preparation or workspace recovery to finish.' : temporaryChatOpen ? 'Close the temporary chat before switching accounts.'
-    : historyChoice || deleteChoice ? 'Close the conversation dialog before switching accounts.'
+    : historyChoice || deleteChoice || renameChoice ? 'Close the conversation dialog before switching accounts.'
       : workspace.accountSwitchReason;
   const beforeAccountSelect = (): string | null => accountSwitchReason ?? workspace.beginAccountSwitch();
   const accountSelectionFinished = (changed: boolean, preserveConversation = false): void => {
@@ -423,6 +425,7 @@ export function AppShell() {
                 onTemporaryChat={() => { if (!workspace.accountSwitchPending) void cheshiDesktop?.temporaryChat.openWindow().catch(error => window.alert(String(error))); }}
                 temporaryChatOpen={temporaryChatOpen}
                 onOpen={openChat}
+                onRename={cheshiDesktop?.renameCodexChatSession ? session => setRenameChoice({ sessionId: session.id, title: session.title }) : undefined}
                 deleteReason={workspace.deleteSessionReason}
                 onDelete={(sessionId) => {
                   if (workspace.deleteSessionReason(sessionId)) return;
@@ -551,6 +554,11 @@ export function AppShell() {
         onBeforeSelect={beforeAccountSelect} onSelectionFinished={accountSelectionFinished} />
       {fileSearchOpen && <WorkspaceFileSearch onOpenFile={openWorkspaceFile} onClose={() => setFileSearchOpen(false)} />}
       <DiscordSetupConfirmation api={cheshiDesktop?.discord} />
+      {renameChoice && <ChatRenameSessionDialog sessionTitle={renameChoice.title}
+        onSave={title => {
+          if (!cheshiDesktop?.renameCodexChatSession) throw new Error('Session renaming is unavailable. Restart Cheshi.');
+          return cheshiDesktop.renameCodexChatSession(renameChoice.sessionId, title, workspace.activePaneId);
+        }} onClose={() => setRenameChoice(null)} />}
       {deleteChoice && <ChatDeleteSessionDialog sessionTitle={deleteChoice.title}
         reason={workspace.deletePending ? null : workspace.deleteSessionReason(deleteChoice.sessionId)}
         pending={workspace.deletePending} error={workspace.error ?? chat?.state.error ?? null}

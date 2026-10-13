@@ -934,6 +934,12 @@ const cheshiDesktopApi = {
     }
     return ipcRenderer.invoke('cheshi:delete-codex-chat-session', sessionId, contextId);
   },
+  renameCodexChatSession: (sessionId, title, contextId) => {
+    if (typeof sessionId !== 'string' || !sessionId.trim() || typeof title !== 'string' || !title.trim()) {
+      throw new TypeError('Session id and title must be non-empty strings.');
+    }
+    return ipcRenderer.invoke('cheshi:rename-codex-chat-session', sessionId, title.trim(), contextId);
+  },
   openCodexChatAgent: (agentThreadId, contextId) => {
     if (typeof agentThreadId !== 'string' || !agentThreadId.trim()) {
       throw new TypeError('Agent thread id must be a non-empty string.');

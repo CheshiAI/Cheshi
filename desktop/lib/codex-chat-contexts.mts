@@ -67,9 +67,11 @@ export class CodexChatContexts {
     service.onEvent((event) => {
       if (contexts.get(contextId)?.service !== service) return;
       this.options.emit(ownerId, { ...event, contextId });
-      if (event.type === 'session-created' || event.type === 'sessions-changed') {
+      if (event.type === 'session-created' || event.type === 'sessions-changed' || event.type === 'session-title') {
         for (const [otherId] of contexts) {
-          if (otherId !== contextId) this.options.emit(ownerId, { type: 'sessions-changed', contextId: otherId });
+          if (otherId !== contextId) this.options.emit(ownerId, {
+            ...(event.type === 'session-title' ? event : { type: 'sessions-changed' }), contextId: otherId,
+          });
         }
       }
     });

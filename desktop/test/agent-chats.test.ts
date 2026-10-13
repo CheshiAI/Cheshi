@@ -34,6 +34,38 @@ function fixture() {
   const send = (id: string, patch: Partial<Extract<ChatsRequest, { action: 'send' }>> = {}) => request({ action: 'send', id, roomId: 'room', threadId: null, recipient: 'dev', text: 'Build login', goal: true, ...patch });
   return { workspace, filename, agents, details, sent, options, service, request, send, uncertain: () => { uncertain = true; } };
 }
+test('room rename persists and publishes without changing participants, messages, pins or task delivery', async () => {
+  const f = fixture();
+  f.request({ action: 'pin', roomId: 'room', pinned: true });
+  const before = f.request({ action: 'list' });
+  let events = 0;
+  const unsubscribe = f.service.subscribe(f.workspace, () => { events++; });
+  const renamed = f.request({ action: 'rename', roomId: 'room', name: '  Short room  ' });
+  expect(renamed.rooms).toEqual([{ ...before.rooms[0]!, name: 'Short room' }]);
+  expect(renamed.messages).toEqual(before.messages);
+  expect(events).toBe(1);
+  const saved = readFileSync(f.filename, 'utf8'), modified = statSync(f.filename).mtimeMs;
+  expect(f.request({ action: 'rename', roomId: 'room', name: 'Short room' })).toEqual(renamed);
+  expect(events).toBe(1); expect(statSync(f.filename).mtimeMs).toBe(modified);
+  expect(readFileSync(f.filename, 'utf8')).toBe(saved);
+  expect(createAgentChats(f.options).request(f.workspace, { action: 'list' }).rooms[0]?.name).toBe('Short room');
+  expect(new ChatsStore(f.filename).snapshot(f.workspace).rooms[0]?.name).toBe('Short room');
+  await f.service.tick(); expect(f.sent).toEqual([]);
+  unsubscribe();
+});
+test('room rename rejects invalid titles and foreign rooms and retains the original on disk failure', () => {
+  const f = fixture(), before = readFileSync(f.filename, 'utf8');
+  for (const name of ['', '  ', 'a'.repeat(101), 'a\0b', 42, null]) {
+    expect(() => f.service.request(f.workspace, { action: 'rename', roomId: 'room', name })).toThrow();
+  }
+  const other = realpathSync(mkdtempSync(join(tmpdir(), 'cheshi-rename-other-'))); directories.push(other);
+  expect(() => f.service.request(other, { action: 'rename', roomId: 'room', name: 'Short' })).toThrow('project');
+  expect(() => f.request({ action: 'rename', roomId: 'missing', name: 'Short' })).toThrow('project');
+  mkdirSync(`${f.filename}.tmp`);
+  expect(() => f.request({ action: 'rename', roomId: 'room', name: 'Short' })).toThrow();
+  expect(f.request({ action: 'list' }).rooms[0]?.name).toBe('Login');
+  expect(readFileSync(f.filename, 'utf8')).toBe(before);
+});
 test('renamed members appear in snapshots and receive current-name mentions without rewriting history', async () => {
   const f = fixture(), saved = readFileSync(f.filename, 'utf8');
   const before = f.request({ action: 'list' });

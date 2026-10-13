@@ -1,7 +1,7 @@
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
-import { MessageCircleDashed, MessageSquareText, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { MessageCircleDashed, MessageSquareText, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
 
 import { LoadingIndicator, LoadingState, NeumorphicButton } from '../../shared/ui';
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
@@ -28,6 +28,7 @@ interface ChatSessionListProps {
   onTemporaryChat?: () => void;
   temporaryChatOpen?: boolean;
   onDelete: (sessionId: string) => void;
+  onRename?: (session: ChatSession) => void;
   deleteReason: (sessionId: string) => string | null;
 }
 
@@ -70,6 +71,7 @@ export function ChatSessionList({
   onTemporaryChat,
   temporaryChatOpen = false,
   onDelete,
+  onRename,
   deleteReason,
 }: ChatSessionListProps) {
   const refresh = usePullToRefresh(onRefresh, loading || refreshDisabled);
@@ -130,12 +132,15 @@ export function ChatSessionList({
           {sortedSessions.map((session) => {
             const reason = deleteReason(session.id);
             return (
-              <div className={styles.sessionRow} key={session.id}>
+              <div className={styles.sessionRow} key={session.id} data-rename={onRename ? 'true' : undefined}>
                 <ChatSessionButton id={session.id} title={session.title}
                   elapsed={formatSessionElapsedTime(session.updatedAt, now)}
                   active={session.id === activeSessionId}
                   responding={session.status === 'active' || respondingSessions.has(session.id)}
                   onOpen={openSession} />
+                {onRename && <TooltipButton variant="ghost" size="icon" className={styles.renameButton}
+                  type="button" aria-label={`Rename chat: ${session.title}`} title="Rename chat" aria-haspopup="dialog"
+                  onClick={() => onRename(session)}><Pencil aria-hidden="true" /></TooltipButton>}
                 <TooltipButton variant="ghost" size="icon" className={styles.deleteButton}
                   type="button" aria-label={`Delete chat: ${session.title}`} aria-haspopup="dialog"
                   title={reason ?? 'Delete chat'}

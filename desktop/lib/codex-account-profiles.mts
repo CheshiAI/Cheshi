@@ -228,7 +228,8 @@ export class CodexAccountProfiles {
   }
 
   async historyRequest(id: string, method: string, params?: unknown): Promise<unknown> {
-    if (method !== 'thread/list' && method !== 'thread/read' && method !== 'thread/delete' && method !== 'thread/goal/get') {
+    if (method !== 'thread/list' && method !== 'thread/read' && method !== 'thread/delete'
+      && method !== 'thread/goal/get' && method !== 'thread/name/set') {
       throw new Error('Unsupported account history operation.');
     }
     await this.environment(id);

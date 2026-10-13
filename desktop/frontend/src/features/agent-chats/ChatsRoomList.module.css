@@ -12,7 +12,7 @@
 /* Refresh locks the button without dimming it on every background or pull request. */
 .root .refreshPending[data-size]:disabled { opacity: 1; }
 
-.root .title { padding-right: var(--room-meta-width); }
+.root .title { padding-right: calc(3 * (var(--icon-button-size) + var(--icon-default))); }
 .root .metadata { display: grid; grid-template-columns: minmax(0, 1fr) var(--room-meta-width); gap: 0; }
 .time { text-align: right; }
 .participants { display: flex; align-items: center; min-width: 0; gap: var(--icon-default); }
@@ -23,7 +23,7 @@
   position: absolute;
   top: calc(17px - var(--icon-button-size) / 2);
   right: var(--space-default);
-  width: var(--room-meta-width);
+  width: calc(3 * var(--icon-button-size) + 2 * var(--icon-default));
   display: flex;
   justify-content: flex-end;
   align-items: center;

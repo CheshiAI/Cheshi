@@ -144,6 +144,11 @@ export function createAgentChats(options: Options) {
     if (input.action === 'open-file') throw new Error('Use the asynchronous Worker file handler.');
     if (input.action === 'workspace-inspect' || input.action === 'workspace-open') throw new Error('Use the asynchronous worktree handler.');
     if (input.action.startsWith('isolated-')) throw new Error('Use the asynchronous isolated task handler.');
+    if (input.action === 'rename') {
+      const room = roomFor(workspace, input.roomId);
+      store().update(s => { s.rooms.find(r => r.id === room.id)!.name = input.name; });
+      return snapshot(workspace);
+    }
     if (input.action === 'pin') {
       const room = roomFor(workspace, input.roomId);
       if ((room.pinned === true) !== input.pinned) {

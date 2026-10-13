@@ -19,6 +19,7 @@ import type { AgentEngineInfo, AgentManagementApi } from '../../../../shared/age
 import { useChatsSnapshot } from './useChatsSnapshot';
 import { ChatsRoomList } from './ChatsRoomList';
 import { DeleteRoomDialog } from './DeleteRoomDialog';
+import { RenameDialog } from '../../shared/ui/RenameDialog';
 import { VoiceDialog } from './VoiceDialog';
 import { RoomDialog } from './RoomDialog';
 import { ChatsComposer } from './ChatsComposer';
@@ -92,6 +93,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   const [pinError, setPinError] = useState<string | null>(null);
   const pinning = useRef(false);
   const [deleteRoomId, setDeleteRoomId] = useState<string | null>(null);
+  const [renameChoice, setRenameChoice] = useState<{ id: string; name: string } | null>(null);
   const deleteTarget = snapshot.rooms.find(saved => saved.id === deleteRoomId);
   const timeline = useAutoHideScrollbars<HTMLDivElement>();
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -223,9 +225,12 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
     roomStatus={saved => memberStatus(saved.members.find(member => member.id === saved.defaultAgentId), saved.workspace) === DELETED_HOMIE ? 'Deleted Homie · Conversation saved' : null}
     pinningRoomId={pinningRoomId} onPin={(id, pinned) => { void pinRoom(id, pinned); }}
     onDelete={id => { setDeleteRoomId(id); onOpenRoom?.(); }}
+    onRename={room => setRenameChoice({ id: room.id, name: room.name })}
     onSelect={id => { setRoomId(id); onOpenRoom?.(); }} onNew={() => { setDialog('new'); onOpenRoom?.(); }} onRefresh={data.refresh} />;
   return <>
     {sidebarTarget && createPortal(roomList, sidebarTarget)}
+    {renameChoice && <RenameDialog initialTitle={renameChoice.name} heading="RENAME ROOM" inputLabel="Room title" maxLength={100}
+      onSave={name => mutate({ action: 'rename', roomId: renameChoice.id, name })} onClose={() => setRenameChoice(null)} />}
     <main className={styles.root} hidden={!active} aria-label="Worker">
       {sidebarTarget === undefined && <aside className={styles.sidebar}>{roomList}</aside>}
       <section className={styles.conversation} aria-label={room?.name ?? 'Room conversation'}>

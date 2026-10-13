@@ -50,6 +50,16 @@ test('response statistics reads carry the conversation and pane without navigati
   assert.deepEqual(bridge.calls, [['cheshi:read-codex-turn-metrics', 'root', 'pane-b']]);
 });
 
+test('session rename carries a trimmed title and pane and rejects blank inputs', async () => {
+  const bridge = createHarness();
+  await bridge.call('renameCodexChatSession', 'thread', '  Short title  ', 'pane-b');
+  assert.deepEqual(bridge.calls, [['cheshi:rename-codex-chat-session', 'thread', 'Short title', 'pane-b']]);
+  for (const [id, title] of [['', 'Title'], ['thread', '  '], ['thread', 42]]) {
+    assert.throws(() => bridge.call('renameCodexChatSession', id, title), /non-empty strings/);
+  }
+  assert.equal(bridge.calls.length, 1);
+});
+
 test('iMessage bridge sends only explicit settings and test requests, validates responses and cleans subscriptions', async () => {
   const state = { enabled: false, recipient: 'me@example.com',
     available: true, lastStatus: null };

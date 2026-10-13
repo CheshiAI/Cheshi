@@ -371,7 +371,7 @@ test('profile count is bounded before any extra account process is created', asy
   } finally { await f.cleanup(); }
 });
 
-test('default profile clients negotiate experimental history and goal capabilities', async () => {
+test('profile clients negotiate history capabilities and route title changes for default and managed accounts', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cheshi-profile-capabilities-'));
   const executable = join(root, 'history-server.mts');
   const previousExecutable = process.env.CHESHI_CODEX;
@@ -392,7 +392,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     result = { account: null };
   } else if (request.method === 'account/rateLimits/read') {
     result = { rateLimits: null };
-  } else if (request.method === 'thread/list' || request.method === 'thread/goal/get') {
+  } else if (request.method === 'thread/list' || request.method === 'thread/goal/get' || request.method === 'thread/name/set') {
     if (!experimentalApi) {
       error = { code: -32600, message: 'History request requires experimentalApi capability' };
     } else {
@@ -419,6 +419,11 @@ for await (const line of createInterface({ input: process.stdin })) {
       assert.deepEqual(await service.historyRequest(profileId, 'thread/goal/get', goalParams), {
         method: 'thread/goal/get', params: goalParams, experimentalApi: true,
       });
+      const renameParams = { threadId: 'root-thread', name: 'Short title' };
+      assert.deepEqual(await service.historyRequest(profileId, 'thread/name/set', renameParams), {
+        method: 'thread/name/set', params: renameParams, experimentalApi: true,
+      });
+      await expectFailure(service.historyRequest(profileId, 'turn/start', {}), /Unsupported account history operation/u);
     }
   } finally {
     if (previousExecutable === undefined) delete process.env.CHESHI_CODEX;

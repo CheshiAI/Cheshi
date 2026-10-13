@@ -842,6 +842,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   ) => Promise<unknown>;
   openCodexChatSession: (sessionId: string, contextId?: string) => Promise<unknown>;
   deleteCodexChatSession: (sessionId: string, contextId?: string) => Promise<unknown>;
+  renameCodexChatSession?: (sessionId: string, title: string, contextId?: string) => Promise<unknown>;
   openCodexChatAgent: (agentThreadId: string, contextId?: string) => Promise<unknown>;
   newCodexChatSession: (contextId?: string) => Promise<unknown>;
   forkCodexChatSession: (contextId?: string) => Promise<unknown>;

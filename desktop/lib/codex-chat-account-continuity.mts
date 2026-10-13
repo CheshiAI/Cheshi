@@ -11,6 +11,7 @@ export interface CodexConversationDeletion {
 export interface CodexConversationAccess {
   agents?: Pick<CodexConversationAgents, 'read' | 'descendants' | 'assertWritable'>;
   list(): Promise<{ sessions: JsonObject[] }>;
+  renameSession?(threadId: unknown, title: unknown): Promise<{ threadId: string; title: string }>;
   resolve(threadId: string, client: CodexChatClient): Promise<string>;
   registerCreated?(thread: JsonObject): Promise<void>;
   assertWritable?(threadId: string): Promise<void>;

@@ -85,6 +85,8 @@
 .sessionRow .session { flex: 1 1 auto; }
 /* The title is centered at 17px in the 48px row; align the action with that line. */
 .deleteButton { position: absolute; top: calc(17px - var(--icon-button-size) / 2); right: var(--space-default); opacity: 0; transition: opacity .16s ease; }
+.renameButton { composes: deleteButton; right: calc(var(--space-default) + var(--icon-button-size) + var(--icon-default)); }
+.sessionRow[data-rename] .sessionTitleRow { padding-right: calc(2 * (var(--icon-button-size) + var(--icon-default))); }
 .sessionRow:hover .deleteButton, .sessionRow:focus-within .deleteButton { opacity: 1; }
 .sessionRow .deleteButton:disabled { cursor: not-allowed; opacity: 0; }
 .sessionRow:hover .deleteButton:disabled, .sessionRow:focus-within .deleteButton:disabled { opacity: .5; }

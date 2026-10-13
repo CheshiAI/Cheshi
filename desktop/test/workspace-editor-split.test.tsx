@@ -207,7 +207,7 @@ function shellHarness(initialHistoryLoading = false, preference: { panel: Sideba
   };
   for (const [path, names] of Object.entries({
     '../../shared/ui': ['LiquidGlassPanel', 'SlidingSidePanel'], '../chat': ['ChatSessionList'], '../chat/ChatWorkspace': ['ChatWorkspace'],
-    '../chat/TemporaryChatPanel': ['TemporaryChatPanel'], '../chat/ChatDeleteSessionDialog': ['ChatDeleteSessionDialog'],
+    '../chat/ChatRenameSessionDialog': ['ChatRenameSessionDialog'], '../chat/ChatDeleteSessionDialog': ['ChatDeleteSessionDialog'],
     '../chat/ChatHistoryOpenDialog': ['ChatHistoryOpenDialog'], '../chat/ChatHistorySearchBar': ['ChatHistorySearchBar'],
     '../chat/ChatHistorySearchPage': ['ChatHistorySearchPage'], '../chrome/WindowChrome': ['WindowChrome', 'WindowTabs'],
     '../editor': ['WorkspaceEditor'], '../git': ['GitWorkspace'], '../graph': ['CodeGraphView'],

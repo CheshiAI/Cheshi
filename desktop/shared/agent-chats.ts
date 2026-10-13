@@ -66,6 +66,7 @@ export type ChatsRequest = { action: 'list' }
   | { action: 'project-setup'; roomId: string }
   | { action: 'permission'; roomId: string; messageId: string; decision: 'allow' | 'deny' }
   | { action: 'pin'; roomId: string; pinned: boolean }
+  | { action: 'rename'; roomId: string; name: string }
   | { action: 'retry'; roomId: string; messageId: string }
   | { action: 'question-deadline'; roomId: string; goalId: string; questionId: string; expiresAt: string | null }
   | { action: 'question'; roomId: string; goalId: string; questionId: string; recipient: string | null }
@@ -97,6 +98,7 @@ export function parseChatsRequest(value: unknown): ChatsRequest {
   if (v.action === 'isolated-inspect' || v.action === 'isolated-cancel') return { action: v.action, roomId: chatId(v.roomId), messageId: chatId(v.messageId) };
   if (v.action === 'isolated-setup') return { action: 'isolated-setup', roomId: chatId(v.roomId) };
   if (v.action === 'delete') return { action: 'delete', roomId: chatId(v.roomId) };
+  if (v.action === 'rename') return { action: 'rename', roomId: chatId(v.roomId), name: required(v.name, 100) };
   if (v.action === 'project-setup') return { action: 'project-setup', roomId: chatId(v.roomId) };
   if (v.action === 'permission') {
     if (v.decision !== 'allow' && v.decision !== 'deny') throw new Error('Invalid permission decision.');
