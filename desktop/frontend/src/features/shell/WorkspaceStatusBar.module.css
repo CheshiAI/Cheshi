@@ -50,6 +50,12 @@
   margin-right: var(--space-10);
 }
 
+.account > svg {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  flex-basis: var(--icon-button-icon-size);
+}
+
 .separator,
 .total {
   flex: 0 0 auto;

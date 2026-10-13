@@ -20,13 +20,13 @@ export function AccountProfileUsage({ profile, active, pending, selectionDisable
   return (
     <AccountUsageDetails profile={profile} active={active} actions={usage.authenticated && (
       <div className={styles.footerActions}>
-        <NeumorphicButton raised size="icon" className={styles.compactActionButton} aria-label="Log out"
+        <NeumorphicButton variant="ghost" size="icon" aria-label="Log out"
           disabled={pending || signingIn || (active && Boolean(selectionDisabledReason))}
           title={active ? selectionDisabledReason ?? 'Log out of this account' : 'Log out of this account'}
           onClick={onLogout}><LogOut aria-hidden="true" /></NeumorphicButton>
-        {active ? <NeumorphicButton raised active size="icon" className={`${styles.compactActionButton} ${styles.activeButton}`}
+        {active ? <NeumorphicButton variant="ghost" active size="icon" className={styles.activeButton}
           disabled aria-label="Active" title="Currently in use"><Check aria-hidden="true" /></NeumorphicButton>
-          : <NeumorphicButton raised size="icon" aria-label="Use account"
+          : <NeumorphicButton variant="ghost" size="icon" aria-label="Use account"
             disabled={pending || signingIn || usage.state !== 'ready' || Boolean(selectionDisabledReason)}
             title={selectionDisabledReason ?? usage.error ?? 'Use this account for a new chat'} onClick={onSelect}>
             <ArrowRightLeft aria-hidden="true" />

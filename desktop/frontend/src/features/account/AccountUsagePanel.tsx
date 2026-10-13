@@ -99,12 +99,12 @@ export function AccountUsagePanel({ onInitialLoad, onStatusChange, onAddAccount,
       <header className={styles.heading}>
         <span className={styles.headingLabel}>ACCOUNT &amp; USAGE</span>
         <div className={styles.headingActions}>
-          <NeumorphicButton raised className={styles.refreshButton} aria-label="Add Codex account"
+          <NeumorphicButton variant="ghost" size="icon" aria-label="Add Codex account"
             title="Add account" disabled={pending || !api || !onAddAccount} onClick={onAddAccount}>
             <Plus aria-hidden="true" />
           </NeumorphicButton>
-          <NeumorphicButton raised className={styles.refreshButton} aria-label="Refresh account usage"
-            disabled={pending} onClick={() => void loadStatus()}>
+          <NeumorphicButton variant="ghost" size="icon" aria-label="Refresh account usage"
+            title="Refresh account usage" disabled={pending} onClick={() => void loadStatus()}>
             <RefreshCw className={pending ? styles.spinning : undefined} aria-hidden="true" />
           </NeumorphicButton>
         </div>

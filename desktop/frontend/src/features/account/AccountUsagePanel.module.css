@@ -30,30 +30,6 @@
   line-height: 14px;
 }
 
-.refreshButton svg {
-  width: 11px;
-  height: 11px;
-  stroke-width: 1.7;
-}
-
-.refreshButton {
-  -webkit-app-region: no-drag;
-  --neumorphic-button-radius: 50%;
-  --neumorphic-button-active-color: #d8dcde;
-  display: inline-grid;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
-  cursor: pointer;
-  padding: 0;
-  place-items: center;
-}
-
-.refreshButton:disabled {
-  cursor: default;
-  filter: saturate(.4);
-}
-
 .metrics {
   display: grid;
   min-width: 0;
@@ -125,19 +101,8 @@
   gap: var(--icon-default);
 }
 
-.footerActions > .compactActionButton[data-size='icon'] {
-  width: var(--compact-icon-button-size);
-  height: var(--compact-icon-button-size);
-  min-height: var(--compact-icon-button-size);
-}
-
-.footerActions > .compactActionButton[data-size='icon'] > svg {
-  width: var(--compact-icon-size);
-  height: var(--compact-icon-size);
-  flex-basis: var(--compact-icon-size);
-}
-
 .footerActions > .activeButton:disabled {
+  background: var(--control-surface);
   cursor: default;
   opacity: 1;
 }
