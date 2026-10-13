@@ -33,7 +33,15 @@ test('overlay scrollbar follows content scrolling, drives scrolling, and remeasu
     await act(async () => { root.render(<OverlayScrollArea label="Conversations" viewportRef={objectRef}><button>First chat</button></OverlayScrollArea>); });
     const viewport = container.querySelector<HTMLDivElement>('[role="region"]')!;
     expect(objectRef.current).toBe(viewport);
-    const scrollbar = container.querySelector<HTMLDivElement>('[aria-hidden="true"]')!;
+    const scrollbar = container.querySelector<HTMLDivElement>('[role="scrollbar"]')!;
+    expect(scrollbar.hasAttribute('aria-hidden')).toBe(false);
+    expect(scrollbar.getAttribute('aria-label')).toBe('Conversations');
+    expect(scrollbar.getAttribute('aria-controls')).toBe(viewport.id);
+    expect(viewport.id).not.toBe('');
+    expect(scrollbar.getAttribute('aria-orientation')).toBe('vertical');
+    expect(scrollbar.getAttribute('aria-valuemin')).toBe('0');
+    expect(scrollbar.tabIndex).toBe(-1);
+    expect(viewport.tabIndex).toBe(0);
     const extent = scrollbar.firstElementChild as HTMLElement;
     const observer = observers[0]!;
     let contentHeight = 900;
@@ -48,6 +56,8 @@ test('overlay scrollbar follows content scrolling, drives scrolling, and remeasu
     expect(observer.targets.has(viewport)).toBe(true);
     expect(observer.targets.has(viewport.firstElementChild!)).toBe(true);
     expect(scrollbar.hidden).toBe(false);
+    expect(scrollbar.getAttribute('aria-valuemax')).toBe('600');
+    expect(scrollbar.getAttribute('aria-valuenow')).toBe('0');
     expect(viewport.dataset.overflowing).toBe('true');
     expect(extent.style.height).toBe('900px');
     expect(scrollbar.style.bottom).toBe('0px');
@@ -63,20 +73,28 @@ test('overlay scrollbar follows content scrolling, drives scrolling, and remeasu
     viewport.scrollTop = 140;
     viewport.dispatchEvent(new window.Event('scroll') as unknown as Event);
     expect(scrollbar.scrollTop).toBe(140);
+    expect(scrollbar.getAttribute('aria-valuenow')).toBe('140');
     expect(viewport.getAttribute('data-scrollbar-active')).toBe('true');
     scrollbar.scrollTop = 275;
     scrollbar.dispatchEvent(new window.Event('scroll') as unknown as Event);
     expect(viewport.scrollTop).toBe(275);
+    expect(scrollbar.getAttribute('aria-valuenow')).toBe('275');
     expect(scrollbar.getAttribute('data-scrollbar-active')).toBe('true');
 
     contentHeight = 1200;
     observer.resize();
     expect(extent.style.height).toBe('1200px');
     expect(scrollbar.scrollTop).toBe(275);
+    expect(scrollbar.getAttribute('aria-valuemax')).toBe('900');
+    scrollbar.focus();
+    expect(document.activeElement).toBe(scrollbar);
     contentHeight = 200;
     viewport.scrollTop = 0;
     observer.resize();
     expect(scrollbar.hidden).toBe(true);
+    expect(document.activeElement).toBe(viewport);
+    expect(scrollbar.getAttribute('aria-valuemax')).toBe('0');
+    expect(scrollbar.getAttribute('aria-valuenow')).toBe('0');
     expect(viewport.dataset.overflowing).toBe('false');
     expect(scrollbar.scrollTop).toBe(0);
 

@@ -5,7 +5,7 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .actions, .monthHeader {
@@ -25,13 +25,23 @@
 .monthHeader { justify-content: space-between; padding: var(--space-default); }
 .options { --header-height: 42px; flex-shrink: 0; }
 .calendarFilter {
-  padding: var(--space-default);
+  display: flex;
+  box-sizing: border-box;
+  height: 58px;
+  align-items: center;
+  padding: 0 var(--space-default);
   border-bottom: 1px solid var(--divider);
 }
 .content { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .month { flex: 1; min-width: 280px; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
 .weekdays, .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
-.weekdays span { padding: var(--space-default); text-align: center; }
+.weekdays {
+  box-sizing: border-box;
+  height: 40px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--divider);
+}
+.weekdays span { align-self: center; padding: 0 var(--space-default); text-align: center; }
 .grid { flex: 1; grid-template-rows: repeat(6, minmax(64px, 1fr)); }
 
 .day {
@@ -52,6 +62,7 @@
 }
 
 .day:nth-child(7n) { border-right-width: 0; }
+.day:nth-child(-n + 7) { border-top-width: 0; }
 .day[aria-pressed='true'] { background: var(--control-surface); }
 .day:hover, .day:active, .event:hover, .event:active { background: var(--control-surface-interactive); }
 .day:focus-visible, .event:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
@@ -74,6 +85,7 @@
   opacity: 1;
 }
 .dayEvent, .more { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.dayEvent { font-size: 9px; color: var(--sidebar-section-label-color); }
 .more { color: var(--sidebar-section-label-color); }
 
 .agenda {
@@ -101,9 +113,6 @@
   scrollbar-width: auto;
   scrollbar-color: auto;
 }
-.event:first-child { border-top: 1px solid var(--divider); }
-/* Keep the measured height stable when hiding the overflowing list's last line. */
-.eventViewport[data-overflowing='true'] .event:last-child { border-bottom-color: transparent; }
 .event {
   display: flex;
   flex-shrink: 0;
@@ -112,7 +121,6 @@
   box-sizing: border-box;
   width: 100%;
   border: 0;
-  border-bottom: 1px solid var(--divider);
   border-radius: 0;
   padding: var(--space-default);
   background: transparent;
@@ -125,7 +133,8 @@
 .event span { display: flex; align-items: center; gap: var(--icon-default); }
 .eventDetails, .runLink { display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .runLink { font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
-.event svg, .form svg { width: var(--icon-size-default); height: var(--icon-size-default); }
+.event svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); }
+.form svg { width: var(--icon-size-default); height: var(--icon-size-default); }
 .notice { padding: var(--space-default); margin: 0; }
 .connect {
   display: flex;

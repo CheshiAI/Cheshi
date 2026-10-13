@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, type ReactNode, type Ref } from 'react';
+import { useCallback, useId, useLayoutEffect, useRef, type ReactNode, type Ref } from 'react';
 import { useAutoHideScrollbars } from '../useAutoHideScrollbars';
 import { attachElementRef } from '../attachElementRef';
 import styles from './OverlayScrollArea.module.css';
@@ -7,6 +7,7 @@ import styles from './OverlayScrollArea.module.css';
 export function OverlayScrollArea({ children, className, label, viewportRef: providedViewportRef }: {
   children: ReactNode; className?: string; label: string; viewportRef?: Ref<HTMLDivElement>;
 }) {
+  const viewportId = useId();
   const viewportRef = useRef<HTMLDivElement>(null);
   const attachViewport = useCallback((element: HTMLDivElement | null) => {
     viewportRef.current = element;
@@ -28,9 +29,11 @@ export function OverlayScrollArea({ children, className, label, viewportRef: pro
 
     const syncFromViewport = () => {
       if (scrollbar.scrollTop !== viewport.scrollTop) scrollbar.scrollTop = viewport.scrollTop;
+      scrollbar.setAttribute('aria-valuenow', String(viewport.scrollTop));
     };
     const syncFromScrollbar = () => {
       if (viewport.scrollTop !== scrollbar.scrollTop) viewport.scrollTop = scrollbar.scrollTop;
+      scrollbar.setAttribute('aria-valuenow', String(viewport.scrollTop));
     };
     const measure = () => {
       const overflowing = viewport.scrollHeight > viewport.clientHeight;
@@ -38,6 +41,8 @@ export function OverlayScrollArea({ children, className, label, viewportRef: pro
       // Match the viewport height when a consumer enables a horizontal scrollbar.
       scrollbar.style.bottom = `${Math.max(0, viewport.offsetHeight - viewport.clientHeight)}px`;
       extent.style.height = `${viewport.scrollHeight}px`;
+      scrollbar.setAttribute('aria-valuemax', String(Math.max(0, viewport.scrollHeight - viewport.clientHeight)));
+      if (!overflowing && scrollbar === document.activeElement) viewport.focus({ preventScroll: true });
       scrollbar.hidden = !overflowing;
       syncFromViewport();
     };
@@ -55,10 +60,11 @@ export function OverlayScrollArea({ children, className, label, viewportRef: pro
   }, [viewportRef]);
 
   return <div ref={autoHideRef} className={`${styles.root} ${className ?? ''}`}>
-    <div ref={attachViewport} className={styles.viewport} role="region" aria-label={label} tabIndex={0}>
+    <div id={viewportId} ref={attachViewport} className={styles.viewport} role="region" aria-label={label} tabIndex={0}>
       <div ref={contentRef} className={styles.content}>{children}</div>
     </div>
-    <div ref={scrollbarRef} className={styles.scrollbar} aria-hidden="true" tabIndex={-1}>
+    <div ref={scrollbarRef} className={styles.scrollbar} role="scrollbar" aria-label={label}
+      aria-controls={viewportId} aria-orientation="vertical" aria-valuemin={0} aria-valuemax={0} aria-valuenow={0} tabIndex={-1}>
       <div ref={extentRef} />
     </div>
   </div>;
