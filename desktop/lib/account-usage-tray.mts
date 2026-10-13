@@ -48,7 +48,7 @@ export function createAccountUsageTray(options: {
     image.setTemplateImage(true);
     return image;
   };
-  const tray = options.createTray(icon(null));
+  const tray = options.createTray(icon(100));
 
   const reveal = () => {
     const window = selected?.window;
@@ -67,7 +67,10 @@ export function createAccountUsageTray(options: {
     const totals = accountUsageTotals(snapshot);
     const active = snapshot?.profiles.find(profile => profile.id === snapshot.activeId);
     const activeUsage = active ? accountUsageTotals({ activeId: active.id, profiles: [active] }) : null;
-    const percent = activeUsage?.percent ?? null;
+    const pendingUsage = !snapshot || (active && (active.usage.state === 'stopped' || active.usage.state === 'starting')
+      && active.login.state !== 'signed_out' && active.login.state !== 'error'
+      && active.login.error === null && active.usage.error === null);
+    const percent = activeUsage?.percent ?? (pendingUsage ? 100 : null);
     const key = `${percent}:${options.theme.shouldUseDarkColors}`;
     if (key !== iconKey) { tray.setImage(icon(percent)); iconKey = key; }
     const summary = totals

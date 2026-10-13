@@ -57,12 +57,15 @@ test('shares account details, updates usage and theme, ignores stale reads and e
     expect(window.document.documentElement.hasAttribute('data-window-glass')).toBe(true);
     expect(window.document.documentElement.style.getPropertyValue('--window-glass-opacity')).toBe('0.75');
     const next = state(3, 80); next.dark = false; next.appearance!.active = false;
+    next.scheduler = { running: 2, pending: 1, next: null };
     await act(async () => receive(next));
     expect(container.textContent).toContain('80% remaining');
     expect(summaryLines())
       .toEqual(['80% remaining', '200% total capacity', '2 accounts']);
     expect(window.document.documentElement.dataset.theme).toBe('light');
     expect(window.document.documentElement.hasAttribute('data-window-glass')).toBe(false);
+    expect([...container.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Show Cheshi', 'Quit Cheshi']);
+    expect(container.textContent).not.toContain('Tasks');
     await act(async () => { for (const button of container.querySelectorAll('button')) button.click(); });
     expect(actions).toEqual(['show', 'quit']);
     await act(async () => measure?.()); expect(sizes.length).toBeGreaterThan(0);

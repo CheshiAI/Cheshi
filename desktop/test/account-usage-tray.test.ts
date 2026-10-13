@@ -36,6 +36,7 @@ function harness(loadFont?: Options['loadFont'], createPopover?: Options['create
   let tooltip = '';
   let menu: MenuItemConstructorOptions[] = [];
   let currentImage: NativeImage;
+  let initialImage: NativeImage;
   const updates: NativeImage[] = [];
   const errors: unknown[] = [];
   let menuFailure: Error | null = null;
@@ -45,6 +46,7 @@ function harness(loadFont?: Options['loadFont'], createPopover?: Options['create
     createTray(image) {
       creations++;
       currentImage = image;
+      initialImage = image;
       return {
         setImage(next) {
           if (typeof next === 'string') throw new Error('Expected an in-memory tray image');
@@ -79,6 +81,7 @@ function harness(loadFont?: Options['loadFont'], createPopover?: Options['create
     get creations() { return creations; }, get destroyed() { return destroyed; },
     get tooltip() { return tooltip; }, get menu() { return menu; },
     get image() { return imageStates.get(currentImage!)!; },
+    get initialImage() { return imageStates.get(initialImage!)!; },
     get openCalls() { return openCalls; }, get quitCalls() { return quitCalls; },
     click(label: string) {
       const action = menu.find(item => item.label === label)?.click;
@@ -97,6 +100,27 @@ function snapshot(remaining = [92, 100], activeId = 'a'): CodexAccountsSnapshot 
         secondary: { usedPercent: 100 - value, windowDurationMins: 10_080, resetsAt: null } }] },
   })) };
 }
+
+test('starts at 100 through account loading, then displays actual usage including zero', () => {
+  const app = harness();
+  const full = renderAccountUsageTrayIcon(100);
+  expect(app.initialImage.representations[1]?.buffer).toEqual(full);
+  expect(app.image.representations[1]?.buffer).toEqual(full);
+  const source = app.tray.register();
+  const loading = snapshot([100]);
+  loading.profiles[0]!.login.state = 'checking';
+  loading.profiles[0]!.usage = { state: 'stopped', authenticated: false, plan: null, rateLimits: [], error: null };
+  source.update(loading);
+  expect(app.image.representations[1]?.buffer).toEqual(full);
+  loading.profiles[0]!.usage.state = 'starting';
+  source.update(loading);
+  expect(app.image.representations[1]?.buffer).toEqual(full);
+  for (const remaining of [100, 98, 0]) {
+    source.update(snapshot([remaining]));
+    expect(app.image.representations[1]?.buffer).toEqual(renderAccountUsageTrayIcon(remaining));
+  }
+  app.tray.dispose();
+});
 
 test('uses active account usage for both the ring and its number while the tooltip retains totals', () => {
   const app = harness();

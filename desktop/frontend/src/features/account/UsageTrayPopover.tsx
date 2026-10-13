@@ -40,7 +40,7 @@ export function UsageTrayPopover({ api }: { api: UsagePopoverApi }) {
     measure();
     return () => { disposed = true; observer.disconnect(); };
   }, [api]);
-  const perform = (action: 'show' | 'quit' | 'scheduler') => {
+  const perform = (action: 'show' | 'quit') => {
     void api.action(action).catch(cause => setError(String(cause)));
   };
   const totals = accountUsageTotals(state?.snapshot ?? null);
@@ -61,11 +61,8 @@ export function UsageTrayPopover({ api }: { api: UsagePopoverApi }) {
           </> : 'Usage unavailable'}
         </p>}
         <footer className={styles.actions}>
-          {state?.scheduler && <NeumorphicButton variant="ghost" size="standard" onClick={() => perform('scheduler')}>
-            Tasks · {state.scheduler.running} running · {state.scheduler.pending} waiting
-          </NeumorphicButton>}
-          <NeumorphicButton variant="ghost" size="standard" onClick={() => perform('show')}>Show Cheshi</NeumorphicButton>
-          <NeumorphicButton variant="ghost" size="standard" onClick={() => perform('quit')}>Quit Cheshi</NeumorphicButton>
+          <NeumorphicButton variant="standard" size="standard" onClick={() => perform('show')}>Show Cheshi</NeumorphicButton>
+          <NeumorphicButton variant="standard" size="standard" onClick={() => perform('quit')}>Quit Cheshi</NeumorphicButton>
         </footer>
       </div>
     </LiquidGlassPanel>
