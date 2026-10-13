@@ -4,8 +4,7 @@
   padding: var(--space-default);
 }
 
-.emptyState,
-.unavailable {
+.emptyState {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -87,26 +86,22 @@
   white-space: nowrap;
 }
 
-.unavailable {
-  min-height: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 10px;
+.workspace > .unavailable {
+  --empty-text: var(--sidebar-section-label-color);
+  --empty-muted: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
 }
 
-.unavailable svg {
-  width: 24px;
-  height: 24px;
+.workspace > .unavailable > strong {
+  font-size: var(--font-size-section-title);
+  font-weight: 600;
 }
 
-.unavailable strong {
-  font-size: 13px;
-}
-
-.unavailable span {
+.workspace > .unavailable > p {
   max-width: 520px;
-  font-size: 10px;
-  text-align: center;
+  font-size: var(--font-size-small);
+  font-weight: 400;
 }
 
 .spinner {

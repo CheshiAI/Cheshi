@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import vm from 'node:vm';
 import { runRendererSession, type SessionResult } from '../scripts/renderer-session.mts';
 
-function fixture(alreadyAttached = false) {
+function fixture(alreadyAttached = false, extraUrls: string[] = [], workspace = true) {
   const renderer = vm.createContext({ value: 'original', setTimeout });
   let attached = alreadyAttached;
   let detached = 0;
@@ -18,10 +18,15 @@ function fixture(alreadyAttached = false) {
     debugger: debug,
     async executeJavaScript(expression: string) { return vm.runInContext(expression, renderer) as unknown; },
   };
-  const main = vm.createContext({ AbortController, Error, setTimeout, clearTimeout,
+  const main = vm.createContext({ URL, AbortController, Error, setTimeout, clearTimeout,
     process: { mainModule: { require(name: string) {
       if (name !== 'electron') throw new Error('Unexpected module');
-      return { BrowserWindow: { getAllWindows: () => [{ isDestroyed: () => false, webContents: contents }] } };
+      return { BrowserWindow: { getAllWindows: () => [
+        ...(workspace ? [{ isDestroyed: () => false, webContents: contents }] : []),
+        ...extraUrls.map(url => ({ isDestroyed: () => false, webContents: {
+          getURL: () => url, isDevToolsOpened: () => { throw new Error('Unexpected window selected'); },
+        } })),
+      ] } };
     } } },
   });
   return { renderer, main, debug, detached: () => detached,
@@ -168,5 +173,20 @@ test('wait rejects invalid limits without evaluating the condition', async () =>
     expect(result.error).toContain('positive integer');
     expect(h.renderer.value).toBe('original');
     expect(h.detached()).toBe(1);
+  }
+});
+
+
+test('memo windows are excluded while multiple workspace windows remain ambiguous', async () => {
+  const notes = ['http://127.0.0.1:5000/?stickyNotes=1', 'http://127.0.0.1:5000/?project=test&stickyNotes=1'];
+  const h = fixture(false, notes);
+  expect((await h.run('async ui => await ui.evaluate("2 + 2")')).result).toBe(4);
+  expect(h.detached()).toBe(1);
+  for (const [urls, workspace, count] of [[notes, false, 0], [['http://127.0.0.1:5000/?project=other'], true, 2]] as const) {
+    const ambiguous = fixture(false, [...urls], workspace);
+    let failure: unknown;
+    try { await ambiguous.run('async () => true'); } catch (error) { failure = error; }
+    expect(String(failure)).toContain(`found ${count}`);
+    expect(ambiguous.detached()).toBe(0);
   }
 });

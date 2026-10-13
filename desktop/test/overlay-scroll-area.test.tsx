@@ -38,8 +38,10 @@ test('overlay scrollbar follows content scrolling, drives scrolling, and remeasu
     const observer = observers[0]!;
     let contentHeight = 900;
     let viewportHeight = 300;
+    let horizontalScrollbarHeight = 0;
     Object.defineProperties(viewport, {
       clientHeight: { get: () => viewportHeight },
+      offsetHeight: { get: () => viewportHeight + horizontalScrollbarHeight },
       scrollHeight: { get: () => contentHeight },
     });
     observer.resize();
@@ -48,6 +50,15 @@ test('overlay scrollbar follows content scrolling, drives scrolling, and remeasu
     expect(scrollbar.hidden).toBe(false);
     expect(viewport.dataset.overflowing).toBe('true');
     expect(extent.style.height).toBe('900px');
+    expect(scrollbar.style.bottom).toBe('0px');
+
+    // Both scroll axes must share the same vertical range when the bottom bar appears.
+    horizontalScrollbarHeight = 6;
+    observer.resize();
+    expect(scrollbar.style.bottom).toBe('6px');
+    horizontalScrollbarHeight = 0;
+    observer.resize();
+    expect(scrollbar.style.bottom).toBe('0px');
 
     viewport.scrollTop = 140;
     viewport.dispatchEvent(new window.Event('scroll') as unknown as Event);

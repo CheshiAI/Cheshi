@@ -9,7 +9,7 @@ import type {
   GitHubPullRequestListResult, GitHubPullRequestSummary,
 } from '../frontend/src/cheshiDesktop.ts';
 import {
-  pullRequestMatchesBranch, pullRequestReviewLocation, pullRequestReviewLocationKey,
+  isGitRemoteMissing, pullRequestMatchesBranch, pullRequestReviewLocation, pullRequestReviewLocationKey,
 } from '../frontend/src/features/git/gitWorkspaceModel.ts';
 import { parseUnifiedDiff } from '../frontend/src/features/git/unifiedDiff.ts';
 import { createGitWorkspaceControllerHarness } from './git-workspace-controller-test-harness.ts';
@@ -93,7 +93,7 @@ function loadComponent(filename: string): Record<string, unknown> {
       GITHUB_COMMENT_BODY_LIMIT: 65536, pullRequestMergeMethods: [],
       formatGitDate: (value: string) => value,
       reviewDecisionLabel: (value: string | null) => value ?? 'Pending',
-      pullRequestMatchesBranch, pullRequestReviewLocation, pullRequestReviewLocationKey,
+      isGitRemoteMissing, pullRequestMatchesBranch, pullRequestReviewLocation, pullRequestReviewLocationKey,
     },
   };
   vm.runInNewContext(compiled.outputText, {

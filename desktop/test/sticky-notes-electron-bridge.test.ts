@@ -17,6 +17,7 @@ test('sticky notes bridge saves the last edit on native close, restores notes, p
     const mainPath = path.join(directory, 'main.mts');
     await writeFile(mainPath, `
 import { createRequire } from 'node:module';
+import { rename, writeFile, rm } from 'node:fs/promises';
 const { app, BrowserWindow, ipcMain, screen } = createRequire(import.meta.url)('electron');
 import { createStickyNotesRuntime } from ${JSON.stringify(source('../lib/sticky-notes-runtime.mts'))};
 import { registerStickyNotesLibrary } from ${JSON.stringify(source('../lib/sticky-notes-library.mts'))};
@@ -31,7 +32,7 @@ app.whenReady().then(async () => {
   app.dock?.hide();
   const windows = [], errors = [];
   const shortcuts = new Map(), unregistered = [], raised = [];
-  let hidden = 0, listRequests = 0;
+  let listRequests = 0, closeDuringLoad = false;
   const options = {
     directory: ${JSON.stringify(path.join(directory, 'notes'))},
     rendererUrl: ${JSON.stringify(source('../frontend/dist/index.html'))},
@@ -45,9 +46,10 @@ app.whenReady().then(async () => {
       window.show = () => {};
       window.focus = () => {};
       window.moveTop = () => { raised.push(window.id); };
-      window.hide = () => { hidden++; };
+      window.hide = () => {};
       window.webContents.on('preload-error', (_event, _path, error) => errors.push(error.message));
       window.webContents.on('console-message', event => { if (event.level === 'error') errors.push(event.message); });
+      if (closeDuringLoad) queueMicrotask(() => window.close());
       windows.push(window);
       return window;
     },
@@ -67,7 +69,7 @@ app.whenReady().then(async () => {
   try {
     runtime.start(); shortcuts.get('CommandOrControl+Shift+N')();
     await wait(() => windows.length === 1);
-    const first = windows[0];
+    let first = windows[0];
     await wait(() => evaluate(first, '!!document.querySelector("textarea")'));
     const overflow = await evaluate(first, 'document.documentElement.scrollWidth > innerWidth');
     const wideBridge = await evaluate(first, '!!window.cheshiDesktop');
@@ -75,8 +77,9 @@ app.whenReady().then(async () => {
     const initialStatus = await evaluate(first, 'document.querySelector("[role=status]").textContent');
     const id = await evaluate(first, 'window.cheshiStickyNotes.read().then(value => value.note.id)');
     await evaluate(first, 'Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(document.querySelector("textarea"), "Last edit before close 한글"); document.querySelector("textarea").dispatchEvent(new Event("input", { bubbles: true }));');
+    first.setBounds({ x: 40, y: 60, width: 400, height: 460 });
     first.close();
-    await wait(() => hidden === 1);
+    await wait(() => first.isDestroyed());
     const saved = await new StickyNotesStore(options.directory).get(id);
     const survivedClose = !first.isDestroyed();
     phase = 'open list'; shortcuts.get('CommandOrControl+Shift+M')();
@@ -84,10 +87,29 @@ app.whenReady().then(async () => {
     const listed = await evaluate(workspace, 'window.cheshiDesktop.notes.list()');
     await evaluate(workspace, 'window.cheshiDesktop.notes.open(' + JSON.stringify(id) + ')');
     const reused = windows.length === 1;
+    first = windows.at(-1);
+    await wait(() => evaluate(first, '!!document.querySelector("textarea")'));
+    const reopenedText = await evaluate(first, 'document.querySelector("textarea").value');
+    const reopenedBounds = first.getBounds();
     const raisedNote = raised.at(-1) === first.id;
     shortcuts.get('CommandOrControl+Shift+M')();
     await wait(() => listRequests === 2);
-    const reusedList = windows.length === 1;
+    const reusedList = windows.length === 2;
+    phase = 'failed close preserves unsaved editor';
+    await rename(options.directory, options.directory + '-backup');
+    await writeFile(options.directory, 'blocks writes');
+    await evaluate(first, 'Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(document.querySelector("textarea"), "Unsaved close recovery"); document.querySelector("textarea").dispatchEvent(new Event("input", { bubbles: true }));');
+    first.close();
+    await wait(() => evaluate(first, '!!document.querySelector("[role=alert]") && !document.querySelector("textarea").readOnly'));
+    const failedClose = { retained: !first.isDestroyed(), text: await evaluate(first, 'document.querySelector("textarea").value') };
+    await rm(options.directory);
+    await rename(options.directory + '-backup', options.directory);
+    await evaluate(first, 'document.querySelector(' + JSON.stringify('[aria-label="Close window"]') + ').click()');
+    await wait(() => first.isDestroyed());
+    const recovered = await new StickyNotesStore(options.directory).get(id);
+    await runtime.library.open(id);
+    first = windows.at(-1);
+    await wait(() => evaluate(first, '!!document.querySelector("textarea")'));
     await evaluate(first, 'document.querySelector("[aria-label^=Keep]").click()');
     await wait(() => evaluate(first, '!!document.querySelector("[aria-label^=Unpin]")'));
     const pinned = first.isAlwaysOnTop();
@@ -106,7 +128,7 @@ app.whenReady().then(async () => {
     disposeLibrary = registerStickyNotesLibrary({ ipc: ipcMain, windows: () => [workspace], service: runtime.library });
     phase = 'restore note';
     await evaluate(workspace, 'window.cheshiDesktop.notes.open(' + JSON.stringify(id) + ')');
-    const restored = windows[1];
+    const restored = windows.at(-1);
     await wait(() => evaluate(restored, '!!document.querySelector("textarea")'));
     const text = await evaluate(restored, 'document.querySelector("textarea").value');
     const bounds = restored.getBounds();
@@ -144,10 +166,16 @@ app.whenReady().then(async () => {
     await wait(() => listRequests === 3);
     const editorPreserved = await evaluate(latest.window, '!!document.querySelector("textarea") && !document.querySelector("[data-note-id]")');
     await evaluate(workspace, 'window.cheshiDesktop.notes.deleteSelected(' + JSON.stringify([latest.id]) + ')');
+    phase = 'close before renderer readiness';
+    closeDuringLoad = true;
+    await runtime.create();
+    const early = windows.at(-1);
+    await wait(() => early.isDestroyed());
+    const earlyClosed = early.isDestroyed();
     const remaining = await new StickyNotesStore(options.directory).list();
     phase = 'prepare to quit'; await runtime.prepareToQuit(); disposeLibrary(); runtime.dispose(); workspace.destroy();
     console.log('RESULT:' + JSON.stringify({ shortcutNames: [...shortcuts.keys()], unregistered, raisedNote, reusedList, overflow, wideBridge, initialCount, initialStatus, saved, survivedClose, listed,
-      reused, pinned, denied, frozen, text, bounds, restoredPin, selectedDeletion, remaining, errors, changes, narrowLibrary, editorPreserved, renamed, editorTitle, bodyMatches, afterRenameEdit }));
+      reused, earlyClosed, reopenedText, reopenedBounds, failedClose, recovered, pinned, denied, frozen, text, bounds, restoredPin, selectedDeletion, remaining, errors, changes, narrowLibrary, editorPreserved, renamed, editorTitle, bodyMatches, afterRenameEdit }));
     clearTimeout(timeout); app.exit(0);
   } catch (error) { console.error(error); runtime.dispose(); clearTimeout(timeout); app.exit(1); }
 }).catch(error => { console.error(error); clearTimeout(timeout); app.exit(1); });
@@ -169,13 +197,19 @@ app.whenReady().then(async () => {
     assert.equal(value.initialCount, 0);
     assert.equal(value.initialStatus, 'Write something to save this note');
     assert.equal(value.saved.text, 'Last edit before close 한글');
-    assert.equal(value.survivedClose, true);
+    assert.equal(value.survivedClose, false);
+    assert.equal(value.earlyClosed, true);
     assert.equal(value.listed[0].preview, 'Last edit before close 한글');
-    assert.equal(value.reused, true);
+    assert.equal(value.reused, false);
+    assert.equal(value.reopenedText, value.saved.text);
+    assert.equal(value.reopenedBounds.width, 400);
+    assert.equal(value.reopenedBounds.height, 460);
+    assert.deepEqual(value.failedClose, { retained: true, text: 'Unsaved close recovery' });
+    assert.equal(value.recovered.text, 'Unsaved close recovery');
     assert.equal(value.pinned, true);
     assert.equal(value.denied, true);
     assert.equal(value.frozen, true);
-    assert.equal(value.text, value.saved.text);
+    assert.equal(value.text, value.recovered.text);
     assert.equal(value.restoredPin, true);
     assert.equal(value.bounds.width, 400);
     assert.equal(value.bounds.height, 460);

@@ -48,6 +48,9 @@
   overflow: hidden;
 }
 .workspace .list, .workspace .detail {
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
+  scrollbar-width: auto;
+  scrollbar-color: auto;
   --liquid-glass-radius: 0;
   min-width: 0;
   overflow: auto;
@@ -70,7 +73,8 @@
   text-align: left;
   cursor: pointer;
 }
-.row:hover, .row[data-selected='true'] { background: var(--dropdown-selection-bg); }
+.row[data-selected='true'] { background: var(--control-surface); }
+.row:is(:hover, :active) { background: var(--control-surface-interactive); }
 .row:focus-visible { outline: 1px solid var(--active-text); outline-offset: -1px; }
 .row > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; color: var(--sidebar-section-label-color); }
 .rowContent { display: flex; flex-direction: column; gap: var(--icon-default); min-width: 0; overflow-wrap: anywhere; }
@@ -84,6 +88,14 @@
   font-size: 10px;
 }
 .message { padding: var(--space-default); margin: 0; }
+.missingRemote > p {
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 16px;
+}
 .centeredState {
   display: flex;
   align-items: center;
@@ -99,7 +111,6 @@
 .detailHeader h2 { margin: 0; font-size: 14px; color: var(--active-text); overflow-wrap: anywhere; }
 .detailHeader button { flex-shrink: 0; }
 .detail h3 { font-size: 10px; margin: var(--space-default) 0; }
-.body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; line-height: 1.6; user-select: text; }
 .comment { border-top: 1px solid var(--divider); padding-block: var(--space-default); }
 .comment .meta { margin-top: 0; }
 @media (max-width: 700px) {

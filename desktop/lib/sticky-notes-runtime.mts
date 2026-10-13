@@ -22,6 +22,7 @@ interface Entry {
   id: string;
   window: BrowserWindow;
   ready: boolean;
+  closeRequested: boolean;
   appearance: ReturnType<typeof createWindowAppearance>;
 }
 interface PendingFlush {
@@ -93,7 +94,7 @@ export function createStickyNotesRuntime(options: Options) {
       const appearance = (options.createAppearance ?? createWindowAppearance)({ window, filename: options.appearanceFile,
         backgrounds: INITIAL_WINDOW_BACKGROUND_COLORS,
         onChanged: state => { if (!window.webContents.isDestroyed()) window.webContents.send(`${channel}:appearance`, state); } });
-      const entry: Entry = { id, window, ready: false, appearance };
+      const entry: Entry = { id, window, ready: false, closeRequested: false, appearance };
       entries.set(key, entry);
       window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
       window.webContents.on('will-navigate', event => event.preventDefault());
@@ -106,8 +107,8 @@ export function createStickyNotesRuntime(options: Options) {
         if (disposed) return;
         event.preventDefault();
         if (frozen) return;
+        entry.closeRequested = true;
         if (entry.ready) request(entry, { kind: 'close' });
-        else window.hide();
       });
       window.on('closed', () => {
         for (const [entryKey, value] of entries) if (value === entry) entries.delete(entryKey);
@@ -148,7 +149,8 @@ export function createStickyNotesRuntime(options: Options) {
       case 'read': {
         const note = await store.get(entry.id);
         entry.ready = true;
-        reveal(entry);
+        if (entry.closeRequested) request(entry, { kind: 'close' });
+        else reveal(entry);
         return { note, shortcutAvailable, listShortcutAvailable };
       }
       case 'appearance': return entry.appearance.getState();
@@ -167,8 +169,9 @@ export function createStickyNotesRuntime(options: Options) {
         return;
       case 'close':
         if (frozen) return;
+        await renaming.get(entry.id);
         await remember(entry);
-        entry.window.hide();
+        if (!frozen && !entry.window.isDestroyed()) entry.window.destroy();
         return;
       case 'delete':
         if (frozen) throw new Error('Notes are preparing to close.');

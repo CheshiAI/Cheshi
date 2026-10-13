@@ -32,6 +32,7 @@ export function useGitIssues(api: GitHubIssuesApi | undefined, query: Omit<GitHu
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [missingRemote, setMissingRemote] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [activeDetail, setActiveDetail] = useState<number | null>(null);
   const [detail, setDetail] = useState<GitHubIssueDetail | null>(null);
@@ -50,10 +51,16 @@ export function useGitIssues(api: GitHubIssuesApi | undefined, query: Omit<GitHu
   const fetchList = useCallback(async (nextPage: number, generation: number) => {
     if (!api || listBusy.current) return;
     listBusy.current = true;
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setMissingRemote(false);
     try {
       const result = await api.list({ ...query, page: nextPage });
       if (generation !== listGeneration.current) return;
+      if ('unavailable' in result) {
+        cache.current.entries.clear(); cache.current.details.clear();
+        setMissingRemote(result.unavailable === 'remote-missing');
+        setList(null); setPage(0); setSelected(null); setCountSnapshot(null);
+        return;
+      }
       if (nextPage === 1) setCountSnapshot({ search: query.search, revision, counts: result.counts });
       const previous = cache.current.entries.get(cacheKey)?.list;
       const next = { ...result, counts: nextPage === 1 ? result.counts : previous?.counts ?? null,
@@ -78,7 +85,7 @@ export function useGitIssues(api: GitHubIssuesApi | undefined, query: Omit<GitHu
     const entry = cache.current.entries.get(cacheKey);
     if (entry) rememberEntry(cache.current.entries, cacheKey, entry, MAX_CACHED_ISSUE_QUERIES);
     setActiveKey(cacheKey); setList(entry?.list ?? null); setPage(entry?.page ?? 0);
-    setSelected(null); setError(null); setLoading(false);
+    setSelected(null); setError(null); setMissingRemote(false); setLoading(false);
     if (entry) return () => { ++listGeneration.current; };
     if (api) void fetchList(1, generation);
     else setError('GitHub issue browsing is unavailable. Restart the app and try again.');
@@ -161,6 +168,7 @@ export function useGitIssues(api: GitHubIssuesApi | undefined, query: Omit<GitHu
     list: cacheMatches && activeKey === cacheKey ? list : cached?.list ?? null,
     loading: cacheMatches && activeKey === cacheKey ? loading : !cached && !!api,
     error: cacheMatches && activeKey === cacheKey ? error : null,
+    missingRemote: cacheMatches && activeKey === cacheKey && missingRemote,
     selected: visibleSelected, setSelected,
     detail: detailIsCurrent ? detail : savedDetail?.detail ?? null,
     detailLoading: detailIsCurrent ? detailLoading : visibleSelected !== null && !savedDetail,

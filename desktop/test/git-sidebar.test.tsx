@@ -21,6 +21,7 @@ async function workspaceWithApi(api: Partial<CheshiDesktopApi>) {
     './GitProjectContext': await import('../frontend/src/features/git/GitProjectContext'),
     '../../../../shared/workspace-projects': await import('../shared/workspace-projects'),
     '../../shared/ui': await import('../frontend/src/shared/ui'),
+    '../../shared/useAutoHideScrollbars': await import('../frontend/src/shared/useAutoHideScrollbars'),
     '../../shared/errorMessage': await import('../frontend/src/shared/errorMessage'),
     './gitBranchCheckout': await import('../frontend/src/features/git/gitBranchCheckout'),
     './gitRepositoryRefresh': await import('../frontend/src/features/git/gitRepositoryRefresh'),
@@ -32,6 +33,7 @@ async function workspaceWithApi(api: Partial<CheshiDesktopApi>) {
     './GitChangesWorkspace': await import('../frontend/src/features/git/GitChangesWorkspace'),
     './GitHistoryWorkspace': await import('../frontend/src/features/git/GitHistoryWorkspace'),
     './useGitIssues': await import('../frontend/src/features/git/useGitIssues'),
+    './GitIssueMarkdown': await import('../frontend/src/features/git/GitIssueMarkdown'),
     '../../shared/ui/Badge.module.css': { default: {} },
     './GitIssuesWorkspace.module.css': { default: {} },
     './GitPullRequestsWorkspace': await import('../frontend/src/features/git/GitPullRequestsWorkspace'),
@@ -70,7 +72,7 @@ function issueFixture() {
   const details: number[] = [];
   const comments: number[] = [];
   const issue: GitHubIssueDetail = { number: 18, title: 'Cached issue', state: 'closed', author: 'author',
-    updatedAt: '2026-10-07', labels: [], assignees: [], body: 'Saved issue description', commentCount: 1 };
+    updatedAt: '2026-10-07', labels: [], assignees: [], body: '**Saved issue description**', commentCount: 1 };
   const result: GitHubIssueList = { repository: 'owner/repo', issues: [issue], total: 1, hasMore: false,
     incomplete: false, counts: { open: 0, closed: 1, all: 1 } };
   scenario.api.githubIssues = {
@@ -78,7 +80,7 @@ function issueFixture() {
     read: async number => { details.push(number); return issue; },
     comments: async number => {
       comments.push(number);
-      return { comments: [{ id: 1, author: 'author', body: 'Saved comment', createdAt: '2026-10-07' }], hasMore: false };
+      return { comments: [{ id: 1, author: 'author', body: '`Saved comment`', createdAt: '2026-10-07' }], hasMore: false };
     },
     open: async () => {},
   };
@@ -344,6 +346,28 @@ test('Git sidebar retains its header and controls from initial loading through u
   });
 });
 
+test('Git sidebar explains a missing repository on two lines and preserves other errors', async () => {
+  for (const message of [
+    'fatal: not a git repository (or any of the parent directories): .git',
+    'fatal: detected dubious ownership in repository',
+    '',
+  ]) await withDOM(async ui => {
+    const View = await workspaceWithApi({ getGitSnapshot: async () => ({ available: false, message }) });
+    await ui.render(<View onOpenWorkspaceFile={() => {}} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await settleLoading();
+    const alert = document.querySelector('[aria-label="Git changes"] [role="alert"]')!;
+    expect(alert).not.toBeNull();
+    if (message.startsWith('fatal: not a git repository')) {
+      expect(alert.innerHTML.split(/<br\s*\/?\s*>/)).toEqual([
+        'This folder is not a Git repository.',
+        'Open a Git repository to view changes.',
+      ]);
+    } else {
+      expect(alert.textContent).toBe(message || 'Git repository unavailable');
+    }
+  });
+});
+
 test('Git initial loading keeps the panel shell when data arrives without a visit', async () => {
   await withDOM(async ui => {
     const gate = createDeferred<GitRepositorySnapshot>();
@@ -365,6 +389,45 @@ test('Git initial loading keeps the panel shell when data arrives without a visi
     expect(sidebar.querySelector('[role="status"]')).toBeNull();
     expect(sidebar.textContent).toContain('No unstaged changes');
     expect(document.querySelector('main')?.hidden).toBe(true);
+  });
+});
+
+test('Issues refreshes missing remotes from the toolbar and retains retry for other errors', async () => {
+  for (const scenarioCase of [
+    { message: '', missingRemote: true, structured: true },
+    { message: "Error invoking remote method 'cheshi:workspace-projects:invoke': GitCommandError: no git remotes found", missingRemote: true },
+    { message: 'GitHub authentication failed', missingRemote: false },
+  ]) await withDOM(async ui => {
+    const scenario = issueFixture();
+    let requests = 0;
+    scenario.api.githubIssues!.list = async () => {
+      requests++;
+      if (requests === 1 && scenarioCase.structured) return { unavailable: 'remote-missing' };
+      if (requests === 1) throw new Error(scenarioCase.message);
+      return scenario.result;
+    };
+    const View = await workspaceWithApi(scenario.api);
+    await ui.render(<View onOpenWorkspaceFile={() => {}} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await settleLoading();
+    await ui.click('Issues');
+    const panel = document.querySelector('[aria-label="Issue list"]')!;
+    const message = panel.querySelector('[role="alert"] p, [role="status"] p')!;
+    expect(message).not.toBeNull();
+    if (scenarioCase.missingRemote) {
+      expect(message.innerHTML.split(/<br\s*\/?\s*>/)).toEqual([
+        'No remote repository is configured.',
+        'Add a GitHub remote to view issues.',
+      ]);
+      if (scenarioCase.message) expect(panel.textContent).not.toContain(scenarioCase.message);
+      expect(panel.querySelector('[role="status"] button')).toBeNull();
+      await ui.click('Refresh Git');
+    } else {
+      expect(message.textContent).toBe(scenarioCase.message);
+      await ui.click('Retry');
+    }
+    expect(requests).toBe(2);
+    expect(panel.querySelector('[role="alert"]')).toBeNull();
+    expect(panel.textContent).toContain('Cached issue');
   });
 });
 
@@ -392,6 +455,8 @@ test('Issues retains search, filters, selection and cached details across tabs u
     await act(async () => selectedRow.click());
     expect(panel.textContent).toContain('Saved issue description');
     expect(panel.textContent).toContain('Saved comment');
+    expect(panel.querySelector('[aria-label="Issue details"] strong')?.textContent).toBe('Saved issue description');
+    expect(panel.querySelector('article code')?.textContent).toBe('Saved comment');
     await ui.type('Search issue titles and bodies', 'unsubmitted draft');
     const list = panel.querySelector<HTMLElement>('[aria-label="Issue list"]')!;
     list.scrollTop = 80;
@@ -478,5 +543,78 @@ test('range selection follows its anchor through staging and failed staging pres
     await ui.click('Unstage all changes');
     expect(sidebar.querySelectorAll('input:checked')).toHaveLength(0);
     expect(sidebar.querySelectorAll('button[aria-pressed="true"]')).toHaveLength(2);
+  });
+});
+
+test('PR missing-remote guidance retains refresh and preserves other errors', async () => {
+  for (const missingRemote of [true, false]) await withDOM(async ui => {
+    const scenario = fixture();
+    let requests = 0;
+    scenario.api.listGitHubPullRequests = async () => {
+      requests++;
+      return { available: false, pullRequests: [], message: missingRemote
+        ? 'GitCommandError: no git remotes found' : 'GitHub authentication failed' };
+    };
+    const View = await workspaceWithApi(scenario.api);
+    await ui.render(<View onOpenWorkspaceFile={() => {}} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await settleLoading();
+    await ui.click('Push & Pull requests');
+    await settleLoading();
+    const workspace = document.querySelector('main')!;
+    if (missingRemote) {
+      const message = [...workspace.querySelectorAll('p')].find(node => node.textContent?.startsWith('No remote repository'))!;
+      expect(message.innerHTML.split(/<br\s*\/?\s*>/)).toEqual([
+        'No remote repository is configured.', 'Add a GitHub remote to view pull requests.',
+      ]);
+      expect(workspace.textContent).not.toContain('no git remotes found');
+    } else expect(workspace.textContent).toContain('GitHub authentication failed');
+    const before = requests;
+    await ui.click('Refresh pull requests');
+    await settleLoading();
+    expect(requests).toBe(before + 1);
+  });
+});
+
+test('Git workspace tracks descendant scrolling and clears activity after idle', async () => {
+  await withDOM(async ui => {
+    const scenario = fixture();
+    const View = await workspaceWithApi(scenario.api);
+    await ui.render(<View onOpenWorkspaceFile={() => {}} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await settleLoading();
+    await ui.click('Issues');
+    const list = document.querySelector('[aria-label="Issue list"]')!;
+    expect(list.closest('[data-auto-hide-scrollbars="true"]')).not.toBeNull();
+    await act(async () => list.dispatchEvent(new window.Event('scroll')));
+    expect(list.getAttribute('data-scrollbar-active')).toBe('true');
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 750)); });
+    expect(list.getAttribute('data-scrollbar-active')).toBe('false');
+    await ui.render(null);
+    expect(list.hasAttribute('data-scrollbar-active')).toBe(false);
+  });
+});
+
+test('branch history shows the shared loader until the selected branch commits finish loading', async () => {
+  await withDOM(async ui => {
+    const scenario = fixture();
+    const readSnapshot = scenario.api.getGitSnapshot!;
+    scenario.api.getGitSnapshot = async () => ({ ...await readSnapshot(), head: 'current', commits: [], branches: [
+      { name: 'current', fullName: 'refs/heads/current', hash: 'a', current: true, remote: false, upstream: null, upstreamRemote: null, ahead: 0, behind: 0 },
+      { name: 'other', fullName: 'refs/heads/other', hash: 'b', current: false, remote: false, upstream: null, upstreamRemote: null, ahead: 0, behind: 0 },
+    ] });
+    const gate = createDeferred<Awaited<ReturnType<CheshiDesktopApi['getGitBranchCommits']>>>();
+    scenario.api.getGitBranchCommits = () => gate.promise;
+    const View = await workspaceWithApi(scenario.api);
+    await ui.render(<View onOpenWorkspaceFile={() => {}} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await settleLoading();
+    await ui.click('Branches & Log');
+    await ui.click('other');
+    const list = document.querySelector('[aria-label="Commits for other"]')!;
+    expect(list.getAttribute('aria-busy')).toBe('true');
+    expect(list.querySelector('[role="status"][aria-label="Loading commits…"]')).not.toBeNull();
+    expect(list.textContent).not.toContain('No commits.');
+    await act(async () => gate.resolve([]));
+    expect(list.getAttribute('aria-busy')).toBe('false');
+    expect(list.querySelector('[aria-label="Loading commits…"]')).toBeNull();
+    expect(list.textContent).toContain('No commits.');
   });
 });

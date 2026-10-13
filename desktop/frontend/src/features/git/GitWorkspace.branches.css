@@ -1,12 +1,20 @@
 .logBranches {
   composes: neumorphic-surface-tokens from global;
+  display: flex;
+  flex-direction: column;
   min-height: 250px;
   max-height: 250px;
   flex: 0 1 auto;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: clip;
   border-bottom: 1px solid var(--divider);
   background: transparent;
+}
+
+.logBranchScroll {
+  flex: 1 1 auto;
+}
+
+.logBranchContent {
   padding: 8px 0;
 }
 

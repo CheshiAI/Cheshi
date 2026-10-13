@@ -8,7 +8,7 @@ import {
 import { LiquidGlassPanel, LoadingState, NeumorphicButton } from '../../shared/ui';
 import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
-import { pullRequestMatchesBranch } from './gitWorkspaceModel';
+import { isGitRemoteMissing, pullRequestMatchesBranch } from './gitWorkspaceModel';
 import styles from './GitWorkspace.module.css';
 import type { GitWorkspaceController } from './useGitWorkspaceController';
 
@@ -53,7 +53,10 @@ export function GitPullRequestListPanel({ controller }: { controller: GitWorkspa
         <LoadingState className={styles.loadingState} />
       ) : !pullRequests.available ? (
         <div className={`${styles.pullRequestList} ${styles.emptyState}`}>
-          {pullRequests.message || 'Loading pull requests…'}
+          {isGitRemoteMissing(pullRequests.message) ? <p>
+            No remote repository is configured.<br />
+            Add a GitHub remote to view pull requests.
+          </p> : pullRequests.message || 'Pull requests are unavailable.'}
         </div>
       ) : (
         <>

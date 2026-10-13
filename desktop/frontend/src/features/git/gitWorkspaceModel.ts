@@ -19,6 +19,10 @@ export type GitMutationSuccessMessage = string | ((result: GitMutationOutcome) =
 export type GitRefreshMode = 'foreground' | 'background';
 export type PullRequestOperation = 'push' | 'create' | 'merge' | 'delete-branch' | 'cleanup-branch' | null;
 
+export function isGitRemoteMissing(message: string | null | undefined): boolean {
+  return /\bno git remotes found\b/i.test(message ?? '');
+}
+
 export function pullRequestMatchesBranch(pullRequest: GitHubPullRequestSummary | null, branch: GitRepositorySnapshot['head']): boolean {
   return !!branch && pullRequest !== null && pullRequest.crossRepository !== true && pullRequest.headRefName === branch;
 }

@@ -35,6 +35,8 @@ export function OverlayScrollArea({ children, className, label, viewportRef: pro
     const measure = () => {
       const overflowing = viewport.scrollHeight > viewport.clientHeight;
       viewport.dataset.overflowing = String(overflowing);
+      // Match the viewport height when a consumer enables a horizontal scrollbar.
+      scrollbar.style.bottom = `${Math.max(0, viewport.offsetHeight - viewport.clientHeight)}px`;
       extent.style.height = `${viewport.scrollHeight}px`;
       scrollbar.hidden = !overflowing;
       syncFromViewport();

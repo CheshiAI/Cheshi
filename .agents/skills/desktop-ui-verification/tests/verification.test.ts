@@ -23,7 +23,7 @@ function fixture() {
     debugger: debug,
     async executeJavaScript(expression: string) { return vm.runInContext(expression, renderer) as unknown; },
   };
-  const main = vm.createContext({ AbortController, Error, setTimeout, clearTimeout,
+  const main = vm.createContext({ URL, AbortController, Error, setTimeout, clearTimeout,
     process: { mainModule: { require(name: string) {
       if (name !== 'electron') throw new Error('Unexpected module');
       return { BrowserWindow: { getAllWindows: () => [{ isDestroyed: () => false, webContents: contents }] } };

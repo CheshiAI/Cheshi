@@ -1,21 +1,19 @@
 import { GitBranch, GitBranchPlus, RefreshCw } from 'lucide-react';
-import { useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 import {
   focusAdjacentMenuItem,
   LiquidGlassPanel,
+  NeumorphicButton,
   useContextMenuInteractions,
 } from '../../shared/ui';
+import { RegionalBlur } from '../../shared/ui/RegionalBlur';
 import type { GitBranchSummary } from '../../cheshiDesktop';
 import styles from './GitBranchContextMenu.module.css';
 
 const menuWidth = 220;
 const viewportGap = 8;
-const itemHeight = 36;
-const itemGap = 4;
-const menuPadding = 16;
-const dividerHeight = 1;
 
 export interface GitBranchContextMenuTarget {
   branch: GitBranchSummary;
@@ -46,44 +44,59 @@ export function GitBranchContextMenu({
   onUpdate,
 }: GitBranchContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const sourceRef = useRef(document.getElementById('app'));
   useContextMenuInteractions(menuRef, onClose);
 
+  useLayoutEffect(() => {
+    const anchor = menuRef.current;
+    if (!anchor) return;
+    const trigger = document.activeElement;
+    const bounds = anchor.getBoundingClientRect();
+    anchor.style.left = `${clampedCoordinate(x, window.innerWidth, bounds.width)}px`;
+    anchor.style.top = `${clampedCoordinate(y, window.innerHeight, bounds.height)}px`;
+    return () => {
+      if (trigger instanceof HTMLElement && trigger.isConnected && anchor.contains(document.activeElement)) trigger.focus();
+    };
+  }, [x, y]);
+
   const canCheckout = !branch.remote && !branch.current;
-  const itemCount = canCheckout ? 3 : 2;
-  const menuHeight = menuPadding + itemCount * itemHeight + itemCount * itemGap + dividerHeight;
   const left = clampedCoordinate(x, window.innerWidth, menuWidth);
-  const top = clampedCoordinate(y, window.innerHeight, menuHeight);
   const run = (operation: (selectedBranch: GitBranchSummary) => void): void => {
     operation(branch);
     onClose();
   };
 
   return createPortal(
-    <div ref={menuRef} className="liquid-glass-context-menu-anchor" style={{ left, top, width: menuWidth }}>
-      <LiquidGlassPanel
-        aria-label={`Actions for branch ${branch.name}`}
-        className={`liquid-glass-context-menu ${styles.menu}`}
-        role="menu"
-        onContextMenu={(event) => event.preventDefault()}
-        onKeyDown={focusAdjacentMenuItem}
-      >
-        <button disabled={disabled} className="liquid-glass-menu-item" type="button" role="menuitem" onClick={() => run(onCreateFrom)}>
-          <span>New branch from ‘{branch.name}’…</span>
-          <GitBranchPlus aria-hidden="true" />
-        </button>
-        <div className="liquid-glass-context-menu-divider" role="separator" />
-        <button disabled={disabled} className="liquid-glass-menu-item" type="button" role="menuitem" onClick={() => run(onUpdate)}>
-          <span>Update</span>
-          <RefreshCw aria-hidden="true" />
-        </button>
-        {canCheckout && (
-          <button disabled={disabled} className="liquid-glass-menu-item" type="button" role="menuitem" onClick={() => run(onCheckout)}>
-            <span>Checkout</span>
-            <GitBranch aria-hidden="true" />
-          </button>
-        )}
-      </LiquidGlassPanel>
-    </div>,
+    <RegionalBlur sourceRef={sourceRef} sourceMode="replace">
+      <div ref={menuRef} className={styles.anchor} style={{ left, top: y, width: menuWidth }}>
+        <LiquidGlassPanel
+          aria-label={`Actions for branch ${branch.name}`}
+          className={styles.menu}
+          role="menu"
+          onContextMenu={(event) => event.preventDefault()}
+          onKeyDown={(event) => {
+            focusAdjacentMenuItem(event);
+            if (event.key === 'Tab') onClose();
+          }}
+        >
+          <NeumorphicButton variant="ghost" disabled={disabled} className={styles.item} role="menuitem" onClick={() => run(onCreateFrom)}>
+            <span>New branch from ‘{branch.name}’…</span>
+            <GitBranchPlus aria-hidden="true" />
+          </NeumorphicButton>
+          <div className={styles.separator} role="separator" />
+          <NeumorphicButton variant="ghost" disabled={disabled} className={styles.item} role="menuitem" onClick={() => run(onUpdate)}>
+            <span>Update</span>
+            <RefreshCw aria-hidden="true" />
+          </NeumorphicButton>
+          {canCheckout && (
+            <NeumorphicButton variant="ghost" disabled={disabled} className={styles.item} role="menuitem" onClick={() => run(onCheckout)}>
+              <span>Checkout</span>
+              <GitBranch aria-hidden="true" />
+            </NeumorphicButton>
+          )}
+        </LiquidGlassPanel>
+      </div>
+    </RegionalBlur>,
     document.body,
   );
 }

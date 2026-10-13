@@ -25,6 +25,7 @@ function renderComponent(filename: string, exportName: string, props: Record<str
       useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}],
       useMemo: (factory: () => unknown) => factory(),
       useRef: (current: unknown) => ({ current }),
+      useLayoutEffect() {},
     },
     'react-dom': { createPortal: (element: unknown) => element },
     'lucide-react': {
@@ -37,6 +38,8 @@ function renderComponent(filename: string, exportName: string, props: Record<str
       LiquidGlassPanel: 'panel', focusAdjacentMenuItem() {}, useContextMenuInteractions() {},
     },
     './GitBranchContextMenu': { GitBranchContextMenu: 'context-menu' },
+    '../../shared/ui/RegionalBlur': { RegionalBlur: 'regional-blur' },
+    '../../shared/ui/OverlayScrollArea': { OverlayScrollArea: 'overlay-scroll-area' },
     './GitWorkspace.module.css': { default: {} },
     './GitBranchContextMenu.module.css': { default: {} },
   };
@@ -47,7 +50,7 @@ function renderComponent(filename: string, exportName: string, props: Record<str
       return modules[name];
     },
     window: { innerWidth: 1000, innerHeight: 800 },
-    document: { body: {} },
+    document: { body: {}, getElementById: () => null },
   });
   const component = exports[exportName];
   assert.ok(typeof component === 'function');
@@ -115,7 +118,7 @@ test('the explicit Checkout menu action still requests checkout of its target br
     onCheckout: (target: GitBranchSummary) => checkouts.push(target),
     onClose: () => { closed += 1; }, onCreateFrom() {}, onUpdate() {},
   });
-  const checkout = elements(menu).find((element) => element.type === 'button'
+  const checkout = elements(menu).find((element) => element.props.role === 'menuitem'
     && elements(element.props.children).some((child) => child.props.children === 'Checkout'));
   assert.ok(checkout);
   invoke(checkout, 'onClick');

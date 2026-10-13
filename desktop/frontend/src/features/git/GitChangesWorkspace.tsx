@@ -136,6 +136,7 @@ export function GitChangesWorkspace({ controller, onOpenWorkspaceFile, sidebarTa
     unstagedChanges,
     unstagePaths,
   } = controller;
+  const unavailableMessage = error || snapshot.message || 'Git repository unavailable';
   const commitUnavailable = busy || !snapshot.available || stagedChanges.length === 0;
   const [selectedChanges, setSelectedChanges] = useState<GitDiscardTarget[] | null>(null);
   const [discardTargets, setDiscardTargets] = useState<GitDiscardTarget[] | null>(null);
@@ -176,7 +177,10 @@ export function GitChangesWorkspace({ controller, onOpenWorkspaceFile, sidebarTa
         </TooltipButton>} />
       <OverlayScrollArea className={styles.changeList} label="Changed files">
         {!snapshot.available ? loading ? <LoadingState label="Loading changes…" /> : <p className={styles.groupEmpty} role="alert">
-          {error || snapshot.message || 'Git repository unavailable'}
+          {/\bnot a git repository\b/i.test(unavailableMessage) ? <>
+            This folder is not a Git repository.<br />
+            Open a Git repository to view changes.
+          </> : unavailableMessage}
         </p> : <>
           <GitChangeGroup
             busy={busy}

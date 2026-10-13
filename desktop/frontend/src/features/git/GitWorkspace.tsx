@@ -2,12 +2,9 @@ import { GitProjectContext } from './GitProjectContext';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { useWorkspaceProjects, projectGitApi, primaryProject } from '../../shared/workspaceProjects';
 import { projectFilePath, type WorkspaceProject } from '../../../../shared/workspace-projects';
-import { LiquidGlassSelect } from '../../shared/ui';
+import { EmptyState, LiquidGlassSelect, LoadingState } from '../../shared/ui';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { GitIssuesWorkspace } from './GitIssuesWorkspace';
-import { AlertTriangle } from 'lucide-react';
-
-import { LoadingState } from '../../shared/ui';
 import { GitChangesWorkspace } from './GitChangesWorkspace';
 import { GitHistoryWorkspace } from './GitHistoryWorkspace';
 import { GitPullRequestsWorkspace } from './GitPullRequestsWorkspace';
@@ -15,6 +12,7 @@ import { GitWorkspaceHeader } from './GitWorkspaceHeader';
 import styles from './GitWorkspace.module.css';
 import sidebarStyles from './GitChangesSidebar.module.css';
 import { useGitWorkspaceController } from './useGitWorkspaceController';
+import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 
 interface GitWorkspaceProps {
   active?: boolean;
@@ -30,6 +28,7 @@ function ProjectGitWorkspace({ active = true, sidebarTarget, onOpenChanges,
   const [issueRevision, setIssueRevision] = useState(0);
   const [issuesVisited, setIssuesVisited] = useState(false);
   const menuBlurSourceRef = useRef(document.getElementById('app'));
+  const scrollbarsRef = useAutoHideScrollbars<HTMLElement>();
   const controller = useGitWorkspaceController();
   const { loading, snapshot, tab } = controller;
   const issuesActive = snapshot.available && tab === 'issues';
@@ -37,15 +36,15 @@ function ProjectGitWorkspace({ active = true, sidebarTarget, onOpenChanges,
     if (issuesActive) setIssuesVisited(true);
   }, [issuesActive]);
   const unavailable = loading ? <LoadingState className={styles.loadingState} /> : (
-    <div className={styles.unavailable}>
-      <AlertTriangle aria-hidden="true" />
-      <strong>Git repository unavailable</strong>
-      <span>{snapshot.message}</span>
-    </div>
+    <EmptyState
+      className={styles.unavailable}
+      title="Git repository unavailable"
+      description={snapshot.message}
+    />
   );
 
   return (
-    <main className={styles.workspace} aria-label="Git workspace" hidden={!active}>
+    <main ref={scrollbarsRef} className={styles.workspace} aria-label="Git workspace" hidden={!active}>
       <GitWorkspaceHeader
         controller={controller}
         onRefreshIssues={tab === 'issues' ? () => setIssueRevision(value => value + 1) : undefined}

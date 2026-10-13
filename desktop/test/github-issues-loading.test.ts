@@ -11,6 +11,25 @@ function createDeferred<T>() {
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
+
+test('missing remotes clear stale results and counts, then refresh recovers', async () => {
+  let missing = false;
+  const h = harness(api({ list: async () => missing ? { unavailable: 'remote-missing' } : list(1) }));
+  h.render(); h.effects(); await settle();
+  expect(h.render().list?.issues).toHaveLength(1);
+  missing = true;
+  await h.render().loadMore();
+  expect(h.render().missingRemote).toBe(true);
+  expect(h.render().error).toBeNull();
+  expect(h.render().list).toBeNull();
+  expect(h.render().counts).toBeNull();
+  expect(h.render().loading).toBe(false);
+  missing = false;
+  h.render('', 'open', 1); h.effects(); await settle();
+  expect(h.render('', 'open', 1).missingRemote).toBe(false);
+  expect(h.render('', 'open', 1).list?.issues).toHaveLength(1);
+  h.dispose();
+});
 interface Slot { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void }
 function harness(api: GitHubIssuesApi | undefined) {
   const slots: Slot[] = [];

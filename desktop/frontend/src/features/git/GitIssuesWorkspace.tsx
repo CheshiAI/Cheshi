@@ -5,7 +5,8 @@ import { FilterTabList, LiquidGlassPanel, LoadingState, NeumorphicButton, Neumor
 import badgeStyles from '../../shared/ui/Badge.module.css';
 import type { GitHubIssueState } from '../../../../shared/github-issues';
 import { useGitIssues } from './useGitIssues';
-import { formatGitDate } from './gitWorkspaceModel';
+import { formatGitDate, isGitRemoteMissing } from './gitWorkspaceModel';
+import { GitIssueMarkdown } from './GitIssueMarkdown';
 import styles from './GitIssuesWorkspace.module.css';
 
 export function GitIssuesWorkspace({ revision, active = true }: { revision: number; active?: boolean }) {
@@ -16,6 +17,7 @@ export function GitIssuesWorkspace({ revision, active = true }: { revision: numb
   const cheshiDesktop = useGitDesktop();
   const issues = useGitIssues(cheshiDesktop?.githubIssues, { search, state }, revision);
   const { list, detail, selected } = issues;
+  const missingRemote = issues.missingRemote || isGitRemoteMissing(issues.error);
   return (
     <section className={styles.workspace} aria-label="GitHub issues" hidden={!active}>
       <div className={styles.toolbar}>
@@ -37,8 +39,13 @@ export function GitIssuesWorkspace({ revision, active = true }: { revision: numb
       </div>
       <div className={styles.split}>
         <LiquidGlassPanel as="section" className={styles.list} aria-label="Issue list" aria-busy={issues.loading}>
-          {issues.error && <div role="alert" className={styles.message}><p>{issues.error}</p>
-            <NeumorphicButton raised size="standard" onClick={() => void issues.loadMore()} disabled={issues.loading}>Retry</NeumorphicButton></div>}
+          {(issues.error || missingRemote) && <div role={missingRemote ? 'status' : 'alert'} className={`${styles.message} ${missingRemote ? styles.missingRemote : ''}`}><p>
+            {missingRemote ? <>
+              No remote repository is configured.<br />
+              Add a GitHub remote to view issues.
+            </> : issues.error}
+          </p>
+            {!missingRemote && <NeumorphicButton raised size="standard" onClick={() => void issues.loadMore()} disabled={issues.loading}>Retry</NeumorphicButton>}</div>}
           {issues.loading && !list && <LoadingState className={styles.centeredState} />}
           {list && !issues.loading && list.issues.length === 0 && <p className={`${styles.message} ${styles.centeredState}`}>No issues match this search.</p>}
           {list?.issues.map(issue => <button type="button" className={styles.row} data-selected={selected === issue.number}
@@ -68,10 +75,11 @@ export function GitIssuesWorkspace({ revision, active = true }: { revision: numb
               <NeumorphicButton raised size="icon" aria-label="Open issue on GitHub" title="Open on GitHub" onClick={() => void issues.open()}>
                 <ExternalLink aria-hidden="true" /></NeumorphicButton></header>
             <p className={styles.meta}>{detail.state === 'open' ? 'Open' : 'Closed'} · {detail.author} · Updated {formatGitDate(detail.updatedAt)}</p>
-            <div className={styles.body}>{detail.body || 'No description provided.'}</div>
+            <GitIssueMarkdown text={detail.body || 'No description provided.'} repository={list?.repository} issueNumber={detail.number} />
             <h3>Comments · {detail.commentCount}</h3>
             {issues.comments.map(comment => <article key={comment.id} className={styles.comment}>
-              <p className={styles.meta}>{comment.author} · {formatGitDate(comment.createdAt)}</p><div className={styles.body}>{comment.body}</div>
+              <p className={styles.meta}>{comment.author} · {formatGitDate(comment.createdAt)}</p>
+              <GitIssueMarkdown text={comment.body} repository={list?.repository} issueNumber={detail.number} />
             </article>)}
             {issues.commentsLoading && <LoadingState />}
             {issues.commentsError && <div role="alert"><p>{issues.commentsError}</p>

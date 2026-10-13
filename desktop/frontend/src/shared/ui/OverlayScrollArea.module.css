@@ -17,6 +17,7 @@
 
 /* Clip only the viewport's native gutter; its content still fills the root. */
 .viewport {
+  overflow-x: var(--overlay-overflow-x, hidden);
   width: calc(100% + var(--auto-hide-scrollbar-size));
   height: 100%;
 }

@@ -7,6 +7,19 @@
 @import './GitWorkspace.lists.css';
 @import './GitWorkspace.pull-requests.css';
 
+.commitList,
+.pullRequestList,
+.diffContent,
+.diffFiles,
+.logBranches,
+.pullRequestActivity,
+.pullRequestMergedBody,
+.pullRequestActions {
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+
 @keyframes git-workspace-spin {
   to { transform: rotate(360deg); }
 }

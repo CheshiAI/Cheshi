@@ -21,8 +21,9 @@ export interface GitHubIssueList {
   counts: GitHubIssueCounts | null;
 }
 export interface GitHubIssueComments { comments: GitHubIssueComment[]; hasMore: boolean }
+export type GitHubIssueListResult = GitHubIssueList | { unavailable: 'remote-missing' };
 export interface GitHubIssuesApi {
-  list(query: GitHubIssueQuery): Promise<GitHubIssueList>;
+  list(query: GitHubIssueQuery): Promise<GitHubIssueListResult>;
   read(number: number): Promise<GitHubIssueDetail>;
   comments(number: number, page: number): Promise<GitHubIssueComments>;
   open(number: number): Promise<void>;

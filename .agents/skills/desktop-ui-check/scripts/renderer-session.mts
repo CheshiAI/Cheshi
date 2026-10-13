@@ -24,8 +24,9 @@ export async function runRendererSession(options: SessionOptions, scenarioSource
     (process as unknown as { mainModule: { require: NodeRequire } }).mainModule);
   const electron = requireMain('electron') as typeof import('electron');
   const candidates = electron.BrowserWindow.getAllWindows().filter(window => {
+    if (window.isDestroyed()) return false;
     const url = window.webContents.getURL();
-    return /^http:\/\/127\.0\.0\.1:\d+\/(?:\?.*)?$/.test(url) && !window.isDestroyed();
+    return /^http:\/\/127\.0\.0\.1:\d+\/(?:\?.*)?$/.test(url) && new URL(url).searchParams.get('stickyNotes') !== '1';
   });
   if (candidates.length !== 1) throw new Error(`Expected one workspace development window; found ${candidates.length}`);
   const contents: WebContents = candidates[0]!.webContents;

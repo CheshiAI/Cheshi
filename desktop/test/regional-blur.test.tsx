@@ -29,7 +29,7 @@ function Fixture({ portal, thread = 'one', menu = true, composer = true, nested 
     <section key={thread} ref={sourceRef} data-source="true" data-box="100,50,600,500">
       <p>Conversation stays sharp outside the surface.</p>
       {tooltip && <Tooltip content="Conversation history" delay={0} blurSourceRef={sourceRef}>
-        {trigger => <button {...trigger} aria-label="History">History</button>}
+        {trigger => <button {...trigger} aria-label="History" data-box="350,200,80,32">History</button>}
       </Tooltip>}
       {nested && <LiquidGlassPanel role="listbox" data-box="120,70,100,50" style={panelStyle}>Inline options</LiquidGlassPanel>}
     </section>
@@ -84,6 +84,10 @@ async function withDOM(run: (h: {
     const [x = 0, y = 0, width = 0, height = 0] = (element.dataset.box ?? '').split(',').map(Number);
     return { x, y, width, height, top: y, left: x, right: x + width, bottom: y + height, toJSON() { return {}; } };
   };
+  const geometryProperties = ['offsetWidth', 'offsetHeight', 'getBoundingClientRect', 'getClientRects'] as const;
+  const geometryDescriptors = new Map(geometryProperties.map(name => [
+    name, Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, name),
+  ]));
   Object.defineProperties(window.HTMLElement.prototype, {
     offsetWidth: { configurable: true, get(this: TestElement) { return box(this).width; } },
     offsetHeight: { configurable: true, get(this: TestElement) { return box(this).height; } },
@@ -110,6 +114,10 @@ async function withDOM(run: (h: {
   } finally {
     await unmount();
     await window.happyDOM.close();
+    for (const [name, descriptor] of geometryDescriptors) {
+      if (descriptor) Object.defineProperty(window.HTMLElement.prototype, name, descriptor);
+      else Reflect.deleteProperty(window.HTMLElement.prototype, name);
+    }
     for (const [key, descriptor] of previous) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key);
     }

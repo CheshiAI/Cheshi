@@ -1,8 +1,9 @@
 import {
   GITHUB_ISSUE_PAGE_SIZE, parseIssueNumber, parseIssuePage, parseIssueQuery,
-  type GitHubIssueSummary, type GitHubIssueDetail, type GitHubIssueList, type GitHubIssueComments, type GitHubIssueQuery,
+  type GitHubIssueSummary, type GitHubIssueDetail, type GitHubIssueList, type GitHubIssueComments, type GitHubIssueQuery, type GitHubIssueListResult,
 } from '../shared/github-issues.ts';
 import type { CommandResult, GitCommandOptions } from './git-types.mts';
+import { GitCommandError } from './git-command.mts';
 
 interface IssueContext { runGitHub(args: string[], options?: GitCommandOptions): Promise<CommandResult> }
 function record(value: unknown): Record<string, unknown> {
@@ -61,6 +62,17 @@ function searchCount(result: Record<string, unknown>) {
   if (typeof result.incomplete_results !== 'boolean') throw new Error('GitHub returned an invalid search status.');
   return { total, incomplete: result.incomplete_results };
 }
+/** Missing remotes are an expected workspace state, not a rejected Electron invocation. */
+export async function loadGitHubIssues(context: IssueContext, request: unknown): Promise<GitHubIssueListResult> {
+  try { return await listGitHubIssues(context, request); }
+  catch (error) {
+    if (error instanceof GitCommandError && error.stderr.trim() === 'no git remotes found') {
+      return { unavailable: 'remote-missing' };
+    }
+    throw error;
+  }
+}
+
 export async function listGitHubIssues(context: IssueContext, request: unknown): Promise<GitHubIssueList> {
   const query = parseIssueQuery(request);
   const repo = await repository(context);

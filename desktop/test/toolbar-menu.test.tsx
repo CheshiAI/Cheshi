@@ -136,10 +136,17 @@ test('file toolbar retains direct search and problems while grouping file operat
     const controller = toolbarController(calls);
     const show = () => render(<WorkspaceEditorFileToolbar controller={controller} onOpenLocalHistory={path => calls.push(path)} />);
     await show();
+    // Happy DOM has no layout; provide the visible title's geometry for the tooltip.
+    const title = document.querySelector('strong')!;
+    const titleBounds = new window.DOMRect(16, 16, 240, 20);
+    Object.defineProperties(title, {
+      getBoundingClientRect: { configurable: true, value: () => titleBounds },
+      getClientRects: { configurable: true, value: () => [titleBounds] },
+    });
     expect([...document.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toEqual(['Find and replace', 'Open problems panel', 'File actions']);
     expect(document.querySelector('strong')?.hasAttribute('title')).toBe(false);
     expect(document.body.textContent).not.toContain('revision-123');
-    await act(async () => { document.querySelector('strong')!.dispatchEvent(new window.PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }) as unknown as Event); });
+    await act(async () => { title.dispatchEvent(new window.PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }) as unknown as Event); });
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 1050)); });
     expect(document.querySelector('[role="tooltip"]')?.textContent).toContain('revision-123');
     await click('Find and replace');
