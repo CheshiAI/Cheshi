@@ -440,7 +440,8 @@ app.whenReady().then(async () => {
   if (applicationMenu) {
     const openHelp = createHelpMenuAction({ focused: () => BrowserWindow.getFocusedWindow(), windows: () => workspaces.readyWindows,
       openManager: () => workspaces.openManager() });
-    const template = helpMenuTemplate(aboutMenuTemplate(applicationMenu.items, product.displayName, aboutWindow.open, items => Menu.buildFromTemplate(items)),
+    const menuItems = applicationMenu.items.filter(item => item.role?.toLowerCase() !== 'filemenu');
+    const template = helpMenuTemplate(aboutMenuTemplate(menuItems, product.displayName, aboutWindow.open, items => Menu.buildFromTemplate(items)),
       () => { void openHelp().catch(error => dialog.showErrorBox('Cheshi Help', String(error))); }, items => Menu.buildFromTemplate(items));
     template.push({ label: 'Notes', submenu: [
       { label: 'New Note', accelerator: STICKY_NOTES_SHORTCUT, registerAccelerator: false,
