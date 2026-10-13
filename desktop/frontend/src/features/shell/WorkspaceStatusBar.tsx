@@ -7,7 +7,6 @@ import { AccountUsagePanel } from '../account/AccountUsagePanel';
 import { AddAccountDialog } from '../account/AddAccountDialog';
 import { AppUpdateIndicator } from '../updates/AppUpdateIndicator';
 import { accountStatusSummary, accountUsageTotals } from './statusBarModel';
-import { WorkspaceGitBranch } from './WorkspaceGitBranch';
 import { NotesSearchStatus } from '../notes/NotesSearchStatus';
 import styles from './WorkspaceStatusBar.module.css';
 
@@ -48,7 +47,6 @@ export function WorkspaceStatusBar({ onAccountInitialLoad, ...accountProps }: Wo
 
   return (
     <footer className={styles.bar} aria-label="Workspace status">
-      <WorkspaceGitBranch />
       <NotesSearchStatus />
       <AppUpdateIndicator />
       <button ref={accountButton} type="button" className={`${styles.item} ${styles.account}`} popoverTarget={accountId}

@@ -13,6 +13,7 @@ import { WorkspaceFileContextMenu } from './WorkspaceFileContextMenu';
 import { WorkspaceFileTreeRows } from './WorkspaceFileTreeRows';
 import { useWorkspaceFileTreeController } from './useWorkspaceFileTreeController';
 import { WorkspaceDeleteEntryDialog } from './WorkspaceDeleteEntryDialog';
+import { ProjectGitBranch, ProjectGitFileCounts } from './ProjectGitBranch';
 import styles from './WorkspaceProjects.module.css';
 
 interface WorkspaceFileTreeProps {
@@ -42,11 +43,15 @@ function ProjectTree({ project, onRemove, busy, active, onActivate, viewport, ..
   return <section className={styles.project} aria-label={`Project ${project.name}`}>
     {active && <PullToRefreshStatus {...refresh} />}
     <div className={styles.rootRow} data-active={active}>
-      <Tooltip content={project.rootPath}>{tooltip => <button {...tooltip} className="workspace-file-tree-root" type="button"
+      <Tooltip content={`${project.name}\n${project.rootPath}`}>{tooltip => <button {...tooltip} className="workspace-file-tree-root" type="button"
         aria-expanded={rootExpanded} onClick={() => { onActivate(); controller.toggleDirectory(rootPath); }}
         onContextMenu={event => controller.openContextMenu(event, null)}>
         {rootExpanded ? <FolderOpen aria-hidden="true" /> : <Folder aria-hidden="true" />}
-        <strong>{project.name}</strong>
+        <span className={styles.identity}>
+          <strong>{project.name}</strong>
+          <ProjectGitBranch snapshot={controller.gitSnapshot} />
+        </span>
+        <ProjectGitFileCounts snapshot={controller.gitSnapshot} />
         {!project.available && <span className={styles.unavailable}>Unavailable</span>}
       </button>}</Tooltip>
       <ToolbarMenu label={`Actions for ${project.name}`} icon={<List aria-hidden="true" />}

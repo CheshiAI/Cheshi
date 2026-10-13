@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { GitRepositorySnapshot } from '../frontend/src/cheshiDesktop';
 import { parseStatus } from '../lib/git-parsers.mts';
 import { observeWorkspaceGitStatus, workspaceGitChangedPaths } from '../frontend/src/shared/workspaceGitStatus';
-import { observeWorkspaceGitBranch } from '../frontend/src/features/shell/workspaceGitBranchModel';
+import { observeWorkspaceGitBranch } from '../frontend/src/shared/workspaceGitBranchModel';
 import { WorkspaceFileTreeRows } from '../frontend/src/features/navigation/WorkspaceFileTreeRows';
 import type { WorkspaceFileTreeController } from '../frontend/src/features/navigation/useWorkspaceFileTreeController';
 

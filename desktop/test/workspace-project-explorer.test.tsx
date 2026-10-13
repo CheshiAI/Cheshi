@@ -1,10 +1,16 @@
-import { expect, test } from 'bun:test';
+import { expect, mock, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { WorkspaceFileTree } from '../frontend/src/features/navigation/WorkspaceFileTree';
-import type { CheshiDesktopApi, CheshiWorkspaceEntry } from '../frontend/src/cheshiDesktop';
+import type { CheshiDesktopApi, CheshiWorkspaceEntry, GitRepositorySnapshot } from '../frontend/src/cheshiDesktop';
 import type { WorkspaceProject } from '../shared/workspace-projects';
+import { parseStatus } from '../lib/git-parsers.mts';
+
+// Bun does not resolve CSS module classes; provide the tooltip's style boundary.
+mock.module('../frontend/src/shared/ui/Tooltip.module.css', () => ({
+  default: { anchor: 'tooltip-anchor', content: 'tooltip-content' },
+}));
 
 test('Explorer connects sibling roots, opens identical filenames separately and removes only membership', async () => {
   const window = new Window();
@@ -18,6 +24,17 @@ test('Explorer connects sibling roots, opens identical filenames separately and 
   const plugin: WorkspaceProject = { id: 'plugin', rootPath: '/plugin', name: 'cheshi-flash', primary: false, available: true };
   let projects = [primary];
   const listeners = new Set<() => void>();
+  const gitListeners = new Set<() => void>();
+  const reads = new Map<string, number>();
+  const longBranch = 'feature/a-very-long-branch-name-that-must-not-be-truncated-in-the-tooltip';
+  const snapshots: Record<string, GitRepositorySnapshot> = {
+    primary: { available: true, message: '', head: longBranch, changes: parseStatus(' M same.ts\0 D gone.ts\0') },
+    plugin: { available: true, message: '', head: 'feature/plugin', changes: parseStatus('?? same.ts\0') },
+  };
+  const readGit = async (id: string) => {
+    reads.set(id, (reads.get(id) ?? 0) + 1);
+    return snapshots[id]!;
+  };
   const opened: string[] = [], removed: string[] = [], mutations: unknown[] = [];
   const api = {
     workspaceName: primary.name, workspaceRoot: primary.rootPath,
@@ -26,7 +43,10 @@ test('Explorer connects sibling roots, opens identical filenames separately and 
       add: async () => { projects = [primary, plugin]; for (const listener of listeners) listener(); return projects; },
       remove: async (id: string) => { removed.push(id); projects = [primary]; for (const listener of listeners) listener(); return projects; },
       onChanged: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
-      invoke: async () => ({ available: false, message: '' }),
+      invoke: async (id: string, channel: string) => {
+        expect(channel).toBe('cheshi:get-git-snapshot');
+        return readGit(id);
+      },
     },
     listWorkspaceDirectory: async (directory: string) => {
       const names = directory.endsWith('.config') ? ['.cache', '.nested.ts'] : ['.config', '.env', 'same.ts'];
@@ -37,8 +57,12 @@ test('Explorer connects sibling roots, opens identical filenames separately and 
       }));
       return { path: directory, entries };
     },
-    getGitSnapshot: async () => ({ available: false, message: '' }),
-    onGitRepositoryChanged: () => () => {}, onWorkspaceFilesChanged: () => () => {},
+    getGitSnapshot: () => readGit('primary'),
+    onGitRepositoryChanged: (listener: () => void) => {
+      gitListeners.add(listener);
+      return () => { gitListeners.delete(listener); };
+    },
+    onWorkspaceFilesChanged: () => () => {},
   } as unknown as CheshiDesktopApi;
   const container = document.createElement('div');
   container.id = 'app';
@@ -78,12 +102,56 @@ test('Explorer connects sibling roots, opens identical filenames separately and 
     expect(document.getElementById(filterId)).toBeNull();
     expect(document.querySelector('[role="menu"]')).toBeNull();
   };
+  const projectRoot = (project: WorkspaceProject) => document.querySelector<HTMLButtonElement>(
+    `[aria-label="Project ${project.name}"] .workspace-file-tree-root`)!;
+  const expectTooltip = async (anchor: HTMLElement, content: string) => {
+    // Happy DOM has no layout; supply only the tooltip anchor's visibility bounds.
+    Object.defineProperties(anchor, {
+      getBoundingClientRect: { configurable: true, value: () => new window.DOMRect(10, 10, 100, 28) },
+      getClientRects: { configurable: true, value: () => [new window.DOMRect(10, 10, 100, 28)] },
+    });
+    await act(async () => anchor.dispatchEvent(new window.PointerEvent('pointerover', {
+      bubbles: true, pointerType: 'mouse',
+    }) as unknown as Event));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1050)); });
+    expect(document.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(content);
+    await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }) as unknown as Event));
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  };
   try {
     await act(async () => root.render(<WorkspaceFileTree api={api} selectedPath={null} onOpenFile={file => opened.push(file)}
       onEntryMutation={mutation => mutations.push(mutation)} />));
     expect(document.querySelector('[aria-label="Project cheshi-flash"]')).toBeNull();
+    expect(projectRoot(primary).textContent).toContain(longBranch);
+    expect(projectRoot(primary).textContent).toContain('+1−1');
+    expect(reads.get('primary')).toBe(1);
     await click('Add project to workspace');
     expect(document.querySelectorAll('section[aria-label^="Project "]')).toHaveLength(2);
+    expect(projectRoot(plugin).textContent).toContain('feature/plugin+1');
+    expect(projectRoot(plugin).textContent).not.toContain(longBranch);
+    expect(reads.get('primary')).toBe(1);
+    expect(reads.get('plugin')).toBe(1);
+    expect(gitListeners.size).toBe(2);
+    await expectTooltip(projectRoot(primary), `${primary.name}\n${primary.rootPath}`);
+    await expectTooltip(projectRoot(primary).querySelector<HTMLElement>('[aria-label^="Current Git branch:"]')!,
+      `Current Git branch: ${longBranch}`);
+    primary.name = 'cheshi-project-with-a-very-long-name-for-the-explorer';
+    await act(async () => { for (const listener of listeners) listener(); });
+    await expectTooltip(projectRoot(primary), `${primary.name}\n${primary.rootPath}`);
+    expect(reads.get('primary')).toBe(1);
+    primary.name = 'cheshi';
+    await act(async () => { for (const listener of listeners) listener(); });
+    snapshots.plugin = { available: true, message: '', head: 'main', changes: [] };
+    await act(async () => { for (const listener of gitListeners) listener(); });
+    expect(projectRoot(plugin).textContent).toBe('cheshi-flashmain');
+    expect(projectRoot(primary).textContent).toContain(longBranch);
+    snapshots.plugin = { available: false, message: 'Not a Git repository' };
+    await act(async () => { for (const listener of gitListeners) listener(); });
+    expect(projectRoot(plugin).textContent).toBe('cheshi-flash');
+    snapshots.plugin = { available: true, message: '', head: 'abc1234', detached: true };
+    await act(async () => { for (const listener of gitListeners) listener(); });
+    expect(projectRoot(plugin).textContent).toContain('Detached · abc1234');
     const files = [...document.querySelectorAll<HTMLButtonElement>('button[role="treeitem"]')]
       .filter(item => item.textContent === 'same.ts');
     expect(files).toHaveLength(2);
@@ -116,12 +184,14 @@ test('Explorer connects sibling roots, opens identical filenames separately and 
     expect(removed).toEqual(['plugin']);
     expect(mutations).toEqual([]);
     expect(document.querySelectorAll('section[aria-label^="Project "]')).toHaveLength(1);
+    expect(gitListeners.size).toBe(1);
     const outsideFilter = await openProjectMenu(primary.name);
     await act(async () => container.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true }) as unknown as Event));
     expectBlurRestored(outsideFilter);
     const unmountedFilter = await openProjectMenu(primary.name);
     await act(async () => root.render(null));
     expectBlurRestored(unmountedFilter);
+    expect(gitListeners.size).toBe(0);
   } finally {
     await act(async () => root.unmount());
     await window.happyDOM.close();

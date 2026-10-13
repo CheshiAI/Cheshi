@@ -1,5 +1,5 @@
-import type { GitRepositorySnapshot } from '../../cheshiDesktop';
-export { observeWorkspaceGitStatus as observeWorkspaceGitBranch } from '../../shared/workspaceGitStatus';
+import type { GitRepositorySnapshot } from '../cheshiDesktop';
+export { observeWorkspaceGitStatus as observeWorkspaceGitBranch } from './workspaceGitStatus';
 
 export function workspaceGitFileCounts(snapshot: GitRepositorySnapshot | null) {
   const deletedByPath = new Map<string, boolean>();

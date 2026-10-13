@@ -20,10 +20,62 @@
   min-width: 0;
 }
 
+.rootRow > :last-child {
+  flex-shrink: 0;
+}
+
+.identity {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--icon-default);
+}
+
+.identity > strong {
+  min-width: 0;
+}
+
+.branch {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 50%;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+}
+
+.branchName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.counts {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--space-4);
+  font-size: var(--font-size-small);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.changed { color: #7fc78b; }
+.deleted { color: #d36c68; }
+
 .rootRow svg {
   width: var(--icon-size-default);
   height: var(--icon-size-default);
   flex-shrink: 0;
+}
+
+.rootRow .branch > svg {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
 }
 
 .unavailable {
