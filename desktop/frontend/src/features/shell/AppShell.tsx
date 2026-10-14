@@ -227,7 +227,7 @@ export function AppShell() {
     setPrimaryPaneClosed(false);
   });
 
-  const openHistorySearchHit = async (hit: Pick<ChatHistorySearchHit, 'threadId' | 'itemId'>): Promise<boolean> => {
+  const openHistorySearchHit = useCallback(async (hit: Pick<ChatHistorySearchHit, 'threadId' | 'itemId'>): Promise<boolean> => {
     if (chatSessionSelectionDisabled || updateResume.busy) return false;
     const requestId = ++historyRequestId.current;
     workspace.dismissError();
@@ -239,7 +239,7 @@ export function AppShell() {
     setPrimaryPaneClosed(false);
     setHistoryTarget({ threadId: hit.threadId, itemId: hit.itemId, requestId });
     return true;
-  };
+  }, [chatSessionSelectionDisabled, updateResume.busy, workspace.dismissError, workspace.openSession, closeReview]);
 
   const newChat = (): void => {
     if (workspace.deletePending) return;
@@ -251,7 +251,7 @@ export function AppShell() {
     void chat?.newSession();
   };
 
-  const navigate = (view: WorkspaceView, options: { preserveFocus?: boolean } = {}): void => {
+  const navigate = useCallback((view: WorkspaceView, options: { preserveFocus?: boolean } = {}): void => {
     if (view === 'notes') { setSidebarPanel('memos'); setLeftSidebarOpen(true); return; }
     historyRequestId.current += 1;
     closeReview();
@@ -280,17 +280,20 @@ export function AppShell() {
     }
     setActiveView(view);
     setPrimaryPaneClosed(false);
-  };
+  }, [closeReview, editorSplitOpen, customLayout, focusWorkspacePane, activeView]);
+  const openWorkerRoom = useCallback(() => navigate('chats'), [navigate]);
+  const openGitChanges = useCallback(() => navigate('git'), [navigate]);
+  const toggleRightSidebar = useCallback(() => setRightSidebarOpen(open => !open), []);
 
   useRelationshipGraphMenu(navigate);
 
-  const openLocalHistory = (path: string): void => {
+  const openLocalHistory = useCallback((path: string): void => {
     workerWorkspace.current?.closeHomies();
     setFileReview(null); setVerificationReview(null);
     setLineCommitTarget(null);
     setLocalHistoryPath(path);
     setRightSidebarOpen(true);
-  };
+  }, []);
 
   const changeSearchQuery = (value: string): void => {
     historyRequestId.current += 1;
@@ -307,15 +310,15 @@ export function AppShell() {
     void historySearch.search({ query, refresh, limit: 50 });
   };
 
-  const replaceExplorerWithEditor = (): void => {
+  const replaceExplorerWithEditor = useCallback((): void => {
     editorReturnView.current = 'explorer';
     setCustomLayout(current => current && revealWorkspacePane(replaceWorkspacePane(current, 'primary', 'editor'), 'editor'));
     setPrimaryPaneClosed(false);
     setActiveView('editor');
     focusWorkspacePane('editor');
-  };
+  }, [focusWorkspacePane]);
 
-  const openWorkspaceFile = (path: string, line: number | null = null): void => {
+  const openWorkspaceFile = useCallback((path: string, line: number | null = null): void => {
     historyRequestId.current += 1;
     editorRequestId.current += 1;
     closeReview();
@@ -332,7 +335,7 @@ export function AppShell() {
       setPrimaryPaneClosed(false);
       setActiveView('editor');
     }
-  };
+  }, [closeReview, focusWorkspacePane, activeView, replaceExplorerWithEditor, customLayout]);
 
   const closeEditorSplit = (): void => {
     setLineCommitTarget(null);
@@ -351,10 +354,10 @@ export function AppShell() {
     }
   };
 
-  const handleWorkspaceEntryMutation = (mutation: WorkspaceEntryMutation): void => {
+  const handleWorkspaceEntryMutation = useCallback((mutation: WorkspaceEntryMutation): void => {
     editorMutationRequestId.current += 1;
     setEditorMutation({ ...mutation, requestId: editorMutationRequestId.current });
-  };
+  }, []);
   const editorLayoutMode = activeView === 'editor' ? 'editor'
     : !editorSplitOpen ? 'primary'
       : fullWidthViews.includes(activeView) ? 'page'
@@ -463,7 +466,7 @@ export function AppShell() {
               reviewedVerificationId={verificationReview?.id} onReviewVerification={openVerificationReview}
               reviewedMessageId={fileReview?.item?.id} onReviewFileChanges={openChatsFileReview}
               sidebarTarget={chatsSidebarTarget} sidebarActive={sidebarPanel === 'agent-chats' && leftSidebarOpen}
-              onOpenRoom={() => navigate('chats')} />}
+              onOpenRoom={openWorkerRoom} />}
             terminal={<TerminalWorkspace
               active={visiblePanes.includes('terminal')}
               onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('terminal') : undefined}
@@ -523,10 +526,10 @@ export function AppShell() {
           )}
             <GitWorkspace
               active={primaryView === 'git'}
-              sidebarTarget={githubSidebarTarget} onOpenChanges={() => navigate('git')}
+              sidebarTarget={githubSidebarTarget} onOpenChanges={openGitChanges}
               onOpenWorkspaceFile={openWorkspaceFile}
               rightSidebarOpen={rightSidebarOpen}
-              onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
+              onToggleRightSidebar={toggleRightSidebar}
             />
           {primaryView === 'plugins' && (
             <PluginsView

@@ -8,7 +8,7 @@ import { WorkspaceManagerHeader } from './WorkspaceManagerHeader';
 import managerStyles from './WorkspaceManager.module.css';
 import { loadGitHubRepositoryCatalog, type GitHubRepositoryCatalog } from './github-repository-catalog';
 import { workspaceError } from './workspace-paths';
-import styles from './workspace-management.module.css';
+import styles from './CloneWorkspacePage.module.css';
 
 export function PrepareCloneWorkspacePage({ api, currentPath, onClose }: {
   api: WorkspaceManagementApi;
@@ -36,7 +36,7 @@ export function PrepareCloneWorkspacePage({ api, currentPath, onClose }: {
     initialCatalog={catalog} initialSource={manual ? 'url' : 'github'} />;
 
   return <>
-    <WorkspaceManagerHeader title="Clone repository" icon={<GitFork />} onBack={onClose} />
+    <WorkspaceManagerHeader title="Clone repository" icon={<GitFork aria-hidden="true" />} onBack={onClose} />
     <main className={`${managerStyles.page} ${error ? '' : styles.preparingPage}`} aria-label="Prepare clone repository">
       <div className={styles.form}>
         {error ? <GitHubSignIn api={api} error={error} onManual={() => setManual(true)}

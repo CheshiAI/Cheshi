@@ -28,6 +28,8 @@ export function hooks() {
   }
   return {
     react: {
+      // This harness exercises hook transitions directly, outside React reconciliation.
+      memo<T>(component: T): T { return component; },
       useState(initial: unknown) {
         const index = cursor++;
         if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial;

@@ -9,14 +9,14 @@ import { ChatWelcome } from './ChatWelcome';
 import styles from './ChatView.module.css';
 import type { ChatViewController } from './useChatViewController';
 import { completedChatTurnInputs } from './chatTurnSnapshots';
-import type { SavedChatTurnsController } from './useSavedChatTurns';
+import type { SavedChatTurnActions } from './useSavedChatTurns';
 import type { ChatHistorySearchNavigation } from './chatHistorySearchNavigation';
 
 interface ChatTimelineProps extends ChatHistorySearchNavigation {
   controller: Pick<ChatViewController, 'loading' | 'pauseAutoScroll' | 'scrollToBottom' | 'showScrollToBottom'
     | 'state' | 'streaming' | 'timelineRef' | 'workspaceName'> & Partial<Pick<ChatViewController, 'scrollToHistoryItem'>>;
   onReviewFileChanges: (itemId: string, path?: string) => void;
-  savedTurns?: SavedChatTurnsController;
+  savedTurns?: SavedChatTurnActions;
 }
 
 export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, historyTarget, onHistoryTargetHandled }: ChatTimelineProps) {

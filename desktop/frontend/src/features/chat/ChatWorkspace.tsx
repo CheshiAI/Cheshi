@@ -7,6 +7,7 @@ import {
 } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { ChatPaneViewport } from './ChatPaneViewport';
+import { ChatWorkspaceBlurContext } from './ChatWorkspaceBlurContext';
 import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { ChatView } from './ChatView';
 import { ChatErrorNotice } from './ChatErrorNotice';
@@ -15,6 +16,7 @@ import { ChatSavedTurnsSidebar } from './ChatSavedTurnsSidebar';
 import { ChatSplitDialog } from './ChatSplitDialog';
 import { CHAT_PANE_LIMIT } from './chatWorkspaceModel';
 import { useChatController } from './useChatController';
+import { useSavedChatTurns, useSavedChatTurnActions, type SavedChatTurnActions } from './useSavedChatTurns';
 import type { ChatWorkspaceController } from './useChatWorkspace';
 import type { ChatHistorySearchNavigation } from './chatHistorySearchNavigation';
 import viewStyles from './ChatView.module.css';
@@ -43,9 +45,9 @@ function PaneMount({ host, paneId }: { host: HTMLDivElement; paneId: string }) {
 }
 
 function ChatPane({
-  paneId, host, workspace, active, sessionSyncEnabled, onReviewFileChanges, historyTarget, onHistoryTargetHandled,
+  paneId, host, workspace, savedTurns, active, sessionSyncEnabled, onReviewFileChanges, historyTarget, onHistoryTargetHandled,
 }: Pick<ChatWorkspaceProps, 'workspace' | 'active' | 'sessionSyncEnabled' | 'onReviewFileChanges' | 'historyTarget' | 'onHistoryTargetHandled'>
-  & { paneId: string; host: HTMLDivElement }) {
+  & { paneId: string; host: HTMLDivElement; savedTurns: SavedChatTurnActions }) {
   const controller = useChatController({ contextId: paneId, sessionSyncEnabled, sessionCache: workspace.sessionCache });
   const reviewFileChanges = useCallback((itemId: string, path?: string) => {
     onReviewFileChanges(paneId, itemId, path);
@@ -124,11 +126,11 @@ function ChatPane({
         controller={controller}
         onOpenTemporaryChat={workspace.openTemporaryChat}
         onAccountSwitchGuard={updateAccountSwitchGuard}
-        savedTurns={workspace.savedTurns}
+        savedTurns={savedTurns}
         interactionsLocked={workspace.accountSwitchPending}
         active={active && selected}
         visible={active}
-        onNewSession={() => void controller.newSession()}
+        onNewSession={controller.newSession}
         onReviewFileChanges={reviewFileChanges}
         historyTarget={selected && controller.state.activeSessionId === historyTarget?.threadId ? historyTarget : null}
         onHistoryTargetHandled={onHistoryTargetHandled}
@@ -141,6 +143,8 @@ function ChatPane({
 
 export function ChatWorkspace(props: ChatWorkspaceProps) {
   const { workspace } = props;
+  const savedTurns = useSavedChatTurns();
+  const savedTurnActions = useSavedChatTurnActions(savedTurns);
   const blurSourceRef = useRef<HTMLElement>(null);
   const paneVisible = useContext(WorkspacePaneVisibilityContext);
   const active = props.active && paneVisible;
@@ -180,19 +184,22 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
             onSelectPane={workspace.selectPane} onResizeSplit={workspace.resizeSplit}
             renderPane={(id) => <PaneMount paneId={id} host={hosts.current.get(id)!} />} />
         </div>
-        <ChatSavedTurnsSidebar blurSourceRef={blurSourceRef} savedTurns={workspace.savedTurns}
+        <ChatSavedTurnsSidebar blurSourceRef={blurSourceRef} savedTurns={savedTurns}
           onContinueSavedTurn={workspace.continueSavedTurn} continuationDisabledReason={workspace.savedTurnContinuationReason} />
       </div>
-      {workspace.paneIds.map((paneId) => (
-        <ChatPane
-          {...props}
-          active={active}
-          key={paneId}
-          paneId={paneId}
-          host={hosts.current.get(paneId)!}
-          sessionSyncEnabled={props.sessionSyncEnabled && workspace.activePaneId === paneId}
-        />
-      ))}
+      <ChatWorkspaceBlurContext value={blurSourceRef}>
+        {workspace.paneIds.map((paneId) => (
+          <ChatPane
+            {...props}
+            savedTurns={savedTurnActions}
+            active={active}
+            key={paneId}
+            paneId={paneId}
+            host={hosts.current.get(paneId)!}
+            sessionSyncEnabled={props.sessionSyncEnabled && workspace.activePaneId === paneId}
+          />
+        ))}
+      </ChatWorkspaceBlurContext>
     </main>
   );
 }

@@ -51,6 +51,10 @@
   margin-right: var(--space-10);
 }
 
+.account:is(:hover, :active, [aria-expanded='true']) {
+  background: var(--control-surface-interactive);
+}
+
 .account > svg {
   width: var(--icon-button-icon-size);
   height: var(--icon-button-icon-size);

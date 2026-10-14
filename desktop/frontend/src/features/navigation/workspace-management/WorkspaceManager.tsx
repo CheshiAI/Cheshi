@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { FolderOpen, FolderPlus, Folders, GitBranch, GitFork, Search, Trash2 } from 'lucide-react';
+import { FolderOpen, FolderPlus, Folders, GitBranch, GitFork, Trash2 } from 'lucide-react';
 import type { WorkspaceCatalogEntry, WorkspaceManagementApi } from '../../../../../shared/workspace-management';
-import { LoadingState, NeumorphicButton, NeumorphicTextField, SearchClearButton, WorkspaceProjectIcon } from '../../../shared/ui';
+import { LoadingState, NeumorphicButton, WorkspaceProjectIcon } from '../../../shared/ui';
+import { SearchInput } from '../../../shared/ui/SearchInput';
 import { isLiteralTrue } from '../../../shared/isLiteralTrue';
 import { AppUpdateIndicator } from '../../updates/AppUpdateIndicator';
 import { PrepareCloneWorkspacePage } from './PrepareCloneWorkspacePage';
@@ -190,12 +191,8 @@ export function WorkspaceManager({ api, workspaceName, workspaceRoot, platform }
       <div className={styles.layout}>
         <main className={styles.content}>
           {workspaceReady && <div className={styles.toolbar}>
-            <div className={styles.searchField}>
-              <Search aria-hidden="true" />
-              <NeumorphicTextField variant="standard" type="search" value={query} onChange={(event) => setQuery(event.target.value)}
-                aria-label="Search projects" placeholder="Search projects"
-                trailingAction={query ? <SearchClearButton variant="ghost" aria-label="Clear project search" onClick={() => setQuery('')} /> : undefined} />
-            </div>
+            <SearchInput className={styles.searchField} value={query} onChange={(event) => setQuery(event.target.value)}
+              aria-label="Search projects" clearLabel="Clear project search" onClear={() => setQuery('')} />
             <div className={styles.actions}>
               <NeumorphicButton variant="standard" disabled={busy} onClick={openFolder}><FolderOpen aria-hidden="true" />Open folder</NeumorphicButton>
               <NeumorphicButton variant="standard" disabled={busy} onClick={(event) => showDialog('clone', event.currentTarget)}><GitFork aria-hidden="true" />Clone repository</NeumorphicButton>

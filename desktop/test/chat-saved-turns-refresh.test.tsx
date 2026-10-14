@@ -6,7 +6,7 @@ import * as React from 'react';
 import { createRoot } from 'react-dom/client';
 import ts from 'typescript';
 import type { ChatSavedTurn, ChatSavedTurnInput } from '../shared/chat-saved-turns';
-import type { SavedChatTurnsController } from '../frontend/src/features/chat/useSavedChatTurns';
+import type { SavedChatTurnsController, SavedChatTurnActions } from '../frontend/src/features/chat/useSavedChatTurns';
 import { errorMessage } from '../frontend/src/shared/errorMessage';
 
 interface SavedTurnsApi {
@@ -31,6 +31,8 @@ function createDeferred<T>() {
 async function withSavedTurns(run: (h: {
   api: SavedTurnsApi;
   current(): SavedChatTurnsController;
+  timelineRenders(): number;
+  actions(): SavedChatTurnActions;
 }) => Promise<void>) {
   const window = new Window();
   const globals = { window, document: window.document, HTMLElement: window.HTMLElement,
@@ -40,20 +42,36 @@ async function withSavedTurns(run: (h: {
   const api: SavedTurnsApi = { listCodexSavedTurns: async () => [first], saveCodexTurn: async () => second,
     deleteCodexSavedTurn: async id => ({ id }) };
   const modules: Record<string, unknown> = { react: React, '../../cheshiDesktop': { cheshiDesktop: api }, '../../shared/errorMessage': { errorMessage } };
-  const exports: { useSavedChatTurns?: () => SavedChatTurnsController } = {};
+  const exports: {
+    useSavedChatTurns?: () => SavedChatTurnsController;
+    useSavedChatTurnActions?: (controller: SavedChatTurnActions) => SavedChatTurnActions;
+  } = {};
   vm.runInNewContext(compiled, { exports, Error, TextEncoder, require: (name: string) => {
     if (!Object.hasOwn(modules, name)) throw new Error(`Unexpected dependency: ${name}`);
     return modules[name];
   } });
   const useSavedTurns = exports.useSavedChatTurns!;
+  const useTurnActions = exports.useSavedChatTurnActions!;
   let controller: SavedChatTurnsController | undefined;
-  function Host() { controller = useSavedTurns(); return null; }
+  let renders = 0;
+  let actions: SavedChatTurnActions;
+  const Timeline = React.memo(function Timeline({ actions }: { actions: SavedChatTurnActions }) {
+    renders += 1;
+    return <button disabled={actions.isSaving(first.threadId, first.itemId)}>
+      {actions.isSaved(first.threadId, first.itemId) ? 'Saved' : 'Save'}
+    </button>;
+  });
+  function Host() {
+    controller = useSavedTurns();
+    actions = useTurnActions(controller);
+    return <Timeline actions={actions} />;
+  }
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
   try {
     await React.act(async () => root.render(<Host />));
-    await run({ api, current: () => {
+    await run({ api, timelineRenders: () => renders, actions: () => actions, current: () => {
       if (!controller) throw new Error('Hook not mounted');
       return controller;
     } });
@@ -66,6 +84,51 @@ async function withSavedTurns(run: (h: {
     }
   }
 }
+
+test('list loading, failures, and metadata refreshes do not rerender timeline save controls', async () => {
+  await withSavedTurns(async h => {
+    const baseline = h.timelineRenders();
+    const actions = h.actions();
+    const list = createDeferred<ChatSavedTurn[]>();
+    h.api.listCodexSavedTurns = () => list.promise;
+    let refresh!: Promise<void>;
+    await React.act(async () => { refresh = h.current().refresh(); });
+    expect(h.current().loading).toBe(true);
+    expect(h.timelineRenders()).toBe(baseline);
+    const updated = { ...first, sessionTitle: 'Renamed', assistantText: 'Updated answer' };
+    await React.act(async () => { list.resolve([updated]); await refresh; });
+    expect(h.current().records).toEqual([updated]);
+    expect(h.actions()).toBe(actions);
+    expect(h.timelineRenders()).toBe(baseline);
+    h.api.listCodexSavedTurns = async () => { throw new Error('Unavailable'); };
+    await React.act(async () => h.current().refresh());
+    expect(h.current().error).toBe('Unavailable');
+    expect(h.timelineRenders()).toBe(baseline);
+    h.api.listCodexSavedTurns = async () => [];
+    await React.act(async () => h.current().refresh());
+    expect(h.timelineRenders()).toBe(baseline + 1);
+    expect(h.actions().isSaved(first.threadId, first.itemId)).toBe(false);
+  });
+});
+
+test('timeline actions still update on pending save, completion, and deletion', async () => {
+  await withSavedTurns(async h => {
+    const baseline = h.timelineRenders();
+    const save = createDeferred<ChatSavedTurn>();
+    h.api.saveCodexTurn = () => save.promise;
+    let saving!: Promise<boolean>;
+    await React.act(async () => { saving = h.actions().save(second); });
+    expect(h.timelineRenders()).toBe(baseline + 1);
+    expect(h.actions().isSaving(second.threadId, second.itemId)).toBe(true);
+    await React.act(async () => { save.resolve(second); expect(await saving).toBe(true); });
+    expect(h.timelineRenders()).toBe(baseline + 2);
+    expect(h.actions().isSaved(second.threadId, second.itemId)).toBe(true);
+    expect(h.actions().isSaving(second.threadId, second.itemId)).toBe(false);
+    await React.act(async () => { expect(await h.current().remove(second.id)).toBe(true); });
+    expect(h.timelineRenders()).toBe(baseline + 3);
+    expect(h.actions().isSaved(second.threadId, second.itemId)).toBe(false);
+  });
+});
 
 test('refresh removes externally deleted records and accepts later external re-saves', async () => {
   await withSavedTurns(async h => {

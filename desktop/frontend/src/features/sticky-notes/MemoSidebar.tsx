@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { StickyNotesLibraryApi } from '../../../../shared/sticky-notes';
 import { StickyNotesList } from './StickyNotesList';
 import styles from './StickyNotes.module.css';
 
-export function MemoSidebar({ api, target }: { api?: StickyNotesLibraryApi; target: HTMLElement | null }) {
+export const MemoSidebar = memo(function MemoSidebar({ api, target }: { api?: StickyNotesLibraryApi; target: HTMLElement | null }) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function create() {
@@ -20,4 +20,4 @@ export function MemoSidebar({ api, target }: { api?: StickyNotesLibraryApi; targ
     {api ? <StickyNotesList api={api} locked={creating} onNew={() => { void create(); }} onOpen={id => api.open(id)} />
       : <p className={styles.notice}>Restart Cheshi to load your notes.</p>}
   </section>, target);
-}
+});

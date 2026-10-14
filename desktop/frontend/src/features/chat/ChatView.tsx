@@ -1,10 +1,10 @@
-import { useLayoutEffect, useRef } from 'react';
+import { memo, useLayoutEffect, useRef } from 'react';
 import { ChatComposer } from './ChatComposer';
 import { ChatTimeline } from './ChatTimeline';
 import { ChatViewSurface } from './ChatViewSurface';
 import type { ChatController } from './useChatController';
 import { useChatViewController } from './useChatViewController';
-import type { SavedChatTurnsController } from './useSavedChatTurns';
+import type { SavedChatTurnActions } from './useSavedChatTurns';
 import { chatComposerAccountSwitchReason } from './chatAccountSwitch';
 import type { ChatHistorySearchNavigation } from './chatHistorySearchNavigation';
 import type { ChatDraftSnapshot } from './chatDraftRecovery';
@@ -23,11 +23,11 @@ interface ChatViewProps extends ChatHistorySearchNavigation {
   active: boolean;
   visible?: boolean;
   interactionsLocked?: boolean;
-  savedTurns?: SavedChatTurnsController;
+  savedTurns?: SavedChatTurnActions;
   onAccountSwitchGuard?: (guard: (() => string | null) | null) => void;
 }
 
-export function ChatView({
+export const ChatView = memo(function ChatView({
   controller,
   onNewSession,
   initialDraft,
@@ -87,4 +87,4 @@ export function ChatView({
       <ChatComposer chatController={controller} controller={viewController} userInputContextId={controller.contextId} active={active} />
     </ChatViewSurface>
   );
-}
+});

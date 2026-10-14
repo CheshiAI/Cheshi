@@ -2,12 +2,12 @@ import { Check, ClipboardClock, Copy } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { NeumorphicButton, Tooltip } from '../../shared/ui';
 import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
-import type { SavedChatTurnsController } from './useSavedChatTurns';
+import type { SavedChatTurnActions } from './useSavedChatTurns';
 import styles from './ChatTurnActions.module.css';
 import { ChatTurnMetrics } from './ChatTurnMetrics';
 
 export function ChatTurnActions({ turn, savedTurns }: {
-  turn: ChatSavedTurnInput; savedTurns: SavedChatTurnsController;
+  turn: ChatSavedTurnInput; savedTurns: SavedChatTurnActions;
 }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);

@@ -133,3 +133,51 @@ test('disposing an old receiver does not remove its replacement', async () => {
   disposeNew();
   expect(await targets.appendText('pane', 'Closed')).toBe(false);
 });
+
+test('unrelated parent renders skip the chat view while draft and controller changes stay live', async () => {
+  const window = new Window();
+  const globals = { window, document: window.document, IS_REACT_ACT_ENVIRONMENT: true };
+  const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  const targets = createChatDraftAttachments();
+  let renders = 0;
+  const ChatView = loadChatView(({ controller }) => {
+    renders += 1;
+    const draft = useChatDraft(controller.sessionRevision, async () => ({ status: 'accepted' }));
+    return { ...draft, messageQueue: { total: 0 }, state: controller.state,
+      attachmentTransfer: { isTransferring: () => false, attachFilesToDraft: async () => true },
+    } as unknown as ChatViewController;
+  });
+  const controller = { contextId: 'pane', sessionRevision: 0, state: INITIAL_CHAT_STATE } as ChatController;
+  const noop = () => {};
+  const render = async (chat = controller, panelOpen = false) => {
+    await act(async () => root.render(<ChatDraftAttachmentsContext.Provider value={targets}>
+      <aside hidden={!panelOpen}>Review</aside>
+      <ChatView controller={chat} active={false} onNewSession={noop} onReviewFileChanges={noop} />
+    </ChatDraftAttachmentsContext.Provider>));
+  };
+  try {
+    await render();
+    const baseline = renders;
+    await render(controller, true);
+    await render(controller, false);
+    expect(renders).toBe(baseline);
+    await act(async () => { expect(await targets.appendText('pane', 'Keep this draft')).toBe(true); });
+    expect(renders).toBeGreaterThan(baseline);
+    expect(container.querySelector('textarea')?.value).toBe('Keep this draft');
+    const afterDraft = renders;
+    await render({ ...controller, state: { ...controller.state, phase: 'streaming' } }, true);
+    expect(renders).toBeGreaterThan(afterDraft);
+    expect(container.querySelector('textarea')?.value).toBe('Keep this draft');
+  } finally {
+    await act(async () => root.unmount());
+    await window.happyDOM.close();
+    for (const [key, descriptor] of previous) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  }
+});

@@ -17,9 +17,7 @@
 .layout { display: flex; flex: 1; min-height: 0; }
 .content { display: flex; flex: 1; flex-direction: column; min-width: 0; padding: var(--space-default); }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-default); padding-bottom: var(--space-default); margin-bottom: var(--space-default); border-bottom: 1px solid var(--divider); }
-.searchField { position: relative; flex: 1 1 180px; min-width: 0; }
-.searchField > svg { position: absolute; z-index: 1; left: 12px; top: 50%; transform: translateY(-50%); width: var(--icon-size-default); height: var(--icon-size-default); color: var(--text); pointer-events: none; }
-.searchField input { padding-left: 36px; }
+.searchField { flex: 1 1 180px; min-width: 0; }
 .actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; max-width: 100%; gap: var(--icon-default); }
 .actions > button { white-space: nowrap; }
 .actions > button > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-basis: var(--icon-size-default); }

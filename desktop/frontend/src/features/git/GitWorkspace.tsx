@@ -3,7 +3,7 @@ import { cheshiDesktop } from '../../cheshiDesktop';
 import { useWorkspaceProjects, projectGitApi, primaryProject } from '../../shared/workspaceProjects';
 import { projectFilePath, type WorkspaceProject } from '../../../../shared/workspace-projects';
 import { EmptyState, LiquidGlassSelect, LoadingState } from '../../shared/ui';
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { memo, useEffect, useState, useMemo, useRef } from 'react';
 import { GitIssuesWorkspace } from './GitIssuesWorkspace';
 import { GitChangesWorkspace } from './GitChangesWorkspace';
 import { GitHistoryWorkspace } from './GitHistoryWorkspace';
@@ -76,7 +76,7 @@ function ProjectGitWorkspace({ active = true, sidebarTarget, onOpenChanges,
   );
 }
 
-export function GitWorkspace(props: GitWorkspaceProps) {
+export const GitWorkspace = memo(function GitWorkspace(props: GitWorkspaceProps) {
   const { projects } = useWorkspaceProjects();
   const [selected, setSelected] = useState('primary');
   const project = projects.find(entry => entry.id === selected) ?? projects[0] ?? primaryProject;
@@ -85,4 +85,4 @@ export function GitWorkspace(props: GitWorkspaceProps) {
     <ProjectGitWorkspace key={project.id} {...props} project={project} projects={projects} selectProject={setSelected}
       onOpenWorkspaceFile={file => props.onOpenWorkspaceFile(projectFilePath(project, file))} />
   </GitProjectContext.Provider>;
-}
+});

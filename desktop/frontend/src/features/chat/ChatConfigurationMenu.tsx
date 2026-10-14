@@ -1,11 +1,13 @@
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { AlertCircle, Check, ChevronRight } from 'lucide-react';
 import { createPortal } from 'react-dom';
+import { useContext } from 'react';
 
 import { LiquidGlassPanel, LoadingIndicator, NeumorphicButton, RegionalBlur } from '../../shared/ui';
 import { formatReasoningEffort } from './chatViewModel';
 import styles from './ChatConfigurationMenu.module.css';
 import type { ChatViewController } from './useChatViewController';
+import { ChatWorkspaceBlurContext } from './ChatWorkspaceBlurContext';
 
 type ConfigurationMenuController = Pick<ChatViewController,
   | 'chatConfiguration' | 'configurationError' | 'configurationLoading' | 'configurationMenuOpen'
@@ -16,8 +18,10 @@ type ConfigurationMenuController = Pick<ChatViewController,
 export function ChatConfigurationMenu({ controller }: {
   controller: ConfigurationMenuController & Pick<ChatViewController, 'composerAreaRef'>;
 }) {
+  const workspaceSourceRef = useContext(ChatWorkspaceBlurContext);
   if (!controller.configurationMenuOpen || !controller.configurationMenuPosition) return null;
-  return createPortal(<RegionalBlur sourceRef={controller.composerAreaRef}>
+  return createPortal(<RegionalBlur sourceRef={workspaceSourceRef ?? controller.composerAreaRef}
+    sourceMode={workspaceSourceRef ? 'replace' : 'add'}>
     <ChatConfigurationMenuContent controller={controller} />
   </RegionalBlur>, document.body);
 }

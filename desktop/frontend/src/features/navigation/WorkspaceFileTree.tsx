@@ -1,5 +1,5 @@
 import { Folder, FolderOpen, FolderPlus, FolderTree, LayersPlus, FilePlus2, List, RefreshCw, Unlink } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { cheshiDesktop, type CheshiDesktopApi, type CheshiWorkspaceEntry, type WorkspaceEntryMutation } from '../../cheshiDesktop';
 import { SidebarPanelHeader, Tooltip } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
@@ -72,7 +72,7 @@ function ProjectTree({ project, onRemove, busy, active, onActivate, viewport, ..
   </section>;
 }
 
-export function WorkspaceFileTree({ api = cheshiDesktop, ...props }: WorkspaceFileTreeProps) {
+export const WorkspaceFileTree = memo(function WorkspaceFileTree({ api = cheshiDesktop, ...props }: WorkspaceFileTreeProps) {
   const { projects, error: loadError } = useWorkspaceProjects(api);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState('primary');
@@ -98,4 +98,4 @@ export function WorkspaceFileTree({ api = cheshiDesktop, ...props }: WorkspaceFi
         onRemove={() => { void run(() => api!.workspaceProjects!.remove(project.id)); }} />)}
     </OverlayScrollArea>
   </section>;
-}
+});

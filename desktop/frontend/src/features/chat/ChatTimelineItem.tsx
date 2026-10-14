@@ -21,7 +21,7 @@ import type { ChatActivityItem, ChatTimelineItem as ChatTimelineItemModel } from
 import styles from './ChatView.module.css';
 import { ChatTurnActions } from './ChatTurnActions';
 import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
-import type { SavedChatTurnsController } from './useSavedChatTurns';
+import type { SavedChatTurnActions } from './useSavedChatTurns';
 import { ChatInlineQuestion } from './ChatInlineQuestion';
 import { AgentActivity } from './AgentActivity';
 import { reasoningMarkdown } from './chatReasoningPresentation';
@@ -40,7 +40,7 @@ interface ChatTimelineItemProps {
   streaming: boolean;
   onReviewFileChanges: (itemId: string, path?: string) => void;
   turn?: ChatSavedTurnInput;
-  savedTurns?: SavedChatTurnsController;
+  savedTurns?: SavedChatTurnActions;
   searchMatch?: boolean;
 }
 

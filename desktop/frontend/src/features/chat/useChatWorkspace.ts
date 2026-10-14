@@ -8,7 +8,6 @@ import type { ChatDraftSnapshot } from './chatDraftRecovery';
 import { prepareChatFork } from './prepareChatSplit';
 import { chatForkUnavailableReason, chatHistoryForkUnavailableReason } from './chatWorkspaceModel';
 import { openChatHistoryFork } from './openChatHistoryFork';
-import { useSavedChatTurns } from './useSavedChatTurns';
 import type { ChatSavedTurn } from '../../../../shared/chat-saved-turns';
 import { isViewedSessionResponding } from './model';
 import { chatSessionDeletionReason } from './chatSessionDeletion';
@@ -21,7 +20,6 @@ export function useChatWorkspace() {
   const [sessionCache, setSessionCache] = useState(createChatSessionCache);
   useSchedulerSessionSync(sessionCache);
   const sessionHistory = useSyncExternalStore(sessionCache.subscribe, sessionCache.getSnapshot);
-  const savedTurns = useSavedChatTurns();
   const [state, setState] = useState(() => createChatWorkspace(crypto.randomUUID()));
   const [controllers, setControllers] = useState<Record<string, ChatController>>({});
   const [error, setError] = useState<string | null>(null);
@@ -294,7 +292,7 @@ export function useChatWorkspace() {
   return {
     ...state, paneIds, controllers, activeController, responseThreadIds, sessionCache, sessionHistory,
     registerController, selectPane, splitPane, closePane, resizeSplit, openSession, openTemporaryChat,
-    error, dismissError, initialSessionIds, splitPending, historyForkReason, forkHistorySession, savedTurns,
+    error, dismissError, initialSessionIds, splitPending, historyForkReason, forkHistorySession,
     continueSavedTurn, savedTurnContinuationReason, deleteSession, deleteSessionReason, deletePending,
     registerAccountSwitchGuard, accountSwitchPending, accountSwitchReason, beginAccountSwitch, completeAccountSwitch,
   };

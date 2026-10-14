@@ -1,4 +1,4 @@
-import { useCallback, useImperativeHandle, useState, type ComponentProps, type Ref } from 'react';
+import { memo, useCallback, useImperativeHandle, useState, type ComponentProps, type Ref } from 'react';
 import { ChatsView } from '../agent-chats/ChatsView';
 import { AgentManagementViews } from './AgentManagementViews';
 import type { AgentChatsApi } from '../../../../shared/agent-chats';
@@ -10,7 +10,7 @@ type ConversationProps = Pick<ComponentProps<typeof ChatsView>, 'sidebarTarget' 
   | 'reviewedMessageId' | 'onReviewFileChanges' | 'reviewedVerificationId' | 'onReviewVerification' | 'onCloseWorkspace'>;
 
 /** Keep panel interactions inside Worker so they do not render every workspace view. */
-export function WorkerWorkspace({ ref, view, onBeforeOpenHomies, api, registryApi, managementApi, ...conversation }: ConversationProps & {
+export const WorkerWorkspace = memo(function WorkerWorkspace({ ref, view, onBeforeOpenHomies, api, registryApi, managementApi, ...conversation }: ConversationProps & {
   ref?: Ref<WorkerWorkspaceHandle>;
   view: 'chats' | 'docker' | null;
   onBeforeOpenHomies(): void;
@@ -48,4 +48,4 @@ export function WorkerWorkspace({ ref, view, onBeforeOpenHomies, api, registryAp
       listTarget={listTarget} onSelectionChange={setSelectedHomieId} onBusyChange={setHomiesBusy} onEditingChange={onEditingChange} selectionRequest={homies ?? undefined}
       onClose={homies ? () => { if (editing) closeHomies(); else setOpen(false); } : undefined} />
   </>;
-}
+});

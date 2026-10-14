@@ -34,9 +34,9 @@ export function AccountProfileUsage({ profile, active, pending, selectionDisable
       </div>
     )}>
       <div className={styles.profileActions}>
-        {!signingIn && !usage.authenticated && <NeumorphicButton raised size="standard" disabled={pending || loading}
+        {!signingIn && !usage.authenticated && <NeumorphicButton variant="standard" size="standard" disabled={pending || loading}
             title={active ? selectionDisabledReason ?? undefined : undefined} onClick={onLogin}>Sign in</NeumorphicButton>}
-        {(signingIn || (!active && !usage.authenticated)) && <NeumorphicButton raised size="standard"
+        {(signingIn || (!active && !usage.authenticated)) && <NeumorphicButton variant="standard" size="standard"
           disabled={pending} onClick={onCancel}>{active ? 'Cancel sign-in' : 'Cancel'}</NeumorphicButton>}
       </div>
     </AccountUsageDetails>

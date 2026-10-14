@@ -93,9 +93,12 @@ export function useSavedChatTurns() {
     return operation;
   }, [accept]);
 
-  const isSaved = useCallback((threadId: string, itemId: string) => records.some(
-    (record) => record.threadId === threadId && record.itemId === itemId,
-  ), [records]);
+  // Refreshing record objects or their metadata does not change timeline save buttons.
+  const savedKeys = JSON.stringify([...new Set(records.map(record => turnKey(record.threadId, record.itemId)))].sort());
+  const isSaved = useMemo(() => {
+    const keys = new Set<string>(JSON.parse(savedKeys));
+    return (threadId: string, itemId: string) => keys.has(turnKey(threadId, itemId));
+  }, [savedKeys]);
   const isSaving = useCallback((threadId: string, itemId: string) => savingKeys.has(turnKey(threadId, itemId)), [savingKeys]);
   const dismissError = useCallback(() => setError(null), []);
   const remove = useCallback(async (id: string): Promise<boolean> => {
@@ -127,3 +130,9 @@ export function useSavedChatTurns() {
 }
 
 export type SavedChatTurnsController = ReturnType<typeof useSavedChatTurns>;
+export type SavedChatTurnActions = Pick<SavedChatTurnsController, 'save' | 'isSaved' | 'isSaving'>;
+
+/** Keep list loading/error/metadata changes out of the conversation subtree. */
+export function useSavedChatTurnActions({ save, isSaved, isSaving }: SavedChatTurnActions): SavedChatTurnActions {
+  return useMemo(() => ({ save, isSaved, isSaving }), [save, isSaved, isSaving]);
+}

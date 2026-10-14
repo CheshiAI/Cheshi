@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'bun:test';
-import { act, useRef } from 'react';
+import { act, useRef, type ComponentProps } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { Window, type HTMLElement as TestElement } from 'happy-dom';
@@ -10,6 +10,8 @@ import { Tooltip } from '../frontend/src/shared/ui/Tooltip';
 import { StatusToast } from '../frontend/src/shared/ui/StatusToast';
 import { ChatUserInputPrompt } from '../frontend/src/features/chat/ChatUserInputPrompt';
 import { regionalBlurMask } from '../frontend/src/shared/ui/regionalBlurGeometry';
+import { ChatConfigurationMenu } from '../frontend/src/features/chat/ChatConfigurationMenu';
+import { ChatWorkspaceBlurContext } from '../frontend/src/features/chat/ChatWorkspaceBlurContext';
 
 mock.module('../frontend/src/shared/ui/Tooltip.module.css', () => ({
   default: { anchor: 'tooltip-anchor', content: 'tooltip-content' },
@@ -19,13 +21,46 @@ mock.module('../frontend/src/shared/ui/StatusToast.module.css', () => ({
     title: 'toast-title', description: 'toast-description', close: 'toast-close' },
 }));
 
-function Fixture({ portal, thread = 'one', menu = true, composer = true, nested = false, layered = false, select = false, fullSceneSelect = false, mcp = false, tooltip = false, toast = false }: {
+function ConfigurationFixture({ menu, split, workspace }: { menu: boolean; split: boolean; workspace: boolean }) {
+  const workspaceRef = useRef<HTMLElement>(null);
+  const timelineRef = useRef<HTMLElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const controller: ComponentProps<typeof ChatConfigurationMenu>['controller'] = {
+    composerAreaRef: composerRef, configurationMenuRef: menuRef,
+    configurationMenuOpen: menu, configurationMenuView: 'models', configurationMenuId: 'configuration-test',
+    configurationMenuPosition: { bottom: 40, left: 800, width: 200, submenuSide: 'left' },
+    chatConfiguration: null, configurationLoading: false, configurationError: null, fastTier: null, models: [],
+    selectComposerModel: async () => {}, selectComposerReasoningEffort: async () => {},
+    selectComposerServiceTier: async () => {}, setConfigurationMenuView: () => {},
+  };
+  return <ChatWorkspaceBlurContext value={workspace ? workspaceRef : null}>
+    <main ref={workspaceRef} data-workspace="true" data-box="100,50,1000,500" style={{ filter: 'brightness(1)' }}>
+      {split && <><section data-sibling="true" data-box="100,50,500,500">Other session</section>
+        <div role="separator" data-box="595,50,5,500" /></>}
+      <RegionalBlur sourceRef={timelineRef}>
+        <section ref={timelineRef} data-source="true" data-box={split ? '600,50,500,500' : '100,50,1000,500'}>Conversation</section>
+        <div ref={composerRef} data-composer-layer="true" data-box="620,450,450,80">
+          <LiquidGlassPanel data-liquid-glass-backdrop="true" data-box="620,450,450,80"
+            style={{ display: 'block', visibility: 'visible', opacity: 1, borderRadius: '16px' }}>
+            <textarea defaultValue="Keep this draft" />
+          </LiquidGlassPanel>
+          <ChatConfigurationMenu controller={controller} />
+        </div>
+      </RegionalBlur>
+    </main>
+  </ChatWorkspaceBlurContext>;
+}
+
+function Fixture({ portal, thread = 'one', menu = true, composer = true, nested = false, layered = false, select = false, fullSceneSelect = false, mcp = false, tooltip = false, toast = false, configuration }: {
   portal: HTMLElement; thread?: string; menu?: boolean; composer?: boolean; nested?: boolean; layered?: boolean; select?: boolean; fullSceneSelect?: boolean; mcp?: boolean; tooltip?: boolean;
   toast?: boolean;
+  configuration?: 'single' | 'split' | 'standalone';
 }) {
   const sourceRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const fullSceneRef = useRef<HTMLDivElement>(null);
+  if (configuration) return <ConfigurationFixture menu={menu} split={configuration === 'split'} workspace={configuration !== 'standalone'} />;
   const panelStyle = { display: 'block', visibility: 'visible', opacity: 1, borderRadius: '16px' } as const;
   const popup = createPortal(<div><LiquidGlassPanel role="menu"
     data-box={layered ? '350,470,200,60' : '350,250,200,180'} style={panelStyle}>
@@ -396,5 +431,88 @@ test('MCP form menus include the composer backdrop and preserve answers and draf
     expect(h.document.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe('Keep this draft');
     await h.unmount();
     expect(h.observerCount()).toBe(0);
+  });
+});
+
+function configurationPanels(h: { document: Document; invalidate: () => void }) {
+  const menu = h.document.querySelector<HTMLElement>('[aria-label="Chat configuration"]')!;
+  const submenu = h.document.querySelector<HTMLElement>('[aria-label="Model options"]')!;
+  menu.dataset.box = '800,470,200,60';
+  submenu.dataset.box = '450,250,340,280';
+  for (const panel of [menu, submenu]) panel.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:16px';
+  h.invalidate();
+  return { menu, submenu };
+}
+
+function sourceMask(document: Document, source: HTMLElement) {
+  const filter = document.getElementById(source.getAttribute('data-regional-blur-source')!);
+  return decodeURIComponent(filter?.querySelector('feImage')?.getAttribute('href')?.split(',').slice(1).join(',') ?? '');
+}
+
+for (const configuration of ['single', 'split'] as const) {
+  test(`configuration menus cover the ${configuration} workspace without duplicating timeline blur and restore on close`, async () => {
+    await withDOM(async h => {
+      await h.render({ configuration, menu: false });
+      const workspace = h.document.querySelector<HTMLElement>('[data-workspace]')!;
+      const timeline = h.document.querySelector<HTMLElement>('[data-source]')!;
+      const composer = h.document.querySelector<HTMLElement>('[data-composer-layer]')!;
+      const inheritedMask = sourceMask(h.document, timeline);
+      expect(inheritedMask.match(/<path /g)?.length).toBe(1);
+      await h.render({ configuration });
+      const { menu, submenu } = configurationPanels(h);
+      await h.flush();
+      expect(workspace.style.filter).toContain('url(');
+      expect(workspace.contains(menu)).toBe(false);
+      expect(workspace.contains(submenu)).toBe(false);
+      expect(menu.style.filter).toBe('');
+      expect(submenu.style.filter).toBe('');
+      expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
+      expect(submenu.getAttribute('data-regional-blur-surface')).toBe('true');
+      const fullMask = sourceMask(h.document, workspace);
+      expect(fullMask).toContain('width="1000"');
+      expect(fullMask.match(/<path /g)?.length).toBe(2);
+      expect(fullMask).toContain('M366 200');
+      expect(sourceMask(h.document, timeline)).toBe(inheritedMask);
+      expect(composer.style.filter).toBe('');
+      if (configuration === 'split') {
+        expect(workspace.querySelector('[data-sibling]')).not.toBeNull();
+        expect(workspace.querySelector('[role="separator"]')).not.toBeNull();
+      }
+      submenu.dataset.box = '350,200,340,280';
+      workspace.dataset.box = '150,50,900,500';
+      h.invalidate(); await h.flush();
+      expect(sourceMask(h.document, workspace)).toContain('width="900"');
+      expect(sourceMask(h.document, workspace)).toContain('M216 150');
+      await h.render({ configuration, menu: false });
+      expect(workspace.style.filter).toBe('brightness(1)');
+      expect(workspace.hasAttribute('data-regional-blur-source')).toBe(false);
+      expect(menu.hasAttribute('data-regional-blur-surface')).toBe(false);
+      expect(submenu.hasAttribute('data-regional-blur-surface')).toBe(false);
+      expect(sourceMask(h.document, timeline)).toBe(inheritedMask);
+      expect(h.document.querySelector('textarea')?.value).toBe('Keep this draft');
+      await h.render({ configuration });
+      configurationPanels(h); await h.flush();
+      expect(workspace.style.filter).toContain('url(');
+      await h.unmount();
+      expect(workspace.style.filter).toBe('brightness(1)');
+      expect(h.observerCount()).toBe(0);
+    });
+  });
+}
+
+test('a standalone configuration menu retains its timeline and composer fallback', async () => {
+  await withDOM(async h => {
+    await h.render({ configuration: 'standalone', menu: false });
+    await h.render({ configuration: 'standalone' });
+    configurationPanels(h); await h.flush();
+    const workspace = h.document.querySelector<HTMLElement>('[data-workspace]')!;
+    const composer = h.document.querySelector<HTMLElement>('[data-composer-layer]')!;
+    const timeline = h.document.querySelector<HTMLElement>('[data-source]')!;
+    expect(workspace.style.filter).toBe('brightness(1)');
+    expect(composer.style.filter).toContain('url(');
+    expect(sourceMask(h.document, timeline).match(/<path /g)?.length).toBe(3);
+    await h.render({ configuration: 'standalone', menu: false });
+    expect(composer.style.filter).toBe('');
+    expect(sourceMask(h.document, timeline).match(/<path /g)?.length).toBe(1);
   });
 });

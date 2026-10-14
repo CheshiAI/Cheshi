@@ -7,7 +7,7 @@ import { captureChatHistoryAnchor, previousChatHistoryStart } from './chatHistor
 import { groupReasoningItems } from './chatReasoningPresentation';
 import styles from './ChatView.module.css';
 import type { ChatTimelineItem as TimelineItem } from './model';
-import type { SavedChatTurnsController } from './useSavedChatTurns';
+import type { SavedChatTurnActions } from './useSavedChatTurns';
 import { chatHistoryItemMatches, findChatHistoryTarget, type ChatHistorySearchNavigation, type ChatHistorySearchTarget } from './chatHistorySearchNavigation';
 
 interface ChatTimelineHistoryProps extends ChatHistorySearchNavigation {
@@ -16,7 +16,7 @@ interface ChatTimelineHistoryProps extends ChatHistorySearchNavigation {
   loading: boolean;
   streaming: boolean;
   completedTurns: Map<string, ChatSavedTurnInput>;
-  savedTurns?: SavedChatTurnsController;
+  savedTurns?: SavedChatTurnActions;
   onReviewFileChanges: (itemId: string, path?: string) => void;
   onRevealHistoryItem?: (item: HTMLElement) => void;
 }
