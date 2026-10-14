@@ -19,10 +19,10 @@ export function ChatDeleteSessionForm({ sessionTitle, reason, pending, error, on
     <p>This permanently deletes this conversation and its child agent conversations.<br />This cannot be undone.</p>
     {(error || reason) && <p role="alert">{error || reason}</p>}
     <div className={styles.deletionActions}>
-      {pending && <LoadingState type="processing" label="Deleting chat…" className={styles.deletionProgress} />}
+      {pending && <LoadingState type="processing" label="Deleting session…" className={styles.deletionProgress} />}
       <div className={styles.buttons}>
         <NeumorphicButton variant="standard" autoFocus type="button" disabled={pending} onClick={onClose}>Cancel</NeumorphicButton>
-        <NeumorphicButton variant="standard" type="submit" disabled={pending || reason !== null} aria-busy={pending}>Delete chat</NeumorphicButton>
+        <NeumorphicButton variant="standard" type="submit" disabled={pending || reason !== null} aria-busy={pending}>Delete session</NeumorphicButton>
       </div>
     </div>
   </form>;
@@ -57,7 +57,7 @@ export function ChatDeleteSessionDialog({ sessionTitle, reason, pending, error, 
       setSubmitting(false);
     }
   };
-  return <Modal title="DELETE CHAT" headerVariant="section" closeButtonVariant="ghost" className={styles.recordDeletionDialog}
+  return <Modal title="DELETE SESSION" headerVariant="section" closeButtonVariant="ghost" className={styles.recordDeletionDialog}
     titleIcon={<Trash2 aria-hidden="true" />} closeDisabled={busy} onClose={close}>
     <ChatDeleteSessionForm sessionTitle={sessionTitle} reason={reason} pending={busy} error={error || failure}
       onDelete={() => { void remove(); }} onClose={close} />

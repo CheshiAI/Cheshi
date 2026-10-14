@@ -23,7 +23,7 @@ test('chat title and delete action are separate keyboard buttons with separate c
   const nodes = createSessionListHarness().render({ sessions: [session], loading: false, activeSessionId: null,
     responseThreadIds: [], newChatDisabled: false, selectionDisabled: false,
     onOpen: (id) => opened.push(id), onNew: () => {}, onDelete: (id) => deleted.push(id), deleteReason: () => null });
-  const remove = nodes.find((element) => element.props['aria-label'] === `Delete chat: ${session.title}`)!;
+  const remove = nodes.find((element) => element.props['aria-label'] === `Delete session: ${session.title}`)!;
   (remove.props.onClick as (() => void))();
   expect(deleted).toEqual(['thread']);
   expect(opened).toEqual([]);
@@ -38,7 +38,7 @@ test('deletion restriction disables only the delete action and exposes its reaso
   const html = renderToStaticMarkup(<ChatSessionList sessions={[session]} loading={false} activeSessionId="thread"
     responseThreadIds={['thread']} newChatDisabled={false} selectionDisabled={false}
     onOpen={() => {}} onNew={() => {}} onDelete={() => {}} deleteReason={() => 'Stop the active response first.'} />);
-  expect(html).toMatch(/<button[^>]*aria-label="Delete chat: A long conversation"[^>]*disabled=""/);
+  expect(html).toMatch(/<button[^>]*aria-label="Delete session: A long conversation"[^>]*disabled=""/);
   expect(html).toContain('aria-description="Stop the active response first."');
   expect(html).toContain('aria-current="page"');
 });
@@ -51,13 +51,13 @@ test('delete confirmation names the irreversible child deletion and preserves er
   expect(html).toContain('role="alert">Codex refused deletion.');
   expect(html).toContain('aria-description="A long conversation"');
   expect(html).toContain('autofocus=""');
-  expect(html).not.toContain('aria-label="Deleting chat…"');
+  expect(html).not.toContain('aria-label="Deleting session…"');
 });
 
 test('pending chat deletion shows the shared loading indicator and elapsed time', () => {
   const html = renderToStaticMarkup(<ChatDeleteSessionForm sessionTitle={session.title} reason={null}
     pending error={null} onDelete={() => {}} onClose={() => {}} />);
-  expect(html).toContain('role="status" aria-label="Deleting chat…"');
+  expect(html).toContain('role="status" aria-label="Deleting session…"');
   expect(html).toContain('0.0s');
   expect(html).toContain('aria-busy="true"');
   expect(html.match(/disabled=""/g)).toHaveLength(2);

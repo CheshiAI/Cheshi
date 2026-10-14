@@ -75,8 +75,19 @@ test('native Node host with offline Gemma: scoped search, read, edit, delete, ad
     assert.equal(sharedRead.summary, otherText);
     const beforeSwitch = await generation();
     memory.accounts({ ...both, activeId: 'b' });
-    await memory.synchronize();
+    assert.equal(memory.status().state, 'ready');
     assert.deepEqual(await generation(), beforeSwitch);
+    const beforeLogout = await runtime.transaction(connection => callFlash(connection, 'integrity', {}), signal);
+    memory.accounts({ ...both, profiles: [both.profiles[0]!, { ...both.profiles[1]!, email: null,
+      usage: { ...both.profiles[1]!.usage, authenticated: false } }] });
+    await memory.synchronize();
+    assert.deepEqual(await runtime.transaction(connection => callFlash(connection, 'integrity', {}), signal), beforeLogout);
+    const hidden = await memory.execute('memory_search', { query: '메뉴 배경', limit: 10 }, 'caller', signal) as { matches: { text: string }[] };
+    assert.ok(hidden.matches.every(item => item.text !== otherText));
+    memory.accounts(both); await memory.synchronize();
+    assert.deepEqual(await runtime.transaction(connection => callFlash(connection, 'integrity', {}), signal), beforeLogout);
+    const restored = await memory.execute('memory_read', readRequest('other'), 'caller', signal) as { summary: string };
+    assert.equal(restored.summary, otherText);
     sessions = [];
     memory.changed({ type: 'sessions-deleted', threadIds: ['session', 'other'] });
     await memory.synchronize();

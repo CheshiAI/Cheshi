@@ -182,8 +182,11 @@ test('all connected accounts share workspace ranking and reads without reembeddi
     expect(f.methods.filter(method => method === 'memory_search')).toHaveLength(1);
     expect(f.methods.filter(method => method === 'source.ingest')).toHaveLength(2);
     memory.accounts(accounts('b'));
+    expect(memory.status().state).toBe('ready');
+    const syncs = f.methods.filter(method => method === 'sources.list').length;
     const switched = await memory.execute('memory_search', { query: 'Decision' }, 'caller', signal);
     expect(switched).toEqual(result);
+    expect(f.methods.filter(method => method === 'sources.list')).toHaveLength(syncs);
     expect(f.methods.filter(method => method === 'source.ingest')).toHaveLength(2);
     expect(f.grants.size).toBe(0);
   } finally { await memory.dispose(); await f.close(); }
@@ -208,9 +211,10 @@ test('adding or disconnecting a non-active account resynchronizes the shared wor
     await memory.synchronize();
     expect(memory.status().total).toBe(1);
     const documents = [...f.stored.values()].flatMap(scope => [...scope.values()]);
-    expect(documents.map(item => item.document.text)).toEqual(['Decision from a']);
+    expect(documents.filter(item => item.active !== false).map(item => item.document.text)).toEqual(['Decision from a']);
+    expect(documents).toHaveLength(2);
     expect(f.methods.filter(method => method === 'source.ingest')).toHaveLength(2);
-    expect(f.methods).toContain('source.delete');
+    expect(f.methods).not.toContain('source.delete');
   } finally { await memory.dispose(); await f.close(); }
 });
 

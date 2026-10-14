@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Window } from 'happy-dom';
+import { Window, type HTMLButtonElement as TestButton } from 'happy-dom';
 import { INITIAL_CHAT_STATE, type ChatMcpServer } from '../frontend/src/features/chat/model';
 import { slashCommands } from '../frontend/src/features/chat/chatViewModel';
 import type { ChatController } from '../frontend/src/features/chat/useChatController';
@@ -82,7 +82,7 @@ async function withMenu(run: (harness: {
       window,
       open: async () => {
         await act(async () => {
-          const option = container.querySelector<HTMLButtonElement>('#mcp')!;
+          const option = container.querySelector<TestButton>('#mcp')!;
           option.focus();
           option.click();
         });
@@ -120,7 +120,7 @@ test('a delayed MCP response preserves composer focus and Escape closes the menu
 test('opening and completing MCP status never steals focus from another pane', async () => {
   await withMenu(async h => {
     await h.open();
-    const other = h.window.document.querySelector<HTMLButtonElement>('#other-pane')!;
+    const other = h.window.document.querySelector<TestButton>('#other-pane')!;
     other.focus();
     await h.flushFrames();
     expect(h.window.document.activeElement === other).toBe(true);

@@ -155,8 +155,8 @@ export function ChatSessionList({
                   type="button" aria-label={`Rename chat: ${session.title}`} title="Rename chat" disabled={editing !== null}
                   onClick={() => setEditing({ id: session.id, title: session.title })}><Pencil aria-hidden="true" /></TooltipButton>}
                 <TooltipButton variant="ghost" size="icon" className={styles.deleteButton}
-                  type="button" aria-label={`Delete chat: ${session.title}`} aria-haspopup="dialog"
-                  title={reason ?? 'Delete chat'}
+                  type="button" aria-label={`Delete session: ${session.title}`} aria-haspopup="dialog"
+                  title={reason ?? 'Delete session'}
                   disabled={reason !== null}
                   onClick={() => onDelete(session.id)}>
                   <Trash2 size={11} strokeWidth={1.7} aria-hidden="true" />

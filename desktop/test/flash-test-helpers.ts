@@ -39,7 +39,7 @@ export async function flashFixture() {
   const directory = await mkdtemp(join(tmpdir(), 'flash-test-'));
   const socketPath = join(directory, 'flash.sock');
   const sockets = new Set<Socket>();
-  const stored = new Map<string, Map<string, { revision: string; document: FlashDocument }>>();
+  const stored = new Map<string, Map<string, { revision: string; document: FlashDocument; owner?: string; active?: boolean }>>();
   const grants = new Map<string, string>();
   const methods: string[] = [];
   let generation = 0;
@@ -58,13 +58,19 @@ export async function flashFixture() {
         const scope = JSON.stringify([p.workspace, p.account]);
         const scopeSources = stored.get(scope) ?? new Map();
         let result: unknown;
-        if (method === 'status') result = { generation, state: 'ready' };
+        if (method === 'status') result = { generation, state: 'ready', capabilities: ['source.access.v1'] };
         else if (method === 'scope.enable') { stored.set(scope, scopeSources); result = { generation }; }
         else if (method === 'sources.list') result = { sources: [...scopeSources].map(([source_id, item]) => ({
-          source_id, revision: item.revision, ordinal: item.document.ordinal, session_id: item.document.threadId,
+          source_id, revision: item.revision, ordinal: item.document.ordinal, session_id: item.document.threadId, owner: item.owner, active: item.active ?? true,
         })), next: null };
         else if (method === 'source.ingest') { scopeSources.set(p.source_id, { revision: p.revision, document: p.document }); result = { generation: ++generation }; }
         else if (method === 'source.delete') { scopeSources.delete(p.source_id); result = { generation: ++generation }; }
+        else if (method === 'source.access') {
+          const source = scopeSources.get(p.source_id);
+          if (!source || typeof p.active !== 'boolean') throw new Error('Invalid source access');
+          source.owner = p.owner; source.active = p.active;
+          result = { generation: ++generation };
+        }
         else if (method === 'sessions.delete') {
           for (const [key, sources] of stored) if (JSON.parse(key)[0] === p.workspace) {
             for (const [id, item] of sources) if (p.session_ids.includes(item.document.threadId)) sources.delete(id);
@@ -77,7 +83,7 @@ export async function flashFixture() {
         else if (method === 'memory_search' || method === 'memory_read_turns') {
           await beforeSearch?.();
           const docs = stored.get(grants.get(token) ?? '') ?? new Map();
-          const matches = [...docs].filter(([, item]) => !p.session_id || item.document.threadId === p.session_id)
+          const matches = [...docs].filter(([, item]) => item.active !== false && (!p.session_id || item.document.threadId === p.session_id))
             .map(([source_id, item]) => ({ source_id, session_id: item.document.threadId, turn_id: item.document.turnId,
               message_id: item.document.itemId, kind: item.document.kind, entry: item.document.entry,
               text: item.document.text, offset: 0, next_offset: null, total_characters: [...item.document.text].length }));

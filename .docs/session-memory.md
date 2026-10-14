@@ -10,7 +10,7 @@ The session list's existing lexical search is independent of these tools.
 
 The development default executable is the sibling checkout's
 `../cheshi-flash/.venv/bin/cheshi-flash`. Its installed package must advertise
-`source.ingest.v1`, `sources.list.v1`, `sessions.delete.v1`, `search.ranges.v1`, and `memory.turns.v1`
+`source.ingest.v1`, `sources.list.v1`, `source.access.v1`, `sessions.delete.v1`, `search.ranges.v1`, and `memory.turns.v1`
 capabilities. Restart both the app and an independently managed Flash service
 after updating this contract.
 Install the Flash project and its pinned model dependencies using that project's
@@ -104,9 +104,20 @@ Restart the app and Flash service after updating both checkouts. Reindexing uses
 all connected authenticated profiles in the current workspace. The shared scope
 uses the `session-workspace-memory-v1` namespace; legacy account-only scopes are
 not queried. Existing vectors with identical inputs are reusable across scopes.
-Disconnected or signed-out profiles are removed from the shared source set at
-the next successful synchronization, which tool calls wait for when pending.
-Selecting another active profile does not change the source set or reembed it.
+Disconnected or signed-out profiles are excluded from retrieval at the next
+successful synchronization, while their originals and embedding references stay
+stored. Host requests lose access immediately when the authenticated set changes.
+Reconnection compares revisions and restores availability without reembedding
+unchanged sources. A different login identity or a removed profile cannot inherit
+the old identity's sources. Explicit session deletion removes suspended sources
+as well; deletions outside the app are reconciled when the owning account returns.
+Older sources gain owner metadata on reconciliation without changing their content
+revision. Unseen legacy sources with unknown owners remain hidden until validated
+or explicitly deleted.
+Selecting another active profile, including automatic quota switching, preserves
+readiness, caches and in-flight synchronization. Only requests made under the old
+selection are canceled. Changes to authenticated membership still require a
+reconciliation before new tool results are published.
 ## Retrieval and evidence summaries
 
 `memory_search(query, limit?, session_id?)` keeps the existing vector and lexical

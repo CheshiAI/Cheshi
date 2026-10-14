@@ -138,7 +138,7 @@ describe('delete dialog progress', () => {
       expectBusy(pending, true);
       const loader = find(pending, 'LoadingState');
       expect(loader.props.type).toBe('processing');
-      expect(loader.props.label).toBe(kind === 'session' ? 'Deleting chat…' : 'Deleting saved record…');
+      expect(loader.props.label).toBe(kind === 'session' ? 'Deleting session…' : 'Deleting saved record…');
       submit(pending);
       invoke(find(pending, 'Modal'), 'onClose');
       invoke(cancel(pending), 'onClick');

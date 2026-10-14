@@ -244,7 +244,7 @@ const accountSwitch = workspaceAccounts.register({
   accountUsage: codexAccountService,
   temporaryBusy: () => temporaryChats.hasSessions || codeExplanation.busy || agentVoice.busy,
   schedulerBusy: () => workspaceScheduler.busy,
-  resetTemporary: () => { codeExplanation.reset(); agentVoice.resetAccount(); sessionHistory.memory.resetAccount(); },
+  resetTemporary: () => { codeExplanation.reset(); agentVoice.resetAccount(); },
   emit: snapshot => {
     sessionHistory.accounts(snapshot);
     onAccountsChanged?.(snapshot);

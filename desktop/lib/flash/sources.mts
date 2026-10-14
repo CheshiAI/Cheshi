@@ -9,9 +9,15 @@ export interface FlashDocument {
   kind: 'user' | 'assistant'; text: string; title: string;
 }
 export interface FlashSource { source_id: string; revision: string; document: FlashDocument }
-export interface StoredSource { source_id: string; revision: string; ordinal: number; session_id: string }
+export interface StoredSource { source_id: string; revision: string; ordinal: number; session_id: string; owner?: string | null; active?: boolean }
 export interface FlashBinding { profileId: string; account: string }
 export interface FlashSourceGroup { binding: FlashBinding; sources: FlashSource[] }
+export interface FlashSourceAccess {
+  owners: Map<string, string>;
+  authenticated: ReadonlySet<string>;
+  registered: ReadonlySet<string>;
+}
+export const sourceOwner = (binding: FlashBinding) => `${binding.profileId}:${binding.account}`;
 export const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export const workspaceMemoryAccount = (workspace: string) => digest(['session-workspace-memory-v1', resolve(workspace)]);
 // Flash's title field uses Python Unicode code points, not UTF-16 code units.
@@ -120,11 +126,25 @@ export class FlashSources {
   }
 }
 
+function shouldRemoveMissingSource(source: StoredSource, access?: FlashSourceAccess): boolean {
+  if (!access) return true;
+  // Older indexes have no owner metadata. Keep unseen originals hidden until
+  // their account returns or an explicit session deletion identifies them.
+  if (!source.owner || source.owner === 'legacy:unknown') return false;
+  const profile = source.owner.split(':')[0]!;
+  return access.authenticated.has(source.owner) || !access.registered.has(profile)
+    || [...access.authenticated].some(owner => owner.startsWith(`${profile}:`) && owner !== source.owner);
+}
+
 export async function reconcileSources(connection: FlashConnection, workspace: string, account: string,
-  sources: FlashSource[], signal: AbortSignal, progress?: (processed: number, total: number) => void): Promise<Map<string, FlashSource>> {
+  sources: FlashSource[], signal: AbortSignal, progress?: (processed: number, total: number) => void,
+  access?: FlashSourceAccess): Promise<Map<string, FlashSource>> {
   const scope = { workspace, account };
   const admin = <T = { generation: number },>(method: string, params: Record<string, unknown>) => callFlash<T>(connection, method, { ...scope, ...params }, signal);
-  let { generation } = await callFlash<{ generation: number }>(connection, 'status', {}, signal);
+  let { generation, capabilities } = await callFlash<{ generation: number; capabilities?: string[] }>(connection, 'status', {}, signal);
+  if (access && !capabilities?.includes('source.access.v1')) {
+    throw new FlashError('unavailable', 'Update the local Flash service to preserve indexes across account changes.');
+  }
   ({ generation } = await admin('scope.enable', { expected_generation: generation }));
   const stored = new Map<string, StoredSource>();
   let after: string | null = '';
@@ -138,7 +158,12 @@ export async function reconcileSources(connection: FlashConnection, workspace: s
   const present = new Set(sources.map(item => item.source_id));
   // Remove old data before ingesting additions; an interrupted sync is never published by the host.
   for (const source_id of stored.keys()) {
-    if (!present.has(source_id)) ({ generation } = await admin('source.delete', { source_id, expected_generation: generation }));
+    if (present.has(source_id)) continue;
+    const old = stored.get(source_id)!;
+    if (shouldRemoveMissingSource(old, access)) ({ generation } = await admin('source.delete', { source_id, expected_generation: generation }));
+    else if (old.active !== false) {
+      ({ generation } = await admin('source.access', { source_id, owner: old.owner ?? 'legacy:unknown', active: false, expected_generation: generation }));
+    }
   }
   let processed = sources.filter(source => source.revision === stored.get(source.source_id)?.revision).length;
   progress?.(processed, sources.length);
@@ -146,9 +171,14 @@ export async function reconcileSources(connection: FlashConnection, workspace: s
     signal.throwIfAborted();
     const old = stored.get(source.source_id);
     source.document.ordinal = old?.ordinal ?? ordinal++;
-    if (source.revision === old?.revision) continue;
-    ({ generation } = await admin('source.ingest', { ...source, expected_revision: old?.revision ?? null, expected_generation: generation }));
-    progress?.(++processed, sources.length);
+    if (source.revision !== old?.revision) {
+      ({ generation } = await admin('source.ingest', { ...source, expected_revision: old?.revision ?? null, expected_generation: generation }));
+      progress?.(++processed, sources.length);
+    }
+    const owner = access?.owners.get(source.source_id);
+    if (owner && (old?.owner !== owner || old?.active !== true)) {
+      ({ generation } = await admin('source.access', { source_id: source.source_id, owner, active: true, expected_generation: generation }));
+    }
   }
   await admin('sync.complete', { cursor: digest(sources.map(item => [item.source_id, item.revision])), expected_generation: generation });
   return new Map(sources.map(item => [item.source_id, item]));

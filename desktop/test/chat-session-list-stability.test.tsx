@@ -26,7 +26,7 @@ test('configuration lock preserves session content and unlock invokes the latest
   expect(harness.rowRenders).toBe(2);
   expect(row(pending, 'one')).toBe(row(before, 'one'));
   expect(pending.find((node) => node.type === 'fieldset')?.props.disabled).toBe(true);
-  expect(pending.find((node) => node.props['aria-label'] === 'Delete chat: one')?.props.disabled).toBe(true);
+  expect(pending.find((node) => node.props['aria-label'] === 'Delete session: one')?.props.disabled).toBe(true);
   click(row(pending, 'one'));
   expect(opened).toEqual([]);
   const after = harness.render({ ...initial, onOpen: () => opened.push('new pane') });
@@ -58,12 +58,12 @@ test('ref-backed deletion restrictions stay fresh without rerendering session co
   harness.render(initial);
   restriction = 'Stop the active response before deleting a conversation.';
   const pending = harness.render(initial);
-  const remove = pending.find((node) => node.props['aria-label'] === 'Delete chat: one')!;
+  const remove = pending.find((node) => node.props['aria-label'] === 'Delete session: one')!;
   expect(remove.props.title).toBe(restriction);
   expect(remove.props.disabled).toBe(true);
   restriction = null;
   const idle = harness.render(initial);
-  expect(idle.find((node) => node.props['aria-label'] === 'Delete chat: one')?.props.disabled).toBe(false);
+  expect(idle.find((node) => node.props['aria-label'] === 'Delete session: one')?.props.disabled).toBe(false);
   expect(harness.rowRenders).toBe(2);
 });
 

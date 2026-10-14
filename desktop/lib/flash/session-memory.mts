@@ -9,7 +9,7 @@ import type { SearchSource } from '../chat-search-source.mts';
 import type { JsonObject } from '../codex-chat-types.mts';
 import { callFlash, FlashError } from './client.mts';
 import type { FlashHost } from './runtime.mts';
-import { digest, FlashSources, reconcileSources, workspaceMemoryAccount, type FlashBinding, type FlashSource } from './sources.mts';
+import { digest, FlashSources, reconcileSources, sourceOwner, workspaceMemoryAccount, type FlashBinding, type FlashSource } from './sources.mts';
 
 export interface SessionMemory {
   searchCandidates?(params: Record<string, unknown>, session: string, signal: AbortSignal, turnId?: string): Promise<unknown>;
@@ -22,7 +22,10 @@ export class FlashSessionMemory implements SessionMemory {
   private readonly sources: FlashSources;
   private binding: FlashBinding | null = null;
   private bindings: readonly FlashBinding[] = [];
+  private registered: readonly string[] = [];
+  private hasConnected = false;
   private lifetime = new AbortController();
+  private requests = new AbortController();
   private syncing: Promise<void> | null = null;
   private readonly cleanupLifetime = new AbortController();
   private readonly removals = new Map<string, Promise<void>>();
@@ -35,7 +38,7 @@ export class FlashSessionMemory implements SessionMemory {
   hasAccount(profileId: string): boolean { return !this.closed && this.bindings.some(b => b.profileId === profileId); }
 
   async original(target: { threadId: string; itemId: string }): Promise<string> {
-    const binding = this.binding, signal = this.lifetime.signal;
+    const binding = this.binding, signal = AbortSignal.any([this.lifetime.signal, this.requests.signal]);
     if (!binding) throw new FlashError('unavailable', 'Sign in to read the original.');
     const session = (await this.sources.sessions(this.bindings)).find(s => s.id === target.threadId);
     if (!session) throw new FlashError('stale_source', 'The source is unavailable.');
@@ -61,18 +64,29 @@ export class FlashSessionMemory implements SessionMemory {
     const bindings = snapshot.profiles.filter(profile => profile.usage.authenticated === true)
       .map(profile => ({ profileId: profile.id, account: digest([profile.id, profile.email]) }))
       .sort((a, b) => a.profileId.localeCompare(b.profileId));
-    const next = bindings.find(binding => binding.profileId === snapshot.activeId) ?? null;
-    if (next?.account === this.binding?.account && JSON.stringify(bindings) === JSON.stringify(this.bindings)) return;
+    const registered = snapshot.profiles.map(profile => profile.id).sort();
+    if (bindings.length) this.hasConnected = true;
+    if (JSON.stringify(bindings) === JSON.stringify(this.bindings) && JSON.stringify(registered) === JSON.stringify(this.registered)) {
+      const next = this.bindings.find(binding => binding.profileId === snapshot.activeId) ?? null;
+      if (next !== this.binding) {
+        this.requests.abort();
+        this.requests = new AbortController();
+        this.binding = next;
+      }
+      return;
+    }
     this.invalidate();
-    this.binding = next;
+    this.binding = bindings.find(binding => binding.profileId === snapshot.activeId) ?? null;
     this.bindings = bindings;
-    this.sources.clear();
+    this.registered = registered;
     this.schedule();
   }
 
-  resetAccount(): void { this.invalidate(); this.binding = null; this.bindings = []; this.sources.clear(); }
+  resetAccount(): void { this.invalidate(); this.binding = null; this.bindings = []; this.sources.clear(); this.schedule(); }
 
   private invalidate(): void {
+    this.requests.abort();
+    this.requests = new AbortController();
     this.lifetime.abort();
     this.lifetime = new AbortController();
     this.syncing = null;
@@ -116,11 +130,11 @@ export class FlashSessionMemory implements SessionMemory {
   }
 
   private schedule(): void {
-    if (this.closed || !this.bindings.length) return;
-    this.progress = { state: 'preparing', processed: 0, total: null, error: null };
+    if (this.closed || !this.hasConnected) return;
+    this.progress = { state: this.bindings.length ? 'preparing' : 'signed_out', processed: 0, total: null, error: null };
     clearTimeout(this.timer);
     this.timer = setTimeout(() => {
-      void this.synchronize().catch(error => {
+      void this.synchronizeSnapshot().catch(error => {
         if (!this.closed) this.options.onError?.(error instanceof FlashError ? error.code : 'sync_failed');
       });
     }, 1000);
@@ -129,15 +143,20 @@ export class FlashSessionMemory implements SessionMemory {
 
   synchronize(): Promise<void> {
     if (this.closed || !this.bindings.length) return Promise.reject(new FlashError('unavailable', 'Sign in to use session memory'));
+    return this.synchronizeSnapshot();
+  }
+
+  private synchronizeSnapshot(): Promise<void> {
     if (this.syncing) return this.syncing;
     clearTimeout(this.timer);
-    this.progress = { state: 'preparing', processed: 0, total: null, error: null };
     const bindings = this.bindings;
+    this.progress = { state: bindings.length ? 'preparing' : 'signed_out', processed: 0, total: null, error: null };
+    const registered = this.registered;
     const signal = this.lifetime.signal;
     const operation = this.options.host.transaction(async connection => {
       this.assertSyncCurrent(bindings, signal);
-      this.progress = { state: 'syncing', processed: 0, total: null, error: null };
-      const groups = await this.sources.collect(bindings, signal);
+      this.progress = { state: bindings.length ? 'syncing' : 'signed_out', processed: 0, total: null, error: null };
+      const groups = bindings.length ? await this.sources.collect(bindings, signal) : [];
       const sources = groups.flatMap(group => group.sources);
       if (new Set(sources.map(source => source.source_id)).size !== sources.length) {
         throw new FlashError('stale_source', 'The conversation catalog contains duplicate sources. Retry.');
@@ -145,11 +164,12 @@ export class FlashSessionMemory implements SessionMemory {
       const synced = await reconcileSources(connection, this.options.workspace, workspaceMemoryAccount(this.options.workspace),
         sources, signal, (processed, total) => {
           this.assertSyncCurrent(bindings, signal);
-          this.progress = { state: 'syncing', processed, total, error: null };
-        });
+          this.progress = { state: bindings.length ? 'syncing' : 'signed_out', processed, total, error: null };
+        }, { owners: new Map(groups.flatMap(group => group.sources.map(source => [source.source_id, sourceOwner(group.binding)]))),
+          authenticated: new Set(bindings.map(sourceOwner)), registered: new Set(registered) });
       this.assertSyncCurrent(bindings, signal);
       this.synced = synced;
-      this.progress = { state: 'ready', processed: sources.length, total: sources.length, error: null };
+      this.progress = { state: bindings.length ? 'ready' : 'signed_out', processed: sources.length, total: sources.length, error: null };
     }, signal).catch(error => {
       if (!signal.aborted && this.bindings === bindings && !this.closed) {
         const errorMessage = this.progress.state === 'preparing'
@@ -181,7 +201,7 @@ export class FlashSessionMemory implements SessionMemory {
   async verifyCandidates(matches: Record<string, unknown>[], caller: AbortSignal): Promise<void> {
     const binding = this.binding;
     if (!binding) throw new FlashError('unavailable', 'Sign in to verify memory.');
-    const signal = AbortSignal.any([caller, this.lifetime.signal]);
+    const signal = AbortSignal.any([caller, this.lifetime.signal, this.requests.signal]);
     this.assertCurrent(binding, signal);
     await this.sources.verify(this.bindings, { matches }, this.synced);
     this.assertCurrent(binding, signal);
@@ -197,7 +217,7 @@ export class FlashSessionMemory implements SessionMemory {
     if (!['memory_search', 'memory_read'].includes(method)) throw new FlashError('invalid_request', 'Unknown memory tool');
     const binding = this.binding;
     if (!binding) throw new FlashError('unavailable', 'Sign in to use session memory');
-    const signal = AbortSignal.any([caller, this.lifetime.signal]);
+    const signal = AbortSignal.any([caller, this.lifetime.signal, this.requests.signal]);
     signal.throwIfAborted();
     // Ready data already represents the last completed turns. Reading it must not
     // start another catalog reconciliation or expose a transient syncing banner.
