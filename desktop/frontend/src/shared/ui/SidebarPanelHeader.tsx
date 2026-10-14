@@ -10,7 +10,7 @@ export function SidebarPanelTitle({ icon, title, description, count, as: Tag = '
   title: string;
   description?: string;
   count?: number;
-  as?: 'div' | 'h2';
+  as?: 'div' | 'h1' | 'h2';
   id?: string;
 }) {
   return <Tag id={id} className={styles.title}>

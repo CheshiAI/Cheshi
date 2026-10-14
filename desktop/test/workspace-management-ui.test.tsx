@@ -188,6 +188,34 @@ test('current workspace disables only this window while another workspace enable
   expect(renderChoices('/work/other', true).match(/disabled=""/g)).toHaveLength(2);
 });
 
+test('without a current workspace only the new-window choice is shown, including while busy', () => {
+  for (const busy of [false, true]) {
+    const html = renderToStaticMarkup(
+      <WorkspaceOpenChoices entry={entry} currentPath="" busy={busy} error={null} onOpen={() => {}} />,
+    );
+    expect(html).not.toContain('Open in this window');
+    expect(html).not.toContain('already open in the current window');
+    expect(html.match(/<button\b/g)).toHaveLength(1);
+    expect(html).toContain('Open in new window');
+    expect(html.includes('disabled=""')).toBe(busy);
+  }
+});
+
+test('without a current workspace replacement is blocked and opening a new window remains available', async () => {
+  const calls: string[] = [];
+  const api = {
+    open: async (path: string) => { calls.push(`new:${path}`); },
+    openCurrent: async (path: string) => { calls.push(`current:${path}`); },
+  };
+  const state = { pending: false };
+  expect(await runWorkspaceOpenChoice(state, api, entry.rootPath, '', 'current')).toBe(false);
+  expect(calls).toEqual([]);
+  expect(state.pending).toBe(false);
+  expect(await runWorkspaceOpenChoice(state, api, entry.rootPath, '', 'new')).toBe(true);
+  expect(calls).toEqual([`new:${entry.rootPath}`]);
+  expect(state.pending).toBe(false);
+});
+
 test('workspace choices route to the selected destination and reject a same-workspace replacement', async () => {
   const calls: string[] = [];
   const api = {

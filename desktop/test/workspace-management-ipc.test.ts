@@ -65,10 +65,12 @@ async function fixture(withManager = false, autoReady = true) {
   const owner = { isDestroyed: () => state.destroyed } as unknown as BrowserWindow;
   const managerEvents = new EventEmitter();
   const managerFrame = {};
-  const managerSender = { id: 3, mainFrame: managerFrame, isDestroyed: () => state.managerDestroyed, setWindowOpenHandler() {}, on() {} };
+  const managerSender = { id: 3, mainFrame: managerFrame, isDestroyed: () => state.managerDestroyed,
+    setWindowOpenHandler() {}, on() {}, executeJavaScript: async (_script: string) => undefined };
   const managerWindow = {
     webContents: managerSender,
-    once: managerEvents.once.bind(managerEvents), off: managerEvents.off.bind(managerEvents),
+    once: managerEvents.once.bind(managerEvents), off: managerEvents.off.bind(managerEvents), on: managerEvents.on.bind(managerEvents),
+    setBackgroundColor(_value: string) {}, getNativeWindowHandle: () => Buffer.alloc(8),
     loadFile: async () => {
       if (autoReady) {
         managerEvents.emit('ready-to-show');

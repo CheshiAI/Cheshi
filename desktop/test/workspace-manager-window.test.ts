@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
 import type { BrowserWindow, BrowserWindowConstructorOptions, WebContents } from 'electron';
 import { WorkspaceManagerWindow } from '../lib/workspace-manager-window.mts';
+import type { WorkspaceManagerWindowOptions } from '../lib/workspace-manager-window.mts';
+import { DEFAULT_WINDOW_APPEARANCE } from '../shared/window-appearance.ts';
+import { windowAppearanceStore } from '../lib/window-appearance-store.mts';
 import type { WorkspaceManagementApi } from '../shared/workspace-management.ts';
 
 function createDeferred() {
@@ -23,15 +28,20 @@ function fakeWindow(load = Promise.resolve()) {
   const state = {
     destroyed: false, minimized: false, shows: 0, focuses: 0, restores: 0,
     urls: [] as string[], files: [] as string[],
+    background: '', scripts: [] as string[], scriptResult: Promise.resolve() as Promise<unknown>,
     openHandler: null as (() => { action: string }) | null,
   };
   const webContents = {
+    isDestroyed: () => state.destroyed,
+    executeJavaScript: async (script: string) => { state.scripts.push(script); return state.scriptResult; },
     on: webEvents.on.bind(webEvents),
     setWindowOpenHandler: (handler: () => { action: string }) => { state.openHandler = handler; },
   } as unknown as WebContents;
   const window = {
     webContents,
-    once: events.once.bind(events), off: events.off.bind(events),
+    once: events.once.bind(events), off: events.off.bind(events), on: events.on.bind(events),
+    setBackgroundColor: (value: string) => { state.background = value; },
+    getNativeWindowHandle: () => Buffer.alloc(8),
     isDestroyed: () => state.destroyed,
     isMinimized: () => state.minimized,
     restore: () => { state.minimized = false; state.restores += 1; },
@@ -44,13 +54,16 @@ function fakeWindow(load = Promise.resolve()) {
   return { window, events, webEvents, state };
 }
 
-function harness(options: { isPackaged?: boolean; rendererUrl?: string; load?: Promise<void>; onWindowCreated?: (window: BrowserWindow) => void; readinessTimeoutMs?: number } = {}) {
+function harness(options: Partial<Pick<WorkspaceManagerWindowOptions, 'appearanceFile' | 'appearanceBinding' | 'topHighlightBinding' | 'isPackaged' | 'rendererUrl' | 'onWindowCreated' | 'readinessTimeoutMs'>> & { load?: Promise<void> } = {}) {
   const windows: ReturnType<typeof fakeWindow>[] = [];
   const configurations: BrowserWindowConstructorOptions[] = [];
   const manager = new WorkspaceManagerWindow({
     appPath: '/application/Cheshi', resourcesPath: '/application/Cheshi/Contents/Resources',
     isPackaged: options.isPackaged ?? false, rendererUrl: options.rendererUrl,
     workspaceRoot: '/work/체시 project', onWindowCreated: options.onWindowCreated,
+    appearanceFile: options.appearanceFile ?? path.join(tmpdir(), 'cheshi-manager-test-missing', 'appearance.json'),
+    appearanceBinding: options.appearanceBinding ?? null,
+    topHighlightBinding: options.topHighlightBinding ?? null,
     readinessTimeoutMs: options.readinessTimeoutMs,
     createWindow: (configuration) => {
       configurations.push(configuration);
@@ -74,6 +87,7 @@ test('manager stays hidden until ready and focuses a singleton, restoring minimi
   const opening = h.manager.open();
   const first = h.windows[0]!;
   assert.equal(h.configurations[0]!.show, false);
+  assert.equal(h.configurations[0]!.transparent, process.platform === 'darwin');
   assert.equal(first.state.shows, 0);
   first.events.emit('ready-to-show');
   assert.equal(first.state.shows, 0);
@@ -190,7 +204,8 @@ test('built manager preload exposes management and update methods and decodes wo
     'chooseDirectory', 'clearUpdateResume', 'clone', 'createProject', 'createWorktree',
     'deleteWorkspace', 'getAppUpdate', 'getCodexLogin', 'getGitHubLogin', 'getToolStatus',
     'getUpdateResume', 'installAppUpdate', 'list', 'listGitHubRepositories', 'listWorktrees',
-    'onAppUpdate', 'onAppUpdateCommitted', 'onAppUpdatePreparationCancelled', 'onPrepareAppUpdate',
+    'onAppUpdate', 'onAppUpdateCommitted', 'onAppUpdatePreparationCancelled',
+    'onHelpRequested', 'onPrepareAppUpdate', 'onRelationshipGraphRequested',
     'open', 'openAppRelease', 'openCurrent', 'openGitHubLoginBrowser', 'openManager',
     'saveUpdateResume', 'startCodexLogin', 'startGitHubLogin',
   ]);
@@ -296,4 +311,110 @@ test('startup readiness timeout rejects concurrent opens and never displays inco
   await h.openReady();
   assert.equal(h.windows.length, 2);
   h.manager.dispose();
+});
+
+function appliedAppearance(script: string) {
+  const attributes = new Map<string, boolean>();
+  const properties = new Map<string, string>();
+  vm.runInNewContext(script, { document: { documentElement: {
+    toggleAttribute: (name: string, value: boolean) => { attributes.set(name, value); },
+    style: { setProperty: (name: string, value: string) => { properties.set(name, value); } },
+  } } });
+  return { active: attributes.get('data-window-glass'), opacity: properties.get('--window-glass-opacity') };
+}
+
+test('manager applies saved glass before showing, follows settings, and releases native listeners', async context => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'cheshi-manager-glass-'));
+  const appearanceFile = path.join(directory, 'appearance.json');
+  const preferences = { ...DEFAULT_WINDOW_APPEARANCE, opacity: .4, blurRadius: 24 };
+  writeFileSync(appearanceFile, JSON.stringify(preferences));
+  const blur: Array<{ enabled: boolean; radius: number }> = [];
+  const highlight: boolean[] = [];
+  const h = harness({ appearanceFile, appearanceBinding: {
+    windowGlassSupported: () => true,
+    setWindowGlass(_handle, enabled, radius) { blur.push({ enabled, radius }); return enabled ? 'active' : 'disabled'; },
+  }, topHighlightBinding: {
+    setWindowTopHighlightHidden(_handle, hidden) { highlight.push(hidden); return true; },
+  } });
+  context.after(() => { h.manager.dispose(); rmSync(directory, { recursive: true, force: true }); });
+  const gate = createDeferred();
+  const opening = h.manager.open();
+  const first = h.windows[0]!;
+  first.state.scriptResult = gate.promise;
+  first.events.emit('ready-to-show');
+  h.manager.contentReady(first.window.webContents);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(first.state.shows, 0);
+  assert.equal(first.state.background, '#00000000');
+  assert.deepEqual(blur.at(-1), { enabled: true, radius: 24 });
+  assert.deepEqual(appliedAppearance(first.state.scripts.at(-1)!), { active: true, opacity: '0.4' });
+  assert.ok(highlight.length > 0 && highlight.every(hidden => hidden));
+  gate.resolve();
+  await opening;
+  assert.equal(first.state.shows, 1);
+  windowAppearanceStore(appearanceFile).save({ ...preferences, opacity: .6 });
+  assert.deepEqual(appliedAppearance(first.state.scripts.at(-1)!), { active: true, opacity: '0.6' });
+  windowAppearanceStore(appearanceFile).save({ ...preferences, enabled: false });
+  assert.equal(first.state.background, '#000000');
+  assert.equal(appliedAppearance(first.state.scripts.at(-1)!).active, false);
+  first.window.destroy();
+  const count = first.state.scripts.length;
+  windowAppearanceStore(appearanceFile).save(preferences);
+  assert.equal(first.state.scripts.length, count);
+  assert.equal(first.events.listenerCount('focus'), 0);
+  await h.openReady();
+  assert.equal(h.windows[1]!.state.background, '#00000000');
+});
+
+for (const result of ['reduced-transparency', 'unsupported', 'throw', 'unavailable'] as const) {
+  test(`manager opens with the shared opaque fallback when glass is ${result}`, async () => {
+    const h = harness({ appearanceBinding: result === 'unavailable' ? null : {
+      windowGlassSupported: () => true,
+      setWindowGlass(_handle, enabled) {
+        if (!enabled) return 'disabled';
+        if (result === 'throw') throw new Error('Native glass failed');
+        return result;
+      },
+    } });
+    try {
+      await h.openReady();
+      assert.equal(h.windows[0]!.state.background, '#000000');
+      assert.equal(appliedAppearance(h.windows[0]!.state.scripts.at(-1)!).active, false);
+      assert.equal(h.windows[0]!.state.shows, 1);
+    } finally { h.manager.dispose(); }
+  });
+}
+
+test('closing while manager appearance is applying never shows an orphaned window', async () => {
+  const h = harness();
+  const opening = h.manager.open();
+  const first = h.windows[0]!;
+  const gate = createDeferred();
+  first.state.scriptResult = gate.promise;
+  first.events.emit('ready-to-show');
+  h.manager.contentReady(first.window.webContents);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(first.state.scripts.length, 1);
+  const rejected = assert.rejects(opening, /closed before/u);
+  h.manager.dispose();
+  gate.resolve();
+  await rejected;
+  assert.equal(first.state.shows, 0);
+});
+
+test('manager renderer appearance failure closes the window and rejects opening', async () => {
+  const h = harness();
+  const opening = h.manager.open();
+  const first = h.windows[0]!;
+  const gate = createDeferred();
+  first.state.scriptResult = gate.promise;
+  first.events.emit('ready-to-show');
+  h.manager.contentReady(first.window.webContents);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  const rejected = assert.rejects(opening, /Renderer unavailable/u);
+  gate.reject(new Error('Renderer unavailable'));
+  await rejected;
+  assert.equal(first.state.destroyed, true);
+  assert.equal(first.state.shows, 0);
+  assert.equal(first.events.listenerCount('focus'), 0);
 });

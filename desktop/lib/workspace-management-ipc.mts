@@ -1,5 +1,6 @@
 import type { App, BrowserWindow, Dialog, IpcMain, IpcMainInvokeEvent } from 'electron';
 import { realpath } from 'node:fs/promises';
+import path from 'node:path';
 import { GitHubAuthenticationRequiredError, GitHubRepositories } from './github-repositories.mts';
 import type { GitHubRepositoryListResponse } from '../shared/workspace-management.ts';
 import { GitHubLoginService } from './github-login-service.mts';
@@ -58,6 +59,7 @@ export function registerWorkspaceManagementIpcHandlers(options: WorkspaceManagem
   };
   const manager = options.manager ? new WorkspaceManagerWindow({
     ...options.manager, appPath: options.app.getAppPath(),
+    appearanceFile: path.join(options.dataRoot, 'appearance.json'),
     resourcesPath: process.resourcesPath, isPackaged: options.app.isPackaged,
     onWindowCreated: (window) => {
       options.manager?.onWindowCreated?.(window);

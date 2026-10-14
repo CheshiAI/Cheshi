@@ -1,19 +1,35 @@
 import { Bot, LogIn } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { WorkspaceCodexLoginState, WorkspaceManagementApi } from '../../../../../shared/workspace-management';
-import { LoadingState, NeumorphicButton } from '../../../shared/ui';
+import { EmptyState, LoadingState, NeumorphicButton } from '../../../shared/ui';
 import styles from './WorkspaceCodexLogin.module.css';
 
 type LoginApi = Pick<WorkspaceManagementApi, 'getCodexLogin' | 'startCodexLogin' | 'cancelCodexLogin'>;
 const checking: WorkspaceCodexLoginState = { state: 'checking', error: null };
 
-export function WorkspaceCodexLoginView({ status, busy, ready, onLogin, onCancel, onRetry }: {
+export function WorkspaceCodexLoginActions({ status, busy, onLogin, onCancel, onRetry }: {
   status: WorkspaceCodexLoginState;
   busy: boolean;
-  ready: boolean;
   onLogin: () => void;
   onCancel: () => void;
   onRetry: () => void;
+}) {
+  if (status.state === 'signing_in') {
+    return <NeumorphicButton variant="standard" disabled={busy} onClick={onCancel}>Cancel</NeumorphicButton>;
+  }
+  if (status.state === 'error') {
+    return <NeumorphicButton variant="standard" disabled={busy} onClick={onRetry}>Retry</NeumorphicButton>;
+  }
+  if (status.state !== 'signed_out') return null;
+  return <NeumorphicButton variant="standard" className={styles.continueButton} disabled={busy} onClick={onLogin}>
+    <LogIn aria-hidden="true" />Continue with ChatGPT
+  </NeumorphicButton>;
+}
+
+export function WorkspaceCodexLoginView({ status, ready }: {
+  status: WorkspaceCodexLoginState;
+  ready: boolean;
 }) {
   if (status.state === 'signed_in' && ready) return null;
   if (status.state === 'signed_in' || status.state === 'checking') {
@@ -23,25 +39,17 @@ export function WorkspaceCodexLoginView({ status, busy, ready, onLogin, onCancel
   }
   return <div className={styles.login} aria-label="Codex sign-in">
     <Bot className={styles.mark} aria-hidden="true" />
-    <h2>Welcome to Cheshi</h2>
-    <p>Sign in with ChatGPT to start working with Cheshi.</p>
-    {status.state === 'signing_in' && <>
-      <span role="status">Complete sign-in in your browser…</span>
-      <NeumorphicButton raised size="standard" disabled={busy} onClick={onCancel}>Cancel</NeumorphicButton>
-    </>}
-    {status.state === 'signed_out' && <NeumorphicButton raised size="standard" className={styles.continueButton} disabled={busy} onClick={onLogin}>
-      <LogIn aria-hidden="true" />Continue with ChatGPT
-    </NeumorphicButton>}
-    {status.state === 'error' && <>
-      <span className={styles.error} role="alert">{status.error ?? 'Could not check Codex sign-in.'}</span>
-      <NeumorphicButton raised size="standard" disabled={busy} onClick={onRetry}>Retry</NeumorphicButton>
-    </>}
+    <EmptyState className={styles.copy} title="Welcome to Cheshi"
+      description="Sign in with ChatGPT to start working with Cheshi." />
+    {status.state === 'signing_in' && <span role="status">Complete sign-in in your browser…</span>}
+    {status.state === 'error' && <span className={styles.error} role="alert">{status.error ?? 'Could not check Codex sign-in.'}</span>}
   </div>;
 }
 
-export function WorkspaceCodexLogin({ api, ready, onAuthenticatedChange, onSettledChange }: {
+export function WorkspaceCodexLogin({ api, ready, actionsTarget, onAuthenticatedChange, onSettledChange }: {
   api: LoginApi;
   ready: boolean;
+  actionsTarget: HTMLElement | null;
   onAuthenticatedChange: (authenticated: boolean) => void;
   onSettledChange?: (settled: boolean) => void;
 }) {
@@ -81,7 +89,11 @@ export function WorkspaceCodexLogin({ api, ready, onAuthenticatedChange, onSettl
     onAuthenticatedChange(status.state === 'signed_in');
   }, [status.state, onAuthenticatedChange]);
   useEffect(() => { onSettledChange?.(status.state !== 'checking'); }, [status.state, onSettledChange]);
-  return <WorkspaceCodexLoginView status={status} busy={busy} ready={ready}
-    onLogin={() => { void run(() => api.startCodexLogin()); }}
-    onCancel={() => { void run(() => api.cancelCodexLogin()); }} onRetry={() => { void run(() => api.startCodexLogin()); }} />;
+  return <>
+    <WorkspaceCodexLoginView status={status} ready={ready} />
+    {actionsTarget && createPortal(<WorkspaceCodexLoginActions status={status} busy={busy}
+      onLogin={() => { void run(() => api.startCodexLogin()); }}
+      onCancel={() => { void run(() => api.cancelCodexLogin()); }}
+      onRetry={() => { void run(() => api.startCodexLogin()); }} />, actionsTarget)}
+  </>;
 }

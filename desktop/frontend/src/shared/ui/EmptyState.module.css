@@ -25,3 +25,13 @@
   font-size: 10px;
   line-height: 16px;
 }
+
+.section {
+  --empty-text: var(--sidebar-section-label-color);
+  --empty-muted: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
+}
+
+.section > strong { font-size: var(--font-size-section-title); }
+.section > p { font-size: var(--font-size-small); }

@@ -34,7 +34,7 @@ test('clone renders a page with navigation and the complete prepared catalog wit
     initialCatalog={{ login: 'owner', repositories: [
       { id: 1, fullName: 'owner/project', description: null, private: true, cloneUrl: 'https://github.com/owner/project.git' },
     ] }} />);
-  expect(html).toContain('<h1>Clone repository</h1>');
+  expect(html).toMatch(/<h1\b[^>]*>[\s\S]*?<span>CLONE REPOSITORY<\/span><\/h1>/);
   expect(html).toContain('<main');
   expect(html).toContain('Back to Workspaces');
   expect(html).toContain('Select owner/project');
@@ -68,7 +68,7 @@ test('clone progress displays shared loading and the active phase while blocking
 
 test('worktrees opens as a page with shared loading and back navigation before displaying its form', () => {
   const html = renderToStaticMarkup(<WorktreeWorkspacePage api={api} currentPath={entry.rootPath} onClose={() => {}} />);
-  expect(html).toContain('<h1>Git worktrees</h1>');
+  expect(html).toMatch(/<h1\b[^>]*>[\s\S]*?<span>GIT WORKTREES<\/span><\/h1>/);
   expect(html).toContain('Back to Workspaces');
   expect(html).toContain('Preparing...');
   expect(html).not.toContain('role="dialog"');

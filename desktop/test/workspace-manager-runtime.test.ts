@@ -24,6 +24,7 @@ function fakeWindow(onLoad: () => void) {
     mainFrame: {}, isDestroyed: () => state.destroyed,
     on: webEvents.on.bind(webEvents), once: webEvents.once.bind(webEvents), off: webEvents.off.bind(webEvents),
     setWindowOpenHandler() {},
+    executeJavaScript: async (_script: string) => undefined,
   } as unknown as WebContents;
   const destroy = () => {
     if (state.destroyed) return;
@@ -32,7 +33,8 @@ function fakeWindow(onLoad: () => void) {
     events.emit('closed');
   };
   const window = {
-    webContents, once: events.once.bind(events), off: events.off.bind(events),
+    webContents, once: events.once.bind(events), off: events.off.bind(events), on: events.on.bind(events),
+    setBackgroundColor(_value: string) {}, getNativeWindowHandle: () => Buffer.alloc(8),
     isDestroyed: () => state.destroyed, isMinimized: () => false,
     focus: () => { state.focuses += 1; },
     show: () => { state.shows += 1; },

@@ -8,11 +8,5 @@
 }
 
 .empty {
-  --empty-text: var(--sidebar-section-label-color);
-  --empty-muted: var(--sidebar-section-label-color);
-  font-family: var(--font-ui), sans-serif;
-  letter-spacing: normal;
+  composes: section from '../../shared/ui/EmptyState.module.css';
 }
-
-.empty > strong { font-size: var(--font-size-section-title); }
-.empty > p { font-size: var(--font-size-small); }

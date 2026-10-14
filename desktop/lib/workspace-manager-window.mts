@@ -1,5 +1,9 @@
 import path from 'node:path';
 import type { BrowserWindow, BrowserWindowConstructorOptions, WebContents } from 'electron';
+import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './window-appearance.mts';
+import type { WindowGlassBinding } from './window-appearance.mts';
+import { createWindowTopHighlight } from './window-top-highlight.mts';
+import type { WindowAppearanceState } from '../shared/window-appearance.ts';
 
 export interface WorkspaceManagerWindowOptions {
   createWindow: (options: BrowserWindowConstructorOptions) => BrowserWindow;
@@ -8,6 +12,9 @@ export interface WorkspaceManagerWindowOptions {
   isPackaged: boolean;
   rendererUrl?: string;
   workspaceRoot: string;
+  appearanceFile: string;
+  appearanceBinding?: WindowGlassBinding | null;
+  topHighlightBinding?: Parameters<typeof createWindowTopHighlight>[0]['binding'];
   onWindowCreated?: (window: BrowserWindow) => void;
   onShown?: () => void;
   readinessTimeoutMs?: number;
@@ -62,7 +69,8 @@ export class WorkspaceManagerWindow {
     const runtimeRoot = options.isPackaged ? options.resourcesPath : path.join(options.appPath, 'desktop');
     const window = options.createWindow({
       show: false, width: 800, height: 650, minWidth: 600, maxWidth: 800, minHeight: 650, maxHeight: 650,
-      title: 'Cheshi Workspaces', backgroundColor: '#000000',
+      title: 'Cheshi Workspaces', backgroundColor: INITIAL_WINDOW_BACKGROUND_COLORS.dark,
+      transparent: process.platform === 'darwin',
       frame: false,
       webPreferences: {
         sandbox: true, contextIsolation: true, nodeIntegration: false,
@@ -81,6 +89,9 @@ export class WorkspaceManagerWindow {
     let contentReady = false;
     let loaded = false;
     let settled = false;
+    let revealing = false;
+    let appearanceReady = false;
+    let appearance: ReturnType<typeof createWindowAppearance> | undefined;
     let resolveOpening!: () => void;
     let rejectOpening!: (error: unknown) => void;
     const opening = new Promise<void>((resolve, reject) => {
@@ -104,9 +115,13 @@ export class WorkspaceManagerWindow {
       complete(error);
       if (!window.isDestroyed()) window.destroy();
     };
-    const showWhenReady = () => {
-      if (settled || !nativeReady || !contentReady || !loaded) return;
+    const reveal = async () => {
       try {
+        assertManagerOpen(window);
+        appearance?.ready('dark');
+        appearanceReady = true;
+        if (appearance) await this.applyAppearance(window, appearance.getState());
+        if (settled) return;
         assertManagerOpen(window);
         window.show();
         assertManagerOpen(window);
@@ -114,6 +129,11 @@ export class WorkspaceManagerWindow {
         options.onShown?.();
         complete();
       } catch (error) { fail(error); }
+    };
+    const showWhenReady = () => {
+      if (settled || revealing || !nativeReady || !contentReady || !loaded) return;
+      revealing = true;
+      void reveal();
     };
     const onNativeReady = () => { nativeReady = true; showWhenReady(); };
     const timeout = setTimeout(() => {
@@ -133,11 +153,31 @@ export class WorkspaceManagerWindow {
     try {
       options.onWindowCreated?.(window);
       assertManagerOpen(window);
+      createWindowTopHighlight({ window, binding: options.topHighlightBinding,
+        onError: error => process.stderr.write(`[cheshi] Workspaces top highlight: ${String(error)}\n`),
+      });
+      appearance = createWindowAppearance({
+        window, filename: options.appearanceFile, backgrounds: INITIAL_WINDOW_BACKGROUND_COLORS,
+        binding: options.appearanceBinding,
+        onChanged: state => {
+          if (!appearanceReady || window.isDestroyed()) return;
+          void this.applyAppearance(window, state).catch(error => {
+            if (!window.isDestroyed()) process.stderr.write(`[cheshi] Workspaces appearance: ${String(error)}\n`);
+          });
+        },
+      });
       const load = options.rendererUrl
         ? window.loadURL(options.rendererUrl)
         : window.loadFile(path.join(options.isPackaged ? options.resourcesPath : path.join(options.appPath, 'desktop', 'frontend'), 'dist', 'index.html'));
       void load.then(() => { loaded = true; showWhenReady(); }, fail);
     } catch (error) { fail(error); }
     return opening;
+  }
+
+  private async applyAppearance(window: BrowserWindow, state: WindowAppearanceState): Promise<void> {
+    await window.webContents.executeJavaScript(`
+      document.documentElement.toggleAttribute('data-window-glass', ${JSON.stringify(state.active)});
+      document.documentElement.style.setProperty('--window-glass-opacity', ${JSON.stringify(String(state.preferences.opacity))});
+    `);
   }
 }

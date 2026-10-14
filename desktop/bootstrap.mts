@@ -7,6 +7,8 @@ import { CODEGRAPH_DATA_ROOT_ENV, resolveCheshiUserDataDirectory } from '../conf
 import { shouldShowStartupScreen, startupScreen } from './lib/startup-screen.mts';
 import { DEVELOPMENT_SHUTDOWN_DIRECTORY, watchDevelopmentShutdown } from './lib/development-shutdown.mts';
 import { installDevelopmentDevTools } from './lib/development-devtools.mts';
+import { INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
+import { createWindowTopHighlight } from './lib/window-top-highlight.mts';
 
 // Configure storage before any BrowserWindow creates its Chromium session.
 app.setName(product.displayName);
@@ -50,14 +52,19 @@ void app.whenReady().then(async () => {
       minimizable: false,
       fullscreenable: false,
       title: product.displayName,
-      backgroundColor: '#101419',
+      backgroundColor: INITIAL_WINDOW_BACKGROUND_COLORS.dark,
+      transparent: process.platform === 'darwin',
       titleBarStyle: 'hiddenInset',
       webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
     });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    createWindowTopHighlight({ window,
+      onError: error => process.stderr.write(`[cheshi] Startup top highlight: ${String(error)}\n`),
+    });
     const shown = await startupScreen.open(window, {
       name: product.displayName,
       version: product.version,
+      appearanceFile: path.join(userDataDirectory, 'appearance.json'),
       onCancel: () => app.quit(),
     });
     if (!shown || quitting) return;

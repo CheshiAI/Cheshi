@@ -51,8 +51,8 @@ function shouldIgnore(packagePath: string): boolean {
   if (segments.length === 1) return false;
   if (childEntry === 'bootstrap.mts' || childEntry === 'main.mts' || childEntry === 'workspace-runtime.mts') return segments.length > 2;
   if (childEntry === 'frontend') {
-    const startupTokensPath = 'desktop/frontend/src/shared/styles/tokens.css';
-    return normalizedPath !== startupTokensPath && !startupTokensPath.startsWith(`${normalizedPath}/`);
+    const startupStyles = ['tokens.css', 'window-glass.css'].map(file => `desktop/frontend/src/shared/styles/${file}`);
+    return !startupStyles.some(file => normalizedPath === file || file.startsWith(`${normalizedPath}/`));
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;

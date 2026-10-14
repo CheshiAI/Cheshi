@@ -1,0 +1,45 @@
+.dialog {
+  --modal-header-height: var(--header-height);
+  --modal-header-padding: 0 var(--space-default);
+}
+
+.form {
+  display: grid;
+  gap: var(--space-default);
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.repository {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-default);
+}
+
+.repository strong {
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-section-title);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.description,
+.error {
+  margin: 0;
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.error { color: var(--error, #e99b9b); }
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--icon-default);
+  margin-top: var(--space-default);
+}

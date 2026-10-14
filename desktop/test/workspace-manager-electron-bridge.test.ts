@@ -85,7 +85,7 @@ app.whenReady().then(async () => {
     results[results.length - 1].setupAfterInstall = await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("section")).some(node => node.getAttribute("aria-label") === "Workspace tool setup")');
     results[results.length - 1].homeAfterInstall = await window.webContents.executeJavaScript(homeState);
     results[results.length - 1].listCallsBeforeAuth = listCalls;
-    const loginButton = 'Array.from(document.querySelectorAll("main button")).find(button => button.textContent.includes("Continue with ChatGPT"))';
+    const loginButton = 'Array.from(document.querySelectorAll("footer button")).find(button => button.textContent.includes("Continue with ChatGPT"))';
     results[results.length - 1].loginOffered = await window.webContents.executeJavaScript('!!(' + loginButton + ')');
     if (!root) {
       await window.webContents.executeJavaScript('(' + loginButton + ').click()');
@@ -138,14 +138,14 @@ setTimeout(() => app.exit(2), 25000).unref();
     const result = child.stdout.split('\n').find((line) => line.startsWith('MANAGER_BRIDGE_RESULT '));
     assert.ok(result, child.stdout || child.stderr);
     assert.deepEqual(JSON.parse(result.slice('MANAGER_BRIDGE_RESULT '.length)), ['', '/work/example'].map(root => ({
-      root, title: 'Workspaces', appShell: false, hasWorkspaceApi: false, errors: [],
+      root, title: 'WORKSPACES', appShell: false, hasWorkspaceApi: false, errors: [],
       commands: ['/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"', 'brew install gh', 'brew install --cask codex'],
       setupAfterInstall: false,
       homeBeforeInstall: { search: false, open: false, welcome: false },
       homeAfterPartialInstall: { search: false, open: false, welcome: false },
       homeAfterInstall: { search: false, open: false, welcome: false },
       listCallsBeforeAuth: root ? 1 : 0, preparingShown: true,
-      homeAfterAuth: { search: true, open: true, welcome: true }, footerButtons: 0,
+      homeAfterAuth: { search: true, open: true, welcome: true }, footerButtons: 1,
       loginOffered: root === '', loginHiddenAfterAuth: true, signInStarts: root === '' ? 1 : 0,
     })));
     const startupResult = child.stdout.split('\n').find((line) => line.startsWith('STARTUP_BRANCH_RESULT '));
@@ -158,7 +158,7 @@ setTimeout(() => app.exit(2), 25000).unref();
       ['login-error', false, true, false, true, 1, 0],
       ['list-error', false, false, true, true, 1, 1],
     ].map(([scenario, setup, login, projects, error, accountChecks, listCalls]) => ({
-      scenario, snapshot: { setup, login, projects, error, preparing: false, footerLogin: 0 }, accountChecks, listCalls,
+      scenario, snapshot: { setup, login, projects, error, preparing: false, footerLogin: scenario === 'missing-tools' || scenario === 'tools-error' ? 0 : 1 }, accountChecks, listCalls,
     })));
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
