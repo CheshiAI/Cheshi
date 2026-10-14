@@ -67,7 +67,7 @@ test('ref-backed deletion restrictions stay fresh without rerendering session co
   expect(harness.rowRenders).toBe(2);
 });
 
-test('active sessions and live responses retain their indicator without a decorative conversation icon', () => {
+test('active sessions and live responses enable the background activity until completion', () => {
   const initial = props();
   const runningStates: Props[] = [
     { ...initial, sessions: initial.sessions.map(session =>
@@ -79,13 +79,18 @@ test('active sessions and live responses retain their indicator without a decora
     const idle = harness.render(initial);
     const responding = harness.render(running);
     const children = sessionListElements(row(responding, 'two').props.children);
+    expect(row(responding, 'two').props['data-responding']).toBe('true');
+    expect(row(responding, 'one').props['data-responding']).toBeUndefined();
     expect(children.some(child => child.props['aria-label'] === 'Active response')).toBe(true);
+    expect(children.some(child => child.type === 'loading-indicator')).toBe(false);
     expect(children.some(child => child.type === 'MessageSquareText')).toBe(false);
     expect(children.some(child => child.props.content === 'two')).toBe(true);
     expect(row(responding, 'one')).toBe(row(idle, 'one'));
 
     const completed = harness.render(initial);
     const restored = sessionListElements(row(completed, 'two').props.children);
+    expect(row(completed, 'two').props['data-responding']).toBeUndefined();
+    expect(restored.some(child => child.props['aria-label'] === 'Active response')).toBe(false);
     expect(restored.some(child => child.type === 'loading-indicator' || child.type === 'MessageSquareText')).toBe(false);
     expect(restored.some(child => child.props.content === 'two')).toBe(true);
     expect(harness.rowRenders).toBe(4);

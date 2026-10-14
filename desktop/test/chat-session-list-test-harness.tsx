@@ -68,7 +68,6 @@ export function createSessionListHarness() {
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'lucide-react': new Proxy({}, { get: (_target, name) => String(name) }),
     '../../shared/ui': {
-      LoadingIndicator: ({ label }: { label?: string }) => jsx('loading-indicator', { 'aria-label': label }),
       LoadingState: 'loading-state', NeumorphicButton: 'button', SidebarPanelHeader: 'sidebar-panel-header',
     },
     '../../shared/ui/OverlayScrollArea': { OverlayScrollArea: 'overlay-scroll-area' },

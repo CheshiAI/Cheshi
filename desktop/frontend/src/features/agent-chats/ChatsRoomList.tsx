@@ -2,7 +2,7 @@ import { Pencil, Pin, PinOff, Plus, RefreshCw, Search, Trash2 } from 'lucide-rea
 import { WorkerIcon } from '../../shared/ui/WorkerIcon';
 import { useMemo, useRef, useState } from 'react';
 import type { AgentRoom, ChatsSnapshot } from '../../../../shared/agent-chats';
-import { LoadingIndicator, LoadingState, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader } from '../../shared/ui';
+import { LoadingState, NeumorphicButton, NeumorphicTextField, SidebarPanelHeader } from '../../shared/ui';
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
 import { PullToRefreshStatus } from '../../shared/ui/PullToRefreshStatus';
 import { usePullToRefresh } from '../../shared/usePullToRefresh';
@@ -70,9 +70,12 @@ export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, ref
                 <span className={sessionStyles.sessionId}>{roomStatus?.(room) ?? <RoomParticipantsPreview members={room.members} agents={agents} />}</span>
                 <span className={`${sessionStyles.sessionTime} ${styles.time}`}>{formatSessionElapsedTime(updated / 1000, now)}</span>
               </span>
-            </InlineRenameField> : <><NeumorphicButton variant="ghost" className={sessionStyles.session} aria-label={room.name} aria-current={room.id === selectedId ? 'page' : undefined} onClick={() => onSelect(room.id)}>
+            </InlineRenameField> : <><NeumorphicButton variant="ghost" className={sessionStyles.session}
+              data-responding={working ? 'true' : undefined}
+              aria-label={room.name} aria-current={room.id === selectedId ? 'page' : undefined} onClick={() => onSelect(room.id)}>
+              <span className={sessionStyles.sessionActivity} aria-hidden="true" />
+              {working && <span className={sessionStyles.responseStatus} role="status" aria-label="Active response" />}
               <span className={`${sessionStyles.sessionTitleRow} ${styles.title}`}><TooltipTarget content={room.name}><span className={sessionStyles.sessionTitle}>{room.name}</span></TooltipTarget>
-                {working && <LoadingIndicator label="Active response" />}
               </span>
               <span className={`${sessionStyles.sessionMetadata} ${styles.metadata}`}>
                 <span className={sessionStyles.sessionId}>{roomStatus?.(room) ?? <RoomParticipantsPreview members={room.members} agents={agents} />}</span>

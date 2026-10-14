@@ -3,7 +3,7 @@ import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MessageCircleDashed, MessageSquareText, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
 
-import { LoadingIndicator, LoadingState, NeumorphicButton } from '../../shared/ui';
+import { LoadingState, NeumorphicButton } from '../../shared/ui';
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
 import { InlineRenameField } from '../../shared/ui/InlineRenameField';
 import { FlashSessionHeader } from './FlashSessionHeader';
@@ -43,10 +43,12 @@ const ChatSessionButton = memo(function ChatSessionButton({
 }: { id: string; title: string; elapsed: string; active: boolean; responding: boolean; onOpen: (id: string) => void }) {
   return (
     <NeumorphicButton variant="ghost" className={styles.session} aria-current={active ? 'page' : undefined}
+      data-responding={responding ? 'true' : undefined}
       aria-label={title} type="button" aria-haspopup="dialog" onClick={() => onOpen(id)}>
+      <span className={styles.sessionActivity} aria-hidden="true" />
+      {responding && <span className={styles.responseStatus} role="status" aria-label="Active response" />}
       <span className={styles.sessionTitleRow}>
         <TooltipTarget content={title}><span className={styles.sessionTitle}>{title}</span></TooltipTarget>
-        {responding && <LoadingIndicator label="Active response" />}
       </span>
       <span className={styles.sessionMetadata}>
         <TooltipTarget content={id}><span className={styles.sessionId}>{id}</span></TooltipTarget>
