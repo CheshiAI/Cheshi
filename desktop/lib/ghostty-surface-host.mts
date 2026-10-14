@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { workspaceNativeFrame } from './workspace-surface.mts';
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -216,12 +217,13 @@ export class GhosttySurfaceHost {
       }
       return;
     }
+    const nativeFrame = workspaceNativeFrame(this.owner, frame);
     try {
       if (surfaceId === undefined) {
         if (!shouldShow || typeof this.workingDirectory !== "string") return;
         surfaceId = this.binding.createSurface(
           this.owner.getNativeWindowHandle(),
-          frame,
+          nativeFrame,
           this.workingDirectoryForPane?.(paneId) ?? this.workingDirectory,
           this.dark,
           this.command,
@@ -230,14 +232,14 @@ export class GhosttySurfaceHost {
         this.surfaces.set(paneId, surfaceId);
         this.panesBySurface.set(surfaceId, paneId);
         this.surfaceStates.set(paneId, {
-          frame: copyFrame(frame),
+          frame: copyFrame(nativeFrame),
           occluded: null,
           focused: null,
         });
-      } else if (!sameFrame(this.surfaceStates.get(paneId)?.frame, frame)) {
-        this.binding.resizeSurface(surfaceId, frame);
+      } else if (!sameFrame(this.surfaceStates.get(paneId)?.frame, nativeFrame)) {
+        this.binding.resizeSurface(surfaceId, nativeFrame);
         const state = this.surfaceStates.get(paneId);
-        if (state) state.frame = copyFrame(frame);
+        if (state) state.frame = copyFrame(nativeFrame);
       }
       this.applySurfaceState(paneId, surfaceId, shouldShow);
     } catch (error) {

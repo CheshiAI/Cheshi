@@ -20,7 +20,7 @@ export function ChatInputHistoryPanel({ history }: { history: ReturnType<typeof 
       <div id={history.listId} role="listbox" aria-label="Previous questions" className={`${styles.commandOptions} ${historyStyles.options}`}>
         {history.state.entries.map((entry, index) => <TooltipButton variant="ghost" type="button" role="option" tabIndex={-1}
           id={`${history.listId}-${index}`} key={`${entry.id}-${index}`} aria-selected={index === history.state.selected}
-          data-active={index === history.state.selected ? 'true' : undefined}
+            active={index === history.state.selected}
           className={`${styles.commandOption} ${historyStyles.option}`} title={entry.text}
           onMouseEnter={() => history.highlight(index)} onMouseDown={event => event.preventDefault()}
           onClick={() => history.select(index)}>

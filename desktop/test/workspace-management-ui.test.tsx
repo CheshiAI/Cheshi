@@ -1,11 +1,12 @@
 import { createGitHubLoginApi } from './github-login-fixture';
 import { expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { canOpenWorkspaceWorktrees, filterWorkspaceEntries, runWorkspaceDeletion, WorkspaceManager, WorkspaceProjectList } from '../frontend/src/features/navigation/workspace-management/WorkspaceManager';
+import { canOpenWorkspaceWorktrees, filterWorkspaceEntries, runWorkspaceRemoval, WorkspaceManager, WorkspaceProjectList } from '../frontend/src/features/navigation/workspace-management/WorkspaceManager';
 import type { WorkspaceCatalogEntry, WorkspaceManagementApi } from '../shared/workspace-management';
 import { childDirectory, parentDirectory, repositoryDirectoryName, validDirectoryName } from '../frontend/src/features/navigation/workspace-management/workspace-paths';
 import { runWorkspaceOperation, type WorkspaceOperationState } from '../frontend/src/features/navigation/workspace-management/workspace-operation';
-import { runWorkspaceOpenChoice, WorkspaceOpenChoices } from '../frontend/src/features/navigation/workspace-management/OpenWorkspaceDialog';
+import { OpenWorkspaceDialog, runWorkspaceOpenChoice, WorkspaceOpenChoices } from '../frontend/src/features/navigation/workspace-management/OpenWorkspaceDialog';
+import { withDOM } from './agent-chats-test-dom';
 
 const entry = { id: 'project', name: 'Project', rootPath: '/work/project', available: true };
 
@@ -79,15 +80,54 @@ test('project search matches names and full paths without changing catalog order
 test('unavailable projects remain visible but cannot be opened', () => {
   const html = renderToStaticMarkup(<WorkspaceProjectList
     entries={[entry, { ...entry, id: 'missing', name: 'Missing', rootPath: '/missing', available: false }]}
-    selectedPath={entry.rootPath} busy={false} onSelect={() => {}} onOpen={() => {}} onDelete={() => {}} />);
+    selectedPath={entry.rootPath} busy={false} onSelect={() => {}} onOpen={() => {}} onRemove={() => {}} />);
   expect(html).toContain('Open Project');
   expect(html).toContain('Open Missing — unavailable');
   expect(html).toContain('Folder unavailable');
   expect(html.match(/disabled=""/g)).toHaveLength(1);
   expect(html).toContain('/missing');
-  expect(html).toContain('Delete Missing workspace and folder');
+  expect(html).toContain('Remove Missing from Workspaces');
   expect(html.match(/<button\b/g)).toHaveLength(4);
   expect(html).not.toMatch(/<button\b[^>]*>(?:(?!<\/button>)[\s\S])*<button\b/);
+});
+
+test('row removal and workspace options invoke separate actions without opening the project', async () => {
+  await withDOM(async ui => {
+    const actions: string[] = [];
+    await ui.render(<WorkspaceProjectList entries={[entry]} selectedPath={entry.rootPath} busy={false}
+      onSelect={() => {}} onOpen={() => actions.push('open')}
+      onRemove={() => actions.push('remove')} onOpenOptions={() => actions.push('options')} />);
+    await ui.click('Remove Project from Workspaces');
+    expect(actions).toEqual(['remove']);
+    expect(document.querySelector('[aria-label*="workspace and folder"]')).toBeNull();
+    await ui.click('Open options for Project');
+    expect(actions).toEqual(['remove', 'options']);
+  });
+});
+
+test('folder trash is explicit in workspace options and only a confirmed deletion removes the entry', async () => {
+  await withDOM(async ui => {
+    let result: boolean | Error = false;
+    const requests: string[] = [];
+    let deleted = 0, closed = 0;
+    await ui.render(<OpenWorkspaceDialog entry={entry} currentPath="/another" onClose={() => { closed++; }}
+      onDeleted={() => { deleted++; }} restoreFocus={() => false} api={{
+        open: async () => { requests.push('open'); }, openCurrent: async () => { requests.push('current'); },
+        deleteWorkspace: async id => { requests.push(id); if (result instanceof Error) throw result; return result; },
+      }} />);
+    expect(requests).toEqual([]);
+    expect(document.querySelector('[aria-label="Folder actions"]')?.textContent).toContain('uncommitted files');
+    await ui.click('Move folder to Trash…');
+    expect(deleted).toBe(0); expect(closed).toBe(0);
+    result = new Error('Folder is in use');
+    await ui.click('Move folder to Trash…');
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe('Folder is in use');
+    expect(deleted).toBe(0);
+    result = true;
+    await ui.click('Move folder to Trash…');
+    expect(deleted).toBe(1);
+    expect(requests).toEqual([entry.id, entry.id, entry.id]);
+  });
 });
 
 test('worktrees require confirmed Git capability for the actual context rather than another catalog project', () => {
@@ -117,6 +157,7 @@ test('manager gates project actions behind tool and authentication checks withou
     getToolStatus: async () => ({ platform: 'darwin', brew: true, gh: true, codex: true }),
     list: async () => ({ workspaces: [] }), chooseDirectory: async () => null,
     deleteWorkspace: async () => false,
+    removeWorkspace: async () => false,
     listGitHubRepositories: async () => ({ login: 'test', repositories: [], nextPage: null }),
     addFolder: async () => entry, createProject: async () => entry, clone: async () => entry, listWorktrees: async () => [],
     createWorktree: async () => entry, open: async () => {}, openCurrent: async () => {}, openManager: async () => {},
@@ -137,20 +178,20 @@ test('manager gates project actions behind tool and authentication checks withou
   expect(html).not.toContain('SSH');
 });
 
-test('workspace deletion keeps cancelled or failed entries and removes only confirmed successful entries', async () => {
+test('workspace list removal keeps cancelled or failed entries and removes only confirmed successful entries', async () => {
   const pending = { current: false };
   const calls: string[] = [];
   let removed = 0;
   const onDeleted = () => { removed += 1; };
-  expect(await runWorkspaceDeletion(pending, { deleteWorkspace: async (id) => { calls.push(id); return false; } }, entry.id, onDeleted)).toBe(false);
+  expect(await runWorkspaceRemoval(pending, { removeWorkspace: async (id) => { calls.push(id); return false; } }, entry.id, onDeleted)).toBe(false);
   expect(removed).toBe(0);
   let rejected: unknown;
-  try { await runWorkspaceDeletion(pending, { deleteWorkspace: async () => { throw new Error('Close this workspace first.'); } }, entry.id, onDeleted); }
+  try { await runWorkspaceRemoval(pending, { removeWorkspace: async () => { throw new Error('Close this workspace first.'); } }, entry.id, onDeleted); }
   catch (error) { rejected = error; }
   expect(rejected).toBeInstanceOf(Error);
   expect(removed).toBe(0);
   expect(pending.current).toBe(false);
-  expect(await runWorkspaceDeletion(pending, { deleteWorkspace: async (id) => { calls.push(id); return true; } }, entry.id, onDeleted)).toBe(true);
+  expect(await runWorkspaceRemoval(pending, { removeWorkspace: async (id) => { calls.push(id); return true; } }, entry.id, onDeleted)).toBe(true);
   expect(removed).toBe(1);
   expect(calls).toEqual([entry.id, entry.id]);
 });
@@ -160,10 +201,10 @@ test('workspace deletion blocks repeat submissions while the native confirmation
   const pending = { current: false };
   let attempts = 0;
   let removed = 0;
-  const api = { deleteWorkspace: async () => { attempts += 1; await gate.promise; return true; } };
+  const api = { removeWorkspace: async () => { attempts += 1; await gate.promise; return true; } };
   const onDeleted = () => { removed += 1; };
-  const first = runWorkspaceDeletion(pending, api, entry.id, onDeleted);
-  expect(await runWorkspaceDeletion(pending, api, entry.id, onDeleted)).toBe(false);
+  const first = runWorkspaceRemoval(pending, api, entry.id, onDeleted);
+  expect(await runWorkspaceRemoval(pending, api, entry.id, onDeleted)).toBe(false);
   expect(attempts).toBe(1);
   gate.resolve();
   expect(await first).toBe(true);
@@ -173,7 +214,7 @@ test('workspace deletion blocks repeat submissions while the native confirmation
 
 test('busy project lists disable deletion as well as opening', () => {
   const html = renderToStaticMarkup(<WorkspaceProjectList entries={[entry]} selectedPath={entry.rootPath}
-    busy onSelect={() => {}} onOpen={() => {}} onDelete={() => {}} />);
+    busy onSelect={() => {}} onOpen={() => {}} onRemove={() => {}} />);
   expect(html.match(/disabled=""/g)).toHaveLength(2);
 });
 

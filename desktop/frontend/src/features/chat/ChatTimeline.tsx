@@ -28,7 +28,6 @@ export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, hist
     state,
     streaming,
     timelineRef,
-    workspaceName,
   } = controller;
   const completedTurns = useMemo(() => completedChatTurnInputs(state.items, state.activeSessionId, state.activeTitle, streaming),
     [state.items, state.activeSessionId, state.activeTitle, streaming]);
@@ -55,7 +54,7 @@ export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, hist
       >
         <div className={styles.timelineContent}>
           {state.items.length === 0 && !loading && (
-            <ChatWelcome workspaceName={workspaceName} />
+            <ChatWelcome />
           )}
           {loading && <LoadingState type="preparing" className={styles.loading} label="Loading conversation…" />}
           <ChatTimelineHistory

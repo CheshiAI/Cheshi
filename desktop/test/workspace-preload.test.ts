@@ -11,7 +11,7 @@ test('built sandboxed preload exposes workspace actions through the intended IPC
   const menuListeners = new Map<string, () => void>();
   let repositories: GitHubRepositoryListResponse = { status: 'ready', page: { repositories: [], nextPage: null, login: 'example' } };
   vm.runInNewContext(readFileSync(new URL('../runtime/preload.cjs', import.meta.url), 'utf8'), {
-    process: { platform: process.platform },
+    process: { platform: process.platform, argv: [] },
     window: { addEventListener() {} },
     document: { readyState: 'loading' },
     require(name: string) {
@@ -62,6 +62,7 @@ test('built sandboxed preload exposes workspace actions through the intended IPC
   await api.addFolder('/project');
   await api.createProject(project);
   await api.deleteWorkspace('registered-project-id');
+  await api.removeWorkspace('registered-project-id');
   await api.clone(clone);
   await api.listWorktrees('/project');
   await api.createWorktree(worktree);
@@ -83,6 +84,7 @@ test('built sandboxed preload exposes workspace actions through the intended IPC
     ['cheshi:workspace-management:add-folder', '/project'],
     ['cheshi:workspace-management:create-project', project],
     ['cheshi:workspace-management:delete-workspace', 'registered-project-id'],
+    ['cheshi:workspace-management:remove-workspace', 'registered-project-id'],
     ['cheshi:workspace-management:clone', clone],
     ['cheshi:workspace-management:list-worktrees', '/project'],
     ['cheshi:workspace-management:create-worktree', worktree],
@@ -108,7 +110,7 @@ test('built preload routes the nested local history API and preserves restore re
     'cheshi:restore-local-history': restoreResult,
   };
   vm.runInNewContext(readFileSync(new URL('../runtime/preload.cjs', import.meta.url), 'utf8'), {
-    process: { platform: process.platform },
+    process: { platform: process.platform, argv: [] },
     window: { addEventListener() {} },
     document: { readyState: 'loading' },
     require(name: string) {

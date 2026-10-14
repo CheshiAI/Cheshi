@@ -1,4 +1,6 @@
 import { AgentFlashMemory } from './lib/flash/agent-memory.mts';
+import { WorkspaceHost } from './lib/workspace-host.mts';
+import { nativeWorkspaceWindow } from './lib/workspace-surface.mts';
 import { createPlatformChats } from './lib/agent-platform/chat-service.mts';
 import { createToolCredentials } from './lib/agent-management/tool-credentials.mts';
 import { createCodeGraphSynchronization } from './lib/codegraph-synchronization.mts';
@@ -15,7 +17,7 @@ import { createSchedulerNotifications } from './lib/scheduler/notifications.mts'
 import type { SchedulerEngine } from './lib/scheduler/engine.mts';
 import type { ScheduleRun } from './shared/scheduler.ts';
 import { createCodeGraphCommands } from './lib/codegraph-service.mts';
-import { codeGraphStorageDirectory, resolveCodeGraphDataRoot } from '../config/workspace-storage.mts';
+import { codeGraphStorageDirectory, registerWorkspace, resolveCodeGraphDataRoot } from '../config/workspace-storage.mts';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { app, autoUpdater, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, screen, safeStorage, shell, Tray } from 'electron';
@@ -246,12 +248,24 @@ const backgroundUsage = createAccountUsageBackground({
 
 const workspaces = new WorkspaceApplication({
   router: new WorkspaceIpcRouter(ipcMain),
+  createHost: (scope, activated) => new WorkspaceHost(scope, (window, hostScope) => {
+    hostScope.ipc.handle(`${KEEP_AWAKE_CHANNEL}:get`, () => keepAwake.snapshot());
+    hostScope.ipc.handle(`${KEEP_AWAKE_CHANNEL}:set`, (_event, enabled: unknown) => keepAwake.setEnabled(enabled));
+    const unsubscribe = keepAwake.subscribe(state => {
+      if (!window.isDestroyed()) window.webContents.send(`${KEEP_AWAKE_CHANNEL}:changed`, state);
+    });
+    window.once('closed', unsubscribe);
+  }, activated),
   createRuntime: createApplicationRuntime,
+  activated: root => {
+    try { registerWorkspace(app.getPath('userData'), root, { setCurrent: true }); }
+    catch (error) { process.stderr.write(`[cheshi] Workspace registration failed: ${String(error)}\n`); }
+  },
   initialRoot: '',
 });
 
 const openNotesList = createStickyNotesMenuAction({
-  windows: () => workspaces.readyProjectWindows, focused: () => BrowserWindow.getFocusedWindow(),
+  windows: () => workspaces.readyProjectWindows, focused: () => workspaces.readyProjectWindows.find(window => window.isFocused()) ?? BrowserWindow.getFocusedWindow(),
   openWorkspace: async () => {
     if (!workspaces.lastWorkspaceRoot) throw new Error('Open a workspace to view saved notes.');
     await workspaces.reveal(workspaces.lastWorkspaceRoot);
@@ -342,17 +356,17 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
           : input.action === 'remove' ? toolCredentials.remove(input.origin, input.name) : toolCredentials.status(input.origin, input.name),
         packsDirectory: path.join(app.getPath('userData'), 'homie-packs'),
         exportPackagePath: async name => {
-          const result = await dialog.showSaveDialog(window, { title: 'Export Homie pack', defaultPath: name,
+          const result = await dialog.showSaveDialog(nativeWorkspaceWindow(window), { title: 'Export Homie pack', defaultPath: name,
             filters: [{ name: 'Homie pack', extensions: ['json'] }] });
           return result.canceled ? null : result.filePath ?? null;
         },
         selectPackage: async () => {
-          const result = await dialog.showOpenDialog(window, { title: 'Import Homie pack', defaultPath: options.workspaceRoot,
+          const result = await dialog.showOpenDialog(nativeWorkspaceWindow(window), { title: 'Import Homie pack', defaultPath: options.workspaceRoot,
             properties: ['openFile'], filters: [{ name: 'Homie pack or agent.json', extensions: ['json'] }] });
           return result.canceled ? null : result.filePaths[0] ?? null;
         },
         selectInstructionFiles: async () => {
-          const result = await dialog.showOpenDialog(window, { title: 'Link instruction files', defaultPath: options.workspaceRoot,
+          const result = await dialog.showOpenDialog(nativeWorkspaceWindow(window), { title: 'Link instruction files', defaultPath: options.workspaceRoot,
             properties: ['openFile', 'multiSelections'], filters: [{ name: 'Markdown', extensions: ['md'] }] });
           return result.canceled ? [] : result.filePaths;
         },
@@ -373,7 +387,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       disposeNotesLibrary = registerStickyNotesLibrary({ ipc: options.scope.ipc, windows: () => [window], service: stickyNotes.library });
       notificationEventsIpc = registerNotificationEventsIpc({ window, ipc: options.scope.ipc, service: notificationEvents });
       discordIpc = registerDiscordIpc({ window, ipc: options.scope.ipc, service: discord,
-        setup: context => runtime.startDiscordSetup(context, () => createDiscordSetupBrowser({ parent: window,
+        setup: context => runtime.startDiscordSetup(context, () => createDiscordSetupBrowser({ parent: nativeWorkspaceWindow(window),
           createWindow: configuration => new BrowserWindow(configuration), clipboard, settings: discord,
           confirm: (preferences, signal) => discordIpc?.confirm(preferences, signal) ?? Promise.resolve(false) })) });
       notificationIpc = registerIMessageIpc({ window, ipc: options.scope.ipc, service: notifications, commands: messageCommands });
@@ -449,7 +463,7 @@ app.whenReady().then(async () => {
   }
   const applicationMenu = Menu.getApplicationMenu();
   if (applicationMenu) {
-    const openHelp = createHelpMenuAction({ focused: () => BrowserWindow.getFocusedWindow(), windows: () => workspaces.readyWindows,
+    const openHelp = createHelpMenuAction({ focused: () => workspaces.readyWindows.find(window => window.isFocused()) ?? BrowserWindow.getFocusedWindow(), windows: () => workspaces.readyWindows,
       openManager: () => workspaces.openManager() });
     const menuItems = applicationMenu.items.filter(item => item.role?.toLowerCase() !== 'filemenu');
     const template = helpMenuTemplate(aboutMenuTemplate(menuItems, product.displayName, aboutWindow.open, items => Menu.buildFromTemplate(items)),

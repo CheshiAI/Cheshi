@@ -11,6 +11,7 @@ import {
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { workspaceProjectColors } from './workspace-project-colors.mts';
 
 export const CODEGRAPH_DATA_ROOT_ENV = 'CODEGRAPH_DATA_ROOT' as const;
 
@@ -239,6 +240,7 @@ export function registerWorkspace(
     id,
     name: path.basename(rootPath) || 'Workspace',
     rootPath,
+    iconColor: workspaceProjectColors(resolvedDataRoot, [rootPath])[0],
     storagePath,
     codeGraphPath,
     createdAt: existingWorkspace?.createdAt ?? timestamp,

@@ -10,7 +10,7 @@ function createHarness(userName: unknown = 'Alex', invokeResult: unknown = undef
   const filePathLookups: unknown[] = [];
   const listeners = new Map<string, Set<(event: unknown, value: unknown) => void>>();
   vm.runInNewContext(readFileSync(new URL('../runtime/preload.cjs', import.meta.url), 'utf8'), {
-    process: { platform: process.platform },
+    process: { platform: process.platform, argv: [] },
     window: { addEventListener() {} },
     document: { readyState: 'loading' },
     require(name: string) {

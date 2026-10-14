@@ -7,7 +7,7 @@
 .heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-default); color: var(--sidebar-section-label-color); font-family: var(--font-ui), sans-serif; font-size: var(--font-size-small); font-weight: 400; letter-spacing: normal; }
 .results { display: grid; gap: 4px; max-height: 200px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
 .repository { display: flex; align-items: center; justify-content: flex-start; gap: var(--space-default); height: auto; min-height: 40px; width: 100%; padding: var(--space-default); text-align: left; }
-.repository > svg { flex: 0 0 var(--icon-size-default); width: var(--icon-size-default); height: var(--icon-size-default); }
+.repository > svg { flex: 0 0 var(--icon-button-icon-size); width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); }
 .repository > span { display: grid; gap: 4px; min-width: 0; }
 .repository strong { color: var(--text); font-size: var(--font-size-label); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .repository small { color: var(--sidebar-section-label-color); font-size: var(--font-size-small); font-weight: 400; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

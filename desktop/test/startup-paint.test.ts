@@ -4,6 +4,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { installRendererReadiness } from '../lib/renderer-readiness.mts';
+import { workspaceWindowOptions } from '../lib/workspace-window-options.mts';
 
 const bootstrapSource = readFileSync(new URL('../bootstrap.mts', import.meta.url), 'utf8');
 const runtimeSource = readFileSync(new URL('../workspace-runtime.mts', import.meta.url), 'utf8');
@@ -32,7 +33,8 @@ test('registers settings IPC before the renderer can request its initial menu st
 
 test('keeps the desktop window hidden until Electron and the painted renderer are ready', () => {
   const createWindow = runtimeSource.indexOf('function createMainWindow(');
-  const hiddenWindow = runtimeSource.indexOf('show: false', createWindow);
+  const hiddenWindow = runtimeSource.indexOf('workspaceWindowOptions(preloadPath, product.displayName)', createWindow);
+  assert.equal(workspaceWindowOptions('/preload', 'Cheshi').show, false);
   const rendererListener = runtimeSource.indexOf(
     'ipcMain.on(RENDERER_READY_CHANNEL, handleRendererReady)',
     createWindow,
@@ -60,7 +62,7 @@ test('keeps the desktop window hidden until Electron and the painted renderer ar
   assert.doesNotMatch(runtimeSource, /window\.once\('ready-to-show', showWindow\)/u);
 });
 
-function createRendererHarness(readyState: DocumentReadyState = 'loading') {
+function createRendererHarness(readyState: DocumentReadyState = 'loading', retainedSurface = false) {
   const events = new EventTarget();
   const frames: FrameRequestCallback[] = [];
   const tasks: Array<() => void> = [];
@@ -83,7 +85,7 @@ function createRendererHarness(readyState: DocumentReadyState = 'loading') {
       return tasks.length;
     },
   };
-  installRendererReadiness(view, document, (theme) => { themes.push(theme); });
+  installRendererReadiness(view, document, (theme) => { themes.push(theme); }, retainedSurface);
   return {
     frames, tasks, themes, documentElement,
     dispatch(name: string) { events.dispatchEvent(new Event(name)); },
@@ -99,6 +101,16 @@ function createRendererHarness(readyState: DocumentReadyState = 'loading') {
     },
   };
 }
+
+test('a hidden retained workspace becomes ready without waiting for a paint that cannot occur before activation', () => {
+  const renderer = createRendererHarness('complete', true);
+  assert.equal(renderer.tasks.length, 0);
+  renderer.dispatch('cheshi:workspace-content-ready');
+  assert.equal(renderer.frames.length, 0);
+  assert.equal(renderer.tasks.length, 1);
+  renderer.task();
+  assert.deepEqual(renderer.themes, ['dark']);
+});
 
 for (const firstEvent of ['DOMContentLoaded', 'cheshi:workspace-content-ready']) {
   test(`waits for both readiness events when ${firstEvent} arrives first`, () => {

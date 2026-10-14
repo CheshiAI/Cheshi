@@ -23,8 +23,9 @@
 .actions > button > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-basis: var(--icon-size-default); }
 .listRegion { flex: 1; min-height: 0; overflow-y: auto; }
 .projects { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.projectRow { position: relative; min-width: 0; }
-.deleteProject { position: absolute; right: var(--icon-default); top: 50%; translate: 0 -50%; }
+.projectRow { --project-actions-width: var(--icon-button-size); position: relative; min-width: 0; }
+.projectRow[data-open-options='true'] { --project-actions-width: calc(2 * var(--icon-button-size) + var(--icon-default)); }
+.projectActions { position: absolute; right: var(--icon-default); top: 50%; translate: 0 -50%; display: flex; align-items: center; gap: var(--icon-default); }
 .project {
   display: flex;
   align-items: center;
@@ -33,7 +34,7 @@
   min-height: 48px;
   justify-content: flex-start;
   gap: var(--space-default);
-  padding: 4px calc(22px + 2 * var(--icon-default)) 4px 8px;
+  padding: 4px calc(var(--project-actions-width) + 2 * var(--icon-default)) 4px 8px;
   color: var(--text);
   text-align: left;
   font: inherit;

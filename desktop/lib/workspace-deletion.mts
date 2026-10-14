@@ -124,3 +124,12 @@ export async function deleteRegisteredWorkspace(options: DeleteRegisteredWorkspa
     return true;
   });
 }
+
+/** Forget only the catalog entry; files, indexes and linked-project membership are independent. */
+export async function removeRegisteredWorkspace(options: {
+  dataRoot: string; id: unknown; confirm: (entry: WorkspaceRecord) => Promise<boolean>;
+}): Promise<boolean> {
+  const entry = registeredWorkspace(options.dataRoot, options.id);
+  if (await options.confirm(entry) !== true) return false;
+  return unregisterWorkspace(options.dataRoot, entry);
+}

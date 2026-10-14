@@ -31,11 +31,12 @@ const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceVi
   { label: 'Settings', icon: <Settings aria-hidden="true" />, view: 'settings' },
 ];
 
-export function SidebarRail({ activeView, sidebarOpen, onNavigate, onToggleSidebar }: {
+export function SidebarRail({ activeView, sidebarOpen, onNavigate, onToggleSidebar, workspaceControl }: {
   activeView: WorkspaceView;
   sidebarOpen: boolean;
   onNavigate(view: WorkspaceView): void;
   onToggleSidebar(): void;
+  workspaceControl?: ReactNode;
 }) {
   return <>
     <div className={styles.chrome} aria-hidden="true" />
@@ -55,7 +56,7 @@ export function SidebarRail({ activeView, sidebarOpen, onNavigate, onToggleSideb
         label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         aria-controls="workspace-sidebar" aria-expanded={sidebarOpen} onClick={onToggleSidebar} />
-      <WorkspaceSelector />
+      {workspaceControl ?? <WorkspaceSelector />}
     </div>
   </>;
 }

@@ -9,7 +9,7 @@ test('sandboxed preload preserves linked project paths and scoped operations', a
   const calls: unknown[][] = [];
   const listeners = new Map<string, () => void>();
   vm.runInNewContext(readFileSync(new URL('../runtime/preload.cjs', import.meta.url), 'utf8'), {
-    process: { platform: process.platform }, window: { addEventListener() {} }, document: { readyState: 'loading' },
+    process: { platform: process.platform, argv: [] }, window: { addEventListener() {} }, document: { readyState: 'loading' },
     require(name: string) {
       assert.equal(name, 'electron');
       return { contextBridge: { exposeInMainWorld(key: string, value: CheshiDesktopApi) { if (key === 'cheshiDesktop') api = value; } },

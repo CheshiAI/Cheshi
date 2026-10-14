@@ -12,6 +12,8 @@ import { ChatUserInputPrompt } from '../frontend/src/features/chat/ChatUserInput
 import { regionalBlurMask } from '../frontend/src/shared/ui/regionalBlurGeometry';
 import { ChatConfigurationMenu } from '../frontend/src/features/chat/ChatConfigurationMenu';
 import { ChatWorkspaceBlurContext } from '../frontend/src/features/chat/ChatWorkspaceBlurContext';
+import { connectWorkspaceRailBlur } from '../frontend/src/features/shell/workspaceRailBlur';
+import type { WorkspaceRailBlur, WorkspaceSurfaceApi } from '../shared/workspace-host';
 
 mock.module('../frontend/src/shared/ui/Tooltip.module.css', () => ({
   default: { anchor: 'tooltip-anchor', content: 'tooltip-content' },
@@ -123,7 +125,9 @@ async function withDOM(run: (h: {
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   const box = (element: TestElement) => {
-    const [x = 0, y = 0, width = 0, height = 0] = (element.dataset.box ?? '').split(',').map(Number);
+    const [x = 0, y = 0, width = 0, height = 0] = element.dataset.box
+      ? element.dataset.box.split(',').map(Number)
+      : [element.style.left, element.style.top, element.style.width, element.style.height].map(value => Number.parseFloat(value) || 0);
     return { x, y, width, height, top: y, left: x, right: x + width, bottom: y + height, toJSON() { return {}; } };
   };
   const geometryProperties = ['offsetWidth', 'offsetHeight', 'getBoundingClientRect', 'getClientRects'] as const;
@@ -170,6 +174,47 @@ async function withDOM(run: (h: {
 function mask(document: Document) {
   return decodeURIComponent(document.querySelector('feImage')?.getAttribute('href')?.split(',').slice(1).join(',') ?? '');
 }
+
+test('native rail regions blur live workspace pixels, follow expansion, and restore filters on dismissal', async () => {
+  await withDOM(async h => {
+    const app = h.document.getElementById('app')!;
+    app.dataset.box = '0,0,800,600'; app.style.filter = 'brightness(1)';
+    await h.render({ menu: false, composer: false });
+    const originalFilterCount = h.document.querySelectorAll('filter').length;
+    let listener: ((region: WorkspaceRailBlur | null) => void) | undefined;
+    const api: WorkspaceSurfaceApi = {
+      report: () => {}, onCommand: () => () => {},
+      onRailBlur: next => { listener = next; return () => { listener = undefined; }; },
+    };
+    const dispose = connectWorkspaceRailBlur(api, h.document);
+    try {
+      listener!({ x: -60, y: 100, width: 140, height: 42, radius: 8 });
+      h.invalidate(); await h.flush();
+      const panel = h.document.querySelector<HTMLElement>('[data-workspace-rail-blur] > div')!;
+      expect(app.contains(panel)).toBe(false);
+      expect(app.style.filter).toContain('brightness(1) url(');
+      expect(panel.style.filter).toBe('');
+      expect(sourceMask(h.document, app)).toContain('M-52 100H72');
+      expect(h.document.querySelector('feGaussianBlur')?.getAttribute('stdDeviation')).toBe('16');
+      const filterCount = h.document.querySelectorAll('filter').length;
+      listener!({ x: -60, y: 100, width: 180, height: 42, radius: 8 });
+      h.invalidate(); await h.flush();
+      expect(sourceMask(h.document, app)).toContain('M-52 100H112');
+      expect(h.document.querySelectorAll('filter')).toHaveLength(filterCount);
+      listener!(null);
+      expect(app.style.filter).toBe('brightness(1)');
+      expect(h.document.querySelector('[data-workspace-rail-blur]')).toBeNull();
+      listener!({ x: -60, y: 200, width: 140, height: 42, radius: 8 });
+      h.invalidate(); await h.flush();
+      expect(app.style.filter).toContain('url(');
+    } finally { dispose(); }
+    expect(listener).toBeUndefined();
+    expect(app.style.filter).toBe('brightness(1)');
+    expect(h.document.querySelector('[data-workspace-rail-blur]')).toBeNull();
+    expect(app.hasAttribute('data-regional-blur-source')).toBe(false);
+    expect(h.document.querySelectorAll('filter')).toHaveLength(originalFilterCount);
+  });
+});
 
 test('status toast blurs the app behind its portal and restores the source when dismissed', async () => {
   await withDOM(async h => {

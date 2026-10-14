@@ -53,6 +53,7 @@ test('manager footer owns login, cancel and retry actions and clears them after 
         getToolStatus: async () => ({ platform: 'win32', brew: true, gh: true, codex: true }),
         list: async () => ({ workspaces: [] }), chooseDirectory: async () => null,
         deleteWorkspace: async () => false,
+    removeWorkspace: async () => false,
         listGitHubRepositories: async () => ({ login: 'test', repositories: [], nextPage: null }),
         addFolder: async () => { throw new Error('Unexpected add'); },
         createProject: async () => { throw new Error('Unexpected create'); },

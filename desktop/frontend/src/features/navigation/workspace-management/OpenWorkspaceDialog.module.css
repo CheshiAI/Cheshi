@@ -43,3 +43,12 @@
   gap: var(--icon-default);
   margin-top: var(--space-default);
 }
+
+.folderActions {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-default);
+  margin-top: var(--space-default);
+  padding-top: var(--space-default);
+  border-top: 1px solid var(--divider);
+}

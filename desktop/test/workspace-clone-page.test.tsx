@@ -21,6 +21,7 @@ const api: WorkspaceManagementApi = {
   addFolder: async () => entry,
   createProject: async () => entry,
   deleteWorkspace: async () => false,
+    removeWorkspace: async () => false,
   clone: async () => entry,
   listGitHubRepositories: async () => ({ login: 'owner', repositories: [], nextPage: null }),
   listWorktrees: async () => [],

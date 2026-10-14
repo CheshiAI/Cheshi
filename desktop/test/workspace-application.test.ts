@@ -7,8 +7,9 @@ import {
   WorkspaceWindowCloseCancelledError, type WorkspaceRuntimeOptions, type WorkspaceRuntime,
 } from '../lib/workspace-application.mts';
 import { WorkspaceIpcRouter } from '../lib/workspace-ipc-router.mts';
+import type { WorkspaceHost } from '../lib/workspace-host.mts';
 
-function fixture() {
+function fixture(retained = false) {
   const instances: Array<WorkspaceRuntime & {
     options: WorkspaceRuntimeOptions; window: BrowserWindow;
     state: { destroyed: boolean; blocked: boolean; disposed: number; closeCalls: number; shown: boolean };
@@ -76,12 +77,64 @@ function fixture() {
     instances.push(runtime);
     return runtime;
   }
-  const application = new WorkspaceApplication({ router, createRuntime, initialRoot: '/one' });
+  const application = new WorkspaceApplication({ router, createRuntime, initialRoot: '/one',
+    createHost: retained ? () => ({ disposeIfEmpty() {} } as WorkspaceHost) : undefined });
   return { application, instances, liveScopes, eventsLog, confirmations,
     chooseClose(choice: number) { closeChoice = choice; },
     gateNextStart(promise: Promise<void>) { nextStartGate = promise; },
     failNext(root: string) { failNextRoot = root; } };
 }
+
+test('host switching retains running services, unsaved state, and independent IPC scopes', async () => {
+  const f = fixture(true);
+  await f.application.open('/one');
+  const first = f.instances[0]!;
+  first.state.blocked = true;
+  await first.options.onReplaceWorkspace('/two');
+  const second = f.instances[1]!;
+  assert.equal(first.options.host, second.options.host);
+  assert.notEqual(first.options.scope, second.options.scope);
+  assert.equal(first.state.closeCalls, 0);
+  assert.equal(first.state.disposed, 0);
+  assert.equal(f.confirmations.length, 0);
+  await second.options.onReplaceWorkspace('/one');
+  assert.equal(f.instances.length, 2);
+  assert.equal(f.application.lastWorkspaceRoot, '/one');
+  await first.options.onReplaceWorkspace('/one');
+  assert.equal(f.instances.length, 2);
+  first.state.blocked = false;
+  await f.application.closeAll();
+  assert.deepEqual(f.instances.map(entry => entry.state.disposed), [1, 1]);
+});
+
+test('failed hosted startup leaves the source alive and new-window requests keep a separate host', async () => {
+  const f = fixture(true);
+  await f.application.open('/one');
+  const first = f.instances[0]!;
+  f.failNext('/broken');
+  await assert.rejects(first.options.onReplaceWorkspace('/broken'), /Startup failed/u);
+  assert.equal(first.state.disposed, 0);
+  assert.equal(first.state.closeCalls, 0);
+  await first.options.onOpenWorkspace('/two');
+  assert.notEqual(first.options.host, f.instances[2]!.options.host);
+  await f.application.closeAll();
+});
+
+test('concurrent opens from different surfaces reuse the same prepared workspace', async () => {
+  const f = fixture(true);
+  await f.application.open('/one');
+  await f.instances[0]!.options.onReplaceWorkspace('/two');
+  const gate = createDeferred();
+  f.gateNextStart(gate.promise);
+  const first = f.instances[0]!.options.onReplaceWorkspace('/three');
+  const second = f.instances[1]!.options.onReplaceWorkspace('/three');
+  gate.resolve();
+  await Promise.all([first, second]);
+  assert.equal(f.instances.length, 3);
+  assert.equal(f.application.lastWorkspaceRoot, '/three');
+  assert.deepEqual(f.instances.map(entry => entry.state.disposed), [0, 0, 0]);
+  await f.application.closeAll();
+});
 
 test('new workspaces are independent windows in one application with only the first marked initial', async () => {
   const f = fixture();

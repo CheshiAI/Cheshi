@@ -1,14 +1,15 @@
-import { StrictMode } from 'react';
+import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import App from './App';
-import { TemporaryChatPanel } from './features/chat/TemporaryChatPanel';
 import { cheshiDesktop } from './cheshiDesktop';
 import { installWindowAppearance } from './features/settings/windowAppearance';
-import { UsageTrayPopover } from './features/account/UsageTrayPopover';
 import { installSelectionCopy } from './shared/selectionCopy';
-import { StickyNotes } from './features/sticky-notes/StickyNotes';
 import './styles.css';
+
+const TemporaryChatPanel = lazy(() => import('./features/chat/TemporaryChatPanel').then(module => ({ default: module.TemporaryChatPanel })));
+const UsageTrayPopover = lazy(() => import('./features/account/UsageTrayPopover').then(module => ({ default: module.UsageTrayPopover })));
+const StickyNotes = lazy(() => import('./features/sticky-notes/StickyNotes').then(module => ({ default: module.StickyNotes })));
 
 const disposeAppearance = installWindowAppearance(cheshiDesktop?.appearance);
 if (import.meta.hot) import.meta.hot.dispose(disposeAppearance);
@@ -26,6 +27,8 @@ if (usagePopover) document.documentElement.dataset.usagePopover = '';
 
 createRoot(root).render(
   <StrictMode>
-    {stickyNotes ? <StickyNotes api={stickyNotes} /> : usagePopover ? <UsageTrayPopover api={usagePopover} /> : temporaryChat ? <TemporaryChatPanel /> : <App />}
+    <Suspense fallback={null}>
+      {stickyNotes ? <StickyNotes api={stickyNotes} /> : usagePopover ? <UsageTrayPopover api={usagePopover} /> : temporaryChat ? <TemporaryChatPanel /> : <App />}
+    </Suspense>
   </StrictMode>,
 );

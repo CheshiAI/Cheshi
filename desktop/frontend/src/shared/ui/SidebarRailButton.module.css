@@ -32,7 +32,7 @@
 
 .button[data-active='true'] { background: var(--control-surface); }
 
-.button:not(:disabled):is(:hover, :active, :focus-visible) {
+.button:not(:disabled):is(:hover, :active, :focus-visible, [data-rail-expanded]) {
   z-index: 2;
   width: calc(42px + var(--rail-label-width, 0px));
   background: var(--control-surface-interactive);
@@ -43,6 +43,9 @@
   cursor: not-allowed;
   opacity: .5;
 }
+
+/* The retained workspace applies SVG blur beneath this native continuation. */
+.button:not(:disabled)[data-rail-expanded] { background: var(--control-surface-interactive); transition-property: width, color; }
 
 .icon {
   display: grid;

@@ -1,4 +1,5 @@
 import { createIMessageApi } from './lib/imessage-preload.cts';
+import './lib/workspace-renderer-preload.cts';
 import { createGitHubIssuesApi } from './lib/github-issue-preload.cts';
 import { chatUserInputRequest, chatUserInputResponse } from './shared/chat-user-input.ts';
 import { chatSavedTurn, chatSavedTurnInput } from './shared/chat-saved-turns.ts';
@@ -17,7 +18,6 @@ import { createKeepAwakeApi } from './lib/keep-awake-preload.cts';
 import { createEditorSessionApi } from './lib/editor-session-preload.cts';
 import { createWorkspaceFileSearchApi } from './lib/workspace-file-search-preload.cts';
 import { createChatQuestionDismissalsApi } from './lib/chat-question-dismissals-preload.cts';
-import { installRendererReadiness } from './lib/renderer-readiness.mts';
 
 import type { IpcRendererEvent } from 'electron';
 
@@ -77,12 +77,9 @@ const CODEX_CHAT_EVENT_CHANNEL = 'cheshi:codex-chat-event';
 const GIT_REPOSITORY_CHANGED_CHANNEL = 'cheshi:git-repository-changed';
 const GITHUB_COMMENT_BODY_LIMIT = 65_536;
 const LANGUAGE_SERVER_DIAGNOSTICS_CHANNEL = 'cheshi:language-server-diagnostics';
-const RENDERER_READY_CHANNEL = 'cheshi:renderer-ready';
 const TERMINAL_STATE_CHANNEL = 'cheshi:terminal-state-changed';
 const WORKSPACE_FILES_CHANGED_CHANNEL = 'cheshi:workspace-files-changed';
 const WORKSPACE_FILES_CHANGED_PATH_LIMIT = 512;
-
-installRendererReadiness(window, document, (theme) => ipcRenderer.send(RENDERER_READY_CHANNEL, theme));
 
 function workspaceRelativePath(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) {

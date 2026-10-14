@@ -4,9 +4,12 @@ import path from 'node:path';
 import type { WorkspaceIpcRouter } from './workspace-ipc-router.mts';
 import type { WorkspaceAccountSelection } from './settings-service.mts';
 import { withWorkspaceFolderDeletion } from './codex-workspace-activity.mts';
+import type { WorkspaceHost } from './workspace-host.mts';
+import { nativeWorkspaceWindow, workspaceSurface } from './workspace-surface.mts';
 
 export interface WorkspaceWindowState { bounds: Rectangle; maximized: boolean; fullscreen: boolean; }
 export interface WorkspaceRuntimeOptions {
+  host?: WorkspaceHost;
   agentFlash?: import('./flash/agent-memory.mts').AgentFlashMemory;
   workspaceRoot: string;
   notifications?: import('./imessage-notifications.mts').NotificationSink;
@@ -34,6 +37,7 @@ export interface WorkspaceRuntime {
   dispose(): Promise<void>;
 }
 interface WorkspaceEntry {
+  host?: WorkspaceHost;
   root: string;
   managementOnly: boolean;
   runtime: WorkspaceRuntime;
@@ -64,15 +68,21 @@ export class WorkspaceWindowCloseCancelledError extends Error {
 
 export function registerWorkspaceWindowCloseConfirmation(window: BrowserWindow, dialog: Pick<Dialog, 'showMessageBoxSync'>): void {
   const contents = window.webContents;
-  const confirmClose = (event: Event) => {
-    const choice = dialog.showMessageBoxSync(window, {
+  const confirm = () => {
+    window.show();
+    const choice = dialog.showMessageBoxSync(nativeWorkspaceWindow(window), {
       type: 'warning', title: 'Unsaved changes',
       message: 'Close this workspace without saving?',
       detail: 'Unsaved changes in open files will be lost. To keep them, cancel and save your files before closing.',
       buttons: ['Cancel', 'Discard Changes'], defaultId: 0, cancelId: 0, noLink: true,
     });
+    return choice === 1;
+  };
+  const surface = workspaceSurface(window);
+  if (surface) { surface.confirmClose = confirm; return; }
+  const confirmClose = (event: Event) => {
     // Electron allows unloading only when this event's default is prevented.
-    if (choice === 1) event.preventDefault();
+    if (confirm()) event.preventDefault();
   };
   contents.on('will-prevent-unload', confirmClose);
   window.once('closed', () => contents.off('will-prevent-unload', confirmClose));
@@ -80,6 +90,11 @@ export function registerWorkspaceWindowCloseConfirmation(window: BrowserWindow, 
 
 export function closeWorkspaceWindow(window: BrowserWindow, onClosed?: () => void): Promise<void> {
   if (window.isDestroyed()) return Promise.resolve();
+  const surface = workspaceSurface(window);
+  if (surface) return surface.requestClose().then(closed => {
+    if (!closed) throw new WorkspaceWindowCloseCancelledError();
+    onClosed?.();
+  });
   const contents = window.webContents;
   return new Promise<void>((resolve, reject) => {
     const cleanup = () => {
@@ -122,11 +137,18 @@ export class WorkspaceApplication {
   private firstWindow = true;
   private transitions = 0;
   private readonly reveals = new Map<string, Promise<void>>();
+  private readonly hostTransitions = new Map<WorkspaceHost, Promise<void>>();
+  private readonly createHost?: (scope: ReturnType<WorkspaceIpcRouter['createScope']>, activated: (root: string) => void) => WorkspaceHost;
+  private readonly activated?: (root: string) => void;
   lastWorkspaceRoot: string;
 
-  constructor(options: { router: WorkspaceIpcRouter; createRuntime: (options: WorkspaceRuntimeOptions) => WorkspaceRuntime; initialRoot: string }) {
+  constructor(options: { router: WorkspaceIpcRouter; createRuntime: (options: WorkspaceRuntimeOptions) => WorkspaceRuntime; initialRoot: string;
+    createHost?: (scope: ReturnType<WorkspaceIpcRouter['createScope']>, activated: (root: string) => void) => WorkspaceHost;
+    activated?: (root: string) => void }) {
     this.router = options.router;
     this.createRuntime = options.createRuntime;
+    this.createHost = options.createHost;
+    this.activated = options.activated;
     this.lastWorkspaceRoot = options.initialRoot;
   }
 
@@ -175,16 +197,25 @@ export class WorkspaceApplication {
     await this.openRuntime('', true);
   }
 
-  private async openRuntime(root: string, managementOnly: boolean, windowState?: WorkspaceWindowState, source?: WorkspaceEntry): Promise<WorkspaceEntry> {
+  private async openRuntime(root: string, managementOnly: boolean, windowState?: WorkspaceWindowState, source?: WorkspaceEntry, retainedHost?: WorkspaceHost): Promise<WorkspaceEntry> {
     if (this.shuttingDown) throw new Error('The application is closing.');
     if (!managementOnly) this.assertNotDeleting(root);
     const scope = this.router.createScope();
+    let host = retainedHost;
+    let hostScope: ReturnType<WorkspaceIpcRouter['createScope']> | undefined;
     const initial = this.firstWindow;
     this.firstWindow = false;
     let entry: WorkspaceEntry;
     try {
+      if (!managementOnly && !host && this.createHost) {
+        hostScope = this.router.createScope();
+        host = this.createHost(hostScope, activeRoot => {
+          this.lastWorkspaceRoot = activeRoot;
+          this.activated?.(activeRoot);
+        });
+      }
       const runtime = this.createRuntime({
-        workspaceRoot: root, managementOnly, initial, windowState, deferShow: source !== undefined, scope,
+        workspaceRoot: root, managementOnly, initial, windowState, deferShow: source !== undefined, scope, host,
         onOpenWorkspace: (target) => this.open(target),
         onReplaceWorkspace: (target) => managementOnly ? this.open(target) : this.replace(entry, target),
         withWorkspaceDeletion: (target, operation) => this.withWorkspaceDeletion(target, operation),
@@ -195,7 +226,7 @@ export class WorkspaceApplication {
           });
         },
       });
-      entry = { root, managementOnly, runtime, window: null, closing: null, replacement: null, switching: false };
+      entry = { root, managementOnly, runtime, window: null, closing: null, replacement: null, switching: false, host };
       this.entries.add(entry);
       if (source) source.replacement = entry;
       try {
@@ -206,7 +237,12 @@ export class WorkspaceApplication {
         return entry;
       }
       catch (error) { await this.disposeEntry(entry); throw error; }
-    } catch (error) { scope.dispose(); throw error; }
+    } catch (error) {
+      scope.dispose();
+      if (!retainedHost) host?.disposeIfEmpty();
+      if (!host) hostScope?.dispose();
+      throw error;
+    }
   }
 
   private disposeEntry(entry: WorkspaceEntry): Promise<void> {
@@ -247,6 +283,15 @@ export class WorkspaceApplication {
   }
 
   private async replace(entry: WorkspaceEntry, root: string): Promise<void> {
+    if (entry.host) {
+      const host = entry.host;
+      const preceding = this.hostTransitions.get(host) ?? Promise.resolve();
+      const transition = preceding.catch(() => {}).then(() => this.activateInHost(entry, root));
+      this.hostTransitions.set(host, transition);
+      try { await transition; }
+      finally { if (this.hostTransitions.get(host) === transition) this.hostTransitions.delete(host); }
+      return;
+    }
     if (entry.switching) throw new Error('A workspace switch is already in progress.');
     this.assertNotDeleting(root);
     const window = entry.window;
@@ -295,6 +340,23 @@ export class WorkspaceApplication {
     } catch (error) {
       process.stderr.write(`[cheshi] Workspace disposal failed after switching: ${String(error)}\n`);
     }
+  }
+
+  private async activateInHost(source: WorkspaceEntry, root: string): Promise<void> {
+    this.assertEntryReady(source);
+    this.assertNotDeleting(root);
+    if (source.switching) throw new Error('A workspace switch is already in progress.');
+    source.switching = true;
+    this.transitions += 1;
+    try {
+      const existing = [...this.entries].find(entry => entry.host === source.host && !entry.closing
+        && workspacePath(entry.root) === workspacePath(root));
+      const target = existing ?? await this.openRuntime(root, false, undefined, undefined, source.host);
+      this.assertEntryReady(target);
+      target.window!.show();
+      target.window!.focus();
+      this.lastWorkspaceRoot = root;
+    } finally { source.switching = false; this.transitions -= 1; this.emitWindowsChanged(); }
   }
 
   private assertEntryReady(entry: WorkspaceEntry): void {

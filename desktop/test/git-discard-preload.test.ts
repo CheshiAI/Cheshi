@@ -10,7 +10,7 @@ function createPreloadHarness(invoke: (channel: string, request: unknown, ...add
   const exposed = new Map<string, Record<string, unknown>>();
   const calls: { channel: string; request: unknown; additionalArgs?: unknown[] }[] = [];
   vm.runInNewContext(readFileSync(new URL('../runtime/preload.cjs', import.meta.url), 'utf8'), {
-    process: { platform: process.platform },
+    process: { platform: process.platform, argv: [] },
     window: { addEventListener() {} },
     document: { readyState: 'loading' },
     require(name: string) {

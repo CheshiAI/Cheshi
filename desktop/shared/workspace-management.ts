@@ -4,6 +4,7 @@ export interface WorkspaceCatalogEntry {
   id: string;
   name: string;
   rootPath: string;
+  iconColor?: string;
   available: boolean;
   /** Omitted capability metadata is unknown; Git actions require literal true. */
   isGitRepository?: boolean;
@@ -96,6 +97,7 @@ export interface WorkspaceManagementApi extends Partial<AppUpdateApi> {
   addFolder(path: string): Promise<WorkspaceCatalogEntry>;
   createProject(request: WorkspaceCreateProjectRequest): Promise<WorkspaceCatalogEntry>;
   deleteWorkspace(id: string): Promise<boolean>;
+  removeWorkspace(id: string): Promise<boolean>;
   clone(request: WorkspaceCloneRequest): Promise<WorkspaceCatalogEntry>;
   listGitHubRepositories(page?: number): Promise<GitHubRepositoryPage>;
   startGitHubLogin(): Promise<GitHubLoginState>;

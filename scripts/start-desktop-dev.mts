@@ -263,6 +263,8 @@ function watchMainSources(): FSWatcher[] {
     path.join(rootDirectory, 'desktop', 'lib', 'github-login-service.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'workspace-management-preload.cts'),
     path.join(rootDirectory, 'desktop', 'lib', 'workspace-application.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'workspace-host.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'workspace-surface.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'workspace-manager-runtime.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'workspace-startup.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'workspace-tool-status.mts'),

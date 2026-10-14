@@ -43,6 +43,7 @@ import { DiscordSetupConfirmation } from '../settings/DiscordSetupConfirmation';
 import { ReviewSidebar } from './ReviewSidebar';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import styles from './AppShell.module.css';
+import { WorkspaceSurfaceReporter } from './WorkspaceSurfaceReporter';
 import { useAppUpdateResume } from './useAppUpdateResume';
 import { useWorkflowChatNavigation } from './useWorkflowChatNavigation';
 import { useRelationshipGraphMenu } from './useRelationshipGraphMenu';
@@ -371,6 +372,12 @@ export function AppShell() {
   const railView = selectedPane === 'editor' ? 'editor' : selectedPane === 'terminal' ? 'terminal'
     : selectedPane === 'worker' ? workerView : primaryView;
   const automaticSidebarPanel = sidebarPanelForWorkspace(railView, visiblePanes);
+  useEffect(() => window.workspaceSurface?.onCommand(command => {
+    if (command.action === 'navigate') navigate(command.view as WorkspaceView);
+    else if (command.action === 'sidebar') setLeftSidebarOpen(open => !open);
+    else void cheshiDesktop?.workspaceManagement?.openManager().catch(console.error);
+  }), [navigate]);
+  const workspaceNeedsAttention = Object.values(workspace.controllers).some(controller => controller.state.approvals.length > 0);
   const sidebarScene = `${activeView}:${visiblePaneKey}`;
   const previousSidebarScene = useRef(sidebarScene);
   useEffect(() => {
@@ -389,7 +396,9 @@ export function AppShell() {
   return (
     <ChatDraftAttachmentsContext.Provider value={draftAttachments}>
     <SidebarToggleVisibility.Provider value={reviewing}>
-    <div ref={notificationSceneRef} className={`app-shell ${styles.shell}`}>
+    <div ref={notificationSceneRef} className={`app-shell ${styles.shell}`} data-workspace-surface={window.workspaceSurface ? 'true' : undefined}>
+      {window.workspaceSurface && <WorkspaceSurfaceReporter view={leftSidebarOpen && sidebarPanel === 'memos' ? 'notes' : railView}
+        sidebarOpen={leftSidebarOpen} running={workspace.responseThreadIds.length} attention={workspaceNeedsAttention} />}
       {updateResume.error && <div role="alert">{updateResume.error}</div>}
       <div
         inert={updateResume.busy}
@@ -399,10 +408,10 @@ export function AppShell() {
         data-file-review={reviewing ? 'true' : undefined}
         data-right-sidebar-open={rightSidebarOpen && reviewing ? 'true' : 'false'}
       >
-        <LiquidGlassPanel as="aside" className={styles.sidebarRail} aria-label="Application navigation">
+        {!window.workspaceSurface && <LiquidGlassPanel as="aside" className={styles.sidebarRail} aria-label="Application navigation">
           <SidebarRail activeView={leftSidebarOpen && sidebarPanel === 'memos' ? 'notes' : railView} sidebarOpen={leftSidebarOpen} onNavigate={navigate}
             onToggleSidebar={() => setLeftSidebarOpen(open => !open)} />
-        </LiquidGlassPanel>
+        </LiquidGlassPanel>}
         <MemoSidebar api={cheshiDesktop?.notes} target={memoSidebarTarget} />
         <SlidingSidePanel open={leftSidebarOpen} anchor="end" stageClassName={styles.sidebarPanelStage}
           id="workspace-sidebar" className={`sidebar-column ${styles.sidebarPanel}`}

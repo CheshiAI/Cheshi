@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 
 import styles from './SidebarRailButton.module.css';
 
@@ -20,6 +20,7 @@ export function SidebarRailButton({
   ...props
 }: SidebarRailButtonProps) {
   const labelRef = useRef<HTMLSpanElement>(null);
+  const railId = useId();
   const [labelWidth, setLabelWidth] = useState(0);
   useLayoutEffect(() => {
     const element = labelRef.current;
@@ -38,11 +39,11 @@ export function SidebarRailButton({
   const buttonClassName = className ? `${styles.button} ${className}` : styles.button;
 
   return <div className={styles.slot}>
-    <button {...props} type={type} className={buttonClassName} style={buttonStyle}
+    <button {...props} type={type} className={buttonClassName} style={buttonStyle} data-rail-button={railId}
       aria-label={props['aria-label'] ?? label} data-active={active ? 'true' : undefined}
       data-icon-size={iconSize}>
       <span className={styles.icon} aria-hidden="true">{icon}</span>
-      <span ref={labelRef} className={styles.label}>{label}</span>
+      <span ref={labelRef} className={styles.label} data-rail-label="true">{label}</span>
     </button>
   </div>;
 }

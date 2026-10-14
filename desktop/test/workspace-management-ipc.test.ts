@@ -177,7 +177,7 @@ test('every workspace handler rejects untrusted senders and subframes before tou
   try {
     await mkdir(f.dataRoot);
     await writeFile(path.join(f.dataRoot, 'workspaces.json'), 'invalid registry');
-    const names = ['content-ready', 'list', 'get-tool-status', 'get-codex-login', 'start-codex-login', 'cancel-codex-login', 'add-folder', 'create-project', 'delete-workspace', 'clone', 'list-worktrees', 'create-worktree', 'choose-directory', 'open', 'open-manager', 'open-current', 'list-github-repositories',
+    const names = ['content-ready', 'list', 'get-tool-status', 'get-codex-login', 'start-codex-login', 'cancel-codex-login', 'add-folder', 'create-project', 'remove-workspace', 'delete-workspace', 'clone', 'list-worktrees', 'create-worktree', 'choose-directory', 'open', 'open-manager', 'open-current', 'list-github-repositories',
       'start-github-login', 'get-github-login', 'cancel-github-login', 'open-github-login-browser'];
     assert.equal(f.handlers.size, names.length);
     for (const name of names) {
@@ -355,15 +355,15 @@ test('current-window opening targets the original workspace window even when req
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
-test('current-window opening rejects the same canonical workspace including symbolic link aliases', async () => {
+test('current-window opening resolves canonical aliases for activation without a second native window', async () => {
   const f = await fixture(true);
   try {
     const alias = path.join(f.root, 'alias');
     await createSymbolicLink(f.workspace, alias, 'dir');
     for (const target of [f.workspace, alias]) {
-      await rejects(f.invoke('open-current', target), /already open/u);
+      await f.invoke('open-current', target);
     }
-    assert.deepEqual(f.state.replacements, []);
+    assert.deepEqual(f.state.replacements, [await realpath(f.workspace), await realpath(f.workspace)]);
     assert.deepEqual(f.state.launches, []);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
@@ -500,6 +500,29 @@ test('deletion confirms the registered folder with cancel as default before movi
     assert.deepEqual(f.state.deletionLocks, [entry.rootPath, entry.rootPath]);
     assert.deepEqual(readWorkspaceRegistry(f.dataRoot).workspaces, []);
     assert.equal(existsSync(f.workspace), false);
+  } finally { f.registration.dispose(); await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('list removal confirms separately and never invokes folder deletion or its active-workspace lock', async () => {
+  const f = await fixture(true);
+  try {
+    await f.invoke('open-manager');
+    await f.invoke('add-folder', f.workspace, f.managerEvent);
+    const entry = readWorkspaceRegistry(f.dataRoot).workspaces[0]!;
+    assert.equal(await f.invoke('remove-workspace', entry.id, f.managerEvent), false);
+    assert.equal(readWorkspaceRegistry(f.dataRoot).workspaces.length, 1);
+    const confirmation = f.state.confirmations[0]!;
+    assert.equal(confirmation.title, 'Remove from Workspaces');
+    assert.deepEqual(confirmation.buttons, ['Cancel', 'Remove from list']);
+    assert.equal(confirmation.defaultId, 0);
+    assert.ok(confirmation.detail?.includes('connections from other workspaces will be kept'));
+    f.state.confirmationResponse = 1;
+    assert.equal(await f.invoke('remove-workspace', entry.id, f.managerEvent), true);
+    assert.deepEqual(readWorkspaceRegistry(f.dataRoot).workspaces, []);
+    assert.ok(existsSync(f.workspace));
+    assert.ok(existsSync(entry.storagePath));
+    assert.deepEqual(f.state.trashed, []);
+    assert.deepEqual(f.state.deletionLocks, []);
   } finally { f.registration.dispose(); await rm(f.root, { recursive: true, force: true }); }
 });
 

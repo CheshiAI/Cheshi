@@ -12,6 +12,7 @@ import { createWindowTopHighlight } from './lib/window-top-highlight.mts';
 import { createWorkspaceTemporaryChat } from './lib/workspace-temporary-chat.mts';
 import { createWorkspaceWindowReadiness } from './lib/workspace-window-readiness.mts';
 import { createWorkspaceRendererEvents } from './lib/workspace-renderer-events.mts';
+import { nativeWorkspaceWindow } from './lib/workspace-surface.mts';
 import { createWorkspaceCodeExplanation } from './lib/workspace-code-explanation.mts';
 import path from 'node:path';
 import { currentUserName } from './lib/workspace-user.mts';
@@ -99,7 +100,7 @@ const codeGraphCommands = createCodeGraphCommands({
   rootDirectory,
   bunExecutable: process.env.CHESHI_BUN,
 });
-const rendererUrl = options.initial ? process.env.CHESHI_RENDERER_URL?.trim() : undefined;
+const rendererUrl = process.env.CHESHI_RENDERER_URL?.trim();
 const startupStartedAt = Number(process.env.CHESHI_DEV_STARTED_AT);
 function logStartup(phase: string): void {
   if (!rendererUrl || !Number.isFinite(startupStartedAt) || startupStartedAt <= 0) return;
@@ -169,7 +170,7 @@ const workspaceProjects = createWorkspaceProjects({
   },
   chooseDirectory: async () => {
     if (!mainWindow || mainWindow.isDestroyed()) throw new Error('The workspace window is unavailable.');
-    const result = await dialog.showOpenDialog(mainWindow, { title: 'Add project to workspace', properties: ['openDirectory'] });
+    const result = await dialog.showOpenDialog(nativeWorkspaceWindow(mainWindow), { title: 'Add project to workspace', properties: ['openDirectory'] });
     return result.canceled ? null : result.filePaths[0] ?? null;
   },
   emit: (channel, value) => { for (const window of workspaceWindows()) rendererEvents.send(window, channel, value); },
@@ -204,7 +205,7 @@ const temporaryChats = createWorkspaceTemporaryChat({
   preload: preloadPath, appearanceFile: path.join(userDataDirectory, 'appearance.json'),
   selectFiles: async window => {
     const selection: OpenDialogOptions = { title: 'Attach files to temporary chat', buttonLabel: 'Attach', properties: ['openFile', 'multiSelections'] };
-    const result = await dialog.showOpenDialog(window, selection);
+    const result = await dialog.showOpenDialog(nativeWorkspaceWindow(window), selection);
     return result.canceled ? [] : result.filePaths;
   },
   onCleanupError: error => chatServiceOptions.log('temporary-chat-cleanup-failed', { message: String(error) }),
@@ -359,7 +360,7 @@ async function selectCodexChatAttachments(event: IpcMainInvokeEvent) {
     properties: ['openFile', 'multiSelections'],
   };
   const result = owner
-    ? await dialog.showOpenDialog(owner, options)
+    ? await dialog.showOpenDialog(nativeWorkspaceWindow(owner), options)
     : await dialog.showOpenDialog(options);
   if (result.canceled) return [];
   const storedAttachments = await codexChatAttachmentStore.importFiles(
@@ -388,7 +389,7 @@ async function selectLanguageServerExecutable(
     properties: ['openFile'],
   };
   const result = owner
-    ? await dialog.showOpenDialog(owner, options)
+    ? await dialog.showOpenDialog(nativeWorkspaceWindow(owner), options)
     : await dialog.showOpenDialog(options);
   if (result.canceled || !result.filePaths[0]) {
     return { canceled: true, statuses: languageServerManager.getStatuses() };
@@ -748,7 +749,8 @@ let pendingIndexWarning: string | null = null;
 async function createMainWindow(contentUrl: string | null): Promise<BrowserWindow> {
   if (appQuitting) throw new Error('Workspace startup was canceled.');
   const shouldShowWindow = process.env.CHESHI_E2E_HEADLESS !== '1';
-  const window = new BrowserWindow(workspaceWindowOptions(preloadPath, product.displayName));
+  const configuration = workspaceWindowOptions(preloadPath, product.displayName);
+  const window = options.host?.createWindow(configuration, options.scope, workspaceRoot) ?? new BrowserWindow(configuration);
   logStartup('window created');
   createWindowTrafficLights({ window,
     onError: error => process.stderr.write(`[cheshi] Traffic light scaling failed: ${String(error)}\n`),
@@ -785,7 +787,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
       catch (error) { process.stderr.write(`[cheshi] Workspace registration failed: ${String(error)}\n`); }
     }
     if (shouldShowWindow && pendingIndexWarning) {
-      void dialog.showMessageBox(window, {
+      void dialog.showMessageBox(nativeWorkspaceWindow(window), {
         type: 'warning', title: 'CodeGraph indexing failed',
         message: 'The workspace is open, but its CodeGraph index could not be created.',
         detail: `${pendingIndexWarning}\n\nOpen this workspace again to retry indexing.`,
@@ -834,6 +836,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
   mainWindow = window;
   onWindowCreated?.(window);
   initializeTerminal(window);
+  terminalSurfaces?.setWindowVisible(false);
   logStartup('terminal bridge ready');
   window.on('show', () => terminalSurfaces?.setWindowVisible(true));
   window.on('hide', () => terminalSurfaces?.setWindowVisible(false));

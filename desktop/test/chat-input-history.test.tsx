@@ -196,3 +196,46 @@ test('the panel exposes selectable questions, a close action and keyboard help',
   expect(nodes.some(node => node.props.children === '↑↓ Navigate · Enter Select · Esc Close')).toBe(true);
   app.unmount();
 });
+
+test('arrow navigation marks the actual button selected and Enter restores that question without sending', () => {
+  const jsx = (type: unknown, props: Record<string, unknown>): unknown =>
+    typeof type === 'function' ? type(props) : { type, props };
+  const runtime = { jsx, jsxs: jsx };
+  const NeumorphicButton = load('../../shared/ui/NeumorphicButton.tsx', 'NeumorphicButton', {
+    'react/jsx-runtime': runtime, './NeumorphicButton.module.css': { default: {} },
+  });
+  const TooltipButton = load('../../shared/ui/TooltipButton.tsx', 'TooltipButton', {
+    'react/jsx-runtime': runtime, './NeumorphicButton': { NeumorphicButton },
+    './TooltipTarget': { TooltipTarget: ({ children }: { children: unknown }) => children },
+  });
+  const panel = load<typeof ChatInputHistoryPanel>('ChatInputHistoryPanel.tsx', 'ChatInputHistoryPanel', {
+    'react/jsx-runtime': runtime, 'lucide-react': { X: 'svg' },
+    '../../shared/ui/TooltipButton': { TooltipButton },
+    '../../shared/ui': { LiquidGlassPanel: 'section', SidebarPanelHeader: 'header' },
+    './ChatView.module.css': { default: {} }, './ChatInputHistory.module.css': { default: {} },
+  });
+  const app = harness();
+  const assertSelected = (index: number) => {
+    const options = elements(panel({ history: app.render() })).filter(node => node.props.role === 'option');
+    expect(options).toHaveLength(2);
+    options.forEach((option, position) => {
+      expect(option.type).toBe('button');
+      expect(option.props['aria-selected']).toBe(position === index);
+      expect(option.props['data-active']).toBe(position === index ? 'true' : undefined);
+    });
+    expect(app.draft).toBe('');
+  };
+  try {
+    app.render().onKeyDown(key('ArrowUp').event); assertSelected(0);
+    app.render().onKeyDown(key('ArrowDown').event); assertSelected(1);
+    app.render().onKeyDown(key('ArrowUp').event); assertSelected(0);
+    app.render().onKeyDown(key('ArrowDown').event); assertSelected(1);
+    app.render().onKeyDown(key('Enter').event);
+    expect(app.draft).toBe('First');
+    expect(app.render().open).toBe(false);
+    expect(app.forwarded).toBe(0);
+    expect(app.focused).toBe(1);
+  } finally {
+    app.unmount();
+  }
+});

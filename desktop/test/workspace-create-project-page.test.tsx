@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { Window } from 'happy-dom';
 
 import type { WorkspaceManagementApi } from '../shared/workspace-management';
 import {
@@ -19,6 +20,7 @@ const api: WorkspaceManagementApi = {
   chooseDirectory: async () => null,
   addFolder: async () => entry,
   deleteWorkspace: async () => false,
+    removeWorkspace: async () => false,
   createProject: async () => entry,
   clone: async () => entry,
   listGitHubRepositories: async () => ({ login: 'owner', repositories: [], nextPage: null }),
@@ -30,7 +32,10 @@ const api: WorkspaceManagementApi = {
 
 test('new project shows parent selection and a required name before enabling creation', () => {
   const html = renderToStaticMarkup(<CreateProjectWorkspacePage api={api} currentPath={entry.rootPath} onClose={() => {}} />);
-  expect(html).toContain('<h1>Create project</h1>');
+  const document = new Window().document;
+  document.body.innerHTML = html;
+  expect(document.querySelectorAll('h1')).toHaveLength(1);
+  expect(document.querySelector('h1')?.textContent).toBe('CREATE PROJECT');
   expect(html).toContain('Back to Workspaces');
   expect(html).toContain('Choose project parent folder');
   expect(html).toContain('value="/work"');

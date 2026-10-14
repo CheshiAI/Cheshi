@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
-export const PRELOAD_ENTRYPOINTS = ['preload.cts', 'workspace-manager-preload.cts', 'selection-copy-preload.cts', 'account-usage-preload.cts', 'sticky-notes-preload.cts'];
+export const PRELOAD_ENTRYPOINTS = ['preload.cts', 'workspace-host-preload.cts', 'workspace-manager-preload.cts', 'selection-copy-preload.cts', 'account-usage-preload.cts', 'sticky-notes-preload.cts'];
 /** Follow the same local imports as the bundle, including shared contracts and re-exports. */
 export function preloadDependencies(root: string): string[] {
   const seen = new Set<string>(), scanner = new Bun.Transpiler({ loader: 'ts' });

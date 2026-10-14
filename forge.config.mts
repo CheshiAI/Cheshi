@@ -17,7 +17,7 @@ function shouldIgnore(packagePath: string): boolean {
   if (rootEntry === '.env.product' || rootEntry === 'package.json') return segments.length > 1;
   if (rootEntry === 'config') {
     if (segments.length === 1) return false;
-    const packagedConfigFiles = new Set(['product.mts', 'workspace-storage.mts']);
+    const packagedConfigFiles = new Set(['product.mts', 'workspace-storage.mts', 'workspace-project-colors.mts']);
     return childEntry === undefined || !packagedConfigFiles.has(childEntry) || segments.length > 2;
   }
   if (rootEntry === 'resources') {
@@ -56,6 +56,7 @@ function shouldIgnore(packagePath: string): boolean {
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
+    if (grandchildEntry === 'workspace-host.ts') return segments.length > 3;
     if (grandchildEntry === 'worker-workspace.ts') return segments.length > 3;
     if ((grandchildEntry === 'agent-package.ts' || grandchildEntry === 'homie-pack.ts' || grandchildEntry === 'homie-tools.ts' || grandchildEntry === 'homie-source.ts' || grandchildEntry === 'agent-avatar-image.ts')) return segments.length > 3;
     if (grandchildEntry === 'agent-voice.ts' || grandchildEntry === 'agent-execution-health.ts') return segments.length > 3;
@@ -92,6 +93,7 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 3 && (segments.length !== 4 || !schedulerFiles.has(segments[3] ?? ''));
   }
   const packagedLibraryFiles = new Set([
+    'workspace-host.mts', 'workspace-surface.mts', 'workspace-rail-overlay.mts',
     'sticky-notes-store.mts', 'sticky-notes-runtime.mts', 'sticky-notes-library.mts',
     'chat-search-grams.mts', 'chat-search-database.mts', 'chat-search-index.mts', 'chat-search-query.mts',
     'chat-search-source.mts', 'chat-search-worker.mts', 'chat-search-worker-client.mts', 'chat-search-service.mts',

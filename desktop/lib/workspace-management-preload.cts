@@ -33,6 +33,7 @@ export function createWorkspaceManagementApi(ipc: MenuIpc): WorkspaceManagementA
     addFolder: (path) => ipc.invoke('cheshi:workspace-management:add-folder', path),
     createProject: (request) => ipc.invoke('cheshi:workspace-management:create-project', request),
     deleteWorkspace: (id) => ipc.invoke('cheshi:workspace-management:delete-workspace', id),
+    removeWorkspace: (id) => ipc.invoke('cheshi:workspace-management:remove-workspace', id),
     clone: (request) => ipc.invoke('cheshi:workspace-management:clone', request),
     listGitHubRepositories: async (page) => {
       const response: GitHubRepositoryListResponse = await ipc.invoke('cheshi:workspace-management:list-github-repositories', page);

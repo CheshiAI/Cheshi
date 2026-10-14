@@ -66,6 +66,12 @@ h1, h2, h3, h4, h5, h6, p {
     flex: 1 1 auto;
 }
 
+/* The native workspace surface excludes the fixed rail owned by its host. */
+body:has(.app-shell[data-workspace-surface='true']),
+.app-shell[data-workspace-surface='true'] {
+    min-width: calc(var(--app-min-width) - var(--sidebar-rail-width));
+}
+
 .sidebar-column, .right-sidebar-column {
     display: flex;
     width: var(--sidebar-width);
@@ -365,7 +371,7 @@ h1, h2, h3, h4, h5, h6, p {
 
 .workspace-file-tree-root {
     position: relative;
-    min-height: 28px;
+    min-height: 34px;
     padding-left: var(--space-default);
     border-radius: 0;
     color: var(--text);

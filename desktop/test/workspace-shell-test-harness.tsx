@@ -88,6 +88,7 @@ export function shellHarness(initialHistoryLoading = false, preference: { panel:
   let editorSessionMode: ReturnType<typeof useAppUpdateResume>['editorSessionMode'] = 'restore';
   const attachments = draftAttachmentModule.createChatDraftAttachments();
   const modules: Record<string, unknown> = {
+    './WorkspaceSurfaceReporter': { WorkspaceSurfaceReporter: 'WorkspaceSurfaceReporter' },
     '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
     './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },
     './WorkerWorkspace': { WorkerWorkspace: 'WorkerWorkspace' },
@@ -154,7 +155,7 @@ export function shellHarness(initialHistoryLoading = false, preference: { panel:
     }
     return cloneElement(node, { children: expandWorker(node.props.children) });
   };
-  const Shell = load<typeof AppShell>('features/shell/AppShell.tsx', 'AppShell', modules, { document: {} });
+  const Shell = load<typeof AppShell>('features/shell/AppShell.tsx', 'AppShell', modules, { document: {}, window: {} });
   return { attachments, render: () => {
     app.render(() => Shell());
     return expandWorker(app.render(() => Shell()));

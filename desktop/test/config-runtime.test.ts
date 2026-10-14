@@ -99,6 +99,9 @@ test('uses typed Electron entrypoints and a generated sandboxed preload', async 
 
   assert.equal(shouldIgnore('/desktop/main.mts'), false);
   assert.equal(shouldIgnore('/desktop/bootstrap.mts'), false);
+  assert.equal(shouldIgnore('/config/workspace-storage.mts'), false);
+  assert.equal(shouldIgnore('/config/workspace-project-colors.mts'), false);
+  assert.equal(shouldIgnore('/desktop/lib/workspace-rail-overlay.mts'), false);
   assert.equal(shouldIgnore('/resources'), false);
   assert.equal(shouldIgnore('/resources/icons'), false);
   assert.equal(shouldIgnore('/resources/icons/startup-logo.png'), false);
