@@ -89,6 +89,8 @@ export function resolveWalHealBytes(envVal: string | undefined): number {
 export interface DatabaseOpenOptions {
   /** Open with SQLite's read-only flag and skip all write-side recovery work. */
   readOnly?: boolean;
+  /** Set false for long-lived readers of an index that other processes update. */
+  immutable?: boolean;
 }
 
 const FTS_TABLE = 'nodes_fts';
@@ -171,6 +173,7 @@ export class DatabaseConnection {
   private readonly dbPath: string;
   private readonly backend: SqliteBackend;
   private readonly readOnly: boolean;
+  private readonly immutable: boolean;
   /**
    * `dev:ino` of the DB file at the moment we opened it (or null when the
    * platform/filesystem reports no usable inode). Lets us notice when the file
@@ -186,11 +189,13 @@ export class DatabaseConnection {
     dbPath: string,
     backend: SqliteBackend,
     readOnly = false,
+    immutable = false,
   ) {
     this.db = db;
     this.dbPath = dbPath;
     this.backend = backend;
     this.readOnly = readOnly;
+    this.immutable = immutable;
     this.openedInode = statInode(dbPath);
   }
 
@@ -237,23 +242,21 @@ export class DatabaseConnection {
     const readOnly = options.readOnly === true;
     // A non-empty WAL contains committed state newer than the main DB and must
     // be replayed by a normal read-only connection. With no WAL frames, open an
-    // immutable snapshot so SQLite never needs to create or modify sidecars —
-    // this is what makes readOnly usable on a read-only filesystem.
+    // immutable snapshot for one-shot reads on read-only media. Long-lived
+    // MCP readers explicitly disable this: later host writes must remain visible.
     let hasWalFrames = false;
     if (readOnly) {
       try { hasWalFrames = fs.statSync(`${dbPath}-wal`).size > 0; } catch { /* no WAL */ }
     }
-    const { db, backend } = createDatabase(dbPath, {
-      readOnly,
-      immutable: readOnly && !hasWalFrames,
-    });
+    const immutable = readOnly && options.immutable !== false && !hasWalFrames;
+    const { db, backend } = createDatabase(dbPath, { readOnly, immutable });
 
     try {
       configureConnection(db, readOnly);
 
       // Check and run migrations if needed. A read-only open must never upgrade
       // schema state behind the caller's back; fail with an actionable error.
-      const conn = new DatabaseConnection(db, dbPath, backend, readOnly);
+      const conn = new DatabaseConnection(db, dbPath, backend, readOnly, immutable);
       const currentVersion = getCurrentVersion(db);
 
       if (currentVersion < CURRENT_SCHEMA_VERSION) {
@@ -849,6 +852,10 @@ export class DatabaseConnection {
    */
   close(): void {
     this.db.close();
+  }
+
+  isImmutable(): boolean {
+    return this.immutable;
   }
 
   /**

@@ -1,5 +1,6 @@
 import { finalizeExploreResponse } from './explore-source';
 import { awaitManagedCodeGraphSync } from './managed-sync';
+import { withReadConnectionRecovery } from './read-recovery';
 import {
   type ReadToolResult,
   type ToolResult
@@ -136,7 +137,7 @@ export async function execute(this: ToolHandlerState, toolName: string, args: Re
     // a worker (whose read connection has no watcher). It also skips the
     // auto-banner wrapper to avoid duplicating its own pending-files section.
     if (toolName === 'codegraph_status') {
-      return await this.handleStatus(args);
+      return await withReadConnectionRecovery(this, pathCheck, () => this.handleStatus(args));
     }
 
     // Read tools: off-load the CPU-heavy dispatch to the worker pool when one
@@ -201,7 +202,7 @@ export async function execute(this: ToolHandlerState, toolName: string, args: Re
    */
 export async function executeReadTool(this: ToolHandlerState, toolName: string, args: Record<string, unknown>): Promise<ReadToolResult> {
   try {
-    return await this.dispatchTool(toolName, args);
+    return await withReadConnectionRecovery(this, args.projectPath as string | undefined, () => this.dispatchTool(toolName, args));
   } catch (err) {
     if (err instanceof NotIndexedError) {
       return this.textResult(err.message);

@@ -140,7 +140,7 @@ export function getCodeGraph(this: ToolHandlerState, projectPath?: string): Code
   const cached = this.projectCache.get(resolvedRoot);
   if (cached) return this.freshen(cached);
 
-  const cg = loadCodeGraph().openSync(resolvedRoot, { readOnly: this.readOnly });
+  const cg = loadCodeGraph().openSync(resolvedRoot, { readOnly: this.readOnly, immutable: false });
   this.projectCache.set(resolvedRoot, cg);
   return cg;
 }

@@ -75,6 +75,7 @@ import {
   close,
   getProjectRoot,
   reopenIfReplaced,
+  reopenReadOnly,
   wireLayers,
 } from './project-state-lifecycle';
 import { sync } from './project-sync';
@@ -138,6 +139,7 @@ export interface CodeGraphState {
   acquireFileLock: typeof acquireFileLock;
   wireLayers: typeof wireLayers;
   reopenIfReplaced: typeof reopenIfReplaced;
+  reopenReadOnly: typeof reopenReadOnly;
   close: typeof close;
   getProjectRoot: typeof getProjectRoot;
   indexAll: typeof indexAll;
@@ -212,6 +214,7 @@ Object.assign(CodeGraphState.prototype, {
   acquireFileLock,
   wireLayers,
   reopenIfReplaced,
+  reopenReadOnly,
   close,
   getProjectRoot,
   indexAll,

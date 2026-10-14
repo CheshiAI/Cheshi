@@ -26,22 +26,25 @@ export function acquireFileLock(this: CodeGraphState): void {
    * The path-based `fileLock` is independent of the DB handle, so it stays put.
    */
 export function wireLayers(this: CodeGraphState): void {
+  Object.assign(this, createLayers(this.queries, this.projectRoot));
+}
+
+function createLayers(queries: QueryBuilder, projectRoot: string) {
   // Down-weight the project name as a query term in search ranking — it names
   // the whole repo, not a symbol, so it has no discriminative value (#720).
   try {
-    this.queries.setProjectNameTokens(deriveProjectNameTokens(this.projectRoot));
+    queries.setProjectNameTokens(deriveProjectNameTokens(projectRoot));
   } catch {
     // Best-effort: ranking still works without it.
   }
-  this.orchestrator = new ExtractionOrchestrator(this.projectRoot, this.queries);
-  this.resolver = createResolver(this.projectRoot, this.queries);
-  this.graphManager = new GraphQueryManager(this.queries);
-  this.traverser = new GraphTraverser(this.queries);
-  this.contextBuilder = createContextBuilder(
-    this.projectRoot,
-    this.queries,
-    this.traverser
-  );
+  const traverser = new GraphTraverser(queries);
+  return {
+    orchestrator: new ExtractionOrchestrator(projectRoot, queries),
+    resolver: createResolver(projectRoot, queries),
+    graphManager: new GraphQueryManager(queries),
+    traverser,
+    contextBuilder: createContextBuilder(projectRoot, queries, traverser),
+  };
 }
 
 /**
@@ -60,19 +63,34 @@ export function wireLayers(this: CodeGraphState): void {
    */
 export function reopenIfReplaced(this: CodeGraphState): boolean {
   if (!this.db.isReplacedOnDisk()) return false;
-  const dbPath = this.db.getPath();
+  reopenDatabase(this, this.db.isImmutable());
+  return true;
+}
+
+/** Recover a failed reader without touching the host's writer or index contents. */
+export function reopenReadOnly(this: CodeGraphState): void {
+  if (!this.db.isReadOnly()) throw new Error('Connection recovery requires a read-only CodeGraph instance');
+  reopenDatabase(this, false);
+}
+
+function reopenDatabase(state: CodeGraphState, immutable: boolean): void {
+  const dbPath = state.db.getPath();
   // Open the live file FIRST — if that throws (e.g. mid-recreate), the old
   // handle stays in place and the caller retries on the next query, rather
   // than leaving this instance with no connection at all.
-  const fresh = DatabaseConnection.open(dbPath, { readOnly: this.db.isReadOnly() });
-  const stale = this.db;
-  this.db = fresh;
-  this.queries = new QueryBuilder(fresh.getDb());
-  this.wireLayers();
+  const fresh = DatabaseConnection.open(dbPath, { readOnly: state.db.isReadOnly(), immutable });
+  const stale = state.db;
+  try {
+    const queries = new QueryBuilder(fresh.getDb());
+    const layers = createLayers(queries, state.projectRoot);
+    Object.assign(state, { db: fresh, queries, ...layers });
+  } catch (error) {
+    try { fresh.close(); } catch { /* preserve the setup failure */ }
+    throw error;
+  }
   // Releasing the dead handle also frees the leaked db/-wal/-shm fds that were
   // pinning the unlinked inode (#925).
   try { stale.close(); } catch { /* the old inode is gone; closing just frees fds */ }
-  return true;
 }
 
 /**

@@ -161,9 +161,11 @@ export function getCurrentVersion(db: SqliteDatabase): number {
       .prepare('SELECT MAX(version) as version FROM schema_versions')
       .get() as { version: number | null } | undefined;
     return row?.version ?? 0;
-  } catch {
-    // Table doesn't exist yet
-    return 0;
+  } catch (error) {
+    // Only a missing version table denotes an unversioned database. Preserve
+    // corruption and I/O failures instead of reporting a misleading migration.
+    if (error instanceof Error && error.message === 'no such table: schema_versions') return 0;
+    throw error;
   }
 }
 

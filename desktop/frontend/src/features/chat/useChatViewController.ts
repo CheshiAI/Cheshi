@@ -488,6 +488,7 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
 
   const openMcpStatus = async (): Promise<void> => {
     const isCurrent = captureTask();
+    focusComposer();
     setCommandMenuMode('mcp');
     setMcpServers([]);
     setCommandLoading(true);
@@ -504,7 +505,6 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
     } finally {
       if (isCurrent()) {
         setCommandLoading(false);
-        focusComposer();
       }
     }
   };
