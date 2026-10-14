@@ -3,11 +3,18 @@ import { Plus, X } from 'lucide-react';
 import type { WorkspaceHostApi, WorkspaceHostState } from '../../../../shared/workspace-host';
 import { LiquidGlassPanel, WorkspaceProjectIcon } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { useLoadingVisibility } from '../../shared/ui/useLoadingVisibility';
 import { SidebarRail } from '../navigation/SidebarRail';
 import type { WorkspaceView } from '../navigation/Sidebar';
 import styles from './WorkspaceHostShell.module.css';
 import { useWorkspaceRailOverlay } from './useWorkspaceRailOverlay';
 import { observeWorkspaceHostLayout } from './workspaceHostLayout';
+
+function WorkspaceRunningIndicator({ count }: { count: number }) {
+  const { ref, visible } = useLoadingVisibility();
+  return <span ref={ref} aria-label={`${count} running`} className={styles.running}
+    data-loading-animation="true" data-animation-paused={!visible || undefined} />;
+}
 
 export function WorkspaceHostShell({ api }: { api: WorkspaceHostApi }) {
   const [state, setState] = useState<WorkspaceHostState>({ activeId: null, entries: [] });
@@ -63,7 +70,7 @@ export function WorkspaceHostShell({ api }: { api: WorkspaceHostApi }) {
               <span className={styles.projectIcon}><WorkspaceProjectIcon name={entry.name} color={entry.iconColor} /></span>
               <span className={styles.name}>{entry.name}</span>
               {entry.attention ? <span aria-label="Needs attention" className={styles.attention}>!</span>
-                : entry.running > 0 && <span aria-label={`${entry.running} running`} className={styles.running} />}
+                : entry.running > 0 && <WorkspaceRunningIndicator count={entry.running} />}
             </button>
             {state.entries.length > 1 && <button type="button" className={styles.close} aria-label={`Close workspace ${entry.name}`}
               onClick={() => run(api.close(entry.id))}><X aria-hidden="true" /></button>}

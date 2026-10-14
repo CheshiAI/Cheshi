@@ -96,3 +96,69 @@ test('multiple tabs retain click and arrow-key selection and keyboard focus', as
     expect(document.querySelectorAll('[aria-label^="Close workspace"]')).toHaveLength(3);
   });
 });
+
+test('running dots share the bounded clock and release it when hidden or replaced by status updates', async () => {
+  await withDOM(async ui => {
+    let hidden = false, nextTimer = 0, pauses = 0;
+    const timers = new Set<number>();
+    const observers: Observer[] = [];
+    class Observer {
+      element: Element | null = null;
+      callback: IntersectionObserverCallback;
+      constructor(callback: IntersectionObserverCallback) { this.callback = callback; observers.push(this); }
+      observe(element: Element) { this.element = element; }
+      disconnect() { this.element = null; }
+      emit(visible: boolean) {
+        const target = this.element;
+        if (!target) return;
+        const rect = target.getBoundingClientRect();
+        this.callback([{ target, time: 0, isIntersecting: visible, intersectionRatio: visible ? 1 : 0,
+          boundingClientRect: rect, intersectionRect: rect, rootBounds: null }], this as unknown as IntersectionObserver);
+      }
+    }
+    Object.defineProperties(window, {
+      IntersectionObserver: { configurable: true, value: Observer },
+      setTimeout: { configurable: true, value: () => { const id = ++nextTimer; timers.add(id); return id; } },
+      clearTimeout: { configurable: true, value: (id: number) => timers.delete(id) },
+    });
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+    Object.defineProperty(window.HTMLElement.prototype, 'getAnimations', { configurable: true, value(this: HTMLElement) {
+      return [{ currentTime: 0, effect: { target: this }, pause() { pauses++; } }];
+    } });
+    const host = createHost();
+    const first = { ...entry(1, 'Desktop'), running: 1 };
+    const second = { ...entry(2, 'Flash'), running: 2 };
+    host.publish({ activeId: 1, entries: [first, second] });
+    await ui.render(<WorkspaceHostShell api={host.api} />);
+    const dot = document.querySelector('[aria-label="1 running"]')!;
+    expect(dot.hasAttribute('data-animation-paused')).toBe(true);
+    expect(timers.size).toBe(0);
+    expect(observers).toHaveLength(2);
+    await act(async () => observers.forEach(observer => observer.emit(true)));
+    expect(timers.size).toBe(1);
+    expect(pauses).toBe(2);
+    expect(dot.hasAttribute('data-animation-paused')).toBe(false);
+    await act(async () => host.publish({ activeId: 1, entries: [{ ...first, running: 3 }, second] }));
+    expect(document.querySelector('[aria-label="3 running"]')).toBe(dot);
+    expect(pauses).toBe(2); // Updating the task count must not restart the animation.
+    await act(async () => observers[0]!.emit(false));
+    expect(timers.size).toBe(1);
+    await act(async () => observers[1]!.emit(false));
+    expect(timers.size).toBe(0);
+    await act(async () => observers[0]!.emit(true));
+    expect(timers.size).toBe(1);
+    hidden = true;
+    await act(async () => document.dispatchEvent(new window.Event('visibilitychange')));
+    expect(timers.size).toBe(0);
+    hidden = false;
+    await act(async () => document.dispatchEvent(new window.Event('visibilitychange')));
+    expect(timers.size).toBe(1);
+    await act(async () => host.publish({ activeId: 1, entries: [
+      { ...first, attention: true }, { ...second, running: 0 },
+    ] }));
+    expect(document.querySelector('[aria-label="Needs attention"]')).not.toBeNull();
+    expect(document.querySelector('[data-loading-animation]')).toBeNull();
+    expect(timers.size).toBe(0);
+    expect(observers.every(observer => observer.element === null)).toBe(true);
+  });
+});

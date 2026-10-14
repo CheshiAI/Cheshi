@@ -26,7 +26,7 @@
 .tab .close:hover { background: var(--control-surface-interactive); }
 .close svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); stroke-width: var(--icon-button-stroke-width); }
 .add { align-self: center; margin: 0 var(--icon-default); -webkit-app-region: no-drag; }
-.running { width: 5px; height: 5px; border-radius: 50%; background: var(--text); animation: working 1.8s ease-in-out infinite; }
+.running { width: 5px; height: 5px; border-radius: 50%; background: var(--text); animation: working 1.8s ease-in-out infinite paused; }
 .attention { font-weight: 600; }
 .stage { flex: 1; min-height: 0; }
 .error { padding: var(--space-default); color: var(--text); }
