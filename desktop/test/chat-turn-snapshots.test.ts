@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { completedChatTurnInputs } from '../frontend/src/features/chat/chatTurnSnapshots';
+import { completedChatTurnInputs, createCompletedChatTurnCache } from '../frontend/src/features/chat/chatTurnSnapshots';
 import type { ChatTimelineItem } from '../frontend/src/features/chat/model';
 import { formatChatRelayMessage } from '../shared/chat-relay';
 import { formatSavedChatTurnPrompt } from '../shared/chat-saved-turn-continuation';
@@ -70,5 +70,69 @@ test('completed plans can be copied and saved with their original question', () 
   expect(completedChatTurnInputs(items, 'thread', 'Planning', true).size).toBe(0);
   expect(completedChatTurnInputs(items, 'thread', 'Planning', false).get('plan')).toMatchObject({
     userText: 'Plan the change', assistantText: '## Plan\n\n1. Review\n2. Implement', itemId: 'plan',
+  });
+});
+
+describe('completed turn cache', () => {
+  test('streamed text and command output reuse completed snapshots without reading old response bodies', () => {
+    const read = createCompletedChatTurnCache();
+    let oldTextReads = 0;
+    const answer: ChatTimelineItem = { id: 'a1', kind: 'assistant', createdAt: 123,
+      get text() { oldTextReads++; return '**Completed answer**'; } };
+    const previous = [message('q1', 'user', 'First'), answer];
+    const current = message('q2', 'user', 'Second');
+    const first = read([...previous, current], 'thread', 'Session', true);
+    const initialReads = oldTextReads;
+    for (let index = 0; index < 100; index++) {
+      const items: ChatTimelineItem[] = [...previous, current, message('a2', 'assistant', `Partial ${index}`),
+        { id: 'command', kind: 'activity', activity: 'command', label: 'Command', detail: 'build',
+          status: 'inProgress', output: `line ${index}` }];
+      const next = read(items, 'thread', 'Session', true);
+      expect(next).toBe(first);
+      expect(next.get('a1')).toBe(first.get('a1'));
+    }
+    expect(oldTextReads).toBe(initialReads);
+  });
+
+  test('completion and a later turn preserve earlier snapshots and final command action placement', () => {
+    const read = createCompletedChatTurnCache();
+    const items: ChatTimelineItem[] = [message('q1', 'user', 'First'), message('a1', 'assistant', 'Done'),
+      message('q2', 'user', 'Second'), { id: 'plan', kind: 'plan', text: 'Plan', createdAt: 124 },
+      { id: 'command', kind: 'activity', activity: 'command', label: 'Command', detail: 'build', status: 'completed' }];
+    const live = read(items, 'thread', 'Session', true);
+    const done = read(items, 'thread', 'Session', false);
+    expect(done).toEqual(completedChatTurnInputs(items, 'thread', 'Session', false));
+    expect(done.get('a1')).toBe(live.get('a1'));
+    expect(done.get('command')).toMatchObject({ itemId: 'plan', userText: 'Second', assistantText: 'Plan' });
+    expect(read([...items, message('q3', 'user', 'Next')], 'thread', 'Session', true)).toBe(done);
+    expect(read(items, 'thread', 'Session', true).has('command')).toBe(false);
+  });
+
+  test('edits invalidate only affected turns and equal reloaded content preserves row identity', () => {
+    const read = createCompletedChatTurnCache();
+    const items = [message('q1', 'user', 'First'), message('a1', 'assistant', 'Done'),
+      message('q2', 'user', 'Second'), message('a2', 'assistant', 'Also done')];
+    const first = read(items, 'thread', 'Session', false);
+    expect(read(items.map(item => ({ ...item })), 'thread', 'Session', false)).toBe(first);
+    const edited = [message('q1', 'user', 'Corrected question'), message('a1', 'assistant', 'Corrected answer'), ...items.slice(2)];
+    const next = read(edited, 'thread', 'Session', false);
+    expect(next.get('a1')).toMatchObject({ userText: 'Corrected question', assistantText: 'Corrected answer' });
+    expect(next.get('a1')).not.toBe(first.get('a1'));
+    expect(next.get('a2')).toBe(first.get('a2'));
+    expect([...read(edited.slice(2), 'thread', 'Session', false).keys()]).toEqual(['a2']);
+  });
+
+  test('session title, thread changes, empty history, and unanswered turns cannot reuse stale metadata', () => {
+    const read = createCompletedChatTurnCache();
+    const items = [message('q', 'user', 'Question'), message('a', 'assistant', 'Answer')];
+    const first = read(items, 'thread', 'Old title', false);
+    const renamed = read(items, 'thread', 'New title', false);
+    expect(renamed.get('a')).not.toBe(first.get('a'));
+    expect(renamed.get('a')?.sessionTitle).toBe('New title');
+    expect(read(items, 'other-thread', 'New title', false).get('a')?.threadId).toBe('other-thread');
+    expect(read(items, null, '', false).size).toBe(0);
+    expect(read([], 'thread', 'Session', false).size).toBe(0);
+    expect(read([items[0]!], 'thread', 'Session', false).size).toBe(0);
+    expect(read(items, 'thread', 'Session', false)).toEqual(completedChatTurnInputs(items, 'thread', 'Session', false));
   });
 });

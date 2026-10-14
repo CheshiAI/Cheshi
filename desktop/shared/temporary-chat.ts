@@ -1,8 +1,11 @@
+import { assertChatImportNumbers, chatImportNumber } from './chat-imports.ts';
+
 /** User-selected files are referenced directly; temporary chat does not archive attachments. */
 export interface TemporaryChatAttachment {
   kind: 'image' | 'file';
   name: string;
   path: string;
+  importNumber?: number;
 }
 
 export interface TemporaryChatDraft {
@@ -73,12 +76,15 @@ export function temporaryChatDraft(value: unknown): TemporaryChatDraft {
     if (attachment.kind !== 'image' && attachment.kind !== 'file') {
       throw new TypeError('Temporary chat attachment kind is invalid.');
     }
+    const importNumber = chatImportNumber(attachment.importNumber);
     return {
       kind: attachment.kind,
       name: boundedString(attachment.name, 'attachment name', 1024),
       path: boundedString(attachment.path, 'attachment path', 4096),
+      ...(importNumber === undefined ? {} : { importNumber }),
     };
   });
+  assertChatImportNumbers(attachments);
   if (!text.trim() && attachments.length === 0) {
     throw new TypeError('Enter a message or attach a file.');
   }

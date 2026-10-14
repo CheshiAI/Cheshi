@@ -29,6 +29,32 @@ function fixture(overrides: Partial<TemporaryChatApi> = {}) {
 }
 
 describe('temporary chat panel session', () => {
+  test('applies editor attachment changes atomically and sends only the remaining imports', async () => {
+    const image = { kind: 'image' as const, name: 'image.png', path: '/workspace/image.png', previewUrl: 'attachment://image.png' };
+    const file = { kind: 'file' as const, name: 'notes.txt', path: '/workspace/notes.txt' };
+    let sent: unknown;
+    const f = fixture({ selectAttachments: async () => [image, file],
+      send: async (_id, request) => { sent = request; return { model: request.model, text: 'Read' }; } });
+    await f.session.start();
+    await f.session.selectAttachments();
+    const original = f.latest();
+    const remaining = original.attachments.filter(attachment => attachment.kind === 'file');
+    const before = f.changes.length;
+    f.session.setDraft('[import 2]', remaining);
+    expect(f.changes.slice(before)).toHaveLength(1);
+    expect(f.latest()).toMatchObject({ draft: '[import 2]', attachments: remaining });
+    // Undo supplies the original attachment metadata along with the restored text.
+    f.session.setDraft(original.draft, original.attachments);
+    expect(f.latest()).toMatchObject({ draft: original.draft, attachments: original.attachments });
+    f.session.setDraft('[import 2]', remaining);
+    f.session.setDraft('Read [import 2]');
+    expect(f.latest().attachments).toEqual(remaining);
+    await f.session.send();
+    expect(sent).toMatchObject({ text: 'Read [import 2]', attachments: remaining });
+    expect(f.latest()).toMatchObject({ draft: '', attachments: [] });
+    await f.session.close();
+  });
+
   test('merges dropped files with picker attachments and sends their original paths', async () => {
     const file = { kind: 'file' as const, name: 'notes.txt', path: '/workspace/notes.txt' };
     const other = { kind: 'image' as const, name: 'image.png', path: '/workspace/image.png' };
@@ -40,10 +66,12 @@ describe('temporary chat panel session', () => {
     await f.session.start();
     await f.session.selectAttachments();
     await f.session.importAttachments([file.path, other.path]);
-    expect(f.latest().attachments).toEqual([file, other]);
+    const numbered = [{ ...file, importNumber: 1 }, { ...other, importNumber: 2 }];
+    expect(f.latest().attachments).toEqual(numbered);
+    expect(f.latest().draft).toBe('[import 1] [import 2]');
     expect(imports).toEqual([{ id: 'session', files: [file.path, other.path] }]);
     await f.session.send();
-    expect(sent).toEqual([file, other]);
+    expect(sent).toEqual(numbered);
     await f.session.close();
   });
 
@@ -56,11 +84,12 @@ describe('temporary chat panel session', () => {
     } });
     await f.session.start();
     await f.session.selectAttachments();
+    const numbered = selected.map((item, index) => ({ ...item, importNumber: index + 1 }));
     await f.session.importAttachments(['/workspace/extra.txt']);
-    expect(f.latest().attachments).toEqual(selected);
-    expect(f.latest().error).toContain('20 files');
+    expect(f.latest().attachments).toEqual(numbered);
+    expect(f.latest().error).toContain('20 attachments');
     await f.session.importAttachments(['/workspace/folder']);
-    expect(f.latest().attachments).toEqual(selected);
+    expect(f.latest().attachments).toEqual(numbered);
     expect(f.latest().error).toContain('Not a regular file');
     expect(f.latest().picking).toBe(false);
     await f.session.close();
@@ -173,21 +202,22 @@ describe('temporary chat panel session', () => {
     await session.start();
     await session.selectAttachments();
     await session.selectAttachments();
-    expect(latest().attachments).toEqual([file]);
+    expect(latest().attachments).toEqual([{ ...file, importNumber: 1 }]);
+    expect(latest().draft).toBe('[import 1]');
     await session.send();
-    expect(received).toEqual({ id: 'session', attachments: [file] });
+    expect(received).toEqual({ id: 'session', attachments: [{ ...file, importNumber: 1 }] });
     await session.close();
   });
 });
 
 
 test('receives a queued draft with revalidated attachments without sending it', async () => {
-  const attachment = { kind: 'file' as const, name: 'a.txt', path: '/workspace/a.txt' };
+  const attachment = { kind: 'file' as const, name: 'a.txt', path: '/workspace/a.txt', importNumber: 4 };
   const imports: unknown[] = [];
-  const f = fixture({ importAttachments: async (_id, paths) => { imports.push(paths); return [attachment]; } });
+  const f = fixture({ importAttachments: async (_id, paths) => { imports.push(paths); return [{ kind: attachment.kind, name: attachment.name, path: attachment.path }]; } });
   await f.session.start();
-  await f.session.receiveDraft({ text: '**Question**', attachments: [attachment] });
-  expect(f.latest().draft).toBe('**Question**');
+  await f.session.receiveDraft({ text: '**Question** [import 4]', attachments: [attachment] });
+  expect(f.latest().draft).toBe('**Question** [import 4]');
   expect(f.latest().attachments).toEqual([attachment]);
   expect(f.latest().messages).toEqual([]);
   expect(imports).toEqual([[attachment.path]]);

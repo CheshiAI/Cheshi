@@ -11,12 +11,13 @@ import {
 } from './chatViewModel';
 import type { ChatConfiguration, ChatModel, ChatReasoningEffort } from './model';
 import type { ChatController } from './useChatController';
+import type { ChatInputHandle } from './chatInputHandle';
 
 interface ChatConfigurationOptions {
   controller: ChatController;
   active: boolean;
   rootRef: RefObject<HTMLElement | null>;
-  textareaRef: RefObject<HTMLTextAreaElement | null>;
+  textareaRef: RefObject<ChatInputHandle | null>;
 }
 
 export function useChatConfiguration({ controller, rootRef, textareaRef, active }: ChatConfigurationOptions) {

@@ -8,6 +8,7 @@ export function useWorkspaceRailOverlay(api: WorkspaceHostApi) {
     const rail = ref.current?.querySelector<HTMLElement>('[aria-label="Application navigation"]');
     if (!rail) return;
     let button: HTMLButtonElement | null = null;
+    let keyboardNavigation = false;
     const publish = () => {
       const label = button?.querySelector<HTMLElement>('[data-rail-label]');
       if (!button || !label) return;
@@ -45,26 +46,38 @@ export function useWorkspaceRailOverlay(api: WorkspaceHostApi) {
       if (event.action === 'activate') { button.focus({ preventScroll: true }); button.click(); }
       clear();
     });
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') clear(); };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') clear();
+      keyboardNavigation = !event.metaKey && !event.ctrlKey && !event.altKey
+        && ['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key);
+    };
+    // Electron restores the host renderer's last focused button when the app is
+    // activated. That focus event is not a request to expand its native label.
+    const focus = (event: FocusEvent) => { if (keyboardNavigation) enter(event); };
+    const resetKeyboardNavigation = () => { keyboardNavigation = false; };
     const blur = (event: FocusEvent) => {
       if (event.relatedTarget instanceof window.Node && !rail.contains(event.relatedTarget)) clear();
     };
     rail.addEventListener('pointerover', enter);
     rail.addEventListener('pointermove', enter);
-    rail.addEventListener('focusin', enter);
+    rail.addEventListener('focusin', focus);
     rail.addEventListener('focusout', blur);
     rail.addEventListener('pointerleave', leave);
     window.addEventListener('resize', clear);
     window.addEventListener('keydown', key);
+    window.addEventListener('pointerdown', resetKeyboardNavigation, true);
+    window.addEventListener('blur', resetKeyboardNavigation);
     return () => {
       unsubscribe(); clear();
       rail.removeEventListener('pointerover', enter);
       rail.removeEventListener('pointermove', enter);
-      rail.removeEventListener('focusin', enter);
+      rail.removeEventListener('focusin', focus);
       rail.removeEventListener('focusout', blur);
       rail.removeEventListener('pointerleave', leave);
       window.removeEventListener('resize', clear);
       window.removeEventListener('keydown', key);
+      window.removeEventListener('pointerdown', resetKeyboardNavigation, true);
+      window.removeEventListener('blur', resetKeyboardNavigation);
     };
   }, [api]);
   return ref;

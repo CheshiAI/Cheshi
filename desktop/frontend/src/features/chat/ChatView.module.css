@@ -93,7 +93,7 @@
 .timelineItem:focus { outline: none; }
 /* Keep the latest page fully laid out for streaming and scroll-to-bottom.
    Older rows retain their mounted state and remembered height offscreen. */
-.timelineItem:nth-last-child(n + 31) {
+.timelineItem[data-history-deferred='true'] {
   content-visibility: auto;
   contain-intrinsic-block-size: auto 160px;
 }

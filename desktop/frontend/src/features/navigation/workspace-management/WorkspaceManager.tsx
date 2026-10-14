@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FolderOpen, FolderPlus, Folders, GitBranch, GitFork, X, PackageOpen } from 'lucide-react';
 import type { WorkspaceCatalogEntry, WorkspaceManagementApi } from '../../../../../shared/workspace-management';
-import { LoadingState, NeumorphicButton, WorkspaceProjectIcon } from '../../../shared/ui';
+import { EmptyState, LoadingState, NeumorphicButton, WorkspaceProjectIcon } from '../../../shared/ui';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { isLiteralTrue } from '../../../shared/isLiteralTrue';
 import { AppUpdateIndicator } from '../../updates/AppUpdateIndicator';
@@ -216,10 +216,9 @@ export function WorkspaceManager({ api, workspaceName, workspaceRoot, platform }
           <section ref={listRegion} className={styles.listRegion} aria-label="Projects" aria-busy={authenticated && loading}>
             {workspaceReady && <>
             {loading && entries.length === 0 && <p role="status" className={styles.empty}>Loading projects…</p>}
-            {!loading && !loadError && entries.length === 0 && <div className={styles.empty}>
-              <Folders aria-hidden="true" /><h2>Your next workspace starts here</h2>
-              <p>Create a project, open a local folder, or clone a repository to get started.</p>
-            </div>}
+            {!loading && !loadError && entries.length === 0 && <EmptyState className={styles.welcome}
+              variant="section" icon={<Folders />} title="Your next workspace starts here"
+              description="Create a project, open a local folder, or clone a repository to get started." />}
             {entries.length > 0 && filtered.length === 0 && <p role="status" className={styles.empty}>No projects match “{query}”.</p>}
             <WorkspaceProjectList entries={filtered} selectedPath={selectedPath} busy={busy || loading}
               onSelect={setSelectedPath} onOpen={open} onOpenOptions={openOptions} onRemove={removeWorkspace} />

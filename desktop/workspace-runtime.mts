@@ -34,6 +34,7 @@ import {
   resolveCodeGraphDataRoot,
 } from '../config/workspace-storage.mts';
 import { ChatAttachmentStore } from './lib/chat-attachment-store.mts';
+import { assertChatImportNumbers, chatImportNumber, type ChatImportAttachment } from './shared/chat-imports.ts';
 import { CodeGraphIndexer, CodeGraphService, createCodeGraphCommands } from './lib/codegraph-service.mts';
 import { hasReadyCodeGraphIndex, prepareInitialCodeGraph } from './lib/codegraph-initial-index.mts';
 import { CodexAccountService } from './lib/codex-account-service.mts';
@@ -339,7 +340,7 @@ function chatMessageRequest(value: unknown) {
   if (attachmentValues.length > MAX_CHAT_ATTACHMENTS) {
     throw new TypeError(`Chat messages support up to ${MAX_CHAT_ATTACHMENTS} attachments.`);
   }
-  const attachments = attachmentValues.map((attachmentValue) => {
+  const attachments = attachmentValues.map((attachmentValue): ChatImportAttachment => {
     assertRecord(attachmentValue, 'Each chat attachment must be an object.');
     const { kind, name, path: attachmentPath } = attachmentValue;
     if (kind !== 'image' && kind !== 'file') throw new TypeError('Chat attachment kind is invalid.');
@@ -347,8 +348,10 @@ function chatMessageRequest(value: unknown) {
     if (typeof attachmentPath !== 'string' || !attachmentPath.trim() || !path.isAbsolute(attachmentPath)) {
       throw new TypeError('Chat attachment path must be absolute.');
     }
-    return { kind, name: name.trim(), path: attachmentPath };
+    const importNumber = chatImportNumber(attachmentValue.importNumber);
+    return { kind, name: name.trim(), path: attachmentPath, ...(importNumber === undefined ? {} : { importNumber }) };
   });
+  assertChatImportNumbers(attachments);
   return { text, clientMessageId, threadId, skill, attachments };
 }
 

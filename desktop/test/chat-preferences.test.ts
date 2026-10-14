@@ -7,6 +7,14 @@ import { createSettingsService } from '../lib/settings-service.mts';
 import { chatPreferences, type ChatPreferenceStore } from '../lib/chat-preferences.mts';
 import { codexThread, createFakeCodexClient, expectFailure } from './codex-chat-test-helpers.ts';
 
+function model(id: string, efforts = ['medium', 'high'], fast = true) {
+  return { id, model: id, displayName: id, description: '', isDefault: true,
+    defaultReasoningEffort: efforts[0],
+    supportedReasoningEfforts: efforts.map(reasoningEffort => ({ reasoningEffort, description: '' })),
+    serviceTiers: fast ? [{ id: 'priority', name: 'Fast', description: '' }] : [],
+    defaultServiceTier: fast ? 'priority' : null };
+}
+
 function fixture() {
   const directory = mkdtempSync(path.join(tmpdir(), 'cheshi-chat-preferences-'));
   const settingsPath = path.join(directory, 'settings.json');
@@ -14,11 +22,13 @@ function fixture() {
   const clients: ReturnType<typeof createFakeCodexClient>[] = [];
   const managers: CodexChatContexts[] = [];
   let allowed: unknown = true;
+  let models = [model('test-model'), { ...model('limited-model', ['low'], false), isDefault: false }];
   const contexts = (preferences = settings().workspaceChatPreferences('/workspace/cheshi')) => {
     const manager = new CodexChatContexts({
       service: { cwd: '/workspace/cheshi', serviceName: 'cheshi', developerInstructions: 'Test.', chatPreferences: preferences },
       createClient() {
         const client = createFakeCodexClient({
+          'model/list': () => ({ data: models }),
           'permissionProfile/list': () => ({ data: [
             { id: ':read-only', allowed: true }, { id: ':workspace', allowed },
           ] }),
@@ -38,6 +48,7 @@ function fixture() {
     return manager;
   };
   return { contexts, settings, settingsPath, clients, setAllowed(value: unknown) { allowed = value; },
+    setModels(value: typeof models) { models = value; },
     async close() {
       await Promise.all(managers.map(manager => manager.stop()));
       rmSync(directory, { recursive: true, force: true });
@@ -73,6 +84,113 @@ test('last choices survive session navigation, new panes and restart without cha
     expect(requests.find(request => request.method === 'turn/start')?.params).toMatchObject({
       permissions: ':workspace', collaborationMode: { mode: 'plan' },
     });
+  } finally { await f.close(); }
+});
+
+test('model, effort and explicit Standard survive navigation, new panes and a settings reload before sending', async () => {
+  const f = fixture();
+  try {
+    f.setModels([{ ...model('test-model'), isDefault: false }, model('limited-model', ['low'], false)]);
+    const contexts = f.contexts(), first = contexts.get(1, 'first'), existing = contexts.get(1, 'existing');
+    await existing.listModels();
+    await first.configure({ model: 'test-model', effort: 'high', fast: false });
+    await first.openSession('saved');
+    await first.newSession();
+    expect(first.configuration()).toMatchObject({ model: 'test-model', reasoningEffort: 'high', serviceTier: null });
+    expect(existing.configuration()).toMatchObject({ model: 'limited-model', reasoningEffort: 'low', serviceTier: null });
+    expect((await contexts.get(1, 'fresh').listModels()).configuration).toMatchObject({
+      model: 'test-model', reasoningEffort: 'high', serviceTier: null,
+    });
+    await contexts.stop();
+    const restarted = f.contexts().get(2, 'restarted');
+    await restarted.sendMessage('Hello', 'restored-model');
+    expect(f.clients.at(-1)!.requests.find(request => request.method === 'turn/start')?.params).toMatchObject({
+      model: 'test-model', effort: 'high', serviceTier: null,
+    });
+    expect(f.settings().workspaceChatPreferences('/workspace/cheshi').read()).toMatchObject({
+      model: 'test-model', reasoningEffort: 'high', serviceTier: null,
+    });
+  } finally { await f.close(); }
+});
+
+test('partial model preference writes preserve other choices and workspace isolation', async () => {
+  const f = fixture();
+  try {
+    const contexts = f.contexts(), first = contexts.get(1, 'first'), second = contexts.get(1, 'second');
+    await first.configure({ model: 'test-model', effort: 'high', fast: true });
+    await second.configure({ fast: false });
+    first.setCollaborationMode('plan');
+    const other = f.settings().workspaceChatPreferences('/workspace/other');
+    other.write({ model: 'limited-model', reasoningEffort: 'low' });
+    await first.newSession();
+    expect(first.configuration()).toMatchObject({ model: 'test-model', reasoningEffort: 'high', serviceTier: null });
+    expect(f.settings().workspaceChatPreferences('/workspace/cheshi').read()).toEqual({
+      permissionModeId: 'read-only', collaborationMode: 'plan', model: 'test-model', reasoningEffort: 'high', serviceTier: null,
+    });
+    expect(other.read()).toMatchObject({ model: 'limited-model', reasoningEffort: 'low' });
+    await second.newSession();
+    expect(second.configuration()).toMatchObject({ model: 'test-model', reasoningEffort: 'high', serviceTier: null });
+  } finally { await f.close(); }
+});
+
+test('account fallbacks never overwrite saved choices and catalog refresh restores available choices', async () => {
+  const f = fixture();
+  try {
+    const service = f.contexts().get(1, 'pane');
+    const preferences = f.settings().workspaceChatPreferences('/workspace/cheshi');
+    await service.configure({ model: 'test-model', effort: 'high', fast: true });
+    f.setModels([model('limited-model', ['low'], false)]);
+    await service.resetForAccount(true);
+    expect((await service.listModels()).configuration).toMatchObject({
+      model: 'limited-model', reasoningEffort: 'low', serviceTier: null,
+    });
+    expect(preferences.read()).toMatchObject({ model: 'test-model', reasoningEffort: 'high', serviceTier: 'priority' });
+    f.setModels([model('test-model')]);
+    expect((await service.listModels()).configuration).toMatchObject({ model: 'test-model', reasoningEffort: 'high', serviceTier: 'priority' });
+    f.setModels([model('test-model', ['medium'], false)]);
+    await service.resetForAccount();
+    expect((await service.listModels()).configuration).toMatchObject({ model: 'test-model', reasoningEffort: 'medium', serviceTier: null });
+    await service.configure({ fast: false });
+    expect(preferences.read()).toMatchObject({ model: 'test-model', reasoningEffort: 'high', serviceTier: null });
+    f.setModels([model('test-model')]);
+    await service.resetForAccount();
+    expect((await service.listModels()).configuration).toMatchObject({ model: 'test-model', reasoningEffort: 'high', serviceTier: null });
+  } finally { await f.close(); }
+});
+
+test('model switches preserve the preferred effort and tier, and invalid combinations roll back', async () => {
+  const f = fixture();
+  try {
+    const service = f.contexts().get(1, 'pane'), preferences = f.settings().workspaceChatPreferences('/workspace/cheshi');
+    await service.configure({ model: 'test-model', effort: 'high', fast: true });
+    expect(await service.configure({ model: 'limited-model' })).toMatchObject({ model: 'limited-model', reasoningEffort: 'low', serviceTier: null });
+    expect(preferences.read()).toMatchObject({ model: 'limited-model', reasoningEffort: 'high', serviceTier: 'priority' });
+    expect(await service.configure({ model: 'test-model' })).toMatchObject({ reasoningEffort: 'high', serviceTier: 'priority' });
+    const before = preferences.read(), configuration = service.configuration();
+    await expectFailure(() => service.configure({ model: 'limited-model', effort: 'high' }),
+      'The selected reasoning effort is not supported by the current model.');
+    await expectFailure(() => service.configure({ effort: 'medium', fast: 'true' }), 'Fast mode must be a boolean.');
+    await expectFailure(() => service.configure({ model: 'missing' }), 'The selected Codex model is no longer available.');
+    expect(preferences.read()).toEqual(before);
+    expect(service.configuration()).toEqual(configuration);
+  } finally { await f.close(); }
+});
+
+test('failed persistence restores the live selection and malformed saved model fields retain legacy defaults', async () => {
+  const f = fixture();
+  try {
+    expect(chatPreferences({ model: ' ', reasoningEffort: false, serviceTier: 1 })).toEqual(chatPreferences(null));
+    expect(chatPreferences({ serviceTier: null }).serviceTier).toBeNull();
+    expect(chatPreferences({}).serviceTier).toBeUndefined();
+    const service = f.contexts().get(1, 'pane');
+    await service.configure({ model: 'test-model', effort: 'high', fast: true });
+    const before = service.configuration();
+    writeFileSync(f.settingsPath, '{damaged');
+    await expectFailure(() => service.configure({ model: 'limited-model', effort: 'low', fast: false }),
+      'Could not save the chat defaults. Try again.');
+    expect(service.configuration()).toEqual(before);
+    expect((await service.listModels()).configuration).toEqual(before);
+    expect(readFileSync(f.settingsPath, 'utf8')).toBe('{damaged');
   } finally { await f.close(); }
 });
 

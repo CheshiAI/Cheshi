@@ -1,0 +1,32 @@
+.input { width: 100%; min-width: 0; }
+.input :global(.cm-editor) { color: var(--text); background: transparent; font: inherit; }
+.input :global(.cm-editor.cm-focused) { outline: none; }
+.input :global(.cm-scroller) {
+  min-height: 44px;
+  max-height: 180px;
+  overflow: auto;
+  font: inherit;
+  line-height: 20px;
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+.input :global(.cm-content) {
+  min-width: 0;
+  padding: var(--space-default) var(--space-default) var(--icon-default);
+  caret-color: var(--text);
+}
+.input :global(.cm-line) { padding: 0; }
+.input :global(.cm-placeholder) { color: var(--text); opacity: .4; }
+.input[aria-disabled='true'] :global(.cm-content) { cursor: wait; }
+.chip {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 1px 6px;
+  background: var(--control-surface-interactive);
+  color: var(--text);
+  font: inherit;
+  line-height: 16px;
+  white-space: nowrap;
+  vertical-align: baseline;
+}

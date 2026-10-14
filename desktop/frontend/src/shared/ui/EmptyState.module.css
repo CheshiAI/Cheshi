@@ -35,3 +35,6 @@
 
 .section > strong { font-size: var(--font-size-section-title); }
 .section > p { font-size: var(--font-size-small); }
+
+.mark { display: flex; }
+.mark > svg { width: 48px; height: 48px; stroke-width: 1.5; }

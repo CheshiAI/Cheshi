@@ -15,7 +15,7 @@ import type { useChatHistorySearch } from '../frontend/src/features/chat/useChat
 import type { ChatHistorySearchBar } from '../frontend/src/features/chat/ChatHistorySearchBar';
 import type { ChatHistorySearchPage } from '../frontend/src/features/chat/ChatHistorySearchPage';
 import { chatHistoryItemMatches, findChatHistoryTarget } from '../frontend/src/features/chat/chatHistorySearchNavigation';
-import { captureChatHistoryAnchor, previousChatHistoryStart } from '../frontend/src/features/chat/chatHistoryWindow';
+import { captureChatHistoryAnchor, CHAT_HISTORY_PAGE_SIZE, previousChatHistoryStart } from '../frontend/src/features/chat/chatHistoryWindow';
 import { groupReasoningItems } from '../frontend/src/features/chat/chatReasoningPresentation';
 
 mock.module('../frontend/src/cheshiDesktop', () => ({ cheshiDesktop: undefined }));
@@ -602,7 +602,7 @@ function historyHarness() {
     'lucide-react': { History: 'svg' },
     '../../shared/ui': { NeumorphicButton: 'button', ContentCard: 'content-card' },
     './ChatTimelineItem': { ChatTimelineItem: 'timeline-item' },
-    './chatHistoryWindow': { captureChatHistoryAnchor, previousChatHistoryStart },
+    './chatHistoryWindow': { captureChatHistoryAnchor, CHAT_HISTORY_PAGE_SIZE, previousChatHistoryStart },
     './chatReasoningPresentation': { groupReasoningItems },
     './ChatView.module.css': { default: { reasoningGroup: 'reasoning-group' } },
     './chatHistorySearchNavigation': { chatHistoryItemMatches, findChatHistoryTarget },

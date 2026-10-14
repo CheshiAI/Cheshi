@@ -40,3 +40,58 @@ export function completedChatTurnInputs(
   if (!responding) finish();
   return turns;
 }
+
+const SNAPSHOT_FIELDS = ['threadId', 'itemId', 'sessionTitle', 'userText', 'assistantText', 'createdAt'] as const;
+
+function sameSnapshot(previous: ChatSavedTurnInput | undefined, next: ChatSavedTurnInput): previous is ChatSavedTurnInput {
+  return previous !== undefined && SNAPSHOT_FIELDS.every(field => previous[field] === next[field]);
+}
+
+interface CachedTurn {
+  items: ChatTimelineItem[];
+  snapshot: [string, ChatSavedTurnInput] | undefined;
+}
+
+/** Per timeline: reuse completed turns without reparsing their text during live output. */
+export function createCompletedChatTurnCache() {
+  let previousThreadId: string | null = null;
+  let previousTitle = '';
+  let cache = new Map<string, CachedTurn>();
+  let result = new Map<string, ChatSavedTurnInput>();
+
+  return (items: ChatTimelineItem[], threadId: string | null, sessionTitle: string, responding: boolean) => {
+    const sameContext = threadId === previousThreadId && sessionTitle === previousTitle;
+    const nextCache = new Map<string, CachedTurn>();
+    const next = new Map<string, ChatSavedTurnInput>();
+    const finish = (start: number, end: number) => {
+      if (start === end) return;
+      const key = items[start]!.id;
+      let entry = sameContext ? cache.get(key) : undefined;
+      if (!entry || entry.items.length !== end - start
+        || !entry.items.every((item, index) => item === items[start + index])) {
+        const turnItems = items.slice(start, end);
+        entry = { items: turnItems,
+          snapshot: completedChatTurnInputs(turnItems, threadId, sessionTitle, false).entries().next().value };
+      }
+      nextCache.set(key, entry);
+      if (entry.snapshot) {
+        const [id, input] = entry.snapshot;
+        const previous = sameContext ? result.get(id) : undefined;
+        next.set(id, sameSnapshot(previous, input) ? previous : input);
+      }
+    };
+    if (threadId) {
+      let start = 0;
+      for (let index = 0; index < items.length; index++) {
+        if (items[index]!.kind === 'user') { finish(start, index); start = index; }
+      }
+      // The unfinished tail has no actions yet and needs no response snapshot.
+      if (!responding) finish(start, items.length);
+    }
+    previousThreadId = threadId;
+    previousTitle = sessionTitle;
+    cache = nextCache;
+    if (result.size !== next.size || [...next].some(([id, input]) => result.get(id) !== input)) result = next;
+    return result;
+  };
+}

@@ -1,4 +1,4 @@
-import { regionalBlurMask, type BlurSurface } from './regionalBlurGeometry';
+import { regionalBlurMaskImage, type BlurSurface } from './regionalBlurGeometry';
 
 const SURFACE_ATTRIBUTE = 'data-regional-blur-surface';
 const SOURCE_ATTRIBUTE = 'data-regional-blur-source';
@@ -67,6 +67,7 @@ export function createRegionalBlurController({ preserveFilter = false } = {}) {
     const inheritedFilter = preserveFilter ? window.getComputedStyle(source).filter : '';
     const appliedFilter = `${inheritedFilter && inheritedFilter !== 'none' ? `${inheritedFilter} ` : ''}url("#${filter.id}")`;
     let disposed = false, frame: number | null = null, lastMask: string | null = null;
+    let lastWidth = 0, lastHeight = 0;
     let watched = new Set<HTMLElement>();
     const moving = new Map<EventTarget, Set<string>>();
 
@@ -89,16 +90,20 @@ export function createRegionalBlurController({ preserveFilter = false } = {}) {
         if (surface) surfaces.push(surface);
       }
       const width = source.offsetWidth, height = source.offsetHeight;
-      const nextMask = regionalBlurMask(rect, width, height, surfaces);
-      if (nextMask === lastMask) return;
+      const image = regionalBlurMaskImage(rect, width, height, surfaces);
+      const nextMask = image?.svg ?? null;
+      if (nextMask === lastMask && width === lastWidth && height === lastHeight) return;
       lastMask = nextMask;
-      if (!nextMask) { restoreSource(); mask.removeAttribute('href'); return; }
+      lastWidth = width; lastHeight = height;
+      if (!image) { restoreSource(); mask.removeAttribute('href'); return; }
       filter.setAttribute('width', String(width));
       filter.setAttribute('height', String(height));
       resizeFilter?.(width, height);
-      mask.setAttribute('width', String(width));
-      mask.setAttribute('height', String(height));
-      mask.setAttribute('href', `data:image/svg+xml,${encodeURIComponent(nextMask)}`);
+      mask.setAttribute('x', String(image.x));
+      mask.setAttribute('y', String(image.y));
+      mask.setAttribute('width', String(image.width));
+      mask.setAttribute('height', String(image.height));
+      mask.setAttribute('href', `data:image/svg+xml,${encodeURIComponent(image.svg)}`);
       source.style.setProperty('filter', appliedFilter);
       source.setAttribute(SOURCE_ATTRIBUTE, filter.id);
     };

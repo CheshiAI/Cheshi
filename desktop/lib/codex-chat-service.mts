@@ -31,6 +31,7 @@ import {
   ensureCodexReasoningEffortIsSupported,
   ensureCodexServiceTierIsSupported,
   listCodexModels,
+  restoreCodexModelPreferences,
   listCodexPermissionModes,
   codexPermissionOverrides,
   codexServiceTierOverride,
@@ -104,10 +105,11 @@ export {
   timelineFromThread,
 } from "./codex-chat-thread-data.mts";
 export { permissionModesFromListResponse } from "./codex-chat-permissions.mts";
-import type { ChatPreferenceStore } from './chat-preferences.mts';
+import type { ChatModelPreferences, ChatPreferenceStore } from './chat-preferences.mts';
 
 export class CodexChatService {
   private readonly chatPreferences: ChatPreferenceStore | undefined;
+  private modelPreferences: ChatModelPreferences = {};
   readonly memoryRequests: FlashToolRequests | undefined;
   readonly agentTokenUsage = new CodexAgentTokenUsage();
   readonly conversations: CodexConversationAccess | undefined;
@@ -349,7 +351,7 @@ export class CodexChatService {
   }
 
   async listModels() {
-    return listCodexModels(this);
+    return listCodexModels(this, this.modelPreferences);
   }
 
   async listMcpServers() {
@@ -383,7 +385,13 @@ export class CodexChatService {
   }
 
   async configure(value: unknown) {
-    return configureCodexChat(this, value);
+    return configureCodexChat(this, value, {
+      preferences: this.modelPreferences,
+      persist: update => {
+        this.chatPreferences?.write(update);
+        this.modelPreferences = { ...this.modelPreferences, ...update };
+      },
+    });
   }
 
   /** @returns {JsonObject} */
@@ -410,6 +418,8 @@ export class CodexChatService {
     if (!saved) return;
     this.selectedPermissionModeId = saved.permissionModeId;
     this.selectedCollaborationMode = saved.collaborationMode;
+    this.modelPreferences = { model: saved.model, reasoningEffort: saved.reasoningEffort, serviceTier: saved.serviceTier };
+    restoreCodexModelPreferences(this, this.modelPreferences);
   }
 
   currentModel() {

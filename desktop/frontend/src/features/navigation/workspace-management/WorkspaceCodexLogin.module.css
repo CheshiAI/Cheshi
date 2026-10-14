@@ -11,9 +11,7 @@
   text-align: center;
   font-size: var(--font-size-small);
 }
-.login .mark { width: 48px; height: 48px; stroke-width: 1.5; }
 .copy {
-  composes: section from '../../../shared/ui/EmptyState.module.css';
   flex: 0 0 auto;
   padding: 0;
 }

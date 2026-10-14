@@ -3,6 +3,7 @@ import { createReadStream } from "node:fs";
 import { copyFile, mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { validatedChatAttachmentTransfers } from './chat-attachment-transfer.mts';
+import { chatImportNumber, type ChatImportAttachment } from '../shared/chat-imports.ts';
 
 const IMAGE_ATTACHMENT_EXTENSIONS = new Set([
   ".bmp",
@@ -125,7 +126,7 @@ export class ChatAttachmentStore {
 
   /**
    * @param {unknown} sourcePath
-   * @returns {Promise<{ kind: 'image' | 'file', name: string, path: string }>}
+   * @returns {Promise<ChatImportAttachment>}
    */
   async importFile(
     sourcePath: unknown,
@@ -191,7 +192,7 @@ export class ChatAttachmentStore {
    */
   async importAttachment(
     value: unknown,
-  ): Promise<{ kind: "image" | "file"; name: string; path: string }> {
+  ): Promise<ChatImportAttachment> {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       throw new TypeError("Chat attachment must be an object.");
     }
@@ -203,17 +204,18 @@ export class ChatAttachmentStore {
     if (typeof name !== "string" || !name.trim()) {
       throw new TypeError("Chat attachment name must be a non-empty string.");
     }
+    const importNumber = chatImportNumber('importNumber' in value ? value.importNumber : undefined);
     const stored = await this.importFile(sourcePath);
-    return { kind, name: name.trim(), path: stored.path };
+    return { kind, name: name.trim(), path: stored.path, ...(importNumber === undefined ? {} : { importNumber }) };
   }
 
   /**
    * @param {unknown[]} values
-   * @returns {Promise<Array<{ kind: 'image' | 'file', name: string, path: string }>>}
+   * @returns {Promise<ChatImportAttachment[]>}
    */
   async importAttachments(
     values: unknown[],
-  ): Promise<Array<{ kind: "image" | "file"; name: string; path: string }>> {
+  ): Promise<ChatImportAttachment[]> {
     return Promise.all(values.map((value) => this.importAttachment(value)));
   }
 

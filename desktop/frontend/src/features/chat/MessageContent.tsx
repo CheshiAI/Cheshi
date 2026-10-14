@@ -1,7 +1,7 @@
 import { ChatImagePreview } from './ChatImagePreview';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { Image as ImageIcon } from 'lucide-react';
-import { Children, createContext, useContext, useEffect, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react';
+import { Children, createContext, useContext, useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform, type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -14,6 +14,9 @@ import { FileEvidence } from './FileEvidence';
 import { fileEvidence } from './fileEvidenceModel';
 import { flashSourceTarget } from '../../../../shared/flash-memory';
 import { FlashSourceLink } from './FlashSourceLink';
+import { chatImportLabel, chatImportMarkdown, parseChatImports } from '../../../../shared/chat-imports';
+import { ChatImportAttachments, ChatImportContext } from './ChatImportAttachments';
+import importStyles from './ChatImportAttachments.module.css';
 
 export const LocalFileLinkContext = createContext<((href: string) => Promise<void>) | null>(null);
 
@@ -73,6 +76,14 @@ function LocalFileAnchor({ href, children }: { href: string; children: ReactNode
 }
 
 function MessageAnchor({ href, children }: { href: string; children: ReactNode }) {
+  const imports = useContext(ChatImportContext);
+  const attachment = imports.find(item => href === `#cheshi-import-${item.importNumber}`);
+  if (attachment) {
+    const label = chatImportLabel(attachment.importNumber);
+    return attachment.kind === 'image'
+      ? <ChatImagePreview imagePath={attachment.path} name={attachment.name} className={importStyles.reference}>{label}</ChatImagePreview>
+      : <LocalFileAnchor href={attachment.path}>{label}</LocalFileAnchor>;
+  }
   const source = flashSourceTarget(href);
   if (source) return <FlashSourceLink href={href} target={source}>{children}</FlashSourceLink>;
   if (!/^https?:\/\//i.test(href)) {
@@ -91,9 +102,8 @@ function imageName(imagePath: string): string {
   return imagePath.replaceAll('\\', '/').split('/').pop() || 'Attached image';
 }
 
-function LocalImage({ imagePath }: { imagePath: string }) {
+function LocalImage({ imagePath, name = imageName(imagePath) }: { imagePath: string; name?: string }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>();
-  const name = imageName(imagePath);
 
   useEffect(() => {
     let active = true;
@@ -208,8 +218,10 @@ const descriptionComponents: Components = {
 };
 
 export function MessageContent({ renderLocalImages = false, text, presentation = 'default', mention, reviewFileContext }: MessageContentProps) {
+  const imported = useMemo(() => renderLocalImages ? parseChatImports(text) : null, [text, renderLocalImages]);
+  text = imported?.text ?? text;
   const description = presentation === 'description';
-  const jsonSegment = description ? null : jsonSegmentFromText(text);
+  const jsonSegment = description || imported ? null : jsonSegmentFromText(text);
   if (jsonSegment) return <CodePanel code={jsonSegment.value} language={jsonSegment.language} />;
   const mentionLabel = mention ? `@${mention.name}` : '';
   const mentionOffset = text.length - text.trimStart().length;
@@ -227,14 +239,19 @@ export function MessageContent({ renderLocalImages = false, text, presentation =
     return renderLocalImages ? <LocalImageParagraph>{parts}</LocalImageParagraph> : <p>{parts}</p>;
   } } : components;
   return (
+    <ChatImportContext.Provider value={imported?.imports ?? []}>
     <div className={`${markdownStyles.markdown}${description ? ` ${markdownStyles.description}` : ''}`}>
       <ReactMarkdown
         components={mentionComponents}
         remarkPlugins={[remarkGfm]}
         urlTransform={(url, key) => key === 'href' && (flashSourceTarget(url) || localFileLinkPath(url)) ? url : defaultUrlTransform(url)}
       >
-        {text}
+        {imported ? chatImportMarkdown(text, imported.imports) : text}
       </ReactMarkdown>
+      {imported && <ChatImportAttachments imports={imported.imports}
+        renderImage={attachment => <LocalImage imagePath={attachment.path} name={attachment.name} />}
+        renderFile={(attachment, children) => <LocalFileAnchor href={attachment.path}>{children}</LocalFileAnchor>} />}
     </div>
+    </ChatImportContext.Provider>
   );
 }

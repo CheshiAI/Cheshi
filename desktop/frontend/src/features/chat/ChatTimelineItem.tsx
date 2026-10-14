@@ -42,10 +42,12 @@ interface ChatTimelineItemProps {
   turn?: ChatSavedTurnInput;
   savedTurns?: SavedChatTurnActions;
   searchMatch?: boolean;
+  deferOffscreen?: boolean;
 }
 
-export const ChatTimelineItem = memo(function ChatTimelineItem({ turn, savedTurns, searchMatch, ...props }: ChatTimelineItemProps) {
+export const ChatTimelineItem = memo(function ChatTimelineItem({ turn, savedTurns, searchMatch, deferOffscreen, ...props }: ChatTimelineItemProps) {
   return <div className={styles.timelineItem} data-chat-item-id={props.item.id} tabIndex={-1}
+    data-history-deferred={deferOffscreen || undefined}
     data-history-search-match={searchMatch ? 'true' : undefined}>
     <TimelineItemContent {...props} />
     {turn && savedTurns && <ChatTurnActions turn={turn} savedTurns={savedTurns} />}

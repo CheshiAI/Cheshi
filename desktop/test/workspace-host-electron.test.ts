@@ -208,6 +208,18 @@ app.whenReady().then(async()=>{
   await wait(async()=>await one.webContents.executeJavaScript('window.lastCommand?.view==="git"'));
   await wait(()=>!overlay().getVisible());
   await wait(()=>one.webContents.executeJavaScript('window.railRegions.at(-1)===null'));
+  // App re-entry restores the last focused native-host button. It must not
+  // reopen a label when the pointer is in the workspace instead of the rail.
+  host.window.webContents.sendInputEvent({type:'mouseMove',x:600,y:300});
+  host.window.blur();
+  await wait(()=>!host.window.isFocused());
+  host.window.focus();
+  host.window.webContents.focus();
+  await wait(()=>host.window.isFocused());
+  await new Promise(resolve=>setTimeout(resolve,150));
+  assert.equal(await host.window.webContents.executeJavaScript('document.querySelectorAll("[data-rail-expanded]").length'),0,
+    'Restoring app focus must not expand a rail button');
+  assert.equal(overlay().getVisible(),false);
   await hover();await wait(()=>overlay().getVisible());
   overlay().webContents.sendInputEvent({type:'mouseLeave',x:100,y:100});
   await wait(()=>!overlay().getVisible());

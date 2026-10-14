@@ -514,7 +514,9 @@ for (const configuration of ['single', 'split'] as const) {
       expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
       expect(submenu.getAttribute('data-regional-blur-surface')).toBe('true');
       const fullMask = sourceMask(h.document, workspace);
-      expect(fullMask).toContain('width="1000"');
+      const workspaceFilter = h.document.getElementById(workspace.getAttribute('data-regional-blur-source')!)!;
+      expect(workspaceFilter.getAttribute('width')).toBe('1000');
+      expect(fullMask).toContain('viewBox="350 200 550 280"');
       expect(fullMask.match(/<path /g)?.length).toBe(2);
       expect(fullMask).toContain('M366 200');
       expect(sourceMask(h.document, timeline)).toBe(inheritedMask);
@@ -526,7 +528,7 @@ for (const configuration of ['single', 'split'] as const) {
       submenu.dataset.box = '350,200,340,280';
       workspace.dataset.box = '150,50,900,500';
       h.invalidate(); await h.flush();
-      expect(sourceMask(h.document, workspace)).toContain('width="900"');
+      expect(workspaceFilter.getAttribute('width')).toBe('900');
       expect(sourceMask(h.document, workspace)).toContain('M216 150');
       await h.render({ configuration, menu: false });
       expect(workspace.style.filter).toBe('brightness(1)');

@@ -65,7 +65,7 @@ export function useChatAttachmentTransfer(options: ChatAttachmentTransferOptions
     return attachFilesToDraft(files);
   }, [attachFilesToDraft]);
 
-  const onPaste = useCallback((event: ClipboardEvent<HTMLTextAreaElement>) => {
+  const onPaste = useCallback((event: ClipboardEvent<HTMLElement>) => {
     const files = chatTransferFiles(event.clipboardData, true);
     if (files.length === 0) return;
     event.preventDefault();

@@ -3,7 +3,7 @@ import { History } from 'lucide-react';
 import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
 import { ContentCard } from '../../shared/ui';
 import { ChatTimelineItem } from './ChatTimelineItem';
-import { captureChatHistoryAnchor, previousChatHistoryStart } from './chatHistoryWindow';
+import { captureChatHistoryAnchor, CHAT_HISTORY_PAGE_SIZE, previousChatHistoryStart } from './chatHistoryWindow';
 import { groupReasoningItems } from './chatReasoningPresentation';
 import styles from './ChatView.module.css';
 import type { ChatTimelineItem as TimelineItem } from './model';
@@ -110,9 +110,11 @@ export const ChatTimelineHistory = memo(function ChatTimelineHistory({
   }, [historyTarget, loading, revealEarlier, start, timelineRef]);
 
   const visibleItems = items.slice(start);
+  const recentItems = new Set(items.slice(-CHAT_HISTORY_PAGE_SIZE));
   const renderItem = (item: TimelineItem) => <ChatTimelineItem
       key={item.id}
       item={item}
+      deferOffscreen={!recentItems.has(item)}
       searchMatch={searchMatch !== null && chatHistoryItemMatches(item, searchMatch.itemId)}
       streaming={streaming && item === visibleItems.at(-1)}
       turn={completedTurns.get(item.id)}

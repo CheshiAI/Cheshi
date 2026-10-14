@@ -4,6 +4,7 @@ import { act } from 'react';
 import { Window } from 'happy-dom';
 import { timelineFromThread } from '../lib/codex-chat-thread-data.mts';
 import { normalizeOpenSessionResponse } from '../frontend/src/features/chat/model';
+import { displayMessageWithChatImports } from '../shared/chat-imports.ts';
 
 const desktop: { openLocalFileLink?: (href: string) => Promise<void> } = {};
 mock.module('../frontend/src/cheshiDesktop', () => ({ cheshiDesktop: desktop }));
@@ -13,6 +14,23 @@ const table = '| 방식 | 주요 이점 |\n|---|---|\n| **상시 표시** | 초�
 const render = (text: string, renderLocalImages = false) => renderToStaticMarkup(<MessageContent text={text} renderLocalImages={renderLocalImages} />);
 
 describe('chat Markdown rendering', () => {
+  test('connects numbered imports to attachments while leaving code and unknown references literal', () => {
+    const text = displayMessageWithChatImports('[import 1]을 [import 3]처럼. [import 9]\n\n`[import 1]`\n\n```text\n[import 3]\n```', [
+      { kind: 'image', name: 'before.png', path: '/stored/before.png', importNumber: 1 },
+      { kind: 'file', name: 'guide.txt', path: '/stored/guide.txt', importNumber: 3 },
+    ]);
+    const html = render(text, true);
+    expect(html).toContain('>[import 1]</button>');
+    expect(html).toMatch(/href="\/stored\/guide.txt"[^>]*>\[import 3\]<\/a>/);
+    expect(html).toContain('[import 9]');
+    expect(html.match(/role="img"/g)).toHaveLength(1);
+    expect(html.match(/data-import-number=/g)).toHaveLength(2);
+    expect(html).toMatch(/<code[^>]*>\[import 1\]<\/code>/);
+    expect(html).not.toContain('cheshi-imports-v1');
+    expect(html).not.toContain('Attached imports:');
+    expect(render('plain [import 1]', true)).not.toContain('View image');
+  });
+
   test('renders Korean comparison tables and inline formatting as semantic elements', () => {
     const html = render(table);
     expect(html).toContain('<table>');

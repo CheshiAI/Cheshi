@@ -38,8 +38,7 @@ export function WorkspaceCodexLoginView({ status, ready }: {
     </div>;
   }
   return <div className={styles.login} aria-label="Codex sign-in">
-    <Bot className={styles.mark} aria-hidden="true" />
-    <EmptyState className={styles.copy} title="Welcome to Cheshi"
+    <EmptyState className={styles.copy} variant="section" icon={<Bot />} title="Welcome to Cheshi"
       description="Sign in with ChatGPT to start working with Cheshi." />
     {status.state === 'signing_in' && <span role="status">Complete sign-in in your browser…</span>}
     {status.state === 'error' && <span className={styles.error} role="alert">{status.error ?? 'Could not check Codex sign-in.'}</span>}

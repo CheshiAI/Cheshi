@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { Window } from 'happy-dom';
 import { captureChatHistoryAnchor, previousChatHistoryStart } from '../frontend/src/features/chat/chatHistoryWindow';
 import { completedChatTurnInputs } from '../frontend/src/features/chat/chatTurnSnapshots';
 import type { ChatTimelineItem as TimelineItem } from '../frontend/src/features/chat/model';
@@ -15,9 +16,10 @@ function history(count: number): TimelineItem[] {
   }));
 }
 
-function renderHistory(items: TimelineItem[], streaming = false) {
+function renderHistory(items: TimelineItem[], streaming = false, revealItemId?: string) {
   return renderToStaticMarkup(<ChatTimelineHistory items={items} timelineRef={{ current: null }} loading={false}
     streaming={streaming} completedTurns={completedChatTurnInputs(items, 'thread', 'History', streaming)}
+    historyTarget={revealItemId ? { threadId: 'thread', itemId: revealItemId, requestId: 1 } : undefined}
     onReviewFileChanges={() => {}} />);
 }
 
@@ -40,6 +42,26 @@ describe('progressive chat history', () => {
       expect(html.match(/data-chat-item-id=/g)).toHaveLength(length);
       expect(html).not.toContain('Show earlier messages');
     }
+  });
+
+  test('defers older rows by conversation position across small and large reasoning groups', async () => {
+    const items: Array<Extract<TimelineItem, { text: string }>> = Array.from({ length: 90 }, (_, index) => ({ id: `row-${index}`,
+      kind: index % 5 === 0 ? 'user' : 'reasoning', turnId: `turn-${Math.floor(index / 5)}`,
+      text: `Message ${index}`, createdAt: 1 }));
+    const window = new Window();
+    try {
+      for (const history of [items, items.map(item => ({ ...item, kind: 'reasoning' as const, turnId: 'one-turn' }))]) {
+        window.document.body.innerHTML = renderHistory(history, true, 'row-0');
+        const rows = [...window.document.querySelectorAll('[data-chat-item-id]')];
+        expect(rows).toHaveLength(90);
+        expect(rows.filter(row => row.hasAttribute('data-history-deferred'))).toHaveLength(60);
+        rows.forEach((row, index) => expect(row.getAttribute('data-history-deferred')).toBe(index < 60 ? 'true' : null));
+        expect(window.document.querySelector('[data-reasoning-group] [data-history-deferred]')).not.toBeNull();
+      }
+      window.document.body.innerHTML = renderHistory(items);
+      expect(window.document.querySelectorAll('[data-chat-item-id]')).toHaveLength(30);
+      expect(window.document.querySelector('[data-history-deferred]')).toBeNull();
+    } finally { await window.happyDOM.close(); }
   });
 
   test('reveals earlier history in batches without skipping or duplicating items', () => {

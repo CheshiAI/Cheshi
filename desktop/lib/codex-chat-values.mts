@@ -1,5 +1,6 @@
 import type { ChatAttachment, ChatSkill } from "./codex-chat-types.mts";
 import { recordValue, stringValue } from "./codex-service-utils.mts";
+import { assertChatImportNumbers, chatImportNumber, messageWithChatImports } from '../shared/chat-imports.ts';
 
 export const MAX_MESSAGE_BYTES = 512 * 1024;
 
@@ -80,19 +81,23 @@ export function chatAttachments(value: unknown): ChatAttachment[] {
       `Chat messages support up to ${MAX_CHAT_ATTACHMENTS} attachments.`,
     );
   }
-  return value.map((attachmentValue) => {
+  const attachments = value.map((attachmentValue): ChatAttachment => {
     const attachment = recordValue(attachmentValue);
     if (!attachment)
       throw new TypeError("Each chat attachment must be an object.");
     const kind = stringValue(attachment.kind);
     if (kind !== "image" && kind !== "file")
       throw new TypeError("Chat attachment kind is invalid.");
+    const importNumber = chatImportNumber(attachment.importNumber);
     return {
       kind,
       name: requiredString(attachment.name, "Chat attachment name"),
       path: requiredString(attachment.path, "Chat attachment path"),
+      ...(importNumber === undefined ? {} : { importNumber }),
     };
   });
+  assertChatImportNumbers(attachments);
+  return attachments;
 }
 
 /**
@@ -104,7 +109,5 @@ export function messageWithFileReferences(
   message: string,
   attachments: ChatAttachment[],
 ): string {
-  const files = attachments.filter(({ kind }) => kind === "file");
-  if (files.length === 0) return message;
-  return `${message}\n\nAttached files:\n${files.map(({ path }) => `- ${JSON.stringify(path)}`).join("\n")}`;
+  return messageWithChatImports(message, attachments);
 }

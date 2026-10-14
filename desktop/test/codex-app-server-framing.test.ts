@@ -31,6 +31,27 @@ test('native transport preserves Unicode separators and split UTF-8 across LF an
   } finally { await client.stop(); }
 });
 
+test('a large fragmented response preserves following complete and partial frames', async () => {
+  const client = createClient();
+  const notifications: Array<{ method: unknown; params: unknown }> = [];
+  const completed = new Promise<void>(resolve => {
+    client.onNotification(event => {
+      notifications.push({ method: event.method, params: event.params });
+      if (event.method === 'fixture/tail') resolve();
+    });
+  });
+  try {
+    const response = await client.request('fixture/large');
+    await completed;
+    assert.deepEqual(response, { text: '한글\u2028줄 구분\u2029문단 구분🙂\n'.repeat(100_000) });
+    assert.deepEqual(notifications, [
+      { method: 'fixture/after-large', params: { order: 1 } },
+      { method: 'fixture/tail', params: { order: 2 } },
+    ]);
+    assert.equal(client.ready, true);
+  } finally { await client.stop(); }
+});
+
 test('stopping discards partial frames and detaches the old stream before restart', async () => {
   const client = createClient();
   const partialReady = new Promise<void>(resolve => {

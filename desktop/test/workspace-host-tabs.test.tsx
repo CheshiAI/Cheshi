@@ -46,12 +46,58 @@ test('rail hover publishes a label and native label clicks invoke the original b
     expect(button.hasAttribute('data-rail-expanded')).toBe(false);
     expect(host.overlays.at(-1)).toBeNull();
     await act(async () => {
+      window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab' }));
       button.blur(); button.focus();
     });
     expect(button.hasAttribute('data-rail-expanded')).toBe(true);
     await act(async () => document.querySelector<HTMLButtonElement>('[role="tab"]')!.focus());
     expect(button.hasAttribute('data-rail-expanded')).toBe(false);
     expect(host.overlays.at(-1)).toBeNull();
+  });
+});
+
+test('restoring focus after app activation does not expand the previously focused rail button', async () => {
+  await withDOM(async ui => {
+    const host = createHost();
+    await ui.render(<WorkspaceHostShell api={host.api} />);
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Explorer"]')!;
+    await act(async () => button.focus());
+    expect(button.hasAttribute('data-rail-expanded')).toBe(false);
+    expect(host.overlays.some(value => value !== null)).toBe(false);
+    await act(async () => {
+      button.blur();
+      window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab' }));
+      button.focus();
+    });
+    expect(button.hasAttribute('data-rail-expanded')).toBe(true);
+    await act(async () => {
+      window.dispatchEvent(new window.Event('blur'));
+      // The native BrowserWindow dismisses the label on deactivation.
+      host.railEvent({ id: button.dataset.railButton!, action: 'dismiss' });
+      button.blur();
+      window.dispatchEvent(new window.Event('focus'));
+      button.focus();
+    });
+    expect(button.hasAttribute('data-rail-expanded')).toBe(false);
+    expect(host.overlays.at(-1)).toBeNull();
+    expect(host.commands).toEqual([]);
+    await act(async () => button.dispatchEvent(new window.PointerEvent('pointerover', { bubbles: true })));
+    expect(button.hasAttribute('data-rail-expanded')).toBe(true);
+  });
+});
+
+test('a mouse click cancels previous keyboard intent before a rail button receives focus', async () => {
+  await withDOM(async ui => {
+    const host = createHost();
+    await ui.render(<WorkspaceHostShell api={host.api} />);
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Explorer"]')!;
+    await act(async () => {
+      window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab' }));
+      document.body.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true }));
+      button.focus();
+    });
+    expect(button.hasAttribute('data-rail-expanded')).toBe(false);
+    expect(host.overlays.some(value => value !== null)).toBe(false);
   });
 });
 

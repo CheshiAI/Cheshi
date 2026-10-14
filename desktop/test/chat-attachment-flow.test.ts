@@ -14,6 +14,7 @@ import {
   expectFailure,
 } from './codex-chat-test-helpers.ts';
 import { loadForgeConfiguration } from './forge-test-helpers.ts';
+import { displayMessageWithChatImports, parseChatImports } from '../shared/chat-imports.ts';
 
 const temporaryDirectories: string[] = [];
 
@@ -29,6 +30,42 @@ afterEach(async () => {
 });
 
 describe('persistent chat attachment flow', () => {
+  test('keeps numbered imports through durable storage, sending and reopening a thread', async () => {
+    const root = await temporaryDirectory();
+    const source = path.join(root, 'screenshot.png');
+    const notes = path.join(root, 'notes.txt');
+    await writeFile(source, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    await writeFile(notes, 'Use the image as a reference.');
+    const store = new ChatAttachmentStore({ directory: path.join(root, 'stored') });
+    const attachments = await store.importAttachments([
+      { kind: 'file', name: 'notes.txt', path: notes, importNumber: 1 },
+      { kind: 'image', name: 'screenshot.png', path: source, importNumber: 3 },
+    ]);
+    await Promise.all([unlink(source), unlink(notes)]);
+    const client = createFakeClient({
+      'thread/start': { thread: thread('imports') },
+      'turn/start': { turn: { id: 'import-turn', items: [], status: 'inProgress' } },
+    });
+    const service = createService(client);
+    const text = '[import 3]을 [import 1]의 설명대로 바꿔줘';
+    try { await service.sendMessage(text, 'client-imports', null, attachments); }
+    finally { service.stop(); }
+    const input = client.requests.find(request => request.method === 'turn/start')?.params.input;
+    if (!Array.isArray(input)) throw new Error('Expected numbered attachment input.');
+    expect(input[0]?.text).toContain('"imageNumber":1');
+    expect(input[1]).toEqual({ type: 'localImage', path: attachments[1]!.path });
+    const reopen = createService(createFakeClient({ 'thread/read': { thread: thread('imports', {
+      turns: [{ id: 'import-turn', startedAt: 1, completedAt: 2, items: [{ type: 'userMessage', id: 'import-user', content: input }] }],
+    }) } }));
+    try {
+      const message = (await reopen.openSession('imports')).items.find(item => item.kind === 'user');
+      if (!message || message.kind !== 'user' || typeof message.text !== 'string') throw new Error('Missing imported message.');
+      expect(message.text).toBe(displayMessageWithChatImports(text, attachments));
+      deepStrictEqual(parseChatImports(message.text), { text, imports: attachments });
+      expect(await readFile(attachments[0]!.path, 'utf8')).toBe('Use the image as a reference.');
+    } finally { reopen.stop(); }
+  });
+
   test('keeps attachments after source deletion and restores their paths from chat history', async () => {
     const root = await temporaryDirectory();
     const sourceDirectory = path.join(root, 'incoming');
@@ -169,6 +206,7 @@ describe('persistent chat attachment flow', () => {
     const shouldIgnore = configuration.packagerConfig.ignore;
     if (typeof shouldIgnore !== 'function') throw new Error('Forge ignore configuration is unavailable.');
     strictEqual(shouldIgnore('/desktop/lib/chat-attachment-store.mts'), false);
+    strictEqual(shouldIgnore('/desktop/shared/chat-imports.ts'), false);
     strictEqual(shouldIgnore('/desktop/lib/not-packaged.mjs'), true);
   });
 });

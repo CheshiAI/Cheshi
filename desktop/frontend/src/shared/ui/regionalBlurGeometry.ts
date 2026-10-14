@@ -24,13 +24,38 @@ function roundedPath(surface: BlurSurface, bounds: BlurBounds, width: number, he
     + `V${y + tl[1]}A${tl[0]} ${tl[1]} 0 0 1 ${x + tl[0]} ${y}Z`;
 }
 
+function visibleSurfaces(bounds: BlurBounds, surfaces: readonly BlurSurface[]) {
+  return surfaces.filter(r => r.width > 0 && r.height > 0
+    && r.x < bounds.x + bounds.width && r.y < bounds.y + bounds.height
+    && r.x + r.width > bounds.x && r.y + r.height > bounds.y);
+}
+
+function maskSvg(bounds: BlurBounds, width: number, height: number, surfaces: readonly BlurSurface[], image: BlurBounds) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${image.width}" height="${image.height}" viewBox="${image.x} ${image.y} ${image.width} ${image.height}">`
+    + surfaces.map(surface => `<path fill="white" d="${roundedPath(surface, bounds, width, height)}"/>`).join('') + '</svg>';
+}
+
 /** The SVG viewport clips offscreen regions without inventing new rounded edges. */
 export function regionalBlurMask(bounds: BlurBounds, width: number, height: number, surfaces: readonly BlurSurface[]) {
   if (bounds.width <= 0 || bounds.height <= 0 || width <= 0 || height <= 0) return null;
-  const visible = surfaces.filter(r => r.width > 0 && r.height > 0
-    && r.x < bounds.x + bounds.width && r.y < bounds.y + bounds.height
-    && r.x + r.width > bounds.x && r.y + r.height > bounds.y);
+  const visible = visibleSurfaces(bounds, surfaces);
   if (!visible.length) return null;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`
-    + visible.map(surface => `<path fill="white" d="${roundedPath(surface, bounds, width, height)}"/>`).join('') + '</svg>';
+  return maskSvg(bounds, width, height, visible, { x: 0, y: 0, width, height });
+}
+
+/** Crop transparent mask pixels, keeping paths in the original source coordinates.
+ * feImage's placement must match this viewBox to avoid rescaling the rounded mask.
+ * This reduces the animated SVG image's raster area without changing blur or alpha.
+ */
+export function regionalBlurMaskImage(bounds: BlurBounds, width: number, height: number, surfaces: readonly BlurSurface[]) {
+  if (bounds.width <= 0 || bounds.height <= 0 || width <= 0 || height <= 0) return null;
+  const visible = visibleSurfaces(bounds, surfaces);
+  if (!visible.length) return null;
+  const sx = width / bounds.width, sy = height / bounds.height;
+  const x = Math.max(0, Math.floor(Math.min(...visible.map(r => (r.x - bounds.x) * sx))));
+  const y = Math.max(0, Math.floor(Math.min(...visible.map(r => (r.y - bounds.y) * sy))));
+  const right = Math.min(width, Math.ceil(Math.max(...visible.map(r => (r.x + r.width - bounds.x) * sx))));
+  const bottom = Math.min(height, Math.ceil(Math.max(...visible.map(r => (r.y + r.height - bounds.y) * sy))));
+  const image = { x, y, width: right - x, height: bottom - y };
+  return { ...image, svg: maskSvg(bounds, width, height, visible, image) };
 }

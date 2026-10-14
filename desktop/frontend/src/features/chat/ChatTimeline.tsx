@@ -8,7 +8,7 @@ import { ChatErrorNotice } from './ChatErrorNotice';
 import { ChatWelcome } from './ChatWelcome';
 import styles from './ChatView.module.css';
 import type { ChatViewController } from './useChatViewController';
-import { completedChatTurnInputs } from './chatTurnSnapshots';
+import { createCompletedChatTurnCache } from './chatTurnSnapshots';
 import type { SavedChatTurnActions } from './useSavedChatTurns';
 import type { ChatHistorySearchNavigation } from './chatHistorySearchNavigation';
 
@@ -29,8 +29,9 @@ export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, hist
     streaming,
     timelineRef,
   } = controller;
-  const completedTurns = useMemo(() => completedChatTurnInputs(state.items, state.activeSessionId, state.activeTitle, streaming),
-    [state.items, state.activeSessionId, state.activeTitle, streaming]);
+  const [readCompletedTurns] = useState(createCompletedChatTurnCache);
+  const completedTurns = useMemo(() => readCompletedTurns(state.items, state.activeSessionId, state.activeTitle, streaming),
+    [readCompletedTurns, state.items, state.activeSessionId, state.activeTitle, streaming]);
   const [missingHistoryThread, setMissingHistoryThread] = useState<string | null>(null);
   const handleHistoryTarget = useCallback((requestId: number, found: boolean) => {
     setMissingHistoryThread(found ? null : state.activeSessionId);

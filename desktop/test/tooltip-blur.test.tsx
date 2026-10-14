@@ -147,8 +147,8 @@ test('tooltip blur clamps every source edge and corner without duplicating its i
         [-48, 0, 48, height], [width, 0, 48, height],
         [-48, height, 48, 48], [0, height, width, 48], [width, height, 48, 48],
       ]);
-      // The replacement mask still covers only the original source coordinates.
-      expect(rectangle(filter.querySelector('feImage')!)).toEqual([0, 0, width, height]);
+      // Crop the empty mask area while preserving its original scene coordinates.
+      expect(rectangle(filter.querySelector('feImage')!)).toEqual([610, 100, Math.min(180, width - 610), 60]);
     };
     checkPadding(800, 600);
     Object.defineProperties(app, {
@@ -161,5 +161,23 @@ test('tooltip blur clamps every source edge and corner without duplicating its i
     tooltip.close();
     expect(app.style.filter).toBe('');
     expect(s.document.querySelector('feTile')).toBeNull();
+  });
+});
+
+test('resizing the scene updates the filter even when the cropped panel mask is unchanged', async () => {
+  await withScene(async s => {
+    const app = s.element();
+    const tooltip = s.tooltip();
+    const filter = s.filterFor(app), originalMask = s.maskFor(app);
+    Object.defineProperties(app, {
+      offsetWidth: { configurable: true, value: 720 },
+      getBoundingClientRect: { configurable: true, value: () => new s.window.DOMRect(0, 0, 720, 600) },
+    });
+    s.window.dispatchEvent(new s.window.Event('resize'));
+    await s.flush();
+    expect(s.maskFor(app)).toBe(originalMask);
+    expect(filter.getAttribute('width')).toBe(String(720 + 96));
+    tooltip.close();
+    expect(app.style.filter).toBe('');
   });
 });

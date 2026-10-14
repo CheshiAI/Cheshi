@@ -1,12 +1,14 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type KeyboardEvent, type RefObject } from 'react';
 import { createChatInputHistory, handleInputHistoryKey } from './chatInputHistory';
 import type { ChatTimelineItem } from './model';
+import type { ChatImportAttachment } from '../../../../shared/chat-imports';
+import type { ChatInputHandle } from './chatInputHandle';
 
 export function useChatInputHistory({ scope, items, draft, disabled, textareaRef, setDraft, onKeyDown }: {
   scope: string; items: ChatTimelineItem[]; draft: string; disabled: boolean;
-  textareaRef: RefObject<HTMLTextAreaElement | null>;
-  setDraft(value: string): void;
-  onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void;
+  textareaRef: RefObject<ChatInputHandle | null>;
+  setDraft(value: string, attachments?: ChatImportAttachment[]): void;
+  onKeyDown(event: KeyboardEvent<HTMLElement>): void;
 }) {
   const store = useMemo(createChatInputHistory, []);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
@@ -37,10 +39,10 @@ export function useChatInputHistory({ scope, items, draft, disabled, textareaRef
   const dismiss = () => { store.close(); textareaRef.current?.focus(); };
   const select = (index?: number) => {
     if (!open) return;
-    const text = store.take(scope, index);
-    if (text === null) return;
+    const entry = store.takeEntry(scope, index);
+    if (entry === null) return;
     focusAfterSelection.current = true;
-    setDraft(text);
+    setDraft(entry.text, entry.attachments);
   };
   const handleKey = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Enter' && event.repeat && selectedWithEnter.current) {
@@ -53,7 +55,7 @@ export function useChatInputHistory({ scope, items, draft, disabled, textareaRef
   return {
     open, state, listId, panelRef, select, dismiss, highlight: store.highlight, close: store.close,
     onPanelKeyDown: handleKey,
-    onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) { if (!handleKey(event)) onKeyDown(event); },
+    onKeyDown(event: KeyboardEvent<HTMLElement>) { if (!handleKey(event)) onKeyDown(event); },
     onKeyUp(event: KeyboardEvent<HTMLElement>) { if (event.key === 'Enter') selectedWithEnter.current = false; },
   };
 }

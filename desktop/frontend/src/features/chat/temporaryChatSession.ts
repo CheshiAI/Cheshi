@@ -1,6 +1,13 @@
 import type { TemporaryChatDraft, TemporaryChatRequest, TemporaryChatResult } from '../../../../shared/temporary-chat';
 import type { CodexChatAttachment } from '../../cheshiDesktop';
 import type { ChatModel } from './model';
+import { chatImportLabel } from '../../../../shared/chat-imports';
+import { addChatImports, insertChatImportText, removeChatImport, type ChatImportSelection } from './chatImportDraft';
+
+interface TemporaryChatEditor {
+  selection(draft: string): ChatImportSelection | undefined;
+  restore(change: { draft: string; caret: number | null }): void;
+}
 
 export interface TemporaryChatApi {
   models(sessionId: string): Promise<ChatModel[]>;
@@ -49,14 +56,16 @@ export class TemporaryChatSession {
   private readonly api: TemporaryChatApi;
   private readonly id: string;
   private readonly onChange: (state: TemporaryChatState) => void;
+  private readonly editor?: TemporaryChatEditor;
   private state = initialTemporaryChatState();
   private closed = false;
   private closeFlight: Promise<void> | null = null;
 
-  constructor(api: TemporaryChatApi, id: string, onChange: (state: TemporaryChatState) => void) {
+  constructor(api: TemporaryChatApi, id: string, onChange: (state: TemporaryChatState) => void, editor?: TemporaryChatEditor) {
     this.api = api;
     this.id = id;
     this.onChange = onChange;
+    this.editor = editor;
   }
 
   private update(patch: Partial<TemporaryChatState>): void {
@@ -97,11 +106,16 @@ export class TemporaryChatSession {
         ? await this.api.importAttachments(this.id, draft.attachments.map(item => item.path)) : [];
       assertAttachmentCount(attachments.length, draft.attachments.length);
       this.assertDraftDestination();
-      this.update({ draft: draft.text, attachments });
+      this.update({ draft: draft.text, attachments: attachments.map((attachment, index) => {
+        const importNumber = draft.attachments[index]?.importNumber;
+        return importNumber === undefined ? attachment : { ...attachment, importNumber };
+      }) });
     } finally { this.update({ picking: false }); }
   }
 
-  setDraft(draft: string): void { this.update({ draft }); }
+  setDraft(draft: string, attachments?: readonly CodexChatAttachment[]): void {
+    this.update({ draft, ...(attachments === undefined ? {} : { attachments: [...attachments] }) });
+  }
 
   selectModel(model: string): void {
     if (this.state.busy || this.state.failed) return;
@@ -117,7 +131,16 @@ export class TemporaryChatSession {
 
   removeAttachment(path: string): void {
     if (this.state.busy) return;
-    this.update({ attachments: this.state.attachments.filter(attachment => attachment.path !== path) });
+    this.update(removeChatImport(this.state, path));
+  }
+
+  insertAttachmentReference(path: string): void {
+    if (this.state.busy || this.state.failed) return;
+    const attachment = this.state.attachments.find(item => item.path === path);
+    if (attachment?.importNumber === undefined) return;
+    const change = insertChatImportText(this.state.draft, [chatImportLabel(attachment.importNumber)], this.editor?.selection(this.state.draft));
+    this.editor?.restore(change);
+    this.update({ draft: change.draft });
   }
 
   async selectAttachments(): Promise<void> {
@@ -135,11 +158,9 @@ export class TemporaryChatSession {
     try {
       const selected = await select();
       if (this.closed) return;
-      const attachments = [...new Map([...this.state.attachments, ...selected]
-        .map(attachment => [attachment.path, attachment])).values()];
-      if (attachments.length > 20) {
-        this.update({ error: 'Attach up to 20 files per message.' });
-      } else this.update({ attachments });
+      const change = addChatImports(this.state, selected, this.editor?.selection(this.state.draft));
+      this.editor?.restore(change);
+      this.update({ draft: change.draft, attachments: change.attachments });
     } catch (error) {
       this.update({ error: errorMessage(error) });
     } finally {

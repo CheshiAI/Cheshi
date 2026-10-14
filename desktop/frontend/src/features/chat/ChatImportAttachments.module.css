@@ -1,0 +1,29 @@
+.attachments { display: flex; flex-wrap: wrap; gap: var(--space-default); margin-top: var(--space-default); }
+.attachment { display: flex; flex-direction: column; align-items: center; gap: var(--icon-default); min-width: 0; max-width: 100%; }
+.imageAttachment { position: relative; }
+.imageBadge {
+  composes: badge from '../../shared/ui/Badge.module.css';
+  --badge-height: 14px;
+  --badge-background: var(--control-surface-interactive);
+  --radius-popover: 999px;
+  position: absolute;
+  z-index: 1;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  box-sizing: border-box;
+  max-width: calc(100% - var(--space-4) * 2);
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.imageBadge.imageBadge { min-height: 0; border: 0; }
+.imageAttachment > .imageBadge { pointer-events: none; }
+.label { display: block; color: var(--text); font-size: var(--font-size-label); }
+.file { display: flex; align-items: center; gap: var(--icon-default); padding: var(--space-default); border-radius: var(--button-radius); background: var(--control-surface); }
+.file:hover { background: var(--control-surface-interactive); }
+.file > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; }
+.file > span { min-width: 0; }
+.name { display: block; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reference { display: inline; border: 0; border-radius: 4px; padding: 1px 4px; background: var(--control-surface); color: var(--text); font: inherit; vertical-align: baseline; }
+.reference:hover { background: var(--control-surface-interactive); }

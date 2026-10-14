@@ -56,6 +56,7 @@ function shouldIgnore(packagePath: string): boolean {
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
+    if (grandchildEntry === 'chat-imports.ts') return segments.length > 3;
     if (grandchildEntry === 'workspace-host.ts') return segments.length > 3;
     if (grandchildEntry === 'worker-workspace.ts') return segments.length > 3;
     if ((grandchildEntry === 'agent-package.ts' || grandchildEntry === 'homie-pack.ts' || grandchildEntry === 'homie-tools.ts' || grandchildEntry === 'homie-source.ts' || grandchildEntry === 'agent-avatar-image.ts')) return segments.length > 3;

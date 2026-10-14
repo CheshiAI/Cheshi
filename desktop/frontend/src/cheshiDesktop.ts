@@ -643,6 +643,7 @@ export interface CodexChatAttachment {
   name: string;
   path: string;
   previewUrl?: string;
+  importNumber?: number;
 }
 
 export interface CodexChatConfigurationRequest {

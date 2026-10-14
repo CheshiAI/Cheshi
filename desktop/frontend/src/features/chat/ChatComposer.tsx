@@ -1,4 +1,5 @@
-import { ChatComposerSurface, ChatComposerInput, ChatComposerDisclaimer } from './ChatComposerSurface';
+import { ChatComposerSurface, ChatComposerDisclaimer } from './ChatComposerSurface';
+import { ChatImportInput } from './ChatImportInput';
 import { useId, useMemo, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 
@@ -60,7 +61,7 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
   const queueOpen = queueVisible && controller.messageQueue.entries.length > 0;
   const fallbackRequest = useMemo(() => composerQuestionRequest(state.items, state.activeSessionId), [state.items, state.activeSessionId]);
   const history = useChatInputHistory({ scope: `${chatController.sessionRevision}:${state.activeSessionId ?? ''}`,
-    items: state.items, draft, textareaRef, setDraft: controller.setDraft, onKeyDown: handleKeyDown,
+    items: state.items, draft, textareaRef, setDraft: controller.restoreInputHistory, onKeyDown: handleKeyDown,
     disabled: !active || interactionsLocked || loading || commandMenuOpen || configurationMenuOpen || controller.sendPending || commandLoading });
 
   return (
@@ -132,9 +133,11 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
       <ChatMessageQueue controller={controller} open={queueOpen} panelId={queuePanelId} />
       <ChatInputHistoryPanel history={history} />
       <ChatComposerSurface queueOpen={queueOpen} onSubmit={submit}>
-        <ChatComposerAttachments attachments={attachments} removeAttachment={removeAttachment} />
+        <ChatComposerAttachments attachments={attachments} removeAttachment={removeAttachment} insertAttachmentReference={controller.insertAttachmentReference} />
         {!commandMenuOpen && <GithubLinkChips draft={draft} />}
-        <ChatComposerInput
+        <ChatImportInput
+          historyKey={`${chatController.sessionRevision}:${state.activeSessionId ?? ''}:${commandMenuMode ?? 'draft'}`}
+          attachments={commandMenuOpen ? undefined : attachments}
           aria-label={goalEditorOpen ? 'Persistent goal objective' : 'Message Codex'}
           disabled={loading}
           aria-controls={history.open ? history.listId : commandMenuOpen ? controller.commandMenuId : undefined}
@@ -160,9 +163,8 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
                             ? `Ask with ${selectedSkill.displayName}`
                             : streaming ? 'Queue a message for after the current response' : 'Ask Codex about this workspace'}
           ref={textareaRef}
-          rows={1}
           value={draft}
-          onChange={(event) => { history.close(); handleDraftChange(event.target.value); }}
+          onChange={(value, imports) => { history.close(); handleDraftChange(value, imports); }}
           onPaste={controller.attachmentTransfer.onPaste}
           onKeyDown={history.onKeyDown}
         />

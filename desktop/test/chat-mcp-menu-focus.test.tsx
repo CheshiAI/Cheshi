@@ -72,7 +72,7 @@ async function withMenu(run: (harness: {
           void view.activateSlashCommand(slashCommands.find(command => command.name === 'mcp')!);
         }}>MCP</button>}
         {view.commandMenuOpen && <div id="menu">{view.commandLoading ? 'Loading' : 'Ready'}</div>}
-        <textarea ref={view.textareaRef} onKeyDown={view.handleKeyDown} />
+        <textarea ref={element => { view.textareaRef.current = element; }} onKeyDown={view.handleKeyDown} />
       </section>
     </>;
   }

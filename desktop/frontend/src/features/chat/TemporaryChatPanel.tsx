@@ -7,7 +7,9 @@ import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import { syncChatComposerOverlayHeight } from './chatComposerOverlay';
 import { ChatTimeline } from './ChatTimeline';
 import { ChatViewSurface } from './ChatViewSurface';
-import { ChatComposerSurface, ChatComposerInput, ChatComposerDisclaimer } from './ChatComposerSurface';
+import { ChatComposerSurface, ChatComposerDisclaimer } from './ChatComposerSurface';
+import { ChatImportInput } from './ChatImportInput';
+import type { ChatInputHandle } from './chatInputHandle';
 import { ChatComposerAttachments } from './ChatComposerAttachments';
 import { ChatSubmitButton } from './ChatSubmitButton';
 import { ChatErrorNotice } from './ChatErrorNotice';
@@ -19,6 +21,7 @@ import styles from './TemporaryChatPanel.module.css';
 import composer from './ChatComposer.module.css';
 import { TemporaryChatConfigurationMenu } from './TemporaryChatConfigurationMenu';
 import { chatDroppedFiles, chatTransferFiles, hasChatTransferFiles } from './attachmentTransferModel';
+import { useChatImportCaret } from './useChatImportDraft';
 
 /** Native-window content using the same chat presentation modules as the workspace. */
 export function TemporaryChatPanel() {
@@ -30,7 +33,8 @@ export function TemporaryChatPanel() {
   const rootRef = useRef<HTMLElement>(null);
   const timelineRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = useRef<ChatInputHandle>(null);
+  const importCaret = useChatImportCaret(state.draft, textareaRef);
   const configurationRef = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -45,7 +49,7 @@ export function TemporaryChatPanel() {
 
   useEffect(() => {
     const api = cheshiDesktop?.temporaryChat;
-    const active = api ? new TemporaryChatSession(api, crypto.randomUUID(), setState) : null;
+    const active = api ? new TemporaryChatSession(api, crypto.randomUUID(), setState, importCaret) : null;
     session.current = active;
     let mounted = true;
     let autoSend = false;
@@ -89,10 +93,6 @@ export function TemporaryChatPanel() {
     sync(); const observer = new ResizeObserver(sync); observer.observe(area);
     return () => observer.disconnect();
   }, []);
-  useLayoutEffect(() => {
-    const input = textareaRef.current;
-    if (input) { input.style.height = 'auto'; input.style.height = `${Math.min(input.scrollHeight, 180)}px`; }
-  }, [state.draft]);
   useLayoutEffect(() => { if (followLatest.current) scrollToBottom(); }, [state.messages, state.busy, scrollToBottom]);
   useEffect(() => {
     const timeline = timelineRef.current;
@@ -136,10 +136,12 @@ export function TemporaryChatPanel() {
         <footer className={composer.composerArea} ref={composerRef}>
           {state.error && <ChatErrorNotice className={composer.error}>{state.error}</ChatErrorNotice>}
           <ChatComposerSurface onSubmit={event => { event.preventDefault(); submit(); }}>
-            <ChatComposerAttachments attachments={state.attachments} removeAttachment={path => session.current?.removeAttachment(path)} />
-            <ChatComposerInput ref={textareaRef} aria-label="Temporary chat message" placeholder="Ask anything…"
+            <ChatComposerAttachments attachments={state.attachments} removeAttachment={path => session.current?.removeAttachment(path)}
+              insertAttachmentReference={path => session.current?.insertAttachmentReference(path)} />
+            <ChatImportInput ref={textareaRef} historyKey="temporary-chat" aria-label="Temporary chat message" placeholder="Ask anything…"
+              attachments={state.attachments}
               value={state.draft} readOnly={state.busy || state.failed} disabled={state.loading}
-              onChange={event => session.current?.setDraft(event.target.value)} onFocus={closeConfiguration}
+              onChange={(value, imports) => session.current?.setDraft(value, imports)} onFocus={closeConfiguration}
               onPaste={event => {
                 const files = chatTransferFiles(event.clipboardData);
                 if (files.length && !locked && !state.picking) { event.preventDefault(); void session.current?.importAttachments(files); }

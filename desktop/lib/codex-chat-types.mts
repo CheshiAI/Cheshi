@@ -30,6 +30,7 @@ export interface ChatAttachment {
   kind: "image" | "file";
   name: string;
   path: string;
+  importNumber?: number;
 }
 
 interface ChatReasoningEffort {
