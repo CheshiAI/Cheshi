@@ -8,7 +8,6 @@ import {
   NeumorphicTextField,
   TieredHeader,
   draggableWindowRegionStyle,
-  nonDraggableWindowRegionStyle,
 } from '../../shared/ui';
 import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
@@ -48,7 +47,7 @@ export function PluginsView({ chatContextId, rightSidebarOpen, onToggleRightSide
         primary={(
           <>
             <SidebarPanelTitle icon={<Blocks aria-hidden="true" />} title="PLUGINS" />
-            <div className={styles.headerActions} style={nonDraggableWindowRegionStyle}>
+            <div className={styles.headerActions}>
               <NeumorphicTextField
                 variant="standard"
                 className={styles.search}

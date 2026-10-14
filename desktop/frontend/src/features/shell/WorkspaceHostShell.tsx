@@ -7,6 +7,7 @@ import { SidebarRail } from '../navigation/SidebarRail';
 import type { WorkspaceView } from '../navigation/Sidebar';
 import styles from './WorkspaceHostShell.module.css';
 import { useWorkspaceRailOverlay } from './useWorkspaceRailOverlay';
+import { observeWorkspaceHostLayout } from './workspaceHostLayout';
 
 export function WorkspaceHostShell({ api }: { api: WorkspaceHostApi }) {
   const [state, setState] = useState<WorkspaceHostState>({ activeId: null, entries: [] });
@@ -26,14 +27,7 @@ export function WorkspaceHostShell({ api }: { api: WorkspaceHostApi }) {
   useEffect(() => {
     const element = stage.current;
     if (!element) return;
-    const layout = () => {
-      const { x, y, width, height } = element.getBoundingClientRect();
-      void api.layout({ x, y, width, height }).catch(reason => setError(String(reason)));
-    };
-    const observer = new ResizeObserver(layout);
-    observer.observe(element); layout();
-    window.addEventListener('resize', layout);
-    return () => { observer.disconnect(); window.removeEventListener('resize', layout); };
+    return observeWorkspaceHostLayout(element, bounds => api.layout(bounds), reason => setError(String(reason)));
   }, [api]);
   const cycle = (direction: number) => {
     if (state.entries.length < 2) return;

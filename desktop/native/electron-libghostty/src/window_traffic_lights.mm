@@ -6,9 +6,8 @@
  @public
   NSRect frames[3];
   NSRect bounds[3];
-  CGFloat left;
-  CGFloat centerFromTop;
-  CGFloat centerY;
+  CGFloat offsetX[3];
+  CGFloat centerFromTop[3];
 }
 @end
 
@@ -36,27 +35,38 @@ bool SetWindowTrafficLightScale(NSWindow *window, CGFloat scale) {
     geometry = [CheshiTrafficLightGeometry new];
     NSRect group = NSZeroRect;
     for (size_t i = 0; i < 3; ++i) {
-      geometry->frames[i] = [buttons[i].superview convertRect:buttons[i].frame toView:nil];
+      geometry->frames[i] = buttons[i].frame;
       geometry->bounds[i] = buttons[i].bounds;
-      group = i == 0 ? geometry->frames[i] : NSUnionRect(group, geometry->frames[i]);
+      NSRect frame = [buttons[i].superview convertRect:buttons[i].frame toView:nil];
+      group = i == 0 ? frame : NSUnionRect(group, frame);
     }
-    geometry->left = NSMinX(group);
-    geometry->centerY = NSMidY(group);
-    geometry->centerFromTop = NSHeight(window.frame) - geometry->centerY;
+    for (size_t i = 0; i < 3; ++i) {
+      NSView *parent = buttons[i].superview;
+      NSRect frame = [parent convertRect:buttons[i].frame toView:nil];
+      geometry->offsetX[i] = NSMinX(frame) - NSMinX(group);
+      geometry->centerFromTop[i] = parent.isFlipped
+          ? NSMidY(buttons[i].frame) - NSMinY(parent.bounds)
+          : NSMaxY(parent.bounds) - NSMidY(buttons[i].frame);
+    }
     objc_setAssociatedObject(window, &GeometryKey, geometry, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   }
 
   // AppKit/Electron can reset or replace the buttons during layout. Always
   // derive geometry from the initial unscaled values, never the last frame.
-  const CGFloat center = NSHeight(window.frame) - geometry->centerFromTop;
   for (size_t i = 0; i < 3; ++i) {
     NSRect original = geometry->frames[i];
-    NSRect frame = NSMakeRect(
-        geometry->left + (NSMinX(original) - geometry->left) * scale,
-        center + (NSMinY(original) - geometry->centerY) * scale,
-        NSWidth(original) * scale, NSHeight(original) * scale);
     NSButton *button = buttons[i];
-    button.frame = [button.superview convertRect:frame fromView:nil];
+    NSView *parent = button.superview;
+    // Stay in the titlebar's local coordinates: the animated window frame and
+    // the titlebar's coordinate conversion need not advance in the same phase.
+    const CGFloat center = parent.isFlipped
+        ? NSMinY(parent.bounds) + geometry->centerFromTop[i]
+        : NSMaxY(parent.bounds) - geometry->centerFromTop[i];
+    NSRect frame = NSMakeRect(
+        NSMinX(original) - geometry->offsetX[i] * (1 - scale),
+        center - NSHeight(original) * scale / 2,
+        NSWidth(original) * scale, NSHeight(original) * scale);
+    button.frame = frame;
     // Retain the original drawing coordinates so the glyph and its hit region
     // shrink together. Changing only frame size would resize the button cell.
     button.bounds = geometry->bounds[i];

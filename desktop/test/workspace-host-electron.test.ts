@@ -123,6 +123,62 @@ app.whenReady().then(async()=>{
   assert.equal(await one.webContents.executeJavaScript('window.fixture.identity()'),'/one');
   assert.equal(await two.webContents.executeJavaScript('window.fixture.identity()'),'/two');
   assert.equal(await one.webContents.executeJavaScript('window.fixture.denied().then(()=>false,()=>true)'),true);
+  // Resize only the visible workspace, skip duplicate bounds, and catch up a
+  // retained renderer before revealing it without replacing its web contents.
+  const initialFrame=workspaceSurface(one).view.getBounds();
+  const hiddenFrame=workspaceSurface(two).view.getBounds();
+  const zoomForLayout=host.window.webContents.getZoomFactor();
+  const resizedFrame={...initialFrame,width:initialFrame.width-100};
+  const sendLayout=async frame=>host.window.webContents.executeJavaScript('window.workspaceHost.layout('+JSON.stringify({
+    x:frame.x/zoomForLayout,y:frame.y/zoomForLayout,width:frame.width/zoomForLayout,height:frame.height/zoomForLayout
+  })+')');
+  let resizeNotifications=0;
+  const onResize=()=>resizeNotifications++;
+  one.on('resize',onResize);
+  await sendLayout(resizedFrame);
+  assert.deepEqual(workspaceSurface(one).view.getBounds(),resizedFrame);
+  assert.deepEqual(workspaceSurface(two).view.getBounds(),hiddenFrame);
+  assert.equal(resizeNotifications,1);
+  await sendLayout(resizedFrame);
+  workspaceSurface(one).setBounds(resizedFrame);
+  assert.equal(resizeNotifications,1);
+  one.off('resize',onResize);
+  two.show();
+  assert.deepEqual(workspaceSurface(two).view.getBounds(),resizedFrame);
+  await sendLayout(initialFrame);
+  one.show();
+  assert.deepEqual(workspaceSurface(one).view.getBounds(),initialFrame);
+  // Native resizing must update the visible child before renderer IPC can run.
+  // Reject queued viewport measurements from the previous window size.
+  const originalBounds=host.window.getBounds();
+  const originalContent=host.window.getContentBounds();
+  const hiddenBeforeResize=workspaceSurface(two).view.getBounds();
+  const assertNativeFrame=()=>{
+    const bounds=host.window.getContentBounds(),frame=workspaceSurface(one).view.getBounds();
+    assert.equal(frame.x+frame.width,bounds.width);
+    assert.equal(frame.y+frame.height,bounds.height);
+  };
+  let nativeResizeEvents=0;
+  const verifyNativeResize=()=>{assertNativeFrame();nativeResizeEvents++};
+  host.window.on('resize',verifyNativeResize);
+  host.window.setBounds({...originalBounds,width:originalBounds.width+120,height:originalBounds.height+80},false);
+  assertNativeFrame();
+  assert.ok(nativeResizeEvents>0);
+  assert.deepEqual(workspaceSurface(two).view.getBounds(),hiddenBeforeResize);
+  const stale={...initialFrame,viewport:{width:originalContent.width/zoomForLayout,height:originalContent.height/zoomForLayout}};
+  await host.window.webContents.executeJavaScript('window.workspaceHost.layout('+JSON.stringify(stale)+')');
+  assertNativeFrame();
+  host.window.setBounds(originalBounds,false);
+  assertNativeFrame();
+  host.window.off('resize',verifyNativeResize);
+  await wait(async()=>await host.window.webContents.executeJavaScript('innerWidth')===originalContent.width/zoomForLayout);
+  // Focus/pointer transitions can still have a rail animation in flight.
+  await host.window.webContents.executeJavaScript('window.dispatchEvent(new Event("resize"))');
+  await new Promise(resolve=>setTimeout(resolve,100));
+  const blurCount=await one.webContents.executeJavaScript('window.railRegions.length');
+  await sendLayout(initialFrame);
+  await sendLayout(initialFrame);
+  assert.equal(await one.webContents.executeJavaScript('window.railRegions.length'),blurCount);
   // A label crossing the rail must be painted by the top native view, while
   // clicks on that continuation still reach the original navigation button.
   const hover=async()=>{

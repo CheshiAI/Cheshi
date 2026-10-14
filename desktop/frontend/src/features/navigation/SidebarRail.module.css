@@ -13,7 +13,7 @@
 
 .navigation,
 .bottomControls {
-  -webkit-app-region: no-drag;
+  -webkit-app-region: drag;
 }
 
 .navigation {

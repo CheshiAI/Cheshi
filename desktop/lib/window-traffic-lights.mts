@@ -13,7 +13,7 @@ function loadBinding(): TrafficLightBinding | null {
   } catch { return null; }
 }
 
-const LAYOUT_EVENTS = ['ready-to-show', 'show', 'resize', 'maximize', 'unmaximize', 'restore',
+const LAYOUT_EVENTS = ['ready-to-show', 'show', 'maximize', 'unmaximize', 'restore',
   'focus', 'enter-full-screen', 'leave-full-screen'] as const;
 
 /** Keep the native buttons and their actions, scaling their geometry to 80%. */
@@ -42,16 +42,25 @@ export function createWindowTrafficLights(options: {
       if (!disposed) apply(0.8);
     });
   };
+  // AppKit's zoom animation runs a nested native loop. Node immediates may not
+  // run until it ends, leaving the buttons at AppKit's reset spacing meanwhile.
+  const resize = () => {
+    if (disposed) return;
+    if (pending !== undefined) { clearImmediate(pending); pending = undefined; }
+    apply(0.8);
+  };
   const dispose = () => {
     if (disposed) return;
     disposed = true;
     if (pending !== undefined) clearImmediate(pending);
     for (const event of LAYOUT_EVENTS) window.off(event, refresh);
+    window.off('resize', resize);
     window.off('closed', dispose);
     apply(1);
   };
   if (binding) {
     for (const event of LAYOUT_EVENTS) window.on(event, refresh);
+    window.on('resize', resize);
     window.on('closed', dispose);
     apply(0.8);
   }

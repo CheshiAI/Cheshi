@@ -752,12 +752,15 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
   const configuration = workspaceWindowOptions(preloadPath, product.displayName);
   const window = options.host?.createWindow(configuration, options.scope, workspaceRoot) ?? new BrowserWindow(configuration);
   logStartup('window created');
-  createWindowTrafficLights({ window,
-    onError: error => process.stderr.write(`[cheshi] Traffic light scaling failed: ${String(error)}\n`),
-  });
-  createWindowTopHighlight({ window,
-    onError: error => process.stderr.write(`[cheshi] Window top highlight update failed: ${String(error)}\n`),
-  });
+  // Retained workspace surfaces share the host's native titlebar and decorations.
+  if (!options.host) {
+    createWindowTrafficLights({ window,
+      onError: error => process.stderr.write(`[cheshi] Traffic light scaling failed: ${String(error)}\n`),
+    });
+    createWindowTopHighlight({ window,
+      onError: error => process.stderr.write(`[cheshi] Window top highlight update failed: ${String(error)}\n`),
+    });
+  }
   registerWorkspaceWindowCloseConfirmation(window, dialog);
   windowAppearance = createWindowAppearance({
     window, ipc: ipcMain, filename: path.join(userDataDirectory, 'appearance.json'),

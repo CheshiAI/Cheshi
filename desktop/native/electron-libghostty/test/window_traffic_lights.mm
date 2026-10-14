@@ -14,11 +14,11 @@ void CheckWindow(NSWindow *window) {
     [window standardWindowButton:NSWindowMiniaturizeButton],
     [window standardWindowButton:NSWindowZoomButton],
   };
-  NSRect original[3], bounds[3];
+  NSRect original[3], local[3], bounds[3];
   SEL actions[3];
   __weak id targets[3];
   for (size_t i = 0; i < 3; ++i) {
-    original[i] = WindowFrame(buttons[i]); bounds[i] = buttons[i].bounds;
+    original[i] = WindowFrame(buttons[i]); local[i] = buttons[i].frame; bounds[i] = buttons[i].bounds;
     actions[i] = buttons[i].action; targets[i] = buttons[i].target;
   }
   const CGFloat topCenter = NSHeight(window.frame) - NSMidY(original[0]);
@@ -28,7 +28,7 @@ void CheckWindow(NSWindow *window) {
       NSRect frame = window.frame;
       frame.size.height += 100; frame.size.width += 80;
       [window setFrame:frame display:NO];
-      for (size_t i = 0; i < 3; ++i) buttons[i].frame = original[i];
+      for (size_t i = 0; i < 3; ++i) buttons[i].frame = local[i];
     }
     assert(SetWindowTrafficLightScale(window, 0.8));
     for (size_t i = 0; i < 3; ++i) {
@@ -48,6 +48,17 @@ void CheckWindow(NSWindow *window) {
       assert([button hitTest:NSMakePoint(NSMaxX(button.frame) + 2, center.y)] == nil);
     }
   }
+  // During AppKit animation, titlebar placement can advance independently of
+  // window.frame. Scaling must not move the buttons within that titlebar.
+  NSView *titlebar = buttons[0].superview;
+  NSRect titlebarFrame = titlebar.frame;
+  NSRect buttonFrame = buttons[0].frame;
+  NSRect shifted = titlebarFrame;
+  shifted.origin.y += 4;
+  titlebar.frame = shifted;
+  assert(SetWindowTrafficLightScale(window, 0.8));
+  Near(NSMinY(buttons[0].frame), NSMinY(buttonFrame));
+  titlebar.frame = titlebarFrame;
   assert(SetWindowTrafficLightScale(window, 1));
   for (size_t i = 0; i < 3; ++i) {
     NSRect actual = WindowFrame(buttons[i]);

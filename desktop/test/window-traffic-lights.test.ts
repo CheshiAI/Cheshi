@@ -26,7 +26,7 @@ test('scales on creation and coalesces native layout events after Electron finis
   const h = harness();
   try {
     expect(h.calls).toEqual([0.8]);
-    h.window.emit('resize'); h.window.emit('maximize'); h.window.emit('focus');
+    h.window.emit('maximize'); h.window.emit('focus');
     expect(h.calls).toEqual([0.8]);
     await flushLayout();
     expect(h.calls).toEqual([0.8, 0.8]);
@@ -39,9 +39,22 @@ test('scales on creation and coalesces native layout events after Electron finis
   } finally { h.controller.dispose(); }
 });
 
+test('repairs AppKit resize geometry synchronously without waiting for the Node loop', async () => {
+  const h = harness();
+  try {
+    h.window.emit('focus');
+    for (let frame = 0; frame < 40; frame++) {
+      h.window.emit('resize');
+      expect(h.calls).toHaveLength(frame + 2);
+    }
+    await flushLayout();
+    expect(h.calls).toHaveLength(41);
+  } finally { h.controller.dispose(); }
+});
+
 test('closing cancels pending work and removes listeners without accessing the destroyed window', async () => {
   const h = harness();
-  h.window.emit('resize');
+  h.window.emit('focus');
   h.close();
   await flushLayout();
   expect(h.calls).toEqual([0.8]);
@@ -52,7 +65,7 @@ test('closing cancels pending work and removes listeners without accessing the d
 
 test('explicit disposal restores the original geometry once', async () => {
   const h = harness();
-  h.window.emit('resize');
+  h.window.emit('focus');
   h.controller.dispose(); h.controller.dispose();
   await flushLayout();
   expect(h.calls).toEqual([0.8, 1]);

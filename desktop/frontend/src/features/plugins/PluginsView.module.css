@@ -32,6 +32,11 @@
   gap: var(--icon-default);
 }
 
+/* Keep the flexible blank area draggable; only controls exclude window drag. */
+.headerActions > * {
+  -webkit-app-region: no-drag;
+}
+
 .search {
   min-width: 120px;
   max-width: 380px;

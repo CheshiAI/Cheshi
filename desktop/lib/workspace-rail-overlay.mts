@@ -73,9 +73,9 @@ export class WorkspaceRailOverlayLayer {
   }
 
   hide(notify = true): void {
+    if (this.disposed || !this.current) return;
     const previous = this.current;
     this.current = null; this.pressed = false; this.revision++;
-    if (this.disposed) return;
     this.view.setVisible(false);
     this.onRegion(null);
     if (notify && previous && !this.host.isDestroyed()) this.host.webContents.send(`${channel}:rail-event`, { id: previous.id, action: 'dismiss' });

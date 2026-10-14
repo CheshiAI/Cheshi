@@ -24,12 +24,16 @@ export interface WorkspaceRailEvent { id: string; action: 'activate' | 'dismiss'
 export interface WorkspaceRailBlur {
   x: number; y: number; width: number; height: number; radius: number;
 }
+export interface WorkspaceHostLayout {
+  x: number; y: number; width: number; height: number;
+  viewport?: { width: number; height: number };
+}
 export interface WorkspaceHostApi {
   state(): Promise<WorkspaceHostState>;
   activate(id: number): Promise<void>;
   close(id: number): Promise<void>;
   command(command: WorkspaceHostCommand): Promise<void>;
-  layout(frame: { x: number; y: number; width: number; height: number }): Promise<void>;
+  layout(frame: WorkspaceHostLayout): Promise<void>;
   onState(listener: (state: WorkspaceHostState) => void): () => void;
   railOverlay(overlay: WorkspaceRailOverlay | null): void;
   onRailEvent(listener: (event: WorkspaceRailEvent) => void): () => void;

@@ -2,6 +2,9 @@ import { EventEmitter } from 'node:events';
 import type { BrowserWindow, Rectangle, WebContentsView } from 'electron';
 
 const surfaces = new WeakMap<object, WorkspaceSurface>();
+export function sameWorkspaceBounds(left: Rectangle, right: Rectangle): boolean {
+  return left.x === right.x && left.y === right.y && left.width === right.width && left.height === right.height;
+}
 export function workspaceNativeFrame<T extends Rectangle>(owner: object, frame: T): T {
   return surfaces.get(owner)?.offsetFrame(frame) ?? frame;
 }
@@ -26,6 +29,7 @@ export class WorkspaceSurface {
   private active = false;
   private destroyed = false;
   private closing: Promise<boolean> | null = null;
+  private frame: Rectangle | null = null;
   confirmClose?: () => boolean;
 
   constructor(options: { host: BrowserWindow; view: WebContentsView; activate(): void; closed(): void }) {
@@ -116,8 +120,9 @@ export class WorkspaceSurface {
   }
 
   setBounds(frame: Rectangle): void {
-    if (this.destroyed) return;
+    if (this.destroyed || (this.frame && sameWorkspaceBounds(this.frame, frame))) return;
     this.view.setBounds(frame);
+    this.frame = { ...frame };
     this.events.emit('resize');
   }
 

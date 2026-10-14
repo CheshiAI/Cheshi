@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { workspaceProjectColors } from '../../config/workspace-project-colors.mts';
 import { resolveCodeGraphDataRoot } from '../../config/workspace-storage.mts';
 import { WORKSPACE_HOST_CHANNEL as channel } from '../shared/workspace-host.ts';
-import type { WorkspaceHostEntry, WorkspaceHostState, WorkspaceRailOverlay } from '../shared/workspace-host.ts';
+import type { WorkspaceHostEntry, WorkspaceHostLayout, WorkspaceHostState, WorkspaceRailOverlay } from '../shared/workspace-host.ts';
 import type { WorkspaceIpcScope } from './workspace-ipc-router.mts';
-import { WorkspaceSurface } from './workspace-surface.mts';
+import { sameWorkspaceBounds, WorkspaceSurface } from './workspace-surface.mts';
 import { WorkspaceRailOverlayLayer } from './workspace-rail-overlay.mts';
 import { workspaceWindowOptions } from './workspace-window-options.mts';
 import { closeWorkspaceWindow } from './workspace-application.mts';
@@ -24,6 +24,7 @@ export class WorkspaceHost {
   private readonly entries = new Map<number, HostedWorkspace>();
   private activeId: number | null = null;
   private frame: Rectangle = { x: 76, y: 36, width: 1364, height: 864 };
+  private insets = { right: 0, bottom: 0 };
   private closing = false;
   private readonly railOverlay: WorkspaceRailOverlayLayer;
 
@@ -45,6 +46,9 @@ export class WorkspaceHost {
     const onError = (error: unknown) => process.stderr.write(`[cheshi] Workspace window decoration: ${String(error)}\n`);
     createWindowTrafficLights({ window, onError });
     createWindowTopHighlight({ window, onError });
+    // Resize the native child in the same event as its host. Renderer IPC can
+    // wait until AppKit's nested zoom loop finishes, exposing an empty stage.
+    window.on('resize', () => this.resizeActiveSurface());
     const appearance = createWindowAppearance({ window, ipc: scope.ipc,
       filename: path.join(app.getPath('userData'), 'appearance.json'), backgrounds: INITIAL_WINDOW_BACKGROUND_COLORS });
     appearance.ready('dark');
@@ -69,16 +73,27 @@ export class WorkspaceHost {
     });
     scope.ipc.handle(`${channel}:layout`, (_event, input: unknown) => {
       if (!input || typeof input !== 'object') throw new Error('Invalid workspace bounds.');
-      const value = input as Rectangle;
+      const value = input as WorkspaceHostLayout;
       if (![value.x, value.y, value.width, value.height].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0)) {
         throw new Error('Invalid workspace bounds.');
       }
       const bounds = window.getContentBounds();
       const zoom = window.webContents.getZoomFactor();
-      this.railOverlay.hide();
-      this.frame = { x: Math.round(value.x * zoom), y: Math.round(value.y * zoom),
+      if (value.viewport !== undefined) {
+        const viewport = value.viewport;
+        if (!viewport || ![viewport.width, viewport.height].every(n => typeof n === 'number' && Number.isFinite(n) && n > 0)) {
+          throw new Error('Invalid workspace viewport.');
+        }
+        // Do not replay geometry queued at an earlier animation frame. CSS
+        // viewport dimensions can differ by one DIP due to zoom rounding.
+        if (Math.abs(viewport.width * zoom - bounds.width) > 1
+          || Math.abs(viewport.height * zoom - bounds.height) > 1) return;
+      }
+      const frame = { x: Math.round(value.x * zoom), y: Math.round(value.y * zoom),
         width: Math.min(bounds.width, Math.round(value.width * zoom)), height: Math.min(bounds.height, Math.round(value.height * zoom)) };
-      for (const entry of this.entries.values()) entry.surface.setBounds(this.frame);
+      this.insets = { right: Math.max(0, bounds.width - frame.x - frame.width),
+        bottom: Math.max(0, bounds.height - frame.y - frame.height) };
+      this.applyFrame(frame);
     });
     window.on('close', event => {
       if (!this.entries.size) return;
@@ -108,6 +123,21 @@ export class WorkspaceHost {
       process.stderr.write(`[cheshi] Workspace host failed: ${String(error)}\n`);
       window.destroy();
     });
+  }
+
+  private applyFrame(frame: Rectangle): void {
+    if (sameWorkspaceBounds(this.frame, frame)) return;
+    this.railOverlay.hide();
+    this.frame = frame;
+    if (this.activeId !== null) this.entries.get(this.activeId)?.surface.setBounds(frame);
+  }
+
+  private resizeActiveSurface(): void {
+    if (this.window.isDestroyed()) return;
+    const { width, height } = this.window.getContentBounds();
+    this.applyFrame({ x: this.frame.x, y: this.frame.y,
+      width: Math.max(0, width - this.frame.x - this.insets.right),
+      height: Math.max(0, height - this.frame.y - this.insets.bottom) });
   }
 
   createWindow(configuration: BrowserWindowConstructorOptions, scope: WorkspaceIpcScope, root: string): BrowserWindow {
@@ -178,6 +208,8 @@ export class WorkspaceHost {
       this.railOverlay.hide();
       if (this.activeId !== null) this.entries.get(this.activeId)?.surface.setActive(false);
       this.activeId = entry.state.id;
+      // Hidden workspaces keep working at their previous size until revealed.
+      entry.surface.setBounds(this.frame);
       entry.surface.setActive(true, focus);
       this.window.setTitle(`${entry.state.name} — Cheshi`);
       this.activated(entry.state.root);
