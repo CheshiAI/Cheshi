@@ -1,0 +1,49 @@
+/* Keep the layer mounted so completion can fade out without a React timer. */
+.sessionActivity {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 600ms ease;
+}
+.sessionActivity[data-active='true'] { opacity: 1; }
+
+.sessionActivity::before,
+.sessionActivity::after {
+  content: '';
+  position: absolute;
+  inset: -45% -20%;
+  background-repeat: no-repeat;
+  animation: session-dye-flow 6s var(--session-dye-flow-easing) infinite paused;
+}
+.sessionActivity::before {
+  background-image:
+    radial-gradient(ellipse 22% 55% at 28% 40%, color-mix(in srgb, var(--sub-text) 16%, transparent), transparent 100%),
+    radial-gradient(ellipse 18% 50% at 78% 65%, color-mix(in srgb, var(--title) 9%, transparent), transparent 100%);
+}
+.sessionActivity::after {
+  background-image:
+    radial-gradient(ellipse 20% 50% at 65% 25%, color-mix(in srgb, var(--title) 12%, transparent), transparent 100%),
+    radial-gradient(ellipse 18% 45% at 35% 80%, color-mix(in srgb, var(--sub-text) 10%, transparent), transparent 100%);
+  animation-name: session-dye-counterflow;
+  animation-duration: 8s;
+  animation-timing-function: var(--session-dye-counterflow-easing);
+}
+.sessionActivity[data-active='true'][data-animating]::before,
+.sessionActivity[data-active='true'][data-animating]::after { animation-play-state: running; }
+
+@keyframes session-dye-flow {
+  0%, 100% { transform: translate(-18%, -10%) rotate(-6deg) scale(1); }
+  50% { transform: translate(18%, 12%) rotate(7deg) scale(1.08); }
+}
+@keyframes session-dye-counterflow {
+  0%, 100% { transform: translate(18%, 10%) rotate(5deg) scale(1.08); }
+  50% { transform: translate(-18%, -12%) rotate(-7deg) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sessionActivity { transition: none; }
+  .sessionActivity::before,
+  .sessionActivity::after { animation: none; }
+}

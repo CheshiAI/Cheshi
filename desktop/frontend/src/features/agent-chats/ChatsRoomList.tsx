@@ -1,3 +1,4 @@
+import { SessionActivityBackground } from '../../shared/ui/SessionActivityBackground';
 import { Pencil, Pin, PinOff, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { WorkerIcon } from '../../shared/ui/WorkerIcon';
 import { useMemo, useRef, useState } from 'react';
@@ -73,7 +74,7 @@ export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, ref
             </InlineRenameField> : <><NeumorphicButton variant="ghost" className={sessionStyles.session}
               data-responding={working ? 'true' : undefined}
               aria-label={room.name} aria-current={room.id === selectedId ? 'page' : undefined} onClick={() => onSelect(room.id)}>
-              <span className={sessionStyles.sessionActivity} aria-hidden="true" />
+              <SessionActivityBackground active={working} />
               {working && <span className={sessionStyles.responseStatus} role="status" aria-label="Active response" />}
               <span className={`${sessionStyles.sessionTitleRow} ${styles.title}`}><TooltipTarget content={room.name}><span className={sessionStyles.sessionTitle}>{room.name}</span></TooltipTarget>
               </span>

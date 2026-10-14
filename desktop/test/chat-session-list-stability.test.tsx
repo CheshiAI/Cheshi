@@ -82,6 +82,7 @@ test('active sessions and live responses enable the background activity until co
     expect(row(responding, 'two').props['data-responding']).toBe('true');
     expect(row(responding, 'one').props['data-responding']).toBeUndefined();
     expect(children.some(child => child.props['aria-label'] === 'Active response')).toBe(true);
+    expect(children.find(child => child.type === 'session-activity-background')?.props.active).toBe(true);
     expect(children.some(child => child.type === 'loading-indicator')).toBe(false);
     expect(children.some(child => child.type === 'MessageSquareText')).toBe(false);
     expect(children.some(child => child.props.content === 'two')).toBe(true);
@@ -91,6 +92,7 @@ test('active sessions and live responses enable the background activity until co
     const restored = sessionListElements(row(completed, 'two').props.children);
     expect(row(completed, 'two').props['data-responding']).toBeUndefined();
     expect(restored.some(child => child.props['aria-label'] === 'Active response')).toBe(false);
+    expect(restored.find(child => child.type === 'session-activity-background')?.props.active).toBe(false);
     expect(restored.some(child => child.type === 'loading-indicator' || child.type === 'MessageSquareText')).toBe(false);
     expect(restored.some(child => child.props.content === 'two')).toBe(true);
     expect(harness.rowRenders).toBe(4);

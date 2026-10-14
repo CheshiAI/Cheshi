@@ -30,6 +30,8 @@
   background: currentColor;
   opacity: .15;
   animation: orbit-pulse 950ms ease-in-out infinite;
+  /* The shared clock advances the unchanged keyframes in one bounded paint batch. */
+  animation-play-state: paused;
 }
 
 .cell[data-idle='true'] {
@@ -52,6 +54,7 @@
   font-weight: 500;
   white-space: nowrap;
   animation: shimmer-text 1.4s linear infinite;
+  animation-play-state: paused;
 }
 
 .elapsed {

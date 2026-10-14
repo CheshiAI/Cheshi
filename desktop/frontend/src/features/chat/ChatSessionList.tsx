@@ -1,3 +1,4 @@
+import { SessionActivityBackground } from '../../shared/ui/SessionActivityBackground';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -45,7 +46,7 @@ const ChatSessionButton = memo(function ChatSessionButton({
     <NeumorphicButton variant="ghost" className={styles.session} aria-current={active ? 'page' : undefined}
       data-responding={responding ? 'true' : undefined}
       aria-label={title} type="button" aria-haspopup="dialog" onClick={() => onOpen(id)}>
-      <span className={styles.sessionActivity} aria-hidden="true" />
+      <SessionActivityBackground active={responding} />
       {responding && <span className={styles.responseStatus} role="status" aria-label="Active response" />}
       <span className={styles.sessionTitleRow}>
         <TooltipTarget content={title}><span className={styles.sessionTitle}>{title}</span></TooltipTarget>

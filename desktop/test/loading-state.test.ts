@@ -22,6 +22,7 @@ function isElement(value: unknown): value is TestElement {
 
 function createLoadingHarness() {
   let now = 10_000;
+  let visible = true;
   const states: unknown[] = [];
   let stateIndex = 0;
   let effectIndex = 0;
@@ -53,6 +54,12 @@ function createLoadingHarness() {
     'react/jsx-runtime': { jsx, jsxs: jsx },
     './LoadingState.module.css': { default: new Proxy({}, { get: (_target, name) => String(name) }) },
     './loadingThinkingQuotes': { ALICE_THINKING_QUOTES },
+    './useLoadingVisibility': { useLoadingVisibility: () => ({ ref() {}, visible }) },
+    './loadingAnimationClock': { subscribeLoadingFrame(_window: unknown, callback: (time: number) => void) {
+      const id = ++nextIntervalId;
+      intervals.set(id, { callback: () => callback(now), delay: 50, nextAt: now + 50 });
+      return () => intervals.delete(id);
+    } },
   };
   const exports: Record<string, unknown> = {};
   vm.runInNewContext(compiled.outputText, {
@@ -94,6 +101,7 @@ function createLoadingHarness() {
       }
     },
     pendingIntervals: () => intervals.size,
+    setVisible(value: boolean) { visible = value; },
     dispose() {
       for (const effect of effects) effect.cleanup?.();
       effects.length = 0;
@@ -129,6 +137,25 @@ test('elapsed time catches up after delayed callbacks and crosses the minute bou
   assert.equal(elapsedText(loader.render()), '1m 0.0s');
   loader.advance(1_900);
   assert.equal(elapsedText(loader.render()), '1m 1.9s');
+});
+
+test('hidden loaders stop display timers and elapsed time catches up when shown again', (t) => {
+  const loader = createLoadingHarness();
+  t.after(() => loader.dispose());
+  const initial = loader.render({ type: 'thinking' });
+  assert.equal(loader.pendingIntervals(), 2);
+  loader.setVisible(false);
+  const hidden = loader.render({ type: 'thinking' });
+  assert.equal(hidden.props['data-animation-paused'], true);
+  assert.equal(loader.pendingIntervals(), 0);
+  loader.advance(65_500);
+  assert.equal(quoteText(loader.render({ type: 'thinking' })), quoteText(initial));
+  loader.setVisible(true);
+  loader.render({ type: 'thinking' });
+  const resumed = loader.render({ type: 'thinking' });
+  assert.equal(resumed.props['data-animation-paused'], undefined);
+  assert.equal(elapsedText(resumed), '1m 5.5s');
+  assert.equal(loader.pendingIntervals(), 2);
 });
 
 test('unmount releases the timer and a new loading session starts at zero', (t) => {

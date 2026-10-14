@@ -23,7 +23,7 @@ test('room loading follows current task state and ignores historical activity an
     expect(indicator()).toBeNull();
     await render([task, historical]);
     expect(indicator()).not.toBeNull();
-    expect(indicator()!.children).toHaveLength(9);
+    expect(indicator()!.parentElement?.querySelector('[data-active="true"]')).not.toBeNull();
     expect(indicator('Idle room')).toBeNull();
     for (const status of ['completed', 'failed', 'interrupted', 'paused', 'blocked', 'held', 'cancelled', 'waiting', 'unknown']) {
       await render([{ ...task, status }, historical]);
