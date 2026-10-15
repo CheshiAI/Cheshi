@@ -51,7 +51,8 @@ function createHarness() {
     '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
     '../chat/FlashSourceLink': { FlashSourceNavigationContext: { Provider: 'FlashSourceNavigationContext' } },
     './WorkerWorkspace': { WorkerWorkspace: 'WorkerWorkspace' },
-    './useRelationshipGraphMenu': { useRelationshipGraphMenu() {} },
+    './useToolsMenu': { useToolsMenu() {} },
+    '../voice/VoiceView': { VoiceView: 'VoiceView' },
     '../navigation/ExplorerView': { ExplorerView: 'ExplorerView' },
     '../graph/useCodeGraphIndex': { useCodeGraphIndex: () => ({ status: { state: 'ready' } }) },
     './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },
@@ -112,6 +113,7 @@ function createHarness() {
     './ReviewSidebar': { ReviewSidebar: 'ReviewSidebar' },
     './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
     './WorkspaceStatusBar': { WorkspaceStatusBar: 'WorkspaceStatusBar' },
+    './WorkspaceSurfaceReporter': { WorkspaceSurfaceReporter: 'WorkspaceSurfaceReporter' },
     './WorkspaceEditorSplit': { WorkspaceEditorSplit: 'WorkspaceEditorSplit' },
     './AppShell.module.css': { default: {} },
   };
@@ -120,7 +122,7 @@ function createHarness() {
     jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023,
   } });
   const exports: Record<string, unknown> = {};
-  vm.runInNewContext(compiled.outputText, { exports, require(name: string) {
+  vm.runInNewContext(compiled.outputText, { exports, window: {}, require(name: string) {
     if (!Object.hasOwn(modules, name)) throw new Error(`Unexpected AppShell dependency: ${name}`);
     return modules[name];
   } });

@@ -205,9 +205,9 @@ test('built manager preload exposes management and update methods and decodes wo
     'deleteWorkspace', 'getAppUpdate', 'getCodexLogin', 'getGitHubLogin', 'getToolStatus',
     'getUpdateResume', 'installAppUpdate', 'list', 'listGitHubRepositories', 'listWorktrees',
     'onAppUpdate', 'onAppUpdateCommitted', 'onAppUpdatePreparationCancelled',
-    'onHelpRequested', 'onPrepareAppUpdate', 'onRelationshipGraphRequested',
+    'onHelpRequested', 'onPrepareAppUpdate', 'onRelationshipGraphRequested', 'onVoiceRequested',
     'open', 'openAppRelease', 'openCurrent', 'openGitHubLoginBrowser', 'openManager',
-    'saveUpdateResume', 'startCodexLogin', 'startGitHubLogin',
+    'removeWorkspace', 'saveUpdateResume', 'startCodexLogin', 'startGitHubLogin',
   ]);
   await bridge.api.list();
   await bridge.api.listGitHubRepositories(3);

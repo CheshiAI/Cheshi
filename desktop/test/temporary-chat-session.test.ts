@@ -83,7 +83,7 @@ describe('temporary chat panel session', () => {
     await f.session.importAttachments([file.path, other.path]);
     const numbered = [{ ...file, importNumber: 1 }, { ...other, importNumber: 2 }];
     expect(f.latest().attachments).toEqual(numbered);
-    expect(f.latest().draft).toBe('[import 1] [import 2]');
+    expect(f.latest().draft).toBe('[import 1][import 2] ');
     expect(imports).toEqual([{ id: 'session', files: [file.path, other.path] }]);
     await f.session.send();
     expect(sent).toEqual(numbered);
@@ -218,7 +218,7 @@ describe('temporary chat panel session', () => {
     await session.selectAttachments();
     await session.selectAttachments();
     expect(latest().attachments).toEqual([{ ...file, importNumber: 1 }]);
-    expect(latest().draft).toBe('[import 1]');
+    expect(latest().draft).toBe('[import 1] ');
     await session.send();
     expect(received).toEqual({ id: 'session', attachments: [{ ...file, importNumber: 1 }] });
     await session.close();

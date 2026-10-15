@@ -1,7 +1,7 @@
 import type { BrowserWindow, Menu, MenuItem, MenuItemConstructorOptions } from 'electron';
-import { OPEN_RELATIONSHIP_GRAPH_CHANNEL } from '../shared/workspace-management.ts';
+import { OPEN_RELATIONSHIP_GRAPH_CHANNEL, OPEN_VOICE_CHANNEL } from '../shared/workspace-management.ts';
 
-type GraphWindow = Pick<BrowserWindow, 'isDestroyed' | 'isMinimized' | 'restore' | 'show' | 'focus'> & {
+type ToolWindow = Pick<BrowserWindow, 'isDestroyed' | 'isMinimized' | 'restore' | 'show' | 'focus'> & {
   webContents: Pick<BrowserWindow['webContents'], 'isDestroyed' | 'isLoadingMainFrame' | 'send'> & {
     on(event: 'did-start-loading' | 'did-stop-loading', listener: () => void): unknown;
     off(event: 'did-start-loading' | 'did-stop-loading', listener: () => void): unknown;
@@ -10,35 +10,42 @@ type GraphWindow = Pick<BrowserWindow, 'isDestroyed' | 'isMinimized' | 'restore'
 
 /** The supplied window list excludes workspace managers and auxiliary windows. */
 export function createToolsMenu(items: Array<MenuItem | MenuItemConstructorOptions>, options: {
-  focused(): GraphWindow | null;
-  windows(): GraphWindow[];
+  focused(): ToolWindow | null;
+  windows(): ToolWindow[];
   onWindowsChanged(listener: () => void): () => void;
   buildMenu: typeof Menu.buildFromTemplate;
 }) {
-  const available = (window: GraphWindow) => !window.isDestroyed()
+  const available = (window: ToolWindow) => !window.isDestroyed()
     && !window.webContents.isDestroyed() && !window.webContents.isLoadingMainFrame();
   const target = () => {
     const windows = options.windows().filter(available);
     const focused = options.focused();
     return focused && windows.includes(focused) ? focused : windows[0];
   };
-  const submenu = options.buildMenu([{
-    id: 'cheshi-relationship-graph', label: 'Relationship Graph', enabled: Boolean(target()),
+  const commands = [
+    { id: 'cheshi-relationship-graph', label: 'Relationship Graph', channel: OPEN_RELATIONSHIP_GRAPH_CHANNEL },
+    { id: 'cheshi-voice', label: 'Voice', channel: OPEN_VOICE_CHANNEL },
+  ];
+  const submenu = options.buildMenu(commands.map(({ id, label, channel }) => ({
+    id, label, enabled: Boolean(target()),
     click: () => {
       const window = target();
       if (!window) return;
       if (window.isMinimized()) window.restore();
-      window.show(); window.focus(); window.webContents.send(OPEN_RELATIONSHIP_GRAPH_CHANNEL);
+      window.show(); window.focus(); window.webContents.send(channel);
     },
-  }]);
+  })));
   let disposed = false;
   const refresh = () => {
     if (disposed) return;
-    const command = submenu.getMenuItemById('cheshi-relationship-graph');
-    if (command) command.enabled = Boolean(target());
+    const enabled = Boolean(target());
+    for (const { id } of commands) {
+      const command = submenu.getMenuItemById(id);
+      if (command) command.enabled = enabled;
+    }
   };
-  const watched = new Map<GraphWindow, GraphWindow['webContents']>();
-  const unwatch = (window: GraphWindow) => {
+  const watched = new Map<ToolWindow, ToolWindow['webContents']>();
+  const unwatch = (window: ToolWindow) => {
     // BrowserWindow.webContents throws after the native window has been destroyed.
     // EventEmitter cleanup is still safe on the object captured when subscribing.
     const contents = watched.get(window);

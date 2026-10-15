@@ -1,50 +1,54 @@
-import { access, readFile, rename, writeFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { product } from '../config/product.mts';
-import { finderBuildSortScript, reserveBuildOutput } from './desktop-build-output.mts';
+import { finderBuildSortScript } from './desktop-build-output.mts';
+import { BuildInterruptedError, withDesktopBuild } from './desktop-build-lifecycle.mts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const flags = process.argv.slice(2);
 if (flags.some(flag => flag !== '--no-finder')) throw new Error('Usage: bun run desktop:package [--no-finder]');
-const output = await reserveBuildOutput(join(root, 'out'));
-const environment = { ...process.env, CHESHI_PACKAGE_OUT: output.staging };
-
-async function run(command: string[]) {
-  const child = Bun.spawn(command, { cwd: root, env: environment, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' });
-  const status = await child.exited;
-  if (status !== 0) throw new Error(`${command.join(' ')} failed (${status}). Incomplete build: ${output.staging}`);
-}
-
-console.log(`[build] Preparing ${output.name} (Asia/Seoul)`);
-for (const task of ['desktop:ghostty', 'viewer:build', 'desktop:runtime']) await run([process.execPath, 'run', task]);
-await run([process.execPath, 'x', '--no-install', 'electron-forge', 'package']);
-const bundleName = `${product.displayName}-${process.platform}-${process.arch}`;
-const appRelative = process.platform === 'darwin' ? join(bundleName, `${product.displayName}.app`) : bundleName;
-const app = join(output.staging, appRelative);
-const resources = process.platform === 'darwin' ? join(app, 'Contents', 'Resources') : join(app, 'resources');
-for (const file of ['app.asar', 'dist/index.html', `runtime/${process.platform}-${process.arch}/cheshi-cli`]) {
-  await access(join(resources, file));
-}
-if (process.platform === 'darwin') {
-  if (process.env.CHESHI_SIGN_RELEASE !== '1') await run(['/usr/bin/codesign', '--force', '--deep', '--sign', '-', app]);
-  await run(['/usr/bin/codesign', '--verify', '--deep', '--strict', app]);
-}
-const git = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
-if (git.exitCode !== 0) throw new Error('Unable to record build revision.');
-const status = Bun.spawnSync(['git', 'status', '--porcelain'], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
-if (status.exitCode !== 0) throw new Error('Unable to record build worktree state.');
-await writeFile(join(output.staging, 'build.json'), JSON.stringify({
-  builtAt: new Date().toISOString(), timeZone: 'Asia/Seoul', version: product.version, buildNumber: product.buildNumber,
-  revision: git.stdout.toString().trim(), dirty: status.stdout.length > 0, platform: process.platform, arch: process.arch,
-  app: appRelative, asarSha256: createHash('sha256').update(await readFile(join(resources, 'app.asar'))).digest('hex'),
-}, null, 2) + '\n');
-await rename(output.staging, output.destination);
-console.log(`[build] App: ${join(output.destination, appRelative)}`);
-if (process.platform === 'darwin' && !flags.includes('--no-finder')) {
-  const result = Bun.spawnSync(['/usr/bin/osascript', '-e', finderBuildSortScript, join(root, 'out')],
-    { stdout: 'pipe', stderr: 'pipe', timeout: 20_000 });
-  if (result.exitCode === 0 && result.stdout.toString().trim() === 'true') console.log('[build] Finder: newest builds first.');
-  else console.warn(`[build] App built; Finder sorting was not applied: ${result.stderr.toString().trim()}`);
+try {
+  const { output, value: appRelative } = await withDesktopBuild({
+    out: join(root, 'out'), cwd: root,
+    onRecovered: path => console.log(`[build] Removed abandoned staging: ${path}`),
+    onDiscarded: path => console.log(`[build] Removed failed staging: ${path}`),
+    build: async (output, run) => {
+      console.log(`[build] Preparing ${output.name} (Asia/Seoul)`);
+      for (const task of ['desktop:ghostty', 'viewer:build', 'desktop:runtime']) await run([process.execPath, 'run', task]);
+      await run([process.execPath, 'x', '--no-install', 'electron-forge', 'package']);
+      const bundleName = `${product.displayName}-${process.platform}-${process.arch}`;
+      const appRelative = process.platform === 'darwin' ? join(bundleName, `${product.displayName}.app`) : bundleName;
+      const app = join(output.staging, appRelative);
+      const resources = process.platform === 'darwin' ? join(app, 'Contents', 'Resources') : join(app, 'resources');
+      for (const file of ['app.asar', 'dist/index.html', `runtime/${process.platform}-${process.arch}/cheshi-cli`]) {
+        await access(join(resources, file));
+      }
+      if (process.platform === 'darwin') {
+        if (process.env.CHESHI_SIGN_RELEASE !== '1') await run(['/usr/bin/codesign', '--force', '--deep', '--sign', '-', app]);
+        await run(['/usr/bin/codesign', '--verify', '--deep', '--strict', app]);
+      }
+      const git = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
+      if (git.exitCode !== 0) throw new Error('Unable to record build revision.');
+      const status = Bun.spawnSync(['git', 'status', '--porcelain'], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
+      if (status.exitCode !== 0) throw new Error('Unable to record build worktree state.');
+      await writeFile(join(output.staging, 'build.json'), JSON.stringify({
+        builtAt: new Date().toISOString(), timeZone: 'Asia/Seoul', version: product.version, buildNumber: product.buildNumber,
+        revision: git.stdout.toString().trim(), dirty: status.stdout.length > 0, platform: process.platform, arch: process.arch,
+        app: appRelative, asarSha256: createHash('sha256').update(await readFile(join(resources, 'app.asar'))).digest('hex'),
+      }, null, 2) + '\n');
+      return appRelative;
+    },
+  });
+  console.log(`[build] App: ${join(output.destination, appRelative)}`);
+  if (process.platform === 'darwin' && !flags.includes('--no-finder')) {
+    const result = Bun.spawnSync(['/usr/bin/osascript', '-e', finderBuildSortScript, join(root, 'out')],
+      { stdout: 'pipe', stderr: 'pipe', timeout: 20_000 });
+    if (result.exitCode === 0 && result.stdout.toString().trim() === 'true') console.log('[build] Finder: newest builds first.');
+    else console.warn(`[build] App built; Finder sorting was not applied: ${result.stderr.toString().trim()}`);
+  }
+} catch (error) {
+  console.error(error);
+  process.exitCode = error instanceof BuildInterruptedError ? error.exitCode : 1;
 }

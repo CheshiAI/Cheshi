@@ -1,0 +1,81 @@
+.inspector {
+  --sliding-side-panel-width: min(var(--sidebar-width), 60cqw);
+  display: flex;
+  min-height: 0;
+  flex: 0 0 auto;
+}
+.panel {
+  --liquid-glass-radius: 0;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+.content {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex-direction: column;
+}
+.heading {
+  display: flex;
+  box-sizing: border-box;
+  height: var(--header-height);
+  min-height: var(--header-height);
+  flex: 0 0 var(--header-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--icon-default);
+  padding: 0 var(--space-default);
+  border-bottom: 1px solid var(--divider);
+}
+.list {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+.empty {
+  margin: 0;
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+}
+.list > .empty { padding: var(--space-default); }
+.actions { display: flex; gap: var(--icon-default); align-items: center; }
+.notice { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-default); padding: var(--space-default); }
+.recordings { list-style: none; margin: 0; padding: 0; }
+.recording {
+  appearance: none;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: var(--space-default);
+  border: 0;
+  border-radius: 0;
+  background: rgba(41, 52, 61, 0.05);
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+.recording[aria-pressed='true'] { background: rgba(41, 52, 61, 0.4); }
+.recording:is(:hover, :active) { background: rgba(41, 52, 61, 0.8); }
+.recordingTitle { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.metadata { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-default); margin-top: 4px; color: var(--sidebar-section-label-color); }
+.metadata > span { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.rail {
+  display: flex;
+  box-sizing: border-box;
+  width: 42px;
+  flex: 0 0 42px;
+  align-items: center;
+  flex-direction: column;
+  gap: var(--icon-default);
+  border-left: 1px solid var(--divider);
+  padding: var(--space-default) 0;
+}

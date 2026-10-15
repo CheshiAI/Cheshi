@@ -10,6 +10,7 @@ import type { AppShell } from '../frontend/src/features/shell/AppShell';
 import type { WorkerWorkspace } from '../frontend/src/features/shell/WorkerWorkspace';
 import type { WorkspaceEditorSplit } from '../frontend/src/features/shell/WorkspaceEditorSplit';
 import type { useAppUpdateResume } from '../frontend/src/features/shell/useAppUpdateResume';
+import type { useToolsMenu } from '../frontend/src/features/shell/useToolsMenu';
 import { sidebarPanelForWorkspace, type SidebarPanel } from '../frontend/src/features/navigation/sidebarPanel';
 import * as draftAttachmentModule from '../frontend/src/features/chat/chatDraftAttachments';
 
@@ -83,6 +84,7 @@ export function shellHarness(initialHistoryLoading = false, preference: { panel:
   const app = hooks();
   let historyLoading = initialHistoryLoading;
   let openSearch = () => {};
+  let openTool: Parameters<typeof useToolsMenu>[0] = () => {};
   let revealHomieRepository = () => {};
   let resumeOptions: Parameters<typeof useAppUpdateResume>[0];
   let editorSessionMode: ReturnType<typeof useAppUpdateResume>['editorSessionMode'] = 'restore';
@@ -114,7 +116,7 @@ export function shellHarness(initialHistoryLoading = false, preference: { panel:
       return { busy: editorSessionMode === 'waiting', error: null, editorSessionMode };
     } },
     './useWorkflowChatNavigation': { useWorkflowChatNavigation: () => async () => false },
-    './useRelationshipGraphMenu': { useRelationshipGraphMenu() {} },
+    './useToolsMenu': { useToolsMenu(navigate: typeof openTool) { openTool = navigate; } },
     '../graph/useCodeGraphIndex': { useCodeGraphIndex: () => ({ status: { state: 'ready' } }) },
     '../navigation/fileSearchShortcut': { installFileSearchShortcut: (_document: unknown, open: () => void) => {
       openSearch = open; return () => {};
@@ -134,6 +136,7 @@ export function shellHarness(initialHistoryLoading = false, preference: { panel:
     '../scheduler/SchedulerNotifications': ['SchedulerNotifications'],
     '../settings/DiscordSetupConfirmation': ['DiscordSetupConfirmation'],
     '../calendar/CalendarView': ['CalendarView'],
+    '../voice/VoiceView': ['VoiceView'],
     './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],
     '../editor/LocalHistoryPage': ['LocalHistoryPage'], './WorkspaceEditorSplit': ['WorkspaceEditorSplit'],
     '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'], '../sticky-notes/MemoSidebar': ['MemoSidebar'],
@@ -159,7 +162,8 @@ export function shellHarness(initialHistoryLoading = false, preference: { panel:
   return { attachments, render: () => {
     app.render(() => Shell());
     return expandWorker(app.render(() => Shell()));
-  }, openSearch: () => openSearch(), revealHomieRepository: () => revealHomieRepository(),
+  }, openSearch: () => openSearch(), openTool: (view: Parameters<typeof openTool>[0]) => openTool(view),
+    revealHomieRepository: () => revealHomieRepository(),
     beginRestore: () => { editorSessionMode = 'waiting'; },
     restoreShell: (view: Parameters<typeof resumeOptions.setActiveView>[0], panel: SidebarPanel) => {
       resumeOptions.setActiveView(view);

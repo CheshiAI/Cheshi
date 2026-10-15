@@ -21,11 +21,15 @@ test.each(['standard', 'raised', 'pill'] as const)('%s select preserves selectio
   const root = createRoot(container);
   const changes: string[] = [];
   let setDisabled!: (value: boolean) => void;
+  let setMenuMaxHeight!: (value: number | undefined) => void;
   function Fixture() {
     const [value, setValue] = useState('directory');
     const [disabled, updateDisabled] = useState(false);
     setDisabled = updateDisabled;
+    const [menuMaxHeight, updateMenuMaxHeight] = useState<number>();
+    setMenuMaxHeight = updateMenuMaxHeight;
     return <LiquidGlassSelect ariaLabel="Group by" triggerAppearance={appearance} menuAppearance="toolbar"
+      menuMaxHeight={menuMaxHeight}
       value={value} disabled={disabled} options={[
         { value: 'directory', label: 'Directory' },
         { value: 'blocked', label: 'Unavailable', disabled: true },
@@ -47,6 +51,16 @@ test.each(['standard', 'raised', 'pill'] as const)('%s select preserves selectio
     await act(async () => { flushFrames(); });
     const directory = document.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')!;
     expect(document.activeElement).toBe(directory);
+    const menu = document.querySelector<HTMLElement>('[role="menu"]')!;
+    expect(menu.style.maxHeight).toBe('');
+    // A capped list fits below this trigger; the full list would open above it.
+    container.firstElementChild!.getBoundingClientRect = () => ({
+      x: 20, y: window.innerHeight - 150, top: window.innerHeight - 150,
+      bottom: window.innerHeight - 118, left: 20, right: 260, width: 240, height: 32, toJSON() {},
+    });
+    await act(async () => { setMenuMaxHeight(80); });
+    expect(menu.style.maxHeight).toBe('min(80px, calc(100vh - 16px))');
+    expect(menu.parentElement!.style.top).toBe(`${window.innerHeight - 110}px`);
     await act(async () => { key(directory, 'ArrowDown'); });
     const language = document.activeElement as HTMLButtonElement;
     expect(language.textContent).toBe('Language');

@@ -5,7 +5,7 @@ import type { WorkspaceView } from '../navigation/Sidebar';
 import { normalizeSidebarPanel, type SidebarPanel } from '../navigation/sidebarPanel';
 import { resumeRecord, updateResumeCoordinator } from './updateWorkspaceResume';
 
-const restorableViews: readonly WorkspaceView[] = ['chat', 'explorer', 'calendar', 'blank', 'codegraph', 'editor', 'git', 'plugins', 'terminal', 'settings'];
+const restorableViews: readonly WorkspaceView[] = ['chat', 'explorer', 'calendar', 'blank', 'codegraph', 'voice', 'editor', 'git', 'plugins', 'terminal', 'settings'];
 let initialSnapshot: Promise<unknown> | undefined;
 
 export function useAppUpdateResume(options: {

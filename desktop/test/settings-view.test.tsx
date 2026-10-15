@@ -3,6 +3,7 @@ import { Window } from 'happy-dom';
 import { act } from 'react';
 import type { SettingsApi } from '../shared/settings';
 import { product } from '../../config/product.mts';
+import type { VoiceRecordingsApi } from '../shared/voice-recordings';
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -14,6 +15,8 @@ async function withSettings(run: (view: {
   container: HTMLElement; window: Window; projectWrites: number[]; emitLimit(bytes: number): Promise<void>;
 }) => Promise<void>, options: {
   projectLoad?: Promise<number>; projectSave?: Promise<void>; failProjectSave?: boolean;
+  voiceApi?: VoiceRecordingsApi; platform?: string;
+  initialCategory?: 'voice';
 } = {}) {
   const window = new Window();
   Object.defineProperty(window, 'localStorage', { get() { throw new Error('Browser storage is unavailable'); } });
@@ -45,7 +48,7 @@ async function withSettings(run: (view: {
     const root = createRoot(container);
     unmount = async () => { await act(async () => root.unmount()); };
     await act(async () => root.render(<>
-      <SettingsView api={api} />
+      <SettingsView api={api} voiceApi={options.voiceApi} platform={options.platform} initialCategory={options.initialCategory} />
     </>));
     await run({ container, window, projectWrites,
       emitLimit: async bytes => { await act(async () => { for (const listener of projectListeners) listener(bytes); }); } });
@@ -157,4 +160,58 @@ test('settings no longer exposes provider credentials or memory recall controls'
     expect(container.textContent).not.toContain('TypeSafe');
     expect(container.textContent).not.toContain('Jev');
   });
+});
+
+test('Voice settings opens system settings only after clicking and blocks duplicate requests', async () => {
+  const opening = createDeferred<boolean>();
+  let calls = 0;
+  const voiceApi: VoiceRecordingsApi = { list: async () => { throw new Error('Settings should not read recordings'); },
+    openFullDiskAccessSettings: () => { calls++; return opening.promise; } };
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Voice').click());
+    expect(category(container, 'Voice').getAttribute('aria-current')).toBe('page');
+    expect(container.querySelector('#voice-settings-heading')?.textContent).toBe('Voice Memos');
+    expect(calls).toBe(0);
+    const open = button(container, 'Open Full Disk Access settings');
+    await act(async () => { open.click(); open.click(); });
+    expect(calls).toBe(1);
+    expect(open.disabled).toBe(true);
+    await act(async () => opening.resolve(true));
+    expect(open.disabled).toBe(false);
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    await act(async () => category(container, 'Agents').click());
+    expect(container.querySelector('#voice-settings-heading')).toBeNull();
+  }, { voiceApi, platform: 'darwin' });
+});
+
+test('Voice settings reports opening failures and supports retry', async () => {
+  let attempts = 0;
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Voice').click());
+    const open = button(container, 'Open Full Disk Access settings');
+    await act(async () => open.click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Could not open System Settings');
+    expect(open.disabled).toBe(false);
+    await act(async () => open.click());
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+  }, { platform: 'darwin', voiceApi: { list: async () => ({ status: 'ready', recordings: [], truncated: false }),
+    openFullDiskAccessSettings: async () => { if (++attempts === 1) throw new Error('IPC unavailable'); return true; } } });
+});
+
+test('Voice settings disables system access outside macOS', async () => {
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Voice').click());
+    expect(button(container, 'Open Full Disk Access settings').disabled).toBe(true);
+    expect(container.textContent).toContain('Available in the Cheshi macOS app.');
+  }, { platform: 'linux' });
+});
+
+test('Voice deep link selects its settings immediately and still allows category changes', async () => {
+  await withSettings(async ({ container }) => {
+    expect(category(container, 'Voice').getAttribute('aria-current')).toBe('page');
+    expect(container.querySelector('#voice-settings-heading')).not.toBeNull();
+    expect(container.querySelector('#project-doc-limit')).toBeNull();
+    await act(async () => category(container, 'Agents').click());
+    expect(container.querySelector('#project-doc-limit')).not.toBeNull();
+  }, { initialCategory: 'voice', platform: 'darwin' });
 });

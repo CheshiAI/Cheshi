@@ -38,6 +38,7 @@ interface LiquidGlassSelectProps<Value extends string> {
   menuAppearance?: 'default' | 'toolbar';
   menuPlacement?: 'auto' | 'left';
   menuWidth?: number;
+  menuMaxHeight?: number;
   menuBlurSourceRef?: RefObject<HTMLElement | null>;
   menuBlurSourceMode?: RegionalBlurSourceMode;
   onChange: (value: Value) => void;
@@ -89,6 +90,7 @@ export function LiquidGlassSelect<Value extends string>({
   menuAppearance = 'default',
   menuPlacement = 'auto',
   menuWidth,
+  menuMaxHeight,
   menuBlurSourceRef,
   menuBlurSourceMode,
   onChange,
@@ -143,9 +145,11 @@ export function LiquidGlassSelect<Value extends string>({
         menuWidth ?? Math.max(rect.width, DEFAULT_MENU_WIDTH),
         window.innerWidth - VIEWPORT_GAP * 2,
       );
-      const estimatedHeight = options.length * (menuAppearance === 'toolbar' ? 32 : MENU_ITEM_HEIGHT)
+      const contentHeight = options.length * (menuAppearance === 'toolbar' ? 32 : MENU_ITEM_HEIGHT)
         + Math.max(0, options.length - 1) * MENU_ITEM_GAP
         + (menuAppearance === 'toolbar' ? 32 : MENU_PADDING) + MENU_BORDER_WIDTH * 2;
+      const estimatedHeight = menuMaxHeight === undefined ? contentHeight
+        : Math.min(contentHeight, menuMaxHeight, Math.max(0, window.innerHeight - VIEWPORT_GAP * 2));
       if (menuPlacement === 'left') {
         const left = Math.max(VIEWPORT_GAP, rect.left - width - MENU_GAP);
         const top = Math.min(
@@ -178,7 +182,7 @@ export function LiquidGlassSelect<Value extends string>({
       window.removeEventListener('resize', updateMenuPosition);
       window.removeEventListener('scroll', updateMenuPosition, true);
     };
-  }, [menuAppearance, menuPlacement, menuWidth, open, options.length]);
+  }, [menuAppearance, menuPlacement, menuWidth, menuMaxHeight, open, options.length]);
 
   const rootClassName = className ? `${styles.root} ${className}` : styles.root;
   const triggerClassName = triggerAppearance === 'standard' ? styles.standardTrigger : triggerAppearance === 'raised'
@@ -200,6 +204,10 @@ export function LiquidGlassSelect<Value extends string>({
         data-liquid-glass-surface={toolbarMenu ? undefined : 'side-panel'}
         role="menu"
         aria-label={menuLabel}
+        style={menuMaxHeight === undefined ? undefined : {
+          maxHeight: `min(${menuMaxHeight}px, calc(100vh - ${VIEWPORT_GAP * 2}px))`,
+          overflowY: 'auto',
+        }}
         onKeyDown={focusAdjacentOption}
       >
         {options.map((option) => {

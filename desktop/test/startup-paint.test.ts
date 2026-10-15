@@ -5,11 +5,46 @@ import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { installRendererReadiness } from '../lib/renderer-readiness.mts';
 import { workspaceWindowOptions } from '../lib/workspace-window-options.mts';
+import { createRendererReadinessLog } from '../lib/renderer-readiness-log.mts';
+import { loadForgeConfiguration } from './forge-test-helpers.ts';
 
 const bootstrapSource = readFileSync(new URL('../bootstrap.mts', import.meta.url), 'utf8');
 const runtimeSource = readFileSync(new URL('../workspace-runtime.mts', import.meta.url), 'utf8');
 const rendererHtml = readFileSync(new URL('../frontend/index.html', import.meta.url), 'utf8');
 const mainSource = readFileSync(new URL('../main.mts', import.meta.url), 'utf8');
+
+test('renderer readiness timing distinguishes initial loads, reloads and duplicate notifications', () => {
+  let now = 2_588_912;
+  const messages: string[] = [];
+  const timing = createRendererReadinessLog({ enabled: true, now: () => now, write: message => messages.push(message) });
+  timing.navigationStarted(false, true);
+  now += 120;
+  timing.ready();
+  now += 20_000;
+  timing.ready();
+  timing.navigationStarted(false, false);
+  timing.navigationStarted(true, true);
+  timing.ready();
+  assert.deepEqual(messages, ['[cheshi] Startup renderer ready: 120 ms\n']);
+  timing.navigationStarted(false, true);
+  now += 75;
+  timing.ready();
+  timing.ready();
+  assert.deepEqual(messages, ['[cheshi] Startup renderer ready: 120 ms\n', '[cheshi] Renderer reload ready: 75 ms\n']);
+  const packaged = createRendererReadinessLog({ enabled: false, write: () => assert.fail('Packaged apps do not emit development timing') });
+  packaged.ready(); packaged.navigationStarted(false, true); packaged.ready();
+});
+
+test('renderer timing is wired before loading and its native module is included in the package', async () => {
+  const register = runtimeSource.indexOf("rendererContents.on('did-start-navigation', handleRendererNavigation)");
+  assert.ok(register > 0 && register < runtimeSource.indexOf('window.loadURL(rendererUrl)', register));
+  assert.match(runtimeSource, /readiness\.rendererReady\(theme\);\s*rendererTiming\.ready\(\)/);
+  assert.match(runtimeSource, /rendererContents\.off\('did-start-navigation', handleRendererNavigation\)/);
+  const { packagerConfig } = await loadForgeConfiguration();
+  assert.equal(typeof packagerConfig.ignore, 'function');
+  const ignore = packagerConfig.ignore as (path: string) => boolean;
+  assert.equal(ignore('/desktop/lib/renderer-readiness-log.mts'), false);
+});
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;

@@ -55,6 +55,7 @@ function shouldIgnore(packagePath: string): boolean {
     return !startupStyles.some(file => normalizedPath === file || file.startsWith(`${normalizedPath}/`));
   }
   if (childEntry === 'shared') {
+    if (grandchildEntry === 'voice-recordings.ts' || grandchildEntry === 'voice-transcription.ts') return segments.length > 3;
     if (segments.length === 2) return false;
     if (grandchildEntry === 'chat-imports.ts') return segments.length > 3;
     if (grandchildEntry === 'workspace-host.ts') return segments.length > 3;
@@ -94,6 +95,15 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 3 && (segments.length !== 4 || !schedulerFiles.has(segments[3] ?? ''));
   }
   const packagedLibraryFiles = new Set([
+    'voice-recordings-service.mts',
+    'voice-recording-file.mts',
+    'voice-audio.mts',
+    'voice-audio-preparation.mts',
+    'voice-media-file.mts',
+    'voice-speech-process.mts',
+    'voice-detail-service.mts',
+    'voice-detail-ipc.mts',
+    'voice-recordings-ipc.mts',
     'workspace-host.mts', 'workspace-surface.mts', 'workspace-rail-overlay.mts',
     'sticky-notes-store.mts', 'sticky-notes-runtime.mts', 'sticky-notes-library.mts',
     'chat-search-grams.mts', 'chat-search-database.mts', 'chat-search-index.mts', 'chat-search-query.mts',
@@ -292,6 +302,7 @@ function shouldIgnore(packagePath: string): boolean {
     'workspace-ipc-router.mts',
     'workspace-renderer-events.mts',
     'workspace-window-readiness.mts',
+    'renderer-readiness-log.mts',
     'workspace-account-startup.mts',
   ]);
   return grandchildEntry === undefined || !packagedLibraryFiles.has(grandchildEntry) || segments.length > 3;

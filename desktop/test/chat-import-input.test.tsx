@@ -14,6 +14,7 @@ import { useChatInputHistory } from '../frontend/src/features/chat/useChatInputH
 import { WORKSPACE_FILE_TRANSFER_TYPE } from '../frontend/src/shared/workspaceFileTransfer';
 import type { CodexChatAttachment } from '../frontend/src/cheshiDesktop';
 import type { ChatDraftSnapshot } from '../frontend/src/features/chat/chatDraftRecovery';
+import { chatLocalPathReferences } from '../frontend/src/features/chat/chatLocalPathEditor';
 
 const attachments: CodexChatAttachment[] = [
   { kind: 'image', name: 'before.png', path: '/attachments/before.png', previewUrl: 'attachment://before.png', importNumber: 1 },
@@ -87,6 +88,80 @@ async function withInput(run: (harness: {
 }
 
 function selection(input: ChatInputHandle) { return [input.selectionStart, input.selectionEnd]; }
+
+test('local path matching supports quoted names and dropped links without consuming commands, URLs or fenced code', () => {
+  const text = '/Users/cheshi/project\n"/Users/체시/My File.txt" \'/tmp/a b\' `/tmp/code.txt` [folder](</tmp/my%20folder>)';
+  expect(chatLocalPathReferences(text).map(item => item.path))
+    .toEqual(['/Users/cheshi/project', '/Users/체시/My File.txt', '/tmp/a b', '/tmp/code.txt', '/tmp/my folder']);
+  expect(chatLocalPathReferences('/model https://example.com/a/b [web](https://example.com/a/b) ![image](/tmp/a.png)\n```sh\n/tmp/example\n```\n~~~\n/tmp/other\n~~~')).toEqual([]);
+  expect(chatLocalPathReferences('See (/tmp/file.txt), then /tmp/next.').map(item => item.path)).toEqual(['/tmp/file.txt', '/tmp/next']);
+});
+
+test('paths appear as filename chips while copy, paste and clicks retain the full original target', async () => {
+  await withInput(async h => {
+    const opened: string[] = [];
+    const draft = '앞 "/Users/체시/My File.txt" /tmp/notes.md [import 1]';
+    await h.render(draft, { onOpenLocalFile: async href => { opened.push(href); } });
+    const chips = h.view().contentDOM.querySelectorAll<HTMLAnchorElement>('[data-chat-local-path]');
+    expect(Array.from(chips, chip => chip.textContent)).toEqual(['My File.txt', 'notes.md']);
+    expect(chips[0]?.title).toBe('/Users/체시/My File.txt');
+    expect(h.view().contentDOM.querySelectorAll('[data-chat-import-number]')).toHaveLength(1);
+    expect(h.input().value).toBe(draft);
+    await act(async () => { chips[0]!.click(); });
+    expect(opened).toEqual(['/Users/%EC%B2%B4%EC%8B%9C/My%20File.txt']);
+    h.input().focus();
+    h.input().setSelectionRange(0, draft.length);
+    const data = new h.window.DataTransfer();
+    await act(async () => { h.view().contentDOM.dispatchEvent(new h.window.ClipboardEvent('copy',
+      { clipboardData: data, bubbles: true, cancelable: true }) as unknown as Event); });
+    expect(data.getData('text/plain')).toBe(draft);
+    h.input().setSelectionRange(draft.length, draft.length);
+    const paste = new h.window.DataTransfer();
+    paste.setData('text/plain', '\n/tmp/pasted.txt');
+    await act(async () => { h.view().contentDOM.dispatchEvent(new h.window.ClipboardEvent('paste',
+      { clipboardData: paste, bubbles: true, cancelable: true }) as unknown as Event); });
+    expect(h.input().value).toBe(`${draft}\n/tmp/pasted.txt`);
+    expect(h.view().contentDOM.querySelectorAll('[data-chat-local-path]')).toHaveLength(3);
+  });
+});
+
+test('path chips support atomic cursor movement, selection, deletion and Undo without detaching imports', async () => {
+  await withInput(async h => {
+    const path = '"/tmp/My [import 1].txt"';
+    const draft = `앞 ${path} 뒤 [import 1]`;
+    await h.render(draft);
+    const start = 2, end = start + path.length;
+    h.input().setSelectionRange(start + 1, start + 1);
+    expect(selection(h.input())).toEqual([start, start]);
+    await h.press('ArrowRight');
+    expect(selection(h.input())).toEqual([end, end]);
+    await h.press('ArrowLeft', { shiftKey: true });
+    expect(selection(h.input())).toEqual([start, end]);
+    await h.press('Backspace');
+    expect(h.input().value).toBe('앞  뒤 [import 1]');
+    expect(h.attachments()).toEqual(attachments);
+    await act(async () => { expect(undo(h.view())).toBe(true); });
+    expect(h.input().value).toBe(draft);
+    expect(h.view().contentDOM.querySelectorAll('[data-chat-local-path]')).toHaveLength(1);
+    expect(h.view().contentDOM.querySelectorAll('[data-chat-import-number]')).toHaveLength(1);
+  });
+});
+
+test('disabled path chips cannot open files and file-open errors do not replace the draft', async () => {
+  await withInput(async h => {
+    let opens = 0;
+    const onOpenLocalFile = async () => { opens++; throw new Error('gone'); };
+    await h.render('/tmp/gone.txt', { disabled: true, onOpenLocalFile });
+    const click = async () => { await act(async () => { h.view().contentDOM.querySelector<HTMLAnchorElement>('[data-chat-local-path]')!.click(); }); };
+    await click();
+    expect(opens).toBe(0);
+    await h.render('/tmp/gone.txt', { disabled: false });
+    await click();
+    expect(opens).toBe(1);
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('Could not open');
+    expect(h.input().value).toBe('/tmp/gone.txt');
+  });
+});
 
 test('only connected references render bracket-free chips while the transmitted draft stays exact', async () => {
   await withInput(async h => {
@@ -315,7 +390,7 @@ test('attachment insertion and history restoration share the real editor caret w
     expect(document.activeElement).toBe(h.view().contentDOM);
     ref.current!.setSelectionRange(state.draft.length, state.draft.length);
     await act(async () => { imports.insertAttachmentReference(attachments[0]!.path); });
-    expect(state.draft).toBe('앞 [import 1] 뒤 [import 1]');
+    expect(state.draft).toBe('앞 [import 1] 뒤 [import 1] ');
     expect(ref.current!.selectionStart).toBe(state.draft.length);
     await act(async () => { state.setDraft(''); });
     await h.press('ArrowUp');

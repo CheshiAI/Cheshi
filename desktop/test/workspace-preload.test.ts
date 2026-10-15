@@ -41,6 +41,16 @@ test('built sandboxed preload exposes workspace actions through the intended IPC
   assert.equal(graphRequests, 1);
   menuListeners.get('cheshi:open-relationship-graph')?.();
   assert.equal(graphRequests, 2);
+  let voiceRequests = 0;
+  menuListeners.get('cheshi:open-voice')?.();
+  assert.ok(api.onVoiceRequested);
+  const unsubscribeVoice = api.onVoiceRequested(() => { voiceRequests++; });
+  assert.equal(voiceRequests, 1);
+  menuListeners.get('cheshi:open-voice')?.();
+  assert.equal(voiceRequests, 2);
+  unsubscribeVoice();
+  menuListeners.get('cheshi:open-voice')?.();
+  assert.equal(voiceRequests, 2);
   unsubscribeGraph();
   menuListeners.get('cheshi:open-relationship-graph')?.();
   assert.equal(graphRequests, 2);

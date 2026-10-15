@@ -468,7 +468,7 @@ app.whenReady().then(async () => {
     const menuItems = applicationMenu.items.filter(item => item.role?.toLowerCase() !== 'filemenu');
     const template = helpMenuTemplate(aboutMenuTemplate(menuItems, product.displayName, aboutWindow.open, items => Menu.buildFromTemplate(items)),
       () => { void openHelp().catch(error => dialog.showErrorBox('Cheshi Help', String(error))); }, items => Menu.buildFromTemplate(items));
-    const tools = createToolsMenu(template, { focused: () => BrowserWindow.getFocusedWindow(),
+    const tools = createToolsMenu(template, { focused: () => workspaces.readyProjectWindows.find(window => window.isFocused()) ?? BrowserWindow.getFocusedWindow(),
       windows: () => workspaces.readyProjectWindows, onWindowsChanged: listener => workspaces.onWindowsChanged(listener),
       buildMenu: items => Menu.buildFromTemplate(items) });
     Menu.setApplicationMenu(Menu.buildFromTemplate(tools.template));

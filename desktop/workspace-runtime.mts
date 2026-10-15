@@ -1,8 +1,11 @@
+import { registerVoiceDetailIpc } from './lib/voice-detail-ipc.mts';
 import { createChatAttachmentImageReader, registerChatAttachmentImageIpc } from './lib/chat-attachment-image.mts';
 import { registerWorkspaceTerminalIpc } from './lib/workspace-terminal-ipc.mts';
 import { createWorkspaceProjects } from './lib/workspace-project-runtime.mts';
 import { createWorkspaceSessionMemory } from './lib/flash/workspace.mts';
 import { createWorkspaceVoice } from './lib/agent-voice/workspace.mts';
+import { createVoiceRecordingsService } from './lib/voice-recordings-service.mts';
+import { registerVoiceRecordingsIpc } from './lib/voice-recordings-ipc.mts';
 import { createWorkspaceScheduler } from './lib/scheduler/workspace.mts';
 import { createWorkspaceNotifications } from './lib/workspace-notifications.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
@@ -11,6 +14,7 @@ import { createWindowTrafficLights } from './lib/window-traffic-lights.mts';
 import { createWindowTopHighlight } from './lib/window-top-highlight.mts';
 import { createWorkspaceTemporaryChat } from './lib/workspace-temporary-chat.mts';
 import { createWorkspaceWindowReadiness } from './lib/workspace-window-readiness.mts';
+import { createRendererReadinessLog } from './lib/renderer-readiness-log.mts';
 import { createWorkspaceRendererEvents } from './lib/workspace-renderer-events.mts';
 import { nativeWorkspaceWindow } from './lib/workspace-surface.mts';
 import { createWorkspaceCodeExplanation } from './lib/workspace-code-explanation.mts';
@@ -407,6 +411,19 @@ async function selectLanguageServerExecutable(
 
 registerWorkspaceFileIpcHandlers({ ipcMain: workspaceProjects.ipc, workspaceRoot, clipboard, shell, localHistory });
 registerLocalFileLinkIpc({ ipcMain, workspaceRoot, shell, assertSender: assertCheshiSender });
+const voiceRecordings = createVoiceRecordingsService();
+const voiceDetails = registerVoiceDetailIpc({ ipcMain, assertSender: assertCheshiSender,
+  resolveAudio: id => voiceRecordings.resolveAudio(id),
+  chooseSavePath: async (_event, suggestedName) => {
+    const settings = { title: 'Save recording', defaultPath: suggestedName, buttonLabel: 'Save',
+      filters: [{ name: 'Audio', extensions: [path.extname(suggestedName).slice(1)] }] };
+    const result = mainWindow ? await dialog.showSaveDialog(nativeWorkspaceWindow(mainWindow), settings)
+      : await dialog.showSaveDialog(settings);
+    return result.canceled ? null : result.filePath ?? null;
+  },
+});
+registerVoiceRecordingsIpc({ ipcMain, assertSender: assertCheshiSender, service: voiceRecordings,
+  openExternal: url => shell.openExternal(url) });
 registerLocalHistoryIpc({ ipcMain: workspaceProjects.ipc, service: localHistory, assertSender: assertCheshiSender, onChanged: sendWorkspaceFilesChanged });
 const management = registerWorkspaceManagementIpcHandlers({ ipcMain, app, dialog, trashItem: (root) => shell.trashItem(root), withWorkspaceDeletion: options.withWorkspaceDeletion, assertWorkspaceAvailable: options.assertWorkspaceAvailable, openExternal: (url) => shell.openExternal(url), getWindow: () => mainWindow, assertSender: assertCheshiSender, dataRoot: codeGraphDataRoot, onOpenWorkspace: options.onOpenWorkspace, onReplaceWorkspace: options.onReplaceWorkspace, manager: { createWindow: (configuration) => new BrowserWindow(configuration), rendererUrl, workspaceRoot, onWindowCreated: (window) => options.scope.addOwner(window.webContents, true) } });
 registerGitIpcHandlers({ ipcMain: workspaceProjects.ipc, gitService, assertCheshiSender, shell });
@@ -774,6 +791,12 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
   if (options.windowState) window.setBounds(options.windowState.bounds);
 
   const readiness = createWorkspaceWindowReadiness({ signal: initialIndexAbort.signal });
+  const rendererTiming = createRendererReadinessLog({ enabled: Boolean(rendererUrl), write: message => process.stdout.write(message) });
+  const rendererContents = window.webContents;
+  const handleRendererNavigation = (_event: unknown, _url: string, isInPlace: boolean, isMainFrame: boolean) => {
+    rendererTiming.navigationStarted(isInPlace, isMainFrame);
+  };
+  rendererContents.on('did-start-navigation', handleRendererNavigation);
   let initialRevealComplete = false;
   const revealWindow = () => {
     const theme = readiness.assertReady();
@@ -808,7 +831,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
     assertCheshiSender(event, 'Renderer readiness');
     if (theme !== 'dark' && theme !== 'light') throw new TypeError('Renderer theme is invalid.');
     readiness.rendererReady(theme);
-    logStartup('renderer ready');
+    rendererTiming.ready();
   };
   const handleReadyToShow = () => {
     logStartup('browser ready to show');
@@ -853,6 +876,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
   window.on('closed', () => {
     readiness.fail(new Error('The workspace window closed before it was revealed.'));
     ipcMain.off(RENDERER_READY_CHANNEL, handleRendererReady);
+    rendererContents.off('did-start-navigation', handleRendererNavigation);
     if (mainWindow !== window) return;
     disposeTerminal();
     void languageServerManager.stop();
@@ -910,6 +934,7 @@ function start(): Promise<BrowserWindow> {
 function dispose(): Promise<void> {
   if (disposal) return disposal;
   appQuitting = true;
+  const voiceDisposal = voiceDetails.dispose();
   rendererEvents.stop();
   unsubscribeAccount();
   unsubscribeChat();
@@ -931,7 +956,7 @@ function dispose(): Promise<void> {
       process.stderr.write(`[cheshi] Scheduler cleanup failed: ${String(error)}\n`);
     });
     const results = await Promise.allSettled([
-      codexChatService.stop(), agentVoice.dispose(),
+      voiceDisposal, codexChatService.stop(), agentVoice.dispose(),
       chatHistorySearch.stop(), sessionHistory.dispose(),
       temporaryChats.stop(),
       localHistory.dispose(), workspaceProjects.dispose(),

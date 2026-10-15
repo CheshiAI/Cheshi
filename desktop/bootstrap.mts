@@ -1,7 +1,8 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, protocol, session } from 'electron';
+import { registerVoiceAudioProtocol } from './lib/voice-audio.mts';
 import { product } from '../config/product.mts';
 import { CODEGRAPH_DATA_ROOT_ENV, resolveCheshiUserDataDirectory } from '../config/workspace-storage.mts';
 import { shouldShowStartupScreen, startupScreen } from './lib/startup-screen.mts';
@@ -9,6 +10,9 @@ import { DEVELOPMENT_SHUTDOWN_DIRECTORY, watchDevelopmentShutdown } from './lib/
 import { installDevelopmentDevTools } from './lib/development-devtools.mts';
 import { INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
 import { createWindowTopHighlight } from './lib/window-top-highlight.mts';
+
+// Media schemes must be registered before app readiness and Chromium sessions.
+protocol.registerSchemesAsPrivileged([{ scheme: 'cheshi-voice', privileges: { standard: true, secure: true, stream: true } }]);
 
 // Configure storage before any BrowserWindow creates its Chromium session.
 app.setName(product.displayName);
@@ -39,6 +43,7 @@ if (!app.isPackaged) {
 
 void app.whenReady().then(async () => {
   if (quitting) return;
+  registerVoiceAudioProtocol(session.defaultSession.protocol);
   if (process.platform === 'darwin') {
     app.dock?.setIcon(fileURLToPath(new URL('../resources/icons/app-icon.png', import.meta.url)));
   }

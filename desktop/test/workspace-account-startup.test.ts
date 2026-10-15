@@ -132,6 +132,7 @@ test('runtime begins loading the window while account selection is still pending
     registerWorkspace: () => {}, userDataDirectory: '/data', workspaceRoot: '/workspace',
     codeGraphDatabasePath: '/index', codeGraphDataRoot: '/data', codeGraphCommands: { cli: () => ({}) },
     prepareInitialCodeGraph: async () => ({ ready: true }), startCodeGraphServer: async () => 'http://local',
+    withCodeGraphWriter: (operation: () => Promise<unknown>) => operation(),
     initializeWorkspaceFileWatcher: async () => {}, initializeGitRepositoryWatcher: async () => {},
     pendingIndexWarning: null, chatServiceOptions: { log: () => {} },
     createMainWindow: async () => { windowCreated.resolve(); await f.gate.ready(); return 'window'; },

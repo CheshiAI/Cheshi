@@ -9,6 +9,8 @@ import { hasChatTransferFiles } from './attachmentTransferModel';
 import { chatEditorAttachments, chatEditorImports, chatImportChips, chatImportSelectionBounds } from './chatImportEditor';
 import type { ChatInputHandle } from './chatInputHandle';
 import styles from './ChatImportInput.module.css';
+import { cheshiDesktop } from '../../cheshiDesktop';
+import { chatLocalPathChips, openChatLocalPath } from './chatLocalPathEditor';
 
 interface ChatImportInputProps extends Pick<AriaAttributes, 'aria-label' | 'aria-controls' | 'aria-expanded' | 'aria-activedescendant'> {
   ref?: Ref<ChatInputHandle>;
@@ -22,6 +24,7 @@ interface ChatImportInputProps extends Pick<AriaAttributes, 'aria-label' | 'aria
   onKeyDown?: KeyboardEventHandler<HTMLElement>;
   onPaste?: ClipboardEventHandler<HTMLElement>;
   onFocus?: FocusEventHandler<HTMLElement>;
+  onOpenLocalFile?: (href: string) => Promise<void>;
 }
 
 const externalDraft = Annotation.define<boolean>();
@@ -48,7 +51,7 @@ function inputConfiguration(props: ChatImportInputProps) {
   ];
 }
 
-/** The document stays plain text; only connected attachment references render as chips. */
+/** Chips decorate the input while copy, history and submission retain the original text. */
 export function ChatImportInput(props: ChatImportInputProps) {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
@@ -56,9 +59,16 @@ export function ChatImportInput(props: ChatImportInputProps) {
   latest.current = props;
   const [configuration] = useState(() => new Compartment());
   const previous = useRef(props);
+  const [pathError, setPathError] = useState<string | null>(null);
 
   const createState = (value: string) => EditorState.create({ doc: value, extensions: [
-    history(), keymap.of(plainTextKeymap), EditorView.lineWrapping, chatImportChips,
+    history(), keymap.of(plainTextKeymap), EditorView.lineWrapping, chatImportChips, chatLocalPathChips,
+    openChatLocalPath.of(href => {
+      setPathError(null);
+      const open = latest.current.onOpenLocalFile ?? cheshiDesktop?.openLocalFileLink;
+      if (!open) { setPathError('File links are available in the desktop app.'); return; }
+      void Promise.resolve().then(() => open(href)).catch(() => setPathError('Could not open this file. It may have been moved or deleted.'));
+    }),
     configuration.of(inputConfiguration(latest.current)),
     EditorView.updateListener.of(update => {
       if (update.docChanged && !update.transactions.some(transaction => transaction.annotation(externalDraft))) {
@@ -105,6 +115,7 @@ export function ChatImportInput(props: ChatImportInputProps) {
     // Switching sessions or clearing a sent draft must not restore another message through Undo.
     if (before.historyKey !== props.historyKey || (props.value === '' && (text !== ''
       || (props.attachments?.length === 0 && view.state.field(chatEditorAttachments).length > 0)))) {
+      setPathError(null);
       view.setState(createState(props.value));
       return;
     }
@@ -130,7 +141,7 @@ export function ChatImportInput(props: ChatImportInputProps) {
   }, [props.value, props.historyKey, props.attachments, props.disabled, props.readOnly, props.placeholder,
     props['aria-label'], props['aria-controls'], props['aria-expanded'], props['aria-activedescendant']]);
 
-  return <div className={styles.input} ref={host} aria-disabled={props.disabled || undefined}
+  return <div className={styles.input} aria-disabled={props.disabled || undefined}
     onKeyDownCapture={event => {
       // Keep IME confirmation native, before either composer or editor key bindings run.
       if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229 || editor.current?.composing) {
@@ -140,5 +151,8 @@ export function ChatImportInput(props: ChatImportInputProps) {
       props.onKeyDown?.(event);
     }} onPasteCapture={props.onPaste} onFocus={props.onFocus}
     onDragOverCapture={event => { if (hasChatTransferFiles(event.dataTransfer)) event.preventDefault(); }}
-    onDropCapture={event => { if (hasChatTransferFiles(event.dataTransfer)) event.preventDefault(); }} />;
+    onDropCapture={event => { if (hasChatTransferFiles(event.dataTransfer)) event.preventDefault(); }}>
+    <div ref={host} />
+    {pathError && <span role="alert">{pathError}</span>}
+  </div>;
 }

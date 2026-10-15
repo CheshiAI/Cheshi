@@ -20,22 +20,22 @@ describe('attachment references in drafts', () => {
   test('inserts references at the selection with Korean text and keeps the following text', () => {
     const draft = '이것을 여기에 적용';
     const result = addChatImports({ draft, attachments: [] }, [image, file], { start: 4, end: 7 });
-    expect(result.draft).toBe('이것을 [import 1] [import 2] 적용');
-    expect(result.draft.slice(result.caret!)).toBe(' 적용');
+    expect(result.draft).toBe('이것을 [import 1][import 2] 적용');
+    expect(result.draft.slice(result.caret!)).toBe('적용');
     expect(result.attachments.map(item => item.importNumber)).toEqual([1, 2]);
     expect(insertChatImportText('앞\n뒤', ['[import 3]'], { start: 2, end: 2 }).draft).toBe('앞\n[import 3] 뒤');
   });
 
   test('deduplicates stored paths and keeps remaining numbers after deletion and later imports', () => {
     const first = addChatImports({ draft: '', attachments: [] }, [image, file, image]);
-    expect(first.draft).toBe('[import 1] [import 2]');
+    expect(first.draft).toBe('[import 1][import 2] ');
     expect(addChatImports(first, [image])).toMatchObject({ draft: first.draft, attachments: first.attachments, caret: null });
     const removed = removeChatImport({ ...first, draft: '[import 1]을 [import 2]처럼. [import 1] [import 10]' }, image.path);
     expect(removed.draft).toBe('을 [import 2]처럼.  [import 10]');
     expect(removed.attachments).toEqual([{ ...file, importNumber: 2 }]);
     const later = addChatImports(removed, [{ ...image, importNumber: 2 }]);
     expect(later.attachments.map(item => item.importNumber)).toEqual([2, 11]);
-    expect(later.draft).toEndWith('[import 11]');
+    expect(later.draft).toEndWith('[import 11] ');
   });
 
   test('does not mutate the draft on cancellation or a failed capacity check', () => {
@@ -44,6 +44,28 @@ describe('attachment references in drafts', () => {
     expect(() => addChatImports(draft, [image])).toThrow('20 attachments');
     expect(draft.draft).toBe('keep');
     expect(draft.attachments).toHaveLength(20);
+  });
+
+  test('leaves one trailing space for a single chip and joins sequential insertions', () => {
+    const first = insertChatImportText('', ['[import 1]']);
+    expect(first).toEqual({ draft: '[import 1] ', caret: 11 });
+    const second = insertChatImportText(first.draft, ['[import 2]']);
+    expect(second).toEqual({ draft: '[import 1][import 2] ', caret: 21 });
+    const middle = insertChatImportText(second.draft, ['[import 3]'], { start: 10, end: 10 });
+    expect(middle).toEqual({ draft: '[import 1][import 3][import 2] ', caret: 20 });
+  });
+
+  test('reuses surrounding spaces, preserves newlines, and keeps ordinary links separated', () => {
+    const draft = '[import 1]  replace  [import 3] text';
+    const result = insertChatImportText(draft, ['[import 2]'], { start: 12, end: 19 });
+    expect(result.draft).toBe('[import 1][import 2][import 3] text');
+    expect(result.draft.slice(result.caret)).toBe('[import 3] text');
+    expect(insertChatImportText('text  after', ['[import 1]'], { start: 4, end: 4 }))
+      .toEqual({ draft: 'text [import 1] after', caret: 16 });
+    expect(insertChatImportText('\ntext', ['[import 1]'], { start: 0, end: 0 }).draft).toBe('[import 1]\ntext');
+    expect(insertChatImportText('[import 1]\n', ['[import 2]']).draft).toBe('[import 1]\n[import 2] ');
+    expect(insertChatImportText('', ['[folder](/folder)', '[other](/other)']).draft)
+      .toBe('[folder](/folder) [other](/other)');
   });
 });
 

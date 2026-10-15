@@ -83,10 +83,12 @@ export interface WorkspaceCodexLoginState {
 
 export const OPEN_HELP_CHANNEL = 'cheshi:open-help';
 export const OPEN_RELATIONSHIP_GRAPH_CHANNEL = 'cheshi:open-relationship-graph';
+export const OPEN_VOICE_CHANNEL = 'cheshi:open-voice';
 
 export interface WorkspaceManagementApi extends Partial<AppUpdateApi> {
   onHelpRequested?(listener: () => void): () => void;
   onRelationshipGraphRequested?(listener: () => void): () => void;
+  onVoiceRequested?(listener: () => void): () => void;
   getCodexLogin(): Promise<WorkspaceCodexLoginState>;
   startCodexLogin(): Promise<WorkspaceCodexLoginState>;
   cancelCodexLogin(): Promise<WorkspaceCodexLoginState>;

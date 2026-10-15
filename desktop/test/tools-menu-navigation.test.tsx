@@ -2,9 +2,11 @@ import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { useRelationshipGraphMenu } from '../frontend/src/features/shell/useRelationshipGraphMenu';
+import { useToolsMenu } from '../frontend/src/features/shell/useToolsMenu';
 
-test('graph menu uses the latest workspace navigation and unsubscribes on unmount', async () => {
+test.each([
+  ['onRelationshipGraphRequested', 'codegraph'], ['onVoiceRequested', 'voice'],
+] as const)('%s uses the latest workspace navigation and unsubscribes on unmount', async (event, view) => {
   const window = new Window();
   const globals = { window, document: window.document, navigator: window.navigator,
     IS_REACT_ACT_ENVIRONMENT: true };
@@ -12,13 +14,13 @@ test('graph menu uses the latest workspace navigation and unsubscribes on unmoun
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
   const listeners = new Set<() => void>();
   let subscriptions = 0;
-  const api = { onRelationshipGraphRequested(listener: () => void) {
+  const api = { [event](listener: () => void) {
     subscriptions++; listeners.add(listener);
     return () => { listeners.delete(listener); };
   } };
   const opened: string[] = [];
   function Fixture({ pane }: { pane: string }) {
-    useRelationshipGraphMenu(view => opened.push(`${pane}:${view}`), api);
+    useToolsMenu(view => opened.push(`${pane}:${view}`), api);
     return null;
   }
   const container = document.createElement('div');
@@ -27,10 +29,10 @@ test('graph menu uses the latest workspace navigation and unsubscribes on unmoun
   try {
     await act(async () => root.render(<Fixture pane="chat" />));
     for (const listener of listeners) listener();
-    expect(opened).toEqual(['chat:codegraph']);
+    expect(opened).toEqual([`chat:${view}`]);
     await act(async () => root.render(<Fixture pane="split-editor" />));
     for (const listener of listeners) listener();
-    expect(opened).toEqual(['chat:codegraph', 'split-editor:codegraph']);
+    expect(opened).toEqual([`chat:${view}`, `split-editor:${view}`]);
     expect(subscriptions).toBe(1);
     await act(async () => root.render(null));
     expect(listeners.size).toBe(0);

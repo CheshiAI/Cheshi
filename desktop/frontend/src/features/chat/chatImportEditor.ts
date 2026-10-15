@@ -3,6 +3,7 @@ import { invertedEffects } from '@codemirror/commands';
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 import { chatImportLabel, type ChatImportAttachment } from '../../../../shared/chat-imports';
 import styles from './ChatImportInput.module.css';
+import { chatLocalPathChips, chatLocalPathReferences } from './chatLocalPathEditor';
 
 export const chatEditorImports = Facet.define<readonly ChatImportAttachment[], readonly ChatImportAttachment[]>({
   combine: values => values[0] ?? [],
@@ -75,8 +76,10 @@ function importDecorations(state: EditorState) {
   const attachments = new Map(state.field(chatEditorAttachments).flatMap(attachment =>
     attachment.importNumber === undefined ? [] : [[chatImportLabel(attachment.importNumber), attachment] as const]));
   if (!attachments.size) return Decoration.none;
+  const paths = chatLocalPathReferences(state.doc.toString());
   const ranges = [];
   for (const match of state.doc.toString().matchAll(/\[import [1-9]\d*\]/g)) {
+    if (paths.some(path => path.from <= match.index && match.index < path.to)) continue;
     const attachment = attachments.get(match[0]);
     if (!attachment || attachment.importNumber === undefined) continue;
     ranges.push(Decoration.replace({ widget: new ImportChip(attachment.importNumber, attachment.name) })
@@ -100,13 +103,15 @@ export function chatImportSelectionBounds(state: EditorState, start: number, end
   let from = Math.max(0, Math.min(start, state.doc.length));
   let to = Math.max(from, Math.min(end, state.doc.length));
   const collapsed = from === to;
-  state.field(chips).between(from, to, (chipStart, chipEnd) => {
+  const snap = (chipStart: number, chipEnd: number) => {
     if (collapsed && chipStart < from && from < chipEnd) {
       from = to = from - chipStart < chipEnd - from ? chipStart : chipEnd;
     } else if (!collapsed) {
       if (chipStart < from && from < chipEnd) from = chipStart;
       if (chipStart < to && to < chipEnd) to = chipEnd;
     }
-  });
+  };
+  state.field(chips).between(from, to, snap);
+  state.field(chatLocalPathChips, false)?.between(from, to, snap);
   return { from, to };
 }

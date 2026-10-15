@@ -16,7 +16,7 @@ import { createWindowTopHighlight } from './window-top-highlight.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './window-appearance.mts';
 
 interface HostedWorkspace { surface: WorkspaceSurface; state: WorkspaceHostEntry; }
-const navigationViews = new Set(['explorer', 'chat', 'chats', 'notes', 'git', 'terminal', 'calendar', 'docker', 'plugins', 'settings', 'editor', 'search']);
+const navigationViews = new Set(['explorer', 'chat', 'chats', 'notes', 'git', 'terminal', 'calendar', 'voice', 'docker', 'plugins', 'settings', 'editor', 'search']);
 
 /** One native window and fixed navigation shell, with isolated retained renderers. */
 export class WorkspaceHost {

@@ -73,7 +73,7 @@ function LocalFileAnchor({ href, children, className, showIcon = false }: {
         event.preventDefault();
         void openFile();
       }} onAuxClick={event => event.preventDefault()}>
-        {showIcon && <FolderOpen aria-hidden="true" className={markdownStyles.sourceLinkIcon} />}{children}
+        {showIcon && <FolderOpen aria-hidden="true" className={`${markdownStyles.sourceLinkIcon} ${markdownStyles.localFileLinkIcon}`} />}{children}
       </a>
     </TooltipTarget>
     {error && <span role="alert"> {error}</span>}

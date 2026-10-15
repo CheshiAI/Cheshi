@@ -30,3 +30,7 @@
   white-space: nowrap;
   vertical-align: baseline;
 }
+.pathChip { cursor: pointer; text-decoration: none; }
+.pathChip:hover { color: var(--dropdown-selection-text); }
+.pathChip svg { width: 11px; height: 11px; margin-right: 4px; vertical-align: -1px; }
+.input[aria-disabled='true'] .pathChip { cursor: not-allowed; }

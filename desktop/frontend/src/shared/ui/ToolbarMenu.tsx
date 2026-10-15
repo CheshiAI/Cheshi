@@ -1,4 +1,4 @@
-import { Ellipsis } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Ellipsis } from 'lucide-react';
 import { Fragment, useCallback, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { focusAdjacentMenuItem, useContextMenuInteractions } from './contextMenuInteractions';
@@ -15,7 +15,8 @@ export interface ToolbarMenuItem {
   disabled?: boolean;
   shortcut?: string;
   separatorBefore?: boolean;
-  onSelect(): void;
+  onSelect?(): void;
+  children?: readonly ToolbarMenuItem[];
 }
 
 function MenuContents({ anchor, id, label, heading, items, className, onClose }: {
@@ -28,7 +29,12 @@ function MenuContents({ anchor, id, label, heading, items, className, onClose }:
   onClose(): void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [submenu, setSubmenu] = useState<ToolbarMenuItem | null>(null);
+  const visibleItems = submenu?.children ?? items;
   useContextMenuInteractions(menuRef, onClose);
+  useLayoutEffect(() => {
+    menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
+  }, [submenu]);
   // Native terminal surfaces otherwise cover menus that extend beyond the header.
   useLayoutEffect(() => beginSplitPreview(), []);
   useLayoutEffect(() => {
@@ -39,19 +45,26 @@ function MenuContents({ anchor, id, label, heading, items, className, onClose }:
     const size = menu.getBoundingClientRect();
     menu.style.left = `${Math.max(8, Math.min(bounds.right - size.width, view.innerWidth - size.width - 8))}px`;
     menu.style.top = `${Math.max(8, Math.min(bounds.bottom + 8, view.innerHeight - size.height - 8))}px`;
-  }, [anchor, items]);
+  }, [anchor, items, submenu]);
   return createPortal(<div ref={menuRef} className={styles.menuAnchor}>
     <LiquidGlassPanel id={id} role="menu" aria-label={label} className={className ? `${styles.menu} ${className}` : styles.menu}
       onKeyDown={event => {
         focusAdjacentMenuItem(event);
         if (event.key === 'Tab') onClose();
       }}>
-      <div className={styles.title}>{heading}</div>
-      {items.map(item => <Fragment key={item.id}>
+      <div className={styles.title}>{submenu?.label ?? heading}</div>
+      {submenu && <NeumorphicButton size="standard" role="menuitem" aria-label="Back" className={styles.item}
+        onClick={() => { setSubmenu(null); }}><ArrowLeft aria-hidden="true" /><span>Back</span></NeumorphicButton>}
+      {visibleItems.map(item => <Fragment key={item.id}>
         {item.separatorBefore && <div role="separator" className={styles.separator} />}
         <NeumorphicButton size="standard" role="menuitem" aria-label={item.label} className={styles.item}
-          disabled={item.disabled} onClick={() => { onClose(); item.onSelect(); }}>
+          disabled={item.disabled} aria-haspopup={item.children ? 'menu' : undefined}
+          onClick={() => {
+            if (item.children) setSubmenu(item);
+            else { onClose(); item.onSelect?.(); }
+          }}>
           {item.icon}<span>{item.label}</span>{item.shortcut && <small>{item.shortcut}</small>}
+          {item.children && <ChevronRight aria-hidden="true" />}
         </NeumorphicButton>
       </Fragment>)}
     </LiquidGlassPanel>
