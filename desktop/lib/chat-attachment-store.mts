@@ -4,6 +4,7 @@ import { copyFile, mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { validatedChatAttachmentTransfers } from './chat-attachment-transfer.mts';
 import { chatImportNumber, type ChatImportAttachment } from '../shared/chat-imports.ts';
+import type { ChatTransferItem } from '../shared/chat-attachment-import.ts';
 
 const IMAGE_ATTACHMENT_EXTENSIONS = new Set([
   ".bmp",
@@ -229,14 +230,22 @@ export class ChatAttachmentStore {
     return Promise.all(filePaths.map((filePath) => this.importFile(filePath)));
   }
 
-  async importTransferredFiles(value: unknown): Promise<Array<{ kind: 'image' | 'file'; name: string; path: string }>> {
+  async importTransferredFiles(value: unknown): Promise<ChatTransferItem<ChatImportAttachment>[]> {
     const transfers = validatedChatAttachmentTransfers(value);
     // Validate all filesystem sources before writing any incoming attachment.
-    await Promise.all(transfers.map((transfer) => 'path' in transfer ? regularFileStats(transfer.path) : undefined));
-    const attachments: Array<{ kind: 'image' | 'file'; name: string; path: string }> = [];
+    const directories = new Set<string>();
+    await Promise.all(transfers.map(async transfer => {
+      if (!('path' in transfer)) return;
+      const details = await stat(transfer.path);
+      if (details.isDirectory()) directories.add(transfer.path);
+      else if (!details.isFile()) throw new TypeError('Drop a regular file or folder.');
+    }));
+    const attachments: ChatTransferItem<ChatImportAttachment>[] = [];
     for (const transfer of transfers) {
       if ('path' in transfer) {
-        attachments.push(await this.importFile(transfer.path));
+        attachments.push(directories.has(transfer.path)
+          ? { kind: 'directory', name: path.basename(transfer.path), path: transfer.path }
+          : await this.importFile(transfer.path));
         continue;
       }
       await mkdir(this.objectsDirectory, { recursive: true });

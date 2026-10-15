@@ -2,7 +2,8 @@ import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { chatImportLabel } from '../../../../shared/chat-imports';
 import type { CodexChatAttachment } from '../../cheshiDesktop';
 import type { ChatDraftSnapshot } from './chatDraftRecovery';
-import { addChatImports, chatImportSelection, insertChatImportText, removeChatImport } from './chatImportDraft';
+import { addChatDroppedItems, chatImportSelection, insertChatImportText, removeChatImport } from './chatImportDraft';
+import type { ChatDirectoryReference } from '../../../../shared/chat-attachment-import';
 import type { ChatInputHandle } from './chatInputHandle';
 
 /** Restore the caret after the input applies the new controlled draft value. */
@@ -30,8 +31,8 @@ export function useChatImportDraft(draft: string, textareaRef: RefObject<ChatInp
   return {
     updateDraft,
     restoreInputHistory: updateDraft,
-    addAttachments: (attachments: CodexChatAttachment[]) => editInput(input => {
-      const change = addChatImports(input, attachments, caret.selection(input.draft));
+    addAttachments: (attachments: CodexChatAttachment[], directories: readonly ChatDirectoryReference[] = []) => editInput(input => {
+      const change = addChatDroppedItems(input, attachments, directories, caret.selection(input.draft));
       caret.restore(change);
       return { ...input, draft: change.draft, attachments: change.attachments };
     }),

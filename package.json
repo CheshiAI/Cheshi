@@ -37,7 +37,7 @@
     "desktop:ghostty": "bun run scripts/prepare-ghostty.mts",
     "desktop:make": "bun run desktop:ghostty && bun run viewer:build && bun run desktop:runtime && electron-forge make",
     "desktop:make:signed": "CHESHI_SIGN_RELEASE=1 bun --env-file=.env.signing run desktop:make",
-    "desktop:package": "bun run desktop:ghostty && bun run viewer:build && bun run desktop:runtime && electron-forge package",
+    "desktop:package": "bun run scripts/package-desktop.mts",
     "desktop:calendar": "bun run scripts/build-apple-calendar.mts",
     "desktop:preload": "bun run scripts/build-desktop-preload.mts",
     "desktop:runtime": "bun run scripts/build-desktop-runtime.mts",

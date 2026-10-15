@@ -1,6 +1,6 @@
 import { ChatImagePreview } from './ChatImagePreview';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
-import { Image as ImageIcon } from 'lucide-react';
+import { FolderOpen, Image as ImageIcon } from 'lucide-react';
 import { Children, createContext, useContext, useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform, type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -14,9 +14,10 @@ import { FileEvidence } from './FileEvidence';
 import { fileEvidence } from './fileEvidenceModel';
 import { flashSourceTarget } from '../../../../shared/flash-memory';
 import { FlashSourceLink } from './FlashSourceLink';
-import { chatImportLabel, chatImportMarkdown, parseChatImports } from '../../../../shared/chat-imports';
+import { chatImportMarkdown, parseChatImports } from '../../../../shared/chat-imports';
 import { ChatImportAttachments, ChatImportContext } from './ChatImportAttachments';
 import importStyles from './ChatImportAttachments.module.css';
+import { remarkLocalPaths } from './remarkLocalPaths';
 
 export const LocalFileLinkContext = createContext<((href: string) => Promise<void>) | null>(null);
 
@@ -52,7 +53,9 @@ function isGitHubUrl(href: string): boolean {
   return /^https?:\/\/(?:www\.)?github\.com(?:[/:?#]|$)/i.test(href);
 }
 
-function LocalFileAnchor({ href, children }: { href: string; children: ReactNode }) {
+function LocalFileAnchor({ href, children, className, showIcon = false }: {
+  href: string; children: ReactNode; className?: string; showIcon?: boolean;
+}) {
   const [error, setError] = useState<string | null>(null);
   const openLocalFile = useContext(LocalFileLinkContext) ?? cheshiDesktop?.openLocalFileLink;
   const openFile = async () => {
@@ -66,10 +69,12 @@ function LocalFileAnchor({ href, children }: { href: string; children: ReactNode
   };
   return <>
     <TooltipTarget content={localFileLinkPath(href) ?? href}>
-      <a href={href}  onClick={event => {
+      <a href={href} className={className ?? markdownStyles.sourceLink} onClick={event => {
         event.preventDefault();
         void openFile();
-      }} onAuxClick={event => event.preventDefault()}>{children}</a>
+      }} onAuxClick={event => event.preventDefault()}>
+        {showIcon && <FolderOpen aria-hidden="true" className={markdownStyles.sourceLinkIcon} />}{children}
+      </a>
     </TooltipTarget>
     {error && <span role="alert"> {error}</span>}
   </>;
@@ -79,15 +84,15 @@ function MessageAnchor({ href, children }: { href: string; children: ReactNode }
   const imports = useContext(ChatImportContext);
   const attachment = imports.find(item => href === `#cheshi-import-${item.importNumber}`);
   if (attachment) {
-    const label = chatImportLabel(attachment.importNumber);
+    const label = `import ${attachment.importNumber}`;
     return attachment.kind === 'image'
       ? <ChatImagePreview imagePath={attachment.path} name={attachment.name} className={importStyles.reference}>{label}</ChatImagePreview>
-      : <LocalFileAnchor href={attachment.path}>{label}</LocalFileAnchor>;
+      : <LocalFileAnchor href={attachment.path} className={importStyles.reference}>{label}</LocalFileAnchor>;
   }
   const source = flashSourceTarget(href);
   if (source) return <FlashSourceLink href={href} target={source}>{children}</FlashSourceLink>;
   if (!/^https?:\/\//i.test(href)) {
-    return localFileLinkPath(href) ? <LocalFileAnchor href={href}>{children}</LocalFileAnchor> : <>{children}</>;
+    return localFileLinkPath(href) ? <LocalFileAnchor href={href} showIcon>{children}</LocalFileAnchor> : <>{children}</>;
   }
   const github = isGitHubUrl(href);
   return (
@@ -241,16 +246,16 @@ export function MessageContent({ renderLocalImages = false, text, presentation =
   return (
     <ChatImportContext.Provider value={imported?.imports ?? []}>
     <div className={`${markdownStyles.markdown}${description ? ` ${markdownStyles.description}` : ''}`}>
+      {imported && <ChatImportAttachments imports={imported.imports}
+        renderImage={attachment => <LocalImage imagePath={attachment.path} name={attachment.name} />}
+        renderFile={(attachment, children) => <LocalFileAnchor href={attachment.path}>{children}</LocalFileAnchor>} />}
       <ReactMarkdown
         components={mentionComponents}
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkLocalPaths]}
         urlTransform={(url, key) => key === 'href' && (flashSourceTarget(url) || localFileLinkPath(url)) ? url : defaultUrlTransform(url)}
       >
         {imported ? chatImportMarkdown(text, imported.imports) : text}
       </ReactMarkdown>
-      {imported && <ChatImportAttachments imports={imported.imports}
-        renderImage={attachment => <LocalImage imagePath={attachment.path} name={attachment.name} />}
-        renderFile={(attachment, children) => <LocalFileAnchor href={attachment.path}>{children}</LocalFileAnchor>} />}
     </div>
     </ChatImportContext.Provider>
   );

@@ -81,9 +81,10 @@ try {
     }
     throw new Error('Condition not reached: ' + expression);
   };
-  await waitFor('!!document.querySelector("textarea:not(:disabled)") && document.body.textContent.includes("Test model")');
+  await waitFor('!!document.querySelector(".cm-content[contenteditable=true]") && document.body.textContent.includes("Test model")');
   const initial = await evaluate('({ shell: !!document.querySelector(".app-shell"), conversation: !!document.querySelector("[aria-label=Conversation]"), user: window.cheshiDesktop.userName, modal: !!document.querySelector("[role=dialog]"), noHistory: document.body.textContent.includes("Not saved to chat history") })');
-  await evaluate('Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(document.querySelector("textarea"), "Fixture question"); document.querySelector("textarea").dispatchEvent(new Event("input", { bubbles: true }));');
+  await evaluate('document.querySelector(".cm-content").focus()');
+  await child.webContents.insertText('Fixture question');
   await waitFor('!Array.from(document.querySelectorAll("button")).find(button => button.ariaLabel === "Send message").disabled');
   await evaluate('document.querySelector("form").requestSubmit()');
   for (let i = 0; i < 100 && !finishFirst; i++) await new Promise(resolve => setTimeout(resolve, 20));
@@ -92,7 +93,7 @@ try {
   await manager.open({ text: 'Second queued question', attachments: [{ kind: 'file', name: 'queued.txt', path: ${JSON.stringify(attachmentPath)} }] });
   await waitFor('!!document.querySelector("[data-chat-item-id=temporary-1] p strong")');
   const independent = { windows: BrowserWindow.getAllWindows().length - 1, automaticSends: sends.length,
-    firstBusy: await firstChild.webContents.executeJavaScript('document.querySelector("textarea").readOnly'),
+    firstBusy: await firstChild.webContents.executeJavaScript('document.querySelector(".cm-content").getAttribute("aria-readonly") === "true"'),
     attachment: await evaluate('document.body.textContent.includes("queued.txt")') };
   child.webContents.send('cheshi:temporary-chat-opened');
   await new Promise(resolve => setTimeout(resolve, 50));

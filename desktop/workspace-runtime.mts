@@ -463,7 +463,8 @@ ipcMain.handle('cheshi:cancel-code-explanation', (event, requestId) => {
   codeExplanation.cancel(requestId);
 });
 ipcMain.handle('cheshi:select-codex-chat-attachments', (event) => selectCodexChatAttachments(event));
-ipcMain.handle('cheshi:import-codex-chat-attachments', async (_event, payload: unknown) => {
+ipcMain.handle('cheshi:import-codex-chat-attachments', async (event, payload: unknown) => {
+  assertCheshiSender(event);
   const attachments = await codexChatAttachmentStore.importTransferredFiles(payload);
   return attachments.map((attachment) => ({
     ...attachment,

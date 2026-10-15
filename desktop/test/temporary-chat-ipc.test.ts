@@ -174,7 +174,10 @@ test('dropped attachments validate regular files and keep their original paths w
     for (const invalid of [null, ['relative.txt'], [''], ['/bad\0path'], [42], Array(21).fill(filename)]) {
       await expectFailure(setup.invoke(owner, 'import-attachments', 'session', invalid), 'file');
     }
-    await expectFailure(setup.invoke(owner, 'import-attachments', 'session', [root]), 'regular file');
+    expect(await setup.invoke(owner, 'import-attachments', 'session', [root, filename])).toEqual({ status: 'ok', value: [
+      { kind: 'directory', name: path.basename(root), path: root },
+      { kind: 'file', name: '작업 notes.txt', path: filename },
+    ] });
     await expectFailure(setup.invoke(owner, 'import-attachments', 'session', [path.join(root, 'missing')]), 'ENOENT');
     await expectFailure(setup.invoke(setup.owner(), 'import-attachments', 'session', [filename]), 'closed');
     setup.deny();

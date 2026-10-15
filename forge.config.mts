@@ -301,6 +301,7 @@ export default async function createForgeConfiguration(): Promise<ForgeConfig> {
   const { product } = await import('./config/product.mts');
 
   return {
+    ...(process.env.CHESHI_PACKAGE_OUT ? { outDir: process.env.CHESHI_PACKAGE_OUT } : {}),
     hooks: {
       readPackageJson: async (_forgeConfig, packageJson) => ({ ...packageJson, version: product.version }),
     },

@@ -2,7 +2,8 @@ import type { TemporaryChatDraft, TemporaryChatRequest, TemporaryChatResult } fr
 import type { CodexChatAttachment } from '../../cheshiDesktop';
 import type { ChatModel } from './model';
 import { chatImportLabel } from '../../../../shared/chat-imports';
-import { addChatImports, insertChatImportText, removeChatImport, type ChatImportSelection } from './chatImportDraft';
+import { addChatDroppedItems, insertChatImportText, removeChatImport, type ChatImportSelection } from './chatImportDraft';
+import type { ChatTransferItem } from '../../../../shared/chat-attachment-import';
 
 interface TemporaryChatEditor {
   selection(draft: string): ChatImportSelection | undefined;
@@ -13,7 +14,7 @@ export interface TemporaryChatApi {
   models(sessionId: string): Promise<ChatModel[]>;
   send(sessionId: string, request: TemporaryChatRequest): Promise<TemporaryChatResult>;
   selectAttachments(sessionId: string): Promise<CodexChatAttachment[]>;
-  importAttachments(sessionId: string, files: (File | string)[]): Promise<CodexChatAttachment[]>;
+  importAttachments(sessionId: string, files: (File | string)[]): Promise<ChatTransferItem<CodexChatAttachment>[]>;
   close(sessionId: string): Promise<void>;
 }
 
@@ -102,8 +103,9 @@ export class TemporaryChatSession {
     if (!available()) throw new Error('The temporary chat is not ready to receive this message.');
     this.update({ picking: true });
     try {
-      const attachments = draft.attachments.length
+      const imported = draft.attachments.length
         ? await this.api.importAttachments(this.id, draft.attachments.map(item => item.path)) : [];
+      const attachments = imported.filter(item => item.kind !== 'directory');
       assertAttachmentCount(attachments.length, draft.attachments.length);
       this.assertDraftDestination();
       this.update({ draft: draft.text, attachments: attachments.map((attachment, index) => {
@@ -152,13 +154,14 @@ export class TemporaryChatSession {
     await this.receiveAttachments(() => this.api.importAttachments(this.id, files));
   }
 
-  private async receiveAttachments(select: () => Promise<CodexChatAttachment[]>): Promise<void> {
+  private async receiveAttachments(select: () => Promise<ChatTransferItem<CodexChatAttachment>[]>): Promise<void> {
     if (this.closed || this.state.loading || this.state.busy || this.state.picking || this.state.failed) return;
     this.update({ picking: true, error: null });
     try {
       const selected = await select();
       if (this.closed) return;
-      const change = addChatImports(this.state, selected, this.editor?.selection(this.state.draft));
+      const change = addChatDroppedItems(this.state, selected.filter(item => item.kind !== 'directory'),
+        selected.filter(item => item.kind === 'directory'), this.editor?.selection(this.state.draft));
       this.editor?.restore(change);
       this.update({ draft: change.draft, attachments: change.attachments });
     } catch (error) {

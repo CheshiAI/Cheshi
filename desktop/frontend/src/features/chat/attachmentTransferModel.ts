@@ -1,4 +1,4 @@
-import { MAX_IMPORTED_CHAT_ATTACHMENTS } from '../../../../shared/chat-attachment-import';
+import { MAX_IMPORTED_CHAT_ATTACHMENTS, type ChatTransferItem, type ChatDirectoryReference } from '../../../../shared/chat-attachment-import';
 import type { CodexChatAttachment } from '../../cheshiDesktop';
 import { readWorkspaceFileTransfer, WORKSPACE_FILE_TRANSFER_TYPE } from '../../shared/workspaceFileTransfer';
 
@@ -40,8 +40,8 @@ export async function importChatTransferFiles(
   files: (File | string)[],
   options: {
     isCurrent: () => boolean;
-    importFiles: (files: (File | string)[]) => Promise<CodexChatAttachment[]>;
-    accept: (attachments: CodexChatAttachment[]) => void;
+    importFiles: (files: (File | string)[]) => Promise<ChatTransferItem<CodexChatAttachment>[]>;
+    accept: (attachments: CodexChatAttachment[], directories: ChatDirectoryReference[]) => void;
   },
 ): Promise<boolean> {
   if (!options.isCurrent() || files.length === 0) return false;
@@ -50,6 +50,6 @@ export async function importChatTransferFiles(
   }
   const attachments = await options.importFiles(files);
   if (!options.isCurrent()) return false;
-  options.accept(attachments);
+  options.accept(attachments.filter(item => item.kind !== 'directory'), attachments.filter(item => item.kind === 'directory'));
   return true;
 }

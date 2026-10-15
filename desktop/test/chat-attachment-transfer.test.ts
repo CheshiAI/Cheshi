@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ChatAttachmentStore } from '../lib/chat-attachment-store.mts';
@@ -24,6 +24,19 @@ async function expectFailure(operation: () => Promise<unknown>, message?: string
 }
 
 describe('clipboard and drop attachment storage', () => {
+  test('returns folders as references and stores only regular files in a mixed drop', async () => {
+    const { root, store } = await setup();
+    const folder = path.join(root, '폴더 [1] #50%');
+    await mkdir(folder);
+    await writeFile(path.join(folder, 'private.txt'), 'must not be copied');
+    const onlyFolder = await store.importTransferredFiles([{ path: folder }]);
+    expect(onlyFolder).toEqual([{ kind: 'directory', name: path.basename(folder), path: folder }]);
+    expect(await readdir(root)).toEqual([path.basename(folder)]);
+    const result = await store.importTransferredFiles([{ path: folder }, { name: 'shot.png', mimeType: 'image/png', bytes: png }]);
+    expect(result.map(item => item.kind)).toEqual(['directory', 'image']);
+    expect(await readdir(store.objectsDirectory)).toHaveLength(1);
+    await expectFailure(() => store.importTransferredFiles([{ path: path.join(root, 'missing') }]), 'ENOENT');
+  });
   test('stores pasted images durably with sniffed extensions and content deduplication', async () => {
     const { store } = await setup();
     const first = await store.importTransferredFiles([{ name: 'Screenshot', mimeType: 'image/png', bytes: png }]);

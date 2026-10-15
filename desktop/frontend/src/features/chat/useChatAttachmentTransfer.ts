@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import { errorMessage } from '../../shared/errorMessage';
 import type { CodexChatAttachment } from '../../cheshiDesktop';
+import type { ChatTransferItem, ChatDirectoryReference } from '../../../../shared/chat-attachment-import';
 import { chatDroppedFiles, chatTransferFiles, hasChatTransferFiles, importChatTransferFiles, mergeChatAttachments } from './attachmentTransferModel';
 
 interface ChatAttachmentTransferOptions {
@@ -9,8 +10,8 @@ interface ChatAttachmentTransferOptions {
   inactive?: boolean;
   attachments: readonly CodexChatAttachment[];
   captureTask: () => () => boolean;
-  importFiles: (files: (File | string)[]) => Promise<CodexChatAttachment[]>;
-  addAttachments: (attachments: CodexChatAttachment[]) => void;
+  importFiles: (files: (File | string)[]) => Promise<ChatTransferItem<CodexChatAttachment>[]>;
+  addAttachments: (attachments: CodexChatAttachment[], directories?: readonly ChatDirectoryReference[]) => void;
   onComplete?: () => void;
 }
 
@@ -39,10 +40,10 @@ export function useChatAttachmentTransfer(options: ChatAttachmentTransferOptions
       return await importChatTransferFiles(files, {
         isCurrent,
         importFiles: context.importFiles,
-        accept: (attachments) => {
+        accept: (attachments, directories) => {
           // Capacity is checked after import because identical files share a stored path.
           mergeChatAttachments(latest.current.attachments, attachments);
-          latest.current.addAttachments(attachments);
+          latest.current.addAttachments(attachments, directories);
         },
       });
     } catch (error) {

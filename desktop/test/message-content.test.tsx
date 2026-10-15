@@ -14,14 +14,25 @@ const table = '| 방식 | 주요 이점 |\n|---|---|\n| **상시 표시** | 초�
 const render = (text: string, renderLocalImages = false) => renderToStaticMarkup(<MessageContent text={text} renderLocalImages={renderLocalImages} />);
 
 describe('chat Markdown rendering', () => {
+  test('links bare, quoted and inline-code local paths for user and assistant messages', () => {
+    for (const localImages of [false, true]) {
+      const html = render('여기 /Users/cheshi/Developments/cheshi-desktop/.agents 확인.\n\n"/tmp/한글 folder"와 `/tmp/code folder`\n\n```sh\ncat /tmp/keep-literal\n```\n\n[skill](skill://unchanged)', localImages);
+      expect(html).toContain('href="/Users/cheshi/Developments/cheshi-desktop/.agents"');
+      expect(html).toContain('href="/tmp/%ED%95%9C%EA%B8%80%20folder"');
+      expect(html).toContain('href="/tmp/code%20folder"');
+      expect(html).not.toContain('href="/tmp/keep-literal"');
+      expect(html.match(/href="\/Users\/cheshi/g)).toHaveLength(1);
+    }
+  });
   test('connects numbered imports to attachments while leaving code and unknown references literal', () => {
     const text = displayMessageWithChatImports('[import 1]을 [import 3]처럼. [import 9]\n\n`[import 1]`\n\n```text\n[import 3]\n```', [
       { kind: 'image', name: 'before.png', path: '/stored/before.png', importNumber: 1 },
       { kind: 'file', name: 'guide.txt', path: '/stored/guide.txt', importNumber: 3 },
     ]);
     const html = render(text, true);
-    expect(html).toContain('>[import 1]</button>');
-    expect(html).toMatch(/href="\/stored\/guide.txt"[^>]*>\[import 3\]<\/a>/);
+    expect(html).toContain('>import 1</button>');
+    expect(html).toMatch(/href="\/stored\/guide.txt"[^>]*>import 3<\/a>/);
+    expect(html.indexOf('aria-label="Attached imports"')).toBeLessThan(html.indexOf('>import 1</button>'));
     expect(html).toContain('[import 9]');
     expect(html.match(/role="img"/g)).toHaveLength(1);
     expect(html.match(/data-import-number=/g)).toHaveLength(2);

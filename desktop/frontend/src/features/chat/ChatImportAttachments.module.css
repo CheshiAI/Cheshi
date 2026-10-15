@@ -1,4 +1,4 @@
-.attachments { display: flex; flex-wrap: wrap; gap: var(--space-default); margin-top: var(--space-default); }
+.attachments { display: flex; flex-wrap: wrap; gap: var(--space-default); margin-bottom: var(--space-default); }
 .attachment { display: flex; flex-direction: column; align-items: center; gap: var(--icon-default); min-width: 0; max-width: 100%; }
 .imageAttachment { position: relative; }
 .imageBadge {
@@ -25,5 +25,14 @@
 .file > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; }
 .file > span { min-width: 0; }
 .name { display: block; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reference { display: inline; border: 0; border-radius: 4px; padding: 1px 4px; background: var(--control-surface); color: var(--text); font: inherit; vertical-align: baseline; }
-.reference:hover { background: var(--control-surface-interactive); }
+.reference { composes: chip from './ChatImportInput.module.css'; }
+/* Preserve chip metrics against the preview button and Markdown link defaults. */
+.reference.reference {
+  border: 0;
+  padding: 1px 6px;
+  line-height: 16px;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+.reference.reference:is(:hover, :focus-visible) { color: var(--text); text-decoration: none; }

@@ -21,7 +21,7 @@ export function createWorkspaceTemporaryChat(options: {
   wrapService?(service: Pick<TemporaryChatService, 'models' | 'send' | 'close'>, window: BrowserWindow): Pick<TemporaryChatService, 'models' | 'send' | 'close'>;
   createClient: ConstructorParameters<typeof TemporaryChatService>[0]['createClient'];
   selectFiles(window: BrowserWindow): Promise<string[]>;
-  shell: Pick<Shell, 'openPath' | 'openExternal'>;
+  shell: Pick<Shell, 'openPath' | 'openExternal' | 'showItemInFolder'>;
   onCleanupError(error: unknown): void;
 }) {
   const manager = createTemporaryChatWindow({

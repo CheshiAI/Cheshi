@@ -2,6 +2,8 @@ import { chatImportLabel, assertChatImportNumbers } from '../../../../shared/cha
 import type { CodexChatAttachment } from '../../cheshiDesktop';
 import { mergeChatAttachments } from './attachmentTransferModel';
 import type { ChatInputHandle } from './chatInputHandle';
+import type { ChatDirectoryReference } from '../../../../shared/chat-attachment-import';
+import { localPathMarkdown } from '../../../../shared/local-file-link';
 
 export interface ChatImportDraft { draft: string; attachments: CodexChatAttachment[] }
 export interface ChatImportSelection { start: number; end: number }
@@ -44,6 +46,16 @@ export function removeChatImport(input: ChatImportDraft, path: string): ChatImpo
     draft: item?.importNumber === undefined ? input.draft : input.draft.replaceAll(chatImportLabel(item.importNumber), ''),
     attachments: input.attachments.filter(attachment => attachment.path !== path),
   };
+}
+
+/** Commit mixed file/folder drops as one draft edit, preserving the insertion point. */
+export function addChatDroppedItems(input: ChatImportDraft, attachments: readonly CodexChatAttachment[],
+  directories: readonly ChatDirectoryReference[], selection?: ChatImportSelection) {
+  const links = [...new Set(directories.map(item => item.path))].map(localPathMarkdown);
+  const change = addChatImports(input, attachments, selection);
+  if (!links.length) return change;
+  const insertion = change.caret === null ? selection : { start: change.caret, end: change.caret };
+  return { ...change, ...insertChatImportText(change.draft, links, insertion) };
 }
 
 export function chatImportSelection(input: ChatInputHandle | null, draft: string): ChatImportSelection | undefined {

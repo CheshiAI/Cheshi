@@ -7,6 +7,7 @@ import type { WorkspaceFileSearchResult } from '../../shared/workspace-file-sear
 import type { LocalHistoryEntry, LocalHistorySnapshot, LocalHistoryRestoreRequest } from '../../shared/local-history';
 import type { WorkspaceManagementApi } from '../../shared/workspace-management';
 import type { GitDiscardPreview, GitDiscardRequest, GitDiscardSelection } from '../../shared/git-discard';
+import type { ChatTransferItem } from '../../shared/chat-attachment-import';
 
 export type { GitDiscardPreview, GitDiscardRequest, GitDiscardSelection, GitDiscardTarget } from '../../shared/git-discard';
 
@@ -823,7 +824,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
     models: (sessionId: string) => Promise<import('./features/chat/model').ChatModel[]>;
     send: (sessionId: string, request: import('../../shared/temporary-chat').TemporaryChatRequest) => Promise<import('../../shared/temporary-chat').TemporaryChatResult>;
     selectAttachments: (sessionId: string) => Promise<CodexChatAttachment[]>;
-    importAttachments: (sessionId: string, files: (File | string)[]) => Promise<CodexChatAttachment[]>;
+    importAttachments: (sessionId: string, files: (File | string)[]) => Promise<ChatTransferItem<CodexChatAttachment>[]>;
     close: (sessionId: string) => Promise<void>;
   };
   listCodexMcpServers: (contextId?: string) => Promise<unknown>;
@@ -858,7 +859,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   flashMemory?: import('../../shared/flash-memory').FlashMemoryApi;
   agentVoice?: import('../../shared/agent-voice').AgentVoiceApi;
   agentRegistry?: import('../../shared/agent-registry').AgentRegistryApi;
-  importCodexChatAttachments: (files: (File | string)[]) => Promise<CodexChatAttachment[]>;
+  importCodexChatAttachments: (files: (File | string)[]) => Promise<ChatTransferItem<CodexChatAttachment>[]>;
   getCodexChatAttachmentImage?: (attachmentPath: string) => Promise<string | null>;
   getCodexChatAttachmentPreview: (attachmentPath: string) => Promise<string | null>;
   sendCodexChatMessage: (

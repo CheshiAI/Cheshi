@@ -29,6 +29,21 @@ function fixture(overrides: Partial<TemporaryChatApi> = {}) {
 }
 
 describe('temporary chat panel session', () => {
+  test('inserts dropped folders as links and sends only the real file attachments', async () => {
+    let sent: unknown;
+    const f = fixture({ importAttachments: async () => [
+      { kind: 'directory', name: 'my folder', path: '/tmp/my folder' },
+      { kind: 'file', name: 'notes.txt', path: '/tmp/notes.txt' },
+    ], send: async (_id, request) => { sent = request; return { model: request.model, text: 'Done' }; } });
+    await f.session.start();
+    f.session.setDraft('확인');
+    await f.session.importAttachments(['/tmp/my folder', '/tmp/notes.txt']);
+    expect(f.latest().draft).toBe('확인 [import 1] [/tmp/my folder](</tmp/my%20folder>)');
+    expect(f.latest().attachments).toEqual([{ kind: 'file', name: 'notes.txt', path: '/tmp/notes.txt', importNumber: 1 }]);
+    await f.session.send();
+    expect(sent).toMatchObject({ text: '확인 [import 1] [/tmp/my folder](</tmp/my%20folder>)' });
+    await f.session.close();
+  });
   test('applies editor attachment changes atomically and sends only the remaining imports', async () => {
     const image = { kind: 'image' as const, name: 'image.png', path: '/workspace/image.png', previewUrl: 'attachment://image.png' };
     const file = { kind: 'file' as const, name: 'notes.txt', path: '/workspace/notes.txt' };

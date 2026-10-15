@@ -7,7 +7,7 @@ export function registerLocalFileLinkIpc(options: {
   ipcMain: Pick<IpcMain, 'handle'>;
   workspaceRoot: string;
   assertSender(event: IpcMainInvokeEvent): void;
-  shell: Pick<Shell, 'openPath'>;
+  shell: Pick<Shell, 'openPath' | 'showItemInFolder'>;
 }) {
   options.ipcMain.handle('cheshi:open-local-file-link', async (event, href: unknown) => {
     options.assertSender(event);
@@ -15,7 +15,11 @@ export function registerLocalFileLinkIpc(options: {
     if (!filePath) throw new TypeError('Invalid local file link.');
     const absolutePath = resolve(options.workspaceRoot, filePath);
     const info = await stat(absolutePath);
-    if (!info.isFile()) throw new Error('The link does not point to a file.');
+    if (info.isFile()) {
+      options.shell.showItemInFolder(absolutePath);
+      return;
+    }
+    if (!info.isDirectory()) throw new Error('The link does not point to a file or folder.');
     const error = await options.shell.openPath(absolutePath);
     if (error) throw new Error(error);
   });
