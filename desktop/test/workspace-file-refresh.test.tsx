@@ -115,6 +115,8 @@ test('Explorer overscroll starts only at the top and shares controller pending s
     expect(calls).toBe(0);
     await h.idle();
     expect(calls).toBe(1);
+    expect(status.textContent).toBe('Refreshing…');
+    expect(status.parentElement?.hasAttribute('data-project-refresh-status')).toBe(true);
     h.controller.refreshing = true;
     await h.render();
     const item = await h.refreshItem();

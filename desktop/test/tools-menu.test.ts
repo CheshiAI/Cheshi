@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import type { Menu, MenuItemConstructorOptions } from 'electron';
 import { createToolsMenu } from '../lib/tools-menu.mts';
 import { createWorkspaceManagementApi } from '../lib/workspace-management-preload.cts';
-import { OPEN_HELP_CHANNEL, OPEN_RELATIONSHIP_GRAPH_CHANNEL, OPEN_VOICE_CHANNEL } from '../shared/workspace-management';
+import { OPEN_HELP_CHANNEL, OPEN_RELATIONSHIP_GRAPH_CHANNEL } from '../shared/workspace-management';
 import config from '../../forge.config.mts';
 
 const buildMenu: typeof Menu.buildFromTemplate = items => ({
@@ -30,7 +30,7 @@ function windowFixture() {
   return { window, state, sent, events };
 }
 
-function menuFixture(commandId = 'cheshi-relationship-graph') {
+function menuFixture() {
   let windows: ReturnType<typeof windowFixture>['window'][] = [];
   let focused: typeof windows[number] | null = null;
   const listeners = new Set<() => void>();
@@ -38,7 +38,7 @@ function menuFixture(commandId = 'cheshi-relationship-graph') {
   const result = createToolsMenu(input, { buildMenu, focused: () => focused, windows: () => windows,
     onWindowsChanged: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; } });
   const submenu = result.template.find(item => item.id === 'cheshi-tools')!.submenu as Menu;
-  const command = submenu.getMenuItemById(commandId)!;
+  const command = submenu.getMenuItemById('cheshi-relationship-graph')!;
   return { ...result, submenu, command, listeners,
     focus: (window: typeof focused) => { focused = window; },
     windows: (value: typeof windows) => { windows = value; for (const listener of listeners) listener(); },
@@ -49,6 +49,7 @@ function menuFixture(commandId = 'cheshi-relationship-graph') {
 test('Tools appears immediately before Help with a disabled graph command until a project is ready', () => {
   const menu = menuFixture();
   expect(menu.template.map(item => item.label)).toEqual(['Window', 'Tools', 'Help', 'Notes']);
+  expect(menu.submenu.items.map(item => item.label)).toEqual(['Relationship Graph']);
   expect(menu.command.label).toBe('Relationship Graph');
   expect(menu.command.enabled).toBe(false);
   menu.click();
@@ -137,7 +138,7 @@ test('a stale window list never subscribes to destroyed windows or web contents'
 });
 
 test.each([
-  [OPEN_RELATIONSHIP_GRAPH_CHANNEL, 'onRelationshipGraphRequested'], [OPEN_VOICE_CHANNEL, 'onVoiceRequested'],
+  [OPEN_RELATIONSHIP_GRAPH_CHANNEL, 'onRelationshipGraphRequested'],
 ] as const)('%s buffers requests independently from Help and releases renderer subscriptions', (channel, subscribe) => {
   const ipc = Object.assign(new EventEmitter(), { invoke: async () => null });
   const api = createWorkspaceManagementApi(ipc);
@@ -151,39 +152,6 @@ test.each([
   closeGraph(); ipc.emit(channel); expect(graph).toBe(2);
   const remove = api[subscribe]!(() => { graph++; });
   expect(graph).toBe(3); remove(); closeHelp();
-});
-
-test('VOICE follows Relationship Graph and routes only to a ready project', () => {
-  const menu = menuFixture('cheshi-voice');
-  expect(menu.submenu.items.map(item => item.label)).toEqual(['Relationship Graph', 'Voice']);
-  expect(menu.command.enabled).toBe(false);
-  menu.click();
-  const first = windowFixture(), second = windowFixture(), auxiliary = windowFixture();
-  menu.windows([first.window, second.window]);
-  menu.focus(second.window);
-  second.state.minimized = true;
-  expect(menu.command.enabled).toBe(true);
-  menu.click();
-  expect(second.sent).toEqual([OPEN_VOICE_CHANNEL]);
-  expect(second.state).toMatchObject({ shown: 1, focused: 1, restored: 1 });
-  expect(first.sent).toEqual([]);
-  menu.focus(auxiliary.window); menu.click();
-  expect(first.sent).toEqual([OPEN_VOICE_CHANNEL]);
-  expect(auxiliary.sent).toEqual([]);
-  first.state.loading = true; second.state.loading = true;
-  second.events.emit('did-start-loading');
-  expect(menu.command.enabled).toBe(false);
-  menu.click();
-  expect(second.sent).toHaveLength(1);
-  second.state.loading = false;
-  second.events.emit('did-stop-loading');
-  expect(menu.command.enabled).toBe(true);
-  second.state.destroyed = true;
-  menu.click();
-  expect(second.sent).toHaveLength(1);
-  menu.windows([]);
-  expect(menu.command.enabled).toBe(false);
-  menu.dispose();
 });
 
 test('tools menu and its shared contract are packaged and load with native Node', async () => {

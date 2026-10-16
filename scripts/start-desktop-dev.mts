@@ -1,4 +1,3 @@
-import { buildAppleSpeech } from './build-apple-speech.mts';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import type { FSWatcher } from 'node:fs';
@@ -346,7 +345,6 @@ async function startDevelopment(): Promise<void> {
   await buildDesktopPreload();
   if (shuttingDown) return;
   await buildAppleCalendar();
-  await buildAppleSpeech();
   if (shuttingDown) return;
   developmentBundle = prepareCalendarDevelopment();
   if (shuttingDown) return;

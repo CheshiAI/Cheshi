@@ -55,7 +55,6 @@ function shouldIgnore(packagePath: string): boolean {
     return !startupStyles.some(file => normalizedPath === file || file.startsWith(`${normalizedPath}/`));
   }
   if (childEntry === 'shared') {
-    if (grandchildEntry === 'voice-recordings.ts' || grandchildEntry === 'voice-transcription.ts') return segments.length > 3;
     if (segments.length === 2) return false;
     if (grandchildEntry === 'chat-imports.ts') return segments.length > 3;
     if (grandchildEntry === 'workspace-host.ts') return segments.length > 3;
@@ -63,7 +62,7 @@ function shouldIgnore(packagePath: string): boolean {
     if ((grandchildEntry === 'agent-package.ts' || grandchildEntry === 'homie-pack.ts' || grandchildEntry === 'homie-tools.ts' || grandchildEntry === 'homie-source.ts' || grandchildEntry === 'agent-avatar-image.ts')) return segments.length > 3;
     if (grandchildEntry === 'agent-voice.ts' || grandchildEntry === 'agent-execution-health.ts') return segments.length > 3;
     if (grandchildEntry === 'agent-chat-recipient.ts' || grandchildEntry === 'agent-activity.ts' || grandchildEntry === 'agent-work.ts' || grandchildEntry === 'agent-question.ts' || grandchildEntry === 'agent-chats.ts' || grandchildEntry === 'agent-task-inspection.ts' || grandchildEntry === 'agent-avatar.ts' || grandchildEntry === 'agent-management.ts' || grandchildEntry === 'agent-terminal.ts' || grandchildEntry === 'agent-registry.ts' || grandchildEntry === 'agent-models.ts' || grandchildEntry === 'agent-runtime.ts') return segments.length > 3;
-    const packagedSharedFiles = new Set(['isolated-work.ts', 'flash-memory.ts', 'sticky-notes.ts', 'calendar-task.ts', 'scheduler.ts', 'scheduler-time.ts', 'notification-events.ts', 'discord.ts', 'imessage-commands.ts', 'imessage-notifications.ts', 'account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-calendar.ts', 'keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'settings.ts', 'window-appearance.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'git-line-blame.ts', 'local-history.ts', 'local-file-link.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-file-search.ts', 'workspace-projects.ts']);
+    const packagedSharedFiles = new Set(['isolated-work.ts', 'flash-memory.ts', 'sticky-notes.ts', 'calendar-task.ts', 'scheduler.ts', 'scheduler-time.ts', 'notification-events.ts', 'discord.ts', 'imessage-commands.ts', 'imessage-notifications.ts', 'account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-calendar.ts', 'keep-awake.ts', 'status-toast.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'settings.ts', 'window-appearance.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'git-line-blame.ts', 'local-history.ts', 'local-file-link.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-file-search.ts', 'workspace-projects.ts']);
     return grandchildEntry === undefined || !packagedSharedFiles.has(grandchildEntry) || segments.length > 3;
   }
   if (childEntry !== 'lib') return true;
@@ -95,16 +94,7 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 3 && (segments.length !== 4 || !schedulerFiles.has(segments[3] ?? ''));
   }
   const packagedLibraryFiles = new Set([
-    'voice-recordings-service.mts',
-    'voice-recording-file.mts',
-    'voice-audio.mts',
-    'voice-audio-preparation.mts',
-    'voice-media-file.mts',
-    'voice-speech-process.mts',
-    'voice-detail-service.mts',
-    'voice-detail-ipc.mts',
-    'voice-recordings-ipc.mts',
-    'workspace-host.mts', 'workspace-surface.mts', 'workspace-rail-overlay.mts',
+    'workspace-host.mts', 'workspace-status-toast.mts', 'workspace-surface.mts', 'workspace-rail-overlay.mts',
     'sticky-notes-store.mts', 'sticky-notes-runtime.mts', 'sticky-notes-library.mts',
     'chat-search-grams.mts', 'chat-search-database.mts', 'chat-search-index.mts', 'chat-search-query.mts',
     'chat-search-source.mts', 'chat-search-worker.mts', 'chat-search-worker-client.mts', 'chat-search-service.mts',

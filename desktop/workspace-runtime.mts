@@ -1,11 +1,8 @@
-import { registerVoiceDetailIpc } from './lib/voice-detail-ipc.mts';
 import { createChatAttachmentImageReader, registerChatAttachmentImageIpc } from './lib/chat-attachment-image.mts';
 import { registerWorkspaceTerminalIpc } from './lib/workspace-terminal-ipc.mts';
 import { createWorkspaceProjects } from './lib/workspace-project-runtime.mts';
 import { createWorkspaceSessionMemory } from './lib/flash/workspace.mts';
 import { createWorkspaceVoice } from './lib/agent-voice/workspace.mts';
-import { createVoiceRecordingsService } from './lib/voice-recordings-service.mts';
-import { registerVoiceRecordingsIpc } from './lib/voice-recordings-ipc.mts';
 import { createWorkspaceScheduler } from './lib/scheduler/workspace.mts';
 import { createWorkspaceNotifications } from './lib/workspace-notifications.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
@@ -411,19 +408,6 @@ async function selectLanguageServerExecutable(
 
 registerWorkspaceFileIpcHandlers({ ipcMain: workspaceProjects.ipc, workspaceRoot, clipboard, shell, localHistory });
 registerLocalFileLinkIpc({ ipcMain, workspaceRoot, shell, assertSender: assertCheshiSender });
-const voiceRecordings = createVoiceRecordingsService();
-const voiceDetails = registerVoiceDetailIpc({ ipcMain, assertSender: assertCheshiSender,
-  resolveAudio: id => voiceRecordings.resolveAudio(id),
-  chooseSavePath: async (_event, suggestedName) => {
-    const settings = { title: 'Save recording', defaultPath: suggestedName, buttonLabel: 'Save',
-      filters: [{ name: 'Audio', extensions: [path.extname(suggestedName).slice(1)] }] };
-    const result = mainWindow ? await dialog.showSaveDialog(nativeWorkspaceWindow(mainWindow), settings)
-      : await dialog.showSaveDialog(settings);
-    return result.canceled ? null : result.filePath ?? null;
-  },
-});
-registerVoiceRecordingsIpc({ ipcMain, assertSender: assertCheshiSender, service: voiceRecordings,
-  openExternal: url => shell.openExternal(url) });
 registerLocalHistoryIpc({ ipcMain: workspaceProjects.ipc, service: localHistory, assertSender: assertCheshiSender, onChanged: sendWorkspaceFilesChanged });
 const management = registerWorkspaceManagementIpcHandlers({ ipcMain, app, dialog, trashItem: (root) => shell.trashItem(root), withWorkspaceDeletion: options.withWorkspaceDeletion, assertWorkspaceAvailable: options.assertWorkspaceAvailable, openExternal: (url) => shell.openExternal(url), getWindow: () => mainWindow, assertSender: assertCheshiSender, dataRoot: codeGraphDataRoot, onOpenWorkspace: options.onOpenWorkspace, onReplaceWorkspace: options.onReplaceWorkspace, manager: { createWindow: (configuration) => new BrowserWindow(configuration), rendererUrl, workspaceRoot, onWindowCreated: (window) => options.scope.addOwner(window.webContents, true) } });
 registerGitIpcHandlers({ ipcMain: workspaceProjects.ipc, gitService, assertCheshiSender, shell });
@@ -934,7 +918,6 @@ function start(): Promise<BrowserWindow> {
 function dispose(): Promise<void> {
   if (disposal) return disposal;
   appQuitting = true;
-  const voiceDisposal = voiceDetails.dispose();
   rendererEvents.stop();
   unsubscribeAccount();
   unsubscribeChat();
@@ -956,7 +939,7 @@ function dispose(): Promise<void> {
       process.stderr.write(`[cheshi] Scheduler cleanup failed: ${String(error)}\n`);
     });
     const results = await Promise.allSettled([
-      voiceDisposal, codexChatService.stop(), agentVoice.dispose(),
+      codexChatService.stop(), agentVoice.dispose(),
       chatHistorySearch.stop(), sessionHistory.dispose(),
       temporaryChats.stop(),
       localHistory.dispose(), workspaceProjects.dispose(),

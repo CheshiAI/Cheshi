@@ -88,23 +88,26 @@
 }
 
 .popover {
-  --panel-backdrop-blur: 24px;
-  --panel-backdrop-saturation: 88%;
+  composes: anchor from '../../shared/ui/PopupSurface.module.css';
   -webkit-app-region: no-drag;
   position: fixed;
   inset: auto var(--space-8) calc(var(--workspace-status-bar-height) + var(--space-8)) auto;
   width: var(--sidebar-width);
   max-width: calc(100vw - var(--space-default) * 2);
   max-height: calc(100dvh - var(--workspace-status-bar-height) - var(--space-default) * 2);
-  overflow: auto;
+  overflow: visible;
   margin: 0;
-  padding: var(--space-default);
+  padding: 0;
+  border: none;
   background: transparent;
   color: var(--text);
   overscroll-behavior: contain;
 }
 
 .accountPopover {
-  --panel-backdrop-blur: 16px;
-  background: rgba(0, 0, 0, 0.75);
+  composes: surface from '../../shared/ui/PopupSurface.module.css';
+  max-height: inherit;
+  overflow: auto;
+  padding: var(--space-default);
+  overscroll-behavior: contain;
 }

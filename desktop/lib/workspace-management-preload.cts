@@ -1,6 +1,6 @@
 import type { IpcRenderer } from 'electron';
 import type { GitHubRepositoryListResponse, WorkspaceManagementApi } from '../shared/workspace-management.ts';
-import { OPEN_HELP_CHANNEL, OPEN_RELATIONSHIP_GRAPH_CHANNEL, OPEN_VOICE_CHANNEL } from '../shared/workspace-management.ts';
+import { OPEN_HELP_CHANNEL, OPEN_RELATIONSHIP_GRAPH_CHANNEL } from '../shared/workspace-management.ts';
 
 type MenuIpc = Pick<IpcRenderer, 'invoke'> & { on?(channel: string, listener: () => void): unknown };
 
@@ -23,7 +23,6 @@ export function createWorkspaceManagementApi(ipc: MenuIpc): WorkspaceManagementA
   return {
     onHelpRequested: bufferedMenuRequest(ipc, OPEN_HELP_CHANNEL),
     onRelationshipGraphRequested: bufferedMenuRequest(ipc, OPEN_RELATIONSHIP_GRAPH_CHANNEL),
-    onVoiceRequested: bufferedMenuRequest(ipc, OPEN_VOICE_CHANNEL),
     getCodexLogin: () => ipc.invoke('cheshi:workspace-management:get-codex-login'),
     startCodexLogin: () => ipc.invoke('cheshi:workspace-management:start-codex-login'),
     cancelCodexLogin: () => ipc.invoke('cheshi:workspace-management:cancel-codex-login'),

@@ -47,7 +47,6 @@ import { WorkspaceSurfaceReporter } from './WorkspaceSurfaceReporter';
 import { useAppUpdateResume } from './useAppUpdateResume';
 import { useWorkflowChatNavigation } from './useWorkflowChatNavigation';
 import { useToolsMenu } from './useToolsMenu';
-import { VoiceView } from '../voice/VoiceView';
 import { WorkspaceEditorSplit } from './WorkspaceEditorSplit';
 import { readWorkspaceLayout, replaceWorkspacePane, revealWorkspacePane, saveWorkspaceLayout, visibleWorkspaceLayout, type WorkspacePaneId } from './workspaceLayoutModel';
 import { removeSplitPane, splitPaneIds } from '../../shared/ui/splitPaneModel';
@@ -57,9 +56,10 @@ import { ChatDraftAttachmentsContext, createChatDraftAttachments } from '../chat
 import { MemoSidebar } from '../sticky-notes/MemoSidebar';
 import { CalendarView } from '../calendar/CalendarView';
 
-const fullWidthViews: readonly WorkspaceView[] = ['explorer', 'chats', 'git', 'plugins', 'calendar', 'voice', 'settings', 'docker'];
+const fullWidthViews: readonly WorkspaceView[] = ['explorer', 'chats', 'git', 'plugins', 'calendar', 'settings', 'docker'];
 
 export function AppShell() {
+  const accountSceneRef = useRef<HTMLDivElement>(null);
   const notificationSceneRef = useRef<HTMLDivElement>(null);
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [temporaryChatOpen, setTemporaryChatOpen] = useState(false);
@@ -88,7 +88,6 @@ export function AppShell() {
     customLayout && splitPaneIds(customLayout).includes('primary') && ['editor', 'worker'].some(pane => splitPaneIds(customLayout).includes(pane)) ? 'chat'
       : customLayout && splitPaneIds(customLayout).includes('worker') ? 'chats' : 'explorer');
   const [workerView, setWorkerView] = useState<'chats' | 'docker'>('chats');
-  const [settingsInitialCategory, setSettingsInitialCategory] = useState<'agents' | 'voice'>('agents');
   const [focusedPane, setFocusedPane] = useState<WorkspacePaneId>(() =>
     customLayout && splitPaneIds(customLayout).includes('editor') ? 'editor'
       : customLayout && splitPaneIds(customLayout).includes('worker') && !splitPaneIds(customLayout).includes('primary') ? 'worker' : 'primary');
@@ -255,7 +254,6 @@ export function AppShell() {
   };
 
   const navigate = useCallback((view: WorkspaceView, options: { preserveFocus?: boolean } = {}): void => {
-    if (view === 'settings') setSettingsInitialCategory('agents');
     if (view === 'notes') { setSidebarPanel('memos'); setLeftSidebarOpen(true); return; }
     historyRequestId.current += 1;
     closeReview();
@@ -403,7 +401,7 @@ export function AppShell() {
       {window.workspaceSurface && <WorkspaceSurfaceReporter view={leftSidebarOpen && sidebarPanel === 'memos' ? 'notes' : railView}
         sidebarOpen={leftSidebarOpen} running={workspace.responseThreadIds.length} attention={workspaceNeedsAttention} />}
       {updateResume.error && <div role="alert">{updateResume.error}</div>}
-      <div
+      <div ref={accountSceneRef}
         inert={updateResume.busy}
         className={`app-layout ${styles.layout}`}
         data-active-view={activeView}
@@ -516,12 +514,10 @@ export function AppShell() {
           {primaryView === 'blank' && <WindowTabs />}
           {primaryView === 'calendar' && <CalendarView rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
-          {primaryView === 'voice' && <VoiceView
-            onOpenSettings={() => { navigate('settings'); setSettingsInitialCategory('voice'); }}
-            onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined} />}
           <FlashSourceNavigationContext.Provider value={openHistorySearchHit}>
             <ChatWorkspace
               workspace={workspace}
+              menuBlurSourceRef={accountSceneRef}
               active={primaryView === 'chat' && visiblePanes.includes('primary')}
               onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}
               sessionSyncEnabled={workspace.sessionHistory.loading || sidebarPanel === 'chats'}
@@ -554,7 +550,7 @@ export function AppShell() {
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
           )}
-          {primaryView === 'settings' && <SettingsView initialCategory={settingsInitialCategory} contextId={workspace.activePaneId} onOpenChat={openWorkflowChat} />}
+          {primaryView === 'settings' && <SettingsView contextId={workspace.activePaneId} onOpenChat={openWorkflowChat} />}
           {primaryView === 'blank' && <BlankView />}
           </WorkspaceEditorSplit>
         </div>
@@ -570,7 +566,7 @@ export function AppShell() {
           localHistoryDirty={localHistoryPath !== null && editorDirtyPaths.includes(localHistoryPath)}
         />
       </div>
-      <WorkspaceStatusBar onAccountInitialLoad={accountReady}
+      <WorkspaceStatusBar blurSourceRef={accountSceneRef} onAccountInitialLoad={accountReady}
         selectionDisabledReason={accountSwitchReason}
         onBeforeSelect={beforeAccountSelect} onSelectionFinished={accountSelectionFinished} />
       {fileSearchOpen && <WorkspaceFileSearch onOpenFile={openWorkspaceFile} onClose={() => setFileSearchOpen(false)} />}

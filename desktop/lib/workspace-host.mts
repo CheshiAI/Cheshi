@@ -8,6 +8,7 @@ import { WORKSPACE_HOST_CHANNEL as channel } from '../shared/workspace-host.ts';
 import type { WorkspaceHostEntry, WorkspaceHostLayout, WorkspaceHostState, WorkspaceRailOverlay } from '../shared/workspace-host.ts';
 import type { WorkspaceIpcScope } from './workspace-ipc-router.mts';
 import { sameWorkspaceBounds, WorkspaceSurface } from './workspace-surface.mts';
+import { forwardWorkspaceStatusToast } from './workspace-status-toast.mts';
 import { WorkspaceRailOverlayLayer } from './workspace-rail-overlay.mts';
 import { workspaceWindowOptions } from './workspace-window-options.mts';
 import { closeWorkspaceWindow } from './workspace-application.mts';
@@ -16,7 +17,7 @@ import { createWindowTopHighlight } from './window-top-highlight.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './window-appearance.mts';
 
 interface HostedWorkspace { surface: WorkspaceSurface; state: WorkspaceHostEntry; }
-const navigationViews = new Set(['explorer', 'chat', 'chats', 'notes', 'git', 'terminal', 'calendar', 'voice', 'docker', 'plugins', 'settings', 'editor', 'search']);
+const navigationViews = new Set(['explorer', 'chat', 'chats', 'notes', 'git', 'terminal', 'calendar', 'docker', 'plugins', 'settings', 'editor', 'search']);
 
 /** One native window and fixed navigation shell, with isolated retained renderers. */
 export class WorkspaceHost {
@@ -40,6 +41,10 @@ export class WorkspaceHost {
     this.railOverlay = new WorkspaceRailOverlayLayer(window, region => this.updateRailBlur(region));
     scope.ipc.on(`${channel}:rail-overlay`, (event, value: unknown) => {
       if (event.sender === window.webContents) this.railOverlay.update(value, this.frame.x);
+    });
+    scope.ipc.handle(`${channel}:status-toast`, (event, message: unknown) => {
+      const target = this.activeId === null ? undefined : this.entries.get(this.activeId)?.surface.view.webContents;
+      return forwardWorkspaceStatusToast(event.sender, window.webContents, target, message);
     });
     scope.addOwner(window.webContents);
     configure?.(window, scope);

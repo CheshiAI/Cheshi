@@ -1,7 +1,6 @@
 import { createFlashMemoryApi } from './flash-preload.cts';
 import { createAgentChatsApi } from './agent-chats-preload.cts';
 import { createAgentVoiceApi } from './agent-voice-preload.cts';
-import { createVoiceRecordingsApi } from './voice-recordings-preload.cts';
 import { createSchedulerApi } from './scheduler-preload.cts';
 import { createDiscordApi } from './discord-preload.cts';
 import { createNotificationEventsApi } from './notification-events-preload.cts';
@@ -23,7 +22,6 @@ export function createWorkspaceFeatureApis(ipc: Pick<IpcRenderer, 'invoke' | 'on
     agentManagement: { ...createAgentManagementApi(ipc), terminal: createAgentTerminalApi(ipc) },
     agentChats: createAgentChatsApi(ipc),
     agentVoice: createAgentVoiceApi(ipc),
-    voiceRecordings: createVoiceRecordingsApi(ipc),
     agentRegistry: createAgentRegistryApi(ipc),
     flashMemory: createFlashMemoryApi(ipc),
   };

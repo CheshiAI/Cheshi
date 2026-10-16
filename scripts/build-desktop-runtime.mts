@@ -1,4 +1,3 @@
-import { buildAppleSpeech } from './build-apple-speech.mts';
 import { prepareSpecialistWorker } from './prepare-specialist-worker.mts';
 import { chmodSync, copyFileSync, cpSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -71,7 +70,6 @@ try {
   await prepareSpecialistWorker(path.join(rootDirectory, 'experiments', 'codex-specialists'), path.join(rootDirectory, 'desktop', 'runtime', 'specialist-worker'));
   await buildDesktopPreload();
   await buildAppleCalendar();
-  await buildAppleSpeech();
 
   for (const runtime of runtimeEntries) {
     const result = Bun.spawnSync([

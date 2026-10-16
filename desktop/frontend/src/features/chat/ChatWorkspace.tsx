@@ -1,6 +1,6 @@
 import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
 import { ArrowLeft, Columns2, X } from 'lucide-react';
-import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import {
   LiquidGlassPanel, NeumorphicButton, TwoTierHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle,
@@ -26,6 +26,7 @@ interface ChatWorkspaceProps extends ChatHistorySearchNavigation {
   workspace: ChatWorkspaceController;
   active: boolean;
   sessionSyncEnabled: boolean;
+  menuBlurSourceRef?: RefObject<HTMLElement | null>;
   onCloseWorkspace?: () => void;
   onReviewFileChanges: (paneId: string, itemId: string, path?: string) => void;
 }
@@ -187,7 +188,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
         <ChatSavedTurnsSidebar blurSourceRef={blurSourceRef} savedTurns={savedTurns}
           onContinueSavedTurn={workspace.continueSavedTurn} continuationDisabledReason={workspace.savedTurnContinuationReason} />
       </div>
-      <ChatWorkspaceBlurContext value={blurSourceRef}>
+      <ChatWorkspaceBlurContext value={props.menuBlurSourceRef ?? blurSourceRef}>
         {workspace.paneIds.map((paneId) => (
           <ChatPane
             {...props}

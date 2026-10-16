@@ -8,6 +8,7 @@ import { focusAdjacentMenuItem, useContextMenuInteractions } from '../../shared/
 import { useHelpLanguage } from '../../shared/useHelpLanguage';
 import type { ChatViewController } from './useChatViewController';
 import styles from './ChatMessageQueue.module.css';
+import { ChatImportPreview } from './ChatImportPreview';
 
 const labels = {
   ko: { queue: '대기열', steer: '현재 작업 조정', remove: '대기 메시지 삭제', more: '대기 메시지 더보기',
@@ -103,7 +104,7 @@ export function ChatMessageQueue({ controller, open, panelId }: {
                   <ListEnd />
                 </NeumorphicSurface>
                 <div className={styles.preview}>
-                  <TooltipTarget content={entry.input.draft}><span>{entry.input.draft}</span></TooltipTarget>
+                  <TooltipTarget content={entry.input.draft}><span><ChatImportPreview text={entry.input.draft} attachments={entry.input.attachments} /></span></TooltipTarget>
                   {(entry.input.selectedSkill || entry.input.attachments.length > 0) && <small>
                     {[entry.input.selectedSkill ? `$${entry.input.selectedSkill.name}` : '', ...entry.input.attachments.map((item) => item.name)].filter(Boolean).join(' · ')}
                   </small>}

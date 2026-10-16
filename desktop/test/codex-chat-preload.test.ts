@@ -50,50 +50,11 @@ test('response statistics reads carry the conversation and pane without navigati
   assert.deepEqual(bridge.calls, [['cheshi:read-codex-turn-metrics', 'root', 'pane-b']]);
 });
 
-test('Voice recordings bridge validates the response and exposes list and settings access', async () => {
-  const snapshot = { status: 'ready', recordings: [{ id: '1', title: 'Memo', recordedAt: 1000, durationSeconds: 817 }], truncated: false };
-  const bridge = createHarness('Alex', snapshot);
-  const api = bridge.read('voiceRecordings') as NonNullable<CheshiDesktopApi['voiceRecordings']>;
-  assert.deepEqual(JSON.parse(JSON.stringify(await api.list())), snapshot);
-  assert.deepEqual(bridge.calls, [['cheshi:voice-recordings:list']]);
-  assert.deepEqual(Object.keys(api), ['detail', 'list', 'openFullDiskAccessSettings']);
-  const malformed = createHarness('Alex', { ...snapshot, truncated: 'true' }).read('voiceRecordings') as typeof api;
-  let failure: unknown;
-  try { await malformed.list(); } catch (error) { failure = error; }
-  assert.match(String(failure), /Invalid recordings response/);
-});
-
-test('Voice settings bridge sends the dedicated channel and accepts only literal true', async () => {
-  for (const value of [true, false, 'true', 1, null]) {
-    const bridge = createHarness('Alex', value);
-    const api = bridge.read('voiceRecordings') as NonNullable<CheshiDesktopApi['voiceRecordings']>;
-    assert.equal(await api.openFullDiskAccessSettings!(), value === true);
-    assert.deepEqual(bridge.calls, [['cheshi:voice-recordings:open-full-disk-access']]);
-  }
-});
-
-test('Voice detail bridge restricts playback URLs and validates speech responses', async () => {
-  const url = 'cheshi-voice://recording/12345678-1234-1234-1234-123456789abc';
-  const bridge = createHarness('Alex', url);
-  const api = (bridge.read('voiceRecordings') as NonNullable<CheshiDesktopApi['voiceRecordings']>).detail!;
-  assert.equal(await api.openAudio('1'), url);
-  await api.releaseAudio(url);
-  await api.transcribe('1', 'ko_KR', 'request-one');
-  await api.cancelTranscription('request-one');
-  assert.deepEqual(bridge.calls, [
-    ['cheshi:voice-recordings:detail', 'openAudio', '1'], ['cheshi:voice-recordings:detail', 'releaseAudio', url],
-    ['cheshi:voice-recordings:detail', 'transcribe', '1', 'ko_KR', 'request-one'],
-    ['cheshi:voice-recordings:detail', 'cancelTranscription', 'request-one'],
-  ]);
-  for (const unsafe of ['file:///private/data', 'https://example.com/audio', null]) {
-    const bad = (createHarness('Alex', unsafe).read('voiceRecordings') as NonNullable<CheshiDesktopApi['voiceRecordings']>).detail!;
-    await assert.rejects(bad.openAudio('1'), /Invalid audio URL/);
-  }
-  const unavailable = (createHarness('Alex', { error: 'audio-unavailable' }).read('voiceRecordings') as NonNullable<CheshiDesktopApi['voiceRecordings']>).detail!;
-  await assert.rejects(unavailable.openAudio('1'), /Audio unavailable or cancelled/);
-  const malformed = (createHarness('Alex', { available: 'true', languages: [] }).read('voiceRecordings') as NonNullable<CheshiDesktopApi['voiceRecordings']>).detail!;
-  await assert.rejects(malformed.capabilities(), /Invalid speech capabilities/);
-  await assert.rejects(malformed.transcription('request-one'), /Invalid transcription response/);
+test('recording APIs are removed while Homie phone requests remain available', () => {
+  const bridge = createHarness();
+  assert.equal(bridge.read('voiceRecordings'), undefined);
+  const agentVoice = bridge.read('agentVoice') as NonNullable<CheshiDesktopApi['agentVoice']>;
+  assert.equal(typeof agentVoice.request, 'function');
 });
 
 test('session rename carries a trimmed title and pane and rejects blank inputs', async () => {
@@ -454,24 +415,6 @@ test('does not expose retired conversation relay controls through the preload', 
   }
   assert.deepEqual(harness.calls, []);
 });
-
-test('voice media bridge validates waveform data and save results', async () => {
-  const expected = { duration: 2, peaks: [0, 0.4, 1] };
-  const bridge = createHarness('Alex', expected);
-  const api = (bridge.read('voiceRecordings') as NonNullable<CheshiDesktopApi['voiceRecordings']>).detail!;
-  assert.deepEqual(JSON.parse(JSON.stringify(await api.waveform('token'))), expected);
-  assert.deepEqual(bridge.calls, [['cheshi:voice-recordings:detail', 'waveform', 'token']]);
-  for (const value of ['saved', 'cancelled', 'error'] as const) {
-    const saved = createHarness('Alex', value);
-    const detail = (saved.read('voiceRecordings') as NonNullable<CheshiDesktopApi['voiceRecordings']>).detail!;
-    assert.equal(await detail.saveAudio('token'), value);
-    assert.deepEqual(saved.calls, [['cheshi:voice-recordings:detail', 'saveAudio', 'token']]);
-  }
-  const malformed = (createHarness('Alex', true).read('voiceRecordings') as NonNullable<CheshiDesktopApi['voiceRecordings']>).detail!;
-  await assert.rejects(malformed.saveAudio('token'), /Invalid audio save/);
-  await assert.rejects(malformed.waveform('token'), /Invalid audio waveform/);
-});
-
 
 test('workspace notes bridge exposes library actions without Apple Notes or draft editing', async () => {
   const bridge = createHarness('Alex', []);

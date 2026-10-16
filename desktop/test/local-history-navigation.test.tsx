@@ -52,7 +52,6 @@ function createHarness() {
     '../chat/FlashSourceLink': { FlashSourceNavigationContext: { Provider: 'FlashSourceNavigationContext' } },
     './WorkerWorkspace': { WorkerWorkspace: 'WorkerWorkspace' },
     './useToolsMenu': { useToolsMenu() {} },
-    '../voice/VoiceView': { VoiceView: 'VoiceView' },
     '../navigation/ExplorerView': { ExplorerView: 'ExplorerView' },
     '../graph/useCodeGraphIndex': { useCodeGraphIndex: () => ({ status: { state: 'ready' } }) },
     './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },

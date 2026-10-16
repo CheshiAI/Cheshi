@@ -77,6 +77,7 @@ test('one real native host retains renderer drafts, background delivery, routing
         denied: () => ipcRenderer.invoke('fixture:second-only'),
         onEvent: callback => ipcRenderer.on('fixture:event', (_event,value) => callback(value)),
         onCommand: callback => ipcRenderer.on('cheshi:workspace-host:command', (_event,value) => callback(value)),
+        onToast: callback => ipcRenderer.on('cheshi:workspace-host:status-toast', (_event,value) => callback(value)),
         onRailBlur: callback => ipcRenderer.on('cheshi:workspace-host:rail-blur', (_event,value) => callback(value))
       });`);
     await writeFile(script, `
@@ -113,6 +114,18 @@ app.whenReady().then(async()=>{
   one.show();
   const wait=async(fn)=>{const end=Date.now()+8000;while(!await fn()){if(Date.now()>end)throw Error('condition timeout');await new Promise(r=>setTimeout(r,30))}};
   await wait(()=>host.window.webContents.executeJavaScript('document.querySelectorAll("[role=tab]").length===2'));
+  for(const surface of [one,two]) await surface.webContents.executeJavaScript('window.toasts=[];void window.fixture.onToast(value=>window.toasts.push(value))');
+  const toast={id:1,variant:'success',title:'Keep awake enabled',description:'Your Mac will stay awake.'};
+  const sendToast=()=>host.window.webContents.executeJavaScript('window.workspaceHost.showStatusToast('+JSON.stringify(toast)+')');
+  assert.equal(await sendToast(),true);
+  await wait(()=>one.webContents.executeJavaScript('window.toasts.length===1'));
+  assert.equal(await two.webContents.executeJavaScript('window.toasts.length'),0);
+  two.show();
+  assert.equal(await sendToast(),true);
+  await wait(()=>two.webContents.executeJavaScript('window.toasts.length===1'));
+  assert.equal(await one.webContents.executeJavaScript('window.toasts.length'),1);
+  assert.deepEqual(await two.webContents.executeJavaScript('window.toasts[0]'),toast);
+  one.show();
   const colors=await host.window.webContents.executeJavaScript('window.workspaceHost.state().then(state=>state.entries.map(entry=>entry.iconColor))');
   assert.equal(new Set(colors).size,2);
   assert.equal(await host.window.webContents.executeJavaScript('document.querySelectorAll("[role=tab] > span:first-child > span[aria-hidden=true]").length'),2);

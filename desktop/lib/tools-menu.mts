@@ -1,5 +1,5 @@
 import type { BrowserWindow, Menu, MenuItem, MenuItemConstructorOptions } from 'electron';
-import { OPEN_RELATIONSHIP_GRAPH_CHANNEL, OPEN_VOICE_CHANNEL } from '../shared/workspace-management.ts';
+import { OPEN_RELATIONSHIP_GRAPH_CHANNEL } from '../shared/workspace-management.ts';
 
 type ToolWindow = Pick<BrowserWindow, 'isDestroyed' | 'isMinimized' | 'restore' | 'show' | 'focus'> & {
   webContents: Pick<BrowserWindow['webContents'], 'isDestroyed' | 'isLoadingMainFrame' | 'send'> & {
@@ -24,7 +24,6 @@ export function createToolsMenu(items: Array<MenuItem | MenuItemConstructorOptio
   };
   const commands = [
     { id: 'cheshi-relationship-graph', label: 'Relationship Graph', channel: OPEN_RELATIONSHIP_GRAPH_CHANNEL },
-    { id: 'cheshi-voice', label: 'Voice', channel: OPEN_VOICE_CHANNEL },
   ];
   const submenu = options.buildMenu(commands.map(({ id, label, channel }) => ({
     id, label, enabled: Boolean(target()),

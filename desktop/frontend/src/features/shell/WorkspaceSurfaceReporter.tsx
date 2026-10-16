@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import type { WorkspaceNavigationState } from '../../../../shared/workspace-host';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { useChatsSnapshot } from '../agent-chats/useChatsSnapshot';
+import { WorkspaceStatusToasts } from './WorkspaceStatusToasts';
 import { connectWorkspaceRailBlur } from './workspaceRailBlur';
 
 /** Observe the existing shared Worker store without rerendering the whole shell. */
@@ -19,5 +20,5 @@ export function WorkspaceSurfaceReporter({ view, sidebarOpen, running, attention
   useEffect(() => {
     window.workspaceSurface?.report({ view, sidebarOpen, running: count, attention: attention || workerAttention });
   }, [view, sidebarOpen, count, attention, workerAttention]);
-  return null;
+  return <WorkspaceStatusToasts />;
 }

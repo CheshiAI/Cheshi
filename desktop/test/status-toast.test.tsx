@@ -52,7 +52,12 @@ function harness() {
   const component = exports.StatusToast;
   assert.ok(typeof component === 'function');
   return {
-    render(props: StatusToastProps): Element { refCursor = 0; return component(props); },
+    render(props: StatusToastProps): Element {
+      refCursor = 0;
+      const routed = component(props) as Element;
+      assert.ok(typeof routed.type === 'function');
+      return routed.type(routed.props);
+    },
     advance(ms: number) {
       now += ms;
       for (const [id, timer] of timers) if (timer.at <= now) { timers.delete(id); timer.callback(); }

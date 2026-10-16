@@ -1,8 +1,9 @@
 import { Gauge } from 'lucide-react';
-import { useCallback, useId, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useId, useRef, useState, type ComponentProps, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 
 import type { CodexAccountsSnapshot } from '../../../../shared/codex-accounts';
-import { LiquidGlassPanel } from '../../shared/ui';
+import { LiquidGlassPanel, RegionalBlur } from '../../shared/ui';
 import { AccountUsagePanel } from '../account/AccountUsagePanel';
 import { AddAccountDialog } from '../account/AddAccountDialog';
 import { AppUpdateIndicator } from '../updates/AppUpdateIndicator';
@@ -13,9 +14,10 @@ import styles from './WorkspaceStatusBar.module.css';
 interface WorkspaceStatusBarProps extends Pick<NonNullable<ComponentProps<typeof AccountUsagePanel>>,
   'selectionDisabledReason' | 'onBeforeSelect' | 'onSelectionFinished'> {
   onAccountInitialLoad: () => void;
+  blurSourceRef: RefObject<HTMLElement | null>;
 }
 
-export function WorkspaceStatusBar({ onAccountInitialLoad, ...accountProps }: WorkspaceStatusBarProps) {
+export function WorkspaceStatusBar({ onAccountInitialLoad, blurSourceRef, ...accountProps }: WorkspaceStatusBarProps) {
   const accountId = useId();
   const [accounts, setAccounts] = useState<CodexAccountsSnapshot | null>(null);
   const [accountError, setAccountError] = useState<string | null>(null);
@@ -67,12 +69,16 @@ export function WorkspaceStatusBar({ onAccountInitialLoad, ...accountProps }: Wo
         </> : !accountError && hasAuthenticatedAccount && <span className={styles.total}>· Total unavailable</span>}
       </button>
       {/* Keep account subscriptions and startup readiness alive while the popover is closed. */}
-      <LiquidGlassPanel id={accountId} popover="auto" role="dialog" aria-label="Account and usage details"
-        tabIndex={-1} className={`${styles.popover} ${styles.accountPopover}`} data-liquid-glass-backdrop="true"
-        onToggle={(event) => setAccountOpen(event.newState === 'open')}>
-        <AccountUsagePanel {...accountProps} onInitialLoad={onAccountInitialLoad} onStatusChange={receiveAccountStatus}
-          onAddAccount={openAddAccount} />
-      </LiquidGlassPanel>
+      <RegionalBlur sourceRef={blurSourceRef} sourceMode="replace">
+        {createPortal(<div id={accountId} popover="auto" role="dialog" aria-label="Account and usage details"
+          tabIndex={-1} className={styles.popover}
+          onToggle={(event) => setAccountOpen(event.newState === 'open')}>
+          <LiquidGlassPanel className={styles.accountPopover} data-liquid-glass-backdrop="true">
+            <AccountUsagePanel {...accountProps} onInitialLoad={onAccountInitialLoad} onStatusChange={receiveAccountStatus}
+              onAddAccount={openAddAccount} />
+          </LiquidGlassPanel>
+        </div>, document.body)}
+      </RegionalBlur>
       {addingAccount && <AddAccountDialog onClose={() => setAddingAccount(false)} restoreFocus={restoreAccountFocus} />}
     </footer>
   );

@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { useToolsMenu } from '../frontend/src/features/shell/useToolsMenu';
 
 test.each([
-  ['onRelationshipGraphRequested', 'codegraph'], ['onVoiceRequested', 'voice'],
+  ['onRelationshipGraphRequested', 'codegraph'],
 ] as const)('%s uses the latest workspace navigation and unsubscribes on unmount', async (event, view) => {
   const window = new Window();
   const globals = { window, document: window.document, navigator: window.navigator,

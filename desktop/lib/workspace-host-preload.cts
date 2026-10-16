@@ -4,6 +4,7 @@ import type { WorkspaceHostApi, WorkspaceSurfaceApi } from '../shared/workspace-
 
 export function createWorkspaceHostApi(ipc: IpcRenderer): WorkspaceHostApi {
   return {
+    showStatusToast: message => ipc.invoke(`${channel}:status-toast`, message),
     state: () => ipc.invoke(`${channel}:state`),
     activate: id => ipc.invoke(`${channel}:activate`, id),
     close: id => ipc.invoke(`${channel}:close`, id),
@@ -24,6 +25,11 @@ export function createWorkspaceHostApi(ipc: IpcRenderer): WorkspaceHostApi {
 }
 export function createWorkspaceSurfaceApi(ipc: IpcRenderer): WorkspaceSurfaceApi {
   return {
+    onStatusToast: listener => {
+      const receive = (_event: unknown, message: Parameters<typeof listener>[0]) => listener(message);
+      ipc.on(`${channel}:status-toast`, receive);
+      return () => { ipc.off(`${channel}:status-toast`, receive); };
+    },
     report: state => ipc.send(`${channel}:report`, state),
     onRailBlur: listener => {
       const receive = (_event: unknown, region: Parameters<typeof listener>[0]) => listener(region);

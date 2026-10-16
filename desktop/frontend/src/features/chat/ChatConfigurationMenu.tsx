@@ -79,12 +79,13 @@ export function ChatConfigurationMenuContent({ controller }: { controller: Confi
             </strong>
             <div className={styles.configurationOptions} role="listbox">
               {configurationMenuView === 'models' && models.map((model) => (
-                <NeumorphicButton variant="ghost"
+                <TooltipButton variant="ghost"
                   aria-selected={chatConfiguration?.model === model.model}
                   className={styles.configurationOption}
                   disabled={configurationLoading}
                   key={model.id}
                   role="option"
+                  title={[model.displayName, model.description].filter(Boolean).join('\n')}
                   type="button"
                   onClick={() => void selectComposerModel(model)}
                 >
@@ -93,7 +94,7 @@ export function ChatConfigurationMenuContent({ controller }: { controller: Confi
                     <span>{model.description}</span>
                   </span>
                   {chatConfiguration?.model === model.model && <Check aria-hidden="true" />}
-                </NeumorphicButton>
+                </TooltipButton>
               ))}
               {configurationMenuView === 'reasoning' && chatConfiguration?.supportedReasoningEfforts.map((option) => (
                 <TooltipButton variant="ghost"

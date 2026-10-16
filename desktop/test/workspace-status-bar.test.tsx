@@ -60,7 +60,8 @@ function harness(props: ComponentProps<typeof WorkspaceStatusBar>) {
     },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'lucide-react': { Gauge: 'Gauge' },
-    '../../shared/ui': { LiquidGlassPanel: 'LiquidGlassPanel' },
+    '../../shared/ui': { LiquidGlassPanel: 'LiquidGlassPanel', RegionalBlur: 'RegionalBlur' },
+    'react-dom': { createPortal: (children: unknown, target: unknown) => jsx('Portal', { children, target }) },
     '../account/AccountUsagePanel': { AccountUsagePanel: 'AccountUsagePanel' },
     '../account/AddAccountDialog': { AddAccountDialog: 'AddAccountDialog' },
     '../updates/AppUpdateIndicator': { AppUpdateIndicator: 'AppUpdateIndicator' },
@@ -75,7 +76,7 @@ function harness(props: ComponentProps<typeof WorkspaceStatusBar>) {
   } });
   const exports: Record<string, unknown> = {};
   vm.runInNewContext(compiled.outputText, { exports,
-    document: { getElementById: () => ({ hidePopover: () => { hiddenPopovers++; } }) },
+    document: { body: 'body', getElementById: () => ({ hidePopover: () => { hiddenPopovers++; } }) },
     require(name: string) {
     assert.ok(Object.hasOwn(modules, name), `Unexpected dependency: ${name}`);
     return modules[name];
@@ -92,7 +93,7 @@ function harness(props: ComponentProps<typeof WorkspaceStatusBar>) {
   };
 }
 
-const initialProps = { onAccountInitialLoad: () => {} };
+const initialProps = { onAccountInitialLoad: () => {}, blurSourceRef: { current: null } };
 const accountSnapshot: CodexAccountsSnapshot = {
   activeId: 'active', profiles: [{
     id: 'active', label: 'Personal', email: 'person@example.com', login: { state: 'signed_in', error: null },
@@ -105,7 +106,7 @@ const accountSnapshot: CodexAccountsSnapshot = {
 
 test('keeps account startup mounted with only the account popover in the status bar', () => {
   let accountReady = 0;
-  const tree = harness({ onAccountInitialLoad: () => { accountReady++; } }).render();
+  const tree = harness({ ...initialProps, onAccountInitialLoad: () => { accountReady++; } }).render();
   const footerItems = elements(tree).map(element => element.type);
   expect(footerItems).not.toContain('WorkspaceGitBranch');
   expect(elements(tree.props.children)[0]?.type).toBe('AppUpdateIndicator');
@@ -247,4 +248,17 @@ test('opens account registration outside the dismissed usage popover and restore
   expect(focused).toBe(true);
   invoke(dialog, 'onClose');
   expect(elements(app.render()).some(element => element.type === 'AddAccountDialog')).toBe(false);
+});
+
+
+test('account popover uses the supplied scene and portals its foreground outside that source', () => {
+  const tree = harness(initialProps).render();
+  const blur = find(tree, element => element.type === 'RegionalBlur');
+  expect(blur.props.sourceRef).toBe(initialProps.blurSourceRef);
+  expect(blur.props.sourceMode).toBe('replace');
+  const portal = find(blur, element => element.type === 'Portal');
+  expect(portal.props.target).toBe('body');
+  const panel = find(portal, element => element.type === 'LiquidGlassPanel');
+  expect(panel.props['data-liquid-glass-backdrop']).toBe('true');
+  expect(find(portal, element => element.props.popover === 'auto').props.role).toBe('dialog');
 });

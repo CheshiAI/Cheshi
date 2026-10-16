@@ -17,6 +17,7 @@ function createHost() {
   let railListener: ((event: WorkspaceRailEvent) => void) | undefined;
   const publish = (next: WorkspaceHostState) => { state = next; listener?.(next); };
   const api: WorkspaceHostApi = {
+    showStatusToast: async () => false,
     state: async () => state,
     onState: next => { listener = next; return () => { listener = undefined; }; },
     activate: async id => { publish({ ...state, activeId: id }); },

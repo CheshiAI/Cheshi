@@ -172,6 +172,23 @@ test('Explorer connects sibling roots, opens identical filenames separately and 
     const pluginRoot = document.querySelector<HTMLButtonElement>('[aria-label="Project cheshi-flash"] button[aria-expanded]')!;
     await act(async () => pluginRoot.click());
     expect(document.querySelectorAll('button[role="treeitem"]')).toHaveLength(5);
+    await act(async () => projectRoot(primary).click());
+    await act(async () => pluginRoot.click());
+    await act(async () => pluginRoot.click());
+    const viewport = document.querySelector<HTMLElement>('[role="region"][aria-label="Workspace projects"]')!;
+    await act(async () => viewport.dispatchEvent(new window.WheelEvent('wheel', {
+      deltaY: -80, bubbles: true, cancelable: true,
+    }) as unknown as Event));
+    const status = document.querySelector('[data-project-refresh-status] [role="status"]')!;
+    expect(status.textContent).toBe('Release to refresh');
+    expect(status.closest('section[aria-label^="Project "]')).toBeNull();
+    expect(status.parentElement?.nextElementSibling?.getAttribute('aria-label')).toBe('Project cheshi');
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 220)); });
+    expect(status.textContent).toBe('Refreshing…');
+    expect(projectRoot(primary).getAttribute('aria-expanded')).toBe('false');
+    expect(pluginRoot.getAttribute('aria-expanded')).toBe('false');
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 650)); });
+    expect(document.querySelector('[data-project-refresh-status] [role="status"]') === null).toBe(true);
     const dismissedFilter = await openProjectMenu(plugin.name);
     await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }) as unknown as Event));
     expectBlurRestored(dismissedFilter);
@@ -199,4 +216,4 @@ test('Explorer connects sibling roots, opens identical filenames separately and 
       if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key);
     }
   }
-});
+}, 10_000);

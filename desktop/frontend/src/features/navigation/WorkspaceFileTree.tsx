@@ -1,5 +1,6 @@
 import { Folder, FolderOpen, FolderPlus, FolderTree, LayersPlus, FilePlus2, List, RefreshCw, Unlink } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { cheshiDesktop, type CheshiDesktopApi, type CheshiWorkspaceEntry, type WorkspaceEntryMutation } from '../../cheshiDesktop';
 import { SidebarPanelHeader, Tooltip } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
@@ -24,9 +25,10 @@ interface WorkspaceFileTreeProps {
   onOpenLocalHistory?: (path: string) => void;
 }
 
-function ProjectTree({ project, onRemove, busy, active, onActivate, viewport, ...props }: WorkspaceFileTreeProps & {
+function ProjectTree({ project, onRemove, busy, active, onActivate, viewport, refreshSlot, ...props }: WorkspaceFileTreeProps & {
   project: WorkspaceProject; onRemove(): void; busy: boolean; active: boolean; onActivate(): void;
   viewport: HTMLDivElement | null;
+  refreshSlot: HTMLDivElement | null;
 }) {
   const rootPath = projectFilePath(project, '.');
   // Include the whole scene when the project menu extends beyond the sidebar.
@@ -41,7 +43,7 @@ function ProjectTree({ project, onRemove, busy, active, onActivate, viewport, ..
   const { viewportRef } = refresh;
   useEffect(() => { viewportRef(active ? viewport : null); }, [active, viewport, viewportRef]);
   return <section className={styles.project} aria-label={`Project ${project.name}`}>
-    {active && <PullToRefreshStatus {...refresh} />}
+    {active && refreshSlot && createPortal(<PullToRefreshStatus {...refresh} />, refreshSlot)}
     <div className={styles.rootRow} data-active={active}>
       <Tooltip content={`${project.name}\n${project.rootPath}`}>{tooltip => <button {...tooltip} className="workspace-file-tree-root" type="button"
         aria-expanded={rootExpanded} onClick={() => { onActivate(); controller.toggleDirectory(rootPath); }}
@@ -77,6 +79,7 @@ export const WorkspaceFileTree = memo(function WorkspaceFileTree({ api = cheshiD
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState('primary');
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  const [refreshSlot, setRefreshSlot] = useState<HTMLDivElement | null>(null);
   const activeId = projects.some(project => project.id === selected) ? selected : 'primary';
   const [error, setError] = useState<string | null>(null);
   const run = async (operation: () => Promise<unknown>) => {
@@ -94,7 +97,8 @@ export const WorkspaceFileTree = memo(function WorkspaceFileTree({ api = cheshiD
     } />
     {(error || loadError) && <p role="alert" className="workspace-file-tree-status error">{error || loadError}</p>}
     <OverlayScrollArea className={styles.projects} label="Workspace projects" viewportRef={setViewport}>
-      {projects.map(project => <ProjectTree key={project.id} {...props} api={api} project={project} busy={busy} viewport={viewport} active={activeId === project.id} onActivate={() => setSelected(project.id)}
+      <div ref={setRefreshSlot} data-project-refresh-status="" />
+      {projects.map(project => <ProjectTree key={project.id} {...props} api={api} project={project} busy={busy} viewport={viewport} refreshSlot={refreshSlot} active={activeId === project.id} onActivate={() => setSelected(project.id)}
         onRemove={() => { void run(() => api!.workspaceProjects!.remove(project.id)); }} />)}
     </OverlayScrollArea>
   </section>;

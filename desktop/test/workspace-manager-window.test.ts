@@ -205,7 +205,7 @@ test('built manager preload exposes management and update methods and decodes wo
     'deleteWorkspace', 'getAppUpdate', 'getCodexLogin', 'getGitHubLogin', 'getToolStatus',
     'getUpdateResume', 'installAppUpdate', 'list', 'listGitHubRepositories', 'listWorktrees',
     'onAppUpdate', 'onAppUpdateCommitted', 'onAppUpdatePreparationCancelled',
-    'onHelpRequested', 'onPrepareAppUpdate', 'onRelationshipGraphRequested', 'onVoiceRequested',
+    'onHelpRequested', 'onPrepareAppUpdate', 'onRelationshipGraphRequested',
     'open', 'openAppRelease', 'openCurrent', 'openGitHubLoginBrowser', 'openManager',
     'removeWorkspace', 'saveUpdateResume', 'startCodexLogin', 'startGitHubLogin',
   ]);

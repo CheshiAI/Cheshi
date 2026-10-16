@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { expect, test } from 'bun:test';
 import ts from 'typescript';
+import { ChatImportPreview } from '../frontend/src/features/chat/ChatImportPreview';
 import type { ChatQueueController } from '../frontend/src/features/chat/ChatMessageQueue';
 
 interface Element { type: unknown; props: Record<string, unknown> }
@@ -23,6 +25,7 @@ function harness() {
     '../../shared/ui': { LiquidGlassPanel: 'section', NeumorphicButton: 'button', NeumorphicSurface: 'span', RegionalBlur: 'regional-blur' },
     '../../shared/ui/contextMenuInteractions': { focusAdjacentMenuItem() {}, useContextMenuInteractions() {} },
     '../../shared/useHelpLanguage': { useHelpLanguage: () => ['ko'] },
+    './ChatImportPreview': { ChatImportPreview },
     './ChatMessageQueue.module.css': { default: {} },
   };
   const source = readFileSync(new URL('../frontend/src/features/chat/ChatMessageQueue.tsx', import.meta.url), 'utf8');
@@ -156,4 +159,31 @@ test('Escape closes the queued-message menu and consumes the event before chat c
   expect(stopped).toBe(true);
   expect(app.render().some(element => element.props.role === 'menu')).toBe(false);
   expect(app.calls).toEqual([]);
+});
+
+
+test('queued drafts render known attachment references as chips without changing the payload', () => {
+  const app = harness();
+  const input = app.controller.messageQueue.entries[0]!.input;
+  input.draft = '[import 2][import 1] Check [import 3]';
+  input.attachments = [
+    { kind: 'image', name: 'Screenshot.png', path: '/tmp/screenshot.png', importNumber: 1 },
+    { kind: 'file', name: 'Notes.txt', path: '/tmp/notes.txt', importNumber: 2 },
+  ];
+  const chips = app.render().filter(element => element.props['data-chat-import-number'] !== undefined);
+  expect(chips.map(chip => chip.props['aria-label'])).toEqual(['import 2: Notes.txt', 'import 1: Screenshot.png']);
+  expect(input.draft).toBe('[import 2][import 1] Check [import 3]');
+  expect(input.attachments).toHaveLength(2);
+});
+
+
+test('preview preserves unresolved labels and literal paths containing import-like text', () => {
+  const attachments = [{ kind: 'file' as const, name: 'Notes.txt', path: '/tmp/notes.txt', importNumber: 1 }];
+  const html = renderToStaticMarkup(<ChatImportPreview
+    text={'[import 9] "/tmp/[import 1].txt" [import 1]'} attachments={attachments} />);
+  expect(html).toContain('[import 9]');
+  expect(html).toContain('/tmp/[import 1].txt');
+  expect(html.match(/data-chat-import-number=/g)).toHaveLength(1);
+  expect(renderToStaticMarkup(<ChatImportPreview text="plain text [import 1]" attachments={[]} />))
+    .toBe('plain text [import 1]');
 });

@@ -7,6 +7,6 @@ export function PullToRefreshStatus({ refreshing, pullHeight, ready }: {
   if (!refreshing && pullHeight <= 0) return null;
   return <div className={styles.status} role="status" style={{ height: pullHeight }}>
     <LoadingIndicator />
-    <span>{refreshing || ready ? 'Release to refresh' : 'Pull to refresh'}</span>
+    <span>{refreshing ? 'Refreshing…' : ready ? 'Release to refresh' : 'Pull to refresh'}</span>
   </div>;
 }

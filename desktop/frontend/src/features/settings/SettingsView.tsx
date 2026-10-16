@@ -1,4 +1,4 @@
-import { Bot, Bell, Clock, Info, Mic, Palette, Settings } from 'lucide-react';
+import { Bot, Bell, Clock, Info, Palette, Settings } from 'lucide-react';
 import { useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { SettingsApi } from '../../../../shared/settings';
@@ -10,16 +10,13 @@ import { AppearanceSettings } from './AppearanceSettings';
 import { AboutSettings } from './AboutSettings';
 import { NotificationSettings } from './NotificationSettings';
 import { SchedulerSettings } from './SchedulerSettings';
-import { VoiceSettings } from './VoiceSettings';
-import type { VoiceRecordingsApi } from '../../../../shared/voice-recordings';
 
-type SettingsCategory = 'agents' | 'appearance' | 'notifications' | 'scheduler' | 'voice' | 'about';
+type SettingsCategory = 'agents' | 'appearance' | 'notifications' | 'scheduler' | 'about';
 
-export function SettingsView({ api = cheshiDesktop?.settings, contextId, onOpenChat, voiceApi, platform, initialCategory = 'agents' }: {
-  api?: SettingsApi; contextId?: string; onOpenChat?(thread: string): void; voiceApi?: VoiceRecordingsApi; platform?: string;
-  initialCategory?: SettingsCategory;
+export function SettingsView({ api = cheshiDesktop?.settings, contextId, onOpenChat }: {
+  api?: SettingsApi; contextId?: string; onOpenChat?(thread: string): void;
 }) {
-  const [category, setCategory] = useState<SettingsCategory>(initialCategory);
+  const [category, setCategory] = useState<SettingsCategory>('agents');
   return <main className={styles.workspace} aria-label="Settings">
     <TwoTierHeader className={styles.header} style={draggableWindowRegionStyle} primary={<>
       <div className={styles.heading}>
@@ -35,10 +32,9 @@ export function SettingsView({ api = cheshiDesktop?.settings, contextId, onOpenC
         <button type="button" className={styles.item} aria-current={category === 'appearance' ? 'page' : undefined} onClick={() => setCategory('appearance')}><Palette aria-hidden="true" />Appearance</button>
         <button type="button" className={styles.item} aria-current={category === 'notifications' ? 'page' : undefined} onClick={() => setCategory('notifications')}><Bell aria-hidden="true" />Notifications</button>
         <button type="button" className={styles.item} aria-current={category === 'scheduler' ? 'page' : undefined} onClick={() => setCategory('scheduler')}><Clock aria-hidden="true" />Scheduler</button>
-        <button type="button" className={styles.item} aria-current={category === 'voice' ? 'page' : undefined} onClick={() => setCategory('voice')}><Mic aria-hidden="true" />Voice</button>
         <button type="button" className={styles.item} aria-current={category === 'about' ? 'page' : undefined} onClick={() => setCategory('about')}><Info aria-hidden="true" />About</button>
       </LiquidGlassPanel>
-      {category === 'agents' ? <AgentSettings api={api} /> : category === 'scheduler' ? <SchedulerSettings /> : category === 'voice' ? <VoiceSettings api={voiceApi} platform={platform} /> : category === 'notifications' ? <NotificationSettings contextId={contextId} onStarted={onOpenChat} /> : category === 'about' ? <AboutSettings /> : <AppearanceSettings />}
+      {category === 'agents' ? <AgentSettings api={api} /> : category === 'scheduler' ? <SchedulerSettings /> : category === 'notifications' ? <NotificationSettings contextId={contextId} onStarted={onOpenChat} /> : category === 'about' ? <AboutSettings /> : <AppearanceSettings />}
     </div>
   </main>;
 }

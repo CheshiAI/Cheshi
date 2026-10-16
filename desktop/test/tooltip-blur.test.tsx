@@ -78,6 +78,53 @@ test('automatic tooltips share one filter per scene, include portal backgrounds 
   });
 });
 
+test.each([
+  { side: 'left', submenuX: 52, tooltipX: 220 },
+  { side: 'right', submenuX: 508, tooltipX: 420 },
+])('tooltip blur preserves overflowing $side submenus and restores their filters', async ({ submenuX, tooltipX }) => {
+  await withScene(async s => {
+    const app = s.element();
+    const anchor = s.element(s.document.body, [300, 100, 200, 120]);
+    anchor.style.position = 'fixed';
+    const menu = s.element(anchor, [300, 100, 200, 120]);
+    menu.setAttribute('role', 'menu');
+    const tooltip = s.tooltip(s.document.body, tooltipX);
+
+    // Submenus can mount while a tooltip is already visible and extend above
+    // and beside the root menu, beyond the filter's 48px sampling padding.
+    const submenuAnchor = s.element(anchor, [submenuX, 20, 240, 200]);
+    submenuAnchor.style.position = 'absolute';
+    const submenu = s.element(submenuAnchor, [submenuX, 20, 240, 200]);
+    submenu.dataset.liquidGlassBackdrop = 'true';
+    submenu.style.filter = 'brightness(0.9)';
+    const options = s.element(submenu, [submenuX, 40, 240, 180]);
+    options.setAttribute('role', 'listbox');
+    await s.flush();
+
+    // Filtering either positioning wrapper would clip its overflowing children.
+    expect(anchor.style.filter).toBe('');
+    expect(submenuAnchor.style.filter).toBe('');
+    expect(app.style.filter).toContain('url(');
+    expect(menu.style.filter).toContain('url(');
+    expect(submenu.style.filter).toContain('brightness(0.9)');
+    expect(submenu.style.filter).toContain('url(');
+    expect(options.style.filter).toBe('');
+    expect(s.filterFor(menu)).not.toBe(s.filterFor(submenu));
+    expect(s.filterFor(submenu).getAttribute('width')).toBe('336');
+    expect(s.filterFor(submenu).getAttribute('height')).toBe('296');
+    expect(tooltip.panel.style.filter).toBe('');
+
+    submenuAnchor.remove();
+    await s.flush();
+    expect(submenu.style.filter).toBe('brightness(0.9)');
+    expect(menu.style.filter).toContain('url(');
+    tooltip.close();
+    expect(menu.style.filter).toBe('');
+    expect(app.style.filter).toBe('');
+    expect(s.document.querySelector('filter')).toBeNull();
+  });
+});
+
 test('tooltips inside a dialog blur its content without filtering their own foreground or replacing the modal filter', async () => {
   await withScene(s => {
     const app = s.element();

@@ -24,7 +24,7 @@ export function contentSecurityPolicy(html: string): string {
     `script-src ${scriptSources}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https: http:",
-    "media-src 'self' blob: cheshi-voice:",
+    "media-src 'self' blob:",
     "font-src 'self' data:",
     "connect-src 'self' ws://127.0.0.1:*",
     "worker-src 'self' blob:",

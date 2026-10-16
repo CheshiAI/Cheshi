@@ -3,7 +3,14 @@ import { createRegionalBlurFilter } from './regionalBlurFilter';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const PORTAL = '[data-tooltip-blur-portal]';
+const POPUP_SURFACE = '[role="menu"], [role="listbox"], [data-liquid-glass-backdrop="true"]';
 const managers = new WeakMap<Document, ReturnType<typeof createTooltipBlur>>();
+
+function isPopupAnchor(element: Element) {
+  if (element.matches(POPUP_SURFACE) || !element.querySelector(POPUP_SURFACE)) return false;
+  const position = element.ownerDocument.defaultView?.getComputedStyle(element).position;
+  return position === 'fixed' || position === 'absolute';
+}
 
 /** Exclude foreground portals, descending into dialogs so top-layer tooltips stay sharp. */
 function backgroundSources(document: Document) {
@@ -11,7 +18,9 @@ function backgroundSources(document: Document) {
   const visit = (element: Element) => {
     if (element.namespaceURI !== 'http://www.w3.org/1999/xhtml'
       || /^(SCRIPT|STYLE|LINK|TEMPLATE)$/.test(element.tagName) || element.matches(PORTAL)) return;
-    if (element.querySelector(PORTAL)) {
+    // A popup anchor's box excludes its positioned submenus. Filter each panel
+    // separately so the SVG filter region cannot clip those overflowing menus.
+    if (element.querySelector(PORTAL) || isPopupAnchor(element)) {
       for (const child of element.children) visit(child);
     } else sources.push(element as HTMLElement);
   };

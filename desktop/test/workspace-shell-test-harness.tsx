@@ -136,7 +136,6 @@ export function shellHarness(initialHistoryLoading = false, preference: { panel:
     '../scheduler/SchedulerNotifications': ['SchedulerNotifications'],
     '../settings/DiscordSetupConfirmation': ['DiscordSetupConfirmation'],
     '../calendar/CalendarView': ['CalendarView'],
-    '../voice/VoiceView': ['VoiceView'],
     './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],
     '../editor/LocalHistoryPage': ['LocalHistoryPage'], './WorkspaceEditorSplit': ['WorkspaceEditorSplit'],
     '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'], '../sticky-notes/MemoSidebar': ['MemoSidebar'],

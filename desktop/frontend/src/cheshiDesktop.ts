@@ -858,7 +858,6 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   agentChats?: import('../../shared/agent-chats').AgentChatsApi;
   flashMemory?: import('../../shared/flash-memory').FlashMemoryApi;
   agentVoice?: import('../../shared/agent-voice').AgentVoiceApi;
-  voiceRecordings?: import('../../shared/voice-recordings').VoiceRecordingsApi;
   agentRegistry?: import('../../shared/agent-registry').AgentRegistryApi;
   importCodexChatAttachments: (files: (File | string)[]) => Promise<ChatTransferItem<CodexChatAttachment>[]>;
   getCodexChatAttachmentImage?: (attachmentPath: string) => Promise<string | null>;

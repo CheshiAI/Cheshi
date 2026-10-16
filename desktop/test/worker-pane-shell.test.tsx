@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { ComponentProps } from 'react';
-import { props, shellHarness } from './workspace-shell-test-harness';
+import { elements, props, shellHarness } from './workspace-shell-test-harness';
 import * as layoutModel from '../frontend/src/features/shell/workspaceLayoutModel';
 import * as splitModel from '../frontend/src/shared/ui/splitPaneModel';
 import type { WorkspaceEditorSplit } from '../frontend/src/features/shell/WorkspaceEditorSplit';
@@ -8,6 +8,18 @@ import type { SidebarRail } from '../frontend/src/features/navigation/SidebarRai
 import type { Sidebar } from '../frontend/src/features/navigation/Sidebar';
 import type { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
 import type { ChatWorkspace } from '../frontend/src/features/chat/ChatWorkspace';
+
+test('chat menu blur uses the layout containing both the session sidebar and workspace', () => {
+  const app = shellHarness();
+  const tree = app.render();
+  const layout = elements(tree).find(element => element.type === 'div'
+    && (element.props as ComponentProps<'div'>).className?.includes('app-layout'))!;
+  const layoutProps = layout.props as ComponentProps<'div'>;
+  const chat = props<ComponentProps<typeof ChatWorkspace>>(layoutProps.children, 'ChatWorkspace');
+  expect(props<ComponentProps<typeof Sidebar>>(layoutProps.children, 'Sidebar').chatPanel).toBeDefined();
+  expect(chat.menuBlurSourceRef).toBeDefined();
+  expect(chat.menuBlurSourceRef).toBe(layoutProps.ref);
+});
 
 test.each(['chat', 'chats'] as const)('Codex and Worker coexist when opening a split from %s and survive rail navigation and closing', view => {
   const app = shellHarness();

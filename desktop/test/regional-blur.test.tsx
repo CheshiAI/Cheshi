@@ -10,6 +10,8 @@ import { Tooltip } from '../frontend/src/shared/ui/Tooltip';
 import { StatusToast } from '../frontend/src/shared/ui/StatusToast';
 import { ChatUserInputPrompt } from '../frontend/src/features/chat/ChatUserInputPrompt';
 import { regionalBlurMask } from '../frontend/src/shared/ui/regionalBlurGeometry';
+import { createRegionalBlurController } from '../frontend/src/shared/ui/regionalBlurController';
+import { createRegionalBlurFilter } from '../frontend/src/shared/ui/regionalBlurFilter';
 import { ChatConfigurationMenu } from '../frontend/src/features/chat/ChatConfigurationMenu';
 import { ChatWorkspaceBlurContext } from '../frontend/src/features/chat/ChatWorkspaceBlurContext';
 import { connectWorkspaceRailBlur } from '../frontend/src/features/shell/workspaceRailBlur';
@@ -23,7 +25,10 @@ mock.module('../frontend/src/shared/ui/StatusToast.module.css', () => ({
     title: 'toast-title', description: 'toast-description', close: 'toast-close' },
 }));
 
-function ConfigurationFixture({ menu, split, workspace }: { menu: boolean; split: boolean; workspace: boolean }) {
+function ConfigurationFixture({ menu, split, workspace, shell = false }: {
+  menu: boolean; split: boolean; workspace: boolean; shell?: boolean;
+}) {
+  const shellRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLElement>(null);
   const timelineRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -36,7 +41,9 @@ function ConfigurationFixture({ menu, split, workspace }: { menu: boolean; split
     selectComposerModel: async () => {}, selectComposerReasoningEffort: async () => {},
     selectComposerServiceTier: async () => {}, setConfigurationMenuView: () => {},
   };
-  return <ChatWorkspaceBlurContext value={workspace ? workspaceRef : null}>
+  return <ChatWorkspaceBlurContext value={shell ? shellRef : workspace ? workspaceRef : null}>
+    <div ref={shellRef} data-shell="true" data-box="0,50,1100,500" style={{ filter: 'brightness(1)' }}>
+    {shell && <aside data-session-sidebar="true" data-box="0,50,100,500">Session title · 27m</aside>}
     <main ref={workspaceRef} data-workspace="true" data-box="100,50,1000,500" style={{ filter: 'brightness(1)' }}>
       {split && <><section data-sibling="true" data-box="100,50,500,500">Other session</section>
         <div role="separator" data-box="595,50,5,500" /></>}
@@ -51,18 +58,20 @@ function ConfigurationFixture({ menu, split, workspace }: { menu: boolean; split
         </div>
       </RegionalBlur>
     </main>
+    </div>
   </ChatWorkspaceBlurContext>;
 }
 
 function Fixture({ portal, thread = 'one', menu = true, composer = true, nested = false, layered = false, select = false, fullSceneSelect = false, mcp = false, tooltip = false, toast = false, configuration }: {
   portal: HTMLElement; thread?: string; menu?: boolean; composer?: boolean; nested?: boolean; layered?: boolean; select?: boolean; fullSceneSelect?: boolean; mcp?: boolean; tooltip?: boolean;
   toast?: boolean;
-  configuration?: 'single' | 'split' | 'standalone';
+  configuration?: 'single' | 'split' | 'standalone' | 'sidebar';
 }) {
   const sourceRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const fullSceneRef = useRef<HTMLDivElement>(null);
-  if (configuration) return <ConfigurationFixture menu={menu} split={configuration === 'split'} workspace={configuration !== 'standalone'} />;
+  if (configuration) return <ConfigurationFixture menu={menu} split={configuration === 'split'}
+    workspace={configuration !== 'standalone'} shell={configuration === 'sidebar'} />;
   const panelStyle = { display: 'block', visibility: 'visible', opacity: 1, borderRadius: '16px' } as const;
   const popup = createPortal(<div><LiquidGlassPanel role="menu"
     data-box={layered ? '350,470,200,60' : '350,250,200,180'} style={panelStyle}>
@@ -175,6 +184,89 @@ function mask(document: Document) {
   return decodeURIComponent(document.querySelector('feImage')?.getAttribute('href')?.split(',').slice(1).join(',') ?? '');
 }
 
+function attachBlur(document: Document, source: HTMLElement, preserveFilter: boolean) {
+  const panel = document.createElement('aside');
+  panel.dataset.box = '400,450,360,100';
+  panel.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:12px';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  svg.append(defs); document.body.append(svg, panel);
+  const controller = createRegionalBlurController({ preserveFilter });
+  const effect = createRegionalBlurFilter(defs);
+  const disconnect = controller.connect(source, effect.filter, effect.mask);
+  const release = controller.register(panel);
+  let disposed = false;
+  return { panel, id: effect.filter.id, dispose() {
+    if (disposed) return;
+    disposed = true;
+    release(); disconnect(); effect.dispose(); svg.remove(); panel.remove();
+  } };
+}
+
+for (const firstPreserves of [false, true]) {
+  for (const closeFirst of [false, true]) {
+    test(`shared source keeps the surviving blur (preserve first: ${firstPreserves}, close first: ${closeFirst})`, async () => {
+      await withDOM(async h => {
+        const source = h.document.getElementById('app')!;
+        source.dataset.box = '0,0,800,600';
+        source.style.setProperty('filter', 'brightness(1)', 'important');
+        source.setAttribute('data-regional-blur-source', 'original');
+        const first = attachBlur(h.document, source, firstPreserves);
+        const second = attachBlur(h.document, source, !firstPreserves);
+        const closed = closeFirst ? first : second, remaining = closeFirst ? second : first;
+        try {
+          expect(source.style.filter).toContain(first.id);
+          expect(source.style.filter).toContain(second.id);
+          closed.dispose();
+          h.invalidate(); await h.flush();
+          expect(source.style.filter).toContain(remaining.id);
+          expect(source.style.filter).not.toContain(closed.id);
+          expect(source.getAttribute('data-regional-blur-source')).toBe(remaining.id);
+          expect(remaining.panel.getAttribute('data-regional-blur-surface')).toBe('true');
+          remaining.dispose();
+          h.invalidate(); await h.flush();
+          expect(source.style.filter).toBe('brightness(1)');
+          expect(source.style.getPropertyPriority('filter')).toBe('important');
+          expect(source.getAttribute('data-regional-blur-source')).toBe('original');
+          expect(h.document.querySelectorAll('filter')).toHaveLength(0);
+          expect(h.observerCount()).toBe(0);
+        } finally { first.dispose(); second.dispose(); }
+      });
+    });
+  }
+}
+
+test('hiding and replacing an overlapping blur keeps the unchanged toast mask active', async () => {
+  await withDOM(async h => {
+    const source = h.document.getElementById('app')!;
+    source.dataset.box = '0,0,800,600';
+    const toast = attachBlur(h.document, source, false);
+    let tooltip = attachBlur(h.document, source, true);
+    try {
+      for (let i = 0; i < 3; i++) {
+        tooltip.panel.hidden = true;
+        h.invalidate(); await h.flush();
+        expect(source.style.filter).toBe(`url("#${toast.id}")`);
+        tooltip.panel.hidden = false;
+        h.invalidate(); await h.flush();
+        expect(source.style.filter).toContain(toast.id);
+        expect(source.style.filter).toContain(tooltip.id);
+        const oldId = tooltip.id;
+        tooltip.dispose();
+        tooltip = attachBlur(h.document, source, true);
+        toast.panel.textContent = `Updated notification ${i}`;
+        h.invalidate(); await h.flush();
+        expect(source.style.filter).toContain(toast.id);
+        expect(source.style.filter).toContain(tooltip.id);
+        expect(source.style.filter).not.toContain(oldId);
+      }
+    } finally { toast.dispose(); tooltip.dispose(); }
+    expect(source.style.filter).toBe('');
+    expect(source.hasAttribute('data-regional-blur-source')).toBe(false);
+    expect(h.observerCount()).toBe(0);
+  });
+});
+
 test('native rail regions blur live workspace pixels, follow expansion, and restore filters on dismissal', async () => {
   await withDOM(async h => {
     const app = h.document.getElementById('app')!;
@@ -183,6 +275,7 @@ test('native rail regions blur live workspace pixels, follow expansion, and rest
     const originalFilterCount = h.document.querySelectorAll('filter').length;
     let listener: ((region: WorkspaceRailBlur | null) => void) | undefined;
     const api: WorkspaceSurfaceApi = {
+      onStatusToast: () => () => {},
       report: () => {}, onCommand: () => () => {},
       onRailBlur: next => { listener = next; return () => { listener = undefined; }; },
     };
@@ -546,6 +639,44 @@ for (const configuration of ['single', 'split'] as const) {
     });
   });
 }
+
+test('configuration menus blur session-list pixels outside the chat workspace and restore on close', async () => {
+  await withDOM(async h => {
+    await h.render({ configuration: 'sidebar', menu: false });
+    const shell = h.document.querySelector<HTMLElement>('[data-shell]')!;
+    const sidebar = h.document.querySelector<HTMLElement>('[data-session-sidebar]')!;
+    const workspace = h.document.querySelector<HTMLElement>('[data-workspace]')!;
+    const timeline = h.document.querySelector<HTMLElement>('[data-source]')!;
+    const inheritedMask = sourceMask(h.document, timeline);
+    await h.render({ configuration: 'sidebar' });
+    const { menu, submenu } = configurationPanels(h);
+    submenu.dataset.box = '50,250,340,280';
+    h.invalidate(); await h.flush();
+
+    expect(shell.contains(sidebar)).toBe(true);
+    expect(workspace.contains(sidebar)).toBe(false);
+    expect(shell.contains(submenu)).toBe(false);
+    expect(shell.style.filter).toContain('url(');
+    expect(workspace.style.filter).toBe('brightness(1)');
+    expect(sidebar.style.filter).toBe('');
+    expect(menu.style.filter).toBe('');
+    expect(submenu.style.filter).toBe('');
+    const image = h.document.getElementById(shell.getAttribute('data-regional-blur-source')!)!.querySelector('feImage')!;
+    // The mask starts inside the sidebar (x < 100), not at the chat boundary.
+    expect(image.getAttribute('x')).toBe('50');
+    expect(sourceMask(h.document, shell)).toContain('M66 200');
+    expect(sourceMask(h.document, shell).match(/<path /g)?.length).toBe(2);
+    expect(sourceMask(h.document, timeline)).toBe(inheritedMask);
+
+    await h.render({ configuration: 'sidebar', menu: false });
+    expect(shell.style.filter).toBe('brightness(1)');
+    expect(shell.hasAttribute('data-regional-blur-source')).toBe(false);
+    expect(submenu.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(h.document.querySelector('textarea')?.value).toBe('Keep this draft');
+    await h.unmount();
+    expect(h.observerCount()).toBe(0);
+  });
+});
 
 test('a standalone configuration menu retains its timeline and composer fallback', async () => {
   await withDOM(async h => {
