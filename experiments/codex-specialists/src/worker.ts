@@ -1,4 +1,5 @@
 import { WorkerFlashQueue } from './flash-queue.ts';
+import { readHostExchange } from './host-tool-artifacts.ts';
 import { WorkerFlashHistory, FlashHistoryChanged } from './flash-history.ts';
 import { WorkerCustomToolQueue } from './custom-tool-queue.ts';
 import { installHomieSkills } from './homie-pack-skills.ts';
@@ -102,9 +103,7 @@ const server = Bun.serve({
         agent.resumeWorkspace(); return Response.json({ resumed: true });
       }
       if (path === '/custom-tools/exchange' && request.method === 'POST') {
-        const body = await request.text();
-        if (body.length > 2 * 1024 * 1024) throw new TypeError('Request is too large.');
-        return Response.json(customTools.exchange(JSON.parse(body)));
+        return Response.json(customTools.exchange(await readHostExchange(request)));
       }
       if (flash && request.method === 'POST' && ['/flash/exchange', '/flash/history'].includes(path)) {
         const body = await request.text();

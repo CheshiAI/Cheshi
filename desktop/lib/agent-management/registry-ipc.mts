@@ -1,4 +1,5 @@
 import { parseToolCredentialRequest, parseToolTestRequest, type ToolCredentialRequest, type ToolTestRequest } from '../../shared/homie-tools.ts';
+import { parseHostToolRequest, type HostToolRequest, type HostToolStatus } from '../../shared/host-tools.ts';
 import { createHash } from 'node:crypto';
 import { agentRecord } from '../../shared/agent-management.ts';
 import { installHomiePack, installedHomiePacks, writeHomiePack } from './homie-packs.mts';
@@ -32,6 +33,7 @@ export function registerAgentRegistryIpc(options: {
   prepareCreation?(agent: import('../../shared/agent-registry.ts').SpecialistAgent): Promise<void>;
   toolCredential?(input: ToolCredentialRequest): Promise<boolean>;
   testTool?(input: ToolTestRequest): Promise<unknown>;
+  hostTool?(input: HostToolRequest): Promise<HostToolStatus>;
   exportPackagePath?: (name: string) => Promise<string | null>;
   selectPackage?: () => Promise<string | null>;
 }) {
@@ -61,6 +63,10 @@ export function registerAgentRegistryIpc(options: {
   handle(AGENT_REGISTRY_CHANNELS.toolCredential, value => {
     if (!options.toolCredential) throw new Error('Tool credentials are unavailable.');
     return options.toolCredential(parseToolCredentialRequest(value));
+  });
+  handle(AGENT_REGISTRY_CHANNELS.hostTool, value => {
+    if (!options.hostTool) throw new Error('Host tools are unavailable.');
+    return options.hostTool(parseHostToolRequest(value));
   });
   handle(AGENT_REGISTRY_CHANNELS.testTool, value => {
     if (!options.testTool) throw new Error('Tool execution is unavailable.');

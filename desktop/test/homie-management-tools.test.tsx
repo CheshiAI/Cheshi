@@ -9,6 +9,7 @@ import type { AgentRoom, ChatsRequest } from '../shared/agent-chats';
 import type { HomieSourceState } from '../shared/homie-source';
 import { registryDeferred, specialistAgent } from './agent-registry-fixtures';
 import { withDOM } from './agent-chats-test-dom';
+import { createHomiePack } from '../frontend/src/features/agents/homiePackAuthoring';
 
 const agent = { ...specialistAgent(), assignments: [{ workspaceRoot: '/project', instructions: '' }] };
 function fixture(failSave = false) {
@@ -29,6 +30,40 @@ function fixture(failSave = false) {
   }
   return { model, saves, actions, source, Editor, update: async (next: typeof agent) => { currentAgent = next; await model.refresh(); } };
 }
+
+test('saved repository host tools expose local review in the actual Homie settings form', async () => {
+  const f = fixture();
+  const pack = createHomiePack(agent, agent.permissions);
+  pack.tools = [{ name: 'iphone_mirroring', description: 'Device fixture', enabled: true, execution: 'host', runtime: 'bun',
+    script: 'scripts/device.ts', parameters: [] }];
+  pack.resources = { programs: [], files: [{ path: 'scripts/device.ts', content: 'export {};' }] };
+  const requests: string[] = [];
+  const pending = registryDeferred<Awaited<ReturnType<AgentRegistryModel['hostTool']>>>();
+  f.model.hostTool = async input => {
+    requests.push(input.action);
+    if (input.action === 'allow') return pending.promise;
+    return { allowed: false, executable: input.action === 'revoke' ? null : '/local/runtime', digest: null, autoApprove: false };
+  };
+  await f.update({ ...agent, package: pack });
+  try { await withDOM(async ui => {
+    await ui.render(<f.Editor />);
+    expect(document.querySelector('[aria-label="Local host tools"]')?.textContent).toContain('iphone_mirroring');
+    expect(requests).toEqual(['policy', 'status']);
+    const review = () => [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === 'Review host access…')!;
+    await ui.click('Allow agent commands'); expect(review().disabled).toBe(true);
+    await ui.click('Allow agent commands'); expect(review().disabled).toBe(false);
+    await ui.click('Review host access…');
+    expect(document.querySelector<HTMLButtonElement>('[aria-label="Allow agent commands"]')?.disabled).toBe(true);
+    await act(async () => pending.resolve({ allowed: true, executable: '/local/runtime', digest: 'reviewed' }));
+    expect(document.body.textContent).toContain('Host tool allowed');
+    await ui.click('Revoke host access');
+    expect(requests).toEqual(['policy', 'status', 'policy', 'status', 'allow', 'revoke']);
+    await act(async () => f.update({ ...agent, package: pack, revision: 2 }));
+    expect(requests.at(-1)).toBe('status');
+    expect(f.saves).toEqual([]);
+    expect(document.querySelector('[aria-label="Tool script content"]')).toBeNull();
+  }); } finally { f.model.dispose(); }
+});
 
 test('an untouched editor refreshes after repository application and saves against the latest revision', async () => {
   const f = fixture(); await f.model.refresh();

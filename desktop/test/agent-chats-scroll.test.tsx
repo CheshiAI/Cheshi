@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { act } from 'react';
+import { MAX_TIMELINE_ROWS } from '../frontend/src/features/agent-chats/roomTimelineLayout';
 import { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
 import type { AgentChatsApi, ChatsSnapshot, ChatsUpdate, RoomMessage } from '../shared/agent-chats';
 
@@ -13,7 +14,7 @@ async function withChats(run: (ui: {
   click(label: string): Promise<void>;
   resize(): Promise<void>;
   timeline(): HTMLDivElement;
-  geometry: { height: number; growth: number; messageMeasurements: number };
+  geometry: { height: number; growth: number; messageMeasurements: number; growthId: string };
 }) => Promise<void>) {
   const window = new Window();
   const observers = new Map<ResizeObserver, { callback: ResizeObserverCallback; targets: Set<Element> }>();
@@ -30,13 +31,20 @@ async function withChats(run: (ui: {
     IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
-  const geometry = { height: 1500, growth: 0, messageMeasurements: 0 };
+  const geometry = { height: 1500, growth: 0, messageMeasurements: 0, growthId: 'a1' };
   const scrollTops = new WeakMap<object, number>(), pendingScrolls = new Set<HTMLElement>();
   const prototype = window.HTMLElement.prototype;
   const previousProperties = new Map(['scrollHeight', 'clientHeight', 'scrollTop', 'getBoundingClientRect']
     .map(key => [key, Object.getOwnPropertyDescriptor(prototype, key)]));
+  const rowHeight = (node: HTMLElement) => node.dataset.messageId
+    ? 100 + (node.dataset.messageId === geometry.growthId ? geometry.growth : 0)
+    : Number.parseFloat(node.style.height) || 0;
   Object.defineProperties(window.HTMLElement.prototype, {
-    scrollHeight: { configurable: true, get() { return this.getAttribute('aria-label') === 'Room messages' ? geometry.height : 0; } },
+    scrollHeight: { configurable: true, get() {
+      if (this.getAttribute('aria-label') !== 'Room messages') return 0;
+      if (!this.querySelector('[data-timeline-spacer]')) return geometry.height;
+      return [...this.firstElementChild!.children].reduce((sum, child) => sum + rowHeight(child as HTMLElement), 0);
+    } },
     clientHeight: { configurable: true, get() { return this.getAttribute('aria-label') === 'Room messages' ? 500 : 0; } },
     scrollTop: { configurable: true,
       get() { return scrollTops.get(this) ?? 0; },
@@ -59,9 +67,11 @@ async function withChats(run: (ui: {
   window.HTMLElement.prototype.getBoundingClientRect = function () {
     const node = this as unknown as HTMLElement;
     if (node.dataset.messageId) geometry.messageMeasurements++;
-    const index = node.dataset.messageId ? [...node.parentElement!.children].indexOf(node) : -1;
-    const top = index < 0 ? 0 : index * 100 + (index > 0 ? geometry.growth : 0) - node.closest('[aria-label="Room messages"]')!.scrollTop;
-    const height = index < 0 ? 0 : 100 + (index === 0 ? geometry.growth : 0);
+    const siblings = node.dataset.messageId ? [...node.parentElement!.children] : [];
+    const index = siblings.indexOf(node);
+    const top = index < 0 ? 0 : siblings.slice(0, index).reduce((sum, child) => sum + rowHeight(child as HTMLElement), 0)
+      - node.closest('[aria-label="Room messages"]')!.scrollTop;
+    const height = index < 0 ? 0 : rowHeight(node);
     return new window.DOMRect(0, top, 640, height);
   };
   let sequence = 0, receive: ((update: ChatsUpdate) => void) | undefined;
@@ -158,20 +168,43 @@ test('jump button appears without new arrivals and clears after clicking or reac
 });
 
 
-test('large room resizes skip message geometry at the bottom and locate reading anchors without a linear scan', async () => {
+test('large rooms bound mounted rows and preserve anchors through scrolling, updates, resizing and room switches', async () => {
   await withChats(async ui => {
-    ui.geometry.height = 100400;
-    await ui.update(Array.from({ length: 1000 }, (_, index) => message(`large-${index}`)));
-    ui.geometry.messageMeasurements = 0;
-    await ui.resize();
-    expect(ui.geometry.messageMeasurements).toBe(0);
-    expect(ui.timeline().scrollTop).toBe(99900);
+    await ui.update(Array.from({ length: 5000 }, (_, index) => message(`large-${index}`)));
+    const rows = () => document.querySelectorAll<HTMLElement>('[data-message-id]');
+    const visible = () => [...rows()].find(row => row.getBoundingClientRect().bottom > 0)!;
+    expect(rows().length).toBeLessThanOrEqual(MAX_TIMELINE_ROWS);
+    expect(document.querySelector('[data-message-id="large-4999"]')).not.toBeNull();
+    expect(document.querySelector('[data-message-id="a1"]')).toBeNull();
     await ui.scroll(90000);
-    expect(ui.geometry.messageMeasurements).toBeLessThanOrEqual(14);
-    ui.geometry.messageMeasurements = 0;
-    ui.geometry.growth = 80; ui.geometry.height += 80;
+    expect(rows().length).toBeLessThanOrEqual(MAX_TIMELINE_ROWS);
+    const anchor = visible().dataset.messageId!;
+    const offset = visible().getBoundingClientRect().top;
+    await ui.update([message('arrival')]);
+    expect(visible().dataset.messageId).toBe(anchor);
+    expect(visible().getBoundingClientRect().top).toBe(offset);
+    expect(jump()?.textContent).toBe('1 new message');
+    ui.geometry.growthId = rows()[0]!.dataset.messageId!;
+    ui.geometry.growth = 80;
+    const previousTop = ui.timeline().scrollTop;
     await ui.resize();
-    expect(ui.timeline().scrollTop).toBe(90080);
-    expect(ui.geometry.messageMeasurements).toBeLessThanOrEqual(30);
+    expect(ui.timeline().scrollTop).toBe(previousTop + 80);
+    expect(visible().dataset.messageId).toBe(anchor);
+    expect(visible().getBoundingClientRect().top).toBe(offset);
+    await ui.click('Beta');
+    await ui.click('Alpha');
+    expect(visible().dataset.messageId).toBe(anchor);
+    expect(visible().getBoundingClientRect().top).toBe(offset);
+    await ui.scroll(0);
+    expect(document.querySelector('[data-message-id="a1"]')).not.toBeNull();
+    expect(document.querySelector('[data-message-id="large-4999"]')).toBeNull();
+    expect(rows().length).toBeLessThanOrEqual(MAX_TIMELINE_ROWS);
+    await ui.click('Reply to a1');
+    expect(document.querySelector('[aria-label="Reply context"]')?.textContent).toContain('a1');
+    await ui.click('Jump to latest messages');
+    expect(document.querySelector('[data-message-id="arrival"]')).not.toBeNull();
+    expect(jump()).toBeNull();
+    expect(rows().length).toBeLessThanOrEqual(MAX_TIMELINE_ROWS);
+    expect(document.querySelector('[aria-label="Reply context"]')?.textContent).toContain('a1');
   });
 });

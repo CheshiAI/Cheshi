@@ -74,7 +74,7 @@ for (const gesture of ['pointer', 'wheel'] as const) {
       expect(requests).toHaveLength(before + 1);
       expect(requests.at(-1)).toEqual({ action: 'list' });
       expect(refreshButton().disabled).toBe(true);
-      expect(status()?.textContent).toBe('Release to refresh');
+      expect(status()?.textContent).toBe('Refreshing…');
       await ui.click('Refresh rooms');
       await pointer('pointerdown', 10);
       await pointer('pointermove', 110);

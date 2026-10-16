@@ -1,4 +1,5 @@
 import type { AgentFlashMemory } from '../flash/agent-memory.mts';
+import type { HostToolRegistration } from './host-tool-registration.mts';
 import { agentDisplayName } from '../../shared/agent-registry.ts';
 import { revision } from '../agent-platform/git-workspaces.mts';
 import { INTAKE_WORKSPACE, isIntakeWorkspace, parseWorkspaceKey } from '../../../experiments/codex-specialists/src/task-workspace.ts';
@@ -46,6 +47,7 @@ interface RuntimeOptions {
   flash?: AgentFlashMemory;
   codegraph?: CodeGraphQuery;
   toolCredential?: ToolCredential;
+  hostTools?: Pick<HostToolRegistration, 'execute'>;
   prepareCodeGraph?: (workspace: string) => Promise<void>;
   lifecycleControl?: (connection: { endpoint: string; token: string }, action: string, body?: unknown) => Promise<unknown>;
   idleMs?: number; now?(): number;
@@ -271,6 +273,10 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     const prefix = await local(binding.engineId);
     const worker = await find(prefix, `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`);
     if (!worker || !worker.imageId.startsWith('sha256:') || !valid()) throw new Error('Start the saved Homie before testing its tool.');
+    if (tool.execution === 'host') {
+      if (!options.hostTools) throw new Error('Host tools are unavailable in this installation.');
+      return options.hostTools.execute(binding, tool, args, signal, valid);
+    }
     return { result: await executeCustomTool({ run, prefix, image: worker.imageId, tool, args, signal, credential: options.toolCredential, valid }) };
   }
   async function build(prefix: string[], dependencies: boolean) {

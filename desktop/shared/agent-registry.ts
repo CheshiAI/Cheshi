@@ -4,6 +4,7 @@ import type { AgentModel, AgentModelSelection } from './agent-models.ts';
 import { parseAgentPackage, type AgentPackage } from './agent-package.ts';
 
 export const AGENT_REGISTRY_CHANNELS = {
+  hostTool: 'cheshi:agent-registry:host-tool',
   toolCredential: 'cheshi:agent-registry:tool-credential', testTool: 'cheshi:agent-registry:test-tool',
   list: 'cheshi:agent-registry:list', save: 'cheshi:agent-registry:save', changed: 'cheshi:agent-registry:changed',
   models: 'cheshi:agent-registry:models',
@@ -53,6 +54,8 @@ export interface SaveSpecialistAgent {
   assignment: { assigned: boolean; instructions: string; instructionFiles?: string[]; permissions?: ExecutionPermissions | null };
 }
 export interface AgentRegistryApi {
+  onHostToolDetails?(listener: import('./host-tool-details.ts').HostToolDetailsListener): () => void;
+  hostTool?(input: import('./host-tools.ts').HostToolRequest): Promise<import('./host-tools.ts').HostToolStatus>;
   source?(input: import('./homie-source.ts').HomieSourceRequest): Promise<import('./homie-source.ts').HomieSourceState>;
   onRepositoryReady?(listener: () => void): () => void;
   toolCredential?(input: import('./homie-tools.ts').ToolCredentialRequest): Promise<boolean>;

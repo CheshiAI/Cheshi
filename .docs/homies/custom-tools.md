@@ -70,7 +70,7 @@ Save the Homie and start its worker to prepare the pack image. New tools require
 a new conversation. The saved tool can also be invoked with **Run test**; an
 external API test sends the entered inputs to that endpoint.
 
-Scripts run in separate read-only, network-isolated containers with no project,
+By default, scripts run in separate read-only, network-isolated containers with no project,
 account or session mounts. Command permission is required. Images are prepared
 when starting the Homie and reused for calls. Calls have a 60-second deadline;
 script processes have the Docker command runner's 30-second timeout. Inputs and
@@ -78,3 +78,7 @@ request bodies are limited to 64 KiB, API responses to 1 MiB. Completed and
 interrupted request receipts prevent automatic replay after a host restart
 within the request deadline. Canceling an external call cannot undo effects
 already accepted by the service; uncertain calls must not be retried blindly.
+
+For tools that need this computer's operating system, use the separately approved
+[local host tool mode](host-tools.md). It supports a reviewed local executable and
+PNG evidence delivery; importing a package never grants host execution by itself.

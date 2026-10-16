@@ -126,7 +126,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
   const threadId = root?.id ?? null;
   const draftKey = roomId ?? '', draft = drafts[draftKey] ?? '';
   const scrollNode = useRef<HTMLDivElement | null>(null);
-  const reading = useChatsScroll(snapshot, data.loaded, roomId, active, scrollNode);
+  const reading = useChatsScroll(snapshot, data.loaded, roomId, active, scrollNode, messages);
   const contentRef = useRef<HTMLDivElement>(null);
   const [composerArea, setComposerArea] = useState<HTMLElement | null>(null);
   const attachTimeline = useCallback((node: HTMLDivElement | null) => { scrollNode.current = node; return timeline(node); }, [timeline]);
@@ -250,7 +250,7 @@ export function ChatsView({ active, sidebarTarget, sidebarActive = false, onOpen
                 : 'Select a room in Worker, or create one and invite your Homies to begin.'} />}
             <RegionalBlur sourceRef={scrollNode}>
               <div ref={attachTimeline} hidden={!room} onScroll={reading.onScroll} className={styles.timeline} key={roomId} aria-label="Room messages">
-                <ChatsTimeline room={room} messages={messages} agents={agents} api={api} sending={sending}
+                <ChatsTimeline room={room} messages={messages} window={reading.window} agents={agents} api={api} sending={sending}
                   mutate={mutate} onReply={reply} onRetry={retry}
                   onReviewFileChanges={onReviewFileChanges} onReviewVerification={onReviewVerification} />
               </div>

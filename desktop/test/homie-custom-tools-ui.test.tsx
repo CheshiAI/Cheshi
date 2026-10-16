@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { act, useState } from 'react';
 import { HomieCustomTools } from '../frontend/src/features/agents/HomieCustomTools';
+import { HomieHostTool } from '../frontend/src/features/agents/HomieHostTool';
 import { importHomieTool } from '../frontend/src/features/agents/customToolImport';
 import { externalToolFixture } from './homie-tool-fixture';
 import { AgentRegistryModel } from '../frontend/src/features/agents/agentRegistryModel';
@@ -8,6 +9,29 @@ import { officialAgentPackages } from '../lib/agent-management/packages.mts';
 import { parseAgentPackage, type AgentPackage } from '../shared/agent-package';
 import type { ToolTestRequest, ToolCredentialRequest } from '../shared/homie-tools';
 import { withDOM } from './agent-chats-test-dom';
+
+test('host approval is a separate local review action and unsaved tools cannot request it', async () => {
+  const requests: string[] = [];
+  const model = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [] }), models: async () => [], onDidChange: () => () => {},
+    save: async () => { throw new Error('unused'); }, hostTool: async request => {
+      requests.push(request.action); return { allowed: request.action === 'allow', executable: request.action === 'allow' ? '/local/runtime' : null, digest: null };
+    } });
+  try {
+    await withDOM(async ui => {
+      await ui.render(<HomieHostTool model={model} agentId="fixture" tool="fixture" saved={false} disabled={false} onBusy={() => {}} />);
+      expect(requests).toEqual([]);
+      expect([...document.querySelectorAll('button')].find(b => b.textContent === 'Review host access…')!.disabled).toBe(true);
+    });
+    await withDOM(async ui => {
+      await ui.render(<HomieHostTool model={model} agentId="fixture" tool="fixture" saved disabled={false} onBusy={() => {}} />);
+      await ui.click('Review host access…');
+      expect(document.body.textContent).toContain('Host tool allowed');
+      await ui.click('Revoke host access');
+      expect(requests).toEqual(['status','allow','revoke']);
+      expect(document.body.textContent).toContain('needs local approval');
+    });
+  } finally { model.dispose(); }
+});
 
 test('tool editor imports externally authored code and inputs, separates credentials, and tests only the saved definition', async () => {
   let pack = (await officialAgentPackages())[0]!;

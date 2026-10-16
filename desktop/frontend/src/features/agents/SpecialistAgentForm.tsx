@@ -1,6 +1,8 @@
 import { localSettingsKey, type HomieEditorDraft } from './homieEditorDraft';
 import { HomieSourcePanel } from './HomieSourcePanel';
 import { HomieCredentials } from './HomieCredentials';
+import { HomieHostTool } from './HomieHostTool';
+import { HomieHostToolPolicy } from './HomieHostToolPolicy';
 import { HomieParticipation } from './HomieParticipation';
 import { createHomiePack } from './homiePackAuthoring';
 import { ArrowLeft, Trash2 } from 'lucide-react';
@@ -43,12 +45,14 @@ export function SpecialistAgentForm({ inline = false, fill = false, active: visi
   const [revision, setRevision] = useState(draft?.revision ?? agent?.revision ?? null);
   const [pack, setPack] = useState(() => draft?.localPack ?? profile.package ?? createHomiePack(profile, permissions));
   const [filePending, setFilePending] = useState(false), [error, setError] = useState<string | null>(null), [saved, setSaved] = useState(false);
+  const [hostPending, setHostPending] = useState(false);
+  const [hostPolicyRevision, setHostPolicyRevision] = useState(0);
   const { profiles: accounts, loading: accountsLoading, error: accountError } = useHomieAccounts(model.catalog, accountsApi);
   const [runtimeHeader, setRuntimeHeader] = useState<HTMLElement | null>(null);
   const [actionsTarget, setActionsTarget] = useState<HTMLDivElement | null>(null);
   const active = useRef(false), operation = useRef(false);
   const scroll = useAutoHideScrollbars<HTMLDivElement>();
-  const disabled = state.saving || filePending || importing;
+  const disabled = state.saving || filePending || hostPending || importing;
   const currentLocalKey = localSettingsKey({ profile, permissions, assigned });
   const savedLocalKey = agent ? localSettingsKey({ profile: agent, permissions: assignment?.permissions ?? agent.permissions,
     assigned: Boolean(assignment) }) : null;
@@ -129,6 +133,18 @@ export function SpecialistAgentForm({ inline = false, fill = false, active: visi
           <div className={styles.switchRow}><span>Run commands</span><ToggleSwitch aria-label="Allow agent commands" checked={permissions.commandExecution} disabled={disabled} onChange={commandExecution => setPermissions(p => ({ ...p, commandExecution }))} /></div>
         </section>
         <HomieCredentials pack={agent?.package} model={model} disabled={disabled} />
+        {agent?.package?.tools?.some(tool => tool.execution === 'host') && <section className={layout.section} aria-label="Local host tools">
+          <h3>Local host tools</h3>
+          <HomieHostToolPolicy key={`${agent.id}:${workspaceRoot}:${agent.accountId}`} model={model} agentId={agent.id}
+            tool={agent.package.tools.find(tool => tool.execution === 'host')!.name}
+            saved={assigned && !locallyEdited && !outdated} disabled={disabled} onBusy={setHostPending}
+            onChanged={() => setHostPolicyRevision(value => value + 1)} />
+          {agent.package.tools.filter(tool => tool.execution === 'host').map(tool => <div className={layout.section} key={tool.name}>
+            <span className={styles.description}>{tool.name}</span>
+            <HomieHostTool model={model} agentId={agent.id} tool={tool.name} reviewKey={`${agent.revision}:${hostPolicyRevision}`}
+              saved={assigned && !locallyEdited && !outdated} disabled={disabled} onBusy={setHostPending} />
+          </div>)}
+        </section>}
         {!agent && inline && <div className={layout.joinAction}>{saveButton}</div>}
         {agent && <div className={layout.actionSection}>
           <HomieParticipation agent={agent} workspaceRoot={workspaceRoot} roomId={roomId} />

@@ -18,7 +18,7 @@ test('chat menu blur uses the layout containing both the session sidebar and wor
   const chat = props<ComponentProps<typeof ChatWorkspace>>(layoutProps.children, 'ChatWorkspace');
   expect(props<ComponentProps<typeof Sidebar>>(layoutProps.children, 'Sidebar').chatPanel).toBeDefined();
   expect(chat.menuBlurSourceRef).toBeDefined();
-  expect(chat.menuBlurSourceRef).toBe(layoutProps.ref);
+  expect(chat.menuBlurSourceRef === layoutProps.ref).toBe(true);
 });
 
 test.each(['chat', 'chats'] as const)('Codex and Worker coexist when opening a split from %s and survive rail navigation and closing', view => {

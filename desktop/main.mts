@@ -1,3 +1,5 @@
+import { HostToolRegistration } from './lib/agent-management/host-tool-registration.mts';
+import { reviewHostTool } from './lib/agent-management/host-tool-review.mts';
 import { AgentFlashMemory } from './lib/flash/agent-memory.mts';
 import { WorkspaceHost } from './lib/workspace-host.mts';
 import { nativeWorkspaceWindow } from './lib/workspace-surface.mts';
@@ -135,7 +137,10 @@ const codeGraphCommand = createCodeGraphCommands({ packaged: app.isPackaged, res
 const codeGraphDataRoot = resolveCodeGraphDataRoot() ?? app.getPath('userData');
 const codeGraphSynchronization = createCodeGraphSynchronization({ command: codeGraphCommand, dataRoot: codeGraphDataRoot });
 const agentFlash = new AgentFlashMemory(app.getPath('userData'), binding => agentRegistry.snapshot(binding.workspace).agents.some(agent => agent.id === binding.agentId && agent.accountId === binding.accountId && agent.assignments.some(a => { try { return realpathSync(a.workspaceRoot) === binding.workspace; } catch { return false; } })));
+const hostTools = new HostToolRegistration(path.join(app.getPath('userData'), 'agents', 'host-tools'),
+  (workspace, id) => agentRegistry.snapshot(workspace).agents.find(agent => agent.id === id));
 const specialistRuntime = createSpecialistRuntime({
+  hostTools,
   flash: agentFlash,
   prepareSource: (workspace, id) => homieSources.prepare(workspace, id),
   sourceApplied: (workspace, id, engine, hash) => homieSources.applied(workspace, id, engine, hash),
@@ -156,7 +161,7 @@ const specialistRuntime = createSpecialistRuntime({
 const unsubscribeChatsRuntime = specialistRuntime.subscribe(binding => agentChats.changed(binding));
 const unsubscribeChatsRegistry = agentRegistry.subscribe(() => agentChats.changed());
 void app.whenReady().then(() => { specialistRuntime.start(); agentChats.start(); });
-app.on('will-quit', () => { unsubscribeChatsRuntime(); unsubscribeChatsRegistry(); void specialistRuntime.dispose().finally(() => agentFlash.dispose()); void agentChats.dispose(); void codeGraphSynchronization.dispose(); });
+app.on('will-quit', () => { hostTools.dispose(); unsubscribeChatsRuntime(); unsubscribeChatsRegistry(); void specialistRuntime.dispose().finally(() => agentFlash.dispose()); void agentChats.dispose(); void codeGraphSynchronization.dispose(); });
 const apiSettings = createSettingsService({ settingsPath: path.join(app.getPath('userData'), 'settings.json') });
 const toolCredentials = createToolCredentials(path.join(app.getPath('userData'), 'api-keys', 'homie-tools'), {
   isEncryptionAvailable: () => safeStorage.isEncryptionAvailable() && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
@@ -351,6 +356,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
           const repository = local && existsSync(local.directory) ? local : await homieRepositories.ensure(agent);
           await new WorkspaceProjectStore(app.getPath('userData'), options.workspaceRoot).add(repository.directory);
         },
+        hostTool: input => reviewHostTool(hostTools, nativeWorkspaceWindow(window), options.workspaceRoot, input),
         testTool: input => specialistRuntime.testTool(options.workspaceRoot, input),
         toolCredential: input => input.action === 'save' ? toolCredentials.save(input.origin, input.name, input.value!)
           : input.action === 'remove' ? toolCredentials.remove(input.origin, input.name) : toolCredentials.status(input.origin, input.name),

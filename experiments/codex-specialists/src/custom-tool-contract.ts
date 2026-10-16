@@ -2,6 +2,7 @@ export interface CustomTool {
   name: string; description: string; enabled: boolean;
   parameters: { name: string; type: 'string' | 'number' | 'boolean'; description: string; required: boolean }[];
   runtime: 'bun' | 'node' | 'python3'; script: string;
+  execution?: 'host';
   network?: { url: string; credential: string | null };
 }
 export function parseCustomTools(value: unknown): CustomTool[] {
@@ -10,7 +11,9 @@ export function parseCustomTools(value: unknown): CustomTool[] {
   const names = new Set<string>();
   return value.map(raw => {
     const t = object(raw);
-    if (Object.keys(t).some(k => !['name','description','enabled','parameters','runtime','script','network'].includes(k))) throw new Error('Unknown custom tool field.');
+    if (Object.keys(t).some(k => !['name','description','enabled','parameters','runtime','script','network','execution'].includes(k))) throw new Error('Unknown custom tool field.');
+    if (t.execution !== undefined && t.execution !== 'host') throw new Error('Invalid execution target.');
+    if (t.execution === 'host' && t.network !== undefined) throw new Error('Host tools do not use the container HTTPS broker.');
     const name = text(t.name);
     if (!/^[a-z][a-z0-9_]{0,47}$/.test(name) || names.has(name)) throw new Error('Use a unique lowercase tool name.');
     names.add(name);
@@ -33,7 +36,7 @@ export function parseCustomTools(value: unknown): CustomTool[] {
       if (credential !== null && !/^[a-z][a-z0-9_-]{0,63}$/.test(credential)) throw new Error('Invalid credential name.');
       network = { url: url.href, credential };
     }
-    return { name, description: text(t.description), enabled: t.enabled, parameters, script, runtime: t.runtime as CustomTool['runtime'], ...(network ? { network } : {}) };
+    return { name, description: text(t.description), enabled: t.enabled, parameters, script, runtime: t.runtime as CustomTool['runtime'], ...(network ? { network } : {}), ...(t.execution === 'host' ? { execution: 'host' as const } : {}) };
   });
 }
 function object(value: unknown): Record<string, unknown> {

@@ -1,0 +1,35 @@
+.modal {
+  --modal-width: 640px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-default);
+  max-height: max(120px, calc(100dvh - 180px));
+  font-size: 12px;
+}
+
+.body p { margin: 0; }
+
+.details {
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
+  min-height: 0;
+  max-height: 50dvh;
+  margin: 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-default);
+}

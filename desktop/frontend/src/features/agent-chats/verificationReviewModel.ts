@@ -1,5 +1,5 @@
 import type { RoomMessage } from '../../../../shared/agent-chats';
-import { exchangeLabel } from './roomTimeline';
+import { exchangeLabel, type TimelineIndex } from './roomTimeline';
 import { lexer, type Tokens } from 'marked';
 import { fileEvidence } from '../chat/fileEvidenceModel';
 import type { SpecialistAgent } from '../../../../shared/agent-registry';
@@ -12,9 +12,10 @@ export interface VerificationReview {
   status: string;
 }
 
-export function verificationReportContext(message: RoomMessage, messages: RoomMessage[], agents: SpecialistAgent[]): string | undefined {
+export function verificationReportContext(message: RoomMessage, messages: RoomMessage[], agents: SpecialistAgent[], index?: TimelineIndex): string | undefined {
   if (message.kind !== 'message' || (message.activity && message.activity.kind !== 'message')
     || !agents.some(agent => agent.id === message.sender && agent.role === 'verification')) return undefined;
+  if (index) return index.request(message)?.text ?? '';
   return messages.find(request => request.sender === 'user' && request.recipient === message.sender
     && request.roomId === message.roomId && message.taskId && request.taskId === message.taskId)?.text ?? '';
 }
@@ -38,7 +39,7 @@ function isReply(request: RoomMessage, result: RoomMessage) {
 }
 
 /** Join only explicitly linked peer exchanges, never neighboring messages or similar criteria. */
-export function verificationReview(message: RoomMessage, messages: RoomMessage[], reportContext?: string): VerificationReview | null {
+export function verificationReview(message: RoomMessage, messages: RoomMessage[], reportContext?: string, index?: TimelineIndex): VerificationReview | null {
   if (message.kind === 'message' && reportContext !== undefined && isReport(message.text, reportContext)) {
     return { id: message.id, report: { message, fileContext: reportContext }, status: 'Report' };
   }
@@ -49,6 +50,6 @@ export function verificationReview(message: RoomMessage, messages: RoomMessage[]
     : request ? messages.filter(candidate => isReply(request, candidate)
       && !['failed', 'unknown', 'late reply · not applied'].includes(candidate.status ?? ''))
       .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)).at(-1) : undefined;
-  return { id: message.id, request, result, status: exchangeLabel(message, messages)
+  return { id: message.id, request, result, status: exchangeLabel(message, messages, index)
     ?? (result ? 'Answered' : 'Reply status unavailable') };
 }

@@ -96,6 +96,10 @@ test('packaged runtime includes all agent modules and native Node can load them'
     ...['lifecycle', 'engine', 'docker', 'docker-errors', 'service', 'ipc', 'terminal', 'registry', 'registry-ipc', 'runtime', 'instruction-files', 'operations', 'docker-deletion', 'deletion'].map(name => `desktop/lib/agent-management/${name}.mts`)];
   for (const path of paths) expect(ignore(`/${path}`)).toBe(false);
   expect(ignore('/experiments/codex-specialists/src/integration-contract.ts')).toBe(false);
+  for (const path of ['desktop/lib/agent-management/host-tool-registration.mts', 'desktop/lib/agent-management/host-tool-execution.mts',
+    'desktop/lib/agent-management/host-tool-review.mts', 'desktop/shared/host-tools.ts', 'experiments/codex-specialists/src/host-tool-artifacts.ts']) {
+    expect(ignore(`/${path}`)).toBe(false);
+  }
   expect(ignore('/experiments/codex-specialists/src/application-contract.ts')).toBe(false);
   expect(ignore('/experiments/codex-specialists/src/application-storage.ts')).toBe(false);
   expect(ignore('/desktop/lib/agent-management/application-deletion.mts')).toBe(false);

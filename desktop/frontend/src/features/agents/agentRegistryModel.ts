@@ -42,6 +42,8 @@ export class AgentRegistryModel {
     return result;
   };
   toolCredential = (input: import('../../../../shared/homie-tools').ToolCredentialRequest) => this.api.toolCredential?.(input) ?? Promise.reject(new Error('Restart Cheshi to configure tool credentials.'));
+  hostTool = (input: import('../../../../shared/host-tools').HostToolRequest) => this.api.hostTool?.(input) ?? Promise.reject(new Error('Restart Cheshi to configure host tools.'));
+  onHostToolDetails = (listener: import('../../../../shared/host-tool-details').HostToolDetailsListener) => this.api.onHostToolDetails?.(listener) ?? (() => {});
   testTool = (input: import('../../../../shared/homie-tools').ToolTestRequest) => this.api.testTool?.(input) ?? Promise.reject(new Error('Restart Cheshi to test tools.'));
   installPackage = (definition: import('../../../../shared/agent-package').AgentPackage, instructionFiles: string[] = []) => {
     if (!this.api.installPackage) return Promise.reject(new Error('Pack installation is unavailable. Restart Cheshi.'));

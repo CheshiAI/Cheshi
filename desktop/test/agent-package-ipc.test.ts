@@ -26,6 +26,8 @@ test('package IPC only accepts native selections from its owner and handles canc
   const registration = registerAgentRegistryIpc({ window, registry, workspaceRoot: directory,
     toolCredential: async input => { toolCalls.push(input); return true; },
     testTool: async input => { toolCalls.push(input); return { result: 'ok' }; },
+    hostTool: async input => { toolCalls.push(input); return { allowed: input.action === 'allow', executable: null, digest: null,
+      ...(input.action === 'policy' ? { autoApprove: input.autoApprove ?? false } : {}) }; },
     selectInstructionFiles: async () => [linked],
     packsDirectory: join(directory, 'packs'), exportPackagePath: async () => exportPath,
     selectPackage: () => delay ? pending.promise : Promise.resolve(selection),
@@ -38,6 +40,12 @@ test('package IPC only accepts native selections from its owner and handles canc
     expect(await api.toolCredential!({ action: 'save', origin: 'https://api.example.com', name: 'external', value: 'fixture-secret' })).toBe(true);
     expect(await api.testTool!({ agentId: '11111111-1111-1111-1111-111111111111', engineId: 'docker:test', tool: 'external', args: {} })).toEqual({ result: 'ok' });
     expect(toolCalls).toHaveLength(2);
+    expect(await api.hostTool!({ action: 'allow', agentId: 'fixture', tool: 'fixture' })).toEqual({ allowed: true, executable: null, digest: null });
+    expect(await api.hostTool!({ action: 'revoke', agentId: 'fixture', tool: 'fixture' })).toEqual({ allowed: false, executable: null, digest: null });
+    expect(await api.hostTool!({ action: 'policy', agentId: 'fixture', tool: 'fixture', autoApprove: true }))
+      .toEqual({ allowed: false, executable: null, digest: null, autoApprove: true });
+    expect(() => handlers.get(AGENT_REGISTRY_CHANNELS.hostTool)!(event,
+      { action: 'policy', agentId: 'fixture', tool: 'fixture', autoApprove: 'true' })).toThrow('Invalid');
     expect((await api.packages!()).map(value => value.id)).toEqual(['cheshi.development', 'cheshi.review']);
     const handler = handlers.get(AGENT_REGISTRY_CHANNELS.importPackage)!;
     expect(() => handler({ ...event, sender: {} } as IpcMainInvokeEvent)).toThrow('workspace window');
@@ -65,7 +73,7 @@ test('package IPC only accepts native selections from its owner and handles canc
     expect(portable.resources!.files.some(file => file.content === 'Common portable rules.')).toBe(true);
     expect(portable.instructions).toContain('/opt/cheshi/homie-pack/resources/instructions/');
     expect(JSON.stringify(portable)).not.toContain(directory);
-    for (const channel of [AGENT_REGISTRY_CHANNELS.installPackage, AGENT_REGISTRY_CHANNELS.exportPackage, AGENT_REGISTRY_CHANNELS.toolCredential, AGENT_REGISTRY_CHANNELS.testTool]) {
+    for (const channel of [AGENT_REGISTRY_CHANNELS.hostTool, AGENT_REGISTRY_CHANNELS.installPackage, AGENT_REGISTRY_CHANNELS.exportPackage, AGENT_REGISTRY_CHANNELS.toolCredential, AGENT_REGISTRY_CHANNELS.testTool]) {
       expect(() => handlers.get(channel)!({ ...event, sender: {} } as IpcMainInvokeEvent, customized)).toThrow('workspace window');
     }
     expect(registry.snapshot(directory).agents).toEqual([]);

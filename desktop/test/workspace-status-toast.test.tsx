@@ -1,16 +1,25 @@
 import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { act } from 'react';
-import { createRoot } from 'react-dom/client';
 import type { IpcRenderer } from 'electron';
 import { forwardWorkspaceStatusToast } from '../lib/workspace-status-toast.mts';
 import { createWorkspaceHostApi, createWorkspaceSurfaceApi } from '../lib/workspace-host-preload.cts';
 import { StatusToast } from '../frontend/src/shared/ui/StatusToast';
 import { WorkspaceStatusToasts } from '../frontend/src/features/shell/WorkspaceStatusToasts';
 import { WORKSPACE_HOST_CHANNEL as channel } from '../shared/workspace-host';
+import type { WorkspaceHostApi } from '../shared/workspace-host';
 import type { StatusToastMessage } from '../shared/status-toast';
 
 const message: StatusToastMessage = { id: 1, variant: 'success', title: 'Keep awake enabled', description: 'Your Mac will stay awake.' };
+
+function toastHost(showStatusToast: WorkspaceHostApi['showStatusToast']): WorkspaceHostApi {
+  return {
+    showStatusToast,
+    state: async () => ({ activeId: null, entries: [] }),
+    activate: async () => {}, close: async () => {}, command: async () => {}, layout: async () => {},
+    railOverlay: () => {}, onRailEvent: () => () => {}, onState: () => () => {},
+  };
+}
 
 test('routes only trusted host messages to the currently selected live surface', () => {
   const host = {}, sent: unknown[] = [];
@@ -56,11 +65,13 @@ test('host toasts render in the foreground surface, retain close behavior, and f
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
   const container = document.createElement('div');
   document.body.append(container);
+  // React detects input-event support on import; initialize it after installing the test DOM.
+  const { createRoot } = await import('react-dom/client');
   const root = createRoot(container);
   let received: StatusToastMessage | undefined, dismissed = 0;
   const appWindow = globalThis.window;
   try {
-    appWindow.workspaceHost = { showStatusToast: async value => { received = value; return true; } } as typeof appWindow.workspaceHost;
+    appWindow.workspaceHost = toastHost(async value => { received = value; return true; });
     await act(async () => root.render(<StatusToast message={message} onDismiss={() => { dismissed++; }} />));
     expect(received).toEqual(message);
     expect(dismissed).toBe(1);
@@ -72,7 +83,7 @@ test('host toasts render in the foreground surface, retain close behavior, and f
     appWindow.workspaceSurface = { onStatusToast: callback => {
       listener = callback;
       return () => { unsubscribed = true; listener = undefined; };
-    } } as typeof appWindow.workspaceSurface;
+    }, report: () => {}, onRailBlur: () => () => {}, onCommand: () => () => {} };
     await act(async () => root.render(<WorkspaceStatusToasts />));
     await act(async () => listener!(received!));
     expect(document.querySelector('[role="status"]')?.textContent).toContain(message.title);
@@ -85,10 +96,10 @@ test('host toasts render in the foreground surface, retain close behavior, and f
     expect(unsubscribed).toBe(true);
     delete appWindow.workspaceSurface;
     for (const result of ['false', 'error'] as const) {
-      appWindow.workspaceHost = { showStatusToast: async () => {
+      appWindow.workspaceHost = toastHost(async () => {
         if (result === 'error') throw new Error('Connection unavailable');
         return false;
-      } } as typeof appWindow.workspaceHost;
+      });
       await act(async () => root.render(<StatusToast message={message} onDismiss={() => { dismissed++; }} />));
       expect(document.querySelector('[role="status"]')?.textContent).toContain(message.title);
       await act(async () => root.render(null));

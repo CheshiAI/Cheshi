@@ -6,7 +6,7 @@ export const SPECIALIST_WORKER_FILES = [
   'Dockerfile', 'package.json', 'tsconfig.json', 'profiles/verifier/AGENTS.md',
   'src/pack-tools.ts', 'src/homie-pack-skills.ts', 'src/change-stream.ts', 'src/idle-lifecycle.ts', 'src/worker.ts', 'src/agent.ts', 'src/app-server-client.ts', 'src/project-instructions.ts', 'src/protocol.ts',
   'src/activity.ts', 'src/activity-contract.ts', 'src/store.ts', 'src/turn.ts', 'src/execution-health.ts', 'src/command-stop.ts', 'src/runtime-config.ts', 'src/task-scratch.ts',
-  'src/custom-tool-contract.ts', 'src/custom-tool-queue.ts',
+  'src/custom-tool-contract.ts', 'src/custom-tool-queue.ts', 'src/host-tool-artifacts.ts',
   'src/provider-recovery.ts', 'src/flash-tools.ts', 'src/flash-history.ts', 'src/flash-queue.ts',
   'src/codegraph-tools.ts', 'src/codegraph-queue.ts',
   'src/execution-permissions.ts', 'src/workspace-sandbox.ts', 'src/task-workspace.ts',

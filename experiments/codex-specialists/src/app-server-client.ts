@@ -1,4 +1,5 @@
 import { ProviderRequestError } from './provider-recovery.ts';
+import { toolResponseContent } from './host-tool-artifacts.ts';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { DEFAULT_PROJECT_DOC_MAX_BYTES, projectDocConfigOverride } from './project-instructions.ts';
@@ -116,7 +117,7 @@ export class AppServerClient implements RpcClient {
     let result: JsonRecord;
     try {
       const output = await this.toolHandler!(record(message.params));
-      result = { success: true, contentItems: [{ type: 'inputText', text: JSON.stringify(output) }] };
+      result = { success: true, contentItems: toolResponseContent(output) };
     } catch (error) {
       result = { success: false, contentItems: [{ type: 'inputText', text: error instanceof Error ? error.message : 'Tool failed.' }] };
     }

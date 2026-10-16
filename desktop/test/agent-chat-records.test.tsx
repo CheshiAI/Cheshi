@@ -153,7 +153,9 @@ test('Chats opens the shared review for the selected file, updates it, closes an
       changes: [fileActivity.changes![0]!, { ...fileActivity.changes![1]!, diff: '+updated' }] };
     data = { ...data, messages: [{ ...data.messages[0]!, activity: updated }] };
     await act(async () => refresh());
-    expect(panel().textContent).toContain('Failed to edit 2 files');
+    // The compact review hides the header description; the timeline retains execution status.
+    expect(article.textContent).toContain('Failed to edit 2 files');
+    expect(article.querySelector('[data-status="failed"]')).not.toBeNull();
     expect(panel().textContent).toContain('Partial record');
     expect(panel().querySelector('[aria-label="Diff for b.ts"]')?.textContent).toContain('+updated');
     await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Close file changes review"]')!.click());

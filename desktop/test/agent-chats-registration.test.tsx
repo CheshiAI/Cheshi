@@ -21,13 +21,14 @@ function fixture() {
 }
 const sendButton = () => document.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!;
 
-test('renaming a registered Homie updates participants, authors, replies and mentions without losing the draft', async () => {
+test('renaming a registered Homie updates its rail button, authors, replies and mentions without losing the draft', async () => {
   await withDOM(async ui => {
     const f = fixture();
     await ui.render(<ChatsView active api={f.api} registry={f.registry} onManageHomies={() => {}} />);
     await ui.click('Reply to Saved reply'); await ui.type('Message', 'Keep this draft');
     await act(async () => { f.agents[0]!.name = 'Cheshi-Development'; f.update(); });
-    expect(document.querySelector('[aria-label="Manage Homie: Cheshi-Development"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Open Homie: Cheshi-Development"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Open Homie: dev"]')).toBeNull();
     expect(document.querySelector('[aria-label="Room messages"]')?.textContent).toContain('Cheshi-Development');
     expect(document.querySelector('[aria-label="Reply context"]')?.textContent).toContain('Cheshi-Development');
     expect(document.querySelector('[aria-label="Delivery target"]')?.textContent).toBe('To: Cheshi-Development');
@@ -49,8 +50,12 @@ test.each(['deleted', 'unassigned', 'account-replaced'])('renamed %s Homies reta
     else if (reason === 'unassigned') f.agents[0]!.assignments = [];
     else f.agents[0]!.accountId = 'replacement';
     await ui.render(<ChatsView active api={f.api} registry={f.registry} />);
-    const participants = document.querySelector('[aria-label="Room participants"]')?.textContent;
-    expect(participants).toContain('dev'); expect(participants).not.toContain('Different identity');
+    const savedReply = document.querySelector('[data-message-id="old"]')?.textContent;
+    expect(savedReply).toContain('dev'); expect(savedReply).not.toContain('Different identity');
+    await ui.click('Reply to Saved reply');
+    expect(document.querySelector('[aria-label="Reply context"]')?.textContent).toContain('dev');
+    expect(document.querySelector('[aria-label="Delivery target"]')?.textContent)
+      .toContain(reason === 'deleted' ? 'dev · Deleted Homie' : 'dev · Homie unavailable');
     await ui.type('Message', '@dev check this');
     expect(sendButton().disabled).toBe(true);
     expect(f.requests.some(request => request.action === 'send')).toBe(false);
@@ -63,7 +68,7 @@ test('registry deletion preserves the room, history and draft, blocks click and 
     await ui.render(<ChatsView active api={f.api} registry={f.registry} />);
     await ui.type('Message', 'Keep this draft'); expect(sendButton().disabled).toBe(false);
     await act(async () => { f.agents.splice(0, 1); f.update(); });
-    expect(document.querySelector('[aria-label="Room participants"]')?.textContent).toContain('dev · Deleted Homie');
+    expect(document.querySelector('[aria-label="Delivery target"]')?.textContent).toContain('dev · Deleted Homie');
     expect(document.querySelector('[aria-label="Worker rooms"]')?.textContent).toContain('Deleted Homie · Conversation saved');
     expect(document.querySelector('[aria-label="Room messages"]')?.textContent).toContain('Saved reply');
     expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')?.value).toBe('Keep this draft');

@@ -1,4 +1,5 @@
 import { ToggleSwitch } from '../../shared/ui/ToggleSwitch';
+import { HomieHostTool } from './HomieHostTool';
 import { useEffect, useRef, useState } from 'react';
 import { LiquidGlassSelect, NeumorphicButton, NeumorphicTextField } from '../../shared/ui';
 import type { AgentPackage } from '../../../../shared/agent-package';
@@ -79,6 +80,12 @@ export function HomieCustomTools({ pack, savedPack, patch, disabled, model, agen
       })}
       <NeumorphicButton variant="ghost" onClick={() => update({ parameters: [...tool.parameters, { name: `input_${tool.parameters.length + 1}`, type: 'string', description: 'Describe this input.', required: true }] })}>Add input</NeumorphicButton>
       <h4>Execution</h4>
+      <LiquidGlassSelect ariaLabel="Tool execution target" menuAppearance="toolbar" triggerAppearance="standard" value={tool.execution ?? 'container'}
+        options={[{ value: 'container', label: 'Docker container' }, { value: 'host', label: 'This computer' }]}
+        onChange={value => update({ execution: value === 'host' ? 'host' : undefined, ...(value === 'host' ? { network: undefined } : {}) })} />
+      {tool.execution === 'host' && <HomieHostTool key={`${agentId}/${tool.name}`} model={model} agentId={agentId} tool={tool.name}
+        saved={Boolean(savedTool && JSON.stringify(savedTool) === JSON.stringify(tool) && JSON.stringify(savedPack?.resources) === JSON.stringify(pack.resources))}
+        disabled={disabled} onBusy={onBusy} />}
       <LiquidGlassSelect ariaLabel="Tool runtime" menuAppearance="toolbar" triggerAppearance="standard" value={tool.runtime}
         options={['bun','node','python3'].map(value => ({ value, label: value }))} onChange={value => {
           const runtime = value as HomieCustomTool['runtime'];
@@ -90,7 +97,7 @@ export function HomieCustomTools({ pack, savedPack, patch, disabled, model, agen
       {file && <label className={styles.field}>Script<NeumorphicTextField variant="standard" multiline rows={10} aria-label="Tool script content" value={file.content}
         onChange={event => patch({ resources: { programs: pack.resources?.programs ?? [], files: (pack.resources?.files ?? []).map(f => f.path === tool.script ? { ...f, content: event.target.value } : f) } })} /></label>}
       <p className={styles.description}>The script reads JSON from stdin and writes {'{ "result": … }'} or {'{ "request": { "body": … } }'} to stdout. It runs in an isolated container without project files or network access. A request is posted to the endpoint below. Add dependencies in Files and environment.</p>
-      <div className={styles.switchRow}><span>External API</span><ToggleSwitch aria-label="Tool external API" checked={Boolean(tool.network)} onChange={enabled => update({ network: enabled ? { url: '', credential: null } : undefined })} /></div>
+      <div className={styles.switchRow}><span>External API</span><ToggleSwitch disabled={tool.execution === 'host'} aria-label="Tool external API" checked={Boolean(tool.network)} onChange={enabled => update({ network: enabled ? { url: '', credential: null } : undefined })} /></div>
       {tool.network && <>
         <label className={styles.field}>HTTPS endpoint<NeumorphicTextField variant="standard" aria-label="Tool endpoint" value={tool.network.url} onChange={event => update({ network: { ...tool.network!, url: event.target.value } })} /></label>
         <label className={styles.field}>Credential name (optional)<NeumorphicTextField variant="standard" aria-label="Tool credential name" value={credential ?? ''} onChange={event => update({ network: { ...tool.network!, credential: event.target.value || null } })} /></label>

@@ -6,6 +6,7 @@ import type { CollaborationConnection } from './service.mts';
 export type CustomToolQuery = (binding: Binding, tool: string, args: Record<string, unknown>, signal: AbortSignal) => Promise<unknown>;
 import { record } from '../../../experiments/codex-specialists/src/protocol.ts';
 import { customToolFailure, type CustomToolRequest } from '../../../experiments/codex-specialists/src/custom-tool-queue.ts';
+import { readHostExchange } from '../../../experiments/codex-specialists/src/host-tool-artifacts.ts';
 
 type Transport = (connection: CollaborationConnection, body: unknown, signal: AbortSignal) => Promise<unknown>;
 const exchange: Transport = async (connection, body, signal) => {
@@ -14,7 +15,7 @@ const exchange: Transport = async (connection, body, signal) => {
   const response = await fetch(new URL('/custom-tools/exchange', url), { method: 'POST', redirect: 'error', signal,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${connection.token}` }, body: JSON.stringify(body) });
   if (!response.ok || !response.body) { await response.body?.cancel(); throw new Error('Start the worker to connect CustomTool.'); }
-  return await response.json() as unknown;
+  return readHostExchange(new Request(url, { method: 'POST', body: response.body, duplex: 'half' } as RequestInit));
 };
 type Job = { request: CustomToolRequest; controller: AbortController; result?: unknown };
 export class AgentCustomToolRelay {
@@ -39,7 +40,13 @@ export class AgentCustomToolRelay {
     if (!this.filename) return;
     for (const [key, receipt] of this.receipts) if (receipt.deadline <= Date.now()) this.receipts.delete(key);
     mkdirSync(dirname(this.filename), { recursive: true, mode: 0o700 });
-    writeFileSync(`${this.filename}.tmp`, JSON.stringify([...this.receipts]), { mode: 0o600 });
+    const durable = [...this.receipts].map(([key, receipt]) => {
+      const result = receipt.result as { hostToolProtocol?: number; images?: unknown[] } | undefined;
+      return [key, result?.hostToolProtocol === 1 && result.images?.length
+        ? { deadline: receipt.deadline, result: customToolFailure('Host evidence delivery was interrupted by restart. External completion is unknown; do not retry automatically.') }
+        : receipt];
+    });
+    writeFileSync(`${this.filename}.tmp`, JSON.stringify(durable), { mode: 0o600 });
     renameSync(`${this.filename}.tmp`, this.filename);
   }
   get busy() { return this.running.size > 0 || this.polling.size > 0; }
