@@ -1,6 +1,8 @@
-import type { CheshiDesktopApi, GitRepositorySnapshot } from '../cheshiDesktop';
+import type { CheshiDesktopApi, GitRepositorySnapshot, WorkspaceFilesChangedEvent } from '../cheshiDesktop';
+import { absoluteProjectPath } from '../../../shared/workspace-projects';
 
-type GitReader = Pick<CheshiDesktopApi, 'getGitSnapshot' | 'onGitRepositoryChanged'>;
+type GitReader = Pick<CheshiDesktopApi, 'getGitSnapshot' | 'onGitRepositoryChanged'>
+  & Partial<Pick<CheshiDesktopApi, 'workspaceRoot' | 'onWorkspaceFilesChanged'>>;
 type Listener = (snapshot: GitRepositorySnapshot | null) => void;
 interface VisibilityEvents {
   window: Pick<Window, 'addEventListener' | 'removeEventListener'>;
@@ -14,6 +16,21 @@ interface Subscription {
 }
 
 const subscriptions = new WeakMap<GitReader, Subscription>();
+
+/** Primary events are relative; linked project events carry absolute paths. */
+export function workspaceGitEventAffectsProject(
+  event: WorkspaceFilesChangedEvent, root: string | undefined, includeRelative: boolean,
+): boolean {
+  // Overflow has no reliable project identity, so every observer must recover.
+  if (event.overflow === true) return true;
+  const normalizedRoot = root?.replace(/\\/gu, '/').replace(/\/$/u, '');
+  return event.paths.some(file => {
+    if (!absoluteProjectPath(file)) return includeRelative;
+    const normalizedPath = file.replace(/\\/gu, '/');
+    return normalizedRoot !== undefined
+      && (normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`));
+  });
+}
 
 export function workspaceGitChangedPaths(snapshot: GitRepositorySnapshot | null): ReadonlySet<string> {
   if (snapshot?.available !== true) return new Set();
@@ -60,11 +77,15 @@ export function observeWorkspaceGitStatus(
       if (events.document.visibilityState === 'visible') onChange();
     };
     const unsubscribe = desktop.onGitRepositoryChanged(onChange);
+    const unsubscribeFiles = desktop.onWorkspaceFilesChanged?.(event => {
+      if (workspaceGitEventAffectsProject(event, desktop.workspaceRoot, true)) onChange();
+    });
     events.window.addEventListener('focus', onVisible);
     events.document.addEventListener('visibilitychange', onVisible);
     current.stop = () => {
       disposed = true;
       unsubscribe();
+      unsubscribeFiles?.();
       events.window.removeEventListener('focus', onVisible);
       events.document.removeEventListener('visibilitychange', onVisible);
       subscriptions.delete(desktop);

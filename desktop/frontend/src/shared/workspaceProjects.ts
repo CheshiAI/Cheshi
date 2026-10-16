@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { cheshiDesktop, type CheshiDesktopApi } from '../cheshiDesktop';
 import type { WorkspaceProject } from '../../../shared/workspace-projects';
+import { workspaceGitEventAffectsProject } from './workspaceGitStatus';
 
 export const primaryProject: WorkspaceProject = { id: 'primary', name: cheshiDesktop?.workspaceName ?? 'Workspace',
   rootPath: cheshiDesktop?.workspaceRoot ?? '', primary: true, available: true };
@@ -45,6 +46,9 @@ export function projectGitApi(base: CheshiDesktopApi | undefined, project: Works
     return [method, (...args: unknown[]) => invoke(channel, ...args)];
   })) as Pick<CheshiDesktopApi, typeof gitMethods[number]>;
   return { ...base, ...git, workspaceRoot: project.rootPath, workspaceName: project.name,
+    onWorkspaceFilesChanged: listener => base.onWorkspaceFilesChanged(event => {
+      if (workspaceGitEventAffectsProject(event, project.rootPath, false)) listener(event);
+    }),
     githubIssues: { list: query => invoke('cheshi:list-github-issues', query) as ReturnType<CheshiDesktopApi['githubIssues']['list']>,
       read: number => invoke('cheshi:read-github-issue', number) as ReturnType<CheshiDesktopApi['githubIssues']['read']>,
       comments: (number, page) => invoke('cheshi:read-github-issue-comments', number, page) as ReturnType<CheshiDesktopApi['githubIssues']['comments']>,

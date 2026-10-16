@@ -1,9 +1,10 @@
 import { expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { GitRepositorySnapshot } from '../frontend/src/cheshiDesktop';
+import type { CheshiDesktopApi, GitRepositorySnapshot, WorkspaceFilesChangedEvent } from '../frontend/src/cheshiDesktop';
 import { parseStatus } from '../lib/git-parsers.mts';
 import { observeWorkspaceGitStatus, workspaceGitChangedPaths } from '../frontend/src/shared/workspaceGitStatus';
-import { observeWorkspaceGitBranch } from '../frontend/src/shared/workspaceGitBranchModel';
+import { observeWorkspaceGitBranch, workspaceGitFileCounts } from '../frontend/src/shared/workspaceGitBranchModel';
+import { projectGitApi } from '../frontend/src/shared/workspaceProjects';
 import { WorkspaceFileTreeRows } from '../frontend/src/features/navigation/WorkspaceFileTreeRows';
 import type { WorkspaceFileTreeController } from '../frontend/src/features/navigation/useWorkspaceFileTreeController';
 
@@ -15,6 +16,25 @@ function createDeferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(accept => { resolve = accept; });
   return { promise, resolve };
+}
+
+function createFileEvents() {
+  const listeners = new Set<(event: WorkspaceFilesChangedEvent) => void>();
+  return {
+    listeners,
+    subscribe(listener: (event: WorkspaceFilesChangedEvent) => void) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+    emit(paths: string[], overflow = false) {
+      for (const listener of listeners) listener({ paths, overflow });
+    },
+  };
+}
+
+function visibilityEvents() {
+  return { window: new EventTarget(),
+    document: Object.assign(new EventTarget(), { visibilityState: 'visible' as DocumentVisibilityState }) };
 }
 
 test('changed paths cover both Git columns, additions, untracked, renamed and conflicted files', () => {
@@ -35,7 +55,9 @@ test('changed paths cover both Git columns, additions, untracked, renamed and co
 test('branch and Explorer share reads, replay current state and release it after the last unsubscribe', async () => {
   const requests: ReturnType<typeof createDeferred<GitRepositorySnapshot>>[] = [];
   const listeners = new Set<() => void>();
+  const files = createFileEvents();
   const desktop = {
+    onWorkspaceFilesChanged: files.subscribe,
     getGitSnapshot: () => {
       const request = createDeferred<GitRepositorySnapshot>();
       requests.push(request);
@@ -54,6 +76,7 @@ test('branch and Explorer share reads, replay current state and release it after
   const closeExplorer = observeWorkspaceGitStatus(desktop, value => { paths.push(workspaceGitChangedPaths(value)); }, events);
   expect(requests).toHaveLength(1);
   expect(listeners.size).toBe(1);
+  expect(files.listeners.size).toBe(1);
   requests[0]!.resolve(snapshot(' M src/a.ts\0'));
   await requests[0]!.promise;
   expect(paths.at(-1)?.has('src/a.ts')).toBe(true);
@@ -77,6 +100,7 @@ test('branch and Explorer share reads, replay current state and release it after
   closeExplorer();
   closeExplorer();
   expect(listeners.size).toBe(0);
+  expect(files.listeners.size).toBe(0);
   const remounted: (GitRepositorySnapshot | null)[] = [];
   const closeRemounted = observeWorkspaceGitStatus(desktop, value => { remounted.push(value); }, events);
   expect(requests).toHaveLength(4);
@@ -86,6 +110,91 @@ test('branch and Explorer share reads, replay current state and release it after
   await requests[3]!.promise;
   expect(remounted).toEqual([]);
 });
+
+test('external file deletion and rollback clear counts, including changes during an in-flight read', async () => {
+  const files = createFileEvents();
+  const requests: ReturnType<typeof createDeferred<GitRepositorySnapshot>>[] = [];
+  const counts: number[] = [];
+  const close = observeWorkspaceGitStatus({
+    workspaceRoot: '/app', onWorkspaceFilesChanged: files.subscribe,
+    onGitRepositoryChanged: () => () => {},
+    getGitSnapshot: () => {
+      const request = createDeferred<GitRepositorySnapshot>();
+      requests.push(request);
+      return request.promise;
+    },
+  }, value => { counts.push(workspaceGitFileCounts(value).changed); }, visibilityEvents());
+  try {
+    requests[0]!.resolve(snapshot(Array.from({ length: 25 }, (_, index) => `?? reports/${index}.png\0`).join('')));
+    await requests[0]!.promise;
+    expect(counts).toEqual([25]);
+    files.emit(['reports']);
+    expect(requests).toHaveLength(2);
+    requests[1]!.resolve(snapshot(''));
+    await requests[1]!.promise;
+    expect(counts).toEqual([25, 0]);
+
+    files.emit(['instructions.md']);
+    files.emit(['instructions.md']);
+    files.emit(['agent.json']);
+    expect(requests).toHaveLength(3);
+    requests[2]!.resolve(snapshot(' M instructions.md\0'));
+    await requests[2]!.promise;
+    expect(counts).toEqual([25, 0]);
+    expect(requests).toHaveLength(4);
+    requests[3]!.resolve(snapshot(''));
+    await requests[3]!.promise;
+    expect(counts).toEqual([25, 0, 0]);
+  } finally { close(); }
+  expect(files.listeners.size).toBe(0);
+  files.emit(['late.ts']);
+  expect(requests).toHaveLength(4);
+});
+
+for (const root of ['/projects', 'C:\\projects']) {
+  test(`file events refresh only their project and recover from overflow under ${root}`, async () => {
+    const files = createFileEvents();
+    const reads = { primary: 0, atlas: 0 };
+    const base = {
+      workspaceRoot: `${root}/app`, onWorkspaceFilesChanged: files.subscribe,
+      onGitRepositoryChanged: () => () => {},
+      getGitSnapshot: async () => { reads.primary++; return snapshot(''); },
+      workspaceProjects: {
+        invoke: async (id: string) => {
+          expect(id).toBe('atlas');
+          reads.atlas++;
+          return snapshot('');
+        },
+      },
+    } as unknown as CheshiDesktopApi;
+    const primary = { id: 'primary', name: 'App', rootPath: `${root}/app`, primary: true, available: true };
+    const atlas = { id: 'atlas', name: 'Atlas', rootPath: `${root}/atlas`, primary: false, available: true };
+    expect(projectGitApi(base, primary)).toBe(base);
+    const closePrimary = observeWorkspaceGitStatus(base, () => {}, visibilityEvents());
+    const closeAtlas = observeWorkspaceGitStatus(projectGitApi(base, atlas)!, () => {}, visibilityEvents());
+    try {
+      await Promise.resolve();
+      expect(reads).toEqual({ primary: 1, atlas: 1 });
+      files.emit(['src/main.ts']);
+      await Promise.resolve();
+      expect(reads).toEqual({ primary: 2, atlas: 1 });
+      files.emit([`${root}/atlas/reports`]);
+      await Promise.resolve();
+      expect(reads).toEqual({ primary: 2, atlas: 2 });
+      files.emit([`${root}/atlas-other/report.png`]);
+      files.emit([]);
+      await Promise.resolve();
+      expect(reads).toEqual({ primary: 2, atlas: 2 });
+      files.emit(['src/main.ts', `${root}/atlas/agent.json`]);
+      await Promise.resolve();
+      expect(reads).toEqual({ primary: 3, atlas: 3 });
+      files.emit([], true);
+      await Promise.resolve();
+      expect(reads).toEqual({ primary: 4, atlas: 4 });
+    } finally { closePrimary(); closeAtlas(); }
+    expect(files.listeners.size).toBe(0);
+  });
+}
 
 test('Explorer marks only changed file names and removes marks when the status clears', () => {
   // The controller boundary supplies only fields used by the read-only rows in this fixture.
