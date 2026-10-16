@@ -32,6 +32,7 @@ function parseSavedState(value: unknown): State {
 export class ChatsStore {
   private readonly filename: string;
   private state: State;
+  private persistedJson: string;
   private readonly listeners = new Set<() => void>();
   subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   constructor(filename: string) {
@@ -42,6 +43,7 @@ export class ChatsStore {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       this.state = { version: 1, rooms: [], messages: [], jobs: [] };
     }
+    this.persistedJson = JSON.stringify(this.state);
     this.update(s => { for (const m of s.messages) {
       if (m.isolated && ['preparing', 'running', 'checking'].includes(m.isolated.phase)) {
         m.isolated.phase = 'unknown'; m.status = 'unknown';
@@ -53,11 +55,15 @@ export class ChatsStore {
   update(mutator: (state: State) => void): void {
     const next = structuredClone(this.state); mutator(next);
     if (JSON.stringify(next) === JSON.stringify(this.state)) return;
-    const json = JSON.stringify(next);
-    if (Buffer.byteLength(json) > 32 * 1024 * 1024) throw new Error('Chats storage limit reached.');
-    mkdirSync(dirname(this.filename), { recursive: true, mode: 0o700 });
-    writeFileSync(`${this.filename}.tmp`, json, { mode: 0o600, flush: true });
-    renameSync(`${this.filename}.tmp`, this.filename); this.state = next;
+    if (Buffer.byteLength(JSON.stringify(next)) > 32 * 1024 * 1024) throw new Error('Chats storage limit reached.');
+    const json = JSON.stringify({ ...next, messages: next.messages.filter(message =>
+      message.activity?.kind !== 'message' || message.activity.status !== 'running') });
+    if (json !== this.persistedJson) {
+      mkdirSync(dirname(this.filename), { recursive: true, mode: 0o700 });
+      writeFileSync(`${this.filename}.tmp`, json, { mode: 0o600, flush: true });
+      renameSync(`${this.filename}.tmp`, this.filename); this.persistedJson = json;
+    }
+    this.state = next;
     for (const listener of this.listeners) listener();
   }
   all(): State { return structuredClone(this.state); }

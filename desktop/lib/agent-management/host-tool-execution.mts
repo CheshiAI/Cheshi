@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { constants } from 'node:fs';
 import { open, realpath } from 'node:fs/promises';
+import { tmpdir, userInfo } from 'node:os';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { record } from '../../../experiments/codex-specialists/src/protocol.ts';
 import { HOST_IMAGE_BYTES, imageDigest, validateHostPng, type HostToolResult } from '../../../experiments/codex-specialists/src/host-tool-artifacts.ts';
@@ -18,7 +19,9 @@ export async function executeHostProcess(options: HostProcessOptions): Promise<H
   const stdout = await new Promise<string>((resolveResult, reject) => {
     const child = spawn(options.executable, [options.script], { cwd: options.cwd, shell: false,
       detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'],
-      env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: options.cache, TMPDIR: options.output,
+      // Apps launched through macOS services can outlive this call and inherit these paths.
+      // Per-call cleanup must not remove their user home or system temporary directory.
+      env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: userInfo().homedir, TMPDIR: tmpdir(),
         LANG: 'en_US.UTF-8', PYTHONDONTWRITEBYTECODE: '1',
         HOMIE_TOOL_OUTPUT_DIR: options.output, HOMIE_TOOL_CACHE_DIR: options.cache } });
     let output = '', failure: Error | undefined;

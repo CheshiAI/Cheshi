@@ -1,5 +1,15 @@
 import type { RoomMessage } from '../../../../shared/agent-chats';
 
+/** Only adjacent receipts with explicit task and native turn identities share a header. */
+export function continuesResponse(previous: RoomMessage | undefined, message: RoomMessage | undefined): boolean {
+  if (!previous || !message || previous.sender === 'user' || message.kind !== 'message' || previous.kind !== 'message') return false;
+  return !!message.taskId && !!message.activity?.turnId
+    && previous.roomId === message.roomId && previous.sender === message.sender
+    && previous.taskId === message.taskId && previous.activity?.turnId === message.activity.turnId
+    && previous.recipient === message.recipient && previous.threadId === message.threadId
+    && previous.replyTo === message.replyTo && previous.questionId === message.questionId;
+}
+
 export function timelineIndex(messages: RoomMessage[]) {
   const byId = new Map(messages.map(message => [message.id, message]));
   const tasks = new Map<string, RoomMessage>();

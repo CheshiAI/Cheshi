@@ -60,12 +60,18 @@ Environment variables supplied to the program:
 | --- | --- |
 | `HOMIE_TOOL_OUTPUT_DIR` | Private per-call output directory |
 | `HOMIE_TOOL_CACHE_DIR` | Private per-call cache directory |
-| `HOME` | Same per-call cache directory |
-| `TMPDIR` | Same per-call output directory |
+| `HOME` | Operating-system user's home directory |
+| `TMPDIR` | Host process's system temporary directory |
 | `PATH` | `/usr/bin:/bin:/usr/sbin:/sbin` |
 
 Locale and Python bytecode settings are also supplied; credentials and the
-parent process environment are not inherited. This is **not an OS sandbox**:
+remaining parent process environment are not inherited. `HOME` and `TMPDIR` remain
+valid after a call ends: applications opened through macOS services and their
+helpers can inherit these paths and outlive the tool invocation. Tools must use
+`HOMIE_TOOL_OUTPUT_DIR` and `HOMIE_TOOL_CACHE_DIR` for their private per-call files;
+those directories are still removed after result collection.
+
+This is **not an OS sandbox**:
 the approved code still runs as the logged-in user, can read files and contact
 services available to that user, and can invoke other installed programs.
 The container HTTPS broker is not used; `network` and `execution: host` cannot

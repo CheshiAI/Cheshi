@@ -17,7 +17,7 @@ import { PermissionRequestCard } from './PermissionRequestCard';
 import { VerificationCard } from './VerificationReview';
 import { verificationReview, verificationReportContext, type VerificationReview } from './verificationReviewModel';
 import { ExecutionRecord } from './ExecutionRecord';
-import { exchangeLabel, timelineContexts, timelineIndex } from './roomTimeline';
+import { continuesResponse, exchangeLabel, timelineContexts, timelineIndex } from './roomTimeline';
 import type { TimelineWindow } from './roomTimelineLayout';
 import { ChatsMessageActions } from './ChatsMessageActions';
 import { TaskWorkspace } from './TaskWorkspace';
@@ -46,11 +46,13 @@ interface MessageRowProps extends Omit<ChatsTimelineProps, 'messages' | 'window'
   workspace: boolean;
   reviewFileContext?: string;
   verification: VerificationReview | null;
+  continuation: boolean;
+  continues: boolean;
 }
 
 const MessageRow = memo(function MessageRow({ room, message, agents, api, sending, mutate,
   onReply, onRetry, onReviewFileChanges, onReviewVerification, context, label, workspace,
-  reviewFileContext, verification }: MessageRowProps) {
+  reviewFileContext, verification, continuation, continues }: MessageRowProps) {
   const name = (id: string | null) => id === 'user' ? 'You' : [...(room?.members ?? []), ...(room?.formerMembers ?? [])].find(m => m.id === id)?.name ?? id ?? '';
   const openFile = useCallback(async (href: string) => {
     if (!api) throw new Error('Worker file links are unavailable.');
@@ -60,16 +62,24 @@ const MessageRow = memo(function MessageRow({ room, message, agents, api, sendin
     ? resolveChatRecipient(message.text, room?.members ?? []).recipient : null;
   const mention = addressed && addressed === message.recipient ? room?.members.find(member => member.id === addressed) : undefined;
   const copyable = message.kind === 'message' && (!message.activity || message.activity.kind === 'message');
-  return <LocalFileLinkContext.Provider value={message.sender === 'user' ? null : openFile}><article className={styles.message} data-message-id={message.id} data-reply-action data-copy-action={copyable || undefined}>
+  const streaming = message.activity?.kind === 'message' && message.activity.status === 'running';
+  const responseStatus = streaming ? 'Writing…' : message.activity?.kind === 'message' && message.activity.status === 'unknown' ? 'Incomplete response' : null;
+  return <LocalFileLinkContext.Provider value={message.sender === 'user' ? null : openFile}><article className={styles.message} aria-busy={streaming || undefined} data-message-id={message.id}
+    data-continuation={continuation || undefined} data-continues={continues || undefined}
+    aria-label={continuation ? `${name(message.sender)} · continued response` : undefined} data-reply-action data-copy-action={copyable || undefined}>
     <ChatsMessageActions text={message.text} copyable={copyable}
       replyLabel={`Reply to ${(message.text || message.activity?.title || 'execution').slice(0, 80)}`}
       onReply={() => onReply(message)} />
     <div className={styles.messageBody}>
-      <ChatMessageLabel author={message.sender === 'user' ? 'user' : 'assistant'} name={message.sender === 'user' ? undefined : name(message.sender)}
+      {!continuation && <ChatMessageLabel author={message.sender === 'user' ? 'user' : 'assistant'} name={message.sender === 'user' ? undefined : name(message.sender)}
         avatar={message.sender === 'user' ? undefined : <AgentAvatar id={message.sender} avatar={agents.find(a => a.id === message.sender)?.avatar} />}
         createdAt={Date.parse(message.createdAt) / 1000} className={styles.metadata}>
         {message.recipient && <span>→ {name(message.recipient)}</span>}{label && <span>{label}</span>}
-      </ChatMessageLabel>
+        {responseStatus && <span>{responseStatus}</span>}
+      </ChatMessageLabel>}
+      {continuation && (label || responseStatus) && <div className={styles.metadata} role="status">
+        {label && <span>{label}</span>}{label && responseStatus && ' · '}{responseStatus && <span>{responseStatus}</span>}
+      </div>}
       {context && <blockquote className={styles.replyQuote}>{name(context.sender)}: {context.kind === 'verification_request' || context.kind === 'verification_result' ? verificationQuote(context.kind, context.text) : context.text.slice(0, 240)}</blockquote>}
       {message.kind === 'permission_request' && message.permissionRequest ? <PermissionRequestCard message={message} workspace={room!.workspace} mutate={mutate} />
         : message.activity && message.activity.kind !== 'message' ? <ExecutionRecord activity={message.activity} messageId={message.id} onReview={onReviewFileChanges} />
@@ -107,11 +117,14 @@ export const ChatsTimeline = memo(function ChatsTimeline({ messages, window, ...
   }, [messages]);
   return <div className={styles.timelineContent}>
     {window.before > 0 && <div aria-hidden="true" data-timeline-spacer="before" style={{ height: window.before }} />}
-    {messages.slice(window.start, window.end).map(message => {
+    {messages.slice(window.start, window.end).map((message, offset) => {
+      const position = window.start + offset;
       const exchange = index.exchange(message);
       const reviewFileContext = verificationReportContext(message, messages, agents, index);
       const verification = verificationReview(message, exchange, reviewFileContext, index);
       return <MessageRow key={message.id} {...props} message={message} context={contexts.get(message.id)}
+        continuation={continuesResponse(messages[position - 1], message)}
+        continues={continuesResponse(message, messages[position + 1])}
         label={exchangeLabel(message, messages, index)} workspace={workspaceMessages.has(message.id)}
         reviewFileContext={reviewFileContext} verification={verification} />;
     })}

@@ -446,7 +446,7 @@ export function createAgentChats(options: Options) {
                 user.status = delivery?.inputId && task.inputs?.some(i => i.id === delivery.inputId && i.pending === true) ? 'queued' : task.status === 'unknown' ? 'unknown' : task.inspection?.goal?.phase ?? task.status; user.error = task.error;
               }
               for (const response of task.responses ?? []) {
-                if (hasRecordedResponse(task, response.text)) continue;
+                if (hasRecordedResponse(task, response.text, { messages: s.messages, agentId: job.agentId })) continue;
                 const id = `result_${digest(`${job.agentId}/${task.id}/${response.id}`)}`;
                 if (!s.messages.some(m => m.id === id)) s.messages.push({ id, roomId: job.roomId, threadId: job.threadId,
                   sender: job.agentId, recipient: null, kind: 'message', text: response.text, createdAt: new Date().toISOString(), taskId: task.id, status: response.status });

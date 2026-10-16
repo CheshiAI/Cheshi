@@ -108,6 +108,7 @@ export class AgentStore {
   readonly directory: string;
   private readonly filename: string;
   private state: SavedState;
+  private persistedJson = '';
   private readonly listeners = new Set<() => void>();
   subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   changed() { for (const listener of this.listeners) listener(); }
@@ -141,12 +142,22 @@ export class AgentStore {
     renameSync(temporary, filename);
   }
 
-  private persist(): void { this.write(this.filename, this.state); }
+  private persist(state = this.state): void {
+    // Streaming text is replaceable in-memory state, never a journal write per chunk.
+    const durable = { ...state, tasks: state.tasks.map(task => {
+      const { activity, activityTruncated, ...saved } = task;
+      const retained = activity?.filter(item => item.kind !== 'message' || item.status !== 'running');
+      return { ...saved, ...(retained?.length ? { activity: retained } : {}), ...(activityTruncated ? { activityTruncated: true } : {}) };
+    }) };
+    const json = JSON.stringify(durable);
+    if (json === this.persistedJson) return;
+    this.write(this.filename, durable); this.persistedJson = json;
+  }
   transaction<T>(mutate: (state: SavedState) => T): T {
     const next = structuredClone(this.state);
     const result = mutate(next);
     if (JSON.stringify(next) === JSON.stringify(this.state)) return result;
-    this.write(this.filename, next);
+    this.persist(next);
     this.state = next;
     this.changed();
     return result;

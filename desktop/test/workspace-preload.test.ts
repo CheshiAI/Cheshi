@@ -1,9 +1,134 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import type { GitHubRepositoryListResponse, WorkspaceManagementApi } from '../shared/workspace-management.ts';
 import type { CheshiDesktopApi } from '../frontend/src/cheshiDesktop.ts';
+
+const workspaceFilesChangedChannel = 'cheshi:workspace-files-changed';
+
+function workspaceFileSubscriptions() {
+  let api: Pick<CheshiDesktopApi, 'onWorkspaceFilesChanged'> | undefined;
+  const ipc = Object.assign(new EventEmitter(), {
+    sendSync: () => ({ workspaceName: 'Project', workspaceRoot: '/project' }),
+    invoke: async () => null,
+  });
+  vm.runInNewContext(readFileSync(new URL('../runtime/preload.cjs', import.meta.url), 'utf8'), {
+    process: { platform: process.platform, argv: [] },
+    window: { addEventListener() {} },
+    document: { readyState: 'loading' },
+    require(name: string) {
+      assert.equal(name, 'electron');
+      return {
+        ipcRenderer: ipc,
+        contextBridge: {
+          exposeInMainWorld(key: string, value: Pick<CheshiDesktopApi, 'onWorkspaceFilesChanged'>) {
+            if (key === 'cheshiDesktop') api = value;
+          },
+        },
+      };
+    },
+  });
+  assert.ok(api);
+  return { ipc, subscribe: api.onWorkspaceFilesChanged };
+}
+
+test('file subscriptions share one IPC listener across many consumers and release it on unmount', () => {
+  const { ipc, subscribe } = workspaceFileSubscriptions();
+  const limit = ipc.getMaxListeners();
+  assert.equal(ipc.listenerCount(workspaceFilesChangedChannel), 0);
+  for (let cycle = 0; cycle < 20; cycle++) {
+    const received = Array<number>(24).fill(0);
+    const subscriptions = received.map((_, index) => subscribe(() => { received[index] = received[index]! + 1; }));
+    try {
+      assert.equal(ipc.listenerCount(workspaceFilesChangedChannel), 1);
+      assert.equal(ipc.getMaxListeners(), limit);
+      ipc.emit(workspaceFilesChangedChannel, {}, { paths: ['src/a.ts'], overflow: false });
+      assert.deepEqual(received, Array<number>(24).fill(1));
+      for (const unsubscribe of subscriptions.slice(0, 12)) { unsubscribe(); unsubscribe(); }
+      assert.equal(ipc.listenerCount(workspaceFilesChangedChannel), 1);
+      ipc.emit(workspaceFilesChangedChannel, {}, { paths: [], overflow: true });
+      assert.deepEqual(received, [...Array<number>(12).fill(1), ...Array<number>(12).fill(2)]);
+    } finally {
+      for (const unsubscribe of subscriptions) unsubscribe();
+    }
+    assert.equal(ipc.listenerCount(workspaceFilesChangedChannel), 0);
+  }
+});
+
+test('reusing a file callback creates independent subscriptions with idempotent cleanup', () => {
+  const { ipc, subscribe } = workspaceFileSubscriptions();
+  let calls = 0;
+  const listener = () => { calls++; };
+  const first = subscribe(listener);
+  const second = subscribe(listener);
+  ipc.emit(workspaceFilesChangedChannel, {}, { paths: [], overflow: true });
+  assert.equal(calls, 2);
+  first(); first();
+  ipc.emit(workspaceFilesChangedChannel, {}, { paths: [], overflow: true });
+  assert.equal(calls, 3);
+  second();
+  assert.equal(ipc.listenerCount(workspaceFilesChangedChannel), 0);
+});
+
+test('file event delivery preserves the current subscriber snapshot and isolates each payload', () => {
+  const { ipc, subscribe } = workspaceFileSubscriptions();
+  const received: string[] = [];
+  const payload = { paths: ['src/a.ts', '/linked/b.ts'], overflow: false, privateData: 'not exposed' };
+  let removeSecond = () => {};
+  let removeLate = () => {};
+  let firstEvent = true;
+  const removeFirst = subscribe(event => {
+    received.push('first');
+    event.paths.push('consumer-only');
+    event.overflow = true;
+    if (firstEvent) {
+      firstEvent = false;
+      removeSecond();
+      removeLate = subscribe(() => { received.push('late'); });
+    }
+  });
+  removeSecond = subscribe(event => {
+    received.push('second');
+    assert.deepEqual(Array.from(event.paths), payload.paths);
+    assert.equal(event.overflow, false);
+    assert.deepEqual(Object.keys(event).sort(), ['overflow', 'paths']);
+  });
+  try {
+    ipc.emit(workspaceFilesChangedChannel, { privateEvent: true }, payload);
+    assert.deepEqual(received, ['first', 'second']);
+    ipc.emit(workspaceFilesChangedChannel, {}, payload);
+    assert.deepEqual(received, ['first', 'second', 'first', 'late']);
+    assert.deepEqual(payload.paths, ['src/a.ts', '/linked/b.ts']);
+    assert.equal(payload.overflow, false);
+  } finally { removeFirst(); removeSecond(); removeLate(); }
+  assert.equal(ipc.listenerCount(workspaceFilesChangedChannel), 0);
+});
+
+test('file subscriptions reject invalid handlers and retain bounded event validation', () => {
+  const { ipc, subscribe } = workspaceFileSubscriptions();
+  const subscribeUnknown = subscribe as (handler: unknown) => () => void;
+  for (const handler of [null, undefined, {}, 'listener']) {
+    assert.throws(() => subscribeUnknown(handler), /handler must be a function/u);
+  }
+  assert.equal(ipc.listenerCount(workspaceFilesChangedChannel), 0);
+  let received = 0;
+  const unsubscribe = subscribe(() => { received++; });
+  try {
+    for (const value of [null, [], {},
+      { paths: 'src/a.ts', overflow: false }, { paths: Array<string>(513).fill('a'), overflow: false },
+      { paths: [''], overflow: false }, { paths: [42], overflow: false },
+      { paths: [], overflow: 1 }, { paths: [], overflow: 'false' },
+    ]) {
+      assert.throws(() => ipc.emit(workspaceFilesChangedChannel, {}, value), /must be/u);
+    }
+    assert.equal(received, 0);
+    ipc.emit(workspaceFilesChangedChannel, {}, { paths: Array<string>(512).fill('a'), overflow: false });
+    assert.equal(received, 1);
+  } finally { unsubscribe(); }
+  assert.equal(ipc.listenerCount(workspaceFilesChangedChannel), 0);
+});
 
 test('built sandboxed preload exposes workspace actions through the intended IPC channels', async () => {
   let api: WorkspaceManagementApi | undefined;

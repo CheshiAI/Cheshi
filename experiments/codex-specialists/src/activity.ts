@@ -33,11 +33,12 @@ function retainFileChanges(value: unknown) {
 
 /** Public messages and tool receipts only. Exclude reasoning and raw protocol envelopes. */
 export function recordTaskActivity(store: AgentStore, taskId: string, method: string, item: JsonRecord, turnId: string) {
-  if (!['item/started', 'item/completed'].includes(method) || typeof item.id !== 'string') return;
+  if (!['item/started', 'item/completed', 'item/updated'].includes(method) || typeof item.id !== 'string') return;
+  if (method === 'item/updated' && item.type !== 'agentMessage') return;
   let kind: TaskActivity['kind'], title: string, text: string;
   switch (item.type) {
     case 'agentMessage':
-      if (method !== 'item/completed' || !item.text) return;
+      if (method === 'item/started' || !item.text) return;
       kind = 'message'; title = ''; text = string(item.text); break;
     case 'commandExecution': kind = 'command'; title = string(item.command); text = string(item.aggregatedOutput); break;
     case 'fileChange':
@@ -54,7 +55,7 @@ export function recordTaskActivity(store: AgentStore, taskId: string, method: st
   const failed = item.status === 'failed' || item.status === 'declined' || item.error != null
     || (typeof item.exitCode === 'number' && item.exitCode !== 0)
     || (item.result != null && typeof item.result === 'object' && 'isError' in item.result && item.result.isError === true);
-  const status = failed ? 'failed' : method === 'item/started' ? 'running'
+  const status = failed ? 'failed' : method === 'item/updated' ? item.status === 'unknown' ? 'unknown' : 'running' : method === 'item/started' ? 'running'
     : item.status === 'inProgress' ? 'unknown' : 'completed';
   const id = createHash('sha256').update(`${turnId}/${item.id}`).digest('hex');
   const task = store.task(taskId);

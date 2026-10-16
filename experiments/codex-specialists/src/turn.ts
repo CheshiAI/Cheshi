@@ -2,6 +2,7 @@ import { providerFailure, type ProviderFailure } from './provider-recovery.ts';
 import { parseUsage, type GoalUsage } from './goal-progress.ts';
 import { parseTokenTotals, type TokenTotals } from './usage-contract.ts';
 import { createDeferred, record, type JsonRecord, type Notification } from './protocol.ts';
+import { MessageStream } from './message-stream.ts';
 
 export type TurnResult = { status: 'completed' | 'interrupted' | 'failed'; output: string; error: string | null; providerFailure?: ProviderFailure };
 
@@ -14,6 +15,7 @@ export class TurnObserver {
   private readonly messages = new Map<string, string>();
   private readonly completedItems = new Set<string>();
   private settled = false;
+  private readonly stream: MessageStream;
   usage: Omit<GoalUsage, 'reportedThroughTurn'> | null = null;
   threadTotals: TokenTotals | null = null;
 
@@ -22,6 +24,7 @@ export class TurnObserver {
   constructor(observeItem?: (method: string, item: JsonRecord, turnId: string) => void,
     observeUsage?: (totals: TokenTotals, threadId: string, turnId: string) => void) {
     this.observeItem = observeItem; this.observeUsage = observeUsage; void this.result.catch(() => {});
+    this.stream = new MessageStream(item => this.observe('item/updated', item), error => this.fail(error));
   }
 
   get finished(): boolean { return this.settled; }
@@ -33,7 +36,7 @@ export class TurnObserver {
   }
 
   receive(event: Notification): void {
-    if (this.settled || !['item/started', 'item/completed', 'turn/completed', 'thread/tokenUsage/updated'].includes(event.method)) return;
+    if (this.settled || !['item/started', 'item/completed', 'item/agentMessage/delta', 'turn/completed', 'thread/tokenUsage/updated'].includes(event.method)) return;
     if (!this.target) { this.buffered.push(event); return; }
     this.consume(event);
   }
@@ -41,8 +44,11 @@ export class TurnObserver {
   fail(error: Error): void {
     if (this.settled) return;
     this.settled = true;
+    try { this.stream.finish(); } catch { /* Retain the original failure. */ }
     this.deferred.reject(error);
   }
+
+  dispose() { this.stream.dispose(); this.buffered.length = 0; }
 
   private message(value: unknown): void {
     const item = record(value);
@@ -53,6 +59,7 @@ export class TurnObserver {
   private observe(method: string, item: JsonRecord) {
     if (!this.target) return;
     if (typeof item.id === 'string' && method === 'item/completed') {
+      this.stream.complete(item.id);
       if (this.completedItems.has(item.id)) return;
       this.completedItems.add(item.id);
     }
@@ -61,6 +68,13 @@ export class TurnObserver {
 
   private consume(event: Notification): void {
     if (!this.target || this.settled || event.params.threadId !== this.target.threadId) return;
+    if (event.method === 'item/agentMessage/delta') {
+      if (event.params.turnId === this.target.turnId && typeof event.params.itemId === 'string'
+        && typeof event.params.delta === 'string' && !this.completedItems.has(event.params.itemId)) {
+        this.stream.delta(event.params.itemId, event.params.delta);
+      }
+      return;
+    }
     if (event.method === 'thread/tokenUsage/updated') {
       if (event.params.turnId !== this.target.turnId) return;
       try {
@@ -81,7 +95,11 @@ export class TurnObserver {
     }
     if (event.method === 'item/completed' || event.method === 'item/started') {
       if (event.params.turnId === this.target.turnId) {
-        try { this.observe(event.method, record(event.params.item)); }
+        try {
+          const item = record(event.params.item);
+          if (event.method === 'item/started' && !this.completedItems.has(String(item.id))) this.stream.start(item);
+          this.observe(event.method, item);
+        }
         catch (error) { this.fail(error instanceof Error ? error : new Error(String(error))); return; }
         if (event.method === 'item/completed') this.message(event.params.item);
       }
@@ -98,6 +116,8 @@ export class TurnObserver {
       this.fail(new Error('Invalid terminal turn status.')); return;
     }
     const error = turn.error == null ? null : record(turn.error);
+    try { this.stream.finish(); }
+    catch (error) { this.fail(error instanceof Error ? error : new Error(String(error))); return; }
     this.settled = true;
     this.deferred.resolve({
       status: status as TurnResult['status'], output: [...this.messages.values()].join('\n\n'),

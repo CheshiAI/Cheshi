@@ -17,6 +17,7 @@ import { createAppUpdateApi } from './lib/app-update-preload.cts';
 import { createKeepAwakeApi } from './lib/keep-awake-preload.cts';
 import { createEditorSessionApi } from './lib/editor-session-preload.cts';
 import { createWorkspaceFileSearchApi } from './lib/workspace-file-search-preload.cts';
+import { createWorkspaceFileEventsApi } from './lib/workspace-file-events-preload.cts';
 import { createChatQuestionDismissalsApi } from './lib/chat-question-dismissals-preload.cts';
 
 import type { IpcRendererEvent } from 'electron';
@@ -78,29 +79,12 @@ const GIT_REPOSITORY_CHANGED_CHANNEL = 'cheshi:git-repository-changed';
 const GITHUB_COMMENT_BODY_LIMIT = 65_536;
 const LANGUAGE_SERVER_DIAGNOSTICS_CHANNEL = 'cheshi:language-server-diagnostics';
 const TERMINAL_STATE_CHANNEL = 'cheshi:terminal-state-changed';
-const WORKSPACE_FILES_CHANGED_CHANNEL = 'cheshi:workspace-files-changed';
-const WORKSPACE_FILES_CHANGED_PATH_LIMIT = 512;
 
 function workspaceRelativePath(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) {
     throw new TypeError('Workspace path must be a non-empty string.');
   }
   return value;
-}
-
-function workspaceFilesChangedEvent(value: unknown) {
-  assertRecord(value, 'Workspace files changed event must be an object.');
-  if (!Array.isArray(value.paths) || value.paths.length > WORKSPACE_FILES_CHANGED_PATH_LIMIT) {
-    throw new TypeError('Workspace files changed paths must be a bounded array.');
-  }
-  const overflow = booleanValue(
-    value.overflow,
-    'Workspace files changed overflow flag must be a boolean.',
-  );
-  return {
-    paths: value.paths.map(workspaceRelativePath),
-    overflow,
-  };
 }
 
 function gitWorkspacePath(value: unknown): string {
@@ -614,14 +598,7 @@ const cheshiDesktopApi = {
   moveWorkspaceEntry: (request) => ipcRenderer.invoke('cheshi:move-workspace-entry', workspaceEntryMoveRequest(request)),
   copyWorkspaceEntryFullPath: (relativePath) => ipcRenderer.invoke('cheshi:copy-workspace-entry-full-path', workspaceRelativePath(relativePath)),
   deleteWorkspaceEntry: (relativePath) => ipcRenderer.invoke('cheshi:delete-workspace-entry', workspaceRelativePath(relativePath)),
-  onWorkspaceFilesChanged: (handler) => {
-    if (typeof handler !== 'function') throw new TypeError('Workspace files changed handler must be a function.');
-    const listener = (_event: IpcRendererEvent, value: unknown) => (
-      handler(workspaceFilesChangedEvent(value))
-    );
-    ipcRenderer.on(WORKSPACE_FILES_CHANGED_CHANNEL, listener);
-    return () => ipcRenderer.removeListener(WORKSPACE_FILES_CHANGED_CHANNEL, listener);
-  },
+  ...createWorkspaceFileEventsApi(ipcRenderer),
   getGitSnapshot: () => ipcRenderer.invoke('cheshi:get-git-snapshot'),
   getGitBranchCommits: async (branchReference) => ipcRenderer.invoke(
     'cheshi:get-git-branch-commits', gitBranchReference(branchReference),

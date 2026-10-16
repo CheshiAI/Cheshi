@@ -74,3 +74,30 @@ test('multiple worker tasks show one automatic quote each while explicit replies
     expect(document.querySelector('[data-message-id="reply"] blockquote')?.textContent).toBe('You: Task first');
   });
 });
+
+test('streaming keeps one message element, preserves the draft and removes the writing state on completion', async () => {
+  const message: RoomMessage = { id: 'answer', roomId: 'room', threadId: null, sender: 'atlas', recipient: null,
+    kind: 'message', text: '생성 중', createdAt: '2026-10-16', activity: { id: 'native', turnId: 'turn', kind: 'message',
+      title: '', text: '생성 중', status: 'running', createdAt: '2026-10-16', final: true, truncated: false } };
+  const snapshot: ChatsSnapshot = { cursor: { epoch: 'stream', sequence: 0 }, rooms: [{ id: 'room', name: 'Work',
+    workspace: '/project', engineId: 'docker:test', defaultAgentId: 'atlas', members: [], createdAt: '2026-10-16' }], messages: [message] };
+  let receive: ((update: ChatsUpdate) => void) | undefined;
+  const api: AgentChatsApi = { request: async () => snapshot, onDidChange: listener => { receive = listener; return () => { receive = undefined; }; } };
+  await withDOM(async ui => {
+    await ui.render(<ChatsView active api={api} />); await ui.type('Message', 'Keep my draft');
+    const article = document.querySelector('[data-message-id="answer"]');
+    expect(article?.getAttribute('aria-busy')).toBe('true'); expect(article?.textContent).toContain('Writing…');
+    for (const [sequence, status, text] of [[1, 'running', '생성 중인 답변'], [2, 'completed', '완성된 답변']] as const) {
+      await act(async () => receive?.({ cursor: { epoch: 'stream', sequence }, rooms: [], removedRoomIds: [], removedMessageIds: [],
+        messages: [{ ...message, text, activity: { ...message.activity!, text, status } }] }));
+      expect(document.querySelectorAll('[data-message-id]')).toHaveLength(1);
+      expect(document.querySelector('[data-message-id="answer"]')).toBe(article);
+      expect(article?.textContent).toContain(text);
+      expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')?.value).toBe('Keep my draft');
+    }
+    expect(article?.hasAttribute('aria-busy')).toBe(false); expect(article?.textContent).not.toContain('Writing…');
+    await act(async () => receive?.({ cursor: { epoch: 'stream', sequence: 3 }, rooms: [], removedRoomIds: [], removedMessageIds: [],
+      messages: [{ ...message, activity: { ...message.activity!, status: 'unknown' } }] }));
+    expect(article?.textContent).toContain('Incomplete response');
+  });
+});

@@ -2,10 +2,19 @@ import { createHash } from 'node:crypto';
 import type { AgentTask } from '../../shared/agent-management.ts';
 import type { AgentRoom, RoomMessage } from '../../shared/agent-chats.ts';
 
-export function hasRecordedResponse(task: AgentTask, text: string): boolean {
+export function hasRecordedResponse(task: AgentTask, text: string, saved?: { messages: readonly RoomMessage[]; agentId: string }): boolean {
+  // Worker inspection is bounded. Its missing history may already exist in the room journal.
+  const entries = new Map<string, NonNullable<RoomMessage['activity']>>();
+  for (const message of saved?.messages ?? []) {
+    if (message.roomId !== task.roomId || message.taskId !== task.id || message.sender !== saved?.agentId
+      || message.kind !== 'message' || !message.activity) continue;
+    const entry = message.activity;
+    entries.set(`${entry.turnId}/${entry.id}`, entry);
+  }
+  for (const entry of task.inspection?.activity ?? []) entries.set(`${entry.turnId}/${entry.id}`, entry);
   const turns = new Map<string, string[]>();
-  for (const entry of task.inspection?.activity ?? []) {
-    if (entry.kind !== 'message' || !entry.final || entry.truncated) continue;
+  for (const entry of [...entries.values()].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))) {
+    if (entry.kind !== 'message' || entry.status !== 'completed' || !entry.final || entry.truncated) continue;
     turns.set(entry.turnId, [...(turns.get(entry.turnId) ?? []), entry.text]);
   }
   return [...turns.values()].some(messages => messages.join('\n\n') === text);

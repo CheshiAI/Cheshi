@@ -601,13 +601,14 @@ export class SpecialistAgent {
       } else this.store.complete(task.id, { ...result, ...(result.status === 'completed' && waitingForUser(this.store.task(task.id)!) ? { status: 'waiting' as const } : {}), ...(savedGoal ? { goal: { ...savedGoal, phase: 'blocked', pending: null } } : {}) });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
+      observer.fail(error instanceof Error ? error : new Error(reason));
       if (error instanceof ProviderRequestError) this.store.update(task.id, { providerFailure: error.failure });
       await this.saveUsage(active);
       const outgoing = !submitted && task.delegation && this.work ? this.work.resultMessage(task, 'failed', reason) : undefined;
       this.store.complete(task.id, { status: submitted ? 'unknown' : active.stopRequested ? 'interrupted' : 'failed',
         output: task.providerCheckpoint ? this.store.task(task.id)?.output ?? '' : '', error: reason }, outgoing ? active.messages : [], outgoing);
     } finally {
-      active.controller.abort(); remove(); removeFailure();
+      active.controller.abort(); remove(); removeFailure(); observer.dispose();
       // Unknown executions may still own child processes. Retain their scratch until
       // app-server shutdown; the existing unknown-task gate prevents another turn.
       if (scratch && this.store.task(task.id)?.status !== 'unknown') {

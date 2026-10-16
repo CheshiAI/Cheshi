@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, realpath, writeFile, mkdir, chmod, symlink as createSymbolicLink } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { existsSync } from 'node:fs';
+import { tmpdir, userInfo } from 'node:os';
 import { join, dirname } from 'node:path';
 import { HostToolRegistration } from '../lib/agent-management/host-tool-registration.mts';
 import { executeHostProcess } from '../lib/agent-management/host-tool-execution.mts';
@@ -238,6 +239,32 @@ test('host execution validates output, handles timeout and cancellation, and str
     await createSymbolicLink(join(directory, 'outside.png'), join(output, 'link.png'));
     await writeFile(script, 'console.log(JSON.stringify({result:true,images:["link.png"]}));'); await fails(executeHostProcess(options), 'outside');
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('host home and system temporary directory survive per-call cleanup without inheriting unrelated variables', async () => {
+  const previous = process.env.CHESHI_HOST_ENV_REGRESSION_SENTINEL;
+  const f = await fixture(`console.log(JSON.stringify({result:{
+    home:process.env.HOME,temp:process.env.TMPDIR,
+    cache:process.env.HOMIE_TOOL_CACHE_DIR,output:process.env.HOMIE_TOOL_OUTPUT_DIR,
+    inherited:process.env.CHESHI_HOST_ENV_REGRESSION_SENTINEL??null
+  }}));`);
+  try {
+    process.env.CHESHI_HOST_ENV_REGRESSION_SENTINEL = 'fixture-only';
+    await f.allow();
+    const result = await f.execute();
+    const data = result.data as { home: string; temp: string; cache: string; output: string; inherited: string | null };
+    expect(data).toMatchObject({ home: userInfo().homedir, temp: tmpdir(), inherited: null });
+    expect(existsSync(data.home)).toBe(true);
+    expect(existsSync(data.temp)).toBe(true);
+    expect(existsSync(data.cache)).toBe(false);
+    expect(existsSync(data.output)).toBe(false);
+    expect(data.home).not.toBe(data.cache);
+    expect(data.temp).not.toBe(data.output);
+  } finally {
+    if (previous === undefined) delete process.env.CHESHI_HOST_ENV_REGRESSION_SENTINEL;
+    else process.env.CHESHI_HOST_ENV_REGRESSION_SENTINEL = previous;
+    await f.close();
+  }
 });
 
 test('PNG evidence reaches worker storage and actual app-server image content, with hash and format checks', async () => {
