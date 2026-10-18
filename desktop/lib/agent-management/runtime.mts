@@ -15,6 +15,7 @@ import { realpathSync } from 'node:fs';
 import { mkdir, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { projectPermissions } from '../../shared/agent-registry.ts';
+import { customToolTimeoutMs, CUSTOM_TOOL_TIMEOUT_MS } from '../../../experiments/codex-specialists/src/custom-tool-contract.ts';
 import type { SpecialistAgent } from '../../shared/agent-registry.ts';
 import type { AgentRuntimeRequest, AgentRuntimeState } from '../../shared/agent-runtime.ts';
 import { parseAgentRuntimeRequest } from '../../shared/agent-runtime.ts';
@@ -596,7 +597,9 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     },
     async testTool(workspaceRoot: string, input: ToolTestRequest) {
       const b = await binding(workspaceRoot, { action: 'status', engineId: input.engineId, agentId: input.agentId });
-      return runCustomTool(b, `homie_${input.tool}`, input.args, AbortSignal.timeout(60_000));
+      const tool = options.registry.snapshot(b.workspace).agents.find(a => a.id === b.agentId)?.package?.tools?.find(t => t.name === input.tool);
+      const timeout = tool ? customToolTimeoutMs(tool, input.args) : CUSTOM_TOOL_TIMEOUT_MS;
+      return runCustomTool(b, `homie_${input.tool}`, input.args, AbortSignal.timeout(timeout));
     },
     async permissions(workspaceRoot: string, input: { agentId: string; engineId: string; accountId: string; roomId: string; taskId: string; request: PermissionRequest; decision: 'allow' | 'deny' }) {
       const b = await binding(workspaceRoot, { ...input, action: 'status' });

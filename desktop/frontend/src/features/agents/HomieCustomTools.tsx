@@ -8,6 +8,11 @@ import { importHomieTool, type HomieCustomTool } from './customToolImport';
 import styles from './SpecialistAgentForm.module.css';
 import layout from './HomieSettings.module.css';
 
+function containerPythonResources(pack: AgentPackage, runtime: string, execution?: string): Partial<AgentPackage> {
+  if (runtime !== 'python3' || execution === 'host' || pack.resources?.programs.some(p => p.split('=')[0] === 'python3')) return {};
+  return { resources: { files: pack.resources?.files ?? [], programs: [...pack.resources?.programs ?? [], 'python3'] } };
+}
+
 export function HomieCustomTools({ pack, savedPack, patch, disabled, model, agentId, engineId, onBusy }: {
   pack: AgentPackage; savedPack?: AgentPackage; patch(value: Partial<AgentPackage>): void; disabled: boolean;
   model: AgentRegistryModel; agentId?: string; engineId?: string | null; onBusy(value: boolean): void;
@@ -82,15 +87,20 @@ export function HomieCustomTools({ pack, savedPack, patch, disabled, model, agen
       <h4>Execution</h4>
       <LiquidGlassSelect ariaLabel="Tool execution target" menuAppearance="toolbar" triggerAppearance="standard" value={tool.execution ?? 'container'}
         options={[{ value: 'container', label: 'Docker container' }, { value: 'host', label: 'This computer' }]}
-        onChange={value => update({ execution: value === 'host' ? 'host' : undefined, ...(value === 'host' ? { network: undefined } : {}) })} />
-      {tool.execution === 'host' && <HomieHostTool key={`${agentId}/${tool.name}`} model={model} agentId={agentId} tool={tool.name}
+        onChange={value => {
+          const execution = value === 'host' ? 'host' as const : undefined;
+          patch({ tools: tools.map((t, i) => i === selected ? { ...t, execution,
+            ...(execution === 'host' ? { network: undefined } : { runtimeVersion: undefined }) } : t),
+            ...containerPythonResources(pack, tool.runtime, execution) });
+        }} />
+      {tool.execution === 'host' && <HomieHostTool key={`${agentId}/${tool.name}`} model={model} agentId={agentId} tool={tool.name} runtime={tool.runtime}
         saved={Boolean(savedTool && JSON.stringify(savedTool) === JSON.stringify(tool) && JSON.stringify(savedPack?.resources) === JSON.stringify(pack.resources))}
         disabled={disabled} onBusy={onBusy} />}
       <LiquidGlassSelect ariaLabel="Tool runtime" menuAppearance="toolbar" triggerAppearance="standard" value={tool.runtime}
         options={['bun','node','python3'].map(value => ({ value, label: value }))} onChange={value => {
           const runtime = value as HomieCustomTool['runtime'];
-          patch({ tools: tools.map((t, i) => i === selected ? { ...t, runtime } : t),
-            ...(runtime === 'python3' && !pack.resources?.programs.some(p => p.split('=')[0] === 'python3') ? { resources: { files: pack.resources?.files ?? [], programs: [...pack.resources?.programs ?? [], 'python3'] } } : {}) });
+          patch({ tools: tools.map((t, i) => i === selected ? { ...t, runtime, runtimeVersion: undefined } : t),
+            ...containerPythonResources(pack, runtime, tool.execution) });
         }} />
       <LiquidGlassSelect ariaLabel="Tool script" menuAppearance="toolbar" triggerAppearance="standard" value={tool.script}
         options={(pack.resources?.files ?? []).filter(f => f.path.startsWith('scripts/')).map(f => ({ value: f.path, label: f.path }))} onChange={script => update({ script })} />

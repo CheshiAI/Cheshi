@@ -80,7 +80,8 @@ function shouldIgnore(packagePath: string): boolean {
   if (grandchildEntry === 'agent-chats') return segments.length > 4 || (segments.length === 4 && !new Set(['isolated-tasks.mts', 'ipc.mts', 'service.mts', 'store.mts', 'changes.mts', 'records.mts', 'coordination.mts']).has(segments[3]!));
   if (grandchildEntry === 'agent-voice') return segments.length > 4 || (segments.length === 4 && !new Set(['workspace.mts', 'service.mts', 'storage.mts', 'chats.mts', 'realtime.mts', 'diagnostics.mts']).has(segments[3]!));
   if (grandchildEntry === 'agent-management') {
-    if (segments[3] === 'host-tool-details.mts' || segments[3] === 'host-tool-review-content.mts' || segments[3] === 'host-tool-policy.mts') return segments.length > 4;
+    if (segments[3] === 'host-tool-details.mts' || segments[3] === 'host-tool-review-content.mts' || segments[3] === 'host-tool-policy.mts' || segments[3] === 'host-tool-services.mts'
+      || segments[3] === 'host-python-runtime.mts' || segments[3] === 'host-python-catalog.mts') return segments.length > 4;
     if (segments[3] === 'packages.mts') return segments.length > 4;
     if (['homie-repository.mts', 'homie-repository-command.mts', 'homie-repository-template.mts', 'homie-repository-project.mts', 'homie-source-files.mts', 'homie-sources.mts'].includes(segments[3] ?? '')) return segments.length > 4;
     const agentFiles = new Set(['platform-executor.mts', 'custom-tool-execution.mts', 'host-tool-registration.mts', 'host-tool-execution.mts', 'host-tool-review.mts', 'tool-credentials.mts', 'homie-packs.mts', 'pack-environment.mts', 'dependencies.mts', 'project-environment.mts', 'lifecycle.mts', 'engine.mts', 'docker.mts', 'docker-errors.mts', 'task-inspection.mts', 'service.mts', 'ipc.mts', 'terminal.mts', 'registry.mts', 'registry-ipc.mts', 'runtime.mts', 'instruction-files.mts', 'operations.mts', 'application-deletion.mts', 'docker-deletion.mts', 'deletion.mts']);

@@ -4,8 +4,8 @@ import type { AgentRegistryModel } from './agentRegistryModel';
 import type { HostToolStatus } from '../../../../shared/host-tools';
 import { HomieHostToolDetails } from './HomieHostToolDetails';
 
-export function HomieHostTool({ model, agentId, tool, reviewKey, saved, disabled, onBusy }: {
-  model: AgentRegistryModel; agentId?: string; tool: string; reviewKey?: string; saved: boolean; disabled: boolean; onBusy(value: boolean): void;
+export function HomieHostTool({ model, agentId, tool, runtime, reviewKey, saved, disabled, onBusy }: {
+  model: AgentRegistryModel; agentId?: string; tool: string; runtime?: string; reviewKey?: string; saved: boolean; disabled: boolean; onBusy(value: boolean): void;
 }) {
   const [state, setState] = useState<HostToolStatus | null>(null), [error, setError] = useState('');
   const [busy, setBusy] = useState(false), running = useRef(false);
@@ -47,7 +47,9 @@ export function HomieHostTool({ model, agentId, tool, reviewKey, saved, disabled
   return <div>
     <p>This tool runs on this computer with your user permissions. Local approval is separate from command permission and is excluded from exports.</p>
     <p role="status">{!saved ? 'Save the tool before reviewing local access.' : state?.allowed ? 'Host tool allowed for this project and account.' : 'Host tool needs local approval.'}</p>
-    {state?.autoApprove && <p>Automatic approval is on. Select this tool’s executable once; later tool versions use the same executable without confirmation.</p>}
+    {runtime === 'python3' && <p>Cheshi prepares and manages Python for this tool. No separate Python installation or executable selection is needed. First preparation requires a download.</p>}
+    {busy && <p role="status">Preparing runtime and reviewing host access…</p>}
+    {state?.autoApprove && <p>Automatic approval is on. Later tool versions can reuse the configured runtime without confirmation.</p>}
     {state?.executable && <p>Executable: {state.executable}</p>}
     <NeumorphicButton variant="ghost" disabled={disabled || busy || !saved || !agentId} onClick={() => { void act('allow'); }}>{state?.autoApprove ? 'Configure host access…' : 'Review host access…'}</NeumorphicButton>
     <NeumorphicButton variant="ghost" disabled={busy || !agentId || !state?.executable} onClick={() => { void act('revoke'); }}>Revoke host access</NeumorphicButton>

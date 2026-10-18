@@ -83,3 +83,27 @@ test('folder imports preserve scripts and dependencies and reject collisions wit
   let error: unknown; try { await importHomieTool(files, { ...base, ...imported }); } catch (reason) { error = reason; }
   expect(error).toBeInstanceOf(Error); expect(JSON.stringify(imported)).toBe(previous);
 });
+
+test('switching a managed Python tool to Docker clears its host pin and adds the container dependency', async () => {
+  let pack = parseAgentPackage({ ...(await officialAgentPackages())[0], tools: [{ name: 'python_fixture', description: 'Python fixture',
+    enabled: true, execution: 'host', runtime: 'python3', runtimeVersion: '3.14.8', script: 'scripts/run.py', parameters: [] }],
+  resources: { programs: [], files: [{ path: 'scripts/run.py', content: 'print("fixture")' }] } });
+  const model = new AgentRegistryModel({ list: async () => ({ workspaceRoot: '/project', agents: [] }), models: async () => [],
+    onDidChange: () => () => {}, save: async () => { throw new Error('unused'); } });
+  function Editor() {
+    const [value, setValue] = useState(pack);
+    return <HomieCustomTools pack={value} patch={patch => { pack = { ...value, ...patch }; setValue(pack); }}
+      disabled={false} model={model} onBusy={() => {}} />;
+  }
+  try {
+    await withDOM(async ui => {
+      await ui.render(<Editor />);
+      expect(document.body.textContent).toContain('No separate Python installation');
+      await ui.click('Tool execution target'); await ui.click('Docker container');
+      const parsed = parseAgentPackage(pack);
+      expect(parsed.tools![0]!.runtimeVersion).toBeUndefined();
+      expect(parsed.tools![0]!.execution).toBeUndefined();
+      expect(parsed.resources!.programs).toContain('python3');
+    });
+  } finally { model.dispose(); }
+});

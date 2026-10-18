@@ -2,8 +2,15 @@ export interface CustomTool {
   name: string; description: string; enabled: boolean;
   parameters: { name: string; type: 'string' | 'number' | 'boolean'; description: string; required: boolean }[];
   runtime: 'bun' | 'node' | 'python3'; script: string;
+  runtimeVersion?: string;
   execution?: 'host';
+  service?: { name: string; script: string; when?: { parameter: string; jsonField: string; values: string[] } };
   network?: { url: string; credential: string | null };
+}
+export const CUSTOM_TOOL_TIMEOUT_MS = 60_000;
+export const MANAGED_HOST_TOOL_TIMEOUT_MS = 90_000;
+export function customToolTimeoutMs(tool: CustomTool, args: Record<string, unknown>) {
+  return hostServiceRequired(tool, args) ? MANAGED_HOST_TOOL_TIMEOUT_MS : CUSTOM_TOOL_TIMEOUT_MS;
 }
 export function parseCustomTools(value: unknown): CustomTool[] {
   if (value === undefined) return [];
@@ -11,9 +18,11 @@ export function parseCustomTools(value: unknown): CustomTool[] {
   const names = new Set<string>();
   return value.map(raw => {
     const t = object(raw);
-    if (Object.keys(t).some(k => !['name','description','enabled','parameters','runtime','script','network','execution'].includes(k))) throw new Error('Unknown custom tool field.');
+    if (Object.keys(t).some(k => !['name','description','enabled','parameters','runtime','runtimeVersion','script','network','execution','service'].includes(k))) throw new Error('Unknown custom tool field.');
     if (t.execution !== undefined && t.execution !== 'host') throw new Error('Invalid execution target.');
     if (t.execution === 'host' && t.network !== undefined) throw new Error('Host tools do not use the container HTTPS broker.');
+    if (t.runtimeVersion !== undefined && (t.execution !== 'host' || t.runtime !== 'python3'
+      || typeof t.runtimeVersion !== 'string' || !/^3\.\d{1,2}\.\d{1,2}$/.test(t.runtimeVersion))) throw new Error('runtimeVersion requires an exact managed host Python version.');
     const name = text(t.name);
     if (!/^[a-z][a-z0-9_]{0,47}$/.test(name) || names.has(name)) throw new Error('Use a unique lowercase tool name.');
     names.add(name);
@@ -27,7 +36,23 @@ export function parseCustomTools(value: unknown): CustomTool[] {
       return { name, type: p.type as 'string' | 'number' | 'boolean', description: text(p.description), required: p.required };
     });
     const script = text(t.script);
-    if (!/^scripts\/[a-zA-Z0-9_-][a-zA-Z0-9_./-]*$/.test(script) || script.split('/').some(p => !p || p.startsWith('.'))) throw new Error('Choose a script inside this pack.');
+    assertScript(script);
+    let service: CustomTool['service'];
+    if (t.service !== undefined) {
+      const s = object(t.service);
+      if (t.execution !== 'host' || Object.keys(s).some(k => !['name', 'script', 'when'].includes(k))) throw new Error('Services require a host tool.');
+      const serviceName = text(s.name), serviceScript = text(s.script);
+      if (!/^[a-z][a-z0-9_]{0,47}$/.test(serviceName)) throw new Error('Invalid host service name.');
+      assertScript(serviceScript);
+      service = { name: serviceName, script: serviceScript };
+      if (s.when !== undefined) {
+        const when = object(s.when), parameter = text(when.parameter), jsonField = text(when.jsonField);
+        if (Object.keys(when).some(k => !['parameter', 'jsonField', 'values'].includes(k))
+          || !parameters.some(p => p.name === parameter && p.type === 'string')
+          || !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(jsonField) || !Array.isArray(when.values) || !when.values.length || when.values.length > 50) throw new Error('Invalid host service condition.');
+        service.when = { parameter, jsonField, values: when.values.map(text) };
+      }
+    }
     let network: CustomTool['network'];
     if (t.network !== undefined) {
       const n = object(t.network), url = publicToolUrl(n.url);
@@ -36,8 +61,24 @@ export function parseCustomTools(value: unknown): CustomTool[] {
       if (credential !== null && !/^[a-z][a-z0-9_-]{0,63}$/.test(credential)) throw new Error('Invalid credential name.');
       network = { url: url.href, credential };
     }
-    return { name, description: text(t.description), enabled: t.enabled, parameters, script, runtime: t.runtime as CustomTool['runtime'], ...(network ? { network } : {}), ...(t.execution === 'host' ? { execution: 'host' as const } : {}) };
+    return { name, description: text(t.description), enabled: t.enabled, parameters, script, runtime: t.runtime as CustomTool['runtime'],
+      ...(t.runtimeVersion !== undefined ? { runtimeVersion: t.runtimeVersion as string } : {}),
+      ...(network ? { network } : {}), ...(service ? { service } : {}), ...(t.execution === 'host' ? { execution: 'host' as const } : {}) };
   });
+}
+function assertScript(script: string) {
+  if (!/^scripts\/[a-zA-Z0-9_-][a-zA-Z0-9_./-]*$/.test(script) || script.split('/').some(p => !p || p.startsWith('.'))) throw new Error('Choose a script inside this pack.');
+}
+export function hostServiceRequired(tool: CustomTool, args: Record<string, unknown>) {
+  if (!tool.service) return false;
+  const when = tool.service.when;
+  if (!when) return true;
+  try {
+    const input = args[when.parameter];
+    if (typeof input !== 'string') return false;
+    const value = JSON.parse(input) as Record<string, unknown> | null;
+    return value !== null && typeof value[when.jsonField] === 'string' && when.values.includes(value[when.jsonField] as string);
+  } catch { return false; }
 }
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected a tool object.');

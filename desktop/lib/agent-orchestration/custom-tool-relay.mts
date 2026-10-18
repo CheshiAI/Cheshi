@@ -7,6 +7,7 @@ export type CustomToolQuery = (binding: Binding, tool: string, args: Record<stri
 import { record } from '../../../experiments/codex-specialists/src/protocol.ts';
 import { customToolFailure, type CustomToolRequest } from '../../../experiments/codex-specialists/src/custom-tool-queue.ts';
 import { readHostExchange } from '../../../experiments/codex-specialists/src/host-tool-artifacts.ts';
+import { MANAGED_HOST_TOOL_TIMEOUT_MS } from '../../../experiments/codex-specialists/src/custom-tool-contract.ts';
 
 type Transport = (connection: CollaborationConnection, body: unknown, signal: AbortSignal) => Promise<unknown>;
 const exchange: Transport = async (connection, body, signal) => {
@@ -71,7 +72,7 @@ export class AgentCustomToolRelay {
     for (const [id, job] of jobs) if (!body.requests.some(r => r.id === id)) { job.controller.abort(); jobs.delete(id); }
     for (const request of body.requests) {
       if (!request || typeof request.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(request.id)
-        || !Number.isSafeInteger(request.deadline) || request.deadline <= Date.now() || request.deadline > Date.now() + 65_000) throw new Error('Invalid CustomTool request.');
+        || !Number.isSafeInteger(request.deadline) || request.deadline <= Date.now() || request.deadline > Date.now() + MANAGED_HOST_TOOL_TIMEOUT_MS + 5000) throw new Error('Invalid CustomTool request.');
       if (typeof request.tool !== 'string' || !/^homie_[a-z][a-z0-9_]{0,47}$/.test(request.tool) || JSON.stringify(request.args).length > 65536) throw new Error('Invalid custom tool request.');
       const args = record(request.args);
       const prior = jobs.get(request.id);

@@ -72,7 +72,15 @@ export function parseAgentPackage(value: unknown): AgentPackage {
   const parsed = parseAgentPackageManifest(manifest);
   for (const tool of parsed.tools ?? []) {
     if (!parsed.resources?.files.some(file => file.path === tool.script)) throw new Error(`Missing script for tool: ${tool.name}`);
-    if (tool.runtime === 'python3' && !parsed.resources.programs.some(p => p.split('=')[0] === 'python3')) throw new Error('Python tools require python3 in Programs.');
+    if (tool.service && !parsed.resources.files.some(file => file.path === tool.service!.script)) throw new Error(`Missing service script for tool: ${tool.name}`);
+    if (tool.runtime === 'python3' && tool.execution !== 'host' && !parsed.resources.programs.some(p => p.split('=')[0] === 'python3')) throw new Error('Python tools require python3 in Programs.');
+  }
+  const services = new Map<string, string>();
+  for (const tool of parsed.tools ?? []) {
+    if (!tool.service) continue;
+    const definition = JSON.stringify([tool.runtime, tool.runtimeVersion, tool.service.script]);
+    if (services.has(tool.service.name) && services.get(tool.service.name) !== definition) throw new Error('Shared host service definitions must match.');
+    services.set(tool.service.name, definition);
   }
   return { ...parsed, instructions: text(instructions, 20_000) };
 }

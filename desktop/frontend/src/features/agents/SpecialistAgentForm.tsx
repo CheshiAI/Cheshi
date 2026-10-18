@@ -141,7 +141,7 @@ export function SpecialistAgentForm({ inline = false, fill = false, active: visi
             onChanged={() => setHostPolicyRevision(value => value + 1)} />
           {agent.package.tools.filter(tool => tool.execution === 'host').map(tool => <div className={layout.section} key={tool.name}>
             <span className={styles.description}>{tool.name}</span>
-            <HomieHostTool model={model} agentId={agent.id} tool={tool.name} reviewKey={`${agent.revision}:${hostPolicyRevision}`}
+            <HomieHostTool model={model} agentId={agent.id} tool={tool.name} runtime={tool.runtime} reviewKey={`${agent.revision}:${hostPolicyRevision}`}
               saved={assigned && !locallyEdited && !outdated} disabled={disabled} onBusy={setHostPending} />
           </div>)}
         </section>}

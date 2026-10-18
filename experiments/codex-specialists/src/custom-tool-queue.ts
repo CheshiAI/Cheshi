@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createDeferred, record } from './protocol.ts';
+import { CUSTOM_TOOL_TIMEOUT_MS, MANAGED_HOST_TOOL_TIMEOUT_MS } from './custom-tool-contract.ts';
 
 
 export interface CustomToolRequest { id: string; tool: string; args: Record<string, unknown>; deadline: number }
@@ -11,14 +12,15 @@ export class WorkerCustomToolQueue {
   subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   private changed() { for (const listener of this.listeners) listener(); }
   get pending() { return this.jobs.size > 0; }
-  async call(tool: string, value: unknown, signal: AbortSignal) {
+  async call(tool: string, value: unknown, signal: AbortSignal, timeoutMs: number = CUSTOM_TOOL_TIMEOUT_MS) {
     signal.throwIfAborted();
+    if (timeoutMs !== CUSTOM_TOOL_TIMEOUT_MS && timeoutMs !== MANAGED_HOST_TOOL_TIMEOUT_MS) throw new Error('Invalid custom tool timeout.');
     const args = record(value);
     if (this.jobs.size >= 4) throw new Error('Too many active CustomTool requests.');
-    const request = { id: randomUUID(), tool, args, deadline: Date.now() + 60_000 }, waiter = createDeferred<unknown>();
+    const request = { id: randomUUID(), tool, args, deadline: Date.now() + timeoutMs }, waiter = createDeferred<unknown>();
     this.jobs.set(request.id, { request, waiter });
     const cancel = () => waiter.resolve(customToolFailure('CustomTool request canceled or timed out. Do not automatically retry a tool with external side effects.'));
-    const timer = setTimeout(cancel, 60_000);
+    const timer = setTimeout(cancel, timeoutMs);
     signal.addEventListener('abort', cancel, { once: true });
     this.changed();
     try { return await waiter.promise; }

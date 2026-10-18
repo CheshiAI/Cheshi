@@ -3,7 +3,7 @@ import { WorkerFlashQueue } from './flash-queue.ts';
 import { flashTools, flashInstructions } from './flash-tools.ts';
 import { TaskWorkspaceGate } from './task-workspace.ts';
 import { receiveHostToolResult } from './host-tool-artifacts.ts';
-import { customToolArguments, customToolDefinition } from './custom-tool-contract.ts';
+import { customToolArguments, customToolDefinition, customToolTimeoutMs } from './custom-tool-contract.ts';
 import type { WorkerCustomToolQueue } from './custom-tool-queue.ts';
 import { packToolAllowed, assertPackToolAllowed } from './pack-tools.ts';
 import { WorkerCodeGraphQueue } from './codegraph-queue.ts';
@@ -177,7 +177,8 @@ export class SpecialistAgent {
           const definition = this.configuration?.customTools?.find(t => `homie_${t.name}` === tool && t.enabled);
           if (!definition || !this.customTools) throw new Error('Custom tool is disabled or unavailable.');
           if (!this.configuration?.permissions.commandExecution || task.consultation) throw new Error('Custom scripts require command permission outside read-only consultation.');
-          const raw = await this.customTools.call(tool, customToolArguments(definition, params.arguments), active.controller.signal);
+          const args = customToolArguments(definition, params.arguments);
+          const raw = await this.customTools.call(tool, args, active.controller.signal, customToolTimeoutMs(definition, args));
           const result = definition.execution === 'host' && record(raw).isError !== true
             ? await receiveHostToolResult(raw, active.controller.signal) : record(raw);
           active.observations.add({ tool, result });

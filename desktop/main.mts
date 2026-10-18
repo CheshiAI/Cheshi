@@ -138,7 +138,8 @@ const codeGraphDataRoot = resolveCodeGraphDataRoot() ?? app.getPath('userData');
 const codeGraphSynchronization = createCodeGraphSynchronization({ command: codeGraphCommand, dataRoot: codeGraphDataRoot });
 const agentFlash = new AgentFlashMemory(app.getPath('userData'), binding => agentRegistry.snapshot(binding.workspace).agents.some(agent => agent.id === binding.agentId && agent.accountId === binding.accountId && agent.assignments.some(a => { try { return realpathSync(a.workspaceRoot) === binding.workspace; } catch { return false; } })));
 const hostTools = new HostToolRegistration(path.join(app.getPath('userData'), 'agents', 'host-tools'),
-  (workspace, id) => agentRegistry.snapshot(workspace).agents.find(agent => agent.id === id));
+  (workspace, id) => agentRegistry.snapshot(workspace).agents.find(agent => agent.id === id),
+  async id => (await homieRepositories.local(id))?.directory ?? null);
 const specialistRuntime = createSpecialistRuntime({
   hostTools,
   flash: agentFlash,

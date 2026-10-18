@@ -22,7 +22,7 @@ export async function executeHostProcess(options: HostProcessOptions): Promise<H
       // Apps launched through macOS services can outlive this call and inherit these paths.
       // Per-call cleanup must not remove their user home or system temporary directory.
       env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: userInfo().homedir, TMPDIR: tmpdir(),
-        LANG: 'en_US.UTF-8', PYTHONDONTWRITEBYTECODE: '1',
+        LANG: 'en_US.UTF-8', PYTHONDONTWRITEBYTECODE: '1', PYTHONNOUSERSITE: '1',
         HOMIE_TOOL_OUTPUT_DIR: options.output, HOMIE_TOOL_CACHE_DIR: options.cache } });
     let output = '', failure: Error | undefined;
     const kill = () => {
