@@ -5,6 +5,7 @@ import { DEFAULT_PROJECT_DOC_MAX_BYTES, parseProjectDocMaxBytes } from '../../ex
 import { isCodexAccountId } from '../shared/codex-accounts.ts';
 import { chatPreferences, type ChatPreferenceStore } from './chat-preferences.mts';
 import { recordValue } from './codex-service-utils.mts';
+import { parseFlashEnabled } from '../shared/settings.ts';
 
 interface Options { settingsPath: string }
 export interface WorkspaceAccountSelection {
@@ -20,6 +21,7 @@ function accountSelections(preferences: Record<string, unknown>): Record<string,
 /** Shared app preferences, updated atomically across workspace windows. */
 export function createSettingsService(options: Options) {
   const projectDocListeners = new Set<(bytes: number) => void>();
+  const flashListeners = new Set<(enabled: boolean) => void>();
   const readPreferences = (): Record<string, unknown> => {
     try {
       return assertPreferences(JSON.parse(readFileSync(options.settingsPath, 'utf8')));
@@ -40,6 +42,18 @@ export function createSettingsService(options: Options) {
     finally { try { rmSync(temporary, { force: true }); } catch { /* A failed write does not replace the saved preference. */ } }
   };
   return {
+    getFlashEnabled() { return readPreferences().flashEnabled === true; },
+    setFlashEnabled(value: unknown) {
+      const enabled = parseFlashEnabled(value);
+      updatePreferences(preferences => ({ ...preferences, flashEnabled: enabled }),
+        'Could not save Flash usage. Try again.');
+      for (const listener of flashListeners) listener(enabled);
+      return enabled;
+    },
+    subscribeFlashEnabled(listener: (enabled: boolean) => void) {
+      flashListeners.add(listener);
+      return () => { flashListeners.delete(listener); };
+    },
     workspaceChatPreferences(workspaceRoot: string): ChatPreferenceStore {
       const workspace = path.resolve(workspaceRoot);
       const savedChats = (preferences: Record<string, unknown>) => recordValue(preferences.workspaceChatPreferences) ?? {};

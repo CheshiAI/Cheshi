@@ -17,10 +17,13 @@ export function registerSettingsIpc(options: {
   const unsubscribeProjectDoc = options.service.subscribeProjectDocMaxBytes(bytes => {
     if (!disposed && !owner.isDestroyed()) owner.send(SETTINGS_CHANNELS.projectDocMaxBytesChanged, bytes);
   });
+  const unsubscribeFlash = options.service.subscribeFlashEnabled(enabled => {
+    if (!disposed && !owner.isDestroyed()) owner.send(SETTINGS_CHANNELS.flashEnabledChanged, enabled);
+  });
   let unsubscribeClosed = () => {};
   const dispose = () => {
     if (disposed) return;
-    disposed = true; unsubscribeProjectDoc();
+    disposed = true; unsubscribeProjectDoc(); unsubscribeFlash();
     unsubscribeClosed();
     for (const channel of channels) options.ipc.removeHandler(channel);
   };
@@ -29,6 +32,8 @@ export function registerSettingsIpc(options: {
     channels.push(channel);
   };
   try {
+    handle(SETTINGS_CHANNELS.getFlashEnabled, () => options.service.getFlashEnabled());
+    handle(SETTINGS_CHANNELS.setFlashEnabled, (_event, enabled: unknown) => options.service.setFlashEnabled(enabled));
     handle(SETTINGS_CHANNELS.getProjectDocMaxBytes, () => options.service.getProjectDocMaxBytes());
     handle(SETTINGS_CHANNELS.setProjectDocMaxBytes, (_event, bytes: unknown) => options.service.setProjectDocMaxBytes(bytes));
     unsubscribeClosed = onWindowClosed(options.window, dispose);

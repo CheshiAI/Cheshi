@@ -43,24 +43,32 @@ export class FlashWorkerConnection {
   }
   get busy() { return this.flight !== null || this.jobs.size > 0; }
   private assertCurrent() { this.lifetime.signal.throwIfAborted(); if (!this.valid()) throw new Error('Flash assignment changed.'); }
-  private async exchange(route: string, body: unknown) {
+  private async exchange(route: string, body: unknown, caller = this.lifetime.signal) {
     this.assertCurrent();
-    const result = await this.transport(route, body, AbortSignal.any([this.lifetime.signal, AbortSignal.timeout(30_000)]));
+    const signal = AbortSignal.any([caller, this.lifetime.signal, AbortSignal.timeout(30_000)]);
+    signal.throwIfAborted();
+    const result = await this.transport(route, body, signal);
+    signal.throwIfAborted();
     this.assertCurrent(); return record(result);
   }
   private async synchronize() {
+    if (!this.memory.enabled()) return;
+    try { await this.memory.withEnabled(signal => this.synchronizeEnabled(signal), this.lifetime.signal); }
+    catch (error) { if (!(error instanceof FlashError && error.code === 'disabled')) throw error; }
+  }
+  private async synchronizeEnabled(signal: AbortSignal) {
     for (let attempt = 0; ; attempt++) {
-      try { await this.snapshot(); return; }
+      try { await this.snapshot(signal); return; }
       catch (error) {
         if (!(error instanceof FlashHistoryChanged) || attempt >= 3) throw error;
-        await delay(50, undefined, { signal: this.lifetime.signal });
+        await delay(50, undefined, { signal });
       }
     }
   }
-  private async snapshot() {
+  private async snapshot(signal: AbortSignal) {
     const sessions: FlashSession[] = []; let after: string | undefined, revision = this.revision;
     for (;;) {
-      const page = await this.exchange('/flash/history', { revision, ...(after ? { after } : {}) });
+      const page = await this.exchange('/flash/history', { revision, ...(after ? { after } : {}) }, signal);
       if (typeof page.revision !== 'string' || !/^[a-f0-9]{64}$/.test(page.revision)) throw new Error('Invalid Flash history revision.');
       if (page.unchanged === true) { if (after || page.revision !== this.revision) throw new Error('Invalid unchanged Flash history.'); return; }
       if (after && page.revision !== revision) throw new FlashHistoryChanged('Flash history changed. Retry.');
@@ -76,7 +84,9 @@ export class FlashWorkerConnection {
       after = next;
     }
     this.assertCurrent();
-    await this.memory.archive.replace(this.binding, this.stream, sessions, () => this.valid() && !this.lifetime.signal.aborted);
+    signal.throwIfAborted();
+    await this.memory.archive.replace(this.binding, this.stream, sessions, () => this.valid() && !this.lifetime.signal.aborted && !signal.aborted);
+    signal.throwIfAborted();
     this.assertCurrent(); this.revision = revision;
   }
   tick(): Promise<void> {
@@ -132,6 +142,9 @@ export class AgentFlashRelay {
 
 /** Only known categories cross the worker boundary, never provider messages or raw input. */
 export function flashRelayFailure(error: unknown, signal: AbortSignal) {
+  if (error instanceof FlashError && error.code === 'disabled') {
+    return { ...flashFailure('Flash is off. Enable it in Settings > Flash to use memory.'), code: 'disabled', retryable: false };
+  }
   const known = new Set(['invalid_summary', 'invalid_model_json', 'model_unavailable', 'invalid_ranking',
     'stale_source', 'turns_too_large', 'input_too_large', 'timeout', 'canceled', 'unavailable', 'not_ready', 'syncing']);
   const code = signal.aborted ? 'canceled' : error instanceof FlashError && known.has(error.code) ? error.code : 'unavailable';

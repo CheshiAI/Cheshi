@@ -11,14 +11,15 @@ import type { CodexChatClient } from '../codex-chat-types.mts';
 import { createLunaSummary } from './summary.mts';
 import { acquireFlashHost } from './runtime.mts';
 import { FlashSessionMemory } from './session-memory.mts';
+import type { FlashControl } from './control.mts';
 
 /** Foreground SESSION adapter; the existing list search keeps its own index and API. */
 export function createWorkspaceSessionMemory(workspace: string, userData: string,
   conversations: CodexConversationAccess, listSearch: Pick<ChatHistorySearch, 'search' | 'remove' | 'changed'>,
-  createMcpProbeClient: () => CodexChatClient & { stop(): Promise<void> }, ipc: Parameters<typeof registerFlashMemoryIpc>[0], assertSender: Parameters<typeof registerFlashMemoryIpc>[1], agents?: AgentFlashMemory) {
+  createMcpProbeClient: () => CodexChatClient & { stop(): Promise<void> }, ipc: Parameters<typeof registerFlashMemoryIpc>[0], assertSender: Parameters<typeof registerFlashMemoryIpc>[1], agents?: AgentFlashMemory, control?: FlashControl) {
   const rerank = createLunaReranker(createMcpProbeClient, workspace);
   const summarize = createLunaSummary(createMcpProbeClient, workspace);
-  const memory = new FlashSessionMemory({ workspace, host: acquireFlashHost(userData), summarize, rerank,
+  const memory = new FlashSessionMemory({ workspace, host: control?.acquire() ?? acquireFlashHost(userData), control, summarize, rerank,
     source: { list: () => conversations.list(), read: (id, profileId) => {
       if (!profileId) throw new Error('The session account is unavailable.');
       return conversations.request(profileId, 'thread/read', { threadId: id, includeTurns: true });

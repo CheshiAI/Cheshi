@@ -11,6 +11,7 @@ export interface WorkspaceWindowState { bounds: Rectangle; maximized: boolean; f
 export interface WorkspaceRuntimeOptions {
   host?: WorkspaceHost;
   agentFlash?: import('./flash/agent-memory.mts').AgentFlashMemory;
+  flashControl?: import('./flash/control.mts').FlashControl;
   workspaceRoot: string;
   notifications?: import('./imessage-notifications.mts').NotificationSink;
   discord?: import('./discord-service.mts').DiscordBridge;

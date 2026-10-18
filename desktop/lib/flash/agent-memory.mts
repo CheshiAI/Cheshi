@@ -12,6 +12,7 @@ import { DockerMemoryArchive, dockerMemoryOwner, dockerSessionId } from './docke
 import { memoryArguments } from '../../../experiments/codex-specialists/src/flash-tools.ts';
 import type { FlashRequest } from '../../../experiments/codex-specialists/src/flash-queue.ts';
 import { flashSourceHref, type FlashSourceTarget } from '../../shared/flash-memory.ts';
+import type { FlashControl } from './control.mts';
 
 export interface LocalAgentMemory {
   memory: SessionMemory;
@@ -42,13 +43,19 @@ export class AgentFlashMemory {
   private readonly local = new Map<string, LocalAgentMemory>();
   private readonly host: FlashHost;
   private readonly valid: (binding: Binding) => boolean;
-  constructor(userData: string, valid: (binding: Binding) => boolean, host?: FlashHost) {
+  private readonly control?: FlashControl;
+  constructor(userData: string, valid: (binding: Binding) => boolean, host?: FlashHost, control?: FlashControl) {
+    this.control = control;
     this.archive = new DockerMemoryArchive(join(userData, 'flash', 'docker-sessions'));
-    this.host = host ?? acquireFlashHost(userData); this.valid = valid;
+    this.host = host ?? control?.acquire() ?? acquireFlashHost(userData); this.valid = valid;
   }
   register(workspace: string, memory: LocalAgentMemory) {
     this.local.set(workspace, memory);
     return () => { if (this.local.get(workspace) === memory) this.local.delete(workspace); };
+  }
+  enabled(): boolean { return this.control?.enabled() ?? true; }
+  withEnabled<T>(operation: (signal: AbortSignal) => Promise<T>, signal: AbortSignal): Promise<T> {
+    return this.control ? this.control.run(operation, signal) : operation(signal);
   }
   private assertCurrent(binding: Binding, signal: AbortSignal) {
     signal.throwIfAborted();
@@ -67,6 +74,10 @@ export class AgentFlashMemory {
     return result;
   }
   async execute(binding: Binding, request: FlashRequest, signal: AbortSignal): Promise<unknown> {
+    const operation = (current: AbortSignal) => this.executeEnabled(binding, request, current);
+    return this.withEnabled(operation, signal);
+  }
+  private async executeEnabled(binding: Binding, request: FlashRequest, signal: AbortSignal): Promise<unknown> {
     this.assertCurrent(binding, signal);
     const args = memoryArguments(request.tool, request.args), owner = dockerMemoryOwner(binding);
     const local = this.local.get(binding.workspace);

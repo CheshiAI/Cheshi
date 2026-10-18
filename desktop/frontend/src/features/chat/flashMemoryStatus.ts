@@ -36,6 +36,7 @@ export function observeFlashMemory(api: FlashMemoryApi, publish: (view: FlashSta
 }
 
 export function flashStatusPresentation(status: FlashMemoryStatus) {
+  if (status.state === 'disabled') return { label: 'Off', detail: '', retryable: false };
   const label = { signed_out: 'Sign in', preparing: 'Preparing', syncing: 'Syncing', ready: 'Ready', error: 'Error' }[status.state];
   let detail = status.state === 'signed_out' ? 'Sign in to search saved conversations.'
     : status.state === 'preparing' ? 'Preparing Flash memory…'

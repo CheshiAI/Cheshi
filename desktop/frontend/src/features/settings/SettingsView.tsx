@@ -1,4 +1,4 @@
-import { Bot, Bell, Clock, Info, Palette, Settings } from 'lucide-react';
+import { Bot, Bell, Clock, Info, Palette, Settings, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { SettingsApi } from '../../../../shared/settings';
@@ -10,8 +10,9 @@ import { AppearanceSettings } from './AppearanceSettings';
 import { AboutSettings } from './AboutSettings';
 import { NotificationSettings } from './NotificationSettings';
 import { SchedulerSettings } from './SchedulerSettings';
+import { FlashSettings } from './FlashSettings';
 
-type SettingsCategory = 'agents' | 'appearance' | 'notifications' | 'scheduler' | 'about';
+type SettingsCategory = 'agents' | 'appearance' | 'notifications' | 'scheduler' | 'flash' | 'about';
 
 export function SettingsView({ api = cheshiDesktop?.settings, contextId, onOpenChat }: {
   api?: SettingsApi; contextId?: string; onOpenChat?(thread: string): void;
@@ -32,9 +33,10 @@ export function SettingsView({ api = cheshiDesktop?.settings, contextId, onOpenC
         <button type="button" className={styles.item} aria-current={category === 'appearance' ? 'page' : undefined} onClick={() => setCategory('appearance')}><Palette aria-hidden="true" />Appearance</button>
         <button type="button" className={styles.item} aria-current={category === 'notifications' ? 'page' : undefined} onClick={() => setCategory('notifications')}><Bell aria-hidden="true" />Notifications</button>
         <button type="button" className={styles.item} aria-current={category === 'scheduler' ? 'page' : undefined} onClick={() => setCategory('scheduler')}><Clock aria-hidden="true" />Scheduler</button>
+        <button type="button" className={styles.item} aria-current={category === 'flash' ? 'page' : undefined} onClick={() => setCategory('flash')}><Zap aria-hidden="true" />Flash</button>
         <button type="button" className={styles.item} aria-current={category === 'about' ? 'page' : undefined} onClick={() => setCategory('about')}><Info aria-hidden="true" />About</button>
       </LiquidGlassPanel>
-      {category === 'agents' ? <AgentSettings api={api} /> : category === 'scheduler' ? <SchedulerSettings /> : category === 'notifications' ? <NotificationSettings contextId={contextId} onStarted={onOpenChat} /> : category === 'about' ? <AboutSettings /> : <AppearanceSettings />}
+      {category === 'agents' ? <AgentSettings api={api} /> : category === 'flash' ? <FlashSettings api={api} /> : category === 'scheduler' ? <SchedulerSettings /> : category === 'notifications' ? <NotificationSettings contextId={contextId} onStarted={onOpenChat} /> : category === 'about' ? <AboutSettings /> : <AppearanceSettings />}
     </div>
   </main>;
 }

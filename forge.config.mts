@@ -69,7 +69,7 @@ function shouldIgnore(packagePath: string): boolean {
   if (segments.length === 2) return false;
   if (grandchildEntry === 'electron-libghostty') return false;
   if (grandchildEntry === 'flash') {
-    const files = new Set(['ranking-recovery.mts', 'agent-memory.mts', 'docker-archive.mts', 'client.mts', 'runtime.mts', 'sources.mts', 'session-memory.mts', 'tools.mts', 'workspace.mts', 'wait.mts', 'ipc.mts', 'summary.mts', 'luna.mts', 'rerank.mts']);
+    const files = new Set(['control.mts', 'ranking-recovery.mts', 'agent-memory.mts', 'docker-archive.mts', 'client.mts', 'runtime.mts', 'sources.mts', 'session-memory.mts', 'tools.mts', 'workspace.mts', 'wait.mts', 'ipc.mts', 'summary.mts', 'luna.mts', 'rerank.mts']);
     return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
   }
   if (grandchildEntry === 'agent-platform') {

@@ -218,7 +218,7 @@ const codexAccountService = new CodexAccountService({
     process.stderr.write(`[cheshi] ${event} ${JSON.stringify(details)}\n`);
   },
 });
-const sessionHistory = createWorkspaceSessionMemory(workspaceRoot, userDataDirectory, workspaceAccounts.conversations, chatHistorySearch, createChatClient, ipcMain, assertCheshiSender, options.agentFlash);
+const sessionHistory = createWorkspaceSessionMemory(workspaceRoot, userDataDirectory, workspaceAccounts.conversations, chatHistorySearch, createChatClient, ipcMain, assertCheshiSender, options.agentFlash, options.flashControl);
 const chatServiceOptions = { ...sessionHistory.serviceOptions,
   chatPreferences: options.chatPreferences,
   getWorkspaceProjects: () => workspaceProjects.store.list().map(({ rootPath }) => rootPath),

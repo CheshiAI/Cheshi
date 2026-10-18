@@ -15,6 +15,79 @@ function fixture() {
   return { options, service: createSettingsService(options), close: () => rmSync(directory, { recursive: true, force: true }) };
 }
 
+test('Flash defaults off, persists across restarts and accepts only literal booleans', () => {
+  const f = fixture();
+  try {
+    expect(f.service.getFlashEnabled()).toBe(false);
+    const seen: boolean[] = [];
+    const unsubscribe = f.service.subscribeFlashEnabled(value => seen.push(value));
+    f.service.setProjectDocMaxBytes(65536);
+    expect(f.service.setFlashEnabled(true)).toBe(true);
+    expect(createSettingsService(f.options).getFlashEnabled()).toBe(true);
+    expect(f.service.getProjectDocMaxBytes()).toBe(65536);
+    for (const value of ['true', 1, null, undefined, {}, []]) {
+      expect(() => f.service.setFlashEnabled(value)).toThrow('boolean');
+      expect(f.service.getFlashEnabled()).toBe(true);
+    }
+    f.service.setFlashEnabled(false);
+    expect(createSettingsService(f.options).getFlashEnabled()).toBe(false);
+    expect(seen).toEqual([true, false]);
+    unsubscribe(); f.service.setFlashEnabled(true);
+    expect(seen).toEqual([true, false]);
+    for (const value of ['true', 1, null, {}, []]) {
+      writeFileSync(f.options.settingsPath, JSON.stringify({ flashEnabled: value }));
+      expect(f.service.getFlashEnabled()).toBe(false);
+    }
+  } finally { f.close(); }
+});
+
+test('failed Flash persistence never publishes a changed preference', () => {
+  const f = fixture();
+  try {
+    const seen: boolean[] = [];
+    f.service.subscribeFlashEnabled(value => seen.push(value));
+    writeFileSync(f.options.settingsPath, '{damaged');
+    expect(() => f.service.setFlashEnabled(true)).toThrow('Could not save');
+    expect(seen).toEqual([]);
+    expect(readFileSync(f.options.settingsPath, 'utf8')).toBe('{damaged');
+  } finally { f.close(); }
+});
+
+test('Flash preferences cross owner-checked IPC, broadcast and validate preload values', async () => {
+  const f = fixture();
+  const routes = new Map<string, Parameters<IpcMain['handle']>[1]>();
+  const events = new EventEmitter();
+  const owner = { mainFrame: {}, isDestroyed: () => false,
+    send: (channel: string, value: unknown) => events.emit(channel, {}, value) };
+  const window = Object.assign(new EventEmitter(), { webContents: owner });
+  const registration = registerSettingsIpc({ window: window as unknown as BrowserWindow, service: f.service,
+    ipc: { handle: (channel, listener) => { routes.set(channel, listener); }, removeHandler: channel => { routes.delete(channel); } } });
+  let sender: unknown = owner;
+  const ipc = Object.assign(events, { invoke: async (channel: string, value?: unknown) =>
+    routes.get(channel)!({ sender, senderFrame: owner.mainFrame } as IpcMainInvokeEvent, value) });
+  const api = createSettingsApi(ipc as IpcRenderer);
+  const seen: boolean[] = [];
+  const unsubscribe = api.onFlashEnabledChanged(value => seen.push(value));
+  try {
+    expect(await api.getFlashEnabled()).toBe(false);
+    expect(await api.setFlashEnabled(true)).toBe(true);
+    expect(seen).toEqual([true]);
+    sender = {};
+    let failure: unknown;
+    try { await api.setFlashEnabled(false); } catch (error) { failure = error; }
+    expect(String(failure)).toContain('workspace window');
+    expect(f.service.getFlashEnabled()).toBe(true);
+    const malformed = createSettingsApi({ invoke: async (_channel: string) => 'true',
+      on: ipc.on.bind(ipc), removeListener: ipc.removeListener.bind(ipc) } as unknown as Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>);
+    failure = undefined;
+    try { await malformed.getFlashEnabled(); } catch (error) { failure = error; }
+    expect(String(failure)).toContain('boolean');
+    registration.dispose(); f.service.setFlashEnabled(false);
+    expect(seen).toEqual([true]);
+    expect(routes.size).toBe(0);
+  } finally { unsubscribe(); registration.dispose(); f.close(); }
+});
+
 test('workspace account selections survive restart and preserve other windows and settings', async () => {
   const f = fixture();
   try {
@@ -105,12 +178,12 @@ test('instruction preference failures leave saved data untouched and do not publ
   } finally { f.close(); }
 });
 
-test('settings preload exposes only instruction size preferences and validates replies', async () => {
+test('settings preload exposes preferences and validates instruction replies', async () => {
   const calls: string[] = [];
   let reply: unknown = 32768;
   const ipc = Object.assign(new EventEmitter(), { invoke: async (channel: string) => { calls.push(channel); return reply; } });
   const api = createSettingsApi(ipc as IpcRenderer);
-  expect(Object.keys(api).sort()).toEqual(['getProjectDocMaxBytes', 'onProjectDocMaxBytesChanged', 'setProjectDocMaxBytes']);
+  expect(Object.keys(api).sort()).toEqual(['getFlashEnabled', 'getProjectDocMaxBytes', 'onFlashEnabledChanged', 'onProjectDocMaxBytesChanged', 'setFlashEnabled', 'setProjectDocMaxBytes']);
   expect(await api.getProjectDocMaxBytes()).toBe(32768);
   expect(await api.setProjectDocMaxBytes(32768)).toBe(32768);
   expect(calls).toEqual([SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes]);
@@ -131,7 +204,8 @@ test('settings IPC retains owner checks and subscriptions without provider route
   const invoke = (channel: string, value?: unknown, sender: unknown = owner, frame: unknown = owner.mainFrame) =>
     routes.get(channel)!({ sender, senderFrame: frame } as IpcMainInvokeEvent, value);
   try {
-    expect([...routes.keys()].sort()).toEqual([SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes].sort());
+    expect([...routes.keys()].sort()).toEqual([SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes,
+      SETTINGS_CHANNELS.getFlashEnabled, SETTINGS_CHANNELS.setFlashEnabled].sort());
     expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072, {})).toThrow('workspace window');
     expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072, owner, {})).toThrow('workspace window');
     expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, '131072')).toThrow('whole number');

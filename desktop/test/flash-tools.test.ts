@@ -52,6 +52,24 @@ test('pane stop aborts pending memory and never emits a successful late result',
   expect(JSON.stringify(client.responsesSent)).not.toContain('late private data');
 });
 
+test('disabled session memory directs the caller to settings instead of suggesting service retries', async () => {
+  const client = createFakeCodexClient();
+  const service = new CodexChatService({ client, cwd: '/workspace', serviceName: 'cheshi', developerInstructions: 'Instructions',
+    memory: { execute: async () => { throw new FlashError('disabled', 'Internal preference details'); } } });
+  service.beginActiveTurn('session', 'message').turnId = 'turn';
+  try {
+    client.emitRequest(1, 'item/tool/call', { tool: 'memory_search', threadId: 'session', turnId: 'turn',
+      callId: 'call', arguments: { query: 'Past decision?' } });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(client.responsesSent[0]?.result).toMatchObject({ success: false });
+    const reply = JSON.stringify(client.responsesSent[0]?.result);
+    expect(reply).toContain('disabled');
+    expect(reply).toContain('Settings > Flash');
+    expect(reply).not.toContain('Check the local Flash service');
+    expect(reply).not.toContain('Internal preference details');
+  } finally { await service.stop(); }
+});
+
 test('memory argument validation rejects unknown scope, boolean limits and invalid ranges', () => {
   for (const arguments_ of [{ query: 'q', limit: true }, { query: '' }, { query: 'q', workspace: '/' }, { query: 'q', limit: 31 }]) {
     expect(() => memoryArguments('memory_search', arguments_)).toThrow();

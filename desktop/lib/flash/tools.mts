@@ -54,7 +54,7 @@ export class FlashToolRequests {
         await reply(true, result);
       } catch (error) {
         const code = error instanceof MemoryArgumentError ? 'invalid_request' : error instanceof FlashError ? error.code : controller.signal.aborted ? 'canceled' : 'unavailable';
-        await reply(false, { code, ...flashProviderDetails(error, controller.signal), error: error instanceof MemoryArgumentError ? error.message : code === 'turns_too_large' ? 'Selected turns exceed the summary budget. Select fewer turns; no original text was truncated.' : code === 'invalid_summary' ? 'The memory summary failed source validation. Retry the read; do not use it as evidence.' : code === 'sync_timeout'
+        await reply(false, { code, ...flashProviderDetails(error, controller.signal), error: code === 'disabled' ? 'Flash is off. Enable it in Settings > Flash to use memory.' : error instanceof MemoryArgumentError ? error.message : code === 'turns_too_large' ? 'Selected turns exceed the summary budget. Select fewer turns; no original text was truncated.' : code === 'invalid_summary' ? 'The memory summary failed source validation. Retry the read; do not use it as evidence.' : code === 'sync_timeout'
           ? 'Session memory is still synchronizing after waiting. Retry when Flash is ready; this does not mean no matches were found.'
           : 'Session memory could not complete. Check the local Flash service or retry.' });
       } finally { this.pending.delete(controller); }

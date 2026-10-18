@@ -11,9 +11,11 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 async function withSettings(run: (view: {
-  container: HTMLElement; window: Window; projectWrites: number[]; emitLimit(bytes: number): Promise<void>;
+  container: HTMLElement; window: Window; projectWrites: number[]; flashWrites: boolean[];
+  emitFlash(enabled: boolean): Promise<void>; emitLimit(bytes: number): Promise<void>;
 }) => Promise<void>, options: {
   projectLoad?: Promise<number>; projectSave?: Promise<void>; failProjectSave?: boolean;
+  flashLoad?: Promise<boolean>; flashSave?: Promise<void>; failFlashSave?: boolean;
 } = {}) {
   const window = new Window();
   Object.defineProperty(window, 'localStorage', { get() { throw new Error('Browser storage is unavailable'); } });
@@ -26,7 +28,19 @@ async function withSettings(run: (view: {
   const projectWrites: number[] = [];
   const projectListeners = new Set<(bytes: number) => void>();
   let projectBytes = 32768;
+  let flashEnabled = false;
+  const flashWrites: boolean[] = [];
+  const flashListeners = new Set<(enabled: boolean) => void>();
   const api: SettingsApi = {
+    getFlashEnabled: async () => options.flashLoad ?? flashEnabled,
+    setFlashEnabled: async enabled => {
+      flashWrites.push(enabled); await options.flashSave;
+      if (options.failFlashSave) throw new Error('Could not save');
+      flashEnabled = enabled;
+      for (const listener of flashListeners) listener(enabled);
+      return enabled;
+    },
+    onFlashEnabledChanged: handler => { flashListeners.add(handler); return () => { flashListeners.delete(handler); }; },
     getProjectDocMaxBytes: async () => options.projectLoad ?? projectBytes,
     setProjectDocMaxBytes: async bytes => {
       projectWrites.push(bytes); await options.projectSave;
@@ -47,7 +61,8 @@ async function withSettings(run: (view: {
     await act(async () => root.render(<>
       <SettingsView api={api} />
     </>));
-    await run({ container, window, projectWrites,
+    await run({ container, window, projectWrites, flashWrites,
+      emitFlash: async enabled => { await act(async () => { for (const listener of flashListeners) listener(enabled); }); },
       emitLimit: async bytes => { await act(async () => { for (const listener of projectListeners) listener(bytes); }); } });
   } finally {
     await unmount?.(); await window.happyDOM.abort();
@@ -149,7 +164,7 @@ test('a rejected save keeps the prior saved instruction limit and remains retrya
   }, { failProjectSave: true });
 });
 
-test('settings no longer exposes provider credentials or memory recall controls', async () => {
+test('settings keeps provider credentials and old memory recall controls removed', async () => {
   await withSettings(async ({ container }) => {
     expect(category(container, 'Agents').getAttribute('aria-current')).toBe('page');
     expect(container.querySelector('input[type="password"]')).toBeNull();
@@ -157,6 +172,50 @@ test('settings no longer exposes provider credentials or memory recall controls'
     expect(container.textContent).not.toContain('TypeSafe');
     expect(container.textContent).not.toContain('Jev');
     expect([...container.querySelectorAll('aside button')].map(item => item.textContent))
-      .toEqual(['Agents', 'Appearance', 'Notifications', 'Scheduler', 'About']);
+      .toEqual(['Agents', 'Appearance', 'Notifications', 'Scheduler', 'Flash', 'About']);
   });
+});
+
+test('Flash defaults off, saves both states and restores the value when reopening settings', async () => {
+  await withSettings(async ({ container, flashWrites, emitFlash }) => {
+    await act(async () => category(container, 'Flash').click());
+    const toggle = () => button(container, 'Enable Flash memory');
+    expect(toggle().getAttribute('aria-checked')).toBe('false');
+    await act(async () => toggle().click());
+    expect(toggle().getAttribute('aria-checked')).toBe('true');
+    await act(async () => category(container, 'About').click());
+    await act(async () => category(container, 'Flash').click());
+    expect(toggle().getAttribute('aria-checked')).toBe('true');
+    await act(async () => toggle().click());
+    expect(flashWrites).toEqual([true, false]);
+    await emitFlash(true);
+    expect(toggle().getAttribute('aria-checked')).toBe('true');
+    expect(container.textContent).toContain('Chat and conversation list search remain available.');
+  });
+});
+
+test('Flash ignores stale initial reads after another window changes the setting', async () => {
+  const load = createDeferred<boolean>();
+  await withSettings(async ({ container, emitFlash }) => {
+    await act(async () => category(container, 'Flash').click());
+    expect(button(container, 'Enable Flash memory').disabled).toBe(true);
+    await emitFlash(true);
+    await act(async () => load.resolve(false));
+    expect(button(container, 'Enable Flash memory').getAttribute('aria-checked')).toBe('true');
+  }, { flashLoad: load.promise });
+});
+
+test('Flash prevents repeated saves and retains its prior value when saving fails', async () => {
+  const save = createDeferred<void>();
+  await withSettings(async ({ container, flashWrites }) => {
+    await act(async () => category(container, 'Flash').click());
+    const toggle = button(container, 'Enable Flash memory');
+    await act(async () => { toggle.click(); toggle.click(); });
+    expect(flashWrites).toEqual([true]);
+    expect(toggle.disabled).toBe(true);
+    await act(async () => save.resolve());
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(toggle.disabled).toBe(false);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Could not save Flash');
+  }, { flashSave: save.promise, failFlashSave: true });
 });

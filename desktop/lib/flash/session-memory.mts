@@ -9,6 +9,7 @@ import type { SearchSource } from '../chat-search-source.mts';
 import type { JsonObject } from '../codex-chat-types.mts';
 import { callFlash, FlashError } from './client.mts';
 import type { FlashHost } from './runtime.mts';
+import type { FlashControl } from './control.mts';
 import { digest, FlashSources, reconcileSources, sourceOwner, workspaceMemoryAccount, type FlashBinding, type FlashSource } from './sources.mts';
 
 export interface SessionMemory {
@@ -18,7 +19,7 @@ export interface SessionMemory {
 
 export class FlashSessionMemory implements SessionMemory {
   private readonly options: { workspace: string; source: SearchSource; host: FlashHost; syncWaitMs?: number; summarize?: SummarizeMemory; rerank?: RerankMemory;
-    blocked?(): boolean; onError?(code: string): void };
+    control?: FlashControl; blocked?(): boolean; onError?(code: string): void };
   private readonly sources: FlashSources;
   private binding: FlashBinding | null = null;
   private bindings: readonly FlashBinding[] = [];
@@ -27,7 +28,8 @@ export class FlashSessionMemory implements SessionMemory {
   private lifetime = new AbortController();
   private requests = new AbortController();
   private syncing: Promise<void> | null = null;
-  private readonly cleanupLifetime = new AbortController();
+  private cleanupLifetime = new AbortController();
+  private readonly unsubscribeControl?: () => void;
   private readonly removals = new Map<string, Promise<void>>();
   private synced = new Map<string, FlashSource>();
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -35,7 +37,9 @@ export class FlashSessionMemory implements SessionMemory {
   private progress: Omit<FlashMemoryStatus, 'waiting'> = { state: 'signed_out', processed: 0, total: null, error: null };
   private readonly waiters = new Set<symbol>();
 
-  hasAccount(profileId: string): boolean { return !this.closed && this.bindings.some(b => b.profileId === profileId); }
+  private enabled(): boolean { return !this.closed && (this.options.control?.enabled() ?? true); }
+
+  hasAccount(profileId: string): boolean { return this.enabled() && this.bindings.some(b => b.profileId === profileId); }
 
   async original(target: { threadId: string; itemId: string }): Promise<string> {
     const binding = this.binding, signal = AbortSignal.any([this.lifetime.signal, this.requests.signal]);
@@ -48,16 +52,27 @@ export class FlashSessionMemory implements SessionMemory {
     return entry.document.text;
   }
 
-  status(): FlashMemoryStatus { return { ...this.progress, waiting: this.waiters.size }; }
+  status(): FlashMemoryStatus {
+    return this.enabled() ? { ...this.progress, waiting: this.waiters.size }
+      : { state: 'disabled', processed: 0, total: null, error: null, waiting: 0 };
+  }
 
   retry(): FlashMemoryStatus {
-    if (!this.bindings.length || this.closed) return this.status();
+    if (!this.bindings.length || !this.enabled()) return this.status();
     void this.synchronize().catch(() => {});
     return this.status();
   }
   constructor(options: FlashSessionMemory['options']) {
     this.options = options;
     this.sources = new FlashSources({ cwd: options.workspace, source: options.source });
+    this.unsubscribeControl = options.control?.subscribe(() => {
+      this.invalidate();
+      this.cleanupLifetime.abort();
+      this.cleanupLifetime = new AbortController();
+      this.removals.clear();
+      this.sources.clear();
+      this.schedule();
+    });
   }
 
   accounts(snapshot: CodexAccountsSnapshot): void {
@@ -109,7 +124,8 @@ export class FlashSessionMemory implements SessionMemory {
   }
 
   remove(threadIds: readonly string[]): Promise<void> {
-    if (!threadIds.length) return Promise.resolve();
+    // Re-enabling performs a full reconciliation against the current conversation list.
+    if (!threadIds.length || !this.enabled()) return Promise.resolve();
     const ids = [...new Set(threadIds)].sort();
     const key = JSON.stringify(ids);
     const pending = this.removals.get(key);
@@ -125,12 +141,12 @@ export class FlashSessionMemory implements SessionMemory {
       }
     }, signal);
     this.removals.set(key, operation);
-    void operation.finally(() => { this.removals.delete(key); }).catch(() => {});
+    void operation.finally(() => { if (this.removals.get(key) === operation) this.removals.delete(key); }).catch(() => {});
     return operation;
   }
 
   private schedule(): void {
-    if (this.closed || !this.hasConnected) return;
+    if (!this.enabled() || !this.hasConnected) return;
     this.progress = { state: this.bindings.length ? 'preparing' : 'signed_out', processed: 0, total: null, error: null };
     clearTimeout(this.timer);
     this.timer = setTimeout(() => {
@@ -147,6 +163,7 @@ export class FlashSessionMemory implements SessionMemory {
   }
 
   private synchronizeSnapshot(): Promise<void> {
+    if (!this.enabled()) return Promise.reject(new FlashError('disabled', 'Flash is off. Enable it in Settings > Flash.'));
     if (this.syncing) return this.syncing;
     clearTimeout(this.timer);
     const bindings = this.bindings;
@@ -214,6 +231,10 @@ export class FlashSessionMemory implements SessionMemory {
     return this.run(method, params, session, signal, turnId, true);
   }
   private async run(method: string, params: Record<string, unknown>, session: string, caller: AbortSignal, turnId: string | undefined, rank: boolean): Promise<unknown> {
+    const operation = (signal: AbortSignal) => this.runEnabled(method, params, session, signal, turnId, rank);
+    return this.options.control ? this.options.control.run(operation, caller) : operation(caller);
+  }
+  private async runEnabled(method: string, params: Record<string, unknown>, session: string, caller: AbortSignal, turnId: string | undefined, rank: boolean): Promise<unknown> {
     if (!['memory_search', 'memory_read'].includes(method)) throw new FlashError('invalid_request', 'Unknown memory tool');
     const binding = this.binding;
     if (!binding) throw new FlashError('unavailable', 'Sign in to use session memory');
@@ -268,6 +289,7 @@ export class FlashSessionMemory implements SessionMemory {
 
   async dispose(): Promise<void> {
     this.closed = true;
+    this.unsubscribeControl?.();
     this.invalidate();
     this.cleanupLifetime.abort();
     await this.options.host.release();
