@@ -36,8 +36,17 @@ export function searchSessions(value: unknown): SearchSession[] {
 
 export async function historyFingerprint(session: SearchSession): Promise<string | null> {
   if (!session.historyPath) return null;
-  const info = await stat(session.historyPath, { bigint: true });
-  return JSON.stringify([session.historyPath, String(info.dev), String(info.ino), String(info.size), String(info.mtimeNs), String(info.ctimeNs)]);
+  let historyPath = session.historyPath;
+  let info;
+  try { info = await stat(historyPath, { bigint: true }); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || !historyPath.endsWith('.jsonl')) throw error;
+    // Codex may keep the logical .jsonl path after compressing its rollout.
+    // Only fingerprint storage here; thread/read still supplies the original text.
+    historyPath += '.zst';
+    info = await stat(historyPath, { bigint: true });
+  }
+  return JSON.stringify([historyPath, String(info.dev), String(info.ino), String(info.size), String(info.mtimeNs), String(info.ctimeNs)]);
 }
 
 export function compileSearchRecord(raw: unknown, cwd: string, session: SearchSession, now: number): ChatHistoryIndexRecord {
