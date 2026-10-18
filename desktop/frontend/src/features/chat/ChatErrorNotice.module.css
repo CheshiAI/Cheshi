@@ -4,20 +4,18 @@
   --content-card-title-size: 10px;
   --content-card-title-weight: 400;
   --content-card-description-size: 9px;
-  container-type: inline-size;
 }
 .notice > header {
   display: grid;
   grid-template-columns: var(--icon-button-icon-size) minmax(0, 1fr) auto;
+  align-content: center;
 }
 .notice > header > span > strong[class],
 .notice > header > span > strong + span[class] {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.notice > header > span:last-child:not(:has(> strong)) { flex-wrap: wrap; }
-
-@container (max-width: 560px) {
-  .notice > header { grid-template-columns: var(--icon-button-icon-size) minmax(0, 1fr); }
-  .notice > header > span:last-child:not(:has(> strong)) { grid-column: 2; }
+.notice > header > span:last-child:not(:has(> strong)) {
+  flex-wrap: wrap;
+  align-self: start;
 }
