@@ -8,6 +8,7 @@ import { BUNDLED_LANGUAGE_SERVER_PACKAGES } from '../desktop/lib/language-server
 import { buildDesktopPreload } from './build-desktop-preload.mts';
 import { buildAppleCalendar } from './build-apple-calendar.mts';
 import { normalizeBunMachO } from './normalize-bun-macho.mts';
+import { macOSCertificateSigningEnabled } from '../config/macos-signing.mts';
 
 const rootDirectory = fileURLToPath(new URL('..', import.meta.url));
 const platform = process.platform;
@@ -86,7 +87,7 @@ try {
     });
     if (result.exitCode !== 0) throw new Error(`Failed to build ${runtime.label}.`);
     if (platform !== 'win32') chmodSync(runtime.output, 0o755);
-    if (platform === 'darwin' && process.env.CHESHI_SIGN_RELEASE === '1') {
+    if (platform === 'darwin' && macOSCertificateSigningEnabled(process.env)) {
       await normalizeBunMachO(runtime.output);
     }
   }

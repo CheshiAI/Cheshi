@@ -7,9 +7,13 @@ type SigningOptions = Pick<PackagerConfig, 'osxNotarize'> & {
   osxSign?: Exclude<PackagerConfig['osxSign'], boolean | undefined> & { continueOnError: false };
 };
 
+export function macOSCertificateSigningEnabled(environment: NodeJS.ProcessEnv): boolean {
+  return environment.CHESHI_SIGN_RELEASE === '1' || environment.CHESHI_SIGN_LOCAL === '1';
+}
+
 export function macOSSigningOptions(environment: NodeJS.ProcessEnv, platform: NodeJS.Platform): SigningOptions {
   const release = environment.CHESHI_SIGN_RELEASE === '1';
-  if (!release && environment.CHESHI_SIGN_LOCAL !== '1') return {};
+  if (!macOSCertificateSigningEnabled(environment)) return {};
   if (platform !== 'darwin') throw new Error('Signed Cheshi builds require macOS.');
 
   const identity = requiredSigningValue(environment, 'MACOS_SIGNING_IDENTITY');

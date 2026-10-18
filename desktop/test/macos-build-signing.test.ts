@@ -1,12 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { macOSSigningOptions } from '../../config/macos-signing.mts';
+import { macOSCertificateSigningEnabled, macOSSigningOptions } from '../../config/macos-signing.mts';
 import { localSigningEnvironment, parseMacOSBuildSignature } from '../../scripts/macos-build-signing.mts';
 
 const hash = 'A'.repeat(40);
 const name = 'Developer ID Application: Example Company (EXAMPLE123)';
 const listing = `  1) ${hash} "${name}"\n  2) ${'B'.repeat(40)} "Apple Development: Example (EXAMPLE123)"\n  2 valid identities found\n`;
 const readIdentities = () => listing;
+
+test('local and release signing both require Bun executable normalization', () => {
+  assert.equal(macOSCertificateSigningEnabled({ CHESHI_SIGN_LOCAL: '1' }), true);
+  assert.equal(macOSCertificateSigningEnabled({ CHESHI_SIGN_RELEASE: '1' }), true);
+  for (const value of [undefined, '', '0', 'true', 'false']) {
+    assert.equal(macOSCertificateSigningEnabled({ CHESHI_SIGN_LOCAL: value, CHESHI_SIGN_RELEASE: value }), false);
+  }
+});
 
 test('local packages select a valid Developer ID certificate and sign without notarization', () => {
   const environment = localSigningEnvironment({}, 'darwin', readIdentities);
