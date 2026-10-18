@@ -1,3 +1,4 @@
+import { parseHomieRepositoryConnection, type HomieRepositoryConnection, type HomieRepositoryPreview } from './homie-repository-connection.ts';
 import { defaultAgentAvatar, parseAgentAvatar, type AgentAvatarValue } from './agent-avatar.ts';
 import { isCodexAccountId } from './codex-accounts.ts';
 import type { AgentModel, AgentModelSelection } from './agent-models.ts';
@@ -8,14 +9,11 @@ export const AGENT_REGISTRY_CHANNELS = {
   toolCredential: 'cheshi:agent-registry:tool-credential', testTool: 'cheshi:agent-registry:test-tool',
   list: 'cheshi:agent-registry:list', save: 'cheshi:agent-registry:save', changed: 'cheshi:agent-registry:changed',
   models: 'cheshi:agent-registry:models',
+  previewRepository: 'cheshi:agent-registry:preview-repository',
   repositoryReady: 'cheshi:agent-registry:repository-ready',
   remove: 'cheshi:agent-registry:remove',
   selectInstructionFiles: 'cheshi:agent-registry:select-instruction-files',
   openInstructionFile: 'cheshi:agent-registry:open-instruction-file',
-  packages: 'cheshi:agent-registry:packages',
-  importPackage: 'cheshi:agent-registry:import-package',
-  installPackage: 'cheshi:agent-registry:install-package',
-  exportPackage: 'cheshi:agent-registry:export-package',
 } as const;
 export const SPECIALIST_ROLES = ['planning', 'research', 'frontend', 'development', 'verification', 'custom'] as const;
 export type SpecialistRole = typeof SPECIALIST_ROLES[number];
@@ -50,6 +48,7 @@ export interface SpecialistAgent extends SpecialistProfile {
 }
 export interface AgentRegistrySnapshot { agents: SpecialistAgent[]; workspaceRoot: string; }
 export interface SaveSpecialistAgent {
+  repository?: HomieRepositoryConnection;
   id: string | null; revision: number | null; profile: SpecialistProfile;
   assignment: { assigned: boolean; instructions: string; instructionFiles?: string[]; permissions?: ExecutionPermissions | null };
 }
@@ -60,10 +59,7 @@ export interface AgentRegistryApi {
   onRepositoryReady?(listener: () => void): () => void;
   toolCredential?(input: import('./homie-tools.ts').ToolCredentialRequest): Promise<boolean>;
   testTool?(input: import('./homie-tools.ts').ToolTestRequest): Promise<unknown>;
-  installPackage?(definition: AgentPackage, instructionFiles?: string[]): Promise<AgentPackage>;
-  exportPackage?(definition: AgentPackage, instructionFiles?: string[]): Promise<boolean>;
-  packages?(): Promise<AgentPackage[]>;
-  importPackage?(): Promise<AgentPackage | null>;
+  previewRepository?(repository: string): Promise<HomieRepositoryPreview>;
   selectInstructionFiles?(): Promise<string[]>;
   openInstructionFile?(path: string): Promise<void>;
   remove?(request: DeleteSpecialistAgent): Promise<AgentRegistrySnapshot>;
@@ -131,7 +127,8 @@ function profile(value: unknown): SpecialistProfile {
 export function parseSaveSpecialistAgent(value: unknown): SaveSpecialistAgent {
   const data = record(value), assignment = record(data.assignment);
   if ((data.id === null) !== (data.revision === null)) throw new TypeError('Agent ID and revision must be supplied together.');
-  return { id: data.id === null ? null : agentId(data.id), revision: data.revision === null ? null : revision(data.revision),
+  if (data.repository !== undefined && data.id !== null) throw new TypeError('Only a new Homie can connect a repository.');
+  return { ...(data.repository === undefined ? {} : { repository: parseHomieRepositoryConnection(data.repository) }), id: data.id === null ? null : agentId(data.id), revision: data.revision === null ? null : revision(data.revision),
     profile: profile(data.profile), assignment: { ...(assignment.permissions === undefined ? {} : { permissions: assignment.permissions === null ? null : parseExecutionPermissions(assignment.permissions) }), ...instructionFiles(assignment), assigned: flag(assignment.assigned), instructions: text(assignment.instructions, 20_000) } };
 }
 export function parseSpecialistAgents(value: unknown): SpecialistAgent[] {

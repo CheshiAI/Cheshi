@@ -1,7 +1,11 @@
+import type { HomieRepositoryPreview } from '../../../../shared/homie-repository-connection';
 import type { AgentPackage } from '../../../../shared/agent-package';
 import type { SpecialistProfile } from '../../../../shared/agent-registry';
 
 export interface HomieEditorDraft {
+  existingRepository?: boolean;
+  repositoryUrl?: string;
+  repositoryPreview?: HomieRepositoryPreview;
   profile: SpecialistProfile;
   permissions: SpecialistProfile['permissions'];
   revision: number | null;

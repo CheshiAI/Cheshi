@@ -68,10 +68,11 @@ export function createAgentRegistry(filename: string) {
       return { agents: next, workspaceRoot: workspace };
     },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    save(value: unknown, workspaceRoot: string) {
+    save(value: unknown, workspaceRoot: string, creationId?: string) {
       workerOperations.assertAvailable();
       const input = parseSaveSpecialistAgent(value), workspace = root(workspaceRoot), agents = read();
       const previous = input.id ? agents.find(agent => agent.id === input.id) : undefined;
+      if (creationId && (input.id !== null || agents.some(agent => agent.id === creationId))) throw new Error('Homie is already registered.');
       if (input.id && (!previous || previous.revision !== input.revision)) {
         throw new Error('This agent was changed in another window. Reopen its settings before saving.');
       }
@@ -88,7 +89,7 @@ export function createAgentRegistry(filename: string) {
       if (input.assignment.assigned) assignments.push({ ...(permissions ? { permissions } : {}), workspaceRoot: workspace, instructions: input.assignment.instructions,
         ...(projectFiles === undefined ? {} : { instructionFiles: projectFiles }) });
       const agent: SpecialistAgent = { ...input.profile, ...(displayName === undefined ? {} : { displayName }), package: input.profile.package ?? previous?.package, instructionFiles: input.profile.instructionFiles ?? previous?.instructionFiles,
-        avatar: input.profile.avatar ?? previous?.avatar ?? randomAgentAvatar(), id: previous?.id ?? randomUUID(), revision: (previous?.revision ?? 0) + 1,
+        avatar: input.profile.avatar ?? previous?.avatar ?? randomAgentAvatar(), id: previous?.id ?? creationId ?? randomUUID(), revision: (previous?.revision ?? 0) + 1,
         createdAt: previous?.createdAt ?? now, updatedAt: now, assignments };
       const next = parseSpecialistAgents([...agents.filter(item => item.id !== agent.id), agent]);
       write(next);

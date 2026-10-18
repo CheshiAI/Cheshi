@@ -1,10 +1,7 @@
+import { parseHomieRepository, type HomieRepositoryPreview } from '../../shared/homie-repository-connection.ts';
 import type { HomiesAccess } from '../homies-activation.mts';
 import { parseToolCredentialRequest, parseToolTestRequest, type ToolCredentialRequest, type ToolTestRequest } from '../../shared/homie-tools.ts';
 import { parseHostToolRequest, type HostToolRequest, type HostToolStatus } from '../../shared/host-tools.ts';
-import { createHash } from 'node:crypto';
-import { agentRecord } from '../../shared/agent-management.ts';
-import { installHomiePack, installedHomiePacks, writeHomiePack } from './homie-packs.mts';
-import { parseAgentPackage } from '../../shared/agent-package.ts';
 import { AGENT_RUNTIME_CHANNEL, parseAgentRuntimeRequest } from '../../shared/agent-runtime.ts';
 import type { AgentRuntimeRequest, AgentRuntimeState } from '../../shared/agent-runtime.ts';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
@@ -17,11 +14,12 @@ import type { AgentModel } from '../../shared/agent-models.ts';
 import { parseInstructionFiles, parseInstructionFilePath } from '../../shared/agent-registry.ts';
 import { assertFileManagedInstructions, readInstructionFile } from './instruction-files.mts';
 import { deletionReply } from './operations.mts';
-import { officialAgentPackages, readAgentPackage } from './packages.mts';
 import { HOMIE_SOURCE_CHANNEL, parseHomieSourceRequest, type HomieSourceRequest, type HomieSourceState } from '../../shared/homie-source.ts';
 
 export function registerAgentRegistryIpc(options: {
   access?: HomiesAccess;
+  previewRepository?(repository: string): Promise<HomieRepositoryPreview>;
+  connectRepository?(input: SaveSpecialistAgent, assertAvailable: () => void): Promise<ReturnType<ReturnType<typeof createAgentRegistry>['save']>>;
   source?(input: HomieSourceRequest): Promise<HomieSourceState>;
   saveSettings?(input: SaveSpecialistAgent, assertAvailable: () => void): Promise<ReturnType<ReturnType<typeof createAgentRegistry>['save']>>;
   window: BrowserWindow; workspaceRoot: string; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>;
@@ -31,13 +29,10 @@ export function registerAgentRegistryIpc(options: {
   models?: (accountId: string) => Promise<AgentModel[]>;
   selectInstructionFiles?: () => Promise<string[]>;
   openInstructionFile?: (path: string) => Promise<void>;
-  packsDirectory?: string;
   prepareCreation?(agent: import('../../shared/agent-registry.ts').SpecialistAgent): Promise<void>;
   toolCredential?(input: ToolCredentialRequest): Promise<boolean>;
   testTool?(input: ToolTestRequest): Promise<unknown>;
   hostTool?(input: HostToolRequest): Promise<HostToolStatus>;
-  exportPackagePath?: (name: string) => Promise<string | null>;
-  selectPackage?: () => Promise<string | null>;
 }) {
   const owner = options.window.webContents, channels: string[] = [];
   let disposed = false;
@@ -80,53 +75,12 @@ export function registerAgentRegistryIpc(options: {
     if (!options.models) throw new Error('Agent model catalog is unavailable.');
     return parseAgentModels(await options.models(accountId));
   };
-  const portablePack = async (value: unknown) => {
-    const input = agentRecord(value), definition = parseAgentPackage(input.definition);
-    const paths = parseInstructionFiles(input.instructionFiles ?? []);
-    const common = new Set(options.registry.snapshot(options.workspaceRoot).agents.flatMap(agent => agent.instructionFiles ?? []));
-    for (const path of paths) {
-      if (!common.has(path) && !selectedPaths.has(path)) throw new Error('Select or link common instruction files before exporting them.');
-    }
-    const files = [...(definition.resources?.files ?? [])];
-    const links: string[] = [];
-    for (const path of paths) {
-      const { content } = await readInstructionFile(path);
-      const name = `resources/instructions/${createHash('sha256').update(content).digest('hex')}.md`;
-      const index = files.findIndex(file => file.path === name);
-      if (index >= 0) files[index] = { path: name, content }; else files.push({ path: name, content });
-      links.push(`/opt/cheshi/homie-pack/${name}`);
-    }
-    if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
-    return paths.length ? parseAgentPackage({ ...definition,
-      instructions: definition.instructions + '\n\nRead these common instruction files before work:\n' + [...new Set(links)].join('\n'),
-      resources: { files, programs: definition.resources?.programs ?? [] } }) : definition;
-  };
   try {
     if (options.source) handle(HOMIE_SOURCE_CHANNEL, value => options.source!(parseHomieSourceRequest(value)));
-    handle(AGENT_REGISTRY_CHANNELS.packages, async () => {
-      const packages = await officialAgentPackages();
+    if (options.previewRepository) handle(AGENT_REGISTRY_CHANNELS.previewRepository, async value => {
+      const result = await options.previewRepository!(parseHomieRepository(value));
       if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
-      const installed = options.packsDirectory ? await installedHomiePacks(options.packsDirectory) : [];
-      return [...new Map([...packages, ...installed].map(pack => [`${pack.id}@${pack.version}`, pack])).values()];
-    });
-    if (options.packsDirectory) handle(AGENT_REGISTRY_CHANNELS.installPackage, async value => {
-      const definition = await portablePack(value);
-      return installHomiePack(options.packsDirectory!, definition);
-    });
-    if (options.exportPackagePath) handle(AGENT_REGISTRY_CHANNELS.exportPackage, async value => {
-      const definition = await portablePack(value);
-      const filename = await options.exportPackagePath!(`${definition.id}-${definition.version}.homiepack.json`);
-      if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
-      if (filename === null) return false;
-      await writeHomiePack(filename, definition);
-      return true;
-    });
-    if (options.selectPackage) handle(AGENT_REGISTRY_CHANNELS.importPackage, async () => {
-      const filename = await options.selectPackage!();
-      if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
-      const definition = filename === null ? null : await readAgentPackage(filename);
-      if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
-      return definition;
+      return result;
     });
     if (options.selectInstructionFiles) handle(AGENT_REGISTRY_CHANNELS.selectInstructionFiles, async () => {
       const paths = parseInstructionFiles(await options.selectInstructionFiles!());
@@ -174,12 +128,12 @@ export function registerAgentRegistryIpc(options: {
           permissions: input.profile.permissions, model: input.profile.model, reasoningEffort: input.profile.reasoningEffort, serviceTier: input.profile.serviceTier };
       }
       const catalog = input.profile.accountId === null ? [] : await models(input.profile.accountId);
-      if (input.profile.accountId !== null) {
+      if (input.profile.accountId !== null && !input.repository) {
         const selection = resolveAgentModelSelection(input.profile, catalog);
         input.profile = { ...input.profile, ...selection,
           ...(input.profile.package ? { package: { ...input.profile.package, model: selection } } : {}) };
       }
-      assertAgentModelSelection(input.profile, catalog);
+      if (!input.repository || input.profile.accountId !== null) assertAgentModelSelection(input.profile, catalog);
       if (input.profile.accountId !== null && (input.profile.model === null || input.profile.reasoningEffort === null)) {
         throw new Error('Choose an available model and effort before saving.');
       }
@@ -188,7 +142,8 @@ export function registerAgentRegistryIpc(options: {
       }
       const assertAvailable = () => { if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.'); };
       assertAvailable();
-      const result = input.id && options.source && options.saveSettings
+      if (input.repository && !options.connectRepository) throw new Error('Repository connection is unavailable. Restart Cheshi.');
+      const result = input.repository ? await options.connectRepository!(input, assertAvailable) : input.id && options.source && options.saveSettings
         ? await options.saveSettings(input, assertAvailable) : options.registry.save(input, options.workspaceRoot);
       if (input.id === null && options.prepareCreation) {
         const agent = result.snapshot.agents.find(item => item.id === result.agentId)!;

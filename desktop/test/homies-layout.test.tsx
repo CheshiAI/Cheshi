@@ -112,8 +112,6 @@ test('a late source response from a collapsed Homie cannot replace the current s
 
 test('Homies offers fresh creation without import and preserves the existing settings draft', async () => {
   const f = fixture();
-  f.registry.importPackage = async () => { throw Error('Import must not run'); };
-  f.registry.installPackage = async () => { throw Error('Pack installation must not run'); };
   await withDOM(async ui => {
     await ui.render(<AgentManagementViews view="homies" api={f.api} registryApi={f.registry} />);
     await ui.click(f.first.name); await ui.click('Allow agent commands');

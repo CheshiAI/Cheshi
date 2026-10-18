@@ -45,18 +45,9 @@ export class AgentRegistryModel {
   hostTool = (input: import('../../../../shared/host-tools').HostToolRequest) => this.api.hostTool?.(input) ?? Promise.reject(new Error('Restart Cheshi to configure host tools.'));
   onHostToolDetails = (listener: import('../../../../shared/host-tool-details').HostToolDetailsListener) => this.api.onHostToolDetails?.(listener) ?? (() => {});
   testTool = (input: import('../../../../shared/homie-tools').ToolTestRequest) => this.api.testTool?.(input) ?? Promise.reject(new Error('Restart Cheshi to test tools.'));
-  installPackage = (definition: import('../../../../shared/agent-package').AgentPackage, instructionFiles: string[] = []) => {
-    if (!this.api.installPackage) return Promise.reject(new Error('Pack installation is unavailable. Restart Cheshi.'));
-    return this.api.installPackage(definition, instructionFiles);
-  };
-  exportPackage = (definition: import('../../../../shared/agent-package').AgentPackage, instructionFiles: string[] = []) => {
-    if (!this.api.exportPackage) return Promise.reject(new Error('Pack export is unavailable. Restart Cheshi.'));
-    return this.api.exportPackage(definition, instructionFiles);
-  };
-  packages = () => this.api.packages?.() ?? Promise.resolve([]);
-  importPackage = () => {
-    if (!this.api.importPackage) return Promise.reject(new Error('Package import is unavailable. Restart Cheshi.'));
-    return this.api.importPackage();
+  previewRepository = (repository: string) => {
+    if (!this.api.previewRepository) throw new Error('Restart Cheshi to connect an existing GitHub Homie.');
+    return this.api.previewRepository(repository);
   };
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<AgentRegistryState>) {

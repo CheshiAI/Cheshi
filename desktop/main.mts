@@ -1,3 +1,4 @@
+import { connectHomieRepository } from './lib/agent-management/homie-repository-registration.mts';
 import { HomiesActivation } from './lib/homies-activation.mts';
 import { HostToolRegistration } from './lib/agent-management/host-tool-registration.mts';
 import { reviewHostTool } from './lib/agent-management/host-tool-review.mts';
@@ -375,6 +376,9 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
           }
           return state;
         },
+        previewRepository: repository => homieRepositories.previewExisting(repository),
+        connectRepository: (input, assertAvailable) => connectHomieRepository({ repositories: homieRepositories,
+          registry: agentRegistry, workspaceRoot: options.workspaceRoot, input, assertAvailable }),
         prepareCreation: async agent => {
           const local = await homieRepositories.local(agent.id);
           const repository = local && existsSync(local.directory) ? local : await homieRepositories.ensure(agent);
@@ -384,17 +388,6 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
         testTool: input => specialistRuntime.testTool(options.workspaceRoot, input),
         toolCredential: input => input.action === 'save' ? toolCredentials.save(input.origin, input.name, input.value!)
           : input.action === 'remove' ? toolCredentials.remove(input.origin, input.name) : toolCredentials.status(input.origin, input.name),
-        packsDirectory: path.join(app.getPath('userData'), 'homie-packs'),
-        exportPackagePath: async name => {
-          const result = await dialog.showSaveDialog(nativeWorkspaceWindow(window), { title: 'Export Homie pack', defaultPath: name,
-            filters: [{ name: 'Homie pack', extensions: ['json'] }] });
-          return result.canceled ? null : result.filePath ?? null;
-        },
-        selectPackage: async () => {
-          const result = await dialog.showOpenDialog(nativeWorkspaceWindow(window), { title: 'Import Homie pack', defaultPath: options.workspaceRoot,
-            properties: ['openFile'], filters: [{ name: 'Homie pack or agent.json', extensions: ['json'] }] });
-          return result.canceled ? null : result.filePaths[0] ?? null;
-        },
         selectInstructionFiles: async () => {
           const result = await dialog.showOpenDialog(nativeWorkspaceWindow(window), { title: 'Link instruction files', defaultPath: options.workspaceRoot,
             properties: ['openFile', 'multiSelections'], filters: [{ name: 'Markdown', extensions: ['md'] }] });

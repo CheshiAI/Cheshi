@@ -12,6 +12,7 @@ export interface HomieRepositoryOptions {
   run?: RepositoryCommand;
   template: () => Promise<Record<string, string>>;
   requireInitialization?: boolean;
+  existingOnly?: boolean;
 }
 export interface HomieRepositoryResult { repository: string; directory: string; created: boolean }
 const preparations = new Map<string, Promise<HomieRepositoryResult>>();
@@ -50,6 +51,7 @@ export class HomieRepository {
   private readonly run: RepositoryCommand;
   private readonly template: () => Promise<Record<string, string>>;
   private readonly requireInitialization: boolean;
+  private readonly existingOnly: boolean;
 
   constructor(options: HomieRepositoryOptions) {
     this.repository = githubRepositoryName(options.repository);
@@ -61,10 +63,11 @@ export class HomieRepository {
     this.run = options.run ?? runRepositoryCommand;
     this.template = options.template;
     this.requireInitialization = options.requireInitialization === true;
+    this.existingOnly = options.existingOnly === true;
   }
 
   ensure(): Promise<HomieRepositoryResult> {
-    const key = `${this.repository.toLowerCase()}\n${this.directory}`;
+    const key = `${this.repository.toLowerCase()}\n${this.directory}\n${this.existingOnly}\n${this.requireInitialization}`;
     const pending = preparations.get(key);
     if (pending) return pending;
     const operation = this.prepare().finally(() => { if (preparations.get(key) === operation) preparations.delete(key); });
@@ -182,6 +185,7 @@ export class HomieRepository {
       let remote = await this.lookup(), created = false;
       let files: Record<string, string> | undefined;
       if (!remote) {
+        if (this.existingOnly) throw new Error('The existing GitHub repository is unavailable. Check its URL and access permissions.');
         if (local) throw new Error('The remote Homie repository is unavailable but a local checkout exists. Restore repository access or choose another local folder; existing work was retained.');
         // Validate/read bundled files before creating any external resource.
         files = await this.template();
@@ -194,13 +198,13 @@ export class HomieRepository {
       if (this.requireInitialization && !local && !created && !ownsInitialization) {
         throw new Error('This repository appeared outside this Homie setup. Existing files were retained; inspect the saved mapping before retrying.');
       }
-      if (ownsInitialization) {
+      if (ownsInitialization && !this.existingOnly) {
         const heads = await this.command('git', ['ls-remote', '--heads', this.url]);
         if (!heads) await this.seed(files ?? await this.template());
       }
       if (!local) await this.clone();
       await this.inspectLocal();
-      if (await exists(journal)) await unlink(journal);
+      if (!this.existingOnly && await exists(journal)) await unlink(journal);
       return { repository: remote.fullName, directory: await realpath(this.directory), created };
     } finally { await rmdir(lock); }
   }

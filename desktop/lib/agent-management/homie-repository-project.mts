@@ -7,9 +7,12 @@ import { githubRepositoryName } from '../github-repositories.mts';
 import { HomieRepository, type HomieRepositoryOptions } from './homie-repository.mts';
 import { homieRepositoryTemplate } from './homie-repository-template.mts';
 import { checkedRepositoryCommand, repositoryCommandFailure, runRepositoryCommand } from './homie-repository-command.mts';
+import { parseHomieRepository, type HomieRepositoryConnection, type HomieRepositoryPreview } from '../../shared/homie-repository-connection.ts';
+import { readHomieSource } from './homie-source-files.mts';
+import type { AgentPackage } from '../../shared/agent-package.ts';
 
 interface Account { id: number; login: string }
-interface RepositoryPlan { agentId: string; repository: string; directory: string; accountId?: number }
+interface RepositoryPlan { agentId: string; repository: string; directory: string; accountId?: number; existingOnly?: true }
 const planning = new Map<string, Promise<unknown>>();
 const validAgentId = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 
@@ -71,13 +74,15 @@ export class HomieRepositoryProjects {
     const plan = value as Partial<RepositoryPlan> | null;
     const repository = plan?.repository;
     if (plan?.agentId !== agentId || typeof repository !== 'string'
-      || !/^[^/]+\/[Hh]omie-[a-z0-9-]+$/.test(repository)
+      || (plan.existingOnly !== true && !/^[^/]+\/[Hh]omie-[a-z0-9-]+$/.test(repository))
+      || (plan.existingOnly !== undefined && plan.existingOnly !== true)
       || (plan.accountId !== undefined && (!Number.isSafeInteger(plan.accountId) || plan.accountId <= 0))
       || plan.directory !== path.join(this.projectsDirectory, repository.split('/')[1]!.toLowerCase())) {
       throw new Error('Inspect the saved Homie repository mapping. Existing files were retained.');
     }
     githubRepositoryName(repository);
-    return { agentId, repository, directory: plan.directory, ...(plan.accountId === undefined ? {} : { accountId: plan.accountId }) };
+    return { agentId, repository, directory: plan.directory, ...(plan.accountId === undefined ? {} : { accountId: plan.accountId }),
+      ...(plan.existingOnly === true ? { existingOnly: true } : {}) };
   }
   async local(agentId: string): Promise<RepositoryPlan | null> {
     if (!validAgentId.test(agentId)) throw new Error('Invalid Homie ID.');
@@ -110,7 +115,7 @@ export class HomieRepositoryProjects {
         if (plan.accountId === undefined && owner.toLowerCase() !== (await this.owner(account)).toLowerCase()) {
           throw new Error('Confirm the existing Homie repository owner in your local account settings before continuing.');
         }
-        await this.verifyOwner(owner, account);
+        if (!plan.existingOnly) await this.verifyOwner(owner, account);
         if (plan.accountId === undefined) { plan.accountId = account.id; await this.write(filename, plan); }
         return plan;
       }
@@ -140,7 +145,61 @@ export class HomieRepositoryProjects {
   }
   async ensure(agent: SpecialistAgent) {
     const plan = await this.plan(agent);
-    return new HomieRepository({ ...plan, requireInitialization: true, run: this.run,
+    return new HomieRepository({ ...plan, requireInitialization: !plan.existingOnly, run: this.run,
       template: () => homieRepositoryTemplate(agent) }).ensure();
   }
+
+  private async assertUnconnected(repository: string, directory: string): Promise<void> {
+    let files: string[];
+    try { files = await readdir(this.stateDirectory); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
+    for (const file of files) {
+      const id = file.replace(/\.json$/, '');
+      if (!validAgentId.test(id)) continue;
+      const saved = await this.local(id);
+      if (saved && (saved.repository.toLowerCase() === repository.toLowerCase() || saved.directory.toLowerCase() === directory.toLowerCase())) {
+        throw new Error('This repository is already connected or reserved for a Homie. Open that Homie instead.');
+      }
+    }
+  }
+
+  async previewExisting(value: string): Promise<HomieRepositoryPreview> {
+    const repository = parseHomieRepository(value);
+    const directory = path.join(this.projectsDirectory, repository.split('/')[1]!.toLowerCase());
+    await this.assertUnconnected(repository, directory);
+    const checkout = await new HomieRepository({ repository, directory, existingOnly: true, run: this.run,
+      template: async () => { throw new Error('Existing repositories cannot be initialized.'); } }).ensure();
+    const source = await readHomieSource(checkout.directory);
+    return { repository: checkout.repository, directory: checkout.directory, hash: source.hash, definition: source.pack };
+  }
+
+  /** Persist the mapping before synchronous registration; rollback only our mapping if registration fails. */
+  async connectExisting<T>(input: HomieRepositoryConnection, save: (id: string, definition: AgentPackage) => T): Promise<T> {
+    const previous = planning.get(this.stateDirectory) ?? Promise.resolve();
+    const operation = previous.catch(() => {}).then(async () => {
+      await mkdir(this.stateDirectory, { recursive: true, mode: 0o700 });
+      const lock = path.join(this.stateDirectory, '.planning-lock');
+      try { await mkdir(lock); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new Error('Another Homie is being connected. Try again after it finishes.');
+        throw error;
+      }
+      try {
+        const account = await this.account();
+        const preview = await this.previewExisting(input.repository);
+        assertReviewedSource(preview.hash, input.hash);
+        const id = randomUUID(), filename = path.join(this.stateDirectory, `${id}.json`);
+        await this.write(filename, { agentId: id, repository: preview.repository, directory: preview.directory, accountId: account.id, existingOnly: true });
+        try { return save(id, preview.definition); }
+        catch (error) { await unlink(filename); throw error; }
+      } finally { await rmdir(lock); }
+    });
+    planning.set(this.stateDirectory, operation);
+    try { return await operation; }
+    finally { if (planning.get(this.stateDirectory) === operation) planning.delete(this.stateDirectory); }
+  }
+}
+
+function assertReviewedSource(actual: string, expected: string): void {
+  if (actual !== expected) throw new Error('Repository files changed. Check the repository again before connecting it.');
 }
