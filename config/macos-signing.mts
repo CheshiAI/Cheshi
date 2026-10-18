@@ -8,11 +8,13 @@ type SigningOptions = Pick<PackagerConfig, 'osxNotarize'> & {
 };
 
 export function macOSSigningOptions(environment: NodeJS.ProcessEnv, platform: NodeJS.Platform): SigningOptions {
-  if (environment.CHESHI_SIGN_RELEASE !== '1') return {};
-  if (platform !== 'darwin') throw new Error('Signed Cheshi distribution builds require macOS.');
+  const release = environment.CHESHI_SIGN_RELEASE === '1';
+  if (!release && environment.CHESHI_SIGN_LOCAL !== '1') return {};
+  if (platform !== 'darwin') throw new Error('Signed Cheshi builds require macOS.');
 
   const identity = requiredSigningValue(environment, 'MACOS_SIGNING_IDENTITY');
-  const keychainProfile = requiredSigningValue(environment, 'MACOS_NOTARY_PROFILE');
+  const keychainProfile = release ? requiredSigningValue(environment, 'MACOS_NOTARY_PROFILE') : undefined;
+  if (identity === '-') throw new Error('A persistent signing identity is required; ad-hoc signing cannot preserve app identity.');
 
   return {
     osxSign: {
@@ -23,9 +25,7 @@ export function macOSSigningOptions(environment: NodeJS.ProcessEnv, platform: No
         ? { entitlements: fileURLToPath(new URL('./macos-entitlements.plist', import.meta.url)) }
         : {},
     },
-    osxNotarize: {
-      keychainProfile,
-    },
+    ...(keychainProfile ? { osxNotarize: { keychainProfile } } : {}),
   };
 }
 

@@ -5,11 +5,13 @@ import { createHash } from 'node:crypto';
 import { product } from '../config/product.mts';
 import { finderBuildRevealScript } from './desktop-build-output.mts';
 import { BuildInterruptedError, withDesktopBuild } from './desktop-build-lifecycle.mts';
+import { localSigningEnvironment, verifyMacOSBuildSignature } from './macos-build-signing.mts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const flags = process.argv.slice(2);
 if (flags.some(flag => flag !== '--no-finder')) throw new Error('Usage: bun run desktop:package [--no-finder]');
 try {
+  Object.assign(process.env, localSigningEnvironment(process.env, process.platform));
   const { output, value: appRelative } = await withDesktopBuild({
     out: join(root, 'out'), cwd: root,
     onRecovered: path => console.log(`[build] Removed abandoned staging: ${path}`),
@@ -25,10 +27,7 @@ try {
       for (const file of ['app.asar', 'dist/index.html', `runtime/${process.platform}-${process.arch}/cheshi-cli`]) {
         await access(join(resources, file));
       }
-      if (process.platform === 'darwin') {
-        if (process.env.CHESHI_SIGN_RELEASE !== '1') await run(['/usr/bin/codesign', '--force', '--deep', '--sign', '-', app]);
-        await run(['/usr/bin/codesign', '--verify', '--deep', '--strict', app]);
-      }
+      const signing = process.platform === 'darwin' ? verifyMacOSBuildSignature(app, product.bundleId) : undefined;
       const git = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
       if (git.exitCode !== 0) throw new Error('Unable to record build revision.');
       const status = Bun.spawnSync(['git', 'status', '--porcelain'], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
@@ -36,6 +35,7 @@ try {
       await writeFile(join(output.staging, 'build.json'), JSON.stringify({
         builtAt: new Date().toISOString(), timeZone: 'Asia/Seoul', version: product.version, buildNumber: product.buildNumber,
         revision: git.stdout.toString().trim(), dirty: status.stdout.length > 0, platform: process.platform, arch: process.arch,
+        ...(signing ? { signing } : {}),
         app: appRelative, asarSha256: createHash('sha256').update(await readFile(join(resources, 'app.asar'))).digest('hex'),
       }, null, 2) + '\n');
       return appRelative;
