@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createSettingsService } from '../lib/settings-service.mts';
 import { createSettingsApi } from '../lib/settings-preload.cts';
-import { SETTINGS_CHANNELS } from '../shared/settings.ts';
+import { SETTINGS_CHANNELS, parseFlashReadiness } from '../shared/settings.ts';
 
 function fixture() {
   const directory = mkdtempSync(path.join(tmpdir(), 'cheshi-settings-'));
@@ -61,6 +61,8 @@ test('Flash preferences cross owner-checked IPC, broadcast and validate preload 
     send: (channel: string, value: unknown) => events.emit(channel, {}, value) };
   const window = Object.assign(new EventEmitter(), { webContents: owner });
   const registration = registerSettingsIpc({ window: window as unknown as BrowserWindow, service: f.service,
+    flash: { ...f.service, setFlashEnabled: async value => f.service.setFlashEnabled(value),
+      readiness: async () => ({ ready: true, detail: 'Ready fixture' }) },
     ipc: { handle: (channel, listener) => { routes.set(channel, listener); }, removeHandler: channel => { routes.delete(channel); } } });
   let sender: unknown = owner;
   const ipc = Object.assign(events, { invoke: async (channel: string, value?: unknown) =>
@@ -183,7 +185,7 @@ test('settings preload exposes preferences and validates instruction replies', a
   let reply: unknown = 32768;
   const ipc = Object.assign(new EventEmitter(), { invoke: async (channel: string) => { calls.push(channel); return reply; } });
   const api = createSettingsApi(ipc as IpcRenderer);
-  expect(Object.keys(api).sort()).toEqual(['getFlashEnabled', 'getProjectDocMaxBytes', 'onFlashEnabledChanged', 'onProjectDocMaxBytesChanged', 'setFlashEnabled', 'setProjectDocMaxBytes']);
+  expect(Object.keys(api).sort()).toEqual(['getFlashEnabled', 'getFlashReadiness', 'getProjectDocMaxBytes', 'installFlash', 'onFlashEnabledChanged', 'onProjectDocMaxBytesChanged', 'setFlashEnabled', 'setProjectDocMaxBytes']);
   expect(await api.getProjectDocMaxBytes()).toBe(32768);
   expect(await api.setProjectDocMaxBytes(32768)).toBe(32768);
   expect(calls).toEqual([SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes]);
@@ -193,11 +195,21 @@ test('settings preload exposes preferences and validates instruction replies', a
   expect(failure).toBeInstanceOf(Error);
 });
 
+test('Flash readiness accepts only literal booleans at the preload boundary', () => {
+  for (const value of [null, { ready: 'true', detail: 'missing' }, { ready: true }, { ready: true, detail: 'ok', installing: 1 }]) {
+    expect(() => parseFlashReadiness(value)).toThrow('Invalid Flash readiness');
+  }
+  expect(parseFlashReadiness({ ready: false, detail: 'Missing model', installing: true }))
+    .toEqual({ ready: false, detail: 'Missing model', installing: true });
+});
+
 test('settings IPC retains owner checks and subscriptions without provider routes', () => {
   const f = fixture();
   const routes = new Map<string, Parameters<IpcMain['handle']>[1]>();
   const sent: number[] = [];
-  const owner = { mainFrame: {}, isDestroyed: () => false, send: (_channel: string, value: number) => sent.push(value) };
+  const owner = { mainFrame: {}, isDestroyed: () => false, send: (channel: string, value: number) => {
+    if (channel === SETTINGS_CHANNELS.projectDocMaxBytesChanged) sent.push(value);
+  } };
   const window = Object.assign(new EventEmitter(), { webContents: owner });
   const registration = registerSettingsIpc({ window: window as unknown as BrowserWindow, service: f.service,
     ipc: { handle: (channel, listener) => { routes.set(channel, listener); }, removeHandler: channel => { routes.delete(channel); } } });
@@ -205,7 +217,9 @@ test('settings IPC retains owner checks and subscriptions without provider route
     routes.get(channel)!({ sender, senderFrame: frame } as IpcMainInvokeEvent, value);
   try {
     expect([...routes.keys()].sort()).toEqual([SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes,
-      SETTINGS_CHANNELS.getFlashEnabled, SETTINGS_CHANNELS.setFlashEnabled].sort());
+      SETTINGS_CHANNELS.getFlashEnabled, SETTINGS_CHANNELS.setFlashEnabled, SETTINGS_CHANNELS.getFlashReadiness, SETTINGS_CHANNELS.installFlash].sort());
+    expect(() => invoke(SETTINGS_CHANNELS.setFlashEnabled, true)).toThrow('verification is unavailable');
+    expect(invoke(SETTINGS_CHANNELS.setFlashEnabled, false)).toBe(false);
     expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072, {})).toThrow('workspace window');
     expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072, owner, {})).toThrow('workspace window');
     expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, '131072')).toThrow('whole number');

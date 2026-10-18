@@ -1,9 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { constants } from 'node:fs';
 import { mkdir, open } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { homedir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { flashInstallationPaths } from './installation.mts';
 import { setTimeout as delay } from 'node:timers/promises';
 import { callFlash, FlashError, type FlashConnection } from './client.mts';
 
@@ -129,12 +128,8 @@ export function acquireFlashHost(userData: string): FlashHost {
   const directory = join(userData, 'flash');
   let entry = runtimes.get(directory);
   if (!entry) {
-    // Development fallback only. Packaged installation is explicitly configured by its host.
-    const checkout = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-    entry = { users: 0, runtime: new FlashRuntime({ directory,
-      executable: process.env.CHESHI_FLASH_EXECUTABLE?.trim() || join(dirname(checkout), 'cheshi-flash/.venv/bin/cheshi-flash'),
-      modelCache: process.env.CHESHI_FLASH_MODEL_CACHE?.trim()
-        || join(homedir(), process.platform === 'darwin' ? 'Library/Caches' : '.cache', 'CheshiFlash/hub') }) };
+    const { executable, modelCache } = flashInstallationPaths(userData);
+    entry = { users: 0, runtime: new FlashRuntime({ directory, executable, modelCache }) };
     runtimes.set(directory, entry);
   }
   entry.users++;

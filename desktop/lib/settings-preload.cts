@@ -1,9 +1,11 @@
 import type { IpcRenderer, IpcRendererEvent } from 'electron';
-import { SETTINGS_CHANNELS, parseFlashEnabled, parseProjectDocMaxBytes } from '../shared/settings.ts';
+import { SETTINGS_CHANNELS, parseFlashEnabled, parseFlashReadiness, parseProjectDocMaxBytes } from '../shared/settings.ts';
 import type { SettingsApi } from '../shared/settings.ts';
 
 export function createSettingsApi(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>): SettingsApi {
   return {
+    async getFlashReadiness() { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.getFlashReadiness)); },
+    async installFlash() { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.installFlash)); },
     async getFlashEnabled() { return parseFlashEnabled(await ipc.invoke(SETTINGS_CHANNELS.getFlashEnabled)); },
     async setFlashEnabled(enabled) {
       return parseFlashEnabled(await ipc.invoke(SETTINGS_CHANNELS.setFlashEnabled, parseFlashEnabled(enabled)));

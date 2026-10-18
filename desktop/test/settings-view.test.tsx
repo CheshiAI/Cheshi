@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { act } from 'react';
-import type { SettingsApi } from '../shared/settings';
+import type { FlashReadiness, SettingsApi } from '../shared/settings';
 import { product } from '../../config/product.mts';
 
 function createDeferred<T>() {
@@ -16,6 +16,7 @@ async function withSettings(run: (view: {
 }) => Promise<void>, options: {
   projectLoad?: Promise<number>; projectSave?: Promise<void>; failProjectSave?: boolean;
   flashLoad?: Promise<boolean>; flashSave?: Promise<void>; failFlashSave?: boolean;
+  readiness?: FlashReadiness; install?: Promise<FlashReadiness>;
 } = {}) {
   const window = new Window();
   Object.defineProperty(window, 'localStorage', { get() { throw new Error('Browser storage is unavailable'); } });
@@ -32,6 +33,8 @@ async function withSettings(run: (view: {
   const flashWrites: boolean[] = [];
   const flashListeners = new Set<(enabled: boolean) => void>();
   const api: SettingsApi = {
+    getFlashReadiness: async () => options.readiness ?? { ready: true, detail: 'Files available.' },
+    installFlash: async () => options.install ?? { ready: true, detail: 'Installed.' },
     getFlashEnabled: async () => options.flashLoad ?? flashEnabled,
     setFlashEnabled: async enabled => {
       flashWrites.push(enabled); await options.flashSave;
@@ -72,7 +75,7 @@ async function withSettings(run: (view: {
   }
 }
 function button(container: HTMLElement, label: string) {
-  const control = [...container.querySelectorAll('button')].find(button => button.getAttribute('aria-label') === label);
+  const control = [...container.querySelectorAll('button')].find(button => button.getAttribute('aria-label') === label || button.textContent === label);
   if (!control) throw new Error(`Missing button ${label}`);
   return control;
 }
@@ -218,4 +221,32 @@ test('Flash prevents repeated saves and retains its prior value when saving fail
     expect(toggle.disabled).toBe(false);
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('Could not save Flash');
   }, { flashSave: save.promise, failFlashSave: true });
+});
+
+test('Flash blocks ON for missing files, offers installation, and leaves OFF until explicitly enabled', async () => {
+  const install = createDeferred<FlashReadiness>();
+  await withSettings(async ({ container, flashWrites }) => {
+    await act(async () => category(container, 'Flash').click());
+    expect(button(container, 'Enable Flash memory').disabled).toBe(true);
+    expect(container.textContent).toContain('Missing model');
+    await act(async () => button(container, 'Install Flash').click());
+    expect(button(container, 'Installing Flash…').disabled).toBe(true);
+    expect(button(container, 'Enable Flash memory').getAttribute('aria-checked')).toBe('false');
+    await act(async () => install.resolve({ ready: true, detail: 'Installed successfully' }));
+    expect(button(container, 'Enable Flash memory').disabled).toBe(false);
+    expect(flashWrites).toEqual([]);
+    await act(async () => button(container, 'Enable Flash memory').click());
+    expect(flashWrites).toEqual([true]);
+  }, { readiness: { ready: false, detail: 'Missing model' }, install: install.promise });
+});
+
+test('Flash can always be turned OFF even if files later disappear', async () => {
+  await withSettings(async ({ container, flashWrites, emitFlash }) => {
+    await act(async () => category(container, 'Flash').click());
+    await emitFlash(true);
+    expect(button(container, 'Enable Flash memory').disabled).toBe(false);
+    expect(button(container, 'Install Flash').disabled).toBe(true);
+    await act(async () => button(container, 'Enable Flash memory').click());
+    expect(flashWrites).toEqual([false]);
+  }, { readiness: { ready: false, detail: 'Missing executable' } });
 });

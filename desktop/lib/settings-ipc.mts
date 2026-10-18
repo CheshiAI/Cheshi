@@ -1,10 +1,13 @@
 import { onWindowClosed } from './window-close-cleanup.mts';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
-import { SETTINGS_CHANNELS } from '../shared/settings.ts';
+import { SETTINGS_CHANNELS, parseFlashEnabled, type FlashReadiness } from '../shared/settings.ts';
 import type { createSettingsService } from './settings-service.mts';
+import type { FlashActivation } from './flash/activation.mts';
 
 export function registerSettingsIpc(options: {
   window: BrowserWindow; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>; service: ReturnType<typeof createSettingsService>;
+  flash?: Pick<FlashActivation, 'getFlashEnabled' | 'setFlashEnabled' | 'subscribeFlashEnabled' | 'readiness'>;
+  installation?: { status(): Promise<FlashReadiness>; install(): Promise<FlashReadiness>; isInstalling(): boolean };
 }) {
   const owner = options.window.webContents;
   const channels: string[] = [];
@@ -17,7 +20,7 @@ export function registerSettingsIpc(options: {
   const unsubscribeProjectDoc = options.service.subscribeProjectDocMaxBytes(bytes => {
     if (!disposed && !owner.isDestroyed()) owner.send(SETTINGS_CHANNELS.projectDocMaxBytesChanged, bytes);
   });
-  const unsubscribeFlash = options.service.subscribeFlashEnabled(enabled => {
+  const unsubscribeFlash = (options.flash ?? options.service).subscribeFlashEnabled(enabled => {
     if (!disposed && !owner.isDestroyed()) owner.send(SETTINGS_CHANNELS.flashEnabledChanged, enabled);
   });
   let unsubscribeClosed = () => {};
@@ -32,8 +35,20 @@ export function registerSettingsIpc(options: {
     channels.push(channel);
   };
   try {
-    handle(SETTINGS_CHANNELS.getFlashEnabled, () => options.service.getFlashEnabled());
-    handle(SETTINGS_CHANNELS.setFlashEnabled, (_event, enabled: unknown) => options.service.setFlashEnabled(enabled));
+    handle(SETTINGS_CHANNELS.getFlashEnabled, () => options.flash?.getFlashEnabled() ?? false);
+    handle(SETTINGS_CHANNELS.getFlashReadiness, () => options.installation?.status()
+      ?? options.flash?.readiness() ?? { ready: false, detail: 'Flash installation is unavailable.' });
+    handle(SETTINGS_CHANNELS.installFlash, () => {
+      if (!options.installation) throw new Error('Flash installation is unavailable.');
+      return options.installation.install();
+    });
+    handle(SETTINGS_CHANNELS.setFlashEnabled, (_event, value: unknown) => {
+      const enabled = parseFlashEnabled(value);
+      if (enabled && options.installation?.isInstalling()) throw new Error('Wait for Flash installation to finish.');
+      if (options.flash) return options.flash.setFlashEnabled(enabled);
+      if (enabled) throw new Error('Flash readiness verification is unavailable.');
+      return options.service.setFlashEnabled(false);
+    });
     handle(SETTINGS_CHANNELS.getProjectDocMaxBytes, () => options.service.getProjectDocMaxBytes());
     handle(SETTINGS_CHANNELS.setProjectDocMaxBytes, (_event, bytes: unknown) => options.service.setProjectDocMaxBytes(bytes));
     unsubscribeClosed = onWindowClosed(options.window, dispose);

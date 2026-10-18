@@ -71,7 +71,8 @@ test('workspace IPC services share cleanup and release subscriptions and channel
   const service = { subscribe: () => { subscriptions++; return () => { subscriptions--; }; } };
   for (let cycle = 0; cycle < 3; cycle++) {
     const registrations = [
-      registerSettingsIpc({ window, ipc, service: service as unknown as Parameters<typeof registerSettingsIpc>[0]['service'] }),
+      registerSettingsIpc({ window, ipc, service: { subscribeProjectDocMaxBytes: service.subscribe,
+        subscribeFlashEnabled: service.subscribe } as unknown as Parameters<typeof registerSettingsIpc>[0]['service'] }),
       registerNotificationEventsIpc({ window, ipc, service: service as unknown as Parameters<typeof registerNotificationEventsIpc>[0]['service'] }),
       registerIMessageIpc({ window, ipc, service: service as unknown as Parameters<typeof registerIMessageIpc>[0]['service'] }),
       registerDiscordIpc({ window, ipc, service: {} as Parameters<typeof registerDiscordIpc>[0]['service'], setup: async () => 'unused' }),
@@ -80,7 +81,7 @@ test('workspace IPC services share cleanup and release subscriptions and channel
           dispose: () => { terminalCloses++; } } }),
     ];
     expect(window.listenerCount('closed')).toBe(1);
-    expect(subscriptions).toBe(3);
+    expect(subscriptions).toBe(4);
     expect(handlers.size).toBeGreaterThan(0);
     if (cycle === 2) window.emit('closed');
     for (const registration of registrations) { registration.dispose(); registration.dispose(); }
