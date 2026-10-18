@@ -44,7 +44,8 @@ async function fixture(serviceScript = supervisor) {
   const agent: SpecialistAgent = { id: 'fixture', revision: 1, name: 'fixture', role: 'custom', instructions: 'fixture',
     createdAt: '', updatedAt: '', accountId: 'account', permissions: { fileWrite: false, commandExecution: true },
     model: null, reasoningEffort: null, serviceTier: null, assignments: [{ workspaceRoot: directory, instructions: '' }], package: pack };
-  const registration = new HostToolRegistration(join(directory, 'state'), () => agent, async () => directory);
+  let sourceDirectory = directory;
+  const registration = new HostToolRegistration(join(directory, 'state'), () => agent, async () => sourceDirectory);
   const scope = { workspace: directory, agentId: agent.id, accountId: agent.accountId! };
   const allow = async (index: number) => registration.request(directory, { action: 'allow', agentId: agent.id, tool: tools[index]!.name }, {
     selectExecutable: async () => process.execPath,
@@ -62,6 +63,7 @@ async function fixture(serviceScript = supervisor) {
     return true;
   };
   return { directory, registration, agent, tools, allow, execute, starts, gone,
+    setSource: (value: string) => { sourceDirectory = value; },
     close: async () => { registration.dispose(); await Bun.sleep(100); await rm(directory, { recursive: true, force: true }); } };
 }
 
@@ -160,4 +162,18 @@ test('service startup has a deadline, cancellation and bounded protocol output',
       controller.abort(); await pending; await until(f.gone);
     } finally { await f.close(); }
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+
+test('service tools receive the reviewed source even without starting the service, and reject source moves', async () => {
+  const f = await fixture();
+  try {
+    f.agent.package!.resources!.files.find(file => file.path === 'scripts/tool.ts')!.content =
+      'console.log(JSON.stringify({result:{source:process.env.HOMIE_TOOL_SOURCE_DIR}}));';
+    await f.allow(0);
+    expect((await f.execute(0, 'close')).data).toEqual({ source: f.directory });
+    expect((await f.execute()).data).toEqual({ source: f.directory });
+    f.setSource(join(f.directory, 'state'));
+    await fails(f.execute(0, 'close'), 'source changed');
+  } finally { await f.close(); }
 });

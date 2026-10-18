@@ -179,9 +179,9 @@ export class HostToolRegistration {
       if (!this.runtimeMatches(grant, current.tool)) throw new Error('Review host access to prepare the declared Cheshi-managed runtime.');
       if (grant.autoPolicyRevision !== undefined) this.automaticCalls.set(key, hostToolScopeKey(scope));
       if (await executableHash(grant.executable) !== grant.executableHash || !allowed()) throw new Error('Host executable or permission changed.');
-      if (tool.service && hostServiceRequired(tool, input)) {
-        const sourceDirectory = await this.serviceSource(scope.agentId, tool);
-        assertServiceSource(sourceDirectory, grant.sourceDirectory, allowed());
+      const sourceDirectory = await this.serviceSource(scope.agentId, tool);
+      if (tool.service) assertServiceSource(sourceDirectory, grant.sourceDirectory, allowed());
+      if (tool.service && sourceDirectory && hostServiceRequired(tool, input)) {
         const serviceGrant = grant;
         // Persistent lifetime is tied to saved grants, not the individual tool/turn signal.
         const serviceValid = () => {
@@ -205,7 +205,7 @@ export class HostToolRegistration {
         await writeFile(target, file.content, { flag: 'wx', mode: 0o400 });
       }
       return await executeHostProcess({ executable: grant.executable, script: join(packRoot, tool.script), cwd: packRoot, output, cache,
-        args: input, signal: AbortSignal.any([signal, controller.signal]), valid: allowed });
+        sourceDirectory, args: input, signal: AbortSignal.any([signal, controller.signal]), valid: allowed });
     } finally {
       this.active.delete(key);
       this.automaticCalls.delete(key);

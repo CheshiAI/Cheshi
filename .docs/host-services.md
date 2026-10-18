@@ -50,6 +50,12 @@ the local grant, shown during review, and checked again before execution. It is
 not serialized into the portable manifest. The host environment contains only
 the documented runtime environment and this source path, not inherited credentials.
 
+Service-declaring tools also receive this same reviewed path as `HOMIE_TOOL_SOURCE_DIR`,
+including calls that do not match `service.when`. This lets the supervisor and the
+one-shot tool read the same local dependency settings. The registration revalidates
+the canonical source against the grant before either kind of call. Tools without a
+service declaration do not receive this variable. Worker arguments cannot override it.
+
 The service key includes project, Homie, account and declared service name.
 Concurrent callers share one supervisor and serialize readiness requests. Saved
 grants and command permissions are monitored between calls. Revocation, disabled
