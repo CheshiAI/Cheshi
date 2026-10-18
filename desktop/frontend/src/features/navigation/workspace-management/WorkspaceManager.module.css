@@ -49,7 +49,7 @@
 .projectCopy > span { flex: 1; min-width: 0; color: var(--sidebar-section-label-color); font-size: var(--font-size-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .projectCopy small { flex-shrink: 0; color: var(--sidebar-section-label-color); font-size: var(--font-size-small); white-space: nowrap; }
 .empty { display: grid; justify-items: center; gap: var(--space-default); padding: 64px var(--space-default); margin: 0; color: var(--sub-text); text-align: center; }
-.welcome { box-sizing: border-box; min-height: 100%; }
+.listRegion > .welcome { box-sizing: border-box; min-height: 100%; }
 .errorBox { padding-bottom: var(--space-default); }
 .errorBox p,
 .error { margin: 0 0 var(--space-default); color: var(--error, #e99b9b); overflow-wrap: anywhere; }
