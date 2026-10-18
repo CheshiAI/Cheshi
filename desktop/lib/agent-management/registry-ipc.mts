@@ -1,4 +1,4 @@
-import { parseHomieRepository, type HomieRepositoryPreview } from '../../shared/homie-repository-connection.ts';
+import { parseHomieRepositoryDestination, parseHomieRepositoryLocationRequest, parseHomieRepositoryDirectory, type HomieRepositoryPreview, type HomieRepositoryLocationRequest } from '../../shared/homie-repository-connection.ts';
 import type { HomiesAccess } from '../homies-activation.mts';
 import { parseToolCredentialRequest, parseToolTestRequest, type ToolCredentialRequest, type ToolTestRequest } from '../../shared/homie-tools.ts';
 import { parseHostToolRequest, type HostToolRequest, type HostToolStatus } from '../../shared/host-tools.ts';
@@ -18,7 +18,8 @@ import { HOMIE_SOURCE_CHANNEL, parseHomieSourceRequest, type HomieSourceRequest,
 
 export function registerAgentRegistryIpc(options: {
   access?: HomiesAccess;
-  previewRepository?(repository: string): Promise<HomieRepositoryPreview>;
+  previewRepository?(repository: string, directory?: string): Promise<HomieRepositoryPreview>;
+  repositoryLocation?(input: HomieRepositoryLocationRequest): Promise<string | null>;
   connectRepository?(input: SaveSpecialistAgent, assertAvailable: () => void): Promise<ReturnType<ReturnType<typeof createAgentRegistry>['save']>>;
   source?(input: HomieSourceRequest): Promise<HomieSourceState>;
   saveSettings?(input: SaveSpecialistAgent, assertAvailable: () => void): Promise<ReturnType<ReturnType<typeof createAgentRegistry>['save']>>;
@@ -77,8 +78,14 @@ export function registerAgentRegistryIpc(options: {
   };
   try {
     if (options.source) handle(HOMIE_SOURCE_CHANNEL, value => options.source!(parseHomieSourceRequest(value)));
+    if (options.repositoryLocation) handle(AGENT_REGISTRY_CHANNELS.repositoryLocation, async value => {
+      const result = await options.repositoryLocation!(parseHomieRepositoryLocationRequest(value));
+      if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
+      return result === null ? null : parseHomieRepositoryDirectory(result);
+    });
     if (options.previewRepository) handle(AGENT_REGISTRY_CHANNELS.previewRepository, async value => {
-      const result = await options.previewRepository!(parseHomieRepository(value));
+      const input = parseHomieRepositoryDestination(value);
+      const result = await options.previewRepository!(input.repository, input.directory);
       if (disposed || owner.isDestroyed()) throw new Error('Agent configuration window is closed.');
       return result;
     });

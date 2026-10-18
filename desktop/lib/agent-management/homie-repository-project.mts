@@ -7,7 +7,7 @@ import { githubRepositoryName } from '../github-repositories.mts';
 import { HomieRepository, type HomieRepositoryOptions } from './homie-repository.mts';
 import { homieRepositoryTemplate } from './homie-repository-template.mts';
 import { checkedRepositoryCommand, repositoryCommandFailure, runRepositoryCommand } from './homie-repository-command.mts';
-import { parseHomieRepository, type HomieRepositoryConnection, type HomieRepositoryPreview } from '../../shared/homie-repository-connection.ts';
+import { parseHomieRepository, parseHomieRepositoryDirectory, type HomieRepositoryConnection, type HomieRepositoryPreview } from '../../shared/homie-repository-connection.ts';
 import { readHomieSource } from './homie-source-files.mts';
 import type { AgentPackage } from '../../shared/agent-package.ts';
 
@@ -77,11 +77,13 @@ export class HomieRepositoryProjects {
       || (plan.existingOnly !== true && !/^[^/]+\/[Hh]omie-[a-z0-9-]+$/.test(repository))
       || (plan.existingOnly !== undefined && plan.existingOnly !== true)
       || (plan.accountId !== undefined && (!Number.isSafeInteger(plan.accountId) || plan.accountId <= 0))
-      || plan.directory !== path.join(this.projectsDirectory, repository.split('/')[1]!.toLowerCase())) {
+      || (plan.existingOnly !== true && plan.directory !== path.join(this.projectsDirectory, repository.split('/')[1]!.toLowerCase()))) {
       throw new Error('Inspect the saved Homie repository mapping. Existing files were retained.');
     }
     githubRepositoryName(repository);
-    return { agentId, repository, directory: plan.directory, ...(plan.accountId === undefined ? {} : { accountId: plan.accountId }),
+    const directory = parseHomieRepositoryDirectory(plan.directory);
+    if (directory !== path.resolve(directory)) throw new Error('Inspect the saved Homie repository folder.');
+    return { agentId, repository, directory, ...(plan.accountId === undefined ? {} : { accountId: plan.accountId }),
       ...(plan.existingOnly === true ? { existingOnly: true } : {}) };
   }
   async local(agentId: string): Promise<RepositoryPlan | null> {
@@ -163,9 +165,12 @@ export class HomieRepositoryProjects {
     }
   }
 
-  async previewExisting(value: string): Promise<HomieRepositoryPreview> {
+  defaultDirectory(value: string): string {
+    return path.join(this.projectsDirectory, parseHomieRepository(value).split('/')[1]!.toLowerCase());
+  }
+  async previewExisting(value: string, selectedDirectory?: string): Promise<HomieRepositoryPreview> {
     const repository = parseHomieRepository(value);
-    const directory = path.join(this.projectsDirectory, repository.split('/')[1]!.toLowerCase());
+    const directory = path.resolve(selectedDirectory === undefined ? this.defaultDirectory(repository) : parseHomieRepositoryDirectory(selectedDirectory));
     await this.assertUnconnected(repository, directory);
     const checkout = await new HomieRepository({ repository, directory, existingOnly: true, run: this.run,
       template: async () => { throw new Error('Existing repositories cannot be initialized.'); } }).ensure();
@@ -186,7 +191,7 @@ export class HomieRepositoryProjects {
       }
       try {
         const account = await this.account();
-        const preview = await this.previewExisting(input.repository);
+        const preview = await this.previewExisting(input.repository, parseHomieRepositoryDirectory(input.directory));
         assertReviewedSource(preview.hash, input.hash);
         const id = randomUUID(), filename = path.join(this.stateDirectory, `${id}.json`);
         await this.write(filename, { agentId: id, repository: preview.repository, directory: preview.directory, accountId: account.id, existingOnly: true });

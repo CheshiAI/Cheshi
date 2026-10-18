@@ -30,6 +30,7 @@ test('Homie tools and repository previews reject foreign frames and closed windo
     hostTool: async input => { toolCalls.push(input); return { allowed: input.action === 'allow', executable: null, digest: null,
       ...(input.action === 'policy' ? { autoApprove: input.autoApprove ?? false } : {}) }; },
     selectInstructionFiles: async () => [linked],
+    repositoryLocation: async () => directory,
     previewRepository: () => delay ? pending.promise : Promise.reject(new Error('Repository unavailable')),
     ipc: { handle: (channel, handler) => { handlers.set(channel, handler); }, removeHandler: channel => { handlers.delete(channel); } } });
   const renderer = new EventEmitter();
@@ -50,7 +51,7 @@ test('Homie tools and repository previews reject foreign frames and closed windo
       expect(handlers.has(`cheshi:agent-registry:${obsolete}`)).toBe(false);
     }
     expect(await api.selectInstructionFiles!()).toEqual([linked]);
-    for (const channel of [AGENT_REGISTRY_CHANNELS.hostTool, AGENT_REGISTRY_CHANNELS.previewRepository, AGENT_REGISTRY_CHANNELS.toolCredential, AGENT_REGISTRY_CHANNELS.testTool]) {
+    for (const channel of [AGENT_REGISTRY_CHANNELS.hostTool, AGENT_REGISTRY_CHANNELS.previewRepository, AGENT_REGISTRY_CHANNELS.repositoryLocation, AGENT_REGISTRY_CHANNELS.toolCredential, AGENT_REGISTRY_CHANNELS.testTool]) {
       expect(() => handlers.get(channel)!({ ...event, sender: {} } as IpcMainInvokeEvent, {})).toThrow('workspace window');
       expect(() => handlers.get(channel)!({ ...event, senderFrame: {} } as IpcMainInvokeEvent, {})).toThrow('workspace window');
     }

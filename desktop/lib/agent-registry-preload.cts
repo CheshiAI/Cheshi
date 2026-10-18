@@ -8,7 +8,7 @@ import { parseAgentModels } from '../shared/agent-models.ts';
 import { isCodexAccountId } from '../shared/codex-accounts.ts';
 import { parseInstructionFiles, parseInstructionFilePath } from '../shared/agent-registry.ts';
 import { unwrapAgentDeletion } from '../shared/agent-management.ts';
-import { parseHomieRepository, parseHomieRepositoryPreview } from '../shared/homie-repository-connection.ts';
+import { parseHomieRepositoryDestination, parseHomieRepositoryPreview, parseHomieRepositoryLocationRequest, parseHomieRepositoryDirectory } from '../shared/homie-repository-connection.ts';
 import { HOMIE_SOURCE_CHANNEL, parseHomieSourceRequest, parseHomieSourceState } from '../shared/homie-source.ts';
 import { onHostToolDetails } from './host-tool-details-preload.cts';
 
@@ -24,7 +24,11 @@ export function createAgentRegistryApi(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 
     },
     async toolCredential(input) { return await ipc.invoke(AGENT_REGISTRY_CHANNELS.toolCredential, parseToolCredentialRequest(input)) === true; },
     async testTool(input) { return ipc.invoke(AGENT_REGISTRY_CHANNELS.testTool, parseToolTestRequest(input)); },
-    async previewRepository(repository) { return parseHomieRepositoryPreview(await ipc.invoke(AGENT_REGISTRY_CHANNELS.previewRepository, parseHomieRepository(repository))); },
+    async previewRepository(repository, directory) { return parseHomieRepositoryPreview(await ipc.invoke(AGENT_REGISTRY_CHANNELS.previewRepository, parseHomieRepositoryDestination({ repository, directory }))); },
+    async repositoryLocation(input) {
+      const result: unknown = await ipc.invoke(AGENT_REGISTRY_CHANNELS.repositoryLocation, parseHomieRepositoryLocationRequest(input));
+      return result === null ? null : parseHomieRepositoryDirectory(result);
+    },
     async selectInstructionFiles() { return parseInstructionFiles(await ipc.invoke(AGENT_REGISTRY_CHANNELS.selectInstructionFiles)); },
     async openInstructionFile(path) { await ipc.invoke(AGENT_REGISTRY_CHANNELS.openInstructionFile, parseInstructionFilePath(path)); },
     async remove(input) { return parseAgentRegistrySnapshot(unwrapAgentDeletion(await ipc.invoke(AGENT_REGISTRY_CHANNELS.remove, parseDeleteSpecialistAgent(input)))); },

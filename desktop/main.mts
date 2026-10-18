@@ -376,7 +376,16 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
           }
           return state;
         },
-        previewRepository: repository => homieRepositories.previewExisting(repository),
+        repositoryLocation: async input => {
+          const directory = input.directory ?? homieRepositories.defaultDirectory(input.repository);
+          if (input.choose !== true) return directory;
+          const result = await dialog.showOpenDialog(nativeWorkspaceWindow(window), {
+            title: 'Choose parent folder for Homie repository', buttonLabel: 'Choose parent folder',
+            defaultPath: path.dirname(directory), properties: ['openDirectory', 'createDirectory'],
+          });
+          return result.canceled || !result.filePaths[0] ? null : path.join(result.filePaths[0], path.basename(directory));
+        },
+        previewRepository: (repository, directory) => homieRepositories.previewExisting(repository, directory),
         connectRepository: (input, assertAvailable) => connectHomieRepository({ repositories: homieRepositories,
           registry: agentRegistry, workspaceRoot: options.workspaceRoot, input, assertAvailable }),
         prepareCreation: async agent => {

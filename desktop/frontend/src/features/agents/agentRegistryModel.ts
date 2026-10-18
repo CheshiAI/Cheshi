@@ -45,9 +45,13 @@ export class AgentRegistryModel {
   hostTool = (input: import('../../../../shared/host-tools').HostToolRequest) => this.api.hostTool?.(input) ?? Promise.reject(new Error('Restart Cheshi to configure host tools.'));
   onHostToolDetails = (listener: import('../../../../shared/host-tool-details').HostToolDetailsListener) => this.api.onHostToolDetails?.(listener) ?? (() => {});
   testTool = (input: import('../../../../shared/homie-tools').ToolTestRequest) => this.api.testTool?.(input) ?? Promise.reject(new Error('Restart Cheshi to test tools.'));
-  previewRepository = (repository: string) => {
+  repositoryLocation = (input: import('../../../../shared/homie-repository-connection').HomieRepositoryLocationRequest) => {
+    if (!this.api.repositoryLocation) throw new Error('Restart Cheshi to choose a Homie repository folder.');
+    return this.api.repositoryLocation(input);
+  };
+  previewRepository = (repository: string, directory?: string) => {
     if (!this.api.previewRepository) throw new Error('Restart Cheshi to connect an existing GitHub Homie.');
-    return this.api.previewRepository(repository);
+    return this.api.previewRepository(repository, directory);
   };
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<AgentRegistryState>) {

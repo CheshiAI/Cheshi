@@ -43,6 +43,7 @@ export function SpecialistAgentForm({ inline = false, fill = false, active: visi
   const workspaceRoot = state.data!.workspaceRoot, assignment = agent?.assignments.find(a => a.workspaceRoot === workspaceRoot);
   const [existingRepository, setExistingRepository] = useState(draft?.existingRepository ?? false);
   const [repositoryUrl, setRepositoryUrl] = useState(draft?.repositoryUrl ?? '');
+  const [repositoryDirectory, setRepositoryDirectory] = useState<string | undefined>(draft?.repositoryDirectory);
   const [repositoryPreview, setRepositoryPreview] = useState<HomieRepositoryPreview | undefined>(draft?.repositoryPreview);
   const connecting = !agent && existingRepository;
   const repositoryBlocked = connecting && !repositoryPreview;
@@ -85,9 +86,9 @@ export function SpecialistAgentForm({ inline = false, fill = false, active: visi
   }, [agent, assignment, outdated, locallyEdited, disabled, savedLocalKey]);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => { onBusy?.(disabled); return () => { onBusy?.(false); }; }, [disabled, onBusy]);
-  useEffect(() => { onDraft?.({ profile, permissions, revision, assigned, localPack: pack, section: 'basic', existingRepository, repositoryUrl, repositoryPreview,
+  useEffect(() => { onDraft?.({ profile, permissions, revision, assigned, localPack: pack, section: 'basic', existingRepository, repositoryUrl, repositoryDirectory, repositoryPreview,
     ...(localSettingsBaseline === null ? {} : { localSettingsBaseline }) }); },
-    [profile, permissions, revision, assigned, pack, localSettingsBaseline, onDraft, existingRepository, repositoryUrl, repositoryPreview]);
+    [profile, permissions, revision, assigned, pack, localSettingsBaseline, onDraft, existingRepository, repositoryUrl, repositoryDirectory, repositoryPreview]);
   const patch = (value: Partial<SpecialistProfile>) => { setProfile(p => ({ ...p, ...value })); setSaved(false); };
   const accountOptions = [{ value: '', label: 'Configure later' }, ...accounts.map(a => ({ value: a.id, label: `${a.label || a.id}${a.usage.authenticated ? '' : ' (sign-in required)'}` }))];
   if (profile.accountId && !accounts.some(a => a.id === profile.accountId)) accountOptions.push({ value: profile.accountId, label: accountsLoading ? 'Loading account…' : 'Unavailable account' });
@@ -102,7 +103,7 @@ export function SpecialistAgentForm({ inline = false, fill = false, active: visi
       model: selection, requestedPermissions: connecting ? pack.requestedPermissions : permissions }); }
     catch (error) { setError(error instanceof Error ? error.message : 'Invalid Homie configuration.'); return; }
     operation.current = true; setError(null);
-    void model.save({ ...(connecting && repositoryPreview ? { repository: { repository: repositoryPreview.repository, hash: repositoryPreview.hash } } : {}), id: agent?.id ?? null, revision, profile: { ...profile, ...selection, instructions: definition.instructions, package: agent?.package ?? definition },
+    void model.save({ ...(connecting && repositoryPreview ? { repository: { repository: repositoryPreview.repository, directory: repositoryPreview.directory, hash: repositoryPreview.hash } } : {}), id: agent?.id ?? null, revision, profile: { ...profile, ...selection, instructions: definition.instructions, package: agent?.package ?? definition },
       assignment: { assigned, instructions: '', permissions } }, engineId).then(result => {
         onSaved?.(); if (active.current) { setRevision(result.revision); setLocalSettingsBaseline(currentLocalKey); setSaved(true); }
       }, () => {}).finally(() => { operation.current = false; });
@@ -115,7 +116,7 @@ export function SpecialistAgentForm({ inline = false, fill = false, active: visi
     </header>}
     <div ref={scroll} className={layout.scroll}>
       <div className={layout.section}>
-        {!agent && <HomieRepositoryPicker model={model} existing={existingRepository} url={repositoryUrl} preview={repositoryPreview} disabled={disabled}
+        {!agent && <HomieRepositoryPicker model={model} existing={existingRepository} url={repositoryUrl} directory={repositoryDirectory} onDirectory={setRepositoryDirectory} preview={repositoryPreview} disabled={disabled}
           onBusy={setFilePending} onUrl={setRepositoryUrl} onMode={value => {
             setExistingRepository(value); setRepositoryPreview(undefined);
             const next = initialProfile(); setProfile(next); setPack(createHomiePack(next, EXECUTION_PRESETS.development));

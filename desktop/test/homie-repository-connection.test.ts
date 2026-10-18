@@ -9,7 +9,7 @@ import { connectHomieRepository } from '../lib/agent-management/homie-repository
 import { createAgentRegistry } from '../lib/agent-management/registry.mts';
 import { homieRepositoryTemplate } from '../lib/agent-management/homie-repository-template.mts';
 import { readHomieSource } from '../lib/agent-management/homie-source-files.mts';
-import { parseHomieRepository } from '../shared/homie-repository-connection.ts';
+import { parseHomieRepository, parseHomieRepositoryDirectory, parseHomieRepositoryLocationRequest } from '../shared/homie-repository-connection.ts';
 import type { RepositoryCommand } from '../lib/agent-management/homie-repository-command.mts';
 import { specialistAgent, specialistInput } from './agent-registry-fixtures';
 import { HomieSources } from '../lib/agent-management/homie-sources.mts';
@@ -17,6 +17,7 @@ import { EventEmitter } from 'node:events';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 import { registerAgentRegistryIpc } from '../lib/agent-management/registry-ipc.mts';
 import { createAgentRegistryApi } from '../lib/agent-registry-preload.cts';
+import { WorkspaceProjectStore } from '../lib/workspace-project-store.mts';
 
 const execute = promisify(execFile);
 const repository = 'CheshiAI/Homie-atlas', url = `https://github.com/${repository}.git`;
@@ -56,7 +57,7 @@ async function fixture() {
   const registry = createAgentRegistry(path.join(base, 'registry.json'));
   const connect = async (hash?: string, unavailable = false) => {
     const preview = await repositories.previewExisting(repository);
-    const input = { ...specialistInput(), repository: { repository, hash: hash ?? preview.hash },
+    const input = { ...specialistInput(), repository: { repository, directory: preview.directory, hash: hash ?? preview.hash },
       profile: { ...specialistInput().profile, name: 'Untrusted name', instructions: 'Untrusted instructions', ...preview.definition.model } };
     return connectHomieRepository({ repositories, registry, workspaceRoot: source, input,
       assertAvailable: () => { if (unavailable) throw new Error('Window closed'); } });
@@ -138,25 +139,48 @@ test('repository URLs are bounded to GitHub owner/name without credentials or re
 
 test('preload and IPC carry the reviewed repository into registration and preserve a single identity', async () => {
   const f = await fixture();
-  const owner = { mainFrame: {}, isDestroyed: () => false, send: () => {} };
+  const renderer = new EventEmitter();
+  const owner = { mainFrame: {}, isDestroyed: () => false, send: (channel: string) => renderer.emit(channel) };
   const window = Object.assign(new EventEmitter(), { webContents: owner }) as unknown as BrowserWindow;
   const handlers = new Map<string, Parameters<IpcMain['handle']>[1]>();
   const event = { sender: owner, senderFrame: owner.mainFrame } as unknown as IpcMainInvokeEvent;
   const prepared: string[] = [];
+  const projects = new WorkspaceProjectStore(path.join(f.base, 'app-data'), f.source);
+  const customDirectory = path.join(f.base, 'custom location', 'atlas');
+  let cancel = false;
   const registration = registerAgentRegistryIpc({ window, registry: f.registry, workspaceRoot: f.source,
-    previewRepository: repository => f.repositories.previewExisting(repository),
+    repositoryLocation: async input => input.choose ? (cancel ? null : customDirectory) : f.repositories.defaultDirectory(input.repository),
+    previewRepository: (repository, directory) => f.repositories.previewExisting(repository, directory),
     connectRepository: (input, assertAvailable) => connectHomieRepository({ repositories: f.repositories,
       registry: f.registry, workspaceRoot: f.source, input, assertAvailable }),
-    prepareCreation: async agent => { prepared.push(agent.id); },
+    prepareCreation: async agent => { prepared.push(agent.id); const mapping = await f.repositories.local(agent.id); await projects.add(mapping!.directory); },
     ipc: { handle: (channel, handler) => { handlers.set(channel, handler); }, removeHandler: channel => { handlers.delete(channel); } } });
-  const ipc = Object.assign(new EventEmitter(), { invoke: async (channel: string, input: unknown) => handlers.get(channel)!(event, input) });
+  const ipc = Object.assign(renderer, { invoke: async (channel: string, input: unknown) => handlers.get(channel)!(event, input) });
   const api = createAgentRegistryApi(ipc as unknown as Parameters<typeof createAgentRegistryApi>[0]);
   try {
-    const preview = await api.previewRepository!(url);
-    const input = { ...specialistInput(), repository: { repository: preview.repository, hash: preview.hash } };
+    expect(await api.repositoryLocation!({ repository })).toBe(path.join(f.projects, 'homie-atlas'));
+    cancel = true; expect(await api.repositoryLocation!({ repository, choose: true })).toBeNull();
+    cancel = false;
+    const directory = await api.repositoryLocation!({ repository, choose: true });
+    const preview = await api.previewRepository!(url, directory!);
+    expect(preview.directory).toBe(customDirectory);
+    expect(projects.list()).toHaveLength(1);
+    let revealed = 0;
+    const unsubscribe = api.onRepositoryReady!(() => {
+      expect(projects.list().some(project => project.rootPath === customDirectory)).toBe(true);
+      revealed++;
+    });
+    const input = { ...specialistInput(), repository: { repository: preview.repository, directory: preview.directory, hash: preview.hash } };
     const saved = await api.save(input);
+    expect(saved.repositoryError).toBeUndefined();
     expect(saved.snapshot.agents[0]!.name).toBe('Atlas');
     expect(prepared).toEqual([saved.agentId]);
+    expect(revealed).toBe(1);
+    expect((await f.repositories.local(saved.agentId))?.directory).toBe(customDirectory);
+    expect((await f.repositories.ensure(saved.snapshot.agents[0]!)).directory).toBe(customDirectory);
+    expect(f.calls.filter(call => call[1] === 'clone')).toHaveLength(1);
+    expect(projects.list()).toHaveLength(2);
+    unsubscribe();
     await rejected(api.save(input), /already connected/);
     expect((await api.list()).agents).toHaveLength(1);
   } finally { registration.dispose(); await f.dispose(); }
@@ -170,5 +194,18 @@ test('a registered package identity is not duplicated through a new connection',
     await rejected(f.connect(), /already registered/);
     expect(f.registry.snapshot(f.source).agents).toHaveLength(1);
     expect((await readdir(f.mappings)).filter(name => name.endsWith('.json'))).toHaveLength(0);
+  } finally { await f.dispose(); }
+});
+
+
+test('repository destination rejects relative, traversal and root paths before creating files', async () => {
+  const f = await fixture();
+  try {
+    for (const directory of ['relative/path', '/', '/.', '/tmp/../', '/tmp/unsafe\0name']) {
+      expect(() => parseHomieRepositoryDirectory(directory)).toThrow('absolute');
+      await rejected(f.repositories.previewExisting(repository, directory), /absolute/);
+    }
+    expect(() => parseHomieRepositoryLocationRequest({ repository, choose: 'true' })).toThrow('selection');
+    expect(f.calls).toHaveLength(0);
   } finally { await f.dispose(); }
 });

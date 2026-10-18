@@ -1,4 +1,4 @@
-import { parseHomieRepositoryConnection, type HomieRepositoryConnection, type HomieRepositoryPreview } from './homie-repository-connection.ts';
+import { parseHomieRepositoryConnection, type HomieRepositoryConnection, type HomieRepositoryPreview, type HomieRepositoryLocationRequest } from './homie-repository-connection.ts';
 import { defaultAgentAvatar, parseAgentAvatar, type AgentAvatarValue } from './agent-avatar.ts';
 import { isCodexAccountId } from './codex-accounts.ts';
 import type { AgentModel, AgentModelSelection } from './agent-models.ts';
@@ -10,6 +10,7 @@ export const AGENT_REGISTRY_CHANNELS = {
   list: 'cheshi:agent-registry:list', save: 'cheshi:agent-registry:save', changed: 'cheshi:agent-registry:changed',
   models: 'cheshi:agent-registry:models',
   previewRepository: 'cheshi:agent-registry:preview-repository',
+  repositoryLocation: 'cheshi:agent-registry:repository-location',
   repositoryReady: 'cheshi:agent-registry:repository-ready',
   remove: 'cheshi:agent-registry:remove',
   selectInstructionFiles: 'cheshi:agent-registry:select-instruction-files',
@@ -59,7 +60,8 @@ export interface AgentRegistryApi {
   onRepositoryReady?(listener: () => void): () => void;
   toolCredential?(input: import('./homie-tools.ts').ToolCredentialRequest): Promise<boolean>;
   testTool?(input: import('./homie-tools.ts').ToolTestRequest): Promise<unknown>;
-  previewRepository?(repository: string): Promise<HomieRepositoryPreview>;
+  previewRepository?(repository: string, directory?: string): Promise<HomieRepositoryPreview>;
+  repositoryLocation?(input: HomieRepositoryLocationRequest): Promise<string | null>;
   selectInstructionFiles?(): Promise<string[]>;
   openInstructionFile?(path: string): Promise<void>;
   remove?(request: DeleteSpecialistAgent): Promise<AgentRegistrySnapshot>;

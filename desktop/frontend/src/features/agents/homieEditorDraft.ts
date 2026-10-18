@@ -5,6 +5,7 @@ import type { SpecialistProfile } from '../../../../shared/agent-registry';
 export interface HomieEditorDraft {
   existingRepository?: boolean;
   repositoryUrl?: string;
+  repositoryDirectory?: string;
   repositoryPreview?: HomieRepositoryPreview;
   profile: SpecialistProfile;
   permissions: SpecialistProfile['permissions'];
