@@ -124,24 +124,32 @@ async function withTabs(run: (h: {
   }
 }
 
-test('sidebar exposes five ordered tabs with a GitHub portal target', async () => {
+test('sidebar omits Worker when off and keeps the selected remaining panel and GitHub portal', async () => {
   const window = new Window();
   const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
   Object.defineProperty(globalThis, 'document', { configurable: true, value: window.document });
   try {
-    window.document.body.innerHTML = renderToStaticMarkup(<Sidebar activePanel="memos" onPanelChange={() => {}}
+    for (const homiesEnabled of [true, false]) {
+      window.document.body.innerHTML = renderToStaticMarkup(<Sidebar homiesEnabled={homiesEnabled} activePanel="memos" onPanelChange={() => {}}
+        chatPanel={<div>Session list</div>} selectedFilePath={null} onWorkspaceEntryMutation={() => {}}
+        onOpenWorkspaceFile={() => {}} />);
+      const tabs = [...window.document.querySelectorAll('[role="tab"]')];
+      expect(tabs.map(tab => tab.textContent)).toEqual(homiesEnabled
+        ? ['EXPLORER', 'SESSION', 'WORKER', 'MEMO', 'GITHUB'] : ['EXPLORER', 'SESSION', 'MEMO', 'GITHUB']);
+      expect(window.document.querySelectorAll('[role="tabpanel"]')).toHaveLength(homiesEnabled ? 5 : 4);
+      const selected = window.document.querySelector('[role="tab"][aria-selected="true"]')!;
+      expect(selected.textContent).toBe('MEMO');
+      const panel = window.document.getElementById(selected.getAttribute('aria-controls')!)!;
+      expect(panel.querySelector('.sidebar-content-primary')).not.toBeNull();
+      expect(panel.hasAttribute('inert')).toBe(false);
+      expect(window.document.querySelector('[aria-roledescription="carousel"]')).toBeNull();
+      const github = tabs.find(tab => tab.textContent === 'GITHUB')!;
+      expect(window.document.getElementById(github.getAttribute('aria-controls')!)?.querySelector('.sidebar-content-primary')).not.toBeNull();
+    }
+    window.document.body.innerHTML = renderToStaticMarkup(<Sidebar homiesEnabled={false} activePanel="agent-chats" onPanelChange={() => {}}
       chatPanel={<div>Session list</div>} selectedFilePath={null} onWorkspaceEntryMutation={() => {}}
       onOpenWorkspaceFile={() => {}} />);
-    const tabs = [...window.document.querySelectorAll('[role="tab"]')];
-    expect(tabs.map(tab => tab.textContent)).toEqual(['EXPLORER', 'SESSION', 'WORKER', 'MEMO', 'GITHUB']);
-    const selected = window.document.querySelector('[role="tab"][aria-selected="true"]')!;
-    expect(selected.textContent).toBe('MEMO');
-    const panel = window.document.getElementById(selected.getAttribute('aria-controls')!)!;
-    expect(panel.querySelector('.sidebar-content-primary')).not.toBeNull();
-    expect(panel.hasAttribute('inert')).toBe(false);
-    expect(window.document.querySelector('[aria-roledescription="carousel"]')).toBeNull();
-    const github = tabs.find(tab => tab.textContent === 'GITHUB')!;
-    expect(window.document.getElementById(github.getAttribute('aria-controls')!)?.querySelector('.sidebar-content-primary')).not.toBeNull();
+    expect(window.document.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('EXPLORER');
   } finally {
     if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
     else Reflect.deleteProperty(globalThis, 'document');

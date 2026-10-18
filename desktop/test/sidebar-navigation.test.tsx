@@ -86,14 +86,14 @@ test('only the focused view has an active rail icon even when the sidebar is col
   }
 });
 
-test('Worker and Docker stay disabled while Homies is off, including direct navigation callbacks', () => {
+test('Worker and Docker are absent while Homies is off and Settings stays accessible', () => {
   const destinations: WorkspaceView[] = [];
   const rail = SidebarRail({ homiesEnabled: false, activeView: 'chat', sidebarOpen: true,
     onNavigate: view => destinations.push(view), onToggleSidebar() {} });
-  for (const label of ['Worker', 'Docker']) {
-    const button = elements(rail).find(element => element.type === SidebarRailButton && element.props.label === label)!;
-    expect((button.props as { disabled?: boolean }).disabled).toBe(true);
-    button.props.onClick?.();
-  }
-  expect(destinations).toEqual([]);
+  const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 8);
+  expect(navigation.map(element => element.props.label)).toEqual([
+    'Explorer', 'SESSION', 'Memo', 'Github', 'Terminal', 'Calendar', 'Plugins', 'Settings',
+  ]);
+  navigation.find(element => element.props.label === 'Settings')!.props.onClick?.();
+  expect(destinations).toEqual(['settings']);
 });

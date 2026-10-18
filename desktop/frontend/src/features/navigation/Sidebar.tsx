@@ -1,6 +1,5 @@
 import type { ReactNode, Ref } from 'react';
 
-import { homiesDisabledReason } from '../settings/useHomiesEnabled';
 import { SidebarTabs } from '../../shared/ui';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
@@ -48,10 +47,10 @@ export function Sidebar({
             tabs={[
               { id: 'files', label: 'EXPLORER', content: files },
               { id: 'chats', label: 'SESSION', content: chatPanel },
-              { id: 'agent-chats', label: 'WORKER', disabled: !homiesEnabled, title: homiesEnabled ? undefined : homiesDisabledReason, content: <div ref={chatsPanelRef} className="sidebar-content-primary" /> },
+              { id: 'agent-chats', label: 'WORKER', content: <div ref={chatsPanelRef} className="sidebar-content-primary" /> },
               { id: 'memos', label: 'MEMO', content: <div ref={memoPanelRef} className="sidebar-content-primary" /> },
               { id: 'github', label: 'GITHUB', content: <div ref={githubPanelRef} className="sidebar-content-primary" /> },
-            ]} /> : files}
+            ].filter(tab => homiesEnabled || tab.id !== 'agent-chats')} /> : files}
         </div>
 
       </div>
