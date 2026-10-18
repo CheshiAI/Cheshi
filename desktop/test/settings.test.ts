@@ -185,7 +185,7 @@ test('settings preload exposes preferences and validates instruction replies', a
   let reply: unknown = 32768;
   const ipc = Object.assign(new EventEmitter(), { invoke: async (channel: string) => { calls.push(channel); return reply; } });
   const api = createSettingsApi(ipc as IpcRenderer);
-  expect(Object.keys(api).sort()).toEqual(['getFlashEnabled', 'getFlashReadiness', 'getProjectDocMaxBytes', 'installFlash', 'onFlashEnabledChanged', 'onProjectDocMaxBytesChanged', 'setFlashEnabled', 'setProjectDocMaxBytes']);
+  expect(Object.keys(api).sort()).toEqual(['checkFlashUpdates', 'getFlashEnabled', 'getFlashReadiness', 'getProjectDocMaxBytes', 'installFlash', 'onFlashEnabledChanged', 'onProjectDocMaxBytesChanged', 'setFlashEnabled', 'setProjectDocMaxBytes', 'uninstallFlash']);
   expect(await api.getProjectDocMaxBytes()).toBe(32768);
   expect(await api.setProjectDocMaxBytes(32768)).toBe(32768);
   expect(calls).toEqual([SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes]);
@@ -203,6 +203,22 @@ test('Flash readiness accepts only literal booleans at the preload boundary', ()
     .toEqual({ ready: false, detail: 'Missing model', installing: true });
 });
 
+test('Flash progress survives preload validation and rejects invalid sizes and timestamps', async () => {
+  const progress = { startedAt: 1000, downloadedBytes: 25, totalBytes: 100 };
+  const reply = { ready: false, detail: 'Downloading', installing: true, progress };
+  const events = new EventEmitter();
+  const api = createSettingsApi(Object.assign(events, { invoke: async (_channel: string) => reply }) as unknown as Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>);
+  expect((await api.getFlashReadiness()).progress).toEqual(progress);
+  expect((await api.installFlash()).progress).toEqual(progress);
+  for (const invalid of [null, {}, { startedAt: -1 }, { startedAt: '1000' },
+    { ...progress, downloadedBytes: -1 }, { ...progress, totalBytes: 0 },
+    { ...progress, downloadedBytes: 101 }, { ...progress, totalBytes: Infinity },
+    { ...progress, downloadedBytes: 1.5 }, { startedAt: 1000, totalBytes: 100 }]) {
+    expect(() => parseFlashReadiness({ ...reply, progress: invalid })).toThrow('Invalid Flash progress');
+  }
+  expect(parseFlashReadiness({ ...reply, progress: { startedAt: 1000 } }).progress).toEqual({ startedAt: 1000 });
+});
+
 test('settings IPC retains owner checks and subscriptions without provider routes', () => {
   const f = fixture();
   const routes = new Map<string, Parameters<IpcMain['handle']>[1]>();
@@ -217,7 +233,7 @@ test('settings IPC retains owner checks and subscriptions without provider route
     routes.get(channel)!({ sender, senderFrame: frame } as IpcMainInvokeEvent, value);
   try {
     expect([...routes.keys()].sort()).toEqual([SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes,
-      SETTINGS_CHANNELS.getFlashEnabled, SETTINGS_CHANNELS.setFlashEnabled, SETTINGS_CHANNELS.getFlashReadiness, SETTINGS_CHANNELS.installFlash].sort());
+      SETTINGS_CHANNELS.getFlashEnabled, SETTINGS_CHANNELS.setFlashEnabled, SETTINGS_CHANNELS.getFlashReadiness, SETTINGS_CHANNELS.installFlash, SETTINGS_CHANNELS.checkFlashUpdates, SETTINGS_CHANNELS.uninstallFlash].sort());
     expect(() => invoke(SETTINGS_CHANNELS.setFlashEnabled, true)).toThrow('verification is unavailable');
     expect(invoke(SETTINGS_CHANNELS.setFlashEnabled, false)).toBe(false);
     expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072, {})).toThrow('workspace window');

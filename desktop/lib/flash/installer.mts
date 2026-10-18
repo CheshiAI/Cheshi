@@ -1,138 +1,176 @@
-import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, open, readFile, rename, rm, stat, unlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
-import { HostPythonRuntime } from '../agent-management/host-python-runtime.mts';
-import type { FlashReadiness } from '../../shared/settings.ts';
-import { FLASH_MODEL, FLASH_MODEL_REVISION, FLASH_REVISION, flashInstallationPaths, inspectFlashInstallation } from './installation.mts';
+import { tmpdir } from 'node:os';
+import type { FlashInstallProgress, FlashReadiness } from '../../shared/settings.ts';
+import { FLASH_MODEL, FLASH_MODEL_REVISION, flashInstallationPaths, inspectFlashInstallation } from './installation.mts';
+import { FLASH_MODEL_DOWNLOAD_SCRIPT, flashDownloadProgressReader, runFlashCommand } from './model-download.mts';
+import { assertPlugin, defaultPluginSource, downloadPlugin, extractPlugin, FlashPluginError, loadPluginRelease, newerPlugin,
+  parsePluginManifest, pluginRoot, pluginSelection, pluginVersionPath, selectPlugin,
+  type FlashPluginRelease, type PluginFetch } from './plugin-package.mts';
+import { lockPluginInstallation } from './plugin-lock.mts';
+import { FlashRuntime } from './runtime.mts';
 
-const execute = promisify(execFile);
-export type FlashInstallCommand = (file: string, args: string[], options: {
-  cwd: string; env: NodeJS.ProcessEnv; signal: AbortSignal; timeout: number;
-}) => Promise<string>;
-const command: FlashInstallCommand = async (file, args, options) => {
-  const result = await execute(file, args, { ...options, maxBuffer: 4 * 1024 * 1024, killSignal: 'SIGKILL' });
-  return result.stdout;
-};
 interface Options {
   userData: string;
   enabled(): boolean;
   readiness(): Promise<FlashReadiness>;
-  run?: FlashInstallCommand;
-  python?: Pick<HostPythonRuntime, 'prepare' | 'dispose'>;
-  paths?: ReturnType<typeof flashInstallationPaths>;
+  source?: string;
+  download?: PluginFetch;
+  verify?: (root: string, release: FlashPluginRelease, signal: AbortSignal) => Promise<void>;
+  prepareModel?: (root: string, signal: AbortSignal, output: (chunk: string) => void) => Promise<void>;
 }
-
-/** Install a pinned service in persistent app storage; never pull or reset a user's checkout. */
+const complete = 'Flash plugin installation complete. Enable Flash to check and load the model.';
 export class FlashInstaller {
   private readonly options: Options;
-  private readonly python: Pick<HostPythonRuntime, 'prepare' | 'dispose'>;
   private readonly stopped = new AbortController();
   private pending: Promise<FlashReadiness> | null = null;
-  private progress: string | null = null;
+  private detail = '';
+  private progress: FlashInstallProgress | undefined;
   private failure: string | null = null;
-  constructor(options: Options) {
-    this.options = options;
-    this.python = options.python ?? new HostPythonRuntime(join(options.userData, 'flash-install', 'python'));
-  }
-  async status(): Promise<FlashReadiness> {
-    if (this.pending) return { ready: false, installing: true, detail: this.progress ?? 'Preparing Flash…' };
-    const result = await this.options.readiness();
-    return this.failure ? { ...result, detail: this.failure } : result;
-  }
+  private available: FlashPluginRelease | null = null;
+  constructor(options: Options) { this.options = options; }
   isInstalling = () => this.pending !== null;
+  async status(): Promise<FlashReadiness> {
+    const selection = pluginSelection(this.options.userData);
+    const versions = { installedVersion: selection.version ?? undefined,
+      availableVersion: this.available && (!selection.version || newerPlugin(this.available.version, selection.version)) ? this.available.version : undefined };
+    if (this.pending) return { ready: false, installing: true, detail: this.detail, progress: this.progress, ...versions };
+    const result = await this.options.readiness();
+    return { ...result, ...versions, detail: this.failure ?? result.detail };
+  }
+  async checkUpdates(): Promise<FlashReadiness> {
+    const signal = AbortSignal.any([this.stopped.signal, AbortSignal.timeout(30_000)]);
+    this.available = await this.release(signal);
+    return this.status();
+  }
   install(): Promise<FlashReadiness> {
-    if (this.pending) return this.pending;
-    if (this.options.enabled()) return Promise.reject(new Error('Turn Flash off before installing.'));
-    this.failure = null;
-    const operation = this.prepare();
+    return this.operation('Preparing Flash plugin…', signal => this.prepare(signal));
+  }
+  uninstall(): Promise<FlashReadiness> {
+    return this.operation('Removing Flash plugin…', async () => {
+      await selectPlugin(this.options.userData, null);
+      await rm(join(pluginRoot(this.options.userData), 'versions'), { recursive: true, force: true });
+      return { ready: false, detail: 'Flash plugin removed. Saved conversations and model files have been kept.' };
+    });
+  }
+  private operation(detail: string, task: (signal: AbortSignal) => Promise<FlashReadiness>): Promise<FlashReadiness> {
+    if (this.pending) return Promise.reject(new Error('Wait for the current Flash operation to finish.'));
+    if (this.options.enabled()) return Promise.reject(new Error('Turn Flash off before changing its installation.'));
+    this.failure = null; this.detail = detail;
+    this.progress = { startedAt: Date.now() };
+    const signal = AbortSignal.any([this.stopped.signal, AbortSignal.timeout(60 * 60_000)]);
+    const operation = this.locked(task, signal);
     this.pending = operation;
-    void operation.finally(() => { this.pending = null; this.progress = null; }).catch(() => {});
+    void operation.finally(() => { this.pending = null; this.progress = undefined; }).catch(() => {});
     return operation;
   }
-  private async prepare(): Promise<FlashReadiness> {
-    const paths = this.options.paths ?? flashInstallationPaths(this.options.userData);
-    const signal = AbortSignal.any([this.stopped.signal, AbortSignal.timeout(60 * 60_000)]);
-    const env = { ...process.env, GH_HOST: 'github.com', GH_PROMPT_DISABLED: '1', GH_DEBUG: '',
-      GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never', PIP_NO_INPUT: '1', HF_HUB_OFFLINE: '0',
-      TRANSFORMERS_OFFLINE: '0', HF_HUB_DISABLE_PROGRESS_BARS: '1', UV_NO_PROGRESS: '1',
-      UV_PROJECT_ENVIRONMENT: join(paths.repository, '.venv'), UV_PYTHON_DOWNLOADS: 'never' };
-    const run = (file: string, args: string[], cwd = paths.root, timeout = 30 * 60_000) =>
-      (this.options.run ?? command)(file, args, { cwd, env, signal, timeout });
-    let staging: string | undefined;
+  private async locked(task: (signal: AbortSignal) => Promise<FlashReadiness>, signal: AbortSignal) {
+    const root = pluginRoot(this.options.userData);
     let unlock: (() => Promise<void>) | undefined;
     try {
       signal.throwIfAborted();
-      await mkdir(paths.root, { recursive: true, mode: 0o700 });
-      unlock = await lockInstallation(join(paths.root, 'installation.lock'));
-      this.progress = 'Downloading the Flash service from GitHub…';
-      let present = false;
-      try { present = (await stat(paths.repository)).isDirectory(); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-      if (!present) {
-        staging = await mkdtemp(join(paths.root, '.source-'));
-        await run('gh', ['repo', 'clone', 'https://github.com/CheshiAI/Cheshi-flash.git', staging, '--no-upstream'], paths.root, 120_000);
-        await run('git', ['-c', 'core.hooksPath=/dev/null', 'checkout', '--detach', FLASH_REVISION], staging, 30_000);
-        await rename(staging, paths.repository); staging = undefined;
-      }
-      const revision = (await run('git', ['rev-parse', 'HEAD'], paths.repository, 10_000)).trim();
-      const changes = (await run('git', ['status', '--porcelain', '--untracked-files=no'], paths.repository, 10_000)).trim();
-      this.assertInstallation(revision === FLASH_REVISION && !changes,
-        'The managed Flash source has changed. Restore its pinned version before installing.');
-      const identity = JSON.parse(await readFile(join(paths.repository, 'src/cheshi_flash/identity.json'), 'utf8'));
-      this.assertInstallation(identity.model === FLASH_MODEL && identity.revision === FLASH_MODEL_REVISION,
-        'The Flash service and model versions do not match. Update Cheshi before installing.');
-      this.progress = 'Preparing Python and installing Flash dependencies…';
-      const python = await this.python.prepare();
-      signal.throwIfAborted();
-      const tooling = join(paths.root, 'installer');
-      await run(python.executable, ['-m', 'venv', tooling]);
-      const toolingPython = join(tooling, 'bin/python');
-      await run(toolingPython, ['-m', 'pip', 'install', '--disable-pip-version-check', 'uv==0.11.32']);
-      await run(join(tooling, 'bin/uv'), ['sync', '--frozen', '--extra', 'model', '--no-dev', '--python', python.executable], paths.repository);
-      this.progress = 'Downloading EmbeddingGemma 2. Existing model files will be reused…';
-      await run(join(paths.repository, '.venv/bin/python'), ['-c',
-        'import sys; from huggingface_hub import snapshot_download; snapshot_download(repo_id=sys.argv[1], revision=sys.argv[2], cache_dir=sys.argv[3])',
-        FLASH_MODEL, FLASH_MODEL_REVISION, paths.modelCache]);
-      this.progress = 'Checking the installed executable and model files…';
-      const result = await inspectFlashInstallation({ executable: paths.managedExecutable, modelCache: paths.modelCache });
-      this.assertInstallation(result.ready, result.detail);
-      return await this.options.readiness();
+      await mkdir(root, { recursive: true, mode: 0o700 });
+      assertPlugin(await realpath(root) === root, 'Flash plugin storage cannot be redirected.');
+      unlock = await lockPluginInstallation(join(root, 'installation.lock'));
+      return await task(signal);
     } catch (error) {
-      // Do not expose subprocess output: Git and package tools may include credentials in their diagnostics.
-      this.failure = error instanceof InstallationError ? error.message
-        : `Flash installation failed during: ${this.progress ?? 'preparation'} Check GitHub CLI sign-in, access to CheshiAI/Cheshi-flash, network access and free disk space, then retry.`;
+      // Never copy subprocess output, paths or credentials into renderer diagnostics.
+      this.failure = `Flash operation failed during: ${this.detail} The previous version is retained if installation did not finish. Check the release package, network and free disk space, then retry.`;
+      if (error instanceof FlashPluginError) this.failure = error.message;
       throw new Error(this.failure);
-    } finally {
-      if (staging) await rm(staging, { recursive: true, force: true });
-      await unlock?.();
-    }
+    } finally { await unlock?.(); }
   }
-  private assertInstallation(condition: boolean, message: string): asserts condition {
-    if (!condition) throw new InstallationError(message);
+  private async release(signal: AbortSignal) {
+    const release = await loadPluginRelease(this.options.source ?? defaultPluginSource(), signal, this.options.download);
+    assertPlugin(release.platform === process.platform && release.arch === process.arch, 'Flash plugin platform is incompatible.');
+    assertPlugin(release.model === FLASH_MODEL && release.modelRevision === FLASH_MODEL_REVISION, 'Flash model version is incompatible.');
+    return release;
   }
-  dispose() { this.stopped.abort(); this.python.dispose(); }
-}
-class InstallationError extends Error {}
-
-async function lockInstallation(path: string): Promise<() => Promise<void>> {
-  for (let attempt = 0; attempt < 2; attempt++) {
+  private async prepare(signal: AbortSignal): Promise<FlashReadiness> {
+    const release = await this.release(signal); this.available = release;
+    const selection = pluginSelection(this.options.userData);
+    assertPlugin(!selection.version || !newerPlugin(selection.version, release.version), 'Flash plugin downgrades are not supported.');
+    const root = pluginRoot(this.options.userData), staging = await mkdtemp(join(root, '.install-'));
+    const startedAt = this.progress!.startedAt;
+    const target = pluginVersionPath(this.options.userData, release.version);
+    let backup: string | undefined;
+    let preserveStaging = false;
     try {
-      const file = await open(path, 'wx', 0o600);
-      try { await file.writeFile(String(process.pid)); } finally { await file.close(); }
-      return () => unlink(path);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      const pid = Number(await readFile(path, 'utf8'));
-      let running = true;
-      if (Number.isSafeInteger(pid) && pid > 0) {
-        try { process.kill(pid, 0); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') running = false; }
+      this.detail = 'Downloading Flash plugin package…';
+      const archive = join(staging, 'plugin.tar.gz');
+      await downloadPlugin(this.options.source ?? defaultPluginSource(), release, archive, signal,
+        (downloadedBytes, totalBytes) => { this.progress = { startedAt, downloadedBytes, totalBytes, phase: 'package' }; }, this.options.download);
+      this.detail = 'Unpacking and checking Flash plugin…'; this.progress = { startedAt };
+      const candidate = await extractPlugin(archive, staging, signal);
+      const manifest = parsePluginManifest(JSON.parse(await readFile(join(candidate, 'plugin.json'), 'utf8')));
+      const { archive: _archive, ...metadata } = release;
+      assertPlugin(JSON.stringify(manifest) === JSON.stringify(metadata), 'Flash package manifest differs from release metadata.');
+      await (this.options.verify ?? verifyFlashPlugin)(candidate, release, signal);
+      this.detail = 'Downloading EmbeddingGemma 2. Existing model files will be reused…';
+      const output = flashDownloadProgressReader(startedAt, progress => { this.progress = { ...progress, phase: 'model' }; });
+      if (this.options.prepareModel) await this.options.prepareModel(candidate, signal, output);
+      else {
+        const paths = flashInstallationPaths(this.options.userData);
+        const existing = await inspectFlashInstallation({ executable: join(candidate, release.executable), modelCache: paths.modelCache });
+        if (!existing.ready) {
+          await runFlashCommand(join(candidate, release.python), ['-I', '-B', '-c', FLASH_MODEL_DOWNLOAD_SCRIPT,
+            FLASH_MODEL, FLASH_MODEL_REVISION, paths.modelCache], { cwd: candidate, signal, timeout: 30 * 60_000,
+            env: { ...process.env, HF_HUB_OFFLINE: '0', TRANSFORMERS_OFFLINE: '0', HF_HUB_DISABLE_PROGRESS_BARS: '1' }, onOutput: output });
+        }
+        const status = await inspectFlashInstallation({ executable: join(candidate, release.executable), modelCache: paths.modelCache });
+        assertPlugin(status.ready, status.detail);
+        this.detail = 'Checking Flash service compatibility and loading the model…'; this.progress = { startedAt };
+        await verifyFlashStartup(join(candidate, release.executable), paths.modelCache, signal);
       }
-      if (running) return installationLocked();
-      await unlink(path);
-    }
+      this.detail = 'Finishing Flash plugin installation…'; this.progress = { startedAt };
+      await writeFile(join(candidate, 'receipt.json'), JSON.stringify(release), { mode: 0o600 });
+      await mkdir(join(root, 'versions'), { recursive: true, mode: 0o700 });
+      signal.throwIfAborted();
+      try { await rename(candidate, target); }
+      catch (error) {
+        assertPlugin(['EEXIST', 'ENOTEMPTY'].includes((error as NodeJS.ErrnoException).code ?? ''), 'Could not publish Flash plugin.');
+        const previous = JSON.parse(await readFile(join(target, 'receipt.json'), 'utf8')) as FlashPluginRelease;
+        assertPlugin(previous.archive?.sha256 === release.archive.sha256, 'This Flash version already contains a different package.');
+        const previousTarget = join(staging, 'previous');
+        await rename(target, previousTarget);
+        backup = previousTarget;
+        await rename(candidate, target);
+      }
+      // Only this atomic pointer changes the active version; previous packages and all data remain intact.
+      await selectPlugin(this.options.userData, release.version);
+      return { ready: true, detail: complete, installedVersion: release.version };
+    } catch (error) {
+      if (backup) {
+        // Keep the recovery folder if restoration itself fails; never discard the previous package.
+        preserveStaging = true;
+        await rm(target, { recursive: true, force: true });
+        await rename(backup, target);
+        preserveStaging = false;
+      }
+      throw error;
+    } finally { if (!preserveStaging) await rm(staging, { recursive: true, force: true }); }
   }
-  return installationLocked();
+  dispose() { this.stopped.abort(); }
 }
-function installationLocked(): never { throw new InstallationError('Another Cheshi process is installing Flash. Wait for it to finish, then retry.'); }
+
+export async function verifyFlashPlugin(root: string, release: FlashPluginRelease, signal: AbortSignal) {
+  const python = join(root, release.python), executable = join(root, release.executable);
+  assertPlugin(await realpath(python) === python && await realpath(executable) === executable, 'Flash entrypoints must be regular packaged files.');
+  const options = { cwd: root, signal, timeout: 120_000,
+    env: { PATH: '/usr/bin:/bin', HF_HUB_OFFLINE: '1', TRANSFORMERS_OFFLINE: '1', PYTHONDONTWRITEBYTECODE: '1' } };
+  await runFlashCommand(executable, ['--help'], options);
+  const result = await runFlashCommand(python, ['-I', '-B', '-c',
+    'import json, numpy, torch, sentence_transformers, huggingface_hub; from cheshi_flash.embedding import model_identity; print(json.dumps(model_identity()))'], options);
+  const identity = JSON.parse(result);
+  assertPlugin(identity.model === release.model && identity.revision === release.modelRevision, 'Installed Flash model identity is incompatible.');
+}
+
+async function verifyFlashStartup(executable: string, modelCache: string, signal: AbortSignal) {
+  // A separate short socket path avoids the Unix socket length limit and never migrates the user's DB.
+  const directory = await mkdtemp(join(tmpdir(), 'flash-probe-'));
+  const runtime = new FlashRuntime({ directory, executable, modelCache, device: 'cpu', startupTimeoutMs: 180_000 });
+  const cancel = () => { void runtime.release(); };
+  signal.addEventListener('abort', cancel, { once: true });
+  try { signal.throwIfAborted(); await runtime.transaction(async () => {}, signal); }
+  finally { signal.removeEventListener('abort', cancel); await runtime.release(); await rm(directory, { recursive: true, force: true }); }
+}

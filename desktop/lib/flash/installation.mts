@@ -2,6 +2,7 @@ import { constants, existsSync } from 'node:fs';
 import { access, open, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
+import { pluginRoot, pluginSelection, pluginVersionPath } from './plugin-package.mts';
 import { fileURLToPath } from 'node:url';
 import type { FlashReadiness } from '../../shared/settings.ts';
 
@@ -22,8 +23,11 @@ export function flashInstallationPaths(userData: string, env = process.env) {
   const managedCache = join(root, 'models');
   const modelCache = env.CHESHI_FLASH_MODEL_CACHE?.trim() ||
     (existsSync(flashModelSnapshot(legacyCache)) ? legacyCache : managedCache);
-  const executable = env.CHESHI_FLASH_EXECUTABLE?.trim() ||
-    (existsSync(repository) || checkout.includes('app.asar') ? managedExecutable : developmentExecutable);
+  const selected = pluginSelection(userData);
+  const pluginExecutable = selected.version ? join(pluginVersionPath(userData, selected.version), 'bin/cheshi-flash')
+    : join(pluginRoot(userData), 'not-installed/bin/cheshi-flash');
+  const executable = env.CHESHI_FLASH_EXECUTABLE?.trim() || (selected.exists ? pluginExecutable
+    : (existsSync(repository) || checkout.includes('app.asar') ? managedExecutable : developmentExecutable));
   return { root, repository, managedExecutable, executable, modelCache };
 }
 

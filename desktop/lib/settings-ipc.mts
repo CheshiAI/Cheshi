@@ -7,7 +7,8 @@ import type { FlashActivation } from './flash/activation.mts';
 export function registerSettingsIpc(options: {
   window: BrowserWindow; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>; service: ReturnType<typeof createSettingsService>;
   flash?: Pick<FlashActivation, 'getFlashEnabled' | 'setFlashEnabled' | 'subscribeFlashEnabled' | 'readiness'>;
-  installation?: { status(): Promise<FlashReadiness>; install(): Promise<FlashReadiness>; isInstalling(): boolean };
+  installation?: { status(): Promise<FlashReadiness>; install(): Promise<FlashReadiness>; isInstalling(): boolean;
+    checkUpdates(): Promise<FlashReadiness>; uninstall(): Promise<FlashReadiness> };
 }) {
   const owner = options.window.webContents;
   const channels: string[] = [];
@@ -41,6 +42,14 @@ export function registerSettingsIpc(options: {
     handle(SETTINGS_CHANNELS.installFlash, () => {
       if (!options.installation) throw new Error('Flash installation is unavailable.');
       return options.installation.install();
+    });
+    handle(SETTINGS_CHANNELS.checkFlashUpdates, () => {
+      if (!options.installation) throw new Error('Flash installation is unavailable.');
+      return options.installation.checkUpdates();
+    });
+    handle(SETTINGS_CHANNELS.uninstallFlash, () => {
+      if (!options.installation) throw new Error('Flash installation is unavailable.');
+      return options.installation.uninstall();
     });
     handle(SETTINGS_CHANNELS.setFlashEnabled, (_event, value: unknown) => {
       const enabled = parseFlashEnabled(value);

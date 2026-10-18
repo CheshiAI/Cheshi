@@ -6,6 +6,8 @@ export function createSettingsApi(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'remo
   return {
     async getFlashReadiness() { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.getFlashReadiness)); },
     async installFlash() { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.installFlash)); },
+    async checkFlashUpdates() { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.checkFlashUpdates)); },
+    async uninstallFlash() { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.uninstallFlash)); },
     async getFlashEnabled() { return parseFlashEnabled(await ipc.invoke(SETTINGS_CHANNELS.getFlashEnabled)); },
     async setFlashEnabled(enabled) {
       return parseFlashEnabled(await ipc.invoke(SETTINGS_CHANNELS.setFlashEnabled, parseFlashEnabled(enabled)));

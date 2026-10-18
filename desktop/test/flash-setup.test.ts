@@ -1,10 +1,9 @@
 import { expect, test } from 'bun:test';
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink as createSymbolicLink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, symlink as createSymbolicLink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { FlashActivation } from '../lib/flash/activation.mts';
-import { FlashInstaller, type FlashInstallCommand } from '../lib/flash/installer.mts';
-import { FLASH_MODEL, FLASH_MODEL_FILES, FLASH_MODEL_REVISION, FLASH_REVISION,
+import { FLASH_MODEL_FILES,
   flashInstallationPaths, flashModelSnapshot, inspectFlashInstallation } from '../lib/flash/installation.mts';
 import type { FlashReadiness } from '../shared/settings.ts';
 import { FlashError } from '../lib/flash/client.mts';
@@ -115,48 +114,4 @@ test('restart treats saved ON as unverified and clears it when files are missing
     expect(f.gate.getFlashEnabled()).toBe(false); await f.gate.restore();
     expect(f.saved()).toBe(false); expect(f.starts()).toBe(0);
   } finally { await f.gate.dispose(); }
-});
-
-test('installer pins source, frozen dependencies and model; concurrent requests share progress and never enable memory', async () => {
-  const f = await installation(), hold = deferred<void>(), entered = deferred<void>();
-  const calls: { file: string; args: string[] }[] = [];
-  const run: FlashInstallCommand = async (file, args, options) => {
-    calls.push({ file, args });
-    if (file === 'gh') {
-      entered.resolve(); await hold.promise;
-      const source = join(args[3]!, 'src/cheshi_flash'); await mkdir(source, { recursive: true });
-      await writeFile(join(source, 'identity.json'), JSON.stringify({ model: FLASH_MODEL, revision: FLASH_MODEL_REVISION }));
-    }
-    if (args[0] === 'rev-parse') return FLASH_REVISION;
-    if (file !== 'git' && args[0] === '-c') { expect(args).toContain(FLASH_MODEL_REVISION); await f.create(); }
-    expect(options.env.GIT_TERMINAL_PROMPT).toBe('0');
-    return '';
-  };
-  const installer = new FlashInstaller({ userData: f.root, paths: f.paths, enabled: () => false,
-    readiness: () => inspectFlashInstallation(f.paths), run,
-    python: { prepare: async () => ({ executable: '/fixture/python', id: 'fixture', version: '3.14.8' }), dispose() {} } });
-  try {
-    const first = installer.install(), second = installer.install(); expect(first).toBe(second);
-    await entered.promise; expect(await installer.status()).toMatchObject({ ready: false, installing: true });
-    hold.resolve(); expect((await first).ready).toBe(true); expect(installer.isInstalling()).toBe(false);
-    expect(calls.find(call => call.args[0] === 'sync')?.args).toEqual(['sync', '--frozen', '--extra', 'model', '--no-dev', '--python', '/fixture/python']);
-    expect(calls.some(call => call.args.includes(FLASH_REVISION))).toBe(true);
-    expect((await installer.status()).ready).toBe(true);
-    await installer.install(); expect(calls.filter(call => call.file === 'gh').length).toBe(1);
-    expect(await readFile(f.paths.executable, 'utf8')).toContain('exit 0');
-  } finally { hold.resolve(); installer.dispose(); await f.close(); }
-});
-
-test('installer failures redact child diagnostics and allow retry without claiming readiness', async () => {
-  const f = await installation();
-  const installer = new FlashInstaller({ userData: f.root, paths: f.paths, enabled: () => false,
-    readiness: () => inspectFlashInstallation(f.paths), run: async () => { throw new Error('credential=private-fixture'); },
-    python: { prepare: async () => { throw new Error('unused'); }, dispose() {} } });
-  try {
-    const failure = await rejection(() => installer.install());
-    expect(String(failure)).not.toContain('private-fixture');
-    expect(await installer.status()).toMatchObject({ ready: false });
-    expect(installer.isInstalling()).toBe(false);
-    await rejection(() => installer.install());
-  } finally { installer.dispose(); await f.close(); }
 });

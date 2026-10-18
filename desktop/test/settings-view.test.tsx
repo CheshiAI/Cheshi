@@ -34,6 +34,8 @@ async function withSettings(run: (view: {
   const flashListeners = new Set<(enabled: boolean) => void>();
   const api: SettingsApi = {
     getFlashReadiness: async () => options.readiness ?? { ready: true, detail: 'Files available.' },
+    checkFlashUpdates: async () => ({ ready: true, detail: 'Installed.', installedVersion: '0.1.0', availableVersion: '0.2.0' }),
+    uninstallFlash: async () => ({ ready: false, detail: 'Flash plugin removed. Saved conversations and model files have been kept.' }),
     installFlash: async () => options.install ?? { ready: true, detail: 'Installed.' },
     getFlashEnabled: async () => options.flashLoad ?? flashEnabled,
     setFlashEnabled: async enabled => {
@@ -249,4 +251,75 @@ test('Flash can always be turned OFF even if files later disappear', async () =>
     await act(async () => button(container, 'Enable Flash memory').click());
     expect(flashWrites).toEqual([false]);
   }, { readiness: { ready: false, detail: 'Missing executable' } });
+});
+
+test('Flash displays model byte progress and keeps it when settings are reopened during installation', async () => {
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Flash').click());
+    const verify = () => {
+      const progress = container.querySelector('progress');
+      expect(progress?.getAttribute('value')).toBe('25');
+      expect(container.textContent).toContain('Model download 25%');
+      expect(container.textContent).toContain('25.0 / 100.0 MiB (including reused files)');
+      expect(button(container, 'Enable Flash memory').disabled).toBe(true);
+    };
+    verify();
+    await act(async () => category(container, 'About').click());
+    await act(async () => category(container, 'Flash').click());
+    verify();
+  }, { readiness: { ready: false, installing: true, detail: 'Downloading model',
+    progress: { startedAt: Date.now() - 61000, downloadedBytes: 25 * 1048576, totalBytes: 100 * 1048576 } } });
+});
+
+test('Flash unknown-size stages show elapsed time without an invented percentage', async () => {
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Flash').click());
+    expect(container.querySelector('progress')?.hasAttribute('value')).toBe(false);
+    expect(container.textContent).toContain('Preparing Python');
+    expect(container.textContent).toContain('1m 1s elapsed');
+    expect(container.textContent).not.toContain('%');
+  }, { readiness: { ready: false, installing: true, detail: 'Preparing Python', progress: { startedAt: Date.now() - 61000 } } });
+});
+
+test('Flash model loading shows a ticking elapsed time and clears it only after activation finishes', async () => {
+  const save = createDeferred<void>();
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Flash').click());
+    await act(async () => button(container, 'Enable Flash memory').click());
+    expect(container.textContent).toContain('Checking Flash and loading the model… · 0m 0s elapsed');
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)); });
+    expect(container.textContent).toContain('0m 1s elapsed');
+    expect(container.querySelector('progress')).toBeNull();
+    await act(async () => save.resolve());
+    expect(container.textContent).toContain('Flash is on.');
+    expect(container.textContent).not.toContain('elapsed');
+  }, { flashSave: save.promise });
+});
+
+test('Flash shows installed and available versions and removes only while disabled', async () => {
+  await withSettings(async ({ container, emitFlash }) => {
+    await act(async () => category(container, 'Flash').click());
+    expect(container.textContent).toContain('Installed Flash plugin: 0.1.0');
+    await act(async () => button(container, 'Check updates').click());
+    expect(container.textContent).toContain('Flash 0.2.0 is available.');
+    expect(button(container, 'Update Flash').disabled).toBe(false);
+    await emitFlash(true);
+    expect(button(container, 'Update Flash').disabled).toBe(true);
+    expect(button(container, 'Remove Flash').disabled).toBe(true);
+    await emitFlash(false);
+    await act(async () => button(container, 'Remove Flash').click());
+    expect(container.textContent).toContain('Saved conversations and model files have been kept.');
+    expect(container.textContent).not.toContain('Installed Flash plugin:');
+    expect(button(container, 'Enable Flash memory').disabled).toBe(true);
+  }, { readiness: { ready: true, detail: 'Ready', installedVersion: '0.1.0' } });
+});
+
+test('Flash package downloads have their own percentage label', async () => {
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Flash').click());
+    expect(container.textContent).toContain('Plugin download 50%');
+    expect(container.textContent).not.toContain('Model download');
+    expect(container.textContent).not.toContain('including reused files');
+  }, { readiness: { ready: false, installing: true, detail: 'Downloading plugin',
+    progress: { startedAt: Date.now(), phase: 'package', downloadedBytes: 50, totalBytes: 100 } } });
 });
