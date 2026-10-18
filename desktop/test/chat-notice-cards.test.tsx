@@ -26,7 +26,7 @@ function approvalHarness() {
     './useChatInputHistory': { useChatInputHistory: () => ({ state: {}, open: false }) },
     './chatQuestionChoices': { composerQuestionRequest: () => null },
   };
-  for (const name of ['ChatErrorNotice', 'ChatCommandMenu', 'ChatConfigurationMenu', 'ChatInputHistoryPanel',
+  for (const name of ['ChatErrorNotice', 'ChatCommandMenu', 'ChatConfigurationMenu', 'ChatInputHistoryPanel', 'ChatImportInput',
     'ChatComposerSurface', 'ChatComposerAttachments', 'ChatComposerToolbar', 'ChatPlanToggle', 'ChatUserInputPrompt', 'GithubLinkChips', 'ChatMessageQueue', 'ChatFallbackQuestion']) {
     modules[`./${name}`] = {};
   }
