@@ -6,7 +6,7 @@ import { product } from '../../config/product.mts';
 import type { HomieSetupStatus } from '../shared/homie-setup';
 
 const homieStatus: HomieSetupStatus = { supported: true, brew: true, docker: true, colima: true,
-  connected: false, busy: false, detail: 'Colima is stopped.' };
+  connected: false, securityReady: false, busy: false, detail: 'Colima is stopped.' };
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -54,7 +54,7 @@ async function withSettings(run: (view: {
     onHomiesEnabledChanged: listener => { homiesListeners.add(listener); return () => { homiesListeners.delete(listener); }; },
     getHomieSetup: options.homieCheck ?? (async () => options.homies ?? homieStatus),
     installHomieTools: options.homieInstall ?? (async () => homieStatus),
-    startHomieEngine: options.homieStart ?? (async () => ({ ...homieStatus, connected: true, detail: 'Connection ready.' })),
+    startHomieEngine: options.homieStart ?? (async () => ({ ...homieStatus, connected: true, securityReady: true, detail: 'Connection ready.' })),
     getFlashReadiness: async () => options.readiness ?? { ready: true, detail: 'Files available.' },
     checkFlashUpdates: async () => ({ ready: true, detail: 'Installed.', installedVersion: '0.1.0', availableVersion: '0.2.0' }),
     uninstallFlash: async () => ({ ready: false, detail: 'Flash plugin removed. Saved conversations and model files have been kept.' }),
@@ -355,7 +355,7 @@ test('Homies separates installed tools from connection and connects through its 
     expect(button(container, 'Start Colima').disabled).toBe(false);
     await act(async () => button(container, 'Start Colima').click());
     expect(container.textContent).toContain('Connection ready.');
-    expect(button(container, 'Start Colima').disabled).toBe(true);
+    expect(button(container, 'Prepare Homies').disabled).toBe(true);
   });
 });
 
@@ -423,7 +423,7 @@ test('a slow Homies check waits for completion without adding another second', a
     await act(async () => button(container, 'Check status').click());
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)); });
     expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
-    await act(async () => check.resolve({ ...homieStatus, connected: true, detail: 'Connection ready.' }));
+    await act(async () => check.resolve({ ...homieStatus, connected: true, securityReady: true, detail: 'Connection ready.' }));
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
     expect(container.textContent).toContain('Connection ready.');
   }, { homieCheck: async () => ++calls === 1 ? homieStatus : check.promise });
@@ -474,5 +474,17 @@ test('Homies switch requires readiness, follows other windows and remains availa
     expect(control.disabled).toBe(false);
     await act(async () => control.click());
     expect(homiesWrites).toEqual([true]); expect(control.getAttribute('aria-checked')).toBe('true');
-  }, { homies: { ...homieStatus, connected: true } });
+  }, { homies: { ...homieStatus, connected: true, securityReady: true } });
+});
+
+test('connected Colima still requires security preparation before enabling Homies', async () => {
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Homies').click());
+    const enable = () => container.querySelector<HTMLButtonElement>('[aria-label="Enable Homies"]')!;
+    expect(container.textContent).toContain('Preparation required');
+    expect(enable().disabled).toBe(true);
+    expect(button(container, 'Prepare Homies').disabled).toBe(false);
+    await act(async () => button(container, 'Prepare Homies').click());
+    expect(enable().disabled).toBe(false);
+  }, { homies: { ...homieStatus, connected: true, securityReady: false } });
 });

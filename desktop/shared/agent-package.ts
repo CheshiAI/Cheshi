@@ -1,5 +1,6 @@
 import { parseCustomTools, type CustomTool } from '../../experiments/codex-specialists/src/custom-tool-contract.ts';
 import { parseHomiePackResources, type HomiePackResources } from './homie-pack.ts';
+import { parseHostDependencyLock } from './host-dependencies.ts';
 import { SPECIALIST_ROLES } from './agent-registry.ts';
 import type { ExecutionPermissions, SpecialistProfile, SpecialistRole } from './agent-registry.ts';
 import type { AgentModelSelection } from './agent-models.ts';
@@ -73,12 +74,17 @@ export function parseAgentPackage(value: unknown): AgentPackage {
   for (const tool of parsed.tools ?? []) {
     if (!parsed.resources?.files.some(file => file.path === tool.script)) throw new Error(`Missing script for tool: ${tool.name}`);
     if (tool.service && !parsed.resources.files.some(file => file.path === tool.service!.script)) throw new Error(`Missing service script for tool: ${tool.name}`);
+    if (tool.service?.npmLock) {
+      const lock = parsed.resources.files.find(file => file.path === tool.service!.npmLock);
+      if (!lock) throw new Error(`Missing managed dependency lock for tool: ${tool.name}`);
+      parseHostDependencyLock(lock.content);
+    }
     if (tool.runtime === 'python3' && tool.execution !== 'host' && !parsed.resources.programs.some(p => p.split('=')[0] === 'python3')) throw new Error('Python tools require python3 in Programs.');
   }
   const services = new Map<string, string>();
   for (const tool of parsed.tools ?? []) {
     if (!tool.service) continue;
-    const definition = JSON.stringify([tool.runtime, tool.runtimeVersion, tool.service.script]);
+    const definition = JSON.stringify([tool.runtime, tool.runtimeVersion, tool.service.script, tool.service.npmLock]);
     if (services.has(tool.service.name) && services.get(tool.service.name) !== definition) throw new Error('Shared host service definitions must match.');
     services.set(tool.service.name, definition);
   }

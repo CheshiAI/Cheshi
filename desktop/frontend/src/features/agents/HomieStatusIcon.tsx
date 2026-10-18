@@ -7,6 +7,9 @@ const icons = {
   Sleeping: Moon, Ready: CircleCheck, Working: Activity, 'Starting…': Loader,
   'Processing…': Loader, 'Manually stopped': CirclePause, Error: CircleX,
   'Waiting for reply': Clock, 'Sign-in required': KeyRound, 'Engine disconnected': Unplug,
+  'Waiting for approval': KeyRound, 'Approved · awaiting resume': CirclePause,
+  'Permission denied · paused': CirclePause, 'Task paused': CirclePause,
+  'Settings need applying': CircleHelp, 'Result unknown': CircleHelp,
   'Not assigned': Unplug, 'Agent unavailable': CircleX, 'Not running': CirclePause,
   'Status unknown': CircleHelp,
 };

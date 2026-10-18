@@ -1,4 +1,5 @@
 import { record, textValue } from './protocol.ts';
+import { parseGoalVerification, independentVerification, type GoalVerification } from './goal-verification.ts';
 
 import { parseProgress, parseUsage, isStalled, STALLED_GOAL, type GoalProgress, type GoalUsage } from './goal-progress.ts';
 
@@ -9,6 +10,7 @@ export type Criterion = { criterion: string; met: boolean; evidence: string };
 export type Decision = { action: DecisionAction; reason: string; progress: string; nextAction: string; criteria: Criterion[] };
 export type GoalState = {
   verificationRequired?: true;
+  verificationPolicy?: GoalVerification;
   progressCheck?: GoalProgress; usage?: GoalUsage;
   version: 1; turns: number; phase: 'active' | 'ready' | 'waiting' | 'paused' | 'blocked' | 'completed';
   criteria: Criterion[]; decisions: Decision[]; pending: Decision | null;
@@ -57,7 +59,10 @@ export function parseGoal(value: unknown): GoalState {
     || !['active', 'ready', 'waiting', 'paused', 'blocked', 'completed'].includes(String(v.phase))
     || !Array.isArray(v.decisions) || v.decisions.length > GOAL_DECISION_HISTORY) throw new Error('Invalid saved goal.');
   if (v.verificationRequired !== undefined && v.verificationRequired !== true) throw new Error('Invalid verification requirement.');
+  const verificationPolicy = v.verificationPolicy === undefined ? undefined : parseGoalVerification(v.verificationPolicy);
+  if (verificationPolicy && independentVerification(verificationPolicy) !== (v.verificationRequired === true)) throw new Error('Inconsistent goal verification policy.');
   return { ...(v.verificationRequired === true ? { verificationRequired: true as const } : {}), version: 1, turns: Number(v.turns), phase: v.phase as GoalState['phase'],
+    ...(verificationPolicy ? { verificationPolicy } : {}),
     ...(v.progressCheck === undefined ? {} : { progressCheck: parseProgress(v.progressCheck) }),
     ...(v.usage === undefined ? {} : { usage: parseUsage(v.usage) }),
     criteria: Array.isArray(v.criteria) && !v.criteria.length ? [] : criteria(v.criteria),

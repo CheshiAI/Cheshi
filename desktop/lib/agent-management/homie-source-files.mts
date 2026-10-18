@@ -11,6 +11,10 @@ function assertFile(regular: boolean, size: number, name: string): void {
   const limit = name === 'agent.json' || name === 'instructions.md' ? 256 * 1024 : HOMIE_PACK_BYTES;
   if (!regular || size > limit) throw new Error(`${name}: expected a regular UTF-8 file of at most ${limit === HOMIE_PACK_BYTES ? '8 MiB' : '256 KiB'}.`);
 }
+function decodeSourceFile(bytes: Uint8Array, name: string): string {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+  catch (cause) { throw new Error(`${name}: expected valid UTF-8 text.`, { cause }); }
+}
 export async function readSourceFile(root: string, name: string): Promise<string> {
   if (path.isAbsolute(name) || /[\\\0]/.test(name) || name.split('/').some(p => !p || p === '.' || p === '..')) throw new Error('Invalid Homie file path.');
   const filename = path.join(root, name), resolved = await realpath(filename);
@@ -26,7 +30,7 @@ export async function readSourceFile(root: string, name: string): Promise<string
       length += bytesRead;
     }
     assertFile(true, length, name);
-    const result = new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, length));
+    const result = decodeSourceFile(buffer.subarray(0, length), name);
     if (result.includes('\0')) throw new Error(`${name}: binary data is not supported.`);
     return result;
   } finally { await file.close(); }
@@ -68,9 +72,12 @@ export async function readHomieSource(directory: string): Promise<{ pack: AgentP
     try { info = await lstat(filename); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
     if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`${relative}: expected a directory without symbolic links.`);
     for (const entry of await readdir(filename, { withFileTypes: true })) {
-      if (++count > 2048) throw new Error('Homie assets exceed 2048 entries.');
       const name = `${relative}/${entry.name}`;
       if (entry.name.startsWith('.') || entry.isSymbolicLink()) throw new Error(`${name}: hidden entries and symbolic links are not allowed.`);
+      // Python may generate caches during local use; they are not portable source assets.
+      if (entry.isDirectory() && entry.name === '__pycache__'
+        || entry.isFile() && /\.(?:pyc|pyo)$/.test(entry.name)) continue;
+      if (++count > 2048) throw new Error('Homie assets exceed 2048 entries.');
       if (entry.isDirectory()) await walk(name);
       else {
         const content = await readSourceFile(root, name);

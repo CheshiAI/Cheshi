@@ -15,6 +15,7 @@ import { createWorkspaceManagementApi } from './lib/workspace-management-preload
 import { createWorkspaceFeatureApis } from './lib/workspace-feature-preload.cts';
 import { createAppUpdateApi } from './lib/app-update-preload.cts';
 import { createKeepAwakeApi } from './lib/keep-awake-preload.cts';
+import { createCodexUpdateApi } from './lib/codex-update-preload.cts';
 import { createEditorSessionApi } from './lib/editor-session-preload.cts';
 import { createWorkspaceFileSearchApi } from './lib/workspace-file-search-preload.cts';
 import { createWorkspaceFileEventsApi } from './lib/workspace-file-events-preload.cts';
@@ -569,6 +570,7 @@ const cheshiDesktopApi = {
   },
   ...createAppUpdateApi(ipcRenderer),
   ...createKeepAwakeApi(ipcRenderer),
+  ...createCodexUpdateApi(ipcRenderer),
   ...createWorkspaceFileSearchApi(ipcRenderer, true),
   workspaceManagement: createWorkspaceManagementApi(ipcRenderer),
   ...createWorkspaceFeatureApis(ipcRenderer),

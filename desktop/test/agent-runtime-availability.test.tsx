@@ -44,7 +44,7 @@ test('compact settings show runtime status without duplicate diagnostics and ret
   await withRuntimePolling(async poll => {
     try { await withDOM(async render => {
       await render(<SpecialistRuntimePanel compact assigned agent={agent} model={registry} engines={engines} engineId="docker:local" />);
-      expect(document.querySelector('[aria-label="Worker status"]')?.textContent).toBe('Ready');
+      expect(document.querySelector('[aria-label="Worker status"]')?.textContent).toBe('Result unknown');
       for (const text of ['Worker logs', 'Active tasks and recovery', 'Old task', 'Signed']) expect(document.body.textContent).not.toContain(text);
       expect(button('Stop worker')).not.toBeNull();
       current = { details: { ...details, ready: false }, lifecycle: { phase: 'sleeping', error: null } };
@@ -115,7 +115,8 @@ test.each(['agent-unassigned', 'agent-removed'] as const)('in-flight %s clears o
         current = { details: null, unavailable: { kind, message: 'Binding unavailable' } };
         await poll();
         expect(document.body.textContent).not.toContain('Old task');
-        expect(document.querySelector('[role="status"]')?.textContent).toBe('Binding unavailable');
+        expect(document.querySelector('section[aria-label="Status"]')?.textContent).toContain('Binding unavailable');
+        expect(document.querySelector('[aria-label="Worker status"]')?.textContent).toBe(kind === 'agent-removed' ? 'Agent unavailable' : 'Not assigned');
         expect(document.querySelector('[role="alert"]')).toBeNull();
         expect(button('Start agent').disabled).toBe(true);
         await poll(); await poll();

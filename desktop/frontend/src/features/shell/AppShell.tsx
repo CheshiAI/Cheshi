@@ -85,6 +85,7 @@ export function AppShell() {
   const accountReady = useCallback(() => setAccountLoaded(true), []);
   const startupReported = useRef(false);
   const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
+  const [editorOnly, setEditorOnly] = useState(false);
   const [activeView, setActiveView] = useState<WorkspaceView>(() =>
     customLayout && splitPaneIds(customLayout).includes('primary') && ['editor', 'worker'].some(pane => splitPaneIds(customLayout).includes(pane)) ? 'chat'
       : customLayout && splitPaneIds(customLayout).includes('worker') ? 'chats' : 'explorer');
@@ -94,6 +95,7 @@ export function AppShell() {
       : customLayout && splitPaneIds(customLayout).includes('worker') && !splitPaneIds(customLayout).includes('primary') ? 'worker' : 'primary');
   const [paneFocusRequest, setPaneFocusRequest] = useState<{ paneId: WorkspacePaneId; requestId: number } | null>(null);
   const focusWorkspacePane = useCallback((paneId: WorkspacePaneId) => {
+    if (paneId !== 'editor') setEditorOnly(false);
     setFocusedPane(paneId);
     setPaneFocusRequest(current => ({ paneId, requestId: (current?.requestId ?? 0) + 1 }));
   }, []);
@@ -227,6 +229,7 @@ export function AppShell() {
     historyRequestId.current += 1;
     setHistoryTarget(null);
     closeReview();
+    setEditorOnly(false);
     setActiveView('chat');
     setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
     setPrimaryPaneClosed(false);
@@ -239,6 +242,7 @@ export function AppShell() {
     const opened = await workspace.openSession(hit.threadId);
     if (!opened || requestId !== historyRequestId.current) return false;
     closeReview();
+    setEditorOnly(false);
     setActiveView('chat');
     setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
     setPrimaryPaneClosed(false);
@@ -250,6 +254,7 @@ export function AppShell() {
     if (workspace.deletePending) return;
     historyRequestId.current += 1;
     closeReview();
+    setEditorOnly(false);
     setActiveView('chat');
     setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
     setPrimaryPaneClosed(false);
@@ -259,10 +264,15 @@ export function AppShell() {
   const navigate = useCallback((view: WorkspaceView, options: { preserveFocus?: boolean } = {}): void => {
     if (!homiesEnabled && (view === 'chats' || view === 'docker')) return;
     if (view === 'notes') { setSidebarPanel('memos'); setLeftSidebarOpen(true); return; }
+    if (view !== 'editor' && view !== 'explorer') setEditorOnly(false);
     historyRequestId.current += 1;
     closeReview();
     if (view === 'explorer' || view === 'editor') {
       setSidebarPanel('files'); setLeftSidebarOpen(true);
+      if (editorOnly) { focusWorkspacePane('editor'); return; }
+      if (editorTarget && !(customLayout ? splitPaneIds(customLayout).includes('editor') : editorSplitOpen || activeView === 'editor')) {
+        setEditorOnly(true); focusWorkspacePane('editor'); return;
+      }
       if (editorSplitOpen || (customLayout && splitPaneIds(customLayout).includes('editor'))) {
         focusWorkspacePane('editor');
         setCustomLayout(current => current && revealWorkspacePane(current, 'editor'));
@@ -286,7 +296,7 @@ export function AppShell() {
     }
     setActiveView(view);
     setPrimaryPaneClosed(false);
-  }, [closeReview, editorSplitOpen, customLayout, focusWorkspacePane, activeView, homiesEnabled]);
+  }, [closeReview, editorOnly, editorTarget, editorSplitOpen, customLayout, focusWorkspacePane, activeView, homiesEnabled]);
   const openWorkerRoom = useCallback(() => navigate('chats'), [navigate]);
   const openGitChanges = useCallback(() => navigate('git'), [navigate]);
   const toggleRightSidebar = useCallback(() => setRightSidebarOpen(open => !open), []);
@@ -330,21 +340,24 @@ export function AppShell() {
     closeReview();
     focusWorkspacePane('editor');
     setEditorTarget({ path, line, requestId: editorRequestId.current });
-    setEditorSplitOpen(true);
-    if (activeView === 'explorer') {
-      replaceExplorerWithEditor();
-      return;
+    if (activeView === 'explorer' && !editorOnly) {
+      replaceExplorerWithEditor(); return;
     }
-    setCustomLayout(current => current && revealWorkspacePane(current, 'editor'));
-    if (!customLayout && fullWidthViews.includes(activeView)) {
-      editorReturnView.current = activeView;
-      setPrimaryPaneClosed(false);
-      setActiveView('editor');
-    }
-  }, [closeReview, focusWorkspacePane, activeView, replaceExplorerWithEditor, customLayout]);
+    const editorVisible = customLayout ? splitPaneIds(customLayout).includes('editor')
+      : activeView === 'editor' || (editorSplitOpen && !fullWidthViews.includes(activeView));
+    // Opening a file never adds a split. Keep the previous scene mounted and its layout intact.
+    if (!editorVisible) setEditorOnly(true);
+  }, [closeReview, focusWorkspacePane, activeView, editorOnly, editorSplitOpen, customLayout, replaceExplorerWithEditor]);
 
   const closeEditorSplit = (): void => {
     setLineCommitTarget(null);
+    if (editorOnly) {
+      setEditorOnly(false);
+      setEditorSplitOpen(false);
+      setEditorTarget(null);
+      focusWorkspacePane(activeView === 'chats' || activeView === 'docker' ? 'worker' : activeView === 'terminal' ? 'terminal' : 'primary');
+      return;
+    }
     setEditorSplitOpen(false);
     const returnToExplorer = activeView === 'editor' && editorReturnView.current === 'explorer';
     setCustomLayout(current => current && (returnToExplorer
@@ -364,14 +377,15 @@ export function AppShell() {
     editorMutationRequestId.current += 1;
     setEditorMutation({ ...mutation, requestId: editorMutationRequestId.current });
   }, []);
-  const editorLayoutMode = activeView === 'editor' ? 'editor'
+  const editorLayoutMode = editorOnly || activeView === 'editor' ? 'editor'
     : !editorSplitOpen ? 'primary'
       : fullWidthViews.includes(activeView) ? 'page'
         : primaryPaneClosed ? 'editor' : 'split';
 
   const workerPrimary = activeView === 'chats' || activeView === 'docker';
   const primaryView = workerPrimary ? 'chat' : activeView;
-  const visiblePanes = splitPaneIds(customLayout ?? visibleWorkspaceLayout(editorLayoutMode, activeView === 'terminal', .5, workerPrimary));
+  const displayedLayout = editorOnly ? { type: 'pane' as const, paneId: 'editor' } : customLayout;
+  const visiblePanes = splitPaneIds(displayedLayout ?? visibleWorkspaceLayout(editorLayoutMode, activeView === 'terminal', .5, workerPrimary));
   const visiblePaneKey = [...visiblePanes].sort().join(':');
   const selectedPane = visiblePanes.includes(focusedPane) ? focusedPane : visiblePanes[0];
   const railView = selectedPane === 'editor' ? 'editor' : selectedPane === 'terminal' ? 'terminal'
@@ -464,7 +478,9 @@ export function AppShell() {
             />
         </SlidingSidePanel>
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
-          <WorkspaceEditorSplit mode={editorLayoutMode} layout={customLayout} onLayoutChange={setCustomLayout}
+          <WorkspaceEditorSplit mode={editorLayoutMode} layout={displayedLayout} onLayoutChange={layout => {
+            setEditorOnly(false); setEditorSplitOpen(splitPaneIds(layout).includes('editor')); setCustomLayout(layout);
+          }}
             onPaneActivate={setFocusedPane} focusRequest={paneFocusRequest}
             minimumPrimaryWidth={primaryView === 'chat' ? CHAT_PANE_MIN_WIDTH : undefined}
             terminalPrimary={activeView === 'terminal'} workerPrimary={workerPrimary} disabled={updateResume.busy || workspace.accountSwitchPending}
@@ -492,12 +508,13 @@ export function AppShell() {
             <WorkspaceEditor
               sessionMode={updateResume.editorSessionMode}
               onSessionRestored={() => {
-                setEditorSplitOpen(true);
+                if (editorOnly) return;
+                setEditorSplitOpen(Boolean(customLayout && splitPaneIds(customLayout).includes('editor')));
                 if (activeView === 'explorer') replaceExplorerWithEditor();
               }}
               active={visiblePanes.includes('editor')}
               rightSidebarOpen={rightSidebarOpen}
-              onToggleRightSidebar={editorLayoutMode === 'editor'
+              onToggleRightSidebar={visiblePanes.length === 1 && visiblePanes[0] === 'editor'
                 ? () => setRightSidebarOpen((open) => !open) : undefined}
               mutation={editorMutation}
               target={editorTarget}
@@ -541,7 +558,7 @@ export function AppShell() {
             />
           )}
             <GitWorkspace
-              active={primaryView === 'git'}
+              active={primaryView === 'git' && visiblePanes.includes('primary')}
               sidebarTarget={githubSidebarTarget} onOpenChanges={openGitChanges}
               onOpenWorkspaceFile={openWorkspaceFile}
               rightSidebarOpen={rightSidebarOpen}
@@ -586,7 +603,7 @@ export function AppShell() {
         sessionTitle={historyChoice.title} paneId={historyChoice.paneId}
         onResume={() => workspace.openSession(historyChoice.sessionId)}
         onOpened={() => {
-          setHistoryChoice(null); closeReview(); setActiveView('chat'); setPrimaryPaneClosed(false);
+          setHistoryChoice(null); closeReview(); setEditorOnly(false); setActiveView('chat'); setPrimaryPaneClosed(false);
           setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
         }}
         onClose={() => setHistoryChoice(null)} />}

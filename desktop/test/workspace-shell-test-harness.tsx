@@ -90,6 +90,7 @@ export function shellHarness(initialHistoryLoading = false, preference: { panel:
   let editorSessionMode: ReturnType<typeof useAppUpdateResume>['editorSessionMode'] = 'restore';
   const attachments = draftAttachmentModule.createChatDraftAttachments();
   const modules: Record<string, unknown> = {
+    '../settings/useHomiesEnabled': { useHomiesEnabled: () => true },
     './WorkspaceSurfaceReporter': { WorkspaceSurfaceReporter: 'WorkspaceSurfaceReporter' },
     '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
     './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },

@@ -51,10 +51,12 @@ interface UseChatViewControllerOptions {
   initialDraft?: ChatDraftSnapshot;
   onOpenTemporaryChat?: (input: ChatDraftSnapshot) => Promise<void>;
   active?: boolean;
+  visible?: boolean;
+  onFileDrop?: () => void;
   interactionsLocked?: boolean;
 }
 
-export function useChatViewController({ controller, onNewSession, initialDraft, onOpenTemporaryChat, active = true, interactionsLocked = false }: UseChatViewControllerOptions) {
+export function useChatViewController({ controller, onNewSession, initialDraft, onOpenTemporaryChat, active = true, visible = active, onFileDrop, interactionsLocked = false }: UseChatViewControllerOptions) {
   const {
     state,
     sessionRevision,
@@ -132,6 +134,7 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
   const attachmentTransfer = useChatAttachmentTransfer({
     scopeKey: `${sessionRevision}:${state.activeSessionId ?? ''}`,
     inactive: !active,
+    visible, onFileDrop,
     disabled: interactionsLocked || loading || sendPending || configurationLoading || commandLoading || commandMenuOpen || attachmentPickerOpen,
     attachments, captureTask,
     importFiles: async (files) => {

@@ -34,7 +34,7 @@ test('details stay read-only and return to native review; closing or unmounting 
         await act(async () => { await Promise.resolve(); });
         expect(answers).toEqual([action === 'Back to confirmation']);
         expect(document.querySelector('dialog')).toBeNull();
-        expect(document.body.textContent).not.toContain('Host tool allowed');
+        if (action !== 'unmount') expect(document.body.textContent).toContain('Approval required');
       });
     } finally { model.dispose(); }
   }

@@ -6,6 +6,18 @@ import { ACTIVITY_LIMIT, FILE_CHANGE_LIMIT, TEXT_LIMIT, type TaskActivity, type 
 
 const string = (value: unknown) => typeof value === 'string' ? value : '';
 
+/** Keep public text results, without copying image payloads or protocol metadata. */
+function dynamicToolOutput(value: unknown): string {
+  if (!Array.isArray(value)) return '';
+  return value.flatMap(entry => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+    const content = record(entry);
+    if (content.type === 'inputText' && typeof content.text === 'string') return [content.text];
+    if (content.type === 'inputImage') return ['[Image result]'];
+    return [];
+  }).join('\n\n');
+}
+
 function retainFileChanges(value: unknown) {
   const source = Array.isArray(value) ? value : [], changes: TaskFileChange[] = [];
   let remaining = TEXT_LIMIT, truncated = false;
@@ -49,10 +61,14 @@ export function recordTaskActivity(store: AgentStore, taskId: string, method: st
     case 'mcpToolCall':
       kind = 'tool'; title = [string(item.server), string(item.tool)].filter(Boolean).join(' · ');
       text = item.error ? JSON.stringify(item.error) : item.result ? JSON.stringify(item.result) : ''; break;
+    case 'dynamicToolCall':
+      kind = 'tool'; title = [string(item.namespace), string(item.tool)].filter(Boolean).join(' · ') || 'Tool call';
+      text = dynamicToolOutput(item.contentItems); break;
     case 'webSearch': kind = 'tool'; title = 'Web search'; text = string(item.query); break;
     default: return;
   }
   const failed = item.status === 'failed' || item.status === 'declined' || item.error != null
+    || (item.type === 'dynamicToolCall' && item.success === false)
     || (typeof item.exitCode === 'number' && item.exitCode !== 0)
     || (item.result != null && typeof item.result === 'object' && 'isError' in item.result && item.result.isError === true);
   const status = failed ? 'failed' : method === 'item/updated' ? item.status === 'unknown' ? 'unknown' : 'running' : method === 'item/started' ? 'running'

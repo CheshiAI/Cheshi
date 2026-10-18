@@ -22,6 +22,7 @@ interface ChatViewProps extends ChatHistorySearchNavigation {
   onReviewFileChanges: (itemId: string, path?: string) => void;
   active: boolean;
   visible?: boolean;
+  onFileDrop?: () => void;
   interactionsLocked?: boolean;
   savedTurns?: SavedChatTurnActions;
   onAccountSwitchGuard?: (guard: (() => string | null) | null) => void;
@@ -35,13 +36,14 @@ export const ChatView = memo(function ChatView({
   onReviewFileChanges,
   active,
   visible = active,
+  onFileDrop,
   interactionsLocked = false,
   savedTurns,
   onAccountSwitchGuard,
   historyTarget,
   onHistoryTargetHandled,
 }: ChatViewProps) {
-  const viewController = useChatViewController({ controller, onNewSession, initialDraft, onOpenTemporaryChat, active, interactionsLocked });
+  const viewController = useChatViewController({ controller, onNewSession, initialDraft, onOpenTemporaryChat, active, visible, onFileDrop, interactionsLocked });
   useChatNotificationVisibility(viewController.rootRef, controller.contextId ?? 'main', controller.state.activeSessionId, visible);
   const latest = useRef(viewController);
   latest.current = viewController;

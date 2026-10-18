@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import type { DragEvent } from 'react';
+import type { ClipboardEvent, DragEvent } from 'react';
 import * as attachmentModel from '../frontend/src/features/chat/attachmentTransferModel';
 import * as errorModel from '../frontend/src/shared/errorMessage';
 import { WORKSPACE_FILE_TRANSFER_TYPE } from '../frontend/src/shared/workspaceFileTransfer';
@@ -78,6 +78,68 @@ function drag(types: string[], payload = '', files: File[] = []) {
 const flushTransfers = () => new Promise<void>((resolve) => { setImmediate(resolve); });
 
 describe('chat attachment drop callbacks', () => {
+  test('drops select a visible inactive pane without enabling its paste handler', async () => {
+    const harness = createHarness();
+    let selections = 0;
+    const transfer = harness.render({ inactive: true, visible: true, onFileDrop: () => { selections++; } });
+    const file = new File(['image'], 'external.png', { type: 'image/png' });
+    transfer.onPaste({ clipboardData: { files: [file], items: [] }, preventDefault() {} } as unknown as ClipboardEvent<HTMLElement>);
+    expect(harness.imports).toEqual([]);
+    const incoming = drag(['Files'], '', [file]);
+    transfer.onDragOver(incoming.event);
+    expect(incoming.dataTransfer.dropEffect).toBe('copy');
+    transfer.onDrop(incoming.event);
+    await flushTransfers();
+    expect(selections).toBe(1);
+    expect(harness.imports).toEqual([[file]]);
+    expect(harness.accepted).toEqual([[attachment]]);
+  });
+
+  test('a pending drop stays with its pane after selection changes and imports only once', async () => {
+    const pending = createDeferred<CodexChatAttachment[]>();
+    const first = createHarness();
+    const second = createHarness(async () => pending.promise);
+    let selected = 'first';
+    let focused = 0;
+    first.render({ inactive: false, visible: true });
+    const transfer = second.render({ inactive: true, visible: true,
+      onFileDrop: () => { selected = 'second'; }, onComplete: () => { focused++; } });
+    const incoming = drag([WORKSPACE_FILE_TRANSFER_TYPE], JSON.stringify(['/workspace/image.png']));
+    transfer.onDrop(incoming.event);
+    expect(selected).toBe('second');
+    second.render({ inactive: false });
+    transfer.onDrop(incoming.event);
+    selected = 'first';
+    second.render({ inactive: true });
+    pending.resolve([attachment]);
+    await flushTransfers();
+    expect(first.imports).toEqual([]);
+    expect(first.accepted).toEqual([]);
+    expect(second.imports).toHaveLength(1);
+    expect(second.accepted).toEqual([[attachment]]);
+    expect(selected).toBe('first');
+    expect(focused).toBe(0);
+  });
+
+  test('hidden, locked, text and empty drops do not select a pane', async () => {
+    const harness = createHarness();
+    let selections = 0;
+    const onFileDrop = () => { selections++; };
+    for (const options of [{ visible: false, disabled: false }, { visible: true, disabled: true }]) {
+      const transfer = harness.render({ ...options, onFileDrop });
+      const incoming = drag([WORKSPACE_FILE_TRANSFER_TYPE], JSON.stringify(['/workspace/image.png']));
+      transfer.onDragOver(incoming.event);
+      expect(incoming.dataTransfer.dropEffect).toBe('none');
+      transfer.onDrop(incoming.event);
+    }
+    const transfer = harness.render({ visible: true, disabled: false });
+    transfer.onDrop(drag(['text/plain'], 'text').event);
+    transfer.onDrop(drag(['Files']).event);
+    await flushTransfers();
+    expect(selections).toBe(0);
+    expect(harness.imports).toEqual([]);
+  });
+
   test('accepts workspace paths and prevents text insertion and propagation', async () => {
     const harness = createHarness();
     const transfer = harness.render();

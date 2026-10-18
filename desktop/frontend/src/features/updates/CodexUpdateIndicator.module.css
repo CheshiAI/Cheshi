@@ -1,0 +1,14 @@
+.button {
+  composes: button from '../../shared/ui/StatusBarButton.module.css';
+  white-space: nowrap;
+  --icon-size-default: 11px;
+  --status-bar-button-background: var(--control-surface-ghost);
+  --status-bar-button-hover-background: var(--control-surface-interactive);
+}
+.button[data-attention='true'] { color: var(--text); }
+.button:disabled { cursor: default; }
+.spinner { animation: codex-update-spin 1s linear infinite; }
+@keyframes codex-update-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+}

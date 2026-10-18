@@ -4,10 +4,12 @@ import { createPortal } from 'react-dom';
 
 import type { CodexAccountsSnapshot } from '../../../../shared/codex-accounts';
 import { LiquidGlassPanel, RegionalBlur } from '../../shared/ui';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { AccountUsagePanel } from '../account/AccountUsagePanel';
 import { AddAccountDialog } from '../account/AddAccountDialog';
 import { AppUpdateIndicator } from '../updates/AppUpdateIndicator';
 import { KeepAwakeStatus } from '../chrome/KeepAwakeStatus';
+import { CodexUpdateIndicator } from '../updates/CodexUpdateIndicator';
 import { accountStatusSummary, accountUsageTotals } from './statusBarModel';
 import styles from './WorkspaceStatusBar.module.css';
 
@@ -51,23 +53,26 @@ export function WorkspaceStatusBar({ onAccountInitialLoad, blurSourceRef, ...acc
     <footer className={styles.bar} aria-label="Workspace status">
       <AppUpdateIndicator />
       <span className={styles.spacer} aria-hidden="true" />
+      <CodexUpdateIndicator />
       <KeepAwakeStatus />
-      <button ref={accountButton} type="button" className={`${styles.item} ${styles.account}`} popoverTarget={accountId}
-        aria-haspopup="dialog" aria-expanded={accountOpen} aria-controls={accountId}
-        data-account-state={accountReady ? 'ready' : 'disabled'}
-        data-attention={Boolean(accountError) || account.attention || undefined}
-        title={accountTitle} aria-label={`${accountTitle} Open account and usage details.`}>
-        <Gauge aria-hidden="true" />
-        <span className={styles.label}>{accountError ? 'Account · Unavailable' : account.label}</span>
-        {totals ? <>
-          <span className={styles.separator} aria-hidden="true">·</span>
-          <span className={styles.usageTrack} aria-hidden="true">
-            <span style={{ width: `${totals.percent}%` }} />
-          </span>
-          <span className={styles.separator} aria-hidden="true">·</span>
-          <span className={styles.total}>{totals.remaining}%</span>
-        </> : !accountError && hasAuthenticatedAccount && <span className={styles.total}>· Total unavailable</span>}
-      </button>
+      <TooltipTarget content={accountTitle}>
+        <button ref={accountButton} type="button" className={`${styles.item} ${styles.account}`} popoverTarget={accountId}
+          aria-haspopup="dialog" aria-expanded={accountOpen} aria-controls={accountId}
+          data-account-state={accountReady ? 'ready' : 'disabled'}
+          data-attention={Boolean(accountError) || account.attention || undefined}
+          aria-label={`${accountTitle} Open account and usage details.`}>
+          <Gauge aria-hidden="true" />
+          <span className={styles.label}>{accountError ? 'Account · Unavailable' : account.label}</span>
+          {totals ? <>
+            <span className={styles.separator} aria-hidden="true">·</span>
+            <span className={styles.usageTrack} aria-hidden="true">
+              <span style={{ width: `${totals.percent}%` }} />
+            </span>
+            <span className={styles.separator} aria-hidden="true">·</span>
+            <span className={styles.total}>{totals.remaining}%</span>
+          </> : !accountError && hasAuthenticatedAccount && <span className={styles.total}>· Total unavailable</span>}
+        </button>
+      </TooltipTarget>
       {/* Keep account subscriptions and startup readiness alive while the popover is closed. */}
       <RegionalBlur sourceRef={blurSourceRef} sourceMode="replace">
         {createPortal(<div id={accountId} popover="auto" role="dialog" aria-label="Account and usage details"

@@ -332,3 +332,45 @@ test('approved host capture crosses relay, worker storage and native JSON-RPC im
     await f.close();
   }
 });
+
+test('approval status survives restart and reports package and policy changes without renewing on reads', async () => {
+  const f = await fixture();
+  const status = () => f.service.request(f.directory, { ...f.request, action: 'status' });
+  try {
+    expect(await status()).toMatchObject({ state: 'approval-required', reason: 'no-grant' });
+    await f.allow();
+    const approved = await status();
+    expect(approved).toMatchObject({ allowed: true, state: 'approved', reason: null });
+    expect(approved.approvalDetails).toContain(`Project: ${f.directory}`);
+    expect(approved.approvalDetails).toContain(`Approved package version: ${f.agent.package!.version}`);
+    const restarted = new HostToolRegistration(join(f.directory, 'state'), () => f.agent);
+    try { expect(await restarted.request(f.directory, { ...f.request, action: 'status' })).toEqual(approved); }
+    finally { restarted.dispose(); }
+    f.agent.package!.description += ' Updated instructions';
+    expect(await status()).toMatchObject({ allowed: false, state: 'review-required', reason: 'package-changed' });
+    await automatic(f, true);
+    expect(await status()).toMatchObject({ allowed: false, state: 'automatic-renewal', reason: 'package-changed', digest: approved.digest });
+    expect((await status()).digest).toBe(approved.digest);
+    await f.execute();
+    expect(await status()).toMatchObject({ allowed: true, state: 'approved' });
+    await automatic(f, false);
+    expect(await status()).toMatchObject({ allowed: false, state: 'review-required', reason: 'policy-changed' });
+    f.agent.accountId = 'another-account';
+    expect(await status()).toMatchObject({ allowed: false, state: 'approval-required', reason: 'no-grant', approvalDetails: null });
+  } finally { await f.close(); }
+});
+
+test('approval status distinguishes missing executables from replaced executables', async () => {
+  const f = await fixture();
+  const executable = join(f.directory, 'fake-runtime');
+  try {
+    await writeFile(executable, '#!/bin/sh\nexit 0\n', { mode: 0o700 });
+    await f.service.request(f.directory, f.request, { selectExecutable: async () => executable, confirm: async () => true });
+    const status = () => f.service.request(f.directory, { ...f.request, action: 'status' });
+    expect((await status()).state).toBe('approved');
+    await writeFile(executable, '#!/bin/sh\nexit 1\n');
+    expect(await status()).toMatchObject({ allowed: false, state: 'review-required', reason: 'executable-changed' });
+    await rm(executable);
+    expect(await status()).toMatchObject({ allowed: false, state: 'preparation-required', reason: 'executable-missing' });
+  } finally { await f.close(); }
+});

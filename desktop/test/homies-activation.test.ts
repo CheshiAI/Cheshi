@@ -13,7 +13,7 @@ import type { HomieSetupStatus } from '../shared/homie-setup.ts';
 import { createAgentOrchestration } from '../lib/agent-orchestration/service.mts';
 import { bindingFor } from '../lib/agent-orchestration/mailbox.mts';
 
-const ready: HomieSetupStatus = { supported: true, brew: true, docker: true, colima: true, connected: true, busy: false, detail: 'Ready' };
+const ready: HomieSetupStatus = { supported: true, brew: true, docker: true, colima: true, connected: true, securityReady: true, busy: false, detail: 'Ready' };
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(done => { resolve = done; });
@@ -42,7 +42,7 @@ test('Homies defaults off and only enables after every prerequisite is freshly v
     expect((await rejection(f.gate.run(() => { calls++; }))).message).toContain('Enable Homies');
     await f.gate.background(async () => { calls++; });
     expect(calls).toBe(0);
-    for (const key of ['supported', 'brew', 'docker', 'colima', 'connected', 'busy'] as const) {
+    for (const key of ['supported', 'brew', 'docker', 'colima', 'connected', 'securityReady', 'busy'] as const) {
       f.status({ ...ready, [key]: key === 'busy' });
       await rejection(f.gate.setHomiesEnabled(true));
       expect(f.preferences.getHomiesEnabled()).toBe(false);

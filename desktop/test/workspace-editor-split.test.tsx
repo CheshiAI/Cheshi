@@ -23,6 +23,12 @@ import type { GitWorkspace } from '../frontend/src/features/git/GitWorkspace';
 import type { TerminalWorkspace } from '../frontend/src/features/terminal/TerminalWorkspace';
 import type { ReviewSidebar } from '../frontend/src/features/shell/ReviewSidebar';
 
+function openEditorSplit(app: ReturnType<typeof shellHarness>, terminal = false) {
+  const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  split.onLayoutChange!(layoutModel.visibleWorkspaceLayout('split', terminal));
+  split.onOpenPane!('editor');
+}
+
 function renderFilePane(loading: boolean, ready = true, existingFile = false, canCloseEmptyPane = false, closeAllTabs = () => {}) {
   const modules: Record<string, unknown> = {
     '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
@@ -278,6 +284,7 @@ test.each([false, true])('split pane focus owns rail selection without replacing
   const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
   const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   rail().onNavigate('chat');
+  if (!custom) openEditorSplit(app);
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onPanelChange!('files');
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('unsaved.ts');
   const target = props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor').target;
@@ -296,8 +303,8 @@ test.each([false, true])('split pane focus owns rail selection without replacing
   expect(rail().activeView).toBe('editor');
   expect(rail().sidebarOpen).toBe(true);
   expect(split().focusRequest?.paneId).toBe('editor');
-  expect(split().layout).toBe(savedLayout);
-  expect(split().mode).toBe('split');
+  expect(split().layout).toEqual(savedLayout ?? layoutModel.visibleWorkspaceLayout('split', false));
+  expect(splitModel.splitPaneIds(split().layout!)).toEqual(['editor', 'primary']);
   expect(props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace').active).toBe(true);
   expect(props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor').target).toBe(target);
 });
@@ -350,7 +357,7 @@ test('sidebar follows opening, closing and restoring editor panes while preservi
   const editor = () => props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
   expect(sidebar().activePanel).toBe('chats');
   sidebar().onOpenWorkspaceFile('first.ts');
-  expect(split().mode).toBe('split');
+  expect(split().mode).toBe('editor');
   expect(sidebar().activePanel).toBe('files');
   sidebar().onPanelChange!('memos');
   sidebar().onOpenWorkspaceFile('second.ts');
@@ -364,7 +371,8 @@ test('sidebar follows opening, closing and restoring editor panes while preservi
   editor().onAllTabsClosed();
   expect(sidebar().activePanel).toBe('chats');
   editor().onSessionRestored?.();
-  expect(sidebar().activePanel).toBe('files');
+  expect(sidebar().activePanel).toBe('chats');
+  expect(editor().active).toBe(false);
 });
 
 test.each(['chat', 'editor'] as const)('update recovery resolves the %s scene before overriding a saved manual tab', view => {
@@ -430,7 +438,7 @@ test('file search keeps the current page until a result opens in the standalone 
   expect(props<ComponentProps<typeof GitWorkspace>>(split.children, 'GitWorkspace').active).toBe(false);
 });
 
-test('Explorer file opening keeps the chat visible and reuses the same editor for subsequent files', () => {
+test('Explorer file opening keeps the chat mounted but hidden and reuses the same editor for subsequent files', () => {
   const app = shellHarness();
   props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
   let tree = app.render();
@@ -438,17 +446,17 @@ test('Explorer file opening keeps the chat visible and reuses the same editor fo
   props<ComponentProps<typeof Sidebar>>(tree, 'Sidebar').onOpenWorkspaceFile('first.ts');
   tree = app.render();
   const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(tree, 'WorkspaceEditorSplit');
-  expect(split.mode).toBe('split');
+  expect(split.mode).toBe('editor');
   expect(split.minimumPrimaryWidth).toBe(475);
-  expect(props<ComponentProps<typeof ChatWorkspace>>(split.children, 'ChatWorkspace').active).toBe(true);
+  expect(props<ComponentProps<typeof ChatWorkspace>>(split.children, 'ChatWorkspace').active).toBe(false);
   expect(props<ComponentProps<typeof WorkspaceEditor>>(split.editor, 'WorkspaceEditor')).toMatchObject({
     active: true, target: { path: 'first.ts', requestId: 1 },
   });
   props<ComponentProps<typeof Sidebar>>(tree, 'Sidebar').onOpenWorkspaceFile('second.ts');
   const next = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
-  expect(next.mode).toBe('split');
+  expect(next.mode).toBe('editor');
   expect(props<ComponentProps<typeof WorkspaceEditor>>(next.editor, 'WorkspaceEditor').target?.path).toBe('second.ts');
-  expect(props<ComponentProps<typeof ChatWorkspace>>(next.children, 'ChatWorkspace').active).toBe(true);
+  expect(props<ComponentProps<typeof ChatWorkspace>>(next.children, 'ChatWorkspace').active).toBe(false);
 });
 
 test('closing the final tab restores the current page and does not reopen the closed target', () => {
@@ -524,18 +532,19 @@ test('closing Codex keeps file tabs and sidebar controls, and navigation restore
   props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
   const initial = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   expect(props<ComponentProps<typeof ChatWorkspace>>(initial.children, 'ChatWorkspace').onCloseWorkspace).toBeUndefined();
+  openEditorSplit(app);
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
   const split = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   const chat = props<ComponentProps<typeof ChatWorkspace>>(split.children, 'ChatWorkspace');
   chat.onCloseWorkspace!();
   const closed = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
-  expect(closed.mode).toBe('editor');
+  expect(splitModel.splitPaneIds(closed.layout!)).toEqual(['editor']);
   expect(props<ComponentProps<typeof WorkspaceEditor>>(closed.editor, 'WorkspaceEditor')).toMatchObject({
     active: true, target: { path: 'first.ts', requestId: 1 },
   });
   expect(props<ComponentProps<typeof ChatWorkspace>>(closed.children, 'ChatWorkspace').active).toBe(false);
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('second.ts');
-  expect(props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit').mode).toBe('editor');
+  expect(splitModel.splitPaneIds(props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit').layout!)).toEqual(['editor']);
   props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('chat');
   const reopened = props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   expect(reopened.mode).toBe('split');
@@ -577,10 +586,11 @@ test('only the standalone editor controls the shared right sidebar and preserves
   const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
   const editor = () => props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
   expect(editor().onToggleRightSidebar).toBeUndefined();
+  openEditorSplit(app);
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
   expect(editor().onToggleRightSidebar).toBeUndefined();
   props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace').onCloseWorkspace!();
-  expect(split().mode).toBe('editor');
+  expect(splitModel.splitPaneIds(split().layout!)).toEqual(['editor']);
   expect(editor().rightSidebarOpen).toBe(true);
   editor().onToggleRightSidebar!();
   expect(editor().rightSidebarOpen).toBe(false);
@@ -627,6 +637,7 @@ test('line commits remain independent of the selected left panel and keep chats 
   const editor = () => props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
   const review = () => props<ComponentProps<typeof ReviewSidebar>>(app.render(), 'ReviewSidebar');
   const chat = () => props<ComponentProps<typeof ChatWorkspace>>(split().children, 'ChatWorkspace');
+  openEditorSplit(app);
   props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
   expect(review().lineCommit).toBeNull();
   const request = { path: 'first.ts', line: 1, content: 'draft\nsecond' };
@@ -661,10 +672,11 @@ for (const [view, component] of [['codegraph', 'CodeGraphView'], ['terminal', 'T
     const page = () => props<ComponentProps<typeof CodeGraphView> | ComponentProps<typeof TerminalWorkspace>>(view === 'terminal' ? split().terminal : split().children, component);
     props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate(view);
     expect(page().onCloseWorkspace).toBeUndefined();
+    openEditorSplit(app, view === 'terminal');
     props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('first.ts');
     expect(split().mode).toBe('split');
     page().onCloseWorkspace!();
-    expect(split().mode).toBe('editor');
+    expect(splitModel.splitPaneIds(split().layout!)).toEqual(['editor']);
     const closedPage = page(); // The page component stays mounted; closing does not remove its controller.
     if ('active' in closedPage) expect(closedPage.active).toBe(false);
     const editor = props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
@@ -693,19 +705,19 @@ for (const view of ['git', 'plugins'] as const) {
     const target = editor().target;
     editor().onDirtyPathsChange?.(['draft.ts']);
     rail().onNavigate(view);
-    expect(split().mode).toBe('page');
+    expect(split().mode).toBe('primary');
     expect(editor().active).toBe(false);
     expect(editor().target).toBe(target);
     expect(editor().onToggleRightSidebar).toBeUndefined();
     editor().onSessionRestored?.();
-    expect(split().mode).toBe('page');
+    expect(split().mode).toBe('primary');
     for (const splitView of ['chat', 'codegraph', 'terminal'] as const) {
       rail().onNavigate(splitView);
-      expect(split().mode).toBe('split');
-      expect(editor().active).toBe(true);
+      expect(split().mode).toBe('primary');
+      expect(editor().active).toBe(false);
       expect(editor().target).toBe(target);
       rail().onNavigate(view);
-      expect(split().mode).toBe('page');
+      expect(split().mode).toBe('primary');
     }
     sidebar().onOpenWorkspaceFile('next.ts');
     expect(split().mode).toBe('editor');

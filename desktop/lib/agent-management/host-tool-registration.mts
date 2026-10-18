@@ -8,12 +8,13 @@ import { parseAgentPackage, type AgentPackage } from '../../shared/agent-package
 import { parseHostToolRequest, type HostToolRequest, type HostToolStatus } from '../../shared/host-tools.ts';
 import { customToolArguments, hostServiceRequired, type CustomTool } from '../../../experiments/codex-specialists/src/custom-tool-contract.ts';
 import { executeHostProcess } from './host-tool-execution.mts';
+import { HostServiceDependencies, type HostDependencyProvider, type ManagedHostDependencies } from './host-service-dependencies.mts';
 import { HostToolServices } from './host-tool-services.mts';
 import { HostPythonRuntime, type HostPythonProvider } from './host-python-runtime.mts';
 import { HostToolPolicies, hostToolScopeKey, writeHostToolState, type HostToolScope } from './host-tool-policy.mts';
 
 type Scope = HostToolScope;
-interface Grant extends Scope { tool: string; executable: string; executableHash: string; digest: string; id: string; runtime?: string; managedRuntime?: string; autoPolicyRevision?: string; sourceDirectory?: string }
+interface Grant extends Scope { tool: string; executable: string; executableHash: string; digest: string; id: string; runtime?: string; managedRuntime?: string; autoPolicyRevision?: string; sourceDirectory?: string; dependencies?: ManagedHostDependencies; packageVersion?: string }
 export interface HostToolReview extends Grant { name: string; runtime: string; script: string; output: string; files: string[]; service?: CustomTool['service'] }
 interface ReviewUi { selectExecutable(runtime: string): Promise<string | null>; confirm(review: HostToolReview): Promise<boolean> }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -36,15 +37,19 @@ export class HostToolRegistration {
   private readonly services: HostToolServices;
   private readonly python: HostPythonProvider;
   private disposed = false;
+  private readonly dependencies: HostDependencyProvider;
+  private readonly preparation = new Map<string, string>();
+  private readonly preparing = new Map<string, AbortController>();
   private readonly sourceDirectory: (id: string) => Promise<string | null>;
   constructor(directory: string, snapshot: (workspace: string, id: string) => SpecialistAgent | undefined,
     sourceDirectory: (id: string) => Promise<string | null> = async () => null,
-    python: HostPythonProvider = new HostPythonRuntime(join(directory, 'runtimes'))) {
+    python: HostPythonProvider = new HostPythonRuntime(join(directory, 'runtimes')),
+    dependencies: HostDependencyProvider = new HostServiceDependencies(join(directory, 'dependencies'))) {
     this.directory = directory; this.snapshot = snapshot;
     this.policies = new HostToolPolicies(directory);
     this.services = new HostToolServices(join(directory, 'services'));
     this.sourceDirectory = sourceDirectory;
-    this.python = python;
+    this.python = python; this.dependencies = dependencies;
   }
   private async serviceSource(agentId: string, tool: CustomTool) {
     if (!tool.service) return undefined;
@@ -70,6 +75,8 @@ export class HostToolRegistration {
   private invalidate(key: string) {
     this.generations.set(key, (this.generations.get(key) ?? 0) + 1);
     this.active.get(key)?.abort();
+    this.preparing.get(key)?.abort();
+    this.preparation.delete(key);
     this.services.stopOwner(key);
   }
   private policyAllows(grant: Grant) {
@@ -106,41 +113,83 @@ export class HostToolRegistration {
       if (!ui) throw new Error('Local user review is required.');
       this.invalidate(key);
       const generation = this.generations.get(key);
-      const managed = current.tool.runtime === 'python3' ? await this.python.prepare(current.tool.runtimeVersion) : null;
-      const reusable = managed ? null : await this.reusableExecutable(this.grant(key), current.tool.runtime);
-      const selected = managed?.executable ?? reusable ?? await ui.selectExecutable(current.tool.runtime);
-      if (selected) {
-        const executable = await realpath(selected), digest = packDigest(current.pack);
-        const sourceDirectory = await this.serviceSource(request.agentId, current.tool);
-        const grant: Grant = { ...current.scope, tool: request.tool, executable, executableHash: await executableHash(executable), digest, id: randomUUID(),
-          runtime: current.tool.runtime, ...(managed ? { managedRuntime: managed.id } : {}),
-          ...(sourceDirectory ? { sourceDirectory } : {}), ...(policy.enabled ? { autoPolicyRevision: policy.revision! } : {}) };
-        const approved = policy.enabled || await ui.confirm({ ...grant, name: current.agent.name, runtime: current.tool.runtime, script: current.tool.script,
-          service: current.tool.service, output: join(this.directory, 'runs'), files: current.pack.resources!.files.map(f => f.path) });
-        if (approved === true) {
-          const checkedHash = await executableHash(executable);
-          const fresh = this.definition(workspace, request.agentId, request.tool);
-          if (this.disposed || this.generations.get(key) !== generation || fresh.agent.revision !== reviewedRevision
-            || this.key(fresh.scope, request.tool) !== key || packDigest(fresh.pack) !== digest
-            || this.policies.read(current.scope).revision !== policy.revision
-            || checkedHash !== grant.executableHash) throw new Error('Tool changed during review. Review again.');
-          writeHostToolState(this.path(key), grant);
+      const controller = new AbortController(); this.preparing.set(key, controller);
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(600_000)]);
+      this.preparation.set(key, 'Preparing runtime for local review…');
+      try {
+        const managed = current.tool.runtime === 'python3' ? await this.python.prepare(current.tool.runtimeVersion) : null;
+        const reusable = managed ? null : await this.reusableExecutable(this.grant(key), current.tool.runtime);
+        const selected = managed?.executable ?? reusable ?? await ui.selectExecutable(current.tool.runtime);
+        if (selected) {
+          const executable = await realpath(selected), digest = packDigest(current.pack);
+          const sourceDirectory = await this.serviceSource(request.agentId, current.tool);
+          const grant: Grant = { ...current.scope, tool: request.tool, executable, executableHash: await executableHash(executable), digest, id: randomUUID(),
+            runtime: current.tool.runtime, packageVersion: current.pack.version, ...(managed ? { managedRuntime: managed.id } : {}),
+            ...(sourceDirectory ? { sourceDirectory } : {}), ...(policy.enabled ? { autoPolicyRevision: policy.revision! } : {}) };
+          this.preparation.set(key, 'Waiting for local approval…');
+          const approved = policy.enabled || await ui.confirm({ ...grant, name: current.agent.name, runtime: current.tool.runtime, script: current.tool.script,
+            service: current.tool.service, output: join(this.directory, 'runs'), files: current.pack.resources!.files.map(f => f.path) });
+          if (approved === true) {
+            if (signal.aborted) throw new Error('Tool changed during review. Review again.');
+            if (current.tool.service?.npmLock) {
+              const lock = current.pack.resources!.files.find(file => file.path === current.tool.service!.npmLock)!.content;
+              grant.dependencies = await this.dependencies.prepare(lock, signal, message => this.preparation.set(key, message));
+            }
+            const checkedHash = await executableHash(executable);
+            const fresh = this.definition(workspace, request.agentId, request.tool);
+            if (this.disposed || this.generations.get(key) !== generation || fresh.agent.revision !== reviewedRevision
+              || this.key(fresh.scope, request.tool) !== key || packDigest(fresh.pack) !== digest
+              || this.policies.read(current.scope).revision !== policy.revision
+              || checkedHash !== grant.executableHash) throw new Error('Tool changed during review. Review again.');
+            writeHostToolState(this.path(key), grant);
+          }
+        }
+      } finally {
+        if (this.preparing.get(key) === controller) { this.preparing.delete(key); this.preparation.delete(key); }
+      }
+    }
+    return this.status(workspace, request.agentId, request.tool);
+  }
+  private async status(workspace: string, agentId: string, toolName: string): Promise<HostToolStatus> {
+    const current = this.definition(workspace, agentId, toolName), key = this.key(current.scope, toolName);
+    const grant = this.grant(key), policy = this.policies.read(current.scope);
+    let state: NonNullable<HostToolStatus['state']> = 'approval-required';
+    let reason: HostToolStatus['reason'] = 'no-grant';
+    if (grant) {
+      let hashMatches = false;
+      state = 'preparation-required'; reason = 'executable-missing';
+      try {
+        hashMatches = await executableHash(grant.executable) === grant.executableHash;
+        if (!hashMatches) { state = 'review-required'; reason = 'executable-changed'; }
+      } catch { /* A missing or inaccessible executable needs preparation. */ }
+      if (hashMatches) {
+        if (!this.runtimeMatches(grant, current.tool)) { state = 'review-required'; reason = 'runtime-changed'; }
+        else {
+          const lock = current.tool.service?.npmLock;
+          const dependenciesReady = !lock || (!!grant.dependencies && await this.dependencies.check(
+            current.pack.resources!.files.find(file => file.path === lock)!.content, grant.dependencies));
+          if (!dependenciesReady) { state = 'preparation-required'; reason = 'dependencies-unavailable'; }
+          else if (grant.digest !== packDigest(current.pack) || !this.policyAllows(grant)) {
+            state = policy.enabled ? 'automatic-renewal' : 'review-required';
+            reason = grant.digest !== packDigest(current.pack) ? 'package-changed' : 'policy-changed';
+          } else { state = 'approved'; reason = null; }
         }
       }
     }
-    let fresh = this.definition(workspace, request.agentId, request.tool);
-    const grant = this.grant(this.key(fresh.scope, request.tool));
-    let allowed = false;
-    if (grant?.digest === packDigest(fresh.pack) && this.runtimeMatches(grant, fresh.tool)) {
-      try {
-        const checkedHash = await executableHash(grant.executable);
-        fresh = this.definition(workspace, request.agentId, request.tool);
-        allowed = checkedHash === grant.executableHash && grant.digest === packDigest(fresh.pack)
-          && this.grant(this.key(fresh.scope, request.tool))?.id === grant.id && this.policyAllows(grant);
-      } catch { /* Missing, replaced or revoked while checking. */ }
+    const fresh = this.definition(workspace, agentId, toolName);
+    const latest = this.grant(this.key(fresh.scope, toolName));
+    if (latest?.id !== grant?.id || this.key(fresh.scope, toolName) !== key || packDigest(fresh.pack) !== packDigest(current.pack)
+      || this.policies.read(fresh.scope).revision !== policy.revision) {
+      state = 'review-required'; reason = 'status-changed';
     }
-    const latestGrant = this.grant(this.key(fresh.scope, request.tool));
-    return { allowed, executable: latestGrant?.executable ?? null, digest: latestGrant?.digest ?? null, autoApprove: this.policies.read(fresh.scope).enabled };
+    const approvalDetails = latest ? [
+      `Tool: ${latest.tool}`, `Project: ${latest.workspace}`, `Homie: ${latest.agentId}`, `Account: ${latest.accountId}`,
+      `Approved package version: ${latest.packageVersion ?? 'Not recorded'}`, `Current package version: ${fresh.pack.version}`,
+      `Approved package SHA-256: ${latest.digest}`, `Executable: ${latest.executable}`, `Executable SHA-256: ${latest.executableHash}`,
+      'Stored on this computer. Command permission and macOS privacy permissions still apply.',
+    ].join('\n') : null;
+    return { allowed: state === 'approved', state, reason, approvalDetails, preparation: this.preparation.get(key) ?? null,
+      executable: latest?.executable ?? null, digest: latest?.digest ?? null, autoApprove: this.policies.read(fresh.scope).enabled };
   }
   private async executionGrant(current: ReturnType<HostToolRegistration['definition']>, key: string, ready: () => boolean) {
     const grant = this.grant(key), policy = this.policies.read(current.scope);
@@ -153,7 +202,7 @@ export class HostToolRegistration {
       || this.key(fresh.scope, current.tool.name) !== key) throw new Error('Host tool changed during automatic approval.');
     const sourceDirectory = await this.serviceSource(current.scope.agentId, current.tool);
     if (!ready() || this.grant(key)?.id !== grant.id || this.policies.read(current.scope).revision !== policy.revision) throw new Error('Host tool changed during automatic approval.');
-    const renewed: Grant = { ...grant, ...(sourceDirectory ? { sourceDirectory } : {}), digest: packDigest(current.pack), id: randomUUID(), autoPolicyRevision: policy.revision! };
+    const renewed: Grant = { ...grant, ...(sourceDirectory ? { sourceDirectory } : {}), digest: packDigest(current.pack), packageVersion: current.pack.version, id: randomUUID(), autoPolicyRevision: policy.revision! };
     writeHostToolState(this.path(key), renewed);
     return renewed;
   }
@@ -180,6 +229,14 @@ export class HostToolRegistration {
       if (grant.autoPolicyRevision !== undefined) this.automaticCalls.set(key, hostToolScopeKey(scope));
       if (await executableHash(grant.executable) !== grant.executableHash || !allowed()) throw new Error('Host executable or permission changed.');
       const sourceDirectory = await this.serviceSource(scope.agentId, tool);
+      if (tool.service?.npmLock && hostServiceRequired(tool, input)) {
+        const lock = current.pack.resources!.files.find(file => file.path === tool.service!.npmLock)!.content;
+        if (!grant.dependencies || !await this.dependencies.check(lock, grant.dependencies)) throw new Error('Managed dependencies are missing or changed. Use Review host access to prepare them before retrying this task.');
+        assertServicePermission(allowed());
+      }
+      const dependencyEnvironment = grant.dependencies ? {
+        HOMIE_SERVICE_NODE: grant.dependencies.node, HOMIE_SERVICE_RUNTIME_DIR: grant.dependencies.directory,
+      } : undefined;
       if (tool.service) assertServiceSource(sourceDirectory, grant.sourceDirectory, allowed());
       if (tool.service && sourceDirectory && hostServiceRequired(tool, input)) {
         const serviceGrant = grant;
@@ -191,7 +248,7 @@ export class HostToolRegistration {
         };
         const prepared = await this.services.ensure({ key: `${hostToolScopeKey(scope)}/${tool.service.name}`, owner: key,
           fingerprint: hash(JSON.stringify([grant.digest, grant.executable, grant.executableHash, sourceDirectory, tool.service.name, tool.service.script])),
-          executable: grant.executable, script: tool.service.script, sourceDirectory, files: current.pack.resources!.files,
+          executable: grant.executable, script: tool.service.script, sourceDirectory, dependencyEnvironment, files: current.pack.resources!.files,
           valid: serviceValid }, AbortSignal.any([signal, controller.signal]), input);
         if (prepared.ok !== true) return { hostToolProtocol: 1 as const, data: { ...prepared, outcome: 'not_completed', automaticRetry: false }, images: [] };
         assertServicePermission(allowed());
@@ -205,14 +262,14 @@ export class HostToolRegistration {
         await writeFile(target, file.content, { flag: 'wx', mode: 0o400 });
       }
       return await executeHostProcess({ executable: grant.executable, script: join(packRoot, tool.script), cwd: packRoot, output, cache,
-        sourceDirectory, args: input, signal: AbortSignal.any([signal, controller.signal]), valid: allowed });
+        sourceDirectory, dependencyEnvironment, args: input, signal: AbortSignal.any([signal, controller.signal]), valid: allowed });
     } finally {
       this.active.delete(key);
       this.automaticCalls.delete(key);
       if (directory) await rm(directory, { recursive: true, force: true });
     }
   }
-  dispose() { this.disposed = true; this.python.dispose(); this.services.dispose(); for (const controller of this.active.values()) controller.abort(); }
+  dispose() { this.disposed = true; for (const controller of this.preparing.values()) controller.abort(); this.python.dispose(); this.services.dispose(); for (const controller of this.active.values()) controller.abort(); }
 }
 
 function assertServiceSource(source: string | undefined, approved: string | undefined, allowed: boolean): asserts source is string {

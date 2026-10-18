@@ -214,7 +214,7 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, worker,
       title={preview.direction === 'right' ? 'Split right' : 'Split down'} onClose={() => setPreview(null)} onCommitted={focusDestination}
       choices={[
         { id: 'editor', label: 'Explorer', icon: <FolderTree aria-hidden="true" /> },
-        { id: 'primary', label: 'Codex', icon: <MessageSquare aria-hidden="true" /> },
+        { id: 'primary', label: 'Session', icon: <MessageSquare aria-hidden="true" /> },
         ...(worker && workerEnabled ? [{ id: 'worker', label: 'Worker', icon: <WorkerIcon /> }] : []),
         { id: 'terminal', label: 'Terminal', icon: <SquareTerminal aria-hidden="true" /> },
       ].map(choice => ({ ...choice,

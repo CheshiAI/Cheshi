@@ -12,6 +12,8 @@ import { TooltipButton } from '../../shared/ui/TooltipButton';
 import type { AgentRegistryModel } from './agentRegistryModel';
 import { AgentTaskResults } from './AgentTaskResults';
 import { ExecutionHealth } from './ExecutionHealth';
+import { HomieRuntimeStatus } from './HomieRuntimeStatus';
+import { runtimeStatusPresentation } from './runtimeStatusPresentation';
 import styles from './AgentsView.module.css';
 import shared from '../../shared/agent-management/agentManagement.module.css';
 
@@ -29,6 +31,7 @@ export function SpecialistRuntimePanel({ compact = false, chatTask, onBackToChat
   const [verifiedContext, setVerifiedContext] = useState<string | null>(null);
   const [loadedDetails, setDetails] = useState<AgentDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const [lifecycle, setLifecycle] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [unavailable, setUnavailable] = useState<AgentRuntimeState['unavailable']>();
@@ -43,7 +46,7 @@ export function SpecialistRuntimePanel({ compact = false, chatTask, onBackToChat
     ?? details?.tasks.find(item => item.status === 'waiting');
   const canStopWorker = Boolean(onStopWorker && details && details.agent.state === 'running'
     && !details.busy && !stoppable && !details.tasks.some(item => item.status === 'unknown')
-    && !blocked && !error && !details.error);
+    && !blocked && !error && !operationError && !details.error);
   const running = details?.agent.state === 'running';
   const transitioning = lifecycle === 'starting' || lifecycle === 'draining';
   const powerDisabled = disabled || pending || blocked || !engine || verifiedContext !== statusContext || transitioning
@@ -57,6 +60,7 @@ export function SpecialistRuntimePanel({ compact = false, chatTask, onBackToChat
   useEffect(() => { if (!engine && engineId) setEngine(engineId); }, [engine, engineId]);
   useEffect(() => { if (chatTask) setEngine(chatTask.engineId); }, [chatTask]);
   const applyRuntime = (result: AgentRuntimeState) => {
+    if (result.details?.ready && !result.details.error) setOperationError(null);
     setObservedContext(statusContext);
     setVerifiedContext(statusContext);
     bindingUnavailable.current = Boolean(result.unavailable && result.unavailable.kind !== 'engine-unavailable');
@@ -84,7 +88,7 @@ export function SpecialistRuntimePanel({ compact = false, chatTask, onBackToChat
   useEffect(() => {
     revision.current++;
     setVerifiedContext(null);
-    setDetails(null); setLifecycle(null); setError(null); setPending(false); setUnavailable(undefined); bindingUnavailable.current = false; busy.current = false;
+    setDetails(null); setLifecycle(null); setError(null); setOperationError(null); setPending(false); setUnavailable(undefined); bindingUnavailable.current = false; busy.current = false;
     if (!assigned) return;
     void refresh();
     const timer = setInterval(() => { void refresh(); }, 10_000);
@@ -93,7 +97,7 @@ export function SpecialistRuntimePanel({ compact = false, chatTask, onBackToChat
   const operate = async (action: 'project-setup' | 'start' | 'stop' | 'cancel' | 'recover' | 'application-inspect', recovery?: { taskId: string; roomId: string; candidateId?: string; hash?: string }) => {
     if (busy.current || disabled || !engine || blocked || bindingUnavailable.current
       || ((action === 'start' || action === 'stop') && powerDisabled)) return;
-    busy.current = true; setObservedContext(statusContext); setPending(true); setError(null);
+    busy.current = true; setObservedContext(statusContext); setPending(true); setError(null); setOperationError(null);
     const version = ++revision.current;
     try {
       if (action === 'stop') {
@@ -107,15 +111,17 @@ export function SpecialistRuntimePanel({ compact = false, chatTask, onBackToChat
         applyRuntime(result);
       }
     } catch (reason) {
-      if (active.current && version === revision.current) setError(reason instanceof Error ? reason.message : 'Could not run this agent.');
+      if (active.current && version === revision.current) setOperationError(reason instanceof Error ? reason.message : 'Could not run this agent.');
     } finally {
       if (active.current && version === revision.current) { busy.current = false; setPending(false); }
     }
   };
-  const statusLabel: HomieStatusLabel = notice ? unavailable?.kind === 'agent-removed' ? 'Agent unavailable' : 'Not assigned' : pending ? 'Processing…' : disconnected ? 'Engine disconnected' : error || details?.error || lifecycle === 'error' ? 'Error' : lifecycle === 'sleeping' ? 'Sleeping' : lifecycle === 'starting' ? 'Starting…' : lifecycle === 'disabled' ? 'Manually stopped' : details?.busy ? 'Working' : stoppable?.status === 'waiting' ? 'Waiting for reply' : details?.authenticated === false ? 'Sign-in required' : details?.ready ? 'Ready' : 'Not running';
+  const baseStatus: HomieStatusLabel = notice ? unavailable?.kind === 'agent-removed' ? 'Agent unavailable' : 'Not assigned' : pending ? 'Processing…' : disconnected ? 'Engine disconnected' : operationError || error || details?.error || lifecycle === 'error' ? 'Error' : lifecycle === 'sleeping' ? 'Sleeping' : lifecycle === 'starting' ? 'Starting…' : lifecycle === 'disabled' ? 'Manually stopped' : details?.busy || stoppable?.status === 'running' || stoppable?.status === 'accepted' ? 'Working' : stoppable?.status === 'waiting' ? 'Waiting for reply' : details?.authenticated === false ? 'Sign-in required' : details?.ready ? 'Ready' : 'Not running';
   // An unobserved runtime is not evidence of a stopped worker. Keep the list's
   // fresh observation until this binding has a response, including a failure.
-  const reportedStatus = notice || observedContext === statusContext ? statusLabel : null;
+  const status = runtimeStatusPresentation({ label: notice || observedContext === statusContext ? baseStatus : 'Status unknown',
+    details, error: operationError || error || details?.error || null, notice });
+  const reportedStatus = notice || observedContext === statusContext ? status.label : null;
   useEffect(() => { onStatusChange?.(reportedStatus); }, [onStatusChange, reportedStatus]);
   const powerLabel = running ? 'Stop worker' : 'Start agent';
   const powerButton = <TooltipButton variant="ghost" size="icon" title={powerLabel} aria-label={powerLabel} disabled={powerDisabled}
@@ -124,15 +130,14 @@ export function SpecialistRuntimePanel({ compact = false, chatTask, onBackToChat
   </TooltipButton>;
   const header = <div className={styles.detailHeader} data-inline={headerTarget ? 'true' : undefined}>
       {!headerTarget && <h2 className={styles.name}>{agentDisplayName(agent)}</h2>}
-      {!onStatusChange && <span className={shared.description} aria-label="Worker status">{reportedStatus ?? 'Status unknown'}</span>}
       <section className={styles.runtimeSection} aria-label="Container">
         <h3>Container</h3>
         <LiquidGlassSelect ariaLabel="Agent execution engine" triggerAppearance="standard" value={engine} disabled={pending || Boolean(notice)}
           options={engines.filter(item => item.supported).map(item => ({ value: item.id, label: item.name }))}
           onChange={value => { revision.current++; setEngine(value); }} menuAppearance="toolbar" />
       </section>
-      {actionsTarget === undefined && <section className={styles.runtimeSection} aria-label="Status">
-        <h3>Status</h3>
+      {actionsTarget === undefined && <section className={styles.runtimeSection} aria-label="Power controls">
+        <h3>Power</h3>
         <div className={styles.runtimeActions}>
           {powerButton}
         </div>
@@ -141,15 +146,12 @@ export function SpecialistRuntimePanel({ compact = false, chatTask, onBackToChat
   return <>
     {actionsTarget ? createPortal(powerButton, actionsTarget) : null}
     {headerTarget ? createPortal(header, headerTarget) : header}
-    {compact ? <>
-      {notice && <p className={shared.description} role="status">{notice}</p>}
-      {!notice && (error || details?.error) && <p className={shared.description} role="alert">{error || details?.error}</p>}
-    </> : <div className={styles.detailBody}>
-      {notice ? <p className={shared.description} role="status">{notice}</p> : <>
+    {compact ? <HomieRuntimeStatus status={status} /> : <div className={styles.detailBody}>
+      <div className={styles.section}><HomieRuntimeStatus status={status} /></div>
+      {!notice && <>
         <div className={styles.section}>
           <span className={shared.description}>{details?.authenticated ? 'Signed' : 'Not signed in'}{details?.threadId ? ` · ${details.threadId}` : ''}</span>
-          {(error || details?.error) && <p className={shared.description} role="alert">{error || details?.error}</p>}
-          {(error || details?.error)?.includes('Project setup required:') && <>
+          {(operationError || error || details?.error)?.includes('Project setup required:') && <>
             <p className={shared.description}>Enable a writable share for this project and restart its Colima VM. All containers must be stopped first. Each Homie keeps its own file permissions.</p>
             <NeumorphicButton disabled={pending} onClick={() => { void operate('project-setup'); }}>Enable project share and restart VM</NeumorphicButton>
           </>}

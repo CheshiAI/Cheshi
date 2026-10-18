@@ -17,7 +17,7 @@ export function PermissionRequestCard({ message, workspace, mutate }: {
     catch (e) { setError(e instanceof Error ? e.message : 'Could not apply permissions.'); }
     finally { setPending(false); }
   }
-  return <ContentCard title="Permission request" icon={<ShieldCheck aria-hidden="true" />}
+  return <ContentCard className={styles.permissionCard} title="Permission request" icon={<ShieldCheck aria-hidden="true" />}
     status={pending ? 'Applying…' : request.status === 'pending' ? 'Needs approval' : request.status === 'allowed' ? 'Allowed' : 'Denied'}>
     <p>{request.reason}</p>
     <p>{[request.fileWrite && 'Modify project files', request.commandExecution && 'Run commands'].filter(Boolean).join(' · ')}</p>

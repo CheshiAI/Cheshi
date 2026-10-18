@@ -4,7 +4,7 @@ export interface CustomTool {
   runtime: 'bun' | 'node' | 'python3'; script: string;
   runtimeVersion?: string;
   execution?: 'host';
-  service?: { name: string; script: string; when?: { parameter: string; jsonField: string; values: string[] } };
+  service?: { name: string; script: string; npmLock?: string; when?: { parameter: string; jsonField: string; values: string[] } };
   network?: { url: string; credential: string | null };
 }
 export const CUSTOM_TOOL_TIMEOUT_MS = 60_000;
@@ -40,11 +40,16 @@ export function parseCustomTools(value: unknown): CustomTool[] {
     let service: CustomTool['service'];
     if (t.service !== undefined) {
       const s = object(t.service);
-      if (t.execution !== 'host' || Object.keys(s).some(k => !['name', 'script', 'when'].includes(k))) throw new Error('Services require a host tool.');
+      if (t.execution !== 'host' || Object.keys(s).some(k => !['name', 'script', 'npmLock', 'when'].includes(k))) throw new Error('Services require a host tool.');
       const serviceName = text(s.name), serviceScript = text(s.script);
       if (!/^[a-z][a-z0-9_]{0,47}$/.test(serviceName)) throw new Error('Invalid host service name.');
       assertScript(serviceScript);
       service = { name: serviceName, script: serviceScript };
+      if (s.npmLock !== undefined) {
+        const npmLock = text(s.npmLock);
+        if (!/^resources\/[a-zA-Z0-9_/-]+\/package-lock\.json$/.test(npmLock) || npmLock.split('/').some(p => !p || p.startsWith('.'))) throw new Error('Use a bundled resources package-lock.json for managed dependencies.');
+        service.npmLock = npmLock;
+      }
       if (s.when !== undefined) {
         const when = object(s.when), parameter = text(when.parameter), jsonField = text(when.jsonField);
         if (Object.keys(when).some(k => !['parameter', 'jsonField', 'values'].includes(k))

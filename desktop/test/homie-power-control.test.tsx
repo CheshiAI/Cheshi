@@ -39,7 +39,8 @@ test('header power control waits for status, toggles start/stop, and blocks dupl
       expect(target.querySelectorAll('button').length).toBe(1);
       expect(button('Start agent')?.disabled).toBe(true);
       await ui.click('Start agent'); expect(calls).toEqual(['status']);
-      expect(document.querySelector('section[aria-label="Status"]')).toBeNull();
+      expect(document.querySelector('section[aria-label="Status"]')).not.toBeNull();
+      expect(document.querySelector('section[aria-label="Power controls"]')).toBeNull();
       expect(button('Refresh agent')).toBeNull(); expect(button('Agent settings')).toBeNull();
       await act(async () => initial.resolve(current));
       expect(button('Start agent')?.disabled).toBe(false);
@@ -88,7 +89,12 @@ test('automatic observations block unsafe stops, recover from failed reads, and 
         readFailure = true; await poll(); expect(button('Start agent')?.disabled).toBe(true);
         readFailure = false; await poll(); expect(button('Start agent')?.disabled).toBe(false);
         await ui.click('Start agent'); expect(button('Start agent')?.disabled).toBe(false);
+        await poll();
+        expect(document.querySelector('[role="alert"]')?.textContent).toContain('Start failed; retry.');
         await ui.click('Start agent'); expect(starts).toEqual(['start', 'start']);
+        current = { details: running };
+        await poll();
+        expect(document.querySelector('[role="alert"]')).toBeNull();
       });
     });
   } finally { model.dispose(); }

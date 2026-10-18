@@ -36,8 +36,12 @@ saves while deletion runs. This is not a lock against independent Docker or dire
 `runtime.mts` orchestrates provisioning independently of the renderer. The bundled build
 context is prepared with an explicit file allowlist by `scripts/prepare-specialist-worker.mts`.
 The worker implementation is shared with the existing `experiments/codex-specialists` harness.
-The app never installs/starts the engine VM or installs host security profiles. Colima requires
-the documented `cheshi-codex-bwrap` AppArmor profile to be installed already.
+Settings > Homies installs missing tools and starts the default Colima VM on request.
+Start Colima / Prepare Homies loads the bundled `cheshi-codex-bwrap` AppArmor profile
+into that VM and persists it for subsequent boots. Read-only diagnostics require both
+the bundled file hash and the enforcing profile registration before enabling Homies.
+Other Colima profiles remain separately managed and require the documented profile setup.
+Container start failures remain available in worker details during subsequent status reads.
 
 Only the assigned project is mounted, read-only unless its saved file-write permission is
 literally true. Command tools are disabled when command execution is false. Codex network

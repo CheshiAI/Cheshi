@@ -6,6 +6,16 @@ import { agentRecord, parseAgentDetails, parseAgentSnapshot } from '../shared/ag
 import { parseAgentExecutionHealth } from '../shared/agent-execution-health.ts';
 
 const agent: RuntimeAgent = { id: 'worker', name: 'Verifier', image: 'verifier:test', state: 'running', endpoint: 'http://127.0.0.1:47832' };
+
+test('repeated inspection of a failed start retains the engine failure without requesting worker APIs', async () => {
+  const f = fixture({ ...agent, state: 'created', endpoint: null, startError: 'Worker start failed: AppArmor preparation required.' });
+  for (let index = 0; index < 2; index++) {
+    const details = parseAgentDetails(await f.service.details('test:local', 'worker'));
+    expect(details.error).toContain('AppArmor');
+    expect(details.ready).toBe(false);
+  }
+  expect(f.reads).toEqual([]);
+});
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(yes => { resolve = yes; });

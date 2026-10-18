@@ -54,6 +54,7 @@ function ChatPane({
     onReviewFileChanges(paneId, itemId, path);
   }, [onReviewFileChanges, paneId]);
   const { registerController, selectPane, closePane } = workspace;
+  const selectDropTarget = useCallback(() => selectPane(paneId), [paneId, selectPane]);
   const { registerAccountSwitchGuard } = workspace;
   const updateAccountSwitchGuard = useCallback((guard: (() => string | null) | null) => {
     registerAccountSwitchGuard(paneId, guard);
@@ -131,6 +132,7 @@ function ChatPane({
         interactionsLocked={workspace.accountSwitchPending}
         active={active && selected}
         visible={active}
+        onFileDrop={selectDropTarget}
         onNewSession={controller.newSession}
         onReviewFileChanges={reviewFileChanges}
         historyTarget={selected && controller.state.activeSessionId === historyTarget?.threadId ? historyTarget : null}

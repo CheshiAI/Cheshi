@@ -29,6 +29,7 @@ export type Task = {
   delegation?: string; workDraft?: WorkDraft;
   integration?: IntegrationSummary;
   integrationTools?: true; applicationTools?: true; codegraphTools?: true; flashTools?: true;
+  goalPolicyTools?: true; goalPolicyVersion?: 2; previousThreadId?: string;
   recovery?: RecoveryReceipt;
   providerFailure?: ProviderFailure;
   providerCheckpoint?: ProviderCheckpoint;
@@ -67,6 +68,8 @@ function savedTask(value: unknown): Task {
   if (task.codegraphTools !== undefined && task.codegraphTools !== true) throw new TypeError('Invalid CodeGraph tool capability.');
   if (task.applicationTools !== undefined && task.applicationTools !== true) throw new TypeError('Invalid application tool capability.');
   if (task.integrationTools !== undefined && task.integrationTools !== true) throw new TypeError('Invalid integration tool capability.');
+  if (task.goalPolicyVersion !== undefined && task.goalPolicyVersion !== 2) throw new TypeError('Invalid goal policy version.');
+  if (task.goalPolicyTools !== undefined && task.goalPolicyTools !== true) throw new TypeError('Invalid goal policy capability.');
   if (!TASK_STATUSES.some(status => status === task.status) || typeof task.output !== 'string') {
     throw new TypeError('Invalid saved task.');
   }
@@ -90,6 +93,9 @@ function savedTask(value: unknown): Task {
     ...(task.codegraphTools === true ? { codegraphTools: true as const } : {}),
     ...(task.applicationTools === true ? { applicationTools: true as const } : {}),
     ...(task.integrationTools === true ? { integrationTools: true as const } : {}),
+    ...(task.goalPolicyTools === true ? { goalPolicyTools: true as const } : {}),
+    ...(task.goalPolicyVersion === 2 ? { goalPolicyVersion: 2 as const } : {}),
+    ...(task.previousThreadId === undefined ? {} : { previousThreadId: textValue(task.previousThreadId, 'previous thread') }),
     ...(task.recovery === undefined ? {} : { recovery: recoveryReceipt(task.recovery) }),
     ...(task.roomId === undefined ? {} : { roomId: validateTaskId(task.roomId),
       inputs: chatEntries(task.inputs, v => { const i = record(v); if (i.pending !== undefined && i.pending !== true) throw new TypeError('Invalid pending input.'); return { ...(i.pending === true ? { pending: true as const } : {}), id: validateTaskId(i.id), prompt: textValue(i.prompt, 'input'), ...(i.questionId === undefined ? {} : { questionId: validateTaskId(i.questionId) }) }; }),

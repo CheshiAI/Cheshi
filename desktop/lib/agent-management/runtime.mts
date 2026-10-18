@@ -34,6 +34,8 @@ import { WorkerLifecycle } from './lifecycle.mts';
 import { bindingFor, type Binding } from '../agent-orchestration/mailbox.mts';
 import type { HomieExecutionProfile } from '../agent-platform/homie-executor.mts';
 import { WorkerWorkspaces } from '../agent-platform/worker-workspaces.mts';
+import { codexVersion, DEFAULT_WORKER_CODEX_VERSION, parseCodexVersion, type CodexWorkerVersions, type CodexUpdateReporter } from '../../shared/codex-update.ts';
+import { createCodexUpdateProgress } from './codex-update-progress.mts';
 
 export interface RuntimeAccount { home: string; models: AgentModel[]; }
 interface RuntimeOptions {
@@ -42,6 +44,7 @@ interface RuntimeOptions {
   sourceApplied?(workspace: string, agentId: string, engineId: string, hash: string): Promise<void>;
   directory: string; buildContext: string; workspaceDirectory?: string;
   getProjectDocMaxBytes?(): number;
+  getCodexVersion?(): string;
   registry: ReturnType<typeof createAgentRegistry>; management: AgentManagementApi;
   account(id: string): Promise<RuntimeAccount>;
   run?: DockerCommand;
@@ -102,9 +105,12 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   const listeners = new Set<(binding: Binding) => void>();
   let started = false, unsubscribeRegistry: (() => void) | undefined;
   const changed = (binding: Binding) => { for (const listener of listeners) listener(binding); };
-  const run = options.run ?? runDocker;
+  const updateProgress = createCodexUpdateProgress(options.run ?? runDocker);
+  const run = updateProgress.run;
   const pending = new Set<string>();
   const builds = new Map<string, Promise<void>>();
+  const installedVersions = new Map<string, string>();
+  const selectedCodexVersion = () => codexVersion(options.getCodexVersion?.() ?? DEFAULT_WORKER_CODEX_VERSION);
   const workspaces = options.workspaceDirectory ? new WorkerWorkspaces(options.workspaceDirectory) : null;
   function runtimeConfigPath(binding: Binding) {
     return join(options.directory, digest(binding.engineId), `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`, 'runtime.json');
@@ -282,18 +288,31 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     }
     return { result: await executeCustomTool({ run, prefix, image: worker.imageId, tool, args, signal, credential: options.toolCredential, valid }) };
   }
-  async function build(prefix: string[], dependencies: boolean) {
-    const key = `${prefix.join('/')}/${dependencies}`;
+  async function build(prefix: string[], dependencies: boolean, version = selectedCodexVersion()) {
+    updateProgress.stage('preparing-worker');
+    const key = `${prefix.join('/')}/${dependencies}/${version}`;
     let flight = builds.get(key);
     if (!flight) {
       flight = (async () => {
-        if (dependencies) await run([...prefix, 'build', '--target', 'specialist-environment', '--tag', environmentImage, options.buildContext]);
-        await run([...prefix, 'build', '--tag', image, options.buildContext]);
+        const args = ['--build-arg', `CODEX_VERSION=${version}`];
+        if (dependencies) await run([...prefix, 'build', ...args, '--target', 'specialist-environment', '--tag', `${environmentImage}-codex-${version}`, options.buildContext]);
+        await run([...prefix, 'build', ...args, '--tag', `${image}-codex-${version}`, options.buildContext]);
+        if (options.getCodexVersion) {
+          const actual = await imageCodexVersion(prefix, `${image}-codex-${version}`);
+          if (actual !== version) throw new Error('The prepared worker Codex version does not match the requested version.');
+        }
+        // Legacy isolated code tasks resolve this alias only after the candidate has passed verification.
+        await run([...prefix, 'image', 'tag', `${image}-codex-${version}`, image]);
       })();
       builds.set(key, flight);
       void flight.catch(() => builds.delete(key));
     }
     await flight;
+  }
+  async function imageCodexVersion(prefix: string[], image: string) {
+    updateProgress.stage('verifying-worker');
+    return parseCodexVersion(await run([...prefix, 'run', '--rm', '--network', 'none', '--read-only',
+      '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', '--entrypoint', 'codex', image, '--version']));
   }
   async function post(endpoint: string, token: string, route: string, body: unknown, inspection = false) {
     const response = await fetch(`${endpoint}${route}`, { method: 'POST', redirect: 'error',
@@ -317,9 +336,10 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     }
     throw new Error('Worker is still starting or needs sign-in. Refresh its status in a moment.');
   }
-  async function request(workspaceRoot: string, input: AgentRuntimeRequest, chat?: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }, selectedWorkspace?: string | null): Promise<AgentRuntimeState> {
+  async function request(workspaceRoot: string, input: AgentRuntimeRequest, chat?: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }, selectedWorkspace?: string | null, prepareStopped = false): Promise<AgentRuntimeState> {
     const request = parseAgentRuntimeRequest(input);
-    if (request.action !== 'status') assertHomiesAvailable(options.access);
+    if (request.action !== 'status' && !prepareStopped) assertHomiesAvailable(options.access);
+    if (prepareStopped && request.action !== 'start') throw new Error('Stopped maintenance requires preparation.');
     const workspace = await realpath(workspaceRoot);
     const source = request.action === 'start' ? await options.prepareSource?.(workspace, request.agentId) : undefined;
     const agent = options.registry.snapshot(workspaceRoot).agents.find(item => item.id === request.agentId);
@@ -352,9 +372,17 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       const instructions = request.action === 'start' ? (await resolveAgentInstructions(agent, assignment, projectInstructions)) + packInstructions(agent.package)
         + (workspaces ? isolatedWorkspaceInstructions : '') : null;
       const hasFiles = projectInstructions !== null;
-      const fingerprint = hasFiles && instructions !== null ? digest(`${settingsFingerprint}\n${instructions}`) : settingsFingerprint;
+      const codexRelease = selectedCodexVersion();
+      const fingerprint = request.action === 'start' ? digest(`${settingsFingerprint}\n${hasFiles ? instructions : ''}\ncodex=${codexRelease}`) : settingsFingerprint;
       const prefix = await local(request.engineId);
       let worker = await find(prefix, key);
+      if (prepareStopped && (!worker || !['created', 'exited'].includes(worker.state) || worker.externalBusy)) {
+        throw new Error('Worker is no longer stopped. Retry its update.');
+      }
+      if (prepareStopped && workspaces) {
+        const saved = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
+        if (saved.executionWorkspace !== execution) throw new Error('Inspect the saved workspace before migrating this stopped worker.');
+      }
       // Status/submit use the snapshot applied at Start; editing a source file takes effect at the next Start.
       const applied = worker && request.action !== 'start' && request.action !== 'cancel'
         ? agentRecord(JSON.parse(await readFile(configPath, 'utf8'))) : null;
@@ -398,17 +426,29 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       if (request.action === 'start') {
         await rememberEngine(directory, request.engineId, prefix[1]!);
         const auth = selectedAuth;
-        if (!worker || worker.fingerprint !== fingerprint) await build(prefix, dependencies !== null);
+        if (!worker || worker.fingerprint !== fingerprint) await build(prefix, dependencies !== null, codexRelease);
         if (agent.permissions.fileWrite) await (options.checkProjectEnvironment ?? assertProjectEnvironment)(request.engineId, prefix, execution);
-        const environment = !worker || worker.fingerprint !== fingerprint ? await prepareDependencies(run, prefix, image, dependencies, environmentImage) : { image, mounts: [] };
+        const workerImage = `${image}-codex-${codexRelease}`;
+        updateProgress.stage('dependencies');
+        const environment = !worker || worker.fingerprint !== fingerprint ? await prepareDependencies(run, prefix, workerImage, dependencies, `${environmentImage}-codex-${codexRelease}`) : { image: workerImage, mounts: [] };
         if (!worker || worker.fingerprint !== fingerprint) environment.image = await preparePackEnvironment(run, prefix, environment.image, agent.package);
+        if (prepareStopped && await imageCodexVersion(prefix, environment.image) !== codexRelease) {
+          throw new Error('The prepared worker Codex version does not match the requested version.');
+        }
         assertCurrent();
+        updateProgress.stage('replacing-worker');
         if (worker && worker.fingerprint !== fingerprint) {
           const details = await options.management.details(request.engineId, worker.id);
-          if (workspaces && (details.busy || details.tasks.some(task => ['accepted', 'running', 'unknown'].includes(task.status)))) {
+          if (workspaces && !prepareStopped && (details.busy || details.tasks.some(task => ['accepted', 'running', 'unknown'].includes(task.status)))) {
             throw new Error('Inspect unfinished execution before switching this Homie to its isolated workspace.');
           }
           if (worker.externalBusy) throw new Error('Wait for retained container commands before applying settings.');
+          if (prepareStopped) {
+            const current = await find(prefix, key);
+            if (!current || current.id !== worker.id || !['created', 'exited'].includes(current.state) || current.externalBusy) {
+              throw new Error('Worker state changed during preparation. Retry its update.');
+            }
+          }
           if (worker.state === 'running') {
             const previous = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
             const legacySettings = settingsDigest(agent, workspace, assignment, Number(previous.recoveryProtocol), previous.progressProtocol === 1, previous.workProtocol === 1, previous.integrationProtocol === 1, previous.candidateVerificationProtocol === 1, previous.applicationProtocol === 1, previous.applicationInspectionProtocol === 1, previous.conversationProtocol === 1, previous.activityProtocol === 1, false);
@@ -429,7 +469,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         }
         if (!worker) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
-          const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint, projectDocMaxBytes,
+          const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint, projectDocMaxBytes, codexVersion: codexRelease,
             ...(workspaces ? { executionWorkspace: execution, isolatedWorkspaceProtocol: 2, taskWorkspace: { key: taskKey } } : {}),
             ...profileConfiguration(agent), ...(options.flash ? { flashProtocol: 1 } : {}), codegraphProtocol: 1, permissionProtocol: 1, collaborationProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, activityProtocol: 1, inputQueueProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
           await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
@@ -455,6 +495,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
             '--pids-limit', '256', '--cpus', '2', '--memory', '2g', '--publish', '127.0.0.1::8787',
             '--label', `${marker}=specialist-v1`, '--label', `ai.cheshi.agent=${agent.id}`, '--label', `ai.cheshi.binding=${key}`,
             '--label', `ai.cheshi.configuration=${fingerprint}`,
+            '--label', `ai.cheshi.codex=${codexRelease}`,
             '--mount', `type=volume,src=${volume},dst=/agent`,
             '--mount', `type=bind,src=${execution},dst=/workspace${agent.permissions.fileWrite && !isIntakeWorkspace(taskKey) ? '' : ',readonly'}`,
             ...(workspaces ? ['--mount', `type=bind,src=${join(execution, '.git')},dst=/workspace/.git,readonly`] : []),
@@ -463,8 +504,10 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
             '--env', 'AGENT_RUNTIME_CONFIG=/agent/runtime.json', '--env', `AGENT_RUNTIME_REVISION=${fingerprint}`, ...environment.mounts, environment.image]);
           worker = await find(prefix, key);
           if (!worker) throw new Error('Created worker could not be verified.');
+          if (prepareStopped) return { details: await options.management.details(request.engineId, worker.id) };
           await run([...prefix, 'container', 'start', worker.id]);
         } else {
+          if (prepareStopped) return { details: await options.management.details(request.engineId, worker.id) };
           const wasStopped = worker.state !== 'running';
           if (wasStopped) await run([...prefix, 'container', 'start', worker.id]);
           const current = await options.management.details(request.engineId, worker.id);
@@ -568,6 +611,71 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     orchestration.notify(b); changed(b); return result;
   }
   return {
+    async codexVersions(version: string, apply = false, report?: CodexUpdateReporter): Promise<CodexWorkerVersions> {
+      return updateProgress.track(report, async () => {
+        const target = codexVersion(version);
+        const result: CodexWorkerVersions = { versions: [], pending: 0, waiting: 0, errors: [] };
+        const bindings = new Map([...orchestration.bindings(), ...(options.rooms?.bindings?.() ?? [])].map(b => [b.id, b]));
+        for (const b of bindings.values()) {
+          try {
+            updateProgress.stage('waiting-lock');
+            await workerOperations.run(() => lifecycle.exclusive(b, async () => {
+              updateProgress.stage('checking-workers');
+              const prefix = await local(b.engineId);
+              let worker = await find(prefix, `${b.agentId}-${digest(b.workspace).slice(0, 16)}`);
+              if (!worker) return;
+              const saved = agentRecord(JSON.parse(await readFile(runtimeConfigPath(b), 'utf8')));
+              let actual = installedVersions.get(worker.id) ?? (typeof saved.codexVersion === 'string' ? codexVersion(saved.codexVersion) : 'Unknown');
+              if (!installedVersions.has(worker.id)) {
+                actual = worker.state === 'running'
+                  ? parseCodexVersion(await run([...prefix, 'exec', worker.id, 'codex', '--version']))
+                  : await imageCodexVersion(prefix, worker.imageId);
+                installedVersions.set(worker.id, actual);
+              }
+              if (actual !== target && apply && ['created', 'exited'].includes(worker.state)) {
+                updateProgress.stage('preparing-worker');
+                if (selectedCodexVersion() !== target) throw new Error('Worker update target changed. Retry Update workers.');
+                const updated = await request(b.workspace, { action: 'start', engineId: b.engineId, agentId: b.agentId }, undefined, undefined, true);
+                if (updated.details) lifecycle.replaceStopped(b, updated.details);
+                worker = await find(prefix, `${b.agentId}-${digest(b.workspace).slice(0, 16)}`);
+                if (!worker || !['created', 'exited'].includes(worker.state)) throw new Error('Updated worker did not remain stopped.');
+                actual = await imageCodexVersion(prefix, worker.imageId);
+                if (actual !== target) throw new Error('Worker version verification failed.');
+                installedVersions.set(worker.id, actual);
+                changed(b);
+              }
+              if (actual !== target && apply && worker.state === 'running') {
+                assertHomiesAvailable(options.access);
+                const details = await options.management.details(b.engineId, worker.id);
+                const busy = worker.externalBusy || !details.ready || details.busy || details.error
+                  || details.tasks.some(t => ['accepted', 'running', 'unknown'].includes(t.status) || t.inputs?.some(i => i.pending === true));
+                if (busy) result.waiting++;
+                else {
+                  updateProgress.stage('preparing-worker');
+                  if (selectedCodexVersion() !== target) throw new Error('Worker update target changed. Retry Update workers.');
+                  const updated = await request(b.workspace, { action: 'start', engineId: b.engineId, agentId: b.agentId });
+                  if (updated.details) lifecycle.adopt(b, updated.details);
+                  worker = await find(prefix, `${b.agentId}-${digest(b.workspace).slice(0, 16)}`);
+                  if (!worker) throw new Error('Updated worker was not found.');
+                  updateProgress.stage('verifying-worker');
+                  actual = parseCodexVersion(await run([...prefix, 'exec', worker.id, 'codex', '--version']));
+                  installedVersions.set(worker.id, actual);
+                  if (actual !== target) throw new Error('Worker version verification failed.');
+                  orchestration.notify(b); changed(b);
+                }
+              }
+              if (actual !== target) result.pending++;
+              result.versions.push(actual);
+            }));
+          } catch (error) {
+            result.pending++;
+            result.errors.push(error instanceof DockerCommandError ? error.message : 'A worker could not be checked or updated.');
+          }
+        }
+        result.versions = [...new Set(result.versions)].sort();
+        return result;
+      });
+    },
     suspend: () => orchestration.suspend(),
     async assertIdle() {
       orchestration.assertIdle();
@@ -724,5 +832,5 @@ function profileConfiguration(agent: SpecialistAgent) {
 }
 
 function runtimeSettingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], projectDocMaxBytes = DEFAULT_PROJECT_DOC_MAX_BYTES, dependencies = (assignment.permissions ?? agent.permissions).commandExecution ? projectDependencies(workspace) : null) {
-  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}\ncodegraph=2\ndependency_volumes=1\nintake_recovery=1\ngoal_revision_guidance=1\nworker_git_guidance=1\nverification_source=1\ngoal_pause=1`);
+  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}\ncodegraph=2\ndependency_volumes=1\nintake_recovery=1\ngoal_revision_guidance=1\nworker_git_guidance=1\nverification_source=1\ngoal_pause=1\ndynamic_tool_activity=1\ngoal_verification_policy=1`);
 }

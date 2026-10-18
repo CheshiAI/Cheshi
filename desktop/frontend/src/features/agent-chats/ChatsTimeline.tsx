@@ -17,7 +17,7 @@ import { PermissionRequestCard } from './PermissionRequestCard';
 import { VerificationCard } from './VerificationReview';
 import { verificationReview, verificationReportContext, type VerificationReview } from './verificationReviewModel';
 import { ExecutionRecord } from './ExecutionRecord';
-import { continuesResponse, exchangeLabel, timelineContexts, timelineIndex } from './roomTimeline';
+import { continuesResponse, exchangeLabel, responseActions, timelineContexts, timelineIndex, type ResponseActions } from './roomTimeline';
 import type { TimelineWindow } from './roomTimelineLayout';
 import { ChatsMessageActions } from './ChatsMessageActions';
 import { TaskWorkspace } from './TaskWorkspace';
@@ -48,11 +48,12 @@ interface MessageRowProps extends Omit<ChatsTimelineProps, 'messages' | 'window'
   verification: VerificationReview | null;
   continuation: boolean;
   continues: boolean;
+  actions?: ResponseActions;
 }
 
 const MessageRow = memo(function MessageRow({ room, message, agents, api, sending, mutate,
   onReply, onRetry, onReviewFileChanges, onReviewVerification, context, label, workspace,
-  reviewFileContext, verification, continuation, continues }: MessageRowProps) {
+  reviewFileContext, verification, continuation, continues, actions }: MessageRowProps) {
   const name = (id: string | null) => id === 'user' ? 'You' : [...(room?.members ?? []), ...(room?.formerMembers ?? [])].find(m => m.id === id)?.name ?? id ?? '';
   const openFile = useCallback(async (href: string) => {
     if (!api) throw new Error('Worker file links are unavailable.');
@@ -61,15 +62,15 @@ const MessageRow = memo(function MessageRow({ room, message, agents, api, sendin
   const addressed = message.text.trimStart().startsWith('@')
     ? resolveChatRecipient(message.text, room?.members ?? []).recipient : null;
   const mention = addressed && addressed === message.recipient ? room?.members.find(member => member.id === addressed) : undefined;
-  const copyable = message.kind === 'message' && (!message.activity || message.activity.kind === 'message');
+  const copyable = actions?.text !== undefined;
   const streaming = message.activity?.kind === 'message' && message.activity.status === 'running';
   const responseStatus = streaming ? 'Writing…' : message.activity?.kind === 'message' && message.activity.status === 'unknown' ? 'Incomplete response' : null;
   return <LocalFileLinkContext.Provider value={message.sender === 'user' ? null : openFile}><article className={styles.message} aria-busy={streaming || undefined} data-message-id={message.id}
     data-continuation={continuation || undefined} data-continues={continues || undefined}
-    aria-label={continuation ? `${name(message.sender)} · continued response` : undefined} data-reply-action data-copy-action={copyable || undefined}>
-    <ChatsMessageActions text={message.text} copyable={copyable}
-      replyLabel={`Reply to ${(message.text || message.activity?.title || 'execution').slice(0, 80)}`}
-      onReply={() => onReply(message)} />
+    aria-label={continuation ? `${name(message.sender)} · continued response` : undefined} data-reply-action={!!actions || undefined} data-copy-action={copyable || undefined}>
+    {actions && <ChatsMessageActions text={actions.text ?? ''} copyable={copyable}
+      replyLabel={`Reply to ${(actions.reply.text || actions.reply.activity?.title || 'execution').slice(0, 80)}`}
+      onReply={() => onReply(actions.reply)} />}
     <div className={styles.messageBody}>
       {!continuation && <ChatMessageLabel author={message.sender === 'user' ? 'user' : 'assistant'} name={message.sender === 'user' ? undefined : name(message.sender)}
         avatar={message.sender === 'user' ? undefined : <AgentAvatar id={message.sender} avatar={agents.find(a => a.id === message.sender)?.avatar} />}
@@ -104,6 +105,7 @@ export const ChatsTimeline = memo(function ChatsTimeline({ messages, window, ...
   const { room, agents } = props;
   const index = useMemo(() => timelineIndex(messages), [messages]);
   const contexts = useMemo(() => timelineContexts(messages, index), [messages, index]);
+  const actions = useMemo(() => responseActions(messages), [messages]);
   const workspaceMessages = useMemo(() => {
     const seen = new Set<string>(), ids = new Set<string>();
     for (const message of messages) {
@@ -122,7 +124,7 @@ export const ChatsTimeline = memo(function ChatsTimeline({ messages, window, ...
       const exchange = index.exchange(message);
       const reviewFileContext = verificationReportContext(message, messages, agents, index);
       const verification = verificationReview(message, exchange, reviewFileContext, index);
-      return <MessageRow key={message.id} {...props} message={message} context={contexts.get(message.id)}
+      return <MessageRow key={message.id} {...props} message={message} context={contexts.get(message.id)} actions={actions.get(message.id)}
         continuation={continuesResponse(messages[position - 1], message)}
         continues={continuesResponse(message, messages[position + 1])}
         label={exchangeLabel(message, messages, index)} workspace={workspaceMessages.has(message.id)}

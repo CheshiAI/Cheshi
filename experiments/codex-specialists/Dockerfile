@@ -7,7 +7,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 ENV BUN_INSTALL=/opt/bun
 ENV PATH=/opt/bun/bin:$PATH
-RUN bun add --global @openai/codex@0.159.3 \
+ARG CODEX_VERSION=0.163.0
+RUN bun add --global @openai/codex@${CODEX_VERSION} \
     && codex --version \
     && mkdir -p /agent/codex /agent/state /agent/memory /agent/artifacts \
     && chown -R node:node /agent

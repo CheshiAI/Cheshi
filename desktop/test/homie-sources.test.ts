@@ -250,6 +250,57 @@ test('an edit made during worker preparation remains pending after the older sna
   });
 });
 
+test('Python caches remain on disk without changing the package or blocking worker preparation after restart', async () => {
+  await fixture(async f => {
+    await f.sources.prepare(f.workspace, f.agent.id);
+    await mkdir(join(f.repository, 'scripts'));
+    await writeFile(join(f.repository, 'scripts', 'check.py'), 'print("ready")\n');
+    const original = await f.sources.prepare(f.workspace, f.agent.id);
+    await f.sources.applied(f.workspace, f.agent.id, 'docker:test', original.hash);
+    const cache = Buffer.from([0xf3, 0x0d, 0x0a, 0, 0xff]);
+    const paths = ['scripts/__pycache__/check.cpython-314.pyc', 'scripts/check.pyc', 'scripts/check.pyo',
+      'skills/example/__pycache__/nested/generated.bin', 'resources/__pycache__/resource.pyc'];
+    for (const name of paths) {
+      await mkdir(join(f.repository, name, '..'), { recursive: true });
+      await writeFile(join(f.repository, name), cache);
+    }
+    expect((await readHomieSource(f.repository)).pack).toEqual(original.pack);
+    expect((await f.sources.status(f.workspace, f.agent.id, 'docker:test')).phase).toBe('applied');
+    const restarted = new HomieSources({ directory: join(f.data, 'sources'), registry: f.registry, repositories: f.repositories });
+    expect(await restarted.prepare(f.workspace, f.agent.id)).toEqual(original);
+    for (const name of paths) expect(await readFile(join(f.repository, name))).toEqual(cache);
+  });
+});
+
+test('invalid UTF-8 source reports its relative path and still prevents worker preparation', async () => {
+  await fixture(async f => {
+    await f.sources.prepare(f.workspace, f.agent.id);
+    await mkdir(join(f.repository, 'scripts'));
+    await writeFile(join(f.repository, 'scripts', 'broken.py'), Buffer.from([0xff, 0xfe]));
+    await rejected(f.sources.prepare(f.workspace, f.agent.id), 'scripts/broken.py:');
+    const status = await f.sources.status(f.workspace, f.agent.id);
+    expect(status.phase).toBe('invalid');
+    expect(status.message).toContain('scripts/broken.py:');
+    expect(status.message).toContain('UTF-8');
+  });
+});
+
+test('cache names do not bypass symlink checks or satisfy explicitly declared resources', async () => {
+  await fixture(async f => {
+    await f.sources.prepare(f.workspace, f.agent.id);
+    await mkdir(join(f.repository, 'scripts'));
+    const cache = join(f.repository, 'scripts', '__pycache__');
+    await createSymbolicLink(f.base, cache);
+    await rejected(f.sources.prepare(f.workspace, f.agent.id), 'symbolic');
+    await rm(cache);
+    await writeFile(join(f.repository, 'scripts', 'check.pyc'), Buffer.from([0xff]));
+    const manifest = JSON.parse(await readFile(join(f.repository, 'agent.json'), 'utf8'));
+    await writeFile(join(f.repository, 'agent.json'), JSON.stringify({ ...manifest,
+      resources: { files: ['scripts/check.pyc'], programs: [] } }));
+    await rejected(f.sources.prepare(f.workspace, f.agent.id), 'scripts/check.pyc: declared asset is missing');
+  });
+});
+
 test('project rule edits and removal invalidate applied state without migrating the repository again', async () => {
   await fixture(async f => {
     const original = await f.sources.prepare(f.workspace, f.agent.id);

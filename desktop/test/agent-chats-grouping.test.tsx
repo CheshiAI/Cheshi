@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { act } from 'react';
 import type { RoomMessage } from '../shared/agent-chats';
 import { ChatsTimeline } from '../frontend/src/features/agent-chats/ChatsTimeline';
-import { continuesResponse } from '../frontend/src/features/agent-chats/roomTimeline';
+import { continuesResponse, responseActions } from '../frontend/src/features/agent-chats/roomTimeline';
 import { MAX_TIMELINE_ROWS, RoomTimelineLayout } from '../frontend/src/features/agent-chats/roomTimelineLayout';
 import { withDOM } from './agent-chats-test-dom';
 
@@ -66,18 +66,25 @@ test('one header covers consecutive text and tools; another speaker, task or tur
   });
 });
 
-test('streamed continuation retains its element, status and per-message reply target', async () => {
+test('streamed continuation retains its element and status while header actions target its latest text', async () => {
   const first = receipt('first'), answer = receipt('answer', { text: 'Partial response' });
   answer.activity = { ...answer.activity!, kind: 'message', text: answer.text, status: 'running', final: true };
   let replied: RoomMessage | undefined;
   await withDOM(async ui => {
+    const copied: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { copied.push(text); } } });
     const render = (message: RoomMessage) => ui.render(timeline([first, message], 0, 2, value => { replied = value; }));
     await render(answer);
     const element = row('answer');
     expect(document.querySelectorAll('time')).toHaveLength(1);
     expect(element?.getAttribute('aria-busy')).toBe('true');
     expect(element?.textContent).toContain('Writing…');
-    expect(element?.hasAttribute('data-copy-action')).toBe(true);
+    expect(element?.hasAttribute('data-copy-action')).toBe(false);
+    expect(element?.querySelector('button')).toBeNull();
+    expect(row('first')?.hasAttribute('data-copy-action')).toBe(true);
+    expect(document.querySelectorAll('button[aria-label="Copy"]')).toHaveLength(1);
+    await ui.click('Copy');
+    expect(copied).toEqual(['Partial response']);
     await ui.click('Reply to Partial response');
     expect(replied?.id).toBe('answer');
     const completed = { ...answer, text: 'Complete response', activity: { ...answer.activity!, status: 'completed' as const } };
@@ -86,10 +93,61 @@ test('streamed continuation retains its element, status and per-message reply ta
     expect(element?.textContent).toContain('Complete response');
     expect(element?.textContent).not.toContain('Writing…');
     expect(element?.hasAttribute('aria-busy')).toBe(false);
+    await ui.click('Copy');
+    expect(copied).toEqual(['Partial response', 'Complete response']);
     await render({ ...completed, status: 'unknown', activity: { ...completed.activity, status: 'unknown' } });
     expect(element?.textContent).toContain('Incomplete response');
     expect(element?.textContent).toContain('unknown');
   });
+});
+
+test('one response action set copies all raw text across tools and replies to the last text receipt', async () => {
+  const text = (id: string, value: string) => {
+    const message = receipt(id, { text: value });
+    return { ...message, activity: { ...message.activity!, kind: 'message' as const, text: value } };
+  };
+  const intro = text('intro', '  Working…\n'), answer = text('answer', '**Result**\n\n```ts\n1 + 1\n```\n');
+  const other = { ...text('other', 'Separate turn'), activity: { ...answer.activity!, turnId: 'other-turn' } };
+  const messages = [intro, receipt('tool'), receipt('tool-two'), answer, other];
+  await withDOM(async ui => {
+    const writes: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (value: string) => { writes.push(value); } } });
+    let replied: RoomMessage | undefined;
+    await ui.render(timeline(messages, 0, messages.length, value => { replied = value; }));
+    expect(document.querySelectorAll('button[aria-label="Copy"]')).toHaveLength(2);
+    expect(document.querySelectorAll('button[aria-label^="Reply to"]')).toHaveLength(2);
+    for (const id of ['tool', 'tool-two', 'answer']) {
+      expect(row(id)?.querySelector('button[aria-label^="Reply to"],button[aria-label="Copy"]')).toBeNull();
+    }
+    await act(async () => row('intro')!.querySelector<HTMLButtonElement>('button[aria-label="Copy"]')!.click());
+    expect(writes).toEqual([`${intro.text}\n\n${answer.text}`]);
+    await act(async () => row('intro')!.querySelector<HTMLButtonElement>('button[aria-label^="Reply to"]')!.click());
+    expect(replied).toBe(answer);
+    // A clipped render must neither truncate copied text nor invent another toolbar.
+    await ui.render(timeline(messages, 0, 2));
+    await act(async () => row('intro')!.querySelector<HTMLButtonElement>('button[aria-label="Copied"]')!.click());
+    expect(writes.at(-1)).toBe(`${intro.text}\n\n${answer.text}`);
+    await ui.render(timeline(messages, 2, 4));
+    expect(document.querySelectorAll('button[aria-label="Copy"],button[aria-label^="Reply to"]')).toHaveLength(0);
+  });
+});
+
+test('turn actions preserve explicit boundaries, empty text and non-copyable card behavior', () => {
+  const head = receipt('head', { text: 'First' });
+  head.activity = { ...head.activity!, kind: 'message' };
+  const continuation = receipt('continued', { text: 'Second', activity: { ...head.activity!, id: 'continued' } });
+  const boundaries: Partial<RoomMessage>[] = [{ roomId: 'other' }, { sender: 'other' }, { taskId: 'other' },
+    { activity: undefined }, { activity: { ...head.activity!, turnId: 'new' } }, { replyTo: 'new' }, { kind: 'permission_request' }];
+  for (const boundary of boundaries) {
+    const actions = responseActions([head, { ...continuation, ...boundary }]);
+    expect(actions.size).toBe(2);
+    expect(actions.get('head')?.text).toBe('First');
+  }
+  const actions = responseActions([head, continuation]);
+  expect(actions.size).toBe(1);
+  expect(actions.get('head')?.text).toBe('First\n\nSecond');
+  expect(responseActions([receipt('tool')]).get('tool')?.text).toBeUndefined();
+  expect(responseActions([receipt('empty', { activity: undefined, text: '' })]).get('empty')?.text).toBe('');
 });
 
 test('grouped command cards retain independent expansion and output across updates', async () => {

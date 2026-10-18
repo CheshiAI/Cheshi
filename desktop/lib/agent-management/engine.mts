@@ -1,6 +1,6 @@
 import type { AgentAction, AgentEngineInfo, ManagedAgent } from '../../shared/agent-management.ts';
 
-export interface RuntimeAgent extends ManagedAgent { endpoint: string | null }
+export interface RuntimeAgent extends ManagedAgent { endpoint: string | null; startError?: string }
 /** Provider lifecycle (starting a VM, installation, image builds) stays outside this boundary. */
 export interface AgentEngine {
   kind: string;

@@ -4,6 +4,7 @@ import { tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 
 export interface HostServiceOptions {
+  dependencyEnvironment?: { HOMIE_SERVICE_NODE: string; HOMIE_SERVICE_RUNTIME_DIR: string };
   key: string; owner: string; fingerprint: string;
   executable: string; script: string; sourceDirectory: string;
   files: readonly { path: string; content: string }[];
@@ -70,7 +71,7 @@ export class HostToolServices {
       assertService(!this.disposed && options.valid(), 'Host service permission changed.');
       const child = spawn(options.executable, [join(directory, options.script)], {
         cwd: directory, shell: false, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'],
-        env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: userInfo().homedir, TMPDIR: tmpdir(),
+        env: { ...options.dependencyEnvironment, PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: userInfo().homedir, TMPDIR: tmpdir(),
           LANG: 'en_US.UTF-8', PYTHONDONTWRITEBYTECODE: '1', PYTHONNOUSERSITE: '1', HOMIE_SERVICE_SOURCE_DIR: options.sourceDirectory },
       });
       let closed!: () => void;

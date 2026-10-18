@@ -41,7 +41,7 @@ function health(value: unknown) {
 function assertIdle(busy: boolean): void {
   if (busy) throw new Error('The worker is busy. Wait for its task to finish before stopping or restarting.');
 }
-function publicAgent({ endpoint: _endpoint, ...agent }: RuntimeAgent) { return agent; }
+function publicAgent({ endpoint: _endpoint, startError: _startError, ...agent }: RuntimeAgent) { return agent; }
 
 export function createAgentManagementService(options: { engines: AgentEngine[]; read?: ReadWorker;
   now?(): number;
@@ -92,7 +92,7 @@ export function createAgentManagementService(options: { engines: AgentEngine[]; 
       const agent = await engine.inspect(engineId, parseAgentId(agentId));
       const result: AgentDetails = { agent: publicAgent(agent), ready: false, busy: false, authenticated: null,
         threadId: null, error: null, logs: '', tasks: [] };
-      const notices: string[] = [];
+      const notices: string[] = agent.startError ? [agent.startError] : [];
       let observedHealth: WorkerStatusObservation['health'];
       const logs = engine.logs(engineId, agent.id).then(value => { result.logs = value; }, () => { notices.push('Could not read worker logs.'); });
       if (agent.state === 'running' && agent.endpoint) {

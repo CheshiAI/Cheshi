@@ -8,6 +8,13 @@ export class DockerCommandError extends Error {
   }
 }
 
+/** Docker state errors can include private paths and command text; return fixed guidance only. */
+export function containerStartFailure(diagnostic: string): string {
+  if (/apparmor/i.test(diagnostic)) return 'Worker start failed: the AppArmor security profile is missing or could not be applied. For the default Colima engine, open Settings > Homies and use Prepare Homies. Other engines require their own security profile setup.';
+  if (/seccomp/i.test(diagnostic)) return 'Worker start failed: the container security policy could not be applied. Check the Docker engine security configuration.';
+  return 'Worker start failed in Docker. Inspect the container diagnostics and retry after correcting the engine configuration.';
+}
+
 /** Classify diagnostics without returning stderr, stdin, command arguments or credentials. */
 export function dockerCommandError(error: ExecFileException, stderr: string, args: string[]): DockerCommandError {
   if (error.code === 'ENOENT') return new DockerCommandError('cli-missing', 'Docker CLI was not found. Install Docker CLI and try again.');
@@ -16,6 +23,9 @@ export function dockerCommandError(error: ExecFileException, stderr: string, arg
   // Match Docker transport diagnostics, not a build step or container command's output.
   const offset = args[0] === '--host' || args[0] === '--context' ? 2 : 0;
   const command = args[offset];
+  if (command === 'container' && ['start', 'restart'].includes(args[offset + 1] ?? '') && /apparmor|seccomp/i.test(stderr)) {
+    return new DockerCommandError('command-failed', containerStartFailure(stderr));
+  }
   const daemonQuery = command === 'container' && ['ls', 'inspect'].includes(args[offset + 1] ?? '');
   const diagnostic = stderr.trim();
   const contextName = command === 'context' && args[offset + 1] === 'inspect' && args.length === offset + 3

@@ -3,6 +3,7 @@ import { mkdtemp, realpath, rm, readdir, readFile, writeFile } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HostToolRegistration } from '../lib/agent-management/host-tool-registration.mts';
+import type { HostDependencyProvider } from '../lib/agent-management/host-service-dependencies.mts';
 import type { HostPythonProvider } from '../lib/agent-management/host-python-runtime.mts';
 import { parseAgentPackage } from '../shared/agent-package';
 import { officialAgentPackages } from '../lib/agent-management/packages.mts';
@@ -16,7 +17,7 @@ async function fails(operation: Promise<unknown>, message: string) {
   try { await operation; } catch (reason) { error = reason; }
   expect(error).toBeInstanceOf(Error); expect((error as Error).message).toContain(message);
 }
-async function fixture() {
+async function fixture(withDependencies = false) {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'python-registration-')));
   // Only interpreter acquisition is replaced; grant, execution and service paths are real.
   const executable = await realpath(process.execPath);
@@ -24,22 +25,32 @@ async function fixture() {
     matches: (path, id, version) => path === executable && id === 'managed-fixture' && version === '3.14.8', dispose() {} };
   const tools = parseCustomTools(['first', 'second'].map(name => ({ name, description: name, enabled: true,
     runtime: 'python3', runtimeVersion: '3.14.8', execution: 'host', parameters: [], script: 'scripts/run.ts',
-    service: { name: 'fixture', script: 'scripts/service.ts' } })));
+    service: { name: 'fixture', script: 'scripts/service.ts', ...(withDependencies ? { npmLock: 'resources/deps/package-lock.json' } : {}) } })));
+  const lock = JSON.stringify({ lockfileVersion: 3, packages: {
+    '': { dependencies: { fixture: '1.0.0' } },
+    'node_modules/fixture': { version: '1.0.0', resolved: 'https://registry.npmjs.org/fixture/-/fixture-1.0.0.tgz', integrity: 'sha512-YWJj' },
+  } });
+  let preparations = 0, healthy = true;
+  const dependencies: HostDependencyProvider = {
+    prepare: async (_lock, signal, progress) => { signal.throwIfAborted(); preparations++; progress('Downloading fixture…'); return { node: executable, directory, id: 'fixture-deps' }; },
+    check: async () => healthy,
+  };
   const pack = parseAgentPackage({ ...(await officialAgentPackages())[0], tools, resources: { programs: [], files: [
-    { path: 'scripts/run.ts', content: 'console.log(JSON.stringify({result:{executed:true,userSite:process.env.PYTHONNOUSERSITE}}));' },
+    ...(withDependencies ? [{ path: 'resources/deps/package-lock.json', content: lock }] : []),
+    { path: 'scripts/run.ts', content: 'console.log(JSON.stringify({result:{executed:true,userSite:process.env.PYTHONNOUSERSITE,node:process.env.HOMIE_SERVICE_NODE}}));' },
     { path: 'scripts/service.ts', content: `import {createInterface} from 'node:readline';
 createInterface({input:process.stdin}).on('line',()=>console.log(JSON.stringify({ok:process.env.PYTHONNOUSERSITE==='1'})));` },
   ] } });
   const agent: SpecialistAgent = { id: 'fixture', revision: 1, createdAt: '', updatedAt: '', name: 'fixture', role: 'custom', instructions: 'fixture',
     accountId: 'account', permissions: { fileWrite: false, commandExecution: true }, model: null, reasoningEffort: null, serviceTier: null,
     assignments: [{ workspaceRoot: directory, instructions: '' }], package: pack };
-  const service = new HostToolRegistration(join(directory, 'state'), () => agent, async () => directory, python);
+  const service = new HostToolRegistration(join(directory, 'state'), () => agent, async () => directory, python, dependencies);
   const scope = { workspace: directory, agentId: agent.id, accountId: agent.accountId! };
   let selections = 0, confirmations = 0;
   const ui = { selectExecutable: async () => { selections++; throw new Error('Python picker must not open'); }, confirm: async () => { confirmations++; return true; } };
   const request = { agentId: agent.id, tool: tools[0]!.name };
   const execute = () => service.execute(scope, agent.package!.tools![0]!, {}, new AbortController().signal, () => true);
-  return { directory, python, service, agent, tools, ui, request, execute, counts: () => ({ selections, confirmations }),
+  return { directory, python, dependencies, preparations: () => preparations, damage: () => { healthy = false; }, service, agent, tools, ui, request, execute, counts: () => ({ selections, confirmations }),
     close: async () => { service.dispose(); await Bun.sleep(100); await rm(directory, { recursive: true, force: true }); } };
 }
 
@@ -121,5 +132,42 @@ test('managed Python declarations survive parsing and cannot be applied to conta
       expect(() => parseCustomTools([{ ...f.tools[0], ...patch }])).toThrow('runtimeVersion');
     }
     expect(() => parseAgentPackage({ ...f.agent.package, tools: [f.tools[0], { ...f.tools[1], runtimeVersion: '3.15.0' }] })).toThrow('must match');
+  } finally { await f.close(); }
+});
+
+
+test('managed dependencies install only after approval and a damaged runtime prevents execution', async () => {
+  const f = await fixture(true);
+  try {
+    await f.service.request(f.directory, { ...f.request, action: 'allow' }, { ...f.ui, confirm: async () => false });
+    expect(f.preparations()).toBe(0);
+    const status = await f.service.request(f.directory, { ...f.request, action: 'allow' }, f.ui);
+    expect(status.allowed).toBe(true);
+    expect(f.preparations()).toBe(1);
+    expect((await f.execute()).data).toMatchObject({ executed: true, node: await realpath(process.execPath) });
+    f.damage();
+    expect(await f.service.request(f.directory, { ...f.request, action: 'status' })).toMatchObject({
+      allowed: false, state: 'preparation-required', reason: 'dependencies-unavailable',
+    });
+    expect(f.preparations()).toBe(1);
+    await fails(f.execute(), 'dependencies are missing or changed');
+  } finally { await f.close(); }
+});
+
+test('revocation while downloading dependencies cancels preparation without granting access', async () => {
+  const f = await fixture(true), started = createDeferred<void>();
+  f.dependencies.prepare = async (_lock, signal, progress) => {
+    progress('Downloading fixture…'); started.resolve();
+    await new Promise<void>((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('preparation canceled')), { once: true }));
+    throw new Error('unexpected completion');
+  };
+  try {
+    const pending = fails(f.service.request(f.directory, { ...f.request, action: 'allow' }, f.ui), 'preparation canceled');
+    await started.promise;
+    expect((await f.service.request(f.directory, { ...f.request, action: 'status' })).preparation).toBe('Downloading fixture…');
+    await f.service.request(f.directory, { ...f.request, action: 'revoke' });
+    await pending;
+    expect((await f.service.request(f.directory, { ...f.request, action: 'status' })).allowed).toBe(false);
+    await fails(f.execute(), 'Allow');
   } finally { await f.close(); }
 });

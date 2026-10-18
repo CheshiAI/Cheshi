@@ -114,6 +114,10 @@ export class WorkerLifecycle {
     this.save(binding, { phase: 'running', stopReason: undefined, details: this.savedDetails(details), nextWakeAt: null, failures: 0, retryAt: 0, error: null });
     this.reconciled.add(binding.id); this.idle.delete(binding.id);
   }
+  replaceStopped(binding: Binding, details: AgentDetails) {
+    if (!['created', 'exited'].includes(details.agent.state)) throw new Error('Replacement worker must remain stopped.');
+    if (this.entry(binding)) this.save(binding, { details: this.savedDetails(details) });
+  }
   private remember(binding: Binding, details: AgentDetails, retryRecovered = false) {
     this.save(binding, { details: this.savedDetails(details),
       ...(retryRecovered ? { failures: 0, retryAt: 0, error: null } : {}) });

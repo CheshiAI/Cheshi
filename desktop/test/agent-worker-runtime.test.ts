@@ -13,7 +13,16 @@ import type { AgentDetails } from '../shared/agent-management.ts';
 import { specialistInput } from './agent-registry-fixtures.ts';
 import { assertFailure } from './agent-platform-fixtures.ts';
 
-async function fixture(realContext?: string) {
+async function runUpdateFixtureDocker(args: string[], input?: string) {
+  const child = Bun.spawn(['docker', ...args], { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
+  if (input) { child.stdin.write(input); await child.stdin.flush(); }
+  child.stdin.end();
+  const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+  if (code) throw new Error(`Fixture Docker ${args.slice(2, 4).join(' ')}: ${stderr}`);
+  return stdout;
+}
+
+async function fixture(realContext?: string, codex?: { version(): string; images: Record<string, string> }) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'cheshi-worker-runtime-')));
   const source = join(root, 'source'), home = join(root, 'account'); mkdirSync(source); mkdirSync(home);
   await git(source, ['init', '-b', 'main']);
@@ -33,11 +42,14 @@ async function fixture(realContext?: string) {
     calls.push(args);
     if (realContext) {
       if (args[2] === 'build') return ''; // Use the installed worker image; no network or model requests.
+      if (codex && args[2] === 'image' && args[3] === 'tag') return '';
+      if (codex) args = args.map(arg => codex.images[arg] ?? arg);
+      const command = codex ? runUpdateFixtureDocker : runDocker;
       if (args[2] === 'container' && args[3] === 'create') {
-        const result = await runDocker([...args.slice(0, -1), '--entrypoint', 'bun', args.at(-1)!, '-e', 'setInterval(()=>{},1000)'], stdin);
+        const result = await command([...args.slice(0, -1), '--entrypoint', 'bun', args.at(-1)!, '-e', 'setInterval(()=>{},1000)'], stdin);
         details.agent.id = result.trim(); return result;
       }
-      return runDocker(args, stdin);
+      return command(args, stdin);
     }
     if (args[0] === 'context') return JSON.stringify([{ Endpoints: { docker: { Host: 'unix:///fixture/docker.sock' } } }]);
     if (args[2] === 'exec' || (args[2] === 'run' && stdin)) {
@@ -61,6 +73,7 @@ async function fixture(realContext?: string) {
     return id;
   };
   const options = { directory: join(root, 'runtime'), workspaceDirectory: join(root, 'platform'),
+    ...(codex ? { getCodexVersion: codex.version } : {}),
     buildContext: fileURLToPath(new URL('../../experiments/codex-specialists', import.meta.url)), registry, run,
     checkProjectEnvironment: async (_engine: string, _prefix: string[], workspace: string) => { prepared.push(workspace); },
     prepareCodeGraph: async (workspace: string) => { prepared.push(workspace); },
@@ -262,3 +275,44 @@ async function exerciseTaskSwitch(realContext?: string) {
 
 test('task transitions replace only the container mount, preserve its volume, and retain task-specific baselines', () => exerciseTaskSwitch(), 30_000);
 test.if(Boolean(context))('real Docker switches independent task worktrees and resumes the original sandbox', () => exerciseTaskSwitch(context), 90_000);
+
+const updateContext = process.env.CHESHI_CODEX_UPDATE_DOCKER_CONTEXT;
+const updateOldImage = process.env.CHESHI_CODEX_UPDATE_OLD_IMAGE;
+const updateNewImage = process.env.CHESHI_CODEX_UPDATE_NEW_IMAGE;
+test.if(Boolean(updateContext && updateOldImage && updateNewImage))('real stopped worker upgrades Codex immediately while retaining its private data and never starting', async () => {
+  let version = '0.159.3';
+  const f = await fixture(updateContext, { version: () => version, images: {
+    'cheshi-specialist:1-codex-0.159.3': updateOldImage!, 'cheshi-specialist:1-codex-0.163.0': updateNewImage!,
+  } });
+  const prefix = ['--context', updateContext!];
+  let volume: string | undefined;
+  try {
+    await f.runtime.request(f.source, { ...f.input, action: 'start' });
+    const oldId = f.details.agent.id;
+    volume = f.calls.find(args => args[3] === 'create')?.find(arg => arg.startsWith('type=volume,src=cheshi-agent-'))?.split(',')[1]?.slice(4);
+    expect(volume).toBeDefined();
+    await runDocker([...prefix, 'exec', oldId, 'bun', '-e', "require('node:fs').writeFileSync('/agent/state/update-retained.json',JSON.stringify({task:'saved-task',status:'unknown'}))"]);
+    await runDocker([...prefix, 'container', 'stop', oldId]);
+    f.details.agent.state = 'exited';
+    f.details.tasks = [{ id: 'saved-task', status: 'unknown', prompt: 'Retained', output: '', error: null, createdAt: '2026-10-19' }];
+    version = '0.163.0';
+    const before = f.calls.length;
+    expect((await f.runtime.codexVersions(version)).versions).toEqual(['0.159.3']);
+    const result = await f.runtime.codexVersions(version, true);
+    expect(result).toMatchObject({ versions: ['0.163.0'], pending: 0, waiting: 0, errors: [] });
+    expect(f.details.agent.id).not.toBe(oldId);
+    expect((await runDocker([...prefix, 'container', 'inspect', '--format', '{{.State.Status}}', f.details.agent.id])).trim()).toBe('created');
+    expect(f.calls.slice(before).some(args => args[2] === 'container' && ['start', 'restart'].includes(args[3]!))).toBe(false);
+    const retained = await runDocker([...prefix, 'run', '--rm', '--network', 'none', '--read-only', '--user', '0:0',
+      '--cap-drop', 'ALL', '--cap-add', 'DAC_READ_SEARCH', '--security-opt', 'no-new-privileges:true',
+      '--mount', `type=volume,src=${volume},dst=/agent,readonly`, '--entrypoint', 'bun', updateNewImage!, '-e',
+      "process.stdout.write(require('node:fs').readFileSync('/agent/state/update-retained.json','utf8'))"]);
+    expect(JSON.parse(retained)).toEqual({ task: 'saved-task', status: 'unknown' });
+  } finally {
+    await f.runtime.dispose();
+    if (f.details.agent.id !== 'a'.repeat(64)) await runDocker([...prefix, 'container', 'rm', '--force', f.details.agent.id]);
+    volume ??= f.calls.flat().find(arg => arg.startsWith('type=volume,src=cheshi-agent-'))?.split(',')[1]?.slice(4);
+    if (volume) await runDocker([...prefix, 'volume', 'rm', volume]);
+    await f.dispose();
+  }
+}, 120_000);

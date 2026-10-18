@@ -1,6 +1,6 @@
 import { ChatImagePreview } from './ChatImagePreview';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
-import { FolderOpen, Image as ImageIcon } from 'lucide-react';
+import { BookOpen, FolderOpen, Image as ImageIcon } from 'lucide-react';
 import { Children, createContext, useContext, useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform, type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -18,6 +18,7 @@ import { chatImportMarkdown, parseChatImports } from '../../../../shared/chat-im
 import { ChatImportAttachments, ChatImportContext } from './ChatImportAttachments';
 import importStyles from './ChatImportAttachments.module.css';
 import { remarkLocalPaths } from './remarkLocalPaths';
+import { remarkFlashSourceHeading } from './remarkFlashSourceHeading';
 
 export const LocalFileLinkContext = createContext<((href: string) => Promise<void>) | null>(null);
 
@@ -184,6 +185,13 @@ function LocalImageParagraph({ children }: { children?: ReactNode }) {
   return imagesOnly ? <>{content}</> : <p>{content}</p>;
 }
 
+function markdownParagraph({ node, children }: ComponentPropsWithoutRef<'p'> & ExtraProps, localImages = false) {
+  if (node?.properties['data-flash-source-heading'] === true) return <p className={markdownStyles.sourceHeading} role="heading" aria-level={2}>
+    <BookOpen aria-hidden="true" className={markdownStyles.sourceLinkIcon} /><span>출처</span>
+  </p>;
+  return localImages ? <LocalImageParagraph>{children}</LocalImageParagraph> : <p>{children}</p>;
+}
+
 function markdownCodeBlock({ node, children }: ComponentPropsWithoutRef<'pre'> & ExtraProps, reviewFileContext?: string) {
   const code = node?.children.find(child => child.type === 'element' && child.tagName === 'code');
   if (!code || code.type !== 'element') return <pre>{children}</pre>;
@@ -198,6 +206,7 @@ function markdownCodeBlock({ node, children }: ComponentPropsWithoutRef<'pre'> &
 }
 
 const markdownComponents: Components = {
+  p: props => markdownParagraph(props),
   a: ({ href, children }) => <MessageAnchor href={href ?? ''}>{children}</MessageAnchor>,
   // Markdown images do not initiate network or filesystem access. Local previews
   // are available only through the explicit attachment marker and desktop bridge.
@@ -213,7 +222,7 @@ const markdownComponents: Components = {
 
 const localImageComponents: Components = {
   ...markdownComponents,
-  p: LocalImageParagraph,
+  p: props => markdownParagraph(props, true),
 };
 
 const descriptionComponents: Components = {
@@ -241,7 +250,7 @@ export function MessageContent({ renderLocalImages = false, text, presentation =
     if (node?.position?.start.offset === mentionOffset && typeof first === 'string' && first.startsWith(mentionLabel)) {
       parts.splice(0, 1, <span key="mention" className={markdownStyles.mention} data-mention-id={mention.id}>{mentionLabel}</span>, first.slice(mentionLabel.length));
     }
-    return renderLocalImages ? <LocalImageParagraph>{parts}</LocalImageParagraph> : <p>{parts}</p>;
+    return markdownParagraph({ node, children: parts }, renderLocalImages);
   } } : components;
   return (
     <ChatImportContext.Provider value={imported?.imports ?? []}>
@@ -251,7 +260,7 @@ export function MessageContent({ renderLocalImages = false, text, presentation =
         renderFile={(attachment, children) => <LocalFileAnchor href={attachment.path}>{children}</LocalFileAnchor>} />}
       <ReactMarkdown
         components={mentionComponents}
-        remarkPlugins={[remarkGfm, remarkLocalPaths]}
+        remarkPlugins={description ? [remarkGfm, remarkLocalPaths] : [remarkGfm, remarkLocalPaths, remarkFlashSourceHeading]}
         urlTransform={(url, key) => key === 'href' && (flashSourceTarget(url) || localFileLinkPath(url)) ? url : defaultUrlTransform(url)}
       >
         {imported ? chatImportMarkdown(text, imported.imports) : text}

@@ -15,6 +15,7 @@ export interface SetupCommandOptions {
   timeout: number;
   env: NodeJS.ProcessEnv;
   output?: (text: string) => void;
+  input?: string;
 }
 export type SetupCommand = (file: string, args: string[], options: SetupCommandOptions) => Promise<string>;
 export class SetupCommandError extends Error {}
@@ -35,5 +36,6 @@ export const runSetupCommand: SetupCommand = (file, args, options) => new Promis
   for (const stream of [child.stdout, child.stderr]) {
     stream?.setEncoding('utf8'); stream?.on('data', (text: string) => options.output?.(text));
   }
-  child.stdin?.end();
+  child.stdin?.on('error', () => {});
+  child.stdin?.end(options.input);
 });

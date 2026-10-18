@@ -65,6 +65,7 @@
 .markdown a { color: var(--sub-text); text-decoration: none; }
 .markdown a:is(:hover, :focus-visible) { color: var(--dropdown-selection-text); text-decoration: underline; }
 .sourceLink { cursor: pointer; }
+.markdown .sourceHeading { color: var(--sub-text); font-size: 10px; font-weight: 400; }
 .sourceLink[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
 .sourceLinkIcon {
   width: var(--icon-size-default);

@@ -83,6 +83,18 @@ test('manual stop persists across restart, and uncertain shutdown is never repor
   await f.rest(); f.setNow(300000); await f.rest(); expect(f.lifecycle.cached(f.binding)).toBeNull();
   expect(f.lifecycle.nextCheck(f.binding)).toBe(420000);
 });
+test('offline replacement retains manual stop and saved task details across restart', async () => {
+  const f = fixture(); await f.connect();
+  await f.lifecycle.manual('docker:test', 'container', 'stop', async () => { f.setRunning(false); });
+  const replacement = { ...f.details, agent: { ...f.details.agent, id: 'replacement', state: 'created' } };
+  f.lifecycle.replaceStopped(f.binding, replacement);
+  f.restart();
+  expect(f.lifecycle.cached(f.binding)).toMatchObject({ lifecycle: { phase: 'disabled' },
+    details: { agent: { id: 'replacement', state: 'created' }, threadId: 'saved-thread' } });
+  expect(await f.lifecycle.connection(f.binding, false)).toBeNull();
+  expect(f.startCount()).toBe(1);
+  expect(() => f.lifecycle.replaceStopped(f.binding, f.details)).toThrow('remain stopped');
+});
 test('management stop of a sleeping worker persists manual stop across restart without HTTP or Docker control', async () => {
   const f = fixture(); await f.connect(); await f.rest(); f.setNow(300000); await f.rest();
   expect(f.lifecycle.state(f.binding)?.phase).toBe('sleeping');

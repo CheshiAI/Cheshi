@@ -20,7 +20,7 @@ async function fails(operation: Promise<unknown>, message: string) {
   expect(error).toBeInstanceOf(Error); expect((error as Error).message).toContain(message);
 }
 function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string) => Promise<void>, withCodeGraph = false,
-  source: Pick<Parameters<typeof createSpecialistRuntime>[0], 'prepareSource' | 'sourceApplied' | 'access'> = {}) {
+  source: Pick<Parameters<typeof createSpecialistRuntime>[0], 'prepareSource' | 'sourceApplied' | 'access' | 'getCodexVersion'> = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'cheshi-runtime-')); directories.push(directory);
   const project = join(directory, 'project'), home = join(directory, 'account');
   mkdirSync(project); mkdirSync(home);
@@ -45,6 +45,7 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
   const run: DockerCommand = async (args, input) => {
     calls.push({ args, input });
     if (dockerFailure) throw dockerFailure;
+    if (args.at(-1) === '--version') return `codex-cli ${args.includes('exec') || args.at(-2)?.startsWith('sha256:') ? labels['ai.cheshi.codex'] : args.find(a => a.startsWith('cheshi-specialist:1-codex-'))?.split('-codex-')[1]}`;
     if (args[0] === 'context' && contextMissing) throw dockerCommandError(Object.assign(new Error(), { code: 1 }),
       'context "colima-cheshi": context not found: open /fixture/contexts/meta/id/meta.json: no such file or directory', args);
     if (args.includes('exec') || (args[2] === 'run' && input)) {
@@ -60,7 +61,7 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
     if (args.includes('image') && args.includes('inspect')) return 'sha256:environment';
     if (args.includes('image') && args.includes('ls')) return 'cached-dependencies';
     if (args.includes('ls')) return created ? id : '';
-    if (args.includes('inspect')) return JSON.stringify([{ Id: id, ExecIDs: null, Name: '/worker', Config: { Image: 'worker', Labels: labels },
+    if (args.includes('inspect')) return JSON.stringify([{ Id: id, Image: `sha256:${'b'.repeat(64)}`, ExecIDs: null, Name: '/worker', Config: { Image: 'worker', Labels: labels },
       State: { Status: state }, NetworkSettings: { Ports: { '8787/tcp': [{ HostIp: '127.0.0.1', HostPort: '49831' }] } } }]);
     if (args.includes('create')) {
       expect(JSON.parse(readFileSync(join(runtimePath, 'engine.json'), 'utf8'))).toEqual({
@@ -141,6 +142,61 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
     setTasks: (value: AgentDetails['tasks']) => { tasks = value; }, setContextMissing: (missing: boolean) => { contextMissing = missing; }, setDockerFailure: (error: Error | null) => { dockerFailure = error; }, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
     request: () => ({ agentId, engineId: 'docker:colima-cheshi', action: 'start' as const }) };
 }
+test('Codex update waits for active work then verifies and replaces only the container, retaining its volume', async () => {
+  let version = '0.159.3';
+  const f = fixture(false, undefined, false, { getCodexVersion: () => version });
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    const original = f.calls.find(c => c.args.includes('create'))!.args;
+    version = '0.163.0';
+    f.setTasks([{ id: 'active', prompt: 'Work', status: 'running', output: '', error: null, createdAt: '2026-10-19T00:00:00Z' }]);
+    const waiting = await f.runtime.codexVersions(version, true);
+    expect(waiting.pending).toBe(1); expect(waiting.waiting).toBe(1);
+    expect(f.calls.some(c => c.args.includes('rm'))).toBe(false);
+    f.setTasks([]);
+    const completed = await f.runtime.codexVersions(version, true);
+    expect(completed.errors).toEqual([]); expect(completed.pending).toBe(0); expect(completed.versions).toEqual([version]);
+    const replacements = f.calls.filter(c => c.args.includes('create'));
+    expect(replacements).toHaveLength(2);
+    expect(replacements[1]!.args.find(a => a.startsWith('type=volume,src=cheshi-agent-')))
+      .toBe(original.find(a => a.startsWith('type=volume,src=cheshi-agent-')));
+    expect(f.calls.filter(c => c.args.includes('build')).some(c => c.args.includes('CODEX_VERSION=0.163.0'))).toBe(true);
+    expect(f.calls.some(c => c.args.includes('volume') && c.args.includes('rm'))).toBe(false);
+    expect(JSON.parse(readFileSync(join(f.runtimePath, 'runtime.json'), 'utf8')).codexVersion).toBe(version);
+  } finally { await f.runtime.dispose(); }
+});
+
+test('Codex synchronization updates stopped workers immediately without waking them and verifies their actual image', async () => {
+  let version = '0.159.3';
+  const f = fixture(false, undefined, false, { getCodexVersion: () => version });
+  try {
+    await f.runtime.request(f.workspace, f.request()); f.setState('exited'); version = '0.163.0';
+    const filename = join(f.runtimePath, 'runtime.json');
+    const saved = JSON.parse(readFileSync(filename, 'utf8')); delete saved.codexVersion;
+    writeFileSync(filename, JSON.stringify(saved));
+    const checked = await f.runtime.codexVersions(version);
+    expect(checked.versions).toEqual(['0.159.3']);
+    const original = f.calls.find(c => c.args.includes('create'))!.args;
+    const before = f.calls.length;
+    const progress: (string | undefined)[] = [];
+    const result = await f.runtime.codexVersions(version, true, stage => progress.push(stage));
+    expect(progress).toContain('waiting-lock');
+    expect(progress).toContain('preparing-worker');
+    expect(progress).toContain('dependencies');
+    expect(progress).toContain('replacing-worker');
+    expect(progress.at(-2)).toBe('verifying-worker');
+    expect(progress.at(-1)).toBeUndefined();
+    expect(result.errors).toEqual([]); expect(result.pending).toBe(0); expect(result.versions).toEqual([version]);
+    expect(f.calls.slice(before).some(c => ['start','restart','stop'].some(a => c.args.includes(a)))).toBe(false);
+    const replacement = f.calls.filter(c => c.args.includes('create')).at(-1)!.args;
+    expect(replacement.find(a => a.startsWith('type=volume,src=cheshi-agent-'))).toBe(original.find(a => a.startsWith('type=volume,src=cheshi-agent-')));
+    expect(JSON.parse(readFileSync(filename, 'utf8')).codexVersion).toBe(version);
+    f.setContextMissing(true);
+    const unavailable = await f.runtime.codexVersions(version, true);
+    expect(unavailable.pending).toBe(1); expect(unavailable.errors).toHaveLength(1);
+  } finally { await f.runtime.dispose(); }
+});
+
 test('required package tools are checked before Docker operations', async () => {
   const f = fixture();
   const agent = f.registry.snapshot(f.workspace).agents[0]!;
@@ -214,7 +270,7 @@ test('command-enabled worker uses separate dependency volumes and unchanged star
     expect(builds).toHaveLength(2);
     expect(builds[0]!.args).toContain('specialist-environment');
     const create = f.calls.find(c => c.args.includes('create'))!.args;
-    expect(create.at(-1)).toBe('cheshi-specialist:1');
+    expect(create.at(-1)).toBe('cheshi-specialist:1-codex-0.163.0');
     expect(create.some(a => a.startsWith('type=volume,src=cheshi-deps-'))).toBe(true);
     const start = f.calls.length;
     await f.runtime.request(f.workspace, { ...f.request(), action: 'status' });

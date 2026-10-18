@@ -8,6 +8,8 @@ interface ChatAttachmentTransferOptions {
   scopeKey: string;
   disabled: boolean;
   inactive?: boolean;
+  visible?: boolean;
+  onFileDrop?: () => void;
   attachments: readonly CodexChatAttachment[];
   captureTask: () => () => boolean;
   importFiles: (files: (File | string)[]) => Promise<ChatTransferItem<CodexChatAttachment>[]>;
@@ -60,7 +62,7 @@ export function useChatAttachmentTransfer(options: ChatAttachmentTransferOptions
     }
   }, []);
 
-  // Explicit workspace actions can attach to a hidden draft. DOM events cannot.
+  // Paste follows keyboard focus; drops can target any visible pane.
   const transferFiles = useCallback((files: (File | string)[]): Promise<boolean> => {
     if (latest.current.inactive) return Promise.resolve(false);
     return attachFilesToDraft(files);
@@ -76,15 +78,21 @@ export function useChatAttachmentTransfer(options: ChatAttachmentTransferOptions
   const onDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     if (!hasChatTransferFiles(event.dataTransfer)) return;
     event.preventDefault();
-    event.dataTransfer.dropEffect = latest.current.disabled || latest.current.inactive || pending.current ? 'none' : 'copy';
+    const { disabled, visible = !latest.current.inactive } = latest.current;
+    event.dataTransfer.dropEffect = disabled || !visible || pending.current ? 'none' : 'copy';
   }, []);
 
   const onDrop = useCallback((event: DragEvent<HTMLElement>) => {
     if (!hasChatTransferFiles(event.dataTransfer)) return;
     event.preventDefault();
     event.stopPropagation();
-    void transferFiles(chatDroppedFiles(event.dataTransfer));
-  }, [transferFiles]);
+    const { disabled, visible = !latest.current.inactive, onFileDrop } = latest.current;
+    if (disabled || !visible || pending.current) return;
+    const files = chatDroppedFiles(event.dataTransfer);
+    if (files.length === 0) return;
+    void attachFilesToDraft(files);
+    onFileDrop?.();
+  }, [attachFilesToDraft]);
   const isTransferring = useCallback(() => pending.current !== null, []);
   const dismissError = useCallback(() => setStatus((current) => ({ ...current, error: null })), []);
 

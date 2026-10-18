@@ -25,10 +25,16 @@ test('host approval is a separate local review action and unsaved tools cannot r
     await withDOM(async ui => {
       await ui.render(<HomieHostTool model={model} agentId="fixture" tool="fixture" saved disabled={false} onBusy={() => {}} />);
       await ui.click('Review host access…');
-      expect(document.body.textContent).toContain('Host tool allowed');
+      expect(document.body.textContent).toContain('Approved');
+      const beforeDetails = [...requests];
+      await ui.click('View approval details');
+      expect(document.querySelector('dialog')?.textContent).toContain('Read-only approval details');
+      expect(requests).toEqual(beforeDetails);
+      expect(document.querySelector('dialog')?.textContent).not.toContain('Back to confirmation');
+      await ui.click('Close');
       await ui.click('Revoke host access');
       expect(requests).toEqual(['status','allow','revoke']);
-      expect(document.body.textContent).toContain('needs local approval');
+      expect(document.body.textContent).toContain('Approval required');
     });
   } finally { model.dispose(); }
 });

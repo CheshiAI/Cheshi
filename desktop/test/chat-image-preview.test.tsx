@@ -1,6 +1,5 @@
 import { expect, mock, test } from 'bun:test';
 import { act, useRef, type ReactNode } from 'react';
-import { createRoot } from 'react-dom/client';
 import { Window } from 'happy-dom';
 import { displayMessageWithChatImports } from '../shared/chat-imports';
 import { useChatDraft } from '../frontend/src/features/chat/useChatDraft';
@@ -23,6 +22,8 @@ async function withDOM(run: (h: { render(node: ReactNode): Promise<void>; click(
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
   const app = document.createElement('div'); app.id = 'app'; document.body.append(app);
+  // React detects input-event support when loaded; install the DOM first.
+  const { createRoot } = await import('react-dom/client');
   const root = createRoot(app);
   requests.length = 0;
   const loadImage = desktop.getCodexChatAttachmentImage;
@@ -97,10 +98,12 @@ test('adding an import and reinserting its badge restore the controlled textarea
     expect(document.activeElement).toBe(input);
     input.setSelectionRange(input.value.length, input.value.length);
     await h.click('button[aria-label="Insert [import 1]"]');
-    expect(input.value).toBe('앞 [import 1] 뒤 [import 1]');
+    expect(input.value).toBe('앞 [import 1] 뒤 [import 1] ');
+    expect(input.selectionStart).toBe(input.value.length);
+    expect(input.selectionEnd).toBe(input.value.length);
     await h.click('#attach');
     expect(draftController.attachments).toHaveLength(1);
-    expect(input.value).toBe('앞 [import 1] 뒤 [import 1]');
+    expect(input.value).toBe('앞 [import 1] 뒤 [import 1] ');
     await h.click('button[aria-label="Remove photo.png"]');
     expect(input.value).not.toContain('[import 1]');
     expect(draftController.attachments).toEqual([]);

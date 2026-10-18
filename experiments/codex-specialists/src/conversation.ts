@@ -1,5 +1,6 @@
 import { completionCriteria, waitingForUser } from './conversation-contract.ts';
 import { newGoal } from './decision.ts';
+import { goalVerificationSchema, legacyPolicyCorrectionSchema, parseGoalVerification, reviewGoalVerification, verificationFields } from './goal-verification.ts';
 import { record, textValue } from './protocol.ts';
 import { AgentStore, validateTaskId, type Task } from './store.ts';
 
@@ -15,7 +16,8 @@ function tool(name: string, description: string, properties: Record<string, unkn
 }
 export const conversationTools = [
   tool('conversation_status', 'Read current user questions, revision sources and unfinished goals and pending user questions in this room.', {}),
-  tool('start_goal', 'Record a new work objective and completion criteria, then end this turn. Work begins on the next turn with existing permissions.', { objective: text, criteria: strings }),
+  tool('start_goal', 'Record a new work objective, completion criteria and task-specific verification policy, then end this turn.', { objective: text, criteria: strings, verification: goalVerificationSchema }),
+  tool('review_goal_verification', 'Review legacy classification or upgrade after an actual user follow-up. Operational reclassification requires correction evidence for the original request and every command/custom action. Never weaken actual independent-review or code-change requirements. Resets evidence, not criteria or history.', { verification: goalVerificationSchema, correction: legacyPolicyCorrectionSchema }, ['verification']),
   tool('continue_goal', 'Route this user message to an existing goal or a conversation awaiting the user in this room. Choose by meaning, not recency. End the turn after recording.', { taskId: text, reason: text }),
   tool('ask_user', 'Persist a question requiring the user to decide. Continue independent work; otherwise wait. Reuse the same id on retries.', { id: text, question: text }),
   tool('use_user_answer', 'Associate an actual latest user follow-up with a pending user question after interpreting it. Never invent an answer.', { inputId: text, questionId: text }),
@@ -44,6 +46,12 @@ export class WorkerConversation {
       route: d.route, inputs: task.inputs ?? [], revisions: d.revisions, goals: this.store.snapshot().tasks.filter(t => t.roomId === task.roomId && (t.goal || waitingForUser(t)) && t.status !== 'completed' && t.id !== task.id)
         .map(t => ({ taskId: t.id, objective: t.dialogue?.objective ?? t.prompt, phase: t.goal?.phase, status: t.status, criteria: t.goal?.criteria ?? [], questions: t.dialogue?.questions ?? [] })) };
     if (task.goal?.turns === 0 || task.goal?.pending || (d.route && !d.route.held)) throw new Error('End this turn after recording its action.');
+    if (name === 'review_goal_verification') {
+      const goal = reviewGoalVerification(task, v.verification, v.correction);
+      this.store.update(task.id, { goal });
+      return { status: 'reviewed', verificationRequired: goal.verificationRequired === true, verificationPolicy: goal.verificationPolicy,
+        guidance: 'Original criteria and decision history retained. Execution capability changes apply next turn. Recheck the criteria with fresh evidence before completion.' };
+    }
     if (name === 'ask_user') {
       const id = validateTaskId(v.id), question = textValue(v.question, 'question');
       if (question.length > 4000) throw new Error('Question is too long.');
@@ -67,7 +75,9 @@ export class WorkerConversation {
       if (task.goal) throw new Error('This conversation already has a goal.');
       const objective = textValue(v.objective, 'objective'), criteria = completionCriteria(v.criteria);
       if (objective.length > 4000 || waitingForUser(task)) throw new Error('Resolve the user question before starting work.');
-      this.store.update(task.id, { dialogue: { ...d, objective }, goal: { ...newGoal(this.verify), phase: 'ready', criteria: criteria.map(criterion => ({ criterion, met: false, evidence: '' })) } });
+      // Older native threads retain their original tool schema; preserve its conservative behavior until migration.
+      const policy = v.verification === undefined ? {} : verificationFields({ ...parseGoalVerification(v.verification), version: 2 });
+      this.store.update(task.id, { dialogue: { ...d, objective }, goal: { ...newGoal(this.verify), ...policy, phase: 'ready', criteria: criteria.map(criterion => ({ criterion, met: false, evidence: '' })) } });
       return { status: 'recorded', objective, criteria, guidance: 'End this turn to start work.' };
     }
     if (name === 'continue_goal') {

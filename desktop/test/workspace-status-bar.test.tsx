@@ -61,10 +61,12 @@ function harness(props: ComponentProps<typeof WorkspaceStatusBar>) {
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'lucide-react': { Gauge: 'Gauge' },
     '../../shared/ui': { LiquidGlassPanel: 'LiquidGlassPanel', RegionalBlur: 'RegionalBlur' },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: 'TooltipTarget' },
     'react-dom': { createPortal: (children: unknown, target: unknown) => jsx('Portal', { children, target }) },
     '../account/AccountUsagePanel': { AccountUsagePanel: 'AccountUsagePanel' },
     '../account/AddAccountDialog': { AddAccountDialog: 'AddAccountDialog' },
     '../updates/AppUpdateIndicator': { AppUpdateIndicator: 'AppUpdateIndicator' },
+    '../updates/CodexUpdateIndicator': { CodexUpdateIndicator: 'CodexUpdateIndicator' },
     '../chrome/KeepAwakeStatus': { KeepAwakeStatus: 'KeepAwakeStatus' },
     './LanguageSelector': { LanguageSelector: 'LanguageSelector' },
     './statusBarModel': { accountStatusSummary, accountUsageTotals },
@@ -162,7 +164,8 @@ test('surfaces child errors and forwards account selection guards and callbacks'
   const triggers = elements(failed).filter(element => element.type === 'button');
   expect(triggers.every(element => element.props['data-attention'] === true)).toBe(true);
   expect(content(failed)).toContain('Account · Unavailable');
-  expect(triggers.find(element => content(element).includes('Account'))?.props.title).toBe('Accounts unavailable');
+  expect(triggers.find(element => content(element).includes('Account'))?.props.title).toBeUndefined();
+  expect(find(failed, element => element.type === 'TooltipTarget').props.content).toBe('Accounts unavailable');
 });
 
 test('shows the active account beside the normalized combined graph and remaining total', () => {
@@ -182,6 +185,8 @@ test('shows the active account beside the normalized combined graph and remainin
   expect(content(trigger)).not.toContain('second@example.com');
   expect(trigger.props['aria-label']).toContain('193% of 200%');
   expect(trigger.props['aria-label']).toContain('2 signed-in accounts');
+  expect(trigger.props.title).toBeUndefined();
+  expect(find(combined, element => element.type === 'TooltipTarget').props.content).toContain('193% of 200%');
   expect(find(trigger, element => element.props.style !== undefined).props.style).toEqual({ width: '96.5%' });
 
   snapshot.activeId = 'second';

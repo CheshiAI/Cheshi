@@ -57,13 +57,13 @@ function shouldIgnore(packagePath: string): boolean {
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
     if (grandchildEntry === 'homie-repository-connection.ts') return segments.length > 3;
-    if (grandchildEntry === 'chat-imports.ts' || grandchildEntry === 'host-tool-details.ts') return segments.length > 3;
+    if (grandchildEntry === 'chat-imports.ts' || grandchildEntry === 'host-tool-details.ts' || grandchildEntry === 'host-dependencies.ts') return segments.length > 3;
     if (grandchildEntry === 'workspace-host.ts' || grandchildEntry === 'homie-setup.ts') return segments.length > 3;
     if (grandchildEntry === 'worker-workspace.ts') return segments.length > 3;
     if ((grandchildEntry === 'agent-package.ts' || grandchildEntry === 'homie-pack.ts' || grandchildEntry === 'homie-tools.ts' || grandchildEntry === 'host-tools.ts' || grandchildEntry === 'homie-source.ts' || grandchildEntry === 'agent-avatar-image.ts')) return segments.length > 3;
     if (grandchildEntry === 'agent-voice.ts' || grandchildEntry === 'agent-execution-health.ts') return segments.length > 3;
     if (grandchildEntry === 'agent-chat-recipient.ts' || grandchildEntry === 'agent-activity.ts' || grandchildEntry === 'agent-work.ts' || grandchildEntry === 'agent-question.ts' || grandchildEntry === 'agent-chats.ts' || grandchildEntry === 'agent-task-inspection.ts' || grandchildEntry === 'agent-avatar.ts' || grandchildEntry === 'agent-management.ts' || grandchildEntry === 'agent-terminal.ts' || grandchildEntry === 'agent-registry.ts' || grandchildEntry === 'agent-models.ts' || grandchildEntry === 'agent-runtime.ts') return segments.length > 3;
-    const packagedSharedFiles = new Set(['isolated-work.ts', 'flash-memory.ts', 'sticky-notes.ts', 'calendar-task.ts', 'scheduler.ts', 'scheduler-time.ts', 'notification-events.ts', 'discord.ts', 'imessage-commands.ts', 'imessage-notifications.ts', 'account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-calendar.ts', 'keep-awake.ts', 'status-toast.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'settings.ts', 'window-appearance.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'git-line-blame.ts', 'local-history.ts', 'local-file-link.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-file-search.ts', 'workspace-projects.ts']);
+    const packagedSharedFiles = new Set(['isolated-work.ts', 'flash-memory.ts', 'sticky-notes.ts', 'calendar-task.ts', 'scheduler.ts', 'scheduler-time.ts', 'notification-events.ts', 'discord.ts', 'imessage-commands.ts', 'imessage-notifications.ts', 'account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-calendar.ts', 'keep-awake.ts', 'status-toast.ts', 'app-update.ts', 'codex-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'settings.ts', 'window-appearance.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'git-line-blame.ts', 'local-history.ts', 'local-file-link.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-file-search.ts', 'workspace-projects.ts']);
     return grandchildEntry === undefined || !packagedSharedFiles.has(grandchildEntry) || segments.length > 3;
   }
   if (childEntry !== 'lib') return true;
@@ -81,9 +81,10 @@ function shouldIgnore(packagePath: string): boolean {
   if (grandchildEntry === 'agent-chats') return segments.length > 4 || (segments.length === 4 && !new Set(['isolated-tasks.mts', 'ipc.mts', 'service.mts', 'store.mts', 'changes.mts', 'records.mts', 'coordination.mts']).has(segments[3]!));
   if (grandchildEntry === 'agent-voice') return segments.length > 4 || (segments.length === 4 && !new Set(['workspace.mts', 'service.mts', 'storage.mts', 'chats.mts', 'realtime.mts', 'diagnostics.mts']).has(segments[3]!));
   if (grandchildEntry === 'agent-management') {
+    if (segments[3] === 'codex-update-progress.mts') return segments.length > 4;
     if (segments[3] === 'homie-repository-registration.mts') return segments.length > 4;
     if (segments[3] === 'host-tool-details.mts' || segments[3] === 'host-tool-review-content.mts' || segments[3] === 'host-tool-policy.mts' || segments[3] === 'host-tool-services.mts'
-      || segments[3] === 'host-python-runtime.mts' || segments[3] === 'host-python-catalog.mts') return segments.length > 4;
+      || ['host-node-runtime.mts', 'host-service-dependencies.mts'].includes(segments[3] ?? '') || segments[3] === 'host-python-runtime.mts' || segments[3] === 'host-python-catalog.mts') return segments.length > 4;
     if (segments[3] === 'packages.mts') return segments.length > 4;
     if (['homie-repository.mts', 'homie-repository-command.mts', 'homie-repository-template.mts', 'homie-repository-project.mts', 'homie-source-files.mts', 'homie-sources.mts'].includes(segments[3] ?? '')) return segments.length > 4;
     const agentFiles = new Set(['platform-executor.mts', 'custom-tool-execution.mts', 'host-tool-registration.mts', 'host-tool-execution.mts', 'host-tool-review.mts', 'tool-credentials.mts', 'homie-packs.mts', 'pack-environment.mts', 'dependencies.mts', 'project-environment.mts', 'lifecycle.mts', 'engine.mts', 'docker.mts', 'docker-errors.mts', 'task-inspection.mts', 'service.mts', 'ipc.mts', 'terminal.mts', 'registry.mts', 'registry-ipc.mts', 'runtime.mts', 'instruction-files.mts', 'operations.mts', 'application-deletion.mts', 'docker-deletion.mts', 'deletion.mts']);
@@ -98,7 +99,7 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 3 && (segments.length !== 4 || !schedulerFiles.has(segments[3] ?? ''));
   }
   const packagedLibraryFiles = new Set([
-    'homie-setup.mts', 'homie-setup-command.mts', 'homies-activation.mts',
+    'homie-setup.mts', 'homie-setup-command.mts', 'homie-security.mts', 'homies-activation.mts',
     'workspace-host.mts', 'workspace-status-toast.mts', 'workspace-surface.mts', 'workspace-rail-overlay.mts',
     'sticky-notes-store.mts', 'sticky-notes-runtime.mts', 'sticky-notes-library.mts',
     'chat-search-grams.mts', 'chat-search-database.mts', 'chat-search-index.mts', 'chat-search-query.mts',
@@ -229,6 +230,9 @@ function shouldIgnore(packagePath: string): boolean {
     'codex-chat-user-input-schema.mts',
     'codex-chat-values.mts',
     'codex-service-utils.mts',
+    'codex-update-installation.mts',
+    'codex-update-service.mts',
+    'codex-update-ipc.mts',
     'ephemeral-session-service.mts',
     'temporary-chat-service.mts',
     'chat-window-options.mts',

@@ -5,15 +5,15 @@ import { join } from 'node:path';
 import { agentRecord, agentText, parseAgentAction, parseAgentEngineId, parseAgentId } from '../../shared/agent-management.ts';
 import type { AgentAction, AgentEngineInfo } from '../../shared/agent-management.ts';
 import type { AgentEngine, RuntimeAgent } from './engine.mts';
-import { dockerCommandError } from './docker-errors.mts';
+import { containerStartFailure, dockerCommandError } from './docker-errors.mts';
 
-export type DockerCommand = (args: string[], input?: string) => Promise<string>;
+export type DockerCommand = (args: string[], input?: string, onOutput?: () => void) => Promise<string>;
 const project = 'cheshi-codex-specialists-test';
 const service = 'verifier';
 const labels = { project: 'com.docker.compose.project', service: 'com.docker.compose.service' };
 function dockerExecutable() { return ['/opt/homebrew/bin/docker', '/usr/local/bin/docker'].find(existsSync) ?? 'docker'; }
 
-export const runDocker: DockerCommand = (args, input) => new Promise((resolve, reject) => {
+export const runDocker: DockerCommand = (args, input, onOutput) => new Promise((resolve, reject) => {
   const executable = dockerExecutable();
   const env = { ...process.env };
   for (const key of Object.keys(env)) if (key.startsWith('DOCKER_')) delete env[key];
@@ -24,6 +24,7 @@ export const runDocker: DockerCommand = (args, input) => new Promise((resolve, r
     // Docker sends container stderr through its own stderr for `logs`.
     resolve(args.includes('logs') ? `${stdout}${stderr}` : stdout);
   });
+  if (onOutput) for (const stream of [child.stdout, child.stderr]) stream?.on('data', () => onOutput());
   child.stdin?.on('error', () => {});
   child.stdin?.end(input);
 });
@@ -70,6 +71,8 @@ export function parseDockerAgent(value: unknown): RuntimeAgent {
   }
   return { id: containerId(agentText(raw.Id)), name: agentText(raw.Name).replace(/^\//, ''),
     image: agentText(config.Image), state: agentText(state.Status, 100), endpoint,
+    ...(state.Status !== 'running' && typeof state.Error === 'string' && state.Error.trim()
+      ? { startError: containerStartFailure(state.Error) } : {}),
     ...(typeof state.StartedAt === 'string' && Number.isFinite(Date.parse(state.StartedAt)) && Date.parse(state.StartedAt) > 0
       ? { startedAt: agentText(state.StartedAt, 100) } : {}),
     ...(specialist ? { profileId: parseAgentId(metadata['ai.cheshi.agent']) } : {}) };
@@ -119,7 +122,7 @@ export function createDockerAgentEngine(run: DockerCommand = runDocker): AgentEn
         if (metadata['com.docker.compose.oneoff'] === 'True') continue;
         agents.push(parseDockerAgent(raw));
       }
-      return agents.map(({ endpoint: _endpoint, ...agent }) => agent);
+      return agents.map(({ endpoint: _endpoint, startError: _startError, ...agent }) => agent);
     },
     inspect,
     async terminalCommand(engineId, agentId) {

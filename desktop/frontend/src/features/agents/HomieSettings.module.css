@@ -1,4 +1,4 @@
-.editor { --font-size-label: var(--font-size-small); container-type: inline-size; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; font-size: var(--font-size-small); }
+.editor { --font-size-label: var(--font-size-small); --homie-setting-label-width: 6em; container-type: inline-size; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; font-size: var(--font-size-small); }
 .editor[data-inline='true'] { flex: none; width: 100%; }
 .editor[data-inline='true'] > .header { height: auto; flex: none; flex-wrap: wrap; padding: var(--icon-default) var(--space-default); }
 .editor[data-inline='true'] > .header > .title { display: none; }

@@ -83,6 +83,8 @@ import { createIMessageNotifications } from './lib/imessage-notifications.mts';
 import { registerIMessageIpc } from './lib/imessage-ipc.mts';
 import { createIMessageCommands } from './lib/imessage-commands.mts';
 import { KeepAwakeService } from './lib/keep-awake-service.mts';
+import { CodexUpdateService } from './lib/codex-update-service.mts';
+import { attachCodexUpdateWindow, registerCodexUpdateIpc } from './lib/codex-update-ipc.mts';
 import type { WorkspaceRuntimeOptions } from './lib/workspace-application.mts';
 
 process.env.PATH = desktopToolPath(process.env.PATH);
@@ -113,7 +115,9 @@ const aboutWindow = createAboutWindow({
 });
 const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'updates'));
 const apiSettings = createSettingsService({ settingsPath: path.join(app.getPath('userData'), 'settings.json') });
-const homieSetup = new HomieSetup();
+const homieSetup = new HomieSetup({ securityProfile: path.join(app.isPackaged
+  ? path.join(process.resourcesPath, 'runtime', 'specialist-worker')
+  : path.join(app.getAppPath(), 'experiments', 'codex-specialists'), 'security', 'cheshi-codex-bwrap.apparmor') });
 const homiesActivation = new HomiesActivation({ preferences: apiSettings, inspect: () => homieSetup.status(),
   assertIdle: async () => { agentChats.assertIdle(); await specialistRuntime.assertIdle(); } });
 const agentEngines = [createDockerAgentEngine()];
@@ -160,6 +164,7 @@ const hostTools = new HostToolRegistration(path.join(app.getPath('userData'), 'a
   (workspace, id) => agentRegistry.snapshot(workspace).agents.find(agent => agent.id === id),
   async id => (await homieRepositories.local(id))?.directory ?? null);
 const specialistRuntime = createSpecialistRuntime({
+  getCodexVersion: () => codexUpdates.workerVersion(),
   access: homiesActivation,
   hostTools,
   flash: agentFlash,
@@ -200,6 +205,10 @@ const notifications = createIMessageNotifications({ filename: path.join(app.getP
 const messageCommands = createIMessageCommands({ recipient: async () => (await notifications.get()).recipient,
   reply: (recipient, text) => notifications.reply(recipient, text) });
 const keepAwake = new KeepAwakeService();
+const codexUpdates = new CodexUpdateService({ filename: path.join(app.getPath('userData'), 'codex-update.json'),
+  workers: (version, apply, report) => specialistRuntime.codexVersions(version, apply, report) });
+void app.whenReady().then(() => codexUpdates.start());
+app.on('will-quit', () => codexUpdates.dispose());
 const updatePreview = createAppUpdatePreview({ packaged: app.isPackaged, setting: process.env.CHESHI_UPDATE_PREVIEW });
 const updates = createAppUpdateService({
   currentVersion: product.version,
@@ -279,6 +288,7 @@ const backgroundUsage = createAccountUsageBackground({
 const workspaces = new WorkspaceApplication({
   router: new WorkspaceIpcRouter(ipcMain),
   createHost: (scope, activated) => new WorkspaceHost(scope, (window, hostScope) => {
+    registerCodexUpdateIpc(hostScope.ipc, codexUpdates);
     hostScope.ipc.handle(`${KEEP_AWAKE_CHANNEL}:get`, () => keepAwake.snapshot());
     hostScope.ipc.handle(`${KEEP_AWAKE_CHANNEL}:set`, (_event, enabled: unknown) => keepAwake.setEnabled(enabled));
     const unsubscribe = keepAwake.subscribe(state => {
@@ -308,6 +318,7 @@ function createApplicationRuntime(options: WorkspaceRuntimeOptions) {
   options.scope.ipc.handle(`${APP_UPDATE_CHANNEL}:install`, () => updates.install());
   options.scope.ipc.handle(`${APP_UPDATE_CHANNEL}:open`, () => updates.openRelease());
   if (options.managementOnly !== true) {
+    registerCodexUpdateIpc(options.scope.ipc, codexUpdates);
     options.scope.ipc.handle(`${KEEP_AWAKE_CHANNEL}:get`, () => keepAwake.snapshot());
     options.scope.ipc.handle(`${KEEP_AWAKE_CHANNEL}:set`, (_event, enabled: unknown) => keepAwake.setEnabled(enabled));
   }
@@ -323,6 +334,7 @@ function createApplicationRuntime(options: WorkspaceRuntimeOptions) {
   catch (error) { recovery.dispose(); throw error; }
   let unsubscribe: (() => void) | undefined;
   let unsubscribeKeepAwake: (() => void) | undefined;
+  let unsubscribeCodexUpdate: (() => void) | undefined;
   return {
     async start() {
       const window = await runtime.start();
@@ -331,6 +343,7 @@ function createApplicationRuntime(options: WorkspaceRuntimeOptions) {
         if (!window.isDestroyed()) window.webContents.send(`${APP_UPDATE_CHANNEL}:changed`, state);
       });
       if (options.managementOnly !== true) {
+        unsubscribeCodexUpdate = attachCodexUpdateWindow(window, codexUpdates);
         const sendKeepAwake = (state: ReturnType<KeepAwakeService['snapshot']>) => {
           if (!window.isDestroyed()) window.webContents.send(`${KEEP_AWAKE_CHANNEL}:changed`, state);
         };
@@ -340,7 +353,7 @@ function createApplicationRuntime(options: WorkspaceRuntimeOptions) {
       return window;
     },
     show: () => runtime.show?.(),
-    async dispose() { unsubscribeKeepAwake?.(); unsubscribe?.(); recovery.dispose(); await runtime.dispose(); },
+    async dispose() { unsubscribeCodexUpdate?.(); unsubscribeKeepAwake?.(); unsubscribe?.(); recovery.dispose(); await runtime.dispose(); },
   };
 }
 let quitting = false;

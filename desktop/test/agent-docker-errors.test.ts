@@ -2,6 +2,13 @@ import { expect, test } from 'bun:test';
 import { dockerCommandError } from '../lib/agent-management/docker-errors.mts';
 
 const query = ['--host', 'unix:///tmp/engine.sock', 'container', 'ls', '--all'];
+test('container start security failures provide safe preparation guidance', () => {
+  const error = Object.assign(new Error(), { code: 1 });
+  const failure = dockerCommandError(error, 'unable to apply apparmor profile: token=private-value', ['container', 'start', 'worker']);
+  expect(failure.message).toContain('Prepare Homies');
+  expect(failure.message).not.toContain('private-value');
+  expect(dockerCommandError(error, 'apparmor', ['exec', 'worker', 'test']).message).not.toContain('Prepare Homies');
+});
 test('only a missing selected context is an engine outage', () => {
   const error = Object.assign(new Error('private'), { code: 1 });
   const args = ['context', 'inspect', 'colima-cheshi'];

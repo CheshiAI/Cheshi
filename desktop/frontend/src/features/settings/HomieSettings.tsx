@@ -91,11 +91,13 @@ export function HomieSettings({ api }: { api?: SettingsApi }) {
     })}
     <div className={styles.settingRow}><span className={styles.settingLabel}>Colima Docker connection</span>
       <span className={styles.description}>{!status ? 'Checking…' : status.connected ? 'Connected' : 'Not connected'}</span></div>
+    <div className={styles.settingRow}><span className={styles.settingLabel}>Homie security profile</span>
+      <span className={styles.description}>{!status ? 'Checking…' : !status.connected ? 'Connect Colima first' : status.securityReady ? 'Ready' : 'Preparation required'}</span></div>
     <div className={`${styles.actions} ${styles.homieActions}`}>
       <NeumorphicButton variant="standard" disabled={!api || !status?.supported || !status.brew || !missing || busy}
         onClick={() => { void perform('install'); }}>Install missing tools</NeumorphicButton>
-      <NeumorphicButton variant="standard" disabled={!api || !status?.supported || !status.docker || !status.colima || status.connected || busy}
-        onClick={() => { void perform('start'); }}>Start Colima</NeumorphicButton>
+      <NeumorphicButton variant="standard" disabled={!api || !status?.supported || !status.docker || !status.colima || (status.connected && status.securityReady) || busy}
+        onClick={() => { void perform('start'); }}>{status?.connected ? 'Prepare Homies' : 'Start Colima'}</NeumorphicButton>
       <NeumorphicButton variant="ghost" aria-label="Check status" disabled={!api || busy}
         onClick={() => { void perform('check'); }}>{pending === 'check' ? 'Checking…' : 'Check status'}</NeumorphicButton>
     </div>
@@ -108,6 +110,7 @@ export function HomieSettings({ api }: { api?: SettingsApi }) {
       <p className={styles.description}>{`${Math.floor(elapsed / 60)}m ${elapsed % 60}s elapsed`}</p></div>}
     {(error || status?.error) && <p role="alert" className={styles.description}>{error ?? status?.error}</p>}
     <p className={styles.description}>Homebrew installs missing tools and their dependencies. Installation may take several minutes.
-      After starting Colima, select colima as your Homie engine. Project sharing and worker setup are checked when the Homie starts.</p>
+      Starting or preparing Colima installs and verifies the shared Homie security profile. Select colima as your Homie engine.
+      Project sharing and worker setup are checked when the Homie starts.</p>
   </div></div></section>;
 }

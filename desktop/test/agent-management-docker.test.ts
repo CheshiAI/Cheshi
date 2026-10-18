@@ -4,6 +4,17 @@ import type { DockerCommand } from '../lib/agent-management/docker.mts';
 import { parseManagedAgent } from '../shared/agent-management.ts';
 
 const id = 'a'.repeat(64);
+
+test('retains a safe Docker start failure from created containers and clears stale errors after running', () => {
+  const raw = container();
+  const inspect = (Status: string) => parseDockerAgent({ ...raw, State: {
+    Status, Error: 'unable to apply apparmor profile: private_path token=secret-value',
+  } });
+  expect(inspect('created').startError).toContain('AppArmor');
+  expect(inspect('created').startError).toContain('Prepare Homies');
+  expect(inspect('created').startError).not.toContain('secret-value');
+  expect(inspect('running').startError).toBeUndefined();
+});
 function container() {
   return { Id: id, Name: '/cheshi-verifier', Config: { Image: 'verifier:test', Labels: {
     'com.docker.compose.project': 'cheshi-codex-specialists-test', 'com.docker.compose.service': 'verifier',

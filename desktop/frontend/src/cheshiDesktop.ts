@@ -3,6 +3,7 @@ import type { GitHubIssuesApi } from '../../shared/github-issues';
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../shared/chat-user-input';
 import type { AppUpdateApi, AppUpdateResumeApi } from '../../shared/app-update';
 import type { KeepAwakeApi } from '../../shared/keep-awake';
+import type { CodexUpdateApi } from '../../shared/codex-update';
 import type { WorkspaceFileSearchResult } from '../../shared/workspace-file-search';
 import type { LocalHistoryEntry, LocalHistorySnapshot, LocalHistoryRestoreRequest } from '../../shared/local-history';
 import type { WorkspaceManagementApi } from '../../shared/workspace-management';
@@ -653,7 +654,7 @@ export interface CodexChatConfigurationRequest {
   fast?: boolean;
 }
 
-export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpdateResumeApi>, Partial<KeepAwakeApi> {
+export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpdateResumeApi>, Partial<KeepAwakeApi>, Partial<CodexUpdateApi> {
   workspaceProjects?: import('../../shared/workspace-projects').WorkspaceProjectsApi;
   workspaceManagement?: WorkspaceManagementApi;
   settings?: import('../../shared/settings').SettingsApi;

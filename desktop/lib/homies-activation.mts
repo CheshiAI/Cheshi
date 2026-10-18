@@ -57,7 +57,7 @@ export class HomiesActivation implements HomiesAccess {
     try {
       if (enabled) {
         const status = await this.options.inspect();
-        if (!homiesReady(status)) throw new Error('Install Homebrew, Docker CLI and Colima, then connect Colima before enabling Homies.');
+        if (!homiesReady(status)) throw new Error('Install Homebrew, Docker CLI and Colima, then use Prepare Homies in Settings to verify the connection and security profile before enabling Homies.');
       } else await this.options.assertIdle();
       this.options.preferences.setHomiesEnabled(enabled);
       this.enabled = enabled;

@@ -145,6 +145,7 @@ export function SpecialistAgentForm({ inline = false, fill = false, active: visi
               maxLength={100} value={agentDisplayName(profile)} disabled={disabled || connecting}
               onChange={event => patch(agent ? { displayName: event.target.value } : { name: event.target.value })} />
           </div>
+          {runtime && <fieldset ref={setRuntimeHeader} disabled={disabled} className={layout.runtimeHeader} aria-label="Homie runtime controls" />}
           <label className={`${styles.field} ${styles.accountRow}`}><span>Account</span><LiquidGlassSelect ariaLabel="Agent account" menuAppearance="toolbar" triggerAppearance="standard" value={profile.accountId ?? ''} options={accountOptions} disabled={disabled} onChange={accountId => patch(accountId ? { accountId } : connecting ? { accountId: null } : { accountId: null, model: null, reasoningEffort: null, serviceTier: null })} /></label>
           {accountError && <p role="alert" className={styles.description}>{accountError}</p>}
           {connecting ? <p className={styles.description}>Repository model: {profile.model ?? 'Not configured'} · {profile.reasoningEffort ?? 'Default effort'} · {profile.serviceTier ?? 'Default tier'}</p> : <SpecialistModelSettings selection={selection} catalog={catalog} disabled={disabled} onChange={patch} />}
@@ -174,7 +175,6 @@ export function SpecialistAgentForm({ inline = false, fill = false, active: visi
             {saveButton}
           </div>
         </div>}
-        {runtime && <fieldset ref={setRuntimeHeader} disabled={disabled} className={layout.runtimeHeader} aria-label="Homie runtime controls" />}
         {outdated && locallyEdited && <p className={styles.description} role="status">Settings changed. Your local draft is preserved. {onReload && <NeumorphicButton variant="ghost" disabled={disabled} onClick={onReload}>Reload saved settings</NeumorphicButton>}</p>}
         {error && <p role="alert">{error}</p>}{state.error && <p role="alert">{state.error}</p>}
         {saved && !outdated && <p role="status" className={styles.description}>Local settings saved.</p>}

@@ -224,7 +224,7 @@ test('settings IPC retains owner checks and subscriptions without provider route
   const routes = new Map<string, Parameters<IpcMain['handle']>[1]>();
   const sent: number[] = [];
   const homieCalls: string[] = [];
-  const homieStatus = { supported: true, brew: true, docker: true, colima: true, connected: false, busy: false, detail: 'Stopped' };
+  const homieStatus = { supported: true, brew: true, docker: true, colima: true, connected: false, securityReady: false, busy: false, detail: 'Stopped' };
   const owner = { mainFrame: {}, isDestroyed: () => false, send: (channel: string, value: number) => {
     if (channel === SETTINGS_CHANNELS.projectDocMaxBytesChanged) sent.push(value);
   } };

@@ -10,6 +10,30 @@ export function continuesResponse(previous: RoomMessage | undefined, message: Ro
     && previous.replyTo === message.replyTo && previous.questionId === message.questionId;
 }
 
+export interface ResponseActions { text: string | undefined; reply: RoomMessage }
+
+/** Actions belong to the response header; collect text from the full timeline, not its visible window. */
+export function responseActions(messages: RoomMessage[]): Map<string, ResponseActions> {
+  const actions = new Map<string, ResponseActions>();
+  for (let start = 0; start < messages.length;) {
+    let end = start + 1;
+    while (end < messages.length && continuesResponse(messages[end - 1], messages[end])) end++;
+    const head = messages[start]!;
+    const text: string[] = [];
+    let reply = head;
+    for (let index = start; index < end; index++) {
+      const message = messages[index]!;
+      if (message.kind === 'message' && (!message.activity || message.activity.kind === 'message')) {
+        text.push(message.text);
+        reply = message;
+      }
+    }
+    actions.set(head.id, { text: text.length ? text.join('\n\n') : undefined, reply });
+    start = end;
+  }
+  return actions;
+}
+
 export function timelineIndex(messages: RoomMessage[]) {
   const byId = new Map(messages.map(message => [message.id, message]));
   const tasks = new Map<string, RoomMessage>();

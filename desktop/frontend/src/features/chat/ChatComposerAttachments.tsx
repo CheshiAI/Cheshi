@@ -15,7 +15,6 @@ export function ChatComposerAttachments({ attachments, removeAttachment, insertA
       {attachments.map((attachment) => {
         const showImage = attachment.kind === 'image' && Boolean(attachment.previewUrl);
         const referenceLabel = attachment.importNumber === undefined ? '' : chatImportLabel(attachment.importNumber);
-        const referenceText = showImage ? attachment.importNumber : referenceLabel;
         return (
           <div className={styles.attachmentEntry} key={attachment.path}>
             <TooltipTarget content={attachment.path}>
@@ -48,11 +47,11 @@ export function ChatComposerAttachments({ attachments, removeAttachment, insertA
               </div>
             </TooltipTarget>
             {attachment.importNumber !== undefined && (insertAttachmentReference ? (
-              <TooltipButton variant={showImage ? 'standard' : 'ghost'}
-                className={showImage ? styles.imageAttachmentReference : styles.attachmentReference}
+              <TooltipButton variant="standard"
+                className={styles.attachmentReference}
                 title={`Insert ${referenceLabel}`} aria-label={`Insert ${referenceLabel}`}
-                onClick={() => insertAttachmentReference(attachment.path)}>{referenceText}</TooltipButton>
-            ) : <span className={showImage ? styles.imageAttachmentReference : styles.attachmentReference}>{referenceText}</span>)}
+                onClick={() => insertAttachmentReference(attachment.path)}>{attachment.importNumber}</TooltipButton>
+            ) : <span className={styles.attachmentReference}>{attachment.importNumber}</span>)}
           </div>
         );
       })}

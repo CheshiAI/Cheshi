@@ -35,6 +35,7 @@ import { WorkerCollaboration } from './collaboration.ts';
 import { collaborationInstructions, collaborationTools } from './collaboration-tools.ts';
 import { decisionInstructions, decisionTools, finishGoal, goalContext, newGoal, parseDecision, validateDecision } from './decision.ts';
 import { GoalObservations, isStalled, STALLED_GOAL } from './goal-progress.ts';
+import { goalVerificationInstructions, legacyGoalContext, legacyVerificationReview, restrictedGoal, operationalGoal, projectReadOnlyGoal, assertDirectGoalUnchanged } from './goal-verification.ts';
 
 export class TaskConflict extends Error {}
 
@@ -59,6 +60,9 @@ type ActiveTask = {
   observations: GoalObservations; messages: string[]; input: string; controller: AbortController;
   health: ExecutionHealth; commands: CommandSessions;
   intakePermissionsConfirmed?: true; intakeRetry: boolean;
+  readOnlyGoal: boolean;
+  operationalGoal: boolean;
+  projectReadOnly: boolean;
 };
 
 export class SpecialistAgent {
@@ -117,9 +121,17 @@ export class SpecialistAgent {
         if (!['memory_search', 'memory_read'].includes(tool)) this.store.update(active.id, { recoveryUnsafe: true });
         assertPackToolAllowed(this.configuration?.enabledTools, tool);
         const task = this.store.task(active.id)!;
+        if (active.readOnlyGoal && ![...flashTools, ...codegraphTools, ...conversationTools, ...decisionTools].some(t => t.name === tool)
+          && !['list_agents', 'ask_agent', 'collaboration_status', 'verification_status'].includes(tool)) {
+          throw new Error('This goal is read-only or awaiting verification-policy review. Review the task policy before enabling execution on a subsequent turn; execution alone does not require independent verification.');
+        }
+        if (active.operationalGoal && [...workTools, ...integrationTools, ...applicationTools].some(t => t.name === tool)) {
+          throw new Error('Operational goals cannot delegate implementation or integrate code changes. Upgrade the policy first.');
+        }
         if (tool === 'request_execution_permissions' && this.configuration?.permissionProtocol === 1) {
           if (!task.roomId) throw new Error('Permission requests require a Chats task.');
           const requested = parsePermissionRequest({ ...record(params.arguments), id: randomUUID(), status: 'pending' });
+          if (active.operationalGoal && requested.fileWrite) throw new Error('Upgrade the operational policy before requesting code-change permission.');
           if (coversPermissions(this.configuration.permissions, requested)) {
             const intake = !!task.dialogue && !task.goal;
             if (intake) active.intakePermissionsConfirmed = true;
@@ -147,7 +159,7 @@ export class SpecialistAgent {
               if (!this.integration) throw new Error('Integration unavailable.');
               this.integration.assertComplete(task, active.messages);
             }
-            if (decision.action === 'complete') this.work?.assertReviewed(task);
+            if (decision.action === 'complete') { assertDirectGoalUnchanged(task); this.work?.assertReviewed(task); }
             if (decision.action === 'complete' && task.goal.verificationRequired && !task.integration) {
               if (!this.collaboration) throw new Error('Independent verification is unavailable.');
               this.collaboration.assertVerified(task, active.messages);
@@ -309,7 +321,7 @@ export class SpecialistAgent {
       }
     }
     const commands = new CommandSessions();
-    const active: ActiveTask = { commands, id, threadId: null, turnId: null, observations, health: new ExecutionHealth(id), intakeRetry,
+    const active: ActiveTask = { commands, id, threadId: null, turnId: null, observations, health: new ExecutionHealth(id), intakeRetry, readOnlyGoal: restrictedGoal(task), operationalGoal: operationalGoal(task), projectReadOnly: projectReadOnlyGoal(task),
       stopRequested: false, done: Promise.resolve(), observer: new TurnObserver((method, item, turnId) => {
         if (!readOnlyItem(item)) this.store.update(id, { recoveryUnsafe: true });
         recordTaskActivity(this.store, id, method, item, turnId); commands.observe(method, item); observations.item(method, item);
@@ -418,7 +430,10 @@ export class SpecialistAgent {
 
   private async thread(task: Task, scratch?: TaskScratch, workspace = this.workspace): Promise<string> {
     const saved = this.store.snapshot();
-    const savedThread = task.providerCheckpoint?.threadId ?? (task.conversation ? saved.threads[task.conversation] ?? null : saved.threadId);
+    const priorThread = task.providerCheckpoint?.threadId ?? (task.conversation ? saved.threads[task.conversation] ?? null : saved.threadId);
+    const upgrade = priorThread && task.dialogue && !task.providerCheckpoint && task.goalPolicyVersion !== 2
+      && !saved.tasks.some(t => t.threadId === priorThread && t.goalPolicyVersion === 2);
+    const savedThread = upgrade ? null : priorThread;
     // Reload turn-specific permission roots and TMPDIR, including warm resumes.
     if (!scratch && !task.dialogue && savedThread && this.loadedThreads.has(savedThread)) return savedThread;
     if ((scratch || task.dialogue) && savedThread && this.loadedThreads.has(savedThread)) {
@@ -429,7 +444,8 @@ export class SpecialistAgent {
     }
     const settings = this.configuration;
     const intake = !!task.dialogue && !task.goal;
-    const projectWritable = !intake && !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true;
+    const restricted = restrictedGoal(task);
+    const projectWritable = !projectReadOnlyGoal(task) && !intake && !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true;
     // Native resumed conversations retain the dynamic tool set from their creation.
     const integrationAvailable = this.integration && packToolAllowed(settings?.enabledTools, integrationTools[0]!.name) && (!savedThread || task.integrationTools === true);
     const applicationAvailable = integrationAvailable && settings?.applicationProtocol === 1 && (!savedThread || task.applicationTools === true);
@@ -437,14 +453,15 @@ export class SpecialistAgent {
     const flashAvailable = this.flash && (!savedThread || saved.tasks.some(t => t.threadId === savedThread && t.flashTools === true));
     const profile = this.profile + (flashAvailable ? flashInstructions + '\nSearch your own Docker sessions and the assigned project local SESSION. Keep docker/local origins distinct. A partial result does not cover both sources. memory_read returns separate results with validated evidence.\n' : this.flash ? '\nThis older conversation has no Flash tools. Start a new conversation to use Flash memory.\n' : '') + (settings?.enabledTools ? `\nEnabled Homie tool groups: ${settings.enabledTools.join(', ') || 'none'}. Disabled groups are unavailable even if older instructions mention them.\n` : '') + (codegraphAvailable ? codegraphInstructions : this.codegraph ? '\nThis older conversation has no CodeGraph tools. Use scoped source reads within existing permissions; a new conversation is required for CodeGraph tools.\n' : '') + (settings?.permissionProtocol === 1 ? permissionInstructions : '') + (this.collaboration ? collaborationInstructions : '') + (task.goal ? decisionInstructions : '') + (task.dialogue ? conversationInstructions : '') + (this.verification ? verificationInstructions : '') + (this.work ? workInstructions : '') + (integrationAvailable ? integrationInstructions : '')
       + (integrationAvailable && settings?.candidateVerificationProtocol === 1 ? candidateVerificationInstructions : '') + (applicationAvailable ? applicationInstructions : '')
+      + (task.dialogue ? goalVerificationInstructions : '')
       + (intake ? `\nCurrent stage: intake. Saved project permissions: fileWrite=${settings?.permissions.fileWrite === true}, commandExecution=${settings?.permissions.commandExecution === true}. ${intakeGuidance}\n` : '');
     const params: JsonRecord = { cwd: workspace,
-      ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: !intake && !task.consultation && !task.verification && !task.delegation && settings?.permissions.fileWrite === true ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
+      ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandbox: projectWritable ? 'workspace-write' : 'read-only' }), approvalPolicy: 'on-request',
       approvalsReviewer: 'user', developerInstructions: profile,
       ...(settings ? { model: settings.model, serviceTier: settings.serviceTier, config: {
         ...(settings.reasoningEffort ? { model_reasoning_effort: settings.reasoningEffort } : {}),
-        'features.shell_tool': !intake && !task.consultation && settings.permissions.commandExecution,
-        'features.unified_exec': !intake && !task.consultation && settings.permissions.commandExecution,
+        'features.shell_tool': !restricted && !intake && !task.consultation && settings.permissions.commandExecution,
+        'features.unified_exec': !restricted && !intake && !task.consultation && settings.permissions.commandExecution,
         'features.multi_agent': false,
         ...(scratch ? scratch.config(workspace, projectWritable) : {}),
       } } : {}) };
@@ -453,6 +470,11 @@ export class SpecialistAgent {
       : await this.client.request('thread/start', { ...params, dynamicTools: [...(this.configuration?.customTools ?? []).filter(t => t.enabled).map(customToolDefinition), ...(this.flash ? flashTools : []), ...(this.codegraph ? codegraphTools : []), ...(settings?.permissionProtocol === 1 ? permissionTools : []), ...(this.collaboration ? collaborationTools : []), ...(task.goal || task.dialogue ? decisionTools : []), ...(task.dialogue ? conversationTools : []), ...(this.verification ? verificationTools : []), ...(this.work ? workTools : []), ...(this.integration ? integrationTools : []), ...(applicationAvailable ? applicationTools : [])].filter(tool => packToolAllowed(settings?.enabledTools, tool.name)) });
     const threadId = textValue(record(result.thread).id, 'thread id');
     assertResumedThread(savedThread, threadId);
+    if (upgrade) {
+      await this.client.request('thread/inject_items', { threadId, items: [{ type: 'message', role: 'user',
+        content: [{ type: 'input_text', text: legacyGoalContext(task, priorThread!) }] }] });
+      this.store.update(task.id, { previousThreadId: priorThread! });
+    }
     const nativePath = record(result.thread).path;
     if (typeof nativePath === 'string') this.threadPaths.set(threadId, nativePath);
     else this.threadPaths.delete(threadId);
@@ -469,6 +491,7 @@ export class SpecialistAgent {
       });
     }
     this.store.saveThread(threadId, typeof result.model === 'string' ? result.model : saved.model, task.conversation, !task.consultation && !task.verification && !task.delegation);
+    if (!savedThread && task.dialogue) this.store.update(task.id, { goalPolicyTools: true, goalPolicyVersion: 2 });
     if (flashAvailable) this.store.update(task.id, { flashTools: true });
     if (codegraphAvailable) this.store.update(task.id, { codegraphTools: true });
     if (integrationAvailable) this.store.update(task.id, { integrationTools: true, ...(applicationAvailable ? { applicationTools: true as const } : {}) });
@@ -499,10 +522,10 @@ export class SpecialistAgent {
       }
       const account = record(await this.client.request('account/read', { refreshToken: false }));
       assertChatGPTAccount(account.account);
-      if (!task.delegation && !task.consultation && this.configuration?.permissions.commandExecution === true) {
+      if (!active.readOnlyGoal && !task.delegation && !task.consultation && this.configuration?.permissions.commandExecution === true) {
         scratch = new TaskScratch(); this.retainedScratch.add(scratch);
       }
-      if ((!task.dialogue || task.goal) && !task.consultation && !task.verification && !task.delegation
+      if (!active.projectReadOnly && (!task.dialogue || task.goal) && !task.consultation && !task.verification && !task.delegation
         && this.configuration?.permissions.fileWrite === true) assertWritableWorkspace(workspace);
       active.threadId = await this.thread(task, scratch, workspace);
       if (active.stopRequested) {
@@ -517,7 +540,7 @@ export class SpecialistAgent {
       const response = await this.client.request('turn/start', {
         threadId: active.threadId, input: [{ type: 'text', text: input }], cwd: workspace,
         approvalPolicy: 'on-request', approvalsReviewer: 'user',
-        ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandboxPolicy: (!task.dialogue || !!task.goal) && !task.consultation && !task.verification && !task.delegation && this.configuration?.permissions.fileWrite === true
+        ...(scratch ? { permissions: SCRATCH_PROFILE } : { sandboxPolicy: !active.projectReadOnly && (!task.dialogue || !!task.goal) && !task.consultation && !task.verification && !task.delegation && this.configuration?.permissions.fileWrite === true
           ? { type: 'workspaceWrite', writableRoots: [this.workspace], networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true }
           : { type: 'readOnly', networkAccess: false } }),
         ...(this.configuration ? { model: this.configuration.model, effort: this.configuration.reasoningEffort, serviceTier: this.configuration.serviceTier } : {}),
@@ -576,11 +599,12 @@ export class SpecialistAgent {
         this.store.complete(task.id, { ...result, goal: savedGoal, status: 'waiting' }, active.messages);
       } else if (result.status === 'completed' && task.goal) {
         let verificationError: string | null = null;
-        if (savedGoal?.pending?.action === 'complete' && (savedGoal.verificationRequired || this.store.task(task.id)?.integration)) {
+        if (savedGoal?.pending?.action === 'complete') {
           try {
             const current = this.store.task(task.id)!;
+            assertDirectGoalUnchanged(current);
             if (current.integration) this.integration!.assertComplete(current, active.messages);
-            else this.collaboration!.assertVerified(current, active.messages);
+            else if (savedGoal.verificationRequired) this.collaboration!.assertVerified(current, active.messages);
           }
           catch (error) { verificationError = error instanceof Error ? error.message : String(error); }
         }
@@ -607,7 +631,7 @@ export class SpecialistAgent {
       await this.saveUsage(active);
       const outgoing = !submitted && task.delegation && this.work ? this.work.resultMessage(task, 'failed', reason) : undefined;
       this.store.complete(task.id, { status: submitted ? 'unknown' : active.stopRequested ? 'interrupted' : 'failed',
-        output: task.providerCheckpoint ? this.store.task(task.id)?.output ?? '' : '', error: reason }, outgoing ? active.messages : [], outgoing);
+        output: task.providerCheckpoint ? this.store.task(task.id)?.output ?? '' : !submitted && legacyVerificationReview(task) ? task.output : '', error: reason }, outgoing ? active.messages : [], outgoing);
     } finally {
       active.controller.abort(); remove(); removeFailure(); observer.dispose();
       // Unknown executions may still own child processes. Retain their scratch until

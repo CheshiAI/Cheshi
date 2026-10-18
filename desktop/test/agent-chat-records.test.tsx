@@ -93,6 +93,38 @@ test('verification keeps mixed verdicts and literal evidence in shared disclosur
   });
 });
 
+test('Chats shows tool names, status and literal results in expandable execution cards', async () => {
+  await withDOM(async render => {
+    const tool: TaskActivity = { ...activity, kind: 'tool', title: 'functions · exec' };
+    const snapshot = (receipt: TaskActivity): ChatsSnapshot => ({
+      rooms: [{ id: 'room', workspace: '/project', name: 'Tools', engineId: 'docker:test',
+        defaultAgentId: 'atlas', members: [], createdAt: activity.createdAt }],
+      messages: [{ id: 'tool', roomId: 'room', threadId: null, sender: 'atlas', recipient: null,
+        kind: 'message', text: '', createdAt: activity.createdAt, activity: receipt }],
+    });
+    let data = snapshot(tool);
+    let refresh = () => {};
+    const api: AgentChatsApi = { request: async () => data, onDidChange: listener => {
+      refresh = () => listener({ cursor: { epoch: 'tools', sequence: 1 }, rooms: [], messages: [], removedRoomIds: [], removedMessageIds: [] });
+      return () => {};
+    } };
+    await render(<ChatsView active api={api} />);
+    const card = document.querySelector('[data-message-id="tool"] details')!;
+    expect(card.querySelector('summary')?.textContent).toContain('functions · exec');
+    expect(card.querySelector('summary')?.textContent).toContain('Running');
+    await act(async () => card.querySelector('summary')!.click());
+    for (const [status, label] of [['completed', 'Completed'], ['failed', 'Failed'], ['unknown', 'Result unknown']] as const) {
+      data = snapshot({ ...tool, status, text: 'Session ready\n<script>not executable</script>' });
+      await act(async () => refresh());
+      expect(document.querySelector('[data-message-id="tool"] details')).toBe(card);
+      expect(card.hasAttribute('open')).toBe(true);
+      expect(card.querySelector('summary')?.textContent).toContain(label);
+      expect(card.querySelector('[aria-label="Execution output"] code')?.textContent).toBe('Session ready\n<script>not executable</script>');
+      expect(card.querySelector('script')).toBeNull();
+    }
+  });
+});
+
 test('Chats quotes verification summaries instead of serialized goals and evidence', async () => {
   const request = JSON.stringify({ goal: 'PRIVATE_GOAL_CONTEXT', criteria: ['Works'], artifacts: [{ path: 'main.ts', sha256: 'a'.repeat(64) }] });
   await withDOM(async render => {

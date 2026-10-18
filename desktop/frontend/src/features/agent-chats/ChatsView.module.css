@@ -30,6 +30,7 @@
 .message[data-copy-action] .metadata { padding-right: calc(2 * (var(--icon-button-size) + var(--icon-default))); }
 @media (hover: none) { .messageActions { opacity: 1; pointer-events: auto; } }
 .messageBody { min-width: 0; }
+.permissionCard { margin-top: var(--space-default); }
 .metadata { flex-wrap: wrap; align-self: stretch; padding-right: 0; }
 .metadata strong, .metadata span { min-width: 0; overflow-wrap: anywhere; }
 .metadata [data-agent-avatar] > svg { width: 100%; height: 100%; }

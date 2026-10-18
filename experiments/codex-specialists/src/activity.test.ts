@@ -48,6 +48,51 @@ test('turn identity prevents reused item ids from replacing earlier execution an
   expect(new Set(store.task('task')!.activity!.map(item => item.id)).size).toBe(2);
 });
 
+test('dynamic tool calls retain their lifecycle, public output and identity through restart', async () => {
+  const { directory, store, observer } = fixture();
+  const item = { id: 'dynamic', type: 'dynamicToolCall', namespace: 'functions', tool: 'exec',
+    arguments: 'PRIVATE_ARGUMENTS', status: 'inProgress', contentItems: null, success: null };
+  const emit = (method: string, value: Record<string, unknown>, threadId = 'thread') =>
+    observer.receive({ method, params: { threadId, turnId: 'turn', item: value } });
+  emit('item/started', item);
+  emit('item/completed', { ...item, id: 'unrelated', tool: 'OTHER_TASK' }, 'other');
+  observer.identify('thread', 'turn');
+  const started = store.task('task')!.activity![0]!;
+  expect(started).toMatchObject({ kind: 'tool', title: 'functions · exec', status: 'running', text: '' });
+  const completed = { ...item, status: 'completed', success: true, contentItems: [
+    { type: 'inputText', text: 'Session ready' },
+    { type: 'inputImage', imageUrl: 'data:image/png;base64,PRIVATE_IMAGE' },
+    { type: 'inputText', text: 'Tools available' },
+    { type: 'reasoning', text: 'PRIVATE_REASONING' }, null,
+  ] };
+  emit('item/completed', completed);
+  emit('item/completed', completed);
+  observer.receive({ method: 'turn/completed', params: { threadId: 'thread', turn: {
+    id: 'turn', status: 'completed', items: [completed],
+  } } });
+  await observer.result;
+  const saved = new AgentStore(directory).task('task')!.activity!;
+  expect(saved).toHaveLength(1);
+  expect(saved[0]).toMatchObject({ id: started.id, createdAt: started.createdAt, status: 'completed',
+    text: 'Session ready\n\n[Image result]\n\nTools available' });
+  expect(parseTaskActivities(saved)).toEqual(saved);
+  expect(JSON.stringify(saved)).not.toContain('PRIVATE');
+  expect(JSON.stringify(saved)).not.toContain('OTHER_TASK');
+});
+
+test('dynamic tools retain failure, truncation and missing completion instead of inventing success', () => {
+  const { store } = fixture();
+  recordTaskActivity(store, 'task', 'item/completed', { type: 'dynamicToolCall', id: 'failed',
+    tool: 'conversation_status', status: 'completed', success: false,
+    contentItems: [{ type: 'inputText', text: 'Unavailable: ' + 'x'.repeat(20000) }] }, 'turn');
+  expect(store.task('task')!.activity![0]).toMatchObject({ kind: 'tool', title: 'conversation_status',
+    status: 'failed', truncated: true });
+  expect(store.task('task')!.activity![0]!.text.length).toBe(16000);
+  recordTaskActivity(store, 'task', 'item/started', { type: 'dynamicToolCall', id: 'pending', tool: 'memory_search' }, 'turn');
+  store.complete('task', { status: 'interrupted', output: '', error: null });
+  expect(store.task('task')!.activity![1]).toMatchObject({ status: 'unknown', title: 'memory_search' });
+});
+
 test('bounded excerpts preserve explicit truncation and inspection transport budgets', () => {
   const { store } = fixture();
   recordTaskActivity(store, 'task', 'item/completed', { type: 'fileChange', id: 'file', status: 'completed',

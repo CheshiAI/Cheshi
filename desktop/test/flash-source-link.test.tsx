@@ -36,6 +36,37 @@ test('Markdown source quotes render an internal icon link while unsafe links sta
   expect(unsafe).not.toContain('<a');
 });
 
+test('memory source headings use a decorative book while their original links remain separate', () => {
+  for (const heading of ['출처', '**출처**', '## 출처']) {
+    for (const renderLocalImages of [false, true]) {
+      const html = renderToStaticMarkup(<MessageContent renderLocalImages={renderLocalImages}
+        text={`요약입니다.\n\n${heading}\n\n> 원문 근거\n\n[대화 원문 보기](${href})`} />);
+      expect(html).toContain('role="heading" aria-level="2"');
+      expect(html).toContain('lucide-book-open');
+      expect(html).toContain('lucide-link');
+      expect(html.match(/<a\s/g)).toHaveLength(1);
+      expect(html).toContain('원문 근거');
+    }
+  }
+  const addressed = renderToStaticMarkup(<MessageContent mention={{ id: 'atlas', name: 'atlas' }}
+    text={`@atlas 요약\n\n${text}`} />);
+  expect(addressed).toContain('data-mention-id="atlas"');
+  expect(addressed).toContain('lucide-book-open');
+});
+
+test('source decoration leaves prose, code, quoted headings and unrelated references unchanged', () => {
+  for (const input of [
+    '출처\n\n일반 설명입니다.',
+    `출처 확인\n\n> 원문\n\n[대화 원문 보기](${href})`,
+    '`출처`\n\n> 원문\n\n' + `[대화 원문 보기](${href})`,
+    `출처\n\n> 원문\n\n[외부 링크](https://example.com)`,
+    `출처\n\n> 원문\n\n[잘못된 링크](${href}&extra=1)`,
+    `> 출처\n>\n> > 원문\n>\n> [대화 원문 보기](${href})`,
+    '```md\n출처\n\n> 원문\n```',
+  ]) expect(renderToStaticMarkup(<MessageContent text={input} />)).not.toContain('lucide-book-open');
+  expect(renderToStaticMarkup(<MessageContent text={text} presentation="description" />)).not.toContain('lucide-book-open');
+});
+
 test('source clicks navigate only on activation and expose unavailable or failed navigation', async () => {
   const window = new Window({ url: 'http://localhost' });
   const globals = { window, document: window.document, navigator: window.navigator, IS_REACT_ACT_ENVIRONMENT: true };

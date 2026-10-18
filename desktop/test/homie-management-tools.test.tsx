@@ -55,7 +55,7 @@ test('saved repository host tools expose local review in the actual Homie settin
     await ui.click('Review host access…');
     expect(document.querySelector<HTMLButtonElement>('[aria-label="Allow agent commands"]')?.disabled).toBe(true);
     await act(async () => pending.resolve({ allowed: true, executable: '/local/runtime', digest: 'reviewed' }));
-    expect(document.body.textContent).toContain('Host tool allowed');
+    expect(document.body.textContent).toContain('Approved');
     await ui.click('Revoke host access');
     expect(requests).toEqual(['policy', 'status', 'policy', 'status', 'allow', 'revoke']);
     await act(async () => f.update({ ...agent, package: pack, revision: 2 }));
