@@ -71,9 +71,9 @@ export class HomieRepositoryProjects {
     const plan = value as Partial<RepositoryPlan> | null;
     const repository = plan?.repository;
     if (plan?.agentId !== agentId || typeof repository !== 'string'
-      || !/^[^/]+\/homie-[a-z0-9-]+$/.test(repository)
+      || !/^[^/]+\/[Hh]omie-[a-z0-9-]+$/.test(repository)
       || (plan.accountId !== undefined && (!Number.isSafeInteger(plan.accountId) || plan.accountId <= 0))
-      || plan.directory !== path.join(this.projectsDirectory, repository.split('/')[1]!)) {
+      || plan.directory !== path.join(this.projectsDirectory, repository.split('/')[1]!.toLowerCase())) {
       throw new Error('Inspect the saved Homie repository mapping. Existing files were retained.');
     }
     githubRepositoryName(repository);
@@ -125,8 +125,8 @@ export class HomieRepositoryProjects {
       const slug = agent.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40).replace(/-$/, '') || 'agent';
       const shortId = agent.id.replaceAll('-', '');
       for (const suffix of ['', ...[8, 12, 16, 32].map(length => `-${shortId.slice(0, length)}`)]) {
-        const name = `homie-${slug}${suffix}`, repository = `${owner}/${name}`;
-        const directory = path.join(this.projectsDirectory, name);
+        const name = `Homie-${slug}${suffix}`, repository = `${owner}/${name}`;
+        const directory = path.join(this.projectsDirectory, name.toLowerCase());
         if (reserved.has(directory.toLowerCase()) || await exists(directory)) continue;
         const remote = await this.run('gh', ['api', '--hostname', 'github.com', `repos/${repository}`]);
         if (remote.code === 0) continue;

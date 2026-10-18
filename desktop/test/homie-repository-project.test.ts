@@ -28,7 +28,7 @@ async function fixture(testCase: (f: {
     if (endpoint === 'user') return { code: 0, stdout: JSON.stringify({ id: state.id, login: state.login }), stderr: '' };
     if (endpoint.startsWith('user/memberships/orgs/')) return { code: 0,
       stdout: JSON.stringify({ state: state.membership, organization: { login: endpoint.split('/').at(-1) } }), stderr: '' };
-    if (state.occupied.has(endpoint)) return { code: 0, stdout: '{}', stderr: '' };
+    if (state.occupied.has(endpoint.toLowerCase())) return { code: 0, stdout: '{}', stderr: '' };
     return { code: 1, stdout: '', stderr: 'HTTP 404' };
   };
   const config = { stateDirectory: path.join(base, 'mappings'), projectsDirectory: path.join(base, 'projects'), run };
@@ -42,13 +42,15 @@ const another = { ...agent, id: 'b1234567-1234-1234-1234-123456789abc' };
 test('fresh users default to their authenticated GitHub account with a short repository name', async () => {
   await fixture(async f => {
     const plan = await f.service.plan(agent);
-    expect(plan.repository).toBe('alice/homie-development');
+    expect(plan.repository).toBe('alice/Homie-development');
     expect(path.basename(plan.directory)).toBe('homie-development');
     expect(plan.accountId).toBe(101);
+    expect(await new HomieRepositoryProjects(f.config).local(agent.id)).toEqual(plan);
+    expect(f.calls.some(args => args.at(-1) === 'repos/alice/Homie-development')).toBe(true);
     f.state.id = 202; f.state.login = 'bob';
     const otherUser = new HomieRepositoryProjects({ ...f.config, stateDirectory: path.join(f.config.stateDirectory, 'bob'),
       projectsDirectory: path.join(f.config.projectsDirectory, 'bob') });
-    expect((await otherUser.plan(agent)).repository).toBe('bob/homie-development');
+    expect((await otherUser.plan(agent)).repository).toBe('bob/Homie-development');
     expect(f.calls.some(args => args.includes('POST'))).toBe(false);
   });
 });
@@ -57,14 +59,14 @@ test('remote, local and reserved name collisions append a short ID without adopt
   await fixture(async f => {
     const first = await f.service.plan(agent);
     const second = await f.service.plan(another);
-    expect(first.repository).toBe('alice/homie-development');
-    expect(second.repository).toBe('alice/homie-development-b1234567');
+    expect(first.repository).toBe('alice/Homie-development');
+    expect(second.repository).toBe('alice/Homie-development-b1234567');
     f.state.occupied.add('repos/alice/homie-review');
     expect((await f.service.plan({ ...agent, id: 'c1234567-1234-1234-1234-123456789abc', name: 'review' })).repository)
-      .toBe('alice/homie-review-c1234567');
+      .toBe('alice/Homie-review-c1234567');
     await mkdir(path.join(f.config.projectsDirectory, 'homie-research'), { recursive: true });
     expect((await f.service.plan({ ...agent, id: 'd1234567-1234-1234-1234-123456789abc', name: 'research' })).repository)
-      .toBe('alice/homie-research-d1234567');
+      .toBe('alice/Homie-research-d1234567');
   });
 });
 
@@ -81,9 +83,9 @@ test('concurrent planning and retries after renaming keep the same reserved repo
 test('an explicit organization choice is local and only applies to the account that chose it', async () => {
   await fixture(async f => {
     await f.service.setOwner('example-team');
-    expect((await f.service.plan(agent)).repository).toBe('example-team/homie-development');
+    expect((await f.service.plan(agent)).repository).toBe('example-team/Homie-development');
     f.state.id = 202; f.state.login = 'bob';
-    expect((await f.service.plan({ ...another, name: 'Review' })).repository).toBe('bob/homie-review');
+    expect((await f.service.plan({ ...another, name: 'Review' })).repository).toBe('bob/Homie-review');
     await rejected(f.service.plan(agent), /another GitHub account/);
   });
 });
@@ -109,6 +111,22 @@ test('legacy owner mappings require a local choice before binding to the authent
     await f.service.setOwner('example-team');
     expect(await f.service.plan(agent)).toEqual({ ...legacy, accountId: 101 });
     expect(JSON.parse(await readFile(filename, 'utf8')).accountId).toBe(101);
+  });
+});
+
+test('saved lowercase repository mappings are reused and reserve their existing local folders', async () => {
+  await fixture(async f => {
+    await mkdir(f.config.stateDirectory);
+    const filename = path.join(f.config.stateDirectory, `${agent.id}.json`);
+    const saved = { agentId: agent.id, repository: 'alice/homie-development',
+      directory: path.join(f.config.projectsDirectory, 'homie-development'), accountId: 101 };
+    const original = JSON.stringify(saved);
+    await writeFile(filename, original);
+    expect(await f.service.local(agent.id)).toEqual(saved);
+    expect(await f.service.plan(agent)).toEqual(saved);
+    expect(await readFile(filename, 'utf8')).toBe(original);
+    expect(f.calls.some(args => args.at(-1)?.startsWith('repos/'))).toBe(false);
+    expect((await f.service.plan(another)).repository).toBe('alice/Homie-development-b1234567');
   });
 });
 

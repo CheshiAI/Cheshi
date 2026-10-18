@@ -12,8 +12,8 @@ import { specialistAgent } from './agent-registry-fixtures';
 
 const execute = promisify(execFile);
 const templateAgent = specialistAgent();
-const options = { repository: 'example-org/homie-development', template: () => homieRepositoryTemplate(templateAgent) };
-const url = 'https://github.com/example-org/homie-development.git';
+const options = { repository: 'example-org/Homie-development', template: () => homieRepositoryTemplate(templateAgent) };
+const url = 'https://github.com/example-org/Homie-development.git';
 const success = (stdout = ''): RepositoryCommandResult => ({ code: 0, stdout, stderr: '' });
 const failure = (stderr: string): RepositoryCommandResult => ({ code: 1, stdout: '', stderr });
 async function rejected(operation: Promise<unknown>, message: RegExp) {
@@ -32,7 +32,7 @@ async function fixture(run: (f: {
   const bare = path.join(base, 'remote.git'), directory = path.join(base, 'projects', 'homies');
   const state = { present: false, private: true as boolean | string, lookupFailure: '', failGit: '', createFailure: '' };
   const calls: { command: string; args: string[] }[] = [];
-  const remote = () => JSON.stringify({ id: 123, full_name: 'example-org/homie-development', private: state.private });
+  const remote = () => JSON.stringify({ id: 123, full_name: 'example-org/Homie-development', private: state.private });
   await execute('git', ['init', '--bare', '--initial-branch=main', bare]);
   const command: RepositoryCommand = async (cmd, args, cwd) => {
     calls.push({ command: cmd, args: [...args] });
@@ -41,6 +41,7 @@ async function fixture(run: (f: {
         if (state.createFailure) return failure(state.createFailure);
         expect(args).toContain('orgs/example-org/repos');
         expect(args).toContain('private=true');
+        expect(args).toContain('name=Homie-development');
         state.present = true;
         return success(remote());
       }
@@ -61,7 +62,7 @@ async function fixture(run: (f: {
 test('new private repository is seeded from deterministic packaged files and cloned to its permanent folder', async () => {
   await fixture(async f => {
     const first = await f.service.ensure();
-    expect(first).toEqual({ repository: 'example-org/homie-development', directory: f.directory, created: true });
+    expect(first).toEqual({ repository: 'example-org/Homie-development', directory: f.directory, created: true });
     const files = await homieRepositoryTemplate(templateAgent);
     expect(Object.keys(files).sort()).toEqual([...HOMIE_TEMPLATE_FILES].sort());
     expect(await homieRepositoryTemplate(templateAgent)).toEqual(files);
