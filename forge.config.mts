@@ -56,6 +56,7 @@ function shouldIgnore(packagePath: string): boolean {
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
+    if (grandchildEntry === 'homie-repository-connection.ts') return segments.length > 3;
     if (grandchildEntry === 'chat-imports.ts' || grandchildEntry === 'host-tool-details.ts') return segments.length > 3;
     if (grandchildEntry === 'workspace-host.ts' || grandchildEntry === 'homie-setup.ts') return segments.length > 3;
     if (grandchildEntry === 'worker-workspace.ts') return segments.length > 3;
@@ -80,6 +81,7 @@ function shouldIgnore(packagePath: string): boolean {
   if (grandchildEntry === 'agent-chats') return segments.length > 4 || (segments.length === 4 && !new Set(['isolated-tasks.mts', 'ipc.mts', 'service.mts', 'store.mts', 'changes.mts', 'records.mts', 'coordination.mts']).has(segments[3]!));
   if (grandchildEntry === 'agent-voice') return segments.length > 4 || (segments.length === 4 && !new Set(['workspace.mts', 'service.mts', 'storage.mts', 'chats.mts', 'realtime.mts', 'diagnostics.mts']).has(segments[3]!));
   if (grandchildEntry === 'agent-management') {
+    if (segments[3] === 'homie-repository-registration.mts') return segments.length > 4;
     if (segments[3] === 'host-tool-details.mts' || segments[3] === 'host-tool-review-content.mts' || segments[3] === 'host-tool-policy.mts' || segments[3] === 'host-tool-services.mts'
       || segments[3] === 'host-python-runtime.mts' || segments[3] === 'host-python-catalog.mts') return segments.length > 4;
     if (segments[3] === 'packages.mts') return segments.length > 4;
