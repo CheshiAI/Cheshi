@@ -1,5 +1,9 @@
 import { expect, test } from 'bun:test';
-import { act, createRef, type ComponentProps, type ReactNode } from 'react';
+import { act, createRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import vm from 'node:vm';
+import ts from 'typescript';
 import { createRoot } from 'react-dom/client';
 import { EditorView } from '@codemirror/view';
 import { redo, undo } from '@codemirror/commands';
@@ -88,6 +92,55 @@ async function withInput(run: (harness: {
 }
 
 function selection(input: ChatInputHandle) { return [input.selectionStart, input.selectionEnd]; }
+
+test('composer keeps the caret and undo history when slash commands open and close', async () => {
+  await withInput(async h => {
+    // Exercise the actual composer-to-editor props, excluding unrelated toolbar and service UI.
+    const url = new URL('../frontend/src/features/chat/ChatComposer.tsx', import.meta.url);
+    const require = createRequire(url);
+    const noop = () => {};
+    const dependencies: Record<string, unknown> = {
+      './ChatImportInput': { ChatImportInput },
+      './ChatComposerSurface': { ChatComposerSurface: ({ children }: { children: ReactNode }) => <div>{children}</div>, ChatComposerDisclaimer: () => null },
+      './useChatInputHistory': { useChatInputHistory: () => ({ open: false, close: noop }) },
+      './chatQuestionChoices': { composerQuestionRequest: () => null },
+    };
+    const compiled = ts.transpileModule(readFileSync(url, 'utf8'), { compilerOptions: {
+      module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023, jsx: ts.JsxEmit.ReactJSX,
+    } });
+    const exports = {};
+    vm.runInNewContext(compiled.outputText, { exports, require: (name: string) => {
+      if (Object.hasOwn(dependencies, name)) return dependencies[name];
+      if (name.startsWith('.')) return new Proxy({}, { get: () => () => null });
+      return require(name);
+    } });
+    const { ChatComposer } = exports as typeof import('../frontend/src/features/chat/ChatComposer');
+    const ref = createRef<ChatInputHandle>();
+    let closeMenu = noop;
+    function Fixture() {
+      const [draft, setDraft] = useState('');
+      const [mode, setMode] = useState<'commands' | null>(null);
+      closeMenu = () => setMode(null);
+      const controller = {
+        draft, commandMenuMode: mode, commandMenuOpen: mode !== null, attachments: [], textareaRef: ref,
+        state: { items: [], activeSessionId: 'session-a' }, messageQueue: { entries: [] }, attachmentTransfer: { onPaste: noop },
+        handleDraftChange(value: string) { setDraft(value); setMode(value.startsWith('/') ? 'commands' : null); },
+      } as unknown as ComponentProps<typeof ChatComposer>['controller'];
+      const chatController = { sessionRevision: 0 } as ComponentProps<typeof ChatComposer>['chatController'];
+      return <ChatComposer controller={controller} chatController={chatController} />;
+    }
+    await h.mount(<Fixture />);
+    await h.insert('/');
+    expect(selection(ref.current!)).toEqual([1, 1]);
+    await h.insert('s');
+    expect(ref.current!.value).toBe('/s');
+    expect(selection(ref.current!)).toEqual([2, 2]);
+    await act(async () => closeMenu());
+    expect(selection(ref.current!)).toEqual([2, 2]);
+    await act(async () => { expect(undo(h.view())).toBe(true); });
+    expect(ref.current!.value).toBe('');
+  });
+});
 
 test('local path matching supports quoted names and dropped links without consuming commands, URLs or fenced code', () => {
   const text = '/Users/cheshi/project\n"/Users/체시/My File.txt" \'/tmp/a b\' `/tmp/code.txt` [folder](</tmp/my%20folder>)';

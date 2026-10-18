@@ -1,5 +1,13 @@
 import type { KeyboardEvent } from 'react';
 
+export function nextChatCommandIndex(current: number, offset: number, enabled: readonly boolean[]): number {
+  for (let step = 1; step <= enabled.length; step++) {
+    const index = ((current + Math.sign(offset) * step) % enabled.length + enabled.length) % enabled.length;
+    if (enabled[index]) return index;
+  }
+  return current;
+}
+
 interface ComposerKeyboardOptions {
   locked: boolean;
   menuOpen: boolean;

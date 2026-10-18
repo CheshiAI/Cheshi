@@ -12,13 +12,14 @@
 .rail [data-rail-button]:not([data-rail-expanded]) { width: 42px; }
 .workspaces { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .header { display: flex; height: var(--workspace-status-bar-height); flex: 0 0 var(--workspace-status-bar-height); border-bottom: 1px solid var(--divider); -webkit-app-region: drag; }
-.tabs { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--icon-default); padding: 0 var(--space-8); overflow-x: auto; -webkit-app-region: no-drag; }
+.tabs { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--icon-default); padding: 0 var(--space-8); overflow-x: auto; -webkit-app-region: drag; }
 .tab { display: flex; flex: 1 1 0; box-sizing: border-box; height: 24px; min-width: 0; padding-right: var(--space-4); border-radius: 999px; background: var(--control-surface-ghost); transition: background-color var(--button-transition-duration) ease; }
 .tab[data-selected='true'] { background: var(--control-surface); }
 .tab:hover { background: var(--control-surface-interactive); }
-.tabs[data-single='true'] .tab { padding-right: 0; background: transparent; }
-.tab button { display: flex; align-items: center; gap: var(--icon-default); border: 0; border-radius: 0; background: transparent; color: var(--text); cursor: pointer; }
+.tabs[data-single='true'] .tab { justify-content: center; padding-right: 0; background: transparent; }
+.tab button { display: flex; align-items: center; gap: var(--icon-default); border: 0; border-radius: 0; background: transparent; color: var(--text); cursor: pointer; -webkit-app-region: no-drag; }
 .tab > button:first-child { flex: 1; min-width: 0; justify-content: center; padding: 0 var(--space-default); border-radius: 999px; font-size: var(--font-size-caption); }
+.tabs[data-single='true'] .tab > button:first-child { flex: 0 1 auto; max-width: 100%; }
 .projectIcon { display: inline-flex; flex: 0 0 16px; }
 .projectIcon > span { width: 16px; height: 16px; flex: 0 0 16px; border-radius: 6px; font-size: var(--font-size-caption); }
 .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

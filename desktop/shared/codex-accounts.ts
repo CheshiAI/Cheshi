@@ -12,6 +12,17 @@ export interface CodexRateLimit {
   plan: string | null;
   primary: CodexRateLimitWindow | null;
   secondary: CodexRateLimitWindow | null;
+  credits?: CodexCredits;
+}
+
+export interface CodexCredits { balance: string | null; hasCredits: boolean; unlimited: boolean }
+
+export function normalizeCodexCredits(value: unknown): CodexCredits | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const entry = value as Record<string, unknown>;
+  if (typeof entry.hasCredits !== 'boolean' || typeof entry.unlimited !== 'boolean') return undefined;
+  return { balance: typeof entry.balance === 'string' ? entry.balance : null,
+    hasCredits: entry.hasCredits, unlimited: entry.unlimited };
 }
 
 export interface CodexAccountUsageStatus {

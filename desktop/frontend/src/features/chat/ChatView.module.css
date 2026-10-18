@@ -229,11 +229,7 @@
 .commandEmpty { display: flex; min-height: 68px; align-items: center; justify-content: center; gap: 8px; color: var(--sidebar-section-label-color); font-size: 10px; }
 .commandEmpty svg { width: var(--icon-size-default); height: var(--icon-size-default); color: inherit; stroke-width: 1.55; }
 .commandAlert { margin: 4px; }
-.commandStatus { display: grid; gap: 0; margin: 0; padding: 4px; }
-.commandStatus > div { display: grid; min-height: 38px; grid-template-columns: 100px minmax(0, 1fr); align-items: center; gap: 16px; border-bottom: 1px solid var(--divider); padding: 7px 10px; }
-.commandStatus > div:last-child { border-bottom: 0; }
-.commandStatus dt { color: var(--sidebar-section-label-color); font-size: var(--font-size-small); letter-spacing: normal; text-transform: uppercase; }
-.commandStatus dd { overflow: hidden; margin: 0; color: var(--text); font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; line-height: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.commandOptions[data-status='true'] { max-height: min(60vh, 600px); }
 .commandHelp { margin: 0; border-top: 1px solid var(--divider); color: var(--sub-text); font-size: var(--font-size-small); line-height: 12px; padding: var(--icon-default) var(--space-default); }
 
 @media (max-width: 1200px) {

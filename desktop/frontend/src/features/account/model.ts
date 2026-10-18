@@ -1,4 +1,5 @@
 import type { CodexAccountUsageStatus, CodexRateLimit, CodexRateLimitWindow } from '../../../../shared/codex-accounts';
+import { normalizeCodexCredits } from '../../../../shared/codex-accounts';
 export type { CodexAccountUsageStatus, CodexRateLimit, CodexRateLimitWindow } from '../../../../shared/codex-accounts';
 export { weeklyGeneralWindow } from '../../../../shared/codex-account-usage';
 
@@ -40,13 +41,15 @@ function normalizeRateLimits(value: unknown): CodexRateLimit[] {
     if (!record || typeof record.limitId !== 'string' || !record.limitId) return [];
     const primary = normalizeRateLimitWindow(record.primary);
     const secondary = normalizeRateLimitWindow(record.secondary);
-    if (!primary && !secondary) return [];
+    const credits = normalizeCodexCredits(record.credits);
+    if (!primary && !secondary && !credits) return [];
     return [{
       limitId: record.limitId,
       limitName: typeof record.limitName === 'string' ? record.limitName : null,
       plan: typeof record.plan === 'string' ? record.plan : null,
       primary,
       secondary,
+      ...(credits ? { credits } : {}),
     }];
   });
 }

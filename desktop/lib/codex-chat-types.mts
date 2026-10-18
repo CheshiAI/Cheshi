@@ -200,6 +200,7 @@ export interface ActiveTurn {
 }
 
 export interface CodexChatClient {
+  readonly initializeResult?: JsonObject | null;
   request: (
     method: string,
     params?: unknown,

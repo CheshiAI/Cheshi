@@ -18,6 +18,7 @@ function contextClient(client: ContextClient): ContextClient {
     if (disposed) throw new Error('This chat pane has been closed.');
   };
   return {
+    get initializeResult() { assertOpen(); return client.initializeResult; },
     request: async (method, params, timeoutMs) => {
       assertOpen();
       const result = await client.request(method, params, timeoutMs);

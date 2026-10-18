@@ -219,6 +219,7 @@ function shouldIgnore(packagePath: string): boolean {
     'codex-chat-permissions.mts',
     'codex-chat-plugins.mts',
     'codex-chat-service.mts',
+    'codex-chat-status.mts',
     'codex-chat-stop.mts',
     'codex-chat-session-deletion.mts',
     'codex-chat-thread-data.mts',

@@ -94,7 +94,7 @@ export function registerCodexChatIpc({ ipc, accountIpc, service, deletion, saved
   ipc.handle('cheshi:list-codex-models', (event, contextId) => service(event, contextId).listModels());
   ipc.handle('cheshi:list-codex-mcp-servers', (event, contextId) => service(event, contextId).listMcpServers());
   ipc.handle('cheshi:list-codex-permission-modes', (event, contextId) => service(event, contextId).listPermissionModes());
-  ipc.handle('cheshi:get-codex-chat-status', (event, contextId) => service(event, contextId).getStatus());
+  ipc.handle('cheshi:get-codex-chat-status', (event, contextId) => service(event, contextId).readStatus());
   ipc.handle('cheshi:get-codex-chat-goal', (event, contextId) => service(event, contextId).getGoal());
   ipc.handle('cheshi:list-codex-chat-user-inputs', (event, contextId) => service(event, contextId).userInputs.list());
   ipc.handle('cheshi:respond-codex-chat-user-input', (event, requestId, response, contextId) => service(event, contextId).userInputs.respond(requestId, response));

@@ -1,4 +1,6 @@
 import { normalizeMcpRuntimeStatus, type ChatMcpRuntimeStatus } from '../../../../shared/chat-mcp-status';
+import type { ChatStatusDetails } from '../../../../shared/chat-status';
+import { normalizeChatStatusDetails } from './chatStatus';
 import { normalizeAsyncQuestions, type ChatAsyncQuestion } from '../../../../shared/chat-async-questions';
 import { normalizeAgentActivity, type ChatAgentActivity } from '../../../../shared/chat-agent-details';
 
@@ -72,6 +74,7 @@ export interface ChatModelCatalog {
 }
 
 export interface ChatCommandStatus extends ChatConfiguration {
+  details?: ChatStatusDetails | null;
   threadId: string | null;
   access: string;
   responseInProgress: boolean;
@@ -682,6 +685,7 @@ export function normalizeChatCommandStatus(value: unknown): ChatCommandStatus {
     threadId,
     access,
     responseInProgress: record.responseInProgress,
+    ...(record.details === undefined ? {} : { details: normalizeChatStatusDetails(record.details) }),
   };
 }
 

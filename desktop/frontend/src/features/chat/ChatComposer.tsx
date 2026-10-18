@@ -136,7 +136,7 @@ export function ChatComposer({ controller, chatController, userInputContextId, a
         <ChatComposerAttachments attachments={attachments} removeAttachment={removeAttachment} insertAttachmentReference={controller.insertAttachmentReference} />
         {!commandMenuOpen && <GithubLinkChips draft={draft} />}
         <ChatImportInput
-          historyKey={`${chatController.sessionRevision}:${state.activeSessionId ?? ''}:${commandMenuMode ?? 'draft'}`}
+          historyKey={`${chatController.sessionRevision}:${state.activeSessionId ?? ''}:${commandMenuMode === 'commands' ? 'draft' : commandMenuMode ?? 'draft'}`}
           attachments={commandMenuOpen ? undefined : attachments}
           aria-label={goalEditorOpen ? 'Persistent goal objective' : 'Message Codex'}
           disabled={loading}

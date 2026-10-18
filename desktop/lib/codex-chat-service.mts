@@ -1,4 +1,5 @@
 import { FlashToolRequests, flashTools, flashInstructions } from './flash/tools.mts';
+import { readCodexChatStatus } from './codex-chat-status.mts';
 import type { SessionMemory } from './flash/session-memory.mts';
 import { chatMessageFailure, codexCollaborationOverride, setCodexCollaborationMode, steerCodexMessage } from './codex-chat-turn-controls.mts';
 import { assertWorkspaceThreadIdle } from './codex-workspace-activity.mts';
@@ -404,6 +405,8 @@ export class CodexChatService {
       responseInProgress: this.isThreadActive(threadId),
     };
   }
+
+  readStatus() { return readCodexChatStatus(this); }
 
   currentPermissionMode() {
     return currentCodexPermissionMode(this);

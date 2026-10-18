@@ -41,7 +41,7 @@ import { useChatAttachmentTransfer } from './useChatAttachmentTransfer';
 import { useChatImportDraft } from './useChatImportDraft';
 import type { ChatInputHandle } from './chatInputHandle';
 import { useChatMessageQueue } from './useChatMessageQueue';
-import { handleChatComposerKey, handleChatEscape, submitChatComposerDraft } from './chatComposerKeyboard';
+import { handleChatComposerKey, handleChatEscape, nextChatCommandIndex, submitChatComposerDraft } from './chatComposerKeyboard';
 import type { ChatDraftSnapshot } from './chatDraftRecovery';
 import { syncChatComposerOverlayHeight } from './chatComposerOverlay';
 
@@ -805,10 +805,11 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
   };
 
   const moveHighlightedOption = (offset: number): void => {
-    if (visibleOptionCount === 0) return;
-    setHighlightedIndex((currentIndex) => (
-      (currentIndex + offset + visibleOptionCount) % visibleOptionCount
-    ));
+    if (commandLoading || visibleOptionCount === 0) return;
+    const enabled = slashMenuOpen ? filteredCommands.map(command => commandDisabledReason(command) === null)
+      : permissionsPickerOpen ? filteredPermissionModes.map(mode => mode.allowed)
+      : Array.from({ length: visibleOptionCount }, () => true);
+    setHighlightedIndex(currentIndex => nextChatCommandIndex(currentIndex, offset, enabled));
   };
 
   const handleDraftChange = (value: string, imports?: readonly CodexChatAttachment[]): void => {
