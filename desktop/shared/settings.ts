@@ -1,6 +1,10 @@
 import { parseProjectDocMaxBytes } from '../../experiments/codex-specialists/src/project-instructions.ts';
+import type { HomieSetupStatus } from './homie-setup.ts';
 
 export const SETTINGS_CHANNELS = {
+  getHomieSetup: 'cheshi:settings:homies:status',
+  installHomieTools: 'cheshi:settings:homies:install',
+  startHomieEngine: 'cheshi:settings:homies:start',
   getFlashEnabled: 'cheshi:settings:flash:get',
   setFlashEnabled: 'cheshi:settings:flash:set',
   flashEnabledChanged: 'cheshi:settings:flash:changed',
@@ -62,6 +66,9 @@ export function parseFlashReadiness(value: unknown): FlashReadiness {
 }
 
 export interface SettingsApi {
+  getHomieSetup(): Promise<HomieSetupStatus>;
+  installHomieTools(): Promise<HomieSetupStatus>;
+  startHomieEngine(): Promise<HomieSetupStatus>;
   getFlashReadiness(): Promise<FlashReadiness>;
   installFlash(): Promise<FlashReadiness>;
   checkFlashUpdates(): Promise<FlashReadiness>;

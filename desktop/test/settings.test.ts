@@ -185,7 +185,7 @@ test('settings preload exposes preferences and validates instruction replies', a
   let reply: unknown = 32768;
   const ipc = Object.assign(new EventEmitter(), { invoke: async (channel: string) => { calls.push(channel); return reply; } });
   const api = createSettingsApi(ipc as IpcRenderer);
-  expect(Object.keys(api).sort()).toEqual(['checkFlashUpdates', 'getFlashEnabled', 'getFlashReadiness', 'getProjectDocMaxBytes', 'installFlash', 'onFlashEnabledChanged', 'onProjectDocMaxBytesChanged', 'setFlashEnabled', 'setProjectDocMaxBytes', 'uninstallFlash']);
+  expect(Object.keys(api).sort()).toEqual(['checkFlashUpdates', 'getFlashEnabled', 'getFlashReadiness', 'getHomieSetup', 'getProjectDocMaxBytes', 'installFlash', 'installHomieTools', 'onFlashEnabledChanged', 'onProjectDocMaxBytesChanged', 'setFlashEnabled', 'setProjectDocMaxBytes', 'startHomieEngine', 'uninstallFlash']);
   expect(await api.getProjectDocMaxBytes()).toBe(32768);
   expect(await api.setProjectDocMaxBytes(32768)).toBe(32768);
   expect(calls).toEqual([SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes]);
@@ -223,18 +223,28 @@ test('settings IPC retains owner checks and subscriptions without provider route
   const f = fixture();
   const routes = new Map<string, Parameters<IpcMain['handle']>[1]>();
   const sent: number[] = [];
+  const homieCalls: string[] = [];
+  const homieStatus = { supported: true, brew: true, docker: true, colima: true, connected: false, busy: false, detail: 'Stopped' };
   const owner = { mainFrame: {}, isDestroyed: () => false, send: (channel: string, value: number) => {
     if (channel === SETTINGS_CHANNELS.projectDocMaxBytesChanged) sent.push(value);
   } };
   const window = Object.assign(new EventEmitter(), { webContents: owner });
   const registration = registerSettingsIpc({ window: window as unknown as BrowserWindow, service: f.service,
+    homies: { status: async () => { homieCalls.push('status'); return homieStatus; },
+      install: async () => { homieCalls.push('install'); return homieStatus; },
+      start: async () => { homieCalls.push('start'); return homieStatus; } },
     ipc: { handle: (channel, listener) => { routes.set(channel, listener); }, removeHandler: channel => { routes.delete(channel); } } });
   const invoke = (channel: string, value?: unknown, sender: unknown = owner, frame: unknown = owner.mainFrame) =>
     routes.get(channel)!({ sender, senderFrame: frame } as IpcMainInvokeEvent, value);
   try {
-    expect([...routes.keys()].sort()).toEqual([SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes,
+    expect([...routes.keys()].sort()).toEqual([SETTINGS_CHANNELS.getHomieSetup, SETTINGS_CHANNELS.installHomieTools, SETTINGS_CHANNELS.startHomieEngine, SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes,
       SETTINGS_CHANNELS.getFlashEnabled, SETTINGS_CHANNELS.setFlashEnabled, SETTINGS_CHANNELS.getFlashReadiness, SETTINGS_CHANNELS.installFlash, SETTINGS_CHANNELS.checkFlashUpdates, SETTINGS_CHANNELS.uninstallFlash].sort());
     expect(() => invoke(SETTINGS_CHANNELS.setFlashEnabled, true)).toThrow('verification is unavailable');
+    expect(() => invoke(SETTINGS_CHANNELS.installHomieTools, undefined, {})).toThrow('workspace window');
+    expect(() => invoke(SETTINGS_CHANNELS.startHomieEngine, undefined, owner, {})).toThrow('workspace window');
+    expect(homieCalls).toEqual([]);
+    invoke(SETTINGS_CHANNELS.getHomieSetup); invoke(SETTINGS_CHANNELS.installHomieTools); invoke(SETTINGS_CHANNELS.startHomieEngine);
+    expect(homieCalls).toEqual(['status', 'install', 'start']);
     expect(invoke(SETTINGS_CHANNELS.setFlashEnabled, false)).toBe(false);
     expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072, {})).toThrow('workspace window');
     expect(() => invoke(SETTINGS_CHANNELS.setProjectDocMaxBytes, 131072, owner, {})).toThrow('workspace window');

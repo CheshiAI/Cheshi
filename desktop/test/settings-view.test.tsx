@@ -3,6 +3,10 @@ import { Window } from 'happy-dom';
 import { act } from 'react';
 import type { FlashReadiness, SettingsApi } from '../shared/settings';
 import { product } from '../../config/product.mts';
+import type { HomieSetupStatus } from '../shared/homie-setup';
+
+const homieStatus: HomieSetupStatus = { supported: true, brew: true, docker: true, colima: true,
+  connected: false, busy: false, detail: 'Colima is stopped.' };
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -17,6 +21,9 @@ async function withSettings(run: (view: {
   projectLoad?: Promise<number>; projectSave?: Promise<void>; failProjectSave?: boolean;
   flashLoad?: Promise<boolean>; flashSave?: Promise<void>; failFlashSave?: boolean;
   readiness?: FlashReadiness; install?: Promise<FlashReadiness>;
+  homies?: HomieSetupStatus;
+  homieInstall?: () => Promise<HomieSetupStatus>;
+  homieStart?: () => Promise<HomieSetupStatus>;
 } = {}) {
   const window = new Window();
   Object.defineProperty(window, 'localStorage', { get() { throw new Error('Browser storage is unavailable'); } });
@@ -33,6 +40,9 @@ async function withSettings(run: (view: {
   const flashWrites: boolean[] = [];
   const flashListeners = new Set<(enabled: boolean) => void>();
   const api: SettingsApi = {
+    getHomieSetup: async () => options.homies ?? homieStatus,
+    installHomieTools: options.homieInstall ?? (async () => homieStatus),
+    startHomieEngine: options.homieStart ?? (async () => ({ ...homieStatus, connected: true, detail: 'Connection ready.' })),
     getFlashReadiness: async () => options.readiness ?? { ready: true, detail: 'Files available.' },
     checkFlashUpdates: async () => ({ ready: true, detail: 'Installed.', installedVersion: '0.1.0', availableVersion: '0.2.0' }),
     uninstallFlash: async () => ({ ready: false, detail: 'Flash plugin removed. Saved conversations and model files have been kept.' }),
@@ -177,7 +187,7 @@ test('settings keeps provider credentials and old memory recall controls removed
     expect(container.textContent).not.toContain('TypeSafe');
     expect(container.textContent).not.toContain('Jev');
     expect([...container.querySelectorAll('aside button')].map(item => item.textContent))
-      .toEqual(['Agents', 'Appearance', 'Notifications', 'Scheduler', 'Flash', 'About']);
+      .toEqual(['Agents', 'Homies', 'Appearance', 'Notifications', 'Scheduler', 'Flash', 'About']);
   });
 });
 
@@ -322,4 +332,50 @@ test('Flash package downloads have their own percentage label', async () => {
     expect(container.textContent).not.toContain('including reused files');
   }, { readiness: { ready: false, installing: true, detail: 'Downloading plugin',
     progress: { startedAt: Date.now(), phase: 'package', downloadedBytes: 50, totalBytes: 100 } } });
+});
+
+test('Homies separates installed tools from connection and connects through its start action', async () => {
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Homies').click());
+    expect(container.textContent).toContain('Not connected');
+    expect(button(container, 'Install missing tools').disabled).toBe(true);
+    expect(button(container, 'Start Colima').disabled).toBe(false);
+    await act(async () => button(container, 'Start Colima').click());
+    expect(container.textContent).toContain('Connection ready.');
+    expect(button(container, 'Start Colima').disabled).toBe(true);
+  });
+});
+
+test('Homies guides missing Homebrew and restores ongoing progress when reopened', async () => {
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Homies').click());
+    expect(container.querySelector('a[href="https://brew.sh"]')).not.toBeNull();
+    expect(button(container, 'Install missing tools').disabled).toBe(true);
+  }, { homies: { ...homieStatus, brew: false, docker: false, colima: false } });
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Homies').click());
+    expect(container.textContent).toContain('1m 1s elapsed');
+    expect(container.querySelector('progress')?.hasAttribute('value')).toBe(false);
+    expect(container.textContent).not.toContain('%');
+    expect(button(container, 'Start Colima').disabled).toBe(true);
+    await act(async () => category(container, 'About').click());
+    await act(async () => category(container, 'Homies').click());
+    expect(container.textContent).toContain('Downloading Colima');
+    expect(container.querySelector('progress')).not.toBeNull();
+  }, { homies: { ...homieStatus, busy: true, startedAt: Date.now() - 61000, detail: 'Downloading Colima' } });
+});
+
+test('Homies displays installation failure and allows retry', async () => {
+  const initial = { ...homieStatus, docker: false, colima: false };
+  let calls = 0;
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Homies').click());
+    await act(async () => button(container, 'Install missing tools').click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Download failed');
+    expect(button(container, 'Install missing tools').disabled).toBe(false);
+    await act(async () => button(container, 'Install missing tools').click());
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(button(container, 'Start Colima').disabled).toBe(false);
+  }, { homies: initial, homieInstall: async () => ++calls === 1 ? { ...initial, error: 'Download failed. Retry.' } : homieStatus });
+  expect(calls).toBe(2);
 });

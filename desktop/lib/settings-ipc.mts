@@ -3,10 +3,12 @@ import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 import { SETTINGS_CHANNELS, parseFlashEnabled, type FlashReadiness } from '../shared/settings.ts';
 import type { createSettingsService } from './settings-service.mts';
 import type { FlashActivation } from './flash/activation.mts';
+import type { HomieSetup } from './homie-setup.mts';
 
 export function registerSettingsIpc(options: {
   window: BrowserWindow; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>; service: ReturnType<typeof createSettingsService>;
   flash?: Pick<FlashActivation, 'getFlashEnabled' | 'setFlashEnabled' | 'subscribeFlashEnabled' | 'readiness'>;
+  homies?: Pick<HomieSetup, 'status' | 'install' | 'start'>;
   installation?: { status(): Promise<FlashReadiness>; install(): Promise<FlashReadiness>; isInstalling(): boolean;
     checkUpdates(): Promise<FlashReadiness>; uninstall(): Promise<FlashReadiness> };
 }) {
@@ -36,6 +38,13 @@ export function registerSettingsIpc(options: {
     channels.push(channel);
   };
   try {
+    for (const [channel, action] of [[SETTINGS_CHANNELS.getHomieSetup, 'status'],
+      [SETTINGS_CHANNELS.installHomieTools, 'install'], [SETTINGS_CHANNELS.startHomieEngine, 'start']] as const) {
+      handle(channel, () => {
+        if (!options.homies) throw new Error('Homies setup is unavailable.');
+        return options.homies[action]();
+      });
+    }
     handle(SETTINGS_CHANNELS.getFlashEnabled, () => options.flash?.getFlashEnabled() ?? false);
     handle(SETTINGS_CHANNELS.getFlashReadiness, () => options.installation?.status()
       ?? options.flash?.readiness() ?? { ready: false, detail: 'Flash installation is unavailable.' });

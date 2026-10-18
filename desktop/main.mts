@@ -5,6 +5,7 @@ import { FlashControl } from './lib/flash/control.mts';
 import { acquireFlashHost } from './lib/flash/runtime.mts';
 import { FlashActivation } from './lib/flash/activation.mts';
 import { FlashInstaller } from './lib/flash/installer.mts';
+import { HomieSetup } from './lib/homie-setup.mts';
 import { flashInstallationPaths, inspectFlashInstallation } from './lib/flash/installation.mts';
 import { WorkspaceHost } from './lib/workspace-host.mts';
 import { nativeWorkspaceWindow } from './lib/workspace-surface.mts';
@@ -148,6 +149,7 @@ const flashActivation = new FlashActivation({ preferences: apiSettings,
 const flashControl = new FlashControl(flashActivation, () => acquireFlashHost(app.getPath('userData')));
 const flashInstaller = new FlashInstaller({ userData: app.getPath('userData'),
   enabled: () => flashActivation.getFlashEnabled() || flashActivation.isPreparing(), readiness: () => flashActivation.readiness() });
+const homieSetup = new HomieSetup();
 void flashActivation.restore().catch(error => console.error('Could not restore Flash setting:', error));
 const agentFlash = new AgentFlashMemory(app.getPath('userData'), binding => agentRegistry.snapshot(binding.workspace).agents.some(agent => agent.id === binding.agentId && agent.accountId === binding.accountId && agent.assignments.some(a => { try { return realpathSync(a.workspaceRoot) === binding.workspace; } catch { return false; } })), undefined, flashControl);
 const hostTools = new HostToolRegistration(path.join(app.getPath('userData'), 'agents', 'host-tools'),
@@ -176,7 +178,7 @@ const unsubscribeChatsRuntime = specialistRuntime.subscribe(binding => agentChat
 const unsubscribeChatsRegistry = agentRegistry.subscribe(() => agentChats.changed());
 void app.whenReady().then(() => { specialistRuntime.start(); agentChats.start(); });
 app.on('will-quit', () => { hostTools.dispose(); unsubscribeChatsRuntime(); unsubscribeChatsRegistry(); void specialistRuntime.dispose().finally(() => agentFlash.dispose()); void agentChats.dispose(); void codeGraphSynchronization.dispose(); });
-app.on('will-quit', () => { flashInstaller.dispose(); void flashControl.dispose(); void flashActivation.dispose(); });
+app.on('will-quit', () => { homieSetup.dispose(); flashInstaller.dispose(); void flashControl.dispose(); void flashActivation.dispose(); });
 const toolCredentials = createToolCredentials(path.join(app.getPath('userData'), 'api-keys', 'homie-tools'), {
   isEncryptionAvailable: () => safeStorage.isEncryptionAvailable() && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
   encryptString: value => safeStorage.encryptString(value), decryptString: value => safeStorage.decryptString(value),
@@ -353,7 +355,7 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
       chatPreferences: apiSettings.workspaceChatPreferences(options.workspaceRoot),
       voiceChats: request => agentChats.request(options.workspaceRoot, request),
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
-      settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings, flash: flashActivation, installation: flashInstaller });
+      settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings, flash: flashActivation, installation: flashInstaller, homies: homieSetup });
       agentChatsIpc = registerAgentChatsIpc({ window, ipc: options.scope.ipc, workspaceRoot: options.workspaceRoot, service: agentChats });
       agentRegistryIpc = registerAgentRegistryIpc({ window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot,
         saveSettings: (input, assertAvailable) => homieSources.saveSettings(options.workspaceRoot, input, assertAvailable),

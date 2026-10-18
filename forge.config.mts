@@ -57,7 +57,7 @@ function shouldIgnore(packagePath: string): boolean {
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
     if (grandchildEntry === 'chat-imports.ts' || grandchildEntry === 'host-tool-details.ts') return segments.length > 3;
-    if (grandchildEntry === 'workspace-host.ts') return segments.length > 3;
+    if (grandchildEntry === 'workspace-host.ts' || grandchildEntry === 'homie-setup.ts') return segments.length > 3;
     if (grandchildEntry === 'worker-workspace.ts') return segments.length > 3;
     if ((grandchildEntry === 'agent-package.ts' || grandchildEntry === 'homie-pack.ts' || grandchildEntry === 'homie-tools.ts' || grandchildEntry === 'host-tools.ts' || grandchildEntry === 'homie-source.ts' || grandchildEntry === 'agent-avatar-image.ts')) return segments.length > 3;
     if (grandchildEntry === 'agent-voice.ts' || grandchildEntry === 'agent-execution-health.ts') return segments.length > 3;
@@ -96,6 +96,7 @@ function shouldIgnore(packagePath: string): boolean {
     return segments.length > 3 && (segments.length !== 4 || !schedulerFiles.has(segments[3] ?? ''));
   }
   const packagedLibraryFiles = new Set([
+    'homie-setup.mts', 'homie-setup-command.mts',
     'workspace-host.mts', 'workspace-status-toast.mts', 'workspace-surface.mts', 'workspace-rail-overlay.mts',
     'sticky-notes-store.mts', 'sticky-notes-runtime.mts', 'sticky-notes-library.mts',
     'chat-search-grams.mts', 'chat-search-database.mts', 'chat-search-index.mts', 'chat-search-query.mts',

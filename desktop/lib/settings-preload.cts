@@ -1,9 +1,13 @@
 import type { IpcRenderer, IpcRendererEvent } from 'electron';
 import { SETTINGS_CHANNELS, parseFlashEnabled, parseFlashReadiness, parseProjectDocMaxBytes } from '../shared/settings.ts';
 import type { SettingsApi } from '../shared/settings.ts';
+import { parseHomieSetupStatus } from '../shared/homie-setup.ts';
 
 export function createSettingsApi(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>): SettingsApi {
   return {
+    async getHomieSetup() { return parseHomieSetupStatus(await ipc.invoke(SETTINGS_CHANNELS.getHomieSetup)); },
+    async installHomieTools() { return parseHomieSetupStatus(await ipc.invoke(SETTINGS_CHANNELS.installHomieTools)); },
+    async startHomieEngine() { return parseHomieSetupStatus(await ipc.invoke(SETTINGS_CHANNELS.startHomieEngine)); },
     async getFlashReadiness() { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.getFlashReadiness)); },
     async installFlash() { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.installFlash)); },
     async checkFlashUpdates() { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.checkFlashUpdates)); },
