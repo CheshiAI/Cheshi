@@ -819,7 +819,8 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
       setConfigurationMenuView('root');
     }
     if (commandMenuMode && commandMenuMode !== 'commands') return;
-    setCommandMenuMode(/^\/\S*$/.test(value) ? 'commands' : null);
+    // A second slash belongs to a path, not a composer command such as /model.
+    setCommandMenuMode(/^\/[^/\s]*$/.test(value) ? 'commands' : null);
   };
 
   const submit = (event?: SubmitEvent<HTMLFormElement>) => {

@@ -22,7 +22,6 @@ function loadController() {
   const require = createRequire(url);
   const dependencies: Record<string, unknown> = {
     '../../cheshiDesktop': { cheshiDesktop: undefined },
-    './useChatDraft': { useChatDraft: () => ({ draft: '', attachments: [], setDraft: () => {} }) },
     './useChatAttachmentTransfer': { useChatAttachmentTransfer: () => ({ loading: false }) },
     './useChatMessageQueue': { useChatMessageQueue: () => ({ entries: [] }) },
   };
@@ -42,6 +41,7 @@ async function withMenu(run: (harness: {
   open: () => Promise<void>;
   flushFrames: () => Promise<void>;
   finish: () => Promise<void>;
+  changeDraft: (value: string) => Promise<void>;
 }) => Promise<void>) {
   const window = new Window();
   const frames: FrameRequestCallback[] = [];
@@ -63,8 +63,10 @@ async function withMenu(run: (harness: {
     listMcpServers: () => response.promise,
   } as unknown as ChatController;
   const { useChatViewController } = loadController();
+  let changeDraft: (value: string) => void;
   function Fixture() {
     const view = useChatViewController({ controller, onNewSession: () => {} });
+    changeDraft = view.handleDraftChange;
     return <>
       <button id="other-pane">Other pane</button>
       <section ref={view.rootRef} onKeyDown={view.handleEscape}>
@@ -72,7 +74,8 @@ async function withMenu(run: (harness: {
           void view.activateSlashCommand(slashCommands.find(command => command.name === 'mcp')!);
         }}>MCP</button>}
         {view.commandMenuOpen && <div id="menu">{view.commandLoading ? 'Loading' : 'Ready'}</div>}
-        <textarea ref={element => { view.textareaRef.current = element; }} onKeyDown={view.handleKeyDown} />
+        <textarea ref={element => { view.textareaRef.current = element; }} onKeyDown={view.handleKeyDown}
+          value={view.draft} onChange={event => view.handleDraftChange(event.currentTarget.value)} />
       </section>
     </>;
   }
@@ -90,6 +93,7 @@ async function withMenu(run: (harness: {
       },
       flushFrames: async () => { await act(async () => { for (const frame of frames.splice(0)) frame(0); }); },
       finish: async () => { await act(async () => response.resolve([])); },
+      changeDraft: async value => { await act(async () => changeDraft(value)); },
     });
   } finally {
     response.resolve([]);
@@ -127,5 +131,23 @@ test('opening and completing MCP status never steals focus from another pane', a
     await h.finish();
     await h.flushFrames();
     expect(h.window.document.activeElement === other).toBe(true);
+  });
+});
+
+test('pasted local paths preserve the draft without opening commands, while slash commands still open', async () => {
+  await withMenu(async h => {
+    for (const value of ['/Users/cheshi/Developments/cheshi-flash', '/tmp/example.txt',
+      '/Users/cheshi/My Project', '//server/share', '[/tmp/example](</tmp/example>)']) {
+      await h.changeDraft(value);
+      expect(h.window.document.querySelector('#menu') === null).toBe(true);
+      expect(h.window.document.querySelector('textarea')?.value).toBe(value);
+    }
+    for (const value of ['/', '/mo', '/model']) {
+      await h.changeDraft(value);
+      expect(h.window.document.querySelector('#menu') !== null).toBe(true);
+    }
+    await h.changeDraft('/model/config.json');
+    expect(h.window.document.querySelector('#menu') === null).toBe(true);
+    expect(h.window.document.querySelector('textarea')?.value).toBe('/model/config.json');
   });
 });
