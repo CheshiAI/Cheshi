@@ -1,3 +1,4 @@
+import { assertHomiesAvailable, assertHomiesWorkSettled, type HomiesAccess } from '../homies-activation.mts';
 import { agentDisplayName } from '../../shared/agent-registry.ts';
 import { createIsolatedChatTasks } from './isolated-tasks.mts';
 import type { PlatformChats } from '../agent-platform/chat-service.mts';
@@ -18,6 +19,7 @@ import { projectPermissions } from '../../shared/agent-registry.ts';
 import type { AgentRegistrySnapshot } from '../../shared/agent-registry.ts';
 import { bindingFor, type Binding, type Message } from '../agent-orchestration/mailbox.mts';
 interface Options {
+  access?: HomiesAccess;
   workspace?(binding: Binding, taskId: string, action: 'inspect' | 'open'): Promise<WorkerWorkspaceInspection>;
   openFile?(binding: Binding, href: string, taskId?: string): Promise<void>;
   platform?: PlatformChats;
@@ -140,6 +142,7 @@ export function createAgentChats(options: Options) {
     return resolveRoomMemberNames(room, options.registry(workspace).agents);
   };
   function request(workspaceRoot: string, value: unknown) {
+    assertHomiesAvailable(options.access);
     const workspace = realpathSync(workspaceRoot), input = parseChatsRequest(value);
     if (input.action === 'open-file') throw new Error('Use the asynchronous Worker file handler.');
     if (input.action === 'workspace-inspect' || input.action === 'workspace-open') throw new Error('Use the asynchronous worktree handler.');
@@ -495,7 +498,7 @@ export function createAgentChats(options: Options) {
   }
   function reconcile(key?: string): Promise<void> {
     const previous = flight;
-    const operation = Promise.resolve(previous).then(() => dispatch(key)).then(() => { failure = null; publish(); }, () => { failure = 'Chats journal could not be read or saved.'; });
+    const operation = Promise.resolve(previous).then(() => options.access ? options.access.background(() => dispatch(key)) : dispatch(key)).then(() => { failure = null; publish(); }, () => { failure = 'Chats journal could not be read or saved.'; });
     flight = operation.finally(() => { if (flight === current) flight = null; });
     const current = flight;
     return current;
@@ -653,6 +656,12 @@ export function createAgentChats(options: Options) {
     return snapshot(workspace);
   }
   return { inspectWorkspace, openFile, isolated: async (workspace: string, value: unknown) => { await isolated.request(workspace, value); return snapshot(realpathSync(workspace)); },
+    assertIdle() {
+      const state = store().all();
+      assertHomiesWorkSettled(isolated.busy() || state.jobs.some(job => ['queued', 'sending', 'unknown'].includes(job.state))
+        || state.messages.some(message => message.sender === 'user' && (message.taskId || message.relatedTask)
+          && !isRoomWorkSettled(message.status)));
+    },
     isolatedSettled: () => isolated.settled(),
     deleteRoom, prepareProject, permissions, retry, inspectApplication, request, recover, question, rooms, tick,
     settled: () => queue.settled(),

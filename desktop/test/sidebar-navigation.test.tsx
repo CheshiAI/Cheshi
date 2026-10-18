@@ -29,7 +29,7 @@ function elements(node: ReactNode): ReactElement<ElementProps>[] {
 test('SESSION rail item uses page navigation when returning from another view or selecting it again', () => {
   for (const activeView of ['notes', 'calendar', 'terminal', 'git', 'plugins', 'editor', 'codegraph', 'chat', 'search'] as const) {
     const destinations: WorkspaceView[] = [];
-    const rail = SidebarRail({ activeView, sidebarOpen: true,
+    const rail = SidebarRail({ homiesEnabled: true, activeView, sidebarOpen: true,
       onNavigate: view => destinations.push(view), onToggleSidebar() {} });
     const session = elements(rail).find(element => element.type === SidebarRailButton && element.props.label === 'SESSION');
     expect(session).toBeDefined();
@@ -43,7 +43,7 @@ test('SESSION rail item uses page navigation when returning from another view or
 
 test('rail management items retain their order and destinations', () => {
   const destinations: WorkspaceView[] = [];
-  const rail = SidebarRail({ activeView: 'chat', sidebarOpen: true,
+  const rail = SidebarRail({ homiesEnabled: true, activeView: 'chat', sidebarOpen: true,
     onNavigate: view => destinations.push(view), onToggleSidebar() {} });
   const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 10);
   expect(navigation.map(element => element.props.label)).toEqual([
@@ -56,7 +56,7 @@ test('rail management items retain their order and destinations', () => {
 
 test('rail bottom controls retain caffeine, sidebar and project actions without a help launcher', () => {
   let toggles = 0;
-  const rail = SidebarRail({ activeView: 'chat', sidebarOpen: true,
+  const rail = SidebarRail({ homiesEnabled: true, activeView: 'chat', sidebarOpen: true,
     onNavigate() {}, onToggleSidebar() { toggles++; } });
   expect(elements(rail).find(element => element.type === KeepAwakeButton)?.props.variant).toBe('rail');
   expect(elements(rail).some(element => element.type === HelpCenter)).toBe(false);
@@ -71,7 +71,7 @@ test('only the focused view has an active rail icon even when the sidebar is col
   for (const sidebarOpen of [true, false]) {
     for (const activeView of ['explorer', 'editor', 'chat', 'terminal', 'notes', 'git'] as const) {
       const destinations: WorkspaceView[] = [];
-      const rail = SidebarRail({ activeView, sidebarOpen,
+      const rail = SidebarRail({ homiesEnabled: true, activeView, sidebarOpen,
         onNavigate: view => destinations.push(view), onToggleSidebar() {} });
       const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 10);
       expect(navigation.filter(element => element.props.active)).toHaveLength(1);
@@ -84,4 +84,16 @@ test('only the focused view has an active rail icon even when the sidebar is col
       expect(destinations).toEqual(['explorer']);
     }
   }
+});
+
+test('Worker and Docker stay disabled while Homies is off, including direct navigation callbacks', () => {
+  const destinations: WorkspaceView[] = [];
+  const rail = SidebarRail({ homiesEnabled: false, activeView: 'chat', sidebarOpen: true,
+    onNavigate: view => destinations.push(view), onToggleSidebar() {} });
+  for (const label of ['Worker', 'Docker']) {
+    const button = elements(rail).find(element => element.type === SidebarRailButton && element.props.label === label)!;
+    expect((button.props as { disabled?: boolean }).disabled).toBe(true);
+    button.props.onClick?.();
+  }
+  expect(destinations).toEqual([]);
 });

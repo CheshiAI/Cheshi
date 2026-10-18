@@ -1,3 +1,8 @@
+export function homiesReady(status: HomieSetupStatus | null): boolean {
+  return status?.supported === true && status.brew === true && status.docker === true
+    && status.colima === true && status.connected === true && status.busy === false;
+}
+
 export interface HomieSetupStatus {
   supported: boolean;
   brew: boolean;

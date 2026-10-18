@@ -1,5 +1,6 @@
 import type { ReactNode, Ref } from 'react';
 
+import { homiesDisabledReason } from '../settings/useHomiesEnabled';
 import { SidebarTabs } from '../../shared/ui';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
@@ -9,6 +10,7 @@ import { normalizeSidebarPanel, type SidebarPanel } from './sidebarPanel';
 export type WorkspaceView = 'chats' | 'chat' | 'explorer' | 'notes' | 'calendar' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'local-history' | 'settings' | 'docker';
 
 interface SidebarProps {
+  homiesEnabled?: boolean;
   chatPanel?: ReactNode;
   memoPanelRef?: Ref<HTMLDivElement>;
   chatsPanelRef?: Ref<HTMLDivElement>;
@@ -22,6 +24,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({
+  homiesEnabled = false,
   chatPanel,
   memoPanelRef,
   chatsPanelRef,
@@ -40,12 +43,12 @@ export function Sidebar({
     <aside ref={scrollbarSurface} className="sidebar">
       <div className="sidebar-panel-content">
         <div className="sidebar-content-primary">
-          {chatPanel && onPanelChange ? <SidebarTabs activeId={activePanel}
+          {chatPanel && onPanelChange ? <SidebarTabs activeId={!homiesEnabled && activePanel === 'agent-chats' ? 'files' : activePanel}
             onSelect={panel => onPanelChange(normalizeSidebarPanel(panel))}
             tabs={[
               { id: 'files', label: 'EXPLORER', content: files },
               { id: 'chats', label: 'SESSION', content: chatPanel },
-              { id: 'agent-chats', label: 'WORKER', content: <div ref={chatsPanelRef} className="sidebar-content-primary" /> },
+              { id: 'agent-chats', label: 'WORKER', disabled: !homiesEnabled, title: homiesEnabled ? undefined : homiesDisabledReason, content: <div ref={chatsPanelRef} className="sidebar-content-primary" /> },
               { id: 'memos', label: 'MEMO', content: <div ref={memoPanelRef} className="sidebar-content-primary" /> },
               { id: 'github', label: 'GITHUB', content: <div ref={githubPanelRef} className="sidebar-content-primary" /> },
             ]} /> : files}

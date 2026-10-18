@@ -2,6 +2,7 @@ import type { StatusToastMessage } from './status-toast';
 
 export const WORKSPACE_HOST_CHANNEL = 'cheshi:workspace-host';
 export interface WorkspaceNavigationState {
+  homiesEnabled?: boolean;
   view: string;
   sidebarOpen: boolean;
   running: number;

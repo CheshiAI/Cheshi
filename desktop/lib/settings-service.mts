@@ -5,7 +5,7 @@ import { DEFAULT_PROJECT_DOC_MAX_BYTES, parseProjectDocMaxBytes } from '../../ex
 import { isCodexAccountId } from '../shared/codex-accounts.ts';
 import { chatPreferences, type ChatPreferenceStore } from './chat-preferences.mts';
 import { recordValue } from './codex-service-utils.mts';
-import { parseFlashEnabled } from '../shared/settings.ts';
+import { parseFlashEnabled, parseHomiesEnabled } from '../shared/settings.ts';
 
 interface Options { settingsPath: string }
 export interface WorkspaceAccountSelection {
@@ -42,6 +42,12 @@ export function createSettingsService(options: Options) {
     finally { try { rmSync(temporary, { force: true }); } catch { /* A failed write does not replace the saved preference. */ } }
   };
   return {
+    getHomiesEnabled() { return readPreferences().homiesEnabled === true; },
+    setHomiesEnabled(value: unknown) {
+      const enabled = parseHomiesEnabled(value);
+      updatePreferences(preferences => ({ ...preferences, homiesEnabled: enabled }), 'Could not save Homies usage. Try again.');
+      return enabled;
+    },
     getFlashEnabled() { return readPreferences().flashEnabled === true; },
     setFlashEnabled(value: unknown) {
       const enabled = parseFlashEnabled(value);

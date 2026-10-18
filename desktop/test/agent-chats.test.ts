@@ -12,14 +12,14 @@ import type { AgentRuntimeRequest } from '../shared/agent-runtime';
 import { parseChatsRequest, parseChatsSnapshot } from '../shared/agent-chats';
 const directories: string[] = [];
 afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }); });
-function fixture() {
+function fixture(access?: Parameters<typeof createAgentChats>[0]['access']) {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), 'cheshi-chats-'))); directories.push(workspace);
   const filename = join(workspace, 'chats.json');
   const agents = ['dev', 'planner', 'outside'].map((id, i) => ({ ...specialistAgent(), id, name: id, accountId: `account-${i}`, assignments: [{ workspaceRoot: workspace, instructions: '' }] }));
   const details: AgentDetails = { agent: { id: 'container', name: 'Dev', state: 'running', image: 'worker' }, ready: true, authenticated: true, busy: false, threadId: null, error: null, logs: '', tasks: [] };
   const sent: { agent: string; task: string; room: string; input?: string; goal: boolean }[] = [];
   let uncertain = false;
-  const options = { filename, registry: () => ({ workspaceRoot: workspace, agents }), status: async () => ({ details }),
+  const options = { access, filename, registry: () => ({ workspaceRoot: workspace, agents }), status: async () => ({ details }),
     dispatch: async (_workspace: string, input: import('../shared/agent-runtime').AgentRuntimeRequest, context: { roomId: string; conversation: string; goal: boolean; inputId?: string }) => {
       sent.push({ agent: input.agentId, task: input.taskId!, room: context.roomId, input: context.inputId, goal: context.goal });
       if (uncertain) throw Object.assign(new Error('lost acknowledgement'), { deliveryUncertain: true });
@@ -801,4 +801,17 @@ test('participant persistence failures retain membership and malformed archived 
   const snapshot = f.request({ action: 'list' });
   expect(() => parseChatsSnapshot({ ...snapshot, rooms: [{ ...snapshot.rooms[0], formerMembers: [snapshot.rooms[0]!.members[0]] }] })).toThrow('Duplicate room identity');
   expect(() => parseChatsRequest({ ...change, expectedMembers: null })).toThrow('previous participants');
+});
+
+test('Homies OFF preserves queued work without dispatch and preflight refuses pending room work', async () => {
+  let enabled = true;
+  const f = fixture({ available: () => enabled, run: async operation => operation(),
+    background: async operation => { if (enabled) await operation(); } });
+  try {
+    f.send('queued-off'); enabled = false;
+    await f.service.tick(); expect(f.sent).toEqual([]);
+    expect(() => f.service.assertIdle()).toThrow('active or unresolved');
+    expect(() => f.send('blocked-off')).toThrow('Enable Homies');
+    enabled = true; await f.service.tick(); expect(f.sent).toHaveLength(1);
+  } finally { await f.service.dispose(); }
 });

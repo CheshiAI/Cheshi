@@ -1,3 +1,4 @@
+import type { HomiesAccess } from '../homies-activation.mts';
 import { parseToolCredentialRequest, parseToolTestRequest, type ToolCredentialRequest, type ToolTestRequest } from '../../shared/homie-tools.ts';
 import { parseHostToolRequest, type HostToolRequest, type HostToolStatus } from '../../shared/host-tools.ts';
 import { createHash } from 'node:crypto';
@@ -20,6 +21,7 @@ import { officialAgentPackages, readAgentPackage } from './packages.mts';
 import { HOMIE_SOURCE_CHANNEL, parseHomieSourceRequest, type HomieSourceRequest, type HomieSourceState } from '../../shared/homie-source.ts';
 
 export function registerAgentRegistryIpc(options: {
+  access?: HomiesAccess;
   source?(input: HomieSourceRequest): Promise<HomieSourceState>;
   saveSettings?(input: SaveSpecialistAgent, assertAvailable: () => void): Promise<ReturnType<ReturnType<typeof createAgentRegistry>['save']>>;
   window: BrowserWindow; workspaceRoot: string; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>;
@@ -57,7 +59,8 @@ export function registerAgentRegistryIpc(options: {
     for (const channel of channels) options.ipc.removeHandler(channel);
   };
   const handle = (channel: string, action: (value: unknown) => unknown) => {
-    options.ipc.handle(channel, (event, value) => { assertOwner(event); return action(value); });
+    options.ipc.handle(channel, (event, value) => { assertOwner(event); return options.access && channel !== AGENT_REGISTRY_CHANNELS.list && channel !== AGENT_REGISTRY_CHANNELS.models
+      ? options.access.run(() => action(value)) : action(value); });
     channels.push(channel);
   };
   handle(AGENT_REGISTRY_CHANNELS.toolCredential, value => {

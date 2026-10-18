@@ -73,7 +73,7 @@ function PaneHost({ host, paneId, onMove, onDetach, dragSource }: {
 }
 
 /** Persistent portal hosts keep drafts, editor controllers and terminal sessions alive during rearrangement. */
-export function WorkspaceEditorSplit({ mode, children, editor, terminal, worker, terminalPrimary = false, workerPrimary = false,
+export function WorkspaceEditorSplit({ mode, children, editor, terminal, worker, terminalPrimary = false, workerPrimary = false, workerEnabled = true,
   layout: customLayout, onLayoutChange, onOpenPane, onPaneActivate, focusRequest, minimumPrimaryWidth, disabled = false }: {
   mode: LayoutMode;
   children: ReactNode;
@@ -82,6 +82,7 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, worker,
   worker?: ReactNode;
   terminalPrimary?: boolean;
   workerPrimary?: boolean;
+  workerEnabled?: boolean;
   minimumPrimaryWidth?: number;
   layout?: SplitLayoutNode | null;
   onLayoutChange?: (layout: SplitLayoutNode) => void;
@@ -214,7 +215,7 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, worker,
       choices={[
         { id: 'editor', label: 'Explorer', icon: <FolderTree aria-hidden="true" /> },
         { id: 'primary', label: 'Codex', icon: <MessageSquare aria-hidden="true" /> },
-        ...(worker ? [{ id: 'worker', label: 'Worker', icon: <WorkerIcon /> }] : []),
+        ...(worker && workerEnabled ? [{ id: 'worker', label: 'Worker', icon: <WorkerIcon /> }] : []),
         { id: 'terminal', label: 'Terminal', icon: <SquareTerminal aria-hidden="true" /> },
       ].map(choice => ({ ...choice,
         description: ids.includes(choice.id) ? 'Move this area here' : 'Open this area',

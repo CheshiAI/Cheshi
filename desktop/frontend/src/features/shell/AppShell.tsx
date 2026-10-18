@@ -12,6 +12,7 @@ import {
 import { ChatWorkspace } from '../chat/ChatWorkspace';
 import { FlashSourceNavigationContext } from '../chat/FlashSourceLink';
 import { CHAT_PANE_MIN_WIDTH } from '../chat/chatWorkspaceModel';
+import { useHomiesEnabled, homiesDisabledReason } from '../settings/useHomiesEnabled';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { ChatDeleteSessionDialog } from '../chat/ChatDeleteSessionDialog';
 import { ChatHistoryOpenDialog } from '../chat/ChatHistoryOpenDialog';
@@ -120,7 +121,9 @@ export function AppShell() {
   const [memoSidebarTarget, setMemoSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [githubSidebarTarget, setGithubSidebarTarget] = useState<HTMLDivElement | null>(null);
   useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
+  const homiesEnabled = useHomiesEnabled() === true;
   const [sidebarPanel, setSidebarPanel] = useState<SidebarPanel>('files');
+  useEffect(() => { if (!homiesEnabled) setSidebarPanel(panel => panel === 'agent-chats' ? 'files' : panel); }, [homiesEnabled]);
   useEffect(() => { saveSidebarPanel(sidebarPanel); }, [sidebarPanel]);
   useEffect(() => cheshiDesktop?.notes?.onOpenListRequested(() => {
     setSidebarPanel('memos'); setLeftSidebarOpen(true);
@@ -254,6 +257,7 @@ export function AppShell() {
   };
 
   const navigate = useCallback((view: WorkspaceView, options: { preserveFocus?: boolean } = {}): void => {
+    if (!homiesEnabled && (view === 'chats' || view === 'docker')) return;
     if (view === 'notes') { setSidebarPanel('memos'); setLeftSidebarOpen(true); return; }
     historyRequestId.current += 1;
     closeReview();
@@ -282,7 +286,7 @@ export function AppShell() {
     }
     setActiveView(view);
     setPrimaryPaneClosed(false);
-  }, [closeReview, editorSplitOpen, customLayout, focusWorkspacePane, activeView]);
+  }, [closeReview, editorSplitOpen, customLayout, focusWorkspacePane, activeView, homiesEnabled]);
   const openWorkerRoom = useCallback(() => navigate('chats'), [navigate]);
   const openGitChanges = useCallback(() => navigate('git'), [navigate]);
   const toggleRightSidebar = useCallback(() => setRightSidebarOpen(open => !open), []);
@@ -398,7 +402,7 @@ export function AppShell() {
     <ChatDraftAttachmentsContext.Provider value={draftAttachments}>
     <SidebarToggleVisibility.Provider value={reviewing}>
     <div ref={notificationSceneRef} className={`app-shell ${styles.shell}`} data-workspace-surface={window.workspaceSurface ? 'true' : undefined}>
-      {window.workspaceSurface && <WorkspaceSurfaceReporter view={leftSidebarOpen && sidebarPanel === 'memos' ? 'notes' : railView}
+      {window.workspaceSurface && <WorkspaceSurfaceReporter homiesEnabled={homiesEnabled} view={leftSidebarOpen && sidebarPanel === 'memos' ? 'notes' : railView}
         sidebarOpen={leftSidebarOpen} running={workspace.responseThreadIds.length} attention={workspaceNeedsAttention} />}
       {updateResume.error && <div role="alert">{updateResume.error}</div>}
       <div ref={accountSceneRef}
@@ -410,14 +414,14 @@ export function AppShell() {
         data-right-sidebar-open={rightSidebarOpen && reviewing ? 'true' : 'false'}
       >
         {!window.workspaceSurface && <LiquidGlassPanel as="aside" className={styles.sidebarRail} aria-label="Application navigation">
-          <SidebarRail activeView={leftSidebarOpen && sidebarPanel === 'memos' ? 'notes' : railView} sidebarOpen={leftSidebarOpen} onNavigate={navigate}
+          <SidebarRail homiesEnabled={homiesEnabled} activeView={leftSidebarOpen && sidebarPanel === 'memos' ? 'notes' : railView} sidebarOpen={leftSidebarOpen} onNavigate={navigate}
             onToggleSidebar={() => setLeftSidebarOpen(open => !open)} />
         </LiquidGlassPanel>}
         <MemoSidebar api={cheshiDesktop?.notes} target={memoSidebarTarget} />
         <SlidingSidePanel open={leftSidebarOpen} anchor="end" stageClassName={styles.sidebarPanelStage}
           id="workspace-sidebar" className={`sidebar-column ${styles.sidebarPanel}`}
           inert={workspace.accountSwitchPending}>
-            <Sidebar
+            <Sidebar homiesEnabled={homiesEnabled}
               memoPanelRef={setMemoSidebarTarget}
               chatsPanelRef={setChatsSidebarTarget}
               githubPanelRef={setGithubSidebarTarget}
@@ -470,13 +474,14 @@ export function AppShell() {
               if (pane === 'primary') { setActiveView('chat'); setPrimaryPaneClosed(false); }
               if (pane === 'worker') setWorkerView('chats');
             }}
-            worker={<WorkerWorkspace ref={workerWorkspace} view={visiblePanes.includes('worker') ? workerView : null}
+            workerEnabled={homiesEnabled}
+            worker={homiesEnabled ? <WorkerWorkspace ref={workerWorkspace} view={visiblePanes.includes('worker') ? workerView : null}
               onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('worker') : undefined}
               onBeforeOpenHomies={closeReview}
               reviewedVerificationId={verificationReview?.id} onReviewVerification={openVerificationReview}
               reviewedMessageId={fileReview?.item?.id} onReviewFileChanges={openChatsFileReview}
               sidebarTarget={chatsSidebarTarget} sidebarActive={sidebarPanel === 'agent-chats' && leftSidebarOpen}
-              onOpenRoom={openWorkerRoom} />}
+              onOpenRoom={openWorkerRoom} /> : <p role="status">{homiesDisabledReason}</p>}
             terminal={<TerminalWorkspace
               active={visiblePanes.includes('terminal')}
               onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('terminal') : undefined}

@@ -8,6 +8,8 @@ import styles from './SidebarTabs.module.css';
 export interface SidebarTab {
   id: string;
   label: string;
+  disabled?: boolean;
+  title?: string;
   content: ReactNode;
 }
 
@@ -21,7 +23,10 @@ export function SidebarTabs({ tabs, activeId, onSelect }: {
   const visibleCount = Math.min(3, tabs.length);
   const selectScrolledTab = (index: number) => {
     const next = tabs[index];
-    if (!next) return;
+    if (!next || next.disabled) {
+      viewportRef.current?.scrollTo({ left: activeIndex * viewportRef.current.clientWidth, behavior: 'instant' });
+      return;
+    }
     const viewport = viewportRef.current;
     const document = viewport?.ownerDocument;
     if (document && (viewport?.contains(document.activeElement) || stripRef.current?.contains(document.activeElement))) {
@@ -35,7 +40,7 @@ export function SidebarTabs({ tabs, activeId, onSelect }: {
     <div ref={stripRef} className={styles.tabViewport}>
     <FilterTabList className={styles.tabs} role="tablist" aria-label="Sidebar panels">
       {tabs.map((tab, index) => <FilterTab key={tab.id} className={styles.tab}
-        id={`${id}-tab-${tab.id}`} role="tab" active={index === activeIndex}
+        disabled={tab.disabled} title={tab.title} id={`${id}-tab-${tab.id}`} role="tab" active={index === activeIndex}
         aria-selected={index === activeIndex} aria-controls={`${id}-panel-${tab.id}`}
         tabIndex={index === activeIndex ? 0 : -1} onClick={event => {
           event.currentTarget.focus({ preventScroll: true });
@@ -52,6 +57,9 @@ export function SidebarTabs({ tabs, activeId, onSelect }: {
           }
           event.preventDefault();
           event.stopPropagation();
+          const step = event.key === 'ArrowLeft' || event.key === 'End' ? -1 : 1;
+          for (let skipped = 0; tabs[next]?.disabled && skipped < tabs.length; skipped++) next = (next + step + tabs.length) % tabs.length;
+          if (tabs[next]?.disabled) return;
           onSelect(tabs[next]!.id);
           event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus({ preventScroll: true });
         }}>{tab.label}</FilterTab>)}

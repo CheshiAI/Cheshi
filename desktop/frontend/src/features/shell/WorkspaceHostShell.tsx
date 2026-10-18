@@ -46,7 +46,7 @@ export function WorkspaceHostShell({ api }: { api: WorkspaceHostApi }) {
   };
   return <div className={styles.host} ref={rail}>
     <LiquidGlassPanel as="aside" className={`${styles.rail} window-appearance-surface`} aria-label="Application navigation">
-      <SidebarRail activeView={(active?.view ?? 'explorer') as WorkspaceView} sidebarOpen={active?.sidebarOpen ?? true}
+      <SidebarRail homiesEnabled={active?.homiesEnabled === true} activeView={(active?.view ?? 'explorer') as WorkspaceView} sidebarOpen={active?.sidebarOpen ?? true}
         onNavigate={view => run(api.command({ action: 'navigate', view }))}
         onToggleSidebar={() => run(api.command({ action: 'sidebar' }))}
         workspaceControl={false} />

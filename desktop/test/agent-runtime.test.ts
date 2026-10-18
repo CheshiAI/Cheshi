@@ -20,7 +20,7 @@ async function fails(operation: Promise<unknown>, message: string) {
   expect(error).toBeInstanceOf(Error); expect((error as Error).message).toContain(message);
 }
 function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string) => Promise<void>, withCodeGraph = false,
-  source: Pick<Parameters<typeof createSpecialistRuntime>[0], 'prepareSource' | 'sourceApplied'> = {}) {
+  source: Pick<Parameters<typeof createSpecialistRuntime>[0], 'prepareSource' | 'sourceApplied' | 'access'> = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'cheshi-runtime-')); directories.push(directory);
   const project = join(directory, 'project'), home = join(directory, 'account');
   mkdirSync(project); mkdirSync(home);
@@ -793,5 +793,27 @@ test('file configuration is loaded before start and marked applied only after a 
     await fails(f.runtime.request(f.workspace, f.request()), 'Wait for this worker');
     expect(applied).toHaveLength(1);
     expect(f.calls.slice(calls).some(call => call.args.includes('stop') || call.args.includes('rm'))).toBe(false);
+  } finally { await f.runtime.dispose(); }
+});
+
+test('Homies OFF refuses direct worker start and wake before Docker or repository operations', async () => {
+  const access = { available: () => false, run: async <T,>(_operation: () => T | Promise<T>): Promise<T> => { throw new Error('Off'); }, background: async () => {} };
+  const f = fixture(false, undefined, false, { access });
+  try {
+    await fails(f.runtime.request(f.workspace, f.request()), 'Enable Homies');
+    await fails(f.runtime.wake(f.workspace, f.request()), 'Enable Homies');
+    expect(f.calls).toEqual([]);
+  } finally { await f.runtime.dispose(); }
+});
+test('Homies OFF preflight rejects remote activity and accepts confirmed idle or stopped workers without stopping them', async () => {
+  const f = fixture();
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    await f.runtime.assertIdle();
+    f.setTasks([{ id: 'pending', status: 'running', prompt: 'Work', output: '', error: null, createdAt: '2026-10-18' }]);
+    await fails(f.runtime.assertIdle(), 'active or unresolved');
+    f.setTasks([]); await f.runtime.assertIdle();
+    f.setState('exited'); await f.runtime.assertIdle();
+    expect(f.calls.some(call => call.args.includes('stop'))).toBe(false);
   } finally { await f.runtime.dispose(); }
 });

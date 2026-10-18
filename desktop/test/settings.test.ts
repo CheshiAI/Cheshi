@@ -185,7 +185,7 @@ test('settings preload exposes preferences and validates instruction replies', a
   let reply: unknown = 32768;
   const ipc = Object.assign(new EventEmitter(), { invoke: async (channel: string) => { calls.push(channel); return reply; } });
   const api = createSettingsApi(ipc as IpcRenderer);
-  expect(Object.keys(api).sort()).toEqual(['checkFlashUpdates', 'getFlashEnabled', 'getFlashReadiness', 'getHomieSetup', 'getProjectDocMaxBytes', 'installFlash', 'installHomieTools', 'onFlashEnabledChanged', 'onProjectDocMaxBytesChanged', 'setFlashEnabled', 'setProjectDocMaxBytes', 'startHomieEngine', 'uninstallFlash']);
+  expect(Object.keys(api).sort()).toEqual(['getHomiesEnabled', 'setHomiesEnabled', 'onHomiesEnabledChanged', 'checkFlashUpdates', 'getFlashEnabled', 'getFlashReadiness', 'getHomieSetup', 'getProjectDocMaxBytes', 'installFlash', 'installHomieTools', 'onFlashEnabledChanged', 'onProjectDocMaxBytesChanged', 'setFlashEnabled', 'setProjectDocMaxBytes', 'startHomieEngine', 'uninstallFlash'].sort());
   expect(await api.getProjectDocMaxBytes()).toBe(32768);
   expect(await api.setProjectDocMaxBytes(32768)).toBe(32768);
   expect(calls).toEqual([SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes]);
@@ -237,7 +237,7 @@ test('settings IPC retains owner checks and subscriptions without provider route
   const invoke = (channel: string, value?: unknown, sender: unknown = owner, frame: unknown = owner.mainFrame) =>
     routes.get(channel)!({ sender, senderFrame: frame } as IpcMainInvokeEvent, value);
   try {
-    expect([...routes.keys()].sort()).toEqual([SETTINGS_CHANNELS.getHomieSetup, SETTINGS_CHANNELS.installHomieTools, SETTINGS_CHANNELS.startHomieEngine, SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes,
+    expect([...routes.keys()].sort()).toEqual([SETTINGS_CHANNELS.getHomiesEnabled, SETTINGS_CHANNELS.setHomiesEnabled, SETTINGS_CHANNELS.getHomieSetup, SETTINGS_CHANNELS.installHomieTools, SETTINGS_CHANNELS.startHomieEngine, SETTINGS_CHANNELS.getProjectDocMaxBytes, SETTINGS_CHANNELS.setProjectDocMaxBytes,
       SETTINGS_CHANNELS.getFlashEnabled, SETTINGS_CHANNELS.setFlashEnabled, SETTINGS_CHANNELS.getFlashReadiness, SETTINGS_CHANNELS.installFlash, SETTINGS_CHANNELS.checkFlashUpdates, SETTINGS_CHANNELS.uninstallFlash].sort());
     expect(() => invoke(SETTINGS_CHANNELS.setFlashEnabled, true)).toThrow('verification is unavailable');
     expect(() => invoke(SETTINGS_CHANNELS.installHomieTools, undefined, {})).toThrow('workspace window');

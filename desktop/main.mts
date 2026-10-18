@@ -1,3 +1,4 @@
+import { HomiesActivation } from './lib/homies-activation.mts';
 import { HostToolRegistration } from './lib/agent-management/host-tool-registration.mts';
 import { reviewHostTool } from './lib/agent-management/host-tool-review.mts';
 import { AgentFlashMemory } from './lib/flash/agent-memory.mts';
@@ -110,6 +111,10 @@ const aboutWindow = createAboutWindow({
   onError: error => process.stderr.write(`[cheshi] About window failed: ${String(error)}\n`),
 });
 const updateResume = createAppUpdateResume(path.join(app.getPath('userData'), 'updates'));
+const apiSettings = createSettingsService({ settingsPath: path.join(app.getPath('userData'), 'settings.json') });
+const homieSetup = new HomieSetup();
+const homiesActivation = new HomiesActivation({ preferences: apiSettings, inspect: () => homieSetup.status(),
+  assertIdle: async () => { agentChats.assertIdle(); await specialistRuntime.assertIdle(); } });
 const agentEngines = [createDockerAgentEngine()];
 const agentManagement: ReturnType<typeof createAgentManagementService> = createAgentManagementService({ engines: agentEngines,
   displayLifecycle: (engine, agent) => specialistRuntime.displayLifecycle(engine, agent),
@@ -126,7 +131,7 @@ const platformChats = createPlatformChats({ directory: path.join(app.getPath('us
   profile: (workspace, agentId, accountId) => specialistRuntime.platformProfile(workspace, agentId, accountId),
   prepareEnvironment: (engineId, directory) => specialistRuntime.preparePlatformEnvironment(engineId, directory),
 });
-const agentChats = createAgentChats({ platform: platformChats, roomChanged: () => specialistRuntime.notify(), filename: path.join(app.getPath('userData'), 'agents', 'chats.json'),
+const agentChats = createAgentChats({ access: homiesActivation, platform: platformChats, roomChanged: () => specialistRuntime.notify(), filename: path.join(app.getPath('userData'), 'agents', 'chats.json'),
   openFile: createWorkerFileLinks({ directory: path.join(app.getPath('userData'), 'agents', 'platform'), openPath: target => shell.openPath(target) }),
   workspace: createWorkerWorkspaceInspection({ directory: path.join(app.getPath('userData'), 'agents', 'platform'), openPath: target => shell.openPath(target) }),
   registry: workspace => agentRegistry.snapshot(workspace),
@@ -142,20 +147,19 @@ const codeGraphCommand = createCodeGraphCommands({ packaged: app.isPackaged, res
   rootDirectory: path.resolve(import.meta.dirname, '..'), bunExecutable: process.env.CHESHI_BUN }).cli();
 const codeGraphDataRoot = resolveCodeGraphDataRoot() ?? app.getPath('userData');
 const codeGraphSynchronization = createCodeGraphSynchronization({ command: codeGraphCommand, dataRoot: codeGraphDataRoot });
-const apiSettings = createSettingsService({ settingsPath: path.join(app.getPath('userData'), 'settings.json') });
 const flashActivation = new FlashActivation({ preferences: apiSettings,
   inspect: () => inspectFlashInstallation(flashInstallationPaths(app.getPath('userData'))),
   createHost: () => acquireFlashHost(app.getPath('userData')) });
 const flashControl = new FlashControl(flashActivation, () => acquireFlashHost(app.getPath('userData')));
 const flashInstaller = new FlashInstaller({ userData: app.getPath('userData'),
   enabled: () => flashActivation.getFlashEnabled() || flashActivation.isPreparing(), readiness: () => flashActivation.readiness() });
-const homieSetup = new HomieSetup();
 void flashActivation.restore().catch(error => console.error('Could not restore Flash setting:', error));
 const agentFlash = new AgentFlashMemory(app.getPath('userData'), binding => agentRegistry.snapshot(binding.workspace).agents.some(agent => agent.id === binding.agentId && agent.accountId === binding.accountId && agent.assignments.some(a => { try { return realpathSync(a.workspaceRoot) === binding.workspace; } catch { return false; } })), undefined, flashControl);
 const hostTools = new HostToolRegistration(path.join(app.getPath('userData'), 'agents', 'host-tools'),
   (workspace, id) => agentRegistry.snapshot(workspace).agents.find(agent => agent.id === id),
   async id => (await homieRepositories.local(id))?.directory ?? null);
 const specialistRuntime = createSpecialistRuntime({
+  access: homiesActivation,
   hostTools,
   flash: agentFlash,
   prepareSource: (workspace, id) => homieSources.prepare(workspace, id),
@@ -176,8 +180,12 @@ const specialistRuntime = createSpecialistRuntime({
 });
 const unsubscribeChatsRuntime = specialistRuntime.subscribe(binding => agentChats.changed(binding));
 const unsubscribeChatsRegistry = agentRegistry.subscribe(() => agentChats.changed());
-void app.whenReady().then(() => { specialistRuntime.start(); agentChats.start(); });
-app.on('will-quit', () => { hostTools.dispose(); unsubscribeChatsRuntime(); unsubscribeChatsRegistry(); void specialistRuntime.dispose().finally(() => agentFlash.dispose()); void agentChats.dispose(); void codeGraphSynchronization.dispose(); });
+const unsubscribeHomies = homiesActivation.subscribeHomiesEnabled(enabled => {
+  if (enabled) { specialistRuntime.notify(); agentChats.changed(); }
+  else specialistRuntime.suspend();
+});
+void app.whenReady().then(async () => { await homiesActivation.restore(); specialistRuntime.start(); agentChats.start(); });
+app.on('will-quit', () => { unsubscribeHomies(); hostTools.dispose(); unsubscribeChatsRuntime(); unsubscribeChatsRegistry(); void specialistRuntime.dispose().finally(() => agentFlash.dispose()); void agentChats.dispose(); void codeGraphSynchronization.dispose(); });
 app.on('will-quit', () => { homieSetup.dispose(); flashInstaller.dispose(); void flashControl.dispose(); void flashActivation.dispose(); });
 const toolCredentials = createToolCredentials(path.join(app.getPath('userData'), 'api-keys', 'homie-tools'), {
   isEncryptionAvailable: () => safeStorage.isEncryptionAvailable() && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
@@ -353,11 +361,11 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
     runtime = createWorkspaceRuntime({ ...options, agentFlash, flashControl, notifications, messageCommands, discord,
       getProjectDocMaxBytes: apiSettings.getProjectDocMaxBytes, codeGraphSynchronization,
       chatPreferences: apiSettings.workspaceChatPreferences(options.workspaceRoot),
-      voiceChats: request => agentChats.request(options.workspaceRoot, request),
+      voiceChats: request => homiesActivation.runSync(() => agentChats.request(options.workspaceRoot, request)),
       accountSelection: apiSettings.workspaceAccountSelection(options.workspaceRoot) }, snapshot => source?.update(snapshot), window => {
-      settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings, flash: flashActivation, installation: flashInstaller, homies: homieSetup });
-      agentChatsIpc = registerAgentChatsIpc({ window, ipc: options.scope.ipc, workspaceRoot: options.workspaceRoot, service: agentChats });
-      agentRegistryIpc = registerAgentRegistryIpc({ window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot,
+      settingsIpc = registerSettingsIpc({ window, ipc: options.scope.ipc, service: apiSettings, flash: flashActivation, installation: flashInstaller, homies: homieSetup, activation: homiesActivation });
+      agentChatsIpc = registerAgentChatsIpc({ access: homiesActivation, window, ipc: options.scope.ipc, workspaceRoot: options.workspaceRoot, service: agentChats });
+      agentRegistryIpc = registerAgentRegistryIpc({ access: homiesActivation, window, ipc: options.scope.ipc, registry: agentRegistry, workspaceRoot: options.workspaceRoot,
         saveSettings: (input, assertAvailable) => homieSources.saveSettings(options.workspaceRoot, input, assertAvailable),
         source: async input => {
           const state = await homieSources.status(options.workspaceRoot, input.agentId, input.engineId, input.action === 'use-files');
@@ -403,9 +411,13 @@ function createTrackedWorkspace(options: Parameters<typeof createWorkspaceRuntim
           try { return await profiles.models(accountId); }
           finally { await profiles.release(); }
         } });
-      agentManagementIpc = registerAgentManagementIpc({ window, ipc: options.scope.ipc, service: agentManagement,
+      agentManagementIpc = registerAgentManagementIpc({ access: homiesActivation, window, ipc: options.scope.ipc, service: agentManagement,
         remove: request => agentDeletion.container(request),
-        terminal: new AgentTerminalManager({ window, hold: (engine, id) => specialistRuntime.hold(engine, id), engines: agentEngines, workingDirectory: options.workspaceRoot }) });
+        terminal: new AgentTerminalManager({ window, hold: (engine, id) => {
+          const release = homiesActivation.hold();
+          try { const unhold = specialistRuntime.hold(engine, id); return () => { unhold(); release(); }; }
+          catch (error) { release(); throw error; }
+        }, engines: agentEngines, workingDirectory: options.workspaceRoot }) });
       disposeNotesLibrary = registerStickyNotesLibrary({ ipc: options.scope.ipc, windows: () => [window], service: stickyNotes.library });
       notificationEventsIpc = registerNotificationEventsIpc({ window, ipc: options.scope.ipc, service: notificationEvents });
       discordIpc = registerDiscordIpc({ window, ipc: options.scope.ipc, service: discord,

@@ -1,8 +1,9 @@
+import type { HomiesAccess } from '../homies-activation.mts';
 import type { BrowserWindow, IpcMain } from 'electron';
 import { AGENT_CHATS_CHANNEL, AGENT_CHATS_CHANGED, parseChatsRequest } from '../../shared/agent-chats.ts';
 import { onWindowClosed } from '../window-close-cleanup.mts';
 import type { createAgentChats } from './service.mts';
-export function registerAgentChatsIpc(options: { window: BrowserWindow; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>; workspaceRoot: string; service: ReturnType<typeof createAgentChats> }) {
+export function registerAgentChatsIpc(options: { access?: HomiesAccess; window: BrowserWindow; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>; workspaceRoot: string; service: ReturnType<typeof createAgentChats> }) {
   const owner = options.window.webContents;
   let disposed = false, unsubscribe = () => {};
   const dispose = () => { if (disposed) return; disposed = true; unsubscribe(); stopChanges(); options.ipc.removeHandler(AGENT_CHATS_CHANNEL); };
@@ -11,18 +12,21 @@ export function registerAgentChatsIpc(options: { window: BrowserWindow; ipc: Pic
   });
   options.ipc.handle(AGENT_CHATS_CHANNEL, (event, value) => {
     if (disposed || owner.isDestroyed() || event.sender !== owner || event.senderFrame !== owner.mainFrame) throw new Error('Chats belongs to its workspace window.');
-    const request = parseChatsRequest(value);
-    if (request.action === 'open-file') return options.service.openFile(options.workspaceRoot, request);
-    if (request.action === 'workspace-inspect' || request.action === 'workspace-open') return options.service.inspectWorkspace(options.workspaceRoot, request);
-    if (request.action.startsWith('isolated-')) return options.service.isolated(options.workspaceRoot, request);
-    if (request.action === 'delete') return options.service.deleteRoom(options.workspaceRoot, request);
-    if (request.action === 'project-setup') return options.service.prepareProject(options.workspaceRoot, request);
-    if (request.action === 'permission') return options.service.permissions(options.workspaceRoot, request);
-    if (request.action === 'retry') return options.service.retry(options.workspaceRoot, request);
-    if (request.action === 'application-inspect') return options.service.inspectApplication(options.workspaceRoot, request);
-    if (request.action === 'question' || request.action === 'question-deadline') return options.service.question(options.workspaceRoot, request);
-    return request.action === 'recover' ? options.service.recover(options.workspaceRoot, request)
-      : options.service.request(options.workspaceRoot, request);
+    const invoke = () => {
+      const request = parseChatsRequest(value);
+      if (request.action === 'open-file') return options.service.openFile(options.workspaceRoot, request);
+      if (request.action === 'workspace-inspect' || request.action === 'workspace-open') return options.service.inspectWorkspace(options.workspaceRoot, request);
+      if (request.action.startsWith('isolated-')) return options.service.isolated(options.workspaceRoot, request);
+      if (request.action === 'delete') return options.service.deleteRoom(options.workspaceRoot, request);
+      if (request.action === 'project-setup') return options.service.prepareProject(options.workspaceRoot, request);
+      if (request.action === 'permission') return options.service.permissions(options.workspaceRoot, request);
+      if (request.action === 'retry') return options.service.retry(options.workspaceRoot, request);
+      if (request.action === 'application-inspect') return options.service.inspectApplication(options.workspaceRoot, request);
+      if (request.action === 'question' || request.action === 'question-deadline') return options.service.question(options.workspaceRoot, request);
+      return request.action === 'recover' ? options.service.recover(options.workspaceRoot, request)
+        : options.service.request(options.workspaceRoot, request);
+    };
+    return options.access ? options.access.run(invoke) : invoke();
   });
   unsubscribe = onWindowClosed(options.window, dispose);
   return { dispose };

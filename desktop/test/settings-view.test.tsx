@@ -16,6 +16,7 @@ function createDeferred<T>() {
 }
 async function withSettings(run: (view: {
   container: HTMLElement; window: Window; projectWrites: number[]; flashWrites: boolean[];
+  emitHomies(enabled: boolean): Promise<void>; homiesWrites: boolean[];
   emitFlash(enabled: boolean): Promise<void>; emitLimit(bytes: number): Promise<void>;
 }) => Promise<void>, options: {
   projectLoad?: Promise<number>; projectSave?: Promise<void>; failProjectSave?: boolean;
@@ -40,7 +41,17 @@ async function withSettings(run: (view: {
   let flashEnabled = false;
   const flashWrites: boolean[] = [];
   const flashListeners = new Set<(enabled: boolean) => void>();
+  let homiesEnabled = false;
+  const homiesListeners = new Set<(enabled: boolean) => void>();
+  const homiesWrites: boolean[] = [];
   const api: SettingsApi = {
+    getHomiesEnabled: async () => homiesEnabled,
+    setHomiesEnabled: async enabled => {
+      homiesWrites.push(enabled); homiesEnabled = enabled;
+      for (const listener of homiesListeners) listener(enabled);
+      return enabled;
+    },
+    onHomiesEnabledChanged: listener => { homiesListeners.add(listener); return () => { homiesListeners.delete(listener); }; },
     getHomieSetup: options.homieCheck ?? (async () => options.homies ?? homieStatus),
     installHomieTools: options.homieInstall ?? (async () => homieStatus),
     startHomieEngine: options.homieStart ?? (async () => ({ ...homieStatus, connected: true, detail: 'Connection ready.' })),
@@ -77,7 +88,8 @@ async function withSettings(run: (view: {
     await act(async () => root.render(<>
       <SettingsView api={api} />
     </>));
-    await run({ container, window, projectWrites, flashWrites,
+    await run({ container, window, projectWrites, flashWrites, homiesWrites,
+      emitHomies: async enabled => { homiesEnabled = enabled; await act(async () => { for (const listener of homiesListeners) listener(enabled); }); },
       emitFlash: async enabled => { await act(async () => { for (const listener of flashListeners) listener(enabled); }); },
       emitLimit: async bytes => { await act(async () => { for (const listener of projectListeners) listener(bytes); }); } });
   } finally {
@@ -444,4 +456,23 @@ test('leaving Homies during the minimum display does not leave a busy indicator 
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
     expect(button(container, 'Check status').disabled).toBe(false);
   });
+});
+
+test('Homies switch requires readiness, follows other windows and remains available to turn off when disconnected', async () => {
+  await withSettings(async ({ container, emitHomies, homiesWrites }) => {
+    await act(async () => category(container, 'Homies').click());
+    const control = () => container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Enable Homies"]')!;
+    expect(control().disabled).toBe(true); expect(control().getAttribute('aria-checked')).toBe('false');
+    await emitHomies(true);
+    expect(control().disabled).toBe(false); expect(control().getAttribute('aria-checked')).toBe('true');
+    await act(async () => control().click());
+    expect(homiesWrites).toEqual([false]); expect(control().getAttribute('aria-checked')).toBe('false');
+  });
+  await withSettings(async ({ container, homiesWrites }) => {
+    await act(async () => category(container, 'Homies').click());
+    const control = container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Enable Homies"]')!;
+    expect(control.disabled).toBe(false);
+    await act(async () => control.click());
+    expect(homiesWrites).toEqual([true]); expect(control.getAttribute('aria-checked')).toBe('true');
+  }, { homies: { ...homieStatus, connected: true } });
 });

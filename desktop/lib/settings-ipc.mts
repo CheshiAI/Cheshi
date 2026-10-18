@@ -1,3 +1,4 @@
+import type { HomiesActivation } from './homies-activation.mts';
 import { onWindowClosed } from './window-close-cleanup.mts';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 import { SETTINGS_CHANNELS, parseFlashEnabled, type FlashReadiness } from '../shared/settings.ts';
@@ -8,6 +9,7 @@ import type { HomieSetup } from './homie-setup.mts';
 export function registerSettingsIpc(options: {
   window: BrowserWindow; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>; service: ReturnType<typeof createSettingsService>;
   flash?: Pick<FlashActivation, 'getFlashEnabled' | 'setFlashEnabled' | 'subscribeFlashEnabled' | 'readiness'>;
+  activation?: Pick<HomiesActivation, 'getHomiesEnabled' | 'setHomiesEnabled' | 'subscribeHomiesEnabled'>;
   homies?: Pick<HomieSetup, 'status' | 'install' | 'start'>;
   installation?: { status(): Promise<FlashReadiness>; install(): Promise<FlashReadiness>; isInstalling(): boolean;
     checkUpdates(): Promise<FlashReadiness>; uninstall(): Promise<FlashReadiness> };
@@ -26,10 +28,13 @@ export function registerSettingsIpc(options: {
   const unsubscribeFlash = (options.flash ?? options.service).subscribeFlashEnabled(enabled => {
     if (!disposed && !owner.isDestroyed()) owner.send(SETTINGS_CHANNELS.flashEnabledChanged, enabled);
   });
+  const unsubscribeHomies = options.activation?.subscribeHomiesEnabled(enabled => {
+    if (!disposed && !owner.isDestroyed()) owner.send(SETTINGS_CHANNELS.homiesEnabledChanged, enabled);
+  });
   let unsubscribeClosed = () => {};
   const dispose = () => {
     if (disposed) return;
-    disposed = true; unsubscribeProjectDoc(); unsubscribeFlash();
+    disposed = true; unsubscribeHomies?.(); unsubscribeProjectDoc(); unsubscribeFlash();
     unsubscribeClosed();
     for (const channel of channels) options.ipc.removeHandler(channel);
   };
@@ -38,6 +43,11 @@ export function registerSettingsIpc(options: {
     channels.push(channel);
   };
   try {
+    handle(SETTINGS_CHANNELS.getHomiesEnabled, () => options.activation?.getHomiesEnabled() ?? false);
+    handle(SETTINGS_CHANNELS.setHomiesEnabled, (_event, value: unknown) => {
+      if (!options.activation) throw new Error('Homies activation is unavailable. Restart Cheshi.');
+      return options.activation.setHomiesEnabled(value);
+    });
     for (const [channel, action] of [[SETTINGS_CHANNELS.getHomieSetup, 'status'],
       [SETTINGS_CHANNELS.installHomieTools, 'install'], [SETTINGS_CHANNELS.startHomieEngine, 'start']] as const) {
       handle(channel, () => {

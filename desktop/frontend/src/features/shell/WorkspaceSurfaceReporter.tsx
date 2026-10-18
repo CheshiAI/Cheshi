@@ -6,7 +6,7 @@ import { WorkspaceStatusToasts } from './WorkspaceStatusToasts';
 import { connectWorkspaceRailBlur } from './workspaceRailBlur';
 
 /** Observe the existing shared Worker store without rerendering the whole shell. */
-export function WorkspaceSurfaceReporter({ view, sidebarOpen, running, attention }: WorkspaceNavigationState) {
+export function WorkspaceSurfaceReporter({ view, sidebarOpen, running, attention, homiesEnabled = false }: WorkspaceNavigationState) {
   useEffect(() => {
     return window.workspaceSurface?.onRailBlur ? connectWorkspaceRailBlur(window.workspaceSurface, document) : undefined;
   }, []);
@@ -18,7 +18,7 @@ export function WorkspaceSurfaceReporter({ view, sidebarOpen, running, attention
     || (message.kind === 'permission_request' && message.permissionRequest?.status === 'pending'));
   const count = running + workers.size;
   useEffect(() => {
-    window.workspaceSurface?.report({ view, sidebarOpen, running: count, attention: attention || workerAttention });
-  }, [view, sidebarOpen, count, attention, workerAttention]);
+    window.workspaceSurface?.report({ homiesEnabled, view, sidebarOpen, running: count, attention: attention || workerAttention });
+  }, [view, sidebarOpen, count, attention, workerAttention, homiesEnabled]);
   return <WorkspaceStatusToasts />;
 }

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { homiesDisabledReason } from '../settings/useHomiesEnabled';
 import { SidebarRailButton } from '../../shared/ui';
 import { DockerIcon } from '../../shared/ui/DockerIcon';
 import { WorkerIcon } from '../../shared/ui/WorkerIcon';
@@ -31,7 +32,8 @@ const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceVi
   { label: 'Settings', icon: <Settings aria-hidden="true" />, view: 'settings' },
 ];
 
-export function SidebarRail({ activeView, sidebarOpen, onNavigate, onToggleSidebar, workspaceControl }: {
+export function SidebarRail({ activeView, sidebarOpen, onNavigate, onToggleSidebar, workspaceControl, homiesEnabled = false }: {
+  homiesEnabled?: boolean;
   activeView: WorkspaceView;
   sidebarOpen: boolean;
   onNavigate(view: WorkspaceView): void;
@@ -42,11 +44,12 @@ export function SidebarRail({ activeView, sidebarOpen, onNavigate, onToggleSideb
     <div className={styles.chrome} aria-hidden="true" />
     <nav className={styles.navigation} aria-label="Primary navigation">
       {navigationItems.map(item => {
+        const disabled = !homiesEnabled && (item.view === 'chats' || item.view === 'docker');
         const active = item.view === (activeView === 'editor' ? 'explorer' : activeView);
-        return <SidebarRailButton key={item.label} active={active} icon={item.icon} label={item.label}
+        return <SidebarRailButton key={item.label} active={active} disabled={disabled} title={disabled ? homiesDisabledReason : item.label} icon={item.icon} label={item.label}
           aria-controls={item.view === 'explorer' ? 'workspace-sidebar' : undefined}
           aria-expanded={item.view === 'explorer' ? sidebarOpen : undefined}
-          aria-label={item.label} aria-current={active ? 'page' : undefined} onClick={() => onNavigate(item.view)} />;
+          aria-label={item.label} aria-current={active ? 'page' : undefined} onClick={() => { if (!disabled) onNavigate(item.view); }} />;
       })}
     </nav>
     <div className={styles.bottomControls} aria-label="Workspace controls">

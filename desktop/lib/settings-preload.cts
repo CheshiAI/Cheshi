@@ -1,10 +1,17 @@
 import type { IpcRenderer, IpcRendererEvent } from 'electron';
-import { SETTINGS_CHANNELS, parseFlashEnabled, parseFlashReadiness, parseProjectDocMaxBytes } from '../shared/settings.ts';
+import { SETTINGS_CHANNELS, parseHomiesEnabled, parseFlashEnabled, parseFlashReadiness, parseProjectDocMaxBytes } from '../shared/settings.ts';
 import type { SettingsApi } from '../shared/settings.ts';
 import { parseHomieSetupStatus } from '../shared/homie-setup.ts';
 
 export function createSettingsApi(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>): SettingsApi {
   return {
+    async getHomiesEnabled() { return parseHomiesEnabled(await ipc.invoke(SETTINGS_CHANNELS.getHomiesEnabled)); },
+    async setHomiesEnabled(value) { return parseHomiesEnabled(await ipc.invoke(SETTINGS_CHANNELS.setHomiesEnabled, parseHomiesEnabled(value))); },
+    onHomiesEnabledChanged(handler) {
+      const listener = (_event: IpcRendererEvent, value: unknown) => handler(parseHomiesEnabled(value));
+      ipc.on(SETTINGS_CHANNELS.homiesEnabledChanged, listener);
+      return () => { ipc.removeListener(SETTINGS_CHANNELS.homiesEnabledChanged, listener); };
+    },
     async getHomieSetup() { return parseHomieSetupStatus(await ipc.invoke(SETTINGS_CHANNELS.getHomieSetup)); },
     async installHomieTools() { return parseHomieSetupStatus(await ipc.invoke(SETTINGS_CHANNELS.installHomieTools)); },
     async startHomieEngine() { return parseHomieSetupStatus(await ipc.invoke(SETTINGS_CHANNELS.startHomieEngine)); },

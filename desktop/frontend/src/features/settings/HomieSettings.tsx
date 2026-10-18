@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import type { HomieSetupStatus } from '../../../../shared/homie-setup';
+import { useHomiesEnabled } from './useHomiesEnabled';
+import { homiesReady, type HomieSetupStatus } from '../../../../shared/homie-setup';
 import type { SettingsApi } from '../../../../shared/settings';
 import { NeumorphicButton } from '../../shared/ui';
 import styles from './SettingsView.module.css';
 
 export function HomieSettings({ api }: { api?: SettingsApi }) {
+  const enabled = useHomiesEnabled(api);
+  const [toggling, setToggling] = useState(false);
+  const toggleActive = useRef(false);
   const [status, setStatus] = useState<HomieSetupStatus | null>(null);
   const [pending, setPending] = useState<'check' | 'install' | 'start' | null>(null);
   const [pendingSince, setPendingSince] = useState<number | null>(null);
@@ -12,7 +16,7 @@ export function HomieSettings({ api }: { api?: SettingsApi }) {
   const [now, setNow] = useState(Date.now);
   const mounted = useRef(false), active = useRef(false), revision = useRef(0);
   const minimumDisplay = useRef<{ timer: ReturnType<typeof setTimeout>; finish(): void } | null>(null);
-  const busy = pending !== null || status?.busy === true;
+  const busy = toggling || pending !== null || status?.busy === true;
   useEffect(() => {
     mounted.current = true;
     let disposed = false;
@@ -58,11 +62,27 @@ export function HomieSettings({ api }: { api?: SettingsApi }) {
       if (mounted.current) { setPending(null); setPendingSince(null); }
     }
   };
+  const toggle = async () => {
+    if (!api || enabled === null || toggleActive.current || busy) return;
+    toggleActive.current = true; setToggling(true); setError(null);
+    try { await api.setHomiesEnabled(!enabled); }
+    catch (error) { if (mounted.current) setError(error instanceof Error ? error.message : 'Could not change Homies usage. Retry.'); }
+    finally { toggleActive.current = false; if (mounted.current) setToggling(false); }
+  };
   const startedAt = status?.busy ? status.startedAt : pendingSince;
   const elapsed = startedAt == null ? 0 : Math.max(0, Math.floor((now - startedAt) / 1000));
   const missing = status && (!status.docker || !status.colima);
   return <section className={styles.detail} aria-labelledby="homies-heading"><div className={styles.scroll}><div className={styles.form}>
     <div className={styles.titleRow}><h2 id="homies-heading" className={styles.sectionTitle}>Homies</h2></div>
+    <div className={styles.settingRow}><span className={styles.settingLabel}>Enable Homies</span>
+      <NeumorphicButton className={styles.toggle} role="switch" aria-label="Enable Homies" aria-checked={enabled === true}
+        disabled={!api || enabled === null || busy || (!enabled && !homiesReady(status))} onClick={() => { void toggle(); }}>
+        <span aria-hidden="true" />
+      </NeumorphicButton>
+    </div>
+    <p className={styles.description}>{enabled ? 'Homies is on.' : 'Homies is off. Install the required tools and connect Colima to enable it.'}
+      {' '}Changes apply to all workspaces. Turning Homies off disables Worker and Docker. Saved Homies, conversations and files are kept.
+      Finish active work and close worker terminals before turning it off. Colima stays running.</p>
     <p className={styles.description}>Prepare Docker CLI and Colima to run Homies on this Mac. This checks the default Colima profile.</p>
     {(['Homebrew', 'Docker CLI', 'Colima'] as const).map((label, index) => {
       const installed = status && [status.brew, status.docker, status.colima][index];
@@ -82,8 +102,8 @@ export function HomieSettings({ api }: { api?: SettingsApi }) {
     {status?.supported && !status.brew && <p className={styles.description}>Install Homebrew using the instructions at{' '}
       <a href="https://brew.sh" target="_blank" rel="noreferrer">brew.sh</a>, then check again. Complete any requested Apple Command Line Tools setup.</p>}
     <p role="status" className={styles.description}>{!api ? 'Available in the Cheshi desktop app.'
-      : pending === 'check' ? 'Checking the Homies environment…' : status?.detail ?? 'Checking the Homies environment…'}</p>
-    {busy && <div className={styles.homieProgress}>
+      : toggling ? 'Changing Homies usage…' : pending === 'check' ? 'Checking the Homies environment…' : status?.detail ?? 'Checking the Homies environment…'}</p>
+    {(pending !== null || status?.busy) && <div className={styles.homieProgress}>
       <div className={styles.homieProgressTrack} role="progressbar" aria-label="Homies setup progress"><span /></div>
       <p className={styles.description}>{`${Math.floor(elapsed / 60)}m ${elapsed % 60}s elapsed`}</p></div>}
     {(error || status?.error) && <p role="alert" className={styles.description}>{error ?? status?.error}</p>}

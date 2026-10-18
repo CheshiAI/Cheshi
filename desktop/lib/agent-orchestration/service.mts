@@ -1,3 +1,4 @@
+import { assertHomiesWorkSettled, type HomiesAccess } from '../homies-activation.mts';
 import { AgentFlashRelay } from './flash-relay.mts';
 import type { AgentFlashMemory } from '../flash/agent-memory.mts';
 import { AgentCustomToolRelay, type CustomToolQuery } from './custom-tool-relay.mts';
@@ -10,6 +11,7 @@ import { workerOperations } from '../agent-management/operations.mts';
 
 export interface CollaborationConnection { endpoint: string; token: string }
 interface Options {
+  access?: HomiesAccess;
   filename: string;
   peer(binding: Binding): Peer | null;
   connect(binding: Binding, demand: boolean): Promise<CollaborationConnection | null>;
@@ -77,7 +79,7 @@ export function createAgentOrchestration(options: Options) {
   }
   function unwatch(id: string) { watches.get(id)?.stop(); watches.delete(id); }
   function watch(binding: Binding, connection: CollaborationConnection) {
-    if (!started || !options.peer(binding)) return;
+    if (!started || options.access?.available() === false || !options.peer(binding)) return;
     const key = JSON.stringify(connection);
     if (watches.get(binding.id)?.connection === key) return;
     unwatch(binding.id);
@@ -90,13 +92,14 @@ export function createAgentOrchestration(options: Options) {
   }
   function arm(binding: Binding) {
     clearTimeout(deadlines.get(binding.id)); deadlines.delete(binding.id);
-    if (!started || !options.peer(binding)) return;
+    if (!started || options.access?.available() === false || !options.peer(binding)) return;
     const at = options.nextCheck?.(binding);
     if (at == null) return;
     const timer = setTimeout(() => { deadlines.delete(binding.id); notify(binding); }, Math.max(1, Math.min(2_147_483_647, at - Date.now())));
     timer.unref(); deadlines.set(binding.id, timer);
   }
-  async function dispatch(only?: string): Promise<void> {
+  const dispatch = (only?: string) => options.access ? options.access.background(() => dispatchEnabled(only)) : dispatchEnabled(only);
+  async function dispatchEnabled(only?: string): Promise<void> {
     for (const binding of options.rooms?.bindings?.() ?? []) mailbox().register(binding);
     const bindings = mailbox().bindings();
     for (const binding of bindings) {
@@ -138,7 +141,7 @@ export function createAgentOrchestration(options: Options) {
           if ((flashFlight || codegraphFlight || customToolFlight) && options.rest) {
             // Read-only tool transport must not hold up collaboration or coordinator shutdown.
             const idle = Promise.all([flashFlight, codegraphFlight, customToolFlight]).then(async () => {
-              if (!started || !options.peer(binding)) return;
+              if (!started || options.access?.available() === false || !options.peer(binding)) return;
               await workerOperations.run(() => options.around ? options.around(binding, rest) : rest());
               arm(binding);
             }).catch(error => { errors.set(binding.id, String(error)); }).finally(() => { resting.delete(idle); });
@@ -157,6 +160,15 @@ export function createAgentOrchestration(options: Options) {
     return flight;
   };
   return {
+    bindings: () => mailbox().bindings(),
+    assertIdle() {
+      assertHomiesWorkSettled((flash?.busy ?? false) || (codegraph?.busy ?? false) || (customTools?.busy ?? false)
+        || resting.size > 0 || mailbox().bindings().some(binding => mailbox().request(binding, [], m => options.rooms?.allowed(binding, m) ?? !m.roomId).messages.length > 0));
+    },
+    suspend() {
+      for (const watch of watches.values()) watch.stop(); watches.clear();
+      for (const timer of deadlines.values()) clearTimeout(timer); deadlines.clear();
+    },
     pending: (binding: Binding) => mailbox().request(binding, [], m => options.rooms?.allowed(binding, m) ?? !m.roomId).messages.length > 0,
     register: (binding: Binding) => mailbox().register(binding),
     error: (id: string) => journalError ?? flashErrors.get(id) ?? errors.get(id) ?? customToolErrors.get(id) ?? codegraphErrors.get(id) ?? null,

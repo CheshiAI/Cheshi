@@ -181,7 +181,7 @@ export class WorkspaceHost {
         || typeof value.running !== 'number' || !Number.isSafeInteger(value.running) || value.running < 0 || typeof value.attention !== 'boolean') return;
       const entry = this.entries.get(id);
       if (!entry) return;
-      Object.assign(entry.state, { view: value.view, sidebarOpen: value.sidebarOpen, running: value.running, attention: value.attention });
+      Object.assign(entry.state, { homiesEnabled: value.homiesEnabled === true, view: value.view, sidebarOpen: value.sidebarOpen, running: value.running, attention: value.attention });
       this.publish();
     });
     this.publish();

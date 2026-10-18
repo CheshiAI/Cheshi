@@ -2,6 +2,9 @@ import { parseProjectDocMaxBytes } from '../../experiments/codex-specialists/src
 import type { HomieSetupStatus } from './homie-setup.ts';
 
 export const SETTINGS_CHANNELS = {
+  getHomiesEnabled: 'cheshi:settings:homies:get',
+  setHomiesEnabled: 'cheshi:settings:homies:set',
+  homiesEnabledChanged: 'cheshi:settings:homies:changed',
   getHomieSetup: 'cheshi:settings:homies:status',
   installHomieTools: 'cheshi:settings:homies:install',
   startHomieEngine: 'cheshi:settings:homies:start',
@@ -17,6 +20,11 @@ export const SETTINGS_CHANNELS = {
   projectDocMaxBytesChanged: 'cheshi:settings:project-doc:changed',
 } as const;
 export { parseProjectDocMaxBytes };
+
+export function parseHomiesEnabled(value: unknown): boolean {
+  if (typeof value !== 'boolean') throw new TypeError('Homies usage must be a boolean.');
+  return value === true;
+}
 
 export function parseFlashEnabled(value: unknown): boolean {
   if (typeof value !== 'boolean') throw new TypeError('Flash usage must be a boolean.');
@@ -66,6 +74,9 @@ export function parseFlashReadiness(value: unknown): FlashReadiness {
 }
 
 export interface SettingsApi {
+  getHomiesEnabled(): Promise<boolean>;
+  setHomiesEnabled(enabled: boolean): Promise<boolean>;
+  onHomiesEnabledChanged(handler: (enabled: boolean) => void): () => void;
   getHomieSetup(): Promise<HomieSetupStatus>;
   installHomieTools(): Promise<HomieSetupStatus>;
   startHomieEngine(): Promise<HomieSetupStatus>;

@@ -1,3 +1,4 @@
+import { assertHomiesAvailable, assertHomiesWorkSettled, type HomiesAccess } from '../homies-activation.mts';
 import type { AgentFlashMemory } from '../flash/agent-memory.mts';
 import type { HostToolRegistration } from './host-tool-registration.mts';
 import { agentDisplayName } from '../../shared/agent-registry.ts';
@@ -36,6 +37,7 @@ import { WorkerWorkspaces } from '../agent-platform/worker-workspaces.mts';
 
 export interface RuntimeAccount { home: string; models: AgentModel[]; }
 interface RuntimeOptions {
+  access?: HomiesAccess;
   prepareSource?(workspace: string, agentId: string): Promise<{ hash: string }>;
   sourceApplied?(workspace: string, agentId: string, engineId: string, hash: string): Promise<void>;
   directory: string; buildContext: string; workspaceDirectory?: string;
@@ -123,7 +125,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     const base = workspaces ? digest(`${settings}\nisolated_workspace=2:${workspace}`) : settings;
     return options.flash ? digest(`${base}\nflash_protocol=1`) : base;
   };
-  const orchestration = createAgentOrchestration({ filename: join(options.directory, 'collaboration.json'),
+  const orchestration = createAgentOrchestration({ access: options.access, filename: join(options.directory, 'collaboration.json'),
     exchange: options.collaborationExchange, flash: options.flash, codegraph: options.codegraph ? async (workspace, tool, args, signal, binding) => {
       if (workspaces && !binding) throw new Error('A Homie binding is required for isolated CodeGraph queries.');
       return options.codegraph!(binding ? await executionWorkspace(binding) : workspace, tool, args, signal);
@@ -317,6 +319,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
   }
   async function request(workspaceRoot: string, input: AgentRuntimeRequest, chat?: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }, selectedWorkspace?: string | null): Promise<AgentRuntimeState> {
     const request = parseAgentRuntimeRequest(input);
+    if (request.action !== 'status') assertHomiesAvailable(options.access);
     const workspace = await realpath(workspaceRoot);
     const source = request.action === 'start' ? await options.prepareSource?.(workspace, request.agentId) : undefined;
     const agent = options.registry.snapshot(workspaceRoot).agents.find(item => item.id === request.agentId);
@@ -554,6 +557,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     return bindingFor(workspace, parsed.engineId, agent.id, agent.accountId ?? '');
   }
   async function wake(workspace: string, input: AgentRuntimeRequest, retry = false) {
+    assertHomiesAvailable(options.access);
     const b = await binding(workspace, input);
     lifecycle.demand(b);
     const result = await workerOperations.run(() => lifecycle.exclusive(b, async () => {
@@ -564,7 +568,23 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     orchestration.notify(b); changed(b); return result;
   }
   return {
+    suspend: () => orchestration.suspend(),
+    async assertIdle() {
+      orchestration.assertIdle();
+      assertHomiesWorkSettled(pending.size > 0);
+      const bindings = new Map([...orchestration.bindings(), ...(options.rooms?.bindings?.() ?? [])].map(b => [b.id, b]));
+      for (const binding of bindings.values()) {
+        const prefix = await local(binding.engineId);
+        const worker = await find(prefix, `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`);
+        if (!worker || worker.state !== 'running') continue;
+        const live = { externalBusy: worker.externalBusy, details: await options.management.details(binding.engineId, worker.id) };
+        if (!live.details.ready || live.details.error) throw new Error('Could not verify worker state. Check Docker and inspect the worker before turning Homies off.');
+        assertHomiesWorkSettled(live.externalBusy || live.details.busy || live.details.tasks.some(task =>
+          ['accepted', 'running', 'unknown'].includes(task.status) || task.inputs?.some(input => input.pending === true)));
+      }
+    },
     async platformProfile(workspaceRoot: string, agentId: string, accountId: string): Promise<HomieExecutionProfile> {
+      assertHomiesAvailable(options.access);
       const workspace = await realpath(workspaceRoot);
       await options.prepareSource?.(workspace, agentId);
       const agent = options.registry.snapshot(workspace).agents.find(a => a.id === agentId && a.accountId === accountId);
@@ -592,10 +612,12 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
         credentials: async () => { assertCurrent(); const auth = await readRuntimeAuth(account.home); assertCurrent(); return auth; } };
     },
     async preparePlatformEnvironment(engineId: string, directory: string) {
+      assertHomiesAvailable(options.access);
       const prefix = await local(engineId);
       await workerOperations.exclusive(() => prepareProjectEnvironment(engineId, prefix, directory, run));
     },
     async testTool(workspaceRoot: string, input: ToolTestRequest) {
+      assertHomiesAvailable(options.access);
       const b = await binding(workspaceRoot, { action: 'status', engineId: input.engineId, agentId: input.agentId });
       const tool = options.registry.snapshot(b.workspace).agents.find(a => a.id === b.agentId)?.package?.tools?.find(t => t.name === input.tool);
       const timeout = tool ? customToolTimeoutMs(tool, input.args) : CUSTOM_TOOL_TIMEOUT_MS;
@@ -653,9 +675,12 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
     lifecycle: (binding: Binding) => lifecycle.state(binding),
     displayLifecycle: (engine: string, agent: ManagedAgent) => lifecycle.project(engine, agent),
     hold: (engine: string, id: string) => lifecycle.hold(engine, id),
-    manualControl: <T,>(engine: string, id: string, action: string, operation: () => Promise<T>) =>
-      lifecycle.manual(engine, id, action, operation, () => options.management.details(engine, id)),
+    manualControl: <T,>(engine: string, id: string, action: string, operation: () => Promise<T>) => {
+      assertHomiesAvailable(options.access);
+      return lifecycle.manual(engine, id, action, operation, () => options.management.details(engine, id));
+    },
     chat: async (workspace: string, input: AgentRuntimeRequest, context: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }) => {
+      assertHomiesAvailable(options.access);
       const b = await binding(workspace, input); lifecycle.demand(b);
       const result = await workerOperations.run(() => lifecycle.exclusive(b, () => request(workspace, input, context)));
       orchestration.notify(b); changed(b); return result;

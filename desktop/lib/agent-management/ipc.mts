@@ -1,3 +1,4 @@
+import type { HomiesAccess } from '../homies-activation.mts';
 import { onWindowClosed } from '../window-close-cleanup.mts';
 import { deletionReply } from './operations.mts';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
@@ -8,6 +9,7 @@ import { AGENT_TERMINAL_CHANNELS, parseAgentTerminalBounds } from '../../shared/
 import type { AgentTerminalManager } from './terminal.mts';
 
 export function registerAgentManagementIpc(options: {
+  access?: HomiesAccess;
   window: BrowserWindow; ipc: Pick<IpcMain, 'handle' | 'removeHandler'>; service: AgentManagementApi;
   terminal?: Pick<AgentTerminalManager, 'open' | 'update' | 'close' | 'dispose'>;
   remove?: (request: import('../../shared/agent-management.ts').DeleteContainer) => Promise<void>;
@@ -29,7 +31,8 @@ export function registerAgentManagementIpc(options: {
     options.terminal?.dispose();
   };
   const handle = (channel: string, listener: Parameters<IpcMain['handle']>[1]) => {
-    options.ipc.handle(channel, (event, ...values) => { assertOwner(event); return listener(event, ...values); });
+    options.ipc.handle(channel, (event, ...values) => { assertOwner(event); return options.access && channel !== AGENT_TERMINAL_CHANNELS.close
+      ? options.access.run(() => listener(event, ...values)) : listener(event, ...values); });
     channels.push(channel);
   };
   try {

@@ -19,6 +19,7 @@ test('Chats bridge is confined to the owning workspace frame and validates reque
     inspectWorkspace: async root => { calls.push(`${root}/workspace`); return { rooms: [], messages: [] }; },
     openFile: async root => { calls.push(`${root}/open-file`); return { rooms: [], messages: [] }; },
     isolated: async root => { calls.push(`${root}/isolated`); return { rooms: [], messages: [] }; },
+    assertIdle() {},
     isolatedSettled: async () => {},
     deleteRoom: async root => { calls.push(`${root}/delete`); return { rooms: [], messages: [] }; },
     settled: async () => {}, subscribe: (root, listener) => { subscribed = root; publish = listener; return () => { removed++; }; }, changed: () => {},

@@ -72,6 +72,7 @@ export function createIsolatedChatTasks(options: {
       try { update(message.id, await platform.inspect(context(room, message.recipient, message.isolated.accountId, message.text), message.isolated)); }
       catch (error) { update(message.id, { phase: message.isolated.phase === 'passed' ? 'stale' : 'unknown', error: safeError(error) }); }
     },
+    busy: () => active.size > 0,
     async settled() { await Promise.all([...active.values()].map(p => p.flight)); },
     async dispose() {
       for (const pending of active.values()) pending.controller.abort();
