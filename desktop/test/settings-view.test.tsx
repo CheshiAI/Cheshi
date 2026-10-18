@@ -24,6 +24,7 @@ async function withSettings(run: (view: {
   homies?: HomieSetupStatus;
   homieInstall?: () => Promise<HomieSetupStatus>;
   homieStart?: () => Promise<HomieSetupStatus>;
+  homieCheck?: () => Promise<HomieSetupStatus>;
 } = {}) {
   const window = new Window();
   Object.defineProperty(window, 'localStorage', { get() { throw new Error('Browser storage is unavailable'); } });
@@ -40,7 +41,7 @@ async function withSettings(run: (view: {
   const flashWrites: boolean[] = [];
   const flashListeners = new Set<(enabled: boolean) => void>();
   const api: SettingsApi = {
-    getHomieSetup: async () => options.homies ?? homieStatus,
+    getHomieSetup: options.homieCheck ?? (async () => options.homies ?? homieStatus),
     installHomieTools: options.homieInstall ?? (async () => homieStatus),
     startHomieEngine: options.homieStart ?? (async () => ({ ...homieStatus, connected: true, detail: 'Connection ready.' })),
     getFlashReadiness: async () => options.readiness ?? { ready: true, detail: 'Files available.' },
@@ -355,13 +356,13 @@ test('Homies guides missing Homebrew and restores ongoing progress when reopened
   await withSettings(async ({ container }) => {
     await act(async () => category(container, 'Homies').click());
     expect(container.textContent).toContain('1m 1s elapsed');
-    expect(container.querySelector('progress')?.hasAttribute('value')).toBe(false);
+    expect(container.querySelector('[role="progressbar"]')?.hasAttribute('aria-valuenow')).toBe(false);
     expect(container.textContent).not.toContain('%');
     expect(button(container, 'Start Colima').disabled).toBe(true);
     await act(async () => category(container, 'About').click());
     await act(async () => category(container, 'Homies').click());
     expect(container.textContent).toContain('Downloading Colima');
-    expect(container.querySelector('progress')).not.toBeNull();
+    expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
   }, { homies: { ...homieStatus, busy: true, startedAt: Date.now() - 61000, detail: 'Downloading Colima' } });
 });
 
@@ -378,4 +379,69 @@ test('Homies displays installation failure and allows retry', async () => {
     expect(button(container, 'Start Colima').disabled).toBe(false);
   }, { homies: initial, homieInstall: async () => ++calls === 1 ? { ...initial, error: 'Download failed. Retry.' } : homieStatus });
   expect(calls).toBe(2);
+});
+
+test('manual Homies checks remain visible for at least one second while automatic checks stay quiet', async () => {
+  let calls = 0;
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Homies').click());
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 2100)); });
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    const before = calls;
+    await act(async () => button(container, 'Check status').click());
+    expect(calls).toBe(before + 1);
+    expect(button(container, 'Check status').textContent).toBe('Checking…');
+    expect(container.textContent).toContain('Checking the Homies environment…');
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 900)); });
+    expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
+    expect(button(container, 'Check status').disabled).toBe(true);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 150)); });
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    expect(button(container, 'Check status').disabled).toBe(false);
+  }, { homieCheck: async () => { calls++; return homieStatus; } });
+});
+
+test('a slow Homies check waits for completion without adding another second', async () => {
+  const check = createDeferred<HomieSetupStatus>();
+  let calls = 0;
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Homies').click());
+    await act(async () => button(container, 'Check status').click());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)); });
+    expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
+    await act(async () => check.resolve({ ...homieStatus, connected: true, detail: 'Connection ready.' }));
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    expect(container.textContent).toContain('Connection ready.');
+  }, { homieCheck: async () => ++calls === 1 ? homieStatus : check.promise });
+});
+
+test('a failed manual Homies check also retains its indicator and allows retry', async () => {
+  let calls = 0;
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Homies').click());
+    await act(async () => button(container, 'Check status').click());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 900)); });
+    expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 150)); });
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Could not complete');
+    expect(button(container, 'Check status').disabled).toBe(false);
+  }, { homieCheck: async () => {
+    if (++calls > 1) throw new Error('fixture check failed');
+    return homieStatus;
+  } });
+});
+
+test('leaving Homies during the minimum display does not leave a busy indicator on return', async () => {
+  await withSettings(async ({ container }) => {
+    await act(async () => category(container, 'Homies').click());
+    await act(async () => button(container, 'Check status').click());
+    await act(async () => category(container, 'About').click());
+    await act(async () => category(container, 'Homies').click());
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    expect(button(container, 'Check status').disabled).toBe(false);
+  });
 });

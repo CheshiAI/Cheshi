@@ -57,7 +57,14 @@
 .flashActions { flex-wrap: wrap; }
 .homieActions { flex-wrap: wrap; }
 .homieProgress { display: flex; flex-direction: column; gap: var(--space-default); }
-.homieProgress progress { width: 100%; height: 6px; accent-color: var(--toggle-track-on-color); }
+.homieProgressTrack { width: 100%; height: 8px; overflow: hidden; border-radius: 999px; background: rgba(0, 0, 0, .32); }
+.homieProgressTrack > span {
+  display: block; width: 35%; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, #86d4d6 0%, #d8a7c5 52%, #c5b4ee 100%);
+  animation: homieProgressTravel 1.4s ease-in-out infinite alternate;
+}
+@keyframes homieProgressTravel { from { transform: translateX(0); } to { transform: translateX(185.714%); } }
+@media (prefers-reduced-motion: reduce) { .homieProgressTrack > span { animation: none; } }
 .actions .circleButton[data-size='icon'] {
   --neumorphic-button-surface: rgba(41, 52, 61, .4);
   --neumorphic-button-hover-background: var(--neumorphic-button-surface);
