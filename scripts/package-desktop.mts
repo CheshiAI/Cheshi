@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { product } from '../config/product.mts';
-import { finderBuildSortScript } from './desktop-build-output.mts';
+import { finderBuildRevealScript } from './desktop-build-output.mts';
 import { BuildInterruptedError, withDesktopBuild } from './desktop-build-lifecycle.mts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -43,10 +43,10 @@ try {
   });
   console.log(`[build] App: ${join(output.destination, appRelative)}`);
   if (process.platform === 'darwin' && !flags.includes('--no-finder')) {
-    const result = Bun.spawnSync(['/usr/bin/osascript', '-e', finderBuildSortScript, join(root, 'out')],
+    const result = Bun.spawnSync(['/usr/bin/osascript', '-e', finderBuildRevealScript, output.destination],
       { stdout: 'pipe', stderr: 'pipe', timeout: 20_000 });
-    if (result.exitCode === 0 && result.stdout.toString().trim() === 'true') console.log('[build] Finder: newest builds first.');
-    else console.warn(`[build] App built; Finder sorting was not applied: ${result.stderr.toString().trim()}`);
+    if (result.exitCode === 0 && result.stdout.toString().trim() === 'true') console.log('[build] Finder: new build folder selected.');
+    else console.warn(`[build] App built; Finder could not select the build folder: ${result.stderr.toString().trim()}`);
   }
 } catch (error) {
   console.error(error);

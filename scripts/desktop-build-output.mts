@@ -97,25 +97,11 @@ export async function completeBuildOutput(output: BuildOutput): Promise<void> {
   await rm(join(output.destination, ownerFile), { force: true });
 }
 
-export const finderBuildSortScript = `on run argv
-  set outputFolder to POSIX file (item 1 of argv) as alias
+export const finderBuildRevealScript = `on run argv
+  set buildFolder to POSIX file (item 1 of argv) as alias
   tell application "Finder"
-    set outputWindow to missing value
-    repeat with candidate in (get Finder windows)
-      try
-        set candidateWindow to contents of candidate
-        if (target of candidateWindow as alias) is outputFolder then
-          set outputWindow to candidateWindow
-          exit repeat
-        end if
-      end try
-    end repeat
-    if outputWindow is missing value then set outputWindow to make new Finder window to outputFolder
-    set current view of outputWindow to list view
-    set options to list view options of outputWindow
-    set visible of column id creation date column of options to true
-    set sort column of options to creation date column
-    set sort direction of column id creation date column of options to reversed
-    return (current view of outputWindow is list view) and (sort direction of column id creation date column of options is reversed)
+    reveal buildFolder
+    activate
+    return (selection as alias list) is {buildFolder}
   end tell
 end run`;
