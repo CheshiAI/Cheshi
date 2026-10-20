@@ -27,7 +27,7 @@
   max-height: calc(100vh - 16px);
   overflow: auto;
   padding: var(--space-default);
-  background: transparent;
+  background: var(--tooltip-background);
   color: var(--text);
   font-family: var(--font-ui), sans-serif;
   font-size: var(--font-size-small);

@@ -555,7 +555,7 @@ test('engine disconnection preserves recovery details, disables actions, and rec
         expect(document.querySelector<HTMLButtonElement>('[aria-label="Stop worker"]')?.disabled).toBe(true);
         expect(document.querySelector('button[type="submit"]')).toBeNull();
         offline = false; await poll();
-        expect(document.body.textContent).toContain('Ready');
+        expect(document.body.textContent).toContain('Result unknown');
         expect(document.querySelector('[role="alert"]')).toBeNull();
         expect(document.querySelector<HTMLButtonElement>('[aria-label="Stop worker"]')?.disabled).toBe(true);
         expect(document.querySelector('textarea')).toBeNull();
@@ -582,7 +582,7 @@ test('waiting collaboration is visible and can be stopped while the worker is id
     await withDOM(async ui => {
       await ui.render(<SpecialistRuntimePanel assigned agent={agent} model={registry} engineId="docker:local"
         engines={[{ id: 'docker:local', name: 'local', supported: true, reason: null }]} />);
-      expect(document.body.textContent).toContain('Waiting for reply');
+      expect(document.body.textContent).toContain('Task paused');
       await ui.click('Stop task');
       expect(document.body.textContent).toContain('interrupted');
       expect(document.querySelector('[aria-label="Stop task"]')).toBeNull();

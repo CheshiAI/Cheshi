@@ -11,22 +11,34 @@ import { beginSplitPreview } from '../../shared/ui/splitPreviewState';
 import { SPLIT_PANE_MIN_SIZE, splitPaneMinimumWidth } from '../../shared/ui/splitPaneSizing';
 import styles from './WorkspaceEditorSplit.module.css';
 
-function PaneHost({ host, paneId, onMove, onDetach, dragSource }: {
+function movePaneHost(target: HTMLDivElement, host: HTMLDivElement) {
+  // Unlike append/remove, Electron's atomic move retains nested iframe documents.
+  // The optional signature also supports DOM test environments without this API.
+  const destination = target as HTMLDivElement & { moveBefore?: (node: Node, reference: Node | null) => void };
+  if (host.isConnected && target.isConnected && destination.moveBefore) destination.moveBefore(host, null);
+  else target.append(host);
+}
+
+function PaneHost({ host, paneId, onMove, onDetach, dragSource, parking }: {
   host: HTMLDivElement; paneId: WorkspacePaneId;
   onMove(source: WorkspacePaneId, target: WorkspacePaneId, direction: SplitPaneDirection): void;
   dragSource: RefObject<WorkspacePaneId | null>;
+  parking: RefObject<HTMLDivElement | null>;
   onDetach(element: HTMLElement): void;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [drop, setDrop] = useState<SplitPaneDirection | null>(null);
   useLayoutEffect(() => {
-    mountRef.current?.append(host);
+    if (mountRef.current) movePaneHost(mountRef.current, host);
     return () => {
       const focused = host.ownerDocument.activeElement;
       if (focused && host.contains(focused)) onDetach(focused as HTMLElement);
-      host.remove();
+      // Keep hosts connected between old and new layout leaves. React retaining
+      // a portal alone does not preserve the iframe's browsing context.
+      if (parking.current?.isConnected) movePaneHost(parking.current, host);
+      else host.remove();
     };
-  }, [host, onDetach]);
+  }, [host, onDetach, parking]);
   // Portal events follow the React tree; native listeners follow the actual pane DOM.
   useEffect(() => {
     const mount = mountRef.current;
@@ -114,6 +126,7 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, worker,
   const detachedFocus = useRef<HTMLElement | null>(null);
   const onDetach = useCallback((element: HTMLElement) => { detachedFocus.current = element; }, []);
   const [hosts] = useState(() => ({ primary: document.createElement('div'), editor: document.createElement('div'), terminal: document.createElement('div'), worker: document.createElement('div') }));
+  const parking = useRef<HTMLDivElement>(null);
   const [ratio, setRatio] = useState(.5);
   const [maximized, setMaximized] = useState<WorkspacePaneId | null>(null);
   const [preview, setPreview] = useState<{ target: HTMLElement; pane: WorkspacePaneId; direction: SplitPreviewDirection } | null>(null);
@@ -199,14 +212,15 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, worker,
     : undefined;
   return <WorkspaceLayoutContext.Provider value={onLayoutChange && !disabled ? controls : null}>
     <div className={styles.root} style={minimumPaneWidth ? { minWidth: splitPaneMinimumWidth(shownLayout, minimumPaneWidth) } : undefined}>
+      <div ref={parking} hidden />
       <SplitPaneLayout layout={shownLayout} resizeLabel="Resize workspace panes"
         minimumPaneWidth={minimumPaneWidth}
         onResizeSplit={(id, value) => {
           if (onLayoutChange) onLayoutChange(resizeSplitPane(layout, id, value));
           else setRatio(value);
-        }} renderPane={id => <PaneHost host={hosts[id as WorkspacePaneId]} paneId={id as WorkspacePaneId} onMove={move} onDetach={onDetach} dragSource={dragSource} />} />
+        }} renderPane={id => <PaneHost host={hosts[id as WorkspacePaneId]} paneId={id as WorkspacePaneId} onMove={move} onDetach={onDetach} dragSource={dragSource} parking={parking} />} />
       <div hidden>{Object.entries(hosts).filter(([id]) => !shownIds.includes(id)).map(([id, host]) =>
-        <PaneHost key={id} host={host} paneId={id as WorkspacePaneId} onMove={move} onDetach={onDetach} dragSource={dragSource} />)}</div>
+        <PaneHost key={id} host={host} paneId={id as WorkspacePaneId} onMove={move} onDetach={onDetach} dragSource={dragSource} parking={parking} />)}</div>
       {Object.entries(contents).map(([id, content]) => createPortal(
         <WorkspacePaneContext.Provider value={id as WorkspacePaneId}><WorkspacePaneVisibilityContext.Provider value={shownIds.includes(id)}>{content}</WorkspacePaneVisibilityContext.Provider></WorkspacePaneContext.Provider>, hosts[id as WorkspacePaneId], `workspace-${id}`))}
     </div>

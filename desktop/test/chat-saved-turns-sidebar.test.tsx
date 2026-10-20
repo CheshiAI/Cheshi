@@ -9,6 +9,7 @@ import ts from 'typescript';
 import type { ChatSavedTurnsSidebar } from '../frontend/src/features/chat/ChatSavedTurnsSidebar';
 import type { SavedChatTurnsPanel } from '../frontend/src/features/chat/SavedChatTurnsPanel';
 import type { SavedChatTurnsController } from '../frontend/src/features/chat/useSavedChatTurns';
+import { createChatSidebarMotion } from '../frontend/src/features/chat/chatSidebarMotion';
 
 function load<T>(file: string, name: string, modules: Record<string, unknown>): T {
   const source = readFileSync(new URL(`../frontend/src/features/chat/${file}.tsx`, import.meta.url), 'utf8');
@@ -47,6 +48,7 @@ const Panel = load<typeof SavedChatTurnsPanel>('SavedChatTurnsPanel', 'SavedChat
 });
 const Sidebar = load<typeof ChatSavedTurnsSidebar>('ChatSavedTurnsSidebar', 'ChatSavedTurnsSidebar', {
   '../../shared/ui': ui, './SavedChatTurnsPanel': { SavedChatTurnsPanel: Panel },
+  './chatSidebarMotion': { createChatSidebarMotion },
 });
 
 function createDeferred() {

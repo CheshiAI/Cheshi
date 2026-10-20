@@ -56,7 +56,7 @@ export function TerminalWorkspace({
             {state.sessions.length === 0 ? (
               <SidebarPanelTitle icon={<SquareTerminal aria-hidden="true" />} title="TERMINAL" />
             ) : (
-              <FlatTabList aria-label="Terminal sessions" onCloseAll={terminal.closeAllSessions}>
+              <FlatTabList aria-label="Terminal sessions" data-tab-appearance="document" onCloseAll={terminal.closeAllSessions}>
                 {state.sessions.map((session) => {
                   const selected = session.id === state.activeSessionId;
                   return (

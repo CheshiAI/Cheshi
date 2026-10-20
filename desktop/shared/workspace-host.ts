@@ -9,6 +9,7 @@ export interface WorkspaceNavigationState {
   attention: boolean;
 }
 export interface WorkspaceHostEntry extends WorkspaceNavigationState {
+  modalOpen?: boolean;
   id: number;
   name: string;
   root: string;
@@ -43,6 +44,7 @@ export interface WorkspaceHostApi {
   onRailEvent(listener: (event: WorkspaceRailEvent) => void): () => void;
 }
 export interface WorkspaceSurfaceApi {
+  reportModal(open: boolean): void;
   onStatusToast(listener: (message: StatusToastMessage) => void): () => void;
   report(state: WorkspaceNavigationState): void;
   onRailBlur(listener: (region: WorkspaceRailBlur | null) => void): () => void;

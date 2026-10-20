@@ -144,6 +144,34 @@ test('multiple tabs retain click and arrow-key selection and keyboard focus', as
   });
 });
 
+test('active workspace modals block chrome and clear rail overlays until dismissal', async () => {
+  await withDOM(async ui => {
+    const host = createHost();
+    const entries = [entry(1, 'Desktop'), entry(2, 'Flash')];
+    host.publish({ activeId: 1, entries });
+    await ui.render(<WorkspaceHostShell api={host.api} />);
+    const rail = document.querySelector<HTMLElement>('[aria-label="Application navigation"]')!;
+    const button = rail.querySelector<HTMLButtonElement>('[data-rail-button]')!;
+    const tabs = document.querySelector<HTMLElement>('[role="tablist"]')!;
+    await act(async () => button.dispatchEvent(new window.PointerEvent('pointerover', { bubbles: true })));
+    expect(host.overlays.at(-1)).not.toBeNull();
+    await act(async () => host.publish({ activeId: 1, entries: [{ ...entries[0]!, modalOpen: true }, entries[1]!] }));
+    expect(rail.hasAttribute('inert')).toBe(true);
+    expect(tabs.parentElement!.hasAttribute('inert')).toBe(true);
+    expect(document.querySelector('[data-modal-open="true"]')).not.toBeNull();
+    expect(host.overlays.at(-1)).toBeNull();
+    expect(button.hasAttribute('data-rail-expanded')).toBe(false);
+    await act(async () => tabs.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })));
+    expect(document.querySelector('[role="tab"][aria-selected="true"]')?.getAttribute('data-workspace-id')).toBe('1');
+    // A modal in a retained background workspace must not block the visible one.
+    await act(async () => host.publish({ activeId: 1, entries: [entries[0]!, { ...entries[1]!, modalOpen: true }] }));
+    expect(rail.hasAttribute('inert')).toBe(false);
+    expect(tabs.parentElement!.hasAttribute('inert')).toBe(false);
+    await ui.click('Open workspace');
+    expect(host.commands).toEqual(['manager']);
+  });
+});
+
 test('running dots share the bounded clock and release it when hidden or replaced by status updates', async () => {
   await withDOM(async ui => {
     let hidden = false, nextTimer = 0, pauses = 0;

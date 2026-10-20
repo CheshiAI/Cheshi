@@ -1,4 +1,5 @@
 import { createChatAttachmentImageReader, registerChatAttachmentImageIpc } from './lib/chat-attachment-image.mts';
+import { registerCanvasIpc } from './lib/canvas/canvas-ipc.mts';
 import { registerWorkspaceTerminalIpc } from './lib/workspace-terminal-ipc.mts';
 import { createWorkspaceProjects } from './lib/workspace-project-runtime.mts';
 import { createWorkspaceSessionMemory } from './lib/flash/workspace.mts';
@@ -395,7 +396,7 @@ async function selectLanguageServerExecutable(
   const result = owner
     ? await dialog.showOpenDialog(nativeWorkspaceWindow(owner), options)
     : await dialog.showOpenDialog(options);
-  if (result.canceled || !result.filePaths[0]) {
+  if (appQuitting || !mainWindow || mainWindow.isDestroyed() || result.canceled || !result.filePaths[0]) {
     return { canceled: true, statuses: languageServerManager.getStatuses() };
   }
   const statuses = await languageServerManager.configure({
@@ -407,6 +408,13 @@ async function selectLanguageServerExecutable(
 }
 
 registerWorkspaceFileIpcHandlers({ ipcMain: workspaceProjects.ipc, workspaceRoot, clipboard, shell, localHistory });
+const canvasLibrary = registerCanvasIpc(ipcMain, workspaceRoot, assertCheshiSender, userDataDirectory, async defaultPath => {
+  if (!mainWindow || mainWindow.isDestroyed()) throw new Error('The workspace window is unavailable.');
+  const result = await dialog.showOpenDialog(nativeWorkspaceWindow(mainWindow), {
+    title: 'Select canvas folder', defaultPath, properties: ['openDirectory'],
+  });
+  return result.canceled ? null : result.filePaths[0] ?? null;
+});
 registerLocalFileLinkIpc({ ipcMain, workspaceRoot, shell, assertSender: assertCheshiSender });
 registerLocalHistoryIpc({ ipcMain: workspaceProjects.ipc, service: localHistory, assertSender: assertCheshiSender, onChanged: sendWorkspaceFilesChanged });
 const management = registerWorkspaceManagementIpcHandlers({ ipcMain, app, dialog, trashItem: (root) => shell.trashItem(root), withWorkspaceDeletion: options.withWorkspaceDeletion, assertWorkspaceAvailable: options.assertWorkspaceAvailable, openExternal: (url) => shell.openExternal(url), getWindow: () => mainWindow, assertSender: assertCheshiSender, dataRoot: codeGraphDataRoot, onOpenWorkspace: options.onOpenWorkspace, onReplaceWorkspace: options.onReplaceWorkspace, manager: { createWindow: (configuration) => new BrowserWindow(configuration), rendererUrl, workspaceRoot, onWindowCreated: (window) => options.scope.addOwner(window.webContents, true) } });
@@ -544,6 +552,9 @@ function disposeGitRepositoryWatcher() {
 
 function sendWorkspaceFilesChanged(event: WorkspaceFilesChangedEvent): void {
   void localHistory.captureChanged(event);
+  void canvasLibrary.captureChanged(event).catch(error => {
+    process.stderr.write(`[cheshi] Canvas history: ${error instanceof Error ? error.message : String(error)}\n`);
+  });
   for (const window of workspaceWindows()) {
     rendererEvents.send(window, WORKSPACE_FILES_CHANGED_CHANNEL, event);
   }
@@ -557,6 +568,10 @@ async function initializeWorkspaceFileWatcher() {
       onError: (error) => {
         process.stderr.write(`[cheshi] Workspace file watcher: ${error.message}\n`);
       },
+    });
+    // Establish a baseline even for canvases that have not been opened in this session.
+    void canvasLibrary.captureChanged({ paths: [], overflow: true }).catch(error => {
+      process.stderr.write(`[cheshi] Canvas history baseline: ${error instanceof Error ? error.message : String(error)}\n`);
     });
   } catch (error) {
     process.stderr.write(
@@ -862,6 +877,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
     ipcMain.off(RENDERER_READY_CHANNEL, handleRendererReady);
     rendererContents.off('did-start-navigation', handleRendererNavigation);
     if (mainWindow !== window) return;
+    workspaceProjects.stopAccepting();
     disposeTerminal();
     void languageServerManager.stop();
     windowAppearance = null;
@@ -918,6 +934,9 @@ function start(): Promise<BrowserWindow> {
 function dispose(): Promise<void> {
   if (disposal) return disposal;
   appQuitting = true;
+  const projectsDisposal = workspaceProjects.dispose();
+  // Attach the rejection handler immediately while other shutdown work proceeds.
+  const projectsSettled = Promise.allSettled([projectsDisposal]);
   rendererEvents.stop();
   unsubscribeAccount();
   unsubscribeChat();
@@ -932,6 +951,10 @@ function dispose(): Promise<void> {
     // Startup may have completed a watcher registration after disposal began.
     disposeWorkspaceFileWatcher();
     disposeGitRepositoryWatcher();
+    const projectResults = await projectsSettled;
+    for (const result of projectResults) {
+      if (result.status === 'rejected') process.stderr.write(`[cheshi] Project cleanup failed: ${String(result.reason)}\n`);
+    }
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
     disposeTerminal();
     codeExplanation.stop();
@@ -942,7 +965,7 @@ function dispose(): Promise<void> {
       codexChatService.stop(), agentVoice.dispose(),
       chatHistorySearch.stop(), sessionHistory.dispose(),
       temporaryChats.stop(),
-      localHistory.dispose(), workspaceProjects.dispose(),
+      localHistory.dispose(),
       managementDisposal,
       codexAccountService.stop(), accountSwitch.stop(), workspaceAccounts.stop(),
       codeGraphService?.stop(), codeGraphIndexer?.stop(), ephemeralSessionClient.stop(),

@@ -3,15 +3,8 @@ import { act, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Window } from 'happy-dom';
 import { Modal } from '../frontend/src/shared/ui/Modal';
-import { registerModalBlur } from '../frontend/src/shared/ui/modalBlur';
-
-function sceneFilter(document: Document, app: HTMLElement) {
-  const id = app.style.filter.match(/url\(["']?#([^"')]+)["']?\)/)?.[1];
-  if (!id) throw new Error('Expected a scene blur filter.');
-  const filter = document.getElementById(id);
-  if (!filter) throw new Error('Scene blur filter is missing.');
-  return filter;
-}
+import { registerModalLayer } from '../frontend/src/shared/ui/modalBlur';
+import type { WorkspaceSurfaceApi } from '../shared/workspace-host';
 
 async function withDOM(run: (h: {
   document: Document; app: HTMLElement;
@@ -45,7 +38,7 @@ async function withDOM(run: (h: {
   }
 }
 
-test('modal blurs the original scene, leaves foreground sharp, and restores styles and focus', async () => {
+test('modal adds no background blur, preserves existing styles, and restores focus', async () => {
   await withDOM(async h => {
     await h.render({ first: false });
     const trigger = h.document.querySelector<HTMLButtonElement>('#trigger')!;
@@ -56,8 +49,10 @@ test('modal blurs the original scene, leaves foreground sharp, and restores styl
     expect(dialog.open).toBe(true);
     expect(dialog.style.filter).toBe('');
     expect(dialog.querySelector('[data-liquid-glass-backdrop="true"]')).toBeNull();
-    expect(h.app.style.filter).toContain('opacity(0.9) url(');
-    expect(sceneFilter(h.document, h.app).querySelectorAll('feGaussianBlur').length).toBe(2);
+    expect(h.app.style.filter).toBe('opacity(0.9)');
+    expect(h.app.style.getPropertyPriority('filter')).toBe('important');
+    // Dropdowns inside a modal keep their own regional blur provider.
+    expect(h.document.querySelectorAll('[id^="modal-scene-blur-"]').length).toBe(0);
     await h.render({ first: false });
     expect(h.app.style.filter).toBe('opacity(0.9)');
     expect(h.app.style.getPropertyPriority('filter')).toBe('important');
@@ -66,16 +61,15 @@ test('modal blurs the original scene, leaves foreground sharp, and restores styl
   });
 });
 
-test('nested modals share one scene filter and only the active modal owns the dimming backdrop', async () => {
+test('nested modals keep the background unfiltered and only the active modal owns the dim', async () => {
   await withDOM(async h => {
     await h.render();
     const first = h.document.querySelector('dialog')!;
     const input = first.querySelector('input')!; input.focus();
-    const sceneFilter = h.app.style.filter;
     await h.render({ second: true });
     const second = h.document.querySelectorAll('dialog')[1]!;
-    expect(h.app.style.filter).toBe(sceneFilter);
-    expect(first.style.filter).toContain('url(');
+    expect(h.app.style.filter).toBe('');
+    expect(first.style.filter).toBe('');
     expect(first.dataset.modalBlurTop).toBe('false');
     expect(second.dataset.modalBlurTop).toBe('true');
     expect(second.style.filter).toBe('');
@@ -89,44 +83,37 @@ test('nested modals share one scene filter and only the active modal owns the di
   });
 });
 
-test('extra blur follows the rounded modal region while the outside scene retains its base blur', async () => {
+test('the host stays blocked until the last modal closes, including native close and unmount', async () => {
   await withDOM(async h => {
+    const states: boolean[] = [];
+    h.document.defaultView!.workspaceSurface = {
+      reportModal: (open: boolean) => { states.push(open); },
+    } as WorkspaceSurfaceApi;
     await h.render();
-    const dialog = h.document.querySelector('dialog')!;
-    const rect = (x: number, y: number, width: number, height: number) =>
-      ({ x, y, width, height, top: y, left: x, right: x + width, bottom: y + height, toJSON() { return {}; } });
-    let sourceWidth = 600, dialogX = 100;
-    Object.defineProperties(h.app, {
-      offsetWidth: { get: () => sourceWidth }, offsetHeight: { get: () => 400 },
-      getBoundingClientRect: { value: () => rect(0, 0, sourceWidth, 400) },
-    });
-    Object.defineProperty(dialog, 'getBoundingClientRect', { value: () => rect(dialogX, 100, 200, 100) });
-    dialog.style.borderRadius = '16px';
-    const refresh = () => h.document.defaultView!.dispatchEvent(new Event('resize'));
-    const mask = () => decodeURIComponent(sceneFilter(h.document, h.app).querySelector('feImage')?.getAttribute('href')?.split(',').slice(1).join(',') ?? '');
-    refresh();
-    expect(mask()).toContain('M116 100');
-    const filter = sceneFilter(h.document, h.app);
-    expect(filter.querySelector('feGaussianBlur[in="scene"]')?.getAttribute('stdDeviation')).toBe('16');
-    expect(filter.querySelector('feComposite[in="scene"]')?.getAttribute('operator')).toBe('out');
-    expect(dialog.style.filter).toBe('');
-    dialogX = 200; sourceWidth = 700; refresh();
-    expect(mask()).toContain('M216 100');
-    expect(filter.getAttribute('width')).toBe('700');
-    dialogX = 800; sourceWidth = 500; refresh();
-    expect(mask()).toBe('');
-    expect(filter.getAttribute('width')).toBe('500');
-    expect(h.app.style.filter).toContain('url(');
+    expect(states.at(-1)).toBe(true);
+    states.length = 0;
+    await h.render({ second: true });
+    await h.render({ first: false, second: true });
+    expect(states).not.toContain(false);
+    h.document.querySelector('dialog')!.close();
+    await h.flush();
+    expect(states).toEqual([false]);
+    await h.render({ first: false, second: false });
+    expect(states).toEqual([false]);
+    await h.render();
+    expect(states.at(-1)).toBe(true);
+    await h.render({ first: false });
+    expect(states.at(-1)).toBe(false);
   });
 });
 
-test('portals added behind the modal are filtered and removed sources recover their original styles', async () => {
+test('portals behind the modal retain their own styles without receiving a modal filter', async () => {
   await withDOM(async h => {
     await h.render();
     const portal = h.document.createElement('div');
     portal.style.filter = 'contrast(0.9)';
     h.document.body.append(portal); await h.flush();
-    expect(portal.style.filter).toContain('contrast(0.9) url(');
+    expect(portal.style.filter).toBe('contrast(0.9)');
     portal.remove(); await h.flush();
     expect(portal.style.filter).toBe('contrast(0.9)');
     await h.render({ first: false });
@@ -135,19 +122,22 @@ test('portals added behind the modal are filtered and removed sources recover th
   });
 });
 
-test('out-of-order release and native close leave the remaining modal sharp and restore the scene', async () => {
+test('out-of-order release and native close restore stack attributes without changing the scene', async () => {
   await withDOM(async h => {
     await h.render({ first: false });
     const first = h.document.createElement('dialog'), second = h.document.createElement('dialog');
     h.document.body.append(first, second);
-    first.showModal(); const releaseFirst = registerModalBlur(first);
-    second.showModal(); const releaseSecond = registerModalBlur(second);
+    first.showModal(); const releaseFirst = registerModalLayer(first);
+    second.showModal(); const releaseSecond = registerModalLayer(second);
     releaseFirst(); first.close(); first.remove(); await h.flush();
     expect(second.style.filter).toBe('');
-    expect(h.app.style.filter).toContain('url(');
+    expect(h.app.style.filter).toBe('');
+    expect(second.dataset.modalBlurTop).toBe('true');
     second.close(); await h.flush();
+    expect(second.dataset.modalBlurTop).toBe('false');
     expect(h.app.style.filter).toBe('');
     releaseSecond(); releaseSecond(); second.remove();
+    expect(second.hasAttribute('data-modal-blur-top')).toBe(false);
     expect(h.document.querySelector('feGaussianBlur')).toBeNull();
   });
 });

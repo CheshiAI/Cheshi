@@ -18,3 +18,7 @@
 .surface {
   background: var(--popup-surface-background, var(--overlay-surface));
 }
+
+.surface:is([role='menu'], [role='listbox']) {
+  --popup-surface-background: var(--dropdown-background);
+}

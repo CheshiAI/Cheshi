@@ -20,10 +20,11 @@ export function WorkspaceHostShell({ api }: { api: WorkspaceHostApi }) {
   const [state, setState] = useState<WorkspaceHostState>({ activeId: null, entries: [] });
   const [error, setError] = useState<string | null>(null);
   const stage = useRef<HTMLDivElement>(null);
-  const rail = useWorkspaceRailOverlay(api);
   const tabs = useRef<HTMLDivElement>(null);
   const gesture = useRef({ delta: 0, last: 0, locked: false });
   const active = state.entries.find(entry => entry.id === state.activeId);
+  const modalOpen = active?.modalOpen === true;
+  const rail = useWorkspaceRailOverlay(api, modalOpen);
   const run = (operation: Promise<unknown>) => { setError(null); void operation.catch(reason => setError(String(reason))); };
   useEffect(() => {
     let alive = true, changed = false;
@@ -37,22 +38,22 @@ export function WorkspaceHostShell({ api }: { api: WorkspaceHostApi }) {
     return observeWorkspaceHostLayout(element, bounds => api.layout(bounds), reason => setError(String(reason)));
   }, [api]);
   const cycle = (direction: number) => {
-    if (state.entries.length < 2) return;
+    if (modalOpen || state.entries.length < 2) return;
     const index = state.entries.findIndex(entry => entry.id === state.activeId);
     const next = state.entries[(index + direction + state.entries.length) % state.entries.length];
     if (next) run(api.activate(next.id).then(() => {
       tabs.current?.querySelector<HTMLButtonElement>(`[data-workspace-id="${next.id}"]`)?.focus();
     }));
   };
-  return <div className={styles.host} ref={rail}>
-    <LiquidGlassPanel as="aside" className={`${styles.rail} window-appearance-surface`} aria-label="Application navigation">
+  return <div className={styles.host} ref={rail} data-modal-open={modalOpen || undefined}>
+    <LiquidGlassPanel as="aside" inert={modalOpen} className={`${styles.rail} window-appearance-surface`} aria-label="Application navigation">
       <SidebarRail homiesEnabled={active?.homiesEnabled === true} activeView={(active?.view ?? 'explorer') as WorkspaceView} sidebarOpen={active?.sidebarOpen ?? true}
         onNavigate={view => run(api.command({ action: 'navigate', view }))}
         onToggleSidebar={() => run(api.command({ action: 'sidebar' }))}
         workspaceControl={false} />
     </LiquidGlassPanel>
     <div className={styles.workspaces}>
-      <div className={`${styles.header} window-appearance-surface`} onWheel={event => {
+      <div inert={modalOpen} className={`${styles.header} window-appearance-surface`} onWheel={event => {
         if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
         const current = gesture.current, now = performance.now();
         if (now - current.last > 180) { current.delta = 0; current.locked = false; }
@@ -80,7 +81,7 @@ export function WorkspaceHostShell({ api }: { api: WorkspaceHostApi }) {
           title="Open workspace" disabled={!active}
           onClick={() => run(api.command({ action: 'manager' }))}><Plus aria-hidden="true" /></TooltipButton>
       </div>
-      {error && <div role="alert" className={styles.error}>{error}<button type="button" onClick={() => setError(null)}>Dismiss</button></div>}
+      {error && <div role="alert" inert={modalOpen} className={styles.error}>{error}<button type="button" onClick={() => setError(null)}>Dismiss</button></div>}
       <div className={styles.stage} ref={stage} aria-label="Active workspace" />
     </div>
   </div>;

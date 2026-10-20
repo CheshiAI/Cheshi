@@ -549,7 +549,7 @@ body:has(.app-shell[data-workspace-surface='true']),
 }
 
 .liquid-glass-context-menu, .workspace-file-context-menu {
-    background: var(--overlay-surface);
+    background: var(--dropdown-background);
     display: grid;
     width: 100%;
     gap: 4px;

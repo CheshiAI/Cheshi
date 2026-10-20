@@ -2,6 +2,7 @@ import {
   Blocks,
   CalendarDays,
   FolderTree,
+  Frame,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -19,6 +20,7 @@ import { WorkspaceSelector } from './WorkspaceSelector';
 import styles from './SidebarRail.module.css';
 
 const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceView }> = [
+  { label: 'Canvas', icon: <Frame aria-hidden="true" />, view: 'canvas' },
   { label: 'Explorer', icon: <FolderTree aria-hidden="true" />, view: 'explorer' },
   { label: 'SESSION', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
   { label: 'Worker', icon: <WorkerIcon />, view: 'chats' },

@@ -54,6 +54,7 @@ export interface WorkspaceEditorProps {
   mutation: WorkspaceEditorMutation | null;
   target: WorkspaceEditorTarget | null;
   onAllTabsClosed: () => void;
+  onPaneClosed?: () => void;
   onSelectedPathChange: (path: string | null) => void;
   onDirtyPathsChange?: (paths: string[]) => void;
   onOpenLocalHistory?: (path: string) => void;
@@ -70,6 +71,7 @@ export function WorkspaceEditorPane({
   mutation,
   target,
   onAllTabsClosed,
+  onPaneClosed,
   onOpenLocalHistory,
   onShowLineCommit,
 }: WorkspaceEditorProps & { pane: EditorPaneBinding; maximizeControl?: PaneMaximizeControl; canCloseEmptyPane?: boolean }) {
@@ -81,6 +83,7 @@ export function WorkspaceEditorPane({
     mutation,
     target,
     onAllTabsClosed,
+    onPaneClosed,
   });
   const {
     activeLanguageServer,
@@ -91,6 +94,7 @@ export function WorkspaceEditorPane({
     changeRenameValue,
     chooseCodeAction,
     closeAllTabs,
+    closePane,
     closeAssist,
     closeEditorSearch,
     closeTab,
@@ -143,7 +147,7 @@ export function WorkspaceEditorPane({
     <WorkspaceLayoutControls maximizeControl={maximizeControl} />
     <TooltipButton variant="ghost" size="icon"
       aria-label="Close Explorer pane" title="Close Explorer pane"
-      disabled={!pane.ready || (tabs.length === 0 && !canCloseEmptyPane)} onClick={closeAllTabs}>
+      disabled={!pane.ready || (tabs.length === 0 && !canCloseEmptyPane)} onClick={closePane}>
       <X aria-hidden="true" />
     </TooltipButton>
   </>;
@@ -157,7 +161,7 @@ export function WorkspaceEditorPane({
         primaryClassName="workspace-editor-tab-row"
         primary={(
           <>
-            <FlatTabList aria-label="Open files" onCloseAll={closeAllTabs} onReorder={reorderTab}
+            <FlatTabList aria-label="Open files" data-tab-appearance="document" onCloseAll={closeAllTabs} onReorder={reorderTab}
               onTabDragStart={(event, path) => {
                 pane.store.capture(pane.id);
                 event.dataTransfer.setData(EDITOR_TAB_TRANSFER_TYPE, JSON.stringify({ paneId: pane.id, path }));

@@ -1,0 +1,26 @@
+.root { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; font-size: 10px; }
+.scroll { flex: 1; min-height: 0; overflow: auto; --scrollbar-size: var(--auto-hide-scrollbar-size); scrollbar-width: auto; scrollbar-color: auto; }
+.files { min-width: 0; }
+.files > p { margin: 0; padding: var(--space-default); }
+.folder, .folder:not(:disabled):hover, .folder:not(:disabled):active { background: var(--control-surface-ghost); cursor: default; }
+.file { padding-left: var(--space-default); --workspace-file-tree-guide-offset: 23px; }
+.actions svg { width: 11px; height: 11px; flex-shrink: 0; }
+.description { font-size: 10px; color: var(--muted); line-height: 1.5; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--icon-default); }
+.historyBody, .history { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.history p { margin: 0; }
+.versions { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 0; padding: 0; overflow: auto; }
+.version { flex-direction: column; align-items: flex-start; height: auto; min-height: 42px; padding: var(--space-8); gap: 4px; text-align: left; }
+.versions > .version { width: 100%; border-radius: 0; }
+.version span { overflow-wrap: anywhere; }
+.version span, .version time { color: var(--sidebar-section-label-color); }
+.version time { font-size: 9px; }
+.preview { display: flex; flex: 0 0 auto; flex-direction: column; box-sizing: border-box; gap: var(--icon-default); padding: var(--icon-default); margin: 0 var(--space-default) var(--space-default); min-width: 0; max-height: 60%; }
+.previewContent { display: flex; flex-direction: column; gap: var(--icon-default); min-height: 0; overflow: auto; }
+.previewContent > * { flex-shrink: 0; }
+.preview img { width: 100%; height: 160px; object-fit: contain; }
+.root button, .root input { font-size: 10px; }
+.menu { position: fixed; z-index: 1000; width: 160px; padding: 8px; font-size: 10px; }
+.menu svg { width: 11px; height: 11px; }
+.historyNotice { flex-shrink: 0; padding: var(--space-default); margin: 0; font-size: 9px; color: var(--sidebar-section-label-color); }
+.error { padding: var(--space-default); margin: 0; color: var(--error, #ff7979); font-size: 10px; overflow-wrap: anywhere; }

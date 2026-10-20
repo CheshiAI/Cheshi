@@ -25,6 +25,7 @@ async function workspaceWithApi(api: Partial<CheshiDesktopApi>) {
     '../../shared/errorMessage': await import('../frontend/src/shared/errorMessage'),
     './gitBranchCheckout': await import('../frontend/src/features/git/gitBranchCheckout'),
     './gitRepositoryRefresh': await import('../frontend/src/features/git/gitRepositoryRefresh'),
+    './workspaceGitStatus': await import('../frontend/src/shared/workspaceGitStatus'),
     './useGitBranchHistory': await import('../frontend/src/features/git/useGitBranchHistory'),
     './useGitPullRequestCommitDiff': await import('../frontend/src/features/git/useGitPullRequestCommitDiff'),
     './gitWorkspaceModel': await import('../frontend/src/features/git/gitWorkspaceModel'),

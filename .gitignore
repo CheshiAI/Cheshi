@@ -6,11 +6,15 @@ node_modules/
 .env.*
 !.env.product
 desktop/frontend/dist/
+desktop/frontend/public/open-pencil/
 connect/client/dist/
 out/
 .DS_Store
 .idea/
 .codegraph/
+# Downloaded upstream source; the pin and Cheshi integration stay versioned.
+/vendor/open-pencil/
+/vendor/.open-pencil-*/
 desktop/runtime/
 desktop/.development/
 desktop/lib/electron-libghostty/native/

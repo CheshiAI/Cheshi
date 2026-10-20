@@ -100,7 +100,7 @@ export function LocalHistoryPage({
         </p>}
         <div className={styles.body} aria-busy={loading || loadingSnapshot}>
           <OverlayScrollArea className={styles.history} label="Saved file versions">
-            {loading && entries.length === 0 ? <p role="status">Loading history…</p>
+            {loading && entries.length === 0 ? <p className={styles.empty} role="status">Loading history…</p>
               : entries.length === 0 ? <p>No saved versions yet.</p> : entries.map((entry) => (
                 <NeumorphicButton key={entry.id} variant="ghost" className={styles.entry}
                   aria-current={entry.id === selectedId ? 'true' : undefined}
@@ -111,7 +111,7 @@ export function LocalHistoryPage({
               ))}
           </OverlayScrollArea>
           <section className={styles.comparison} aria-label="Version comparison">
-            {loadingSnapshot ? <p className={styles.empty} role="status">Loading version…</p>
+            {loadingSnapshot || (loading && !snapshot) ? <p className={styles.empty} role="status">Loading version…</p>
               : comparison && snapshot && current ? <div className={styles.comparisonContent}>
                 <div className={styles.columns}>
                   <div>Selected snapshot · {formatDate(snapshot.entry.createdAt)}

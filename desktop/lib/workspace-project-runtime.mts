@@ -3,6 +3,7 @@ import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { codeGraphStorageDirectory } from '../../config/workspace-storage.mts';
 import type { WorkspaceProject } from '../shared/workspace-projects.ts';
+import { WorkspaceClosedError, workspaceIpcResponse } from '../shared/workspace-ipc-lifecycle.ts';
 import { WorkspaceProjectStore } from './workspace-project-store.mts';
 import { filterProjectEditorSession, mapProjectPaths, projectForPath, qualifiedProjectPath, relativeProjectPath } from './workspace-project-paths.mts';
 import { registerWorkspaceFileIpcHandlers } from './workspace-file-ipc.mts';
@@ -50,7 +51,22 @@ export function createWorkspaceProjects(options: Options) {
   const primaryHandlers = new Map<string, Handler>();
   const services = new Map<string, Services>();
   const pendingDisposals = new Set<Promise<void>>();
+  const pendingRequests = new Set<Promise<unknown>>();
   let closed = false;
+  let disposal: Promise<void> | null = null;
+  const assertOpen = () => { if (closed) throw new WorkspaceClosedError(); };
+  const stopAccepting = () => { closed = true; };
+  const boundary = (handler: Handler): Handler => (event, ...args: unknown[]) =>
+    workspaceIpcResponse(() => handler(event, ...args));
+  const track = (handler: Handler, drain = true): Handler => boundary(async (event, ...args: unknown[]) => {
+    assertOpen();
+    options.assertSender(event);
+    const operation = Promise.resolve(handler(event, ...args));
+    if (!drain) return operation;
+    pendingRequests.add(operation);
+    try { return await operation; }
+    finally { pendingRequests.delete(operation); }
+  });
   const emit = (channel: string, value?: unknown) => { if (!closed) options.emit(channel, value); };
   const report = (error: unknown) => process.stderr.write(`[cheshi] Project service: ${String(error)}\n`);
 
@@ -89,13 +105,15 @@ export function createWorkspaceProjects(options: Options) {
   }
 
   async function handlerFor(project: WorkspaceProject, channel: string): Promise<Handler> {
-    if (closed) throw new Error('The workspace has closed.');
+    assertOpen();
     store.get(project.id);
     if (await realpath(project.rootPath) !== project.rootPath) throw new Error('The project folder changed. Reconnect it.');
+    assertOpen();
     store.get(project.id);
     const handler = (project.primary ? primaryHandlers : connect(project).handlers).get(channel);
     if (!handler) throw new Error('This operation is unavailable for the project.');
-    return handler;
+    // Recheck at dispatch too: awaiting this function is another async boundary.
+    return (event, ...args: unknown[]) => { assertOpen(); return handler(event, ...args); };
   }
 
   const unsubscribe = store.subscribe(() => {
@@ -111,8 +129,7 @@ export function createWorkspaceProjects(options: Options) {
 
   const ipc: Pick<IpcMain, 'handle'> = { handle(channel, handler) {
     primaryHandlers.set(channel, handler);
-    options.ipc.handle(channel, async (event, ...args: unknown[]) => {
-      options.assertSender(event);
+    options.ipc.handle(channel, track(async (event, ...args: unknown[]) => {
       if (channel === 'cheshi:read-editor-session') {
         const session: unknown = await handler(event, ...args);
         return session === null ? null : filterProjectEditorSession(store.list(), session);
@@ -121,11 +138,15 @@ export function createWorkspaceProjects(options: Options) {
         return handler(event, filterProjectEditorSession(store.list(), args[0]));
       }
       if (channel === 'cheshi:search-workspace-files') {
-        const results = await Promise.all(store.list().filter(project => project.available).map(async project => {
+        const settled = await Promise.allSettled(store.list().filter(project => project.available).map(async project => {
           const run = await handlerFor(project, channel);
           return mapProjectPaths(await run(event, ...args), file => qualifiedProjectPath(project, file)) as
             { files: { path: string; name: string }[]; truncated: boolean };
         }));
+        const results = settled.map(result => {
+          if (result.status === 'rejected') throw result.reason;
+          return result.value;
+        });
         const files = results.flatMap(result => result.files);
         return { files: files.slice(0, 100), truncated: files.length > 100 || results.some(result => result.truncated) };
       }
@@ -147,36 +168,44 @@ export function createWorkspaceProjects(options: Options) {
       const run = await handlerFor(project, channel);
       const result: unknown = await run(event, ...translated);
       return mapProjectPaths(result, file => qualifiedProjectPath(project, file));
-    });
+    // Native pickers may need their owner to close before they resolve.
+    }, channel !== 'cheshi:select-language-server-executable'));
   } };
 
-  const handle = (name: string, run: Handler) => options.ipc.handle(`cheshi:workspace-projects:${name}`, (event, ...args) => {
+  const handle = (name: string, run: Handler) => options.ipc.handle(`cheshi:workspace-projects:${name}`, boundary((event, ...args) => {
+    assertOpen();
     options.assertSender(event);
-    if (closed) throw new Error('The workspace has closed.');
     return run(event, ...args);
-  });
+  }));
   handle('list', () => store.list());
   handle('add', async event => {
     options.assertIdle();
     const selected = await options.chooseDirectory(event);
+    assertOpen();
     if (!selected) return null;
     options.assertIdle();
-    return store.add(selected, options.assertIdle);
+    return store.add(selected, () => { assertOpen(); options.assertIdle(); });
   });
   handle('remove', (_event, id: unknown) => { options.assertIdle(); return store.remove(id); });
-  handle('invoke', async (event, id: unknown, channel: unknown, args: unknown) => {
+  options.ipc.handle('cheshi:workspace-projects:invoke', track(async (event, id: unknown, channel: unknown, args: unknown) => {
     if (typeof channel !== 'string' || !Array.isArray(args) || args.length > 4
       || !/^cheshi:(?:[a-z-]+-git(?:hub)?-|list-github-|read-github-|open-github-)/u.test(channel)) {
       throw new Error('Invalid project Git operation.');
     }
     const project = store.get(id);
     return (await handlerFor(project, channel))(event, ...args);
-  });
+  }));
 
-  return { store, ipc, async dispose() {
-    closed = true;
+  return { store, ipc, stopAccepting, dispose(): Promise<void> {
+    if (disposal) return disposal;
+    stopAccepting();
     unsubscribe();
-    await Promise.all([...services.values()].map(service => service.dispose()).concat([...pendingDisposals]));
-    services.clear();
+    disposal = (async () => {
+      // Dispatched writes finish before their services or owning window disappear.
+      await Promise.allSettled([...pendingRequests]);
+      await Promise.all([...services.values()].map(service => service.dispose()).concat([...pendingDisposals]));
+      services.clear();
+    })();
+    return disposal;
   } };
 }

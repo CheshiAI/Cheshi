@@ -99,7 +99,7 @@ export function shellHarness(initialHistoryLoading = false, preference: { panel:
     './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => initialLayout, saveWorkspaceLayout() {} },
     '../chat/chatWorkspaceModel': { CHAT_PANE_MIN_WIDTH },
     '../../shared/ui/splitPaneModel': splitModel,
-    react: app.react,
+    react: { ...app.react, lazy: () => 'CanvasView', Suspense: 'Suspense' },
     '../navigation/sidebarPanel': {
       sidebarPanelForWorkspace,
       readSidebarPanel: () => preference.panel,
@@ -137,6 +137,7 @@ export function shellHarness(initialHistoryLoading = false, preference: { panel:
     '../scheduler/SchedulerNotifications': ['SchedulerNotifications'],
     '../settings/DiscordSetupConfirmation': ['DiscordSetupConfirmation'],
     '../calendar/CalendarView': ['CalendarView'],
+    '../canvas/CanvasEmptyState': ['CanvasLoadingState'],
     './ReviewSidebar': ['ReviewSidebar'], './WorkspaceStatusBar': ['WorkspaceStatusBar'],
     '../editor/LocalHistoryPage': ['LocalHistoryPage'], './WorkspaceEditorSplit': ['WorkspaceEditorSplit'],
     '../navigation/WorkspaceFileSearch': ['WorkspaceFileSearch'], '../sticky-notes/MemoSidebar': ['MemoSidebar'],

@@ -1,5 +1,7 @@
 /* App-wide defaults. Keep feature-specific palettes in their own token module. */
 :root {
+  --modal-backdrop-background: rgba(0, 0, 0, 0.25);
+  --modal-surface-background: rgba(0, 0, 0, 0.9);
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Noto Sans KR";
   --app-bg: #000000;
   --divider: #29343D;
@@ -11,6 +13,9 @@
   --control-surface-ghost: rgba(41, 52, 61, 0.05);
   --control-surface: rgba(41, 52, 61, 0.4);
   --overlay-surface: transparent;
+  --popup-background: rgba(0, 0, 0, 0.9);
+  --tooltip-background: var(--popup-background);
+  --dropdown-background: var(--popup-background);
   --control-surface-interactive: rgba(41, 52, 61, 0.8);
   --control-thumb-color: #FFFFFF;
   --control-track-color: #A6A6A6;

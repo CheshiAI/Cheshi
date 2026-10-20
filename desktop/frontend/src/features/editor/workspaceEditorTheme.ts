@@ -107,6 +107,9 @@ export const workspaceEditorTheme = EditorView.theme({
     background: 'transparent',
     pointerEvents: 'none',
   },
+  '.cm-tooltip:not(.cm-tooltip-autocomplete) > .workspace-editor-tooltip-surface': {
+    background: 'var(--tooltip-background)',
+  },
   '.cm-tooltip.cm-tooltip-autocomplete': {
     overflow: 'visible',
     color: 'var(--text)',

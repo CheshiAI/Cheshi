@@ -6,12 +6,13 @@ import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import { WorkspaceFileTree } from './WorkspaceFileTree';
 import { normalizeSidebarPanel, type SidebarPanel } from './sidebarPanel';
 
-export type WorkspaceView = 'chats' | 'chat' | 'explorer' | 'notes' | 'calendar' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'local-history' | 'settings' | 'docker';
+export type WorkspaceView = 'chats' | 'chat' | 'explorer' | 'notes' | 'calendar' | 'canvas' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'local-history' | 'settings' | 'docker';
 
 interface SidebarProps {
   homiesEnabled?: boolean;
   chatPanel?: ReactNode;
   memoPanelRef?: Ref<HTMLDivElement>;
+  canvasPanelRef?: Ref<HTMLDivElement>;
   chatsPanelRef?: Ref<HTMLDivElement>;
   githubPanelRef?: Ref<HTMLDivElement>;
   activePanel?: SidebarPanel;
@@ -26,6 +27,7 @@ export function Sidebar({
   homiesEnabled = false,
   chatPanel,
   memoPanelRef,
+  canvasPanelRef,
   chatsPanelRef,
   githubPanelRef,
   activePanel = 'files',
@@ -45,6 +47,7 @@ export function Sidebar({
           {chatPanel && onPanelChange ? <SidebarTabs activeId={!homiesEnabled && activePanel === 'agent-chats' ? 'files' : activePanel}
             onSelect={panel => onPanelChange(normalizeSidebarPanel(panel))}
             tabs={[
+              { id: 'canvas', label: 'CANVAS', content: <div ref={canvasPanelRef} className="sidebar-content-primary" /> },
               { id: 'files', label: 'EXPLORER', content: files },
               { id: 'chats', label: 'SESSION', content: chatPanel },
               { id: 'agent-chats', label: 'WORKER', content: <div ref={chatsPanelRef} className="sidebar-content-primary" /> },

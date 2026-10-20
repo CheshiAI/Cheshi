@@ -29,7 +29,8 @@ function openEditorSplit(app: ReturnType<typeof shellHarness>, terminal = false)
   split.onOpenPane!('editor');
 }
 
-function renderFilePane(loading: boolean, ready = true, existingFile = false, canCloseEmptyPane = false, closeAllTabs = () => {}) {
+function renderFilePane(loading: boolean, ready = true, existingFile = false, canCloseEmptyPane = false,
+  closePane = () => {}, closeAllTabs = () => {}) {
   const modules: Record<string, unknown> = {
     '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
     './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },};
@@ -43,7 +44,7 @@ function renderFilePane(loading: boolean, ready = true, existingFile = false, ca
   modules.react = { useContext: () => true };
   modules['./workspaceProblemsLayout'] = { useWorkspaceProblemsLayout: () => ({ stageRef: null }) };
   modules['./useWorkspaceEditorController'] = { useWorkspaceEditorController: () => ({
-    loading, tabs: [], codeExplanation: {}, closeAllTabs,
+    loading, tabs: [], codeExplanation: {}, closePane, closeAllTabs,
     currentFile: existingFile ? { path: 'preview.png', fileKind: 'image' } : null,
     activeTab: existingFile ? { previewDataUrl: 'data:image/png;base64,test' } : null,
   }) };
@@ -94,6 +95,64 @@ test('empty split Explorer can close after restoration, including while a file i
     if (!disabled) close.onClick();
   }
   expect(closed).toBe(2);
+});
+
+test('the Explorer header close and tab menu close invoke separate actions', () => {
+  let panesClosed = 0, tabsClosed = 0;
+  const tree = renderFilePane(false, true, true, true, () => { panesClosed++; }, () => { tabsClosed++; });
+  const header = props<{ primary: ReactNode }>(tree, 'TieredHeader').primary;
+  props<{ onClick: () => void }>(header, 'TooltipButton').onClick();
+  expect(panesClosed).toBe(1);
+  expect(tabsClosed).toBe(0);
+  props<{ onCloseAll: () => void }>(header, 'FlatTabList').onCloseAll();
+  expect(panesClosed).toBe(1);
+  expect(tabsClosed).toBe(1);
+});
+
+test.each(['worker', 'terminal'] as const)('closing the editor area lets the remaining %s fill the workspace', remainingPane => {
+  const initial: splitModel.SplitLayoutNode = {
+    type: 'split', id: 'mixed-workspace', axis: 'columns', ratio: .6,
+    first: { type: 'pane', paneId: 'primary' }, second: { type: 'pane', paneId: remainingPane },
+  };
+  const app = shellHarness(false, { panel: 'files' }, initial);
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  const editor = () => props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor');
+  const rail = () => props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail');
+  if (remainingPane === 'worker') rail().onNavigate('docker');
+  rail().onNavigate('explorer');
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('file.ts');
+  expect(splitModel.splitPaneIds(split().layout!)).toEqual(['editor', remainingPane]);
+  editor().onPaneClosed!();
+  expect(split().layout).toEqual(initial.second);
+  expect(editor().active).toBe(false);
+  expect(editor().target).toBeNull();
+  expect(elements(split().children).some(node => node.type === 'ExplorerView')).toBe(false);
+  expect(rail().activeView).toBe(remainingPane === 'worker' ? 'docker' : 'terminal');
+});
+
+test('closing the editor area preserves the remaining split tree and ratios', () => {
+  const remaining: splitModel.SplitLayoutNode = {
+    type: 'split', id: 'worker-terminal', axis: 'rows', ratio: .72,
+    first: { type: 'pane', paneId: 'worker' }, second: { type: 'pane', paneId: 'terminal' },
+  };
+  const app = shellHarness(false, { panel: 'files' }, {
+    type: 'split', id: 'all-panes', axis: 'columns', ratio: .4,
+    first: { type: 'pane', paneId: 'primary' }, second: remaining,
+  });
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  props<ComponentProps<typeof SidebarRail>>(app.render(), 'SidebarRail').onNavigate('explorer');
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('file.ts');
+  props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor').onPaneClosed!();
+  expect(split().layout).toBe(remaining);
+});
+
+test('closing a standalone editor area returns to the Explorer start page', () => {
+  const app = shellHarness(false, { panel: 'files' }, { type: 'pane', paneId: 'primary' });
+  const split = () => props<ComponentProps<typeof WorkspaceEditorSplit>>(app.render(), 'WorkspaceEditorSplit');
+  props<ComponentProps<typeof Sidebar>>(app.render(), 'Sidebar').onOpenWorkspaceFile('file.ts');
+  props<ComponentProps<typeof WorkspaceEditor>>(split().editor, 'WorkspaceEditor').onPaneClosed!();
+  expect(split().layout).toEqual({ type: 'pane', paneId: 'primary' });
+  expect(elements(split().children).some(node => node.type === 'ExplorerView')).toBe(true);
 });
 
 test('Worker keeps the conversation beside Homie settings and reserves the central editor for creation', () => {
@@ -481,7 +540,9 @@ test.each([
   { minimumPaneWidth: (id: string) => id === 'primary' ? 475 : 120, pointerX: 100.5, expected: 0.12 },
 ])('the shared separator respects $minimumPaneWidth minimum width and commits $expected on release', ({ minimumPaneWidth, pointerX, expected }) => {
   const app = hooks();
-  const Layout = load<typeof SplitPaneLayout>('shared/ui/SplitPaneLayout.tsx', 'SplitPaneLayout', { react: app.react, './splitPaneSizing': splitSizing });
+  const Layout = load<typeof SplitPaneLayout>('shared/ui/SplitPaneLayout.tsx', 'SplitPaneLayout', {
+    react: app.react, './splitPaneSizing': splitSizing, './TooltipTarget': { TooltipTarget: 'TooltipTarget' },
+  });
   const committed: number[] = [];
   const options: ComponentProps<typeof SplitPaneLayout> = {
     minimumPaneWidth,
@@ -561,7 +622,9 @@ test('closing Codex keeps file tabs and sidebar controls, and navigation restore
 
 test('collapsed split keeps both panes mounted while hiding the separator and restores its ratio on reopening', () => {
   const app = hooks();
-  const Layout = load<typeof SplitPaneLayout>('shared/ui/SplitPaneLayout.tsx', 'SplitPaneLayout', { react: app.react, './splitPaneSizing': splitSizing });
+  const Layout = load<typeof SplitPaneLayout>('shared/ui/SplitPaneLayout.tsx', 'SplitPaneLayout', {
+    react: app.react, './splitPaneSizing': splitSizing, './TooltipTarget': { TooltipTarget: 'TooltipTarget' },
+  });
   const options: ComponentProps<typeof SplitPaneLayout> = {
     layout: { type: 'split', id: 'workspace-editor', axis: 'columns', ratio: 0.7,
       first: { type: 'pane', paneId: 'editor' }, second: { type: 'pane', paneId: 'primary' } },

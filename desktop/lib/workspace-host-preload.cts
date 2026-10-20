@@ -25,6 +25,7 @@ export function createWorkspaceHostApi(ipc: IpcRenderer): WorkspaceHostApi {
 }
 export function createWorkspaceSurfaceApi(ipc: IpcRenderer): WorkspaceSurfaceApi {
   return {
+    reportModal: open => ipc.send(`${channel}:modal`, open),
     onStatusToast: listener => {
       const receive = (_event: unknown, message: Parameters<typeof listener>[0]) => listener(message);
       ipc.on(`${channel}:status-toast`, receive);

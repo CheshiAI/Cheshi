@@ -275,6 +275,7 @@ test('native rail regions blur live workspace pixels, follow expansion, and rest
     const originalFilterCount = h.document.querySelectorAll('filter').length;
     let listener: ((region: WorkspaceRailBlur | null) => void) | undefined;
     const api: WorkspaceSurfaceApi = {
+      reportModal: () => {},
       onStatusToast: () => () => {},
       report: () => {}, onCommand: () => () => {},
       onRailBlur: next => { listener = next; return () => { listener = undefined; }; },

@@ -5,14 +5,15 @@ import test from 'node:test';
 import vm from 'node:vm';
 import type { GitHubRepositoryListResponse, WorkspaceManagementApi } from '../shared/workspace-management.ts';
 import type { CheshiDesktopApi } from '../frontend/src/cheshiDesktop.ts';
+import { WorkspaceClosedError, workspaceIpcResponse } from '../shared/workspace-ipc-lifecycle.ts';
 
 const workspaceFilesChangedChannel = 'cheshi:workspace-files-changed';
 
-function workspaceFileSubscriptions() {
-  let api: Pick<CheshiDesktopApi, 'onWorkspaceFilesChanged'> | undefined;
+function workspaceFileSubscriptions(invoke: (channel: string, ...args: unknown[]) => Promise<unknown> = async () => null) {
+  let api: CheshiDesktopApi | undefined;
   const ipc = Object.assign(new EventEmitter(), {
     sendSync: () => ({ workspaceName: 'Project', workspaceRoot: '/project' }),
-    invoke: async () => null,
+    invoke,
   });
   vm.runInNewContext(readFileSync(new URL('../runtime/preload.cjs', import.meta.url), 'utf8'), {
     process: { platform: process.platform, argv: [] },
@@ -23,7 +24,7 @@ function workspaceFileSubscriptions() {
       return {
         ipcRenderer: ipc,
         contextBridge: {
-          exposeInMainWorld(key: string, value: Pick<CheshiDesktopApi, 'onWorkspaceFilesChanged'>) {
+          exposeInMainWorld(key: string, value: CheshiDesktopApi) {
             if (key === 'cheshiDesktop') api = value;
           },
         },
@@ -31,8 +32,31 @@ function workspaceFileSubscriptions() {
     },
   });
   assert.ok(api);
-  return { ipc, subscribe: api.onWorkspaceFilesChanged };
+  return { ipc, api, subscribe: api.onWorkspaceFilesChanged };
 }
+
+test('bundled preload rejects shutdown cancellation before direct and feature APIs consume it', async () => {
+  const response = await workspaceIpcResponse(() => { throw new WorkspaceClosedError(); });
+  const { api } = workspaceFileSubscriptions(async () => structuredClone(response));
+  for (const operation of [
+    () => api.workspaceProjects!.invoke('primary', 'cheshi:get-git-snapshot', []),
+    () => api.workspaceProjects!.list(),
+    () => api.writeWorkspaceFile({ path: 'draft.txt', content: 'keep my draft', expectedRevision: 'original' }),
+    () => api.editorSession!.read(),
+  ]) {
+    await assert.rejects(operation, { name: 'AbortError', message: 'The workspace has closed.' });
+  }
+});
+
+test('bundled preload preserves ordinary responses and genuine IPC failures', async () => {
+  const snapshot = { available: false };
+  const { api } = workspaceFileSubscriptions(async channel => {
+    if (channel === 'cheshi:workspace-projects:invoke') return snapshot;
+    throw new Error('Permission denied');
+  });
+  assert.equal(await api.workspaceProjects!.invoke('primary', 'cheshi:get-git-snapshot', []), snapshot);
+  await assert.rejects(() => api.workspaceProjects!.list(), /Permission denied/u);
+});
 
 test('file subscriptions share one IPC listener across many consumers and release it on unmount', () => {
   const { ipc, subscribe } = workspaceFileSubscriptions();

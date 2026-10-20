@@ -20,6 +20,7 @@ import { errorMessage, requiredString } from "./codex-chat-values.mts";
 import { recordValue, stringValue } from "./codex-service-utils.mts";
 import { chatRelaySessionTitle } from '../shared/chat-relay.ts';
 import { asyncQuestionsFromMessage } from '../shared/chat-async-questions.ts';
+import { contextUsageFromNotification } from '../shared/chat-context-usage.ts';
 
 const reasoningSummaryIndexes = new WeakMap<ActiveTurn, Map<string, number>>();
 
@@ -186,6 +187,15 @@ export function handleCodexNotification(context: CodexChatEventContext, value: J
   const method = stringValue(value.method);
   const params = recordValue(value.params);
   if (!method || !params) return;
+
+  if (method === 'thread/tokenUsage/updated') {
+    const threadId = stringValue(params.threadId);
+    const usage = contextUsageFromNotification(params.tokenUsage);
+    if (threadId && usage && (threadId === context.viewedThreadId || context.subscribedThreadIds.has(threadId))) {
+      context.emit({ type: 'context-usage', threadId, usage });
+    }
+    return;
+  }
 
   if (method === "thread/name/updated") {
     const threadId = stringValue(params.threadId);

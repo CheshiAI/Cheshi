@@ -5,13 +5,14 @@
   position: fixed;
   z-index: 120;
   width: max-content;
-  max-width: min(360px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
   pointer-events: none;
   -webkit-app-region: no-drag;
 }
 
 .content {
   composes: surface from './PopupSurface.module.css';
+  --popup-surface-background: var(--tooltip-background);
   padding: 6px 10px;
   border-color: var(--divider);
   color: var(--text);

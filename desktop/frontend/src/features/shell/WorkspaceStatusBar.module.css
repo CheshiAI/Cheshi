@@ -106,6 +106,7 @@
 
 .accountPopover {
   composes: surface from '../../shared/ui/PopupSurface.module.css';
+  --popup-surface-background: var(--popup-background);
   max-height: inherit;
   overflow: auto;
   padding: var(--space-default);

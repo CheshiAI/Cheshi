@@ -92,14 +92,17 @@ export class LocalHistoryModel {
     const current = currentResult.status === 'fulfilled' ? currentResult.value : null;
     const selectedId = entries.some((entry) => entry.id === this.state.selectedId)
       ? this.state.selectedId : entries[0]?.id ?? null;
+    // Saved snapshots are immutable. Reuse the selected one only while it is
+    // still present in the refreshed list; the current disk file stays fresh.
+    const snapshot = this.state.snapshot?.entry.id === selectedId ? this.state.snapshot : null;
     this.update({
-      entries, current, selectedId, loading: false,
+      entries, current, selectedId, snapshot, loading: false,
+      loadingSnapshot: selectedId !== null && snapshot === null, notice: null,
       error: currentResult.status === 'rejected'
         ? `Could not read the current file: ${errorMessage(currentResult.reason)}`
         : current?.file.fileKind !== 'text' ? 'Only text files can be compared and restored.' : null,
     });
-    if (selectedId) await this.select(selectedId);
-    else this.update({ snapshot: null });
+    if (selectedId && !snapshot) await this.select(selectedId);
   }
 
   async select(id: string): Promise<void> {

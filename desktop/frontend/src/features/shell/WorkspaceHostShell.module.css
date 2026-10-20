@@ -1,6 +1,7 @@
-.host { display: flex; width: 100%; height: 100%; overflow: hidden; }
+.host { --workspace-header-height: calc(var(--icon-button-size) + 2 * var(--space-8) + 1px); display: flex; width: 100%; height: 100%; overflow: hidden; }
 .rail {
   --liquid-glass-radius: 0;
+  --header-height: var(--workspace-header-height);
   display: flex;
   flex-direction: column;
   flex: 0 0 var(--sidebar-rail-width);
@@ -11,8 +12,8 @@
 }
 .rail [data-rail-button]:not([data-rail-expanded]) { width: 42px; }
 .workspaces { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-.header { display: flex; height: var(--workspace-status-bar-height); flex: 0 0 var(--workspace-status-bar-height); border-bottom: 1px solid var(--divider); -webkit-app-region: drag; }
-.tabs { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--icon-default); padding: 0 var(--space-8); overflow-x: auto; -webkit-app-region: drag; }
+.header { display: flex; box-sizing: border-box; align-items: center; height: var(--workspace-header-height); flex: 0 0 var(--workspace-header-height); gap: var(--space-8); padding: var(--space-8); border-bottom: 1px solid var(--divider); -webkit-app-region: drag; }
+.tabs { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--icon-default); padding: 0; overflow-x: auto; -webkit-app-region: drag; }
 .tab { display: flex; flex: 1 1 0; box-sizing: border-box; height: 24px; min-width: 0; padding-right: var(--space-4); border-radius: 999px; background: var(--control-surface-ghost); transition: background-color var(--button-transition-duration) ease; }
 .tab[data-selected='true'] { background: var(--control-surface); }
 .tab:hover { background: var(--control-surface-interactive); }
@@ -26,10 +27,25 @@
 .tab .close { align-self: center; justify-content: center; width: var(--icon-button-size); height: var(--icon-button-size); flex: 0 0 var(--icon-button-size); padding: 0; border-radius: 50%; -webkit-app-region: no-drag; }
 .tab .close:hover { background: var(--control-surface-interactive); }
 .close svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); stroke-width: var(--icon-button-stroke-width); }
-.add { align-self: center; margin: 0 var(--icon-default); -webkit-app-region: no-drag; }
+.add { align-self: center; margin: 0; -webkit-app-region: no-drag; }
 .running { width: 5px; height: 5px; border-radius: 50%; background: var(--text); animation: working 1.8s ease-in-out infinite paused; }
 .attention { font-weight: 600; }
 .stage { flex: 1; min-height: 0; }
+.host[data-modal-open] :is(.header, .rail, .error) { position: relative; }
+.host[data-modal-open] :is(.header, .rail, .error)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  background: var(--modal-backdrop-background);
+}
+.host[data-modal-open] :is(.header, .rail) { border-color: transparent; }
+/* Clip at the outer border edge so the dim also covers the divider's pixels. */
+.host[data-modal-open] .rail { overflow: visible; clip-path: inset(0); }
+.host[data-modal-open] .rail::after { right: -1px; }
+.host[data-modal-open] .header::after { bottom: -1px; }
+.host[data-modal-open] .header,
+.host[data-modal-open] .header * { -webkit-app-region: no-drag; }
 .error { padding: var(--space-default); color: var(--text); }
 @keyframes working { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .running { animation: none; } .tab { transition: none; } }

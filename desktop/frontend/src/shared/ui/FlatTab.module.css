@@ -107,6 +107,22 @@
   pointer-events: none;
 }
 
+.list[data-tab-appearance='document'] .tab {
+  box-sizing: border-box;
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
+  flex: 0 0 220px;
+}
+
+.list[data-tab-appearance='document'] .tab:is(:hover, :active, [data-active='true']) {
+  background: rgba(41, 52, 61, 0.3);
+}
+
+.list[data-tab-appearance='document'] .tab[data-active='true']::after {
+  content: none;
+}
+
 .tab[data-drop-side]::before {
   position: absolute;
   top: 0;

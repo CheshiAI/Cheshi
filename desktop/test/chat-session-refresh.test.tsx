@@ -57,7 +57,7 @@ test('refresh button keeps sessions and selection, blocks duplicate requests, an
     await h.render({ onRefresh: async () => { calls++; await gate.promise; throw new Error('Refresh failed'); } });
     await act(async () => h.refresh().click());
     expect(h.refresh().disabled).toBe(true); expect(h.row().getAttribute('aria-current')).toBe('page');
-    expect(h.document.querySelector('[role="status"]')?.textContent).toBe('Release to refresh');
+    expect(h.document.querySelector('[role="status"]')?.textContent).toBe('Refreshing…');
     await act(async () => h.refresh().click());
     await h.pointer('pointerdown', 10); await h.pointer('pointermove', 110); await h.pointer('pointerup', 110);
     expect(calls).toBe(1); expect(h.opened).toEqual([]);
@@ -87,7 +87,7 @@ test('dragging at the top refreshes only on release and suppresses the resulting
     expect(h.document.querySelector('[role="status"]')).toBe(status);
     expect(status.firstElementChild).toBe(indicator);
     expect(status.style.height).toBe(readyHeight);
-    expect(status.textContent).toBe('Release to refresh');
+    expect(status.textContent).toBe('Refreshing…');
     await act(async () => h.row().dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 })));
     expect(h.opened).toEqual([]);
     await act(async () => h.row().click()); expect(h.opened).toEqual(['one']);

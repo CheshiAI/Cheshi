@@ -15,6 +15,7 @@
 
 .popup {
   composes: surface from './PopupSurface.module.css';
+  --popup-surface-background: var(--tooltip-background);
   display: flex;
   flex-direction: column;
   box-sizing: border-box;

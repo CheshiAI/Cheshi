@@ -6,6 +6,8 @@ import {
   LiquidGlassPanel, NeumorphicButton, TwoTierHeader, draggableWindowRegionStyle, nonDraggableWindowRegionStyle,
 } from '../../shared/ui';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
+import { contextUsagePercent } from '../../../../shared/chat-context-usage';
 import { ChatPaneViewport } from './ChatPaneViewport';
 import { ChatWorkspaceBlurContext } from './ChatWorkspaceBlurContext';
 import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
@@ -70,6 +72,12 @@ function ChatPane({
   const selected = workspace.activePaneId === paneId;
   const session = controller.state.sessions.find(item => item.id === controller.state.activeSessionId);
   const threadLabel = controller.state.activeSessionId ? session?.title.trim() || 'Conversation' : 'New chat';
+  const contextUsage = controller.state.activeSessionId
+    ? controller.state.contextUsageByThread[controller.state.activeSessionId] : null;
+  const contextPercent = contextUsagePercent(contextUsage);
+  const contextDescription = contextUsage?.contextWindow
+    ? `${contextUsage.usedTokens.toLocaleString()} / ${contextUsage.contextWindow.toLocaleString()} tokens used · Latest reported context usage`
+    : 'Context usage is not available yet.';
   useLayoutEffect(() => registerController(paneId, controller), [controller, paneId, registerController]);
   useEffect(() => () => registerController(paneId, null), [paneId, registerController]);
   return createPortal(
@@ -100,28 +108,35 @@ function ChatPane({
             </span>
           </button>
         </div>
-        <div className={styles.actions}>
-          <NeumorphicButton
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Split chat right"
-            disabled={workspace.paneIds.length >= CHAT_PANE_LIMIT || workspace.splitPending}
-            aria-haspopup="dialog"
-            onClick={() => { workspace.dismissError(); setSplitChoice({ sourceThreadId: controller.state.activeSessionId }); }}
-          >
-            <Columns2 aria-hidden="true" />
-          </NeumorphicButton>
-          <TooltipButton
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Close chat pane"
-            title="Close pane"
-            onClick={() => closePane(paneId)}
-          >
-            <X aria-hidden="true" />
-          </TooltipButton>
+        <div className={styles.paneTrailing}>
+          <div className={styles.actions}>
+            <NeumorphicButton
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Split chat right"
+              disabled={workspace.paneIds.length >= CHAT_PANE_LIMIT || workspace.splitPending}
+              aria-haspopup="dialog"
+              onClick={() => { workspace.dismissError(); setSplitChoice({ sourceThreadId: controller.state.activeSessionId }); }}
+            >
+              <Columns2 aria-hidden="true" />
+            </NeumorphicButton>
+            <TooltipButton
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Close chat pane"
+              title="Close pane"
+              onClick={() => closePane(paneId)}
+            >
+              <X aria-hidden="true" />
+            </TooltipButton>
+          </div>
+          <TooltipTarget content={contextDescription} placement="below">
+            <span className={styles.contextUsage} tabIndex={0} data-context-usage>
+              Context {contextPercent === null ? '—' : `${contextPercent}%`}
+            </span>
+          </TooltipTarget>
         </div>
       </LiquidGlassPanel>
       <ChatView

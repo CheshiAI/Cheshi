@@ -1,9 +1,10 @@
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { WorkspaceView } from './Sidebar';
 
-export type SidebarPanel = 'chats' | 'files' | 'agent-chats' | 'memos' | 'github';
+export type SidebarPanel = 'canvas' | 'chats' | 'files' | 'agent-chats' | 'memos' | 'github';
 
 export function sidebarPanelForWorkspace(view: WorkspaceView, visiblePanes: readonly string[]): SidebarPanel | null {
+  if (view === 'canvas') return 'canvas';
   if (view === 'explorer') return 'files';
   if (view === 'chats' && visiblePanes.includes('worker')) return 'agent-chats';
   if (view === 'notes') return 'memos';
@@ -13,7 +14,7 @@ export function sidebarPanelForWorkspace(view: WorkspaceView, visiblePanes: read
 }
 
 export function normalizeSidebarPanel(value: unknown): SidebarPanel {
-  return value === 'chats' || value === 'agent-chats' || value === 'memos' || value === 'github' ? value : 'files';
+  return value === 'canvas' || value === 'chats' || value === 'agent-chats' || value === 'memos' || value === 'github' ? value : 'files';
 }
 
 function storageKey(workspaceRoot: string): string {

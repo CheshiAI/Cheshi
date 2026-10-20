@@ -7,7 +7,8 @@ import { chatHistorySearchRequest, chatHistorySearchResponse } from './shared/ch
 import { codeExplanationRequest, codeExplanationRequestId } from './shared/workspace-code-explanation.ts';
 import { createTemporaryChatApi } from './lib/temporary-chat-preload.cts';
 import { createStickyNotesLibraryApi } from './lib/sticky-notes-library-preload.cts';
-import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import { contextBridge, ipcRenderer as electronIpcRenderer, webUtils } from 'electron';
+import { createWorkspaceIpcRenderer } from './lib/workspace-ipc-preload.cts';
 import { prepareChatAttachmentTransfers } from './shared/chat-attachment-import.ts';
 import { marketplaceAddRequest, pluginWorkflowRequest } from './shared/plugin-actions.ts';
 import { gitDiscardRequest, gitDiscardSelection } from './shared/git-discard.ts';
@@ -27,6 +28,8 @@ import type {
   LanguageServerDiagnostic,
   CheshiDesktopApi,
 } from './frontend/src/cheshiDesktop.ts';
+
+const ipcRenderer = createWorkspaceIpcRenderer(electronIpcRenderer);
 
 async function deleteStoredChatRecord(channel: string, id: string, pattern: RegExp): Promise<{ id: string }> {
   if (typeof id !== 'string' || !pattern.test(id)) throw new TypeError('Invalid saved record id.');

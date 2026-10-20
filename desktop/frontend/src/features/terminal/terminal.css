@@ -149,18 +149,9 @@
   padding: 0 var(--space-default);
 }
 
+.terminal-pane-header:is(:hover, :active),
 .terminal-pane[data-active="true"] .terminal-pane-header {
-  background: var(--control-surface);
-}
-
-.terminal-pane[data-active="true"] .terminal-pane-header::after {
-  content: '';
-  position: absolute;
-  inset-inline: 0;
-  bottom: -1px;
-  height: 3px;
-  background: var(--divider);
-  pointer-events: none;
+  background: rgba(41, 52, 61, 0.3);
 }
 
 .terminal-pane[data-active="true"] .terminal-pane-title {

@@ -110,7 +110,7 @@ export function DockerView({ model, state, profiles, onRefreshProfiles }: AgentS
         <pre ref={logScrollbar} className={viewStyles.logOutput} hidden={mode !== 'logs' || !details?.logs} aria-label="Container log output">{details?.logs}</pre>
         {mode === 'logs' && !details?.logs && (loading
           ? <p className={`${viewStyles.logNotice} ${viewStyles.loading}`} role="status"><LoadingIndicator />Loading logs…</p>
-          : <EmptyState className={viewStyles.empty} title="No logs available" description="Container logs will appear here when available." />)}
+          : <EmptyState variant="section" className={viewStyles.empty} title="No logs available" description="Container logs will appear here when available." />)}
         {terminalTarget === target && agent.state === 'running' && <ContainerTerminal key={target}
           api={model.terminal} engineId={state.engineId} agentId={agent.id} active={mode === 'terminal'} />}
         {mode === 'terminal' && agent.state !== 'running' && <EmptyState className={viewStyles.empty}

@@ -1,7 +1,7 @@
 import type { VerificationReview } from '../agent-chats/verificationReviewModel';
 import { WorkerWorkspace, type WorkerWorkspaceHandle } from './WorkerWorkspace';
 import { SchedulerNotifications } from '../scheduler/SchedulerNotifications';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
 import { RegionalBlur, LiquidGlassPanel, SidebarToggleVisibility, SlidingSidePanel } from '../../shared/ui';
 import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
@@ -56,14 +56,19 @@ import { installFileSearchShortcut } from '../navigation/fileSearchShortcut';
 import { ChatDraftAttachmentsContext, createChatDraftAttachments } from '../chat/chatDraftAttachments';
 import { MemoSidebar } from '../sticky-notes/MemoSidebar';
 import { CalendarView } from '../calendar/CalendarView';
+import { CanvasLoadingState } from '../canvas/CanvasEmptyState';
 
-const fullWidthViews: readonly WorkspaceView[] = ['explorer', 'chats', 'git', 'plugins', 'calendar', 'settings', 'docker'];
+const CanvasView = lazy(() => import('../canvas/CanvasView').then(module => ({ default: module.CanvasView })));
+const fullWidthViews: readonly WorkspaceView[] = ['explorer', 'chats', 'git', 'plugins', 'calendar', 'canvas', 'settings', 'docker'];
 
 export function AppShell() {
   const accountSceneRef = useRef<HTMLDivElement>(null);
   const notificationSceneRef = useRef<HTMLDivElement>(null);
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [temporaryChatOpen, setTemporaryChatOpen] = useState(false);
+  const [canvasVisited, setCanvasVisited] = useState(false);
+  const [canvasDirty, setCanvasDirty] = useState(false);
+  const [canvasTarget, setCanvasTarget] = useState<{ path: string; requestId: number } | null>(null);
   useEffect(() => {
     const api = cheshiDesktop?.temporaryChat;
     if (!api) return;
@@ -121,6 +126,7 @@ export function AppShell() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [chatsSidebarTarget, setChatsSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [memoSidebarTarget, setMemoSidebarTarget] = useState<HTMLDivElement | null>(null);
+  const [canvasSidebarTarget, setCanvasSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [githubSidebarTarget, setGithubSidebarTarget] = useState<HTMLDivElement | null>(null);
   useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
   const homiesEnabled = useHomiesEnabled() === true;
@@ -183,7 +189,7 @@ export function AppShell() {
   const [draftAttachments] = useState(createChatDraftAttachments);
   const historySearch = useChatHistorySearch(workspace.activePaneId, workspace.paneIds);
   const updateResume = useAppUpdateResume({ activeView, rightSidebarOpen, setActiveView, setRightSidebarOpen, sidebarPanel, setSidebarPanel,
-    blockedReason: temporaryChatOpen ? 'Close the temporary chat before updating.'
+    blockedReason: canvasDirty ? 'Save the canvas design before updating.' : temporaryChatOpen ? 'Close the temporary chat before updating.'
       : renamingSession ? 'Finish renaming the session before updating.'
         : historyChoice || deleteChoice ? 'Close the conversation dialog before updating.' : null });
   const accountSwitchReason = updateResume.busy ? 'Wait for update preparation or workspace recovery to finish.' : temporaryChatOpen ? 'Close the temporary chat before switching accounts.'
@@ -287,6 +293,7 @@ export function AppShell() {
     if (view === 'chats') { setSidebarPanel('agent-chats'); setLeftSidebarOpen(true); }
     if (view === 'chats' || view === 'docker') setWorkerView(view);
     if (view === 'git') { setSidebarPanel('github'); setLeftSidebarOpen(true); }
+    if (view === 'canvas') { setCanvasVisited(true); setSidebarPanel('canvas'); setLeftSidebarOpen(true); }
     const pane = view === 'terminal' ? 'terminal' : view === 'editor' ? 'editor'
       : view === 'chats' || view === 'docker' ? 'worker' : 'primary';
     if (!options.preserveFocus) focusWorkspacePane(pane);
@@ -335,6 +342,11 @@ export function AppShell() {
   }, [focusWorkspacePane]);
 
   const openWorkspaceFile = useCallback((path: string, line: number | null = null): void => {
+    if (path.endsWith('.fig')) {
+      setCanvasTarget(current => ({ path, requestId: (current?.requestId ?? 0) + 1 }));
+      navigate('canvas');
+      return;
+    }
     historyRequestId.current += 1;
     editorRequestId.current += 1;
     closeReview();
@@ -347,7 +359,7 @@ export function AppShell() {
       : activeView === 'editor' || (editorSplitOpen && !fullWidthViews.includes(activeView));
     // Opening a file never adds a split. Keep the previous scene mounted and its layout intact.
     if (!editorVisible) setEditorOnly(true);
-  }, [closeReview, focusWorkspacePane, activeView, editorOnly, editorSplitOpen, customLayout, replaceExplorerWithEditor]);
+  }, [closeReview, focusWorkspacePane, activeView, editorOnly, editorSplitOpen, customLayout, replaceExplorerWithEditor, navigate]);
 
   const closeEditorSplit = (): void => {
     setLineCommitTarget(null);
@@ -386,6 +398,25 @@ export function AppShell() {
   const primaryView = workerPrimary ? 'chat' : activeView;
   const displayedLayout = editorOnly ? { type: 'pane' as const, paneId: 'editor' } : customLayout;
   const visiblePanes = splitPaneIds(displayedLayout ?? visibleWorkspaceLayout(editorLayoutMode, activeView === 'terminal', .5, workerPrimary));
+  const closeEditorPane = (): void => {
+    const remaining = removeSplitPane(
+      displayedLayout ?? visibleWorkspaceLayout(editorLayoutMode, activeView === 'terminal', .5, workerPrimary), 'editor',
+    );
+    // A standalone editor still returns to its previous page.
+    if (!remaining) { closeEditorSplit(); return; }
+    const nextPane = splitPaneIds(remaining)[0] as WorkspacePaneId;
+    setLineCommitTarget(null);
+    setLocalHistoryPath(null);
+    setEditorOnly(false);
+    setEditorSplitOpen(false);
+    setEditorTarget(null);
+    setCustomLayout(remaining);
+    setPrimaryPaneClosed(false);
+    if (activeView === 'editor') {
+      setActiveView(nextPane === 'worker' ? workerView : nextPane === 'terminal' ? 'terminal' : editorReturnView.current);
+    }
+    focusWorkspacePane(nextPane);
+  };
   const visiblePaneKey = [...visiblePanes].sort().join(':');
   const selectedPane = visiblePanes.includes(focusedPane) ? focusedPane : visiblePanes[0];
   const railView = selectedPane === 'editor' ? 'editor' : selectedPane === 'terminal' ? 'terminal'
@@ -436,11 +467,12 @@ export function AppShell() {
           id="workspace-sidebar" className={`sidebar-column ${styles.sidebarPanel}`}
           inert={workspace.accountSwitchPending}>
             <Sidebar homiesEnabled={homiesEnabled}
+              canvasPanelRef={setCanvasSidebarTarget}
               memoPanelRef={setMemoSidebarTarget}
               chatsPanelRef={setChatsSidebarTarget}
               githubPanelRef={setGithubSidebarTarget}
               activePanel={sidebarPanel}
-              onPanelChange={setSidebarPanel}
+              onPanelChange={panel => { setSidebarPanel(panel); if (panel === 'canvas') setCanvasVisited(true); }}
               chatPanel={<ChatSessionList
                 search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
                   onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
@@ -519,6 +551,7 @@ export function AppShell() {
               mutation={editorMutation}
               target={editorTarget}
               onAllTabsClosed={closeEditorSplit}
+              onPaneClosed={closeEditorPane}
               onSelectedPathChange={setEditorSelectedPath}
               onDirtyPathsChange={setEditorDirtyPaths}
               onOpenLocalHistory={openLocalHistory}
@@ -526,6 +559,9 @@ export function AppShell() {
             />
           }>
           {primaryView === 'explorer' && <ExplorerView />}
+          {canvasVisited && <Suspense fallback={<CanvasLoadingState active={primaryView === 'canvas' && visiblePanes.includes('primary')} />}><CanvasView
+            active={primaryView === 'canvas' && visiblePanes.includes('primary')} target={canvasTarget} sidebarTarget={canvasSidebarTarget}
+            onOpenFile={openWorkspaceFile} onDirtyChange={setCanvasDirty} /></Suspense>}
           {primaryView === 'search' && <ChatHistorySearchPage query={submittedSearchQuery}
             result={historySearch.result} loading={historySearch.loading} error={historySearch.error}
             loadingMore={historySearch.loadingMore} moreError={historySearch.moreError} onLoadMore={historySearch.loadMore}

@@ -11,14 +11,22 @@ export function continuesResponse(previous: RoomMessage | undefined, message: Ro
 }
 
 export interface ResponseActions { text: string | undefined; reply: RoomMessage }
+export type ResponseActionsCache = WeakMap<RoomMessage, { members: RoomMessage[]; actions: ResponseActions }>;
 
 /** Actions belong to the response header; collect text from the full timeline, not its visible window. */
-export function responseActions(messages: RoomMessage[]): Map<string, ResponseActions> {
+export function responseActions(messages: RoomMessage[], cache: ResponseActionsCache = new WeakMap()): Map<string, ResponseActions> {
   const actions = new Map<string, ResponseActions>();
   for (let start = 0; start < messages.length;) {
     let end = start + 1;
     while (end < messages.length && continuesResponse(messages[end - 1], messages[end])) end++;
     const head = messages[start]!;
+    const cached = cache.get(head);
+    if (cached && cached.members.length === end - start
+      && cached.members.every((message, index) => message === messages[start + index])) {
+      actions.set(head.id, cached.actions);
+      start = end;
+      continue;
+    }
     const text: string[] = [];
     let reply = head;
     for (let index = start; index < end; index++) {
@@ -28,7 +36,9 @@ export function responseActions(messages: RoomMessage[]): Map<string, ResponseAc
         reply = message;
       }
     }
-    actions.set(head.id, { text: text.length ? text.join('\n\n') : undefined, reply });
+    const value = { text: text.length ? text.join('\n\n') : undefined, reply };
+    cache.set(head, { members: messages.slice(start, end), actions: value });
+    actions.set(head.id, value);
     start = end;
   }
   return actions;

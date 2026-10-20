@@ -37,6 +37,8 @@
 
 .titleMark { cursor: default; pointer-events: none; }
 
+.title > span:first-of-type { text-transform: uppercase; }
+
 .title > .description {
   color: var(--sidebar-section-label-color);
   font-size: 10px;

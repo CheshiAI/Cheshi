@@ -3,6 +3,7 @@ import type { ChatStatusDetails } from '../../../../shared/chat-status';
 import { normalizeChatStatusDetails } from './chatStatus';
 import { normalizeAsyncQuestions, type ChatAsyncQuestion } from '../../../../shared/chat-async-questions';
 import { normalizeAgentActivity, type ChatAgentActivity } from '../../../../shared/chat-agent-details';
+import { normalizeChatContextUsage, type ChatContextUsage } from '../../../../shared/chat-context-usage';
 
 export interface ChatSession {
   id: string;
@@ -173,6 +174,7 @@ export type ChatTimelineItem = ChatTextItem | ChatActivityItem;
 export type ChatPhase = 'idle' | 'loading' | 'streaming';
 
 export interface ChatState {
+  contextUsageByThread: Record<string, ChatContextUsage | null>;
   sessions: ChatSession[];
   sessionsLoading: boolean;
   activeSessionId: string | null;
@@ -188,6 +190,7 @@ export interface ChatState {
 }
 
 export const INITIAL_CHAT_STATE: ChatState = {
+  contextUsageByThread: {},
   sessions: [],
   sessionsLoading: true,
   activeSessionId: null,
@@ -211,6 +214,7 @@ export function isViewedSessionResponding(
 }
 
 type ChatEvent =
+  | { type: 'context-usage'; threadId: string; usage: ChatContextUsage | null }
   | { type: 'session-created'; session: ChatSession }
   | { type: 'session-selected'; threadId: string; previousThreadId?: string | null }
   | { type: 'session-title'; threadId: string; title: string }
@@ -726,6 +730,11 @@ export function normalizeChatEvent(value: unknown): ChatEvent | null {
   const record = recordValue(value);
   const type = stringValue(record?.type);
   if (!record || !type) return null;
+  if (type === 'context-usage') {
+    const threadId = stringValue(record.threadId);
+    const usage = normalizeChatContextUsage(record.usage);
+    return threadId && (record.usage === null || usage) ? { type, threadId, usage } : null;
+  }
   if (type === 'session-created') {
     const session = normalizeSession(record.session);
     return session ? { type, session } : null;

@@ -69,6 +69,10 @@ function shouldIgnore(packagePath: string): boolean {
   if (childEntry !== 'lib') return true;
   if (segments.length === 2) return false;
   if (grandchildEntry === 'electron-libghostty') return false;
+  if (grandchildEntry === 'canvas') {
+    const files = new Set(['canvas-documents.mts', 'canvas-session.mts', 'canvas-ipc.mts', 'canvas-history.mts', 'canvas-library.mts']);
+    return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
+  }
   if (grandchildEntry === 'flash') {
     const files = new Set(['model-download.mts', 'plugin-package.mts', 'plugin-lock.mts', 'activation.mts', 'installation.mts', 'installer.mts', 'control.mts', 'ranking-recovery.mts', 'agent-memory.mts', 'docker-archive.mts', 'client.mts', 'runtime.mts', 'sources.mts', 'session-memory.mts', 'tools.mts', 'workspace.mts', 'wait.mts', 'ipc.mts', 'summary.mts', 'luna.mts', 'rerank.mts']);
     return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));

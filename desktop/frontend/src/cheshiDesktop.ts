@@ -1,4 +1,5 @@
 import type { GitLineBlameRequest, GitLineBlame, GitLineCommit } from '../../shared/git-line-blame';
+import type { CanvasApi } from '../../shared/canvas';
 import type { GitHubIssuesApi } from '../../shared/github-issues';
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../shared/chat-user-input';
 import type { AppUpdateApi, AppUpdateResumeApi } from '../../shared/app-update';
@@ -663,6 +664,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   workspaceName: string;
   userName: string;
   workspaceRoot: string;
+  canvas?: CanvasApi;
   isCodeGraphIndexed: () => Promise<boolean>;
   reindexCodeGraph: () => Promise<unknown>;
   listWorkspaceDirectory: (relativePath?: string) => Promise<{

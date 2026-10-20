@@ -45,13 +45,13 @@ test('rail management items retain their order and destinations', () => {
   const destinations: WorkspaceView[] = [];
   const rail = SidebarRail({ homiesEnabled: true, activeView: 'chat', sidebarOpen: true,
     onNavigate: view => destinations.push(view), onToggleSidebar() {} });
-  const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 10);
+  const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 11);
   expect(navigation.map(element => element.props.label)).toEqual([
-      'Explorer', 'SESSION', 'Worker', 'Memo', 'Github',
+      'Canvas', 'Explorer', 'SESSION', 'Worker', 'Memo', 'Github',
       'Terminal', 'Calendar', 'Docker', 'Plugins', 'Settings',
     ]);
   for (const element of navigation) if (element.props.label !== 'SESSION') element.props.onClick?.();
-  expect(destinations).toEqual(['explorer', 'chats', 'notes', 'git', 'terminal', 'calendar', 'docker', 'plugins', 'settings']);
+  expect(destinations).toEqual(['canvas', 'explorer', 'chats', 'notes', 'git', 'terminal', 'calendar', 'docker', 'plugins', 'settings']);
 });
 
 test('rail bottom controls retain caffeine, sidebar and project actions without a help launcher', () => {
@@ -69,13 +69,13 @@ test('rail bottom controls retain caffeine, sidebar and project actions without 
 
 test('only the focused view has an active rail icon even when the sidebar is collapsed', () => {
   for (const sidebarOpen of [true, false]) {
-    for (const activeView of ['explorer', 'editor', 'chat', 'terminal', 'notes', 'git'] as const) {
+    for (const activeView of ['canvas', 'explorer', 'editor', 'chat', 'terminal', 'notes', 'git'] as const) {
       const destinations: WorkspaceView[] = [];
       const rail = SidebarRail({ homiesEnabled: true, activeView, sidebarOpen,
         onNavigate: view => destinations.push(view), onToggleSidebar() {} });
-      const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 10);
+      const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 11);
       expect(navigation.filter(element => element.props.active)).toHaveLength(1);
-      const explorer = elements(rail).find(element => element.type === SidebarRailButton);
+      const explorer = navigation.find(element => element.props.label === 'Explorer');
       expect(explorer?.props.label).toBe('Explorer');
       expect(explorer?.props.active).toBe(activeView === 'explorer' || activeView === 'editor');
       expect(explorer?.props['aria-expanded']).toBe(sidebarOpen);
@@ -90,9 +90,9 @@ test('Worker and Docker are absent while Homies is off and Settings stays access
   const destinations: WorkspaceView[] = [];
   const rail = SidebarRail({ homiesEnabled: false, activeView: 'chat', sidebarOpen: true,
     onNavigate: view => destinations.push(view), onToggleSidebar() {} });
-  const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 8);
+  const navigation = elements(rail).filter(element => element.type === SidebarRailButton).slice(0, 9);
   expect(navigation.map(element => element.props.label)).toEqual([
-    'Explorer', 'SESSION', 'Memo', 'Github', 'Terminal', 'Calendar', 'Plugins', 'Settings',
+    'Canvas', 'Explorer', 'SESSION', 'Memo', 'Github', 'Terminal', 'Calendar', 'Plugins', 'Settings',
   ]);
   navigation.find(element => element.props.label === 'Settings')!.props.onClick?.();
   expect(destinations).toEqual(['settings']);

@@ -72,17 +72,9 @@
   border: 0;
   border-bottom: 1px solid var(--divider);
 }
+.paneHeader:is(:hover, :active),
 .pane[data-active='true'] .paneHeader {
-  background: var(--control-surface);
-}
-.pane[data-active='true'] .paneHeader::after {
-  content: '';
-  position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  height: 2px;
-  background: var(--divider);
-  pointer-events: none;
+  background: rgba(41, 52, 61, 0.3);
 }
 .pane[data-active='true'] .paneTitle { font-weight: 600; }
 .paneHeading { display: flex; flex: 1 1 auto; align-items: center; min-width: 0; gap: var(--icon-default); }
@@ -113,6 +105,14 @@
   letter-spacing: normal;
 }
 .headerActions { display: flex; align-items: center; gap: var(--icon-default); }
+.paneTrailing { display: flex; flex: 0 0 auto; align-items: center; gap: var(--icon-default); }
+.contextUsage {
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .actions {
   display: flex;
   flex: 0 0 auto;

@@ -11,6 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { SplitLayoutNode } from './splitPaneModel';
+import { TooltipTarget } from './TooltipTarget';
 import { SPLIT_PANE_MIN_SIZE, SPLIT_SEPARATOR_TRACK_SIZE, splitPaneMinimumWidth, type SplitPaneMinimumWidth } from './splitPaneSizing';
 import styles from './SplitPaneLayout.module.css';
 
@@ -225,26 +226,27 @@ function Split({
           minimumPaneWidth={minimumPaneWidth}
         />
       </div>
-      <div
-        className={styles.separator}
-        role="separator"
-        hidden={!!collapsedPane}
-        tabIndex={0}
-        aria-label={resizeLabel}
-        aria-orientation={layout.axis === 'columns' ? 'vertical' : 'horizontal'}
-        aria-valuemin={MIN_SPLIT_RATIO * 100}
-        aria-valuemax={MAX_SPLIT_RATIO * 100}
-        aria-valuenow={Math.round(ratio * 100)}
-        aria-valuetext={`${Math.round(ratio * 100)}% for the first pane`}
-        title={`${resizeLabel}; double-click to reset`}
-        onDoubleClick={resetRatio}
-        onKeyDown={handleKeyDown}
-        onLostPointerCapture={handleLostPointerCapture}
-        onPointerCancel={handlePointerCancel}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-      />
+      <TooltipTarget content={`${resizeLabel}; double-click to reset`}>
+        <div
+          className={styles.separator}
+          role="separator"
+          hidden={!!collapsedPane}
+          tabIndex={0}
+          aria-label={resizeLabel}
+          aria-orientation={layout.axis === 'columns' ? 'vertical' : 'horizontal'}
+          aria-valuemin={MIN_SPLIT_RATIO * 100}
+          aria-valuemax={MAX_SPLIT_RATIO * 100}
+          aria-valuenow={Math.round(ratio * 100)}
+          aria-valuetext={`${Math.round(ratio * 100)}% for the first pane`}
+          onDoubleClick={resetRatio}
+          onKeyDown={handleKeyDown}
+          onLostPointerCapture={handleLostPointerCapture}
+          onPointerCancel={handlePointerCancel}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        />
+      </TooltipTarget>
       <div ref={secondRegionRef} className={styles.region} tabIndex={-1}
         data-collapsed={collapsedPane === 'second' ? 'true' : undefined}>
         <SplitPaneLayout

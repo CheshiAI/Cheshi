@@ -2,9 +2,10 @@ import { useEffect, useRef } from 'react';
 import type { WorkspaceHostApi } from '../../../../shared/workspace-host';
 
 /** Continue the clipped label in a native layer above retained workspace views. */
-export function useWorkspaceRailOverlay(api: WorkspaceHostApi) {
+export function useWorkspaceRailOverlay(api: WorkspaceHostApi, disabled = false) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    if (disabled) { api.railOverlay(null); return; }
     const rail = ref.current?.querySelector<HTMLElement>('[aria-label="Application navigation"]');
     if (!rail) return;
     let button: HTMLButtonElement | null = null;
@@ -79,6 +80,6 @@ export function useWorkspaceRailOverlay(api: WorkspaceHostApi) {
       window.removeEventListener('pointerdown', resetKeyboardNavigation, true);
       window.removeEventListener('blur', resetKeyboardNavigation);
     };
-  }, [api]);
+  }, [api, disabled]);
   return ref;
 }

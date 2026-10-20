@@ -13,7 +13,7 @@
 }
 
 .dialog::backdrop {
-  background: rgba(0, 0, 0, .16);
+  background: var(--modal-backdrop-background);
 }
 
 .dialog[data-modal-blur-top='false']::backdrop {
@@ -38,7 +38,7 @@
 
 .panel {
   position: relative;
-  background: var(--overlay-surface);
+  background: var(--modal-surface-background);
 }
 
 .header {

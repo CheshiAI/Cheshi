@@ -47,6 +47,8 @@ function createHarness() {
   const slots: unknown[] = [];
   const jsx = (type: string, props: Record<string, unknown>, key?: string): TestElement => ({ type, props, key });
   const modules: Record<string, unknown> = {
+    '../settings/useHomiesEnabled': { useHomiesEnabled: () => true },
+    '../canvas/CanvasEmptyState': { CanvasLoadingState: 'CanvasLoadingState' },
     '../chat/chatWorkspaceModel': { CHAT_PANE_MIN_WIDTH: 400 },
     '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
     '../chat/FlashSourceLink': { FlashSourceNavigationContext: { Provider: 'FlashSourceNavigationContext' } },
@@ -61,6 +63,8 @@ function createHarness() {
     './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => null, saveWorkspaceLayout() {} },
     '../../shared/ui/splitPaneModel': splitModel,
     react: {
+      lazy: () => 'CanvasView',
+      Suspense: 'Suspense',
       useRef(current: unknown) { return slots[cursor++] ??= { current }; },
       useState(initial: unknown) {
         const index = cursor++;
@@ -167,7 +171,7 @@ test('closing history after switching files leaves the editor open and preserves
   tree = harness.render();
   const editorBefore = element(tree, 'WorkspaceEditor');
   const splitBefore = element(workspaceColumn(tree), 'WorkspaceEditorSplit');
-  expect(splitBefore.props.mode).toBe('split');
+  expect(splitBefore.props.mode).toBe('editor');
   expect(splitBefore.props.editor).toBe(editorBefore);
   expect(element(tree, 'SidebarRail').props.activeView).toBe('editor');
   invoke(editorBefore, 'onOpenLocalHistory', 'src/dirty.ts');
@@ -184,16 +188,16 @@ test('closing history after switching files leaves the editor open and preserves
   expect(editorDuring.props.target).toBe(editorBefore.props.target);
   expect(editorDuring.key).toBe(editorBefore.key);
   const splitDuring = element(workspaceColumn(tree), 'WorkspaceEditorSplit');
-  expect(splitDuring.props.mode).toBe('split');
+  expect(splitDuring.props.mode).toBe('editor');
   expect(splitDuring.key).toBe(splitBefore.key);
   expect(splitDuring.props.editor).toBe(editorDuring);
   invoke(history, 'onCloseReview');
   tree = harness.render();
   expect(element(tree, 'SidebarRail').props.activeView).toBe('editor');
   expect(element(tree, 'Sidebar').props.selectedFilePath).toBe('src/dirty.ts');
-  expect(element(tree, 'TerminalWorkspace').props.active).toBe(true);
+  expect(element(tree, 'TerminalWorkspace').props.active).toBe(false);
   expect(element(tree, 'ChatWorkspace').props.active).toBe(false);
-  expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('split');
+  expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('editor');
   expect(element(tree, 'ReviewSidebar').props.localHistoryPath).toBeNull();
   expect(element(tree, 'WorkspaceEditor').props.active).toBe(true);
   expect(element(tree, 'WorkspaceEditor').props.target).toBe(editorBefore.props.target);

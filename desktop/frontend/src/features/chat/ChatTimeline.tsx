@@ -53,7 +53,7 @@ export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, hist
         onPointerDown={pauseAutoScroll}
         onWheel={pauseAutoScroll}
       >
-        <div className={styles.timelineContent}>
+        <div className={styles.timelineContent} data-chat-layout-content>
           {state.items.length === 0 && !loading && (
             <ChatWelcome />
           )}

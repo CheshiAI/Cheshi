@@ -11,6 +11,7 @@
 }
 .card {
   composes: surface from './PopupSurface.module.css';
+  --popup-surface-background: var(--tooltip-background);
   --status-color: #6fd58b;
   display: flex;
   align-items: center;

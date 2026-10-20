@@ -6,7 +6,7 @@ import { LiquidGlassPanel } from './LiquidGlassPanel';
 import { NeumorphicButton } from './NeumorphicButton';
 import { SidebarPanelTitle } from './SidebarPanelHeader';
 import { RegionalBlur } from './RegionalBlur';
-import { registerModalBlur } from './modalBlur';
+import { registerModalLayer } from './modalBlur';
 import styles from './Modal.module.css';
 
 interface ModalProps {
@@ -36,9 +36,9 @@ export function Modal({ title, titleIcon, headerVariant = 'default', leadingActi
     if (!dialog) return;
     const previousFocus = document.activeElement;
     dialog.showModal();
-    const releaseBlur = registerModalBlur(dialog);
+    const releaseLayer = registerModalLayer(dialog);
     return () => {
-      releaseBlur();
+      releaseLayer();
       dialog.close();
       if (restoreFocusRef.current?.() !== false && previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
     };

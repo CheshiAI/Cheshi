@@ -71,6 +71,7 @@ interface UseWorkspaceEditorControllerOptions {
   mutation: WorkspaceEditorMutation | null;
   target: WorkspaceEditorTarget | null;
   onAllTabsClosed: () => void;
+  onPaneClosed?: () => void;
 }
 
 export function useWorkspaceEditorController({
@@ -79,6 +80,7 @@ export function useWorkspaceEditorController({
   mutation,
   target,
   onAllTabsClosed,
+  onPaneClosed,
 }: UseWorkspaceEditorControllerOptions) {
   const paneState = useSyncExternalStore(pane.store.subscribe, pane.store.getSnapshot);
   const group = paneState.groups[pane.id];
@@ -354,7 +356,7 @@ export function useWorkspaceEditorController({
   }, [active, invalidatePendingFileLoad, onAllTabsClosed, replaceTabs, selectPath]);
   closeTabRef.current = closeTab;
 
-  const closeAllTabs = useCallback((): void => {
+  const closeTabs = useCallback((onClosed: () => void): void => {
     const current = tabsRef.current;
     if (!confirmWorkspaceTabsClose(current, candidate => isTabDirty(candidate) && !pane.store.sharedElsewhere(pane.id, candidate.path), (path) => window.confirm(`Discard unsaved changes in ${path}?`))) return;
     invalidatePendingFileLoad();
@@ -362,8 +364,11 @@ export function useWorkspaceEditorController({
     pendingLineRef.current = null;
     pendingCharacterRef.current = null;
     selectPath(null);
-    if (active) onAllTabsClosed();
-  }, [active, invalidatePendingFileLoad, onAllTabsClosed, replaceTabs, selectPath]);
+    if (active) onClosed();
+  }, [active, invalidatePendingFileLoad, replaceTabs, selectPath]);
+
+  const closeAllTabs = useCallback(() => closeTabs(onAllTabsClosed), [closeTabs, onAllTabsClosed]);
+  const closePane = useCallback(() => closeTabs(onPaneClosed ?? onAllTabsClosed), [closeTabs, onPaneClosed, onAllTabsClosed]);
 
   const copyTabFullPath = useCallback(async (path: string): Promise<void> => {
     if (!workspace?.copyWorkspaceEntryFullPath) {
@@ -682,6 +687,7 @@ export function useWorkspaceEditorController({
     changeRenameValue,
     chooseCodeAction,
     closeAllTabs,
+    closePane,
     closeAssist,
     closeEditorSearch,
     closeTab,

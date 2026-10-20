@@ -154,11 +154,11 @@ test('Homie icons reuse observed list status and only query runtime while expand
       const actions = document.querySelector('[aria-label="Homie actions"]')!;
       const container = document.querySelector('section[aria-label="Container"]')!;
       const status = document.querySelector('section[aria-label="Status"]')!;
-      expect(Boolean(actions.compareDocumentPosition(container) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+      expect(Boolean(container.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
       expect(Boolean(container.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
       expect(container.querySelectorAll('[aria-label="Agent execution engine"]')).toHaveLength(1);
-      expect(Array.from(status.querySelectorAll('button'), button => button.getAttribute('aria-label')))
-        .toEqual(['Start agent']);
+      expect(status.querySelectorAll('button')).toHaveLength(0);
+      expect(document.querySelectorAll('[aria-label="Homie runtime controls"] button[aria-label="Start agent"]')).toHaveLength(1);
       runtime = { details: null, lifecycle: { phase: 'error', error: 'Invalid configuration' } };
       await poll();
       expect(icon()?.getAttribute('aria-description')).toBe('Error');

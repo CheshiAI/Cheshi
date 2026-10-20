@@ -12,9 +12,11 @@ import { createAppleCalendarApi } from './apple-calendar-preload.cts';
 import { createAgentManagementApi } from './agent-management-preload.cts';
 import { createAgentTerminalApi } from './agent-terminal-preload.cts';
 import { createAgentRegistryApi } from './agent-registry-preload.cts';
+import { createCanvasApi } from './canvas/canvas-preload.cts';
 
 export function createWorkspaceFeatureApis(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'removeListener'>) {
   return {
+    canvas: createCanvasApi(ipc),
     scheduler: createSchedulerApi(ipc), appearance: createWindowAppearanceApi(ipc), discord: createDiscordApi(ipc),
     notificationEvents: createNotificationEventsApi(ipc),
     ...createGitLineBlameApi(ipc), settings: createSettingsApi(ipc),

@@ -136,6 +136,10 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
         onAllTabsClosed={() => {
           store.closeEmpty(id);
           if (store.allTabs().length === 0) props.onAllTabsClosed();
+        }}
+        onPaneClosed={() => {
+          store.closeEmpty(id);
+          if (store.allTabs().length === 0) (props.onPaneClosed ?? props.onAllTabsClosed)();
         }} />,
       hosts.get(id)!, id))}
   </div></RegionalBlur>;

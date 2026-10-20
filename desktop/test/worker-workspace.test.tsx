@@ -101,7 +101,7 @@ test('Worker splits and maximizes its workspace pane without replacing the room 
     await ui.click('Split area right');
     const choices = [...document.querySelectorAll<HTMLButtonElement>('dialog button')];
     expect(choices.find(button => button.textContent?.startsWith('Worker'))?.disabled).toBe(true);
-    const codex = choices.find(button => button.textContent?.startsWith('Codex'))!;
+    const codex = choices.find(button => button.textContent?.startsWith('Session'))!;
     expect(codex.disabled).toBe(false);
     await act(async () => codex.click());
     expect(opened).toEqual(['primary']);

@@ -75,6 +75,7 @@ test('one real native host retains renderer drafts, background delivery, routing
       contextBridge.exposeInMainWorld('fixture', {
         identity: () => ipcRenderer.invoke('fixture:identity'),
         denied: () => ipcRenderer.invoke('fixture:second-only'),
+        reportModal: open => ipcRenderer.send('cheshi:workspace-host:modal', open),
         onEvent: callback => ipcRenderer.on('fixture:event', (_event,value) => callback(value)),
         onCommand: callback => ipcRenderer.on('cheshi:workspace-host:command', (_event,value) => callback(value)),
         onToast: callback => ipcRenderer.on('cheshi:workspace-host:status-toast', (_event,value) => callback(value)),
@@ -114,6 +115,48 @@ app.whenReady().then(async()=>{
   one.show();
   const wait=async(fn)=>{const end=Date.now()+8000;while(!await fn()){if(Date.now()>end)throw Error('condition timeout');await new Promise(r=>setTimeout(r,30))}};
   await wait(()=>host.window.webContents.executeJavaScript('document.querySelectorAll("[role=tab]").length===2'));
+  const modalState=()=>host.window.webContents.executeJavaScript('window.workspaceHost.state()');
+  const dividerState=()=>host.window.webContents.executeJavaScript(\`(()=>{
+    const rail=document.querySelector('[aria-label="Application navigation"]');
+    const header=document.querySelector('[role="tablist"]').parentElement;
+    return [rail,header].map((element,index)=>{
+      const style=getComputedStyle(element),rect=element.getBoundingClientRect();
+      return {color:index===0?style.borderRightColor:style.borderBottomColor,
+        width:rect.width,height:rect.height};
+    });
+  })()\`);
+  const normalDividers=await dividerState();
+  await one.webContents.executeJavaScript('window.fixture.reportModal(true)');
+  await wait(async()=> (await modalState()).entries.find(entry=>entry.id===ids[0]).modalOpen===true);
+  await wait(()=>host.window.webContents.executeJavaScript('!!document.querySelector("[data-modal-open=true]")'));
+  const chrome=await host.window.webContents.executeJavaScript(\`(()=>{
+    const rail=document.querySelector('[aria-label="Application navigation"]');
+    const header=document.querySelector('[role="tablist"]').parentElement;
+    return [rail,header].map(element=>({inert:element.inert,dim:getComputedStyle(element,'::after').backgroundColor}));
+  })()\`);
+  assert.deepEqual(chrome,[{inert:true,dim:'rgba(0, 0, 0, 0.25)'},{inert:true,dim:'rgba(0, 0, 0, 0.25)'}]);
+  assert.deepEqual(await dividerState(),normalDividers.map(divider=>({...divider,color:'rgba(0, 0, 0, 0)'})));
+  await host.window.webContents.executeJavaScript('Promise.all([window.workspaceHost.activate('+ids[1]+'),window.workspaceHost.close('+ids[1]+'),window.workspaceHost.command({action:"navigate",view:"git"})])');
+  assert.equal((await modalState()).activeId,ids[0]);
+  assert.equal((await modalState()).entries.length,2);
+  assert.equal(await one.webContents.executeJavaScript('window.lastCommand===undefined'),true);
+  await one.webContents.executeJavaScript('window.fixture.reportModal("false")');
+  await new Promise(resolve=>setTimeout(resolve,50));
+  assert.equal((await modalState()).entries.find(entry=>entry.id===ids[0]).modalOpen,true);
+  await one.webContents.executeJavaScript('window.fixture.reportModal(false)');
+  await wait(()=>host.window.webContents.executeJavaScript('!document.querySelector("[data-modal-open=true]")'));
+  assert.deepEqual(await dividerState(),normalDividers);
+  await two.webContents.executeJavaScript('window.fixture.reportModal(true)');
+  await wait(async()=> (await modalState()).entries.find(entry=>entry.id===ids[1]).modalOpen===true);
+  assert.equal(await host.window.webContents.executeJavaScript('!!document.querySelector("[data-modal-open=true]")'),false);
+  two.show();
+  await wait(()=>host.window.webContents.executeJavaScript('!!document.querySelector("[data-modal-open=true]")'));
+  // A reload must release a stale modal even if the old renderer sends no cleanup.
+  two.webContents.reload();
+  await wait(async()=> (await modalState()).entries.find(entry=>entry.id===ids[1]).modalOpen===false);
+  await wait(()=>two.webContents.executeJavaScript('document.querySelector("input")!==null'));
+  await two.webContents.executeJavaScript('window.railRegions=[];void window.fixture.onRailBlur(value=>window.railRegions.push(value))');
+  one.show();
   for(const surface of [one,two]) await surface.webContents.executeJavaScript('window.toasts=[];void window.fixture.onToast(value=>window.toasts.push(value))');
   const toast={id:1,variant:'success',title:'Keep awake enabled',description:'Your Mac will stay awake.'};
   const sendToast=()=>host.window.webContents.executeJavaScript('window.workspaceHost.showStatusToast('+JSON.stringify(toast)+')');
@@ -221,6 +264,10 @@ app.whenReady().then(async()=>{
   await wait(async()=>await one.webContents.executeJavaScript('window.lastCommand?.view==="git"'));
   await wait(()=>!overlay().getVisible());
   await wait(()=>one.webContents.executeJavaScript('window.railRegions.at(-1)===null'));
+  // New views must cross the native host's command allowlist, not only the React rail.
+  await host.window.webContents.executeJavaScript('window.workspaceHost.command({action:"navigate",view:"canvas"})');
+  await wait(()=>one.webContents.executeJavaScript('window.lastCommand?.view==="canvas"'));
+  assert.equal(await host.window.webContents.executeJavaScript('window.workspaceHost.command({action:"navigate",view:"unknown-view"}).then(()=>false,()=>true)'),true);
   // App re-entry restores the last focused native-host button. It must not
   // reopen a label when the pointer is in the workspace instead of the rail.
   host.window.webContents.sendInputEvent({type:'mouseMove',x:600,y:300});

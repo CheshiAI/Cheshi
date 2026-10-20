@@ -135,8 +135,8 @@ test('sidebar omits Worker when off and keeps the selected remaining panel and G
         onOpenWorkspaceFile={() => {}} />);
       const tabs = [...window.document.querySelectorAll('[role="tab"]')];
       expect(tabs.map(tab => tab.textContent)).toEqual(homiesEnabled
-        ? ['EXPLORER', 'SESSION', 'WORKER', 'MEMO', 'GITHUB'] : ['EXPLORER', 'SESSION', 'MEMO', 'GITHUB']);
-      expect(window.document.querySelectorAll('[role="tabpanel"]')).toHaveLength(homiesEnabled ? 5 : 4);
+        ? ['CANVAS', 'EXPLORER', 'SESSION', 'WORKER', 'MEMO', 'GITHUB'] : ['CANVAS', 'EXPLORER', 'SESSION', 'MEMO', 'GITHUB']);
+      expect(window.document.querySelectorAll('[role="tabpanel"]')).toHaveLength(homiesEnabled ? 6 : 5);
       const selected = window.document.querySelector('[role="tab"][aria-selected="true"]')!;
       expect(selected.textContent).toBe('MEMO');
       const panel = window.document.getElementById(selected.getAttribute('aria-controls')!)!;

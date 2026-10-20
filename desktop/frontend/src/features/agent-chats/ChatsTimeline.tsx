@@ -17,7 +17,7 @@ import { PermissionRequestCard } from './PermissionRequestCard';
 import { VerificationCard } from './VerificationReview';
 import { verificationReview, verificationReportContext, type VerificationReview } from './verificationReviewModel';
 import { ExecutionRecord } from './ExecutionRecord';
-import { continuesResponse, exchangeLabel, responseActions, timelineContexts, timelineIndex, type ResponseActions } from './roomTimeline';
+import { continuesResponse, exchangeLabel, responseActions, timelineContexts, timelineIndex, type ResponseActions, type ResponseActionsCache } from './roomTimeline';
 import type { TimelineWindow } from './roomTimelineLayout';
 import { ChatsMessageActions } from './ChatsMessageActions';
 import { TaskWorkspace } from './TaskWorkspace';
@@ -105,7 +105,8 @@ export const ChatsTimeline = memo(function ChatsTimeline({ messages, window, ...
   const { room, agents } = props;
   const index = useMemo(() => timelineIndex(messages), [messages]);
   const contexts = useMemo(() => timelineContexts(messages, index), [messages, index]);
-  const actions = useMemo(() => responseActions(messages), [messages]);
+  const actionCache = useMemo<ResponseActionsCache>(() => new WeakMap(), []);
+  const actions = useMemo(() => responseActions(messages, actionCache), [messages, actionCache]);
   const workspaceMessages = useMemo(() => {
     const seen = new Set<string>(), ids = new Set<string>();
     for (const message of messages) {

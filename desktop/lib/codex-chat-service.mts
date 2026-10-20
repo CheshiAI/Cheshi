@@ -523,6 +523,8 @@ export class CodexChatService {
     this.viewedThreadIsSubagent = stringValue(thread.parentThreadId) !== null;
     this.threadIsSubagent.set(sessionId, this.viewedThreadIsSubagent);
     if (!this.viewedThreadIsSubagent) this.emit({ type: 'session-opened', session });
+    const contextUsage = await this.agentTokenUsage.readContext(thread);
+    this.emit({ type: 'context-usage', threadId: sessionId, usage: contextUsage });
     const responseThreadIds = [...this.activeTurns.keys()];
     return {
       session,

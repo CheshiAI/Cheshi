@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { bundledDependencyNotices } from './open-pencil/dependency-notices.ts';
+import { openPencilDevAssets } from './open-pencil/dev-assets.ts';
+import { browserDependencies } from './open-pencil/browser-dependencies.ts';
+import { viewerChunk } from './open-pencil/chunks.ts';
 
 import { product } from '../../config/product.mts';
 
@@ -18,7 +23,7 @@ function inlineScriptHashes(html: string): string[] {
 }
 
 export function contentSecurityPolicy(html: string): string {
-  const scriptSources = ["'self'", ...new Set(inlineScriptHashes(html))].join(' ');
+  const scriptSources = ["'self'", "'wasm-unsafe-eval'", ...new Set(inlineScriptHashes(html))].join(' ');
   return [
     "default-src 'self'",
     `script-src ${scriptSources}`,
@@ -36,6 +41,9 @@ export function contentSecurityPolicy(html: string): string {
 
 export default defineConfig({
   plugins: [
+    openPencilDevAssets(fileURLToPath(new URL('../../node_modules/.cache/cheshi-open-pencil/previous/assets', import.meta.url))),
+    bundledDependencyNotices(),
+    browserDependencies(),
     react(),
     {
       name: 'cheshi-product-html',
@@ -67,9 +75,14 @@ export default defineConfig({
     __CHESHI_PRODUCT__: JSON.stringify(product),
   },
   optimizeDeps: {
+    entries: ['index.html'],
     include: ['smol-toml', 'typescript'],
   },
-  server: viewerApiUrl
+  server: {
+    // Keep Vite's public-file inventory current for newly hashed assets, while
+    // avoiding an editor rebuild reloading an open document via index.html HMR.
+    watch: { ignored: ['**/public/open-pencil/index.html'] },
+    ...(viewerApiUrl
     ? {
         proxy: {
           '/api': {
@@ -78,14 +91,12 @@ export default defineConfig({
           },
         },
       }
-    : undefined,
+    : {}),
+  },
   build: {
+    target: 'esnext',
     outDir: 'dist',
     emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        inlineDynamicImports: true,
-      },
-    },
+    rollupOptions: { output: { manualChunks: viewerChunk, onlyExplicitManualChunks: true } },
   },
 });

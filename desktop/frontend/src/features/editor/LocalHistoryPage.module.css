@@ -142,9 +142,16 @@
   font-size: 9px;
 }
 
-.comparison { overflow: auto; min-width: 0; }
+.comparison {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  min-width: 0;
+  min-height: 0;
+}
 .comparisonContent {
   display: grid;
+  flex: 0 0 auto;
   grid-template-columns: repeat(2, minmax(240px, 1fr));
   width: max-content;
   min-width: 100%;

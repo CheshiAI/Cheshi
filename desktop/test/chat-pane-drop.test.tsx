@@ -27,7 +27,7 @@ function loadModule<T>(filename: string, dependencies: Record<string, unknown>):
 
 // Keep the actual workspace, view, controller, draft store and transfer hook.
 // Replace IPC and unrelated rendering; dispatch bubbling DOM events without clicking first.
-test('split pane drops reach only the target draft from the timeline or composer', async () => {
+test('split pane drops and context usage stay scoped to their own conversation', async () => {
   const window = new Window();
   const globals = { window, document: window.document, navigator: window.navigator, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -80,6 +80,8 @@ test('split pane drops reach only the target draft from the timeline or composer
     '../shell/WorkspaceLayoutControls': { WorkspaceLayoutControls: () => null, WorkspacePaneVisibilityContext: createContext(true) },
     '../../shared/ui': { LiquidGlassPanel: passthrough, NeumorphicButton: () => null, TwoTierHeader: () => null },
     '../../shared/ui/TooltipButton': { TooltipButton: () => null },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: ({ content, children }: { content: string; children: ReactNode }) =>
+      <div data-context-tooltip={content}>{children}</div> },
     '../../shared/ui/SidebarPanelHeader': { SidebarPanelTitle: () => null },
     './ChatWorkspace.module.css': { default: {} },
     './ChatView.module.css': { default: {} },
@@ -145,6 +147,23 @@ test('split pane drops reach only the target draft from the timeline or composer
     await render(true, true);
     expect(await drop('first', 'textarea', '/locked.png')).toBe('none');
     expect(imports).toHaveLength(3);
+    expect(pane('first').querySelector('[data-context-usage]')?.textContent).toBe('Context —');
+    for (const [id, usedTokens] of [['first', 84_000], ['second', 20_000]] as const) {
+      const controller = controllers.get(id)!;
+      controllers.set(id, { ...controller, state: { ...controller.state, activeSessionId: id,
+        contextUsageByThread: { [id]: { usedTokens, contextWindow: 200_000 } } } });
+    }
+    await render();
+    expect(pane('first').querySelector('[data-context-usage]')?.textContent).toBe('Context 42%');
+    expect(pane('second').querySelector('[data-context-usage]')?.textContent).toBe('Context 10%');
+    expect(pane('first').querySelector('[data-context-tooltip]')?.getAttribute('data-context-tooltip'))
+      .toContain('84,000 / 200,000 tokens');
+    // Switching to a session with no usage must not retain the previous percentage.
+    const first = controllers.get('first')!;
+    controllers.set('first', { ...first, state: { ...first.state, activeSessionId: 'unreported' } });
+    await render();
+    expect(pane('first').querySelector('[data-context-usage]')?.textContent).toBe('Context —');
+    expect(pane('second').querySelector('[data-context-usage]')?.textContent).toBe('Context 10%');
   } finally {
     await act(async () => root.unmount());
     await window.happyDOM.close();

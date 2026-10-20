@@ -80,7 +80,7 @@ test('host toasts render in the foreground surface, retain close behavior, and f
     delete appWindow.workspaceHost;
     let listener: ((value: StatusToastMessage) => void) | undefined;
     let unsubscribed = false;
-    appWindow.workspaceSurface = { onStatusToast: callback => {
+    appWindow.workspaceSurface = { reportModal: () => {}, onStatusToast: callback => {
       listener = callback;
       return () => { unsubscribed = true; listener = undefined; };
     }, report: () => {}, onRailBlur: () => () => {}, onCommand: () => () => {} };

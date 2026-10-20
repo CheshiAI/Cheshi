@@ -8,6 +8,7 @@
 }
 .menu {
   composes: surface from './PopupSurface.module.css';
+  --popup-surface-background: var(--dropdown-background);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);

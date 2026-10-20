@@ -17,7 +17,7 @@ import { createWindowTopHighlight } from './window-top-highlight.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './window-appearance.mts';
 
 interface HostedWorkspace { surface: WorkspaceSurface; state: WorkspaceHostEntry; }
-const navigationViews = new Set(['explorer', 'chat', 'chats', 'notes', 'git', 'terminal', 'calendar', 'docker', 'plugins', 'settings', 'editor', 'search']);
+const navigationViews = new Set(['explorer', 'chat', 'chats', 'notes', 'git', 'terminal', 'calendar', 'canvas', 'docker', 'plugins', 'settings', 'editor', 'search']);
 
 /** One native window and fixed navigation shell, with isolated retained renderers. */
 export class WorkspaceHost {
@@ -40,7 +40,7 @@ export class WorkspaceHost {
     const window = this.window;
     this.railOverlay = new WorkspaceRailOverlayLayer(window, region => this.updateRailBlur(region));
     scope.ipc.on(`${channel}:rail-overlay`, (event, value: unknown) => {
-      if (event.sender === window.webContents) this.railOverlay.update(value, this.frame.x);
+      if (event.sender === window.webContents && !this.modalOpen()) this.railOverlay.update(value, this.frame.x);
     });
     scope.ipc.handle(`${channel}:status-toast`, (event, message: unknown) => {
       const target = this.activeId === null ? undefined : this.entries.get(this.activeId)?.surface.view.webContents;
@@ -59,12 +59,14 @@ export class WorkspaceHost {
     appearance.ready('dark');
     scope.ipc.handle(`${channel}:state`, () => this.snapshot());
     scope.ipc.handle(`${channel}:activate`, (_event, id: unknown) => {
+      if (this.modalOpen()) return;
       this.activate(this.entry(id), false);
       // Showing a native child view may transfer native focus even without an
       // explicit contents.focus(). Keep consecutive header key presses here.
       window.webContents.focus();
     });
     scope.ipc.handle(`${channel}:close`, async (_event, id: unknown) => {
+      if (this.modalOpen()) return;
       await closeWorkspaceWindow(this.entry(id).surface.window);
     });
     scope.ipc.handle(`${channel}:command`, (_event, input: unknown) => {
@@ -74,7 +76,10 @@ export class WorkspaceHost {
         && !(command.action === 'navigate' && typeof command.view === 'string' && navigationViews.has(command.view))) {
         throw new Error('Invalid workspace action.');
       }
-      if (this.activeId !== null) this.entry(this.activeId).surface.view.webContents.send(`${channel}:command`, input);
+      if (!this.modalOpen() && this.activeId !== null) this.entry(this.activeId).surface.view.webContents.send(`${channel}:command`, input);
+    });
+    window.webContents.on('focus', () => {
+      if (this.modalOpen() && this.activeId !== null) this.entry(this.activeId).surface.view.webContents.focus();
     });
     scope.ipc.handle(`${channel}:layout`, (_event, input: unknown) => {
       if (!input || typeof input !== 'object') throw new Error('Invalid workspace bounds.');
@@ -168,9 +173,13 @@ export class WorkspaceHost {
       },
     });
     surface.setBounds(this.frame);
-    view.webContents.on('did-start-loading', () => {
+    const clearModal = () => {
       if (this.activeId === id) this.railOverlay.hide();
-    });
+      const entry = this.entries.get(id);
+      if (entry?.state.modalOpen) { entry.state.modalOpen = false; this.publish(); }
+    };
+    view.webContents.on('did-start-loading', clearModal);
+    view.webContents.on('render-process-gone', clearModal);
     this.entries.set(id, { surface, state: { id, root, name: path.basename(root),
       iconColor: workspaceProjectColors(resolveCodeGraphDataRoot() ?? app.getPath('userData'), [root])[0],
       view: 'explorer', sidebarOpen: true, running: 0, attention: false } });
@@ -182,6 +191,14 @@ export class WorkspaceHost {
       const entry = this.entries.get(id);
       if (!entry) return;
       Object.assign(entry.state, { homiesEnabled: value.homiesEnabled === true, view: value.view, sidebarOpen: value.sidebarOpen, running: value.running, attention: value.attention });
+      this.publish();
+    });
+    scope.ipc.on(`${channel}:modal`, (event, open: unknown) => {
+      if (event.sender !== view.webContents || typeof open !== 'boolean') return;
+      const entry = this.entries.get(id);
+      if (!entry || entry.state.modalOpen === open) return;
+      entry.state.modalOpen = open;
+      if (open && this.activeId === id) this.railOverlay.hide();
       this.publish();
     });
     this.publish();
@@ -206,6 +223,9 @@ export class WorkspaceHost {
     const entry = typeof id === 'number' ? this.entries.get(id) : undefined;
     if (!entry || entry.surface.window.isDestroyed()) throw new Error('This workspace is no longer open.');
     return entry;
+  }
+  private modalOpen(): boolean {
+    return this.activeId !== null && this.entries.get(this.activeId)?.state.modalOpen === true;
   }
   private activate(entry: HostedWorkspace, focus = true): void {
     if (this.window.isDestroyed() || entry.surface.window.isDestroyed()) return;

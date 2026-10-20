@@ -4,4 +4,5 @@
 
 .surface {
   composes: surface from '../../shared/ui/PopupSurface.module.css';
+  --popup-surface-background: var(--popup-background);
 }
