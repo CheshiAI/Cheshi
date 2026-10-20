@@ -41,7 +41,7 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
   const calls: { args: string[]; input?: string }[] = [];
   const runtimePath = join(directory, 'runtime', createHash('sha256').update('docker:colima-cheshi').digest('hex'),
     `${agentId}-${createHash('sha256').update(realpathSync(workspace)).digest('hex').slice(0, 16)}`);
-  const id = 'a'.repeat(64);
+  let id = 'a'.repeat(64);
   const run: DockerCommand = async (args, input) => {
     calls.push({ args, input });
     if (dockerFailure) throw dockerFailure;
@@ -71,20 +71,21 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
       args.forEach((arg, index) => { if (arg === '--label') { const [key, value] = args[index + 1]!.split('='); labels[key!] = value!; } });
       return id;
     }
-    if (args[2] === 'container' && ['start', 'restart'].includes(args[3]!)) loadedToken = volumeToken;
+    if (args[2] === 'container' && ['start', 'restart'].includes(args[3]!)) { loadedToken = volumeToken; state = 'running'; }
     if (args.includes('rm')) created = false;
     return '';
   };
   const details = (): AgentDetails => ({ agent: { id, name: 'worker', image: 'worker', state },
     ready: seeded, busy, authenticated: true, threadId: null, error: null, logs: '', tasks });
   const exchanges: unknown[] = [];
-  const runtime = createSpecialistRuntime({ ...source, prepareCodeGraph, getProjectDocMaxBytes: () => projectDocMaxBytes, directory: join(directory, 'runtime'), buildContext: '/build', registry, run, checkProjectEnvironment: async () => {},
+  const makeRuntime = () => createSpecialistRuntime({ ...source, prepareCodeGraph, getProjectDocMaxBytes: () => projectDocMaxBytes, directory: join(directory, 'runtime'), buildContext: '/build', registry, run, checkProjectEnvironment: async () => {},
     codegraph: withCodeGraph ? async () => ({ result: 'fixture' }) : undefined,
     lifecycleControl: async () => ({ protocol: 1, idle: false, nextWakeAt: null }),
     collaborationExchange: async (_connection, body) => { exchanges.push(body); return { protocol: 1, received: [], outgoing: [] }; },
     account: async () => ({ home, models: [] }), management: { details: async () => { await beforeDetails?.(); return details(); },
       engines: async () => ({ engines: [], error: null }), snapshot: async engineId => ({ engineId, online: true, error: null, agents: [] }),
       control: async () => { throw new Error('unused'); } } });
+  let runtime = makeRuntime();
   const legacyRecovery = (protocol = 1, progress = false, work = false, integration = false, candidate = false, application = false, applicationInspection = false, conversation = false, activity = false) => {
     const filename = join(runtimePath, 'runtime.json');
     const config = JSON.parse(readFileSync(filename, 'utf8'));
@@ -134,13 +135,60 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
     labels['ai.cheshi.configuration'] = fingerprint;
     writeFileSync(filename, JSON.stringify({ ...previous, historyProtocol: 1, settingsFingerprint: fingerprint, revision: fingerprint }));
   };
-  return { runtime, registry, workspace, home, runtimePath, agentId, calls, exchanges, legacyRecovery, previousInstructionLimit, legacyHistory,
+  return { get runtime() { return runtime; }, registry, workspace, home, runtimePath, agentId, calls, exchanges, legacyRecovery, previousInstructionLimit, legacyHistory,
+    async restoreSleepingWorker(workerState: string) {
+      await runtime.dispose();
+      const filename = join(directory, 'runtime', 'lifecycle.json');
+      const journal = JSON.parse(readFileSync(filename, 'utf8'));
+      for (const entry of Object.values(journal) as { phase: string; failures: number; retryAt: number; error: string; details: AgentDetails }[]) {
+        entry.phase = 'sleeping'; entry.failures = 3; entry.retryAt = Date.now() + 60_000;
+        entry.error = 'Worker sleep is not confirmed. Inspect its container.';
+        entry.details.agent.state = workerState;
+      }
+      writeFileSync(filename, JSON.stringify(journal));
+      state = workerState;
+      runtime = makeRuntime();
+    },
+    setContainerId: (value: string) => { id = value; },
     removeContainer: () => { created = false; }, loadedToken: () => loadedToken,
     setProjectDocMaxBytes: (value: number) => { projectDocMaxBytes = value; },
     onDetails: (callback: () => Promise<void>) => { beforeDetails = callback; },
     setState: (value: string) => { state = value; },
     setTasks: (value: AgentDetails['tasks']) => { tasks = value; }, setContextMissing: (missing: boolean) => { contextMissing = missing; }, setDockerFailure: (error: Error | null) => { dockerFailure = error; }, failBootstrap: () => { failSeed = true; }, setBusy: () => { busy = true; }, setRemote: () => { remote = true; },
     request: () => ({ agentId, engineId: 'docker:colima-cheshi', action: 'start' as const }) };
+}
+for (const state of ['created', 'exited']) {
+  test(`retry wakes a persisted sleeping worker in ${state} state without replacing its container`, async () => {
+    const f = fixture();
+    try {
+      await f.runtime.request(f.workspace, f.request());
+      await f.restoreSleepingWorker(state);
+      const before = f.calls.length;
+      await fails(f.runtime.wake(f.workspace, { ...f.request(), action: 'status' }), 'Worker sleep is not confirmed');
+      const result = await f.runtime.wake(f.workspace, { ...f.request(), action: 'status' }, true);
+      expect(result).toMatchObject({ details: { ready: true, agent: { state: 'running' } } });
+      const status = await f.runtime.request(f.workspace, { ...f.request(), action: 'status' });
+      expect(status.lifecycle).toEqual({ phase: 'running', error: null });
+      const calls = f.calls.slice(before);
+      expect(calls.filter(c => c.args[2] === 'container' && c.args[3] === 'start')).toHaveLength(1);
+      expect(calls.filter(c => c.args[2] === 'container' && ['create', 'rm'].includes(c.args[3]!))
+        .map(c => c.args.slice(2, 4))).toEqual([]);
+    } finally { await f.runtime.dispose(); }
+  }, 40_000);
+}
+for (const condition of ['missing', 'replaced']) {
+  test(`retry does not start a ${condition} sleeping worker container`, async () => {
+    const f = fixture();
+    try {
+      await f.runtime.request(f.workspace, f.request());
+      await f.restoreSleepingWorker('created');
+      if (condition === 'missing') f.removeContainer();
+      else f.setContainerId('b'.repeat(64));
+      const before = f.calls.length;
+      await fails(f.runtime.wake(f.workspace, { ...f.request(), action: 'status' }, true), 'Worker sleep is not confirmed');
+      expect(f.calls.slice(before).some(c => ['start', 'restart', 'create', 'rm'].some(action => c.args.includes(action)))).toBe(false);
+    } finally { await f.runtime.dispose(); }
+  });
 }
 test('Codex update waits for active work then verifies and replaces only the container, retaining its volume', async () => {
   let version = '0.159.3';

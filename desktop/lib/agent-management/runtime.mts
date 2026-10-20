@@ -169,7 +169,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
       for (let attempt = 0; attempt < 30; attempt++) {
         const worker = await find(prefix, `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`);
         if (worker?.id !== id) return false;
-        if (worker.state === 'exited') return true;
+        if (worker.state === 'created' || worker.state === 'exited') return true;
         await delay(1000);
       }
       return false;
