@@ -22,6 +22,8 @@ async function withSettings(run: (view: {
   projectLoad?: Promise<number>; projectSave?: Promise<void>; failProjectSave?: boolean;
   flashLoad?: Promise<boolean>; flashSave?: Promise<void>; failFlashSave?: boolean;
   readiness?: FlashReadiness; install?: Promise<FlashReadiness>;
+  installFrom?: (source?: string) => Promise<FlashReadiness>;
+  checkUpdatesFrom?: (source?: string) => Promise<FlashReadiness>;
   homies?: HomieSetupStatus;
   homieInstall?: () => Promise<HomieSetupStatus>;
   homieStart?: () => Promise<HomieSetupStatus>;
@@ -56,9 +58,9 @@ async function withSettings(run: (view: {
     installHomieTools: options.homieInstall ?? (async () => homieStatus),
     startHomieEngine: options.homieStart ?? (async () => ({ ...homieStatus, connected: true, securityReady: true, detail: 'Connection ready.' })),
     getFlashReadiness: async () => options.readiness ?? { ready: true, detail: 'Files available.' },
-    checkFlashUpdates: async () => ({ ready: true, detail: 'Installed.', installedVersion: '0.1.0', availableVersion: '0.2.0' }),
+    checkFlashUpdates: options.checkUpdatesFrom ?? (async () => ({ ready: true, detail: 'Installed.', installedVersion: '0.1.0', availableVersion: '0.2.0' })),
     uninstallFlash: async () => ({ ready: false, detail: 'Flash plugin removed. Saved conversations and model files have been kept.' }),
-    installFlash: async () => options.install ?? { ready: true, detail: 'Installed.' },
+    installFlash: options.installFrom ?? (async () => options.install ?? { ready: true, detail: 'Installed.' }),
     getFlashEnabled: async () => options.flashLoad ?? flashEnabled,
     setFlashEnabled: async enabled => {
       flashWrites.push(enabled); await options.flashSave;
@@ -263,6 +265,39 @@ test('Flash blocks ON for missing files, offers installation, and leaves OFF unt
     await act(async () => button(container, 'Enable Flash memory').click());
     expect(flashWrites).toEqual([true]);
   }, { readiness: { ready: false, detail: 'Missing model' }, install: install.promise });
+});
+
+test('Flash test source is used for install and updates, locked while pending and cleared to the default', async () => {
+  const pending = createDeferred<FlashReadiness>();
+  const installs: (string | undefined)[] = [], updates: (string | undefined)[] = [];
+  await withSettings(async ({ container, window }) => {
+    await act(async () => category(container, 'Flash').click());
+    const input = container.querySelector<HTMLInputElement>('[aria-label="Test installation source"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, ' /local/flash ');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => button(container, 'Check updates').click());
+    expect(updates).toEqual(['/local/flash']);
+    await act(async () => button(container, 'Install Flash').click());
+    expect(installs).toEqual(['/local/flash']);
+    expect(input.disabled).toBe(true);
+    await act(async () => pending.reject(new Error('The Flash package archive is missing.')));
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('archive is missing');
+    expect(input.disabled).toBe(false);
+    expect(input.value).toBe(' /local/flash ');
+    await act(async () => button(container, 'Clear Flash installation source').click());
+    await act(async () => button(container, 'Check updates').click());
+    expect(updates).toEqual(['/local/flash', undefined]);
+    await act(async () => button(container, 'Install Flash').click());
+    expect(installs).toEqual(['/local/flash', undefined]);
+  }, { installFrom: async source => {
+    installs.push(source);
+    return source ? pending.promise : { ready: true, detail: 'Installed' };
+  }, checkUpdatesFrom: async source => {
+    updates.push(source);
+    return { ready: false, detail: 'Available' };
+  } });
 });
 
 test('Flash can always be turned OFF even if files later disappear', async () => {

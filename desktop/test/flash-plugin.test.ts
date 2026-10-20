@@ -1,11 +1,11 @@
 import { expect, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink as createSymbolicLink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink as createSymbolicLink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { FlashInstaller } from '../lib/flash/installer.mts';
 import { FLASH_MODEL, FLASH_MODEL_REVISION, flashInstallationPaths } from '../lib/flash/installation.mts';
-import { extractPlugin, loadPluginRelease, parsePluginRelease, pluginDigest, pluginSelection, pluginVersionPath,
+import { extractPlugin, loadPluginRelease, parsePluginRelease, pluginDigest, pluginSelection, pluginVersionPath, resolvePluginSource,
   type FlashPluginManifest, type FlashPluginRelease } from '../lib/flash/plugin-package.mts';
 import { deferred, rejection } from './flash-test-helpers.ts';
 
@@ -134,4 +134,58 @@ test('a release response is bounded and redirects cannot downgrade HTTPS or send
     async () => new Response('x'.repeat(65537)))))).toContain('too large');
   expect(String(await rejection(() => loadPluginRelease('https://github.com/owner/repo/release.json', signal,
     async () => new Response(null, { status: 302, headers: { location: 'http://github.com/file' } }))))).toContain('destination');
+});
+
+test('a local project, package folder or JSON can override the configured release without network access', async () => {
+  const f = await fixture();
+  const installer = new FlashInstaller({ ...f.options, source: 'https://example.com/unavailable.json',
+    download: async () => { throw new Error('Unexpected network request'); } });
+  try {
+    const { release, archive } = await f.build('0.1.0');
+    const folder = join(f.root, 'dist', 'plugin');
+    await mkdir(folder, { recursive: true });
+    const manifest = join(folder, 'cheshi-flash-darwin-arm64.json');
+    await writeFile(manifest, JSON.stringify(release));
+    await copyFile(archive, join(folder, release.archive.file));
+    for (const source of [f.root, folder, manifest]) {
+      expect(await resolvePluginSource(source)).toBe(manifest);
+      expect((await installer.checkUpdates(source)).availableVersion).toBe('0.1.0');
+    }
+    expect((await installer.install(f.root)).installedVersion).toBe('0.1.0');
+    expect(pluginSelection(f.data).version).toBe('0.1.0');
+  } finally { installer.dispose(); await f.close(); }
+});
+
+test('invalid local sources report missing paths, build output, JSON and archives', async () => {
+  const f = await fixture(), installer = new FlashInstaller(f.options);
+  try {
+    expect(String(await rejection(() => installer.install(join(f.root, 'missing'))))).toContain('source was not found');
+    expect(String(await rejection(() => installer.checkUpdates(f.root)))).toContain('Build the Flash plugin first');
+    const { archive } = await f.build('0.1.0');
+    await rm(archive);
+    expect(String(await rejection(() => installer.install(f.source)))).toContain('archive is missing');
+    await writeFile(f.source, '{broken');
+    expect(String(await rejection(() => installer.checkUpdates(f.source)))).toContain('not valid JSON');
+    await f.build('0.1.0');
+    expect((await installer.checkUpdates('   ')).availableVersion).toBe('0.1.0');
+    expect((await installer.status()).detail).toBe('Fixture files');
+  } finally { installer.dispose(); await f.close(); }
+});
+
+test('an HTTPS override supplies both the manifest and archive for one installation', async () => {
+  const f = await fixture();
+  try {
+    const { release, archive } = await f.build('0.1.0');
+    const bytes = await readFile(archive);
+    const source = 'https://example.com/flash/release.json';
+    const urls: string[] = [];
+    const installer = new FlashInstaller({ ...f.options, download: async url => {
+      urls.push(url);
+      return url === source ? Response.json(release) : new Response(bytes);
+    } });
+    try {
+      expect((await installer.install(source)).installedVersion).toBe('0.1.0');
+      expect(urls).toEqual([source, `https://example.com/flash/${release.archive.file}`]);
+    } finally { installer.dispose(); }
+  } finally { await f.close(); }
 });

@@ -1,5 +1,5 @@
 import type { IpcRenderer, IpcRendererEvent } from 'electron';
-import { SETTINGS_CHANNELS, parseHomiesEnabled, parseFlashEnabled, parseFlashReadiness, parseProjectDocMaxBytes } from '../shared/settings.ts';
+import { SETTINGS_CHANNELS, parseHomiesEnabled, parseFlashEnabled, parseFlashReadiness, parseFlashInstallSource, parseProjectDocMaxBytes } from '../shared/settings.ts';
 import type { SettingsApi } from '../shared/settings.ts';
 import { parseHomieSetupStatus } from '../shared/homie-setup.ts';
 
@@ -16,8 +16,8 @@ export function createSettingsApi(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'remo
     async installHomieTools() { return parseHomieSetupStatus(await ipc.invoke(SETTINGS_CHANNELS.installHomieTools)); },
     async startHomieEngine() { return parseHomieSetupStatus(await ipc.invoke(SETTINGS_CHANNELS.startHomieEngine)); },
     async getFlashReadiness() { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.getFlashReadiness)); },
-    async installFlash() { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.installFlash)); },
-    async checkFlashUpdates() { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.checkFlashUpdates)); },
+    async installFlash(source) { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.installFlash, parseFlashInstallSource(source))); },
+    async checkFlashUpdates(source) { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.checkFlashUpdates, parseFlashInstallSource(source))); },
     async uninstallFlash() { return parseFlashReadiness(await ipc.invoke(SETTINGS_CHANNELS.uninstallFlash)); },
     async getFlashEnabled() { return parseFlashEnabled(await ipc.invoke(SETTINGS_CHANNELS.getFlashEnabled)); },
     async setFlashEnabled(enabled) {

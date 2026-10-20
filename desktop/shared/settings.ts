@@ -31,6 +31,23 @@ export function parseFlashEnabled(value: unknown): boolean {
   return value === true;
 }
 
+export function parseFlashInstallSource(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.length > 4096 || /[\x00-\x1f\x7f]/.test(value)) {
+    throw new TypeError('Enter an absolute Flash folder or JSON path, or an HTTPS release URL.');
+  }
+  const source = value.trim();
+  if (!source) return undefined;
+  if (source.startsWith('/')) return source;
+  let url: URL;
+  try { url = new URL(source); }
+  catch { throw new TypeError('Enter an absolute Flash folder or JSON path, or an HTTPS release URL.'); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.hash) {
+    throw new TypeError('Flash release URLs must use HTTPS without credentials or fragments.');
+  }
+  return source;
+}
+
 export interface FlashInstallProgress {
   startedAt: number;
   downloadedBytes?: number;
@@ -81,8 +98,8 @@ export interface SettingsApi {
   installHomieTools(): Promise<HomieSetupStatus>;
   startHomieEngine(): Promise<HomieSetupStatus>;
   getFlashReadiness(): Promise<FlashReadiness>;
-  installFlash(): Promise<FlashReadiness>;
-  checkFlashUpdates(): Promise<FlashReadiness>;
+  installFlash(source?: string): Promise<FlashReadiness>;
+  checkFlashUpdates(source?: string): Promise<FlashReadiness>;
   uninstallFlash(): Promise<FlashReadiness>;
   getFlashEnabled(): Promise<boolean>;
   setFlashEnabled(enabled: boolean): Promise<boolean>;

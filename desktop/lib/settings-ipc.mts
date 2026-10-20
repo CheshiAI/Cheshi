@@ -1,7 +1,7 @@
 import type { HomiesActivation } from './homies-activation.mts';
 import { onWindowClosed } from './window-close-cleanup.mts';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
-import { SETTINGS_CHANNELS, parseFlashEnabled, type FlashReadiness } from '../shared/settings.ts';
+import { SETTINGS_CHANNELS, parseFlashEnabled, parseFlashInstallSource, type FlashReadiness } from '../shared/settings.ts';
 import type { createSettingsService } from './settings-service.mts';
 import type { FlashActivation } from './flash/activation.mts';
 import type { HomieSetup } from './homie-setup.mts';
@@ -11,8 +11,8 @@ export function registerSettingsIpc(options: {
   flash?: Pick<FlashActivation, 'getFlashEnabled' | 'setFlashEnabled' | 'subscribeFlashEnabled' | 'readiness'>;
   activation?: Pick<HomiesActivation, 'getHomiesEnabled' | 'setHomiesEnabled' | 'subscribeHomiesEnabled'>;
   homies?: Pick<HomieSetup, 'status' | 'install' | 'start'>;
-  installation?: { status(): Promise<FlashReadiness>; install(): Promise<FlashReadiness>; isInstalling(): boolean;
-    checkUpdates(): Promise<FlashReadiness>; uninstall(): Promise<FlashReadiness> };
+  installation?: { status(): Promise<FlashReadiness>; install(source?: string): Promise<FlashReadiness>; isInstalling(): boolean;
+    checkUpdates(source?: string): Promise<FlashReadiness>; uninstall(): Promise<FlashReadiness> };
 }) {
   const owner = options.window.webContents;
   const channels: string[] = [];
@@ -58,13 +58,13 @@ export function registerSettingsIpc(options: {
     handle(SETTINGS_CHANNELS.getFlashEnabled, () => options.flash?.getFlashEnabled() ?? false);
     handle(SETTINGS_CHANNELS.getFlashReadiness, () => options.installation?.status()
       ?? options.flash?.readiness() ?? { ready: false, detail: 'Flash installation is unavailable.' });
-    handle(SETTINGS_CHANNELS.installFlash, () => {
+    handle(SETTINGS_CHANNELS.installFlash, (_event, source: unknown) => {
       if (!options.installation) throw new Error('Flash installation is unavailable.');
-      return options.installation.install();
+      return options.installation.install(parseFlashInstallSource(source));
     });
-    handle(SETTINGS_CHANNELS.checkFlashUpdates, () => {
+    handle(SETTINGS_CHANNELS.checkFlashUpdates, (_event, source: unknown) => {
       if (!options.installation) throw new Error('Flash installation is unavailable.');
-      return options.installation.checkUpdates();
+      return options.installation.checkUpdates(parseFlashInstallSource(source));
     });
     handle(SETTINGS_CHANNELS.uninstallFlash, () => {
       if (!options.installation) throw new Error('Flash installation is unavailable.');

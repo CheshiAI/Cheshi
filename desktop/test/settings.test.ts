@@ -7,13 +7,58 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createSettingsService } from '../lib/settings-service.mts';
 import { createSettingsApi } from '../lib/settings-preload.cts';
-import { SETTINGS_CHANNELS, parseFlashReadiness } from '../shared/settings.ts';
+import { SETTINGS_CHANNELS, parseFlashReadiness, parseFlashInstallSource } from '../shared/settings.ts';
+import { rejection } from './flash-test-helpers.ts';
 
 function fixture() {
   const directory = mkdtempSync(path.join(tmpdir(), 'cheshi-settings-'));
   const options = { directory, settingsPath: path.join(directory, 'settings.json') };
   return { options, service: createSettingsService(options), close: () => rmSync(directory, { recursive: true, force: true }) };
 }
+
+test('Flash source accepts only blank, absolute local paths and credential-free HTTPS URLs', () => {
+  expect(parseFlashInstallSource(undefined)).toBeUndefined();
+  expect(parseFlashInstallSource('  ')).toBeUndefined();
+  expect(parseFlashInstallSource(' /local/Flash project ')).toBe('/local/Flash project');
+  expect(parseFlashInstallSource('https://example.com/release.json')).toBe('https://example.com/release.json');
+  for (const value of [null, 1, {}, true, 'relative/path', '~/flash', 'http://example.com/file',
+    'file:///tmp/release.json', 'https://user:password@example.com/file', 'https://example.com/file#part',
+    '/tmp/a\nb', 'x'.repeat(4097)]) {
+    expect(() => parseFlashInstallSource(value)).toThrow();
+  }
+});
+
+test('Flash source crosses preload and owner-checked IPC for install and updates', async () => {
+  const f = fixture();
+  const routes = new Map<string, Parameters<IpcMain['handle']>[1]>();
+  const calls: { action: string; source?: string }[] = [];
+  const owner = { mainFrame: {}, isDestroyed: () => false, send() {} };
+  const window = Object.assign(new EventEmitter(), { webContents: owner });
+  const status = async () => ({ ready: true, detail: 'Ready' });
+  const registration = registerSettingsIpc({ window: window as unknown as BrowserWindow, service: f.service,
+    installation: { status, isInstalling: () => false, uninstall: status,
+      install: async source => { calls.push({ action: 'install', source }); return status(); },
+      checkUpdates: async source => { calls.push({ action: 'updates', source }); return status(); } },
+    ipc: { handle: (channel, listener) => { routes.set(channel, listener); }, removeHandler: channel => { routes.delete(channel); } } });
+  const invoke = (channel: string, value?: unknown, sender: unknown = owner) =>
+    routes.get(channel)!({ sender, senderFrame: owner.mainFrame } as IpcMainInvokeEvent, value);
+  const api = createSettingsApi(Object.assign(new EventEmitter(), {
+    invoke: async (channel: string, value?: unknown) => invoke(channel, value),
+  }) as IpcRenderer);
+  try {
+    await api.installFlash(' /local/flash ');
+    await api.checkFlashUpdates('https://example.com/release.json');
+    await api.installFlash('');
+    expect(calls).toEqual([{ action: 'install', source: '/local/flash' },
+      { action: 'updates', source: 'https://example.com/release.json' }, { action: 'install', source: undefined }]);
+    expect(String(await rejection(() => api.installFlash('relative')))).toContain('absolute');
+    for (const channel of [SETTINGS_CHANNELS.installFlash, SETTINGS_CHANNELS.checkFlashUpdates]) {
+      expect(() => invoke(channel, {}, owner)).toThrow('absolute');
+      expect(() => invoke(channel, '/local/flash', {})).toThrow('workspace window');
+    }
+    expect(calls).toHaveLength(3);
+  } finally { registration.dispose(); f.close(); }
+});
 
 test('Flash defaults off, persists across restarts and accepts only literal booleans', () => {
   const f = fixture();

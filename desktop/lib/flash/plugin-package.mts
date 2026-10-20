@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync } from 'node:fs';
-import { lstat, mkdir, open, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { runFlashCommand } from './model-download.mts';
+import { parseFlashInstallSource } from '../../shared/settings.ts';
 
 export interface FlashPluginManifest {
   schema: 1; id: 'cheshi-flash'; version: string; platform: 'darwin'; arch: 'arm64';
@@ -89,6 +90,27 @@ export function defaultPluginSource() {
   return process.env.CHESHI_FLASH_RELEASE_MANIFEST?.trim()
     || 'https://github.com/CheshiAI/Cheshi-flash/releases/latest/download/cheshi-flash-darwin-arm64.json';
 }
+async function localSourceStat(path: string) {
+  try { return await stat(path); }
+  catch (error) {
+    if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return null;
+    throw new FlashPluginError('Could not read the local Flash package. Check file access permissions.');
+  }
+}
+export async function resolvePluginSource(value: string): Promise<string> {
+  const source = parseFlashInstallSource(value);
+  assertPlugin(source, 'Enter a Flash installation source.');
+  if (!isAbsolute(source)) return source;
+  const entry = await localSourceStat(source);
+  assertPlugin(entry, 'Flash installation source was not found. Check the folder or JSON path.');
+  if (entry.isFile()) return source;
+  assertPlugin(entry.isDirectory(), 'Flash installation source must be a folder or JSON file.');
+  const manifestName = 'cheshi-flash-darwin-arm64.json';
+  for (const candidate of [join(source, manifestName), join(source, 'dist', 'plugin', manifestName)]) {
+    if ((await localSourceStat(candidate))?.isFile()) return candidate;
+  }
+  throw new FlashPluginError('No Flash release JSON was found in this folder or dist/plugin. Build the Flash plugin first.');
+}
 export async function loadPluginRelease(source: string, signal: AbortSignal, download: PluginFetch = fetch) {
   let text: string;
   if (isAbsolute(source)) {
@@ -107,7 +129,15 @@ export async function loadPluginRelease(source: string, signal: AbortSignal, dow
     } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
     text = Buffer.concat(chunks).toString('utf8');
   }
-  return parsePluginRelease(JSON.parse(text));
+  let value: unknown;
+  try { value = JSON.parse(text); }
+  catch { throw new FlashPluginError('The Flash release file is not valid JSON. Select the generated release JSON.'); }
+  const release = parsePluginRelease(value);
+  if (isAbsolute(source)) {
+    const archive = await localSourceStat(join(dirname(source), release.archive.file));
+    assertPlugin(archive?.isFile(), 'The Flash package archive is missing. Keep the release JSON and its .tar.gz package in the same folder.');
+  }
+  return release;
 }
 export async function downloadPlugin(source: string, release: FlashPluginRelease, target: string, signal: AbortSignal,
   progress: (received: number, total: number) => void, download: PluginFetch = fetch) {

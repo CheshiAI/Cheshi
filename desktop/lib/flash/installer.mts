@@ -5,7 +5,7 @@ import type { FlashInstallProgress, FlashReadiness } from '../../shared/settings
 import { FLASH_MODEL, FLASH_MODEL_REVISION, flashInstallationPaths, inspectFlashInstallation } from './installation.mts';
 import { FLASH_MODEL_DOWNLOAD_SCRIPT, flashDownloadProgressReader, runFlashCommand } from './model-download.mts';
 import { assertPlugin, defaultPluginSource, downloadPlugin, extractPlugin, FlashPluginError, loadPluginRelease, newerPlugin,
-  parsePluginManifest, pluginRoot, pluginSelection, pluginVersionPath, selectPlugin,
+  parsePluginManifest, pluginRoot, pluginSelection, pluginVersionPath, resolvePluginSource, selectPlugin,
   type FlashPluginRelease, type PluginFetch } from './plugin-package.mts';
 import { lockPluginInstallation } from './plugin-lock.mts';
 import { FlashRuntime } from './runtime.mts';
@@ -38,13 +38,16 @@ export class FlashInstaller {
     const result = await this.options.readiness();
     return { ...result, ...versions, detail: this.failure ?? result.detail };
   }
-  async checkUpdates(): Promise<FlashReadiness> {
+  async checkUpdates(source?: string): Promise<FlashReadiness> {
+    assertPlugin(!this.pending, 'Wait for the current Flash operation to finish.');
     const signal = AbortSignal.any([this.stopped.signal, AbortSignal.timeout(30_000)]);
-    this.available = await this.release(signal);
+    this.available = null;
+    this.available = await this.release(await this.source(source), signal);
+    this.failure = null;
     return this.status();
   }
-  install(): Promise<FlashReadiness> {
-    return this.operation('Preparing Flash plugin…', signal => this.prepare(signal));
+  install(source?: string): Promise<FlashReadiness> {
+    return this.operation('Preparing Flash plugin…', async signal => this.prepare(await this.source(source), signal));
   }
   uninstall(): Promise<FlashReadiness> {
     return this.operation('Removing Flash plugin…', async () => {
@@ -80,14 +83,17 @@ export class FlashInstaller {
       throw new Error(this.failure);
     } finally { await unlock?.(); }
   }
-  private async release(signal: AbortSignal) {
-    const release = await loadPluginRelease(this.options.source ?? defaultPluginSource(), signal, this.options.download);
+  private source(source?: string) {
+    return resolvePluginSource(source?.trim() || this.options.source || defaultPluginSource());
+  }
+  private async release(source: string, signal: AbortSignal) {
+    const release = await loadPluginRelease(source, signal, this.options.download);
     assertPlugin(release.platform === process.platform && release.arch === process.arch, 'Flash plugin platform is incompatible.');
     assertPlugin(release.model === FLASH_MODEL && release.modelRevision === FLASH_MODEL_REVISION, 'Flash model version is incompatible.');
     return release;
   }
-  private async prepare(signal: AbortSignal): Promise<FlashReadiness> {
-    const release = await this.release(signal); this.available = release;
+  private async prepare(source: string, signal: AbortSignal): Promise<FlashReadiness> {
+    const release = await this.release(source, signal); this.available = release;
     const selection = pluginSelection(this.options.userData);
     assertPlugin(!selection.version || !newerPlugin(selection.version, release.version), 'Flash plugin downgrades are not supported.');
     const root = pluginRoot(this.options.userData), staging = await mkdtemp(join(root, '.install-'));
@@ -98,7 +104,7 @@ export class FlashInstaller {
     try {
       this.detail = 'Downloading Flash plugin package…';
       const archive = join(staging, 'plugin.tar.gz');
-      await downloadPlugin(this.options.source ?? defaultPluginSource(), release, archive, signal,
+      await downloadPlugin(source, release, archive, signal,
         (downloadedBytes, totalBytes) => { this.progress = { startedAt, downloadedBytes, totalBytes, phase: 'package' }; }, this.options.download);
       this.detail = 'Unpacking and checking Flash plugin…'; this.progress = { startedAt };
       const candidate = await extractPlugin(archive, staging, signal);

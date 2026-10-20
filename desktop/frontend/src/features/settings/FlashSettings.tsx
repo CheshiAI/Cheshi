@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FlashReadiness, SettingsApi } from '../../../../shared/settings';
-import { NeumorphicButton } from '../../shared/ui';
+import { NeumorphicButton, NeumorphicTextField } from '../../shared/ui';
 import styles from './SettingsView.module.css';
 
 export function FlashSettings({ api }: { api?: SettingsApi }) {
@@ -12,6 +12,7 @@ export function FlashSettings({ api }: { api?: SettingsApi }) {
   const [removing, setRemoving] = useState(false);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateNote, setUpdateNote] = useState<string | null>(null);
+  const [source, setSource] = useState('');
   const [operationStartedAt, setOperationStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now);
   const pending = useRef(false);
@@ -83,16 +84,16 @@ export function FlashSettings({ api }: { api?: SettingsApi }) {
 
   const install = async () => {
     if (!api || pending.current || enabled || readiness?.installing) return;
-    pending.current = true; setInstalling(true); setError(null); setOperationStartedAt(Date.now());
+    pending.current = true; setInstalling(true); setError(null); setUpdateNote(null); setOperationStartedAt(Date.now());
     readinessRevision.current++;
     setReadiness({ ready: false, installing: true, detail: 'Preparing Flash…' });
     try {
-      const status = await api.installFlash();
+      const status = await api.installFlash(source.trim() || undefined);
       if (mounted.current) { readinessRevision.current++; setReadiness(status); }
-    } catch {
+    } catch (cause) {
       if (mounted.current) {
         readinessRevision.current++;
-        setError('Flash installation did not complete. Check the status below, then retry.');
+        setError(cause instanceof Error ? cause.message : 'Flash installation did not complete. Check the status below, then retry.');
         setReadiness(null);
       }
     } finally {
@@ -104,13 +105,13 @@ export function FlashSettings({ api }: { api?: SettingsApi }) {
     if (!api || pending.current) return;
     pending.current = true; setCheckingUpdates(true); setError(null); setUpdateNote(null);
     try {
-      const status = await api.checkFlashUpdates();
+      const status = await api.checkFlashUpdates(source.trim() || undefined);
       if (mounted.current) {
         readinessRevision.current++; setReadiness(status);
         setUpdateNote(status.availableVersion ? `Flash ${status.availableVersion} is available.` : 'The installed Flash plugin is up to date.');
       }
-    } catch {
-      if (mounted.current) setError('Could not check Flash updates. The release may not be published or accessible yet.');
+    } catch (cause) {
+      if (mounted.current) setError(cause instanceof Error ? cause.message : 'Could not check Flash updates. The release may not be published or accessible yet.');
     } finally { pending.current = false; if (mounted.current) setCheckingUpdates(false); }
   };
   const uninstall = async () => {
@@ -144,6 +145,16 @@ export function FlashSettings({ api }: { api?: SettingsApi }) {
           </NeumorphicButton>
         </div>
         <p className={styles.description}>Search saved conversations with Flash. Requires a local Flash installation and offline model.</p>
+        <label className={styles.form}>
+          <span className={styles.settingLabel}>Test installation source</span>
+          <NeumorphicTextField variant="standard" aria-label="Test installation source"
+            placeholder="Flash project folder, release JSON path, or HTTPS URL"
+            value={source} disabled={!api || busy || installationActive || checkingUpdates}
+            onChange={event => { setSource(event.target.value); setError(null); setUpdateNote(null); }}
+            onClear={() => { setSource(''); setError(null); setUpdateNote(null); }} clearLabel="Clear Flash installation source" />
+        </label>
+        <p className={styles.description}>Use a local Flash project or package folder, a release JSON file, or an HTTPS release URL.
+          Leave empty to use the default release. This test value is not saved.</p>
         <div className={`${styles.actions} ${styles.flashActions}`}>
           <NeumorphicButton variant="standard" disabled={!api || enabled !== false || busy || installationActive || checkingUpdates}
             onClick={() => { void install(); }}>{installationActive ? (removing ? 'Removing Flash…' : 'Installing Flash…')
