@@ -3,6 +3,57 @@ import { Window } from 'happy-dom';
 import { act } from 'react';
 import { MemoSidebar } from '../frontend/src/features/sticky-notes/MemoSidebar';
 import type { StickyNotesLibraryApi, StickyNoteSummary } from '../shared/sticky-notes';
+import { SidebarStatusContext } from '../frontend/src/shared/ui/SidebarStatusMessage';
+import { withDOM } from './agent-chats-test-dom';
+
+test('empty Memo guidance moves to the active sidebar footer after loading and clears when notes arrive', async () => {
+  await withDOM(async ui => {
+    const sidebar = document.createElement('aside'), status = document.createElement('footer');
+    document.body.append(sidebar, status);
+    let finishLoading!: (notes: StickyNoteSummary[]) => void;
+    const pending = new Promise<StickyNoteSummary[]>(resolve => { finishLoading = resolve; });
+    let notes: StickyNoteSummary[] = [], loading = true;
+    let changed = () => {};
+    const api: StickyNotesLibraryApi = {
+      list: async query => loading ? pending : query?.trim() ? [] : notes,
+      create: async () => {}, open: async () => {}, rename: async () => {},
+      deleteSelected: async ids => ({ deletedIds: ids, failedIds: [] }),
+      onChanged: listener => { changed = listener; return () => {}; },
+    };
+    const render = (activePanel: string | null) => ui.render(
+      <SidebarStatusContext.Provider value={{ activePanel, target: status }}>
+        <MemoSidebar api={api} target={sidebar} />
+      </SidebarStatusContext.Provider>,
+    );
+    const message = 'no notes yet. create one with +.';
+    await render('memos');
+    expect(status.textContent).toBe('');
+    expect(sidebar.querySelector('[aria-label="Loading notes…"]')).not.toBeNull();
+    await act(async () => { loading = false; finishLoading([]); });
+    expect(status.textContent).toBe(message);
+    expect(status.querySelector('svg')).toBeNull();
+    expect(sidebar.textContent).not.toContain(message);
+    expect(sidebar.querySelector('[aria-label="New note"]')).not.toBeNull();
+    for (const panel of ['chats', 'canvas', 'agent-chats', null]) {
+      await render(panel);
+      expect(status.textContent).toBe('');
+    }
+    await render('memos');
+    expect(status.textContent).toBe(message);
+    notes = [{ id: 'new', title: 'New memo', preview: '', createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 }];
+    await act(async () => changed());
+    expect(status.textContent).toBe('');
+    expect(sidebar.querySelector('[data-note-id="new"]')).not.toBeNull();
+    await ui.type('Search notes', 'missing');
+    expect(status.textContent).toBe('');
+    expect(sidebar.textContent).toContain('No matching notes.');
+    await ui.type('Search notes', '');
+    notes = []; await act(async () => changed());
+    expect(status.textContent).toBe(message);
+    await ui.render(null);
+    expect(status.textContent).toBe('');
+  });
+});
 
 test('Memo sidebar searches, renames inline, refreshes and deletes only the confirmed note', async () => {
   const window = new Window();

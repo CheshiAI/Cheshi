@@ -132,11 +132,13 @@ function ChatPane({
               <X aria-hidden="true" />
             </TooltipButton>
           </div>
-          <TooltipTarget content={contextDescription} placement="below">
-            <span className={styles.contextUsage} tabIndex={0} data-context-usage>
-              Context {contextPercent === null ? '—' : `${contextPercent}%`}
-            </span>
-          </TooltipTarget>
+          {controller.state.activeSessionId && (
+            <TooltipTarget content={contextDescription} placement="below">
+              <span className={styles.contextUsage} tabIndex={0} data-context-usage>
+                Context {contextPercent === null ? '—' : `${contextPercent}%`}
+              </span>
+            </TooltipTarget>
+          )}
         </div>
       </LiquidGlassPanel>
       <ChatView

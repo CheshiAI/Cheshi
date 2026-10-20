@@ -1,5 +1,5 @@
 import { Gauge } from 'lucide-react';
-import { useCallback, useId, useRef, useState, type ComponentProps, type RefObject } from 'react';
+import { useCallback, useId, useRef, useState, type ComponentProps, type Ref, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
 import type { CodexAccountsSnapshot } from '../../../../shared/codex-accounts';
@@ -17,9 +17,10 @@ interface WorkspaceStatusBarProps extends Pick<NonNullable<ComponentProps<typeof
   'selectionDisabledReason' | 'onBeforeSelect' | 'onSelectionFinished'> {
   onAccountInitialLoad: () => void;
   blurSourceRef: RefObject<HTMLElement | null>;
+  sidebarStatusRef?: Ref<HTMLSpanElement>;
 }
 
-export function WorkspaceStatusBar({ onAccountInitialLoad, blurSourceRef, ...accountProps }: WorkspaceStatusBarProps) {
+export function WorkspaceStatusBar({ onAccountInitialLoad, blurSourceRef, sidebarStatusRef, ...accountProps }: WorkspaceStatusBarProps) {
   const accountId = useId();
   const [accounts, setAccounts] = useState<CodexAccountsSnapshot | null>(null);
   const [accountError, setAccountError] = useState<string | null>(null);
@@ -51,6 +52,7 @@ export function WorkspaceStatusBar({ onAccountInitialLoad, blurSourceRef, ...acc
 
   return (
     <footer className={styles.bar} aria-label="Workspace status">
+      {sidebarStatusRef && <span ref={sidebarStatusRef} className={styles.sidebarStatus} role="status" aria-label="Sidebar guidance" />}
       <AppUpdateIndicator />
       <span className={styles.spacer} aria-hidden="true" />
       <CodexUpdateIndicator />

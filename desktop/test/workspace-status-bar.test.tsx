@@ -96,6 +96,17 @@ function harness(props: ComponentProps<typeof WorkspaceStatusBar>) {
 }
 
 const initialProps = { onAccountInitialLoad: () => {}, blurSourceRef: { current: null } };
+
+test('places sidebar guidance before the status controls and keeps its ref out of account props', () => {
+  const sidebarStatusRef = { current: null };
+  const tree = harness({ ...initialProps, sidebarStatusRef }).render();
+  const guidance = elements(tree.props.children)[0]!;
+  expect(guidance.props.role).toBe('status');
+  expect(guidance.props['aria-label']).toBe('Sidebar guidance');
+  expect(guidance.props.ref).toBe(sidebarStatusRef);
+  expect(find(tree, element => element.type === 'AccountUsagePanel').props.sidebarStatusRef).toBeUndefined();
+});
+
 const accountSnapshot: CodexAccountsSnapshot = {
   activeId: 'active', profiles: [{
     id: 'active', label: 'Personal', email: 'person@example.com', login: { state: 'signed_in', error: null },

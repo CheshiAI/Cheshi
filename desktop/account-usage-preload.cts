@@ -4,6 +4,7 @@ import { USAGE_POPOVER_CHANNEL as channel, type UsagePopoverApi, type UsagePopov
 const api: UsagePopoverApi = {
   read: () => ipcRenderer.invoke(`${channel}:read`),
   resize: height => ipcRenderer.invoke(`${channel}:resize`, height),
+  ready: revision => ipcRenderer.invoke(`${channel}:ready`, revision),
   action: action => ipcRenderer.invoke(`${channel}:action`, action),
   onChange(listener) {
     const receive = (_event: IpcRendererEvent, state: UsagePopoverState) => listener(state);

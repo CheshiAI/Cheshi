@@ -2,7 +2,7 @@ import { SessionActivityBackground } from '../../shared/ui/SessionActivityBackgr
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { MessageCircleDashed, MessageSquareText, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { MessageCircleDashed, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
 
 import { LoadingState, NeumorphicButton } from '../../shared/ui';
 import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
@@ -13,6 +13,7 @@ import { formatSessionElapsedTime, useChatSessionClock } from './chatSessionTime
 import styles from './ChatSessionList.module.css';
 import { usePullToRefresh } from '../../shared/usePullToRefresh';
 import { PullToRefreshStatus } from '../../shared/ui/PullToRefreshStatus';
+import { SidebarStatusMessage } from '../../shared/ui/SidebarStatusMessage';
 
 interface ChatSessionListProps {
   search?: ReactNode;
@@ -132,10 +133,7 @@ export function ChatSessionList({
             <LoadingState className={styles.loading} />
           )}
           {!loading && sessions.length === 0 && (
-            <div className={styles.empty}>
-              <MessageSquareText aria-hidden="true" />
-              <span>Your workspace chats will appear here.</span>
-            </div>
+            <SidebarStatusMessage panel="chats">your workspace chats will appear here.</SidebarStatusMessage>
           )}
           {sortedSessions.map((session) => {
             const reason = deleteReason(session.id);

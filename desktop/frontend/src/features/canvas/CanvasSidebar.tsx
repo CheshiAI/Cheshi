@@ -7,6 +7,7 @@ import { InlineRenameField } from '../../shared/ui/InlineRenameField';
 import { ToolbarMenu } from '../../shared/ui/ToolbarMenu';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import { CanvasFileMenu } from './CanvasFileMenu';
+import { SidebarStatusMessage } from '../../shared/ui/SidebarStatusMessage';
 import styles from './CanvasSidebar.module.css';
 
 export function CanvasSidebar({ api, currentPath, busy, ready, canSave, refresh, onOpen, onSave, onCreate, onRename, onError }: {
@@ -60,8 +61,12 @@ export function CanvasSidebar({ api, currentPath, busy, ready, canSave, refresh,
           </div>}
         </Tooltip>}
         {loading && !listing && <p role="status">Loading canvases…</p>}
-        {listing && folder === null && <p className={styles.description}>Choose a canvas folder with +.</p>}
-        {folder != null && listing?.files.length === 0 && <p className={styles.description}>No canvases in this folder. Use + to create a new canvas.</p>}
+        {!loading && listing && folder === null && (
+          <SidebarStatusMessage panel="canvas">choose a canvas folder with +.</SidebarStatusMessage>
+        )}
+        {!loading && folder != null && listing?.files.length === 0 && (
+          <SidebarStatusMessage panel="canvas">no canvases in this folder. use + to create a new canvas.</SidebarStatusMessage>
+        )}
         <div className="workspace-file-tree-list-content" role="tree" aria-label="Canvas files">
         {listing?.files.map(file => renaming === file.path
           ? <InlineRenameField key={file.path} initialTitle={file.path.split('/').at(-1)!.replace(/\.fig$/, '')}

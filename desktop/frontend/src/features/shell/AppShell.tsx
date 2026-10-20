@@ -57,6 +57,7 @@ import { ChatDraftAttachmentsContext, createChatDraftAttachments } from '../chat
 import { MemoSidebar } from '../sticky-notes/MemoSidebar';
 import { CalendarView } from '../calendar/CalendarView';
 import { CanvasLoadingState } from '../canvas/CanvasEmptyState';
+import { SidebarStatusContext } from '../../shared/ui/SidebarStatusMessage';
 
 const CanvasView = lazy(() => import('../canvas/CanvasView').then(module => ({ default: module.CanvasView })));
 const fullWidthViews: readonly WorkspaceView[] = ['explorer', 'chats', 'git', 'plugins', 'calendar', 'canvas', 'settings', 'docker'];
@@ -128,6 +129,7 @@ export function AppShell() {
   const [memoSidebarTarget, setMemoSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [canvasSidebarTarget, setCanvasSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [githubSidebarTarget, setGithubSidebarTarget] = useState<HTMLDivElement | null>(null);
+  const [sidebarStatusTarget, setSidebarStatusTarget] = useState<HTMLSpanElement | null>(null);
   useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
   const homiesEnabled = useHomiesEnabled() === true;
   const [sidebarPanel, setSidebarPanel] = useState<SidebarPanel>('files');
@@ -446,6 +448,7 @@ export function AppShell() {
   return (
     <ChatDraftAttachmentsContext.Provider value={draftAttachments}>
     <SidebarToggleVisibility.Provider value={reviewing}>
+    <SidebarStatusContext.Provider value={{ activePanel: leftSidebarOpen ? sidebarPanel : null, target: sidebarStatusTarget }}>
     <div ref={notificationSceneRef} className={`app-shell ${styles.shell}`} data-workspace-surface={window.workspaceSurface ? 'true' : undefined}>
       {window.workspaceSurface && <WorkspaceSurfaceReporter homiesEnabled={homiesEnabled} view={leftSidebarOpen && sidebarPanel === 'memos' ? 'notes' : railView}
         sidebarOpen={leftSidebarOpen} running={workspace.responseThreadIds.length} attention={workspaceNeedsAttention} />}
@@ -625,6 +628,7 @@ export function AppShell() {
         />
       </div>
       <WorkspaceStatusBar blurSourceRef={accountSceneRef} onAccountInitialLoad={accountReady}
+        sidebarStatusRef={setSidebarStatusTarget}
         selectionDisabledReason={accountSwitchReason}
         onBeforeSelect={beforeAccountSelect} onSelectionFinished={accountSelectionFinished} />
       {fileSearchOpen && <WorkspaceFileSearch onOpenFile={openWorkspaceFile} onClose={() => setFileSearchOpen(false)} />}
@@ -649,6 +653,7 @@ export function AppShell() {
           if (!chatSessionSelectionDisabled && !updateResume.busy) void openWorkflowChat(id);
         }} />
       </RegionalBlur>
+    </SidebarStatusContext.Provider>
     </SidebarToggleVisibility.Provider>
     </ChatDraftAttachmentsContext.Provider>
   );

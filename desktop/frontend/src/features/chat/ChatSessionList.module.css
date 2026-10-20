@@ -83,19 +83,6 @@
 
 .loading { flex: 1 1 auto; padding: var(--space-default); }
 
-.empty {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #777;
-  font-size: 10px;
-  line-height: 16px;
-  padding: 8px;
-}
-
-.empty { flex: 1 1 auto; flex-direction: column; justify-content: center; gap: 12px; text-align: center; }
-.empty svg { width: 22px; height: 22px; color: #686f72; stroke-width: 1.35; }
-
 .sessionRow { position: relative; display: flex; min-width: 0; align-items: center; }
 .sessionRow .session { flex: 1 1 auto; }
 /* The title is centered at 17px in the 48px row; align the action with that line. */

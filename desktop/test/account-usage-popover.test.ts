@@ -31,7 +31,7 @@ function fixture(appearanceBinding: WindowGlassBinding | null = null) {
   let failLoading = false;
   function makeWindow() {
     const window = Object.assign(new EventEmitter(), {
-      destroyed: false, visible: false, background: '', bounds: null as Rectangle | null,
+      destroyed: false, visible: false, showCount: 0, focusCount: 0, background: '', bounds: null as Rectangle | null,
       webContents: Object.assign(new EventEmitter(), {
         mainFrame: {}, messages: [] as unknown[],
         isDestroyed: () => false,
@@ -39,7 +39,7 @@ function fixture(appearanceBinding: WindowGlassBinding | null = null) {
         setWindowOpenHandler(handler: () => { action: string }) { expect(handler()).toEqual({ action: 'deny' }); },
       }),
       isDestroyed() { return this.destroyed; }, isVisible() { return this.visible; },
-      show() { this.visible = true; }, hide() { this.visible = false; }, focus() {},
+      show() { this.visible = true; this.showCount++; }, hide() { this.visible = false; }, focus() { this.focusCount++; },
       destroy() { this.destroyed = true; this.visible = false; window.emit('closed'); },
       setBounds(bounds: Rectangle) { this.bounds = bounds; },
       setBackgroundColor(value: string) { this.background = value; },
@@ -75,8 +75,12 @@ test('creates one sandboxed popover lazily, toggles it and hides on blur or Esca
   const window = f.windows[0]!;
   expect(window.visible).toBe(false);
   window.emit('ready-to-show');
+  expect(window.visible).toBe(false);
+  f.invoke('resize', 320);
+  f.invoke('ready', f.invoke('read').revision);
   expect(window.visible).toBe(true);
-  expect(f.configurations[0]?.webPreferences).toEqual({ preload: '/runtime/account-usage-preload.cjs', sandbox: true, contextIsolation: true, nodeIntegration: false });
+  expect(window.bounds?.height).toBe(320);
+  expect(f.configurations[0]?.webPreferences).toEqual({ preload: '/runtime/account-usage-preload.cjs', sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false });
   f.popover.toggle(); expect(window.visible).toBe(false);
   f.popover.toggle(); expect(window.visible).toBe(true);
   window.emit('blur'); expect(window.visible).toBe(false);
@@ -99,11 +103,73 @@ test('updates existing account data and theme, and accepts IPC only from its mai
   f.popover.update({ activeId: 'b', profiles: [] }, true);
   expect(f.windows[0]!.webContents.messages.at(-1)).toMatchObject([`${channel}:changed`, { dark: true, snapshot: { activeId: 'b', profiles: [] } }]);
   expect(f.invoke('read').revision).toBeGreaterThan(previousRevision);
-  for (const method of ['read', 'resize', 'action']) {
+  for (const method of ['read', 'resize', 'ready', 'action']) {
     expect(() => f.invoke(method, 'quit', {} as IpcMainInvokeEvent)).toThrow('Untrusted');
     expect(() => f.invoke(method, 'quit', { sender: f.windows[0]!.webContents, senderFrame: {} } as unknown as IpcMainInvokeEvent)).toThrow('Untrusted');
   }
   expect(f.quit).toBe(0);
+  f.popover.dispose();
+});
+
+test('popover waits for the painted appearance revision even when content arrives before native readiness', () => {
+  const f = fixture({
+    windowGlassSupported: () => true,
+    setWindowGlass: (_handle, enabled) => enabled ? 'active' : 'disabled',
+  });
+  f.popover.toggle();
+  const window = f.windows[0]!;
+  const initial = f.invoke('read').revision;
+  f.invoke('resize', 360);
+  f.invoke('ready', initial);
+  expect(window.visible).toBe(false);
+  window.emit('ready-to-show');
+  expect(window.visible).toBe(false);
+  const painted = f.invoke('read').revision;
+  expect(painted).toBeGreaterThan(initial);
+  f.invoke('ready', painted);
+  expect(window.visible).toBe(true);
+  f.popover.update({ activeId: 'default', profiles: [] }, true);
+  f.invoke('ready', f.invoke('read').revision);
+  expect(window.showCount).toBe(1);
+  expect(window.focusCount).toBe(1);
+  f.popover.toggle();
+  // A late acknowledgement must not overwrite the most recently painted frame.
+  f.invoke('ready', initial);
+  f.popover.toggle();
+  expect(window.showCount).toBe(2);
+  f.popover.dispose();
+});
+
+test('closing during preparation prevents late display and hidden updates are prepared before reopening', () => {
+  const f = fixture();
+  f.popover.toggle();
+  const window = f.windows[0]!;
+  window.emit('ready-to-show');
+  f.popover.toggle();
+  f.invoke('ready', f.invoke('read').revision);
+  expect(window.visible).toBe(false);
+  f.popover.update({ activeId: 'default', profiles: [] }, true);
+  f.popover.toggle();
+  expect(window.visible).toBe(false);
+  f.invoke('ready', f.invoke('read').revision);
+  expect(window.visible).toBe(true);
+  f.popover.dispose();
+});
+
+test('an initial read error can reveal a prepared error screen, and recreated windows need new readiness', () => {
+  const f = fixture();
+  f.popover.toggle();
+  const first = f.windows[0]!;
+  first.emit('ready-to-show');
+  f.invoke('ready', null);
+  expect(first.visible).toBe(true);
+  first.webContents.emit('render-process-gone');
+  f.popover.toggle();
+  const next = f.windows[1]!;
+  next.emit('ready-to-show');
+  expect(next.visible).toBe(false);
+  f.invoke('ready', f.invoke('read').revision);
+  expect(next.visible).toBe(true);
   f.popover.dispose();
 });
 
@@ -115,6 +181,9 @@ test('clamps size and position to the tray display and rejects malformed IPC', (
   expect(f.windows[0]!.bounds).toEqual({ x: 784, y: 28, width: 240, height: 500 });
   for (const value of [NaN, Infinity, -1, 0, 1.5, 10001, '500']) expect(() => f.invoke('resize', value)).toThrow('Invalid');
   expect(() => f.invoke('action', 'select')).toThrow('Invalid');
+  for (const value of [NaN, Infinity, -1, .5, Number.MAX_SAFE_INTEGER + 1, '1', undefined, f.invoke('read').revision + 1]) {
+    expect(() => f.invoke('ready', value)).toThrow('Invalid');
+  }
   f.popover.dispose();
 });
 
@@ -157,7 +226,7 @@ test('popover follows shared appearance settings without adding settings IPC and
   expect(calls.at(-1)).toEqual({ enabled: true, radius: 12 });
   expect(window.background).toBe('#00000000');
   expect(f.invoke('read').appearance).toMatchObject({ active: true, preferences: { opacity: .6 } });
-  expect([...f.handlers.keys()].sort()).toEqual(['action', 'read', 'resize'].map(method => `${channel}:${method}`));
+  expect([...f.handlers.keys()].sort()).toEqual(['action', 'read', 'ready', 'resize'].map(method => `${channel}:${method}`));
 
   const nativeCalls = calls.length;
   const revision = f.invoke('read').revision;

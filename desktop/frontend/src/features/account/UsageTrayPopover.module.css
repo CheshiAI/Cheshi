@@ -1,5 +1,7 @@
 :global(html[data-usage-popover]) { color-scheme: dark light; }
 :global(html[data-usage-popover]) body { min-width: 0; background: transparent; overflow: auto; }
+/* Cover native height rounding without stretching the measured content. */
+.surface { min-height: 100vh; }
 .panel {
   display: flex;
   flex-direction: column;

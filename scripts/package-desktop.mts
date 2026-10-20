@@ -18,6 +18,8 @@ try {
     onDiscarded: path => console.log(`[build] Removed failed staging: ${path}`),
     build: async (output, run) => {
       console.log(`[build] Preparing ${output.name} (Asia/Seoul)`);
+      console.log('[build] Checking packaged runtime imports');
+      await run(['node', '--test', '--test-name-pattern=packages every relative runtime import', 'desktop/test/config-runtime.test.ts']);
       for (const task of ['desktop:ghostty', 'viewer:build', 'desktop:runtime']) await run([process.execPath, 'run', task]);
       await run([process.execPath, 'x', '--no-install', 'electron-forge', 'package']);
       const bundleName = `${product.displayName}-${process.platform}-${process.arch}`;

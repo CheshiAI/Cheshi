@@ -4,6 +4,15 @@ const logoDataUrl = `data:image/png;base64,${readFileSync(new URL('../../resourc
 const windowGlassStyles = readFileSync(new URL('../frontend/src/shared/styles/window-glass.css', import.meta.url), 'utf8');
 const themeTokens = readFileSync(new URL('../frontend/src/shared/styles/tokens.css', import.meta.url), 'utf8');
 
+// Run after native appearance and its renderer tint have been applied, while still hidden.
+export const STARTUP_FIRST_FRAME_SCRIPT = `(async () => {
+  const logo = new Image();
+  logo.src = ${JSON.stringify(logoDataUrl)};
+  await logo.decode();
+  await document.fonts.ready;
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+})()`;
+
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/gu, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -132,7 +141,7 @@ export function startupPage(name: string, version: string): string {
       animation: travel 2s cubic-bezier(.45, 0, .55, 1) infinite;
     }
     .version { position: absolute; bottom: 12px; left: 0; right: 0; margin: 0; text-align: center; color: var(--sub-text); font-size: 10px; letter-spacing: .06em; }
-    @keyframes arrive { from { opacity: 0; transform: translateY(18px) scale(.9); } to { opacity: 1; transform: none; } }
+    @keyframes arrive { from { transform: translateY(18px) scale(.9); } to { transform: none; } }
     @keyframes logo-float {
       0%, 100% { transform: translateY(4px) rotateX(3deg) rotateY(-9deg) rotateZ(-3deg); }
       50% { transform: translateY(-9px) rotateX(-5deg) rotateY(9deg) rotateZ(3deg); }

@@ -46,6 +46,22 @@
 
 .spacer { flex: 1; }
 
+.sidebarStatus {
+  align-self: center;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebarStatus:empty { display: none; }
+
 .account {
   max-width: 60%;
   margin-right: var(--space-10);

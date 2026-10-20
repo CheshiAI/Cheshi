@@ -13,6 +13,7 @@ import { IntegrationDetail } from '../frontend/src/features/agents/IntegrationDe
 import { VerificationMessage } from '../frontend/src/features/agents/VerificationMessage';
 import type { ChatsRequest, ChatsSnapshot } from '../shared/agent-chats';
 import type { IntegrationSummary } from '../shared/agent-work';
+import { SidebarStatusContext } from '../frontend/src/shared/ui/SidebarStatusMessage';
 const registeredHomies = { list: async () => ({ workspaceRoot: '/project', agents: ['dev', 'planner'].map(id => ({
   ...specialistAgent(), id, name: id === 'dev' ? 'Development' : 'Planning Homie',
   accountId: id === 'dev' ? 'account' : 'planner-account', assignments: [{ workspaceRoot: '/project', instructions: '' }],
@@ -771,15 +772,18 @@ test('first-load failure shows the error and retry, not a create-room invitation
   await withDOM(async ui => {
     let fail = true;
     const api = { request: async () => { if (fail) throw new Error('Room service unavailable'); return { rooms: [], messages: [] }; } };
-    await ui.render(<ChatsView active api={api} />);
+    const status = document.createElement('footer'); document.body.append(status);
+    await ui.render(<SidebarStatusContext.Provider value={{ activePanel: 'agent-chats', target: status }}>
+      <ChatsView active api={api} />
+    </SidebarStatusContext.Provider>);
     expect(document.body.textContent).toContain('Room service unavailable');
     expect(document.querySelector('[aria-label="Room conversation"]')?.textContent).toContain('Could not load Worker');
     expect(document.body.textContent).not.toContain('Start working with your Homies');
-    expect(document.body.textContent).not.toContain('Create a work room and invite');
+    expect(status.textContent).toBe('');
     expect((document.querySelector('[aria-label="Refresh rooms"]') as HTMLButtonElement).disabled).toBe(false);
     fail = false; await ui.click('Refresh rooms');
     expect(document.body.textContent).not.toContain('Room service unavailable');
-    expect(document.body.textContent).toContain('Create a work room and invite');
+    expect(status.textContent).toBe('create a work room and invite your homies to begin.');
   });
 });
 

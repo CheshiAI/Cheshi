@@ -73,6 +73,7 @@ export function createSessionListHarness() {
     },
     '../../shared/ui/OverlayScrollArea': { OverlayScrollArea: 'overlay-scroll-area' },
     '../../shared/ui/PullToRefreshStatus': { PullToRefreshStatus: () => null },
+    '../../shared/ui/SidebarStatusMessage': { SidebarStatusMessage: 'sidebar-status-message' },
     '../../shared/usePullToRefresh': { usePullToRefresh: (refresh?: () => Promise<void>) => ({
       viewportRef: { current: null }, refresh, refreshing: false, pullHeight: 0, ready: false, error: '',
     }) },

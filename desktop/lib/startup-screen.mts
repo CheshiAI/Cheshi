@@ -1,4 +1,4 @@
-import { startupPage } from './startup-page.mts';
+import { startupPage, STARTUP_FIRST_FRAME_SCRIPT } from './startup-page.mts';
 import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './window-appearance.mts';
 import type { WindowGlassBinding } from './window-appearance.mts';
 import type { WindowAppearanceState } from '../shared/window-appearance.ts';
@@ -74,6 +74,8 @@ export class StartupScreen {
         pageReady = true;
         await this.applyAppearance(view, appearance.getState());
       }
+      if (this.view !== view || view.isDestroyed()) return false;
+      await view.webContents.executeJavaScript(STARTUP_FIRST_FRAME_SCRIPT);
       if (this.view !== view || view.isDestroyed()) return false;
       view.show();
       return true;

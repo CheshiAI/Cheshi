@@ -1,15 +1,59 @@
-import { act } from 'react';
+import { act, type ComponentProps } from 'react';
 import { expect, test } from 'bun:test';
 import type { ChatsSnapshot, ChatsUpdate, RoomMessage } from '../shared/agent-chats';
 import { ChatsRoomList } from '../frontend/src/features/agent-chats/ChatsRoomList';
 import { ChatsView } from '../frontend/src/features/agent-chats/ChatsView';
 import { withDOM } from './agent-chats-test-dom';
+import { SidebarStatusContext } from '../frontend/src/shared/ui/SidebarStatusMessage';
 
 const room = { id: 'room', workspace: '/project', name: 'Working room', engineId: 'docker:test',
   defaultAgentId: 'dev', members: [{ id: 'dev', name: 'Development', accountId: 'account' }], createdAt: '2026-10-03T00:00:00Z' };
 const task: RoomMessage = { id: 'task', roomId: room.id, threadId: null, sender: 'user', recipient: 'dev',
   kind: 'goal', text: 'Build a feature', createdAt: room.createdAt, taskId: 'execution', status: 'running' };
 const indicator = (name = room.name) => document.querySelector(`button[aria-label="${name}"] [role="status"][aria-label="Active response"]`);
+
+test('empty Worker guidance appears only in the active sidebar footer and clears when rooms arrive', async () => {
+  await withDOM(async ui => {
+    const status = document.createElement('footer'); document.body.append(status);
+    const defaults: ComponentProps<typeof ChatsRoomList> = {
+      snapshot: { rooms: [], messages: [] }, agents: [], selectedId: null, phase: 'ready', loaded: true,
+      refreshing: false, disabled: false, error: null, pinningRoomId: null,
+      onPin() {}, onSelect() {}, onNew() {}, onRefresh: async () => {},
+    };
+    const render = (activePanel: string | null, overrides: Partial<typeof defaults> = {}) => ui.render(
+      <SidebarStatusContext.Provider value={{ activePanel, target: status }}>
+        <ChatsRoomList {...defaults} {...overrides} />
+      </SidebarStatusContext.Provider>,
+    );
+    const message = 'create a work room and invite your homies to begin.';
+    await render('agent-chats', { loaded: false, phase: 'loading' });
+    expect(status.textContent).toBe('');
+    expect(document.querySelector('[aria-label="Loading rooms…"]')).not.toBeNull();
+    await render('agent-chats');
+    expect(status.textContent).toBe(message);
+    expect(status.querySelector('svg')).toBeNull();
+    expect(document.querySelector('[aria-label="Worker rooms"]')?.textContent).not.toContain(message);
+    expect(document.querySelector('[aria-label="New room"]')).not.toBeNull();
+    for (const panel of ['canvas', 'chats', null]) {
+      await render(panel);
+      expect(status.textContent).toBe('');
+    }
+    await render('agent-chats', { phase: 'error', error: 'Room service unavailable' });
+    expect(status.textContent).toBe('');
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe('Room service unavailable');
+    await render('agent-chats', { snapshot: { rooms: [room], messages: [] } });
+    expect(status.textContent).toBe('');
+    expect(document.querySelector(`[aria-label="${room.name}"]`)).not.toBeNull();
+    await ui.type('Search rooms', 'missing');
+    expect(status.textContent).toBe('');
+    expect(document.querySelector('[aria-label="Worker rooms"]')?.textContent).toContain('No matching rooms.');
+    await ui.type('Search rooms', '');
+    await render('agent-chats');
+    expect(status.textContent).toBe(message);
+    await ui.render(null);
+    expect(status.textContent).toBe('');
+  });
+});
 
 test('room loading follows current task state and ignores historical activity and other rooms', async () => {
   await withDOM(async ui => {

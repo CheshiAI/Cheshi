@@ -99,6 +99,7 @@ export function shellHarness(initialHistoryLoading = false, preference: { panel:
     './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => initialLayout, saveWorkspaceLayout() {} },
     '../chat/chatWorkspaceModel': { CHAT_PANE_MIN_WIDTH },
     '../../shared/ui/splitPaneModel': splitModel,
+    '../../shared/ui/SidebarStatusMessage': { SidebarStatusContext: { Provider: 'SidebarStatusContext' } },
     react: { ...app.react, lazy: () => 'CanvasView', Suspense: 'Suspense' },
     '../navigation/sidebarPanel': {
       sidebarPanelForWorkspace,

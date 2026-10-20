@@ -147,7 +147,8 @@ test('split pane drops and context usage stay scoped to their own conversation',
     await render(true, true);
     expect(await drop('first', 'textarea', '/locked.png')).toBe('none');
     expect(imports).toHaveLength(3);
-    expect(pane('first').querySelector('[data-context-usage]')?.textContent).toBe('Context —');
+    expect(pane('first').querySelector('[data-context-usage]')).toBeNull();
+    expect(pane('first').querySelector('[data-context-tooltip]')).toBeNull();
     for (const [id, usedTokens] of [['first', 84_000], ['second', 20_000]] as const) {
       const controller = controllers.get(id)!;
       controllers.set(id, { ...controller, state: { ...controller.state, activeSessionId: id,
@@ -163,6 +164,12 @@ test('split pane drops and context usage stay scoped to their own conversation',
     controllers.set('first', { ...first, state: { ...first.state, activeSessionId: 'unreported' } });
     await render();
     expect(pane('first').querySelector('[data-context-usage]')?.textContent).toBe('Context —');
+    expect(pane('second').querySelector('[data-context-usage]')?.textContent).toBe('Context 10%');
+    // Returning to a new chat hides usage and its tooltip even with cached usage.
+    controllers.set('first', { ...first, state: { ...first.state, activeSessionId: null } });
+    await render();
+    expect(pane('first').querySelector('[data-context-usage]')).toBeNull();
+    expect(pane('first').querySelector('[data-context-tooltip]')).toBeNull();
     expect(pane('second').querySelector('[data-context-usage]')?.textContent).toBe('Context 10%');
   } finally {
     await act(async () => root.unmount());

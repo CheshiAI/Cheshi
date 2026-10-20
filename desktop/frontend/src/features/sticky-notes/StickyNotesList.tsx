@@ -8,6 +8,7 @@ import { PullToRefreshStatus } from '../../shared/ui/PullToRefreshStatus';
 import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { usePullToRefresh } from '../../shared/usePullToRefresh';
+import { SidebarStatusMessage } from '../../shared/ui/SidebarStatusMessage';
 import sessionStyles from '../chat/ChatSessionList.module.css';
 import searchStyles from '../chat/ChatHistorySearch.module.css';
 import styles from './StickyNotesList.module.css';
@@ -115,7 +116,9 @@ export function StickyNotesList({ api, locked, onNew, onOpen }: {
             </>}
           </div>)}
           {!loaded && loading && <LoadingState className={sessionStyles.loading} label="Loading notes…" />}
-          {loaded && !loading && !notes.length && <p className={styles.notice}>{query.trim() ? 'No matching notes.' : 'No notes yet. Create one with +.'}</p>}
+          {loaded && !loading && !notes.length && (query.trim()
+            ? <p className={styles.notice}>No matching notes.</p>
+            : <SidebarStatusMessage panel="memos">no notes yet. create one with +.</SidebarStatusMessage>)}
         </nav>
       </OverlayScrollArea>
     </div>

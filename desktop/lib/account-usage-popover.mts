@@ -45,6 +45,7 @@ export function createAccountUsagePopover(options: {
   let appearance: ReturnType<typeof createWindowAppearance> | null = null;
   let disposed = false;
   let ready = false;
+  let paintedRevision = -1;
   let wantsOpen = false;
   let height = 180;
   let blurredAt = -Infinity;
@@ -65,7 +66,7 @@ export function createAccountUsagePopover(options: {
     if (view && !view.isDestroyed()) view.hide();
   }
   function reveal() {
-    if (!ready || !wantsOpen || !view || view.isDestroyed()) return;
+    if (!ready || paintedRevision !== state.revision || !wantsOpen || !view || view.isDestroyed() || view.isVisible()) return;
     position();
     view.show();
     view.focus();
@@ -76,6 +77,7 @@ export function createAccountUsagePopover(options: {
     const old = view;
     view = null;
     ready = false;
+    paintedRevision = -1;
     wantsOpen = false;
     if (old && !old.isDestroyed()) old.destroy();
   }
@@ -88,6 +90,14 @@ export function createAccountUsagePopover(options: {
     }
     height = Math.max(100, value);
     position();
+  });
+  options.ipc.handle(`${channel}:ready`, (event, revision: unknown) => {
+    assertSender(event);
+    if (revision !== null && (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0 || revision > state.revision)) {
+      throw new Error('Invalid account usage popover revision.');
+    }
+    paintedRevision = Math.max(paintedRevision, revision ?? state.revision);
+    reveal();
   });
   options.ipc.handle(`${channel}:action`, (event, action: unknown) => {
     assertSender(event);
@@ -122,7 +132,8 @@ export function createAccountUsagePopover(options: {
           backgroundColor: INITIAL_WINDOW_BACKGROUND_COLORS[state.dark ? 'dark' : 'light'],
           resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
           skipTaskbar: true, alwaysOnTop: true, title: 'Cheshi · Account & Usage',
-          webPreferences: { preload: options.preload, contextIsolation: true, sandbox: true, nodeIntegration: false },
+          // Hidden state updates must be painted before reopening the window.
+          webPreferences: { preload: options.preload, contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false },
         });
         view = window;
         appearance = createWindowAppearance({
@@ -146,7 +157,7 @@ export function createAccountUsagePopover(options: {
           if (view !== window) return;
           appearance?.dispose();
           appearance = null;
-          view = null; ready = false; wantsOpen = false;
+          view = null; ready = false; paintedRevision = -1; wantsOpen = false;
         });
         window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
         window.webContents.on('will-navigate', event => event.preventDefault());
@@ -165,7 +176,7 @@ export function createAccountUsagePopover(options: {
     dispose() {
       if (disposed) return;
       disposed = true;
-      for (const method of ['read', 'resize', 'action']) options.ipc.removeHandler(`${channel}:${method}`);
+      for (const method of ['read', 'resize', 'ready', 'action']) options.ipc.removeHandler(`${channel}:${method}`);
       destroy();
     },
   };

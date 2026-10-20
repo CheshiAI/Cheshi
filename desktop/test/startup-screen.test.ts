@@ -6,7 +6,7 @@ import path from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { shouldShowStartupScreen, StartupScreen, type StartupView } from '../lib/startup-screen.mts';
-import { startupPage } from '../lib/startup-page.mts';
+import { startupPage, STARTUP_FIRST_FRAME_SCRIPT } from '../lib/startup-page.mts';
 import { DEFAULT_WINDOW_APPEARANCE } from '../shared/window-appearance.ts';
 import { windowAppearanceStore } from '../lib/window-appearance-store.mts';
 import type { WindowGlassBinding } from '../lib/window-appearance.mts';
@@ -68,12 +68,13 @@ class FakeStartupView extends EventEmitter {
   scripts: string[] = [];
   background = '';
   scriptResult: Promise<unknown> = Promise.resolve();
+  frameResult: Promise<unknown> = Promise.resolve();
   load = createDeferred<void>();
   webContents = {
     isDestroyed: () => this.destroyed,
     executeJavaScript: async (script: string): Promise<unknown> => {
       this.scripts.push(script);
-      return this.scriptResult;
+      return script === STARTUP_FIRST_FRAME_SCRIPT ? this.frameResult : this.scriptResult;
     },
   };
 
@@ -144,6 +145,71 @@ test('reopening the splash waits for the new window readiness without a timer', 
   assert.equal(screen.isOpen, false);
 });
 
+test('startup stays hidden until the prepared frame resolves, and closing during preparation cancels showing', async () => {
+  for (const closeDuringPreparation of [false, true]) {
+    const screen = new StartupScreen();
+    const view = new FakeStartupView();
+    const frame = createDeferred<unknown>();
+    view.frameResult = frame.promise;
+    const opening = openScreen(screen, view);
+    view.load.resolve();
+    view.emit('ready-to-show');
+    for (let attempt = 0; attempt < 20 && !view.scripts.includes(STARTUP_FIRST_FRAME_SCRIPT); attempt++) await Promise.resolve();
+    assert.ok(view.scripts.includes(STARTUP_FIRST_FRAME_SCRIPT));
+    assert.equal(view.showCount, 0);
+    if (closeDuringPreparation) screen.close();
+    frame.resolve(undefined);
+    assert.equal(await opening, !closeDuringPreparation);
+    assert.equal(view.showCount, closeDuringPreparation ? 0 : 1);
+    screen.close();
+  }
+});
+
+test('startup frame preparation waits for logo decoding, fonts and a subsequent paint opportunity', async () => {
+  const decoded = createDeferred<void>(), fonts = createDeferred<void>();
+  const frames: (() => void)[] = [];
+  let source = '', complete = false;
+  const preparing = runInNewContext(STARTUP_FIRST_FRAME_SCRIPT, {
+    Image: class {
+      set src(value: string) { source = value; }
+      decode() { return decoded.promise; }
+    },
+    document: { fonts: { ready: fonts.promise } },
+    requestAnimationFrame(callback: () => void) { frames.push(callback); },
+  }) as Promise<void>;
+  void preparing.then(() => { complete = true; });
+  assert.ok(source.startsWith('data:image/png;base64,'));
+  assert.equal(frames.length, 0);
+  decoded.resolve();
+  await Promise.resolve();
+  assert.equal(frames.length, 0);
+  fonts.resolve();
+  for (let attempt = 0; attempt < 20 && frames.length === 0; attempt++) await Promise.resolve();
+  assert.equal(frames.length, 1);
+  frames.shift()!();
+  assert.equal(complete, false);
+  assert.equal(frames.length, 1);
+  frames.shift()!();
+  await preparing;
+  assert.equal(complete, true);
+});
+
+test('startup frame preparation failure closes the window instead of showing an empty surface', async () => {
+  const screen = new StartupScreen();
+  const view = new FakeStartupView();
+  const frame = createDeferred<unknown>();
+  view.frameResult = frame.promise;
+  const opening = openScreen(screen, view);
+  const rejected = assert.rejects(opening, /Logo unavailable/u);
+  view.load.resolve();
+  view.emit('ready-to-show');
+  for (let attempt = 0; attempt < 20 && !view.scripts.includes(STARTUP_FIRST_FRAME_SCRIPT); attempt++) await Promise.resolve();
+  frame.reject(new Error('Logo unavailable'));
+  await rejected;
+  assert.equal(view.showCount, 0);
+  assert.equal(view.destroyCount, 1);
+});
+
 test('closing the startup window before readiness cancels initialization', async () => {
   const screen = new StartupScreen();
   const view = new FakeStartupView();
@@ -205,12 +271,12 @@ test('status updates preserve arbitrary text without interpreting markup or scri
     } },
     injected: false,
   };
-  runInNewContext(view.scripts[0]!, sandbox);
+  runInNewContext(view.scripts.at(-1)!, sandbox);
   assert.equal(status.textContent, message);
   assert.equal(sandbox.injected, false);
   screen.close();
   await screen.setStatus('After closing');
-  assert.equal(view.scripts.length, 1);
+  assert.equal(view.scripts.length, 2);
 });
 
 test('startup document escapes product metadata and loads without external resources', async () => {
@@ -262,6 +328,10 @@ function appliedAppearance(script: string) {
   return { active: attributes.get('data-window-glass'), opacity: properties.get('--window-glass-opacity') };
 }
 
+function lastAppearance(view: FakeStartupView) {
+  return appliedAppearance(view.scripts.findLast(script => script.includes('toggleAttribute'))!);
+}
+
 async function waitForAppearance(view: FakeStartupView) {
   for (let attempt = 0; attempt < 20 && view.scripts.length === 0; attempt++) await Promise.resolve();
   assert.ok(view.scripts.length > 0, 'Appearance must be applied after document readiness');
@@ -277,16 +347,16 @@ test('applies saved native blur and shared surface opacity before showing startu
   assert.equal(h.view.showCount, 0);
   assert.deepEqual(h.nativeCalls.at(-1), { enabled: true, radius: 24 });
   assert.equal(h.view.background, '#00000000');
-  assert.deepEqual(appliedAppearance(h.view.scripts.at(-1)!), { active: true, opacity: '0.4' });
+  assert.deepEqual(lastAppearance(h.view), { active: true, opacity: '0.4' });
   applied.resolve(undefined);
   assert.equal(await h.opening, true);
   assert.equal(h.view.showCount, 1);
 
   windowAppearanceStore(h.filename).save({ ...h.preferences, opacity: .6 });
-  assert.deepEqual(appliedAppearance(h.view.scripts.at(-1)!), { active: true, opacity: '0.6' });
+  assert.deepEqual(lastAppearance(h.view), { active: true, opacity: '0.6' });
   windowAppearanceStore(h.filename).save({ ...h.preferences, enabled: false });
   assert.equal(h.view.background, '#000000');
-  assert.equal(appliedAppearance(h.view.scripts.at(-1)!).active, false);
+  assert.equal(lastAppearance(h.view).active, false);
   h.screen.close();
   const count = h.view.scripts.length;
   windowAppearanceStore(h.filename).save(h.preferences);
@@ -301,7 +371,7 @@ for (const result of ['reduced-transparency', 'unsupported', 'throw'] as const) 
     h.view.load.resolve();
     assert.equal(await h.opening, true);
     assert.equal(h.view.background, '#000000');
-    assert.equal(appliedAppearance(h.view.scripts.at(-1)!).active, false);
+    assert.equal(lastAppearance(h.view).active, false);
     assert.equal(h.view.showCount, 1);
   });
 }

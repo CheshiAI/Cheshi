@@ -4,7 +4,7 @@ import { Script } from 'node:vm';
 import test from 'node:test';
 import type { UsagePopoverApi } from '../shared/account-usage-popover.ts';
 
-test('sandboxed usage preload exposes only usage reads, sizing and allowlisted actions', async () => {
+test('sandboxed usage preload exposes usage reads, sizing, presentation readiness and allowlisted actions', async () => {
   const source = readFileSync(new URL('../runtime/account-usage-preload.cjs', import.meta.url), 'utf8');
   const calls: unknown[] = [];
   const exposed = new Map<string, UsagePopoverApi>();
@@ -22,9 +22,10 @@ test('sandboxed usage preload exposes only usage reads, sizing and allowlisted a
   } });
   assert.deepEqual([...exposed.keys()], ['cheshiUsagePopover']);
   const api = exposed.get('cheshiUsagePopover')!;
-  assert.deepEqual(Object.keys(api).sort(), ['action', 'onChange', 'read', 'resize']);
-  await api.read(); await api.resize(400); await api.action('show');
-  assert.deepEqual(calls, [['cheshi:usage-popover:read'], ['cheshi:usage-popover:resize', 400], ['cheshi:usage-popover:action', 'show']]);
+  assert.deepEqual(Object.keys(api).sort(), ['action', 'onChange', 'read', 'ready', 'resize']);
+  await api.read(); await api.resize(400); await api.ready(2); await api.ready(null); await api.action('show');
+  assert.deepEqual(calls, [['cheshi:usage-popover:read'], ['cheshi:usage-popover:resize', 400],
+    ['cheshi:usage-popover:ready', 2], ['cheshi:usage-popover:ready', null], ['cheshi:usage-popover:action', 'show']]);
   let received: unknown;
   const off = api.onChange(value => { received = value; });
   const payload = { revision: 1, snapshot: null, dark: true };

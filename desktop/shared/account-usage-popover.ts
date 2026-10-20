@@ -16,6 +16,8 @@ export interface UsagePopoverApi {
   read(): Promise<UsagePopoverState>;
   onChange(listener: (state: UsagePopoverState) => void): () => void;
   resize(height: number): Promise<void>;
+  /** A painted state revision, or null when the initial read failed and an error is displayed. */
+  ready(revision: number | null): Promise<void>;
   action(action: 'show' | 'quit' | 'close' | 'scheduler'): Promise<void>;
 }
 

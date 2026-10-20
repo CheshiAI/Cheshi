@@ -17,6 +17,7 @@ import type { ChatsLoadPhase } from './useChatsSnapshot';
 import type { SpecialistAgent } from '../../../../shared/agent-registry';
 import { InlineRenameField } from '../../shared/ui/InlineRenameField';
 import { RoomParticipantsPreview } from './RoomParticipantsPreview';
+import { SidebarStatusMessage } from '../../shared/ui/SidebarStatusMessage';
 
 export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, refreshing, disabled, error, pinningRoomId, onPin, onDelete, onRename, onSelect, onNew, onRefresh, roomStatus }: {
   snapshot: ChatsSnapshot; selectedId: string | null; phase: ChatsLoadPhase; loaded: boolean; refreshing: boolean; disabled: boolean; error: string | null;
@@ -96,7 +97,9 @@ export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, ref
             </div></>}
           </div>)}
           {!loaded && phase === 'loading' && <LoadingState className={sessionStyles.loading} label="Loading rooms…" />}
-          {loaded && phase !== 'error' && !visible.length && <p className={`${styles.notice} ${styles.empty}`}>{query.trim() ? 'No matching rooms.' : 'Create a work room and invite your Homies to begin.'}</p>}
+          {loaded && phase !== 'error' && !visible.length && (query.trim()
+            ? <p className={`${styles.notice} ${styles.empty}`}>No matching rooms.</p>
+            : <SidebarStatusMessage panel="agent-chats">create a work room and invite your homies to begin.</SidebarStatusMessage>)}
         </nav>
       </OverlayScrollArea>
     </div>
