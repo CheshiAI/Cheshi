@@ -52,14 +52,14 @@ export function ChatsRoomList({ snapshot, agents, selectedId, phase, loaded, ref
       <TooltipButton size="icon" aria-label="New room" title="New room" disabled={disabled} onClick={onNew}><Plus aria-hidden="true" /></TooltipButton>
     </>} />
     <div className={sessionStyles.body}>
-      <form className={searchStyles.searchBar} role="search" aria-label="Room search"
+      {(rooms.length > 0 || query.length > 0) && <form className={searchStyles.searchBar} role="search" aria-label="Room search"
         onSubmit={event => { event.preventDefault(); searchInput.current?.focus(); }}>
         <TooltipTarget content="Search room names"><NeumorphicTextField ref={searchInput} className={searchStyles.searchField}
           variant="standard" type="search" aria-label="Search rooms" placeholder="Search…"
           value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} clearLabel="Clear room search" /></TooltipTarget>
         <TooltipButton raised size="icon" className={searchStyles.searchSubmit} type="submit"
           disabled={!query.trim()} aria-label="Filter rooms" title="Search room names"><Search aria-hidden="true" /></TooltipButton>
-      </form>
+      </form>}
       {refreshError && <p className={styles.notice} role="alert">{refreshError}</p>}
       <OverlayScrollArea className={sessionStyles.listScroll} label="Rooms" viewportRef={refresh.viewportRef}>
         <PullToRefreshStatus {...refresh} />

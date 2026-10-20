@@ -83,7 +83,7 @@ export function StickyNotesList({ api, locked, onNew, onOpen }: {
       <TooltipButton size="icon" title="New note" aria-label="New note" disabled={disabled} onClick={onNew}><Plus aria-hidden="true" /></TooltipButton>
     </>} />
     <div className={sessionStyles.body}>
-      <form className={searchStyles.searchBar} role="search" aria-label="Note search"
+      {(notes.length > 0 || query.length > 0) && <form className={searchStyles.searchBar} role="search" aria-label="Note search"
         onSubmit={event => { event.preventDefault(); searchInput.current?.focus(); }}>
         <TooltipTarget content="Search note titles and contents"><NeumorphicTextField ref={searchInput}
           className={searchStyles.searchField} variant="standard" type="search" aria-label="Search notes" placeholder="Search…"
@@ -91,7 +91,7 @@ export function StickyNotesList({ api, locked, onNew, onOpen }: {
           onClear={() => { setEditing(null); setQuery(''); }} clearLabel="Clear note search" /></TooltipTarget>
         <TooltipButton raised size="icon" className={searchStyles.searchSubmit} type="submit"
           disabled={disabled || !query.trim()} aria-label="Filter notes" title="Search note titles and contents"><Search aria-hidden="true" /></TooltipButton>
-      </form>
+      </form>}
       {(error || pull.error) && !confirmation && <p role="alert" className={styles.notice}>{error || pull.error}</p>}
       <OverlayScrollArea className={sessionStyles.listScroll} label="Notes" viewportRef={pull.viewportRef}>
         <PullToRefreshStatus {...pull} />
