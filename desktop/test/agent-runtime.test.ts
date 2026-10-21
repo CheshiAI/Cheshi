@@ -11,6 +11,7 @@ import { DockerCommandError, dockerCommandError } from '../lib/agent-management/
 import type { AgentDetails } from '../shared/agent-management.ts';
 import type { DockerCommand } from '../lib/agent-management/docker.mts';
 import { officialAgentPackages } from '../lib/agent-management/packages.mts';
+import { WORKER_TMPFS_BYTES } from '../../experiments/codex-specialists/src/task-storage-limits.ts';
 
 const directories: string[] = [];
 afterEach(() => { for (const dir of directories.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -148,6 +149,13 @@ function fixture(linkedWorkspace = false, prepareCodeGraph?: (workspace: string)
       writeFileSync(filename, JSON.stringify(journal));
       state = workerState;
       runtime = makeRuntime();
+    },
+    previousStorageLimit() {
+      const filename = join(runtimePath, 'runtime.json');
+      const config = JSON.parse(readFileSync(filename, 'utf8'));
+      config.revision = config.settingsFingerprint = 'legacy-tmpfs-128m';
+      labels['ai.cheshi.configuration'] = config.revision;
+      writeFileSync(filename, JSON.stringify(config));
     },
     setContainerId: (value: string) => { id = value; },
     removeContainer: () => { created = false; }, loadedToken: () => loadedToken,
@@ -382,6 +390,7 @@ test('starts one project worker with isolated storage, readonly mount, private a
   const args = f.calls.find(call => call.args.includes('create'))!.args;
   expect(args).toContain(`type=bind,src=${realpathSync(f.workspace)},dst=/workspace,readonly`);
   expect(args).toContain('no-new-privileges:true'); expect(args).toContain('apparmor=cheshi-codex-bwrap');
+  expect(args[args.indexOf('--tmpfs') + 1]).toBe(`/tmp:rw,nosuid,nodev,size=${WORKER_TMPFS_BYTES},mode=1777`);
   const config = JSON.parse(f.calls.find(call => call.input)!.input!).configuration;
   expect(args.some(arg => arg.includes('runtime.json,readonly'))).toBe(false);
   expect(config.decisionProtocol).toBe(1);
@@ -395,6 +404,27 @@ test('starts one project worker with isolated storage, readonly mount, private a
   expect(f.calls.find(call => call.input)?.input).not.toContain('secret_extra');
   await f.runtime.request(f.workspace, f.request());
   expect(f.calls.filter(call => call.args.includes('create'))).toHaveLength(1);
+});
+test('storage upgrade waits for uncertain execution and replaces an idle container without deleting its volume', async () => {
+  const f = fixture();
+  try {
+    await f.runtime.request(f.workspace, f.request());
+    const first = f.calls.find(c => c.args.includes('create'))!.args;
+    f.previousStorageLimit();
+    const before = f.calls.length;
+    f.setTasks([{ id: 'saved', status: 'unknown', prompt: 'Inspect', output: 'retained evidence', error: null, createdAt: '2026-10-21' }]);
+    await fails(f.runtime.request(f.workspace, f.request()), 'unfinished task');
+    expect(f.calls.slice(before).some(c => c.args[3] === 'rm' || c.args[3] === 'stop')).toBe(false);
+    f.setTasks([{ id: 'saved', status: 'completed', prompt: 'Inspect', output: 'retained evidence', error: null, createdAt: '2026-10-21' }]);
+    const result = await f.runtime.request(f.workspace, f.request());
+    expect(result.details?.tasks[0]?.output).toBe('retained evidence');
+    const next = f.calls.filter(c => c.args.includes('create')).at(-1)!.args;
+    const dataVolume = (args: string[]) => args.find(a => a.startsWith('type=volume,src=cheshi-agent-'));
+    expect(dataVolume(next)).toBe(dataVolume(first));
+    expect(f.calls.filter(c => c.args.includes('create'))).toHaveLength(2);
+    expect(f.calls.slice(before).some(c => c.args[2] === 'volume' && c.args[3] === 'rm')).toBe(false);
+    expect(next[next.indexOf('--tmpfs') + 1]).toContain(`size=${WORKER_TMPFS_BYTES}`);
+  } finally { await f.runtime.dispose(); }
 });
 test('rejects unassigned profiles and remote engines before provisioning', async () => {
   const f = fixture();

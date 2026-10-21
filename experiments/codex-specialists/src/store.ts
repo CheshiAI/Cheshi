@@ -15,6 +15,8 @@ import { appendOutgoing, collaborationState, emptyCollaboration, type Collaborat
 import { recoveryReceipt, type RecoveryReceipt } from './recovery.ts';
 
 export const TASK_STATUSES = ['accepted', 'running', 'waiting', 'completed', 'interrupted', 'failed', 'unknown'] as const;
+export const WORKER_RESTART_ERROR = 'Worker restarted during execution. Inspect the saved thread before retrying.';
+export const BEFORE_SUBMISSION_RECOVERED = 'Worker stopped before submitting a turn. No input was replayed. Send a follow-up to resume.';
 export type TaskStatus = typeof TASK_STATUSES[number];
 export type Task = {
   id: string; prompt: string; status: TaskStatus; createdAt: string; finishedAt: string | null;
@@ -137,7 +139,7 @@ export class AgentStore {
       if (!['accepted', 'running'].includes(task.status)) continue;
       task.activity = task.activity?.map(entry => entry.status === 'running' ? { ...entry, status: 'unknown' } : entry);
       task.status = 'unknown'; task.finishedAt = new Date().toISOString();
-      task.error = 'Worker restarted during execution. Inspect the saved thread before retrying.';
+      task.error = WORKER_RESTART_ERROR;
     }
     this.persist();
   }

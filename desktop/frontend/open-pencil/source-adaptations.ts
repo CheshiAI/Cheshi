@@ -33,6 +33,8 @@ export function originalEditorAdaptations(): Plugin {
         swap('  drawGuideRulerPositions(r, canvas, graph, font, guides)\n}', '  drawGuideRulerPositions(r, canvas, graph, font, guides)\n  } finally { font.setSize(previousFontSize) }\n}');
         swap('rulerLabel(wy), 0, 3,', 'rulerLabel(wy), 0, 2.7,');
       } else if (file.endsWith('/packages/vue/src/canvas/surface/lifecycle.ts')) {
+        // Keep document page colors intact while revealing Cheshi's CSS dot grid.
+        swap('      view,\n      editor.graph,', '      { ...view, pageColor: { r: 0, g: 0, b: 0, a: 0 } },\n      editor.graph,');
         // CanvasKit unregisters its handle, but Chromium keeps the WebGL context
         // alive until GC. Release it only on final disposal, never when rebuilding
         // the surface on the same canvas after a color-space change.
@@ -91,8 +93,6 @@ export function originalEditorAdaptations(): Plugin {
       resizeCanvas(canvas)
     })`, `    if (!canvas || !getCanvasKitValue() || stopped) return
     resizeCanvas(canvas)`);
-      } else if (file.endsWith('/packages/vue/src/canvas/surface/lifecycle.ts')) {
-        swap('      view,\n      editor.graph,', '      { ...view, pageColor: { r: 0, g: 0, b: 0, a: 0 } },\n      editor.graph,');
       } else if (file.endsWith('/packages/core/src/canvas/labels/style.ts')) {
         // Transparent presentation sits over Cheshi's dark CSS surface. Use its
         // visible color for label contrast without changing document fills.

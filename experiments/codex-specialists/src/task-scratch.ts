@@ -1,15 +1,18 @@
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { record, type JsonRecord } from './protocol.ts';
+import { TaskOutput } from './task-output.ts';
 
 export const SCRATCH_PROFILE = 'cheshi-test-scratch';
 
 /** One turn's disposable test storage. Never grant write access to the project implicitly. */
 export class TaskScratch {
   readonly directory: string;
-  constructor(parent = tmpdir()) {
+  readonly output?: TaskOutput;
+  constructor(parent = tmpdir(), archive?: string) {
     this.directory = realpathSync(mkdtempSync(join(parent, 'cheshi-test-')));
+    if (archive) this.output = new TaskOutput(this.directory, archive);
   }
 
   config(workspace: string, projectWritable = false): JsonRecord {
@@ -23,7 +26,8 @@ export class TaskScratch {
         },
         network: { enabled: false },
       },
-      'shell_environment_policy.set': { TMPDIR: this.directory, TMP: this.directory, TEMP: this.directory },
+      'shell_environment_policy.set': { TMPDIR: this.directory, TMP: this.directory, TEMP: this.directory,
+        ...(this.output ? { CHESHI_TASK_OUTPUT_DIR: this.output.directory } : {}) },
     };
   }
 
@@ -40,5 +44,8 @@ export class TaskScratch {
     }
   }
 
-  dispose(): void { rmSync(this.directory, { recursive: true, force: true }); }
+  dispose(): void {
+    if (this.output && existsSync(this.directory)) this.output.preserve();
+    rmSync(this.directory, { recursive: true, force: true });
+  }
 }

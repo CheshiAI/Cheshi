@@ -34,3 +34,38 @@ test('temporary-file APIs use isolated scratch and cleanup never follows child s
     expect(readFileSync(original, 'utf8')).toBe('keep');
   } finally { scratch.dispose(); rmSync(outside, { recursive: true, force: true }); }
 });
+
+test('designated task results survive turns without granting writes outside disposable scratch', () => {
+  const archive = mkdtempSync(join(tmpdir(), 'cheshi-output-'));
+  const first = new TaskScratch(undefined, archive);
+  let second: TaskScratch | undefined;
+  try {
+    writeFileSync(join(first.output!.directory, 'report.md'), 'observed results');
+    writeFileSync(join(first.directory, 'temporary-secret'), 'do not archive');
+    first.dispose();
+    expect(existsSync(first.directory)).toBe(false);
+    second = new TaskScratch(undefined, archive);
+    expect(readFileSync(join(second.output!.directory, 'report.md'), 'utf8')).toBe('observed results');
+    expect(existsSync(join(second.output!.directory, 'temporary-secret'))).toBe(false);
+    const profile = second.config('/workspace')[`permissions.${SCRATCH_PROFILE}`] as { filesystem: Record<string, string> };
+    expect(profile.filesystem).toEqual({ ':root': 'read', '/workspace': 'read', [second.directory]: 'write' });
+    writeFileSync(join(second.output!.directory, 'report.md'), 'continued results');
+    second.dispose();
+    const pointer = JSON.parse(readFileSync(join(archive, 'latest.json'), 'utf8'));
+    expect(readFileSync(join(archive, pointer.snapshot, 'report.md'), 'utf8')).toBe('continued results');
+  } finally { first.dispose(); second?.dispose(); rmSync(archive, { recursive: true, force: true }); }
+});
+
+test('output links are rejected and the original scratch remains available for recovery', () => {
+  const archive = mkdtempSync(join(tmpdir(), 'cheshi-output-'));
+  const scratch = new TaskScratch(undefined, archive);
+  try {
+    createSymbolicLink('/etc/passwd', join(scratch.output!.directory, 'external'));
+    expect(() => scratch.dispose()).toThrow('links');
+    expect(existsSync(scratch.directory)).toBe(true);
+    expect(existsSync(join(archive, 'latest.json'))).toBe(false);
+  } finally {
+    rmSync(scratch.directory, { recursive: true, force: true });
+    rmSync(archive, { recursive: true, force: true });
+  }
+});

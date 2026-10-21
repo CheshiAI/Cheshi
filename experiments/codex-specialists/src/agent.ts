@@ -3,6 +3,8 @@ import { WorkerFlashQueue } from './flash-queue.ts';
 import { flashTools, flashInstructions } from './flash-tools.ts';
 import { TaskWorkspaceGate } from './task-workspace.ts';
 import { receiveHostToolResult } from './host-tool-artifacts.ts';
+import { measuredHostCall } from './tool-evidence.ts';
+import { join } from 'node:path';
 import { customToolArguments, customToolDefinition, customToolTimeoutMs } from './custom-tool-contract.ts';
 import type { WorkerCustomToolQueue } from './custom-tool-queue.ts';
 import { packToolAllowed, assertPackToolAllowed } from './pack-tools.ts';
@@ -26,7 +28,7 @@ import { verificationInstructions, verificationTools } from './verification-tool
 import type { RuntimeConfiguration } from './runtime-config.ts';
 import type { RpcClient } from './app-server-client.ts';
 import { record, textValue, type JsonRecord } from './protocol.ts';
-import { AgentStore, validateTaskId, type Task } from './store.ts';
+import { AgentStore, BEFORE_SUBMISSION_RECOVERED, WORKER_RESTART_ERROR, validateTaskId, type Task } from './store.ts';
 import { TurnObserver } from './turn.ts';
 import { CommandSessions } from './command-stop.ts';
 import { ExecutionHealth } from './execution-health.ts';
@@ -190,9 +192,18 @@ export class SpecialistAgent {
           if (!definition || !this.customTools) throw new Error('Custom tool is disabled or unavailable.');
           if (!this.configuration?.permissions.commandExecution || task.consultation) throw new Error('Custom scripts require command permission outside read-only consultation.');
           const args = customToolArguments(definition, params.arguments);
-          const raw = await this.customTools.call(tool, args, active.controller.signal, customToolTimeoutMs(definition, args));
-          const result = definition.execution === 'host' && record(raw).isError !== true
-            ? await receiveHostToolResult(raw, active.controller.signal) : record(raw);
+          const invoke = async () => {
+            const raw = await this.customTools!.call(tool, args, active.controller.signal, customToolTimeoutMs(definition, args));
+            return definition.execution === 'host' && record(raw).isError !== true
+              ? await receiveHostToolResult(raw, active.controller.signal, join(this.store.directory, 'artifacts', 'host-images', task.id)) : record(raw);
+          };
+          let action: string | null = null;
+          try {
+            const request = typeof args.request === 'string' ? JSON.parse(args.request) : null;
+            if (typeof request?.action === 'string') action = request.action;
+          } catch { /* Invalid requests are measured and rejected by the tool itself. */ }
+          const result = definition.execution === 'host'
+            ? await measuredHostCall(task.id, tool, action, invoke, join(this.store.directory, 'artifacts', 'host-calls')) : await invoke();
           active.observations.add({ tool, result });
           return result;
         }
@@ -523,7 +534,9 @@ export class SpecialistAgent {
       const account = record(await this.client.request('account/read', { refreshToken: false }));
       assertChatGPTAccount(account.account);
       if (!active.readOnlyGoal && !task.delegation && !task.consultation && this.configuration?.permissions.commandExecution === true) {
-        scratch = new TaskScratch(); this.retainedScratch.add(scratch);
+        scratch = new TaskScratch(undefined, task.verification ? undefined
+          : join(this.store.directory, 'artifacts', 'task-output', validateTaskId(task.id)));
+        this.retainedScratch.add(scratch);
       }
       if (!active.projectReadOnly && (!task.dialogue || task.goal) && !task.consultation && !task.verification && !task.delegation
         && this.configuration?.permissions.fileWrite === true) assertWritableWorkspace(workspace);
@@ -534,7 +547,12 @@ export class SpecialistAgent {
           task.delegation && this.work ? this.work.resultMessage(task, 'interrupted', 'Stopped before execution.') : undefined); return;
       }
       const memory = this.workspaceGate || task.consultation || task.verification || task.delegation ? '' : this.store.memory();
-      const input = memory ? `Saved work summary (reference data):\n${memory}\n\nCurrent task:\n${active.input}` : active.input;
+      const taskInput = scratch?.output
+        ? `${active.input}\n\nTask result storage: ${scratch.output.directory}. Save deliverable reports, journals and screenshots here (also CHESHI_TASK_OUTPUT_DIR). Only this artifacts subtree is preserved and restored on the next turn. Other temporary files are deleted after this turn. Do not save credentials or transport receipts in deliverables.\nAutomatic host-call measurements: ${join(this.store.directory, 'artifacts', 'host-calls', task.id, 'calls.jsonl')}. Each reply also has receiptPath and measurementPath. These survive worker replacement. Use the exact supplied paths, not an older temporary path.`
+        : active.input;
+      const input = memory ? `Saved work summary (reference data):\n${memory}\n\nCurrent task:\n${taskInput}` : taskInput;
+      // Durably publish the submission boundary before sending any turn request.
+      // Recovery may distinguish a restart with both IDs still null from a lost acknowledgement.
       this.store.update(task.id, { threadId: active.threadId, turnId: null });
       submitted = true;
       const response = await this.client.request('turn/start', {
@@ -649,7 +667,13 @@ export class SpecialistAgent {
             released = false;
           }
         }
-        if (released) { scratch.dispose(); this.retainedScratch.delete(scratch); }
+        if (released) {
+          try { scratch.dispose(); this.retainedScratch.delete(scratch); }
+          catch {
+            this.failure = `Could not preserve task output. Scratch retained at ${scratch.directory}; export it before restarting.`;
+            this.store.update(task.id, { status: 'failed', error: this.failure });
+          }
+        }
       }
     }
   }
@@ -698,11 +722,21 @@ export class SpecialistAgent {
     if (task.delegation && !this.work) throw new TaskConflict('Delegation recovery is unavailable.');
     if (task.verification && (!this.verification || !this.collaboration)) throw new TaskConflict('Independent verification recovery is unavailable.');
     if (task.status !== 'unknown') {
-      if (task.recovery) return task;
+      if (task.recovery || (task.status === 'interrupted' && task.error === BEFORE_SUBMISSION_RECOVERED)) return task;
       throw new TaskConflict('Only an unknown execution can be inspected.');
     }
     if (this.busy || this.failure) throw new TaskConflict('Worker cannot safely inspect yet.');
     if (this.retainedScratch.size) throw new TaskConflict('Restart the worker before inspecting retained command sessions.');
+    if (task.threadId === null && task.turnId === null && task.error === WORKER_RESTART_ERROR
+      && !task.delegation && !task.verification && !task.consultation) {
+      this.assertTaskWorkspace(task);
+      // launch clears both IDs; run persists threadId before turn/start. Both null
+      // after a restart therefore means this attempt never crossed that boundary.
+      // Preserve earlier output and criteria, but never manufacture a native receipt.
+      this.store.complete(id, { status: 'interrupted', output: task.output, error: BEFORE_SUBMISSION_RECOVERED,
+        ...(task.goal ? { goal: { ...task.goal, phase: 'blocked', pending: null } } : {}) });
+      return this.store.task(id)!;
+    }
     if (!task.threadId || !task.turnId) throw new TaskConflict('The execution has no acknowledged turn ID. Its outcome remains unknown.');
     this.assertTaskWorkspace(task);
     this.recovering = true;

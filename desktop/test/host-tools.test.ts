@@ -285,6 +285,23 @@ test('PNG evidence reaches worker storage and actual app-server image content, w
   } finally { await rm(dirname(artifacts[0]!.path), { recursive: true, force: true }); }
 });
 
+test('a bounded scroll batch preserves four distinct worker images and rejects duplicates', async () => {
+  const bytes = png();
+  const images = Array.from({ length: 4 }, (_, i) => ({
+    name: `frame-${i}.png`, base64: bytes.toString('base64'), sha256: imageDigest(bytes),
+  }));
+  const envelope = { hostToolProtocol: 1, data: { ok: true }, images };
+  const output = await receiveHostToolResult(envelope, new AbortController().signal);
+  const artifacts = output.artifacts as { path: string }[];
+  try {
+    expect(artifacts.length).toBe(4);
+    expect(toolResponseContent(output).length).toBe(5);
+    for (const artifact of artifacts) expect(await readFile(artifact.path)).toEqual(bytes);
+    await fails(receiveHostToolResult({ ...envelope, images: [images[0], images[0]] }, new AbortController().signal), 'Duplicate');
+    await fails(receiveHostToolResult({ ...envelope, images: [...images, { ...images[0], name: 'extra.png' }] }, new AbortController().signal), 'Invalid');
+  } finally { await rm(dirname(artifacts[0]!.path), { recursive: true, force: true }); }
+});
+
 test('HTTP artifact transport is bounded before JSON parsing', async () => {
   expect(await readHostExchange(new Request('http://localhost', { method: 'POST', body: '{"protocol":1}' }))).toEqual({ protocol: 1 });
   await fails(readHostExchange(new Request('http://localhost', { method: 'POST', body: 'x'.repeat(HOST_EXCHANGE_BYTES + 1) })), 'exceeds');

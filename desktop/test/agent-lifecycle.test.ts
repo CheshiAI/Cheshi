@@ -160,15 +160,32 @@ test('live snapshots refresh without resetting the idle timer and stopped snapsh
   }));
   expect(f.lifecycle.cached(f.binding)?.details?.tasks.map(t => t.id)).toEqual(['new']);
 });
-test('incomplete activity or foreign container snapshots do not overwrite saved details or execute control', async () => {
+test('restart requires complete activity and all controls reject foreign container snapshots', async () => {
   for (const foreign of [false, true]) {
     const f = fixture(); await f.connect(); let controlled = false;
-    await fails(f.lifecycle.manual('docker:test', 'container', 'stop', async () => { controlled = true; }, async () => ({
+    await fails(f.lifecycle.manual('docker:test', 'container', foreign ? 'stop' : 'restart', async () => { controlled = true; }, async () => ({
       ...f.details, error: foreign ? null : 'Task history is unavailable.',
       agent: { ...f.details.agent, id: foreign ? 'other' : 'container' },
     })), foreign ? 'identity changed' : 'latest worker details');
     expect(controlled).toBe(false); expect(f.lifecycle.state(f.binding)?.phase).toBe('running');
   }
+});
+test('manual stop remains available when settings or history reads fail', async () => {
+  for (const throws of [false, true]) {
+    const f = fixture(); await f.connect();
+    await f.lifecycle.manual('docker:test', 'container', 'stop', async () => { f.setRunning(false); }, async () => {
+      if (throws) throw new Error('Settings changed');
+      return { ...f.details, error: 'Task history unavailable' };
+    });
+    expect(f.lifecycle.cached(f.binding)?.details?.agent.state).toBe('exited');
+    expect(f.lifecycle.state(f.binding)?.phase).toBe('disabled');
+  }
+});
+test('manual stop does not wait indefinitely for an unresponsive worker snapshot', async () => {
+  const f = fixture(); await f.connect();
+  await f.lifecycle.manual('docker:test', 'container', 'stop', async () => { f.setRunning(false); },
+    () => new Promise(() => {}));
+  expect(f.lifecycle.cached(f.binding)?.details?.agent.state).toBe('exited');
 });
 test('failed wake attempts back off, stop after three attempts and require an explicit retry', async () => {
   const f = fixture(); f.failStart();

@@ -5,11 +5,59 @@ import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink as createSymbolicLin
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { runInNewContext } from 'node:vm';
 import { openPencilTreeHash, prepareOpenPencilSource } from '../../scripts/open-pencil-source.mts';
+import { originalEditorAdaptations } from '../frontend/open-pencil/source-adaptations';
 
 const execute = promisify(execFile);
 const directories: string[] = [];
 afterEach(async () => { for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
+
+test('canvas lifecycle keeps presentation transparent without changing document colors or losing GL cleanup', async () => {
+  const transform = originalEditorAdaptations().transform;
+  if (typeof transform !== 'function') throw new Error('Expected source transform');
+  const source = `function lifecycle(state, editor, view, stopStickyPlaceholder, releaseGLContext) {
+  function renderNow() {
+    state.renderer.renderFromEditorState(
+      view,
+      editor.graph,
+    )
+  }
+  function destroy() {
+    stopStickyPlaceholder()
+    releaseGLContext()
+  }
+
+  return { renderNow, destroy }
+}`;
+  const result: unknown = await Reflect.apply(transform, {}, [source,
+    '/project/vendor/open-pencil/packages/vue/src/canvas/surface/lifecycle.ts']);
+  if (!result || typeof result !== 'object' || !('code' in result) || typeof result.code !== 'string') {
+    throw new Error('Expected transformed lifecycle');
+  }
+  const rendered: Array<{ pageColor: { r: number; g: number; b: number; a: number } }> = [];
+  const events: string[] = [];
+  const graph = { fills: [{ color: '#f7f5ef' }] };
+  const view = { pageColor: { r: 0.12, g: 0.12, b: 0.12, a: 1 } };
+  const lifecycle = runInNewContext(`${result.code}; lifecycle(state, editor, view, stop, release)`, {
+    state: {
+      renderer: { renderFromEditorState: (value: typeof view, document: typeof graph) => {
+        rendered.push(value); expect(document).toBe(graph);
+      } },
+      glCanvas: { getContext: () => ({ getExtension: () => ({ loseContext: () => events.push('lose') }) }) },
+    }, editor: { graph }, view, stop: () => events.push('stop'), release: () => events.push('release'),
+  }) as { renderNow(): void; destroy(): void };
+  lifecycle.renderNow();
+  view.pageColor = { r: 0.96, g: 0.96, b: 0.96, a: 1 };
+  lifecycle.renderNow();
+  expect(rendered.map(value => value.pageColor)).toEqual([
+    { r: 0, g: 0, b: 0, a: 0 }, { r: 0, g: 0, b: 0, a: 0 },
+  ]);
+  expect(view.pageColor).toEqual({ r: 0.96, g: 0.96, b: 0.96, a: 1 });
+  expect(graph.fills).toEqual([{ color: '#f7f5ef' }]);
+  lifecycle.destroy();
+  expect(events).toEqual(['stop', 'release', 'lose']);
+});
 
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), 'cheshi-open-pencil-test-'));

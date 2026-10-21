@@ -261,12 +261,23 @@ export class WorkerLifecycle {
     this.demand(entry.binding);
     return this.exclusive(entry.binding, async () => {
       // Capture activity while the API is still available; stopped workers cannot serve it.
-      const latest = readDetails ? await readDetails() : (await this.options.inspect(entry.binding))?.details;
+      let latest: AgentDetails | null | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const read = readDetails ? readDetails() : this.options.inspect(entry.binding).then(live => live?.details);
+        latest = action === 'stop' ? await Promise.race([read, new Promise<null>(resolve => {
+          timer = setTimeout(() => resolve(null), 2000);
+        })]) : await read;
+      } catch (error) {
+        // A user stop must remain available when the worker API/settings are broken.
+        // The bound container identity and Docker stop confirmation are still required.
+        if (action !== 'stop') throw error;
+      } finally { clearTimeout(timer); }
       if (latest) {
         this.assertContainer(latest, containerId);
         if (latest.agent.state === 'running') {
-          if (latest.error) throw new Error('Could not preserve the latest worker details. Refresh before controlling it.');
-          this.remember(entry.binding, latest);
+          if (latest.error && action !== 'stop') throw new Error('Could not preserve the latest worker details. Refresh before controlling it.');
+          if (!latest.error) this.remember(entry.binding, latest);
         }
       }
       // Persist stop intent before issuing Docker control, even if its acknowledgement is lost.

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { inflateSync } from 'node:zlib';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { record, type JsonRecord } from './protocol.ts';
@@ -47,20 +47,24 @@ export function validateHostPng(bytes: Buffer) {
   return { width, height };
 }
 
-export async function receiveHostToolResult(value: unknown, signal: AbortSignal): Promise<JsonRecord> {
+export async function receiveHostToolResult(value: unknown, signal: AbortSignal, imageRoot = tmpdir()): Promise<JsonRecord> {
   const envelope = record(value);
-  if (envelope.hostToolProtocol !== 1 || !Array.isArray(envelope.images) || envelope.images.length > 1
+  if (envelope.hostToolProtocol !== 1 || !Array.isArray(envelope.images) || envelope.images.length > 4
     || JSON.stringify(value).length > HOST_EXCHANGE_BYTES) throw new Error('Invalid host tool result.');
+  const names = new Set<string>();
   const validated = envelope.images.map(raw => {
     const image = record(raw);
     if (typeof image.name !== 'string' || !/^[a-zA-Z0-9_-]{1,80}\.png$/.test(image.name)
       || typeof image.base64 !== 'string' || image.base64.length > Math.ceil(HOST_IMAGE_BYTES / 3) * 4) throw new Error('Invalid host image.');
+    if (names.has(image.name)) throw new Error('Duplicate host image.');
+    names.add(image.name);
     const bytes = Buffer.from(image.base64, 'base64');
     if (bytes.toString('base64') !== image.base64 || imageDigest(bytes) !== image.sha256) throw new Error('Host image hash mismatch.');
     return { name: image.name, bytes, sha256: image.sha256, ...validateHostPng(bytes) };
   });
   signal.throwIfAborted();
-  const directory = validated.length ? await mkdtemp(join(tmpdir(), 'homie-evidence-')) : null;
+  if (validated.length) await mkdir(imageRoot, { recursive: true, mode: 0o700 });
+  const directory = validated.length ? await mkdtemp(join(imageRoot, 'homie-evidence-')) : null;
   try {
     const artifacts = [];
     for (const image of validated) {

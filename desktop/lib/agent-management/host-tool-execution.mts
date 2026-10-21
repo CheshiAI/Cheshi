@@ -4,7 +4,7 @@ import { open, realpath } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { record } from '../../../experiments/codex-specialists/src/protocol.ts';
-import { HOST_IMAGE_BYTES, imageDigest, validateHostPng, type HostToolResult } from '../../../experiments/codex-specialists/src/host-tool-artifacts.ts';
+import { HOST_IMAGE_BYTES, HOST_EXCHANGE_BYTES, imageDigest, validateHostPng, type HostToolResult } from '../../../experiments/codex-specialists/src/host-tool-artifacts.ts';
 
 export interface HostProcessOptions {
   dependencyEnvironment?: { HOMIE_SERVICE_NODE: string; HOMIE_SERVICE_RUNTIME_DIR: string };
@@ -58,7 +58,7 @@ export async function executeHostProcess(options: HostProcessOptions): Promise<H
   const response = record(JSON.parse(stdout));
   if (!('result' in response) || Object.keys(response).some(key => !['result', 'images'].includes(key))) throw new Error('Expected host JSON result and optional images.');
   const paths = response.images ?? [];
-  if (!Array.isArray(paths) || paths.length > 1) throw new Error('Host tools may return one PNG per call.');
+  if (!Array.isArray(paths) || paths.length > 4 || new Set(paths).size !== paths.length) throw new Error('Host tools may return up to four distinct PNGs per call.');
   const images = [];
   const root = await realpath(options.output);
   if (root !== outputRoot) throw new Error('Host output directory changed.');
@@ -79,5 +79,7 @@ export async function executeHostProcess(options: HostProcessOptions): Promise<H
   }
   options.signal.throwIfAborted();
   if (!options.valid()) throw new Error('Host tool permission changed.');
-  return { hostToolProtocol: 1, data: response.result, images };
+  const envelope: HostToolResult = { hostToolProtocol: 1, data: response.result, images };
+  if (Buffer.byteLength(JSON.stringify(envelope)) > HOST_EXCHANGE_BYTES) throw new Error('Host evidence exceeds 6 MiB. External completion may be unknown; do not replay input.');
+  return envelope;
 }

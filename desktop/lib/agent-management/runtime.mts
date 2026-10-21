@@ -4,6 +4,7 @@ import type { HostToolRegistration } from './host-tool-registration.mts';
 import { agentDisplayName } from '../../shared/agent-registry.ts';
 import { revision } from '../agent-platform/git-workspaces.mts';
 import { INTAKE_WORKSPACE, isIntakeWorkspace, parseWorkspaceKey } from '../../../experiments/codex-specialists/src/task-workspace.ts';
+import { WORKER_TMPFS_BYTES } from '../../../experiments/codex-specialists/src/task-storage-limits.ts';
 import { executeCustomTool, type ToolCredential } from './custom-tool-execution.mts';
 import type { ToolTestRequest } from '../../shared/homie-tools.ts';
 import { packInstructions, preparePackEnvironment } from './pack-environment.mts';
@@ -499,7 +500,7 @@ export function createSpecialistRuntime(options: RuntimeOptions) {
             '--mount', `type=volume,src=${volume},dst=/agent`,
             '--mount', `type=bind,src=${execution},dst=/workspace${agent.permissions.fileWrite && !isIntakeWorkspace(taskKey) ? '' : ',readonly'}`,
             ...(workspaces ? ['--mount', `type=bind,src=${join(execution, '.git')},dst=/workspace/.git,readonly`] : []),
-            '--tmpfs', '/tmp:rw,nosuid,nodev,size=128m,mode=1777',
+            '--tmpfs', `/tmp:rw,nosuid,nodev,size=${WORKER_TMPFS_BYTES},mode=1777`,
             '--env', 'CODEX_HOME=/agent/codex', '--env', 'AGENT_DATA_DIRECTORY=/agent', '--env', 'AGENT_WORKSPACE=/workspace',
             '--env', 'AGENT_RUNTIME_CONFIG=/agent/runtime.json', '--env', `AGENT_RUNTIME_REVISION=${fingerprint}`, ...environment.mounts, environment.image]);
           worker = await find(prefix, key);
@@ -832,5 +833,5 @@ function profileConfiguration(agent: SpecialistAgent) {
 }
 
 function runtimeSettingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], projectDocMaxBytes = DEFAULT_PROJECT_DOC_MAX_BYTES, dependencies = (assignment.permissions ?? agent.permissions).commandExecution ? projectDependencies(workspace) : null) {
-  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}\ncodegraph=2\ndependency_volumes=1\nintake_recovery=1\ngoal_revision_guidance=1\nworker_git_guidance=1\nverification_source=1\ngoal_pause=1\ndynamic_tool_activity=1\ngoal_verification_policy=1`);
+  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}\ncodegraph=2\ndependency_volumes=1\nintake_recovery=1\ngoal_revision_guidance=1\nworker_git_guidance=1\nverification_source=1\ngoal_pause=1\ndynamic_tool_activity=1\ngoal_verification_policy=1\nworker_tmpfs_bytes=${WORKER_TMPFS_BYTES}`);
 }
