@@ -32,6 +32,7 @@ export default defineConfig({
     { find: '@cheshi/switch-styles', replacement: resolve(here, '../src/shared/ui/ToggleSwitch.module.css') },
     { find: '@cheshi/text-field-styles', replacement: resolve(here, '../src/shared/ui/NeumorphicTextField.module.css') },
     { find: '@cheshi/panel-styles', replacement: resolve(here, '../src/shared/ui/LiquidGlassPanel.module.css') },
+    { find: '@cheshi/popup-styles', replacement: resolve(here, '../src/shared/ui/PopupSurface.module.css') },
     { find: '@cheshi/CanvasTitleMark.vue', replacement: resolve(here, 'editor/CanvasTitleMark.vue') },
     { find: '@cheshi/properties-tabs', replacement: resolve(here, 'editor/properties-tabs.ts') },
     { find: /^@\/app\/collab\/transport$/, replacement: resolve(here, 'editor/local-collaboration.ts') },

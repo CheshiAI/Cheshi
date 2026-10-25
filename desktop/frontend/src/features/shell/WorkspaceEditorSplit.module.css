@@ -10,42 +10,6 @@
 .root { overflow: hidden; --split-pane-accent: var(--editor-accent); }
 .host { flex-direction: column; overflow: hidden; }
 
-.root > [data-axis='columns'] > [role='separator'] { width: 5px; }
-.root > [data-axis='rows'] > [role='separator'] { height: 5px; }
-
-.root > [data-axis] > [role='separator']::after {
-  background: var(--divider);
-}
-
-.root > [data-axis] > [role='separator']::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 1;
-  width: 2px;
-  height: 24px;
-  border-radius: 999px;
-  background: currentColor;
-  transform: translate(-50%, -50%);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.root > [data-axis='rows'] > [role='separator']::before { width: 24px; height: 2px; }
-
-.root > [data-axis] > [role='separator']:hover,
-.root > [data-axis] > [role='separator']:focus-visible,
-.root > [data-axis][data-dragging='true'] > [role='separator'] {
-  background: var(--divider);
-}
-
-.root > [data-axis] > [role='separator']:hover::before,
-.root > [data-axis] > [role='separator']:focus-visible::before,
-.root > [data-axis][data-dragging='true'] > [role='separator']::before {
-  opacity: 1;
-}
-
 .mount { position: relative; }
 .mount[data-drop]::after {
   content: '';

@@ -70,7 +70,7 @@ function shouldIgnore(packagePath: string): boolean {
   if (segments.length === 2) return false;
   if (grandchildEntry === 'electron-libghostty') return false;
   if (grandchildEntry === 'canvas') {
-    const files = new Set(['canvas-documents.mts', 'canvas-session.mts', 'canvas-ipc.mts', 'canvas-history.mts', 'canvas-library.mts']);
+    const files = new Set(['canvas-documents.mts', 'canvas-file-locations.mts', 'canvas-session.mts', 'canvas-ipc.mts', 'canvas-history.mts', 'canvas-library.mts']);
     return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
   }
   if (grandchildEntry === 'flash') {

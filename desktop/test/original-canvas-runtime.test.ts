@@ -37,9 +37,11 @@ void (async () => {
     callback({cancel:remote});
   });
   function createWindow() {
+    let stage = 'startup';
     const window = new BrowserWindow({show:false,width:1200,height:800,webPreferences:{sandbox:true,contextIsolation:true,backgroundThrottling:false}});
     window.webContents.on('console-message', event => {
-      if (event.level === 'error' || event.level === 'warning') errors.push(event.message);
+      if (event.message.startsWith('CANVAS_STAGE ')) stage = event.message.slice('CANVAS_STAGE '.length);
+      if (event.level === 'error' || event.level === 'warning') errors.push(stage + ': ' + event.message);
     });
     return window;
   }
@@ -66,6 +68,7 @@ void (async () => {
       });
       window.__canvasTestCommand = (method, payload) => new Promise((resolve, reject) => {
         const id = ++sequence;
+        console.info('CANVAS_STAGE ' + method + ' ' + id);
         const timer = setTimeout(() => { window.removeEventListener('message', receive); reject(Error('Bridge timeout')); }, 10000);
         function receive(event) {
           if (event.data?.channel !== 'cheshi:open-pencil:v1' || event.data.type !== 'result' || event.data.id !== id) return;
@@ -83,6 +86,9 @@ void (async () => {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
     if (!ready) throw Error('New canvas did not initialize');
+    // Match the host: the file/page sidebar sits outside the editor's viewport.
+    await evaluate('window.postMessage({channel:"cheshi:open-pencil:v1",type:"layout",payload:{editor:{x:320,y:0,width:innerWidth-320,height:innerHeight},layers:{x:0,y:400,width:320,height:innerHeight-400}}},"*")');
+    await new Promise(resolve => setTimeout(resolve, 100));
     return initialHomeEmpty;
     }
     const initialHomeEmpty = await initializeDocument();
@@ -93,16 +99,18 @@ void (async () => {
       const panel = document.querySelector('.cheshi-panel-content');
       const rail = document.querySelector('.cheshi-panel-rail');
       const original = rail.querySelector('[aria-expanded="true"]');
-      const layers = rail.querySelector('[aria-label="Pages and layers"]');
+      const design = rail.querySelector('[data-test-id="canvas-design-trigger"]');
+      const layers = document.querySelector('.cheshi-docked-layers');
       const settle = () => new Promise(resolve => setTimeout(resolve, 300));
       if (original) { original.click(); await settle(); }
       const closedWidth = canvas.getBoundingClientRect().width;
       const zoom = store.state.zoom;
-      layers.click(); await settle();
-      const filePanelContents = !!panel.querySelector('[data-test-id="canvas-file-heading"]')
-        && !!panel.querySelector('[data-test-id="pages-panel"]')
-        && !!panel.querySelector('[data-test-id="layers-tree"]')
-        && !panel.querySelector('[data-test-id="left-panel-assets-tab"], [data-test-id="left-panel-layers-tab"]');
+      design.click(); await settle();
+      const filePanelContents = !rail.querySelector('[aria-label="Pages and layers"]') && !!layers.querySelector('[data-test-id="canvas-file-heading"]')
+        && !!layers.querySelector('[data-test-id="pages-panel"]')
+        && !!layers.querySelector('[data-test-id="layers-tree"]')
+        && !layers.querySelector('[data-test-id="left-panel-assets-tab"], [data-test-id="left-panel-layers-tab"]')
+        && layers.getBoundingClientRect().right <= canvas.getBoundingClientRect().left;
       const bounds = canvas.getBoundingClientRect();
       const panelBounds = panel.getBoundingClientRect();
       const toolbar = canvas.querySelector('[data-test-id="toolbar"]').getBoundingClientRect();
@@ -113,11 +121,11 @@ void (async () => {
       store.state.showUI = false; await settle();
       const hiddenPanelReleasesSpace = Math.abs(canvas.getBoundingClientRect().width - stage.getBoundingClientRect().width) < 1;
       store.state.showUI = true; await settle();
-      panel.querySelector('[data-test-id="canvas-file-close"]').click(); await settle();
+      panel.querySelector('[data-test-id="canvas-properties-close"]').click(); await settle();
       const panelCloseRestoresCanvas = Math.abs(canvas.getBoundingClientRect().width - closedWidth) < 1 && store.state.zoom === zoom;
-      const fileCloseRestoresFocus = document.activeElement === layers && layers.getAttribute('aria-expanded') === 'false';
+      const designCloseRestoresFocus = document.activeElement === design && design.getAttribute('aria-expanded') === 'false';
       if (original) { original.click(); await settle(); }
-      return {filePanelContents,fileCloseRestoresFocus,panelReservesSpace,panelDoesNotOverlap,toolbarCentered,canvasResized,hiddenPanelReleasesSpace,panelCloseRestoresCanvas};
+      return {filePanelContents,designCloseRestoresFocus,panelReservesSpace,panelDoesNotOverlap,toolbarCentered,canvasResized,hiddenPanelReleasesSpace,panelCloseRestoresCanvas};
     })()\`);
     const canvasBlur = await evaluate(\`(async () => {
       const settle = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -408,6 +416,41 @@ void (async () => {
       const restoreReport = {renameKeepsDraft,restoreBlocksUnsaved:blocked, restoreReplacesTab:document.querySelectorAll('[data-test-id="tabbar-tab"]').length === beforeCount,
         restoreLoadsVersion:restored !== store && !restored.hasUnsavedChanges() && restored.getDocumentFilePath() === 'renamed.fig'
           && [...restored.graph.getAllNodes()].some(node => node.type === 'TEXT' && node.text === '체시 테스트 디자인')};
+      const refreshLayer = [...restored.graph.getAllNodes()].find(node => node.type === 'TEXT');
+      restored.updateNodeWithUndo(refreshLayer.id, {text:'Keep local draft'}, 'Draft');
+      let refreshBlocksDraft = false;
+      try { await command('refresh', {path:'renamed.fig',data:window.__versionRestoreBytes}); }
+      catch (error) { refreshBlocksDraft = String(error).includes('Your edits have been kept'); }
+      refreshBlocksDraft &&= window.openPencil.getStore() === restored
+        && restored.graph.getNode(refreshLayer.id).text === 'Keep local draft' && restored.hasUnsavedChanges();
+      restored.undoAction();
+      // Model the saved snapshot still shown in the tab while disk has newer bytes.
+      restored.updateNodeWithUndo(refreshLayer.id, {text:'Older saved snapshot'}, 'Old snapshot');
+      restored.setDocumentSource('renamed.fig', 'fig', undefined, 'renamed.fig');
+      await command('new');
+      const otherDraft = window.openPencil.getStore();
+      const draftShape = otherDraft.createShape('RECTANGLE', 10, 20, 30, 40);
+      await command('open', {path:'renamed.fig',data:window.__versionRestoreBytes});
+      const tabsBeforeRefresh = document.querySelectorAll('[data-test-id="tabbar-tab"]').length;
+      const pageId = restored.graph.getPages()[1].id;
+      await restored.switchPage(pageId);
+      Object.assign(restored.state, {zoom:0.73, panX:123, panY:-87});
+      let refreshFailureKeepsDocument = false;
+      try { await command('refresh', {path:'renamed.fig',data:new Uint8Array([0,1,2])}); }
+      catch { refreshFailureKeepsDocument = window.openPencil.getStore() === restored
+        && restored.state.currentPageId === pageId
+        && document.querySelectorAll('[data-test-id="tabbar-tab"]').length === tabsBeforeRefresh; }
+      await command('refresh', {path:'renamed.fig',data:window.__versionRestoreBytes});
+      const refreshed = window.openPencil.getStore();
+      const refreshPreservesView = refreshed !== restored && refreshed.state.currentPageId === pageId
+        && refreshed.state.zoom === 0.73 && refreshed.state.panX === 123 && refreshed.state.panY === -87;
+      const refreshKeepsOtherDraft = otherDraft.hasUnsavedChanges() && !!otherDraft.graph.getNode(draftShape)
+        && document.querySelectorAll('[data-test-id="tabbar-tab"]').length === tabsBeforeRefresh;
+      const refreshLoadsFile = !refreshed.hasUnsavedChanges() && refreshed.getDocumentFilePath() === 'renamed.fig';
+      await refreshed.switchPage(refreshed.graph.getPages()[0].id);
+      const refreshLoadsNewContent = [...refreshed.graph.getAllNodes()].some(node => node.type === 'TEXT' && node.text === '체시 테스트 디자인')
+        && ![...refreshed.graph.getAllNodes()].some(node => node.text === 'Older saved snapshot');
+      otherDraft.undoAction();
       await command('new');
       let emptyBytes;
       const capture = event => {
@@ -423,10 +466,27 @@ void (async () => {
       const placeholder = window.openPencil.getStore();
       await command('open', {path:'reopened-empty.fig',data:emptyBytes});
       const reopened = window.openPencil.getStore();
-      return {...restoreReport, emptyFileStaysOpen:reopened === placeholder
+      const emptyFileStaysOpen = reopened === placeholder
         && reopened.getDocumentFilePath() === 'reopened-empty.fig' && !reopened.hasUnsavedChanges()
         && reopened.graph.getPages().every(page => page.childIds.length === 0)
-        && !document.querySelector('[data-test-id="home-new-document"]')};
+        && !document.querySelector('[data-test-id="home-new-document"]');
+      const emptyPageId = reopened.state.currentPageId;
+      await command('refresh', {path:'reopened-empty.fig',data:emptyBytes});
+      const emptyRefreshed = window.openPencil.getStore();
+      const refreshReplacesEmptyDocument = emptyRefreshed !== reopened && emptyRefreshed.state.currentPageId === emptyPageId;
+      // New documents share initial page IDs. Add a page absent from the incoming
+      // graph so this exercises removal rather than an existing-page refresh.
+      const incomingPageIds = new Set(refreshed.graph.getPages().map(page => page.id));
+      let removedPage = emptyRefreshed.graph.addPage('Removed page');
+      while (incomingPageIds.has(removedPage.id)) removedPage = emptyRefreshed.graph.addPage('Removed page');
+      await emptyRefreshed.switchPage(removedPage.id);
+      emptyRefreshed.setDocumentSource('reopened-empty.fig', 'fig', undefined, 'reopened-empty.fig');
+      await command('refresh', {path:'reopened-empty.fig',data:window.__versionRestoreBytes});
+      const replacedPages = window.openPencil.getStore();
+      const refreshHandlesRemovedPage = !replacedPages.graph.getPages().some(page => page.id === removedPage.id)
+        && replacedPages.state.currentPageId === replacedPages.graph.getPages()[0].id;
+      return {...restoreReport, refreshBlocksDraft, refreshFailureKeepsDocument, refreshPreservesView, refreshKeepsOtherDraft, refreshLoadsFile,
+        refreshLoadsNewContent, refreshReplacesEmptyDocument, refreshHandlesRemovedPage, emptyFileStaysOpen};
     })()\`);
     // Give the home/tab scenario its own renderer and GPU contexts instead of
     // retaining the previous feature scenarios' CanvasKit views across navigation.
@@ -524,12 +584,14 @@ void (async () => {
     for (const key of ['canvasGridPreserved', 'noPreparationOverlay', 'tabProgressPreserved', 'preparationBlocksInput', 'preparationCleared',
       'historyDeferred', 'historyLoaded', 'historyRetained',
       'toolbarBlur', 'menuBlur', 'submenuBlur', 'menuBlurCleaned',
-      'filePanelContents', 'fileCloseRestoresFocus',
+      'filePanelContents', 'designCloseRestoresFocus',
       'panelReservesSpace', 'panelDoesNotOverlap', 'toolbarCentered', 'canvasResized', 'hiddenPanelReleasesSpace', 'panelCloseRestoresCanvas',
       'noLogo', 'noHeaderToggle', 'settingsOnRail', 'artworkFontPreserved', 'noDocumentNameField',
       'settingsPreparedBeforeOpen', 'settingsFocusWithoutScroll', 'settingsRetainedAcrossPanels',
       'canvasTabIcon', 'noAI', 'noAIShortcut', 'toolbarOnly', 'settingsInline', 'settingsShortcut', 'settingsEscape', 'settingsRetainedOnClose', 'settingsRapidReopen', 'toolbarHidden', 'toolbarPersisted', 'toolbarReordered', 'toolbarReset',
       'localOnly', 'localPropertiesOnly', 'noCodePanel', 'lintActive', 'lintClosed', 'lintRetained', 'designActive', 'renameKeepsDraft', 'emptyFileStaysOpen', 'restoreBlocksUnsaved', 'restoreReplacesTab', 'restoreLoadsVersion',
+      'refreshBlocksDraft', 'refreshFailureKeepsDocument', 'refreshPreservesView', 'refreshKeepsOtherDraft', 'refreshLoadsFile',
+      'refreshLoadsNewContent', 'refreshReplacesEmptyDocument', 'refreshHandlesRemovedPage',
       'initialHomeEmpty', 'tabAddRemoved', 'failedCreatePreservesDraft', 'createSavesNewFile', 'newTabCreatesCanvas', 'lastCloseShowsEmpty', 'emptySaveBlocked', 'newFromEmptyReusesTab', 'closedContextsReleased',
       'grouped', 'autoLayout', 'components', 'duplicated', 'deletionUndo', 'preview', 'savedClean', 'escapeFocus', 'korean', 'componentRestored', 'instanceRestored', 'layerStateRestored']) {
       assert.equal(report[key], true, `${key}: ${JSON.stringify(report)}`);

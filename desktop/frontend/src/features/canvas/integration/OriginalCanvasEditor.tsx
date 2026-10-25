@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { CanvasRestoreRequest } from '../../../../../shared/canvas';
+import type { CanvasLibraryListing, CanvasRestoreRequest } from '../../../../../shared/canvas';
+import { isCanvasOverlayList, type CanvasRectangle } from '../../../../../shared/canvas-layout';
 import { cheshiDesktop } from '../../../cheshiDesktop';
 import { Modal, NeumorphicButton, NeumorphicTextField } from '../../../shared/ui';
 import { StatusToast, type StatusToastMessage } from '../../../shared/ui/StatusToast';
@@ -10,6 +11,7 @@ import styles from './OriginalCanvasEditor.module.css';
 import { CanvasSidebar } from '../CanvasSidebar';
 import { CanvasEmptyState } from '../CanvasEmptyState';
 import { CanvasCloseDialog, type CanvasCloseChoice } from '../CanvasCloseDialog';
+import { useCanvasDock } from './useCanvasDock';
 
 const channel = 'cheshi:open-pencil:v1';
 const editorURL = new URL('open-pencil/index.html', document.baseURI).href;
@@ -23,6 +25,13 @@ export function OriginalCanvasEditor({ active, target, sidebarTarget, onOpenFile
   onDirtyChange(dirty: boolean): void;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
+  const workspace = useRef<HTMLElement>(null);
+  const [frameHost, setFrameHost] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    setFrameHost(workspace.current?.closest<HTMLElement>('.app-layout') ?? document.body);
+  }, []);
+  const [layersTarget, setLayersTarget] = useState<HTMLDivElement | null>(null);
+  const [overlays, setOverlays] = useState<CanvasRectangle[]>([]);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -41,6 +50,7 @@ export function OriginalCanvasEditor({ active, target, sidebarTarget, onOpenFile
   const [closeDocumentName, setCloseDocumentName] = useState<string | null>(null);
   const closePicker = useRef<((choice: CanvasCloseChoice) => void) | null>(null);
   const revisions = useRef(new Map<string, string>());
+  const relocationAttempts = useRef(new Map<string, string>());
   const pending = useRef(new Map<number, Pending>());
   const sequence = useRef(0);
   const targetRef = useRef(target);
@@ -56,6 +66,7 @@ export function OriginalCanvasEditor({ active, target, sidebarTarget, onOpenFile
   const post = useCallback((message: object) => {
     frame.current?.contentWindow?.postMessage({ channel, ...message }, location.origin === 'null' ? '*' : location.origin);
   }, []);
+  useCanvasDock(frame, workspace, layersTarget, active && hasDocument, ready, overlays, post);
   const command = useCallback((method: string, payload?: unknown) => new Promise<void>((resolve, reject) => {
     const id = ++sequence.current;
     const timer = setTimeout(() => { pending.current.delete(id); reject(new Error('Canvas operation timed out.')); }, 120_000);
@@ -80,6 +91,42 @@ export function OriginalCanvasEditor({ active, target, sidebarTarget, onOpenFile
   const run = useCallback(async (operation: () => Promise<void>) => {
     try { await perform(operation); } catch (error) { report(error); }
   }, [perform, report]);
+  const reconcilePaths = useCallback(async (listing: CanvasLibraryListing, selectedPath: string) => {
+    if (listing.truncated) return selectedPath;
+    let next = selectedPath;
+    for (const move of listing.relocations ?? []) {
+      const revision = revisions.current.get(move.previousPath);
+      if (revision === undefined || revisions.current.has(move.path)) continue;
+      await command('renamed', move);
+      revisions.current.delete(move.previousPath);
+      revisions.current.set(move.path, revision);
+      if (next === move.previousPath) {
+        next = move.path;
+        setCurrentPath(next);
+        await api?.rememberDocument(next);
+      }
+    }
+    return next;
+  }, [api, command]);
+  const onListing = useCallback((listing: CanvasLibraryListing) => {
+    if (!ready || listing.truncated || operationPending.current || saving || closePicker.current) return;
+    const moves = (listing.relocations ?? []).filter(move => revisions.current.has(move.previousPath)
+      && !revisions.current.has(move.path) && relocationAttempts.current.get(move.previousPath) !== move.path);
+    if (!moves.length) return;
+    // A rejected bridge command must not create a list -> rename -> list retry loop.
+    // The refresh button remains an explicit retry, including for a failed move.
+    for (const move of moves) relocationAttempts.current.set(move.previousPath, move.path);
+    while (relocationAttempts.current.size > 1000) relocationAttempts.current.delete(relocationAttempts.current.keys().next().value!);
+    void run(async () => { await reconcilePaths({ ...listing, relocations: moves }, currentPath); });
+  }, [ready, saving, currentPath, reconcilePaths, run]);
+  const refreshDocument = useCallback(() => run(async () => {
+    if (!api || !currentPath || !hasDocument) return;
+    const next = await reconcilePaths(await api.list(), currentPath);
+    const document = await api.read(next);
+    if (document.revision === revisions.current.get(document.path)) return;
+    await command('refresh', document);
+    revisions.current.set(document.path, document.revision);
+  }), [api, command, currentPath, hasDocument, reconcilePaths, run]);
   const restore = useCallback(async (request: CanvasRestoreRequest) => {
     await perform(async () => {
       if (!api) throw new Error('Canvas file service is unavailable.');
@@ -112,6 +159,10 @@ export function OriginalCanvasEditor({ active, target, sidebarTarget, onOpenFile
         : event.origin === location.origin;
       if (event.source !== frame.current?.contentWindow || !sameOrigin || event.data?.channel !== channel) return;
       const message = event.data;
+      if (message.type === 'overlays') {
+        if (isCanvasOverlayList(message.payload)) setOverlays(message.payload);
+        return;
+      }
       if (message.type === 'ready') { setReady(true); return; }
       if (message.type === 'state') {
         const state = message.payload;
@@ -249,8 +300,7 @@ export function OriginalCanvasEditor({ active, target, sidebarTarget, onOpenFile
   const dialogError = isCreating ? createError : saveError;
   const closeNameDialog = () => { if (isCreating) setCreateName(null); else finishPicker(null); };
 
-  return <><section className={styles.workspace} hidden={!active} inert={!active} aria-label="Canvas">
-    <iframe ref={frame} className={styles.editor} aria-hidden={!hasDocument} inert={!hasDocument || busy || saving || closeDocumentName !== null} title="OpenPencil editor" src={editorURL} allow="clipboard-read; clipboard-write; local-fonts" />
+  return <><section ref={workspace} className={styles.workspace} hidden={!active} inert={!active} aria-label="Canvas">
     {!hasDocument && <CanvasEmptyState active={active} />}
     {notification && <StatusToast message={notification} onDismiss={() => setNotification(null)} />}
     {closeDocumentName !== null && <CanvasCloseDialog documentName={closeDocumentName} onChoose={finishClose} />}
@@ -267,8 +317,15 @@ export function OriginalCanvasEditor({ active, target, sidebarTarget, onOpenFile
           <NeumorphicButton variant="standard" type="submit" disabled={!dialogName.trim() || (isCreating && busy)}>{isCreating ? 'Create' : 'Save'}</NeumorphicButton></div>
       </form>
     </Modal>}
-  </section>{sidebarTarget && api && createPortal(<CanvasSidebar api={api} currentPath={currentPath}
+  </section>{frameHost && createPortal(<iframe ref={frame} className={styles.editor} aria-hidden={!active || !hasDocument}
+    inert={!active || !hasDocument || busy || saving || closeDocumentName !== null} title="OpenPencil editor" src={editorURL}
+    allow="clipboard-read; clipboard-write; local-fonts" />, frameHost)}
+  {sidebarTarget && api && createPortal(<CanvasSidebar api={api} currentPath={currentPath}
+    layers={active && hasDocument
+      ? <div ref={setLayersTarget} className={styles.layers} data-canvas-layers aria-label="Canvas pages and layers" />
+      : undefined}
     busy={busy || saving || closeDocumentName !== null} ready={ready} canSave={hasDocument} refresh={refresh}
     onOpen={onOpenFile} onSave={() => void run(() => command('save'))} onCreate={() => void beginCreate()}
-    onRename={rename} onError={report} />, sidebarTarget)}</>;
+    onRefresh={() => void refreshDocument()}
+    onRename={rename} onError={report} onListing={onListing} />, sidebarTarget)}</>;
 }

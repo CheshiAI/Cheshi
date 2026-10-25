@@ -1,11 +1,14 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 import { NeumorphicTextField } from './NeumorphicTextField';
+import { TooltipButton } from './TooltipButton';
 import styles from './InlineRenameField.module.css';
 
-export function InlineRenameField({ initialTitle, inputLabel, maxLength, children, onSave, onClose }: {
+export function InlineRenameField({ initialTitle, inputLabel, maxLength, layout = 'stacked', children, onSave, onClose }: {
   initialTitle: string;
   inputLabel: string;
   maxLength?: number;
+  layout?: 'stacked' | 'inline';
   children?: ReactNode;
   onSave(title: string): Promise<unknown>;
   onClose(): void;
@@ -16,6 +19,7 @@ export function InlineRenameField({ initialTitle, inputLabel, maxLength, childre
   const input = useRef<HTMLInputElement>(null);
   const saving = useRef(false), composing = useRef(false);
   const errorId = useId();
+  const clearTitle = () => { setTitle(''); setError(null); input.current?.focus(); };
   useEffect(() => { input.current?.focus(); input.current?.select(); }, []);
   async function save() {
     if (saving.current || composing.current) return;
@@ -29,7 +33,7 @@ export function InlineRenameField({ initialTitle, inputLabel, maxLength, childre
       input.current?.focus();
     } finally { saving.current = false; setPending(false); }
   }
-  return <form className={styles.root} aria-label={`Rename ${inputLabel.toLowerCase()}`} aria-busy={pending}
+  return <form className={styles.root} data-layout={layout} aria-label={`Rename ${inputLabel.toLowerCase()}`} aria-busy={pending}
     onSubmit={event => { event.preventDefault(); void save(); }}
     onBlur={event => { if (!saving.current && !event.currentTarget.contains(event.relatedTarget)) onClose(); }}
     onKeyDown={event => {
@@ -43,8 +47,10 @@ export function InlineRenameField({ initialTitle, inputLabel, maxLength, childre
       aria-invalid={error ? true : undefined} aria-describedby={error ? errorId : undefined}
       onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
       onChange={event => { setTitle(event.target.value); setError(null); }}
-      onClear={() => { setTitle(''); setError(null); }} clearLabel="Clear title" />
+      onClear={layout === 'inline' ? undefined : clearTitle} clearLabel="Clear title" />
     {children}
+    {layout === 'inline' && <TooltipButton variant="ghost" size="icon" className={styles.cancel}
+      type="button" aria-label="Cancel rename" title="Cancel rename" disabled={pending} onClick={onClose}><X aria-hidden="true" /></TooltipButton>}
     {error && <p id={errorId} className={styles.error} role="alert">{error}</p>}
   </form>;
 }

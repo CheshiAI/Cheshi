@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { link as createHardLink, open, readFile, rename, stat, unlink } from 'node:fs/promises';
+import { link as createHardLink, open, rename, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import type { CanvasDocument, CanvasSaveRequest } from '../../shared/canvas.ts';
 import { isGitMetadataPath, normalizeRelativePath, openWorkspaceRoot, resolveWorkspaceTarget } from '../workspace-file-paths.mts';
+import { CanvasFileLocations, canvasFileIdentity } from './canvas-file-locations.mts';
 
 const maximumBytes = 64 * 1024 * 1024;
 const revisionOf = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
@@ -22,13 +23,17 @@ export function assertDocumentBytes(value: unknown): asserts value is Uint8Array
   if (!signature.startsWith('fig-kiwi') && !signature.startsWith('PK\u0003\u0004')) throw new Error('This is not a .fig design file.');
 }
 
-async function readBytes(target: string): Promise<Buffer> {
-  const information = await stat(target);
-  if (!information.isFile() || information.size > maximumBytes) throw new Error('Choose a .fig file no larger than 64 MB.');
-  const bytes = await readFile(target);
-  assertDocumentBytes(bytes);
-  return bytes;
+async function readSnapshot(target: string) {
+  const handle = await open(target, 'r');
+  try {
+    const information = await handle.stat();
+    if (!information.isFile() || information.size > maximumBytes) throw new Error('Choose a .fig file no larger than 64 MB.');
+    const data = await handle.readFile();
+    assertDocumentBytes(data);
+    return { data, identity: canvasFileIdentity(information) };
+  } finally { await handle.close(); }
 }
+const readBytes = async (target: string) => (await readSnapshot(target)).data;
 
 function assertCurrentRevision(bytes: Uint8Array, expected: string) {
   if (revisionOf(bytes) !== expected) throw new Error('The design changed on disk. Reopen it or save under a new name.');
@@ -36,6 +41,7 @@ function assertCurrentRevision(bytes: Uint8Array, expected: string) {
 
 /** Workspace-scoped native design files. Writes are serialized and reject stale revisions. */
 export class CanvasDocuments {
+  readonly locations = new CanvasFileLocations();
   private readonly root: string;
   private pending: Promise<unknown> = Promise.resolve();
 
@@ -44,7 +50,8 @@ export class CanvasDocuments {
   async read(value: unknown): Promise<CanvasDocument> {
     const relative = canvasDocumentPath(value);
     const target = await resolveWorkspaceTarget(await openWorkspaceRoot(this.root), relative);
-    const data = await readBytes(target);
+    const { data, identity } = await readSnapshot(target);
+    this.locations.remember(relative, identity);
     return { path: relative, revision: revisionOf(data), data: new Uint8Array(data) };
   }
 
@@ -59,12 +66,14 @@ export class CanvasDocuments {
       const root = await openWorkspaceRoot(this.root);
       const source = await resolveWorkspaceTarget(root, canvasDocumentPath(previousPath));
       const target = await resolveWorkspaceTarget(root, canvasDocumentPath(nextPath), true);
-      assertCurrentRevision(await readBytes(source), expectedRevision);
+      const snapshot = await readSnapshot(source);
+      assertCurrentRevision(snapshot.data, expectedRevision);
       // Exclusive publication also protects a destination created after the dialog opened.
       await createHardLink(source, target);
       try {
         await preserveHistory();
         await unlink(source);
+        this.locations.remember(nextPath, snapshot.identity);
       } catch (error) {
         const [original, created] = await Promise.all([stat(source), stat(target)]);
         if (original.dev === created.dev && original.ino === created.ino) await unlink(target);
@@ -91,6 +100,7 @@ export class CanvasDocuments {
     try {
       await handle.writeFile(bytes);
       await handle.sync();
+      const identity = canvasFileIdentity(await handle.stat());
       await handle.close();
       // Resolve again after writing the temporary file; never follow an edited symlink.
       await resolveWorkspaceTarget(root, relative, true);
@@ -102,6 +112,7 @@ export class CanvasDocuments {
         assertCurrentRevision(current, request.expectedRevision);
         await rename(temporary, target);
       }
+      this.locations.remember(relative, identity);
       return { path: relative, revision: revisionOf(bytes) };
     } finally {
       await handle.close().catch(() => undefined);

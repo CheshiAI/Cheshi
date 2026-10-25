@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { FolderOpen, Frame, Plus, RefreshCw, Save } from 'lucide-react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { FolderOpen, Frame, Pencil, Plus, RefreshCw, Save } from 'lucide-react';
 import type { CanvasApi, CanvasLibraryListing } from '../../../../shared/canvas';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { NeumorphicButton, SidebarPanelHeader, Tooltip } from '../../shared/ui';
@@ -8,13 +8,19 @@ import { ToolbarMenu } from '../../shared/ui/ToolbarMenu';
 import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import { CanvasFileMenu } from './CanvasFileMenu';
 import { SidebarStatusMessage } from '../../shared/ui/SidebarStatusMessage';
+import { SplitPaneLayout } from '../../shared/ui/SplitPaneLayout';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import styles from './CanvasSidebar.module.css';
 
-export function CanvasSidebar({ api, currentPath, busy, ready, canSave, refresh, onOpen, onSave, onCreate, onRename, onError }: {
+export function CanvasSidebar({ api, currentPath, busy, ready, canSave, refresh, layers, onOpen, onSave, onCreate, onRefresh, onRename, onError, onListing }: {
   api: CanvasApi; currentPath: string; busy: boolean; ready: boolean; canSave: boolean; refresh: number;
   onOpen(path: string): void; onSave(): void; onCreate(): void; onRename(path: string, name: string): Promise<void>;
   onError(error: unknown): void;
+  onRefresh(): void;
+  onListing?(listing: CanvasLibraryListing): void;
+  layers?: ReactNode;
 }) {
+  const [ratio, setRatio] = useState(0.5);
   const [listing, setListing] = useState<CanvasLibraryListing | null>(null);
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -30,10 +36,10 @@ export function CanvasSidebar({ api, currentPath, busy, ready, canSave, refresh,
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    void api.list().then(value => { if (!cancelled) setListing(value); })
+    void api.list().then(value => { if (!cancelled) { setListing(value); onListing?.(value); } })
       .catch(error => { if (!cancelled) onError(error); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [api, refresh, revision, onError]);
+  }, [api, refresh, revision, onError, onListing]);
   async function chooseFolder() {
     setChoosing(true); setRenaming(null); closeMenu();
     try { const selected = await api.chooseRoot(); if (selected) { setListing(selected); reload(); } }
@@ -47,13 +53,17 @@ export function CanvasSidebar({ api, currentPath, busy, ready, canSave, refresh,
     <SidebarPanelHeader title="CANVAS" icon={<Frame aria-hidden="true" />} count={listing?.files.length}
       actions={<>
         <NeumorphicButton variant="ghost" size="icon" aria-label="Save canvas" title="Save canvas (⌘S)" disabled={!ready || !canSave || disabled} onClick={onSave}><Save /></NeumorphicButton>
-        <NeumorphicButton variant="ghost" size="icon" aria-label="Refresh canvases" title="Refresh canvases" disabled={loading || disabled} onClick={reload}><RefreshCw /></NeumorphicButton>
+        <NeumorphicButton variant="ghost" size="icon" aria-label="Refresh canvases" title="Refresh canvases" disabled={loading || disabled} onClick={() => { reload(); if (ready) onRefresh(); }}><RefreshCw /></NeumorphicButton>
         <ToolbarMenu label="Add canvas" icon={<Plus aria-hidden="true" />} disabled={disabled} items={[
           { id: 'new', label: 'New canvas', icon: <Frame aria-hidden="true" />, disabled: !ready, onSelect: onCreate },
           { id: 'folder', label: 'Choose canvas folder', icon: <FolderOpen aria-hidden="true" />, onSelect: () => void chooseFolder() },
         ]} />
       </>} />
-    <div ref={scroll} className={styles.scroll}>
+    <SplitPaneLayout layout={{ type: 'split', id: 'canvas-navigation', axis: 'rows', ratio,
+      first: { type: 'pane', paneId: 'files' }, second: { type: 'pane', paneId: 'layers' } }}
+      collapsedPane={layers === undefined ? 'second' : null} resizeLabel="Resize canvas files and layers"
+      showResizeHandle
+      onResizeSplit={(_, next) => setRatio(next)} renderPane={pane => pane === 'layers' ? layers : <div ref={scroll} className={styles.scroll}>
       <section className={styles.files} aria-label="Canvas files">
         {folder != null && <Tooltip content={`${listing?.workspaceRoot}/${folder}`}>
           {tooltip => <div {...tooltip} className={`workspace-file-tree-root ${styles.folder}`}>
@@ -67,12 +77,16 @@ export function CanvasSidebar({ api, currentPath, busy, ready, canSave, refresh,
         {!loading && folder != null && listing?.files.length === 0 && (
           <SidebarStatusMessage panel="canvas">no canvases in this folder. use + to create a new canvas.</SidebarStatusMessage>
         )}
+        {!loading && folder != null && listing && listing.files.length > 0 && !canSave && (
+          <SidebarStatusMessage panel="canvas">open a canvas to view its pages and layers.</SidebarStatusMessage>
+        )}
         <div className="workspace-file-tree-list-content" role="tree" aria-label="Canvas files">
         {listing?.files.map(file => renaming === file.path
           ? <InlineRenameField key={file.path} initialTitle={file.path.split('/').at(-1)!.replace(/\.fig$/, '')}
-              inputLabel="Canvas file name" maxLength={200} onClose={() => setRenaming(null)}
+              inputLabel="Canvas file name" layout="inline" maxLength={200} onClose={() => setRenaming(null)}
               onSave={async name => { await onRename(file.path, name); reload(); }}><span className={styles.description}>.fig</span></InlineRenameField>
-          : <Tooltip key={file.path} content={`${listing.workspaceRoot}/${file.path}`}>
+          : <div key={file.path} className={styles.fileRow}>
+            <Tooltip content={`${listing.workspaceRoot}/${file.path}`}>
             {tooltip => <button {...tooltip} type="button" role="treeitem" className={`workspace-file-tree-entry ${styles.file}`} data-canvas-path={file.path}
               aria-selected={currentPath === file.path} aria-current={currentPath === file.path ? 'page' : undefined}
               data-context-menu-open={menu?.path === file.path}
@@ -84,11 +98,16 @@ export function CanvasSidebar({ api, currentPath, busy, ready, canSave, refresh,
               <Frame className="workspace-file-tree-icon" aria-hidden="true" />
               <span className="workspace-file-tree-name">{folder && folder !== '.' ? file.path.slice(folder.length + 1) : file.path}</span>
             </button>}
-          </Tooltip>)}
+            </Tooltip>
+            <TooltipButton variant="ghost" size="icon" className={styles.renameButton} type="button"
+              aria-label={`Rename canvas: ${file.path.split('/').at(-1)}`} title="Rename canvas"
+              disabled={!ready || disabled || renaming !== null}
+              onClick={() => { closeMenu(); setRenaming(file.path); }}><Pencil aria-hidden="true" /></TooltipButton>
+          </div>)}
         </div>
         {listing?.truncated && <p className={styles.description}>The file list is limited. Select a smaller canvas folder.</p>}
       </section>
-    </div>
+    </div>} />
     {menu && <CanvasFileMenu x={menu.x} y={menu.y} onClose={closeMenu} onRename={() => { setRenaming(menu.path); closeMenu(); }} />}
   </div>;
 }

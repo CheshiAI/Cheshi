@@ -214,6 +214,7 @@ export function WorkspaceEditorSplit({ mode, children, editor, terminal, worker,
     <div className={styles.root} style={minimumPaneWidth ? { minWidth: splitPaneMinimumWidth(shownLayout, minimumPaneWidth) } : undefined}>
       <div ref={parking} hidden />
       <SplitPaneLayout layout={shownLayout} resizeLabel="Resize workspace panes"
+        showResizeHandle
         minimumPaneWidth={minimumPaneWidth}
         onResizeSplit={(id, value) => {
           if (onLayoutChange) onLayoutChange(resizeSplitPane(layout, id, value));

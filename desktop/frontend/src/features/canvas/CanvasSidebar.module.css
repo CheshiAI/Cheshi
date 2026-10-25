@@ -1,9 +1,16 @@
 .root { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; font-size: 10px; }
+/* Keep host input surfaces above the embedded editor's rectangular compositor bounds. */
+.root > :first-child,
+.root > [data-axis] > :first-child { position: relative; z-index: 2; }
 .scroll { flex: 1; min-height: 0; overflow: auto; --scrollbar-size: var(--auto-hide-scrollbar-size); scrollbar-width: auto; scrollbar-color: auto; }
 .files { min-width: 0; }
 .files > p { margin: 0; padding: var(--space-default); }
 .folder, .folder:not(:disabled):hover, .folder:not(:disabled):active { background: var(--control-surface-ghost); cursor: default; }
-.file { padding-left: var(--space-default); --workspace-file-tree-guide-offset: 23px; }
+.fileRow { position: relative; min-width: 0; }
+.file { padding-left: var(--space-default); padding-right: calc(var(--icon-button-size) + 2 * var(--icon-default)); --workspace-file-tree-guide-offset: 23px; }
+.fileRow .renameButton { position: absolute; inset-block: 0; right: var(--icon-default); margin-block: auto; opacity: 0; }
+.fileRow:hover .renameButton, .fileRow:focus-within .renameButton { opacity: 1; }
+@media (hover: none) { .fileRow .renameButton { opacity: 1; } }
 .actions svg { width: 11px; height: 11px; flex-shrink: 0; }
 .description { font-size: 10px; color: var(--muted); line-height: 1.5; }
 .actions { display: flex; flex-wrap: wrap; gap: var(--icon-default); }

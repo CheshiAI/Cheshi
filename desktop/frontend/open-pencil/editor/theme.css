@@ -19,7 +19,8 @@ html, body, #app { height: 100%; margin: 0; overflow: hidden; }
    Cover portalled menus and dialogs as well as Tailwind's explicit text sizes. */
 body, body :where(:not([data-canvas-text-input])) { font-size: var(--font-size-default); }
 button:not(:disabled), [role='button']:not([aria-disabled='true']) { cursor: pointer; }
-[role='tooltip'] { background: var(--tooltip-background); }
+/* Match the shared tooltip layer above editor popovers (100) and selects (110). */
+[role='tooltip'] { z-index: 120; background: var(--tooltip-background); }
 [data-test-id='issue-marker-tooltip'] { background: var(--dropdown-background); }
 [data-picker-content] { background: var(--dropdown-background); }
 [data-picker-content] [data-test-id^='fill-picker-tab-'] { background: var(--control-surface-ghost); }
@@ -86,7 +87,7 @@ button:not(:disabled), [role='button']:not([aria-disabled='true']) { cursor: poi
 [data-test-id='zoom-dropdown-trigger'][aria-expanded='true'] { background: var(--control-surface); }
 [data-test-id='zoom-dropdown-trigger']:not(:disabled):is(:hover, :active) { background: var(--control-surface-interactive); }
 /* Match the shared toolbar select surface, including portalled submenus. */
-:is([role='menu'], [role='listbox']) {
+:is([role='menu'], [role='listbox']):not(:where(.cheshi-icon-picker *)) {
   box-sizing: border-box;
   gap: var(--space-4);
   padding: var(--space-default);
@@ -98,12 +99,12 @@ button:not(:disabled), [role='button']:not([aria-disabled='true']) { cursor: poi
   font-family: var(--font-ui), sans-serif;
 }
 /* Menubar items sit inside a scrolling viewport; dropdown items may be direct children. */
-:is([role='menu'], [role='listbox']) :where(div):has(> :is([role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='option'])) {
+:is([role='menu'], [role='listbox']):not(:where(.cheshi-icon-picker *)) :where(div):has(> :is([role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='option'])) {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
-:is([role='menu'], [role='listbox']) :is([role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='option']) {
+:is([role='menu'], [role='listbox']):not(:where(.cheshi-icon-picker *)) :is([role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='option']) {
   box-sizing: border-box;
   height: 32px;
   min-height: 32px;
@@ -118,16 +119,93 @@ button:not(:disabled), [role='button']:not([aria-disabled='true']) { cursor: poi
   font-weight: 400;
   line-height: 16px;
 }
-:is([role='menu'], [role='listbox']) :is([role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='option']):is(:disabled, [data-disabled], [aria-disabled='true']) { opacity: .5; cursor: not-allowed; }
-:is([role='menu'], [role='listbox']) [role='separator'] { height: 1px; flex-shrink: 0; margin: var(--space-4) 0; background: var(--divider); }
-:is([role='menu'], [role='listbox']) .text-muted { color: var(--sub-text); }
-:is([role='menu'], [role='listbox']) svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); flex-shrink: 0; }
-:is([role='menu'], [role='listbox']) :is([role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='option']):is([aria-checked='true'], [aria-selected='true'], [data-state='open'], [data-state='checked']) { background: var(--control-surface); }
-:is([role='menu'], [role='listbox']) :is([role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='option']):not(:disabled, [data-disabled], [aria-disabled='true']):is(:hover, :active, :focus-visible, [data-highlighted]) { background: var(--control-surface-interactive); }
+:is([role='menu'], [role='listbox']):not(:where(.cheshi-icon-picker *)) :is([role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='option']):is(:disabled, [data-disabled], [aria-disabled='true']) { opacity: .5; cursor: not-allowed; }
+:is([role='menu'], [role='listbox']):not(:where(.cheshi-icon-picker *)) [role='separator'] { height: 1px; flex-shrink: 0; margin: var(--space-4) 0; background: var(--divider); }
+:is([role='menu'], [role='listbox']):not(:where(.cheshi-icon-picker *)) .text-muted { color: var(--sub-text); }
+:is([role='menu'], [role='listbox']):not(:where(.cheshi-icon-picker *)) svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); flex-shrink: 0; }
+:is([role='menu'], [role='listbox']):not(:where(.cheshi-icon-picker *)) :is([role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='option']):is([aria-checked='true'], [aria-selected='true'], [data-state='open'], [data-state='checked']) { background: var(--control-surface); }
+:is([role='menu'], [role='listbox']):not(:where(.cheshi-icon-picker *)) :is([role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='option']):not(:disabled, [data-disabled], [aria-disabled='true']):is(:hover, :active, :focus-visible, [data-highlighted]) { background: var(--control-surface-interactive); }
 /* Selects retain their check gutter and keyboard selection semantics. */
-[role='listbox'] [role='option'] { padding-left: 28px; }
-[role='listbox'] [role='option'] > span:first-child:not(:last-child) { color: var(--text); }
-[role='listbox'] [role='group'] { display: flex; flex-direction: column; gap: var(--space-4); }
+[role='listbox']:not(:where(.cheshi-icon-picker *)) [role='option'] { padding-left: 28px; }
+[role='listbox']:not(:where(.cheshi-icon-picker *)) [role='option'] > span:first-child:not(:last-child) { color: var(--text); }
+[role='listbox']:not(:where(.cheshi-icon-picker *)) [role='group'] { display: flex; flex-direction: column; gap: var(--space-4); }
+/* The icon picker owns one popup surface; its nested list keeps the upstream grid. */
+.cheshi-icon-picker {
+  --popup-surface-background: var(--dropdown-background);
+  position: relative;
+  isolation: isolate;
+  box-shadow: none;
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+}
+.cheshi-icon-picker > div:first-child {
+  height: var(--header-height);
+  gap: var(--icon-default);
+  padding-inline: var(--space-default);
+}
+.cheshi-icon-picker h3 {
+  color: var(--text);
+  font-size: var(--font-size-section-title);
+}
+.cheshi-icon-picker .cheshi-icon-search {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: auto;
+  margin: var(--space-default);
+}
+.cheshi-icon-search > input {
+  flex: 1;
+  width: 0;
+  padding-left: calc(var(--icon-button-icon-size) + var(--icon-default) * 2);
+}
+.cheshi-icon-search > svg {
+  top: 50%;
+  left: var(--icon-default);
+  translate: 0 -50%;
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  color: var(--sub-text);
+}
+.cheshi-icon-search button {
+  height: var(--icon-button-size);
+  margin-right: var(--icon-default);
+  border-radius: var(--button-radius);
+  color: var(--text);
+  font-size: var(--font-size-label);
+}
+.cheshi-icon-search button:hover { background: var(--control-surface-interactive); }
+.cheshi-icon-search button span { color: inherit; }
+.cheshi-icon-picker [role='listbox'] { padding: 0 var(--space-default) var(--space-default); }
+.cheshi-icon-picker [role='option'] { border-radius: var(--button-radius); }
+.cheshi-icon-picker [role='option'][data-highlighted] { background: var(--control-surface-interactive); }
+.cheshi-icon-picker [role='listbox'] > p { color: var(--sub-text); }
+/* A new comment sits on the same popup surface as the editor's other floating controls. */
+[data-slot='comment-pin'][data-draft] { background: var(--control-surface); }
+.cheshi-comment-draft {
+  --popup-surface-background: var(--dropdown-background);
+  position: relative;
+  isolation: isolate;
+  padding: var(--icon-default);
+  box-shadow: none;
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+}
+.cheshi-comment-composer[data-variant='standard'] {
+  --field-multiline-min-height: var(--icon-button-size);
+  --field-multiline-padding-block: 3px;
+  --field-padding-inline: 0px;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--icon-default);
+  min-height: 32px;
+  padding: 5px var(--icon-default);
+}
+.cheshi-comment-composer > textarea {
+  flex: 1;
+  max-height: 160px;
+  overflow-y: auto;
+}
 /* Scope property controls to the embedded inspector, leaving authored content intact. */
 [data-test-id='properties-panel'] {
   --color-panel-field: var(--control-surface-ghost);
@@ -197,7 +275,39 @@ button:not(:disabled), [role='button']:not([aria-disabled='true']) { cursor: poi
 .cheshi-canvas [data-test-id='toolbar'] button:not(:disabled, [aria-disabled='true']):is(:hover, :active, [data-state='open']) { background: var(--control-surface-interactive); }
 .cheshi-panel-content { background: var(--color-panel); }
 .cheshi-panel-page { display: flex; flex-direction: column; height: 100%; }
+.cheshi-docked-layers { width: var(--sidebar-width); flex-shrink: 0; min-width: 0; min-height: 0; overflow: hidden; }
 .cheshi-panel-page > aside { border: 0; }
+/* Match the shared horizontal split grip inside the Pages/Layers panel. */
+[data-test-id='layers-panel'] > [data-panel-group] > [data-resize-handle] {
+  height: 5px;
+  margin-block: -2.5px;
+  color: var(--text);
+  background: transparent;
+  box-shadow: none;
+}
+[data-test-id='layers-panel'] > [data-panel-group] > [data-resize-handle] > div {
+  background: var(--divider);
+}
+[data-test-id='layers-panel'] > [data-panel-group] > [data-resize-handle]::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: 24px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+}
+[data-test-id='layers-panel'] > [data-panel-group] > [data-resize-handle]:is(:hover, :focus-visible, [data-state='hover'], [data-state='drag']) {
+  background: var(--divider);
+}
+[data-test-id='layers-panel'] > [data-panel-group] > [data-resize-handle]:is(:hover, :focus-visible, [data-state='hover'], [data-state='drag'])::before {
+  opacity: 1;
+}
 .cheshi-panel-page :is([data-test-id='pages-scroll'], [data-test-id='layers-scroll']) {
   padding-inline: 0;
 }

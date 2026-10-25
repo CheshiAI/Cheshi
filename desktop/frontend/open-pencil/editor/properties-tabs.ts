@@ -1,7 +1,7 @@
 import { computed, reactive } from 'vue';
 
 export const canvasPanel = reactive<{
-  panel: 'layers' | 'design' | 'lint' | 'settings' | 'history';
+  panel: 'design' | 'lint' | 'settings' | 'history';
   panelOpen: boolean;
 }>({ panel: 'design', panelOpen: false });
 

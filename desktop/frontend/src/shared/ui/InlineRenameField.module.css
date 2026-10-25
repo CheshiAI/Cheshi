@@ -28,3 +28,14 @@
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+
+.root[data-layout='inline'] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  min-height: 34px;
+  align-items: center;
+  gap: var(--icon-default);
+}
+
+.root[data-layout='inline'] .cancel { grid-column: 3; }
+.root[data-layout='inline'] .error { grid-column: 1 / -1; }

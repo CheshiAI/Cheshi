@@ -16,6 +16,7 @@ import { settingsDialogOpen } from '@/app/settings/dialog';
 import CanvasRailButton from './CanvasRailButton.vue';
 import ToolbarSettingsSidebar from './ToolbarSettingsSidebar.vue';
 import { canvasPanel } from './properties-tabs';
+import { hostLayout } from './host';
 import ZoomDropdown from '@/components/editor/ZoomDropdown.vue';
 import { connectCanvasBlur } from './canvasBlur';
 import inspectorStyles from '../../src/features/graph/GraphInspector.module.css';
@@ -24,7 +25,11 @@ import panelStyles from '../../src/shared/ui/LiquidGlassPanel.module.css';
 const { tab } = defineProps<{ tab: Tab }>();
 const store = tab.store;
 provideTabEditorStore(store);
-const { menu, common, panels } = useI18n();
+const { common, panels } = useI18n();
+const layersStyle = computed(() => {
+  const rect = hostLayout.value?.layers;
+  return rect ? { position: 'fixed' as const, left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.width}px`, height: `${rect.height}px` } : undefined;
+});
 const checkMessages = useDesignCheckMessages();
 type Panel = typeof canvasPanel.panel;
 const { panel, panelOpen } = toRefs(canvasPanel);
@@ -125,6 +130,13 @@ function toggle(next: Panel) {
   <div class="cheshi-workspace">
     <div v-show="store.state.showUI && !previewing" class="cheshi-menu"><AppMenu /></div>
     <div class="cheshi-stage">
+      <Teleport to="body" :disabled="!hostLayout.value">
+        <section v-show="store.state.showUI && !previewing && (!hostLayout.value || hostLayout.value.layers)"
+          class="cheshi-panel-page cheshi-docked-layers" :style="layersStyle" aria-label="Pages and layers">
+          <header :class="inspectorStyles.heading" data-test-id="canvas-file-heading"><span>Pages and layers</span></header>
+          <LayersPanel />
+        </section>
+      </Teleport>
       <div class="cheshi-canvas">
         <div ref="canvasScene" class="cheshi-canvas-scene" :data-preparing="scenePreparing"><CanvasSplitRoot /></div>
         <Toolbar v-show="store.state.showUI && !previewing" />
@@ -135,17 +147,6 @@ function toggle(next: Panel) {
         <div :class="['cheshi-panel-stage', inspectorStyles.stage]" :data-open="panelOpen">
           <div :class="['cheshi-panel-content', inspectorStyles.panel, panelStyles.panel]"
             :aria-hidden="!panelOpen || undefined" :inert="!panelOpen" @keydown.esc.stop="closePanel">
-            <section v-show="panel === 'layers'" :class="['cheshi-panel-page', inspectorStyles.content]" :aria-label="menu.file">
-              <header :class="inspectorStyles.heading" data-test-id="canvas-file-heading">
-                <span>{{ menu.file }}</span>
-                <div :class="inspectorStyles.headingActions">
-                  <CanvasRailButton :label="common.close" data-test-id="canvas-file-close" @click="closePanel">
-                    <icon-lucide-x aria-hidden="true" />
-                  </CanvasRailButton>
-                </div>
-              </header>
-              <LayersPanel />
-            </section>
             <section v-show="panel === 'design' || panel === 'lint'" :class="['cheshi-panel-page', inspectorStyles.content]"
               :aria-label="panel === 'lint' ? checkMessages.tab : panels.design">
               <header :class="inspectorStyles.heading" :data-test-id="panel === 'lint' ? 'canvas-lint-heading' : 'canvas-design-heading'">
@@ -172,9 +173,6 @@ function toggle(next: Panel) {
           <CanvasRailButton label="Toolbar settings" :expanded="panelOpen && panel === 'settings'"
             data-test-id="app-settings-trigger" @click="toggle('settings')">
             <icon-lucide-settings aria-hidden="true" />
-          </CanvasRailButton>
-          <CanvasRailButton label="Pages and layers" :expanded="panelOpen && panel === 'layers'" @click="toggle('layers')">
-            <icon-lucide-layers aria-hidden="true" />
           </CanvasRailButton>
           <CanvasRailButton :label="panels.design" data-test-id="canvas-design-trigger" :expanded="panelOpen && panel === 'design'" @click="toggle('design')">
             <icon-lucide-pencil-ruler aria-hidden="true" />

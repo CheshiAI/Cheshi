@@ -65,7 +65,7 @@ export function SidebarTabs({ tabs, activeId, onSelect }: {
         }}>{tab.label}</FilterTab>)}
     </FilterTabList>
     </div>
-    <div ref={viewportRef} className={styles.panels}>
+    <div ref={viewportRef} className={styles.panels} data-sidebar-tab-viewport>
       <div className={styles.track}>
         {tabs.map((tab, index) => <div key={tab.id} id={`${id}-panel-${tab.id}`}
           className={styles.panel} role="tabpanel" aria-labelledby={`${id}-tab-${tab.id}`}

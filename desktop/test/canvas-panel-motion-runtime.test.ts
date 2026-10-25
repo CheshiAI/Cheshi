@@ -70,11 +70,13 @@ try{
   })()\`);
   if(evidence)await mkdir(evidence,{recursive:true});
   for(const width of [1200,900]){
-    win.setContentSize(width,760);await delay(350);
+    win.setContentSize(width,760);
+    await evaluate('window.postMessage({channel:"cheshi:open-pencil:v1",type:"layout",payload:{editor:{x:0,y:0,width:innerWidth,height:innerHeight},layers:null}},"*")');
+    await delay(350);
     const initial=marker(await win.webContents.capturePage());
     assert.ok(initial.count>10000,'Marker must be painted before input');
     for(let cycle=0;cycle<3;cycle++)for(const opening of [true,false]){
-      const label=['Pages and layers','Design','Lint'][cycle];
+      const label=['Design','Design','Lint'][cycle];
       await evaluate(\`(()=>{
         const s=window.openPencil.getStore();const c=document.querySelector('.cheshi-canvas');
         window.__motion={frames:[],resizes:[],view:[s.state.zoom,s.state.panX,s.state.panY],until:performance.now()+500};

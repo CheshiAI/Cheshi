@@ -21,6 +21,7 @@ desktop/lib/electron-libghostty/native/
 desktop/native/electron-libghostty/build/
 desktop/native/electron-libghostty/native-deps/
 desktop/native/ghostty-bridge/.build/
+milestone/
 
 # Local diagnostics and credentials
 /.docs/validation/

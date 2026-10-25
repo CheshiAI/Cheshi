@@ -6,6 +6,7 @@ import type { WorkspaceFilesChangedEvent } from '../workspace-file-types.mts';
 import { CanvasDocuments, assertDocumentBytes, canvasDocumentPath } from './canvas-documents.mts';
 import { CanvasHistory, canvasDescription, canvasRevision, type CanvasHistoryIndex } from './canvas-history.mts';
 import { CanvasSession } from './canvas-session.mts';
+import { canvasFileIdentity, type CanvasFileLocation } from './canvas-file-locations.mts';
 
 const excludedDirectories = new Set(['.git', 'node_modules', '.development', '.cache', '.next', 'dist', 'out', 'vendor']);
 function assertRevision(current: CanvasDocument | null, expected: string | null): void {
@@ -40,7 +41,7 @@ export class CanvasLibrary {
   }
   async read(relative: string): Promise<CanvasDocument> {
     return this.transaction(relative, async (index, current) => {
-      if (!current) throw new Error('Canvas file not found.');
+      if (!current) throw new Error('Canvas file not found. It may have been moved or deleted. Open its current location from the canvas list.');
       await this.versions.capture(index, current, 'opened', 'Opened from workspace');
       return current;
     });
@@ -127,6 +128,7 @@ export class CanvasLibrary {
     const root = await openWorkspaceRoot(this.root);
     const canvasRoot = await this.session.root();
     const files: CanvasLibraryListing['files'] = [];
+    const locations: CanvasFileLocation[] = [];
     const directories = canvasRoot === null ? [] : [canvasRoot];
     let visited = 0, truncated = false;
     while (directories.length && !truncated) {
@@ -141,12 +143,14 @@ export class CanvasLibrary {
           try {
             const information = await stat(await resolveWorkspaceTarget(root, child));
             files.push({ path: child, size: information.size, modifiedAt: information.mtimeMs });
+            locations.push({ path: child, identity: canvasFileIdentity(information) });
           } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
         }
       }
     }
     return { workspaceRoot: root.resolved, canvasRoot, historyDirectory: this.versions.directory,
-      files: files.sort((a, b) => a.path.localeCompare(b.path)), truncated };
+      files: files.sort((a, b) => a.path.localeCompare(b.path)), truncated,
+      relocations: this.documents.locations.observe(locations, truncated) };
   }
   async captureChanged(event: WorkspaceFilesChangedEvent): Promise<void> {
     const paths = event.overflow ? (await this.list()).files.map(file => file.path) : event.paths.filter(file => file.endsWith('.fig'));

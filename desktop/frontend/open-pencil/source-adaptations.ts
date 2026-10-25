@@ -204,6 +204,56 @@ export function originalEditorAdaptations(): Plugin {
         swap('<AppSelect\n', '<AppSelect data-property="image-scale-mode"\n');
       } else if (file.endsWith('/src/components/fill-picker/shader/ShaderFillPicker.vue')) {
         swap('<AppCombobox\n', '<AppCombobox search-variant="standard"\n');
+      } else if (file.endsWith('/src/components/comments/CommentsLayer.vue')) {
+        swap("import { usePopoverUI } from '@/components/ui/overlay/popover'",
+          `import { usePopoverUI } from '@/components/ui/overlay/popover'
+import panelStyles from '@cheshi/panel-styles'
+import popupStyles from '@cheshi/popup-styles'`);
+        swap(':class="draftAt ? draftCls.content : threadCls.content"',
+          `:class="draftAt ? [draftCls.content, panelStyles.panel, popupStyles.anchor, popupStyles.surface, 'cheshi-comment-draft'] : threadCls.content"
+          :data-liquid-glass-backdrop="draftAt ? 'true' : undefined"`);
+      } else if (file.endsWith('/src/components/comments/CommentComposer.vue')) {
+        swap("import AppButton from '@/components/ui/button/AppButton.vue'",
+          `import IconButton from '@/components/ui/button/IconButton.vue'
+import fieldStyles from '@cheshi/text-field-styles'
+import controlStyles from '@cheshi/control-styles'`);
+        swap("import { comments } from '@/theme/comments'", '');
+        swap('const ui = computed(() => comments({ bare }))', '');
+        swap(':class="ui.composer()"',
+          `:class="[fieldStyles.field, 'cheshi-comment-composer']" data-variant="standard" data-multiline="true" :data-bare="bare || undefined"`);
+        swap(':class="ui.composerInput()"', ':class="fieldStyles.control" data-multiline="true"');
+        swap(`    <AppButton
+      type="submit"
+      color="primary"
+      variant="solid"
+      shape="pill"
+      size="xs"
+      :disabled="empty"
+      :aria-label="messages.send"
+      :ui="{ base: 'size-6 shrink-0 px-0' }"
+    >`, `    <IconButton type="submit" :disabled="empty" :label="messages.send"
+      :class="controlStyles.control" data-variant="standard" data-size="icon">`);
+        swap('</AppButton>', '</IconButton>');
+      } else if (file.endsWith('/src/components/icon-picker/IconPicker.vue')) {
+        swap('<AppCombobox\n', '<AppCombobox search-variant="standard"\n');
+      } else if (file.endsWith('/src/components/ui/select/AppPicker.vue')) {
+        swap("import theme, { APP_PICKER_GRID_COLUMNS } from '@/theme/select/picker'",
+          `import theme, { APP_PICKER_GRID_COLUMNS } from '@/theme/select/picker'
+import panelStyles from '@cheshi/panel-styles'
+import popupStyles from '@cheshi/popup-styles'
+import fieldStyles from '@cheshi/text-field-styles'
+import controlStyles from '@cheshi/control-styles'`);
+        swap(':class="styles.content({ class: ui?.content })"',
+          `:class="[styles.content({ class: ui?.content }), layout === 'grid' && [panelStyles.panel, popupStyles.anchor, popupStyles.surface, 'cheshi-icon-picker']]"
+        :data-liquid-glass-backdrop="layout === 'grid' ? 'true' : undefined"`);
+        swap('<IconButton :label="closeLabel">',
+          `<IconButton :label="closeLabel" :class="layout === 'grid' ? controlStyles.control : undefined"
+              :data-variant="layout === 'grid' ? 'ghost' : undefined" :data-size="layout === 'grid' ? 'icon' : undefined">`);
+        swap('<div :class="styles.search({ class: ui?.search })">',
+          `<div :class="layout === 'grid' ? [fieldStyles.field, 'cheshi-icon-search'] : styles.search({ class: ui?.search })"
+            :data-variant="layout === 'grid' ? 'standard' : undefined">`);
+        swap(':class="styles.input({ class: ui?.input })"',
+          `:class="layout === 'grid' ? fieldStyles.control : styles.input({ class: ui?.input })"`);
       } else if (file.endsWith('/src/components/ui/select/AppCombobox.vue')) {
         swap("import theme from '@/theme/select/combobox'",
           "import theme from '@/theme/select/combobox'\nimport fieldStyles from '@cheshi/text-field-styles'");

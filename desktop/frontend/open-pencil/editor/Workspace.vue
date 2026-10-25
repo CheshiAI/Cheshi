@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from 'vue';
+import { computed, onMounted, onUnmounted, watch } from 'vue';
 import { useDocumentDrop } from '@/app/shell/document-drop';
 import { useKeyboard } from '@/app/shell/keyboard/use';
 import { useEditorMenu } from '@/app/shell/menu/use';
@@ -8,7 +8,12 @@ import CommandPalette from '@/components/commands/CommandPalette.vue';
 import RenameSelectionDialog from '@/components/selection/RenameSelectionDialog.vue';
 import TabBar from '@/components/TabBar.vue';
 import EditorWorkspace from './EditorWorkspace.vue';
-import { connectHost } from './host';
+import { connectHost, hostLayout } from './host';
+
+const editorStyle = computed(() => {
+  const rect = hostLayout.value?.editor;
+  return rect ? { position: 'absolute' as const, left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.width}px`, height: `${rect.height}px` } : undefined;
+});
 
 if (!activeTab.value) createHomeTab();
 // A new tab beside an open document creates a canvas; the last closed tab leaves the host's empty view.
@@ -24,7 +29,7 @@ onUnmounted(() => disconnect?.());
 </script>
 
 <template>
-  <main data-test-id="editor-root" class="cheshi-editor">
+  <main data-test-id="editor-root" class="cheshi-editor" :style="editorStyle">
     <RenameSelectionDialog />
     <CommandPalette />
     <TabBar v-if="activeTab?.kind === 'document'" />

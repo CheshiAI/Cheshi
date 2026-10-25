@@ -26,7 +26,9 @@ export interface CanvasLibraryListing {
   historyDirectory: string;
   files: { path: string; size: number; modifiedAt: number }[];
   truncated: boolean;
+  relocations?: CanvasFileRelocation[];
 }
+export interface CanvasFileRelocation { previousPath: string; path: string }
 export interface CanvasVersionHistory {
   path: string;
   currentRevision: string | null;

@@ -26,6 +26,8 @@ export interface SplitPaneLayoutProps {
   renderPane: (paneId: string) => ReactNode;
   onResizeSplit: (splitId: string, ratio: number) => void;
   resizeLabel?: string;
+  /** Show the shared grip on this split's separator. */
+  showResizeHandle?: boolean;
   collapsedPane?: 'first' | 'second' | null;
   minimumPaneWidth?: SplitPaneMinimumWidth;
 }
@@ -64,6 +66,7 @@ function Split({
   renderPane,
   onResizeSplit,
   resizeLabel = 'Resize panes',
+  showResizeHandle = false,
   collapsedPane,
   minimumPaneWidth,
 }: SplitProps) {
@@ -207,6 +210,7 @@ function Split({
       ref={containerRef}
       className={styles.split}
       data-axis={layout.axis}
+      data-resize-handle={showResizeHandle ? 'true' : undefined}
       data-dragging={dragging ? 'true' : undefined}
       data-collapsible={collapsedPane !== undefined ? 'true' : undefined}
       data-minimum-width={minimumPaneWidth ? 'true' : undefined}

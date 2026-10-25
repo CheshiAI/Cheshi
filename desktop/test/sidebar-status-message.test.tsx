@@ -38,16 +38,16 @@ function createDeferred<T>() {
   return { promise, resolve };
 }
 
-function Fixture({ panel, canvasTarget, api, sessions, loading, refresh }: {
+function Fixture({ panel, canvasTarget, api, sessions, loading, refresh, hasDocument }: {
   panel: string | null; canvasTarget: HTMLElement; api: CanvasApi;
-  sessions: ChatSession[]; loading: boolean; refresh: number;
+  sessions: ChatSession[]; loading: boolean; refresh: number; hasDocument: boolean;
 }) {
   const [target, setTarget] = useState<HTMLSpanElement | null>(null);
   return <SidebarStatusContext.Provider value={{ activePanel: panel, target }}>
     <ChatSessionList sessions={sessions} loading={loading} activeSessionId={null} responseThreadIds={[]}
       newChatDisabled={false} selectionDisabled={false} onOpen={noop} onNew={noop} onDelete={noop} deleteReason={deleteReason} />
-    {createPortal(<CanvasSidebar api={api} currentPath="" busy={false} ready canSave={false} refresh={refresh}
-      onOpen={noop} onSave={noop} onCreate={noop} onRename={rename} onError={noop} />, canvasTarget)}
+    {createPortal(<CanvasSidebar api={api} currentPath="" busy={false} ready canSave={hasDocument} refresh={refresh}
+      onOpen={noop} onSave={noop} onCreate={noop} onRefresh={noop} onRename={rename} onError={noop} />, canvasTarget)}
     <footer><span ref={setTarget} role="status" aria-label="Sidebar guidance" /></footer>
   </SidebarStatusContext.Provider>;
 }
@@ -74,10 +74,10 @@ test('empty guidance follows the visible sidebar, clears during loading, and dis
     rememberDocument: unexpected, read: unexpected, save: unexpected, history: unexpected,
     readVersion: unexpected, checkpoint: unexpected, restore: unexpected,
   };
-  let panel: string | null = 'chats', loading = false, refresh = 0;
+  let panel: string | null = 'chats', loading = false, refresh = 0, hasDocument = false;
   let sessions: ChatSession[] = [];
   const render = async () => { await act(async () => root.render(
-    <Fixture panel={panel} canvasTarget={canvasTarget} api={api} sessions={sessions} loading={loading} refresh={refresh} />,
+    <Fixture panel={panel} canvasTarget={canvasTarget} api={api} sessions={sessions} loading={loading} refresh={refresh} hasDocument={hasDocument} />,
   )); };
   const guidance = () => host.querySelector('[aria-label="Sidebar guidance"]')!;
   try {
@@ -114,8 +114,15 @@ test('empty guidance follows the visible sidebar, clears during loading, and dis
     expect(guidance().textContent).toBe('no canvases in this folder. use + to create a new canvas.');
     expect(canvasTarget.textContent).not.toContain('no canvases in this folder');
     listing = { ...listing, files: [{ path: 'designs/screen.fig', size: 8, modifiedAt: 1 }] }; refresh++; await render();
-    expect(guidance().textContent).toBe('');
+    expect(guidance().textContent).toBe('open a canvas to view its pages and layers.');
+    expect(canvasTarget.textContent).not.toContain('open a canvas');
     expect(canvasTarget.querySelector('[data-canvas-path="designs/screen.fig"]')).not.toBeNull();
+    hasDocument = true; await render();
+    expect(guidance().textContent).toBe('');
+    hasDocument = false; await render();
+    expect(guidance().textContent).toBe('open a canvas to view its pages and layers.');
+    panel = 'files'; await render();
+    expect(guidance().textContent).toBe('');
 
     await act(async () => root.render(null));
     expect(canvasTarget.textContent).toBe('');
