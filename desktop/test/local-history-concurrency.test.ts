@@ -6,10 +6,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { LocalHistoryStore } from '../lib/local-history-store.mts';
 import { withLocalHistoryLock } from '../lib/local-history-lock.mts';
 
 const cleanups: (() => Promise<unknown>)[] = [];
+const nativeRuntimes = [
+  { name: 'Node', executable: 'node' },
+  { name: 'Electron', executable: createRequire(import.meta.url)('electron') as string },
+];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
@@ -45,8 +50,11 @@ function startWorker(runtime: string, options: WorkerOptions) {
   const ready = createDeferred<void>();
   const result = createDeferred<string[]>();
   const exit = createDeferred<number | null>();
+  const env: NodeJS.ProcessEnv = { ...process.env, ELECTRON_RUN_AS_NODE: '1' };
+  delete env.NODE_OPTIONS;
+  delete env.NODE_NO_WARNINGS;
   const child: ChildProcess = spawn(runtime, [fileURLToPath(new URL('./local-history-process-fixture.mts', import.meta.url)), JSON.stringify(options)], {
-    stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    stdio: ['ignore', 'ignore', 'pipe', 'ipc'], env,
   });
   let stderr = '';
   let isReady = false;
@@ -96,7 +104,7 @@ test('reloads committed records between store instances and serializes simultane
   }
 });
 
-test('retains all 120 snapshots when native Node and Bun app processes share history', async () => {
+test.each(nativeRuntimes)('retains all 120 snapshots when $name and Bun app processes share history', async ({ executable }) => {
   const options = await fixture();
   const batches = [[], []] as [string[], string[]];
   for (let writer = 0; writer < 2; writer++) {
@@ -106,7 +114,7 @@ test('retains all 120 snapshots when native Node and Bun app processes share his
       await writeFile(path.join(options.workspaceRoot, name), `${name}\n${'fixture data\n'.repeat(1000)}`);
     }
   }
-  const workers = ['node', process.execPath].map((runtime, index) =>
+  const workers = [executable, process.execPath].map((runtime, index) =>
     startWorker(runtime, { ...options, mode: 'capture', paths: batches[index]! }));
   await Promise.all(workers.map(worker => worker.ready));
   for (const worker of workers) worker.child.send({ start: true });
@@ -122,11 +130,11 @@ test('retains all 120 snapshots when native Node and Bun app processes share his
   expect((await readdir(options.directory)).filter(name => name.endsWith('.tmp'))).toEqual([]);
 }, 15_000);
 
-test('preserves a live writer temporary file and recovers the lock and orphans after SIGKILL', async () => {
+test.each(nativeRuntimes)('preserves a live $name writer temporary file and recovers after SIGKILL', async ({ executable }) => {
   const options = await fixture();
   const store = new LocalHistoryStore(options);
   const saved = await store.capture(capture('durable'));
-  const worker = startWorker('node', { ...options, mode: 'hold' });
+  const worker = startWorker(executable, { ...options, mode: 'hold' });
   await worker.ready;
   let completed = false;
   const waiting = store.list('draft.txt').finally(() => { completed = true; });

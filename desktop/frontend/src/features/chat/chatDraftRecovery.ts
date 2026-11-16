@@ -39,6 +39,11 @@ export function createChatDraftRecovery(send: (input: ChatDraftSnapshot) => Prom
       revision += 1;
       update({ [key]: typeof value === 'function' ? value(state[key]) : value });
     },
+    editInput(edit: (input: ChatDraftSnapshot) => ChatDraftSnapshot) {
+      const next = edit({ draft: state.draft, selectedSkill: state.selectedSkill, attachments: state.attachments });
+      revision += 1;
+      update(next);
+    },
     reset() {
       session += 1;
       revision += 1;

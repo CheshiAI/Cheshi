@@ -1,20 +1,36 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type { CodexChatService } from './codex-chat-service.mts';
-import type { CodexChatRelays } from './codex-chat-relay.mts';
 import type { CodexChatSavedTurns } from './codex-chat-saved-turns.mts';
 import type { ChatAttachment } from './codex-chat-types.mts';
-import { chatRelayContextIds } from '../shared/chat-relay.ts';
 import type { CodexChatSessionDeletion } from './codex-chat-session-deletion.mts';
 import { CodexAppServerStoppedError } from './codex-app-server-client.mts';
 import type { ChatHistorySearch } from './chat-history-search.mts';
-import { AppleNotesService } from './apple-notes-service.mts';
-import { registerAppleNotesIpc } from './apple-notes-ipc.mts';
+import { AppleCalendarService } from './apple-calendar-service.mts';
+import { registerAppleCalendarIpc } from './apple-calendar-ipc.mts';
 import { readCodexTurnMetrics } from './codex-chat-turn-metrics.mts';
+import { pluginLogoDataUrl } from './plugin-logo-service.mts';
+
+export function registerCodexPluginIpc({ ipc, service }: {
+  ipc: Pick<IpcMain, 'handle'>;
+  service: Pick<CodexChatService, 'listPlugins' | 'addMarketplace' | 'getPluginLogoSources' | 'readPlugin' | 'installPlugin' | 'uninstallPlugin'>;
+}) {
+  ipc.handle('cheshi:list-codex-plugins', (_event, forceRefetch) => service.listPlugins(forceRefetch));
+  ipc.handle('cheshi:add-codex-marketplace', (_event, request) => service.addMarketplace(request));
+  ipc.handle('cheshi:get-codex-plugin-logo', async (_event, pluginId) => {
+    const sources = service.getPluginLogoSources(pluginId);
+    if (!sources) return { light: null, dark: null };
+    const [light, dark] = await Promise.all([pluginLogoDataUrl(sources.light), pluginLogoDataUrl(sources.dark)]);
+    return { light, dark };
+  });
+  ipc.handle('cheshi:read-codex-plugin', (_event, reference) => service.readPlugin(reference));
+  ipc.handle('cheshi:install-codex-plugin', (_event, reference) => service.installPlugin(reference));
+  ipc.handle('cheshi:uninstall-codex-plugin', (_event, pluginId) => service.uninstallPlugin(pluginId));
+}
 
 type ChatIpcOptions = {
   ipc: Pick<IpcMain, 'handle'>;
+  accountIpc?: Pick<IpcMain, 'handle'>;
   service(event: IpcMainInvokeEvent, contextId: unknown): CodexChatService;
-  relays: CodexChatRelays;
   deletion?: CodexChatSessionDeletion;
   historySearch?: Pick<ChatHistorySearch, 'search' | 'remove'>;
   savedTurns: Pick<CodexChatSavedTurns, 'list' | 'save' | 'delete'>;
@@ -23,12 +39,12 @@ type ChatIpcOptions = {
   prepareMessage(value: unknown): Promise<{ text: string; clientMessageId: string; skill: unknown; attachments: ChatAttachment[]; threadId?: string | null }>;
 };
 
-export function registerCodexChatIpc({ ipc, service, relays, deletion, savedTurns, historySearch, assertSender, prepareMessage, beforeMessage }: ChatIpcOptions) {
-  registerAppleNotesIpc({ ipcMain: ipc, service: new AppleNotesService(), assertSender });
-  const mutation = <T,>(event: IpcMainInvokeEvent, contextId: unknown, operation: () => Promise<T> | T) => {
+export function registerCodexChatIpc({ ipc, accountIpc, service, deletion, savedTurns, historySearch, assertSender, prepareMessage, beforeMessage }: ChatIpcOptions) {
+  registerAppleCalendarIpc({ ipcMain: ipc, service: new AppleCalendarService(), assertSender });
+  ipc = accountIpc ?? ipc;
+  const mutation = <T,>(event: IpcMainInvokeEvent, operation: () => Promise<T> | T) => {
     assertSender(event);
-    const run = () => relays.mutation(event.sender.id, contextId, operation);
-    return deletion ? deletion.mutation(run) : run();
+    return deletion ? deletion.mutation(operation) : operation();
   };
   ipc.handle('cheshi:search-codex-chat-history', (event, request, _contextId) => {
     assertSender(event);
@@ -45,6 +61,15 @@ export function registerCodexChatIpc({ ipc, service, relays, deletion, savedTurn
     }
     return result;
   });
+  ipc.handle('cheshi:rename-codex-chat-session', (event, sessionId, title, contextId) => mutation(event, async () => {
+    const selected = service(event, contextId);
+    if (!selected.conversations?.renameSession) throw new Error('Session renaming is unavailable. Restart Cheshi.');
+    const renamed = await selected.conversations.renameSession(sessionId, title);
+    selected.emit({ type: 'session-title', ...renamed });
+    if (sessionId !== renamed.threadId) selected.emit({ type: 'session-title', threadId: sessionId, title: renamed.title });
+    selected.emit({ type: 'sessions-changed' });
+    return renamed;
+  }));
   ipc.handle('cheshi:list-codex-chat-sessions', async (event, contextId) => {
     const selected = service(event, contextId);
     try {
@@ -69,23 +94,23 @@ export function registerCodexChatIpc({ ipc, service, relays, deletion, savedTurn
   ipc.handle('cheshi:list-codex-models', (event, contextId) => service(event, contextId).listModels());
   ipc.handle('cheshi:list-codex-mcp-servers', (event, contextId) => service(event, contextId).listMcpServers());
   ipc.handle('cheshi:list-codex-permission-modes', (event, contextId) => service(event, contextId).listPermissionModes());
-  ipc.handle('cheshi:get-codex-chat-status', (event, contextId) => service(event, contextId).getStatus());
+  ipc.handle('cheshi:get-codex-chat-status', (event, contextId) => service(event, contextId).readStatus());
   ipc.handle('cheshi:get-codex-chat-goal', (event, contextId) => service(event, contextId).getGoal());
   ipc.handle('cheshi:list-codex-chat-user-inputs', (event, contextId) => service(event, contextId).userInputs.list());
   ipc.handle('cheshi:respond-codex-chat-user-input', (event, requestId, response, contextId) => service(event, contextId).userInputs.respond(requestId, response));
   ipc.handle('cheshi:respond-codex-chat-approval', (event, approvalId, decision, contextId) => service(event, contextId).respondToApproval(approvalId, decision));
-  ipc.handle('cheshi:set-codex-permission-mode', (event, modeId, contextId) => mutation(event, contextId, () => service(event, contextId).setPermissionMode(modeId)));
-  ipc.handle('cheshi:set-codex-collaboration-mode', (event, mode, contextId) => mutation(event, contextId, () => service(event, contextId).setCollaborationMode(mode)));
-  ipc.handle('cheshi:configure-codex-chat', (event, value, contextId) => mutation(event, contextId, () => service(event, contextId).configure(value)));
-  ipc.handle('cheshi:set-codex-chat-goal', (event, objective, contextId) => mutation(event, contextId, () => service(event, contextId).setGoal(objective)));
-  ipc.handle('cheshi:open-codex-chat-session', (event, sessionId, contextId) => mutation(event, contextId, () => service(event, contextId).openSession(sessionId)));
-  ipc.handle('cheshi:open-codex-chat-agent', (event, agentThreadId, contextId) => mutation(event, contextId, () => service(event, contextId).openAgent(agentThreadId)));
-  ipc.handle('cheshi:new-codex-chat-session', (event, contextId) => mutation(event, contextId, () => service(event, contextId).newSession()));
-  ipc.handle('cheshi:fork-codex-chat-session', (event, contextId) => mutation(event, contextId, () => service(event, contextId).forkSession()));
-  ipc.handle('cheshi:compact-codex-chat-session', (event, contextId) => mutation(event, contextId, () => service(event, contextId).compactSession()));
-  ipc.handle('cheshi:review-codex-chat-session', (event, contextId) => mutation(event, contextId, () => service(event, contextId).reviewSession()));
+  ipc.handle('cheshi:set-codex-permission-mode', (event, modeId, contextId) => mutation(event, () => service(event, contextId).setPermissionMode(modeId)));
+  ipc.handle('cheshi:set-codex-collaboration-mode', (event, mode, contextId) => mutation(event, () => service(event, contextId).setCollaborationMode(mode)));
+  ipc.handle('cheshi:configure-codex-chat', (event, value, contextId) => mutation(event, () => service(event, contextId).configure(value)));
+  ipc.handle('cheshi:set-codex-chat-goal', (event, objective, contextId) => mutation(event, () => service(event, contextId).setGoal(objective)));
+  ipc.handle('cheshi:open-codex-chat-session', (event, sessionId, contextId) => mutation(event, () => service(event, contextId).openSession(sessionId)));
+  ipc.handle('cheshi:open-codex-chat-agent', (event, agentThreadId, contextId) => mutation(event, () => service(event, contextId).openAgent(agentThreadId)));
+  ipc.handle('cheshi:new-codex-chat-session', (event, contextId) => mutation(event, () => service(event, contextId).newSession()));
+  ipc.handle('cheshi:fork-codex-chat-session', (event, contextId) => mutation(event, () => service(event, contextId).forkSession()));
+  ipc.handle('cheshi:compact-codex-chat-session', (event, contextId) => mutation(event, () => service(event, contextId).compactSession()));
+  ipc.handle('cheshi:review-codex-chat-session', (event, contextId) => mutation(event, () => service(event, contextId).reviewSession()));
   const messageOperation = (method: 'sendMessage' | 'steerMessage') => (event: IpcMainInvokeEvent, value: unknown, contextId: unknown) => {
-    const run = () => mutation(event, contextId, async () => {
+    const run = () => mutation(event, async () => {
       let sending = false;
       try {
         const selected = service(event, contextId);
@@ -114,22 +139,8 @@ export function registerCodexChatIpc({ ipc, service, relays, deletion, savedTurn
   ipc.handle('cheshi:steer-codex-chat-message', messageOperation('steerMessage'));
   ipc.handle('cheshi:cancel-codex-chat-response', (event, threadId, contextId) => {
     const selected = service(event, contextId);
-    const relay = relays.get(event.sender.id);
-    if (relay && (relay.status === 'running' || relay.status === 'stopping') && typeof contextId === 'string' && chatRelayContextIds(relay).includes(contextId)) {
-      relays.stop(event.sender.id);
-      return { requested: true };
-    }
     return selected.cancelResponse(threadId);
   });
-  ipc.handle('cheshi:start-codex-chat-relay', (event, request) => {
-    assertSender(event);
-    const start = () => relays.start(event.sender.id, request);
-    return deletion ? deletion.mutation(start) : start();
-  });
-  ipc.handle('cheshi:stop-codex-chat-relay', (event) => { assertSender(event); return relays.stop(event.sender.id); });
-  ipc.handle('cheshi:get-codex-chat-relay', (event) => { assertSender(event); return relays.get(event.sender.id); });
-  ipc.handle('cheshi:list-codex-chat-relay-history', (event) => { assertSender(event); return relays.listHistory(event.sender.id); });
-  ipc.handle('cheshi:delete-codex-chat-relay-history', (event, id) => { assertSender(event); return relays.deleteHistory(event.sender.id, id); });
   ipc.handle('cheshi:list-codex-saved-turns', (event) => { assertSender(event); return savedTurns.list(); });
   ipc.handle('cheshi:save-codex-turn', (event, input) => { assertSender(event); return savedTurns.save(input); });
   ipc.handle('cheshi:delete-codex-saved-turn', (event, id) => { assertSender(event); return savedTurns.delete(id); });

@@ -100,6 +100,7 @@ test('old structured questions render at their message position after subsequent
     const rows = [...view.container.querySelectorAll('[data-chat-item-id]')];
     expect(rows.map(row => row.getAttribute('data-chat-item-id'))).toEqual(['question', 'user-later', 'assistant-later']);
     expect(rows[0]?.querySelector('[aria-label="Input requested"]')).not.toBeNull();
+    expect(rows[0]?.querySelector('[aria-label="Input requested"] > details')).toBeNull();
     expect(rows[0]?.textContent).toContain('만들까요, 아니면 함께 만들까요?');
     expect(rows[0]?.textContent).not.toContain('Raw fallback body');
     expect(view.container.querySelectorAll('[aria-label="Input requested"]')).toHaveLength(1);
@@ -110,6 +111,11 @@ test('old structured questions render at their message position after subsequent
     expect(rows[0]?.querySelector('[role="status"]')?.textContent).toBe('Answered');
     expect(rows[0]?.querySelector('button[aria-pressed="true"]')?.textContent).toContain('에이전트도');
     expect(rows[0]?.querySelector('button[type="submit"]')).toBeNull();
+    const disclosure = rows[0]?.querySelector<HTMLDetailsElement>('[aria-label="Input requested"] > details');
+    expect(disclosure?.open).toBe(false);
+    await act(async () => disclosure?.querySelector('summary')?.click());
+    expect(disclosure?.open).toBe(true);
+    expect(disclosure?.querySelector<HTMLFieldSetElement>('form > fieldset')?.disabled).toBe(true);
     await view.render([], 'other');
     await view.render(later, 'thread', true);
     const restored = view.container.querySelector('[data-chat-item-id="question"]');
@@ -132,6 +138,29 @@ test('closing one old question preserves its closed state without hiding another
     expect(view.container.querySelector('[data-chat-item-id="question"] [role="status"]')?.textContent).toBe('Closed');
     expect(view.container.querySelector('[data-chat-item-id="second"] button[type="submit"]')).not.toBeNull();
     expect(view.sends).toEqual([]);
+  });
+});
+
+test.each(['Skip', 'Close question'])('resolved question can be expanded but cannot send again after %s', async action => {
+  await withHistory(async view => {
+    await view.render();
+    await view.click(action);
+    const card = view.container.querySelector('[aria-label="Input requested"]')!;
+    const disclosure = card.querySelector('details')!;
+    expect(disclosure.open).toBe(false);
+    expect(disclosure.querySelector('summary')?.textContent).toContain(action === 'Skip' ? 'Skipped' : 'Closed');
+    await act(async () => disclosure.querySelector('summary')?.click());
+    expect(disclosure.open).toBe(true);
+    expect(card.querySelector<HTMLFieldSetElement>('form > fieldset')?.disabled).toBe(true);
+    expect(card.querySelector('legend')?.textContent).toContain('만들까요');
+    expect(card.querySelector('button[type="submit"]')).toBeNull();
+    await view.click('스킬만');
+    expect(card.querySelector('button[aria-pressed="true"]')).toBeNull();
+    await view.submit();
+    expect(view.sends).toEqual([]);
+    await view.render([], 'other');
+    await view.render(later, 'thread', true);
+    expect(view.container.querySelector<HTMLDetailsElement>('[aria-label="Input requested"] > details')?.open).toBe(false);
   });
 });
 

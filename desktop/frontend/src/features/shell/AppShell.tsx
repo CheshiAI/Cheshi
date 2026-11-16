@@ -1,13 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import type { VerificationReview } from '../agent-chats/verificationReviewModel';
+import { WorkerWorkspace, type WorkerWorkspaceHandle } from './WorkerWorkspace';
+import { SchedulerNotifications } from '../scheduler/SchedulerNotifications';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
-import { LiquidGlassPanel } from '../../shared/ui';
+import { RegionalBlur, LiquidGlassPanel, SidebarToggleVisibility, SlidingSidePanel } from '../../shared/ui';
 import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import {
   ChatSessionList,
   type ChatActivityItem,
 } from '../chat';
 import { ChatWorkspace } from '../chat/ChatWorkspace';
-import { TemporaryChatPanel } from '../chat/TemporaryChatPanel';
+import { FlashSourceNavigationContext } from '../chat/FlashSourceLink';
+import { CHAT_PANE_MIN_WIDTH } from '../chat/chatWorkspaceModel';
+import { useHomiesEnabled, homiesDisabledReason } from '../settings/useHomiesEnabled';
+import { cheshiDesktop } from '../../cheshiDesktop';
 import { ChatDeleteSessionDialog } from '../chat/ChatDeleteSessionDialog';
 import { ChatHistoryOpenDialog } from '../chat/ChatHistoryOpenDialog';
 import { ChatHistorySearchBar } from '../chat/ChatHistorySearchBar';
@@ -16,9 +22,8 @@ import { useChatHistorySearch } from '../chat/useChatHistorySearch';
 import type { ChatHistorySearchHit } from '../../../../shared/chat-history-search';
 import type { GitLineBlameRequest } from '../../../../shared/git-line-blame';
 import type { ChatHistorySearchTarget } from '../chat/chatHistorySearchNavigation';
-import { HistoryRecallNavigation } from '../chat/HistoryRecallActivity';
 import { useChatWorkspace } from '../chat/useChatWorkspace';
-import { WindowChrome, WindowTabs } from '../chrome/WindowChrome';
+import { WindowTabs } from '../chrome/WindowChrome';
 import {
   WorkspaceEditor,
   type WorkspaceEditorMutation,
@@ -26,30 +31,53 @@ import {
 } from '../editor';
 import { GitWorkspace } from '../git';
 import { CodeGraphView } from '../graph';
+import { useCodeGraphIndex } from '../graph/useCodeGraphIndex';
 import { BlankView } from '../home/BlankView';
 import { Sidebar, type WorkspaceView } from '../navigation/Sidebar';
+import { saveSidebarPanel, sidebarPanelForWorkspace, type SidebarPanel } from '../navigation/sidebarPanel';
+import { SidebarRail } from '../navigation/SidebarRail';
+import { ExplorerView } from '../navigation/ExplorerView';
 import { PluginsView } from '../plugins';
 import { TerminalWorkspace } from '../terminal';
-import { ShowcaseView } from '../showcase/ShowcaseView';
 import { SettingsView } from '../settings/SettingsView';
+import { DiscordSetupConfirmation } from '../settings/DiscordSetupConfirmation';
 import { ReviewSidebar } from './ReviewSidebar';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import styles from './AppShell.module.css';
+import { WorkspaceSurfaceReporter } from './WorkspaceSurfaceReporter';
 import { useAppUpdateResume } from './useAppUpdateResume';
+import { useWorkflowChatNavigation } from './useWorkflowChatNavigation';
+import { useToolsMenu } from './useToolsMenu';
 import { WorkspaceEditorSplit } from './WorkspaceEditorSplit';
+import { readWorkspaceLayout, replaceWorkspacePane, revealWorkspacePane, saveWorkspaceLayout, visibleWorkspaceLayout, type WorkspacePaneId } from './workspaceLayoutModel';
+import { removeSplitPane, splitPaneIds } from '../../shared/ui/splitPaneModel';
 import { WorkspaceFileSearch } from '../navigation/WorkspaceFileSearch';
 import { installFileSearchShortcut } from '../navigation/fileSearchShortcut';
 import { ChatDraftAttachmentsContext, createChatDraftAttachments } from '../chat/chatDraftAttachments';
-import { NotesView } from '../notes/NotesView';
-import { appleNoteAttachment } from '../notes/appleNotesModel';
-import type { AppleNote } from '../../../../shared/apple-notes';
-import { useSidebarResize } from './useSidebarResize';
+import { MemoSidebar } from '../sticky-notes/MemoSidebar';
+import { CalendarView } from '../calendar/CalendarView';
+import { CanvasLoadingState } from '../canvas/CanvasEmptyState';
+import { SidebarStatusContext } from '../../shared/ui/SidebarStatusMessage';
 
-const fullWidthViews: readonly WorkspaceView[] = ['git', 'plugins', 'showcase', 'notes', 'settings'];
+const CanvasView = lazy(() => import('../canvas/CanvasView').then(module => ({ default: module.CanvasView })));
+const fullWidthViews: readonly WorkspaceView[] = ['explorer', 'chats', 'git', 'plugins', 'calendar', 'canvas', 'settings', 'docker'];
 
 export function AppShell() {
+  const accountSceneRef = useRef<HTMLDivElement>(null);
+  const notificationSceneRef = useRef<HTMLDivElement>(null);
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [temporaryChatOpen, setTemporaryChatOpen] = useState(false);
+  const [canvasVisited, setCanvasVisited] = useState(false);
+  const [canvasDirty, setCanvasDirty] = useState(false);
+  const [canvasTarget, setCanvasTarget] = useState<{ path: string; requestId: number } | null>(null);
+  useEffect(() => {
+    const api = cheshiDesktop?.temporaryChat;
+    if (!api) return;
+    let active = true, changed = false;
+    const unsubscribe = api.onWindowChanged(open => { changed = true; setTemporaryChatOpen(open); });
+    void api.isWindowOpen().then(open => { if (active && !changed) setTemporaryChatOpen(open); }).catch(console.error);
+    return () => { active = false; unsubscribe(); };
+  }, []);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [submittedSearchQuery, setSubmittedSearchQuery] = useState('');
@@ -58,26 +86,94 @@ export function AppShell() {
   const handleHistoryTarget = useCallback((requestId: number) => {
     setHistoryTarget((current) => current?.requestId === requestId ? null : current);
   }, []);
-  const [indexLoaded, setIndexLoaded] = useState(false);
+  const codeGraphIndex = useCodeGraphIndex();
+  const indexLoaded = codeGraphIndex.status.state !== 'loading';
   const accountReady = useCallback(() => setAccountLoaded(true), []);
-  const indexReady = useCallback(() => setIndexLoaded(true), []);
   const startupReported = useRef(false);
-  const [activeView, setActiveView] = useState<WorkspaceView>('chat');
+  const [customLayout, setCustomLayout] = useState(readWorkspaceLayout);
+  const [editorOnly, setEditorOnly] = useState(false);
+  const [activeView, setActiveView] = useState<WorkspaceView>(() =>
+    customLayout && splitPaneIds(customLayout).includes('primary') && ['editor', 'worker'].some(pane => splitPaneIds(customLayout).includes(pane)) ? 'chat'
+      : customLayout && splitPaneIds(customLayout).includes('worker') ? 'chats' : 'explorer');
+  const [workerView, setWorkerView] = useState<'chats' | 'docker'>('chats');
+  const [focusedPane, setFocusedPane] = useState<WorkspacePaneId>(() =>
+    customLayout && splitPaneIds(customLayout).includes('editor') ? 'editor'
+      : customLayout && splitPaneIds(customLayout).includes('worker') && !splitPaneIds(customLayout).includes('primary') ? 'worker' : 'primary');
+  const [paneFocusRequest, setPaneFocusRequest] = useState<{ paneId: WorkspacePaneId; requestId: number } | null>(null);
+  const focusWorkspacePane = useCallback((paneId: WorkspacePaneId) => {
+    if (paneId !== 'editor') setEditorOnly(false);
+    setFocusedPane(paneId);
+    setPaneFocusRequest(current => ({ paneId, requestId: (current?.requestId ?? 0) + 1 }));
+  }, []);
+  const previousView = useRef(activeView);
+  useEffect(() => {
+    if (previousView.current === activeView) return;
+    previousView.current = activeView;
+    if (activeView === 'chats' || activeView === 'docker') setWorkerView(activeView);
+    setFocusedPane(activeView === 'editor' ? 'editor' : activeView === 'terminal' ? 'terminal'
+      : activeView === 'chats' || activeView === 'docker' ? 'worker' : 'primary');
+  }, [activeView]);
   const [historyChoice, setHistoryChoice] = useState<{ sessionId: string; title: string; paneId: string } | null>(null);
   const [deleteChoice, setDeleteChoice] = useState<{ sessionId: string; title: string } | null>(null);
-  const [fileReview, setFileReview] = useState<{ paneId: string; itemId: string; path: string | null } | null>(null);
+  const [renamingSession, setRenamingSession] = useState(false);
+  const workerWorkspace = useRef<WorkerWorkspaceHandle>(null);
+  const [fileReview, setFileReview] = useState<{ paneId: string; itemId: string; path: string | null; item?: never }
+    | { paneId?: never; itemId: string; path: string | null; item: ChatActivityItem } | null>(null);
+  const [verificationReview, setVerificationReview] = useState<VerificationReview | null>(null);
   const [lineCommitTarget, setLineCommitTarget] = useState<GitLineBlameRequest | null>(null);
   const [localHistoryPath, setLocalHistoryPath] = useState<string | null>(null);
-  const closeReview = useCallback(() => { setFileReview(null); setLineCommitTarget(null); setLocalHistoryPath(null); }, []);
+  const closeReview = useCallback(() => { workerWorkspace.current?.closeHomies(); setFileReview(null); setVerificationReview(null); setLineCommitTarget(null); setLocalHistoryPath(null); }, []);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
+  const [chatsSidebarTarget, setChatsSidebarTarget] = useState<HTMLDivElement | null>(null);
+  const [memoSidebarTarget, setMemoSidebarTarget] = useState<HTMLDivElement | null>(null);
+  const [canvasSidebarTarget, setCanvasSidebarTarget] = useState<HTMLDivElement | null>(null);
+  const [githubSidebarTarget, setGithubSidebarTarget] = useState<HTMLDivElement | null>(null);
+  const [sidebarStatusTarget, setSidebarStatusTarget] = useState<HTMLSpanElement | null>(null);
+  useEffect(() => { saveWorkspaceLayout(customLayout); }, [customLayout]);
+  const homiesEnabled = useHomiesEnabled() === true;
+  const [sidebarPanel, setSidebarPanel] = useState<SidebarPanel>('files');
+  useEffect(() => { if (!homiesEnabled) setSidebarPanel(panel => panel === 'agent-chats' ? 'files' : panel); }, [homiesEnabled]);
+  useEffect(() => { saveSidebarPanel(sidebarPanel); }, [sidebarPanel]);
+  useEffect(() => cheshiDesktop?.notes?.onOpenListRequested(() => {
+    setSidebarPanel('memos'); setLeftSidebarOpen(true);
+  }), []);
+  useEffect(() => cheshiDesktop?.agentRegistry?.onRepositoryReady?.(() => {
+    setSidebarPanel('files');
+    setLeftSidebarOpen(true);
+  }), []);
   const openFileReview = useCallback((paneId: string, itemId: string, path?: string) => {
+    workerWorkspace.current?.closeHomies();
     setLineCommitTarget(null);
     setLocalHistoryPath(null);
     setRightSidebarOpen(true);
+    setVerificationReview(null);
     setFileReview({ paneId, itemId, path: path ?? null });
   }, []);
+  const openChatsFileReview = useCallback((item: ChatActivityItem | null, path?: string) => {
+    if (!item) { setFileReview(current => current?.item ? null : current); return; }
+    if (path !== undefined) {
+      workerWorkspace.current?.closeHomies();
+      setVerificationReview(null);
+      setLineCommitTarget(null); setLocalHistoryPath(null); setRightSidebarOpen(true);
+    }
+    setFileReview(current => {
+      if (path === undefined && (!current?.item || current.itemId !== item.id)) return current;
+      const selectedPath = path ?? current?.path ?? null;
+      return current?.item === item && current.path === selectedPath ? current
+        : { item, itemId: item.id, path: selectedPath };
+    });
+  }, []);
+  const openVerificationReview = useCallback((review: VerificationReview | null, open = false) => {
+    if (open) {
+      workerWorkspace.current?.closeHomies();
+      setFileReview(null); setLineCommitTarget(null); setLocalHistoryPath(null); setRightSidebarOpen(true);
+    }
+    setVerificationReview(current => open || !review || current?.id === review.id ? review : current);
+  }, []);
   const openLineCommit = useCallback((request: GitLineBlameRequest) => {
-    setFileReview(null);
+    workerWorkspace.current?.closeHomies();
+    setFileReview(null); setVerificationReview(null);
     setLocalHistoryPath(null);
     setLineCommitTarget(request);
     setRightSidebarOpen(true);
@@ -93,21 +189,21 @@ export function AppShell() {
   const editorMutationRequestId = useRef(0);
   const workspace = useChatWorkspace();
   const [draftAttachments] = useState(createChatDraftAttachments);
-  const attachmentDestination = useRef({ activeView, paneId: workspace.activePaneId });
-  attachmentDestination.current = { activeView, paneId: workspace.activePaneId };
-  const historySearch = useChatHistorySearch(workspace.activePaneId);
-  const updateResume = useAppUpdateResume({ activeView, rightSidebarOpen, setActiveView, setRightSidebarOpen,
-    blockedReason: temporaryChatOpen ? 'Close the temporary chat before updating.'
-      : historyChoice || deleteChoice ? 'Close the conversation dialog before updating.' : null });
+  const historySearch = useChatHistorySearch(workspace.activePaneId, workspace.paneIds);
+  const updateResume = useAppUpdateResume({ activeView, rightSidebarOpen, setActiveView, setRightSidebarOpen, sidebarPanel, setSidebarPanel,
+    blockedReason: canvasDirty ? 'Save the canvas design before updating.' : temporaryChatOpen ? 'Close the temporary chat before updating.'
+      : renamingSession ? 'Finish renaming the session before updating.'
+        : historyChoice || deleteChoice ? 'Close the conversation dialog before updating.' : null });
   const accountSwitchReason = updateResume.busy ? 'Wait for update preparation or workspace recovery to finish.' : temporaryChatOpen ? 'Close the temporary chat before switching accounts.'
-    : historyChoice || deleteChoice ? 'Close the conversation dialog before switching accounts.'
+    : renamingSession ? 'Finish renaming the session before switching accounts.'
+      : historyChoice || deleteChoice ? 'Close the conversation dialog before switching accounts.'
       : workspace.accountSwitchReason;
   const beforeAccountSelect = (): string | null => accountSwitchReason ?? workspace.beginAccountSwitch();
   const accountSelectionFinished = (changed: boolean, preserveConversation = false): void => {
     workspace.completeAccountSwitch(changed, preserveConversation);
     if (changed) {
       historyRequestId.current += 1;
-      historySearch.clear();
+      historySearch.reset();
       setSubmittedSearchQuery('');
       closeReview(); setHistoryChoice(null); setDeleteChoice(null); setHistoryTarget(null);
     }
@@ -124,13 +220,11 @@ export function AppShell() {
   }, [accountLoaded, indexLoaded, workspace.sessionHistory.loading]);
   const chatSessionSelectionDisabled = !chat || chat.state.phase === 'loading' || workspace.splitPending || workspace.deletePending
     || workspace.accountSwitchPending || chat.configurationPending;
-  const reviewedItem = (fileReview ? workspace.controllers[fileReview.paneId]?.state.items : [])
+  const reviewedItem = fileReview?.item ?? (fileReview?.paneId ? workspace.controllers[fileReview.paneId]?.state.items : [])
     ?.find((item): item is ChatActivityItem => (
       item.kind === 'activity' && item.activity === 'files' && item.id === fileReview?.itemId
     )) ?? null;
-  const reviewing = Boolean(reviewedItem || lineCommitTarget || localHistoryPath !== null);
-  const sidebarResize = useSidebarResize({ rightOpen: rightSidebarOpen && !reviewing,
-    reviewing: rightSidebarOpen && reviewing, disabled: updateResume.busy || workspace.accountSwitchPending });
+  const reviewing = Boolean(reviewedItem || verificationReview || lineCommitTarget || localHistoryPath !== null);
 
   const openChat = (sessionId: string): void => {
     if (chatSessionSelectionDisabled) return;
@@ -139,60 +233,92 @@ export function AppShell() {
       paneId: workspace.activePaneId });
   };
 
-  const openWorkflowChat = (threadId: string): void => {
-    if (workspace.deletePending) return;
+  const openWorkflowChat = useWorkflowChatNavigation(workspace, () => {
     historyRequestId.current += 1;
+    setHistoryTarget(null);
     closeReview();
+    setEditorOnly(false);
     setActiveView('chat');
+    setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
     setPrimaryPaneClosed(false);
-    void chat?.openSession(threadId);
-  };
+  });
 
-  const openHistorySearchHit = async (hit: Pick<ChatHistorySearchHit, 'threadId' | 'itemId'>): Promise<boolean> => {
-    if (chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running) return false;
+  const openHistorySearchHit = useCallback(async (hit: Pick<ChatHistorySearchHit, 'threadId' | 'itemId'>): Promise<boolean> => {
+    if (chatSessionSelectionDisabled || updateResume.busy) return false;
     const requestId = ++historyRequestId.current;
     workspace.dismissError();
     const opened = await workspace.openSession(hit.threadId);
     if (!opened || requestId !== historyRequestId.current) return false;
     closeReview();
+    setEditorOnly(false);
     setActiveView('chat');
+    setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
     setPrimaryPaneClosed(false);
     setHistoryTarget({ threadId: hit.threadId, itemId: hit.itemId, requestId });
     return true;
-  };
+  }, [chatSessionSelectionDisabled, updateResume.busy, workspace.dismissError, workspace.openSession, closeReview]);
 
   const newChat = (): void => {
     if (workspace.deletePending) return;
     historyRequestId.current += 1;
     closeReview();
+    setEditorOnly(false);
     setActiveView('chat');
+    setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
     setPrimaryPaneClosed(false);
     void chat?.newSession();
   };
 
-  const navigate = (view: WorkspaceView): void => {
+  const navigate = useCallback((view: WorkspaceView, options: { preserveFocus?: boolean } = {}): void => {
+    if (!homiesEnabled && (view === 'chats' || view === 'docker')) return;
+    if (view === 'notes') { setSidebarPanel('memos'); setLeftSidebarOpen(true); return; }
+    if (view !== 'editor' && view !== 'explorer') setEditorOnly(false);
     historyRequestId.current += 1;
     closeReview();
+    if (view === 'explorer' || view === 'editor') {
+      setSidebarPanel('files'); setLeftSidebarOpen(true);
+      if (editorOnly) { focusWorkspacePane('editor'); return; }
+      if (editorTarget && !(customLayout ? splitPaneIds(customLayout).includes('editor') : editorSplitOpen || activeView === 'editor')) {
+        setEditorOnly(true); focusWorkspacePane('editor'); return;
+      }
+      if (editorSplitOpen || (customLayout && splitPaneIds(customLayout).includes('editor'))) {
+        focusWorkspacePane('editor');
+        setCustomLayout(current => current && revealWorkspacePane(current, 'editor'));
+        if (!customLayout && fullWidthViews.includes(activeView)) {
+          editorReturnView.current = 'explorer';
+          setActiveView('editor');
+        }
+        if (view === 'explorer' || customLayout) return;
+      }
+    }
+    if (view === 'chat') { setSidebarPanel('chats'); setLeftSidebarOpen(true); }
+    if (view === 'chats') { setSidebarPanel('agent-chats'); setLeftSidebarOpen(true); }
+    if (view === 'chats' || view === 'docker') setWorkerView(view);
+    if (view === 'git') { setSidebarPanel('github'); setLeftSidebarOpen(true); }
+    if (view === 'canvas') { setCanvasVisited(true); setSidebarPanel('canvas'); setLeftSidebarOpen(true); }
+    const pane = view === 'terminal' ? 'terminal' : view === 'editor' ? 'editor'
+      : view === 'chats' || view === 'docker' ? 'worker' : 'primary';
+    if (!options.preserveFocus) focusWorkspacePane(pane);
+    if (customLayout) {
+      setCustomLayout(current => current && revealWorkspacePane(current, pane));
+      if (pane === 'terminal' || pane === 'worker') return;
+    }
     setActiveView(view);
     setPrimaryPaneClosed(false);
-  };
+  }, [closeReview, editorOnly, editorTarget, editorSplitOpen, customLayout, focusWorkspacePane, activeView, homiesEnabled]);
+  const openWorkerRoom = useCallback(() => navigate('chats'), [navigate]);
+  const openGitChanges = useCallback(() => navigate('git'), [navigate]);
+  const toggleRightSidebar = useCallback(() => setRightSidebarOpen(open => !open), []);
 
-  const attachNote = async (note: AppleNote): Promise<boolean> => {
-    if (chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running) return false;
-    const destination = attachmentDestination.current;
-    const requestId = historyRequestId.current;
-    const attached = await draftAttachments.attach(destination.paneId, [appleNoteAttachment(note)]);
-    if (attached && historyRequestId.current === requestId && attachmentDestination.current.activeView === 'notes'
-      && attachmentDestination.current.paneId === destination.paneId) navigate('chat');
-    return attached;
-  };
+  useToolsMenu(navigate);
 
-  const openLocalHistory = (path: string): void => {
-    setFileReview(null);
+  const openLocalHistory = useCallback((path: string): void => {
+    workerWorkspace.current?.closeHomies();
+    setFileReview(null); setVerificationReview(null);
     setLineCommitTarget(null);
     setLocalHistoryPath(path);
     setRightSidebarOpen(true);
-  };
+  }, []);
 
   const changeSearchQuery = (value: string): void => {
     historyRequestId.current += 1;
@@ -209,121 +335,275 @@ export function AppShell() {
     void historySearch.search({ query, refresh, limit: 50 });
   };
 
-  const openWorkspaceFile = (path: string, line: number | null = null): void => {
+  const replaceExplorerWithEditor = useCallback((): void => {
+    editorReturnView.current = 'explorer';
+    setCustomLayout(current => current && revealWorkspacePane(replaceWorkspacePane(current, 'primary', 'editor'), 'editor'));
+    setPrimaryPaneClosed(false);
+    setActiveView('editor');
+    focusWorkspacePane('editor');
+  }, [focusWorkspacePane]);
+
+  const openWorkspaceFile = useCallback((path: string, line: number | null = null): void => {
+    if (path.endsWith('.fig')) {
+      setCanvasTarget(current => ({ path, requestId: (current?.requestId ?? 0) + 1 }));
+      navigate('canvas');
+      return;
+    }
     historyRequestId.current += 1;
     editorRequestId.current += 1;
     closeReview();
+    focusWorkspacePane('editor');
     setEditorTarget({ path, line, requestId: editorRequestId.current });
-    setEditorSplitOpen(true);
-    if (fullWidthViews.includes(activeView)) {
-      editorReturnView.current = activeView;
-      setPrimaryPaneClosed(false);
-      setActiveView('editor');
+    if (activeView === 'explorer' && !editorOnly) {
+      replaceExplorerWithEditor(); return;
     }
-  };
+    const editorVisible = customLayout ? splitPaneIds(customLayout).includes('editor')
+      : activeView === 'editor' || (editorSplitOpen && !fullWidthViews.includes(activeView));
+    // Opening a file never adds a split. Keep the previous scene mounted and its layout intact.
+    if (!editorVisible) setEditorOnly(true);
+  }, [closeReview, focusWorkspacePane, activeView, editorOnly, editorSplitOpen, customLayout, replaceExplorerWithEditor, navigate]);
 
   const closeEditorSplit = (): void => {
     setLineCommitTarget(null);
+    if (editorOnly) {
+      setEditorOnly(false);
+      setEditorSplitOpen(false);
+      setEditorTarget(null);
+      focusWorkspacePane(activeView === 'chats' || activeView === 'docker' ? 'worker' : activeView === 'terminal' ? 'terminal' : 'primary');
+      return;
+    }
     setEditorSplitOpen(false);
+    const returnToExplorer = activeView === 'editor' && editorReturnView.current === 'explorer';
+    setCustomLayout(current => current && (returnToExplorer
+      ? replaceWorkspacePane(current, 'editor', 'primary') : removeSplitPane(current, 'editor')));
     setPrimaryPaneClosed(false);
     setEditorTarget(null);
-    if (activeView === 'editor') navigate(editorReturnView.current);
+    if (activeView === 'editor') {
+      if (editorReturnView.current === 'explorer') {
+        setActiveView('explorer');
+        focusWorkspacePane('primary');
+        setSidebarPanel('files');
+      } else navigate(editorReturnView.current);
+    }
   };
 
-  const handleWorkspaceEntryMutation = (mutation: WorkspaceEntryMutation): void => {
+  const handleWorkspaceEntryMutation = useCallback((mutation: WorkspaceEntryMutation): void => {
     editorMutationRequestId.current += 1;
     setEditorMutation({ ...mutation, requestId: editorMutationRequestId.current });
-  };
-  const editorLayoutMode = activeView === 'editor' ? 'editor'
+  }, []);
+  const editorLayoutMode = editorOnly || activeView === 'editor' ? 'editor'
     : !editorSplitOpen ? 'primary'
       : fullWidthViews.includes(activeView) ? 'page'
         : primaryPaneClosed ? 'editor' : 'split';
 
+  const workerPrimary = activeView === 'chats' || activeView === 'docker';
+  const primaryView = workerPrimary ? 'chat' : activeView;
+  const displayedLayout = editorOnly ? { type: 'pane' as const, paneId: 'editor' } : customLayout;
+  const visiblePanes = splitPaneIds(displayedLayout ?? visibleWorkspaceLayout(editorLayoutMode, activeView === 'terminal', .5, workerPrimary));
+  const closeEditorPane = (): void => {
+    const remaining = removeSplitPane(
+      displayedLayout ?? visibleWorkspaceLayout(editorLayoutMode, activeView === 'terminal', .5, workerPrimary), 'editor',
+    );
+    // A standalone editor still returns to its previous page.
+    if (!remaining) { closeEditorSplit(); return; }
+    const nextPane = splitPaneIds(remaining)[0] as WorkspacePaneId;
+    setLineCommitTarget(null);
+    setLocalHistoryPath(null);
+    setEditorOnly(false);
+    setEditorSplitOpen(false);
+    setEditorTarget(null);
+    setCustomLayout(remaining);
+    setPrimaryPaneClosed(false);
+    if (activeView === 'editor') {
+      setActiveView(nextPane === 'worker' ? workerView : nextPane === 'terminal' ? 'terminal' : editorReturnView.current);
+    }
+    focusWorkspacePane(nextPane);
+  };
+  const visiblePaneKey = [...visiblePanes].sort().join(':');
+  const selectedPane = visiblePanes.includes(focusedPane) ? focusedPane : visiblePanes[0];
+  const railView = selectedPane === 'editor' ? 'editor' : selectedPane === 'terminal' ? 'terminal'
+    : selectedPane === 'worker' ? workerView : primaryView;
+  const automaticSidebarPanel = sidebarPanelForWorkspace(railView, visiblePanes);
+  useEffect(() => window.workspaceSurface?.onCommand(command => {
+    if (command.action === 'navigate') navigate(command.view as WorkspaceView);
+    else if (command.action === 'sidebar') setLeftSidebarOpen(open => !open);
+    else void cheshiDesktop?.workspaceManagement?.openManager().catch(console.error);
+  }), [navigate]);
+  const workspaceNeedsAttention = Object.values(workspace.controllers).some(controller => controller.state.approvals.length > 0);
+  const sidebarScene = `${activeView}:${visiblePaneKey}`;
+  const previousSidebarScene = useRef(sidebarScene);
+  useEffect(() => {
+    if (updateResume.editorSessionMode === 'waiting') return;
+    const sceneChanged = previousSidebarScene.current !== sidebarScene;
+    previousSidebarScene.current = sidebarScene;
+    // Keep Explorer on ordinary startup; follow later scene changes and update recovery.
+    if (!automaticSidebarPanel || (!sceneChanged && updateResume.editorSessionMode !== 'preserve')) return;
+    setSidebarPanel(automaticSidebarPanel);
+  }, [sidebarScene, automaticSidebarPanel, updateResume.editorSessionMode]);
+  const closePane = (pane: 'primary' | 'terminal' | 'worker') => {
+    if (customLayout) setCustomLayout(current => removeSplitPane(current, pane));
+    else setPrimaryPaneClosed(true);
+  };
+
   return (
     <ChatDraftAttachmentsContext.Provider value={draftAttachments}>
-    <div className={`app-shell ${styles.shell}`}>
+    <SidebarToggleVisibility.Provider value={reviewing}>
+    <SidebarStatusContext.Provider value={{ activePanel: leftSidebarOpen ? sidebarPanel : null, target: sidebarStatusTarget }}>
+    <div ref={notificationSceneRef} className={`app-shell ${styles.shell}`} data-workspace-surface={window.workspaceSurface ? 'true' : undefined}>
+      {window.workspaceSurface && <WorkspaceSurfaceReporter homiesEnabled={homiesEnabled} view={leftSidebarOpen && sidebarPanel === 'memos' ? 'notes' : railView}
+        sidebarOpen={leftSidebarOpen} running={workspace.responseThreadIds.length} attention={workspaceNeedsAttention} />}
       {updateResume.error && <div role="alert">{updateResume.error}</div>}
-      <div
+      <div ref={accountSceneRef}
         inert={updateResume.busy}
         className={`app-layout ${styles.layout}`}
-        ref={sidebarResize.layoutRef}
-        style={sidebarResize.style}
-        data-sidebar-resizing={sidebarResize.resizing ?? undefined}
         data-active-view={activeView}
-        data-file-review={reviewedItem || lineCommitTarget || localHistoryPath !== null ? 'true' : undefined}
-        data-right-sidebar-open={rightSidebarOpen ? 'true' : 'false'}
+        data-left-sidebar-open={leftSidebarOpen ? 'true' : 'false'}
+        data-file-review={reviewing ? 'true' : undefined}
+        data-right-sidebar-open={rightSidebarOpen && reviewing ? 'true' : 'false'}
       >
-        <LiquidGlassPanel className="sidebar-column" inert={workspace.accountSwitchPending}>
-          <WindowChrome />
-          <Sidebar
-            activeView={activeView}
-            selectedFilePath={localHistoryPath ?? editorSelectedPath}
-            onNavigate={navigate}
-            onWorkspaceEntryMutation={handleWorkspaceEntryMutation}
-            onOpenWorkspaceFile={openWorkspaceFile}
-            onOpenLocalHistory={openLocalHistory}
-          />
-        </LiquidGlassPanel>
-        <div className={`${styles.sidebarResizer} ${styles.leftResizer}`} {...sidebarResize.separatorProps('left')} />
+        {!window.workspaceSurface && <LiquidGlassPanel as="aside" className={styles.sidebarRail} aria-label="Application navigation">
+          <SidebarRail homiesEnabled={homiesEnabled} activeView={leftSidebarOpen && sidebarPanel === 'memos' ? 'notes' : railView} sidebarOpen={leftSidebarOpen} onNavigate={navigate}
+            onToggleSidebar={() => setLeftSidebarOpen(open => !open)} />
+        </LiquidGlassPanel>}
+        <MemoSidebar api={cheshiDesktop?.notes} target={memoSidebarTarget} />
+        <SlidingSidePanel open={leftSidebarOpen} anchor="end" stageClassName={styles.sidebarPanelStage}
+          id="workspace-sidebar" className={`sidebar-column ${styles.sidebarPanel}`}
+          inert={workspace.accountSwitchPending}>
+            <Sidebar homiesEnabled={homiesEnabled}
+              canvasPanelRef={setCanvasSidebarTarget}
+              memoPanelRef={setMemoSidebarTarget}
+              chatsPanelRef={setChatsSidebarTarget}
+              githubPanelRef={setGithubSidebarTarget}
+              activePanel={sidebarPanel}
+              onPanelChange={panel => { setSidebarPanel(panel); if (panel === 'canvas') setCanvasVisited(true); }}
+              chatPanel={<ChatSessionList
+                search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
+                  onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
+                  onFocus={() => { if (activeView !== 'search') navigate('search', { preserveFocus: true }); }} />}
+                activeSessionId={chat?.state.activeSessionId ?? null}
+                loading={workspace.sessionHistory.loading}
+                newChatDisabled={chatSessionSelectionDisabled}
+                responseThreadIds={workspace.responseThreadIds}
+                selectionDisabled={chatSessionSelectionDisabled}
+                sessions={workspace.sessionHistory.sessions}
+                onNew={newChat}
+                onRefresh={chat?.refreshSessions}
+                refreshDisabled={workspace.accountSwitchPending || workspace.deletePending}
+                refreshError={workspace.sessionHistory.error}
+                onTemporaryChat={() => { if (!workspace.accountSwitchPending) void cheshiDesktop?.temporaryChat.openWindow().catch(error => window.alert(String(error))); }}
+                temporaryChatOpen={temporaryChatOpen}
+                onOpen={openChat}
+                onRenamingChange={setRenamingSession}
+                onRename={cheshiDesktop?.renameCodexChatSession ? (sessionId, title) => {
+                  if (!cheshiDesktop?.renameCodexChatSession) throw new Error('Session renaming is unavailable. Restart Cheshi.');
+                  return cheshiDesktop.renameCodexChatSession(sessionId, title, workspace.activePaneId);
+                } : undefined}
+                deleteReason={workspace.deleteSessionReason}
+                onDelete={(sessionId) => {
+                  if (workspace.deleteSessionReason(sessionId)) return;
+                  workspace.dismissError();
+                  chat?.dismissError();
+                  setDeleteChoice({ sessionId, title: chat?.state.sessions.find((session) => session.id === sessionId)?.title ?? sessionId });
+                }}
+              />}
+              selectedFilePath={localHistoryPath ?? editorSelectedPath}
+              onWorkspaceEntryMutation={handleWorkspaceEntryMutation}
+              onOpenWorkspaceFile={openWorkspaceFile}
+              onOpenLocalHistory={openLocalHistory}
+            />
+        </SlidingSidePanel>
         <div className="workspace-column" inert={workspace.accountSwitchPending}>
-          <WorkspaceEditorSplit mode={editorLayoutMode} editor={
+          <WorkspaceEditorSplit mode={editorLayoutMode} layout={displayedLayout} onLayoutChange={layout => {
+            setEditorOnly(false); setEditorSplitOpen(splitPaneIds(layout).includes('editor')); setCustomLayout(layout);
+          }}
+            onPaneActivate={setFocusedPane} focusRequest={paneFocusRequest}
+            minimumPrimaryWidth={primaryView === 'chat' ? CHAT_PANE_MIN_WIDTH : undefined}
+            terminalPrimary={activeView === 'terminal'} workerPrimary={workerPrimary} disabled={updateResume.busy || workspace.accountSwitchPending}
+            onOpenPane={pane => {
+              focusWorkspacePane(pane);
+              if (pane === 'editor') setEditorSplitOpen(true);
+              if (pane === 'primary') { setActiveView('chat'); setPrimaryPaneClosed(false); }
+              if (pane === 'worker') setWorkerView('chats');
+            }}
+            workerEnabled={homiesEnabled}
+            worker={homiesEnabled ? <WorkerWorkspace ref={workerWorkspace} view={visiblePanes.includes('worker') ? workerView : null}
+              onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('worker') : undefined}
+              onBeforeOpenHomies={closeReview}
+              reviewedVerificationId={verificationReview?.id} onReviewVerification={openVerificationReview}
+              reviewedMessageId={fileReview?.item?.id} onReviewFileChanges={openChatsFileReview}
+              sidebarTarget={chatsSidebarTarget} sidebarActive={sidebarPanel === 'agent-chats' && leftSidebarOpen}
+              onOpenRoom={openWorkerRoom} /> : <p role="status">{homiesDisabledReason}</p>}
+            terminal={<TerminalWorkspace
+              active={visiblePanes.includes('terminal')}
+              onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('terminal') : undefined}
+              blocked={updateResume.busy || fileSearchOpen}
+              rightSidebarOpen={rightSidebarOpen}
+              onToggleRightSidebar={() => setRightSidebarOpen(open => !open)}
+            />} editor={
             <WorkspaceEditor
               sessionMode={updateResume.editorSessionMode}
-              onSessionRestored={() => setEditorSplitOpen(true)}
-              active={editorLayoutMode === 'split' || editorLayoutMode === 'editor'}
+              onSessionRestored={() => {
+                if (editorOnly) return;
+                setEditorSplitOpen(Boolean(customLayout && splitPaneIds(customLayout).includes('editor')));
+                if (activeView === 'explorer') replaceExplorerWithEditor();
+              }}
+              active={visiblePanes.includes('editor')}
               rightSidebarOpen={rightSidebarOpen}
-              onToggleRightSidebar={editorLayoutMode === 'editor'
+              onToggleRightSidebar={visiblePanes.length === 1 && visiblePanes[0] === 'editor'
                 ? () => setRightSidebarOpen((open) => !open) : undefined}
               mutation={editorMutation}
               target={editorTarget}
               onAllTabsClosed={closeEditorSplit}
+              onPaneClosed={closeEditorPane}
               onSelectedPathChange={setEditorSelectedPath}
               onDirtyPathsChange={setEditorDirtyPaths}
               onOpenLocalHistory={openLocalHistory}
               onShowLineCommit={openLineCommit}
             />
           }>
-          {activeView === 'search' && <ChatHistorySearchPage query={submittedSearchQuery}
+          {primaryView === 'explorer' && <ExplorerView />}
+          {canvasVisited && <Suspense fallback={<CanvasLoadingState active={primaryView === 'canvas' && visiblePanes.includes('primary')} />}><CanvasView
+            active={primaryView === 'canvas' && visiblePanes.includes('primary')} target={canvasTarget} sidebarTarget={canvasSidebarTarget}
+            onOpenFile={openWorkspaceFile} onDirtyChange={setCanvasDirty} /></Suspense>}
+          {primaryView === 'search' && <ChatHistorySearchPage query={submittedSearchQuery}
             result={historySearch.result} loading={historySearch.loading} error={historySearch.error}
+            loadingMore={historySearch.loadingMore} moreError={historySearch.moreError} onLoadMore={historySearch.loadMore}
             selectionDisabled={chatSessionSelectionDisabled} onOpen={openHistorySearchHit}
             onRefresh={() => submitHistorySearch(true)} onClose={() => navigate('chat')}
             rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />}
-          {activeView === 'blank' && <WindowTabs />}
-          {activeView === 'notes' && <NotesView onAttach={attachNote}
-            attachmentDisabled={chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running}
-            rightSidebarOpen={rightSidebarOpen}
+          {primaryView === 'blank' && <WindowTabs />}
+          {primaryView === 'calendar' && <CalendarView rightSidebarOpen={rightSidebarOpen}
             onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)} />}
-          <HistoryRecallNavigation.Provider value={{ open: openHistorySearchHit,
-            disabled: chatSessionSelectionDisabled || updateResume.busy || workspace.relay.running || workspace.responseThreadIds.length > 0 }}>
+          <FlashSourceNavigationContext.Provider value={openHistorySearchHit}>
             <ChatWorkspace
               workspace={workspace}
-              active={activeView === 'chat' && !primaryPaneClosed}
-              onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
-              sessionSyncEnabled={rightSidebarOpen && !fileReview && !lineCommitTarget && localHistoryPath === null}
+              menuBlurSourceRef={accountSceneRef}
+              active={primaryView === 'chat' && visiblePanes.includes('primary')}
+              onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}
+              sessionSyncEnabled={workspace.sessionHistory.loading || sidebarPanel === 'chats'}
               onReviewFileChanges={openFileReview}
               historyTarget={historyTarget}
               onHistoryTargetHandled={handleHistoryTarget}
-              rightSidebarOpen={rightSidebarOpen}
-              onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
-          </HistoryRecallNavigation.Provider>
-          {activeView === 'codegraph' && (
+          </FlashSourceNavigationContext.Provider>
+          {primaryView === 'codegraph' && (
             <CodeGraphView
-              onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
+              index={codeGraphIndex}
+              onCloseWorkspace={visiblePanes.length > 1 ? () => closePane('primary') : undefined}
               onOpenWorkspaceFile={openWorkspaceFile}
               rightSidebarOpen={rightSidebarOpen}
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
           )}
-          {activeView === 'git' && (
             <GitWorkspace
+              active={primaryView === 'git' && visiblePanes.includes('primary')}
+              sidebarTarget={githubSidebarTarget} onOpenChanges={openGitChanges}
               onOpenWorkspaceFile={openWorkspaceFile}
               rightSidebarOpen={rightSidebarOpen}
-              onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
+              onToggleRightSidebar={toggleRightSidebar}
             />
-          )}
-          {activeView === 'plugins' && (
+          {primaryView === 'plugins' && (
             <PluginsView
               chatContextId={workspace.activePaneId}
               onOpenChat={openWorkflowChat}
@@ -331,23 +611,13 @@ export function AppShell() {
               onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
             />
           )}
-          <ShowcaseView active={activeView === 'showcase'}
-            blocked={fileSearchOpen || temporaryChatOpen || !!historyChoice || !!deleteChoice || workspace.accountSwitchPending}
-            rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)} />
-          {activeView === 'settings' && <SettingsView rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen(currentOpen => !currentOpen)} />}
-          <TerminalWorkspace
-            active={activeView === 'terminal' && !primaryPaneClosed}
-            onCloseWorkspace={editorSplitOpen ? () => setPrimaryPaneClosed(true) : undefined}
-            blocked={fileSearchOpen}
-            rightSidebarOpen={rightSidebarOpen}
-            onToggleRightSidebar={() => setRightSidebarOpen((currentOpen) => !currentOpen)}
-          />
-          {activeView === 'blank' && <BlankView />}
+          {primaryView === 'settings' && <SettingsView contextId={workspace.activePaneId} onOpenChat={openWorkflowChat} />}
+          {primaryView === 'blank' && <BlankView />}
           </WorkspaceEditorSplit>
         </div>
         <ReviewSidebar
+          onOpenFile={verificationReview ? undefined : openWorkspaceFile}
+          verification={verificationReview}
           open={rightSidebarOpen}
           item={reviewedItem}
           initialPath={fileReview?.path ?? null}
@@ -355,38 +625,14 @@ export function AppShell() {
           lineCommit={lineCommitTarget}
           localHistoryPath={localHistoryPath}
           localHistoryDirty={localHistoryPath !== null && editorDirtyPaths.includes(localHistoryPath)}
-        >
-          <ChatSessionList
-            search={<ChatHistorySearchBar query={searchQuery} disabled={workspace.accountSwitchPending}
-              onQueryChange={changeSearchQuery} onSubmit={() => submitHistorySearch()}
-              onFocus={() => { if (activeView !== 'search') navigate('search'); }} />}
-            activeSessionId={chat?.state.activeSessionId ?? null}
-            loading={workspace.sessionHistory.loading}
-            newChatDisabled={chatSessionSelectionDisabled}
-            responseThreadIds={workspace.responseThreadIds}
-            selectionDisabled={chatSessionSelectionDisabled}
-            sessions={workspace.sessionHistory.sessions}
-            onNew={newChat}
-            onTemporaryChat={() => { if (!workspace.accountSwitchPending) setTemporaryChatOpen(true); }}
-            temporaryChatOpen={temporaryChatOpen}
-            onOpen={openChat}
-            deleteReason={workspace.deleteSessionReason}
-            onDelete={(sessionId) => {
-              if (workspace.deleteSessionReason(sessionId)) return;
-              workspace.dismissError();
-              chat?.dismissError();
-              setDeleteChoice({ sessionId, title: chat?.state.sessions.find((session) => session.id === sessionId)?.title ?? sessionId });
-            }}
-          />
-        </ReviewSidebar>
-        {rightSidebarOpen && !reviewing && <div className={`${styles.sidebarResizer} ${styles.rightResizer}`}
-          {...sidebarResize.separatorProps('right')} />}
+        />
       </div>
-      <WorkspaceStatusBar onAccountInitialLoad={accountReady} onIndexInitialLoad={indexReady}
+      <WorkspaceStatusBar blurSourceRef={accountSceneRef} onAccountInitialLoad={accountReady}
+        sidebarStatusRef={setSidebarStatusTarget}
         selectionDisabledReason={accountSwitchReason}
         onBeforeSelect={beforeAccountSelect} onSelectionFinished={accountSelectionFinished} />
-      {temporaryChatOpen && <TemporaryChatPanel onClose={() => setTemporaryChatOpen(false)} />}
       {fileSearchOpen && <WorkspaceFileSearch onOpenFile={openWorkspaceFile} onClose={() => setFileSearchOpen(false)} />}
+      <DiscordSetupConfirmation api={cheshiDesktop?.discord} />
       {deleteChoice && <ChatDeleteSessionDialog sessionTitle={deleteChoice.title}
         reason={workspace.deletePending ? null : workspace.deleteSessionReason(deleteChoice.sessionId)}
         pending={workspace.deletePending} error={workspace.error ?? chat?.state.error ?? null}
@@ -396,9 +642,19 @@ export function AppShell() {
       {historyChoice && <ChatHistoryOpenDialog workspace={workspace} sessionId={historyChoice.sessionId}
         sessionTitle={historyChoice.title} paneId={historyChoice.paneId}
         onResume={() => workspace.openSession(historyChoice.sessionId)}
-        onOpened={() => { setHistoryChoice(null); closeReview(); setActiveView('chat'); setPrimaryPaneClosed(false); }}
+        onOpened={() => {
+          setHistoryChoice(null); closeReview(); setEditorOnly(false); setActiveView('chat'); setPrimaryPaneClosed(false);
+          setCustomLayout(current => current && revealWorkspacePane(current, 'primary'));
+        }}
         onClose={() => setHistoryChoice(null)} />}
     </div>
+      <RegionalBlur sourceRef={notificationSceneRef}>
+        <SchedulerNotifications onOpenThread={id => {
+          if (!chatSessionSelectionDisabled && !updateResume.busy) void openWorkflowChat(id);
+        }} />
+      </RegionalBlur>
+    </SidebarStatusContext.Provider>
+    </SidebarToggleVisibility.Provider>
     </ChatDraftAttachmentsContext.Provider>
   );
 }

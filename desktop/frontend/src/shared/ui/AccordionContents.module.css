@@ -1,0 +1,13 @@
+.reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--accordion-duration) ease;
+}
+.reveal[data-expanded='true'] { grid-template-rows: 1fr; }
+.reveal > * { min-height: 0; overflow: hidden; }
+@starting-style {
+  .reveal[data-expanded='true'] { grid-template-rows: 0fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal { transition: none; }
+}

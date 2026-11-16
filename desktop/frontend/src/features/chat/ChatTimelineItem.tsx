@@ -1,19 +1,16 @@
 import {
   AlertCircle,
-  Brain,
   Database,
   FileCode2,
   Image,
   Search,
-  Terminal,
-  Users,
   Wrench,
 } from 'lucide-react';
-import { memo, type ReactNode } from 'react';
+import { memo } from 'react';
 
 import { parseChatRelayMessage } from '../../../../shared/chat-relay';
 import { parseSavedChatTurnPrompt } from '../../../../shared/chat-saved-turn-continuation';
-import { LiquidGlassPanel } from '../../shared/ui';
+import { ContentCard } from '../../shared/ui';
 import { ChatMessageLabel } from './ChatMessageLabel';
 import { relayAssistantDisplayText, relayDisplayText } from './chatRelayMessageView';
 import { FileChangesActivity } from './FileChangesActivity';
@@ -24,17 +21,15 @@ import type { ChatActivityItem, ChatTimelineItem as ChatTimelineItemModel } from
 import styles from './ChatView.module.css';
 import { ChatTurnActions } from './ChatTurnActions';
 import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
-import type { SavedChatTurnsController } from './useSavedChatTurns';
+import type { SavedChatTurnActions } from './useSavedChatTurns';
 import { ChatInlineQuestion } from './ChatInlineQuestion';
 import { AgentActivity } from './AgentActivity';
-import { HistoryRecallActivity } from './HistoryRecallActivity';
+import { reasoningMarkdown } from './chatReasoningPresentation';
 
 function ActivityIcon({ item }: { item: ChatActivityItem }) {
-  if (item.activity === 'command') return <Terminal aria-hidden="true" />;
   if (item.activity === 'files') return <FileCode2 aria-hidden="true" />;
   if (item.activity === 'search') return <Search aria-hidden="true" />;
   if (item.activity === 'image') return <Image aria-hidden="true" />;
-  if (item.activity === 'agent') return <Users aria-hidden="true" />;
   if (item.activity === 'context') return <Database aria-hidden="true" />;
   if (item.activity === 'error') return <AlertCircle aria-hidden="true" />;
   return <Wrench aria-hidden="true" />;
@@ -45,16 +40,17 @@ interface ChatTimelineItemProps {
   streaming: boolean;
   onReviewFileChanges: (itemId: string, path?: string) => void;
   turn?: ChatSavedTurnInput;
-  savedTurns?: SavedChatTurnsController;
+  savedTurns?: SavedChatTurnActions;
   searchMatch?: boolean;
-  usageDetails?: ReactNode;
+  deferOffscreen?: boolean;
 }
 
-export const ChatTimelineItem = memo(function ChatTimelineItem({ turn, savedTurns, searchMatch, usageDetails, ...props }: ChatTimelineItemProps) {
+export const ChatTimelineItem = memo(function ChatTimelineItem({ turn, savedTurns, searchMatch, deferOffscreen, ...props }: ChatTimelineItemProps) {
   return <div className={styles.timelineItem} data-chat-item-id={props.item.id} tabIndex={-1}
+    data-history-deferred={deferOffscreen || undefined}
     data-history-search-match={searchMatch ? 'true' : undefined}>
     <TimelineItemContent {...props} />
-    {turn && savedTurns ? <ChatTurnActions turn={turn} savedTurns={savedTurns} usageDetails={usageDetails} /> : usageDetails}
+    {turn && savedTurns && <ChatTurnActions turn={turn} savedTurns={savedTurns} />}
   </div>;
 });
 
@@ -88,12 +84,9 @@ function TimelineItemContent({
     </article>;
   }
   if (item.kind === 'reasoning') {
-    return (
-      <details className={styles.reasoning} open={streaming}>
-        <summary><Brain aria-hidden="true" /><span>Reasoning</span></summary>
-        <div className={styles.reasoningContent}><MessageContent text={item.text} /></div>
-      </details>
-    );
+    return <section className={styles.reasoning} aria-label="Reasoning">
+      <MessageContent text={reasoningMarkdown(item.text)} presentation="description" />
+    </section>;
   }
   if (item.kind === 'activity' && item.activity === 'files' && item.changes?.length) {
     return <FileChangesActivity item={item} onReview={onReviewFileChanges} />;
@@ -102,19 +95,12 @@ function TimelineItemContent({
     return <CommandActivity item={item} />;
   }
   if (item.kind === 'activity' && item.activity === 'agent') return <AgentActivity item={item} />;
-  if (item.kind === 'activity' && item.recall) return <HistoryRecallActivity item={item} />;
   if (item.kind === 'activity') {
-    return (
-      <LiquidGlassPanel as="article" className={styles.activity} data-activity={item.activity} data-status={item.status}
-        data-liquid-glass-backdrop={item.activity === 'search' || item.activity === 'context' || item.activity === 'error' || item.activity === 'agent' || item.activity === 'tool' ? 'true' : undefined}>
-        <ActivityIcon item={item} />
-        <div>
-          <strong>{item.label}</strong>
-          {item.detail && <span>{item.detail}</span>}
-        </div>
-        {item.status === 'inProgress' && <i aria-label="In progress" />}
-      </LiquidGlassPanel>
-    );
+    return <ContentCard className={styles.activity} icon={<ActivityIcon item={item} />} title={item.label} description={item.detail}
+      data-activity={item.activity} data-status={item.status}
+      status={item.status === 'inProgress' ? <span role="status">In progress</span>
+        : item.status === 'failed' ? 'Failed' : item.status === 'declined' ? 'Declined'
+          : item.status === 'interrupted' ? 'Response stopped' : item.status === 'completed' ? 'Completed' : undefined} />;
   }
   return (
     <article className={styles.assistantRow}>

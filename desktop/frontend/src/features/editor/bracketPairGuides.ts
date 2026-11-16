@@ -1,9 +1,11 @@
 import { syntaxTree } from '@codemirror/language';
 import type { EditorState, Extension } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
+import type { SyntaxNode } from '@lezer/common';
 
 interface BracketToken {
   bracket: string;
+  owner: SyntaxNode;
   from: number;
   line: number;
   column: number;
@@ -22,7 +24,7 @@ export interface BracketPairGuideLine {
 
 const openingBrackets = new Set(['{']);
 const closingBrackets = new Map([['}', '{']]);
-const guideBlockNodeNames = new Set([
+const declarationBodyNodeNames = new Set([
   'Block',
   'ClassBody',
   'CompoundStatement',
@@ -31,6 +33,13 @@ const guideBlockNodeNames = new Set([
   'StructBody',
   'SwitchBody',
 ]);
+
+function hasDeclarationAnchor(node: SyntaxNode): boolean {
+  // Continued declarations anchor at their starting line. Object expressions,
+  // inline types and destructuring instead keep their opening-line indentation.
+  return declarationBodyNodeNames.has(node.name)
+    || (node.name === 'ObjectType' && node.parent?.name === 'InterfaceDeclaration');
+}
 
 function indentationColumn(text: string, tabSize: number): number {
   let column = 0;
@@ -42,21 +51,36 @@ function indentationColumn(text: string, tabSize: number): number {
   return column;
 }
 
+function blockGuideColumn(state: EditorState, block: SyntaxNode, opening: number): number {
+  const owner = block.parent;
+  // A continued signature/condition may indent the opening-brace line farther
+  // than its declaration. Standalone blocks keep their own indentation.
+  const anchor = hasDeclarationAnchor(block) && owner && !owner.type.isTop && !hasDeclarationAnchor(owner)
+    ? owner.from
+    : opening;
+  return indentationColumn(state.doc.lineAt(anchor).text, state.tabSize);
+}
+
 function bracketPairs(state: EditorState): BracketPair[] {
   const pairs = [];
   const stack: BracketToken[] = [];
   const cursor = syntaxTree(state).cursor();
   do {
     if (cursor.to !== cursor.from + 1) continue;
-    if (!guideBlockNodeNames.has(cursor.node.parent?.name ?? '')) continue;
+    // Only structural brace tokens qualify, never string/comment contents or
+    // an interpolation's closing token. Do not restrict the owning node kind.
+    if (cursor.name !== '{' && cursor.name !== '}') continue;
+    const block = cursor.node.parent;
+    if (!block) continue;
     const bracket = state.sliceDoc(cursor.from, cursor.to);
     if (openingBrackets.has(bracket)) {
       const line = state.doc.lineAt(cursor.from);
       stack.push({
         bracket,
+        owner: block,
         from: cursor.from,
         line: line.number,
-        column: indentationColumn(line.text, state.tabSize),
+        column: blockGuideColumn(state, block, cursor.from),
         depth: stack.length,
       });
       continue;
@@ -65,7 +89,9 @@ function bracketPairs(state: EditorState): BracketPair[] {
     if (!expectedOpening) continue;
     let openingIndex = -1;
     for (let index = stack.length - 1; index >= 0; index -= 1) {
-      if (stack[index]?.bracket === expectedOpening) {
+      const candidate = stack[index]!;
+      if (candidate.bracket === expectedOpening && candidate.owner.type === block.type
+        && candidate.owner.from === block.from && candidate.owner.to === block.to) {
         openingIndex = index;
         break;
       }

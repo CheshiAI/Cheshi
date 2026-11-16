@@ -13,6 +13,33 @@ function renderTimeline(state: ChatState) {
   }} onReviewFileChanges={() => {}} />);
 }
 
+test('an empty conversation shows only the decorative logo surface without welcome copy', () => {
+  const html = renderTimeline(INITIAL_CHAT_STATE);
+  expect(html).toContain('data-welcome="true"');
+  expect(html).toContain('<canvas');
+  expect(html).toContain('aria-hidden="true"');
+  expect(html).not.toContain('<blockquote');
+  expect(html).not.toContain('Lewis Carroll');
+  expect(html).not.toContain('How can I help');
+  expect(html).not.toContain('You’re up late');
+  expect(html).not.toContain('Good morning');
+  expect(html.replace(/<[^>]*>/g, '').trim()).toBe('');
+});
+
+test('loading and sending replace the logo surface with the conversation content', () => {
+  const loading = renderTimeline({ ...INITIAL_CHAT_STATE, phase: 'loading' });
+  expect(loading).not.toContain('<canvas');
+  expect(loading).toContain('Loading conversation');
+  const sent = chatReducer(INITIAL_CHAT_STATE, {
+    type: 'optimistic-user', id: 'client:logo', text: 'Start here', title: 'Start here', createdAt: 1,
+  });
+  const html = renderTimeline(sent);
+  expect(html).not.toContain('<canvas');
+  expect(html).not.toContain('data-welcome="true"');
+  expect(html).toContain('Start here');
+  expect(html).toContain('Thinking...');
+});
+
 test('shows the shared thinking indicator immediately before a new thread is accepted', () => {
   const state = chatReducer(INITIAL_CHAT_STATE, {
     type: 'optimistic-user', id: 'client:first', text: 'Hello', title: 'Hello', createdAt: 1,

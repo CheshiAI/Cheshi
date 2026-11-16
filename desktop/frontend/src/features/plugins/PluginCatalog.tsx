@@ -1,6 +1,6 @@
-import { AlertTriangle, Blocks, Search, Sparkles } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 
-import { LoadingState, NeumorphicButton } from '../../shared/ui';
+import { EmptyState, LoadingState, NeumorphicButton } from '../../shared/ui';
 import { InstalledPluginTile, PluginGrid } from './PluginDirectoryCards';
 import styles from './PluginsView.module.css';
 import type { PluginsController } from './usePluginsController';
@@ -40,7 +40,7 @@ export function PluginCatalog({ controller }: { controller: PluginsController })
         <div className={styles.errorState} role="alert">
           <AlertTriangle aria-hidden="true" />
           <span>{catalogError}</span>
-          <NeumorphicButton raised onClick={() => void loadCatalog(true)}>Try again</NeumorphicButton>
+          <NeumorphicButton variant="standard" onClick={() => void loadCatalog(true)}>Try again</NeumorphicButton>
         </div>
       )}
 
@@ -64,13 +64,13 @@ export function PluginCatalog({ controller }: { controller: PluginsController })
             <>
               <PluginGrid plugins={visibleSearchResults} selectedId={selectedPlugin?.id ?? null} onSelect={selectPlugin} />
               {visibleSearchResults.length < searchResults.length && (
-                <NeumorphicButton size="standard" raised className={styles.showMore} onClick={showMore}>
+                <NeumorphicButton variant="standard" className={styles.showMore} onClick={showMore}>
                   Show more
                 </NeumorphicButton>
               )}
             </>
           ) : (
-            <div className={styles.emptyState}><Search aria-hidden="true" /><strong>No matching plugins</strong><span>Try a capability, developer, or plugin name.</span></div>
+            <EmptyState className={styles.emptyState} title="No matching plugins" description="Try a capability, developer, or plugin name." />
           )}
         </section>
       )}
@@ -84,7 +84,7 @@ export function PluginCatalog({ controller }: { controller: PluginsController })
           {installed.length > 0 ? (
             <PluginGrid plugins={installed} selectedId={selectedPlugin?.id ?? null} onSelect={selectPlugin} />
           ) : (
-            <div className={styles.emptyState}><Blocks aria-hidden="true" /><strong>No plugins installed</strong><span>Choose Discover to add one from the directory.</span></div>
+            <EmptyState className={styles.emptyState} title="No plugins installed" description="Choose Discover to add one from the directory." />
           )}
         </section>
       )}
@@ -131,13 +131,13 @@ export function PluginCatalog({ controller }: { controller: PluginsController })
               <>
                 <PluginGrid plugins={visibleBrowse} selectedId={selectedPlugin?.id ?? null} onSelect={selectPlugin} />
                 {visibleBrowse.length < browse.length && (
-                  <NeumorphicButton size="standard" raised className={styles.showMore} onClick={showMore}>
+                  <NeumorphicButton variant="standard" className={styles.showMore} onClick={showMore}>
                     Show more
                   </NeumorphicButton>
                 )}
               </>
             ) : (
-              <div className={styles.emptyState}><Sparkles aria-hidden="true" /><strong>Everything is already in view</strong></div>
+              <EmptyState className={styles.emptyState} title="Everything is already in view" description="Browse the installed and recommended plugins above." />
             )}
           </section>
         </>

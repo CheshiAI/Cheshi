@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { FolderOpen, FolderPlus, Folders, GitBranch, GitFork, Search, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { FolderOpen, FolderPlus, Folders, GitBranch, GitFork, X, PackageOpen } from 'lucide-react';
 import type { WorkspaceCatalogEntry, WorkspaceManagementApi } from '../../../../../shared/workspace-management';
-import { LoadingState, NeumorphicButton, NeumorphicTextField, SearchClearButton, WorkspaceProjectIcon } from '../../../shared/ui';
+import { EmptyState, LoadingState, NeumorphicButton, WorkspaceProjectIcon } from '../../../shared/ui';
+import { SearchInput } from '../../../shared/ui/SearchInput';
 import { isLiteralTrue } from '../../../shared/isLiteralTrue';
 import { AppUpdateIndicator } from '../../updates/AppUpdateIndicator';
 import { PrepareCloneWorkspacePage } from './PrepareCloneWorkspacePage';
@@ -24,41 +25,47 @@ export function canOpenWorkspaceWorktrees(entries: WorkspaceCatalogEntry[], cont
     && isLiteralTrue(entry.available) && isLiteralTrue(entry.isGitRepository));
 }
 
-export async function runWorkspaceDeletion(pending: { current: boolean }, api: Pick<WorkspaceManagementApi, 'deleteWorkspace'>,
-  id: string, onDeleted: () => void): Promise<boolean> {
+export async function runWorkspaceRemoval(pending: { current: boolean }, api: Pick<WorkspaceManagementApi, 'removeWorkspace'>,
+  id: string, onRemoved: () => void): Promise<boolean> {
   if (pending.current) return false;
   pending.current = true;
   try {
-    if (!isLiteralTrue(await api.deleteWorkspace(id))) return false;
-    onDeleted();
+    if (!isLiteralTrue(await api.removeWorkspace(id))) return false;
+    onRemoved();
     return true;
   } finally { pending.current = false; }
 }
 
-export function WorkspaceProjectList({ entries, selectedPath, busy, onSelect, onOpen, onDelete }: {
+export function WorkspaceProjectList({ entries, selectedPath, busy, onSelect, onOpen, onRemove, onOpenOptions }: {
   entries: WorkspaceCatalogEntry[];
   selectedPath: string;
   busy: boolean;
   onSelect: (path: string) => void;
   onOpen: (entry: WorkspaceCatalogEntry, trigger: HTMLButtonElement) => void;
-  onDelete: (entry: WorkspaceCatalogEntry) => void;
+  onRemove: (entry: WorkspaceCatalogEntry) => void;
+  onOpenOptions?: (entry: WorkspaceCatalogEntry, trigger: HTMLButtonElement) => void;
 }) {
   return <ul className={styles.projects} aria-label="Registered projects">
-    {entries.map((entry) => <li key={entry.id} className={styles.projectRow}>
-      <NeumorphicButton className={styles.project} disabled={busy || !entry.available}
+    {entries.map((entry) => <li key={entry.id} className={styles.projectRow} data-open-options={Boolean(onOpenOptions)}>
+      <NeumorphicButton variant="ghost" className={styles.project} disabled={busy || !entry.available}
         data-selected={entry.rootPath === selectedPath ? 'true' : undefined}
         aria-label={`Open ${entry.name}${entry.available ? '' : ' — unavailable'}`}
         title={entry.rootPath} onFocus={() => onSelect(entry.rootPath)} onClick={(event) => onOpen(entry, event.currentTarget)}>
-        <WorkspaceProjectIcon name={entry.name} rootPath={entry.rootPath} />
+        <WorkspaceProjectIcon name={entry.name} color={entry.iconColor} />
         <span className={styles.projectCopy}>
           <strong>{entry.name}</strong>
           <span>{entry.rootPath}</span>
           {!entry.available && <small>Folder unavailable</small>}
         </span>
       </NeumorphicButton>
-      <NeumorphicButton raised size="icon" className={styles.deleteProject} disabled={busy}
-        aria-label={`Delete ${entry.name} workspace and folder`} title={`Move ${entry.rootPath} to Trash and remove from Workspaces`}
-        onClick={() => onDelete(entry)}><Trash2 aria-hidden="true" /></NeumorphicButton>
+      <div className={styles.projectActions}>
+        {onOpenOptions && <NeumorphicButton variant="ghost" size="icon" disabled={busy || !entry.available}
+          aria-label={`Open options for ${entry.name}`} title="Workspace options"
+          onClick={event => onOpenOptions(entry, event.currentTarget)}><PackageOpen aria-hidden="true" /></NeumorphicButton>}
+        <NeumorphicButton variant="ghost" size="icon" disabled={busy}
+          aria-label={`Remove ${entry.name} from Workspaces`} title="Remove from list; keep folder and data"
+          onClick={() => onRemove(entry)}><X aria-hidden="true" /></NeumorphicButton>
+      </div>
     </li>)}
   </ul>;
 }
@@ -74,15 +81,13 @@ export function WorkspaceManager({ api, workspaceName, workspaceRoot, platform }
   const [selectedPath, setSelectedPath] = useState(workspaceRoot);
   const [loading, setLoading] = useState(true);
   const [toolsReady, setToolsReady] = useState(platform !== 'darwin');
-  const [toolsChecked, setToolsChecked] = useState(false);
-  const [loginChecked, setLoginChecked] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [prepared, setPrepared] = useState(false);
+  const [loginActionsTarget, setLoginActionsTarget] = useState<HTMLDivElement | null>(null);
   const workspaceReady = toolsReady && authenticated && prepared;
-  const initialContentReady = toolsChecked && (!toolsReady || (loginChecked && (!authenticated || prepared)));
   useEffect(() => {
-    if (initialContentReady) window.dispatchEvent(new Event('cheshi:workspace-content-ready'));
-  }, [initialContentReady]);
+    window.dispatchEvent(new Event('cheshi:workspace-content-ready'));
+  }, []);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -134,12 +139,17 @@ export function WorkspaceManager({ api, workspaceName, workspaceRoot, platform }
     catch (cause) { setActionError(workspaceError(cause)); setStatus(null); }
     finally { pending.current = false; setBusy(false); }
   };
-  const open = (entry: WorkspaceCatalogEntry, trigger: HTMLButtonElement): void => {
+  const operationApi = useMemo(() => ({ ...api, open: (path: string) => workspaceRoot ? api.openCurrent(path) : api.open(path) }), [api, workspaceRoot]);
+  const openOptions = (entry: WorkspaceCatalogEntry, trigger: HTMLButtonElement): void => {
     dialogTrigger.current = trigger;
     setSelectedPath(entry.rootPath);
     setOpeningEntry(entry);
     setActionError(null);
     setStatus(null);
+  };
+  const open = (entry: WorkspaceCatalogEntry): void => {
+    setSelectedPath(entry.rootPath);
+    void run(async () => { setStatus('Opening workspace…'); await operationApi.open(entry.rootPath); });
   };
   const openFolder = (): void => {
     void run(async () => {
@@ -149,20 +159,20 @@ export function WorkspaceManager({ api, workspaceName, workspaceRoot, platform }
       const entry = await api.addFolder(path);
       setEntries((previous) => [entry, ...previous.filter((item) => item.id !== entry.id)]);
       setSelectedPath(entry.rootPath);
-      await api.open(entry.rootPath);
-      setStatus(`${entry.name} opened in a new window.`);
+      await operationApi.open(entry.rootPath);
+      setStatus(`${entry.name} opened.`);
     });
   };
-  const deleteWorkspace = (entry: WorkspaceCatalogEntry): void => {
+  const removeWorkspace = (entry: WorkspaceCatalogEntry): void => {
     if (pending.current) return;
     setBusy(true);
     setActionError(null);
-    setStatus('Waiting for deletion confirmation…');
-    void runWorkspaceDeletion(pending, api, entry.id, () => {
+    setStatus('Waiting for removal confirmation…');
+    void runWorkspaceRemoval(pending, api, entry.id, () => {
       setEntries((previous) => previous.filter((item) => item.id !== entry.id));
       setSelectedPath((previous) => previous === entry.rootPath ? workspaceRoot : previous);
       setStatus(`${entry.name} removed from Workspaces.`);
-    }).then((deleted) => { if (!deleted) setStatus(null); })
+    }).then((removed) => { if (!removed) setStatus(null); })
       .catch((cause: unknown) => { setActionError(workspaceError(cause)); setStatus(null); })
       .finally(() => setBusy(false));
   };
@@ -183,43 +193,39 @@ export function WorkspaceManager({ api, workspaceName, workspaceRoot, platform }
   const canOpenWorktrees = canOpenWorkspaceWorktrees(entries, contextPath, loading || busy || loadError !== null);
   const filtered = filterWorkspaceEntries(entries, query);
 
-  return <div className={styles.manager} data-platform={platform}>
+  return <div className={`window-appearance-surface ${styles.manager}`} data-platform={platform}>
     <div className={styles.home} hidden={mode !== null}>
       <WorkspaceManagerHeader title="Workspaces" icon={<Folders />} />
       <div className={styles.layout}>
         <main className={styles.content}>
           {workspaceReady && <div className={styles.toolbar}>
-            <div className={styles.searchField}>
-              <Search aria-hidden="true" />
-              <NeumorphicTextField type="search" value={query} onChange={(event) => setQuery(event.target.value)}
-                aria-label="Search projects" placeholder="Search projects"
-                trailingAction={query ? <SearchClearButton aria-label="Clear project search" onClick={() => setQuery('')} /> : undefined} />
-            </div>
+            <SearchInput className={styles.searchField} value={query} onChange={(event) => setQuery(event.target.value)}
+              aria-label="Search projects" clearLabel="Clear project search" onClear={() => setQuery('')} />
             <div className={styles.actions}>
-              <NeumorphicButton raised size="standard" disabled={busy} onClick={openFolder}><FolderOpen aria-hidden="true" />Open folder</NeumorphicButton>
-              <NeumorphicButton raised size="standard" disabled={busy} onClick={(event) => showDialog('clone', event.currentTarget)}><GitFork aria-hidden="true" />Clone repository</NeumorphicButton>
-              <NeumorphicButton raised size="standard" disabled={!canOpenWorktrees} title={`Worktrees for ${selected?.name ?? workspaceName}`}
+              <NeumorphicButton variant="standard" disabled={busy} onClick={openFolder}><FolderOpen aria-hidden="true" />Open folder</NeumorphicButton>
+              <NeumorphicButton variant="standard" disabled={busy} onClick={(event) => showDialog('clone', event.currentTarget)}><GitFork aria-hidden="true" />Clone repository</NeumorphicButton>
+              <NeumorphicButton variant="standard" disabled={!canOpenWorktrees} title={`Worktrees for ${selected?.name ?? workspaceName}`}
                 onClick={(event) => showDialog('worktrees', event.currentTarget)}><GitBranch aria-hidden="true" />Git worktrees</NeumorphicButton>
             </div>
           </div>}
           {workspaceReady && loadError && <div className={styles.errorBox}>
             <p role="alert">{loadError}</p>
-            <NeumorphicButton raised size="standard" disabled={busy} onClick={() => setRefresh((value) => value + 1)}>Retry loading projects</NeumorphicButton>
+            <NeumorphicButton variant="standard" disabled={busy} onClick={() => setRefresh((value) => value + 1)}>Retry loading projects</NeumorphicButton>
           </div>}
           {workspaceReady && actionError && <p role="alert" className={styles.error}>{actionError}</p>}
           <section ref={listRegion} className={styles.listRegion} aria-label="Projects" aria-busy={authenticated && loading}>
             {workspaceReady && <>
             {loading && entries.length === 0 && <p role="status" className={styles.empty}>Loading projects…</p>}
-            {!loading && !loadError && entries.length === 0 && <div className={styles.empty}>
-              <Folders aria-hidden="true" /><h2>Your next workspace starts here</h2>
-              <p>Create a project, open a local folder, or clone a repository to get started.</p>
-            </div>}
+            {!loading && !loadError && entries.length === 0 && <EmptyState className={styles.welcome}
+              variant="section" icon={<Folders />} title="Your next workspace starts here"
+              description="Create a project, open a local folder, or clone a repository to get started." />}
             {entries.length > 0 && filtered.length === 0 && <p role="status" className={styles.empty}>No projects match “{query}”.</p>}
             <WorkspaceProjectList entries={filtered} selectedPath={selectedPath} busy={busy || loading}
-              onSelect={setSelectedPath} onOpen={open} onDelete={deleteWorkspace} />
+              onSelect={setSelectedPath} onOpen={open} onOpenOptions={openOptions} onRemove={removeWorkspace} />
             </>}
-            {toolsReady && <WorkspaceCodexLogin api={api} ready={workspaceReady} onAuthenticatedChange={setAuthenticated} onSettledChange={setLoginChecked} />}
-            <WorkspaceToolSetup api={api} platform={platform} onReadyChange={setToolsReady} onSettledChange={setToolsChecked} />
+            {toolsReady && <WorkspaceCodexLogin api={api} ready={workspaceReady} actionsTarget={loginActionsTarget}
+              onAuthenticatedChange={setAuthenticated} />}
+            <WorkspaceToolSetup api={api} platform={platform} onReadyChange={setToolsReady} />
           </section>
         </main>
       </div>
@@ -228,16 +234,19 @@ export function WorkspaceManager({ api, workspaceName, workspaceRoot, platform }
           : <span role="status">{workspaceReady ? status ?? `${entries.length} ${entries.length === 1 ? 'project' : 'projects'}` : null}</span>}
         <AppUpdateIndicator api={api} />
         {workspaceReady && <div className={styles.actions}>
-          <NeumorphicButton raised size="standard" disabled={busy} onClick={(event) => showDialog('create', event.currentTarget)}>
+          <NeumorphicButton variant="standard" disabled={busy} onClick={(event) => showDialog('create', event.currentTarget)}>
             <FolderPlus aria-hidden="true" />Create project
           </NeumorphicButton>
         </div>}
+        {toolsReady && !workspaceReady && <div ref={setLoginActionsTarget} className={styles.loginActions}
+          role="group" aria-label="Sign-in actions" />}
       </footer>
     </div>
-    {mode === 'create' && <CreateProjectWorkspacePage api={api} currentPath={contextPath} onClose={closeDialog} />}
-    {mode === 'clone' && <PrepareCloneWorkspacePage api={api} currentPath={contextPath} onClose={closeDialog} />}
-    {mode === 'worktrees' && <WorktreeWorkspacePage api={api} currentPath={contextPath} onClose={closeDialog} />}
+    {mode === 'create' && <CreateProjectWorkspacePage api={operationApi} currentPath={contextPath} onClose={closeDialog} />}
+    {mode === 'clone' && <PrepareCloneWorkspacePage api={operationApi} currentPath={contextPath} onClose={closeDialog} />}
+    {mode === 'worktrees' && <WorktreeWorkspacePage api={operationApi} currentPath={contextPath} onClose={closeDialog} />}
     {openingEntry && <OpenWorkspaceDialog api={api} entry={openingEntry} currentPath={workspaceRoot}
+      onDeleted={() => { setOpeningEntry(null); setRefresh(value => value + 1); }}
       onClose={() => setOpeningEntry(null)} restoreFocus={() => { dialogTrigger.current?.focus(); return false; }} />}
   </div>;
 }

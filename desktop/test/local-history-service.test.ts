@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { LocalHistoryService } from '../lib/local-history-service.mts';
 import { readWorkspaceFile } from '../lib/workspace-file-reads.mts';
+import { withLocalHistoryLock } from '../lib/local-history-lock.mts';
 import type { LocalHistoryRestoreRequest } from '../shared/local-history';
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -35,7 +36,62 @@ async function expectFailure(operation: Promise<unknown>, pattern: RegExp): Prom
   expect((caught as Error).message).toMatch(pattern);
 }
 
+async function withinDeadline<T>(operation: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error('File opening waited for history storage.')), 1_000);
+  });
+  try { return await Promise.race([operation, deadline]); }
+  finally { clearTimeout(timer); }
+}
+
 describe('local history service', () => {
+  test.each([false, true])('opens files while history storage is locked (watcher queued: %s)', async (watcherQueued) => {
+    const { workspaceRoot, historyDirectory, service } = await fixture();
+    await writeFile(path.join(workspaceRoot, 'draft.txt'), 'opened content');
+    await writeFile(path.join(workspaceRoot, 'other.txt'), 'external change');
+    await withLocalHistoryLock(historyDirectory, async () => {
+      if (watcherQueued) void service.captureChanged({ paths: ['other.txt'], overflow: false });
+      const opened = await withinDeadline(service.readFile('draft.txt'));
+      expect(opened.content).toBe('opened content');
+      // The queued baseline must preserve exactly what was shown, even if disk changes.
+      await writeFile(path.join(workspaceRoot, 'draft.txt'), 'later external content');
+    });
+    const entries = await service.list('draft.txt');
+    expect(entries.map(entry => entry.reason)).toEqual(['opened']);
+    expect((await service.read('draft.txt', entries[0]!.id)).content).toBe('opened content');
+  });
+
+  test('keeps baseline capture before a later save and reads after earlier saves', async () => {
+    const { workspaceRoot, historyDirectory, service } = await fixture();
+    await writeFile(path.join(workspaceRoot, 'draft.txt'), 'original');
+    let saved: ReturnType<LocalHistoryService['writeFile']> | undefined;
+    let openedAfterSave: ReturnType<LocalHistoryService['readFile']> | undefined;
+    await withLocalHistoryLock(historyDirectory, async () => {
+      const first = await withinDeadline(service.readFile('draft.txt'));
+      saved = service.writeFile({ path: 'draft.txt', expectedRevision: first.file.revision, content: 'saved' });
+      openedAfterSave = service.readFile('draft.txt');
+    });
+    expect((await saved)?.status).toBe('written');
+    expect((await openedAfterSave)?.content).toBe('saved');
+    const entries = await service.list('draft.txt');
+    expect(entries.map(entry => entry.reason)).toEqual(['saved', 'opened']);
+    expect((await service.read('draft.txt', entries[1]!.id)).content).toBe('original');
+  });
+
+  test('shutdown preserves a baseline even when its file read is still pending', async () => {
+    const { workspaceRoot, historyDirectory, service } = await fixture();
+    await writeFile(path.join(workspaceRoot, 'draft.txt'), 'original');
+    const opening = service.readFile('draft.txt');
+    await service.dispose();
+    expect((await opening).content).toBe('original');
+    const reopened = new LocalHistoryService({ workspaceRoot, directory: historyDirectory });
+    cleanups.push(() => reopened.dispose());
+    const entries = await reopened.list('draft.txt');
+    expect(entries.length).toBe(1);
+    expect((await reopened.read('draft.txt', entries[0]!.id)).content).toBe('original');
+  });
+
   test('records original and saved text without an initial read or Git writes', async () => {
     const { workspaceRoot, service } = await fixture();
     await mkdir(path.join(workspaceRoot, '.git'));

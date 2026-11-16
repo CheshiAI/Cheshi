@@ -1,10 +1,10 @@
-import { useLayoutEffect, useRef } from 'react';
+import { memo, useLayoutEffect, useRef } from 'react';
 import { ChatComposer } from './ChatComposer';
 import { ChatTimeline } from './ChatTimeline';
-import styles from './ChatView.module.css';
+import { ChatViewSurface } from './ChatViewSurface';
 import type { ChatController } from './useChatController';
 import { useChatViewController } from './useChatViewController';
-import type { SavedChatTurnsController } from './useSavedChatTurns';
+import type { SavedChatTurnActions } from './useSavedChatTurns';
 import { chatComposerAccountSwitchReason } from './chatAccountSwitch';
 import type { ChatHistorySearchNavigation } from './chatHistorySearchNavigation';
 import type { ChatDraftSnapshot } from './chatDraftRecovery';
@@ -12,36 +12,48 @@ import { useChatDraftAttachmentTarget } from './chatDraftAttachments';
 import { ChatQuestionProvider } from './ChatInlineQuestion';
 import { AgentActivityProvider } from './AgentActivity';
 import { ChatTurnMetricsProvider, latestResponseItemId } from './ChatTurnMetrics';
+import { useChatNotificationVisibility } from './useChatNotificationVisibility';
 
 interface ChatViewProps extends ChatHistorySearchNavigation {
   controller: ChatController;
   onNewSession: () => void;
   initialDraft?: ChatDraftSnapshot;
-  onOpenSideChat?: (input: ChatDraftSnapshot) => boolean;
+  onOpenTemporaryChat?: (input: ChatDraftSnapshot) => Promise<void>;
   onReviewFileChanges: (itemId: string, path?: string) => void;
   active: boolean;
+  visible?: boolean;
+  onFileDrop?: () => void;
   interactionsLocked?: boolean;
-  savedTurns?: SavedChatTurnsController;
+  savedTurns?: SavedChatTurnActions;
   onAccountSwitchGuard?: (guard: (() => string | null) | null) => void;
 }
 
-export function ChatView({
+export const ChatView = memo(function ChatView({
   controller,
   onNewSession,
   initialDraft,
-  onOpenSideChat,
+  onOpenTemporaryChat,
   onReviewFileChanges,
   active,
+  visible = active,
+  onFileDrop,
   interactionsLocked = false,
   savedTurns,
   onAccountSwitchGuard,
   historyTarget,
   onHistoryTargetHandled,
 }: ChatViewProps) {
-  const viewController = useChatViewController({ controller, onNewSession, initialDraft, onOpenSideChat, active, interactionsLocked });
-  useChatDraftAttachmentTarget(controller.contextId, viewController.attachmentTransfer.attachFilesToDraft);
+  const viewController = useChatViewController({ controller, onNewSession, initialDraft, onOpenTemporaryChat, active, visible, onFileDrop, interactionsLocked });
+  useChatNotificationVisibility(viewController.rootRef, controller.contextId ?? 'main', controller.state.activeSessionId, visible);
   const latest = useRef(viewController);
   latest.current = viewController;
+  useChatDraftAttachmentTarget(controller.contextId, viewController.attachmentTransfer.attachFilesToDraft, text => {
+    const current = latest.current;
+    if (!text.trim() || current.interactionsLocked || current.loading || current.sendPending || current.configurationLoading
+      || current.commandLoading || current.commandMenuOpen || current.attachmentPickerOpen || current.attachmentTransfer.isTransferring()) return false;
+    current.setDraft(draft => draft ? `${draft}\n\n${text}` : text);
+    return true;
+  });
   const hasDraft = Boolean(viewController.messageQueue.total || viewController.draft || viewController.selectedSkill || viewController.attachments.length
     || (viewController.sendRecovery && viewController.sendRecovery.status !== 'restored'));
   const busy = viewController.sendPending || viewController.commandLoading || viewController.configurationLoading
@@ -61,7 +73,7 @@ export function ChatView({
   }, [onAccountSwitchGuard, hasDraft, busy]);
 
   return (
-    <section className={styles.root} ref={viewController.rootRef} onKeyDown={viewController.handleEscape}
+    <ChatViewSurface rootRef={viewController.rootRef} timelineRef={viewController.timelineRef} onKeyDown={viewController.handleEscape}
       onDragOver={viewController.attachmentTransfer.onDragOver} onDrop={viewController.attachmentTransfer.onDrop}>
       <ChatQuestionProvider controller={viewController} chatController={controller} active={active}>
         <AgentActivityProvider key={`${controller.contextId}:${controller.state.activeSessionId}`} contextId={controller.contextId}
@@ -75,6 +87,6 @@ export function ChatView({
         </AgentActivityProvider>
       </ChatQuestionProvider>
       <ChatComposer chatController={controller} controller={viewController} userInputContextId={controller.contextId} active={active} />
-    </section>
+    </ChatViewSurface>
   );
-}
+});

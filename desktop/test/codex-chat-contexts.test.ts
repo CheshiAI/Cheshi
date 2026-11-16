@@ -54,6 +54,18 @@ function setup() {
   return { clients, contexts, events, turnGates, turnStarted };
 }
 
+test('session title changes reach sibling panes without crossing window owners', async () => {
+  const { contexts, events } = setup();
+  const left = contexts.get(1, 'left');
+  contexts.get(1, 'right'); contexts.get(2, 'other');
+  left.emit({ type: 'session-title', threadId: 'saved', title: 'Short title' });
+  expect(events).toEqual([
+    { ownerId: 1, event: { type: 'session-title', threadId: 'saved', title: 'Short title', contextId: 'left' } },
+    { ownerId: 1, event: { type: 'session-title', threadId: 'saved', title: 'Short title', contextId: 'right' } },
+  ]);
+  await contexts.stop();
+});
+
 describe('chat pane contexts', () => {
   test('isolates overlapping sends, configuration, cancellation and session selection', async () => {
     const { contexts, clients, events, turnGates, turnStarted } = setup();

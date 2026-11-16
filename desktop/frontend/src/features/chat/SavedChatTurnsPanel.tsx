@@ -1,7 +1,9 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { ChevronRight, MessageSquarePlus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import type { ChatSavedTurn } from '../../../../shared/chat-saved-turns';
-import { NeumorphicButton } from '../../shared/ui';
+import { LoadingState, NeumorphicButton } from '../../shared/ui';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { ChatDeleteRecordDialog } from './ChatDeleteRecordDialog';
 import { SavedChatTurnContent } from './SavedChatTurnContent';
 import type { SavedChatTurnsController } from './useSavedChatTurns';
@@ -19,7 +21,13 @@ export function SavedChatTurnsPanel({ savedTurns, onClose, onContinue, continuat
   const [continuingId, setContinuingId] = useState<string | null>(null);
   const [continuationError, setContinuationError] = useState<{ id: string; message: string } | null>(null);
   const pendingRef = useRef(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
   const [deleteRecord, setDeleteRecord] = useState<ChatSavedTurn | null>(null);
+  const refresh = () => {
+    // The refresh/retry button becomes disabled while loading and loses native focus.
+    actionsRef.current?.querySelector<HTMLButtonElement>('button[aria-label="Close saved turns panel"]')?.focus({ preventScroll: true });
+    void savedTurns.refresh();
+  };
   const continueTurn = async (record: ChatSavedTurn) => {
     if (!onContinue || continuationDisabledReason || pendingRef.current || savedTurns.deleting) return;
     pendingRef.current = true;
@@ -38,22 +46,23 @@ export function SavedChatTurnsPanel({ savedTurns, onClose, onContinue, continuat
   };
   return <section className={styles.content} aria-label="Saved turns">
     <header className={styles.heading}>
-      <span>Saved turns</span>
-      <div className={styles.actions}>
-        <NeumorphicButton raised className={styles.button} aria-label="Refresh saved turns" title="Refresh saved turns"
-          disabled={savedTurns.loading || savedTurns.deleting} onClick={() => void savedTurns.refresh()}><RefreshCw aria-hidden="true" /></NeumorphicButton>
-        <NeumorphicButton raised className={styles.button} aria-label="Close saved turns panel"
+      <SidebarPanelTitle title="SAVED TURNS" />
+      <div ref={actionsRef} className={styles.actions}>
+        <TooltipButton variant="ghost" size="icon" aria-label="Refresh saved turns" title="Refresh saved turns"
+          disabled={savedTurns.loading || savedTurns.deleting} onClick={refresh}><RefreshCw aria-hidden="true" /></TooltipButton>
+        <NeumorphicButton variant="ghost" size="icon" aria-label="Close saved turns panel"
           onClick={onClose}><X aria-hidden="true" /></NeumorphicButton>
       </div>
     </header>
     <div className={styles.list} aria-busy={savedTurns.loading}>
       {savedTurns.error && <div className={styles.notice} role="alert">
         <p>{savedTurns.error}</p>
-        <NeumorphicButton raised disabled={savedTurns.loading || savedTurns.deleting} onClick={() => void savedTurns.refresh()}>Retry</NeumorphicButton>
+        <NeumorphicButton variant="standard" disabled={savedTurns.loading || savedTurns.deleting} onClick={refresh}>Retry</NeumorphicButton>
       </div>}
-      {savedTurns.loading && <p className={styles.notice} role="status">Loading saved turns…</p>}
+      {savedTurns.loading && <LoadingState label="loading saved turns…"
+        className={savedTurns.records.length === 0 && !savedTurns.error ? styles.emptyState : undefined} />}
       {!savedTurns.loading && !savedTurns.error && savedTurns.records.length === 0
-        && <p className={styles.notice}>No saved turns yet. Use Save turn below an assistant response to keep it here.</p>}
+        && <p className={`${styles.notice} ${styles.emptyState}`}>no saved turns yet.<br />use save turn to keep a response.</p>}
       {savedTurns.records.map((record) => <div key={record.id} className={styles.recordRow}>
         <details className={styles.record} name={accordionName}>
           <summary className={styles.summary}>
@@ -67,23 +76,23 @@ export function SavedChatTurnsPanel({ savedTurns, onClose, onContinue, continuat
           <div className={styles.body}>
             <small className={styles.source}>Session · {record.threadId}</small>
             <SavedChatTurnContent record={record} />
-            <NeumorphicButton raised className={styles.continueButton}
+            <TooltipButton variant="standard" size="standard" className={styles.continueButton}
               disabled={!onContinue || Boolean(continuationDisabledReason) || continuingId !== null || savedTurns.deleting}
               title={continuationDisabledReason ?? 'Start a new session with this saved question and answer'}
               onClick={() => void continueTurn(record)}>
               <MessageSquarePlus aria-hidden="true" />
               <span>{continuingId === record.id ? 'Starting new session…' : 'Continue in new session'}</span>
-            </NeumorphicButton>
+            </TooltipButton>
             {continuationError?.id === record.id && <p className={styles.notice} role="alert">{continuationError.message}</p>}
           </div>
         </details>
-        <NeumorphicButton raised className={`${styles.button} ${styles.deleteButton}`}
+        <TooltipButton variant="ghost" size="icon" className={styles.deleteButton}
           aria-label={`Delete saved turn: ${record.sessionTitle || 'Untitled conversation'}`} title="Delete saved turn"
           disabled={savedTurns.deleting || savedTurns.loading || continuingId !== null}
-          onClick={() => setDeleteRecord(record)}><Trash2 aria-hidden="true" /></NeumorphicButton>
+          onClick={() => setDeleteRecord(record)}><Trash2 aria-hidden="true" /></TooltipButton>
       </div>)}
     </div>
-    {deleteRecord && <ChatDeleteRecordDialog recordTitle={deleteRecord.sessionTitle || 'Untitled conversation'} kind="turn"
+    {deleteRecord && <ChatDeleteRecordDialog recordTitle={deleteRecord.sessionTitle || 'Untitled conversation'}
       pending={savedTurns.deleting} error={savedTurns.error}
       onDelete={() => savedTurns.remove(deleteRecord.id)} onClose={() => setDeleteRecord(null)} />}
   </section>;

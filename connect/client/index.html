@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="dark"><title>Cheshi Call</title></head>
+<body><main>
+  <header><h1>Cheshi Call</h1><p id="room">Mac에서 승인한 방으로 연결합니다.</p></header>
+  <p id="state" role="status">연결할 준비가 되었습니다.</p>
+  <p id="code"></p>
+  <button id="connect">Mac에 연결</button>
+  <section aria-label="통화 제어"><button id="call" disabled>통화 시작</button><button id="mute" disabled>음소거</button><button id="hangup" disabled>통화 종료</button></section>
+  <p>음성은 연결된 서비스에서 처리하며, 최종 발화는 Chats에 저장됩니다. 통화를 끊어도 접수된 작업은 계속됩니다.</p>
+  <section id="questions" aria-label="답변할 질문"></section>
+  <p id="transcript" aria-live="polite"></p>
+  <ol id="receipts" aria-label="접수 내역"></ol>
+  <section id="messages" aria-label="작업과 답변"></section>
+  <button id="forget">이 기기 연결 정보 지우기</button>
+</main><audio id="audio" autoplay></audio><script type="module" src="/src/main.ts"></script></body></html>

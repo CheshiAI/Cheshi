@@ -1,0 +1,139 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "vite/client",
+      "node",
+      "unplugin-icons/types/vue"
+    ],
+    "paths": {
+      "#vite-config/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/vite/*"
+      ],
+      "@/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/src/*"
+      ],
+      "#vue/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/vue/src/*",
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/vue/src/*.vue"
+      ],
+      "#core/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/core/src/*"
+      ],
+      "#fig/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/fig/src/*"
+      ],
+      "#cli/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/cli/src/*"
+      ],
+      "#mcp/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/mcp/src/*"
+      ],
+      "@open-pencil/harness": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/harness/src/index.ts"
+      ],
+      "#feedback/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/feedback/src/*"
+      ],
+      "@open-pencil/cloud/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/cloud/src/*"
+      ],
+      "#cloud/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/cloud/src/*"
+      ],
+      "#dom-css/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/dom-css/src/*"
+      ],
+      "#tests/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/tests/*"
+      ],
+      "#docs-config/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/docs/.vitepress/*"
+      ],
+      "#docs/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/docs/.vitepress/*"
+      ],
+      "@open-pencil/cli/library": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/cli/src/library/index.ts"
+      ],
+      "@open-pencil/vue": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/vue/src/index.ts"
+      ],
+      "@open-pencil/core": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/core/src/index.ts"
+      ],
+      "@open-pencil/core/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/core/src/*"
+      ],
+      "@open-pencil/dom-css": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/dom-css/src/index.ts"
+      ],
+      "@open-pencil/dom-css/scene-graph": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/dom-css/src/import/scene-graph.ts"
+      ],
+      "@open-pencil/dom-css/export": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/dom-css/src/export/index.ts"
+      ],
+      "@open-pencil/dom-css/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/dom-css/src/*"
+      ],
+      "#scene-graph/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/scene-graph/src/*"
+      ],
+      "@open-pencil/scene-graph": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/scene-graph/src/index.ts"
+      ],
+      "@open-pencil/scene-graph/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/scene-graph/src/*"
+      ],
+      "#emit/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/emit/src/*"
+      ],
+      "@open-pencil/emit": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/emit/src/index.ts"
+      ],
+      "#design-jsx/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/design-jsx/src/*"
+      ],
+      "@open-pencil/design-jsx": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/design-jsx/src/index.ts"
+      ],
+      "#pen/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/pen/src/*"
+      ],
+      "@open-pencil/pen": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/pen/src/index.ts"
+      ],
+      "@open-pencil/pen/*": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/packages/pen/src/*"
+      ],
+      "@/app/cloud/integration": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/src/app/cloud/integration/off/index.ts"
+      ],
+      "@/app/cloud/integration/storage": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/src/app/cloud/integration/off/storage.ts"
+      ],
+      "@/components/cloud/integration": [
+        "../../../node_modules/.cache/cheshi-open-pencil/types/src/components/cloud/integration/off.ts"
+      ]
+    }
+  },
+  "include": [
+    "editor/**/*.ts",
+    "editor/**/*.vue",
+    "../src/**/*.d.ts",
+    "../../../node_modules/.cache/cheshi-open-pencil/types/src/env.d.ts",
+    "../../../node_modules/.cache/cheshi-open-pencil/types/src/global.d.ts",
+    "../../../node_modules/.cache/cheshi-open-pencil/types/packages/core/src/global.d.ts",
+    "../../../node_modules/.cache/cheshi-open-pencil/types/packages/vue/src/global.d.ts",
+    "../../../node_modules/.cache/cheshi-open-pencil/types/packages/kiwi/src/global.d.ts",
+    "../../../node_modules/.cache/cheshi-open-pencil/types/packages/dom-css/src/cssom.d.ts",
+    "../../../node_modules/.cache/cheshi-open-pencil/types/packages/dom-css/src/postcss-value-parser.d.ts",
+    "../../../node_modules/.cache/cheshi-open-pencil/types/packages/design-jsx/src/global.d.ts"
+  ]
+}

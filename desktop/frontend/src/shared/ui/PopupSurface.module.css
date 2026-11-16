@@ -1,0 +1,24 @@
+/* Only the two popup background layers; consumers own placement and layout. */
+.anchor {
+  --panel-backdrop-blur: var(--popup-surface-backdrop-blur, 16px);
+}
+
+.anchor::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--liquid-glass-radius, var(--panel-radius));
+  background: var(--popup-rear-background, transparent);
+  -webkit-backdrop-filter: var(--popup-rear-backdrop-filter, var(--panel-backdrop-filter, blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation))));
+  backdrop-filter: var(--popup-rear-backdrop-filter, var(--panel-backdrop-filter, blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation))));
+  pointer-events: none;
+}
+
+.surface {
+  background: var(--popup-surface-background, var(--overlay-surface));
+}
+
+.surface:is([role='menu'], [role='listbox']) {
+  --popup-surface-background: var(--dropdown-background);
+}

@@ -34,6 +34,7 @@ const desktopLibraryNames = [
   'workspace-file-service',
 ] as const;
 const desktopScriptNames = [
+  'ensure-homie-repository',
   'build-desktop-preload',
   'build-desktop-runtime',
   'forward-desktop-dev-output',
@@ -56,6 +57,29 @@ function runtimeImportSpecifiers(sourcePath: string): string[] {
     .filter((specifier) => specifier.startsWith('.'));
 }
 
+test('Homie repository setup bundles its service and exact seed resources', async () => {
+  const configuration = await createForgeConfiguration();
+  const shouldIgnore = configuration.packagerConfig?.ignore;
+  if (typeof shouldIgnore !== 'function') throw new Error('Forge ignore configuration is unavailable.');
+  for (const name of ['homie-repository', 'homie-repository-command', 'homie-repository-template', 'homie-repository-project', 'homie-source-files', 'homie-sources']) {
+    assert.equal(shouldIgnore(`/desktop/lib/agent-management/${name}.mts`), false);
+  }
+  assert.equal(shouldIgnore('/desktop/shared/homie-source.ts'), false);
+  for (const name of ['README.md', 'gitignore']) {
+    assert.equal(shouldIgnore(`/resources/homie-repository/${name}`), false);
+    assert.ok(existsSync(path.join(rootDirectory, 'resources/homie-repository', name)));
+  }
+  assert.equal(shouldIgnore('/resources/homie-repository/auth.json'), true);
+  for (const filename of ['/agents/repositories/owners/123.json', '/agents/registry.json',
+    '/.config/gh/hosts.yml', '/.codex/auth.json', '/.env.local', '/.env.signing']) {
+    assert.equal(shouldIgnore(filename), true, `${filename} must remain outside the application package`);
+  }
+  for (const name of ['homie-repository-template', 'homie-repository-project']) {
+    const source = readFileSync(path.join(rootDirectory, `desktop/lib/agent-management/${name}.mts`), 'utf8');
+    assert.doesNotMatch(source, /['"`]\/(?:Users|home)\//u);
+  }
+});
+
 test('uses typed Electron entrypoints and a generated sandboxed preload', async () => {
   const packageSource = readFileSync(path.join(rootDirectory, 'package.json'), 'utf8');
   const configuration = await createForgeConfiguration();
@@ -75,6 +99,9 @@ test('uses typed Electron entrypoints and a generated sandboxed preload', async 
 
   assert.equal(shouldIgnore('/desktop/main.mts'), false);
   assert.equal(shouldIgnore('/desktop/bootstrap.mts'), false);
+  assert.equal(shouldIgnore('/config/workspace-storage.mts'), false);
+  assert.equal(shouldIgnore('/config/workspace-project-colors.mts'), false);
+  assert.equal(shouldIgnore('/desktop/lib/workspace-rail-overlay.mts'), false);
   assert.equal(shouldIgnore('/resources'), false);
   assert.equal(shouldIgnore('/resources/icons'), false);
   assert.equal(shouldIgnore('/resources/icons/startup-logo.png'), false);
@@ -169,6 +196,21 @@ test('fails signed builds when a required signing environment value is missing',
   }, 'darwin'), /MACOS_NOTARY_PROFILE/);
 });
 
+test('packages both official agent manifests and instructions without extra files', async () => {
+  const configuration = await createForgeConfiguration();
+  const shouldIgnore = configuration.packagerConfig?.ignore;
+  if (typeof shouldIgnore !== 'function') throw new Error('Forge ignore configuration is unavailable.');
+  for (const id of ['cheshi-development', 'cheshi-review']) {
+    for (const name of ['agent.json', 'instructions.md']) {
+      const filename = `resources/agent-packages/${id}/${name}`;
+      assert.equal(existsSync(path.join(rootDirectory, filename)), true);
+      for (let entry = filename; entry !== '.'; entry = path.posix.dirname(entry)) assert.equal(shouldIgnore(`/${entry}`), false);
+    }
+    assert.equal(shouldIgnore(`/resources/agent-packages/${id}/auth.json`), true);
+  }
+  assert.equal(shouldIgnore('/resources/agent-packages/unlisted/agent.json'), true);
+});
+
 test('packages only the TypeScript configuration sources', async () => {
   const configuration = await createForgeConfiguration();
   const shouldIgnore = configuration.packagerConfig?.ignore;
@@ -231,7 +273,8 @@ test('packages every relative runtime import reachable from the Electron entrypo
   if (typeof shouldIgnore !== 'function') throw new Error('Forge ignore configuration is unavailable.');
 
   const { main } = JSON.parse(readFileSync(path.join(rootDirectory, 'package.json'), 'utf8'));
-  const pending = [path.join(rootDirectory, main)];
+  const pending = [main, 'desktop/lib/chat-search-worker.mts']
+    .map(entry => path.join(rootDirectory, entry));
   const visited = new Set<string>();
   while (pending.length > 0) {
     const sourcePath = pending.pop();
@@ -250,10 +293,15 @@ test('packages every relative runtime import reachable from the Electron entrypo
   }
   assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'shared', 'plugin-actions.ts')));
   assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', 'skill-recording-store.mts')));
-  for (const name of ['service', 'script', 'process', 'ipc']) {
-    assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', `apple-notes-${name}.mts`)));
+  for (const name of ['runtime', 'library', 'store']) {
+    assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', `sticky-notes-${name}.mts`)));
   }
-  assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'shared', 'apple-notes.ts')));
+  assert.equal(shouldIgnore('/desktop/lib/apple-notes-service.mts'), true);
+  assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'shared', 'sticky-notes.ts')));
+  for (const name of ['service', 'process', 'ipc']) {
+    assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', `apple-calendar-${name}.mts`)));
+  }
+  assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'shared', 'apple-calendar.ts')));
   assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'main.mts')));
   assert.ok(visited.has(path.join(rootDirectory, 'desktop', 'lib', 'startup-page.mts')));
   assert.equal(shouldIgnore('/desktop/shared/plugin-actions.ts.tmp'), true);

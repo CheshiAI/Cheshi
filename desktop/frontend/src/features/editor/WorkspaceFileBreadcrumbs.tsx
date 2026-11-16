@@ -1,3 +1,6 @@
+import { workspaceFullPath } from '../../../../shared/workspace-projects';
+import { useWorkspaceProjects } from '../../shared/workspaceProjects';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { ChevronRight } from 'lucide-react';
 
 import { LiquidGlassPanel } from '../../shared/ui';
@@ -9,27 +12,31 @@ interface WorkspaceFileBreadcrumbsProps {
 }
 
 export function WorkspaceFileBreadcrumbs({ filePath }: WorkspaceFileBreadcrumbsProps) {
-  const segments = [cheshiDesktop?.workspaceName ?? 'Workspace', ...filePath.split('/').filter(Boolean)];
+  const { projects } = useWorkspaceProjects();
+  const project = projects.find(entry => filePath.startsWith(entry.rootPath + '/')) ?? projects[0];
+  const relative = project && filePath.startsWith(project.rootPath + '/') ? filePath.slice(project.rootPath.length + 1) : filePath;
+  const segments = [project?.name ?? 'Workspace', ...relative.split('/').filter(Boolean)];
   const fullPath = cheshiDesktop?.workspaceRoot
-    ? `${cheshiDesktop.workspaceRoot.replace(/\/$/, '')}/${filePath}`
+    ? workspaceFullPath(cheshiDesktop.workspaceRoot, filePath)
     : filePath;
 
   return (
-    <LiquidGlassPanel
-      className={styles.bar}
-      role="navigation"
-      aria-label="Current file path"
-      tabIndex={0}
-      title={fullPath}
-    >
-      <ol className={styles.list}>
-        {segments.map((segment, index) => (
-          <li key={index} aria-current={index === segments.length - 1 ? 'location' : undefined}>
-            {index > 0 && <ChevronRight aria-hidden="true" />}
-            <span>{segment}</span>
-          </li>
-        ))}
-      </ol>
-    </LiquidGlassPanel>
+    <TooltipTarget content={fullPath}>
+      <LiquidGlassPanel
+        className={styles.bar}
+        role="navigation"
+        aria-label="Current file path"
+        tabIndex={0}
+      >
+        <ol className={styles.list}>
+          {segments.map((segment, index) => (
+            <li key={index} aria-current={index === segments.length - 1 ? 'location' : undefined}>
+              {index > 0 && <ChevronRight aria-hidden="true" />}
+              <span>{segment}</span>
+            </li>
+          ))}
+        </ol>
+      </LiquidGlassPanel>
+    </TooltipTarget>
   );
 }

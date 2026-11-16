@@ -1,15 +1,21 @@
+import { assertChatImportNumbers, chatImportNumber } from './chat-imports.ts';
+
 /** User-selected files are referenced directly; temporary chat does not archive attachments. */
 export interface TemporaryChatAttachment {
   kind: 'image' | 'file';
   name: string;
   path: string;
+  importNumber?: number;
 }
 
-export interface TemporaryChatRequest {
-  model: string;
-  effort: string;
+export interface TemporaryChatDraft {
   text: string;
   attachments: TemporaryChatAttachment[];
+}
+
+export interface TemporaryChatRequest extends TemporaryChatDraft {
+  model: string;
+  effort: string;
 }
 
 export interface TemporaryChatResult {
@@ -55,6 +61,11 @@ export function temporaryChatRequest(value: unknown): TemporaryChatRequest {
   const request = objectValue(value);
   const model = boundedString(request.model, 'model', 128);
   const effort = boundedString(request.effort, 'effort', 32);
+  return { model, effort, ...temporaryChatDraft(request) };
+}
+
+export function temporaryChatDraft(value: unknown): TemporaryChatDraft {
+  const request = objectValue(value);
   const text = boundedString(request.text, 'message', 128_000, true);
   const values = request.attachments ?? [];
   if (!Array.isArray(values) || values.length > 20) {
@@ -65,14 +76,17 @@ export function temporaryChatRequest(value: unknown): TemporaryChatRequest {
     if (attachment.kind !== 'image' && attachment.kind !== 'file') {
       throw new TypeError('Temporary chat attachment kind is invalid.');
     }
+    const importNumber = chatImportNumber(attachment.importNumber);
     return {
       kind: attachment.kind,
       name: boundedString(attachment.name, 'attachment name', 1024),
       path: boundedString(attachment.path, 'attachment path', 4096),
+      ...(importNumber === undefined ? {} : { importNumber }),
     };
   });
+  assertChatImportNumbers(attachments);
   if (!text.trim() && attachments.length === 0) {
     throw new TypeError('Enter a message or attach a file.');
   }
-  return { model, effort, text, attachments };
+  return { text, attachments };
 }

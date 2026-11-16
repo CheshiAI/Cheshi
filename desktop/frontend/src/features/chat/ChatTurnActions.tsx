@@ -1,14 +1,13 @@
 import { Check, ClipboardClock, Copy } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NeumorphicButton, Tooltip } from '../../shared/ui';
 import type { ChatSavedTurnInput } from '../../../../shared/chat-saved-turns';
-import type { SavedChatTurnsController } from './useSavedChatTurns';
+import type { SavedChatTurnActions } from './useSavedChatTurns';
 import styles from './ChatTurnActions.module.css';
-import { AppleNotesSaveAction } from '../notes/AppleNotesSaveAction';
 import { ChatTurnMetrics } from './ChatTurnMetrics';
 
-export function ChatTurnActions({ turn, savedTurns, usageDetails }: {
-  turn: ChatSavedTurnInput; savedTurns: SavedChatTurnsController; usageDetails?: ReactNode;
+export function ChatTurnActions({ turn, savedTurns }: {
+  turn: ChatSavedTurnInput; savedTurns: SavedChatTurnActions;
 }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -42,20 +41,18 @@ export function ChatTurnActions({ turn, savedTurns, usageDetails }: {
   return (
     <div className={styles.root}>
       <ChatTurnMetrics itemId={turn.itemId} />
-      {usageDetails}
       <div className={styles.actions} role="group" aria-label="Response actions">
         <Tooltip content={copied ? 'Copied' : 'Copy response'}>{(props) => (
-          <NeumorphicButton {...props} type="button" className={styles.button} aria-label={copied ? 'Copied' : 'Copy response'} onClick={() => void copy()}>
+          <NeumorphicButton {...props} variant="ghost" size="icon" type="button" aria-label={copied ? 'Copied' : 'Copy response'} onClick={() => void copy()}>
             {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
           </NeumorphicButton>
         )}</Tooltip>
         <Tooltip content={saveLabel}>{(props) => (
-          <NeumorphicButton {...props} type="button" className={styles.button} aria-label={saveLabel}
+          <NeumorphicButton {...props} variant="ghost" size="icon" type="button" aria-label={saveLabel}
             aria-pressed={saved} disabled={saving || saved} onClick={() => void save()}>
             <ClipboardClock aria-hidden="true" />
           </NeumorphicButton>
         )}</Tooltip>
-        <AppleNotesSaveAction key={`${turn.threadId}:${turn.itemId}`} className={styles.button} title={turn.sessionTitle} body={turn.assistantText} />
         <span className={styles.feedback} role="status">{copied ? 'Copied' : saved ? 'Saved' : saving ? 'Saving…' : ''}</span>
       </div>
       {(copyError || saveError) && <p className={styles.error} role="alert">{copyError || 'Could not save this turn. Please try again.'}</p>}

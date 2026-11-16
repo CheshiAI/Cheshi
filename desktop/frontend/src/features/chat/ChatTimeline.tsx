@@ -1,21 +1,22 @@
-import { ArrowDown, Sparkles } from 'lucide-react';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { ArrowDown } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 
-import { LoadingState, NeumorphicButton } from '../../shared/ui';
+import { LoadingState } from '../../shared/ui';
 import { ChatTimelineHistory } from './ChatTimelineHistory';
 import { ChatErrorNotice } from './ChatErrorNotice';
 import { ChatWelcome } from './ChatWelcome';
 import styles from './ChatView.module.css';
 import type { ChatViewController } from './useChatViewController';
-import { completedChatTurnInputs } from './chatTurnSnapshots';
-import type { SavedChatTurnsController } from './useSavedChatTurns';
+import { createCompletedChatTurnCache } from './chatTurnSnapshots';
+import type { SavedChatTurnActions } from './useSavedChatTurns';
 import type { ChatHistorySearchNavigation } from './chatHistorySearchNavigation';
 
 interface ChatTimelineProps extends ChatHistorySearchNavigation {
   controller: Pick<ChatViewController, 'loading' | 'pauseAutoScroll' | 'scrollToBottom' | 'showScrollToBottom'
     | 'state' | 'streaming' | 'timelineRef' | 'workspaceName'> & Partial<Pick<ChatViewController, 'scrollToHistoryItem'>>;
   onReviewFileChanges: (itemId: string, path?: string) => void;
-  savedTurns?: SavedChatTurnsController;
+  savedTurns?: SavedChatTurnActions;
 }
 
 export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, historyTarget, onHistoryTargetHandled }: ChatTimelineProps) {
@@ -27,10 +28,10 @@ export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, hist
     state,
     streaming,
     timelineRef,
-    workspaceName,
   } = controller;
-  const completedTurns = useMemo(() => completedChatTurnInputs(state.items, state.activeSessionId, state.activeTitle, streaming),
-    [state.items, state.activeSessionId, state.activeTitle, streaming]);
+  const [readCompletedTurns] = useState(createCompletedChatTurnCache);
+  const completedTurns = useMemo(() => readCompletedTurns(state.items, state.activeSessionId, state.activeTitle, streaming),
+    [readCompletedTurns, state.items, state.activeSessionId, state.activeTitle, streaming]);
   const [missingHistoryThread, setMissingHistoryThread] = useState<string | null>(null);
   const handleHistoryTarget = useCallback((requestId: number, found: boolean) => {
     setMissingHistoryThread(found ? null : state.activeSessionId);
@@ -52,11 +53,11 @@ export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, hist
         onPointerDown={pauseAutoScroll}
         onWheel={pauseAutoScroll}
       >
-        <div className={styles.timelineContent}>
+        <div className={styles.timelineContent} data-chat-layout-content>
           {state.items.length === 0 && !loading && (
-            <ChatWelcome workspaceName={workspaceName} />
+            <ChatWelcome />
           )}
-          {loading && <div className={styles.loading}><Sparkles aria-hidden="true" /> Loading conversation…</div>}
+          {loading && <LoadingState type="preparing" className={styles.loading} label="Loading conversation…" />}
           <ChatTimelineHistory
             key={`${state.activeSessionId ?? ''}:${state.items[0]?.id ?? ''}`}
             items={state.items}
@@ -76,14 +77,15 @@ export function ChatTimeline({ controller, onReviewFileChanges, savedTurns, hist
 
       {showScrollToBottom && state.items.length > 0 && (
         <div className={styles.scrollToBottomControl}>
-          <NeumorphicButton
-            raised
+          <TooltipButton
+            variant="standard"
+            size="icon"
             aria-label="Scroll to latest message"
-            className="sidebar-heading-action"
+            title="Scroll to latest message"
             onClick={scrollToBottom}
           >
             <ArrowDown aria-hidden="true" />
-          </NeumorphicButton>
+          </TooltipButton>
         </div>
       )}
     </>

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 
 import styles from './LoadingState.module.css';
 import { ALICE_THINKING_QUOTES } from './loadingThinkingQuotes';
+import { useLoadingVisibility } from './useLoadingVisibility';
+import { subscribeLoadingFrame } from './loadingAnimationClock';
 
 export type LoadingStateType = 'working' | 'processing' | 'preparing' | 'thinking';
 
@@ -24,32 +26,37 @@ const ORBIT_DELAYS = Array.from({ length: 9 }, (_, index) => {
   return position === -1 ? null : position * 110;
 });
 
-function useThinkingQuote(type: LoadingStateType) {
+function useThinkingQuote(type: LoadingStateType, visible: boolean) {
   const [index, setIndex] = useState(() => Math.floor(Math.random() * ALICE_THINKING_QUOTES.length));
 
   useEffect(() => {
-    if (type !== 'thinking') return;
+    if (type !== 'thinking' || !visible) return;
     const interval = window.setInterval(() => {
       // Pick from the other entries so consecutive quotes never repeat.
       setIndex(previous => (previous + 1 + Math.floor(Math.random() * (ALICE_THINKING_QUOTES.length - 1)))
         % ALICE_THINKING_QUOTES.length);
     }, 6_000);
     return () => window.clearInterval(interval);
-  }, [type]);
+  }, [type, visible]);
 
   return type === 'thinking' ? ALICE_THINKING_QUOTES[index] : undefined;
 }
 
-function useElapsed() {
+function useElapsed(visible: boolean) {
+  const [startedAt] = useState(() => performance.now());
   const [elapsedMs, setElapsedMs] = useState(0);
 
   useEffect(() => {
-    const startedAt = performance.now();
-    const interval = window.setInterval(() => {
-      setElapsedMs(performance.now() - startedAt);
-    }, 100);
-    return () => window.clearInterval(interval);
-  }, []);
+    if (!visible) return;
+    setElapsedMs(performance.now() - startedAt);
+    let displayed = Math.floor((performance.now() - startedAt) / 100);
+    return subscribeLoadingFrame(window, now => {
+      const next = Math.floor((now - startedAt) / 100);
+      if (next === displayed) return;
+      displayed = next;
+      setElapsedMs(now - startedAt);
+    });
+  }, [startedAt, visible]);
 
   const totalSeconds = Math.floor(elapsedMs / 100) / 10;
   if (totalSeconds < 60) return `${totalSeconds.toFixed(1)}s`;
@@ -57,8 +64,12 @@ function useElapsed() {
 }
 
 export function LoadingIndicator({ label, className }: { label?: string; className?: string }) {
+  const { ref, visible } = useLoadingVisibility();
   return (
     <span
+      ref={ref}
+      data-loading-animation="true"
+      data-animation-paused={!visible || undefined}
       className={className ? `${styles.grid} ${className}` : styles.grid}
       role={label ? 'status' : undefined}
       aria-label={label}
@@ -77,12 +88,14 @@ export function LoadingIndicator({ label, className }: { label?: string; classNa
 }
 
 export function LoadingState({ type = 'preparing', className, label }: LoadingStateProps) {
-  const elapsed = useElapsed();
-  const quote = useThinkingQuote(type);
+  const { ref, visible } = useLoadingVisibility();
+  const elapsed = useElapsed(visible);
+  const quote = useThinkingQuote(type, visible);
   const statusLabel = label ?? LOADING_LABELS[type];
 
   return (
-    <div className={className ? `${styles.root} ${className}` : styles.root} role="status" aria-label={statusLabel}>
+    <div ref={ref} data-loading-animation="true" data-animation-paused={!visible || undefined}
+      className={className ? `${styles.root} ${className}` : styles.root} role="status" aria-label={statusLabel}>
       <LoadingIndicator />
       <span
         className={quote ? `${styles.label} ${styles.quote}` : styles.label}

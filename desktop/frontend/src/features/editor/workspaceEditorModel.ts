@@ -33,6 +33,7 @@ import {
 } from '../../cheshiDesktop';
 import { isJavaScriptOrTypeScriptPath } from './languageServerDiagnostics';
 import { applyLanguageServerTextEdits } from './workspaceTextEdits';
+import { fitWorkspaceEditorHover } from './workspaceEditorHoverSizing';
 
 export interface WorkspaceTab {
   path: string;
@@ -107,7 +108,8 @@ export const setSignatureHelpTooltip = StateEffect.define<Tooltip | null>();
 export const signatureHelpTooltipField = StateField.define<Tooltip | null>({
   create: () => null,
   update: (current, transaction) => {
-    let next = current;
+    let next = transaction.docChanged || !transaction.startState.selection.eq(transaction.newSelection)
+      ? null : current;
     for (const effect of transaction.effects) {
       if (effect.is(setSignatureHelpTooltip)) next = effect.value;
     }
@@ -323,7 +325,6 @@ export function languageServerHoverTooltip(
     pos: from,
     end: to,
     above: true,
-    arrow: true,
     create: () => {
       const dom = document.createElement('div');
       dom.className = 'workspace-editor-symbol-hover';
@@ -336,7 +337,11 @@ export function languageServerHoverTooltip(
         content.textContent = block;
         dom.append(content);
       }
-      return { dom };
+      return {
+        dom,
+        mount: () => fitWorkspaceEditorHover(dom),
+        positioned: () => fitWorkspaceEditorHover(dom),
+      };
     },
   };
 }
@@ -355,7 +360,6 @@ export function languageServerSignatureTooltip(
   return {
     pos: view.state.selection.main.head,
     above: false,
-    arrow: true,
     create: () => {
       const dom = document.createElement('div');
       dom.className = 'workspace-editor-signature-help';

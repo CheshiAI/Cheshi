@@ -1,6 +1,6 @@
 import type { GitLineBlame } from '../../../../shared/git-line-blame';
 
-/** Debounce pointer movement and serialize requests; only the latest hover may publish. */
+/** Debounce selected-line changes and serialize requests; only the latest selection may publish. */
 export class GitLineBlameRequest {
   private line: number | null = null;
   private generation = 0;
@@ -17,7 +17,7 @@ export class GitLineBlameRequest {
     this.delay = delay;
   }
 
-  hover(line: number | null): boolean {
+  select(line: number | null): boolean {
     if (line === this.line) return false;
     this.reset();
     this.line = line;

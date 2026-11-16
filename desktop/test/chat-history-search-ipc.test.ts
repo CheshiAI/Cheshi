@@ -16,7 +16,6 @@ function fixture() {
   const options: Options = {
     ipc: { handle(channel, listener) { handlers.set(channel, listener); } },
     service(_event: IpcMainInvokeEvent, contextId: unknown) { calls.push(['service', contextId]); return {} as ReturnType<Options['service']>; },
-    relays: {} as Options['relays'],
     savedTurns: { async list() { return []; }, async save() { throw new Error('Not used.'); }, async delete() { return { id: '' }; } },
     assertSender() { if (!allowed) throw new Error('Untrusted sender.'); },
     async prepareMessage() { throw new Error('Search must not prepare or send messages.'); },

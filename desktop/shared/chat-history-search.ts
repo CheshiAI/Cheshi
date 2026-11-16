@@ -6,6 +6,7 @@ export interface ChatHistorySearchRequest {
   filePath?: string;
   refresh?: boolean;
   limit?: number;
+  cursor?: string;
 }
 
 export interface ChatHistorySearchHit {
@@ -26,17 +27,22 @@ export interface ChatHistorySearchResponse {
   total: number;
   indexedSessions: number;
   unavailableSessions: string[];
+  nextCursor?: string;
+  indexState?: 'ready' | 'updating' | 'error';
+  indexUpdatedAt?: number;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
-export function chatHistorySearchRequest(value: unknown): Required<ChatHistorySearchRequest> {
+export function chatHistorySearchRequest(value: unknown): Required<Omit<ChatHistorySearchRequest, 'cursor'>> & Pick<ChatHistorySearchRequest, 'cursor'> {
   const request = record(value);
   if (!request || typeof request.query !== 'string' || request.query.length > 500
     || (request.filePath !== undefined && (typeof request.filePath !== 'string' || request.filePath.length > 4096))
     || (request.refresh !== undefined && request.refresh !== true && request.refresh !== false)
+    || (request.cursor !== undefined && (typeof request.cursor !== 'string' || !request.cursor || request.cursor.length > 200
+      || request.refresh === true))
     || (request.limit !== undefined && (typeof request.limit !== 'number' || !Number.isInteger(request.limit)
       || request.limit < 1 || request.limit > 100))) {
     throw new TypeError('Invalid chat history search request.');
@@ -44,7 +50,8 @@ export function chatHistorySearchRequest(value: unknown): Required<ChatHistorySe
   const query = request.query.trim();
   const filePath = typeof request.filePath === 'string' ? request.filePath.trim() : '';
   if (!query && !filePath) throw new TypeError('Enter search text or a workspace file path.');
-  return { query, filePath, refresh: request.refresh === true, limit: typeof request.limit === 'number' ? request.limit : 50 };
+  return { query, filePath, refresh: request.refresh === true, limit: typeof request.limit === 'number' ? request.limit : 50,
+    ...(typeof request.cursor === 'string' ? { cursor: request.cursor } : {}) };
 }
 
 export function isChatHistoryItemKind(value: unknown): value is ChatHistoryItemKind {
@@ -66,6 +73,10 @@ function isCount(value: unknown): value is number {
 export function chatHistorySearchResponse(value: unknown): ChatHistorySearchResponse {
   const response = record(value);
   if (!response || !Array.isArray(response.hits) || response.hits.length > 100
+    || (response.indexState !== undefined && (typeof response.indexState !== 'string' || !['ready', 'updating', 'error'].includes(response.indexState)))
+    || (response.indexUpdatedAt !== undefined && (typeof response.indexUpdatedAt !== 'number' || !Number.isFinite(response.indexUpdatedAt)))
+    || (response.nextCursor !== undefined && (typeof response.nextCursor !== 'string' || !response.nextCursor
+      || response.nextCursor.length > 200 || response.hits.length === 0))
     || !isCount(response.total) || response.total < response.hits.length || !isCount(response.indexedSessions)
     || !Array.isArray(response.unavailableSessions) || response.unavailableSessions.some(id => typeof id !== 'string')
     || response.hits.some(value => {

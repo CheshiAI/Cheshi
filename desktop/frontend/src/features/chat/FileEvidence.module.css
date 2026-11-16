@@ -1,0 +1,13 @@
+.section { min-width: 0; margin-block: var(--space-default); font-size: var(--font-size-small); line-height: 1.6; }
+.section[data-heading='false'] { margin: 0; }
+.section .heading { margin: 0 0 var(--space-default); font-size: var(--font-size-section-title); font-weight: 600; color: var(--sidebar-section-label-color); line-height: 1.6; }
+.section .files { display: grid; min-width: 0; list-style: none; padding: 0; margin: 0; }
+.files .file { display: flex; align-items: flex-start; gap: var(--icon-default); margin: 0; padding: var(--space-default) 0; border-bottom: 1px solid var(--divider); }
+.files .file:first-child { padding-top: 0; }
+.files .file:last-child { border-bottom: 0; }
+.file > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; color: var(--sidebar-section-label-color); }
+.label { display: grid; gap: 4px; min-width: 0; flex: 1; }
+.name { font-size: inherit; overflow-wrap: anywhere; }
+.section .name a { color: var(--text); cursor: pointer; }
+.name a:focus-visible { outline: 1px solid var(--divider); outline-offset: 2px; }
+.path { color: var(--sidebar-section-label-color); font-size: 9px; overflow-wrap: anywhere; }

@@ -1,3 +1,4 @@
+import { prepareSpecialistWorker } from './prepare-specialist-worker.mts';
 import { chmodSync, copyFileSync, cpSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -5,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 import { BUNDLED_LANGUAGE_SERVER_PACKAGES } from '../desktop/lib/language-server-runtime.mts';
 import { buildDesktopPreload } from './build-desktop-preload.mts';
+import { buildAppleCalendar } from './build-apple-calendar.mts';
 import { normalizeBunMachO } from './normalize-bun-macho.mts';
+import { macOSCertificateSigningEnabled } from '../config/macos-signing.mts';
 
 const rootDirectory = fileURLToPath(new URL('..', import.meta.url));
 const platform = process.platform;
@@ -65,7 +68,9 @@ mkdirSync(outputDirectory, { recursive: true });
 removeBunBuildArtifacts();
 
 try {
+  await prepareSpecialistWorker(path.join(rootDirectory, 'experiments', 'codex-specialists'), path.join(rootDirectory, 'desktop', 'runtime', 'specialist-worker'));
   await buildDesktopPreload();
+  await buildAppleCalendar();
 
   for (const runtime of runtimeEntries) {
     const result = Bun.spawnSync([
@@ -82,7 +87,7 @@ try {
     });
     if (result.exitCode !== 0) throw new Error(`Failed to build ${runtime.label}.`);
     if (platform !== 'win32') chmodSync(runtime.output, 0o755);
-    if (platform === 'darwin' && process.env.CHESHI_SIGN_RELEASE === '1') {
+    if (platform === 'darwin' && macOSCertificateSigningEnabled(process.env)) {
       await normalizeBunMachO(runtime.output);
     }
   }

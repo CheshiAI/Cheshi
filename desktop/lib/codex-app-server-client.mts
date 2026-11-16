@@ -287,28 +287,36 @@ export class CodexAppServerClient {
   }
 
   private readOutput(child: ChildProcessWithoutNullStreams): { close(): void } {
-    let pending = "";
+    let fragments: string[] = [];
     // Decode across byte chunks, then split only on the JSON-RPC transport's LF.
     // readline also treats legal JSON string characters U+2028/U+2029 as endings.
     child.stdout.setEncoding("utf8");
     const onData = (chunk: string) => {
       if (this.child !== child) return;
-      pending += chunk;
       let start = 0;
-      let end = pending.indexOf("\n", start);
+      // Search each chunk once; a large incomplete line must not be rescanned
+      // and flattened every time another pipe chunk arrives.
+      let end = chunk.indexOf("\n", start);
       while (end !== -1) {
-        this.handleLine(pending.slice(start, end));
+        const tail = chunk.slice(start, end);
+        let line = tail;
+        if (fragments.length) {
+          fragments.push(tail);
+          line = fragments.join("");
+          fragments = [];
+        }
+        this.handleLine(line);
         if (this.child !== child) return;
         start = end + 1;
-        end = pending.indexOf("\n", start);
+        end = chunk.indexOf("\n", start);
       }
-      pending = pending.slice(start);
+      if (start < chunk.length) fragments.push(chunk.slice(start));
     };
     child.stdout.on("data", onData);
     return {
       close() {
         child.stdout.off("data", onData);
-        pending = "";
+        fragments = [];
       },
     };
   }

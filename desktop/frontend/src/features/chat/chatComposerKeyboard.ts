@@ -1,5 +1,13 @@
 import type { KeyboardEvent } from 'react';
 
+export function nextChatCommandIndex(current: number, offset: number, enabled: readonly boolean[]): number {
+  for (let step = 1; step <= enabled.length; step++) {
+    const index = ((current + Math.sign(offset) * step) % enabled.length + enabled.length) % enabled.length;
+    if (enabled[index]) return index;
+  }
+  return current;
+}
+
 interface ComposerKeyboardOptions {
   locked: boolean;
   menuOpen: boolean;
@@ -13,7 +21,7 @@ interface ComposerKeyboardOptions {
   submit(): void;
 }
 
-export function handleChatComposerKey(event: KeyboardEvent<HTMLTextAreaElement>, options: ComposerKeyboardOptions) {
+export function handleChatComposerKey(event: KeyboardEvent<HTMLElement>, options: ComposerKeyboardOptions) {
   if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
   if (options.locked && ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab')) {
     if (event.key === 'Enter') event.preventDefault();

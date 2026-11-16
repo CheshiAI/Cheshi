@@ -8,11 +8,11 @@ import { GitHubRepositoryPicker } from './GitHubRepositoryPicker';
 import type { GitHubRepositoryCatalog } from './github-repository-catalog';
 import { useWorkspaceOperation } from './useWorkspaceOperation';
 import { childDirectory, parentDirectory, repositoryDirectoryName, validDirectoryName, workspaceError } from './workspace-paths';
-import styles from './workspace-management.module.css';
+import styles from './CloneWorkspacePage.module.css';
 
 export function CloneWorkspaceProgress({ opening, onBack }: { opening: boolean; onBack: () => void }) {
   return <>
-    <WorkspaceManagerHeader title="Clone repository" icon={<GitFork />} busy onBack={onBack} />
+    <WorkspaceManagerHeader title="Clone repository" icon={<GitFork aria-hidden="true" />} busy onBack={onBack} />
     <main className={`${managerStyles.page} ${styles.preparingPage}`} aria-label="Clone repository progress">
       <div className={styles.cloneProgress}>
         <LoadingState type={opening ? 'preparing' : 'processing'} />
@@ -67,7 +67,7 @@ export function CloneWorkspacePage({ api, currentPath, onClose, initialCatalog, 
   if (operation.busy) return <CloneWorkspaceProgress opening={operation.created !== null} onBack={onClose} />;
 
   return <>
-    <WorkspaceManagerHeader title="Clone repository" icon={<GitFork />} busy={busy} onBack={onClose} />
+    <WorkspaceManagerHeader title="Clone repository" icon={<GitFork aria-hidden="true" />} busy={busy} onBack={onClose} />
     <main className={managerStyles.page} aria-label="Clone repository">
       <form className={styles.form} onSubmit={(event) => {
         event.preventDefault();
@@ -79,8 +79,8 @@ export function CloneWorkspacePage({ api, currentPath, onClose, initialCatalog, 
       }}>
         <fieldset disabled={busy || Boolean(operation.created)} className={styles.fields}>
           <div className={styles.sourceChoices} role="group" aria-label="Repository source">
-            <NeumorphicButton raised size="standard" active={source === 'github'} aria-pressed={source === 'github'} onClick={() => setSource('github')}>GitHub repositories</NeumorphicButton>
-            <NeumorphicButton raised size="standard" active={source === 'url'} aria-pressed={source === 'url'} onClick={() => setSource('url')}>Repository URL</NeumorphicButton>
+            <NeumorphicButton variant="ghost" active={source === 'github'} aria-pressed={source === 'github'} onClick={() => setSource('github')}>GitHub repositories</NeumorphicButton>
+            <NeumorphicButton variant="ghost" active={source === 'url'} aria-pressed={source === 'url'} onClick={() => setSource('url')}>Repository URL</NeumorphicButton>
           </div>
           {source === 'github' && <GitHubRepositoryPicker api={api} initialCatalog={initialCatalog} disabled={busy || Boolean(operation.created)} onSelect={(repository) => {
             setUrl(repository.cloneUrl);
@@ -89,18 +89,18 @@ export function CloneWorkspacePage({ api, currentPath, onClose, initialCatalog, 
             setSource('url');
           }} />}
           {source === 'url' && <>
-          <label><span className={styles.fieldLabel}>Repository URL</span><NeumorphicTextField ref={urlInput} autoFocus required value={url} placeholder="https://github.com/owner/project.git"
+          <label><span className={styles.fieldLabel}>Repository URL</span><NeumorphicTextField variant="standard" ref={urlInput} autoFocus required value={url} placeholder="https://github.com/owner/project.git"
             onChange={(event) => changeUrl(event.target.value)}
-            trailingAction={url ? <SearchClearButton aria-label="Clear repository URL" disabled={busy || Boolean(operation.created)}
+            trailingAction={url ? <SearchClearButton variant="ghost" aria-label="Clear repository URL" disabled={busy || Boolean(operation.created)}
               onClick={() => { changeUrl(''); urlInput.current?.focus(); }} /> : undefined} /></label>
           <p className={styles.hint}>{githubRepository ? 'Uses your connected GitHub account.' : 'GitHub and other Git repositories over HTTPS or SSH. Uses your local Git credentials.'}</p>
           </>}
-          <label><span className={styles.fieldLabel}>Parent folder</span><div className={styles.folderField}><NeumorphicTextField ref={parentInput} required value={parentPath} onChange={(event) => setParentPath(event.target.value)}
-            trailingAction={parentPath ? <SearchClearButton aria-label="Clear parent folder" disabled={busy || Boolean(operation.created)}
+          <label><span className={styles.fieldLabel}>Parent folder</span><div className={styles.folderField}><NeumorphicTextField variant="standard" ref={parentInput} required value={parentPath} onChange={(event) => setParentPath(event.target.value)}
+            trailingAction={parentPath ? <SearchClearButton variant="ghost" aria-label="Clear parent folder" disabled={busy || Boolean(operation.created)}
               onClick={() => { setParentPath(''); parentInput.current?.focus(); }} /> : undefined} />
-            <NeumorphicButton raised size="standard" onClick={() => void choose()} aria-label="Choose clone parent folder"><FolderOpen />Browse</NeumorphicButton></div></label>
-          <label><span className={styles.fieldLabel}>Folder name</span><NeumorphicTextField ref={directoryInput} required value={directoryName} onChange={(event) => changeDirectoryName(event.target.value)}
-            trailingAction={directoryName ? <SearchClearButton aria-label="Clear folder name" disabled={busy || Boolean(operation.created)}
+            <NeumorphicButton variant="standard" onClick={() => void choose()} aria-label="Choose clone parent folder"><FolderOpen aria-hidden="true" />Browse</NeumorphicButton></div></label>
+          <label><span className={styles.fieldLabel}>Folder name</span><NeumorphicTextField variant="standard" ref={directoryInput} required value={directoryName} onChange={(event) => changeDirectoryName(event.target.value)}
+            trailingAction={directoryName ? <SearchClearButton variant="ghost" aria-label="Clear folder name" disabled={busy || Boolean(operation.created)}
               onClick={() => { changeDirectoryName(''); directoryInput.current?.focus(); }} /> : undefined} /></label>
         </fieldset>
         {operation.created && <p role="status" className={styles.hint}>Repository ready at {operation.created.rootPath}. Retry opening it without cloning again.</p>}
@@ -110,11 +110,11 @@ export function CloneWorkspacePage({ api, currentPath, onClose, initialCatalog, 
           <fieldset disabled={busy || Boolean(operation.created)} className={`${styles.fields} ${styles.footerDetails}`}>
             <p className={styles.path}>{childDirectory(parentPath, directoryName)}</p>
             <div className={styles.shallow}><NeumorphicCheckbox checked={shallow} disabled={busy || Boolean(operation.created)} onChange={(event) => setShallow(event.target.checked)}><span className={styles.fieldLabel}>Shallow clone</span></NeumorphicCheckbox>
-              {shallow && <label className={styles.depth}>Commits<NeumorphicTextField type="number" min="1" max="1000000" step="1" required value={depth} onChange={(event) => setDepth(event.target.value)} /></label>}</div>
+              {shallow && <label className={styles.depth}>Commits<NeumorphicTextField variant="standard" type="number" min="1" max="1000000" step="1" required value={depth} onChange={(event) => setDepth(event.target.value)} /></label>}</div>
           </fieldset>
           <div className={styles.footer}>
-            <NeumorphicButton raised size="standard" disabled={busy} onClick={onClose}>Cancel</NeumorphicButton>
-            <NeumorphicButton raised size="standard" type="submit" disabled={busy || (!valid && !operation.created)}><GitFork />{operation.created ? 'Open in new window' : 'Clone and open'}</NeumorphicButton>
+            <NeumorphicButton variant="standard" disabled={busy} onClick={onClose}>Cancel</NeumorphicButton>
+            <NeumorphicButton variant="standard" type="submit" disabled={busy || (!valid && !operation.created)}><GitFork aria-hidden="true" />{operation.created ? 'Open in new window' : 'Clone and open'}</NeumorphicButton>
           </div>
         </footer>
       </form>

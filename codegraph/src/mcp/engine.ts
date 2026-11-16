@@ -173,7 +173,7 @@ export class MCPEngine {
         try { this.cg.close(); } catch { /* ignore */ }
         this.cg = null;
       }
-      this.cg = loadCodeGraph().openSync(resolvedRoot, { readOnly: this.opts.readOnly });
+      this.cg = loadCodeGraph().openSync(resolvedRoot, { readOnly: this.opts.readOnly, immutable: false });
       this.projectPath = resolvedRoot;
       this.toolHandler.setDefaultCodeGraph(this.cg);
       this.startWatching();
@@ -217,7 +217,7 @@ export class MCPEngine {
 
     this.projectPath = resolvedRoot;
     try {
-      this.cg = await loadCodeGraph().open(resolvedRoot, { readOnly: this.opts.readOnly });
+      this.cg = await loadCodeGraph().open(resolvedRoot, { readOnly: this.opts.readOnly, immutable: false });
       this.toolHandler.setDefaultCodeGraph(this.cg);
       this.startWatching();
       this.catchUpSync();

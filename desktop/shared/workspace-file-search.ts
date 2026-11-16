@@ -1,3 +1,4 @@
+import { validWorkspaceFilePath } from './workspace-projects.ts';
 export interface WorkspaceFileSearchEntry { path: string; name: string }
 export interface WorkspaceFileSearchResult { files: WorkspaceFileSearchEntry[]; truncated: boolean }
 export const workspaceFileSearchLimit = 100;
@@ -15,7 +16,7 @@ export function isSearchableWorkspacePath(value: unknown): value is string {
     && value.split('/').every(part => part !== '' && part !== '.' && part !== '..' && part !== '.git');
 }
 
-export function workspaceFileSearchResult(value: unknown): WorkspaceFileSearchResult {
+export function workspaceFileSearchResult(value: unknown, allowProjectPaths = false): WorkspaceFileSearchResult {
   if (!value || typeof value !== 'object') throw new TypeError('Invalid file search response.');
   const result = value as Record<string, unknown>;
   if (!Array.isArray(result.files) || result.files.length > workspaceFileSearchLimit
@@ -23,7 +24,8 @@ export function workspaceFileSearchResult(value: unknown): WorkspaceFileSearchRe
   const files = result.files.map((entry: unknown) => {
     if (!entry || typeof entry !== 'object') throw new TypeError('Invalid file search entry.');
     const file = entry as Record<string, unknown>;
-    if (!isSearchableWorkspacePath(file.path) || file.name !== file.path.split('/').at(-1)) {
+    if (!validWorkspaceFilePath(file.path) || file.path.split('/').includes('.git')
+      || (!allowProjectPaths && !isSearchableWorkspacePath(file.path)) || file.name !== file.path.split('/').at(-1)) {
       throw new TypeError('Invalid file search entry.');
     }
     return { path: file.path, name: file.name as string };

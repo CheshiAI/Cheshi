@@ -1,0 +1,165 @@
+import { parseHomieRepositoryConnection, type HomieRepositoryConnection, type HomieRepositoryPreview, type HomieRepositoryLocationRequest } from './homie-repository-connection.ts';
+import { defaultAgentAvatar, parseAgentAvatar, type AgentAvatarValue } from './agent-avatar.ts';
+import { isCodexAccountId } from './codex-accounts.ts';
+import type { AgentModel, AgentModelSelection } from './agent-models.ts';
+import { parseAgentPackage, type AgentPackage } from './agent-package.ts';
+
+export const AGENT_REGISTRY_CHANNELS = {
+  hostTool: 'cheshi:agent-registry:host-tool',
+  toolCredential: 'cheshi:agent-registry:tool-credential', testTool: 'cheshi:agent-registry:test-tool',
+  list: 'cheshi:agent-registry:list', save: 'cheshi:agent-registry:save', changed: 'cheshi:agent-registry:changed',
+  models: 'cheshi:agent-registry:models',
+  previewRepository: 'cheshi:agent-registry:preview-repository',
+  repositoryLocation: 'cheshi:agent-registry:repository-location',
+  repositoryReady: 'cheshi:agent-registry:repository-ready',
+  remove: 'cheshi:agent-registry:remove',
+  selectInstructionFiles: 'cheshi:agent-registry:select-instruction-files',
+  openInstructionFile: 'cheshi:agent-registry:open-instruction-file',
+} as const;
+export const SPECIALIST_ROLES = ['planning', 'research', 'frontend', 'development', 'verification', 'custom'] as const;
+export type SpecialistRole = typeof SPECIALIST_ROLES[number];
+export interface ExecutionPermissions { fileWrite: boolean; commandExecution: boolean }
+export const EXECUTION_PRESETS = {
+  development: { fileWrite: true, commandExecution: true },
+  verification: { fileWrite: false, commandExecution: true },
+  review: { fileWrite: false, commandExecution: false },
+} satisfies Record<string, ExecutionPermissions>;
+export function parseExecutionPermissions(value: unknown): ExecutionPermissions {
+  const p = record(value);
+  return { fileWrite: flag(p.fileWrite), commandExecution: flag(p.commandExecution) };
+}
+export function projectPermissions(agent: SpecialistAgent, workspace: string): ExecutionPermissions {
+  return agent.assignments.find(a => a.workspaceRoot === workspace)?.permissions ?? agent.permissions;
+}
+export interface SpecialistProfile extends AgentModelSelection {
+  name: string; displayName?: string; role: SpecialistRole; instructions: string;
+  accountId: string | null;
+  avatar?: AgentAvatarValue;
+  instructionFiles?: string[];
+  package?: AgentPackage;
+  permissions: ExecutionPermissions;
+}
+/** Local presentation identity; repository names and durable IDs remain separate. */
+export function agentDisplayName(agent: Pick<SpecialistProfile, 'name' | 'displayName'>): string {
+  return agent.displayName ?? agent.name;
+}
+export interface SpecialistAssignment { permissions?: ExecutionPermissions; workspaceRoot: string; instructions: string; instructionFiles?: string[]; }
+export interface SpecialistAgent extends SpecialistProfile {
+  id: string; revision: number; createdAt: string; updatedAt: string; assignments: SpecialistAssignment[];
+}
+export interface AgentRegistrySnapshot { agents: SpecialistAgent[]; workspaceRoot: string; }
+export interface SaveSpecialistAgent {
+  repository?: HomieRepositoryConnection;
+  id: string | null; revision: number | null; profile: SpecialistProfile;
+  assignment: { assigned: boolean; instructions: string; instructionFiles?: string[]; permissions?: ExecutionPermissions | null };
+}
+export interface AgentRegistryApi {
+  onHostToolDetails?(listener: import('./host-tool-details.ts').HostToolDetailsListener): () => void;
+  hostTool?(input: import('./host-tools.ts').HostToolRequest): Promise<import('./host-tools.ts').HostToolStatus>;
+  source?(input: import('./homie-source.ts').HomieSourceRequest): Promise<import('./homie-source.ts').HomieSourceState>;
+  onRepositoryReady?(listener: () => void): () => void;
+  toolCredential?(input: import('./homie-tools.ts').ToolCredentialRequest): Promise<boolean>;
+  testTool?(input: import('./homie-tools.ts').ToolTestRequest): Promise<unknown>;
+  previewRepository?(repository: string, directory?: string): Promise<HomieRepositoryPreview>;
+  repositoryLocation?(input: HomieRepositoryLocationRequest): Promise<string | null>;
+  selectInstructionFiles?(): Promise<string[]>;
+  openInstructionFile?(path: string): Promise<void>;
+  remove?(request: DeleteSpecialistAgent): Promise<AgentRegistrySnapshot>;
+  runtime?(request: import('./agent-runtime.ts').AgentRuntimeRequest): Promise<import('./agent-runtime.ts').AgentRuntimeState>;
+  models(accountId: string): Promise<AgentModel[]>;
+  list(): Promise<AgentRegistrySnapshot>;
+  save(input: SaveSpecialistAgent): Promise<{ agentId: string; snapshot: AgentRegistrySnapshot; repositoryError?: string }>;
+  onDidChange(listener: (snapshot: AgentRegistrySnapshot) => void): () => void;
+}
+
+export interface DeleteSpecialistAgent { id: string; revision: number; deleteData: boolean }
+export function parseDeleteSpecialistAgent(value: unknown): DeleteSpecialistAgent {
+  const data = record(value);
+  return { id: agentId(data.id), revision: revision(data.revision), deleteData: flag(data.deleteData) };
+}
+
+function record(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Invalid agent configuration.');
+  return value as Record<string, unknown>;
+}
+function text(value: unknown, limit: number, required = false): string {
+  if (typeof value !== 'string' || value.length > limit || value.includes('\0') || (required && !value.trim())) {
+    throw new TypeError('Invalid agent configuration text.');
+  }
+  return value;
+}
+function flag(value: unknown): boolean {
+  if (value !== true && value !== false) throw new TypeError('Invalid agent permission.');
+  return value;
+}
+function agentId(value: unknown): string {
+  const id = text(value, 36, true);
+  if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(id)) throw new TypeError('Invalid specialist agent ID.');
+  return id;
+}
+function revision(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) throw new TypeError('Invalid agent revision.');
+  return value;
+}
+export function parseInstructionFilePath(value: unknown): string {
+  const path = text(value, 4096, true);
+  if (!/^(?:\/|[a-z]:[\\/]|\\\\)/i.test(path) || !/\.md$/i.test(path) || /[\r\n]/.test(path)) {
+    throw new TypeError('Instruction files must be absolute Markdown (.md) paths.');
+  }
+  return path;
+}
+export function parseInstructionFiles(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 16) throw new TypeError('Select up to 16 Markdown instruction files.');
+  return [...new Set(value.map(parseInstructionFilePath))];
+}
+function instructionFiles(data: Record<string, unknown>): { instructionFiles?: string[] } {
+  return data.instructionFiles === undefined ? {} : { instructionFiles: parseInstructionFiles(data.instructionFiles) };
+}
+function profile(value: unknown): SpecialistProfile {
+  const data = record(value), permissions = record(data.permissions);
+  if (!SPECIALIST_ROLES.some(role => role === data.role)) throw new TypeError('Invalid specialist role.');
+  if (data.accountId !== null && !isCodexAccountId(data.accountId)) throw new TypeError('Invalid agent account.');
+  return { ...(data.displayName === undefined ? {} : { displayName: text(data.displayName, 100, true).trim() }), ...instructionFiles(data), ...(data.package === undefined ? {} : { package: parseAgentPackage(data.package) }), ...(data.avatar === undefined ? {} : { avatar: parseAgentAvatar(data.avatar) }), name: text(data.name, 100, true).trim(), role: data.role as SpecialistRole,
+    instructions: text(data.instructions, 20_000, true), accountId: data.accountId as string | null,
+    model: data.model === null ? null : text(data.model, 200, true).trim(),
+    reasoningEffort: data.reasoningEffort == null ? null : text(data.reasoningEffort, 100, true).trim(),
+    serviceTier: data.serviceTier == null ? null : text(data.serviceTier, 100, true).trim(),
+    permissions: { fileWrite: flag(permissions.fileWrite), commandExecution: flag(permissions.commandExecution) } };
+}
+export function parseSaveSpecialistAgent(value: unknown): SaveSpecialistAgent {
+  const data = record(value), assignment = record(data.assignment);
+  if ((data.id === null) !== (data.revision === null)) throw new TypeError('Agent ID and revision must be supplied together.');
+  if (data.repository !== undefined && data.id !== null) throw new TypeError('Only a new Homie can connect a repository.');
+  return { ...(data.repository === undefined ? {} : { repository: parseHomieRepositoryConnection(data.repository) }), id: data.id === null ? null : agentId(data.id), revision: data.revision === null ? null : revision(data.revision),
+    profile: profile(data.profile), assignment: { ...(assignment.permissions === undefined ? {} : { permissions: assignment.permissions === null ? null : parseExecutionPermissions(assignment.permissions) }), ...instructionFiles(assignment), assigned: flag(assignment.assigned), instructions: text(assignment.instructions, 20_000) } };
+}
+export function parseSpecialistAgents(value: unknown): SpecialistAgent[] {
+  if (!Array.isArray(value) || value.length > 1000) throw new TypeError('Invalid specialist agent registry.');
+  const ids = new Set<string>();
+  return value.map(raw => {
+    const data = record(raw), id = agentId(data.id);
+    if (ids.has(id)) throw new TypeError('Duplicate specialist agent ID.');
+    ids.add(id);
+    if (!Array.isArray(data.assignments) || data.assignments.length > 1000) throw new TypeError('Invalid agent assignments.');
+    const roots = new Set<string>();
+    const assignments = data.assignments.map(rawAssignment => {
+      const assignment = record(rawAssignment), workspaceRoot = text(assignment.workspaceRoot, 4096, true);
+      if (roots.has(workspaceRoot)) throw new TypeError('Duplicate agent assignment.');
+      roots.add(workspaceRoot);
+      return { ...(assignment.permissions === undefined ? {} : { permissions: parseExecutionPermissions(assignment.permissions) }), workspaceRoot, instructions: text(assignment.instructions, 20_000), ...instructionFiles(assignment) };
+    });
+    const createdAt = text(data.createdAt, 40, true), updatedAt = text(data.updatedAt, 40, true);
+    if (!Number.isFinite(Date.parse(createdAt)) || !Number.isFinite(Date.parse(updatedAt))) throw new TypeError('Invalid agent timestamp.');
+    const configured = profile(data);
+    return { ...configured, avatar: configured.avatar ?? defaultAgentAvatar(id), id, revision: revision(data.revision), createdAt, updatedAt, assignments };
+  });
+}
+export function parseAgentRegistrySnapshot(value: unknown): AgentRegistrySnapshot {
+  const data = record(value);
+  return { agents: parseSpecialistAgents(data.agents), workspaceRoot: text(data.workspaceRoot, 4096, true) };
+}
+export function parseAgentRegistrySaveResult(value: unknown): { agentId: string; snapshot: AgentRegistrySnapshot; repositoryError?: string } {
+  const data = record(value), id = agentId(data.agentId), snapshot = parseAgentRegistrySnapshot(data.snapshot);
+  if (!snapshot.agents.some(agent => agent.id === id)) throw new TypeError('Saved agent is missing from registry.');
+  return { agentId: id, snapshot, ...(data.repositoryError === undefined ? {} : { repositoryError: text(data.repositoryError, 2000, true) }) };
+}

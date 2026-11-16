@@ -1,9 +1,7 @@
 import { test, expect } from 'bun:test';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import ts from 'typescript';
+import { Window, type HTMLElement as TestElement } from 'happy-dom';
 import { createFileSearchController, handleFileSearchKeyDown, initialFileSearchState, selectedFileSearchPath, type FileSearchState } from '../frontend/src/features/navigation/fileSearchModel';
-import { isFileSearchShortcut } from '../frontend/src/features/navigation/fileSearchShortcut';
+import { installFileSearchShortcut, isFileSearchShortcut } from '../frontend/src/features/navigation/fileSearchShortcut';
 import type { WorkspaceFileSearchResult } from '../shared/workspace-file-search';
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 5));
@@ -80,27 +78,111 @@ test('uses physical Command+Shift+F and protects modifiers, repeat and IME compo
   }
 });
 
-test('shortcut leaves editable targets and open dialogs alone and cleans up its listener', () => {
-  class Element {
-    constructor(readonly editable = false, readonly isContentEditable = false) {}
-    closest() { return this.editable ? this : null; }
+async function withShortcut(run: (view: {
+  document: Window['document'];
+  create(markup: string): TestElement;
+  send(target: TestElement, options?: { key?: string; shiftKey?: boolean; isComposing?: boolean; keyCode?: number }): boolean;
+  opened(): number;
+  uninstall(): void;
+}) => void) {
+  const window = new Window();
+  const document = window.document;
+  const globals = { Element: window.Element, HTMLElement: window.HTMLElement };
+  const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const [key, value] of Object.entries(globals)) {
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
-  let listener: ((event: unknown) => void) | null = null;
-  let opened = 0; let prevented = 0; let modal = false;
-  const document = { activeElement: new Element(), querySelector: () => modal ? {} : null,
-    addEventListener: (_name: string, fn: typeof listener) => { listener = fn; },
-    removeEventListener: () => { listener = null; } };
-  const source = readFileSync(new URL('../frontend/src/features/navigation/fileSearchShortcut.ts', import.meta.url), 'utf8');
-  const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023 } });
-  const exports: { installFileSearchShortcut?: (doc: unknown, open: () => void) => () => void } = {};
-  vm.runInNewContext(output.outputText, { exports, Element, HTMLElement: Element });
-  const close = exports.installFileSearchShortcut!(document, () => { opened++; });
-  const send = (target: Element, metaKey = true) => listener?.({ code: 'KeyF', shiftKey: true, metaKey, keyCode: 70,
-    composedPath: () => [target], preventDefault() { prevented++; }, stopPropagation() {} });
-  send(new Element(), false); expect(opened).toBe(0); expect(prevented).toBe(0);
-  send(new Element()); expect(opened).toBe(1);
-  send(new Element(true)); send(new Element(false, true)); expect(opened).toBe(1);
-  document.activeElement = new Element(true); send(new Element()); expect(opened).toBe(1);
-  document.activeElement = new Element(); modal = true; send(new Element()); expect(opened).toBe(1);
-  expect(prevented).toBe(1); close(); expect(listener).toBeNull();
+  let opened = 0;
+  const uninstall = installFileSearchShortcut(document as unknown as Document, () => { opened++; });
+  try {
+    run({ document, opened: () => opened, uninstall,
+      create(markup) {
+        const host = document.createElement('div');
+        host.innerHTML = markup;
+        document.body.append(host);
+        return host;
+      },
+      send(target, options = {}) {
+        const event = new window.KeyboardEvent('keydown', {
+          key: 'F', code: 'KeyF', keyCode: 70, shiftKey: true, metaKey: true,
+          bubbles: true, cancelable: true, composed: true, ...options,
+        });
+        target.dispatchEvent(event);
+        return event.defaultPrevented;
+      },
+    });
+  } finally {
+    uninstall();
+    for (const [key, descriptor] of previous) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+    await window.happyDOM.abort();
+  }
+}
+
+test('file search opens from editor content for English and Korean keys before editor handlers', async () => {
+  await withShortcut(({ create, send, opened, uninstall }) => {
+    const host = create('<div class="cm-editor"><div class="cm-content" contenteditable="true" role="textbox" tabindex="0"><span>code</span></div></div>');
+    const content = host.querySelector<TestElement>('.cm-content')!;
+    const text = host.querySelector<TestElement>('span')!;
+    let editorEvents = 0;
+    content.addEventListener('keydown', event => { editorEvents++; event.preventDefault(); });
+    content.focus();
+    expect(send(text, { key: 'F' })).toBe(true);
+    expect(send(text, { key: 'ㄹ' })).toBe(true);
+    expect(opened()).toBe(2);
+    expect(editorEvents).toBe(0);
+    send(text, { shiftKey: false });
+    expect(opened()).toBe(2);
+    expect(editorEvents).toBe(1);
+    uninstall();
+    send(text);
+    expect(opened()).toBe(2);
+    expect(editorEvents).toBe(2);
+  });
+});
+
+test('shortcut protects native fields, non-editor textboxes and terminals including editor search', async () => {
+  await withShortcut(({ create, send, opened }) => {
+    for (const markup of [
+      '<input>', '<textarea></textarea>', '<select></select>',
+      '<div contenteditable="true" tabindex="0"></div>', '<div role="textbox" tabindex="0"></div>',
+      '<div class="terminal-host" tabindex="0"></div>',
+      '<div class="cm-editor"><input></div>',
+      '<div class="cm-editor"><div contenteditable="true" tabindex="0"></div></div>',
+      '<div class="cm-content" contenteditable="true" tabindex="0"></div>',
+    ]) {
+      const host = create(markup);
+      const target = host.querySelector<TestElement>('input, textarea, select, [tabindex]')!;
+      target.focus();
+      expect(send(target)).toBe(false);
+      expect(send(host)).toBe(false);
+      expect(opened()).toBe(0);
+      host.remove();
+    }
+    const host = create('<button>Workspace</button>');
+    const button = host.querySelector('button')!;
+    button.focus();
+    expect(send(button)).toBe(true);
+    expect(opened()).toBe(1);
+  });
+});
+
+test('editor shortcut still respects IME composition and open modal dialogs', async () => {
+  await withShortcut(({ create, send, opened }) => {
+    const host = create('<div class="cm-editor"><div class="cm-content" contenteditable="true" role="textbox" tabindex="0"></div></div>');
+    const content = host.querySelector<TestElement>('.cm-content')!;
+    content.focus();
+    expect(send(content, { key: 'ㄹ', isComposing: true })).toBe(false);
+    expect(send(content, { key: 'ㄹ', keyCode: 229 })).toBe(false);
+    for (const markup of ['<dialog open></dialog>', '<div role="dialog" aria-modal="true"></div>']) {
+      const modal = create(markup);
+      expect(send(content)).toBe(false);
+      modal.remove();
+    }
+    expect(opened()).toBe(0);
+    expect(send(content, { key: 'ㄹ' })).toBe(true);
+    expect(opened()).toBe(1);
+  });
 });

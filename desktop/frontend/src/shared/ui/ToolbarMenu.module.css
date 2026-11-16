@@ -1,0 +1,40 @@
+.menuAnchor {
+  composes: anchor from './PopupSurface.module.css';
+  position: fixed;
+  z-index: 110;
+  width: 280px;
+  max-width: calc(100vw - 16px);
+  -webkit-app-region: no-drag;
+}
+.menu {
+  composes: surface from './PopupSurface.module.css';
+  --popup-surface-background: var(--dropdown-background);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  box-sizing: border-box;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: var(--space-default);
+  color: var(--text);
+}
+.title { color: var(--sidebar-section-label-color); font-size: var(--font-size-section-title); font-weight: 600; padding-bottom: var(--space-8); }
+.menu .item {
+  box-sizing: border-box;
+  min-height: 32px;
+  height: 32px;
+  justify-content: flex-start;
+  gap: var(--icon-default);
+  border: 0;
+  padding: 0 var(--space-8);
+  background: var(--control-surface-ghost);
+  color: var(--text);
+  font-size: var(--font-size-label);
+  font-weight: 400;
+}
+.menu .item:is([aria-checked='true'], [aria-selected='true'], [data-active='true']) { background: var(--control-surface); color: var(--text); }
+.menu .item:not(:disabled):is(:hover, :active, :focus-visible) { background: var(--control-surface-interactive); color: var(--text); }
+.item > svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; }
+.item > span { flex: 1; text-align: left; white-space: nowrap; }
+.item > small { color: var(--sub-text); font-size: var(--font-size-small); white-space: nowrap; }
+.separator { height: 1px; flex-shrink: 0; background: var(--divider); margin: var(--space-4) 0; }

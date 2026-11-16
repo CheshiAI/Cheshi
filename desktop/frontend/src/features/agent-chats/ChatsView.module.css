@@ -1,0 +1,81 @@
+.root { display: flex; flex: 1; min-width: 0; min-height: 0; height: 100%; font-size: 12px; }
+.root[hidden] { display: none; }
+.sidebar { --liquid-glass-radius: 0; width: var(--sidebar-width); flex: 0 0 var(--sidebar-width); min-height: 0; display: flex; flex-direction: column; border-left: 0; border-top: 0; border-bottom: 0; }
+/* Keep the header above filtered, scrolled messages when tooltip blur is active. */
+.header { position: relative; z-index: 1; height: 42px; flex: 0 0 42px; box-sizing: border-box; display: flex; align-items: center; gap: var(--icon-default); padding: 0 var(--space-default); border-bottom: 1px solid var(--divider); }
+.header > h2 { flex: 1; min-width: 0; overflow: hidden; }
+.header:not(:global([inert]) *) { -webkit-app-region: drag; user-select: none; }
+.headerActions { display: flex; flex: 0 0 auto; align-items: center; gap: var(--icon-default); -webkit-app-region: no-drag; }
+.headerActions > [aria-label='Pane layout'] { position: relative; padding-left: calc(var(--icon-default) + 1px); }
+.headerActions > [aria-label='Pane layout']::before { content: ''; position: absolute; left: 0; width: 1px; height: 16px; background: var(--divider); }
+.conversation { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.body { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.content { --composer-overlay-height: 0px; --composer-overlay-top-padding: 0px; --chat-content-max-width: 100%; --chat-content-padding: var(--space-default); position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.toolsRail { min-height: 0; display: flex; box-sizing: border-box; width: 42px; flex: 0 0 42px; align-items: center; flex-direction: column; gap: var(--icon-default); border-left: 1px solid var(--divider); padding: 4.5px 0; }
+.roomTitle { margin: 0; font-size: var(--font-size-small); font-weight: 400; color: var(--sidebar-section-label-color); text-overflow: ellipsis; white-space: nowrap; }
+.timeline { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; scroll-padding-bottom: calc(var(--composer-overlay-height) + var(--space-default)); }
+.latestMessages { position: absolute; bottom: calc(var(--composer-overlay-height) + var(--space-default)); left: var(--space-default); right: var(--space-default); display: flex; justify-content: center; pointer-events: none; z-index: 2; }
+.latestMessages > button { pointer-events: auto; }
+.timelineContent { padding-bottom: calc(var(--composer-overlay-height) + 16px); }
+.timeline { --scrollbar-size: var(--auto-hide-scrollbar-size); scrollbar-width: auto; scrollbar-color: auto; }
+/* The timeline mounts only its visible window; rows need their actual height. */
+.message { position: relative; padding: var(--space-default); }
+/* Keep individual rows measurable while presenting one continuous response. */
+.message[data-continuation] { padding-top: 0; }
+.message[data-continues] > .messageBody > :last-child { margin-bottom: 0; }
+.message[data-continuation] > .messageBody > :first-child { margin-top: 0; }
+.messageActions { position: absolute; top: var(--space-default); right: var(--space-default); display: flex; gap: var(--icon-default); opacity: 0; pointer-events: none; }
+.message:hover .messageActions, .message:focus-within .messageActions { opacity: 1; pointer-events: auto; }
+.message[data-reply-action] .metadata { padding-right: calc(var(--icon-button-size) + var(--icon-default)); }
+.message[data-copy-action] .metadata { padding-right: calc(2 * (var(--icon-button-size) + var(--icon-default))); }
+@media (hover: none) { .messageActions { opacity: 1; pointer-events: auto; } }
+.messageBody { min-width: 0; }
+.permissionCard { margin-top: var(--space-default); }
+.metadata { flex-wrap: wrap; align-self: stretch; padding-right: 0; }
+.metadata strong, .metadata span { min-width: 0; overflow-wrap: anywhere; }
+.metadata [data-agent-avatar] > svg { width: 100%; height: 100%; }
+.metadata span, .description { font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
+.text { margin: var(--space-default) 0; overflow-wrap: anywhere; font-size: var(--font-size-small); font-weight: 400; color: var(--text); }
+.text > div { font-size: inherit; line-height: 1.6; }
+.links, .actions { display: flex; gap: var(--icon-default); flex-wrap: wrap; }
+.actions { justify-content: flex-end; }
+.content .composerArea { padding: 0 var(--space-default) var(--space-default); pointer-events: none; }
+.composerArea > * { pointer-events: auto; }
+.composerContext { display: flex; flex-direction: column; gap: var(--icon-default); padding: var(--space-default) var(--space-default) 0; }
+.composerContext:empty { display: none; }
+.deliveryTarget { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.form { display: flex; flex-direction: column; gap: var(--space-default); }
+.form label { display: flex; flex-direction: column; gap: var(--icon-default); font-size: var(--font-size-label); }
+.form fieldset { border: 1px solid var(--divider); display: flex; flex-direction: column; gap: var(--space-default); padding: var(--space-default); max-height: 240px; overflow: auto; }
+.form .member { flex-direction: row; align-items: center; }
+.empty, .notice { padding: var(--space-default); margin: 0; color: var(--sidebar-section-label-color); }
+.content .roomEmpty { --empty-text: var(--sidebar-section-label-color); --empty-muted: var(--sidebar-section-label-color); font-family: var(--font-ui), sans-serif; letter-spacing: normal; }
+.content .roomEmpty > strong { font-size: var(--font-size-section-title); font-weight: 600; }
+.content .roomEmpty > p { font-size: var(--font-size-small); font-weight: 400; }
+@media (max-width: 720px) { .sidebar { width: 180px; flex-basis: 180px; } }
+
+.records { display: flex; flex-direction: column; gap: var(--space-default); margin: var(--space-default) 0; overflow-wrap: anywhere; }
+.records:empty { display: none; }
+.records p { margin: var(--icon-default) 0; white-space: pre-wrap; }
+.workState { padding-left: var(--space-default); border-left: 2px solid var(--divider); }
+.replyQuote { margin: var(--icon-default) 0; padding-left: var(--space-default); border-left: 2px solid var(--divider); color: var(--sidebar-section-label-color); font-size: var(--font-size-label); overflow-wrap: anywhere; }
+.replyContext { display: flex; align-items: center; gap: var(--icon-default); font-size: var(--font-size-label); }
+.replyContext > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.execution { margin: var(--space-default) 0; }
+
+.inspector { --sliding-side-panel-width: min(var(--sidebar-width), 60cqw); display: flex; min-height: 0; flex: 0 0 auto; }
+/* Reserve space once on open, and release it after the closing slide. The room
+   must not reflow and restore its reading position on every animation frame. */
+.inspector .homiesStage { transition: width 0s var(--motion-panel-duration); }
+.inspector .homiesStage[data-open='true'] { transition: none; }
+.homiesPanel { --liquid-glass-radius: 0; border-top: 0; border-right: 0; border-bottom: 0; transform: translateX(100%); transition: transform var(--motion-panel-duration) ease; }
+.homiesStage[data-open='true'] .homiesPanel { transform: translateX(0); }
+.homiesPanelContent { display: flex; height: 100%; min-width: 0; min-height: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .inspector .homiesStage, .homiesPanel { transition: none; }
+}
+.homieIcons { --scrollbar-size: var(--auto-hide-scrollbar-size); scrollbar-width: auto; scrollbar-color: auto; display: flex; flex: 1; min-height: 0; width: 100%; flex-direction: column; align-items: center; gap: var(--icon-default); overflow: auto; }
+.toolsRail .homieIcon { width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: var(--button-radius); }
+.toolsRail .homieIcon[data-variant='ghost'][data-working='true'] { background: var(--control-surface); }
+.toolsRail .homieIcon[data-working='true']:not(:disabled):is(:hover, :active) { background: var(--control-surface-interactive); }

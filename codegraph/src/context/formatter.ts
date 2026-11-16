@@ -4,7 +4,7 @@
  * Formats TaskContext as markdown or JSON for consumption by Claude.
  */
 
-import { Node, Edge, TaskContext, Subgraph } from '../types';
+import { Node, Edge, TaskContext } from '../types';
 import { isGeneratedFile } from '../extraction/generated-detection';
 
 /**
@@ -119,120 +119,6 @@ export function formatContextAsJson(context: TaskContext): string {
 }
 
 /**
- * Format a subgraph as an ASCII tree structure
- */
-//noinspection JSUnusedGlobalSymbols
-export function formatSubgraphTree(subgraph: Subgraph, entryPoints: Node[]): string {
-  const lines: string[] = [];
-  const printed = new Set<string>();
-
-  // Build adjacency list for outgoing edges
-  const outgoing = new Map<string, Edge[]>();
-  for (const edge of subgraph.edges) {
-    const existing = outgoing.get(edge.source) ?? [];
-    existing.push(edge);
-    outgoing.set(edge.source, existing);
-  }
-
-  // Print each entry point as a tree root
-  for (const entry of entryPoints) {
-    formatNodeTree(entry, subgraph, outgoing, printed, lines, 0, '');
-    lines.push(''); // Blank line between trees
-  }
-
-  // Print any remaining nodes not reached from entry points
-  const remaining: Node[] = [];
-  for (const node of subgraph.nodes.values()) {
-    if (!printed.has(node.id)) {
-      remaining.push(node);
-    }
-  }
-
-  if (remaining.length > 0 && remaining.length <= 10) {
-    lines.push('Other relevant symbols:');
-    for (const node of remaining) {
-      const location = node.startLine ? `:${node.startLine}` : '';
-      lines.push(`  ${node.kind}: ${node.name} (${node.filePath}${location})`);
-    }
-  } else if (remaining.length > 10) {
-    lines.push(`... and ${remaining.length} more related symbols`);
-  }
-
-  return lines.join('\n').trim();
-}
-
-/**
- * Format a single node and its relationships
- */
-function formatNodeTree(
-  node: Node,
-  subgraph: Subgraph,
-  outgoing: Map<string, Edge[]>,
-  printed: Set<string>,
-  lines: string[],
-  depth: number,
-  prefix: string
-): void {
-  if (printed.has(node.id)) {
-    return;
-  }
-  printed.add(node.id);
-
-  // Node header
-  const location = node.startLine ? `:${node.startLine}` : '';
-  const signature = node.signature ? ` - ${truncate(node.signature, 50)}` : '';
-  lines.push(`${prefix}${node.kind}: ${node.name} (${node.filePath}${location})${signature}`);
-
-  // Outgoing edges
-  const edges = outgoing.get(node.id) ?? [];
-  const significantEdges = edges.filter((e) =>
-    ['calls', 'extends', 'implements', 'imports', 'references'].includes(e.kind)
-  );
-
-  // Group by kind
-  const edgesByKind = new Map<string, Edge[]>();
-  for (const edge of significantEdges) {
-    const existing = edgesByKind.get(edge.kind) ?? [];
-    existing.push(edge);
-    edgesByKind.set(edge.kind, existing);
-  }
-
-  // Print edges grouped by kind
-  const newPrefix = prefix + '  ';
-  for (const [kind, kindEdges] of edgesByKind) {
-    if (kindEdges.length > 3) {
-      // Summarize if too many
-      const names = kindEdges
-        .slice(0, 3)
-        .map((e) => {
-          const target = subgraph.nodes.get(e.target);
-          return target?.name ?? 'unknown';
-        })
-        .join(', ');
-      lines.push(`${newPrefix}├── ${kind}: ${names} and ${kindEdges.length - 3} more`);
-    } else {
-      for (let i = 0; i < kindEdges.length; i++) {
-        const edge = kindEdges[i]!;
-        const target = subgraph.nodes.get(edge.target);
-        const targetName = target?.name ?? 'unknown';
-        const connector = i === kindEdges.length - 1 ? '└──' : '├──';
-        lines.push(`${newPrefix}${connector} ${kind} → ${targetName}`);
-      }
-    }
-  }
-
-  // Recurse for directly connected nodes (limited depth)
-  if (depth < 1) {
-    for (const edge of significantEdges.slice(0, 3)) {
-      const target = subgraph.nodes.get(edge.target);
-      if (target && !printed.has(target.id)) {
-        formatNodeTree(target, subgraph, outgoing, printed, lines, depth + 1, newPrefix);
-      }
-    }
-  }
-}
-
-/**
  * Serialize a node for JSON output
  */
 function serializeNode(node: Node): Record<string, unknown> {
@@ -265,16 +151,6 @@ function serializeEdge(edge: Edge): Record<string, unknown> {
     line: edge.line,
     column: edge.column,
   };
-}
-
-/**
- * Truncate a string with ellipsis
- */
-function truncate(str: string, maxLength: number): string {
-  if (str.length <= maxLength) {
-    return str;
-  }
-  return str.slice(0, maxLength - 3) + '...';
 }
 
 /**

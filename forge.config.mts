@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { macOSSigningOptions } from './config/macos-signing.mts';
+import { macOSAppLanguage, retainEnglishAppResources } from './scripts/macos-app-language.mts';
 
 const rootDirectory = fileURLToPath(new URL('.', import.meta.url));
 
@@ -16,48 +17,145 @@ function shouldIgnore(packagePath: string): boolean {
   if (rootEntry === '.env.product' || rootEntry === 'package.json') return segments.length > 1;
   if (rootEntry === 'config') {
     if (segments.length === 1) return false;
-    const packagedConfigFiles = new Set(['product.mts', 'workspace-storage.mts']);
+    const packagedConfigFiles = new Set(['product.mts', 'workspace-storage.mts', 'workspace-project-colors.mts']);
     return childEntry === undefined || !packagedConfigFiles.has(childEntry) || segments.length > 2;
   }
   if (rootEntry === 'resources') {
     if (segments.length === 1) return false;
+    if (childEntry === 'homie-repository') {
+      const files = ['README.md', 'gitignore'].map(file => `resources/homie-repository/${file}`);
+      return !files.some(file => normalizedPath === file || file.startsWith(`${normalizedPath}/`));
+    }
+    if (childEntry === 'agent-packages') {
+      const files = ['cheshi-development', 'cheshi-review'].flatMap(id =>
+        ['agent.json', 'instructions.md'].map(file => `resources/agent-packages/${id}/${file}`));
+      return !files.some(file => normalizedPath === file || file.startsWith(`${normalizedPath}/`));
+    }
+    if (childEntry === 'skills') {
+      const skillPath = 'resources/skills/cheshi-discord-setup/SKILL.md';
+      return normalizedPath !== skillPath && !skillPath.startsWith(`${normalizedPath}/`);
+    }
     if (childEntry !== 'icons') return true;
     const packagedIcons = new Set(['startup-logo.png', 'app-icon.png', 'about-logo.png']);
     return segments.length > 2 && (!grandchildEntry || !packagedIcons.has(grandchildEntry) || segments.length > 3);
+  }
+  if (rootEntry === 'experiments') {
+    const contracts = ['provider-recovery.ts', 'flash-tools.ts', 'flash-history.ts', 'flash-queue.ts', 'task-workspace.ts', 'task-storage-limits.ts', 'custom-tool-contract.ts', 'custom-tool-queue.ts', 'host-tool-artifacts.ts', 'codegraph-tools.ts', 'codegraph-queue.ts', 'project-instructions.ts', 'execution-permissions.ts', 'usage-contract.ts', 'activity-contract.ts', 'conversation-contract.ts', 'application-storage.ts', 'application-contract.ts', 'work-contract.ts', 'work-files.ts', 'integration-contract.ts', 'integration-plan.ts', 'verification-source-contract.ts', 'verification-source-files.ts', 'verification-contract.ts', 'candidate-verification-contract.ts', 'protocol.ts'].map(name => `experiments/codex-specialists/src/${name}`);
+    return !contracts.some(contract => normalizedPath === contract || contract.startsWith(`${normalizedPath}/`));
+  }
+  if (rootEntry === 'connect') {
+    const protocolPath = 'connect/shared/voice-protocol.ts';
+    return normalizedPath !== protocolPath && !protocolPath.startsWith(`${normalizedPath}/`);
   }
   if (rootEntry !== 'desktop') return true;
   if (segments.length === 1) return false;
   if (childEntry === 'bootstrap.mts' || childEntry === 'main.mts' || childEntry === 'workspace-runtime.mts') return segments.length > 2;
   if (childEntry === 'frontend') {
-    const startupTokensPath = 'desktop/frontend/src/shared/styles/tokens.css';
-    return normalizedPath !== startupTokensPath && !startupTokensPath.startsWith(`${normalizedPath}/`);
+    const startupStyles = ['tokens.css', 'window-glass.css'].map(file => `desktop/frontend/src/shared/styles/${file}`);
+    return !startupStyles.some(file => normalizedPath === file || file.startsWith(`${normalizedPath}/`));
   }
   if (childEntry === 'shared') {
     if (segments.length === 2) return false;
-    const packagedSharedFiles = new Set(['account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-notes.ts', 'apple-notes-document.ts', 'keep-awake.ts', 'app-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'showcase.ts', 'settings.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'history-recall.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'git-line-blame.ts', 'local-history.ts', 'local-file-link.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-disk-usage.ts', 'workspace-file-search.ts']);
+    if (grandchildEntry === 'homie-repository-connection.ts') return segments.length > 3;
+    if (grandchildEntry === 'chat-imports.ts' || grandchildEntry === 'host-tool-details.ts' || grandchildEntry === 'host-dependencies.ts') return segments.length > 3;
+    if (grandchildEntry === 'workspace-host.ts' || grandchildEntry === 'homie-setup.ts') return segments.length > 3;
+    if (grandchildEntry === 'worker-workspace.ts') return segments.length > 3;
+    if ((grandchildEntry === 'agent-package.ts' || grandchildEntry === 'homie-pack.ts' || grandchildEntry === 'homie-tools.ts' || grandchildEntry === 'host-tools.ts' || grandchildEntry === 'homie-source.ts' || grandchildEntry === 'agent-avatar-image.ts')) return segments.length > 3;
+    if (grandchildEntry === 'agent-voice.ts' || grandchildEntry === 'agent-execution-health.ts') return segments.length > 3;
+    if (grandchildEntry === 'agent-chat-recipient.ts' || grandchildEntry === 'agent-activity.ts' || grandchildEntry === 'agent-work.ts' || grandchildEntry === 'agent-question.ts' || grandchildEntry === 'agent-chats.ts' || grandchildEntry === 'agent-task-inspection.ts' || grandchildEntry === 'agent-avatar.ts' || grandchildEntry === 'agent-management.ts' || grandchildEntry === 'agent-terminal.ts' || grandchildEntry === 'agent-registry.ts' || grandchildEntry === 'agent-models.ts' || grandchildEntry === 'agent-runtime.ts') return segments.length > 3;
+    const packagedSharedFiles = new Set(['workspace-ipc-lifecycle.ts', 'canvas.ts', 'isolated-work.ts', 'flash-memory.ts', 'sticky-notes.ts', 'calendar-task.ts', 'scheduler.ts', 'scheduler-time.ts', 'notification-events.ts', 'discord.ts', 'imessage-commands.ts', 'imessage-notifications.ts', 'account-usage-popover.ts', 'chat-turn-metrics.ts', 'chat-context-usage.ts', 'chat-agent-details.ts', 'chat-async-questions.ts', 'apple-calendar.ts', 'keep-awake.ts', 'status-toast.ts', 'app-update.ts', 'codex-update.ts', 'codex-accounts.ts', 'codex-account-usage.ts', 'settings.ts', 'window-appearance.ts', 'chat-attachment-import.ts', 'chat-history-search.ts', 'chat-mcp-status.ts', 'github-issues.ts', 'editor-session.ts', 'chat-question-dismissals.ts', 'chat-relay.ts', 'chat-saved-turns.ts', 'chat-saved-turn-continuation.ts', 'chat-user-input.ts', 'ephemeral-session.ts', 'temporary-chat.ts', 'git-discard.ts', 'git-line-blame.ts', 'local-history.ts', 'local-file-link.ts', 'plugin-actions.ts', 'workspace-code-explanation.ts', 'workspace-management.ts', 'workspace-file-search.ts', 'workspace-projects.ts']);
     return grandchildEntry === undefined || !packagedSharedFiles.has(grandchildEntry) || segments.length > 3;
   }
   if (childEntry !== 'lib') return true;
   if (segments.length === 2) return false;
   if (grandchildEntry === 'electron-libghostty') return false;
+  if (grandchildEntry === 'canvas') {
+    const files = new Set(['canvas-documents.mts', 'canvas-file-locations.mts', 'canvas-session.mts', 'canvas-ipc.mts', 'canvas-history.mts', 'canvas-library.mts']);
+    return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
+  }
+  if (grandchildEntry === 'flash') {
+    const files = new Set(['model-download.mts', 'plugin-package.mts', 'plugin-lock.mts', 'activation.mts', 'installation.mts', 'installer.mts', 'control.mts', 'ranking-recovery.mts', 'agent-memory.mts', 'docker-archive.mts', 'client.mts', 'runtime.mts', 'sources.mts', 'session-memory.mts', 'tools.mts', 'workspace.mts', 'wait.mts', 'ipc.mts', 'summary.mts', 'luna.mts', 'rerank.mts']);
+    return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
+  }
+  if (grandchildEntry === 'agent-platform') {
+    if (segments[3] === 'worker-workspace-inspection.mts') return segments.length > 4;
+    const files = new Set(['worker-file-links.mts', 'worker-workspaces.mts', 'chat-service.mts', 'homie-executor.mts', 'contracts.mts', 'service.mts', 'store.mts', 'git-workspaces.mts', 'managed-worktrees.mts']);
+    return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
+  }
+  if (grandchildEntry === 'agent-chats') return segments.length > 4 || (segments.length === 4 && !new Set(['isolated-tasks.mts', 'ipc.mts', 'service.mts', 'store.mts', 'changes.mts', 'records.mts', 'coordination.mts']).has(segments[3]!));
+  if (grandchildEntry === 'agent-voice') return segments.length > 4 || (segments.length === 4 && !new Set(['workspace.mts', 'service.mts', 'storage.mts', 'chats.mts', 'realtime.mts', 'diagnostics.mts']).has(segments[3]!));
+  if (grandchildEntry === 'agent-management') {
+    if (segments[3] === 'codex-update-progress.mts') return segments.length > 4;
+    if (segments[3] === 'homie-repository-registration.mts') return segments.length > 4;
+    if (segments[3] === 'host-tool-details.mts' || segments[3] === 'host-tool-review-content.mts' || segments[3] === 'host-tool-policy.mts' || segments[3] === 'host-tool-services.mts'
+      || ['host-node-runtime.mts', 'host-service-dependencies.mts'].includes(segments[3] ?? '') || segments[3] === 'host-python-runtime.mts' || segments[3] === 'host-python-catalog.mts') return segments.length > 4;
+    if (segments[3] === 'packages.mts') return segments.length > 4;
+    if (['homie-repository.mts', 'homie-repository-command.mts', 'homie-repository-template.mts', 'homie-repository-project.mts', 'homie-source-files.mts', 'homie-sources.mts'].includes(segments[3] ?? '')) return segments.length > 4;
+    const agentFiles = new Set(['platform-executor.mts', 'custom-tool-execution.mts', 'host-tool-registration.mts', 'host-tool-execution.mts', 'host-tool-review.mts', 'tool-credentials.mts', 'homie-packs.mts', 'pack-environment.mts', 'dependencies.mts', 'project-environment.mts', 'lifecycle.mts', 'engine.mts', 'docker.mts', 'docker-errors.mts', 'task-inspection.mts', 'service.mts', 'ipc.mts', 'terminal.mts', 'registry.mts', 'registry-ipc.mts', 'runtime.mts', 'instruction-files.mts', 'operations.mts', 'application-deletion.mts', 'docker-deletion.mts', 'deletion.mts']);
+    return segments.length > 3 && (segments.length !== 4 || !agentFiles.has(segments[3] ?? ''));
+  }
+  if (grandchildEntry === 'agent-orchestration') {
+    const files = new Set(['flash-relay.mts', 'custom-tool-relay.mts', 'codegraph-source.mts', 'codegraph-relay.mts', 'mailbox.mts', 'candidate-verification.mts', 'service.mts', 'worker-events.mts', 'event-queue.mts']);
+    return segments.length > 3 && (segments.length !== 4 || !files.has(segments[3] ?? ''));
+  }
+  if (grandchildEntry === 'scheduler') {
+    const schedulerFiles = new Set(['store.mts', 'engine.mts', 'codex-runner.mts', 'application.mts', 'workspace.mts', 'calendar.mts', 'subscriptions.mts', 'calendar-tasks.mts', 'background.mts', 'desktop.mts', 'notifications.mts', 'migration.mts']);
+    return segments.length > 3 && (segments.length !== 4 || !schedulerFiles.has(segments[3] ?? ''));
+  }
   const packagedLibraryFiles = new Set([
-    'typesafe-key.mts',
-    'typesafe-connection.mts',
+    'homie-setup.mts', 'homie-setup-command.mts', 'homie-security.mts', 'homies-activation.mts',
+    'workspace-host.mts', 'workspace-status-toast.mts', 'workspace-surface.mts', 'workspace-rail-overlay.mts',
+    'sticky-notes-store.mts', 'sticky-notes-runtime.mts', 'sticky-notes-library.mts',
+    'chat-search-grams.mts', 'chat-search-database.mts', 'chat-search-index.mts', 'chat-search-query.mts',
+    'chat-search-source.mts', 'chat-search-worker.mts', 'chat-search-worker-client.mts', 'chat-search-service.mts',
+    'chat-history-search-pages.mts',
+    'workspace-chat-service-options.mts',
+    'codex-workspace-activity.mts',
+    'notification-events.mts',
+    'notification-events-ipc.mts',
+    'notification-visibility.mts',
+    'discord-store.mts',
+    'discord-rest.mts',
+    'discord-gateway.mts',
+    'discord-channels.mts',
+    'discord-service.mts',
+    'discord-ipc.mts',
+    'discord-setup.mts',
+    'discord-setup-tools.mts',
+    'discord-setup-browser.mts',
+    'discord-setup-page.mts',
+    'workspace-discord.mts',
+
+    'imessage-inbox.mts',
+    'imessage-commands.mts',
+    'workspace-imessage-commands.mts',
+    'imessage-process.mts',
+    'imessage-notifications.mts',
+    'imessage-ipc.mts',
+    'chat-notifications.mts',
+    'workspace-notifications.mts',
+    'workspace-user.mts',
+    'apple-calendar-service.mts',
+    'apple-calendar-process.mts',
+    'apple-calendar-watch.mts',
+    'apple-calendar-changes.mts',
+    'apple-calendar-ipc.mts',
+    'window-appearance.mts',
+    'window-close-cleanup.mts',
+    'window-appearance-store.mts',
     'settings-service.mts',
+    'chat-preferences.mts',
     'settings-ipc.mts',
     'codex-chat-turn-metrics.mts',
     'codex-turn-metrics-reader.mts',
     'codex-agent-token-usage.mts',
     'codex-chat-agent-details.mts',
-    'apple-notes-service.mts',
-    'apple-notes-cache.mts',
-    'apple-notes-script.mts',
-    'apple-notes-process.mts',
-    'apple-notes-ipc.mts',
     'selection-copy.mts',
     'about-page.mts',
     'about-window.mts',
     'about-menu.mts',
+    'help-menu.mts',
+    'tools-menu.mts',
     'workspace-codegraph-mcp.mts',
     'workspace-chat-instructions.mts',
     'app-release-checker.mts',
@@ -74,18 +172,13 @@ function shouldIgnore(packagePath: string): boolean {
     'local-history-runtime.mts',
     'local-file-link.mts',
     'development-shutdown.mts',
+    'development-devtools.mts',
     'chat-attachment-store.mts',
+    'chat-attachment-image.mts',
     'chat-attachment-transfer.mts',
     'chat-history-compiler.mts',
     'chat-history-index-store.mts',
     'chat-history-search.mts',
-    'chat-history-recall.mts',
-    'chat-history-recall-model.mts',
-    'chat-history-recall-rules.mts',
-    'chat-history-recall-luna.mts',
-    'chat-history-recall-usage.mts',
-    'codex-chat-history-tools.mts',
-    'workspace-history-mcp.mts',
     'workspace-chat-history.mts',
     'editor-session.mts',
     'editor-session-ipc.mts',
@@ -94,6 +187,7 @@ function shouldIgnore(packagePath: string): boolean {
     'chat-question-dismissals-ipc.mts',
     'codex-chat-turn-controls.mts',
     'codegraph-service.mts',
+    'codegraph-synchronization.mts',
     'codegraph-initial-index.mts',
     'account-usage-tray.mts',
     'account-usage-popover.mts',
@@ -101,8 +195,6 @@ function shouldIgnore(packagePath: string): boolean {
     'account-usage-tray-icon.mts',
     'menu-bar-font.mts',
     'menu-bar-logo.mts',
-    'showcase-browser.mts',
-    'showcase-page-theme.mts',
     'codex-account-service.mts',
     'codex-account-clients.mts',
     'codex-account-availability.mts',
@@ -132,6 +224,7 @@ function shouldIgnore(packagePath: string): boolean {
     'codex-chat-permissions.mts',
     'codex-chat-plugins.mts',
     'codex-chat-service.mts',
+    'codex-chat-status.mts',
     'codex-chat-stop.mts',
     'codex-chat-session-deletion.mts',
     'codex-chat-thread-data.mts',
@@ -141,13 +234,23 @@ function shouldIgnore(packagePath: string): boolean {
     'codex-chat-user-input-schema.mts',
     'codex-chat-values.mts',
     'codex-service-utils.mts',
+    'codex-update-installation.mts',
+    'codex-update-service.mts',
+    'codex-update-ipc.mts',
     'ephemeral-session-service.mts',
     'temporary-chat-service.mts',
+    'chat-window-options.mts',
+    'window-traffic-lights.mts',
+    'window-top-highlight.mts',
+    'workspace-window-options.mts',
+    'temporary-chat-window.mts',
+    'workspace-temporary-chat.mts',
     'temporary-chat-ipc.mts',
     'ghostty-surface-host.mts',
     'git-command.mts',
     'git-line-blame.mts',
     'git-line-blame-preload.cts',
+    'flash-preload.cts',
     'git-discard.mts',
     'git-ipc.mts',
     'git-parsers.mts',
@@ -175,9 +278,12 @@ function shouldIgnore(packagePath: string): boolean {
     'startup-screen.mts',
     'terminal-controller.mts',
     'workspace-code-explanation.mts',
-    'workspace-disk-usage.mts',
     'workspace-file-entries.mts',
     'workspace-file-ipc.mts',
+    'workspace-project-store.mts',
+    'workspace-project-paths.mts',
+    'workspace-project-runtime.mts',
+    'workspace-terminal-ipc.mts',
     'workspace-file-metadata.mts',
     'workspace-file-paths.mts',
     'workspace-file-reads.mts',
@@ -200,6 +306,8 @@ function shouldIgnore(packagePath: string): boolean {
     'workspace-ipc-router.mts',
     'workspace-renderer-events.mts',
     'workspace-window-readiness.mts',
+    'renderer-readiness-log.mts',
+    'workspace-account-startup.mts',
   ]);
   return grandchildEntry === undefined || !packagedLibraryFiles.has(grandchildEntry) || segments.length > 3;
 }
@@ -208,6 +316,7 @@ export default async function createForgeConfiguration(): Promise<ForgeConfig> {
   const { product } = await import('./config/product.mts');
 
   return {
+    ...(process.env.CHESHI_PACKAGE_OUT ? { outDir: process.env.CHESHI_PACKAGE_OUT } : {}),
     hooks: {
       readPackageJson: async (_forgeConfig, packageJson) => ({ ...packageJson, version: product.version }),
     },
@@ -218,9 +327,21 @@ export default async function createForgeConfiguration(): Promise<ForgeConfig> {
       appBundleId: product.bundleId,
       appVersion: product.version,
       buildVersion: product.buildNumber,
+      afterCopy: [(buildPath, _electronVersion, platform, _arch, done) => {
+        try {
+          if (platform === 'darwin' || platform === 'mas') retainEnglishAppResources(path.dirname(buildPath));
+        } catch (error) {
+          done(error instanceof Error ? error : new Error(String(error)));
+          return;
+        }
+        done();
+      }],
       extendInfo: {
+        CFBundleDevelopmentRegion: macOSAppLanguage,
         NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
-        NSAppleEventsUsageDescription: 'Cheshi reads the Apple Notes you select and saves responses as new notes when you ask.',
+        NSAppleEventsUsageDescription: 'Cheshi sends iMessage notifications you enable or test.',
+        NSCalendarsFullAccessUsageDescription: 'Cheshi displays your calendars and creates, edits, or deletes the events you choose.',
+        NSCalendarsUsageDescription: 'Cheshi displays your calendars and creates, edits, or deletes the events you choose.',
       },
       asar: {
         unpack: '**/desktop/lib/electron-libghostty/native/**',
@@ -230,6 +351,7 @@ export default async function createForgeConfiguration(): Promise<ForgeConfig> {
         path.join(rootDirectory, 'desktop', 'runtime'),
         path.join(rootDirectory, 'desktop', 'frontend', 'dist'),
         path.join(rootDirectory, 'desktop', 'native', 'electron-libghostty', 'LICENSE.electron-libghostty'),
+        path.join(rootDirectory, 'desktop', 'native', 'electron-libghostty', 'LICENSE.monocode'),
         path.join(rootDirectory, 'desktop', 'native', 'ghostty-bridge', 'LICENSE.libghostty-spm'),
         path.join(rootDirectory, 'desktop', 'native', 'ghostty-bridge', 'LICENSE.msdisplaylink'),
       ],

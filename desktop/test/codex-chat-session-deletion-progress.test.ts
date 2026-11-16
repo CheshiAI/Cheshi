@@ -46,7 +46,7 @@ function runtime(
   const service = new CodexChatService({ ...options, client, conversations });
   const contexts = new CodexChatContexts({ service: options, emit() {},
     createClient() { throw new Error('This fixture must not open additional clients.'); } });
-  const deletion = new CodexChatSessionDeletion({ service, contexts, relays: { get: () => null } });
+  const deletion = new CodexChatSessionDeletion({ service, contexts });
   return { service, client, deletion, resolutions,
     async stop() { await Promise.all([service.stop(), contexts.stop()]); } };
 }

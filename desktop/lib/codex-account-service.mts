@@ -1,3 +1,4 @@
+import { normalizeCodexCredits, type CodexRateLimit, type CodexRateLimitWindow } from '../shared/codex-accounts.ts';
 import {
   finiteNumber,
   noopLog,
@@ -12,18 +13,6 @@ const ACCOUNT_NOTIFICATION_METHODS = new Set([
 ]);
 
 type JsonObject = Record<string, unknown>;
-interface CodexRateLimitWindow {
-  usedPercent: number;
-  windowDurationMins: number | null;
-  resetsAt: number | null;
-}
-interface CodexRateLimit {
-  limitId: string;
-  limitName: string | null;
-  plan: string | null;
-  primary: CodexRateLimitWindow | null;
-  secondary: CodexRateLimitWindow | null;
-}
 type CodexAccountState =
   "stopped" | "starting" | "login_required" | "ready" | "error";
 interface CodexAccountStatus {
@@ -75,13 +64,15 @@ function normalizeRateLimit(
   if (!record) return null;
   const primary = normalizeRateLimitWindow(record.primary);
   const secondary = normalizeRateLimitWindow(record.secondary);
-  if (!primary && !secondary) return null;
+  const credits = normalizeCodexCredits(record.credits);
+  if (!primary && !secondary && !credits) return null;
   return {
     limitId: stringValue(record.limitId) ?? fallbackLimitId,
     limitName: stringValue(record.limitName),
     plan: stringValue(record.planType) ?? stringValue(record.plan),
     primary,
     secondary,
+    ...(credits ? { credits } : {}),
   };
 }
 
@@ -157,6 +148,7 @@ function snapshotRateLimit(limit: CodexRateLimit): CodexRateLimit {
     plan: limit.plan,
     primary: snapshotRateLimitWindow(limit.primary),
     secondary: snapshotRateLimitWindow(limit.secondary),
+    ...(limit.credits ? { credits: { ...limit.credits } } : {}),
   };
 }
 

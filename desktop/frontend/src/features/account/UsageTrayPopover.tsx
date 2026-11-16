@@ -1,9 +1,10 @@
 import { Check } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { UsagePopoverApi, UsagePopoverState } from '../../../../shared/account-usage-popover';
 import { accountUsageTotals } from '../../../../shared/codex-account-usage';
-import { LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
+import { NeumorphicButton } from '../../shared/ui';
 import { AccountUsageDetails } from './AccountUsageDetails';
+import { applyWindowAppearance } from '../settings/windowAppearance';
 import accountStyles from './AccountUsagePanel.module.css';
 import styles from './UsageTrayPopover.module.css';
 
@@ -20,29 +21,45 @@ export function UsageTrayPopover({ api }: { api: UsagePopoverApi }) {
     void api.read().then(receive).catch(cause => { if (!disposed) setError(String(cause)); });
     return () => { disposed = true; unsubscribe(); };
   }, [api]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (state) document.documentElement.dataset.theme = state.dark ? 'dark' : 'light';
-  }, [state]);
+    if (state?.appearance) applyWindowAppearance(state.appearance);
+    else document.documentElement.removeAttribute('data-window-glass');
+  }, [state?.dark, state?.appearance]);
   useEffect(() => {
     if (!panel.current) return;
     let disposed = false;
+    let measurement = 0;
+    let frame = 0;
     const element = panel.current;
     const measure = () => {
-      void api.resize(Math.ceil(element.getBoundingClientRect().height)).catch(cause => {
+      const current = ++measurement;
+      cancelAnimationFrame(frame);
+      const height = Math.ceil(element.getBoundingClientRect().height);
+      if (height < 1) return;
+      void api.resize(height).then(() => {
+        if (disposed || current !== measurement || (!state && !error)) return;
+        frame = requestAnimationFrame(() => {
+          frame = requestAnimationFrame(() => {
+            if (disposed || current !== measurement) return;
+            void api.ready(state?.revision ?? null).catch(cause => { if (!disposed) setError(String(cause)); });
+          });
+        });
+      }).catch(cause => {
         if (!disposed) setError(String(cause));
       });
     };
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     measure();
-    return () => { disposed = true; observer.disconnect(); };
-  }, [api]);
+    return () => { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); };
+  }, [api, state, error]);
   const perform = (action: 'show' | 'quit') => {
     void api.action(action).catch(cause => setError(String(cause)));
   };
   const totals = accountUsageTotals(state?.snapshot ?? null);
-  return <div ref={panel} className={styles.container}>
-    <LiquidGlassPanel className={styles.panel} aria-label="Account and usage">
+  return <main className={`window-appearance-surface ${styles.surface}`} aria-label="Account and usage">
+    <div ref={panel} className={styles.panel}>
       <header className={accountStyles.heading}><span className={accountStyles.headingLabel}>ACCOUNT &amp; USAGE</span></header>
       {state?.snapshot?.profiles.map(profile => <AccountUsageDetails key={profile.id} profile={profile}
         active={profile.id === state.snapshot?.activeId} actions={profile.id === state.snapshot?.activeId
@@ -50,13 +67,16 @@ export function UsageTrayPopover({ api }: { api: UsagePopoverApi }) {
       {!state && !error && <p className={accountStyles.status}>Loading accounts…</p>}
       {error && <p className={accountStyles.status} role="alert">{error}</p>}
       {state && <p className={styles.summary}>
-        {totals ? `${totals.remaining}% remaining · ${totals.capacity}% total capacity · ${totals.accountCount} accounts`
-          : 'Usage unavailable'}
+        {totals ? <>
+          <span>{totals.remaining}% remaining</span>
+          <span>{totals.capacity}% total capacity</span>
+          <span>{totals.accountCount} accounts</span>
+        </> : 'Usage unavailable'}
       </p>}
       <footer className={styles.actions}>
-        <NeumorphicButton size="standard" onClick={() => perform('show')}>Show Cheshi</NeumorphicButton>
-        <NeumorphicButton size="standard" onClick={() => perform('quit')}>Quit Cheshi</NeumorphicButton>
+        <NeumorphicButton variant="standard" size="standard" onClick={() => perform('show')}>Show Cheshi</NeumorphicButton>
+        <NeumorphicButton variant="standard" size="standard" onClick={() => perform('quit')}>Quit Cheshi</NeumorphicButton>
       </footer>
-    </LiquidGlassPanel>
-  </div>;
+    </div>
+  </main>;
 }

@@ -19,13 +19,11 @@ export function chatComposerAccountSwitchReason(options: {
 
 export function chatAccountSwitchReason(options: {
   pending: boolean;
-  relayRunning: boolean;
   paneCount: number;
   controllers: readonly { state: ChatState; isOperationPending: () => boolean }[];
   composerReasons: readonly (string | null)[];
 }): string | null {
   if (options.pending) return 'Wait for the current operation to finish before switching accounts.';
-  if (options.relayRunning) return 'Finish the linked conversation before switching accounts.';
   if (options.controllers.length !== options.paneCount || options.composerReasons.length !== options.paneCount) {
     return 'Wait for the chat panes to be ready before switching accounts.';
   }

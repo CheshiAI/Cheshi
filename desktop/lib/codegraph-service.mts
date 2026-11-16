@@ -163,6 +163,10 @@ export class CodeGraphIndexer extends ManagedChildProcess {
     return this.run(projectRoot, codeGraphDataRoot, ['init']);
   }
 
+  async synchronize(projectRoot: string, codeGraphDataRoot: string): Promise<void> {
+    return this.run(projectRoot, codeGraphDataRoot, ['sync', '--quiet']);
+  }
+
   private async run(projectRoot: string, codeGraphDataRoot: string, args: string[]): Promise<void> {
     if (this.child)
       throw new Error("CodeGraph indexing is already in progress.");

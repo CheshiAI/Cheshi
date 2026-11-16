@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { IpcMainInvokeEvent } from 'electron';
 import { CodexChatContexts } from '../lib/codex-chat-contexts.mts';
-import { CodexChatRelays } from '../lib/codex-chat-relay.mts';
 import { CodexChatSessionDeletion } from '../lib/codex-chat-session-deletion.mts';
 import { CodexChatService } from '../lib/codex-chat-service.mts';
 import type { CodexConversationAccess } from '../lib/codex-chat-account-continuity.mts';
@@ -30,13 +29,12 @@ function fixture(responses: Record<string, unknown> = {}, conversations?: CodexC
   const contexts = new CodexChatContexts({ service: { cwd, serviceName: 'test', developerInstructions: 'Test.' },
     createClient: () => ({ ...createFakeCodexClient(defaults), async stop() {} }),
     emit(ownerId, event) { events.push({ ownerId, ...event }); } });
-  const relays = new CodexChatRelays({ contexts, emit() {} });
-  const deletion = new CodexChatSessionDeletion({ service, contexts, relays });
-  return { client, service, contexts, relays, deletion, events,
+  const deletion = new CodexChatSessionDeletion({ service, contexts });
+  return { client, service, contexts, deletion, events,
     async close() { service.stop(); await contexts.stop(); } };
 }
 
-test('deletes a workspace root and all paginated archived descendants once, resetting only affected panes', async () => {
+test('deletes a workspace root and all paginated archived descendants once, clearing affected panes while retaining permission choices', async () => {
   const f = fixture({ 'thread/list': (params: Record<string, unknown>) => params.archived
     ? { data: [codexThread('archived', { cwd, parentThreadId: 'child' })], nextCursor: null }
     : params.cursor ? { data: [childThread()], nextCursor: null } : { data: [], nextCursor: 'next' } });
@@ -52,7 +50,7 @@ test('deletes a workspace root and all paginated archived descendants once, rese
     expect(f.client.requests.filter(request => request.method === 'thread/list')).toHaveLength(3);
     expect(f.client.requests.find(request => request.method === 'thread/list')?.params).toMatchObject({ modelProviders: [], sourceKinds: expect.arrayContaining(['subAgentThreadSpawn']) });
     expect(f.service.viewedThreadId).toBeNull();
-    expect(f.service.selectedPermissionModeId).toBe('read-only');
+    expect(f.service.selectedPermissionModeId).toBe('full-access');
     expect(f.service.subscribedThreadIds.has('root')).toBe(false);
     expect(sameRoot.viewedThreadId).toBeNull();
     expect(child.viewedThreadId).toBeNull();
@@ -311,16 +309,6 @@ test('rejects active or pending affected panes including descendants', async () 
   }
 });
 
-test('rejects a related running relay even between turns', async () => {
-  const f = fixture();
-  try {
-    f.contexts.get(1, 'pane');
-    const deletion = new CodexChatSessionDeletion({ service: f.service, contexts: f.contexts,
-      relays: { get: () => ({ status: 'running', sourceThreadId: 'root', targetThreadId: 'other' }) as ReturnType<CodexChatRelays['get']> } });
-    expect((await failure(deletion.deleteSession(f.service, 'root'))).message).toContain('relay');
-    expect(f.client.requests).toHaveLength(0);
-  } finally { await f.close(); }
-});
 
 test('fails closed for malformed pages, repeating cursors and unrelated descendants', async () => {
   for (const page of [{ data: null, nextCursor: null }, { data: [], nextCursor: 1 }, { data: [], nextCursor: 'repeat' },
@@ -401,7 +389,7 @@ test('IPC exposes explicit deletion and protects in-flight message preparation',
   const ready = createDeferred<void>();
   const event = { sender: { id: 1 } } as IpcMainInvokeEvent;
   registerCodexChatIpc({ ipc: { handle(channel, handler) { handlers.set(channel, handler); } },
-    service() { return f.service; }, relays: f.relays, deletion: f.deletion, assertSender() {},
+    service() { return f.service; }, deletion: f.deletion, assertSender() {},
     savedTurns: { async list() { return []; }, async save() { throw new Error('Unused'); }, async delete() { throw new Error('Unused'); } },
     async prepareMessage() { entered.resolve(); await ready.promise; throw new Error('Attachment canceled'); },
   });
@@ -412,5 +400,41 @@ test('IPC exposes explicit deletion and protects in-flight message preparation',
     expect(f.client.requests).toHaveLength(0);
     ready.resolve(); await sending;
     expect(await handlers.get('cheshi:delete-codex-chat-session')!(event, 'root', 'pane')).toEqual({ threadIds: ['root'] });
+  } finally { await f.close(); }
+});
+
+
+test('catalog waits for writer release and preserves viewed history when deletion fails', async () => {
+  const f = catalogFixture();
+  const releasing = createDeferred<void>();
+  const release = createDeferred<void>();
+  f.conversations.releaseWriters = async ids => {
+    expect(ids).toContain('root');
+    releasing.resolve();
+    await release.promise;
+  };
+  f.failedDeletions.add('a:root');
+  f.service.viewedThreadId = 'root';
+  try {
+    const deletion = f.deletion.deleteSession(f.service, 'root');
+    await releasing.promise;
+    expect(f.requests.some(request => request.method === 'thread/delete')).toBe(false);
+    release.resolve();
+    expect((await failure(deletion)).message).toBe('Delete failed');
+    expect(f.service.viewedThreadId).toBe('root');
+    expect(f.forgotten).toEqual([]);
+    expect(f.events.some(event => event.type === 'sessions-deleted')).toBe(false);
+  } finally { await f.close(); }
+});
+
+test('writer release failure prevents catalog deletion and pane reset', async () => {
+  const f = catalogFixture();
+  f.conversations.releaseWriters = async () => { throw new Error('Writer shutdown failed'); };
+  f.service.viewedThreadId = 'root';
+  try {
+    expect((await failure(f.deletion.deleteSession(f.service, 'root'))).message).toBe('Writer shutdown failed');
+    expect(f.requests.some(request => request.method === 'thread/delete')).toBe(false);
+    expect(f.service.viewedThreadId).toBe('root');
+    expect(f.forgotten).toEqual([]);
   } finally { await f.close(); }
 });

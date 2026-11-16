@@ -1,3 +1,4 @@
+import { ProviderRequestError } from '../../experiments/codex-specialists/src/provider-recovery.ts';
 import { ephemeralSessionRequest, type EphemeralSessionResult } from '../shared/ephemeral-session.ts';
 import { modelsFromListResponse } from './codex-chat-catalog.mts';
 import type { CodexChatClient, JsonObject } from './codex-chat-types.mts';
@@ -8,6 +9,8 @@ export interface EphemeralRunOptions {
   outputSchema?: unknown;
   serviceTier?: 'default';
   disableTools?: boolean;
+  /** Reduce automatic context for self-contained background tasks; does not disable tools. */
+  minimalContext?: boolean;
   webSearchOnly?: boolean;
   onWebSearch?: () => void;
   requireSubscription?: boolean;
@@ -122,13 +125,13 @@ export class EphemeralSessionService {
       if (event.method === 'item/completed' && itemType === 'webSearch') options.onWebSearch?.();
       if (event.method === 'item/completed') remember(params.item);
       if (event.method === 'error' && params.willRetry !== true) {
-        finish({ error: new Error(stringValue(recordValue(params.error)?.message) ?? 'Temporary session failed.') });
+        finish({ error: new ProviderRequestError(params.error, 'Temporary session failed.') });
       }
       if (event.method !== 'turn/completed') return;
       turnCompleted = true;
       if (Array.isArray(turn?.items)) turn.items.forEach(remember);
       if (turn?.status !== 'completed') {
-        finish({ error: new Error(stringValue(recordValue(turn?.error)?.message) ?? 'Temporary session was interrupted.') });
+        finish({ error: new ProviderRequestError(turn?.error, 'Temporary session was interrupted.') });
         return;
       }
       const text = [...messages.values()].filter((item) => item.phase !== 'commentary').map((item) => item.text).join('\n\n').trim();
@@ -152,10 +155,19 @@ export class EphemeralSessionService {
         const effective = recordValue(response?.config);
         assertAvailable(effective, 'Could not read configuration for isolated history classification.');
         const servers = recordValue(effective.mcp_servers) ?? {};
+        // config/read includes null optional fields. Omit them before converting
+        // back to TOML; otherwise numeric timeouts become invalid empty strings.
         config = { mcp_servers: Object.fromEntries(Object.entries(servers).map(([name, value]) =>
-          [name, { ...recordValue(value), enabled: false }])),
+          [name, { ...Object.fromEntries(Object.entries(recordValue(value) ?? {}).filter(([, field]) => field !== null)), enabled: false }])),
           'features.shell_tool': false, 'features.multi_agent': false,
           'web_search': options.disableTools ? 'disabled' : 'live' };
+      }
+      if (options.minimalContext === true) {
+        // Per-thread overrides leave the account configuration and ordinary chats intact.
+        config = { ...config, project_doc_max_bytes: 0, 'memories.use_memories': false,
+          // Codex requires a positive catalog budget. Generic skill guidance may remain.
+          'skills.max_context_tokens': 1,
+          'features.apps': false, 'features.plugins': false, 'features.remote_plugin': false };
       }
       const models = modelsFromListResponse(await abortable(this.client.request('model/list', { limit: 100, includeHidden: false }), signal));
       signal.throwIfAborted();
@@ -168,7 +180,8 @@ export class EphemeralSessionService {
         ...(config ? { config } : {}),
         ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
         cwd: this.cwd, ephemeral: true, approvalPolicy: 'never', sandbox: 'read-only',
-        baseInstructions: request.instructions, developerInstructions: request.instructions,
+        baseInstructions: request.instructions,
+        developerInstructions: options.minimalContext === true ? '' : request.instructions,
         environments: [], selectedCapabilityRoots: [], dynamicTools: [],
       }), signal, (late) => this.release(stringValue(recordValue(recordValue(late)?.thread)?.id))));
       active.threadId = stringValue(recordValue(started?.thread)?.id);

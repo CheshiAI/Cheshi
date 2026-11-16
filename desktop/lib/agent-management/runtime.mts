@@ -1,0 +1,837 @@
+import { assertHomiesAvailable, assertHomiesWorkSettled, type HomiesAccess } from '../homies-activation.mts';
+import type { AgentFlashMemory } from '../flash/agent-memory.mts';
+import type { HostToolRegistration } from './host-tool-registration.mts';
+import { agentDisplayName } from '../../shared/agent-registry.ts';
+import { revision } from '../agent-platform/git-workspaces.mts';
+import { INTAKE_WORKSPACE, isIntakeWorkspace, parseWorkspaceKey } from '../../../experiments/codex-specialists/src/task-workspace.ts';
+import { WORKER_TMPFS_BYTES } from '../../../experiments/codex-specialists/src/task-storage-limits.ts';
+import { executeCustomTool, type ToolCredential } from './custom-tool-execution.mts';
+import type { ToolTestRequest } from '../../shared/homie-tools.ts';
+import { packInstructions, preparePackEnvironment } from './pack-environment.mts';
+import type { CodeGraphQuery } from '../agent-orchestration/codegraph-source.mts';
+import { assertProjectEnvironment, prepareProjectEnvironment } from './project-environment.mts';
+import { projectDependencies, prepareDependencies } from './dependencies.mts';
+import { coversPermissions, type PermissionRequest } from '../../../experiments/codex-specialists/src/execution-permissions.ts';
+import { createHash, randomBytes } from 'node:crypto';
+import { realpathSync } from 'node:fs';
+import { mkdir, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { projectPermissions } from '../../shared/agent-registry.ts';
+import { customToolTimeoutMs, CUSTOM_TOOL_TIMEOUT_MS } from '../../../experiments/codex-specialists/src/custom-tool-contract.ts';
+import type { SpecialistAgent } from '../../shared/agent-registry.ts';
+import type { AgentRuntimeRequest, AgentRuntimeState } from '../../shared/agent-runtime.ts';
+import { parseAgentRuntimeRequest } from '../../shared/agent-runtime.ts';
+import { agentRecord } from '../../shared/agent-management.ts';
+import type { AgentManagementApi, ManagedAgent } from '../../shared/agent-management.ts';
+import type { createAgentRegistry } from './registry.mts';
+import { parseDockerAgent, runDocker, type DockerCommand } from './docker.mts';
+import { DockerCommandError } from './docker-errors.mts';
+import { assertAgentModelSelection, type AgentModel } from '../../shared/agent-models.ts';
+import { workerOperations } from './operations.mts';
+import { assertFileManagedInstructions, readProjectInstructions, resolveAgentInstructions } from './instruction-files.mts';
+import { DEFAULT_PROJECT_DOC_MAX_BYTES, parseProjectDocMaxBytes } from '../../../experiments/codex-specialists/src/project-instructions.ts';
+import { createAgentOrchestration, type exchangeWorker } from '../agent-orchestration/service.mts';
+import { WorkerLifecycle } from './lifecycle.mts';
+import { bindingFor, type Binding } from '../agent-orchestration/mailbox.mts';
+import type { HomieExecutionProfile } from '../agent-platform/homie-executor.mts';
+import { WorkerWorkspaces } from '../agent-platform/worker-workspaces.mts';
+import { codexVersion, DEFAULT_WORKER_CODEX_VERSION, parseCodexVersion, type CodexWorkerVersions, type CodexUpdateReporter } from '../../shared/codex-update.ts';
+import { createCodexUpdateProgress } from './codex-update-progress.mts';
+
+export interface RuntimeAccount { home: string; models: AgentModel[]; }
+interface RuntimeOptions {
+  access?: HomiesAccess;
+  prepareSource?(workspace: string, agentId: string): Promise<{ hash: string }>;
+  sourceApplied?(workspace: string, agentId: string, engineId: string, hash: string): Promise<void>;
+  directory: string; buildContext: string; workspaceDirectory?: string;
+  getProjectDocMaxBytes?(): number;
+  getCodexVersion?(): string;
+  registry: ReturnType<typeof createAgentRegistry>; management: AgentManagementApi;
+  account(id: string): Promise<RuntimeAccount>;
+  run?: DockerCommand;
+  checkProjectEnvironment?: typeof assertProjectEnvironment;
+  collaborationExchange?: typeof exchangeWorker;
+  flash?: AgentFlashMemory;
+  codegraph?: CodeGraphQuery;
+  toolCredential?: ToolCredential;
+  hostTools?: Pick<HostToolRegistration, 'execute'>;
+  prepareCodeGraph?: (workspace: string) => Promise<void>;
+  lifecycleControl?: (connection: { endpoint: string; token: string }, action: string, body?: unknown) => Promise<unknown>;
+  idleMs?: number; now?(): number;
+  rooms?: Parameters<typeof createAgentOrchestration>[0]['rooms'];
+}
+const image = 'cheshi-specialist:1';
+const environmentImage = 'cheshi-specialist-environment:1';
+const marker = 'ai.cheshi.worker';
+const isolatedWorkspaceInstructions = `
+Your /workspace is the current task’s isolated Git worktree. Follow-ups to this task retain its files; independent tasks use separate worktrees from the source commit at task creation.
+The host manages Git. The shared Git metadata is intentionally not mounted in this container, so repository Git commands, including git status, git diff and git log, are unavailable. Do not run repository Git commands, repair .git, initialize a replacement repository or access the source checkout.
+Verify your work by reading the affected files directly and running the relevant available tests. A Git metadata path error alone does not indicate missing file permissions, repository corruption or task failure; continue with file and test verification within existing permissions.
+Report the files you changed, checks actually performed and any verification limits in this chat. Do not claim a Git status or diff check passed when it was unavailable. Source publication is separate.
+`;
+const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+const installAuth = "const fs=require('node:fs');const v=JSON.parse(await Bun.stdin.text());fs.mkdirSync('/agent/codex',{recursive:true});fs.writeFileSync('/agent/codex/auth.json',v.auth,{mode:0o600});if(v.configuration){fs.writeFileSync('/agent/runtime.json.tmp',JSON.stringify(v.configuration),{mode:0o600});fs.renameSync('/agent/runtime.json.tmp','/agent/runtime.json');}";
+const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+function projectAssignment(agent: SpecialistAgent, workspace: string) {
+  return agent.assignments.find(assignment => {
+    if (assignment.workspaceRoot === workspace) return true;
+    try { return realpathSync(assignment.workspaceRoot) === workspace; }
+    catch { return false; }
+  });
+}
+
+function serializeRuntimeAuth(value: unknown): string {
+  const raw = agentRecord(value), tokens = agentRecord(raw.tokens);
+  for (const key of ['access_token', 'refresh_token', 'id_token', 'account_id']) {
+    if (typeof tokens[key] !== 'string' || !tokens[key]) throw new Error('Incomplete ChatGPT credentials.');
+  }
+  return JSON.stringify({ auth_mode: 'chatgpt', OPENAI_API_KEY: null,
+    tokens: { access_token: tokens.access_token, refresh_token: tokens.refresh_token,
+      id_token: tokens.id_token, account_id: tokens.account_id }, last_refresh: raw.last_refresh });
+}
+function assertCredentialSize(size: number): void {
+  if (size > 128_000) throw new Error('Invalid credential size.');
+}
+/** Credentials go directly to this worker's private volume, never through IPC or command arguments. */
+export async function readRuntimeAuth(home: string): Promise<string> {
+  try {
+    const filename = join(await realpath(home), 'auth.json');
+    assertCredentialSize((await stat(filename)).size);
+    return serializeRuntimeAuth(JSON.parse(await readFile(filename, 'utf8')));
+  } catch { throw new Error('Sign in to the selected ChatGPT account with file credential storage before starting its worker.'); }
+}
+
+export function createSpecialistRuntime(options: RuntimeOptions) {
+  const listeners = new Set<(binding: Binding) => void>();
+  let started = false, unsubscribeRegistry: (() => void) | undefined;
+  const changed = (binding: Binding) => { for (const listener of listeners) listener(binding); };
+  const updateProgress = createCodexUpdateProgress(options.run ?? runDocker);
+  const run = updateProgress.run;
+  const pending = new Set<string>();
+  const builds = new Map<string, Promise<void>>();
+  const installedVersions = new Map<string, string>();
+  const selectedCodexVersion = () => codexVersion(options.getCodexVersion?.() ?? DEFAULT_WORKER_CODEX_VERSION);
+  const workspaces = options.workspaceDirectory ? new WorkerWorkspaces(options.workspaceDirectory) : null;
+  function runtimeConfigPath(binding: Binding) {
+    return join(options.directory, digest(binding.engineId), `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`, 'runtime.json');
+  }
+  async function workspaceKey(binding: Binding): Promise<string | null> {
+    let saved: Record<string, unknown>;
+    try { saved = agentRecord(JSON.parse(await readFile(runtimeConfigPath(binding), 'utf8'))); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
+    return saved.taskWorkspace === undefined ? null : parseWorkspaceKey(agentRecord(saved.taskWorkspace).key);
+  }
+  async function executionWorkspace(binding: Binding) {
+    if (!workspaces) return binding.workspace;
+    const saved = await workspaces.existing(binding, await workspaceKey(binding));
+    if (!saved) throw new Error('Start the Homie to prepare its isolated workspace.');
+    return saved.workspace;
+  }
+  const isolatedFingerprint = (settings: string, workspace: string) => {
+    const base = workspaces ? digest(`${settings}\nisolated_workspace=2:${workspace}`) : settings;
+    return options.flash ? digest(`${base}\nflash_protocol=1`) : base;
+  };
+  const orchestration = createAgentOrchestration({ access: options.access, filename: join(options.directory, 'collaboration.json'),
+    exchange: options.collaborationExchange, flash: options.flash, codegraph: options.codegraph ? async (workspace, tool, args, signal, binding) => {
+      if (workspaces && !binding) throw new Error('A Homie binding is required for isolated CodeGraph queries.');
+      return options.codegraph!(binding ? await executionWorkspace(binding) : workspace, tool, args, signal);
+    } : undefined, rooms: options.rooms,
+    customTools: runCustomTool,
+    customToolsAvailable: binding => Boolean(options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId)?.package?.tools?.some(t => t.enabled)),
+    peer: binding => {
+      const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId && a.accountId === binding.accountId
+        && projectAssignment(a, binding.workspace));
+      return agent ? { id: agent.id, name: agentDisplayName(agent), role: agent.role, fileWrite: projectPermissions(agent, binding.workspace).fileWrite, workProtocol: 1 } : null;
+    },
+    around: (binding, operation) => lifecycle.exclusive(binding, operation),
+    connect: async (binding, demand) => {
+      const connection = await lifecycle.connection(binding, demand);
+      return connection && workspaces ? advanceWorkspace(binding, connection) : connection;
+    },
+    rest: (binding, connection, busy) => lifecycle.rest(binding, connection, busy),
+    nextCheck: binding => lifecycle.nextCheck(binding),
+    sleeping: binding => ['sleeping', 'disabled'].includes(lifecycle.state(binding)?.phase ?? ''),
+    changed: binding => { lifecycle.activity(binding); changed(binding); },
+  });
+  const lifecycle = new WorkerLifecycle({ filename: join(options.directory, 'lifecycle.json'), changed: binding => { changed(binding);
+    if (started && lifecycle.state(binding)?.phase !== 'running') orchestration.notify(binding); }, maintenance: binding => orchestration.notify(binding), idleMs: options.idleMs, now: options.now,
+    inspect: readLive,
+    start: async binding => {
+      await request(binding.workspace, { action: 'start', engineId: binding.engineId, agentId: binding.agentId });
+      const live = await readLive(binding);
+      if (!live) throw new Error('Worker did not become available.');
+      return live;
+    },
+    demand: binding => orchestration.pending(binding) || options.rooms?.pending?.(binding) === true,
+    control: options.lifecycleControl ?? lifecycleControl,
+    stopped: async (binding, id) => {
+      const prefix = await local(binding.engineId);
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const worker = await find(prefix, `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`);
+        if (worker?.id !== id) return false;
+        if (worker.state === 'created' || worker.state === 'exited') return true;
+        await delay(1000);
+      }
+      return false;
+    },
+  });
+  async function advanceWorkspace(binding: Binding, connection: { endpoint: string; token: string }) {
+    const response = await fetch(`${connection.endpoint}/workspace/prepare`, { method: 'POST', redirect: 'error',
+      headers: { Authorization: `Bearer ${connection.token}` }, signal: AbortSignal.timeout(5000) });
+    if (!response.ok) { await response.body?.cancel(); throw new Error('Start the Homie to enable task workspaces.'); }
+    const value = agentRecord(await response.json());
+    if (value.pending === null) return connection;
+    const pending = agentRecord(value.pending), key = parseWorkspaceKey(pending.key);
+    if (typeof pending.taskId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(pending.taskId) || (key !== null && key !== INTAKE_WORKSPACE && key !== pending.taskId)) {
+      throw new Error('Invalid task workspace handoff.');
+    }
+    try {
+      const selected = key === INTAKE_WORKSPACE ? `${INTAKE_WORKSPACE}:${await revision(binding.workspace, 'HEAD')}` : key;
+      const workspace = await workspaces!.ensure(binding, selected);
+      if (selected && isIntakeWorkspace(selected)) await workspaces!.recordIntakeView(binding, pending.taskId, selected);
+      await options.prepareCodeGraph?.(workspace.workspace);
+      const state = await request(binding.workspace, { action: 'start', agentId: binding.agentId, engineId: binding.engineId }, undefined, selected);
+      if (state.details) lifecycle.adopt(binding, state.details);
+      const live = await readLive(binding);
+      if (!live) throw new Error('Task workspace did not become available.');
+      return live.connection;
+    } catch (error) {
+      // A failed preflight leaves the queued run intact. Never replay an acknowledged turn.
+      await post(connection.endpoint, connection.token, '/workspace/resume', {}).catch(() => {});
+      throw error;
+    }
+  }
+  async function lifecycleControl(connection: { endpoint: string; token: string }, action: string, body: unknown = {}) {
+    const response = await fetch(`${connection.endpoint}/lifecycle/${action}`, { method: 'POST', redirect: 'error',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${connection.token}` },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(35_000) });
+    if (!response.ok) { await response.body?.cancel(); throw new Error('Worker sleep control is unavailable. Update or inspect the worker.'); }
+    const text = await response.text();
+    if (text.length > 4000) throw new Error('Invalid worker lifecycle response.');
+    return JSON.parse(text) as unknown;
+  }
+  async function readLive(binding: Binding) {
+    const key = `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`;
+    const prefix = await local(binding.engineId);
+    const worker = await find(prefix, key);
+    if (worker && worker.state !== 'running' && !lifecycle.permitsStoppedWake(binding)) {
+      lifecycle.disable(binding); throw new Error('Worker is stopped. Start it explicitly to enable automatic wake.');
+    }
+    if (!worker || worker.state !== 'running' || !worker.endpoint) return null;
+    const saved = agentRecord(JSON.parse(await readFile(join(options.directory, digest(binding.engineId), key, 'runtime.json'), 'utf8')));
+    if (options.flash && saved.flashProtocol !== 1 || saved.accountId !== binding.accountId || saved.profileId !== binding.agentId || saved.revision !== worker.fingerprint
+      || saved.applicationInspectionProtocol !== 1 || saved.applicationProtocol !== 1 || saved.candidateVerificationProtocol !== 1 || saved.integrationProtocol !== 1 || saved.workProtocol !== 1 || saved.progressProtocol !== 1 || saved.recoveryProtocol !== 3 || saved.questionProtocol !== 2 || saved.collaborationProtocol !== 1 || saved.historyProtocol !== undefined || saved.decisionProtocol !== 1 || saved.verificationProtocol !== 1 || typeof saved.token !== 'string' || !/^[a-f0-9]{64}$/.test(saved.token)) {
+      throw new Error('Start the agent to reconnect collaboration with its current settings.');
+    }
+    const agent = options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId);
+    const assignment = agent && projectAssignment(agent, binding.workspace);
+    const execution = await executionWorkspace(binding);
+    if (!agent || !assignment || saved.settingsFingerprint !== isolatedFingerprint(runtimeSettingsDigest(agent, binding.workspace, assignment, options.getProjectDocMaxBytes?.(),
+      (assignment.permissions ?? agent.permissions).commandExecution ? projectDependencies(execution) : null), execution)
+      || workspaces && saved.executionWorkspace !== execution) {
+      throw new Error('Settings changed. Start the agent to resume collaboration.');
+    }
+    return { externalBusy: worker.externalBusy, connection: { endpoint: worker.endpoint, token: saved.token }, details: await options.management.details(binding.engineId, worker.id) };
+  }
+
+  async function local(engineId: string) {
+    if (!engineId.startsWith('docker:')) throw new Error('This execution engine cannot create specialist workers.');
+    const contexts: unknown = JSON.parse(await run(['context', 'inspect', engineId.slice(7)]));
+    if (!Array.isArray(contexts)) throw new Error('Invalid execution engine.');
+    const host = agentRecord(agentRecord(agentRecord(contexts[0]).Endpoints).docker).Host;
+    if (typeof host !== 'string' || !host.startsWith('unix:///')) throw new Error('Only local engines can run project agents.');
+    return ['--host', host];
+  }
+  async function rememberEngine(directory: string, engineId: string, host: string) {
+    const filename = join(directory, 'engine.json');
+    let previous: Record<string, unknown> | null = null;
+    try { previous = agentRecord(JSON.parse(await readFile(filename, 'utf8'))); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    if (previous) {
+      if (previous.engineId !== engineId || previous.host !== host) {
+        throw new Error(`Worker engine ${engineId} changed. Restore its original connection before continuing.`);
+      }
+      return;
+    }
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await writeFile(`${filename}.tmp`, JSON.stringify({ engineId, host }), { mode: 0o600 });
+    await rename(`${filename}.tmp`, filename);
+  }
+  async function find(prefix: string[], key: string) {
+    const ids = (await run([...prefix, 'container', 'ls', '--all', '--no-trunc', '--filter', `label=${marker}=specialist-v1`,
+      '--filter', `label=ai.cheshi.binding=${key}`, '--format', '{{.ID}}'])).trim().split(/\s+/).filter(Boolean);
+    if (ids.length > 1) throw new Error('Multiple workers have this project assignment. Inspect them in Docker.');
+    if (!ids[0]) return null;
+    if (!/^[a-f0-9]{64}$/.test(ids[0])) throw new Error('Invalid worker identity.');
+    const records: unknown = JSON.parse(await run([...prefix, 'container', 'inspect', ids[0]]));
+    if (!Array.isArray(records)) throw new Error('Invalid worker inspection.');
+    const raw = agentRecord(records[0]), labels = agentRecord(agentRecord(raw.Config).Labels);
+    if (labels[marker] !== 'specialist-v1' || labels['ai.cheshi.binding'] !== key) throw new Error('Worker ownership changed.');
+    const worker = parseDockerAgent(raw);
+    if (worker.id !== ids[0]) throw new Error('Worker identity changed.');
+    return { ...worker, imageId: typeof raw.Image === 'string' ? raw.Image : '', externalBusy: !(raw.ExecIDs === null || Array.isArray(raw.ExecIDs) && raw.ExecIDs.length === 0), fingerprint: labels['ai.cheshi.configuration'] };
+  }
+  async function runCustomTool(binding: Binding, name: string, args: Record<string, unknown>, signal: AbortSignal) {
+    const snapshot = () => options.registry.snapshot(binding.workspace).agents.find(a => a.id === binding.agentId && a.accountId === binding.accountId);
+    const agent = snapshot(), assignment = agent && projectAssignment(agent, binding.workspace);
+    const tool = agent?.package?.tools?.find(t => `homie_${t.name}` === name && t.enabled);
+    if (!agent || !assignment || !tool || !(assignment.permissions ?? agent.permissions).commandExecution) throw new Error('This tool requires a saved definition and command permission.');
+    const revision = agent.revision;
+    const valid = () => snapshot()?.revision === revision && !signal.aborted;
+    if (!await readLive(binding)) throw new Error('Start the saved Homie before testing its tool.');
+    const prefix = await local(binding.engineId);
+    const worker = await find(prefix, `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`);
+    if (!worker || !worker.imageId.startsWith('sha256:') || !valid()) throw new Error('Start the saved Homie before testing its tool.');
+    if (tool.execution === 'host') {
+      if (!options.hostTools) throw new Error('Host tools are unavailable in this installation.');
+      return options.hostTools.execute(binding, tool, args, signal, valid);
+    }
+    return { result: await executeCustomTool({ run, prefix, image: worker.imageId, tool, args, signal, credential: options.toolCredential, valid }) };
+  }
+  async function build(prefix: string[], dependencies: boolean, version = selectedCodexVersion()) {
+    updateProgress.stage('preparing-worker');
+    const key = `${prefix.join('/')}/${dependencies}/${version}`;
+    let flight = builds.get(key);
+    if (!flight) {
+      flight = (async () => {
+        const args = ['--build-arg', `CODEX_VERSION=${version}`];
+        if (dependencies) await run([...prefix, 'build', ...args, '--target', 'specialist-environment', '--tag', `${environmentImage}-codex-${version}`, options.buildContext]);
+        await run([...prefix, 'build', ...args, '--tag', `${image}-codex-${version}`, options.buildContext]);
+        if (options.getCodexVersion) {
+          const actual = await imageCodexVersion(prefix, `${image}-codex-${version}`);
+          if (actual !== version) throw new Error('The prepared worker Codex version does not match the requested version.');
+        }
+        // Legacy isolated code tasks resolve this alias only after the candidate has passed verification.
+        await run([...prefix, 'image', 'tag', `${image}-codex-${version}`, image]);
+      })();
+      builds.set(key, flight);
+      void flight.catch(() => builds.delete(key));
+    }
+    await flight;
+  }
+  async function imageCodexVersion(prefix: string[], image: string) {
+    updateProgress.stage('verifying-worker');
+    return parseCodexVersion(await run([...prefix, 'run', '--rm', '--network', 'none', '--read-only',
+      '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', '--entrypoint', 'codex', image, '--version']));
+  }
+  async function post(endpoint: string, token: string, route: string, body: unknown, inspection = false) {
+    const response = await fetch(`${endpoint}${route}`, { method: 'POST', redirect: 'error',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(35_000) }).catch(() => { throw Object.assign(new Error('Delivery outcome is unknown. Inspect the saved worker task.'), { deliveryUncertain: true }); });
+    if (inspection && !response.ok) {
+      const body: unknown = await response.json().catch(() => null);
+      const message = body && typeof body === 'object' && 'error' in body && typeof body.error === 'string' ? body.error.slice(0, 2000) : null;
+      throw new Error(response.status === 404 ? 'Start the agent to enable this operation.' : message ?? 'Execution inspection failed. The outcome remains unknown.');
+    }
+    if (response.status >= 500) { await response.body?.cancel(); throw Object.assign(new Error('Worker outcome is unknown. Inspect its task record.'), { deliveryUncertain: true }); }
+    if (!response.ok) { await response.body?.cancel(); throw new Error(response.status === 409 ? 'The worker is busy or this task needs inspection.' : 'Worker did not accept the request. Refresh its status before retrying.'); }
+    await response.body?.cancel();
+  }
+  async function waitReady(engineId: string, id: string) {
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const details = await options.management.details(engineId, id);
+      if (details.ready && details.authenticated === true) return details;
+      if (details.agent.state !== 'running') throw new Error('Worker stopped during startup. Inspect its logs in Docker.');
+      await delay(1000);
+    }
+    throw new Error('Worker is still starting or needs sign-in. Refresh its status in a moment.');
+  }
+  async function request(workspaceRoot: string, input: AgentRuntimeRequest, chat?: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }, selectedWorkspace?: string | null, prepareStopped = false): Promise<AgentRuntimeState> {
+    const request = parseAgentRuntimeRequest(input);
+    if (request.action !== 'status' && !prepareStopped) assertHomiesAvailable(options.access);
+    if (prepareStopped && request.action !== 'start') throw new Error('Stopped maintenance requires preparation.');
+    const workspace = await realpath(workspaceRoot);
+    const source = request.action === 'start' ? await options.prepareSource?.(workspace, request.agentId) : undefined;
+    const agent = options.registry.snapshot(workspaceRoot).agents.find(item => item.id === request.agentId);
+    const assignment = agent && projectAssignment(agent, workspace);
+    if (!agent || !assignment) throw new Error('Assign this agent to the current project first.');
+    if (request.action === 'start' || request.action === 'submit') assertFileManagedInstructions(agent, assignment);
+    if (request.action === 'start' && agent.package?.requiredTools.includes('codegraph') && !options.codegraph) {
+      throw new Error('This agent package requires CodeGraph. Connect CodeGraph before starting the worker.');
+    }
+    agent.permissions = assignment.permissions ?? agent.permissions;
+    const key = `${agent.id}-${digest(workspace).slice(0, 16)}`;
+    const assertCurrent = () => {
+      if (options.registry.snapshot(workspaceRoot).agents.find(item => item.id === agent.id)?.revision !== agent.revision) {
+        throw new Error('Agent settings changed. Try again.');
+      }
+    };
+    if (request.action !== 'status' && pending.has(key)) throw new Error('An operation for this agent is already running.');
+    if (request.action !== 'status') pending.add(key);
+    try {
+      const directory = join(options.directory, digest(request.engineId), key);
+      const configPath = join(directory, 'runtime.json');
+      const identity = bindingFor(workspace, request.engineId, agent.id, agent.accountId ?? '');
+      const taskKey = selectedWorkspace === undefined ? await workspaceKey(identity) : selectedWorkspace;
+      const isolated = workspaces && (request.action === 'start' ? await workspaces.ensure(identity, taskKey) : await workspaces.existing(identity, taskKey));
+      const execution = isolated ? isolated.workspace : workspace;
+      const dependencies = agent.permissions.commandExecution ? projectDependencies(execution) : null;
+      const projectDocMaxBytes = parseProjectDocMaxBytes(options.getProjectDocMaxBytes?.() ?? DEFAULT_PROJECT_DOC_MAX_BYTES);
+      const settingsFingerprint = isolatedFingerprint(runtimeSettingsDigest(agent, workspace, assignment, projectDocMaxBytes, dependencies), isolated ? execution : 'unprepared');
+      const projectInstructions = request.action === 'start' ? await readProjectInstructions(workspace) : null;
+      const instructions = request.action === 'start' ? (await resolveAgentInstructions(agent, assignment, projectInstructions)) + packInstructions(agent.package)
+        + (workspaces ? isolatedWorkspaceInstructions : '') : null;
+      const hasFiles = projectInstructions !== null;
+      const codexRelease = selectedCodexVersion();
+      const fingerprint = request.action === 'start' ? digest(`${settingsFingerprint}\n${hasFiles ? instructions : ''}\ncodex=${codexRelease}`) : settingsFingerprint;
+      const prefix = await local(request.engineId);
+      let worker = await find(prefix, key);
+      if (prepareStopped && (!worker || !['created', 'exited'].includes(worker.state) || worker.externalBusy)) {
+        throw new Error('Worker is no longer stopped. Retry its update.');
+      }
+      if (prepareStopped && workspaces) {
+        const saved = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
+        if (saved.executionWorkspace !== execution) throw new Error('Inspect the saved workspace before migrating this stopped worker.');
+      }
+      // Status/submit use the snapshot applied at Start; editing a source file takes effect at the next Start.
+      const applied = worker && request.action !== 'start' && request.action !== 'cancel'
+        ? agentRecord(JSON.parse(await readFile(configPath, 'utf8'))) : null;
+      const settingsChanged = applied?.settingsFingerprint === undefined
+        ? worker?.fingerprint !== settingsFingerprint
+        : applied.settingsFingerprint !== settingsFingerprint || applied.revision !== worker?.fingerprint;
+      if (request.action === 'status') {
+        const details = worker ? await options.management.details(request.engineId, worker.id) : null;
+        if (details && settingsChanged) details.error = 'Settings changed. Start the agent to apply them.';
+        const collaborationError = orchestration.error(bindingFor(workspace, request.engineId, agent.id, agent.accountId ?? '').id);
+        if (details && collaborationError && !details.error) details.error = collaborationError;
+        return { details };
+      }
+      if (request.action === 'cancel') {
+        if (!worker?.endpoint) throw new Error('Worker is unavailable.');
+        const saved = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
+        if (typeof saved.token !== 'string') throw new Error('Worker authorization is unavailable.');
+        await post(worker.endpoint, saved.token, `/tasks/${request.taskId}/stop`, {});
+        return { details: await options.management.details(request.engineId, worker.id) };
+      }
+      if (!agent.accountId) throw new Error('Select an account in agent settings first.');
+      const account = await options.account(agent.accountId);
+      assertAgentModelSelection(agent, account.models);
+      const selectedAuth = await readRuntimeAuth(account.home);
+      const selectedAccount = digest(String(agentRecord(agentRecord(JSON.parse(selectedAuth)).tokens).account_id));
+      if (worker) {
+        const previous = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
+        if (previous.accountId === agent.accountId) {
+          let identity = typeof previous.accountFingerprint === 'string' ? previous.accountFingerprint : '';
+          if (worker.state === 'running') {
+            const current = (await run([...prefix, 'exec', worker.id, 'bun', '-e',
+              "const fs=require('node:fs');if(fs.existsSync('/agent/codex/auth.json')){const id=JSON.parse(fs.readFileSync('/agent/codex/auth.json','utf8')).tokens?.account_id;if(id)console.log(require('node:crypto').createHash('sha256').update(id).digest('hex'));}"])).trim();
+            identity = current || identity;
+          }
+          if (identity && identity !== selectedAccount) throw new Error('This worker belongs to an earlier sign-in. Select a separate account profile to keep its conversation isolated.');
+          if (!identity && worker.state !== 'running') throw new Error('Start this worker in Docker to verify its previous sign-in before reconnecting.');
+        }
+      }
+      // Avoid starting work under a profile edited while account checks were in flight.
+      assertCurrent();
+      if (request.action === 'start') {
+        await rememberEngine(directory, request.engineId, prefix[1]!);
+        const auth = selectedAuth;
+        if (!worker || worker.fingerprint !== fingerprint) await build(prefix, dependencies !== null, codexRelease);
+        if (agent.permissions.fileWrite) await (options.checkProjectEnvironment ?? assertProjectEnvironment)(request.engineId, prefix, execution);
+        const workerImage = `${image}-codex-${codexRelease}`;
+        updateProgress.stage('dependencies');
+        const environment = !worker || worker.fingerprint !== fingerprint ? await prepareDependencies(run, prefix, workerImage, dependencies, `${environmentImage}-codex-${codexRelease}`) : { image: workerImage, mounts: [] };
+        if (!worker || worker.fingerprint !== fingerprint) environment.image = await preparePackEnvironment(run, prefix, environment.image, agent.package);
+        if (prepareStopped && await imageCodexVersion(prefix, environment.image) !== codexRelease) {
+          throw new Error('The prepared worker Codex version does not match the requested version.');
+        }
+        assertCurrent();
+        updateProgress.stage('replacing-worker');
+        if (worker && worker.fingerprint !== fingerprint) {
+          const details = await options.management.details(request.engineId, worker.id);
+          if (workspaces && !prepareStopped && (details.busy || details.tasks.some(task => ['accepted', 'running', 'unknown'].includes(task.status)))) {
+            throw new Error('Inspect unfinished execution before switching this Homie to its isolated workspace.');
+          }
+          if (worker.externalBusy) throw new Error('Wait for retained container commands before applying settings.');
+          if (prepareStopped) {
+            const current = await find(prefix, key);
+            if (!current || current.id !== worker.id || !['created', 'exited'].includes(current.state) || current.externalBusy) {
+              throw new Error('Worker state changed during preparation. Retry its update.');
+            }
+          }
+          if (worker.state === 'running') {
+            const previous = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
+            const legacySettings = settingsDigest(agent, workspace, assignment, Number(previous.recoveryProtocol), previous.progressProtocol === 1, previous.workProtocol === 1, previous.integrationProtocol === 1, previous.candidateVerificationProtocol === 1, previous.applicationProtocol === 1, previous.applicationInspectionProtocol === 1, previous.conversationProtocol === 1, previous.activityProtocol === 1, false);
+            const legacyRevision = hasFiles ? digest(`${legacySettings}\n${instructions}`) : legacySettings;
+            // Upgrade worker control code without changing the execution profile or discarding unknown outcomes.
+            // The named volume survives replacement; native results still require explicit inspection.
+            const recoveryUpgrade = [1, 2, 3].some(protocol => protocol === previous.recoveryProtocol) && (previous.progressProtocol === undefined || previous.progressProtocol === 1)
+              && (previous.workProtocol === undefined || previous.workProtocol === 1) && (previous.integrationProtocol === undefined || previous.integrationProtocol === 1) && (previous.candidateVerificationProtocol === undefined || previous.candidateVerificationProtocol === 1) && (previous.applicationProtocol === undefined || previous.applicationProtocol === 1) && (previous.applicationInspectionProtocol === undefined || previous.applicationInspectionProtocol === 1) && (previous.conversationProtocol === undefined || previous.conversationProtocol === 1) && (previous.activityProtocol === undefined || previous.activityProtocol === 1) && previous.inputQueueProtocol === undefined && previous.settingsFingerprint === legacySettings
+              && previous.revision === legacyRevision && worker.fingerprint === legacyRevision
+              && previous.accountId === agent.accountId && previous.profileId === agent.id
+              && previous.accountFingerprint === selectedAccount && previous.instructions === instructions;
+            const executing = details.tasks.some(task => task.status === 'accepted' || task.status === 'running');
+            if (!details.ready || details.busy || executing || (details.tasks.some(task => task.status === 'unknown') && !recoveryUpgrade)) throw new Error('Wait for this worker or inspect its unfinished task before applying settings.');
+            await run([...prefix, 'container', 'stop', '--time', '15', worker.id]);
+          }
+          await run([...prefix, 'container', 'rm', worker.id]);
+          worker = null; // Preserve the named volume and all conversations/results.
+        }
+        if (!worker) {
+          await mkdir(directory, { recursive: true, mode: 0o700 });
+          const configuration = { accountFingerprint: selectedAccount, revision: fingerprint, settingsFingerprint, projectDocMaxBytes, codexVersion: codexRelease,
+            ...(workspaces ? { executionWorkspace: execution, isolatedWorkspaceProtocol: 2, taskWorkspace: { key: taskKey } } : {}),
+            ...profileConfiguration(agent), ...(options.flash ? { flashProtocol: 1 } : {}), codegraphProtocol: 1, permissionProtocol: 1, collaborationProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol: 3, questionProtocol: 2, progressProtocol: 1, workProtocol: 1, integrationProtocol: 1, candidateVerificationProtocol: 1, applicationProtocol: 1, applicationInspectionProtocol: 1, conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1, activityProtocol: 1, inputQueueProtocol: 1, profileId: agent.id, token: randomBytes(32).toString('hex'), instructions };
+          await writeFile(`${configPath}.tmp`, JSON.stringify(configuration), { mode: 0o600 });
+          await rename(`${configPath}.tmp`, configPath);
+          const mounts = [execution];
+          if (mounts.some(value => /[,\n\r]/.test(value))) throw new Error('This project path cannot be mounted by Docker.');
+          const security = ['--security-opt', `seccomp=${join(options.buildContext, 'security', 'codex-bwrap.json')}`];
+          if (request.engineId.startsWith('docker:colima')) security.push('--security-opt', 'apparmor=cheshi-codex-bwrap');
+          const volume = `cheshi-agent-${key}-${digest(agent.accountId).slice(0, 8)}`;
+          const user = workspaces ? `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}` : '1000:1000';
+          if (workspaces) await run([...prefix, 'run', '--rm', '--network', 'none', '--read-only', '--user', '0:0',
+            '--cap-drop', 'ALL', '--cap-add', 'CHOWN', '--cap-add', 'DAC_OVERRIDE', '--security-opt', 'no-new-privileges:true',
+            '--mount', `type=volume,src=${volume},dst=/agent`, '--entrypoint', 'chown', environment.image, '-R', user, '/agent']);
+          // A retained volume can contain the same revision but an older token. Seed it
+          // before starting any worker process; revision equality cannot gate this race.
+          await run([...prefix, 'run', '--rm', '--interactive', '--network', 'none', '--read-only', '--user', user,
+            '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
+            '--mount', `type=volume,src=${volume},dst=/agent`, '--entrypoint', 'bun', environment.image, '-e', installAuth],
+          JSON.stringify({ auth, configuration }));
+          assertCurrent();
+          await run([...prefix, 'container', 'create', '--name', `cheshi-agent-${key}`, '--init', '--user', user, '--read-only',
+            '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', ...security,
+            '--pids-limit', '256', '--cpus', '2', '--memory', '2g', '--publish', '127.0.0.1::8787',
+            '--label', `${marker}=specialist-v1`, '--label', `ai.cheshi.agent=${agent.id}`, '--label', `ai.cheshi.binding=${key}`,
+            '--label', `ai.cheshi.configuration=${fingerprint}`,
+            '--label', `ai.cheshi.codex=${codexRelease}`,
+            '--mount', `type=volume,src=${volume},dst=/agent`,
+            '--mount', `type=bind,src=${execution},dst=/workspace${agent.permissions.fileWrite && !isIntakeWorkspace(taskKey) ? '' : ',readonly'}`,
+            ...(workspaces ? ['--mount', `type=bind,src=${join(execution, '.git')},dst=/workspace/.git,readonly`] : []),
+            '--tmpfs', `/tmp:rw,nosuid,nodev,size=${WORKER_TMPFS_BYTES},mode=1777`,
+            '--env', 'CODEX_HOME=/agent/codex', '--env', 'AGENT_DATA_DIRECTORY=/agent', '--env', 'AGENT_WORKSPACE=/workspace',
+            '--env', 'AGENT_RUNTIME_CONFIG=/agent/runtime.json', '--env', `AGENT_RUNTIME_REVISION=${fingerprint}`, ...environment.mounts, environment.image]);
+          worker = await find(prefix, key);
+          if (!worker) throw new Error('Created worker could not be verified.');
+          if (prepareStopped) return { details: await options.management.details(request.engineId, worker.id) };
+          await run([...prefix, 'container', 'start', worker.id]);
+        } else {
+          if (prepareStopped) return { details: await options.management.details(request.engineId, worker.id) };
+          const wasStopped = worker.state !== 'running';
+          if (wasStopped) await run([...prefix, 'container', 'start', worker.id]);
+          const current = await options.management.details(request.engineId, worker.id);
+          const needsLogin = current.ready && current.authenticated === false && !current.busy;
+          const bootstrapPending = !current.ready && (await run([...prefix, 'exec', worker.id, 'bun', '-e',
+            "const fs=require('node:fs');console.log(fs.existsSync('/agent/runtime.json') ? 'configured' : 'pending');"])).trim() === 'pending';
+          if (wasStopped || needsLogin || bootstrapPending) {
+            const configuration = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
+            if (configuration.revision !== fingerprint) throw new Error('Worker settings could not be recovered.');
+            const credentials = auth;
+            await run([...prefix, 'exec', '--interactive', worker.id, 'bun', '-e', installAuth], JSON.stringify({ auth: credentials, configuration }));
+            // A previously initialized app-server must reload the refreshed credentials.
+            if (!bootstrapPending) await run([...prefix, 'container', 'restart', '--time', '15', worker.id]);
+          }
+        }
+        const details = await waitReady(request.engineId, worker.id);
+        if (source) await options.sourceApplied?.(workspace, agent.id, request.engineId, source.hash);
+        if (workspaces && taskKey === null) await workspaces.retainLegacyTasks(identity, details.tasks.map(task => task.id));
+        orchestration.register(bindingFor(workspace, request.engineId, agent.id, agent.accountId));
+        return { details };
+      }
+      if (!worker || worker.state !== 'running' || !worker.endpoint) throw new Error('Start this agent first.');
+      if (settingsChanged) throw new Error('Settings changed. Start the agent to apply them.');
+      const configuration = agentRecord(JSON.parse(await readFile(configPath, 'utf8')));
+      if (typeof configuration.token !== 'string' || !/^[a-f0-9]{64}$/.test(configuration.token)) throw new Error('Worker authorization is unavailable.');
+      assertCurrent();
+      if (chat && configuration.chatsProtocol !== 1) throw new Error('Start the agent to enable Chats.');
+      if (request.action === 'question' || request.action === 'question-deadline') {
+        await post(worker.endpoint, configuration.token, `/tasks/${request.taskId}/${request.action}`,
+          { roomId: request.roomId, questionId: request.questionId,
+            ...(request.action === 'question' ? { recipient: request.recipient } : { expiresAt: request.expiresAt }) }, true);
+        return { details: await options.management.details(request.engineId, worker.id) };
+      }
+      if (request.action === 'application-inspect') {
+        if (configuration.applicationInspectionProtocol !== 1) throw new Error('Start the agent to enable application inspection.');
+        await post(worker.endpoint, configuration.token, `/tasks/${request.taskId}/application`,
+          { roomId: request.roomId, candidateId: request.candidateId, hash: request.hash }, true);
+        return { details: await options.management.details(request.engineId, worker.id) };
+      }
+      if (request.action === 'recover') {
+        await options.prepareCodeGraph?.(execution);
+        assertCurrent();
+        await post(worker.endpoint, configuration.token, `/tasks/${request.taskId}/recover`, { roomId: request.roomId }, true);
+        return { details: await options.management.details(request.engineId, worker.id) };
+      }
+      if (chat?.automatic && configuration.conversationProtocol !== 1) throw new Error('Start the agent to enable conversational tasks.');
+      await options.prepareCodeGraph?.(execution);
+      assertCurrent();
+      if (workspaces && request.taskId && taskKey && isIntakeWorkspace(taskKey)) await workspaces.recordIntakeView(identity, request.taskId, taskKey);
+      await post(worker.endpoint, configuration.token, chat?.inputId ? `/tasks/${request.taskId}/input` : '/tasks',
+        chat?.inputId ? { id: chat.inputId, prompt: request.prompt, roomId: chat.roomId, ...(chat.questionId ? { questionId: chat.questionId } : {}) }
+          : { id: request.taskId, prompt: request.prompt, ...(chat ? { chat } : {}) });
+      return { details: await options.management.details(request.engineId, worker.id) };
+    } catch (error) {
+      if (request.action === 'status' && error instanceof DockerCommandError && error.kind === 'engine-unavailable') {
+        return { details: null, unavailable: { kind: error.kind, message: error.message } };
+      }
+      throw error;
+    } finally { if (request.action !== 'status') pending.delete(key); }
+  }
+  function bindingAvailability(workspace: string, agentId: string): AgentRuntimeState | null {
+    const agent = options.registry.snapshot(workspace).agents.find(a => a.id === agentId);
+    if (!agent) return { details: null, unavailable: { kind: 'agent-removed', message: 'This agent is no longer available. Select another agent.' } };
+    if (!projectAssignment(agent, workspace)) return { details: null,
+      unavailable: { kind: 'agent-unassigned', message: 'Assign this agent to the current project in Agent settings.' } };
+    return null;
+  }
+  async function status(workspaceRoot: string, parsed: AgentRuntimeRequest): Promise<AgentRuntimeState> {
+    const workspace = await realpath(workspaceRoot);
+    const unavailable = bindingAvailability(workspace, parsed.agentId);
+    if (unavailable) return unavailable;
+    try {
+      const b = await binding(workspace, parsed), cached = lifecycle.cached(b);
+      const result = cached ?? await request(workspace, parsed);
+      // Registry deletion or unassignment can finish while Docker status is in flight.
+      const changed = bindingAvailability(workspace, parsed.agentId);
+      if (changed) return changed;
+      const state = lifecycle.state(b);
+      return { ...result, ...(state ? { lifecycle: state } : {}) };
+    } catch (error) {
+      const changed = bindingAvailability(workspace, parsed.agentId);
+      if (changed) return changed;
+      throw error;
+    }
+  }
+  async function binding(workspaceRoot: string, input: AgentRuntimeRequest) {
+    const parsed = parseAgentRuntimeRequest(input), workspace = await realpath(workspaceRoot);
+    const agent = options.registry.snapshot(workspaceRoot).agents.find(a => a.id === parsed.agentId && projectAssignment(a, workspace));
+    if (!agent) throw new Error('Assign this agent to the current project first.');
+    return bindingFor(workspace, parsed.engineId, agent.id, agent.accountId ?? '');
+  }
+  async function wake(workspace: string, input: AgentRuntimeRequest, retry = false) {
+    assertHomiesAvailable(options.access);
+    const b = await binding(workspace, input);
+    lifecycle.demand(b);
+    const result = await workerOperations.run(() => lifecycle.exclusive(b, async () => {
+      if (retry) lifecycle.retry(b);
+      await lifecycle.connection(b, true);
+      return request(workspace, { ...input, action: 'status' });
+    }));
+    orchestration.notify(b); changed(b); return result;
+  }
+  return {
+    async codexVersions(version: string, apply = false, report?: CodexUpdateReporter): Promise<CodexWorkerVersions> {
+      return updateProgress.track(report, async () => {
+        const target = codexVersion(version);
+        const result: CodexWorkerVersions = { versions: [], pending: 0, waiting: 0, errors: [] };
+        const bindings = new Map([...orchestration.bindings(), ...(options.rooms?.bindings?.() ?? [])].map(b => [b.id, b]));
+        for (const b of bindings.values()) {
+          try {
+            updateProgress.stage('waiting-lock');
+            await workerOperations.run(() => lifecycle.exclusive(b, async () => {
+              updateProgress.stage('checking-workers');
+              const prefix = await local(b.engineId);
+              let worker = await find(prefix, `${b.agentId}-${digest(b.workspace).slice(0, 16)}`);
+              if (!worker) return;
+              const saved = agentRecord(JSON.parse(await readFile(runtimeConfigPath(b), 'utf8')));
+              let actual = installedVersions.get(worker.id) ?? (typeof saved.codexVersion === 'string' ? codexVersion(saved.codexVersion) : 'Unknown');
+              if (!installedVersions.has(worker.id)) {
+                actual = worker.state === 'running'
+                  ? parseCodexVersion(await run([...prefix, 'exec', worker.id, 'codex', '--version']))
+                  : await imageCodexVersion(prefix, worker.imageId);
+                installedVersions.set(worker.id, actual);
+              }
+              if (actual !== target && apply && ['created', 'exited'].includes(worker.state)) {
+                updateProgress.stage('preparing-worker');
+                if (selectedCodexVersion() !== target) throw new Error('Worker update target changed. Retry Update workers.');
+                const updated = await request(b.workspace, { action: 'start', engineId: b.engineId, agentId: b.agentId }, undefined, undefined, true);
+                if (updated.details) lifecycle.replaceStopped(b, updated.details);
+                worker = await find(prefix, `${b.agentId}-${digest(b.workspace).slice(0, 16)}`);
+                if (!worker || !['created', 'exited'].includes(worker.state)) throw new Error('Updated worker did not remain stopped.');
+                actual = await imageCodexVersion(prefix, worker.imageId);
+                if (actual !== target) throw new Error('Worker version verification failed.');
+                installedVersions.set(worker.id, actual);
+                changed(b);
+              }
+              if (actual !== target && apply && worker.state === 'running') {
+                assertHomiesAvailable(options.access);
+                const details = await options.management.details(b.engineId, worker.id);
+                const busy = worker.externalBusy || !details.ready || details.busy || details.error
+                  || details.tasks.some(t => ['accepted', 'running', 'unknown'].includes(t.status) || t.inputs?.some(i => i.pending === true));
+                if (busy) result.waiting++;
+                else {
+                  updateProgress.stage('preparing-worker');
+                  if (selectedCodexVersion() !== target) throw new Error('Worker update target changed. Retry Update workers.');
+                  const updated = await request(b.workspace, { action: 'start', engineId: b.engineId, agentId: b.agentId });
+                  if (updated.details) lifecycle.adopt(b, updated.details);
+                  worker = await find(prefix, `${b.agentId}-${digest(b.workspace).slice(0, 16)}`);
+                  if (!worker) throw new Error('Updated worker was not found.');
+                  updateProgress.stage('verifying-worker');
+                  actual = parseCodexVersion(await run([...prefix, 'exec', worker.id, 'codex', '--version']));
+                  installedVersions.set(worker.id, actual);
+                  if (actual !== target) throw new Error('Worker version verification failed.');
+                  orchestration.notify(b); changed(b);
+                }
+              }
+              if (actual !== target) result.pending++;
+              result.versions.push(actual);
+            }));
+          } catch (error) {
+            result.pending++;
+            result.errors.push(error instanceof DockerCommandError ? error.message : 'A worker could not be checked or updated.');
+          }
+        }
+        result.versions = [...new Set(result.versions)].sort();
+        return result;
+      });
+    },
+    suspend: () => orchestration.suspend(),
+    async assertIdle() {
+      orchestration.assertIdle();
+      assertHomiesWorkSettled(pending.size > 0);
+      const bindings = new Map([...orchestration.bindings(), ...(options.rooms?.bindings?.() ?? [])].map(b => [b.id, b]));
+      for (const binding of bindings.values()) {
+        const prefix = await local(binding.engineId);
+        const worker = await find(prefix, `${binding.agentId}-${digest(binding.workspace).slice(0, 16)}`);
+        if (!worker || worker.state !== 'running') continue;
+        const live = { externalBusy: worker.externalBusy, details: await options.management.details(binding.engineId, worker.id) };
+        if (!live.details.ready || live.details.error) throw new Error('Could not verify worker state. Check Docker and inspect the worker before turning Homies off.');
+        assertHomiesWorkSettled(live.externalBusy || live.details.busy || live.details.tasks.some(task =>
+          ['accepted', 'running', 'unknown'].includes(task.status) || task.inputs?.some(input => input.pending === true)));
+      }
+    },
+    async platformProfile(workspaceRoot: string, agentId: string, accountId: string): Promise<HomieExecutionProfile> {
+      assertHomiesAvailable(options.access);
+      const workspace = await realpath(workspaceRoot);
+      await options.prepareSource?.(workspace, agentId);
+      const agent = options.registry.snapshot(workspace).agents.find(a => a.id === agentId && a.accountId === accountId);
+      const assignment = agent && projectAssignment(agent, workspace);
+      if (!agent || !assignment) throw new Error('Restore the selected Homie account and project assignment.');
+      const permissions = assignment.permissions ?? agent.permissions;
+      if (permissions.fileWrite !== true || permissions.commandExecution !== true) throw new Error('Isolated tasks require the Homie’s saved file and command permissions.');
+      if (agent.package?.requiredTools.length || agent.package?.tools?.some(t => t.enabled)) {
+        throw new Error('This Homie requires external tools. Choose a Homie without required external tools for an isolated task.');
+      }
+      const account = await options.account(accountId);
+      assertAgentModelSelection(agent, account.models);
+      const instructions = await resolveAgentInstructions(agent, assignment);
+      const assertCurrent = () => {
+        const current = options.registry.snapshot(workspace).agents.find(a => a.id === agentId);
+        if (!current || current.accountId !== accountId || current.revision !== agent.revision || !projectAssignment(current, workspace)) {
+          throw new Error('Homie settings changed. Start a new isolated task with the current settings.');
+        }
+      };
+      assertCurrent();
+      return { agentId, accountId, assertCurrent, flash: options.flash, workspace,
+        configuration: { ...(options.flash ? { flashProtocol: 1 } : {}), profileId: agentId, accountId, role: agent.role, model: agent.model, reasoningEffort: agent.reasoningEffort,
+          serviceTier: agent.serviceTier, permissions, enabledTools: [], instructions: `${instructions}\n\nThis is an isolated code task. Use local file and shell tools. Host Cheshi handles Git, collaboration and verification.`,
+          projectDocMaxBytes: parseProjectDocMaxBytes(options.getProjectDocMaxBytes?.() ?? DEFAULT_PROJECT_DOC_MAX_BYTES) },
+        credentials: async () => { assertCurrent(); const auth = await readRuntimeAuth(account.home); assertCurrent(); return auth; } };
+    },
+    async preparePlatformEnvironment(engineId: string, directory: string) {
+      assertHomiesAvailable(options.access);
+      const prefix = await local(engineId);
+      await workerOperations.exclusive(() => prepareProjectEnvironment(engineId, prefix, directory, run));
+    },
+    async testTool(workspaceRoot: string, input: ToolTestRequest) {
+      assertHomiesAvailable(options.access);
+      const b = await binding(workspaceRoot, { action: 'status', engineId: input.engineId, agentId: input.agentId });
+      const tool = options.registry.snapshot(b.workspace).agents.find(a => a.id === b.agentId)?.package?.tools?.find(t => t.name === input.tool);
+      const timeout = tool ? customToolTimeoutMs(tool, input.args) : CUSTOM_TOOL_TIMEOUT_MS;
+      return runCustomTool(b, `homie_${input.tool}`, input.args, AbortSignal.timeout(timeout));
+    },
+    async permissions(workspaceRoot: string, input: { agentId: string; engineId: string; accountId: string; roomId: string; taskId: string; request: PermissionRequest; decision: 'allow' | 'deny' }) {
+      const b = await binding(workspaceRoot, { ...input, action: 'status' });
+      if (b.accountId !== input.accountId) throw new Error('The participant account changed.');
+      const result = await workerOperations.run(() => lifecycle.exclusive(b, async () => {
+        await lifecycle.connection(b, true);
+        const state = await request(workspaceRoot, { ...input, action: 'status' });
+        const details = state.details, task = details?.tasks.find(t => t.id === input.taskId && t.roomId === input.roomId);
+        const current = task?.inspection?.permissionRequest;
+        if (!details?.ready || details.busy || details.tasks.some(t => ['accepted', 'running', 'unknown'].includes(t.status))) throw new Error('Wait for this worker or inspect unfinished execution before applying permissions.');
+        if (!current || current.id !== input.request.id || current.fileWrite !== input.request.fileWrite || current.commandExecution !== input.request.commandExecution) throw new Error('The permission request changed. Refresh Chats.');
+        const desired = input.decision === 'allow' ? 'allowed' : 'denied';
+        if (current.status !== 'pending' && current.status !== desired) throw new Error('This permission request was already decided.');
+        const snapshot = options.registry.snapshot(workspaceRoot), agent = snapshot.agents.find(a => a.id === input.agentId);
+        const assignment = agent && projectAssignment(agent, b.workspace);
+        if (!agent || !assignment || agent.accountId !== input.accountId) throw new Error('The participant assignment changed.');
+        const permissions = assignment.permissions ?? agent.permissions;
+        let grantedRevision: number | undefined;
+        if (input.decision === 'allow' && !coversPermissions(permissions, current)) {
+          if (current.fileWrite) await (options.checkProjectEnvironment ?? assertProjectEnvironment)(input.engineId, await local(input.engineId), await executionWorkspace(b));
+          const granted = options.registry.save({ id: agent.id, revision: agent.revision, profile: agent, assignment: { ...assignment, assigned: true, permissions: {
+            fileWrite: permissions.fileWrite || current.fileWrite, commandExecution: permissions.commandExecution || current.commandExecution,
+          } } }, workspaceRoot);
+          grantedRevision = granted.snapshot.agents.find(a => a.id === agent.id)!.revision;
+        }
+        if (input.decision === 'allow') {
+          try {
+            const started = await request(workspaceRoot, { ...input, action: 'start' });
+            if (started.details) lifecycle.adopt(b, started.details);
+          } catch (error) {
+            const latest = options.registry.snapshot(workspaceRoot).agents.find(a => a.id === agent.id);
+            // Restore only this operation's grant; never overwrite a concurrent settings edit.
+            if (grantedRevision !== undefined && latest?.revision === grantedRevision) options.registry.save({ id: agent.id, revision: grantedRevision, profile: latest,
+              assignment: { ...assignment, assigned: true, permissions: assignment.permissions ?? null } }, workspaceRoot);
+            throw error;
+          }
+        }
+        const key = `${agent.id}-${digest(b.workspace).slice(0, 16)}`, prefix = await local(input.engineId);
+        const worker = await find(prefix, key);
+        if (!worker?.endpoint) throw new Error('Worker is unavailable. Permissions were saved; retry after starting it.');
+        const config = agentRecord(JSON.parse(await readFile(join(options.directory, digest(input.engineId), key, 'runtime.json'), 'utf8')));
+        if (typeof config.token !== 'string') throw new Error('Worker authorization unavailable.');
+        await post(worker.endpoint, config.token, `/tasks/${input.taskId}/permissions`, { roomId: input.roomId, requestId: current.id, decision: input.decision }, true);
+        return request(workspaceRoot, { ...input, action: 'status' });
+      }));
+      orchestration.notify(b); changed(b); return result;
+    },
+    subscribe(listener: (binding: Binding) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    notify: (binding?: Binding) => orchestration.notify(binding),
+    wake,
+    lifecycle: (binding: Binding) => lifecycle.state(binding),
+    displayLifecycle: (engine: string, agent: ManagedAgent) => lifecycle.project(engine, agent),
+    hold: (engine: string, id: string) => lifecycle.hold(engine, id),
+    manualControl: <T,>(engine: string, id: string, action: string, operation: () => Promise<T>) => {
+      assertHomiesAvailable(options.access);
+      return lifecycle.manual(engine, id, action, operation, () => options.management.details(engine, id));
+    },
+    chat: async (workspace: string, input: AgentRuntimeRequest, context: { roomId: string; conversation: string; goal: boolean; automatic?: true; userText?: string; questionId?: string; inputId?: string }) => {
+      assertHomiesAvailable(options.access);
+      const b = await binding(workspace, input); lifecycle.demand(b);
+      const result = await workerOperations.run(() => lifecycle.exclusive(b, () => request(workspace, input, context)));
+      orchestration.notify(b); changed(b); return result;
+    },
+    start() { if (!started) { started = true; unsubscribeRegistry = options.registry.subscribe(() => orchestration.notify()); orchestration.start(); } },
+    async dispose() { started = false; unsubscribeRegistry?.(); await orchestration.dispose(); await lifecycle.settled(); listeners.clear(); },
+    request: async (workspaceRoot: string, input: AgentRuntimeRequest) => {
+      const parsed = parseAgentRuntimeRequest(input);
+      if (parsed.action === 'status') return status(workspaceRoot, parsed);
+      if (parsed.action === 'project-setup') {
+        await binding(workspaceRoot, parsed);
+        const workspace = await realpath(workspaceRoot), prefix = await local(parsed.engineId);
+        const shared = workspaces ? workspaces.root({ workspace, engineId: parsed.engineId }) : workspace;
+        if (workspaces) await mkdir(shared, { recursive: true, mode: 0o700 });
+        await workerOperations.exclusive(() => prepareProjectEnvironment(parsed.engineId, prefix, shared, run));
+        return { details: null };
+      }
+      const b = await binding(workspaceRoot, parsed);
+      lifecycle.demand(b);
+      const result = await workerOperations.run(() => lifecycle.exclusive(b, async () => {
+        if (parsed.action !== 'start' && lifecycle.cached(b)?.lifecycle?.phase === 'sleeping') await lifecycle.connection(b, true);
+        const result = await request(workspaceRoot, parsed);
+        if (parsed.action === 'start' && result.details) lifecycle.adopt(b, result.details);
+        return result;
+      }));
+      // Never await this tick while holding the per-worker gate: dispatch uses the same gate.
+      orchestration.notify(b); changed(b);
+      if (parsed.action === 'start') await orchestration.tick();
+      return result;
+    },
+  };
+}
+function settingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], recoveryProtocol = 3, progressProtocol = true, workProtocol = true, integrationProtocol = true, candidateVerificationProtocol = true, applicationProtocol = true, applicationInspectionProtocol = true, conversationProtocol = true, activityProtocol = true, inputQueueProtocol = true) {
+  return digest(JSON.stringify({ ...(inputQueueProtocol ? { inputQueueProtocol: 1 } : {}), ...(activityProtocol ? { activityProtocol: 1 } : {}), ...(conversationProtocol ? { conversationProtocol: 1, lifecycleProtocol: 1, eventsProtocol: 1 } : {}), ...(inputQueueProtocol ? { sandboxProtocol: 3, permissionProtocol: 1 } : { sandboxProtocol: 2 }), collaborationProtocol: 1, decisionProtocol: 1, verificationProtocol: 1, chatsProtocol: 1, recoveryProtocol, questionProtocol: 2, ...(progressProtocol ? { progressProtocol: 1 } : {}), ...(workProtocol ? { workProtocol: 1 } : {}), ...(integrationProtocol ? { integrationProtocol: 1 } : {}), ...(candidateVerificationProtocol ? { candidateVerificationProtocol: 1 } : {}), ...(applicationProtocol ? { applicationProtocol: 1 } : {}), ...(applicationInspectionProtocol ? { applicationInspectionProtocol: 1 } : {}), agent: profileConfiguration({ ...agent, permissions: assignment.permissions ?? agent.permissions }), workspace, instructions: assignment.instructions,
+    ...(assignment.instructionFiles?.length ? { instructionFiles: assignment.instructionFiles } : {}) }));
+}
+function profileConfiguration(agent: SpecialistAgent) {
+  return { ...(agent.package ? { customTools: agent.package?.tools, homiePack: agent.package, ...(agent.package.enabledTools ? { enabledTools: agent.package.enabledTools } : {}) } : {}), role: agent.role, accountId: agent.accountId, model: agent.model, reasoningEffort: agent.reasoningEffort,
+    serviceTier: agent.serviceTier, permissions: agent.permissions, instructions: agent.instructions,
+    ...(agent.instructionFiles?.length ? { instructionFiles: agent.instructionFiles } : {}) };
+}
+
+function runtimeSettingsDigest(agent: SpecialistAgent, workspace: string, assignment: SpecialistAgent['assignments'][number], projectDocMaxBytes = DEFAULT_PROJECT_DOC_MAX_BYTES, dependencies = (assignment.permissions ?? agent.permissions).commandExecution ? projectDependencies(workspace) : null) {
+  return digest(`${settingsDigest(agent, workspace, assignment)}\n${dependencies?.fingerprint ?? ''}\nproject_doc_max_bytes=${parseProjectDocMaxBytes(projectDocMaxBytes)}\ncodegraph=2\ndependency_volumes=1\nintake_recovery=1\ngoal_revision_guidance=1\nworker_git_guidance=1\nverification_source=1\ngoal_pause=1\ndynamic_tool_activity=1\ngoal_verification_policy=1\nworker_tmpfs_bytes=${WORKER_TMPFS_BYTES}`);
+}

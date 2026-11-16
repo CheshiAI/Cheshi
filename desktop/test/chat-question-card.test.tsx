@@ -147,6 +147,8 @@ function cardHarness() {
   const input = { requests: [] as ChatUserInputRequest[], loadingId: null, error: null, respond: async () => true };
   const jsx = (type: unknown, props: Record<string, unknown>): Element => ({ type, props });
   const modules: Record<string, unknown> = {
+    '../../shared/ui/TooltipButton': { TooltipButton: 'button' },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
     react: {
       useState(initial: unknown) { const slot = index++; if (!(slot in slots)) slots[slot] = typeof initial === 'function' ? initial() : initial;
         return [slots[slot], (value: unknown) => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value; }]; },
@@ -171,7 +173,7 @@ function cardHarness() {
     if (Array.isArray(node)) return node.flatMap(elements);
     if (!node || typeof node !== 'object' || !('props' in node)) return [];
     const element = node as Element;
-    return [element, ...elements(element.props.children)];
+    return [element, ...elements(element.props.children), ...elements(element.props.actions)];
   }
   const find = (predicate: (node: Element) => boolean) => {
     const found = elements(render()).find(predicate); assert.ok(found); return found;

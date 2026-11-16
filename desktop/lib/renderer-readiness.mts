@@ -3,6 +3,7 @@ export function installRendererReadiness(
   view: Pick<Window, 'addEventListener' | 'requestAnimationFrame' | 'setTimeout'>,
   document: Pick<Document, 'readyState' | 'documentElement'>,
   notify: (theme: 'dark' | 'light') => void,
+  retainedSurface = false,
 ): void {
   let domReady = document.readyState !== 'loading';
   let contentReady = false;
@@ -10,6 +11,12 @@ export function installRendererReadiness(
   const schedule = () => {
     if (!domReady || !contentReady || scheduled) return;
     scheduled = true;
+    // A retained view is deliberately not drawn until activation. Waiting for a
+    // paint here would deadlock its first activation; committed content suffices.
+    if (retainedSurface) {
+      view.setTimeout(() => notify(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'), 0);
+      return;
+    }
     view.requestAnimationFrame(() => {
       view.requestAnimationFrame(() => {
         view.setTimeout(() => {

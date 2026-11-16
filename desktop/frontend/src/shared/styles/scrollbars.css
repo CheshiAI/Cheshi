@@ -1,0 +1,63 @@
+/* Inherited by all scroll containers, including those using thin scrollbars. */
+:root {
+  --auto-hide-scrollbar-size: 6px;
+  scrollbar-color: var(--control-track-color) transparent;
+}
+
+/* Fallback for engines without standard scrollbar colors. Non-auto standard
+   colors take precedence over these pseudo-elements in current Chromium.
+   Fixed-size consumers opt in with --scrollbar-size and reset the standard
+   scrollbar properties to auto so their size stays stable during interaction. */
+::-webkit-scrollbar {
+  width: var(--scrollbar-size, auto);
+  height: var(--scrollbar-size, auto);
+}
+
+::-webkit-scrollbar,
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-track-piece,
+::-webkit-scrollbar-corner {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+::-webkit-scrollbar-thumb {
+  border: none;
+  border-radius: 999px;
+  background: var(--scrollbar-thumb-color, var(--control-track-color));
+  box-shadow: none;
+}
+
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  background: var(--control-track-hover-color);
+}
+
+/* Animate on the scroll container so both scrollbar axes inherit the fade. */
+@property --auto-hide-scrollbar-color {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
+[data-auto-hide-scrollbars] {
+  --scrollbar-thumb-color: transparent;
+}
+
+[data-scrollbar-active] {
+  --auto-hide-scrollbar-color: transparent;
+  --scrollbar-thumb-color: var(--auto-hide-scrollbar-color);
+  transition: --auto-hide-scrollbar-color 240ms ease-out;
+}
+
+[data-scrollbar-active='true'] {
+  --auto-hide-scrollbar-color: var(--control-track-color);
+  transition-duration: 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-scrollbar-active] {
+    transition: none;
+  }
+}

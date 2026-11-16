@@ -1,13 +1,14 @@
 import { GitBranch, History } from 'lucide-react';
 import { useMemo } from 'react';
 
-import { LiquidGlassPanel } from '../../shared/ui';
+import { LiquidGlassPanel, LoadingState } from '../../shared/ui';
+import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { GitBranchTree } from './GitBranchTree';
 import { GitCommitGraph } from './GitCommitGraph';
 import { buildCommitGraph } from './gitCommitGraphLayout';
 import { GitDiffViewer } from './GitDiffViewer';
 import { formatGitDate } from './gitWorkspaceModel';
-import { MarkedPanelTitle } from './GitPullRequestPanels';
 import styles from './GitWorkspace.module.css';
 import type { GitWorkspaceController } from './useGitWorkspaceController';
 
@@ -29,8 +30,8 @@ export function GitHistoryWorkspace({ controller, onOpenWorkspaceFile }: {
     <div className={styles.splitLayout}>
       <LiquidGlassPanel as="section" className={styles.listPanel} data-liquid-glass-surface="side-panel">
         <header className={styles.panelHeader}>
-          <MarkedPanelTitle icon={GitBranch} title="HEAD" />
-          <span>{snapshot.head ?? 'unborn'}{snapshot.detached === true ? ' · detached' : ''}</span>
+          <SidebarPanelTitle icon={<GitBranch aria-hidden="true" />} title="HEAD" />
+          <span className={styles.historyBranchName}>{snapshot.head ?? 'unborn'}{snapshot.detached === true ? ' · detached' : ''}</span>
         </header>
         <GitBranchTree
           branches={snapshot.branches ?? []}
@@ -42,7 +43,7 @@ export function GitHistoryWorkspace({ controller, onOpenWorkspaceFile }: {
           onUpdate={(branch) => updateBranch(branch.fullName, branch.name)}
         />
         <header className={styles.panelHeader}>
-          <MarkedPanelTitle icon={History} title="Commit log" />
+          <SidebarPanelTitle icon={<History aria-hidden="true" />} title="COMMIT LOG" />
           <span className={styles.historyBranchName} title={branchHistory.branchName}>{branchHistory.branchName}</span>
           <small className={styles.changeCountBadge}>{branchHistory.commits.length}</small>
         </header>
@@ -51,29 +52,31 @@ export function GitHistoryWorkspace({ controller, onOpenWorkspaceFile }: {
           aria-busy={branchHistory.commitsLoading}
           className={styles.commitList}
         >
-          {branchHistory.error && <p className={styles.historyStatus} role="alert">{branchHistory.error}</p>}
-          {branchHistory.commitsLoading && <p className={styles.historyStatus} role="status">Loading commits…</p>}
-          {!branchHistory.commitsLoading && !branchHistory.error && branchHistory.commits.length === 0 && (
-            <p className={styles.historyStatus} role="status">No commits.</p>
-          )}
-          {branchHistory.commits.map((entry, index) => (
-            <button
-              aria-current={branchHistory.selectedCommit?.hash === entry.hash ? 'true' : undefined}
-              className={styles.commitRow}
-              key={entry.hash}
-              type="button"
-              onClick={() => branchHistory.selectCommit(entry.hash)}
-              style={{ minWidth: graph.laneCount * 16 + 180 }}
-              aria-label={`${entry.subject}${entry.parents?.length > 1 ? ', merge commit' : ''}`}
-            >
-              <GitCommitGraph row={graph.rows[index]!} laneCount={graph.laneCount} />
-              <span className={styles.commitText}>
-                <strong>{entry.subject}</strong>
-                <span>{entry.authorName} · {formatGitDate(entry.authoredAt)}</span>
-              </span>
-              <code>{entry.shortHash}</code>
-            </button>
-          ))}
+          <OverlayScrollArea className={styles.commitScroll} label="Commit history">
+            {branchHistory.error && <p className={styles.historyStatus} role="alert">{branchHistory.error}</p>}
+            {branchHistory.commitsLoading && <LoadingState className={styles.historyStatus} label="Loading commits…" />}
+            {!branchHistory.commitsLoading && !branchHistory.error && branchHistory.commits.length === 0 && (
+              <p className={styles.historyStatus} role="status">No commits.</p>
+            )}
+            {branchHistory.commits.map((entry, index) => (
+              <button
+                aria-current={branchHistory.selectedCommit?.hash === entry.hash ? 'true' : undefined}
+                className={styles.commitRow}
+                key={entry.hash}
+                type="button"
+                onClick={() => branchHistory.selectCommit(entry.hash)}
+                style={{ minWidth: graph.laneCount * 16 + 180 }}
+                aria-label={`${entry.subject}${entry.parents?.length > 1 ? ', merge commit' : ''}`}
+              >
+                <GitCommitGraph row={graph.rows[index]!} laneCount={graph.laneCount} />
+                <span className={styles.commitText}>
+                  <strong>{entry.subject}</strong>
+                  <span>{entry.authorName} · {formatGitDate(entry.authoredAt)}</span>
+                </span>
+                <code>{entry.shortHash}</code>
+              </button>
+            ))}
+          </OverlayScrollArea>
         </div>
       </LiquidGlassPanel>
       <GitDiffViewer

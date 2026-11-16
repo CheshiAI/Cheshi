@@ -4,6 +4,10 @@ export const MAX_CHAT_ATTACHMENT_BATCH_BYTES = 100 * 1024 * 1024;
 
 export type ChatAttachmentTransfer = { path: string } | { name: string; mimeType: string; bytes: Uint8Array };
 
+/** Directories are references in the draft, never copied attachment contents. */
+export interface ChatDirectoryReference { kind: 'directory'; name: string; path: string }
+export type ChatTransferItem<T> = T | ChatDirectoryReference;
+
 export interface ChatAttachmentFile {
   name: string;
   type: string;

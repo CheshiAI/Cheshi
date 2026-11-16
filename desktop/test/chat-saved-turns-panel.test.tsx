@@ -73,18 +73,21 @@ describe('saved turn presentation', () => {
   });
 
   test('distinguishes empty and loading states', () => {
-    expect(render(fixture({ records: [] }))).toContain('No saved turns yet.');
+    expect(render(fixture({ records: [] }))).toContain('no saved turns yet.');
     const loading = render(fixture({ records: [], loading: true }));
     expect(loading).toContain('aria-busy="true"');
-    expect(loading).toContain('Loading saved turns');
-    expect(loading).not.toContain('No saved turns yet.');
+    expect(loading).toContain('role="status" aria-label="loading saved turns…"');
+    expect(loading).not.toContain('no saved turns yet.');
+    const refreshing = render(fixture({ loading: true }));
+    expect(refreshing).toContain('aria-label="loading saved turns…"');
+    expect(refreshing).toContain('My discussion');
   });
 
   test('offers continuation and explains when the destination is busy', () => {
     const html = renderToStaticMarkup(<SavedChatTurnsPanel savedTurns={fixture()} onClose={() => {}}
       onContinue={async () => true} continuationDisabledReason="Wait for the current operation to finish." />);
     expect(html).toContain('Continue in new session');
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*title="Wait for the current operation to finish\."/);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-description="Wait for the current operation to finish\."/);
   });
 });
 

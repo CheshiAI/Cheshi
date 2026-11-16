@@ -35,14 +35,14 @@ export const workspaceEditorTheme = EditorView.theme({
     overflow: 'auto',
   },
   '.cm-content': {
-    caretColor: 'var(--editor-accent)',
+    caretColor: 'var(--editor-cursor)',
     padding: '0 0 var(--space-4)',
   },
   '.cm-line': {
     padding: '0 var(--editor-line-padding)',
   },
   '.cm-cursor, .cm-dropCursor': {
-    borderLeftColor: 'var(--editor-accent)',
+    borderLeftColor: 'var(--editor-cursor)',
   },
   '.cm-gutters': {
     borderRight: '1px solid var(--editor-border)',
@@ -80,14 +80,39 @@ export const workspaceEditorTheme = EditorView.theme({
   '.cm-panels:has(> [data-code-editor-search-bridge]:only-child)': {
     display: 'none',
   },
-  '.cm-tooltip.cm-tooltip-autocomplete': {
-    overflow: 'hidden',
-    border: '1px solid var(--divider)',
-    borderRadius: 'var(--radius-popover)',
+  '.cm-tooltip': {
+    '--panel-backdrop-filter': 'none',
+    '--scrollbar-size': 'var(--auto-hide-scrollbar-size)',
+    scrollbarColor: 'auto',
+    scrollbarWidth: 'auto',
+    border: '1px solid transparent',
+    borderRadius: '12px',
     background: 'transparent',
+    pointerEvents: 'auto',
+  },
+  '.cm-tooltip::before': {
+    content: '""',
+    position: 'absolute',
+    inset: '-1px',
+    zIndex: '-2',
+    borderRadius: 'inherit',
+    background: 'transparent',
+    pointerEvents: 'none',
+  },
+  '.cm-tooltip > .workspace-editor-tooltip-surface': {
+    position: 'absolute',
+    inset: '-1px',
+    zIndex: '-1',
+    borderRadius: 'inherit',
+    background: 'transparent',
+    pointerEvents: 'none',
+  },
+  '.cm-tooltip:not(.cm-tooltip-autocomplete) > .workspace-editor-tooltip-surface': {
+    background: 'var(--tooltip-background)',
+  },
+  '.cm-tooltip.cm-tooltip-autocomplete': {
+    overflow: 'visible',
     color: 'var(--text)',
-    backdropFilter: 'blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation))',
-    WebkitBackdropFilter: 'blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation))',
     padding: 'var(--space-6)',
   },
   '.cm-tooltip.cm-tooltip-autocomplete > ul': {
@@ -99,13 +124,14 @@ export const workspaceEditorTheme = EditorView.theme({
     margin: '0',
     overflowX: 'hidden',
     padding: '0',
-    scrollbarColor: 'color-mix(in srgb, var(--editor-muted) 42%, transparent) transparent',
-    scrollbarWidth: 'thin',
+    scrollbarColor: 'auto',
+    scrollbarWidth: 'auto',
   },
   '.cm-tooltip.cm-tooltip-autocomplete > ul > li': {
     display: 'flex',
     minWidth: '0',
     minHeight: '28px',
+    background: 'var(--control-surface-ghost)',
     alignItems: 'center',
     borderRadius: '6px',
     color: 'var(--text)',
@@ -113,8 +139,12 @@ export const workspaceEditorTheme = EditorView.theme({
     lineHeight: '16px',
     padding: 'var(--space-6) var(--space-10)',
   },
-  '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected="true"], .cm-tooltip.cm-tooltip-autocomplete > ul > li:hover': {
-    background: 'var(--dropdown-selection-bg)',
+  '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected="true"]': {
+    background: 'var(--control-surface)',
+    color: 'var(--active-text)',
+  },
+  '.cm-tooltip.cm-tooltip-autocomplete > ul > li:is(:hover, :active)': {
+    background: 'var(--control-surface-interactive)',
     color: 'var(--active-text)',
   },
   '.cm-tooltip.cm-tooltip-autocomplete::after': {
@@ -218,9 +248,6 @@ export const workspaceEditorTheme = EditorView.theme({
     color: 'var(--editor-accent)',
   },
   '.cm-tooltip.cm-completionInfo': {
-    border: '1px solid var(--editor-completion-border)',
-    borderRadius: 'var(--radius-popover)',
-    background: 'var(--editor-completion-surface)',
     color: 'var(--editor-text)',
     font: 'var(--font-size-small)/1.55 var(--font-mono)',
     padding: 'var(--space-10) var(--space-12)',
@@ -228,14 +255,9 @@ export const workspaceEditorTheme = EditorView.theme({
   '.cm-tooltip.cm-tooltip-hover': {
     maxWidth: 'min(720px, calc(100vw - 48px))',
     overflow: 'visible',
-    border: '1px solid var(--divider)',
-    borderRadius: 'var(--radius-popover)',
-    background: 'var(--divider)',
     color: 'var(--editor-text)',
   },
   '.cm-tooltip.cm-tooltip-lint': {
-    border: '1px solid var(--divider)',
-    background: 'var(--divider)',
     color: 'var(--editor-text)',
   },
   '.cm-tooltip-lint .cm-diagnostic': {
@@ -257,8 +279,8 @@ export const workspaceEditorTheme = EditorView.theme({
   '.workspace-editor-symbol-hover[data-mode="documentation"]': {
     maxHeight: 'min(520px, calc(100vh - 96px))',
     overflow: 'auto',
-    scrollbarColor: 'color-mix(in srgb, var(--editor-muted) 42%, transparent) transparent',
-    scrollbarWidth: 'thin',
+    scrollbarColor: 'auto',
+    scrollbarWidth: 'auto',
   },
   '.workspace-editor-symbol-hover-signature, .workspace-editor-symbol-hover-documentation': {
     margin: '0',
@@ -268,9 +290,6 @@ export const workspaceEditorTheme = EditorView.theme({
   '.cm-tooltip.workspace-editor-signature-help': {
     minWidth: '260px',
     maxWidth: 'min(680px, calc(100vw - 48px))',
-    border: '1px solid var(--editor-completion-border)',
-    borderRadius: '9px',
-    background: 'var(--editor-completion-surface)',
     color: 'var(--editor-text)',
     padding: 'var(--space-10) var(--space-12)',
   },
@@ -282,7 +301,7 @@ export const workspaceEditorTheme = EditorView.theme({
   },
   '.workspace-editor-signature-help code strong': {
     borderRadius: 'var(--radius-small)',
-    background: 'var(--dropdown-selection-bg)',
+    background: 'var(--control-surface)',
     color: 'var(--dropdown-selection-text)',
     fontWeight: '700',
     padding: '1px var(--space-2)',
@@ -315,16 +334,7 @@ export const workspaceEditorTheme = EditorView.theme({
     textDecorationThickness: '1px',
     textUnderlineOffset: '3px',
   },
-  '.cm-tooltip-above.cm-tooltip-hover > .cm-tooltip-arrow::before': {
-    borderTopColor: 'var(--divider)',
-  },
-  '.cm-tooltip-above.cm-tooltip-hover > .cm-tooltip-arrow::after': {
-    borderTopColor: 'var(--divider)',
-  },
-  '.cm-tooltip-below.cm-tooltip-hover > .cm-tooltip-arrow::before': {
-    borderBottomColor: 'var(--divider)',
-  },
-  '.cm-tooltip-below.cm-tooltip-hover > .cm-tooltip-arrow::after': {
-    borderBottomColor: 'var(--divider)',
+  '.cm-tooltip > .cm-tooltip-arrow': {
+    display: 'none',
   },
 });

@@ -222,7 +222,9 @@ function renderMergedActions(controller: ReturnType<ReturnType<typeof createScen
   const modules: Record<string, unknown> = {
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
     'lucide-react': new Proxy({}, { get: (_target, name) => String(name) }),
-    '../../shared/ui': { NeumorphicButton: 'button' },
+    '../../shared/ui': { NeumorphicButton: 'button', LiquidGlassPanel: 'section' },
+    '../../shared/ui/SidebarPanelHeader': { SidebarPanelTitle: 'title' },
+    '../../shared/ui/SidebarPanelHeader.module.css': { default: {} },
     './gitWorkspaceModel': {},
     './GitWorkspace.module.css': { default: {} },
   };

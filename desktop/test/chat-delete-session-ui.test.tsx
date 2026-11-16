@@ -23,11 +23,12 @@ test('chat title and delete action are separate keyboard buttons with separate c
   const nodes = createSessionListHarness().render({ sessions: [session], loading: false, activeSessionId: null,
     responseThreadIds: [], newChatDisabled: false, selectionDisabled: false,
     onOpen: (id) => opened.push(id), onNew: () => {}, onDelete: (id) => deleted.push(id), deleteReason: () => null });
-  const remove = nodes.find((element) => element.props['aria-label'] === `Delete chat: ${session.title}`)!;
+  const remove = nodes.find((element) => element.props['aria-label'] === `Delete session: ${session.title}`)!;
   (remove.props.onClick as (() => void))();
   expect(deleted).toEqual(['thread']);
   expect(opened).toEqual([]);
-  const title = nodes.find((element) => element.type === 'button' && element.props.title === session.title)!;
+  const title = nodes.find((element) => element.type === 'button' && element.props['aria-label'] === session.title)!;
+  expect(title.props.title).toBeUndefined();
   (title.props.onClick as (() => void))();
   expect(opened).toEqual(['thread']);
   expect(elements(title.props.children as ReactNode).some((element) => element.props.onClick)).toBe(false);
@@ -37,8 +38,8 @@ test('deletion restriction disables only the delete action and exposes its reaso
   const html = renderToStaticMarkup(<ChatSessionList sessions={[session]} loading={false} activeSessionId="thread"
     responseThreadIds={['thread']} newChatDisabled={false} selectionDisabled={false}
     onOpen={() => {}} onNew={() => {}} onDelete={() => {}} deleteReason={() => 'Stop the active response first.'} />);
-  expect(html).toMatch(/<button[^>]*aria-label="Delete chat: A long conversation"[^>]*disabled=""/);
-  expect(html).toContain('title="Stop the active response first."');
+  expect(html).toMatch(/<button[^>]*aria-label="Delete session: A long conversation"[^>]*disabled=""/);
+  expect(html).toContain('aria-description="Stop the active response first."');
   expect(html).toContain('aria-current="page"');
 });
 
@@ -48,15 +49,15 @@ test('delete confirmation names the irreversible child deletion and preserves er
   expect(html).toContain('child agent conversations');
   expect(html).toContain('This cannot be undone.');
   expect(html).toContain('role="alert">Codex refused deletion.');
-  expect(html).toContain('title="A long conversation"');
+  expect(html).toContain('aria-description="A long conversation"');
   expect(html).toContain('autofocus=""');
-  expect(html).not.toContain('aria-label="Deleting chat…"');
+  expect(html).not.toContain('aria-label="Deleting session…"');
 });
 
 test('pending chat deletion shows the shared loading indicator and elapsed time', () => {
   const html = renderToStaticMarkup(<ChatDeleteSessionForm sessionTitle={session.title} reason={null}
     pending error={null} onDelete={() => {}} onClose={() => {}} />);
-  expect(html).toContain('role="status" aria-label="Deleting chat…"');
+  expect(html).toContain('role="status" aria-label="Deleting session…"');
   expect(html).toContain('0.0s');
   expect(html).toContain('aria-busy="true"');
   expect(html.match(/disabled=""/g)).toHaveLength(2);
@@ -74,13 +75,12 @@ test('pending or newly blocked deletion cannot be submitted by Enter', () => {
 
 test('workspace deletion waits for operations and responses in every pane, including a hidden thread', () => {
   const idle = { state: INITIAL_CHAT_STATE, isOperationPending: () => false };
-  expect(chatSessionDeletionReason('thread', true, false, false, [idle])).toBeNull();
-  expect(chatSessionDeletionReason('thread', false, false, false, [])).not.toBeNull();
-  expect(chatSessionDeletionReason('thread', true, true, false, [idle])).not.toBeNull();
-  expect(chatSessionDeletionReason('thread', true, false, true, [idle])).not.toBeNull();
-  expect(chatSessionDeletionReason('thread', true, false, false, [idle, { ...idle, isOperationPending: () => true }])).not.toBeNull();
-  expect(chatSessionDeletionReason('thread', true, false, false,
+  expect(chatSessionDeletionReason('thread', true, false, [idle])).toBeNull();
+  expect(chatSessionDeletionReason('thread', false, false, [])).not.toBeNull();
+  expect(chatSessionDeletionReason('thread', true, true, [idle])).not.toBeNull();
+  expect(chatSessionDeletionReason('thread', true, false, [idle, { ...idle, isOperationPending: () => true }])).not.toBeNull();
+  expect(chatSessionDeletionReason('thread', true, false,
     [idle, { ...idle, state: { ...INITIAL_CHAT_STATE, activeSessionId: 'other', responseThreadIds: ['hidden'] } }])).not.toBeNull();
-  expect(chatSessionDeletionReason('thread', true, false, false,
+  expect(chatSessionDeletionReason('thread', true, false,
     [{ ...idle, state: { ...INITIAL_CHAT_STATE, sessions: [{ ...session, status: 'active' }] } }])).not.toBeNull();
 });

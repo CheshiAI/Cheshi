@@ -1,9 +1,8 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { registerCodexChatIpc } from '../lib/codex-chat-ipc.mts';
 import { CodexChatContexts } from '../lib/codex-chat-contexts.mts';
-import { CodexChatRelays } from '../lib/codex-chat-relay.mts';
 import { expect, test } from 'bun:test';
-import { timelineFromThread } from '../lib/codex-chat-thread-data.mts';
+import { textFromReasoningItem, timelineFromThread } from '../lib/codex-chat-thread-data.mts';
 import { codexThread, createCodexChatService, createFakeCodexClient } from './codex-chat-test-helpers.ts';
 
 function createDeferred<T>() {
@@ -26,6 +25,40 @@ function fixture(responses: Record<string, unknown> = {}) {
 }
 const model = { id: 'model', model: 'model', displayName: 'Test model', description: '', isDefault: true,
   defaultReasoningEffort: 'medium', supportedReasoningEfforts: [{ effort: 'medium', description: '' }], serviceTiers: [], defaultServiceTier: null };
+
+test.each(['default', 'plan'] as const)('requests reasoning summaries in %s mode', async (mode) => {
+  const { service, client, events } = fixture();
+  service.availableModels.set(model.model, model);
+  try {
+    service.setCollaborationMode(mode);
+    await service.sendMessage('Check the result', 'summary-test');
+    expect(client.requests.at(-1)).toMatchObject({ method: 'turn/start', params: { summary: 'auto' } });
+    client.emit('item/reasoning/summaryTextDelta', { threadId: 'thread', turnId: 'turn', itemId: 'reasoning', delta: 'Checking the result.' });
+    expect(events).toContainEqual(expect.objectContaining({ type: 'reasoning-delta', itemId: 'reasoning', text: 'Checking the result.' }));
+  } finally { service.stop(); }
+});
+
+test('separates streamed reasoning summary parts without splitting chunks or mixing items', async () => {
+  const { service, client, events } = fixture();
+  try {
+    await service.sendMessage('Check the result', 'summary-parts');
+    const emit = (itemId: string, summaryIndex: unknown, delta: string) => client.emit('item/reasoning/summaryTextDelta',
+      { threadId: 'thread', turnId: 'turn', itemId, summaryIndex, delta });
+    emit('first', 0, '**First');
+    emit('first', 0, ' summary**');
+    emit('second', 0, 'Other item');
+    emit('first', 1, '');
+    emit('first', 1, '**Second');
+    emit('first', 1, ' summary**');
+    emit('second', undefined, ' continued');
+    emit('second', '1', ' unchanged');
+    const text = (id: string) => events.filter(event => event.type === 'reasoning-delta' && event.itemId === id)
+      .map(event => event.text).join('');
+    expect(text('first')).toBe('**First summary**\n\n**Second summary**');
+    expect(text('first')).toBe(textFromReasoningItem({ summary: ['**First summary**', '**Second summary**'] }));
+    expect(text('second')).toBe('Other item continued unchanged');
+  } finally { service.stop(); }
+});
 
 test('steers the expected active turn with text, files and images without starting a new turn', async () => {
   const { service, client } = fixture();
@@ -147,16 +180,16 @@ test('IPC forwards mode and steering to the correct pane and retains structured 
   const { service, client } = fixture();
   const contexts = new CodexChatContexts({ service: { cwd: '/workspace', serviceName: 'test', developerInstructions: 'Test.' },
     createClient: () => ({ ...client, async stop() {} }), emit() {} });
-  const relays = new CodexChatRelays({ contexts, emit() {} });
   const handlers = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();
   const event = { sender: { id: 1 } } as IpcMainInvokeEvent;
   registerCodexChatIpc({ ipc: { handle(channel, handler) { handlers.set(channel, handler); } },
-    service(_event, contextId) { expect(contextId).toBe('pane'); return service; }, relays,
+    service(_event, contextId) { expect(contextId).toBe('pane'); return service; },
     savedTurns: { async list() { return []; }, async save() { throw new Error('Unused'); }, async delete() { throw new Error('Unused'); } },
     assertSender(candidate) { expect(candidate).toBe(event); },
     async prepareMessage(value) { if (value === 'invalid') throw new TypeError('Invalid attachment'); return { text: String(value), clientMessageId: 'ipc-message', skill: null, attachments: [], threadId: 'thread' }; },
   });
   try {
+    expect([...handlers.keys()].some(channel => channel.includes('chat-relay'))).toBe(false);
     const mode = handlers.get('cheshi:set-codex-collaboration-mode')!;
     const steer = handlers.get('cheshi:steer-codex-chat-message')!;
     expect(await mode(event, 'default', 'pane')).toMatchObject({ collaborationMode: 'default' });

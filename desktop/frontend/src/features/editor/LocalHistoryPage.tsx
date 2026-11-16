@@ -1,3 +1,5 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { History, RotateCcw, RotateCw, X } from 'lucide-react';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 
@@ -5,7 +7,10 @@ import {
   LOCAL_HISTORY_MAX_BYTES, LOCAL_HISTORY_RETENTION_DAYS, type LocalHistoryReason,
 } from '../../../../shared/local-history';
 import { cheshiDesktop, type WorkspaceFileWriteResult } from '../../cheshiDesktop';
+import { FileTypeIcon } from '../../shared/file-icons/FileTypeIcon';
 import { LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
+import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { localHistoryDiff } from './localHistoryDiff';
 import { LocalHistoryModel } from './localHistoryModel';
 import styles from './LocalHistoryPage.module.css';
@@ -32,6 +37,7 @@ const formatDate = (timestamp: number): string => new Date(timestamp).toLocaleSt
 export function LocalHistoryPage({
   path, draftDirty = false, onClose, onRestored,
 }: LocalHistoryPageProps) {
+  const fileName = path.split(/[\\/]/).pop() || path;
   const model = useMemo(() => new LocalHistoryModel(
     path, cheshiDesktop?.localHistory ? cheshiDesktop : undefined,
   ), [path]);
@@ -68,22 +74,22 @@ export function LocalHistoryPage({
     <LiquidGlassPanel as="section" className={styles.workspace} aria-label="Local history"
       onKeyDown={event => { if (event.key === 'Escape' && !restoring) { event.stopPropagation(); onClose(); } }}>
       <header className={styles.header}>
-        <div className={styles.title}>
-          <NeumorphicButton raised className={`theme-toggle ${styles.titleMark}`} disabled aria-hidden="true">
-            <History aria-hidden="true" />
-          </NeumorphicButton>
-          <h2>Local history</h2>
-        </div>
-        <span className={styles.path} title={path}>{path}</span>
+        <SidebarPanelTitle as="h2" title="LOCAL HISTORY" icon={<History aria-hidden="true" />} />
+        <TooltipTarget content={path}>
+          <span className={styles.path} >
+            <FileTypeIcon className={styles.fileIcon} name={fileName} path={path} />
+            <span className={styles.fileName}>{fileName}</span>
+          </span>
+        </TooltipTarget>
         <div className={styles.headerActions}>
-          <NeumorphicButton raised size="icon" aria-label="Refresh local history" aria-busy={loading}
+          <TooltipButton variant="ghost" size="icon" aria-label="Refresh local history" aria-busy={loading}
             title="Refresh local history" disabled={loading || restoring} onClick={() => void model.refresh()}>
             <RotateCw aria-hidden="true" />
-          </NeumorphicButton>
-          <NeumorphicButton raised size="icon" onClick={onClose} disabled={restoring}
+          </TooltipButton>
+          <TooltipButton variant="ghost" size="icon" onClick={onClose} disabled={restoring}
             aria-label="Close local history" title="Close local history">
             <X aria-hidden="true" />
-          </NeumorphicButton>
+          </TooltipButton>
         </div>
       </header>
       <div className={styles.layout}>
@@ -93,19 +99,19 @@ export function LocalHistoryPage({
           This file has unsaved edits. Save it before restoring. The comparison shows the saved file on disk.
         </p>}
         <div className={styles.body} aria-busy={loading || loadingSnapshot}>
-          <nav className={styles.history} aria-label="Saved file versions">
-            {loading && entries.length === 0 ? <p role="status">Loading history…</p>
+          <OverlayScrollArea className={styles.history} label="Saved file versions">
+            {loading && entries.length === 0 ? <p className={styles.empty} role="status">Loading history…</p>
               : entries.length === 0 ? <p>No saved versions yet.</p> : entries.map((entry) => (
-                <button key={entry.id} type="button" className={styles.entry}
+                <NeumorphicButton key={entry.id} variant="ghost" className={styles.entry}
                   aria-current={entry.id === selectedId ? 'true' : undefined}
                   disabled={loading || restoring} onClick={() => void model.select(entry.id)}>
                   <span>{reasonLabels[entry.reason]}</span>
                   <time dateTime={new Date(entry.createdAt).toISOString()}>{formatDate(entry.createdAt)}</time>
-                </button>
+                </NeumorphicButton>
               ))}
-          </nav>
+          </OverlayScrollArea>
           <section className={styles.comparison} aria-label="Version comparison">
-            {loadingSnapshot ? <p className={styles.empty} role="status">Loading version…</p>
+            {loadingSnapshot || (loading && !snapshot) ? <p className={styles.empty} role="status">Loading version…</p>
               : comparison && snapshot && current ? <div className={styles.comparisonContent}>
                 <div className={styles.columns}>
                   <div>Selected snapshot · {formatDate(snapshot.entry.createdAt)}
@@ -147,11 +153,11 @@ export function LocalHistoryPage({
         <footer className={styles.footer}>
           <p>Stored on this device · Up to {LOCAL_HISTORY_RETENTION_DAYS} days / {LOCAL_HISTORY_MAX_BYTES / 1024 / 1024}
             {' '}MiB per workspace. Git commits stay unchanged.</p>
-          <NeumorphicButton raised size="standard" disabled={!canRestore} aria-busy={restoring}
+          <TooltipButton variant="standard" disabled={!canRestore} aria-busy={restoring}
             title={draftDirty ? 'Save your edits before restoring' : 'Restore this version and keep the current contents in history'}
             onClick={() => void restore()}>
             <RotateCcw aria-hidden="true" />{restoring ? 'Restoring…' : 'Restore this version'}
-          </NeumorphicButton>
+          </TooltipButton>
         </footer>
       </div>
     </LiquidGlassPanel>

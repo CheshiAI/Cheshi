@@ -21,6 +21,7 @@ interface TerminalSplitLayout {
 }
 
 interface TerminalPane {
+  cwd: string;
   id: string;
   sessionId: string;
   title: string;
@@ -215,15 +216,15 @@ export class TerminalController {
     return true;
   }
 
-  newSession() {
-    if (!this.cwd) return null;
+  newSession(projectRoot = this.cwd) {
+    if (!this.cwd || !projectRoot || !path.isAbsolute(projectRoot)) return null;
     const ordinal = nextSessionOrdinal(this.sessions);
     const sessionId = createTerminalId();
-    const pane = this.createPane(sessionId);
+    const pane = this.createPane(sessionId, projectRoot);
     const session: TerminalSession = {
       id: sessionId,
       ordinal,
-      title: `Terminal ${ordinal}`,
+      title: projectRoot === this.cwd ? `Terminal ${ordinal}` : `${path.basename(projectRoot)} · ${ordinal}`,
       panes: [pane],
       layout: { type: "pane", paneId: pane.id },
     };
@@ -273,7 +274,7 @@ export class TerminalController {
     );
     if (!session || !containsPane(session.layout, paneId) || !this.cwd)
       return null;
-    const pane = this.createPane(session.id);
+    const pane = this.createPane(session.id, this.findPane(paneId)?.cwd);
     session.panes.push(pane);
     session.layout = insertTerminalPane(
       session.layout,
@@ -396,12 +397,13 @@ export class TerminalController {
     };
   }
 
-  createPane(sessionId: string): TerminalPane {
-    if (!this.cwd) throw new Error("Terminal workspace is not open.");
+  createPane(sessionId: string, cwd = this.cwd): TerminalPane {
+    if (!cwd) throw new Error("Terminal workspace is not open.");
     return {
       id: createTerminalId(),
       sessionId,
-      title: terminalTitle(this.cwd),
+      cwd,
+      title: terminalTitle(cwd),
       running: true,
     };
   }

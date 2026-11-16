@@ -1,12 +1,15 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { FileCode2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-import { LiquidGlassPanel, NeumorphicButton, NeumorphicSurface } from '../../shared/ui';
+import { CodePanel, ContentCard, LiquidGlassPanel, NeumorphicButton, NeumorphicSurface, TieredHeader } from '../../shared/ui';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { ChatActivityItem, ChatFileChange } from './model';
 import styles from './FileChangesActivity.module.css';
 
 const MAX_RENDERED_DIFF_LINES = 1_200;
+const DIFF_HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
 type DiffLineKind = 'add' | 'remove' | 'context' | 'header';
 
@@ -33,6 +36,7 @@ interface FileChangesReviewPanelProps {
   item: ChatActivityItem;
   initialPath: string | null;
   onClose: () => void;
+  compactHeader?: boolean;
 }
 
 function displayPath(value: string): string {
@@ -46,7 +50,7 @@ function displayPath(value: string): string {
 function parseDiff(change: ChatFileChange): DiffMetrics {
   const sourceLines = change.diff.replaceAll('\r\n', '\n').split('\n');
   if (sourceLines.at(-1) === '') sourceLines.pop();
-  const hasHunks = sourceLines.some((line) => line.startsWith('@@ '));
+  const hasHunks = sourceLines.some((line) => DIFF_HUNK_HEADER.test(line));
   const lines: DiffLine[] = [];
   let additions = 0;
   let deletions = 0;
@@ -58,7 +62,24 @@ function parseDiff(change: ChatFileChange): DiffMetrics {
   };
 
   for (const line of sourceLines) {
-    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (change.diffFormat === 'plain') {
+      append({ kind: 'context', content: line, oldLine: null, newLine: null });
+      continue;
+    }
+    // Whole-file additions/deletions contain source text, not diff-prefixed lines.
+    if (!hasHunks && change.kind === 'add') {
+      additions += 1;
+      newCursor += 1;
+      append({ kind: 'add', content: line, oldLine: null, newLine: newCursor });
+      continue;
+    }
+    if (!hasHunks && change.kind === 'delete') {
+      deletions += 1;
+      oldCursor += 1;
+      append({ kind: 'remove', content: line, oldLine: oldCursor, newLine: null });
+      continue;
+    }
+    const hunk = DIFF_HUNK_HEADER.exec(line);
     if (hunk) {
       oldCursor = Number(hunk[1]);
       newCursor = Number(hunk[2]);
@@ -95,18 +116,6 @@ function parseDiff(change: ChatFileChange): DiffMetrics {
       continue;
     }
 
-    if (!hasHunks && change.kind === 'add') {
-      additions += 1;
-      newCursor += 1;
-      append({ kind: 'add', content: line, oldLine: null, newLine: newCursor });
-      continue;
-    }
-    if (!hasHunks && change.kind === 'delete') {
-      deletions += 1;
-      oldCursor += 1;
-      append({ kind: 'remove', content: line, oldLine: oldCursor, newLine: null });
-      continue;
-    }
     append({ kind: 'context', content: line, oldLine: null, newLine: null });
   }
 
@@ -128,7 +137,12 @@ function aggregateMetrics(changes: ChatFileChange[]): Pick<DiffMetrics, 'additio
   }, { additions: 0, deletions: 0 });
 }
 
-function ChangeStats({ additions, deletions }: Pick<DiffMetrics, 'additions' | 'deletions'>) {
+function hasPlainContents(changes: ChatFileChange[]) {
+  return changes.some(change => change.diffFormat === 'plain');
+}
+
+function ChangeStats({ additions, deletions, unavailable = false }: Pick<DiffMetrics, 'additions' | 'deletions'> & { unavailable?: boolean }) {
+  if (unavailable) return null;
   return (
     <span className={styles.stats} aria-label={`${additions} additions, ${deletions} deletions`}>
       <b className={styles.additions}>+{additions}</b>
@@ -139,28 +153,37 @@ function ChangeStats({ additions, deletions }: Pick<DiffMetrics, 'additions' | '
 
 function activityTitle(item: ChatActivityItem, fileCount: number): string {
   const files = fileCount === 1 ? 'file' : 'files';
+  if (item.changes?.length && item.changes.every(change => change.diffFormat === 'plain')) {
+    const state = item.status === 'failed' ? ' · Failed' : item.status === 'unknown' ? ' · Result unknown'
+      : item.status === 'inProgress' ? ' · In progress' : '';
+    return `File contents · ${fileCount} ${files}${state}`;
+  }
   if (item.status === 'inProgress') return `Editing ${fileCount} ${files}`;
   if (item.status === 'failed') return `Failed to edit ${fileCount} ${files}`;
   if (item.status === 'declined') return `Declined changes to ${fileCount} ${files}`;
+  if (item.status === 'unknown') return `Changes to ${fileCount} ${files} · Result unknown`;
   return `Edited ${fileCount} ${files}`;
 }
 
 function FileRow({ change, onClick, selected = false }: { change: ChatFileChange; onClick: () => void; selected?: boolean }) {
   const metrics = useMemo(() => parseDiff(change), [change]);
   const path = displayPath(change.path);
+  const description = change.diffFormat === 'plain'
+    ? `${path} · Recorded file contents; change type and line counts were not retained.`
+    : change.kind === 'unknown' ? `${path} · Change type was not retained.` : path;
   return (
-    <button
+    <TooltipTarget content={description}><button
       className={styles.fileRow}
       type="button"
       aria-current={selected ? 'true' : undefined}
       onClick={onClick}
     >
       <NeumorphicSurface as="span" raised className={styles.changeKind} data-kind={change.kind} aria-hidden="true">
-        {change.kind === 'add' ? 'A' : change.kind === 'delete' ? 'D' : 'M'}
+        {change.kind === 'add' ? 'A' : change.kind === 'delete' ? 'D' : change.kind === 'unknown' ? '?' : 'M'}
       </NeumorphicSurface>
-      <span className={styles.path} title={path}>{path}</span>
-      <ChangeStats additions={metrics.additions} deletions={metrics.deletions} />
-    </button>
+      <span className={styles.path}>{path}</span>
+      <ChangeStats additions={metrics.additions} deletions={metrics.deletions} unavailable={change.diffFormat === 'plain'} />
+    </button></TooltipTarget>
   );
 }
 
@@ -168,18 +191,14 @@ export function FileChangesActivity({ item, onReview }: FileChangesActivityProps
   const changes = item.changes ?? [];
   const metrics = useMemo(() => aggregateMetrics(changes), [changes]);
   return (
-    <LiquidGlassPanel as="article" className={styles.card} data-status={item.status} data-liquid-glass-backdrop="true">
-      <header className={styles.cardHeader}>
-        <NeumorphicSurface as="span" raised className={styles.cardIcon}><FileCode2 aria-hidden="true" /></NeumorphicSurface>
-        <div className={styles.cardTitle}>
-          <strong>{activityTitle(item, changes.length)}</strong>
-          <ChangeStats additions={metrics.additions} deletions={metrics.deletions} />
-        </div>
-        {item.status === 'inProgress' && (
-          <div className={styles.cardActions}><i aria-label="In progress" /></div>
-        )}
-      </header>
-      {changes.length > 0 && (
+    <ContentCard className={styles.card} bodyClassName={styles.cardBody} data-status={item.status}
+      icon={<FileCode2 aria-hidden="true" />}
+      title={<span className={styles.cardTitle}>
+        <span>{activityTitle(item, changes.length)}</span>
+        <ChangeStats additions={metrics.additions} deletions={metrics.deletions} unavailable={hasPlainContents(changes)} />
+      </span>}
+      status={item.status === 'inProgress' ? <span role="status">In progress</span> : undefined}>
+      {changes.length > 0 ? (
         <div className={styles.fileList}>
           {changes.map((change) => (
             <FileRow
@@ -189,12 +208,13 @@ export function FileChangesActivity({ item, onReview }: FileChangesActivityProps
             />
           ))}
         </div>
-      )}
-    </LiquidGlassPanel>
+      ) : null}
+      {item.changesTruncated && <p className={styles.truncated}>Partial record · Counts cover retained diff lines only.</p>}
+    </ContentCard>
   );
 }
 
-export function FileChangesReviewPanel({ item, initialPath, onClose }: FileChangesReviewPanelProps) {
+export function FileChangesReviewPanel({ item, initialPath, onClose, compactHeader = false }: FileChangesReviewPanelProps) {
   const changes = item.changes ?? [];
   const [selectedPath, setSelectedPath] = useState(initialPath ?? changes[0]?.path ?? '');
   const totals = useMemo(() => aggregateMetrics(changes), [changes]);
@@ -224,28 +244,28 @@ export function FileChangesReviewPanel({ item, initialPath, onClose }: FileChang
       data-liquid-glass-surface="side-panel"
       aria-label="File changes review"
     >
-      <header className={styles.reviewHeader}>
-        <div className={styles.reviewHeading}>
-          <strong>Review</strong>
-          <span>{activityTitle(item, changes.length)}</span>
-        </div>
-        <div className={styles.reviewHeaderActions}>
+      <TieredHeader className={styles.reviewHeader} primaryClassName={styles.reviewHeaderRow} primary={<>
+        <SidebarPanelTitle icon={<FileCode2 aria-hidden="true" />} title={selectedChange?.diffFormat === 'plain' ? 'FILE CONTENTS' : 'REVIEW'}
+          description={compactHeader ? undefined : activityTitle(item, changes.length)} />
+        <div className={styles.reviewActions}>
           <div className={styles.reviewHeaderStats}>
-            <span className={styles.reviewFileCount}>
-              {changes.length === 1 ? '1 changed file' : `${changes.length} changed files`}
+            <span className={styles.reviewFileCount} hidden={compactHeader}>
+              {hasPlainContents(changes)
+                ? `${changes.length} ${changes.length === 1 ? 'file' : 'files'}`
+                : changes.length === 1 ? '1 changed file' : `${changes.length} changed files`}
             </span>
-            <ChangeStats additions={totals.additions} deletions={totals.deletions} />
+            <ChangeStats additions={totals.additions} deletions={totals.deletions} unavailable={hasPlainContents(changes)} />
           </div>
           <NeumorphicButton
-            raised
-            className="sidebar-heading-action"
+            variant="ghost"
+            size="icon"
             aria-label="Close file changes review"
             onClick={onClose}
           >
             <X aria-hidden="true" />
           </NeumorphicButton>
         </div>
-      </header>
+      </>} />
       <nav className={styles.reviewFiles} aria-label="Changed files">
         {changes.map((change) => (
           <FileRow
@@ -256,7 +276,10 @@ export function FileChangesReviewPanel({ item, initialPath, onClose }: FileChang
           />
         ))}
       </nav>
-      {selectedChange && selectedMetrics ? (
+      {item.changesTruncated && <p className={styles.truncated}>Partial record · Counts cover retained diff lines only.</p>}
+      {selectedChange?.diffFormat === 'plain' ? <CodePanel className={styles.fileContents} variant="plain"
+        code={selectedChange.diff} copyable={false} ariaLabel={`Recorded content for ${displayPath(selectedChange.path)}`} />
+        : selectedChange && selectedMetrics ? (
         <section className={styles.diffArea}>
           <div className={styles.diffScroller} role="region" aria-label={`Diff for ${displayPath(selectedChange.path)}`} tabIndex={0}>
             <div className={styles.diffContent}>

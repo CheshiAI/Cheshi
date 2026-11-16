@@ -1,0 +1,32 @@
+.root {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+
+.field > input {
+  padding-left: calc(var(--icon-button-size) + var(--icon-default) * 2);
+}
+
+.icon {
+  position: absolute;
+  top: 50%;
+  left: var(--icon-default);
+  translate: 0 -50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  border-radius: 50%;
+  background: var(--control-surface);
+  color: var(--text);
+  opacity: .5;
+  pointer-events: none;
+}
+
+.icon > svg {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  stroke-width: var(--icon-button-stroke-width);
+}

@@ -7,8 +7,9 @@ import {
   WorkspaceWindowCloseCancelledError, type WorkspaceRuntimeOptions, type WorkspaceRuntime,
 } from '../lib/workspace-application.mts';
 import { WorkspaceIpcRouter } from '../lib/workspace-ipc-router.mts';
+import type { WorkspaceHost } from '../lib/workspace-host.mts';
 
-function fixture() {
+function fixture(retained = false) {
   const instances: Array<WorkspaceRuntime & {
     options: WorkspaceRuntimeOptions; window: BrowserWindow;
     state: { destroyed: boolean; blocked: boolean; disposed: number; closeCalls: number; shown: boolean };
@@ -32,6 +33,7 @@ function fixture() {
       isDestroyed: () => state.destroyed,
       getNormalBounds: () => ({ x: 120, y: 80, width: 1500, height: 950 }),
       isMaximized: () => false, isFullScreen: () => false,
+      isFocused: () => state.shown, isMinimized: () => false, restore() {}, show() { state.shown = true; }, focus() { eventsLog.push(`focused:${options.workspaceRoot}`); },
       close() {
         state.closeCalls += 1;
         if (state.blocked) {
@@ -75,12 +77,64 @@ function fixture() {
     instances.push(runtime);
     return runtime;
   }
-  const application = new WorkspaceApplication({ router, createRuntime, initialRoot: '/one' });
+  const application = new WorkspaceApplication({ router, createRuntime, initialRoot: '/one',
+    createHost: retained ? () => ({ disposeIfEmpty() {} } as WorkspaceHost) : undefined });
   return { application, instances, liveScopes, eventsLog, confirmations,
     chooseClose(choice: number) { closeChoice = choice; },
     gateNextStart(promise: Promise<void>) { nextStartGate = promise; },
     failNext(root: string) { failNextRoot = root; } };
 }
+
+test('host switching retains running services, unsaved state, and independent IPC scopes', async () => {
+  const f = fixture(true);
+  await f.application.open('/one');
+  const first = f.instances[0]!;
+  first.state.blocked = true;
+  await first.options.onReplaceWorkspace('/two');
+  const second = f.instances[1]!;
+  assert.equal(first.options.host, second.options.host);
+  assert.notEqual(first.options.scope, second.options.scope);
+  assert.equal(first.state.closeCalls, 0);
+  assert.equal(first.state.disposed, 0);
+  assert.equal(f.confirmations.length, 0);
+  await second.options.onReplaceWorkspace('/one');
+  assert.equal(f.instances.length, 2);
+  assert.equal(f.application.lastWorkspaceRoot, '/one');
+  await first.options.onReplaceWorkspace('/one');
+  assert.equal(f.instances.length, 2);
+  first.state.blocked = false;
+  await f.application.closeAll();
+  assert.deepEqual(f.instances.map(entry => entry.state.disposed), [1, 1]);
+});
+
+test('failed hosted startup leaves the source alive and new-window requests keep a separate host', async () => {
+  const f = fixture(true);
+  await f.application.open('/one');
+  const first = f.instances[0]!;
+  f.failNext('/broken');
+  await assert.rejects(first.options.onReplaceWorkspace('/broken'), /Startup failed/u);
+  assert.equal(first.state.disposed, 0);
+  assert.equal(first.state.closeCalls, 0);
+  await first.options.onOpenWorkspace('/two');
+  assert.notEqual(first.options.host, f.instances[2]!.options.host);
+  await f.application.closeAll();
+});
+
+test('concurrent opens from different surfaces reuse the same prepared workspace', async () => {
+  const f = fixture(true);
+  await f.application.open('/one');
+  await f.instances[0]!.options.onReplaceWorkspace('/two');
+  const gate = createDeferred();
+  f.gateNextStart(gate.promise);
+  const first = f.instances[0]!.options.onReplaceWorkspace('/three');
+  const second = f.instances[1]!.options.onReplaceWorkspace('/three');
+  gate.resolve();
+  await Promise.all([first, second]);
+  assert.equal(f.instances.length, 3);
+  assert.equal(f.application.lastWorkspaceRoot, '/three');
+  assert.deepEqual(f.instances.map(entry => entry.state.disposed), [0, 0, 0]);
+  await f.application.closeAll();
+});
 
 test('new workspaces are independent windows in one application with only the first marked initial', async () => {
   const f = fixture();
@@ -435,5 +489,54 @@ test('a replacement lost during source close restores the original workspace', a
   assert.equal(f.instances[2]!.options.workspaceRoot, '/one');
   assert.equal(f.instances[2]!.state.shown, true);
   assert.equal(f.application.lastWorkspaceRoot, '/one');
+  await f.application.closeAll();
+});
+
+test('scheduled task review reuses its workspace and concurrent clicks share one pending opening', async () => {
+  const f = fixture();
+  await f.application.open('/one');
+  await f.application.reveal('/one');
+  assert.equal(f.instances.length, 1);
+  assert.ok(f.eventsLog.includes('focused:/one'));
+  assert.equal(f.application.hasFocusedWorkspace('/one'), true);
+  assert.equal(f.application.hasFocusedWorkspace('/missing'), false);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  f.gateNextStart(gate);
+  const first = f.application.reveal('/two');
+  const second = f.application.reveal('/two');
+  assert.equal(f.instances.length, 2);
+  release(); await Promise.all([first, second]);
+  await f.application.closeAll();
+});
+
+
+test('ready windows includes workspace and manager renderers and excludes closed windows', async () => {
+  const { application, instances } = fixture();
+  assert.deepEqual(application.readyWindows, []);
+  assert.deepEqual(application.readyProjectWindows, []);
+  await application.open('/project');
+  await application.openManager();
+  assert.deepEqual(application.readyWindows, instances.map(instance => instance.window));
+  assert.deepEqual(application.readyProjectWindows, [instances[0]!.window]);
+  instances[0]!.state.destroyed = true;
+  assert.deepEqual(application.readyWindows, [instances[1]!.window]);
+  assert.deepEqual(application.readyProjectWindows, []);
+});
+
+test('project window notifications track readiness, closing and unsubscribe', async () => {
+  const f = fixture();
+  const counts: number[] = [];
+  const unsubscribe = f.application.onWindowsChanged(() => counts.push(f.application.readyProjectWindows.length));
+  await f.application.openManager();
+  assert.equal(counts.at(-1), 0);
+  await f.application.open('/project');
+  assert.equal(counts.at(-1), 1);
+  await f.application.closeAll();
+  assert.equal(counts.at(-1), 0);
+  unsubscribe();
+  const notifications = counts.length;
+  await f.application.open('/another');
+  assert.equal(counts.length, notifications);
   await f.application.closeAll();
 });

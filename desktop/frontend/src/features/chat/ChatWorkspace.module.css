@@ -12,6 +12,21 @@
 .root[hidden] { display: none; }
 .body { overflow: hidden; container-type: inline-size; }
 .split { overflow: hidden; }
+.paneViewport {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+.paneTrack { display: flex; flex: 1 0 100%; min-height: 0; }
+.mount { scroll-snap-align: start; scroll-snap-stop: always; }
 .root .split [data-axis='columns'] > [role='separator'] { width: 5px; }
 .root .split [data-axis='rows'] > [role='separator'] { height: 5px; }
 .split [data-axis] > [role='separator']::after { background: var(--divider); }
@@ -57,17 +72,12 @@
   border: 0;
   border-bottom: 1px solid var(--divider);
 }
-.pane[data-active='true'] .paneHeader::after {
-  content: '';
-  position: absolute;
-  inset-inline: 0;
-  bottom: -1px;
-  height: 3px;
-  background: var(--divider);
-  pointer-events: none;
+.paneHeader:is(:hover, :active),
+.pane[data-active='true'] .paneHeader {
+  background: rgba(41, 52, 61, 0.3);
 }
-.paneHeading { display: flex; align-items: center; min-width: 0; gap: var(--icon-default); }
-.pane[data-active='true'] .paneTitle { color: var(--active-text); }
+.pane[data-active='true'] .paneTitle { font-weight: 600; }
+.paneHeading { display: flex; flex: 1 1 auto; align-items: center; min-width: 0; gap: var(--icon-default); }
 .paneTitle {
   display: flex;
   align-items: center;
@@ -76,54 +86,56 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--sidebar-section-label-color);
-  font: inherit;
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.5;
   cursor: pointer;
 }
-.paneTitle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.paneTitleText { display: flex; min-width: 0; flex-direction: column; text-align: left; }
+.paneTitleText > span, .sessionId { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.paneTitleText > span { max-width: 250px; }
+.sessionId {
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-caption);
+  font-weight: 400;
+  line-height: 13px;
+  letter-spacing: normal;
+}
 .headerActions { display: flex; align-items: center; gap: var(--icon-default); }
+.paneTrailing { display: flex; flex: 0 0 auto; align-items: center; gap: var(--icon-default); }
+.contextUsage {
+  color: var(--sidebar-section-label-color);
+  font-size: 9px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .actions {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 0;
-  border-radius: 8px;
-  background: transparent;
+  gap: var(--icon-default);
   opacity: 0;
-  transition: background-color .16s ease, opacity .16s ease;
+  pointer-events: none;
+  transition: opacity .16s ease;
 }
-.action {
-  appearance: none;
-  display: grid;
-  width: 22px;
-  height: 22px;
-  min-height: 22px;
-  flex: 0 0 22px;
-  place-items: center;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  padding: 0;
-  transition: background-color .16s ease, color .16s ease;
-}
-.pane:hover .actions,
-.pane[data-active='true'] .actions,
-.actions:focus-within {
-  background: var(--divider);
+.paneHeader:hover .actions,
+.paneHeader:focus-within .actions {
   opacity: 1;
+  pointer-events: auto;
 }
-.action:not(:disabled):hover,
-.action[aria-pressed='true'],
-.action[data-active='true'] {
-  background: rgba(255, 255, 255, .08);
-  color: var(--active-text);
+
+@media (hover: none) {
+  .actions { opacity: 1; pointer-events: auto; }
 }
-.action:disabled { cursor: default; opacity: .5; }
-.action svg { width: 12px; height: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .actions { transition: none; }
+}
 
 @container (max-width: 240px) {
   .paneHeader { padding-inline: 8px; }
-  .paneTitle { display: none; }
 }

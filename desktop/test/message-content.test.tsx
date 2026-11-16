@@ -2,25 +2,46 @@ import { describe, expect, mock, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { act } from 'react';
 import { Window } from 'happy-dom';
-import type { ChatWorkspaceController } from '../frontend/src/features/chat/useChatWorkspace';
-import type { ChatRelayState } from '../shared/chat-relay';
 import { timelineFromThread } from '../lib/codex-chat-thread-data.mts';
 import { normalizeOpenSessionResponse } from '../frontend/src/features/chat/model';
+import { displayMessageWithChatImports } from '../shared/chat-imports.ts';
 
 const desktop: { openLocalFileLink?: (href: string) => Promise<void> } = {};
 mock.module('../frontend/src/cheshiDesktop', () => ({ cheshiDesktop: desktop }));
 const { MessageContent } = await import('../frontend/src/features/chat/MessageContent');
-const { ChatRelayStatus } = await import('../frontend/src/features/chat/ChatRelayControls');
 
 const table = '| 방식 | 주요 이점 |\n|---|---|\n| **상시 표시** | 초안 비교 |\n| 활성 패널 | 읽기 공간 |';
 const render = (text: string, renderLocalImages = false) => renderToStaticMarkup(<MessageContent text={text} renderLocalImages={renderLocalImages} />);
 
-function resultWorkspace(state: ChatRelayState): ChatWorkspaceController {
-  // Only the relay status boundary is exercised; other workspace operations are not mounted.
-  return { relay: { state, displayedState: state, selectedResult: null, error: null, running: false, pending: false, dismissResult() {}, dismissError() {} } } as ChatWorkspaceController;
-}
-
 describe('chat Markdown rendering', () => {
+  test('links bare, quoted and inline-code local paths for user and assistant messages', () => {
+    for (const localImages of [false, true]) {
+      const html = render('여기 /Users/cheshi/Developments/cheshi-desktop/.agents 확인.\n\n"/tmp/한글 folder"와 `/tmp/code folder`\n\n```sh\ncat /tmp/keep-literal\n```\n\n[skill](skill://unchanged)', localImages);
+      expect(html).toContain('href="/Users/cheshi/Developments/cheshi-desktop/.agents"');
+      expect(html).toContain('href="/tmp/%ED%95%9C%EA%B8%80%20folder"');
+      expect(html).toContain('href="/tmp/code%20folder"');
+      expect(html).not.toContain('href="/tmp/keep-literal"');
+      expect(html.match(/href="\/Users\/cheshi/g)).toHaveLength(1);
+    }
+  });
+  test('connects numbered imports to attachments while leaving code and unknown references literal', () => {
+    const text = displayMessageWithChatImports('[import 1]을 [import 3]처럼. [import 9]\n\n`[import 1]`\n\n```text\n[import 3]\n```', [
+      { kind: 'image', name: 'before.png', path: '/stored/before.png', importNumber: 1 },
+      { kind: 'file', name: 'guide.txt', path: '/stored/guide.txt', importNumber: 3 },
+    ]);
+    const html = render(text, true);
+    expect(html).toContain('>import 1</button>');
+    expect(html).toMatch(/href="\/stored\/guide.txt"[^>]*>import 3<\/a>/);
+    expect(html.indexOf('aria-label="Attached imports"')).toBeLessThan(html.indexOf('>import 1</button>'));
+    expect(html).toContain('[import 9]');
+    expect(html.match(/role="img"/g)).toHaveLength(1);
+    expect(html.match(/data-import-number=/g)).toHaveLength(2);
+    expect(html).toMatch(/<code[^>]*>\[import 1\]<\/code>/);
+    expect(html).not.toContain('cheshi-imports-v1');
+    expect(html).not.toContain('Attached imports:');
+    expect(render('plain [import 1]', true)).not.toContain('View image');
+  });
+
   test('renders Korean comparison tables and inline formatting as semantic elements', () => {
     const html = render(table);
     expect(html).toContain('<table>');
@@ -44,12 +65,12 @@ describe('chat Markdown rendering', () => {
 
   test('keeps fenced, indented and inline code literal and preserves JSON presentation', () => {
     const html = render('Use `a | b`.\n\n```ts\nconst value = "**literal**";\n```\n\n    | not a table |');
-    expect(html.match(/<pre>/g)).toHaveLength(2);
+    expect(html.match(/<pre\b/g)).toHaveLength(2);
     expect(html).toContain('**literal**');
     expect(html).not.toContain('<strong>literal</strong>');
     expect(html).toContain('Copy');
-    expect(render('{"ok":true}')).toContain('<pre>');
-    expect(render('```ts\nconst incomplete = 1')).toContain('<pre>');
+    expect(render('{"ok":true}')).toMatch(/<pre\b/);
+    expect(render('```ts\nconst incomplete = 1')).toMatch(/<pre\b/);
   });
 
   test('supports escaped table separators and column alignment', () => {
@@ -171,15 +192,4 @@ describe('chat Markdown rendering', () => {
     expect(html).not.toContain('[Image:');
   });
 
-  test('uses the same Markdown rendering for completed relay summaries, proposals and issues', () => {
-    const state: ChatRelayState = { id: 'relay', sourceContextId: 'a', sourceThreadId: 'thread-a', targetContextId: 'b',
-      targetThreadId: 'thread-b', mode: 'debate', maxRounds: 2, round: 2, step: 4, speaker: 'B', phase: 'discussion',
-      status: 'completed', outcome: 'debated', proposalVersion: null, proposal: '## Proposal\n\n**Keep drafts.**',
-      issues: ['Check *focus*.'], summary: table, message: null };
-    const html = renderToStaticMarkup(<ChatRelayStatus workspace={resultWorkspace(state)} />);
-    expect(html).toContain('<table>');
-    expect(html).toContain('<strong>Keep drafts.</strong>');
-    expect(html).toContain('<em>focus</em>');
-    expect(html).not.toContain('|---|');
-  });
 });

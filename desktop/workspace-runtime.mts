@@ -1,10 +1,23 @@
+import { createChatAttachmentImageReader, registerChatAttachmentImageIpc } from './lib/chat-attachment-image.mts';
+import { registerCanvasIpc } from './lib/canvas/canvas-ipc.mts';
+import { registerWorkspaceTerminalIpc } from './lib/workspace-terminal-ipc.mts';
+import { createWorkspaceProjects } from './lib/workspace-project-runtime.mts';
+import { createWorkspaceSessionMemory } from './lib/flash/workspace.mts';
+import { createWorkspaceVoice } from './lib/agent-voice/workspace.mts';
+import { createWorkspaceScheduler } from './lib/scheduler/workspace.mts';
+import { createWorkspaceNotifications } from './lib/workspace-notifications.mts';
+import { createWindowAppearance, INITIAL_WINDOW_BACKGROUND_COLORS } from './lib/window-appearance.mts';
+import { workspaceWindowOptions } from './lib/workspace-window-options.mts';
+import { createWindowTrafficLights } from './lib/window-traffic-lights.mts';
+import { createWindowTopHighlight } from './lib/window-top-highlight.mts';
+import { createWorkspaceTemporaryChat } from './lib/workspace-temporary-chat.mts';
 import { createWorkspaceWindowReadiness } from './lib/workspace-window-readiness.mts';
+import { createRendererReadinessLog } from './lib/renderer-readiness-log.mts';
 import { createWorkspaceRendererEvents } from './lib/workspace-renderer-events.mts';
-import { TemporaryChatService } from './lib/temporary-chat-service.mts';
-import { registerTemporaryChatIpc } from './lib/temporary-chat-ipc.mts';
+import { nativeWorkspaceWindow } from './lib/workspace-surface.mts';
 import { createWorkspaceCodeExplanation } from './lib/workspace-code-explanation.mts';
 import path from 'node:path';
-import { userInfo } from 'node:os';
+import { currentUserName } from './lib/workspace-user.mts';
 import { fileURLToPath } from 'node:url';
 import { registerGitIpcHandlers } from './lib/git-ipc.mts';
 import { registerLanguageServerIpcHandlers } from './lib/language-server-ipc.mts';
@@ -22,25 +35,22 @@ import {
   registerWorkspace,
   resolveCodeGraphDataRoot,
 } from '../config/workspace-storage.mts';
-import { chatAttachmentKind, ChatAttachmentStore } from './lib/chat-attachment-store.mts';
+import { ChatAttachmentStore } from './lib/chat-attachment-store.mts';
+import { assertChatImportNumbers, chatImportNumber, type ChatImportAttachment } from './shared/chat-imports.ts';
 import { CodeGraphIndexer, CodeGraphService, createCodeGraphCommands } from './lib/codegraph-service.mts';
 import { hasReadyCodeGraphIndex, prepareInitialCodeGraph } from './lib/codegraph-initial-index.mts';
 import { CodexAccountService } from './lib/codex-account-service.mts';
 import { createWorkspaceChatHistory } from './lib/workspace-chat-history.mts';
-import { registerCodexChatIpc } from './lib/codex-chat-ipc.mts';
-import { CodexChatRelays } from './lib/codex-chat-relay.mts';
-import { CodexChatRelayHistory } from './lib/codex-chat-relay-history.mts';
+import { registerCodexChatIpc, registerCodexPluginIpc } from './lib/codex-chat-ipc.mts';
 import { CodexChatSavedTurns } from './lib/codex-chat-saved-turns.mts';
 import { createWorkspaceSessionStores } from './lib/workspace-session-stores.mts';
 import { CodexChatContexts } from './lib/codex-chat-contexts.mts';
 import { CodexChatSessionDeletion } from './lib/codex-chat-session-deletion.mts';
 import { CodexChatService } from './lib/codex-chat-service.mts';
-import { workspaceChatInstructions } from './lib/workspace-chat-instructions.mts';
 import { GhosttySurfaceHost } from './lib/ghostty-surface-host.mts';
 import { GitService } from './lib/git-service.mts';
 import { LanguageServerManager } from './lib/language-server-manager.mts';
 import { createBundledLanguageServerCommands } from './lib/language-server-runtime.mts';
-import { pluginLogoDataUrl } from './lib/plugin-logo-service.mts';
 import { SkillRecordingStore } from './lib/skill-recording-store.mts';
 import { TerminalController } from './lib/terminal-controller.mts';
 import { startupScreen } from './lib/startup-screen.mts';
@@ -52,11 +62,11 @@ import type { CodexAccountsSnapshot } from './shared/codex-accounts.ts';
 export function createWorkspaceRuntime(options: WorkspaceRuntimeOptions,
   onAccountsChanged?: (snapshot: CodexAccountsSnapshot) => void, onWindowCreated?: (window: BrowserWindow) => void) {
 const ipcMain = options.scope.ipc;
+const initialIndexAbort = new AbortController();
 const rendererEvents = createWorkspaceRendererEvents();
 function workspaceWindows(): BrowserWindow[] { return mainWindow && !mainWindow.isDestroyed() ? [mainWindow] : []; }
 
 type IpcSenderEvent = IpcMainEvent | IpcMainInvokeEvent;
-type TerminalSplitDirection = 'right' | 'left' | 'down' | 'up';
 type WindowTheme = keyof typeof INITIAL_WINDOW_BACKGROUND_COLORS;
 
 interface TerminalSurfaceRequest {
@@ -93,7 +103,7 @@ const codeGraphCommands = createCodeGraphCommands({
   rootDirectory,
   bunExecutable: process.env.CHESHI_BUN,
 });
-const rendererUrl = options.initial ? process.env.CHESHI_RENDERER_URL?.trim() : undefined;
+const rendererUrl = process.env.CHESHI_RENDERER_URL?.trim();
 const startupStartedAt = Number(process.env.CHESHI_DEV_STARTED_AT);
 function logStartup(phase: string): void {
   if (!rendererUrl || !Number.isFinite(startupStartedAt) || startupStartedAt <= 0) return;
@@ -110,6 +120,9 @@ if (codeGraphDataRoot === null) {
 
 const codeGraphDirectory = codeGraphStorageDirectory(codeGraphDataRoot, workspaceRoot);
 const codeGraphDatabasePath = path.join(codeGraphDirectory, 'codegraph.db');
+function withCodeGraphWriter<T>(operation: () => Promise<T>): Promise<T> {
+  return options.codeGraphSynchronization ? options.codeGraphSynchronization.exclusive(workspaceRoot, operation) : operation();
+}
 const localHistory = acquireLocalHistory({
   workspaceRoot, directory: path.join(path.dirname(codeGraphDirectory), 'local-history'),
   onError: error => process.stderr.write(`[cheshi] Local history: ${error.message}\n`),
@@ -121,13 +134,7 @@ const LANGUAGE_SERVER_DIAGNOSTICS_CHANNEL = 'cheshi:language-server-diagnostics'
 const RENDERER_READY_CHANNEL = 'cheshi:renderer-ready';
 const TERMINAL_STATE_CHANNEL = 'cheshi:terminal-state-changed';
 const WORKSPACE_FILES_CHANGED_CHANNEL = 'cheshi:workspace-files-changed';
-const INITIAL_WINDOW_BACKGROUND_COLORS = Object.freeze({
-  dark: '#171717',
-  light: '#d7e6ed',
-});
-const TERMINAL_SPLIT_DIRECTIONS = new Set<TerminalSplitDirection>(['right', 'left', 'down', 'up']);
 const MAX_CHAT_ATTACHMENTS = 20;
-const ATTACHMENT_PREVIEW_MAX_SIZE = 160;
 const languageServerModulesDirectory = app.isPackaged
   ? path.join(
       process.resourcesPath,
@@ -152,55 +159,59 @@ const languageServerManager = new LanguageServerManager({
   }),
 });
 const gitService = new GitService({ workspaceRoot });
+const workspaceProjects = createWorkspaceProjects({
+  ipc: ipcMain, root: workspaceRoot, dataRoot: codeGraphDataRoot, clipboard, shell,
+  languageOptions: { settingsPath: languageServerManager.settingsPath, clientInfo: languageServerManager.clientInfo,
+    homeDirectory: languageServerManager.homeDirectory, bundledCommands: createBundledLanguageServerCommands({
+      runtimeExecutable: process.execPath, modulesDirectory: languageServerModulesDirectory }) },
+  assertSender: assertCheshiSender,
+  assertIdle: () => {
+    const chats = [codexChatService, ...codexChatContexts.allServices().map(entry => entry.service)];
+    if (chats.some(service => service.activeTurns.size || service.pendingTurnStarts.size || service.pendingNewTurnClientMessageId)) {
+      throw new Error('Wait for chat responses to finish before changing workspace projects.');
+    }
+  },
+  chooseDirectory: async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) throw new Error('The workspace window is unavailable.');
+    const result = await dialog.showOpenDialog(nativeWorkspaceWindow(mainWindow), { title: 'Add project to workspace', properties: ['openDirectory'] });
+    return result.canceled ? null : result.filePaths[0] ?? null;
+  },
+  emit: (channel, value) => { for (const window of workspaceWindows()) rendererEvents.send(window, channel, value); },
+});
 
-function attachmentPreviewUrl(attachmentPath: string): string | null {
-  const source = nativeImage.createFromPath(attachmentPath);
-  if (source.isEmpty()) return null;
-  const { width, height } = source.getSize();
-  if (width <= 0 || height <= 0) return null;
-  const preview = Math.max(width, height) > ATTACHMENT_PREVIEW_MAX_SIZE
-    ? source.resize({
-      ...(width >= height
-        ? { width: ATTACHMENT_PREVIEW_MAX_SIZE }
-        : { height: ATTACHMENT_PREVIEW_MAX_SIZE }),
-      quality: 'good',
-    })
-    : source;
-  return preview.toDataURL();
-}
+const readAttachmentImage = createChatAttachmentImageReader(nativeImage);
+const attachmentPreviewUrl = (attachmentPath: string) => readAttachmentImage(attachmentPath, true);
 
-function codexChatAttachmentPreviewUrl(attachmentPath: unknown): string | null {
-  if (typeof attachmentPath !== 'string' || !attachmentPath.trim()) {
-    throw new TypeError('Chat attachment path must be a non-empty string.');
-  }
-  if (!path.isAbsolute(attachmentPath)) {
-    throw new TypeError('Chat attachment path must be absolute.');
-  }
-  if (chatAttachmentKind(attachmentPath) !== 'image') return null;
-  return attachmentPreviewUrl(attachmentPath);
-}
-
-const { accounts: workspaceAccounts, search: chatHistorySearch, mcp: historyMcp } = createWorkspaceChatHistory({
+const { accounts: workspaceAccounts, search: chatHistorySearch } = createWorkspaceChatHistory({
+  projectRoots: () => workspaceProjects.store.list().map(project => project.rootPath),
   cwd: workspaceRoot, userDataDirectory, home: app.getPath('home'), openExternal: url => shell.openExternal(url),
-  codeGraph: { cli: codeGraphCommands.cli(), dataRoot: codeGraphDataRoot },
+  codeGraph: { cli: codeGraphCommands.cli(), dataRoot: codeGraphDataRoot, synchronization: options.codeGraphSynchronization },
   historyDirectory: path.join(path.dirname(codeGraphDirectory), 'chat-history-index'),
-  getKey: options.getTypeSafeKey, access: options.historyRecall,
-  accountSelection: options.accountSelection,
+  accountSelection: options.accountSelection, getProjectDocMaxBytes: options.getProjectDocMaxBytes,
 });
 const createChatClient = workspaceAccounts.createClient;
+const agentVoice = createWorkspaceVoice({ ipc: ipcMain, assertSender: assertCheshiSender, directory: userDataDirectory,
+  workspace: workspaceRoot, chats: options.voiceChats, createClient: workspaceAccounts.createVoiceClient,
+  ready: workspaceAccounts.beforeMessage, account: () => accountSwitch.activeId });
 const codexAppServerClient = createChatClient();
 const ephemeralSessionClient = createChatClient();
 const codeExplanation = createWorkspaceCodeExplanation(ephemeralSessionClient, workspaceRoot);
-const temporaryChats = registerTemporaryChatIpc({
-  ipc: ipcMain, assertSender: assertCheshiSender,
-  createService: () => new TemporaryChatService({ createClient: createChatClient, cwd: workspaceRoot }),
-  selectFiles: async (event) => {
-    const owner = BrowserWindow.fromWebContents(event.sender);
-    const options: OpenDialogOptions = { title: 'Attach files to temporary chat', buttonLabel: 'Attach', properties: ['openFile', 'multiSelections'] };
-    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+const preloadPath = app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'preload.cjs')
+  : path.join(currentDirectory, 'runtime', 'preload.cjs');
+const notifications = createWorkspaceNotifications({ workspaceRoot, scope: options.scope, getParent: () => mainWindow, sink: options.notifications,
+  discord: options.discord, commands: options.messageCommands, services: () => [{ contextId: 'main', service: codexChatService }, ...codexChatContexts.allServices()] });
+const temporaryChats = createWorkspaceTemporaryChat({
+  readImage: readAttachmentImage,
+  wrapService: (service, window) => notifications.temporary(service, window),
+  scope: options.scope, getParent: () => mainWindow, createWindow: configuration => new BrowserWindow(configuration),
+  workspaceRoot, userName: currentUserName(), createClient: createChatClient, shell,
+  preload: preloadPath, appearanceFile: path.join(userDataDirectory, 'appearance.json'),
+  selectFiles: async window => {
+    const selection: OpenDialogOptions = { title: 'Attach files to temporary chat', buttonLabel: 'Attach', properties: ['openFile', 'multiSelections'] };
+    const result = await dialog.showOpenDialog(nativeWorkspaceWindow(window), selection);
     return result.canceled ? [] : result.filePaths;
   },
-  onCleanupError: (error) => chatServiceOptions.log('temporary-chat-cleanup-failed', { message: String(error) }),
+  onCleanupError: error => chatServiceOptions.log('temporary-chat-cleanup-failed', { message: String(error) }),
 });
 const codexAccountService = new CodexAccountService({
   client: codexAppServerClient,
@@ -208,16 +219,10 @@ const codexAccountService = new CodexAccountService({
     process.stderr.write(`[cheshi] ${event} ${JSON.stringify(details)}\n`);
   },
 });
-const chatServiceOptions = {
-  conversations: workspaceAccounts.conversations,
-  createMcpProbeClient: createChatClient,
-  cwd: workspaceRoot,
-  serviceName: product.internalName,
-  historyToolsEnabled: true,
-  developerInstructions: workspaceChatInstructions(product.displayName),
-  log: (event: string, details: Record<string, unknown>) => {
-    process.stderr.write(`[cheshi] ${event} ${JSON.stringify(details)}\n`);
-  },
+const sessionHistory = createWorkspaceSessionMemory(workspaceRoot, userDataDirectory, workspaceAccounts.conversations, chatHistorySearch, createChatClient, ipcMain, assertCheshiSender, options.agentFlash, options.flashControl);
+const chatServiceOptions = { ...sessionHistory.serviceOptions,
+  chatPreferences: options.chatPreferences,
+  getWorkspaceProjects: () => workspaceProjects.store.list().map(({ rootPath }) => rootPath),
 };
 
 const codexChatService = new CodexChatService({ ...chatServiceOptions, client: codexAppServerClient });
@@ -225,31 +230,37 @@ const codexChatContexts = new CodexChatContexts({
   createClient: createChatClient,
   service: chatServiceOptions,
   emit: (ownerId, event) => {
+    sessionHistory.changed(event);
+    notifications.event(String(event.contextId ?? 'main'), event);
     const window = workspaceWindows().find((candidate) => candidate.webContents.id === ownerId);
     rendererEvents.send(window ?? null, CODEX_CHAT_EVENT_CHANNEL, event);
   },
 });
-const codexChatRelays = new CodexChatRelays({
-  contexts: codexChatContexts,
-  history: new CodexChatRelayHistory(path.join(path.dirname(codeGraphDirectory), 'chat-relays')),
-  emit: (ownerId, state) => {
-    const window = workspaceWindows().find((candidate) => candidate.webContents.id === ownerId);
-    rendererEvents.send(window ?? null, 'cheshi:codex-chat-relay-event', state);
-  },
-});
+const unsubscribeNotificationContext = codexChatContexts.onDispose((_ownerId, contextId) => { if (contextId) notifications.remove(contextId); });
 const codexChatSavedTurns = new CodexChatSavedTurns(path.join(path.dirname(codeGraphDirectory), 'saved-chat-turns'));
-const codexChatSessionDeletion = new CodexChatSessionDeletion({ contexts: codexChatContexts, service: codexChatService, relays: codexChatRelays });
+const codexChatSessionDeletion = new CodexChatSessionDeletion({ contexts: codexChatContexts, service: codexChatService });
 const accountSwitch = workspaceAccounts.register({
   ipc: ipcMain, assertSender: assertCheshiSender,
+  startup: { signal: initialIndexAbort.signal, onPhase: phase => { logStartup(phase); if (phase === 'account selection ready') agentVoice.accountsReady(); },
+    onError: error => chatServiceOptions.log('codex-account-initialization-failed', { message: String(error) }) },
   retained: [codexAppServerClient, ephemeralSessionClient],
   service: codexChatService, contexts: codexChatContexts, deletion: codexChatSessionDeletion,
-  relays: codexChatRelays, accountUsage: codexAccountService,
-  temporaryBusy: () => temporaryChats.hasSessions || codeExplanation.busy,
-  resetTemporary: () => codeExplanation.reset(),
+  accountUsage: codexAccountService,
+  temporaryBusy: () => temporaryChats.hasSessions || codeExplanation.busy || agentVoice.busy,
+  schedulerBusy: () => workspaceScheduler.busy,
+  resetTemporary: () => { codeExplanation.reset(); agentVoice.resetAccount(); },
   emit: snapshot => {
+    sessionHistory.accounts(snapshot);
     onAccountsChanged?.(snapshot);
     for (const window of workspaceWindows()) rendererEvents.send(window, 'cheshi:codex-accounts-changed', snapshot);
   },
+});
+const accountIpc = accountSwitch.ipc;
+const workspaceScheduler = createWorkspaceScheduler({
+  ipc: ipcMain, assertSender: assertCheshiSender, workspace: workspaceRoot, dataDirectory: userDataDirectory,
+  contexts: codexChatContexts, deletion: codexChatSessionDeletion,
+  beforeMessage: workspaceAccounts.beforeMessage, profileId: () => accountSwitch.activeId,
+  primary: codexChatService,
 });
 const chatContextOwners = new WeakSet<Electron.WebContents>();
 function isCrossDocumentMainFrameNavigation(details: { isMainFrame: unknown; isSameDocument: unknown }): boolean {
@@ -283,6 +294,8 @@ const unsubscribeAccount = codexAccountService.onDidChange((status) => {
 });
 
 const unsubscribeChat = codexChatService.onEvent((event) => {
+  sessionHistory.changed(event);
+  notifications.event('main', event);
   for (const window of workspaceWindows()) {
     rendererEvents.send(window, CODEX_CHAT_EVENT_CHANNEL, event);
   }
@@ -329,7 +342,7 @@ function chatMessageRequest(value: unknown) {
   if (attachmentValues.length > MAX_CHAT_ATTACHMENTS) {
     throw new TypeError(`Chat messages support up to ${MAX_CHAT_ATTACHMENTS} attachments.`);
   }
-  const attachments = attachmentValues.map((attachmentValue) => {
+  const attachments = attachmentValues.map((attachmentValue): ChatImportAttachment => {
     assertRecord(attachmentValue, 'Each chat attachment must be an object.');
     const { kind, name, path: attachmentPath } = attachmentValue;
     if (kind !== 'image' && kind !== 'file') throw new TypeError('Chat attachment kind is invalid.');
@@ -337,8 +350,10 @@ function chatMessageRequest(value: unknown) {
     if (typeof attachmentPath !== 'string' || !attachmentPath.trim() || !path.isAbsolute(attachmentPath)) {
       throw new TypeError('Chat attachment path must be absolute.');
     }
-    return { kind, name: name.trim(), path: attachmentPath };
+    const importNumber = chatImportNumber(attachmentValue.importNumber);
+    return { kind, name: name.trim(), path: attachmentPath, ...(importNumber === undefined ? {} : { importNumber }) };
   });
+  assertChatImportNumbers(attachments);
   return { text, clientMessageId, threadId, skill, attachments };
 }
 
@@ -350,7 +365,7 @@ async function selectCodexChatAttachments(event: IpcMainInvokeEvent) {
     properties: ['openFile', 'multiSelections'],
   };
   const result = owner
-    ? await dialog.showOpenDialog(owner, options)
+    ? await dialog.showOpenDialog(nativeWorkspaceWindow(owner), options)
     : await dialog.showOpenDialog(options);
   if (result.canceled) return [];
   const storedAttachments = await codexChatAttachmentStore.importFiles(
@@ -379,9 +394,9 @@ async function selectLanguageServerExecutable(
     properties: ['openFile'],
   };
   const result = owner
-    ? await dialog.showOpenDialog(owner, options)
+    ? await dialog.showOpenDialog(nativeWorkspaceWindow(owner), options)
     : await dialog.showOpenDialog(options);
-  if (result.canceled || !result.filePaths[0]) {
+  if (appQuitting || !mainWindow || mainWindow.isDestroyed() || result.canceled || !result.filePaths[0]) {
     return { canceled: true, statuses: languageServerManager.getStatuses() };
   }
   const statuses = await languageServerManager.configure({
@@ -392,12 +407,19 @@ async function selectLanguageServerExecutable(
   return { canceled: false, statuses };
 }
 
-registerWorkspaceFileIpcHandlers({ ipcMain, workspaceRoot, clipboard, shell, localHistory });
+registerWorkspaceFileIpcHandlers({ ipcMain: workspaceProjects.ipc, workspaceRoot, clipboard, shell, localHistory });
+const canvasLibrary = registerCanvasIpc(ipcMain, workspaceRoot, assertCheshiSender, userDataDirectory, async defaultPath => {
+  if (!mainWindow || mainWindow.isDestroyed()) throw new Error('The workspace window is unavailable.');
+  const result = await dialog.showOpenDialog(nativeWorkspaceWindow(mainWindow), {
+    title: 'Select canvas folder', defaultPath, properties: ['openDirectory'],
+  });
+  return result.canceled ? null : result.filePaths[0] ?? null;
+});
 registerLocalFileLinkIpc({ ipcMain, workspaceRoot, shell, assertSender: assertCheshiSender });
-registerLocalHistoryIpc({ ipcMain, service: localHistory, assertSender: assertCheshiSender, onChanged: sendWorkspaceFilesChanged });
+registerLocalHistoryIpc({ ipcMain: workspaceProjects.ipc, service: localHistory, assertSender: assertCheshiSender, onChanged: sendWorkspaceFilesChanged });
 const management = registerWorkspaceManagementIpcHandlers({ ipcMain, app, dialog, trashItem: (root) => shell.trashItem(root), withWorkspaceDeletion: options.withWorkspaceDeletion, assertWorkspaceAvailable: options.assertWorkspaceAvailable, openExternal: (url) => shell.openExternal(url), getWindow: () => mainWindow, assertSender: assertCheshiSender, dataRoot: codeGraphDataRoot, onOpenWorkspace: options.onOpenWorkspace, onReplaceWorkspace: options.onReplaceWorkspace, manager: { createWindow: (configuration) => new BrowserWindow(configuration), rendererUrl, workspaceRoot, onWindowCreated: (window) => options.scope.addOwner(window.webContents, true) } });
-registerGitIpcHandlers({ ipcMain, gitService, assertCheshiSender, shell });
-registerLanguageServerIpcHandlers({ ipcMain, languageServerManager, assertCheshiSender, selectLanguageServerExecutable });
+registerGitIpcHandlers({ ipcMain: workspaceProjects.ipc, gitService, assertCheshiSender, shell });
+registerLanguageServerIpcHandlers({ ipcMain: workspaceProjects.ipc, languageServerManager, assertCheshiSender, selectLanguageServerExecutable });
 ipcMain.handle('cheshi:set-terminal-view-visible', (event, visible) => {
   assertTerminalSender(event);
   if (visible !== true && visible !== false) {
@@ -411,7 +433,7 @@ ipcMain.handle('cheshi:set-terminal-view-visible', (event, visible) => {
 ipcMain.handle('cheshi:set-terminal-theme', (event, theme) => {
   assertTerminalSender(event);
   assertWindowTheme(theme);
-  mainWindow?.setBackgroundColor(INITIAL_WINDOW_BACKGROUND_COLORS[theme]);
+  windowAppearance?.setTheme(theme);
   terminalDark = theme === 'dark';
   terminalSurfaces?.setDark(terminalDark);
   return terminalSnapshot();
@@ -422,80 +444,26 @@ ipcMain.on('cheshi:update-terminal-surface-bounds', (event, value) => {
   if (!surface || !terminalController?.findPane(surface.paneId)) return;
   terminalSurfaces?.updatePane(surface.paneId, surface.frame, surface.visible);
 });
-ipcMain.handle('cheshi:new-terminal-session', (event) => {
-  assertTerminalSender(event);
-  if (terminalSurfaces?.available) terminalController?.newSession();
-  return terminalSnapshot();
-});
-ipcMain.handle('cheshi:select-terminal-session', (event, sessionId) => {
-  assertTerminalSender(event);
-  terminalController?.selectSession(sessionId);
-  return terminalSnapshot();
-});
-ipcMain.handle('cheshi:close-terminal-session', (event, sessionId) => {
-  assertTerminalSender(event);
-  terminalController?.closeSession(sessionId);
-  return terminalSnapshot();
-});
-ipcMain.handle('cheshi:select-terminal-pane', (event, sessionId, paneId) => {
-  assertTerminalSender(event);
-  terminalController?.selectPane(sessionId, paneId);
-  return terminalSnapshot();
-});
-ipcMain.handle('cheshi:split-terminal-pane', (event, sessionId, paneId, direction) => {
-  assertTerminalSender(event);
-  if (TERMINAL_SPLIT_DIRECTIONS.has(direction)) {
-    terminalController?.splitPane(sessionId, paneId, direction);
-  }
-  return terminalSnapshot();
-});
-ipcMain.handle('cheshi:resize-terminal-split', (event, sessionId, splitId, ratio) => {
-  assertTerminalSender(event);
-  if (typeof splitId !== 'string' || !splitId.trim()) {
-    throw new TypeError('Terminal split id must be a non-empty string.');
-  }
-  if (!Number.isFinite(ratio) || ratio < 0.1 || ratio > 0.9) {
-    throw new TypeError('Terminal split ratio must be between 0.1 and 0.9.');
-  }
-  terminalController?.resizeSplit(sessionId, splitId.trim(), ratio);
-  return terminalSnapshot();
-});
-ipcMain.handle('cheshi:close-terminal-pane', (event, sessionId, paneId) => {
-  assertTerminalSender(event);
-  terminalController?.closePane(sessionId, paneId);
-  return terminalSnapshot();
+registerWorkspaceTerminalIpc({
+  ipc: ipcMain, projects: workspaceProjects.store, controller: () => terminalController,
+  available: () => terminalSurfaces?.available === true,
+  snapshot: terminalSnapshot, assertSender: assertTerminalSender,
 });
 ipcMain.handle('cheshi:is-codegraph-indexed', () => hasReadyCodeGraphIndex(codeGraphDatabasePath));
 ipcMain.handle('cheshi:reindex-codegraph', () => reindexCodeGraph());
-ipcMain.handle('cheshi:get-codex-account-usage', () => codexAccountService.getStatus());
-ipcMain.handle('cheshi:list-codex-plugins', (_event, forceRefetch) => codexChatService.listPlugins(forceRefetch));
-ipcMain.handle('cheshi:add-codex-marketplace', (event, request) => {
-  assertCheshiSender(event, 'Marketplace');
-  return codexChatService.addMarketplace(request);
-});
+accountIpc.handle('cheshi:get-codex-account-usage', () => codexAccountService.getStatus());
+registerCodexPluginIpc({ ipc: accountIpc, service: codexChatService });
 ipcMain.handle('cheshi:save-skill-recording', (event, recording) => {
   assertCheshiSender(event, 'Skill recording');
   return skillRecordingStore.save(recording);
 });
-ipcMain.handle('cheshi:start-plugin-workflow', async (event, value, contextId) => {
+accountIpc.handle('cheshi:start-plugin-workflow', async (event, value, contextId) => {
   assertCheshiSender(event, 'Plugin workflow');
   const request = pluginWorkflowRequest(value);
   const attachments = request.recordingId ? await skillRecordingStore.attachments(request.recordingId) : [];
-  return codexChatRelays.mutation(event.sender.id, contextId, () => chatServiceFor(event, contextId).startPluginWorkflow(request, attachments));
+  return codexChatSessionDeletion.mutation(() => chatServiceFor(event, contextId).startPluginWorkflow(request, attachments));
 });
-ipcMain.handle('cheshi:get-codex-plugin-logo', async (_event, pluginId) => {
-  const sources = codexChatService.getPluginLogoSources(pluginId);
-  if (!sources) return { light: null, dark: null };
-  const [light, dark] = await Promise.all([
-    pluginLogoDataUrl(sources.light),
-    pluginLogoDataUrl(sources.dark),
-  ]);
-  return { light, dark };
-});
-ipcMain.handle('cheshi:read-codex-plugin', (_event, reference) => codexChatService.readPlugin(reference));
-ipcMain.handle('cheshi:install-codex-plugin', (_event, reference) => codexChatService.installPlugin(reference));
-ipcMain.handle('cheshi:uninstall-codex-plugin', (_event, pluginId) => codexChatService.uninstallPlugin(pluginId));
-ipcMain.handle('cheshi:explain-code', (event, request) => {
+accountIpc.handle('cheshi:explain-code', (event, request) => {
   assertCheshiSender(event);
   return codeExplanation.explain(request);
 });
@@ -504,22 +472,20 @@ ipcMain.handle('cheshi:cancel-code-explanation', (event, requestId) => {
   codeExplanation.cancel(requestId);
 });
 ipcMain.handle('cheshi:select-codex-chat-attachments', (event) => selectCodexChatAttachments(event));
-ipcMain.handle('cheshi:import-codex-chat-attachments', async (_event, payload: unknown) => {
+ipcMain.handle('cheshi:import-codex-chat-attachments', async (event, payload: unknown) => {
+  assertCheshiSender(event);
   const attachments = await codexChatAttachmentStore.importTransferredFiles(payload);
   return attachments.map((attachment) => ({
     ...attachment,
     ...(attachment.kind === 'image' ? { previewUrl: attachmentPreviewUrl(attachment.path) ?? undefined } : {}),
   }));
 });
-ipcMain.handle(
-  'cheshi:get-codex-chat-attachment-preview',
-  (_event, attachmentPath) => codexChatAttachmentPreviewUrl(attachmentPath),
-);
-const sessionStores = createWorkspaceSessionStores(ipcMain, codeGraphDirectory, assertCheshiSender);
+registerChatAttachmentImageIpc({ ipc: ipcMain, assertSender: assertCheshiSender, readImage: readAttachmentImage });
+const sessionStores = createWorkspaceSessionStores(workspaceProjects.ipc, codeGraphDirectory, assertCheshiSender);
 registerCodexChatIpc({
-  ipc: ipcMain, service: chatServiceFor, relays: codexChatRelays, assertSender: assertCheshiSender,
+  ipc: ipcMain, accountIpc, service: chatServiceFor, assertSender: assertCheshiSender,
   savedTurns: codexChatSavedTurns,
-  historySearch: chatHistorySearch,
+  historySearch: sessionHistory.historySearch,
   beforeMessage: workspaceAccounts.beforeMessage,
   deletion: codexChatSessionDeletion,
   prepareMessage: async (value) => {
@@ -528,18 +494,10 @@ registerCodexChatIpc({
     return { ...request, attachments };
   },
 });
-ipcMain.handle('cheshi:dispose-codex-chat-context', (event, contextId) => {
+accountIpc.handle('cheshi:dispose-codex-chat-context', (event, contextId) => {
   assertCheshiSender(event, 'Chat');
   return codexChatSessionDeletion.mutation(() => codexChatContexts.dispose(event.sender.id, contextId));
 });
-function currentUserName(): string {
-  try {
-    return userInfo().username.trim();
-  } catch {
-    return '';
-  }
-}
-
 ipcMain.on('cheshi:get-workspace-metadata', (event) => {
   event.returnValue = {
     userName: currentUserName(),
@@ -549,8 +507,8 @@ ipcMain.on('cheshi:get-workspace-metadata', (event) => {
 });
 
 let mainWindow: BrowserWindow | null = null;
+let windowAppearance: ReturnType<typeof createWindowAppearance> | null = null;
 let codeGraphService: CodeGraphService | null = null;
-const initialIndexAbort = new AbortController();
 let codeGraphIndexer: CodeGraphIndexer | null = null;
 let codeGraphReindexPromise: Promise<{ reindexed: true }> | null = null;
 let appQuitting = false;
@@ -594,6 +552,9 @@ function disposeGitRepositoryWatcher() {
 
 function sendWorkspaceFilesChanged(event: WorkspaceFilesChangedEvent): void {
   void localHistory.captureChanged(event);
+  void canvasLibrary.captureChanged(event).catch(error => {
+    process.stderr.write(`[cheshi] Canvas history: ${error instanceof Error ? error.message : String(error)}\n`);
+  });
   for (const window of workspaceWindows()) {
     rendererEvents.send(window, WORKSPACE_FILES_CHANGED_CHANNEL, event);
   }
@@ -607,6 +568,10 @@ async function initializeWorkspaceFileWatcher() {
       onError: (error) => {
         process.stderr.write(`[cheshi] Workspace file watcher: ${error.message}\n`);
       },
+    });
+    // Establish a baseline even for canvases that have not been opened in this session.
+    void canvasLibrary.captureChanged({ paths: [], overflow: true }).catch(error => {
+      process.stderr.write(`[cheshi] Canvas history baseline: ${error instanceof Error ? error.message : String(error)}\n`);
     });
   } catch (error) {
     process.stderr.write(
@@ -706,6 +671,7 @@ function initializeTerminal(window: BrowserWindow): void {
     terminalSurfaces = new GhosttySurfaceHost({
       owner: window,
       workingDirectory: workspaceRoot,
+      workingDirectoryForPane: paneId => terminalController?.findPane(paneId)?.cwd ?? workspaceRoot,
       dark: terminalDark,
       onFocus: (paneId) => {
         const controller = terminalController;
@@ -752,7 +718,7 @@ async function startCodeGraphServer() {
     log: (event, details) => process.stdout.write(`[cheshi] ${event} ${JSON.stringify(details)}\n`),
   });
   try {
-    const url = await codeGraphService.start(workspaceRoot, frontendAssetsDirectory(), userDataDirectory);
+    const url = await codeGraphService.start(workspaceRoot, frontendAssetsDirectory(), codeGraphDataRoot!);
     if (!codeGraphServerPort) {
       codeGraphServerPort = new URL(url).port || null;
     }
@@ -772,7 +738,7 @@ async function performCodeGraphReindex(): Promise<{ reindexed: true }> {
   let indexingError = null;
   codeGraphIndexer = new CodeGraphIndexer({ command: codeGraphCommands.cli() });
   try {
-    await codeGraphIndexer.reindex(workspaceRoot, userDataDirectory);
+    await codeGraphIndexer.reindex(workspaceRoot, codeGraphDataRoot!);
   } catch (error) {
     indexingError = error;
   } finally {
@@ -789,7 +755,7 @@ async function performCodeGraphReindex(): Promise<{ reindexed: true }> {
 
 async function reindexCodeGraph() {
   if (codeGraphReindexPromise) return await codeGraphReindexPromise;
-  codeGraphReindexPromise = performCodeGraphReindex();
+  codeGraphReindexPromise = withCodeGraphWriter(performCodeGraphReindex);
   try {
     return await codeGraphReindexPromise;
   } finally {
@@ -803,43 +769,45 @@ let pendingIndexWarning: string | null = null;
 async function createMainWindow(contentUrl: string | null): Promise<BrowserWindow> {
   if (appQuitting) throw new Error('Workspace startup was canceled.');
   const shouldShowWindow = process.env.CHESHI_E2E_HEADLESS !== '1';
-  const window = new BrowserWindow({
-    show: false,
-    width: 1440,
-    height: 900,
-    minWidth: 1280,
-    minHeight: 680,
-    title: product.displayName,
-    backgroundColor: INITIAL_WINDOW_BACKGROUND_COLORS.dark,
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 18, y: 14 },
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: app.isPackaged
-        ? path.join(process.resourcesPath, 'runtime', 'preload.cjs')
-        : path.join(currentDirectory, 'runtime', 'preload.cjs'),
-      sandbox: true,
-    },
-  });
+  const configuration = workspaceWindowOptions(preloadPath, product.displayName);
+  const window = options.host?.createWindow(configuration, options.scope, workspaceRoot) ?? new BrowserWindow(configuration);
   logStartup('window created');
+  // Retained workspace surfaces share the host's native titlebar and decorations.
+  if (!options.host) {
+    createWindowTrafficLights({ window,
+      onError: error => process.stderr.write(`[cheshi] Traffic light scaling failed: ${String(error)}\n`),
+    });
+    createWindowTopHighlight({ window,
+      onError: error => process.stderr.write(`[cheshi] Window top highlight update failed: ${String(error)}\n`),
+    });
+  }
   registerWorkspaceWindowCloseConfirmation(window, dialog);
+  windowAppearance = createWindowAppearance({
+    window, ipc: ipcMain, filename: path.join(userDataDirectory, 'appearance.json'),
+    backgrounds: INITIAL_WINDOW_BACKGROUND_COLORS,
+  });
   options.scope.addOwner(window.webContents);
   if (options.windowState) window.setBounds(options.windowState.bounds);
 
   const readiness = createWorkspaceWindowReadiness({ signal: initialIndexAbort.signal });
+  const rendererTiming = createRendererReadinessLog({ enabled: Boolean(rendererUrl), write: message => process.stdout.write(message) });
+  const rendererContents = window.webContents;
+  const handleRendererNavigation = (_event: unknown, _url: string, isInPlace: boolean, isMainFrame: boolean) => {
+    rendererTiming.navigationStarted(isInPlace, isMainFrame);
+  };
+  rendererContents.on('did-start-navigation', handleRendererNavigation);
   let initialRevealComplete = false;
   const revealWindow = () => {
     const theme = readiness.assertReady();
     if (appQuitting || window.isDestroyed()) throw new Error('Workspace startup was canceled.');
-    window.setBackgroundColor(INITIAL_WINDOW_BACKGROUND_COLORS[theme]);
+    windowAppearance?.ready(theme);
     if (initialRevealComplete) return;
     initialRevealComplete = true;
     if (shouldShowWindow) {
       if (options.windowState) window.setBounds(options.windowState.bounds);
       window.show();
-      if (options.windowState?.maximized) window.maximize();
-      if (options.windowState?.fullscreen) window.setFullScreen(true);
+      if (options.windowState?.maximized || (process.platform === 'darwin' && options.windowState?.fullscreen)) window.maximize();
+      if (process.platform !== 'darwin' && options.windowState?.fullscreen) window.setFullScreen(true);
       if (options.initial) startupScreen.close();
       logStartup('window shown');
     }
@@ -848,7 +816,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
       catch (error) { process.stderr.write(`[cheshi] Workspace registration failed: ${String(error)}\n`); }
     }
     if (shouldShowWindow && pendingIndexWarning) {
-      void dialog.showMessageBox(window, {
+      void dialog.showMessageBox(nativeWorkspaceWindow(window), {
         type: 'warning', title: 'CodeGraph indexing failed',
         message: 'The workspace is open, but its CodeGraph index could not be created.',
         detail: `${pendingIndexWarning}\n\nOpen this workspace again to retry indexing.`,
@@ -862,7 +830,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
     assertCheshiSender(event, 'Renderer readiness');
     if (theme !== 'dark' && theme !== 'light') throw new TypeError('Renderer theme is invalid.');
     readiness.rendererReady(theme);
-    logStartup('renderer ready');
+    rendererTiming.ready();
   };
   const handleReadyToShow = () => {
     logStartup('browser ready to show');
@@ -897,6 +865,7 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
   mainWindow = window;
   onWindowCreated?.(window);
   initializeTerminal(window);
+  terminalSurfaces?.setWindowVisible(false);
   logStartup('terminal bridge ready');
   window.on('show', () => terminalSurfaces?.setWindowVisible(true));
   window.on('hide', () => terminalSurfaces?.setWindowVisible(false));
@@ -906,9 +875,12 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
   window.on('closed', () => {
     readiness.fail(new Error('The workspace window closed before it was revealed.'));
     ipcMain.off(RENDERER_READY_CHANNEL, handleRendererReady);
+    rendererContents.off('did-start-navigation', handleRendererNavigation);
     if (mainWindow !== window) return;
+    workspaceProjects.stopAccepting();
     disposeTerminal();
     void languageServerManager.stop();
+    windowAppearance = null;
     mainWindow = null;
     options.onClosed();
   });
@@ -918,22 +890,30 @@ async function createMainWindow(contentUrl: string | null): Promise<BrowserWindo
       : window.loadFile(path.join(frontendAssetsDirectory(), 'index.html'));
   void loading.then(() => readiness.loaded(), (error: unknown) => readiness.fail(error));
   await readiness.ready;
+  await accountSwitch.ready();
   if (!options.deferShow) revealWindow();
   return window;
 }
 
 async function initialize(): Promise<BrowserWindow> {
   logStartup('electron ready');
+  void accountSwitch.ready().then(() => {
+    void chatHistorySearch.start().catch(error => {
+      if (!initialIndexAbort.signal.aborted) chatServiceOptions.log('chat-history-index-initialization-failed', { message: String(error) });
+    });
+  }).catch(error => {
+    if (!initialIndexAbort.signal.aborted) chatServiceOptions.log('codex-account-initialization-failed', { message: String(error) });
+  });
   if (options.initial) await startupScreen.setStatus('Preparing workspace…');
   if (!options.deferShow) registerWorkspace(userDataDirectory, workspaceRoot, { setCurrent: true });
-  const index = await prepareInitialCodeGraph({
+  const index = await withCodeGraphWriter(() => prepareInitialCodeGraph({
     databasePath: codeGraphDatabasePath,
     workspaceRoot,
     dataRoot: codeGraphDataRoot!,
     command: codeGraphCommands.cli(),
     signal: initialIndexAbort.signal,
     onIndexing: () => { if (options.initial) void startupScreen.setStatus('Indexing workspace…'); },
-  });
+  }));
   const codeGraphUrl = index.ready ? await startCodeGraphServer() : null;
   logStartup('codegraph ready');
   await initializeWorkspaceFileWatcher();
@@ -942,7 +922,6 @@ async function initialize(): Promise<BrowserWindow> {
   logStartup('git watcher ready');
   if (options.initial) await startupScreen.setStatus('Loading workspace information…');
   pendingIndexWarning = index.error ? String(index.error) : null;
-  await accountSwitch.initialize(error => chatServiceOptions.log('codex-account-initialization-failed', { message: String(error) }));
   return await createMainWindow(codeGraphUrl);
 }
 
@@ -955,9 +934,13 @@ function start(): Promise<BrowserWindow> {
 function dispose(): Promise<void> {
   if (disposal) return disposal;
   appQuitting = true;
+  const projectsDisposal = workspaceProjects.dispose();
+  // Attach the rejection handler immediately while other shutdown work proceeds.
+  const projectsSettled = Promise.allSettled([projectsDisposal]);
   rendererEvents.stop();
   unsubscribeAccount();
   unsubscribeChat();
+  unsubscribeNotificationContext(); notifications.dispose();
   unsubscribeDiagnostics();
   disposeWorkspaceFileWatcher();
   disposeGitRepositoryWatcher();
@@ -968,18 +951,25 @@ function dispose(): Promise<void> {
     // Startup may have completed a watcher registration after disposal began.
     disposeWorkspaceFileWatcher();
     disposeGitRepositoryWatcher();
+    const projectResults = await projectsSettled;
+    for (const result of projectResults) {
+      if (result.status === 'rejected') process.stderr.write(`[cheshi] Project cleanup failed: ${String(result.reason)}\n`);
+    }
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
     disposeTerminal();
     codeExplanation.stop();
+    await workspaceScheduler.dispose().catch(error => {
+      process.stderr.write(`[cheshi] Scheduler cleanup failed: ${String(error)}\n`);
+    });
     const results = await Promise.allSettled([
-      codexChatService.stop(),
-      historyMcp.stop(), chatHistorySearch.stop(),
+      codexChatService.stop(), agentVoice.dispose(),
+      chatHistorySearch.stop(), sessionHistory.dispose(),
       temporaryChats.stop(),
       localHistory.dispose(),
       managementDisposal,
       codexAccountService.stop(), accountSwitch.stop(), workspaceAccounts.stop(),
       codeGraphService?.stop(), codeGraphIndexer?.stop(), ephemeralSessionClient.stop(),
-      codexChatRelays.shutdown(), codexChatContexts.stop(), codexChatSavedTurns.flush(), sessionStores.flush(), languageServerManager.stop(),
+      codexChatContexts.stop(), codexChatSavedTurns.flush(), sessionStores.flush(), languageServerManager.stop(),
     ]);
     options.scope.dispose();
     for (const result of results) {
@@ -992,5 +982,5 @@ function show() {
   if (!revealPreparedWindow) throw new Error('The workspace window is not ready.');
   revealPreparedWindow();
 }
-return { start, show, dispose };
+return { start, show, dispose, startDiscordSetup: notifications.setupDiscord };
 }

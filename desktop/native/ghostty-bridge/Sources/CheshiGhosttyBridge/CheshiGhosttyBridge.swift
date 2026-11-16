@@ -217,12 +217,17 @@ private final class SurfaceStore {
     rootView: NSView,
     frame: CGRect,
     workingDirectory: String,
-    dark: Bool
+    dark: Bool,
+    command: String
   ) -> Int32 {
     let surfaceID = nextSurfaceID
     nextSurfaceID += 1
 
     let configuration = TerminalConfiguration { builder in
+      if !command.isEmpty {
+        builder.withCustom("command", command)
+        builder.withCustom("shell-integration", "none")
+      }
       builder.withFontFamily("Menlo")
       builder.withFontFamily("Apple SD Gothic Neo")
       builder.withFontSize(11)
@@ -356,17 +361,20 @@ public func cheshiGhosttySurfaceCreate(
   _ width: Double,
   _ height: Double,
   _ workingDirectory: UnsafePointer<CChar>?,
-  _ dark: Bool
+  _ dark: Bool,
+  _ command: UnsafePointer<CChar>?
 ) -> Int32 {
   guard let rootViewPointer, let workingDirectory else { return -1 }
   let directory = String(cString: workingDirectory)
+  let launchCommand = command.map { String(cString: $0) } ?? ""
   return onMain {
     let rootView = Unmanaged<NSView>.fromOpaque(rootViewPointer).takeUnretainedValue()
     return SurfaceStore.shared.create(
       rootView: rootView,
       frame: frameForRootView(rootView, x: x, y: y, width: width, height: height),
       workingDirectory: directory,
-      dark: dark
+      dark: dark,
+      command: launchCommand
     )
   }
 }

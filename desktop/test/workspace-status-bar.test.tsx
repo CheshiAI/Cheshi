@@ -59,14 +59,15 @@ function harness(props: ComponentProps<typeof WorkspaceStatusBar>) {
       useCallback: (callback: unknown) => callback,
     },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
-    'lucide-react': { Activity: 'Activity', Gauge: 'Gauge' },
-    '../../shared/ui': { LiquidGlassPanel: 'LiquidGlassPanel' },
+    'lucide-react': { Gauge: 'Gauge' },
+    '../../shared/ui': { LiquidGlassPanel: 'LiquidGlassPanel', RegionalBlur: 'RegionalBlur' },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: 'TooltipTarget' },
+    'react-dom': { createPortal: (children: unknown, target: unknown) => jsx('Portal', { children, target }) },
     '../account/AccountUsagePanel': { AccountUsagePanel: 'AccountUsagePanel' },
     '../account/AddAccountDialog': { AddAccountDialog: 'AddAccountDialog' },
-    '../graph/CodeGraphIndexPanel': { CodeGraphIndexPanel: 'CodeGraphIndexPanel' },
     '../updates/AppUpdateIndicator': { AppUpdateIndicator: 'AppUpdateIndicator' },
-    './WorkspaceStorageUsage': { WorkspaceStorageUsage: 'WorkspaceStorageUsage' },
-    './WorkspaceGitBranch': { WorkspaceGitBranch: 'WorkspaceGitBranch' },
+    '../updates/CodexUpdateIndicator': { CodexUpdateIndicator: 'CodexUpdateIndicator' },
+    '../chrome/KeepAwakeStatus': { KeepAwakeStatus: 'KeepAwakeStatus' },
     './LanguageSelector': { LanguageSelector: 'LanguageSelector' },
     './statusBarModel': { accountStatusSummary, accountUsageTotals },
     './WorkspaceStatusBar.module.css': { default: {} },
@@ -77,7 +78,7 @@ function harness(props: ComponentProps<typeof WorkspaceStatusBar>) {
   } });
   const exports: Record<string, unknown> = {};
   vm.runInNewContext(compiled.outputText, { exports,
-    document: { getElementById: () => ({ hidePopover: () => { hiddenPopovers++; } }) },
+    document: { body: 'body', getElementById: () => ({ hidePopover: () => { hiddenPopovers++; } }) },
     require(name: string) {
     assert.ok(Object.hasOwn(modules, name), `Unexpected dependency: ${name}`);
     return modules[name];
@@ -94,7 +95,18 @@ function harness(props: ComponentProps<typeof WorkspaceStatusBar>) {
   };
 }
 
-const initialProps = { onAccountInitialLoad: () => {}, onIndexInitialLoad: () => {} };
+const initialProps = { onAccountInitialLoad: () => {}, blurSourceRef: { current: null } };
+
+test('places sidebar guidance before the status controls and keeps its ref out of account props', () => {
+  const sidebarStatusRef = { current: null };
+  const tree = harness({ ...initialProps, sidebarStatusRef }).render();
+  const guidance = elements(tree.props.children)[0]!;
+  expect(guidance.props.role).toBe('status');
+  expect(guidance.props['aria-label']).toBe('Sidebar guidance');
+  expect(guidance.props.ref).toBe(sidebarStatusRef);
+  expect(find(tree, element => element.type === 'AccountUsagePanel').props.sidebarStatusRef).toBeUndefined();
+});
+
 const accountSnapshot: CodexAccountsSnapshot = {
   activeId: 'active', profiles: [{
     id: 'active', label: 'Personal', email: 'person@example.com', login: { state: 'signed_in', error: null },
@@ -105,17 +117,17 @@ const accountSnapshot: CodexAccountsSnapshot = {
   }],
 };
 
-test('connects initially closed native popovers and keeps their startup panels mounted', () => {
+test('keeps account startup mounted with only the account popover in the status bar', () => {
   let accountReady = 0;
-  let indexReady = 0;
-  const tree = harness({ onAccountInitialLoad: () => { accountReady++; }, onIndexInitialLoad: () => { indexReady++; } }).render();
+  const tree = harness({ ...initialProps, onAccountInitialLoad: () => { accountReady++; } }).render();
   const footerItems = elements(tree).map(element => element.type);
-  expect(footerItems.indexOf('WorkspaceGitBranch')).toBe(footerItems.indexOf('WorkspaceStorageUsage') + 1);
+  expect(footerItems).not.toContain('WorkspaceGitBranch');
+  expect(elements(tree.props.children)[0]?.type).toBe('AppUpdateIndicator');
   const triggers = elements(tree).filter(element => element.type === 'button');
   const popovers = elements(tree).filter(element => element.props.popover === 'auto');
-  expect(triggers).toHaveLength(2);
-  expect(popovers).toHaveLength(2);
-  expect(new Set(popovers.map(element => element.props.id)).size).toBe(2);
+  expect(triggers).toHaveLength(1);
+  expect(popovers).toHaveLength(1);
+  expect(new Set(popovers.map(element => element.props.id)).size).toBe(1);
   for (const trigger of triggers) {
     expect(trigger.props['aria-expanded']).toBe(false);
     expect(trigger.props['aria-haspopup']).toBe('dialog');
@@ -124,23 +136,19 @@ test('connects initially closed native popovers and keeps their startup panels m
     expect(panel?.props.role).toBe('dialog');
   }
   invoke(find(tree, element => element.type === 'AccountUsagePanel'), 'onInitialLoad');
-  invoke(find(tree, element => element.type === 'CodeGraphIndexPanel'), 'onInitialLoad');
-  expect([accountReady, indexReady]).toEqual([1, 1]);
+  expect(accountReady).toBe(1);
+  expect(content(tree)).not.toContain('CodeGraph');
 });
 
 test('updates summaries from mounted children and reflects native opening and dismissal', () => {
   const app = harness(initialProps);
   const initial = app.render();
   expect(content(initial)).toContain('Account · Checking…');
-  expect(content(initial)).toContain('CodeGraph · CHECKING');
   const accountPanel = find(initial, element => element.type === 'AccountUsagePanel');
-  const indexPanel = find(initial, element => element.type === 'CodeGraphIndexPanel');
   invoke(accountPanel, 'onStatusChange', accountSnapshot, null);
-  invoke(indexPanel, 'onStatusChange', { label: 'INDEXED', attention: false, busy: false });
   const loaded = app.render();
   expect(content(loaded)).toContain('person@example.com');
   expect(content(loaded)).toContain('94%');
-  expect(content(loaded)).toContain('CodeGraph · INDEXED');
   expect(elements(loaded).some(element => element.props['aria-label'] === 'Loading')).toBe(false);
   const popovers = elements(loaded).filter(element => element.props.popover === 'auto');
   for (const panel of popovers) {
@@ -149,7 +157,7 @@ test('updates summaries from mounted children and reflects native opening and di
     invoke(panel, 'onToggle', { newState: 'closed' });
     expect(find(app.render(), element => element.props.popoverTarget === panel.props.id).props['aria-expanded']).toBe(false);
   }
-  expect(elements(app.render()).filter(element => element.type === 'AccountUsagePanel' || element.type === 'CodeGraphIndexPanel')).toHaveLength(2);
+  expect(elements(app.render()).filter(element => element.type === 'AccountUsagePanel')).toHaveLength(1);
 });
 
 test('surfaces child errors and forwards account selection guards and callbacks', () => {
@@ -163,15 +171,12 @@ test('surfaces child errors and forwards account selection guards and callbacks'
   expect(accountPanel.props.onBeforeSelect).toBe(onBeforeSelect);
   expect(accountPanel.props.onSelectionFinished).toBe(onSelectionFinished);
   invoke(accountPanel, 'onStatusChange', null, 'Accounts unavailable');
-  invoke(find(tree, element => element.type === 'CodeGraphIndexPanel'), 'onStatusChange', {
-    label: 'FAILED', attention: true, busy: false,
-  });
   const failed = app.render();
   const triggers = elements(failed).filter(element => element.type === 'button');
   expect(triggers.every(element => element.props['data-attention'] === true)).toBe(true);
   expect(content(failed)).toContain('Account · Unavailable');
-  expect(content(failed)).toContain('CodeGraph · FAILED');
-  expect(triggers.find(element => content(element).includes('Account'))?.props.title).toBe('Accounts unavailable');
+  expect(triggers.find(element => content(element).includes('Account'))?.props.title).toBeUndefined();
+  expect(find(failed, element => element.type === 'TooltipTarget').props.content).toBe('Accounts unavailable');
 });
 
 test('shows the active account beside the normalized combined graph and remaining total', () => {
@@ -191,6 +196,8 @@ test('shows the active account beside the normalized combined graph and remainin
   expect(content(trigger)).not.toContain('second@example.com');
   expect(trigger.props['aria-label']).toContain('193% of 200%');
   expect(trigger.props['aria-label']).toContain('2 signed-in accounts');
+  expect(trigger.props.title).toBeUndefined();
+  expect(find(combined, element => element.type === 'TooltipTarget').props.content).toContain('193% of 200%');
   expect(find(trigger, element => element.props.style !== undefined).props.style).toEqual({ width: '96.5%' });
 
   snapshot.activeId = 'second';
@@ -212,23 +219,6 @@ test('does not render a partial total as complete when another signed-in account
   expect(content(tree)).toContain('Total unavailable');
   expect(content(tree)).not.toContain('%');
   expect(elements(tree).some(element => element.props.style !== undefined)).toBe(false);
-});
-
-test('distinguishes a ready index from unavailable and still-checking states', () => {
-  const app = harness(initialProps);
-  const panel = find(app.render(), element => element.type === 'CodeGraphIndexPanel');
-  for (const [indicator, expected] of [
-    [{ label: 'indexed', attention: false, busy: false }, 'ready'],
-    [{ label: 'NOT INDEXED', attention: true, busy: false }, 'disabled'],
-    [{ label: 'UNAVAILABLE', attention: true, busy: false }, 'disabled'],
-    [{ label: 'CHECKING', attention: false, busy: true }, 'pending'],
-    [{ label: 'INDEXING', attention: true, busy: true }, 'pending'],
-  ] as const) {
-    invoke(panel, 'onStatusChange', indicator);
-    const trigger = find(app.render(), element => element.type === 'button' && content(element).includes('CodeGraph'));
-    expect(trigger.props['data-index-state']).toBe(expected);
-    expect(trigger.props.disabled).not.toBe(true);
-  }
 });
 
 test('colors the usage indicator by active account readiness independently of popover state', () => {
@@ -274,4 +264,17 @@ test('opens account registration outside the dismissed usage popover and restore
   expect(focused).toBe(true);
   invoke(dialog, 'onClose');
   expect(elements(app.render()).some(element => element.type === 'AddAccountDialog')).toBe(false);
+});
+
+
+test('account popover uses the supplied scene and portals its foreground outside that source', () => {
+  const tree = harness(initialProps).render();
+  const blur = find(tree, element => element.type === 'RegionalBlur');
+  expect(blur.props.sourceRef).toBe(initialProps.blurSourceRef);
+  expect(blur.props.sourceMode).toBe('replace');
+  const portal = find(blur, element => element.type === 'Portal');
+  expect(portal.props.target).toBe('body');
+  const panel = find(portal, element => element.type === 'LiquidGlassPanel');
+  expect(panel.props['data-liquid-glass-backdrop']).toBe('true');
+  expect(find(portal, element => element.props.popover === 'auto').props.role).toBe('dialog');
 });

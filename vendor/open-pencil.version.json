@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/open-pencil/open-pencil",
+  "commit": "5decf629f07e88b9b59d8110109860865848d149",
+  "version": "0.16.0",
+  "source": "https://codeload.github.com/open-pencil/open-pencil/tar.gz/5decf629f07e88b9b59d8110109860865848d149",
+  "archiveSha256": "018ad397d65a09f0269b8c7ab8438e0387bd942350d0732558ecaaebf486fff3",
+  "treeSha256": "62392a3366c1e64907f405ed39f15afe595a672834344aec9051941c44d5cc47",
+  "localPatches": [],
+  "lfs": "Nine upstream test fixtures remain Git LFS pointers; fetch their pinned objects before running the upstream fixture suites."
+}

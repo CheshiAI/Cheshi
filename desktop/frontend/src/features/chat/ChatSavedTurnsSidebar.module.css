@@ -1,0 +1,14 @@
+.inspector {
+  --sliding-side-panel-width: min(var(--sidebar-width), 60cqw);
+  display: flex; min-height: 0; flex: 0 0 auto;
+}
+.panel {
+  --liquid-glass-radius: 0;
+  border-top: 0; border-right: 0; border-bottom: 0;
+}
+.content { display: flex; min-width: 0; height: 100%; flex-direction: column; font-size: 10px; }
+.rail {
+  display: flex; box-sizing: border-box; width: 42px; flex: 0 0 42px;
+  align-items: center; flex-direction: column; gap: var(--icon-default);
+  border-left: 1px solid var(--divider); padding: var(--space-default) 0;
+}

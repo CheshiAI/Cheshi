@@ -1,0 +1,36 @@
+.form { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--space-default); padding: 0 var(--space-default) var(--space-default); }
+.form > * { flex-shrink: 0; }
+.heading {
+  display: flex;
+  box-sizing: border-box;
+  height: 42px;
+  min-height: 42px;
+  align-items: center;
+  gap: var(--space-default);
+  margin: 0 calc(-1 * var(--space-default));
+  padding: 0 var(--space-default);
+  border-bottom: 1px solid var(--divider);
+}
+.heading h2 { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-label); font-weight: 600; }
+.heading span, .description { margin: 0; font-size: var(--font-size-small); font-weight: 400; color: var(--sidebar-section-label-color); line-height: 1.6; overflow-wrap: anywhere; }
+.fields { min-width: 0; margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: var(--space-default); }
+.field { display: flex; flex-direction: column; gap: var(--icon-default); min-width: 0; font-size: var(--font-size-label); font-weight: 400; }
+.accountRow { flex-direction: row; align-items: center; min-height: 36px; }
+.accountRow > span { flex: 0 0 var(--homie-setting-label-width, auto); }
+.accountRow > :last-child { flex: 1; min-width: 0; width: 0; }
+.field h3 { margin: 0; color: var(--sidebar-section-label-color); font-size: var(--font-size-section-title); font-weight: 600; }
+.field textarea { resize: vertical; }
+.switchRow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-default); min-height: 36px; }
+.actions { display: flex; justify-content: flex-end; gap: var(--icon-default); }
+.actions > button { font-family: var(--font-ui), sans-serif; font-size: 10px; font-weight: 400; color: var(--text); }
+
+.identityRow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-default);
+  min-width: 0;
+  padding-block: calc(var(--space-default) * 1.5);
+}
+.identityRow > :last-child { flex: none; min-width: 0; width: 100%; }
+.identityRow input { text-align: center; }

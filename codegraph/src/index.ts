@@ -169,7 +169,7 @@ export class CodeGraph {
 
     // Open database
     const dbPath = getDatabasePath(resolvedRoot);
-    const db = DatabaseConnection.open(dbPath, { readOnly });
+    const db = DatabaseConnection.open(dbPath, { readOnly, immutable: options.immutable });
     const queries = new QueryBuilder(db.getDb());
 
     const instance = new CodeGraph(db, queries, resolvedRoot);
@@ -248,13 +248,13 @@ export class CodeGraph {
   /**
    * Open synchronously (without sync)
    */
-  static openSync(projectRoot: string, options: Pick<OpenOptions, 'readOnly'> = {}): CodeGraph {
+  static openSync(projectRoot: string, options: Pick<OpenOptions, 'readOnly' | 'immutable'> = {}): CodeGraph {
     const readOnly = options.readOnly === true;
     const resolvedRoot = resolveValidatedProjectRoot(projectRoot, readOnly);
 
     // Open database
     const dbPath = getDatabasePath(resolvedRoot);
-    const db = DatabaseConnection.open(dbPath, { readOnly });
+    const db = DatabaseConnection.open(dbPath, { readOnly, immutable: options.immutable });
     const queries = new QueryBuilder(db.getDb());
 
     return new CodeGraph(db, queries, resolvedRoot);
@@ -270,6 +270,10 @@ export class CodeGraph {
 
   reopenIfReplaced(): boolean {
     return this.state.reopenIfReplaced();
+  }
+
+  reopenReadOnly(): void {
+    this.state.reopenReadOnly();
   }
 
   close(): void {

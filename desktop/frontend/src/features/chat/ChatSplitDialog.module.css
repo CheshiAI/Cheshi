@@ -1,4 +1,4 @@
-.form { display: flex; flex-direction: column; gap: var(--space-default); font-size: 12px; }
+.form { display: flex; flex-direction: column; gap: var(--space-default); font-size: 10px; }
 .options { display: flex; flex-direction: column; gap: var(--icon-default); min-width: 0; margin: 0; padding: 0; border: 0; }
 .options legend { padding: 0; margin-bottom: var(--space-default); font-weight: 600; }
 .option { display: flex; align-items: center; gap: var(--icon-default); box-sizing: border-box; height: auto; min-height: var(--field-height); flex: 0 0 auto; padding: var(--space-8) var(--space-default); border: 1px solid var(--divider); border-radius: var(--button-radius); color: var(--text); font-size: 10px; font-weight: 400; line-height: 16px; cursor: pointer; }
@@ -11,23 +11,56 @@
 .option small { overflow: hidden; color: inherit; font-size: 10px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
 .form p { margin: 0; line-height: 1.5; }
 .sessionTitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sessionDeletionForm > p { text-align: left; }
 .buttons { display: flex; justify-content: flex-end; gap: var(--icon-default); }
 .deletionActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-default); }
 .deletionProgress { margin-right: auto; justify-content: flex-start; }
 .splitDialog { --modal-title-color: var(--active-text); }
-.historyDialog {
+.historyDialog,
+.recordDeletionDialog {
   --modal-header-height: var(--header-height);
   --modal-header-padding: 0 var(--space-default);
-  --modal-title-color: var(--sidebar-section-label-color);
-  --modal-title-size: 10px;
-  --modal-title-icon-size: 11px;
-  --modal-title-icon-stroke-width: 1.7;
 }
-.historyDialog .form { font-size: 11px; font-weight: 400; }
-.historyDialog .sessionTitle { color: var(--text); }
-.historyDialog .options legend { color: var(--sidebar-section-label-color); font-weight: 400; }
-.historyDialog .option strong { font-size: 11px; font-weight: 500; }
-.historyDialog .option small { color: var(--sub-text); white-space: normal; overflow-wrap: anywhere; }
+.historyDialog .form,
+.recordDeletionDialog .form {
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-label);
+  font-weight: 400;
+  letter-spacing: normal;
+}
+.historyDialog .sessionTitle,
+.recordDeletionDialog .sessionTitle { color: var(--text); }
+.recordDeletionDialog .form p:not(.sessionTitle) {
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.historyDialog .options legend,
+.historyDialog .form p[role='alert'] {
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+  font-weight: 400;
+}
+.historyDialog .option { background: var(--control-surface-ghost); color: var(--text); }
+.historyDialog .option[data-selected='true'] { background: var(--control-surface); color: var(--text); }
+.historyDialog .option:not(:has(input:disabled)):is(:hover, :active, :focus-within) {
+  background: var(--control-surface-interactive);
+  color: var(--text);
+}
+.historyDialog .option svg {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  stroke-width: var(--icon-button-stroke-width);
+}
+.historyDialog .option strong { color: var(--text); font-size: var(--font-size-label); font-weight: 400; }
+.historyDialog .option small {
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .openingProgress { justify-content: flex-start; }
 
 .option:not(:has(input:disabled)):is(:hover, :focus-within),

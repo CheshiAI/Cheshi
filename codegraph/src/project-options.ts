@@ -20,6 +20,8 @@ export interface OpenOptions {
 
   /** Whether to run in read-only mode */
   readOnly?: boolean;
+  /** Disable immutable snapshots when the read-only connection outlives a host update. */
+  immutable?: boolean;
 }
 
 /**

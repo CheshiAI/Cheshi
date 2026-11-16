@@ -1,0 +1,131 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  timeline-scope: --sidebar-tabs;
+  -webkit-app-region: no-drag;
+}
+
+.tabViewport {
+  flex: 0 0 var(--header-height);
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 0;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--divider);
+  box-sizing: border-box;
+}
+
+/* The content owns intermediate positions; header snap resumes when that gesture settles. */
+.tabViewport[data-following-content='true'] {
+  scroll-snap-type: none;
+}
+
+.root .tabs {
+  position: relative;
+  isolation: isolate;
+  box-sizing: border-box;
+  height: 100%;
+  width: calc(100% * var(--sidebar-tab-count) / var(--sidebar-visible-tabs));
+  overflow: visible;
+  gap: 0;
+  padding: 0;
+}
+
+.root .tabs::before {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  bottom: 0;
+  left: 0;
+  width: calc(100% / var(--sidebar-tab-count));
+  height: var(--tab-indicator-height);
+  background: var(--divider);
+  pointer-events: none;
+  /* Share the content's native scroll timeline, including reversals and snap-back. */
+  animation: sidebar-selection linear both;
+  animation-timeline: --sidebar-tabs;
+}
+
+@keyframes sidebar-selection {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(100% * (var(--sidebar-tab-count) - 1))); }
+}
+
+.root .tabs .tab {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  height: 100%;
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  border-radius: 0;
+  padding: 0 var(--icon-default);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 600;
+  letter-spacing: normal;
+  color: var(--text);
+  background: transparent;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.tabs .tab:hover,
+.tabs .tab:active {
+  background: var(--control-surface-interactive);
+}
+
+.tab:focus-visible {
+  outline: var(--focus-outline-width) solid var(--dropdown-selection-text);
+  outline-offset: var(--focus-outline-inset);
+}
+
+.panels {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-timeline: --sidebar-tabs x;
+  scrollbar-width: none;
+}
+
+/* This is a paged navigation viewport; lists inside retain their normal scrollbars. */
+.panels::-webkit-scrollbar,
+.tabViewport::-webkit-scrollbar {
+  display: none;
+}
+
+.track {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+/* Offscreen panels stay mounted and visible while native scrolling moves between them. */
+.panel[aria-hidden='true'] {
+  pointer-events: none;
+}

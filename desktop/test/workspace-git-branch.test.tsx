@@ -1,13 +1,12 @@
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
 import { expect, test } from 'bun:test';
-import ts from 'typescript';
-import type { GitRepositorySnapshot } from '../frontend/src/cheshiDesktop';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { ProjectGitBranch, ProjectGitFileCounts } from '../frontend/src/features/navigation/ProjectGitBranch';
+import type { GitFileChange, GitRepositorySnapshot } from '../frontend/src/cheshiDesktop';
 import {
   observeWorkspaceGitBranch,
   workspaceGitBranchLabels,
-} from '../frontend/src/features/shell/workspaceGitBranchModel';
+  workspaceGitFileCounts,
+} from '../frontend/src/shared/workspaceGitBranchModel';
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -147,61 +146,53 @@ test('distinguishes branch, detached HEAD, unborn repository and unavailable sta
   expect(workspaceGitBranchLabels(null).label).toBe('Git unavailable');
 });
 
-test('renders branch updates with a full tooltip and cleans up its subscription', () => {
-  const states: unknown[] = [];
-  let cursor = 0;
-  let effect: (() => void | (() => void)) | undefined;
-  let receive: ((value: GitRepositorySnapshot | null) => void) | undefined;
-  let disposed = false;
-  const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
-  const modules: Record<string, unknown> = {
-    react: {
-      useState: (initial: unknown) => {
-        const index = cursor++;
-        if (index >= states.length) states.push(initial);
-        return [states[index], (value: unknown) => { states[index] = value; }];
-      },
-      useEffect: (callback: () => void | (() => void)) => { effect = callback; },
-    },
-    'react/jsx-runtime': { jsx, jsxs: jsx },
-    'lucide-react': { GitBranch: 'GitBranch' },
-    '../../cheshiDesktop': { cheshiDesktop: { getGitSnapshot: () => {}, onGitRepositoryChanged: () => {} } },
-    './workspaceGitBranchModel': {
-      workspaceGitBranchLabels,
-      observeWorkspaceGitBranch: (_desktop: unknown, update: typeof receive) => {
-        receive = update;
-        return () => { disposed = true; };
-      },
-    },
-    './WorkspaceGitBranch.module.css': { default: {} },
-  };
-  const source = readFileSync(new URL('../frontend/src/features/shell/WorkspaceGitBranch.tsx', import.meta.url), 'utf8');
-  const compiled = ts.transpileModule(source, { compilerOptions: {
-    jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023,
-  } });
-  const exports: Record<string, unknown> = {};
-  vm.runInNewContext(compiled.outputText, { exports, require: (name: string) => {
-    assert.ok(Object.hasOwn(modules, name), `Unexpected dependency: ${name}`);
-    return modules[name];
-  } });
-  const component = exports.WorkspaceGitBranch;
-  assert.ok(typeof component === 'function');
-  const render = () => {
-    cursor = 0;
-    return component() as { props: { title: string; 'aria-busy': boolean; children: { props: Record<string, unknown> }[] } };
-  };
-  expect(render().props['aria-busy']).toBe(true);
-  const cleanup = effect?.();
-  assert.ok(receive);
-  receive(branch('feature/a-very-long-branch-name'));
-  const tree = render();
-  expect(tree.props.title).toBe('Current Git branch: feature/a-very-long-branch-name');
-  expect(tree.props['aria-busy']).toBe(false);
-  expect(tree.props.children[1]!.props.children).toBe('feature/a-very-long-branch-name');
-  expect(tree.props.children[1]!.props['aria-live']).toBe('polite');
-  receive(branch('main'));
-  expect(render().props.children[1]!.props.children).toBe('main');
-  assert.ok(cleanup);
-  cleanup();
-  expect(disposed).toBe(true);
+function fileChange(path: string, indexStatus = ' ', workingTreeStatus = 'M'): GitFileChange {
+  return { path, oldPath: null, indexStatus, workingTreeStatus,
+    staged: indexStatus !== ' ' && indexStatus !== '?',
+    unstaged: workingTreeStatus !== ' ' && workingTreeStatus !== '?',
+    untracked: indexStatus === '?' && workingTreeStatus === '?' };
+}
+
+test('counts changed files once across staged, unstaged, untracked, renamed and deleted changes', () => {
+  const changes = [fileChange('modified.ts', 'M', 'M'), fileChange('new.ts', 'A', ' '),
+    fileChange('untracked.ts', '?', '?'), { ...fileChange('renamed.ts', 'R', ' '), oldPath: 'old.ts' },
+    fileChange('staged-delete.ts', 'D', ' '), fileChange('working-delete.ts', ' ', 'D'),
+    fileChange('modified.ts'), fileChange('clean.ts', ' ', ' ')];
+  expect(workspaceGitFileCounts({ ...branch('main'), changes })).toEqual({ changed: 4, deleted: 2 });
+});
+
+test('counts recreated paths as changed and hides unavailable or clean snapshots', () => {
+  const changes = [fileChange('recreated.ts', 'D', ' '), fileChange('recreated.ts', '?', '?')];
+  expect(workspaceGitFileCounts({ ...branch('main'), changes })).toEqual({ changed: 1, deleted: 0 });
+  for (const snapshot of [null, branch('main'), { available: false, message: 'Unavailable', changes }]) {
+    expect(workspaceGitFileCounts(snapshot)).toEqual({ changed: 0, deleted: 0 });
+  }
+});
+
+test('project branch keeps full names for assistive text and omits unavailable repositories', () => {
+  const snapshot = branch('feature/a-very-long-branch-name');
+  const html = renderToStaticMarkup(<ProjectGitBranch snapshot={snapshot} />);
+  expect(html).toContain('aria-label="Current Git branch: feature/a-very-long-branch-name"');
+  expect(html).toContain('>feature/a-very-long-branch-name</span>');
+  expect(html).toContain('data-tooltip-trigger');
+  for (const value of [null, { available: false, message: 'Not a Git repository' }]) {
+    expect(renderToStaticMarkup(<ProjectGitBranch snapshot={value} />)).toBe('');
+  }
+  expect(renderToStaticMarkup(<ProjectGitBranch snapshot={{ ...branch('abc1234'), detached: true }} />))
+    .toContain('Detached · abc1234');
+});
+
+test('project counts retain file semantics and omit zero values', () => {
+  const snapshot = { ...branch('main'), changes: [fileChange('one.ts'), fileChange('gone.ts', 'D', ' ')] };
+  const html = renderToStaticMarkup(<ProjectGitFileCounts snapshot={snapshot} />);
+  expect(html).toContain('1 added or modified files, 1 deleted files');
+  expect(html).toContain('>+1</span>');
+  expect(html).toContain('>−1</span>');
+  const onlyAdded = renderToStaticMarkup(<ProjectGitFileCounts snapshot={{ ...snapshot, changes: [fileChange('one.ts')] }} />);
+  expect(onlyAdded).toContain('>+1</span>');
+  expect(onlyAdded).not.toContain('>−0</span>');
+  const onlyDeleted = renderToStaticMarkup(<ProjectGitFileCounts snapshot={{ ...snapshot, changes: [fileChange('gone.ts', 'D', ' ')] }} />);
+  expect(onlyDeleted).toContain('>−1</span>');
+  expect(onlyDeleted).not.toContain('>+0</span>');
+  expect(renderToStaticMarkup(<ProjectGitFileCounts snapshot={branch('main')} />)).toBe('');
 });

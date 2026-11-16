@@ -1,7 +1,8 @@
-import { ExternalLink, MessageCircleQuestion, X } from 'lucide-react';
-import { useRef, useState, type ReactNode } from 'react';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
+import { ExternalLink, Ghost, X } from 'lucide-react';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../../../shared/chat-user-input';
-import { LiquidGlassPanel, NeumorphicButton } from '../../shared/ui';
+import { ContentCard, NeumorphicButton } from '../../shared/ui';
 import { ChatMcpFields, ChatQuestionFields } from './ChatUserInputFields';
 import { initialInputDraft, inputResponse, resolvedQuestionDraft, userInputLink, type InputDraft } from './chatUserInputForm';
 import { useHelpLanguage } from '../../shared/useHelpLanguage';
@@ -10,7 +11,7 @@ import styles from './ChatUserInputPrompt.module.css';
 import { ChatErrorNotice } from './ChatErrorNotice';
 import type { ChatQuestionDismissal } from '../../../../shared/chat-question-dismissals';
 
-export function ChatUserInputPrompt({ request, respond, pending, error, otherThread = false, answerDisabled = false, resolution }: {
+export function ChatUserInputPrompt({ request, respond, pending, error, otherThread = false, answerDisabled = false, resolution, menuBlurSourceRef }: {
   request: ChatUserInputRequest;
   respond: (id: string, response: ChatUserInputResponse) => Promise<boolean>;
   pending: boolean;
@@ -18,6 +19,7 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
   otherThread?: boolean;
   answerDisabled?: boolean;
   resolution?: ChatQuestionDismissal;
+  menuBlurSourceRef?: RefObject<HTMLElement | null>;
 }) {
   const [language] = useHelpLanguage();
   const korean = language === 'ko';
@@ -48,24 +50,25 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
   const onNotesChange = (name: string, value: string | string[]) => setNotes(current => ({ ...current, [name]: value }));
   const unanswered = request.kind === 'questions' && request.questions.some(question =>
     ![draft[question.id], notes[question.id]].some(value => typeof value === 'string' && value.trim()));
-  return <LiquidGlassPanel as="section" className={styles.panel} aria-label="Input requested" data-liquid-glass-backdrop="true">
-    <header className={styles.header}>
-      <h3 className={styles.heading}><MessageCircleQuestion aria-hidden="true" />
-        {request.kind === 'questions' ? korean ? '질문' : 'Question' : `${request.serverName} needs your input`}
-      </h3>
-      {!resolution && <NeumorphicButton raised size="icon" className={styles.close} disabled={busy}
-        aria-label={korean ? '질문 닫기' : 'Close question'} onClick={() => void send({ action: 'cancel' })}><X aria-hidden="true" /></NeumorphicButton>}
-    </header>
-    {resolution && <p className={styles.message} role="status">{resolution.action === 'answered'
-      ? korean ? '답변 완료' : 'Answered' : resolution.action === 'skip' ? korean ? '건너뜀' : 'Skipped' : korean ? '닫힘' : 'Closed'}</p>}
-    {otherThread && <p className={styles.message} title={request.threadId}>From another conversation · {request.threadId.slice(0, 8)}…{request.threadId.slice(-4)}</p>}
+  const resolutionLabel = resolution ? (resolution.action === 'answered'
+    ? korean ? '답변 완료' : 'Answered' : resolution.action === 'skip' ? korean ? '건너뜀' : 'Skipped' : korean ? '닫힘' : 'Closed') : null;
+  return <ContentCard as="section" className={styles.panel} bodyClassName={styles.body} aria-label="Input requested"
+    data-resolved={resolution ? 'true' : undefined} collapsible={Boolean(resolution)} descriptionWhenCollapsed
+    icon={<Ghost aria-hidden="true" />}
+    title={request.kind === 'questions' ? korean ? '질문' : 'Question' : `${request.serverName} needs your input`}
+    description={resolution ? (request.kind === 'questions' ? request.questions[0]?.question : request.message) : undefined}
+    status={resolutionLabel ? <span role="status">{resolutionLabel}</span> : undefined}
+    actions={!resolution && <NeumorphicButton variant="ghost" size="icon" disabled={busy}
+      aria-label={korean ? '질문 닫기' : 'Close question'} onClick={() => void send({ action: 'cancel' })}><X aria-hidden="true" /></NeumorphicButton>}>
+    {otherThread && <TooltipTarget content={request.threadId}><p className={styles.message}>From another conversation · {request.threadId.slice(0, 8)}…{request.threadId.slice(-4)}</p></TooltipTarget>}
     <form onSubmit={(event) => { event.preventDefault(); submit(); }}>
       <fieldset className={styles.question} disabled={busy || Boolean(resolution)}>
         <div className={styles.fields}>
           {request.kind === 'questions' && <ChatQuestionFields questions={request.questions} draft={completed?.draft ?? draft} onChange={onChange}
             notes={completed?.notes ?? notes} onNotesChange={onNotesChange} />}
           {request.kind !== 'questions' && <p className={styles.message}>{request.message}</p>}
-          {request.kind === 'form' && !unsupported && <ChatMcpFields fields={request.fields} draft={draft} onChange={onChange} />}
+          {request.kind === 'form' && !unsupported && <ChatMcpFields menuBlurSourceRef={menuBlurSourceRef} fields={request.fields} draft={draft}
+            disabled={busy || Boolean(resolution)} onChange={onChange} />}
           {unsupported && <p className={styles.message}>{unsupported}</p>}
           {request.kind === 'url' && (link
             ? <a className={styles.externalLink} href={link} target="_blank" rel="noopener noreferrer"><ExternalLink aria-hidden="true" />Open {new URL(link).hostname}</a>
@@ -73,29 +76,30 @@ export function ChatUserInputPrompt({ request, respond, pending, error, otherThr
         </div>
         {(validationError || error) && <p className={styles.error} role="alert">{validationError || error}</p>}
         {!resolution && <div className={styles.actions}>
-          {request.kind !== 'questions' && <NeumorphicButton raised size="standard" type="button" disabled={busy}
+          {request.kind !== 'questions' && <NeumorphicButton variant="ghost" size="standard" type="button" disabled={busy}
             onClick={() => void send({ action: 'cancel' })}>Cancel request</NeumorphicButton>}
-          <NeumorphicButton raised size="standard" type="button" disabled={busy} onClick={() => void send({ action: 'decline' })}>
+          <NeumorphicButton variant="ghost" size="standard" type="button" disabled={busy} onClick={() => void send({ action: 'decline' })}>
             {request.kind === 'questions' ? korean ? '건너뛰기' : 'Skip' : 'Decline'}
           </NeumorphicButton>
-          <NeumorphicButton raised size="standard" type="submit" disabled={busy || answerDisabled || unanswered || Boolean(unsupported) || (request.kind === 'url' && !link)}>
+          <NeumorphicButton variant="standard" size="standard" type="submit" disabled={busy || answerDisabled || unanswered || Boolean(unsupported) || (request.kind === 'url' && !link)}>
             {busy ? korean ? '전송 중…' : 'Sending…' : request.kind === 'questions' ? korean ? '보내기' : 'Send' : request.kind === 'url' ? 'Done' : 'Submit'}
           </NeumorphicButton>
         </div>}
       </fieldset>
     </form>
-  </LiquidGlassPanel>;
+  </ContentCard>;
 }
 
-export function ChatUserInputRequests({ contextId, activeThreadId, fallback, fallbackId }: {
+export function ChatUserInputRequests({ contextId, activeThreadId, fallback, fallbackId, menuBlurSourceRef }: {
+  menuBlurSourceRef?: RefObject<HTMLElement | null>;
   contextId?: string; activeThreadId: string | null; fallback?: ReactNode; fallbackId?: string;
 }) {
   const input = useChatUserInputs(contextId);
   const handledFallbacks = useRef(new Set<string>());
   const request = input.requests.find((item) => item.threadId === activeThreadId) ?? input.requests[0];
   if (request?.threadId === activeThreadId && fallbackId) handledFallbacks.current.add(fallbackId);
-  if (request) return <ChatUserInputPrompt key={request.id} request={request} respond={input.respond}
+  if (request) return <ChatUserInputPrompt menuBlurSourceRef={menuBlurSourceRef} key={request.id} request={request} respond={input.respond}
     pending={input.loadingId === request.id} error={input.error} otherThread={request.threadId !== activeThreadId} />;
   if (!input.error) return fallbackId && handledFallbacks.current.has(fallbackId) ? null : fallback ?? null;
-  return <ChatErrorNotice action={<NeumorphicButton raised size="standard" onClick={input.refresh}>Retry</NeumorphicButton>}>{input.error}</ChatErrorNotice>;
+  return <ChatErrorNotice action={<NeumorphicButton variant="standard" size="standard" onClick={input.refresh}>Retry</NeumorphicButton>}>{input.error}</ChatErrorNotice>;
 }

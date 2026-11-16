@@ -11,6 +11,14 @@ export interface GitRepositoryRefreshResult {
 export async function refreshGitRepository(
   desktop: GitRepositoryReader,
 ): Promise<GitRepositoryRefreshResult> {
+  let localSnapshot: GitRepositorySnapshot;
+  try {
+    localSnapshot = await desktop.getGitSnapshot();
+  } catch (error) {
+    return { snapshot: null, error: `Local refresh failed: ${errorMessage(error)}` };
+  }
+  if (localSnapshot.available !== true) return { snapshot: localSnapshot, error: null };
+
   let remoteError: string;
   try {
     const result = await desktop.fetchGitRepository();

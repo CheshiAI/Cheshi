@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import { errorMessage } from '../../shared/errorMessage';
 import type { CodexChatAttachment } from '../../cheshiDesktop';
+import type { ChatTransferItem, ChatDirectoryReference } from '../../../../shared/chat-attachment-import';
 import { chatDroppedFiles, chatTransferFiles, hasChatTransferFiles, importChatTransferFiles, mergeChatAttachments } from './attachmentTransferModel';
 
 interface ChatAttachmentTransferOptions {
   scopeKey: string;
   disabled: boolean;
   inactive?: boolean;
+  visible?: boolean;
+  onFileDrop?: () => void;
   attachments: readonly CodexChatAttachment[];
   captureTask: () => () => boolean;
-  importFiles: (files: (File | string)[]) => Promise<CodexChatAttachment[]>;
-  addAttachments: (attachments: CodexChatAttachment[]) => void;
+  importFiles: (files: (File | string)[]) => Promise<ChatTransferItem<CodexChatAttachment>[]>;
+  addAttachments: (attachments: CodexChatAttachment[], directories?: readonly ChatDirectoryReference[]) => void;
   onComplete?: () => void;
 }
 
@@ -39,10 +42,10 @@ export function useChatAttachmentTransfer(options: ChatAttachmentTransferOptions
       return await importChatTransferFiles(files, {
         isCurrent,
         importFiles: context.importFiles,
-        accept: (attachments) => {
+        accept: (attachments, directories) => {
           // Capacity is checked after import because identical files share a stored path.
           mergeChatAttachments(latest.current.attachments, attachments);
-          latest.current.addAttachments(attachments);
+          latest.current.addAttachments(attachments, directories);
         },
       });
     } catch (error) {
@@ -59,13 +62,13 @@ export function useChatAttachmentTransfer(options: ChatAttachmentTransferOptions
     }
   }, []);
 
-  // Explicit workspace actions can attach to a hidden draft. DOM events cannot.
+  // Paste follows keyboard focus; drops can target any visible pane.
   const transferFiles = useCallback((files: (File | string)[]): Promise<boolean> => {
     if (latest.current.inactive) return Promise.resolve(false);
     return attachFilesToDraft(files);
   }, [attachFilesToDraft]);
 
-  const onPaste = useCallback((event: ClipboardEvent<HTMLTextAreaElement>) => {
+  const onPaste = useCallback((event: ClipboardEvent<HTMLElement>) => {
     const files = chatTransferFiles(event.clipboardData, true);
     if (files.length === 0) return;
     event.preventDefault();
@@ -75,15 +78,21 @@ export function useChatAttachmentTransfer(options: ChatAttachmentTransferOptions
   const onDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     if (!hasChatTransferFiles(event.dataTransfer)) return;
     event.preventDefault();
-    event.dataTransfer.dropEffect = latest.current.disabled || latest.current.inactive || pending.current ? 'none' : 'copy';
+    const { disabled, visible = !latest.current.inactive } = latest.current;
+    event.dataTransfer.dropEffect = disabled || !visible || pending.current ? 'none' : 'copy';
   }, []);
 
   const onDrop = useCallback((event: DragEvent<HTMLElement>) => {
     if (!hasChatTransferFiles(event.dataTransfer)) return;
     event.preventDefault();
     event.stopPropagation();
-    void transferFiles(chatDroppedFiles(event.dataTransfer));
-  }, [transferFiles]);
+    const { disabled, visible = !latest.current.inactive, onFileDrop } = latest.current;
+    if (disabled || !visible || pending.current) return;
+    const files = chatDroppedFiles(event.dataTransfer);
+    if (files.length === 0) return;
+    void attachFilesToDraft(files);
+    onFileDrop?.();
+  }, [attachFilesToDraft]);
   const isTransferring = useCallback(() => pending.current !== null, []);
   const dismissError = useCallback(() => setStatus((current) => ({ ...current, error: null })), []);
 

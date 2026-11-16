@@ -8,7 +8,7 @@
   border: 0;
   border-radius: 999px;
   padding: var(--space-4) var(--space-10);
-  background: transparent;
+  background: var(--status-bar-button-background, transparent);
   color: inherit;
   font: inherit;
   cursor: pointer;
@@ -22,7 +22,7 @@
 }
 
 .button:hover {
-  background: var(--dropdown-selection-bg);
+  background: var(--status-bar-button-hover-background, var(--dropdown-selection-bg));
 }
 
 .button:hover,

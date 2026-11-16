@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { expect, test } from 'bun:test';
 import ts from 'typescript';
+import { ChatImportPreview } from '../frontend/src/features/chat/ChatImportPreview';
 import type { ChatQueueController } from '../frontend/src/features/chat/ChatMessageQueue';
 
 interface Element { type: unknown; props: Record<string, unknown> }
@@ -12,15 +14,18 @@ function harness() {
   const calls: string[] = [];
   const jsx = (type: unknown, props: Record<string, unknown>): Element => ({ type, props });
   const modules: Record<string, unknown> = {
+    '../../shared/ui/TooltipButton': { TooltipButton: 'button' },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
     react: { useState: () => [menuTarget, (value: unknown) => { menuTarget = value; }],
       useEffect: (effect: () => void) => effect(),
       useCallback: (callback: unknown) => callback, useRef: () => ({ current: null }) },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-dom': { createPortal: (element: Element) => element },
     'lucide-react': Object.fromEntries(['CornerDownRight', 'ListEnd', 'MessageCirclePlus', 'MoreHorizontal', 'Pause', 'Pencil', 'Play', 'Trash2'].map(name => [name, name])),
-    '../../shared/ui': { LiquidGlassPanel: 'section', NeumorphicButton: 'button', NeumorphicSurface: 'span' },
+    '../../shared/ui': { LiquidGlassPanel: 'section', NeumorphicButton: 'button', NeumorphicSurface: 'span', RegionalBlur: 'regional-blur' },
     '../../shared/ui/contextMenuInteractions': { focusAdjacentMenuItem() {}, useContextMenuInteractions() {} },
     '../../shared/useHelpLanguage': { useHelpLanguage: () => ['ko'] },
+    './ChatImportPreview': { ChatImportPreview },
     './ChatMessageQueue.module.css': { default: {} },
   };
   const source = readFileSync(new URL('../frontend/src/features/chat/ChatMessageQueue.tsx', import.meta.url), 'utf8');
@@ -32,9 +37,10 @@ function harness() {
     require(name: string) { assert.ok(Object.hasOwn(modules, name), `Unexpected dependency: ${name}`); return modules[name]; } });
   // This rendering boundary supplies only fields used by the queue controls.
   const controller: ChatQueueController = { streaming: true, loading: false, queueBlocked: false, interactionsLocked: false,
-    commandMenuOpen: false, canOpenSideChat: true, draft: '', attachments: [], selectedSkill: null, sendRecovery: null,
+    composerAreaRef: { current: null },
+    commandMenuOpen: false, canOpenTemporaryChat: true, draft: '', attachments: [], selectedSkill: null, sendRecovery: null,
     editQueuedMessage: (id: string) => { calls.push(`edit:${id}`); },
-    openQueuedSideChat: (id: string) => { calls.push(`side:${id}`); },
+    openQueuedTemporaryChat: (id: string) => { calls.push(`side:${id}`); },
     messageQueue: { paused: false, entries: [{ id: 'one', threadId: 'a', status: 'queued',
       input: { draft: '다음 요청', selectedSkill: null, attachments: [] } }],
       steer: async (id: string) => { calls.push(`steer:${id}`); return true; },
@@ -71,12 +77,13 @@ function harness() {
   return { controller, calls, render, click, button };
 }
 
-test('queue card and more menu invoke steer, delete, edit, side chat, and queue toggle', () => {
+test('queue card and more menu invoke steer, delete, edit, temporary chat, and queue toggle', () => {
   const app = harness();
   app.click('현재 작업 조정'); app.click('대기 메시지 삭제');
-  for (const label of ['메시지 편집', '사이드 채팅에서 열기', '대기열 끄기']) {
+  for (const label of ['메시지 편집', 'Open in temporary chat', '대기열 끄기']) {
     app.click('대기 메시지 더보기');
     expect(app.button('대기 메시지 더보기').props['aria-expanded']).toBe(true);
+    expect(app.render().find(element => element.type === 'regional-blur')?.props.sourceRef).toBe(app.controller.composerAreaRef);
     app.click(label);
   }
   expect(app.calls).toEqual(['steer:one', 'remove:one', 'edit:one', 'side:one', 'toggle']);
@@ -84,16 +91,16 @@ test('queue card and more menu invoke steer, delete, edit, side chat, and queue 
   expect(app.button('대기열 켜기').props['aria-pressed']).toBe(false);
 });
 
-test('editing never overwrites a current draft and unavailable side chat stays disabled', () => {
-  const app = harness(); app.controller.draft = '작성 중'; app.controller.canOpenSideChat = false;
+test('editing never overwrites a current draft and unavailable temporary chat stays disabled', () => {
+  const app = harness(); app.controller.draft = '작성 중'; app.controller.canOpenTemporaryChat = false;
   app.click('대기 메시지 더보기');
   expect(app.button('메시지 편집').props.disabled).toBe(true);
-  expect(app.button('사이드 채팅에서 열기').props.disabled).toBe(true);
+  expect(app.button('Open in temporary chat').props.disabled).toBe(true);
   expect(app.calls).toEqual([]);
 });
 
-test('sending rows cannot be edited or deleted and uncertain delivery cannot be steered', () => {
-  const app = harness(); app.controller.messageQueue.entries[0]!.status = 'sending';
+test.each(['sending', 'transferring'] as const)('%s rows cannot be edited or deleted and uncertain delivery cannot be steered', (status) => {
+  const app = harness(); app.controller.messageQueue.entries[0]!.status = status;
   expect(app.button('현재 작업 조정').props.disabled).toBe(true);
   expect(app.button('대기 메시지 삭제').props.disabled).toBe(true);
   expect(app.button('대기 메시지 더보기').props.disabled).toBe(true);
@@ -121,7 +128,7 @@ test('turning visibility off retains messages and automatic sending while making
   app.click('대기열');
   expect(app.button('대기열').props['aria-expanded']).toBe(false);
   expect(app.render()[0]!.props).toMatchObject({ id: 'queue-panel', 'data-open': 'false', 'aria-hidden': true, inert: true });
-  expect(app.render().some(element => element.props.title === '다음 요청')).toBe(true);
+  expect(app.render().some(element => element.props.content === '다음 요청')).toBe(true);
   expect(app.controller.messageQueue.entries).toHaveLength(1);
   expect(app.controller.messageQueue.paused).toBe(false);
   expect(app.calls).toEqual([]);
@@ -152,4 +159,31 @@ test('Escape closes the queued-message menu and consumes the event before chat c
   expect(stopped).toBe(true);
   expect(app.render().some(element => element.props.role === 'menu')).toBe(false);
   expect(app.calls).toEqual([]);
+});
+
+
+test('queued drafts render known attachment references as chips without changing the payload', () => {
+  const app = harness();
+  const input = app.controller.messageQueue.entries[0]!.input;
+  input.draft = '[import 2][import 1] Check [import 3]';
+  input.attachments = [
+    { kind: 'image', name: 'Screenshot.png', path: '/tmp/screenshot.png', importNumber: 1 },
+    { kind: 'file', name: 'Notes.txt', path: '/tmp/notes.txt', importNumber: 2 },
+  ];
+  const chips = app.render().filter(element => element.props['data-chat-import-number'] !== undefined);
+  expect(chips.map(chip => chip.props['aria-label'])).toEqual(['import 2: Notes.txt', 'import 1: Screenshot.png']);
+  expect(input.draft).toBe('[import 2][import 1] Check [import 3]');
+  expect(input.attachments).toHaveLength(2);
+});
+
+
+test('preview preserves unresolved labels and literal paths containing import-like text', () => {
+  const attachments = [{ kind: 'file' as const, name: 'Notes.txt', path: '/tmp/notes.txt', importNumber: 1 }];
+  const html = renderToStaticMarkup(<ChatImportPreview
+    text={'[import 9] "/tmp/[import 1].txt" [import 1]'} attachments={attachments} />);
+  expect(html).toContain('[import 9]');
+  expect(html).toContain('/tmp/[import 1].txt');
+  expect(html.match(/data-chat-import-number=/g)).toHaveLength(1);
+  expect(renderToStaticMarkup(<ChatImportPreview text="plain text [import 1]" attachments={[]} />))
+    .toBe('plain text [import 1]');
 });

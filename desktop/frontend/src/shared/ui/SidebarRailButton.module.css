@@ -1,0 +1,83 @@
+.slot {
+  -webkit-app-region: no-drag;
+  position: relative;
+  width: 42px;
+  height: 42px;
+}
+
+.button {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  box-sizing: border-box;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background: var(--control-surface-ghost);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+  transition: width var(--motion-panel-duration) ease, background-color .16s ease, color .16s ease;
+}
+
+.button[data-active='true'] { background: var(--control-surface); }
+
+.button:not(:disabled):is(:hover, :active, :focus-visible, [data-rail-expanded]) {
+  z-index: 2;
+  width: calc(42px + var(--rail-label-width, 0px));
+  background: var(--control-surface-interactive);
+  color: var(--text);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+/* The retained workspace applies SVG blur beneath this native continuation. */
+.button:not(:disabled)[data-rail-expanded] { background: var(--control-surface-interactive); transition-property: width, color; }
+
+.icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+}
+
+.icon svg,
+.icon :global(.navigation-openai-mark),
+.icon :global(.navigation-github-mark) {
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+  flex: 0 0 var(--icon-size-default);
+}
+
+.icon svg { stroke-width: 1.65; }
+
+.label {
+  display: flex;
+  width: max-content;
+  height: 100%;
+  flex: 0 0 auto;
+  align-items: center;
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 15px;
+  padding-right: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button { transition: none; }
+}

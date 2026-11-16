@@ -30,6 +30,8 @@
   background: currentColor;
   opacity: .15;
   animation: orbit-pulse 950ms ease-in-out infinite;
+  /* The shared clock advances the unchanged keyframes in one bounded paint batch. */
+  animation-play-state: paused;
 }
 
 .cell[data-idle='true'] {
@@ -48,17 +50,18 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   white-space: nowrap;
   animation: shimmer-text 1.4s linear infinite;
+  animation-play-state: paused;
 }
 
 .elapsed {
   flex: 0 0 auto;
   color: var(--loading-color);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;

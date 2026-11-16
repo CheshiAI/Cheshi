@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create a Cheshi Homie"
+  short_description: "Create and verify a Homie through the Cheshi UI"
+  default_prompt: "Use $homie-create to create a Cheshi Homie through New Homie and verify its configuration, Explorer entry, and worker readiness."

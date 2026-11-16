@@ -1,12 +1,13 @@
 import type { App, BrowserWindow, Dialog, IpcMain, IpcMainInvokeEvent } from 'electron';
-import { realpath } from 'node:fs/promises';
+import { nativeWorkspaceWindow } from './workspace-surface.mts';
+import path from 'node:path';
 import { GitHubAuthenticationRequiredError, GitHubRepositories } from './github-repositories.mts';
 import type { GitHubRepositoryListResponse } from '../shared/workspace-management.ts';
 import { GitHubLoginService } from './github-login-service.mts';
 import { getWorkspaceToolStatus } from './workspace-tool-status.mts';
 import { createWorkspaceCodexLoginService, type WorkspaceCodexLoginService } from './workspace-codex-login.mts';
 import { WorkspaceManagementService } from './workspace-management-service.mts';
-import { deleteRegisteredWorkspace } from './workspace-deletion.mts';
+import { deleteRegisteredWorkspace, removeRegisteredWorkspace } from './workspace-deletion.mts';
 import { WorkspaceManagerWindow } from './workspace-manager-window.mts';
 import type { WorkspaceManagerWindowOptions } from './workspace-manager-window.mts';
 
@@ -58,6 +59,7 @@ export function registerWorkspaceManagementIpcHandlers(options: WorkspaceManagem
   };
   const manager = options.manager ? new WorkspaceManagerWindow({
     ...options.manager, appPath: options.app.getAppPath(),
+    appearanceFile: path.join(options.dataRoot, 'appearance.json'),
     resourcesPath: process.resourcesPath, isPackaged: options.app.isPackaged,
     onWindowCreated: (window) => {
       options.manager?.onWindowCreated?.(window);
@@ -92,6 +94,22 @@ export function registerWorkspaceManagementIpcHandlers(options: WorkspaceManagem
   handle('cancel-codex-login', async (_value, event) => (await getCodexLogin(event)).cancelLogin());
   handle('add-folder', (value) => service.addFolder(value));
   handle('create-project', (value) => service.createProject(value));
+  handle('remove-workspace', async (id, event) => {
+    const owner = manager?.windowFor(event.sender) ?? options.getWindow();
+    if (!owner || owner.isDestroyed()) throw new Error('The workspace window is no longer available.');
+    return removeRegisteredWorkspace({
+      id, dataRoot: options.dataRoot,
+      confirm: async entry => {
+        const { response } = await options.dialog.showMessageBox(nativeWorkspaceWindow(owner), {
+          type: 'question', title: 'Remove from Workspaces',
+          message: `Remove “${entry.name}” from Workspaces?`,
+          detail: `${entry.rootPath}\n\nOnly this list entry will be removed. The folder, CodeGraph index, chat history, and connections from other workspaces will be kept. Open tabs and running tasks will continue. You can add it again with Open folder.`,
+          buttons: ['Cancel', 'Remove from list'], defaultId: 0, cancelId: 0, noLink: true,
+        });
+        return response === 1 && !owner.isDestroyed() && !event.sender.isDestroyed();
+      },
+    });
+  });
   handle('delete-workspace', async (id, event) => {
     const owner = manager?.windowFor(event.sender) ?? options.getWindow();
     if (!owner || owner.isDestroyed()) throw new Error('The workspace window is no longer available.');
@@ -100,7 +118,7 @@ export function registerWorkspaceManagementIpcHandlers(options: WorkspaceManagem
       withDeletionLock: options.withWorkspaceDeletion,
       trashItem: options.trashItem,
       confirm: async (entry, exists) => {
-        const { response } = await options.dialog.showMessageBox(owner, {
+        const { response } = await options.dialog.showMessageBox(nativeWorkspaceWindow(owner), {
           type: 'warning', title: 'Delete workspace',
           message: exists ? `Move “${entry.name}” to Trash?` : `Remove “${entry.name}” from Workspaces?`,
           detail: exists
@@ -129,7 +147,7 @@ export function registerWorkspaceManagementIpcHandlers(options: WorkspaceManagem
   handle('choose-directory', async (_value, event) => {
     const owner = manager?.windowFor(event.sender) ?? options.getWindow();
     if (!owner || owner.isDestroyed()) throw new Error('The workspace window is no longer available.');
-    const selection = await options.dialog.showOpenDialog(owner, {
+    const selection = await options.dialog.showOpenDialog(nativeWorkspaceWindow(owner), {
       title: 'Select workspace folder', properties: ['openDirectory', 'createDirectory'],
     });
     return selection.canceled ? null : selection.filePaths[0] ?? null;
@@ -151,7 +169,6 @@ export function registerWorkspaceManagementIpcHandlers(options: WorkspaceManagem
     const requester = manager?.windowFor(event.sender);
     try {
       const workspace = await service.addFolder(value);
-      if (options.manager.workspaceRoot) assertDifferentWorkspace(workspace.rootPath, await realpath(options.manager.workspaceRoot));
       await options.onReplaceWorkspace(workspace.rootPath);
       if (requester && !requester.isDestroyed()) requester.close();
     } finally { replacing = false; }
@@ -163,8 +180,4 @@ export function registerWorkspaceManagementIpcHandlers(options: WorkspaceManagem
     },
     dispose: () => { disposed = true; login.dispose(); manager?.dispose(); return stopCodexLogin(); },
   };
-}
-
-function assertDifferentWorkspace(target: string, current: string): void {
-  if (target === current) throw new Error('This workspace is already open in the original window.');
 }

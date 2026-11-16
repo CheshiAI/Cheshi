@@ -10,7 +10,7 @@ function createHarness(userName: unknown = 'Alex', invokeResult: unknown = undef
   const filePathLookups: unknown[] = [];
   const listeners = new Map<string, Set<(event: unknown, value: unknown) => void>>();
   vm.runInNewContext(readFileSync(new URL('../runtime/preload.cjs', import.meta.url), 'utf8'), {
-    process: { platform: process.platform },
+    process: { platform: process.platform, argv: [] },
     window: { addEventListener() {} },
     document: { readyState: 'loading' },
     require(name: string) {
@@ -50,6 +50,78 @@ test('response statistics reads carry the conversation and pane without navigati
   assert.deepEqual(bridge.calls, [['cheshi:read-codex-turn-metrics', 'root', 'pane-b']]);
 });
 
+test('recording APIs are removed while Homie phone requests remain available', () => {
+  const bridge = createHarness();
+  assert.equal(bridge.read('voiceRecordings'), undefined);
+  const agentVoice = bridge.read('agentVoice') as NonNullable<CheshiDesktopApi['agentVoice']>;
+  assert.equal(typeof agentVoice.request, 'function');
+});
+
+test('session rename carries a trimmed title and pane and rejects blank inputs', async () => {
+  const bridge = createHarness();
+  await bridge.call('renameCodexChatSession', 'thread', '  Short title  ', 'pane-b');
+  assert.deepEqual(bridge.calls, [['cheshi:rename-codex-chat-session', 'thread', 'Short title', 'pane-b']]);
+  for (const [id, title] of [['', 'Title'], ['thread', '  '], ['thread', 42]]) {
+    assert.throws(() => bridge.call('renameCodexChatSession', id, title), /non-empty strings/);
+  }
+  assert.equal(bridge.calls.length, 1);
+});
+
+test('iMessage bridge sends only explicit settings and test requests, validates responses and cleans subscriptions', async () => {
+  const state = { enabled: false, recipient: 'me@example.com',
+    available: true, lastStatus: null };
+  const bridge = createHarness('Alex', state);
+  const api = bridge.read('iMessage') as NonNullable<CheshiDesktopApi['iMessage']>;
+  assert.deepEqual(bridge.calls, []);
+  assert.deepEqual(structuredClone(await api.get()), state);
+  const { available: _available, lastStatus: _status, ...preferences } = state;
+  await api.save(preferences); await api.test(); await api.reportQueue('pane', [{ threadId: 'thread', count: 1 }]);
+  assert.deepEqual(bridge.calls, [['cheshi:imessage:get', undefined], ['cheshi:imessage:save', preferences],
+    ['cheshi:imessage:test', undefined], ['cheshi:imessage:queue', { contextId: 'pane', threads: [{ threadId: 'thread', count: 1 }] }]]);
+  const received: unknown[] = [];
+  const unsubscribe = api.onChanged(value => received.push(structuredClone(value)));
+  bridge.emit(state, 'cheshi:imessage:changed'); unsubscribe(); bridge.emit(state, 'cheshi:imessage:changed');
+  assert.deepEqual(received, [state]);
+  const malformed = createHarness('Alex', { ...state, enabled: 'true' }).read('iMessage') as NonNullable<CheshiDesktopApi['iMessage']>;
+  await assert.rejects(() => malformed.get(), /Invalid iMessage switch/);
+});
+
+test('message command settings use explicit validated IPC calls', async () => {
+  const state = { enabled: false, targetId: null, targets: [{ id: 'target', label: 'Test' }], status: 'Off' };
+  const bridge = createHarness('Alex', state);
+  const api = (bridge.read('iMessage') as NonNullable<CheshiDesktopApi['iMessage']>).commands!;
+  assert.deepEqual(structuredClone(await api.get()), state);
+  await api.configure({ enabled: true, targetId: 'target' });
+  assert.deepEqual(bridge.calls, [['cheshi:imessage:commands:get'],
+    ['cheshi:imessage:commands:configure', { enabled: true, targetId: 'target' }]]);
+  const bad = createHarness('Alex', { ...state, enabled: 'true' });
+  const badApi = (bad.read('iMessage') as NonNullable<CheshiDesktopApi['iMessage']>).commands!;
+  await assert.rejects(() => badApi.get(), /Invalid message command settings/);
+});
+
+test('shared notification events use their own validated bridge and unsubscribe cleanly', async () => {
+  const state = { completed: false, attention: true, failed: true, error: null };
+  const bridge = createHarness('Alex', state);
+  const api = bridge.read('notificationEvents') as NonNullable<CheshiDesktopApi['notificationEvents']>;
+  assert.deepEqual(structuredClone(await api.get()), state);
+  await api.set('completed', true);
+  assert.deepEqual(bridge.calls, [['cheshi:notification-events:get'], ['cheshi:notification-events:set', 'completed', true]]);
+  const received: unknown[] = [], unsubscribe = api.onChanged(value => received.push(structuredClone(value)));
+  bridge.emit(state, 'cheshi:notification-events:changed'); unsubscribe(); bridge.emit(state, 'cheshi:notification-events:changed');
+  assert.deepEqual(received, [state]);
+  const invalid = createHarness('Alex', { ...state, failed: 'true' }).read('notificationEvents') as typeof api;
+  await assert.rejects(() => invalid.get(), /Invalid notification switch/);
+});
+
+test('Discord notification toggle is separate from saving or reconnecting the bot', async () => {
+  const state = { enabled: true, notificationsEnabled: false, guildId: '111111111111111111', ownerId: '222222222222222222',
+    deviceName: 'Mac', hasToken: true, connected: true, status: 'Connected', channels: 1, pending: 0 };
+  const bridge = createHarness('Alex', state);
+  const api = bridge.read('discord') as NonNullable<CheshiDesktopApi['discord']>;
+  assert.deepEqual(structuredClone(await api.setNotificationsEnabled(false)), state);
+  assert.deepEqual(bridge.calls, [['cheshi:discord:notifications', false]]);
+});
+
 test('agent detail reads carry the parent, target ids and pane without invoking navigation', async () => {
   const bridge = createHarness('Alex', { agents: [] });
   await bridge.call('readCodexAgentDetails', 'root', ['child'], 'pane-b');
@@ -60,61 +132,23 @@ test('agent detail reads carry the parent, target ids and pane without invoking 
   assert.equal(bridge.calls.length, 1);
 });
 
-test('Apple Notes uses the built preload and carries save outcomes as plain data', async () => {
-  const input = { folderId: 'folder', title: 'Title', body: 'Answer' };
-  const success = { ok: true, value: { id: 'created', title: 'Title' } };
-  const bridge = createHarness('Alex', success);
-  const api = bridge.read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
+
+test('Apple Calendar is exposed by the built workspace bridge without requesting access on startup', async () => {
+  const bridge = createHarness('Alex', { ok: true, value: 'not-determined' });
+  const api = bridge.read('appleCalendar') as NonNullable<CheshiDesktopApi['appleCalendar']>;
   assert.equal(api.available, process.platform === 'darwin');
-  assert.deepEqual(structuredClone(await api.create(input)), success);
-  assert.deepEqual(bridge.calls, [['cheshi:apple-notes-create', input]]);
-  const failure = { ok: false, error: { code: 'save-unknown', message: 'Check Notes before saving again.' } };
-  const uncertain = createHarness('Alex', failure).read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
-  assert.deepEqual(structuredClone(await uncertain.create(input)), failure);
-  await assert.rejects(() => api.read(''), /identifier/);
-  assert.equal(bridge.calls.length, 1);
+  assert.deepEqual(bridge.calls, []);
+  assert.deepEqual(structuredClone(await api.status()), { ok: true, value: 'not-determined' });
+  assert.deepEqual(bridge.calls, [['cheshi:calendar-status', undefined]]);
+  const target = { id: 'event-1', revision: 'revision-1' };
+  const deletion = createHarness('Alex', { ok: true, value: target });
+  const deleting = deletion.read('appleCalendar') as NonNullable<CheshiDesktopApi['appleCalendar']>;
+  assert.deepEqual(structuredClone(await deleting.delete(target)), { ok: true, value: target });
+  assert.deepEqual(deletion.calls, [['cheshi:calendar-delete', target]]);
 });
 
-test('Apple Notes deletion crosses the built preload with the exact target and acknowledgement', async () => {
-  const success = { ok: true, value: { id: 'selected-note' } };
-  const bridge = createHarness('Alex', success);
-  const api = bridge.read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
-  assert.deepEqual(structuredClone(await api.delete('selected-note')), success);
-  assert.deepEqual(bridge.calls, [['cheshi:apple-notes-delete', 'selected-note']]);
-  await assert.rejects(() => api.delete(''), /identifier/);
-  assert.equal(bridge.calls.length, 1);
-  const mismatch = createHarness('Alex', { ok: true, value: { id: 'different-note' } }).read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
-  const result = await mismatch.delete('selected-note');
-  assert.equal(result.ok, false);
-  if (result.ok === false) assert.equal(result.error.code, 'delete-unknown');
-});
 
-test('Apple Notes refresh bypasses caching only for the literal true through the built preload', async () => {
-  const bridge = createHarness('Alex', { ok: true, value: [] });
-  const api = bridge.read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
-  await api.folders();
-  await api.folders(false);
-  await api.folders(true);
-  assert.deepEqual(bridge.calls, [['cheshi:apple-notes-folders'], ['cheshi:apple-notes-folders'], ['cheshi:apple-notes-folders', true]]);
-  await assert.rejects(() => api.folders('true' as unknown as boolean), /refresh flag/);
-  assert.equal(bridge.calls.length, 3);
-});
 
-test('Apple Notes document updates cross the built preload with the original version intact', async () => {
-  const document = { id: 'chosen', title: 'Title', html: '<h1>Title</h1><p>New</p>', plaintext: 'Title\nNew',
-    modifiedAt: '2026-09-16T00:00:00.000Z', locked: false, attachmentCount: 0 };
-  const bridge = createHarness('Alex', { ok: true, value: document });
-  const api = bridge.read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
-  assert.deepEqual(structuredClone(await api.document('chosen')), document);
-  const input = { noteId: 'chosen', title: 'Title', html: '<p>New</p>', expectedHtml: '<h1>Title</h1><p>Old</p>',
-    expectedModifiedAt: document.modifiedAt, expectedTitle: 'Title' };
-  assert.deepEqual(structuredClone(await api.update(input)), { ok: true, value: document });
-  assert.deepEqual(bridge.calls, [['cheshi:apple-notes-document', 'chosen'], ['cheshi:apple-notes-update', input]]);
-  const mismatch = createHarness('Alex', { ok: true, value: { ...document, id: 'wrong' } }).read('appleNotes') as NonNullable<CheshiDesktopApi['appleNotes']>;
-  const result = await mismatch.update(input);
-  assert.equal(result.ok, false);
-  if (!result.ok) assert.equal(result.error.code, 'update-unknown');
-});
 
 test('question dismissal bridge validates requests, records, and save acknowledgements', async () => {
   const record = { questionId: 'q', action: 'skip' };
@@ -244,7 +278,6 @@ test('validates session history search requests and responses through the built 
 test('validates saved record deletion ids and acknowledgements through the built preload', async () => {
   for (const [method, channel, id] of [
     ['deleteCodexSavedTurn', 'cheshi:delete-codex-saved-turn', 'a'.repeat(64)],
-    ['deleteCodexChatRelayHistory', 'cheshi:delete-codex-chat-relay-history', 'relay-id'],
   ] as const) {
     const harness = createHarness('Alex', { id });
     assert.deepEqual(structuredClone(await harness.call(method, id)), { id });
@@ -281,16 +314,11 @@ test('filters raw selection, configuration and stream events before delivering t
   assert.equal(left.length, 1);
 });
 
-
 test('loads chat contexts through the native strip-only TypeScript runtime', async () => {
   const { CodexChatContexts } = await import('../lib/codex-chat-contexts.mts');
   assert.equal(typeof CodexChatContexts, 'function');
-  const { CodexChatRelays } = await import('../lib/codex-chat-relay.mts');
   const { registerCodexChatIpc } = await import('../lib/codex-chat-ipc.mts');
-  const { CodexChatRelayHistory } = await import('../lib/codex-chat-relay-history.mts');
-  assert.equal(typeof CodexChatRelays, 'function');
   assert.equal(typeof registerCodexChatIpc, 'function');
-  assert.equal(typeof CodexChatRelayHistory, 'function');
   const { CodexChatSavedTurns } = await import('../lib/codex-chat-saved-turns.mts');
   assert.equal(typeof CodexChatSavedTurns, 'function');
 });
@@ -312,81 +340,10 @@ test('validates saved turn requests and persisted responses through the built pr
   await assert.rejects(async () => createHarness('Alex', null).call('saveCodexTurn', input), /Invalid saved turn/);
 });
 
-test('validates persisted history responses at the preload boundary', async () => {
-  const { chatRelayHistoryRecord } = await import('../shared/chat-relay.ts');
-  const record = { id: 'relay', objective: 'Compare plans.', startedAt: '2026-09-08T00:00:00.000Z',
-    updatedAt: '2026-09-08T00:00:00.000Z', finishedAt: '2026-09-08T00:00:00.000Z',
-    state: { id: 'relay', sourceContextId: 'a', sourceThreadId: 'thread-a', targetContextId: 'b', targetThreadId: 'thread-b',
-      mode: 'debate', maxRounds: 1, status: 'completed', step: 3, round: 1, speaker: 'A', phase: 'review',
-      outcome: 'debated', proposalVersion: null, proposal: null, issues: [], summary: 'Remaining differences.', message: null } };
-  const harness = createHarness('Alex', [record]);
-  assert.deepEqual(structuredClone(await harness.call('listCodexChatRelayHistory')), [chatRelayHistoryRecord(record)]);
-  assert.deepEqual(harness.calls, [['cheshi:list-codex-chat-relay-history']]);
-  for (const value of [null, {}, [record, { ...record, id: '../escape' }]]) {
-    await assert.rejects(async () => createHarness('Alex', value).call('listCodexChatRelayHistory'), /Invalid conversation history/);
-  }
-});
-
 test('exposes the OS user name through workspace metadata with a safe fallback', () => {
   assert.equal(createHarness('Alex').read('userName'), 'Alex');
   assert.equal(createHarness(null).read('userName'), '');
   assert.equal(createHarness(42).read('userName'), '');
-});
-
-test('preserves C selection and synthesis events through the built preload', async () => {
-  const harness = createHarness();
-  const request = { sourceContextId: 'a', sourceThreadId: 'thread-a', targetContextId: 'b', targetThreadId: 'thread-b',
-    moderatorContextId: 'c', moderatorThreadId: 'thread-c', objective: 'Compare fairly.', mode: 'debate', maxRounds: 1 };
-  await harness.call('startCodexChatRelay', request);
-  assert.deepEqual(harness.calls, [['cheshi:start-codex-chat-relay', request]]);
-  assert.throws(() => harness.call('startCodexChatRelay', { ...request, moderatorThreadId: 'thread-a' }), /separate conversation/);
-  const received: unknown[] = [];
-  harness.call('onCodexChatRelayEvent', (state: unknown) => received.push(state));
-  const { objective: _objective, ...identity } = request;
-  const state = { ...identity, id: 'relay', status: 'completed', step: 3, round: 1, speaker: 'C', phase: 'synthesis',
-    outcome: 'debated', proposalVersion: null, proposal: null, issues: [], summary: 'C’s balanced summary.', message: null };
-  harness.emit(state, 'cheshi:codex-chat-relay-event');
-  harness.emit({ ...state, speaker: 'A' }, 'cheshi:codex-chat-relay-event');
-  assert.deepEqual(structuredClone(received), [state]);
-});
-
-
-test('validates relay requests and isolates validated relay state on its dedicated channel', async () => {
-  const harness = createHarness();
-  const request = { sourceContextId: 'source', sourceThreadId: 'a', targetContextId: 'target', targetThreadId: 'b', objective: 'Compare approaches.' };
-  await harness.call('startCodexChatRelay', request);
-  assert.deepEqual(harness.calls, [['cheshi:start-codex-chat-relay', { ...request, mode: 'review', maxRounds: 1 }]]);
-  assert.throws(() => harness.call('startCodexChatRelay', { ...request, targetThreadId: 'a' }), /different conversations/);
-  assert.throws(() => harness.call('startCodexChatRelay', { ...request, objective: '' }), /objective/);
-  const received: unknown[] = [];
-  harness.call('onCodexChatRelayEvent', (state: unknown) => received.push(state));
-  const valid = { id: 'relay', status: 'running', step: 1, message: null,
-    mode: 'review', maxRounds: 1, round: 1, speaker: 'A', phase: 'proposal', outcome: null,
-    proposalVersion: null, proposal: null, issues: [], summary: null,
-    sourceContextId: 'source', sourceThreadId: 'a', targetContextId: 'target', targetThreadId: 'b' };
-  harness.emit(valid);
-  harness.emit({ ...valid, status: { toString: null } }, 'cheshi:codex-chat-relay-event');
-  harness.emit({ ...valid, step: 4 }, 'cheshi:codex-chat-relay-event');
-  harness.emit(valid, 'cheshi:codex-chat-relay-event');
-  assert.deepEqual(structuredClone(received), [valid]);
-});
-
-test('passes bounded consensus requests and validates extended progress through built preload', async () => {
-  const harness = createHarness();
-  const request = { sourceContextId: 'source', sourceThreadId: 'a', targetContextId: 'target', targetThreadId: 'b',
-    objective: 'Agree on a plan.', mode: 'consensus', maxRounds: 2 };
-  await harness.call('startCodexChatRelay', request);
-  assert.deepEqual(harness.calls, [['cheshi:start-codex-chat-relay', request]]);
-  assert.throws(() => harness.call('startCodexChatRelay', { ...request, maxRounds: 6 }), /rounds/);
-  const received: unknown[] = [];
-  harness.call('onCodexChatRelayEvent', (state: unknown) => received.push(state));
-  const state = { ...request, id: 'relay', status: 'completed', step: 5, round: 2, speaker: 'A', phase: 'confirmation',
-    outcome: 'agreed', proposalVersion: 2, proposal: 'The shared plan.', issues: [], summary: 'Both agree.', message: 'Agreed.' };
-  harness.emit({ ...state, round: 3 }, 'cheshi:codex-chat-relay-event');
-  harness.emit({ ...state, issues: ['Still unresolved.'] }, 'cheshi:codex-chat-relay-event');
-  harness.emit(state, 'cheshi:codex-chat-relay-event');
-  const { objective: _objective, ...expected } = state;
-  assert.deepEqual(structuredClone(received), [expected]);
 });
 
 test('validates and routes structured user input at the preload boundary', async () => {
@@ -419,4 +376,56 @@ test('routes additional instructions and validates conversation mode through pre
   assert.throws(() => harness.call('setCodexChatCollaborationMode', 'full-access', 'pane'), /Invalid collaboration mode/);
   assert.throws(() => harness.call('steerCodexChatMessage', '', 'steer-two'), /non-empty string/);
   assert.equal(harness.calls.length, 3);
+});
+
+test('temporary window draft handoff uses dedicated IPC without sending a provider request', async () => {
+  const draft = { text: 'Queued question', attachments: [] };
+  const harness = createHarness('Alex', draft);
+  const temporary = harness.read('temporaryChat') as CheshiDesktopApi['temporaryChat'];
+  await temporary.openWindow(draft);
+  assert.deepEqual(await temporary.initialDraft(), draft);
+  await temporary.acceptDraft();
+  await temporary.acceptDraft('Attachment missing');
+  assert.deepEqual(harness.calls, [
+    ['cheshi:temporary-chat-open-window', draft],
+    ['cheshi:temporary-chat-initial-draft'],
+    ['cheshi:temporary-chat-accept-draft', undefined],
+    ['cheshi:temporary-chat-accept-draft', 'Attachment missing'],
+  ]);
+});
+
+test('temporary window opening events have an explicit cleanup', () => {
+  const harness = createHarness();
+  const temporary = harness.read('temporaryChat') as CheshiDesktopApi['temporaryChat'];
+  let opened = 0;
+  const unsubscribe = temporary.onOpened(() => { opened++; });
+  harness.emit(undefined, 'cheshi:temporary-chat-opened');
+  assert.equal(opened, 1);
+  unsubscribe();
+  harness.emit(undefined, 'cheshi:temporary-chat-opened');
+  assert.equal(opened, 1);
+  assert.deepEqual(harness.calls, []);
+});
+
+test('does not expose retired conversation relay controls through the preload', () => {
+  const harness = createHarness();
+  for (const method of ['startCodexChatRelay', 'stopCodexChatRelay', 'getCodexChatRelay',
+    'listCodexChatRelayHistory', 'deleteCodexChatRelayHistory', 'onCodexChatRelayEvent']) {
+    assert.equal(harness.read(method), undefined);
+  }
+  assert.deepEqual(harness.calls, []);
+});
+
+test('workspace notes bridge exposes library actions without Apple Notes or draft editing', async () => {
+  const bridge = createHarness('Alex', []);
+  const api = bridge.read('notes') as NonNullable<CheshiDesktopApi['notes']>;
+  assert.equal(bridge.read('appleNotes'), undefined);
+  assert.equal('save' in api, false);
+  assert.equal('read' in api, false);
+  await api.list('Body text'); await api.rename('fixture', 'New title'); await api.create(); await api.open('fixture'); await api.deleteSelected(['fixture']);
+  assert.deepEqual(bridge.calls, [
+    ['cheshi:sticky-notes-library', 'list', 'Body text'],
+    ['cheshi:sticky-notes-library', 'rename', { id: 'fixture', title: 'New title' }], ['cheshi:sticky-notes-library', 'create'],
+    ['cheshi:sticky-notes-library', 'open', 'fixture'], ['cheshi:sticky-notes-library', 'delete-selected', ['fixture']],
+  ]);
 });

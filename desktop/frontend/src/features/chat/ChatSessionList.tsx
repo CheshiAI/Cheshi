@@ -1,9 +1,19 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
-import { MessageCircleDashed, MessageSquareText, Plus, Trash2 } from 'lucide-react';
+import { SessionActivityBackground } from '../../shared/ui/SessionActivityBackground';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { MessageCircleDashed, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
 
-import { LoadingIndicator, LoadingState, NeumorphicButton } from '../../shared/ui';
+import { LoadingState, NeumorphicButton } from '../../shared/ui';
+import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
+import { InlineRenameField } from '../../shared/ui/InlineRenameField';
+import { FlashSessionHeader } from './FlashSessionHeader';
 import type { ChatSession } from './model';
+import { formatSessionElapsedTime, useChatSessionClock } from './chatSessionTime';
 import styles from './ChatSessionList.module.css';
+import { usePullToRefresh } from '../../shared/usePullToRefresh';
+import { PullToRefreshStatus } from '../../shared/ui/PullToRefreshStatus';
+import { SidebarStatusMessage } from '../../shared/ui/SidebarStatusMessage';
 
 interface ChatSessionListProps {
   search?: ReactNode;
@@ -15,32 +25,39 @@ interface ChatSessionListProps {
   selectionDisabled: boolean;
   onOpen: (sessionId: string) => void;
   onNew: () => void;
+  onRefresh?: () => Promise<void>;
+  refreshDisabled?: boolean;
+  refreshError?: string | null;
   onTemporaryChat?: () => void;
   temporaryChatOpen?: boolean;
   onDelete: (sessionId: string) => void;
+  onRename?: (sessionId: string, title: string) => Promise<unknown>;
+  onRenamingChange?: (renaming: boolean) => void;
   deleteReason: (sessionId: string) => string | null;
 }
 
-type SessionGroup = 'Today' | 'Previous';
-
-function sessionGroup(updatedAt: number): SessionGroup {
-  const updated = new Date(updatedAt * 1_000);
-  if (Number.isNaN(updated.getTime())) return 'Previous';
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  if (updated.getTime() >= today) return 'Today';
-  return 'Previous';
+function sessionTimestamp(session: ChatSession): number {
+  return Number.isFinite(session.updatedAt) ? session.updatedAt : -Infinity;
 }
 
 const ChatSessionButton = memo(function ChatSessionButton({
-  id, title, active, responding, onOpen,
-}: { id: string; title: string; active: boolean; responding: boolean; onOpen: (id: string) => void }) {
+  id, title, elapsed, active, responding, onOpen,
+}: { id: string; title: string; elapsed: string; active: boolean; responding: boolean; onOpen: (id: string) => void }) {
   return (
-    <button className={styles.session} aria-current={active ? 'page' : undefined}
-      title={title} type="button" aria-haspopup="dialog" onClick={() => onOpen(id)}>
-      {responding ? <LoadingIndicator label="Active response" /> : <MessageSquareText aria-hidden="true" />}
-      <span className={styles.sessionTitle}>{title}</span>
-    </button>
+    <NeumorphicButton variant="ghost" className={styles.session} aria-current={active ? 'page' : undefined}
+      data-responding={responding ? 'true' : undefined}
+      aria-label={title} type="button" aria-haspopup="dialog" onClick={() => onOpen(id)}>
+      <SessionActivityBackground active={responding} />
+      {responding && <span className={styles.responseStatus} role="status" aria-label="Active response" />}
+      <span className={styles.sessionTitleRow}>
+        <TooltipTarget content={title}><span className={styles.sessionTitle}>{title}</span></TooltipTarget>
+      </span>
+      <span className={styles.sessionMetadata}>
+        <TooltipTarget content={id}><span className={styles.sessionId}>{id}</span></TooltipTarget>
+        <span className={styles.sessionTime}
+          aria-label={elapsed === '—' ? 'Last updated time unavailable' : `Last updated ${elapsed} ago`}>{elapsed}</span>
+      </span>
+    </NeumorphicButton>
   );
 });
 
@@ -54,11 +71,19 @@ export function ChatSessionList({
   selectionDisabled,
   onOpen,
   onNew,
+  onRefresh,
+  refreshDisabled = false,
+  refreshError,
   onTemporaryChat,
   temporaryChatOpen = false,
   onDelete,
+  onRename,
+  onRenamingChange,
   deleteReason,
 }: ChatSessionListProps) {
+  const [editing, setEditing] = useState<{ id: string; title: string } | null>(null);
+  useEffect(() => { onRenamingChange?.(editing !== null); return () => onRenamingChange?.(false); }, [editing, onRenamingChange]);
+  const refresh = usePullToRefresh(onRefresh, loading || refreshDisabled);
   // Keep the row callback stable while invoking only the latest committed pane handlers.
   const interaction = useRef({ onOpen, selectionDisabled });
   useLayoutEffect(() => { interaction.current = { onOpen, selectionDisabled }; }, [onOpen, selectionDisabled]);
@@ -66,79 +91,81 @@ export function ChatSessionList({
     if (!interaction.current.selectionDisabled) interaction.current.onOpen(id);
   }, []);
   const respondingSessions = new Set(responseThreadIds);
-  const today = new Date().toDateString();
-  const groups = useMemo(() => {
-    const grouped = new Map<SessionGroup, ChatSession[]>([['Today', []], ['Previous', []]]);
-    for (const session of sessions) grouped.get(sessionGroup(session.updatedAt))?.push(session);
-    return [...grouped.entries()];
-  }, [sessions, today]);
+  const now = useChatSessionClock(sessions.length > 0);
+  const sortedSessions = useMemo(() => [...sessions].sort((a, b) => sessionTimestamp(b) - sessionTimestamp(a)), [sessions]);
 
   return (
     <section className={styles.root} aria-label="Chat history">
-      <header className={styles.heading}>
-        <span>CHATS</span>
-        <div className="sidebar-heading-actions">
-          {onTemporaryChat && <NeumorphicButton
-            raised
-            className="sidebar-heading-action"
-            aria-label="Open temporary chat"
-            title="Temporary chat · Not saved to chat history"
-            aria-haspopup="dialog"
-            aria-expanded={temporaryChatOpen}
-            onClick={onTemporaryChat}
-          >
-            <MessageCircleDashed aria-hidden="true" />
-          </NeumorphicButton>}
-          <NeumorphicButton
-            raised
-            className="sidebar-heading-action"
-            aria-label="New chat"
-            disabled={newChatDisabled}
-            onClick={onNew}
-          >
-            <Plus aria-hidden="true" />
-          </NeumorphicButton>
-        </div>
-      </header>
+      <FlashSessionHeader actions={<>
+        {onRefresh && <TooltipButton size="icon" aria-label="Refresh sessions" title="Refresh sessions"
+          disabled={loading || refreshDisabled || refresh.refreshing} onClick={() => void refresh.refresh()}>
+          <RefreshCw aria-hidden="true" />
+        </TooltipButton>}
+        {onTemporaryChat && <TooltipButton
+          size="icon"
+          aria-label="Open temporary chat"
+          title="Temporary chat · Not saved to chat history"
+          aria-haspopup="dialog"
+          aria-expanded={temporaryChatOpen}
+          onClick={onTemporaryChat}
+        >
+          <MessageCircleDashed aria-hidden="true" />
+        </TooltipButton>}
+        <TooltipButton
+          size="icon"
+          aria-label="New chat"
+          title="New chat"
+          disabled={newChatDisabled}
+          onClick={onNew}
+        >
+          <Plus aria-hidden="true" />
+        </TooltipButton>
+      </>} />
 
-      {sessions.length > 0 && search}
+      <div className={styles.body}>
+        {sessions.length > 0 && search}
 
-      <fieldset className={styles.list} aria-label="Conversations" aria-busy={loading} disabled={selectionDisabled}>
-        {loading && sessions.length === 0 && (
-          <LoadingState className={styles.loading} />
-        )}
-        {!loading && sessions.length === 0 && (
-          <div className={styles.empty}>
-            <MessageSquareText aria-hidden="true" />
-            <span>Your workspace chats will appear here.</span>
-          </div>
-        )}
-        {groups.map(([label, entries]) => entries.length > 0 && (
-          <section className={styles.group} key={label}>
-            <h2>{label}</h2>
-            <div className={styles.groupItems}>
-              {entries.map((session) => {
-                const reason = deleteReason(session.id);
-                return (
-                <div className={styles.sessionRow} key={session.id}>
-                  <ChatSessionButton id={session.id} title={session.title}
-                    active={session.id === activeSessionId}
-                    responding={session.status === 'active' || respondingSessions.has(session.id)}
-                    onOpen={openSession} />
-                  <NeumorphicButton raised className={styles.deleteButton}
-                    type="button" aria-label={`Delete chat: ${session.title}`} aria-haspopup="dialog"
-                    title={reason ?? 'Delete chat'}
-                    disabled={reason !== null}
-                    onClick={() => onDelete(session.id)}>
-                    <Trash2 size={11} strokeWidth={1.7} aria-hidden="true" />
-                  </NeumorphicButton>
-                </div>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-      </fieldset>
+        {(refresh.error || refreshError) && <p className={styles.refreshError} role="alert">{refresh.error || refreshError}</p>}
+        <OverlayScrollArea className={styles.listScroll} label="Conversation list" viewportRef={refresh.viewportRef}>
+        <PullToRefreshStatus {...refresh} />
+        <fieldset className={styles.list} aria-label="Conversations" aria-busy={loading || refresh.refreshing} disabled={selectionDisabled}>
+          {loading && sessions.length === 0 && (
+            <LoadingState className={styles.loading} />
+          )}
+          {!loading && sessions.length === 0 && (
+            <SidebarStatusMessage panel="chats">your workspace chats will appear here.</SidebarStatusMessage>
+          )}
+          {sortedSessions.map((session) => {
+            const reason = deleteReason(session.id);
+            return (
+              <div className={styles.sessionRow} key={session.id} data-rename={onRename ? 'true' : undefined}>
+                {editing?.id === session.id && onRename ? <InlineRenameField initialTitle={editing.title} inputLabel="Session title"
+                  onSave={title => onRename(session.id, title)} onClose={() => setEditing(null)}>
+                  <span className={styles.sessionMetadata}>
+                    <span className={styles.sessionId}>{session.id}</span>
+                    <span className={styles.sessionTime}>{formatSessionElapsedTime(session.updatedAt, now)}</span>
+                  </span>
+                </InlineRenameField> : <><ChatSessionButton id={session.id} title={session.title}
+                  elapsed={formatSessionElapsedTime(session.updatedAt, now)}
+                  active={session.id === activeSessionId}
+                  responding={session.status === 'active' || respondingSessions.has(session.id)}
+                  onOpen={openSession} />
+                {onRename && <TooltipButton variant="ghost" size="icon" className={styles.renameButton}
+                  type="button" aria-label={`Rename chat: ${session.title}`} title="Rename chat" disabled={editing !== null}
+                  onClick={() => setEditing({ id: session.id, title: session.title })}><Pencil aria-hidden="true" /></TooltipButton>}
+                <TooltipButton variant="ghost" size="icon" className={styles.deleteButton}
+                  type="button" aria-label={`Delete session: ${session.title}`} aria-haspopup="dialog"
+                  title={reason ?? 'Delete session'}
+                  disabled={reason !== null}
+                  onClick={() => onDelete(session.id)}>
+                  <Trash2 size={11} strokeWidth={1.7} aria-hidden="true" />
+                </TooltipButton></>}
+              </div>
+            );
+          })}
+        </fieldset>
+        </OverlayScrollArea>
+      </div>
     </section>
   );
 }

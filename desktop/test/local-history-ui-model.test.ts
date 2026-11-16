@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { WorkspaceFileReadResult, WorkspaceFileWriteResult } from '../frontend/src/cheshiDesktop';
 import { localHistoryDiff } from '../frontend/src/features/editor/localHistoryDiff';
-import { LocalHistoryModel } from '../frontend/src/features/editor/localHistoryModel';
+import { LocalHistoryModel, type LocalHistoryState } from '../frontend/src/features/editor/localHistoryModel';
 import type { LocalHistoryEntry, LocalHistoryRestoreRequest, LocalHistorySnapshot } from '../shared/local-history';
 
 function createDeferred<T>() {
@@ -113,6 +113,79 @@ describe('local history dialog model', () => {
     await model.refresh();
     expect(model.getSnapshot().selectedId).toBe('newer');
     expect(model.getSnapshot().snapshot?.entry.id).toBe('newer');
+  });
+
+  test('refresh keeps the selected snapshot visible without rereading it and updates the disk comparison', async () => {
+    const { api, model, restoreCalls } = fixture();
+    await model.refresh();
+    await model.select('older');
+    const cached = model.getSnapshot().snapshot;
+    const disk = createDeferred<WorkspaceFileReadResult>();
+    const listing = createDeferred<LocalHistoryEntry[]>();
+    const listStarted = createDeferred<void>();
+    let reads = 0;
+    api.localHistory.read = async (_path, id) => { reads += 1; return snapshot(id); };
+    api.readWorkspaceFile = async () => disk.promise;
+    api.localHistory.list = async () => { listStarted.resolve(); return listing.promise; };
+    const observed: LocalHistoryState[] = [];
+    const unsubscribe = model.subscribe(() => observed.push(model.getSnapshot()));
+    const refresh = model.refresh();
+    expect(model.getSnapshot().loading).toBe(true);
+    expect(model.getSnapshot().snapshot).toBe(cached);
+    expect(await model.restore(false)).toBeNull();
+    disk.resolve(currentFile('disk-v2'));
+    await listStarted.promise;
+    expect(model.getSnapshot().snapshot).toBe(cached);
+    listing.resolve([entry('latest'), entry('newer'), entry('older')]);
+    await refresh;
+    unsubscribe();
+    expect(reads).toBe(0);
+    expect(observed.every(state => state.snapshot === cached && !state.loadingSnapshot)).toBe(true);
+    expect(model.getSnapshot().selectedId).toBe('older');
+    expect(model.getSnapshot().entries[0]?.id).toBe('latest');
+    expect(model.getSnapshot().current?.content).toBe('disk-v2');
+    await model.restore(false);
+    expect(restoreCalls[0]?.expectedRevision).toBe('disk-v2');
+  });
+
+  test('a removed selected snapshot is cleared while its replacement loads', async () => {
+    const { api, model } = fixture();
+    await model.refresh();
+    await model.select('older');
+    const pending = createDeferred<LocalHistorySnapshot>();
+    const readStarted = createDeferred<void>();
+    api.localHistory.list = async () => [entry('newer')];
+    api.localHistory.read = async () => { readStarted.resolve(); return pending.promise; };
+    const refresh = model.refresh();
+    await readStarted.promise;
+    expect(model.getSnapshot().selectedId).toBe('newer');
+    expect(model.getSnapshot().snapshot).toBeNull();
+    expect(model.getSnapshot().loadingSnapshot).toBe(true);
+    expect(await model.restore(false)).toBeNull();
+    pending.resolve(snapshot('newer'));
+    await refresh;
+    expect(model.getSnapshot().snapshot?.entry.id).toBe('newer');
+    api.localHistory.list = async () => [];
+    await model.refresh();
+    expect(model.getSnapshot().selectedId).toBeNull();
+    expect(model.getSnapshot().snapshot).toBeNull();
+    expect(model.getSnapshot().loadingSnapshot).toBe(false);
+  });
+
+  test('refresh invalidates a pending selection before reloading that version', async () => {
+    const { api, model } = fixture();
+    await model.refresh();
+    const pending = createDeferred<LocalHistorySnapshot>();
+    let reads = 0;
+    api.localHistory.read = async (_path, id) => ++reads === 1 ? pending.promise : snapshot(id);
+    const selection = model.select('older');
+    await model.refresh();
+    const refreshed = model.getSnapshot().snapshot;
+    expect(refreshed?.entry.id).toBe('older');
+    pending.resolve({ ...snapshot('older'), content: 'stale response' });
+    await selection;
+    expect(model.getSnapshot().snapshot).toBe(refreshed);
+    expect(model.getSnapshot().loadingSnapshot).toBe(false);
   });
 
   test('unsaved drafts prevent restore and saved files use the compared revision', async () => {

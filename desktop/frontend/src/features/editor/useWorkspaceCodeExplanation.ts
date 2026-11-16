@@ -89,7 +89,21 @@ export function useWorkspaceCodeExplanation({ active, path, firstLine, lineEndin
     else session.dismiss();
   };
 
+  const explainCurrentSelection = () => {
+    const view = editorViewRef.current;
+    if (!active || !view || !path) return;
+    try {
+      const selection = captureCodeExplanationSelection(view.state, path, firstLine);
+      setSelectionError(null);
+      void session.start(selection);
+    } catch (error) {
+      session.dismiss();
+      setSelectionError(errorMessage(error));
+    }
+  };
+
   return {
+    explainCurrentSelection,
     menu,
     state,
     selectionError,

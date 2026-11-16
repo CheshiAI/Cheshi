@@ -1,0 +1,10 @@
+.panel { min-width: 0; font-size: var(--font-size-small); }
+.description { margin: 0 0 var(--space-default); color: var(--sidebar-section-label-color); }
+.description a { color: var(--active-text); }
+.rows { display: grid; gap: 0; margin: 0; }
+.rows > div { display: grid; grid-template-columns: minmax(100px, 150px) minmax(0, 1fr); gap: var(--space-default); padding: var(--space-8) 0; border-bottom: 1px solid var(--divider); }
+.rows > div:last-child { border-bottom: 0; }
+.rows dt { color: var(--sidebar-section-label-color); }
+.rows dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; color: var(--text); }
+.rows small { display: block; margin-top: var(--space-4); font-size: inherit; color: var(--sidebar-section-label-color); }
+@container (max-width: 360px) { .rows > div { grid-template-columns: 1fr; gap: var(--space-4); } }

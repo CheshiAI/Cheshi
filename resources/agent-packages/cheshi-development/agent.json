@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "cheshi.development",
+  "version": "1.0.0",
+  "name": "Cheshi Development Specialist",
+  "description": "Explore, plan, implement and test approved code changes, then request independent review.",
+  "role": "development",
+  "instructionsFile": "instructions.md",
+  "model": {
+    "model": "gpt-6.1-sol",
+    "reasoningEffort": "medium",
+    "serviceTier": null
+  },
+  "requiredTools": [
+    "codegraph",
+    "collaboration",
+    "verification"
+  ],
+  "requestedPermissions": {
+    "fileWrite": true,
+    "commandExecution": true
+  }
+}

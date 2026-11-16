@@ -1,37 +1,41 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { Trash2 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { LoadingState, Modal, NeumorphicButton } from '../../shared/ui';
 import styles from './ChatSplitDialog.module.css';
 
 interface DeleteRecordProps {
   recordTitle: string;
-  kind: 'history' | 'turn';
   pending: boolean;
   error: string | null;
   onClose: () => void;
 }
 
-export function ChatDeleteRecordForm({ recordTitle, kind, pending, error, onDelete, onClose }:
-  DeleteRecordProps & { onDelete: () => void }) {
-  return <form className={styles.form} onSubmit={(event) => {
+export function ChatDeleteRecordForm({ recordTitle, pending, error, onDelete, onClose, formRef }:
+  DeleteRecordProps & { onDelete: () => void; formRef?: RefObject<HTMLFormElement | null> }) {
+  return <form ref={formRef} className={styles.form} onSubmit={(event) => {
     event.preventDefault();
     if (!pending) onDelete();
   }}>
-    <p className={styles.sessionTitle} title={recordTitle}>{recordTitle}</p>
-    <p>{kind === 'history' ? 'This deletes only the saved conversation history record.' : 'This deletes only the saved turn.'}
-      {' '}Your original chat sessions are unaffected. This cannot be undone.</p>
+    <TooltipTarget content={recordTitle}><p className={styles.sessionTitle}>{recordTitle}</p></TooltipTarget>
+    <p>This deletes only the saved turn. Your original chat sessions are unaffected.<br />This cannot be undone.</p>
     {error && <p role="alert">{error}</p>}
     <div className={styles.deletionActions}>
       {pending && <LoadingState type="processing" label="Deleting saved record…" className={styles.deletionProgress} />}
       <div className={styles.buttons}>
-        <NeumorphicButton size="standard" raised autoFocus disabled={pending} onClick={onClose}>Cancel</NeumorphicButton>
-        <NeumorphicButton size="standard" raised type="submit" disabled={pending} aria-busy={pending}>{kind === 'history' ? 'Delete history' : 'Delete saved turn'}</NeumorphicButton>
+        <NeumorphicButton name="cancel" variant="standard" disabled={pending} onClick={onClose}>Cancel</NeumorphicButton>
+        <NeumorphicButton variant="standard" type="submit" disabled={pending} aria-busy={pending}>Delete saved turn</NeumorphicButton>
       </div>
     </div>
   </form>;
 }
 
 export function ChatDeleteRecordDialog({ onDelete, ...props }: DeleteRecordProps & { onDelete: () => Promise<boolean> }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    // Run after the child Modal opens the native dialog and assigns its initial focus.
+    formRef.current?.querySelector<HTMLButtonElement>('button[name="cancel"]')?.focus({ preventScroll: true });
+  }, []);
   const pendingRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -52,9 +56,10 @@ export function ChatDeleteRecordDialog({ onDelete, ...props }: DeleteRecordProps
       setSubmitting(false);
     }
   };
-  return <Modal title={props.kind === 'history' ? 'Delete conversation history?' : 'Delete saved turn?'}
+  return <Modal className={styles.recordDeletionDialog} headerVariant="section" closeButtonVariant="ghost"
+    title="DELETE SAVED TURN"
     titleIcon={<Trash2 aria-hidden="true" />} closeDisabled={busy} onClose={close}>
-    <ChatDeleteRecordForm {...props} pending={busy} error={failure ? props.error || failure : null}
+    <ChatDeleteRecordForm {...props} formRef={formRef} pending={busy} error={failure ? props.error || failure : null}
       onDelete={() => void remove()} onClose={close} />
   </Modal>;
 }

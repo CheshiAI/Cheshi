@@ -52,5 +52,5 @@ test('repository loading shows the common loading state without partial search o
   const api = { ...createGitHubLoginApi(), listGitHubRepositories: async () => ({ login: 'owner', repositories: [], nextPage: null }) };
   const html = renderToStaticMarkup(<GitHubRepositoryPicker api={api} disabled={false} onSelect={() => {}} initialCatalog={null} />);
   expect(html).toContain('Preparing...');
-  expect(html).not.toContain('Search repositories');
+  expect(html).not.toContain('Search GitHub repositories');
 });

@@ -7,7 +7,7 @@ import { WorkspaceManagerHeader } from './WorkspaceManagerHeader';
 import { useWorkspaceOperation } from './useWorkspaceOperation';
 import { childDirectory, parentDirectory, validDirectoryName, workspaceError } from './workspace-paths';
 import managerStyles from './WorkspaceManager.module.css';
-import styles from './workspace-management.module.css';
+import styles from './CloneWorkspacePage.module.css';
 
 export function CreateProjectProgress({ opening, onBack }: { opening: boolean; onBack(): void }) {
   return <>
@@ -80,20 +80,20 @@ export function CreateProjectWorkspacePage({ api, currentPath, onClose }: {
           <label>
             <span className={styles.fieldLabel}>Parent folder</span>
             <div className={styles.folderField}>
-              <NeumorphicTextField ref={parentInput} required value={parentPath}
+              <NeumorphicTextField variant="standard" ref={parentInput} required value={parentPath}
                 onChange={(event) => setParentPath(event.target.value)}
-                trailingAction={parentPath ? <SearchClearButton aria-label="Clear parent folder" disabled={fieldsDisabled}
+                trailingAction={parentPath ? <SearchClearButton variant="ghost" aria-label="Clear parent folder" disabled={fieldsDisabled}
                   onClick={() => { setParentPath(''); parentInput.current?.focus(); }} /> : undefined} />
-              <NeumorphicButton raised size="standard" onClick={() => void choose()} aria-label="Choose project parent folder">
+              <NeumorphicButton variant="standard" onClick={() => void choose()} aria-label="Choose project parent folder">
                 <FolderOpen aria-hidden="true" />Browse
               </NeumorphicButton>
             </div>
           </label>
           <label>
             <span className={styles.fieldLabel}>Project name</span>
-            <NeumorphicTextField ref={nameInput} autoFocus required value={directoryName} placeholder="my-project"
+            <NeumorphicTextField variant="standard" ref={nameInput} autoFocus required value={directoryName} placeholder="my-project"
               onChange={(event) => setDirectoryName(event.target.value)}
-              trailingAction={directoryName ? <SearchClearButton aria-label="Clear project name" disabled={fieldsDisabled}
+              trailingAction={directoryName ? <SearchClearButton variant="ghost" aria-label="Clear project name" disabled={fieldsDisabled}
                 onClick={() => { setDirectoryName(''); nameInput.current?.focus(); }} /> : undefined} />
           </label>
         </fieldset>
@@ -107,8 +107,8 @@ export function CreateProjectWorkspacePage({ api, currentPath, onClose }: {
             {parentPath.trim() && directoryName.trim() ? childDirectory(parentPath.trim(), directoryName.trim()) : 'Choose a parent folder and enter a project name.'}
           </p>
           <div className={styles.footer}>
-            <NeumorphicButton raised size="standard" disabled={busy} onClick={onClose}>Cancel</NeumorphicButton>
-            <NeumorphicButton raised size="standard" type="submit" disabled={busy || (!valid && !operation.created)}>
+            <NeumorphicButton variant="standard" disabled={busy} onClick={onClose}>Cancel</NeumorphicButton>
+            <NeumorphicButton variant="standard" type="submit" disabled={busy || (!valid && !operation.created)}>
               <FolderPlus aria-hidden="true" />{operation.created ? 'Open in new window' : 'Create and open'}
             </NeumorphicButton>
           </div>

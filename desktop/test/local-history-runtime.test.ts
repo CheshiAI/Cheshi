@@ -3,8 +3,29 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { acquireLocalHistory } from '../lib/local-history-runtime.mts';
 import createForgeConfiguration from '../../forge.config.mts';
+
+test('Electron uses SQLite locks without experimental warnings and releases them after failures', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'cheshi-history-electron-'));
+  try {
+    const electronPath = createRequire(import.meta.url)('electron') as string;
+    const env: NodeJS.ProcessEnv = { ...process.env, ELECTRON_RUN_AS_NODE: '1' };
+    delete env.NODE_OPTIONS;
+    delete env.NODE_NO_WARNINGS;
+    const result = spawnSync(electronPath, [
+      fileURLToPath(new URL('./local-history-electron-fixture.ts', import.meta.url)), directory,
+    ], { encoding: 'utf8', env, timeout: 15_000 });
+    expect(result.error).toBeUndefined();
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('Electron SQLite locking passed');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test('shares file history across windows and serializes reopening after the last release', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'cheshi-history-windows-'));

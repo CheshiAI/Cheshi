@@ -1,26 +1,14 @@
 import { createWorkspaceCodexAccounts } from './workspace-codex-accounts.mts';
 import { ChatHistorySearch } from './chat-history-search.mts';
-import { ChatHistoryRecall } from './chat-history-recall.mts';
-import { createHistoryRecallEvaluator } from './chat-history-recall-model.mts';
-import { createLunaHistoryRecallEvaluator } from './chat-history-recall-luna.mts';
-import { createWorkspaceHistoryMcp, type HistoryRecallAccess } from './workspace-history-mcp.mts';
 
-/** Connect the workspace's account-aware history reader to the local recall tools. */
-export function createWorkspaceChatHistory(options: Omit<Parameters<typeof createWorkspaceCodexAccounts>[0], 'historyMcp'> & {
+/** Connect account-aware saved conversations to the session list's local search. */
+export function createWorkspaceChatHistory(options: Parameters<typeof createWorkspaceCodexAccounts>[0] & {
   historyDirectory: string;
-  getKey?: () => string | null;
-  access?: HistoryRecallAccess;
 }) {
-  // Account clients are lazy: the MCP callback runs only after all services below exist.
-  const accounts = createWorkspaceCodexAccounts({ ...options, historyMcp: command => mcp.prepareCommand(command) });
+  const accounts = createWorkspaceCodexAccounts(options);
   const search = new ChatHistorySearch({ directory: options.historyDirectory, cwd: options.cwd,
     source: { list: () => accounts.conversations.list(), read: (id, profileId) => profileId
       ? accounts.conversations.request(profileId, 'thread/read', { threadId: id, includeTurns: true })
       : accounts.conversations.read!(id, 'thread/read', { includeTurns: true }) } });
-  const mcp = createWorkspaceHistoryMcp(new ChatHistoryRecall({
-    history: search, evaluate: createHistoryRecallEvaluator({ getKey: () => options.getKey?.() ?? null,
-      fallback: createLunaHistoryRecallEvaluator({ cwd: options.cwd, createClient: accounts.createClient }),
-    }),
-  }), options.access);
-  return { accounts, search, mcp };
+  return { accounts, search };
 }

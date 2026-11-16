@@ -1,446 +1,146 @@
-import {
-  AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
-  FileCode2,
-  FileSearch,
-  FileText,
-  History,
-  Lightbulb,
-  PanelBottom,
-  PanelRight,
-  PencilLine,
-  RotateCw,
-  Save,
-  Search,
-} from 'lucide-react';
-import { useEffect } from 'react';
-
-import {
-  draggableWindowRegionStyle,
-  FlatTab,
-  FlatTabList,
-  NeumorphicButton,
-  nonDraggableWindowRegionStyle,
-  TieredHeader,
-} from '../../shared/ui';
-import { WorkspaceCodeExplanationMenu } from './WorkspaceCodeExplanationMenu';
-import type { GitLineBlameRequest } from '../../../../shared/git-line-blame';
-import { WorkspaceCodeExplanationToast } from './WorkspaceCodeExplanationToast';
-import { WorkspaceEditorAssistPanel } from './WorkspaceEditorAssistPanel';
-import { WorkspaceEditorSearchPanel } from './WorkspaceEditorSearchPanel';
-import { WorkspaceProblemsPanel } from './WorkspaceProblemsPanel';
-import { useWorkspaceProblemsLayout } from './workspaceProblemsLayout';
-import {
-  WorkspaceProblemsResizer,
-  workspaceProblemsStageStyle,
-} from './WorkspaceProblemsResizer';
-import {
-  canUseLanguageServer,
-  formatBytes,
-  isTabDirty,
-  tabLabel,
-} from './workspaceEditorModel';
-import {
-  useWorkspaceEditorController,
-  type WorkspaceEditorMutation,
-  type WorkspaceEditorTarget,
-} from './useWorkspaceEditorController';
+import { useWorkspaceProjects } from '../../shared/workspaceProjects';
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { cheshiDesktop } from '../../cheshiDesktop';
+import { SplitPaneLayout } from '../../shared/ui/SplitPaneLayout';
+import { RegionalBlur } from '../../shared/ui/RegionalBlur';
+import type { SplitLayoutNode, SplitPaneDirection } from '../../shared/ui/splitPaneModel';
+import { WorkspaceLayoutContext, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
+import { WorkspaceEditorPane, type WorkspaceEditorProps } from './WorkspaceEditorPane';
+import { useEditorPanes } from './useEditorPanes';
+import { EditorPaneHost } from './EditorPaneHost';
+import { droppedWorkspacePaths, readEditorTabTransfer } from './editorFileDrop';
+import { normalizeWorkspaceEditorContent } from './workspaceFileLoad';
+import type { WorkspaceEditorTarget } from './useWorkspaceEditorController';
+import type { WorkspaceTab } from './workspaceEditorModel';
+import styles from './EditorPanes.module.css';
 import './workspace-editor.css';
 
 export type { WorkspaceEditorMutation, WorkspaceEditorTarget } from './useWorkspaceEditorController';
+const ignoreSelection = () => {};
 
-interface WorkspaceEditorProps {
-  sessionMode?: import('../../../../shared/editor-session').EditorSessionMode;
-  onSessionRestored?: () => void;
-  active: boolean;
-  rightSidebarOpen?: boolean;
-  onToggleRightSidebar?: () => void;
-  mutation: WorkspaceEditorMutation | null;
-  target: WorkspaceEditorTarget | null;
-  onAllTabsClosed: () => void;
-  onSelectedPathChange: (path: string | null) => void;
-  onDirtyPathsChange?: (paths: string[]) => void;
-  onOpenLocalHistory?: (path: string) => void;
-  onShowLineCommit: (request: GitLineBlameRequest) => void;
-}
-
-export function WorkspaceEditor({
-  sessionMode,
-  onSessionRestored,
-  active,
-  rightSidebarOpen = false,
-  onToggleRightSidebar,
-  mutation,
-  target,
-  onAllTabsClosed,
-  onSelectedPathChange,
-  onDirtyPathsChange,
-  onOpenLocalHistory,
-  onShowLineCommit,
-}: WorkspaceEditorProps) {
-  const controller = useWorkspaceEditorController({
-    sessionMode,
-    onSessionRestored,
-    active,
-    mutation,
-    target,
-    onAllTabsClosed,
-    onSelectedPathChange,
-  });
-  const {
-    activeLanguageServer,
-    activeTab,
-    activateOpenTab,
-    applyPreparedWorkspaceEdit,
-    assistState,
-    changeRenameValue,
-    chooseCodeAction,
-    closeAllTabs,
-    closeAssist,
-    closeEditorSearch,
-    closeTab,
-    configureActiveLanguageServer,
-    codeExplanation,
-    conflictMessage,
-    copyTabFullPath,
-    currentFile,
-    diagnostics,
-    diagnosticsStatus,
-    editorHostRef,
-    editorSearchControls,
-    editorSearchInputRef,
-    editorSearchOpen,
-    editorSearchQueryValid,
-    errorMessage,
-    findNextMatch,
-    findPreviousMatch,
-    isDirty,
-    languageServerConfiguring,
-    languageServers,
-    navigateHistory,
-    navigationAvailability,
-    openReference,
-    problemsRatio,
-    problemsVisible,
-    reloadSelectedFile,
-    replaceAllMatches,
-    replaceNextMatch,
-    requestCodeActionsAtSelection,
-    requestReferencesAtSelection,
-    requestRenameAtSelection,
-    revealDiagnostic,
-    saveFile,
-    saving,
-    selectAllMatches,
-    selectedPath,
-    selectReference,
-    setProblemsOpen,
-    setProblemsRatio,
-    submitRename,
-    tabs,
-    toggleEditorSearch,
-    updateEditorSearchControls,
-  } = controller;
-  const problemsLayout = useWorkspaceProblemsLayout(problemsRatio, active);
-  const dirtyPathKey = tabs.filter(isTabDirty).map(tab => tab.path).join('\0');
+/** Pane controllers remain mounted in stable portals as the split tree changes. */
+export function WorkspaceEditor(props: WorkspaceEditorProps) {
+  const { projects } = useWorkspaceProjects();
+  // Portaled menus can overlap adjacent panes and sidebar borders.
+  const menuBlurSourceRef = useRef(document.getElementById('app'));
+  const visible = useContext(WorkspacePaneVisibilityContext);
+  const workspaceLayout = useContext(WorkspaceLayoutContext);
+  const active = props.active && visible;
+  const { store, state, ready, error, setError } = useEditorPanes(props);
+  const [maximizedId, setMaximizedId] = useState<string | null>(null);
+  const expandedWorkspace = useRef(false);
+  const canMaximize = Object.keys(state.groups).length > 1;
+  const maximized = canMaximize && maximizedId && state.groups[maximizedId] ? maximizedId : null;
+  const shownLayout: SplitLayoutNode = maximized ? { type: 'pane', paneId: maximized } : state.layout;
+  // Adding/removing a split reveals its result; restoring never modifies saved ratios or tab groups.
+  useEffect(() => { setMaximizedId(null); }, [state.layout]);
   useEffect(() => {
-    onDirtyPathsChange?.(dirtyPathKey ? dirtyPathKey.split('\0') : []);
-  }, [dirtyPathKey, onDirtyPathsChange]);
-
-  const explanationToast = (
-    <WorkspaceCodeExplanationToast
-      state={codeExplanation.state}
-      selectionError={codeExplanation.selectionError}
-      onDismiss={codeExplanation.dismiss}
-    />
-  );
-
-  if (!active) return explanationToast;
-
-  return (
-    <main className="workspace-editor" aria-label="Workspace editor">
-      <TieredHeader
-        className="workspace-editor-header"
-        primaryClassName="workspace-editor-tab-row"
-        primary={(
-          <>
-            <FlatTabList aria-label="Open files" onCloseAll={closeAllTabs}>
-              {tabs.map((tab) => {
-                const selected = tab.path === selectedPath;
-                return (
-                  <FlatTab
-                    active={selected}
-                    closeLabel={`Close ${tab.path}`}
-                    key={tab.path}
-                    label={tabLabel(tab)}
-                    leading={<FileText aria-hidden="true" />}
-                    onActivate={() => activateOpenTab(tab.path)}
-                    onClose={() => closeTab(tab.path)}
-                    onCopyFullPath={() => void copyTabFullPath(tab.path)}
-                    onOpenLocalHistory={onOpenLocalHistory && !tab.sourceExcerpt && tab.file.fileKind === 'text'
-                      ? () => onOpenLocalHistory(tab.path) : undefined}
-                    style={nonDraggableWindowRegionStyle}
-                    title={tab.path}
-                    trailing={isTabDirty(tab) && (
-                      <span className="workspace-editor-tab-modified" aria-label="Unsaved changes" />
-                    )}
-                  />
-                );
-              })}
-            </FlatTabList>
-            <div
-              className="workspace-editor-header-actions"
-              style={nonDraggableWindowRegionStyle}
-            >
-              <NeumorphicButton
-                raised
-                aria-label="Navigate back"
-                className="neumorphic-surface workspace-editor-action"
-                disabled={!navigationAvailability.back}
-                title="Navigate back (⌘[ / Ctrl+-)"
-                type="button"
-                onClick={() => void navigateHistory('back')}
-              >
-                <ArrowLeft aria-hidden="true" />
-              </NeumorphicButton>
-              <NeumorphicButton
-                raised
-                aria-label="Navigate forward"
-                className="neumorphic-surface workspace-editor-action"
-                disabled={!navigationAvailability.forward}
-                title="Navigate forward (⌘] / Ctrl+Shift+-)"
-                type="button"
-                onClick={() => void navigateHistory('forward')}
-              >
-                <ArrowRight aria-hidden="true" />
-              </NeumorphicButton>
-              <NeumorphicButton
-                raised
-                type="button"
-                aria-controls="workspace-editor-problems"
-                aria-expanded={problemsVisible}
-                aria-label={problemsVisible ? 'Close problems panel' : 'Open problems panel'}
-                className="neumorphic-surface codegraph-inspector-toggle"
-                disabled={currentFile?.fileKind !== 'text'}
-                style={nonDraggableWindowRegionStyle}
-                onClick={() => setProblemsOpen((open) => !open)}
-              >
-                <PanelBottom aria-hidden="true" />
-              </NeumorphicButton>
-              {onToggleRightSidebar && <NeumorphicButton raised size="icon"
-                aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-                title={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
-                aria-pressed={rightSidebarOpen} aria-expanded={rightSidebarOpen}
-                onClick={onToggleRightSidebar}>
-                <PanelRight aria-hidden="true" />
-              </NeumorphicButton>}
-            </div>
-          </>
-        )}
-        secondary={currentFile ? (
-          <>
-            <div className="workspace-editor-file-info">
-              <strong>{currentFile.path.split('/').at(-1) ?? currentFile.path}</strong>
-              <div className="workspace-editor-file-meta">
-                <span className="workspace-editor-file-revision">
-                  {currentFile.lineEnding.toUpperCase()} · {formatBytes(currentFile.size)} · rev {currentFile.revision.slice(-12)}
-                </span>
-                {activeTab?.sourceExcerpt
-                  ? <span className="workspace-editor-readonly-label">Read only</span>
-                  : conflictMessage
-                    ? <span className="workspace-editor-conflict-label">Conflict</span>
-                    : isDirty
-                      ? <span className="workspace-editor-unsaved-label">Modified</span>
-                      : null}
-              </div>
-            </div>
-            <div className="workspace-editor-actions" style={nonDraggableWindowRegionStyle}>
-              {currentFile.fileKind === 'text' && (
-                <>
-                  <NeumorphicButton raised size="icon" aria-label="Local history" title="Local history"
-                    disabled={!onOpenLocalHistory || Boolean(activeTab?.sourceExcerpt)}
-                    onClick={() => onOpenLocalHistory?.(currentFile.path)}>
-                    <History aria-hidden="true" />
-                  </NeumorphicButton>
-                  <NeumorphicButton
-                    raised
-                    active={editorSearchOpen}
-                    className="neumorphic-surface workspace-editor-action"
-                    aria-controls="workspace-editor-search"
-                    aria-expanded={editorSearchOpen}
-                    aria-label="Find and replace"
-                    title="Find and replace (⌘F / Ctrl+F)"
-                    onClick={toggleEditorSearch}
-                  >
-                    <Search aria-hidden="true" />
-                  </NeumorphicButton>
-                  <NeumorphicButton
-                    raised
-                    className="neumorphic-surface workspace-editor-action"
-                    aria-label="Save file"
-                    title="Save (⌘S / Ctrl+S)"
-                    disabled={!isDirty || saving || Boolean(conflictMessage)}
-                    onClick={() => void saveFile()}
-                  >
-                    {saving
-                      ? <RotateCw className="workspace-editor-spinner" aria-hidden="true" />
-                      : <Save aria-hidden="true" />}
-                  </NeumorphicButton>
-                  {activeLanguageServer && canUseLanguageServer(activeLanguageServer.language, languageServers) && (
-                    <>
-                      <NeumorphicButton
-                        raised
-                        className="neumorphic-surface workspace-editor-action"
-                        aria-label="Find symbol references"
-                        title="Find references (Shift+F12)"
-                        onClick={requestReferencesAtSelection}
-                      >
-                        <FileSearch aria-hidden="true" />
-                      </NeumorphicButton>
-                      <NeumorphicButton
-                        raised
-                        className="neumorphic-surface workspace-editor-action"
-                        aria-label="Show quick fixes"
-                        title="Quick fix (⌘. / Ctrl+.)"
-                        onClick={requestCodeActionsAtSelection}
-                      >
-                        <Lightbulb aria-hidden="true" />
-                      </NeumorphicButton>
-                      <NeumorphicButton
-                        raised
-                        className="neumorphic-surface workspace-editor-action"
-                        aria-label="Rename symbol"
-                        title="Rename symbol (F2)"
-                        onClick={requestRenameAtSelection}
-                      >
-                        <PencilLine aria-hidden="true" />
-                      </NeumorphicButton>
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-          </>
-        ) : undefined}
-        tertiary={editorSearchOpen && currentFile?.fileKind === 'text' ? (
-          <WorkspaceEditorSearchPanel
-            controls={editorSearchControls}
-            inputRef={editorSearchInputRef}
-            queryValid={editorSearchQueryValid}
-            onChange={updateEditorSearchControls}
-            onNext={findNextMatch}
-            onPrevious={findPreviousMatch}
-            onSelectAll={selectAllMatches}
-            onReplace={replaceNextMatch}
-            onReplaceAll={replaceAllMatches}
-            onClose={closeEditorSearch}
-          />
-        ) : undefined}
-        style={draggableWindowRegionStyle}
-      />
-
-      {errorMessage && (
-        <div className="workspace-editor-error" role="alert">
-          <AlertTriangle aria-hidden="true" />
-          <span>{errorMessage}</span>
-        </div>
-      )}
-
-      {conflictMessage && (
-        <div className="workspace-editor-conflict" role="alert">
-          <AlertTriangle aria-hidden="true" />
-          <span>{conflictMessage}</span>
-          <NeumorphicButton
-            className="neumorphic-surface workspace-editor-conflict-reload"
-            onClick={reloadSelectedFile}
-          >
-            Reload from disk
-          </NeumorphicButton>
-        </div>
-      )}
-
-      <section
-        ref={problemsLayout.stageRef}
-        className="workspace-editor-stage"
-        data-problems-open={currentFile?.fileKind === 'text' ? String(problemsVisible) : undefined}
-        aria-label={currentFile ? `Editor for ${currentFile.path}` : 'Editor canvas'}
-        style={currentFile?.fileKind === 'text' ? workspaceProblemsStageStyle(problemsLayout.ratio, problemsVisible) : undefined}
-      >
-        {currentFile?.fileKind === 'text' ? (
-          <>
-            <div ref={editorHostRef} className="workspace-editor-host" {...codeExplanation.hostHandlers} />
-            <WorkspaceProblemsResizer
-              ratio={problemsLayout.ratio}
-              onRatioChange={setProblemsRatio}
-            />
-            <WorkspaceProblemsPanel
-              open={problemsVisible}
-              content={activeTab?.draftContent ?? ''}
-              diagnostics={diagnostics}
-              filePath={currentFile.path}
-              languageServer={activeLanguageServer}
-              languageServerConfiguring={languageServerConfiguring}
-              status={diagnosticsStatus}
-              onConfigureLanguageServer={(mode) => void configureActiveLanguageServer(mode)}
-              onSelectDiagnostic={revealDiagnostic}
-            />
-          </>
-        ) : activeTab?.sourceExcerpt ? (
-          <div className="workspace-editor-source-excerpt">
-            <div className="workspace-editor-source-excerpt-notice" role="note">
-              <FileText aria-hidden="true" />
-              <span>
-                Read-only definition excerpt · lines {activeTab.sourceExcerpt.startLine}–{activeTab.sourceExcerpt.endLine}
-              </span>
-            </div>
-            <div ref={editorHostRef} className="workspace-editor-host" {...codeExplanation.hostHandlers} />
-          </div>
-        ) : currentFile?.fileKind === 'image' ? (
-          <div className="workspace-editor-preview">
-            {activeTab?.previewDataUrl
-              ? <img src={activeTab.previewDataUrl} alt={currentFile.path} />
-              : <p>Image preview is unavailable for files larger than the preview limit.</p>}
-          </div>
-        ) : currentFile ? (
-          <div className="workspace-editor-empty">
-            <span className="workspace-editor-empty-mark">
-              <AlertTriangle aria-hidden="true" />
-            </span>
-            <strong>{currentFile.fileKind === 'too_large' ? 'File is too large to edit' : 'Binary file'}</strong>
-            <p>{currentFile.path} · {formatBytes(currentFile.size)}</p>
-          </div>
-        ) : (
-          <div className="workspace-editor-empty">
-            <span className="workspace-editor-empty-mark">
-              <FileCode2 aria-hidden="true" />
-            </span>
-            <strong>Choose a file</strong>
-            <p>Open a file from the Explorer to inspect or edit it.</p>
-          </div>
-        )}
-        {assistState && (
-          <WorkspaceEditorAssistPanel
-            state={assistState}
-            onApplyEdit={() => void applyPreparedWorkspaceEdit()}
-            onChooseAction={chooseCodeAction}
-            onClose={closeAssist}
-            onOpenReference={openReference}
-            onRenameChange={changeRenameValue}
-            onRenameSubmit={() => void submitRename()}
-            onSelectReference={selectReference}
-          />
-        )}
-      </section>
-      {codeExplanation.menu && (
-        <WorkspaceCodeExplanationMenu
-          target={codeExplanation.menu}
-          onClose={codeExplanation.closeMenu}
-          onExplain={codeExplanation.explainSelection}
-          onShowLineCommit={() => codeExplanation.showLineCommit(onShowLineCommit)}
-        />
-      )}
-      {explanationToast}
-    </main>
-  );
+    if (!expandedWorkspace.current) return;
+    if (workspaceLayout?.maximized !== 'editor') {
+      expandedWorkspace.current = false;
+      setMaximizedId(null);
+    } else if (!maximized) {
+      expandedWorkspace.current = false;
+      workspaceLayout.maximize('editor');
+    }
+  }, [maximized, workspaceLayout]);
+  const toggleMaximized = (id: string) => {
+    store.activate(id);
+    setMaximizedId(current => current === id ? null : id);
+    if (maximized !== id && workspaceLayout?.canMaximize && workspaceLayout.maximized !== 'editor') {
+      expandedWorkspace.current = true;
+      workspaceLayout.maximize('editor');
+    }
+  };
+  const [hosts] = useState(() => new Map<string, HTMLDivElement>());
+  const detachedFocus = useRef<HTMLElement | null>(null);
+  const onDetach = useCallback((element: HTMLElement) => { detachedFocus.current = element; }, []);
+  const [routedTarget, setRoutedTarget] = useState<{ id: string; target: WorkspaceEditorTarget } | null>(null);
+  useEffect(() => {
+    if (!props.target) setRoutedTarget(null);
+    else if (active && ready) setRoutedTarget({ id: store.getSnapshot().activeId, target: props.target });
+  }, [props.target, active, ready, store]);
+  for (const id of Object.keys(state.groups)) {
+    if (!hosts.has(id)) {
+      const host = document.createElement('div');
+      host.className = styles.host ?? '';
+      hosts.set(id, host);
+    }
+    hosts.get(id)!.dataset.active = String(id === state.activeId);
+  }
+  useEffect(() => {
+    for (const id of hosts.keys()) if (!state.groups[id]) hosts.delete(id);
+  }, [hosts, state.groups]);
+  useLayoutEffect(() => {
+    const previous = detachedFocus.current;
+    detachedFocus.current = null;
+    if (previous?.isConnected && document.activeElement === document.body) previous.focus({ preventScroll: true });
+  });
+  const dropSequence = useRef(0);
+  useEffect(() => () => { dropSequence.current++; }, []);
+  useEffect(() => { if (!active) dropSequence.current++; }, [active]);
+  const receive = useCallback((data: DataTransfer, target: string, direction: SplitPaneDirection | null) => {
+    const transfer = readEditorTabTransfer(data);
+    const sequence = ++dropSequence.current;
+    if (transfer) {
+      const tab = store.getSnapshot().groups[transfer.paneId]?.tabs.find(t => t.path === transfer.path);
+      if (tab) store.place(tab, target, direction, transfer.paneId);
+      return;
+    }
+    if (!cheshiDesktop) return;
+    const paths = droppedWorkspacePaths(data, cheshiDesktop.workspaceRoot, projects.filter(project => !project.primary).map(project => project.rootPath));
+    if (!paths.length) return;
+    const busyId = `drop-${sequence}`;
+    store.setBusy(busyId, true);
+    void (async () => {
+      let destination = target;
+      for (const path of paths) {
+        let tab = store.allTabs().find(t => t.path === path);
+        if (!tab) {
+          const response = await cheshiDesktop!.readWorkspaceFile(path);
+          const content = normalizeWorkspaceEditorContent(response.content ?? '');
+          tab = { path, file: response.file, savedContent: content, draftContent: content,
+            previewDataUrl: response.dataUrl, sourceExcerpt: null, conflictMessage: null,
+            loadGeneration: ++store.nextGeneration.current } satisfies WorkspaceTab;
+        }
+        if (sequence !== dropSequence.current || !store.getSnapshot().groups[destination]) return;
+        const placed = store.place(tab, destination, direction);
+        if (!placed) return;
+        destination = placed;
+        direction = null;
+      }
+      setError('');
+    })().catch((reason: unknown) => {
+      if (sequence === dropSequence.current) setError(String(reason));
+    }).finally(() => store.setBusy(busyId, false));
+  }, [store, setError, projects]);
+  return <RegionalBlur sourceRef={menuBlurSourceRef}><div className={styles.root} style={!active ? { display: 'none' } : undefined}>
+    {error && <p role="alert">{error}</p>}
+    <SplitPaneLayout layout={shownLayout} onResizeSplit={store.resize} resizeLabel="Resize editor panes"
+      renderPane={id => <EditorPaneHost host={hosts.get(id)!} id={id} onDetach={onDetach} onDrop={receive} />} />
+    <div hidden inert>
+      {maximized && Object.keys(state.groups).filter(id => id !== maximized).map(id =>
+        <EditorPaneHost key={id} host={hosts.get(id)!} id={id} onDetach={onDetach} onDrop={receive} />)}
+    </div>
+    {Object.keys(state.groups).map(id => createPortal(
+      <WorkspaceEditorPane {...props} active={active} pane={{ store, id, ready }}
+        canCloseEmptyPane={canMaximize || workspaceLayout?.canMaximize === true}
+        maximizeControl={canMaximize ? {
+          enabled: true,
+          maximized: maximized === id,
+          toggle: () => toggleMaximized(id),
+        } : undefined}
+        target={routedTarget?.target === props.target && routedTarget?.id === id ? routedTarget.target : null}
+        onSelectedPathChange={ignoreSelection} onDirtyPathsChange={undefined}
+        onAllTabsClosed={() => {
+          store.closeEmpty(id);
+          if (store.allTabs().length === 0) props.onAllTabsClosed();
+        }}
+        onPaneClosed={() => {
+          store.closeEmpty(id);
+          if (store.allTabs().length === 0) (props.onPaneClosed ?? props.onAllTabsClosed)();
+        }} />,
+      hosts.get(id)!, id))}
+  </div></RegionalBlur>;
 }

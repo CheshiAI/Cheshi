@@ -1,0 +1,107 @@
+import { isWorkKind } from '../../../../shared/agent-work';
+import { WorkMessage } from './WorkMessage';
+import { IntegrationDetail } from './IntegrationDetail';
+import type { AgentTask } from '../../../../shared/agent-management';
+import type { TaskEvidence, TaskMessage } from '../../../../shared/agent-task-inspection';
+import { MessageContent } from '../chat/MessageContent';
+import styles from './AgentTaskResults.module.css';
+
+function Evidence({ items }: { items: TaskEvidence[] }) {
+  return <div className={styles.records}>{items.map(item => <details key={item.id} className={styles.record}>
+    <summary>{item.kind === 'file' ? 'File' : 'Command'} · {item.detail}</summary>
+    <p>Receipt: {item.id}</p>
+    {item.kind === 'command' && <p>Exit code: {item.exitCode ?? 'Unknown'} · Execution successful: {item.successful === null ? 'Unknown' : item.successful ? 'Yes' : 'No'}</p>}
+    <pre>{item.output || 'No recorded output.'}</pre>
+  </details>)}</div>;
+}
+function Exchange({ message, messages }: { message: TaskMessage; messages: TaskMessage[] }) {
+  const request = message.kind === 'question' || message.kind === 'verification_request';
+  const reply = request ? messages.find(m => m.questionId === message.id && (m.kind === 'reply' || m.kind === 'verification_result')) : undefined;
+  const closed = messages.find(m => m.kind === 'question_closed' && m.questionId === message.questionId);
+  const label = { question: 'Question', question_closed: 'Question closed', reply: 'Reply', verification_request: 'Verification request', verification_result: 'Verification result', work_request: 'Implementation request', work_result: 'Proposed changes', work_review: 'Work review' }[message.kind];
+  return <details className={styles.record}>
+    <summary>{label} · {message.fromName} → {message.toName} · {closed ? message.kind === 'reply' ? 'Late reply · not applied' : closed.closureReason === 'expired' ? 'Expired' : 'Closed' : request ? !reply ? 'Awaiting reply' : reply.delivery === 'processed' ? 'Reply processed' : 'Reply recorded' : message.delivery}</summary>
+    {message.kind === 'question' && <p>Deadline: {message.expiresAt ? new Date(message.expiresAt).toLocaleString() : 'No expiry'}</p>}
+    <p>Delivery: {message.delivery} · Request: {message.questionId}</p>
+    {isWorkKind(message.kind) ? <WorkMessage kind={message.kind} text={message.text} /> : message.verification ? <>
+      {message.verification.candidate && <p>Candidate: {message.verification.candidate.id}<br />SHA-256: {message.verification.candidate.hash} · {message.verification.candidate.applicationId ? `Project application: ${message.verification.candidate.applicationId}` : 'Not applied to project'}</p>}
+      {message.verification.verdicts.map((verdict, index) => <div key={index} className={styles.criterion}>
+        <strong>{verdict.verdict} · {verdict.criterion}</strong><p>{verdict.reason}</p>
+        <p>Evidence receipts: {verdict.evidenceIds.join(', ') || 'None'}</p>
+      </div>)}
+      <Evidence items={message.verification.evidence} />
+    </> : message.request ? <>
+      {message.request.candidate && <p>Candidate: {message.request.candidate.id}<br />SHA-256: {message.request.candidate.hash}</p>}
+      <MessageContent text={message.request.goal} />
+      <ul>{message.request.criteria.map((criterion, index) => <li key={index}>{criterion}</li>)}</ul>
+      {message.request.artifacts.map(artifact => <div className={styles.criterion} key={artifact.path}>
+        <strong>{artifact.path}</strong><p>SHA-256: {artifact.sha256 ?? 'Absent'}</p>
+      </div>)}
+    </> : <MessageContent text={message.text} />}
+  </details>;
+}
+export function AgentTaskDetail({ task, onInspectApplication, inspectionDisabled }: { task: AgentTask; onInspectApplication?(): void; inspectionDisabled?: boolean }) {
+  const detail = task.inspection, goal = detail?.goal;
+  const latest = goal?.decisions.at(-1);
+  const verifications = detail?.messages.filter(m => m.kind === 'verification_request' || m.kind === 'verification_result') ?? [];
+  return <>
+    <dl className={styles.facts} aria-label="Task status">
+      <div><dt>Status</dt><dd>{goal?.phase ?? task.status}</dd></div>
+      <div><dt>Execution</dt><dd>{task.status}</dd></div>
+      <div><dt>Created</dt><dd>{task.createdAt}</dd></div>
+      <div><dt>Finished</dt><dd>{detail?.finishedAt ?? 'Not recorded'}</dd></div>
+    </dl>
+    {task.error && <div role="alert"><MessageContent text={task.error} /></div>}
+    {detail?.error && <p role="alert">{detail.error}</p>}
+    {task.recovery && <section aria-label="Execution inspection"><h3>Execution inspection</h3>
+      <p>Confirmed execution status: {task.recovery.status} · Checked: {task.recovery.checkedAt}</p>
+      <p>Conversation: {task.recovery.threadId} · Turn: {task.recovery.turnId}</p>
+      <p>This confirms the saved execution ended. Verification verdicts are shown separately; goal completion still requires the owner's decision and valid evidence.</p>
+    </section>}
+    <section aria-label="Task goal"><h3>Goal</h3><div className={styles.markdown} aria-label="Task request"><MessageContent text={task.prompt} /></div></section>
+    <section aria-label="Completion criteria"><h3>Completion criteria</h3>
+      {goal?.criteria.length ? <>
+        <p>Reported by the working agent. Independent verification is shown separately below.</p>
+        {goal.criteria.map((criterion, index) => <div key={index} className={styles.criterion}>
+          <strong>{criterion.met ? 'Reported met' : 'Not met'} · {criterion.criterion}</strong><p>{criterion.evidence || 'No evidence recorded.'}</p>
+        </div>)}
+      </> : <p>No completion criteria recorded for this task.</p>}
+    </section>
+    <section aria-label="Task progress"><h3>Progress and next action</h3>
+      {goal ? <><p>Phase: {goal.phase} · Turns: {goal.turns}</p>
+        {latest ? <><p>{latest.progress}</p><p>Action: {latest.action} · {latest.nextAction || 'No further action recorded.'}</p><p>{latest.reason}</p></>
+          : <p>No committed decision yet.</p>}
+        {goal.pending && <p>A decision is pending. It is not committed until the current turn succeeds.</p>}
+        <details className={styles.record}><summary>Recent decisions ({goal.decisions.length})</summary>
+          {goal.decisions.map((decision, index) => <div className={styles.criterion} key={index}>
+            <strong>{index + 1}. {decision.action}</strong><p>{decision.progress}</p><p>{decision.reason}</p><p>{decision.nextAction}</p>
+          </div>)}
+        </details>
+      </> : <p>No structured progress recorded for this task.</p>}
+    </section>
+    <section aria-label="Task collaboration"><h3>Questions and replies</h3>
+      {detail?.messages.some(m => m.kind === 'question' || m.kind === 'question_closed' || m.kind === 'reply') ? <div className={styles.records}>
+        {detail.messages.filter(m => m.kind === 'question' || m.kind === 'question_closed' || m.kind === 'reply').map(message => <Exchange key={message.id} message={message} messages={detail.messages} />)}
+      </div> : <p>No recorded questions or replies.</p>}
+    </section>
+    <section aria-label="Delegated work"><h3>Implementation delegation</h3>
+      {detail?.work && <><p>This task edits an isolated snapshot. It does not apply changes to the project.</p><WorkMessage kind="work_request" text={JSON.stringify(detail.work.request)} /></>}
+      {detail?.messages.filter(m => isWorkKind(m.kind)).map(message => <Exchange key={message.id} message={message} messages={detail.messages} />)}
+      {!detail?.work && !detail?.messages.some(m => isWorkKind(m.kind)) && <p>No implementation delegated.</p>}
+    </section>
+    {detail?.integration && <IntegrationDetail integration={detail.integration} onInspect={onInspectApplication} inspectionDisabled={inspectionDisabled} />}
+    <section aria-label="Independent verification"><h3>Independent verification</h3>
+      {goal?.verificationRequired && <p>Required before goal completion.</p>}
+      {verifications.length ? <div className={styles.records}>{verifications.map(message => <Exchange key={message.id} message={message} messages={detail?.messages ?? []} />)}</div>
+        : <p>No independent verification result recorded.</p>}
+    </section>
+    <section aria-label="Execution evidence"><h3>File and command evidence</h3>
+      <p>Recorded verification receipts; this is not a complete execution log.</p>
+      {detail?.evidence.length ? <Evidence items={detail.evidence} /> : <p>No separate receipts recorded. Verification result receipts appear above.</p>}
+    </section>
+    <section aria-label="Task output"><h3>Latest output</h3><div className={styles.markdown}><MessageContent text={task.output || 'No output yet.'} /></div></section>
+    {(detail?.threadId || detail?.conversation) && <details className={styles.record}><summary>Conversation references</summary>
+      {detail.threadId && <p>Worker conversation: {detail.threadId}</p>}{detail.conversation && <p>Conversation key: {detail.conversation}</p>}
+    </details>}
+  </>;
+}

@@ -1,0 +1,170 @@
+.workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  font-size: var(--font-size-small);
+}
+
+.actions, .monthHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-default);
+}
+
+.monthHeader h2, .agenda h2 {
+  margin: 0;
+  font-size: var(--font-size-section-title);
+  font-weight: 600;
+  color: var(--sidebar-section-label-color);
+}
+
+.actions { gap: var(--icon-default); }
+.monthHeader { justify-content: space-between; padding: var(--space-default); }
+.options { --header-height: 42px; flex-shrink: 0; }
+.calendarFilter {
+  display: flex;
+  box-sizing: border-box;
+  height: 58px;
+  align-items: center;
+  padding: 0 var(--space-default);
+  border-bottom: 1px solid var(--divider);
+}
+.content { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.month { flex: 1; min-width: 280px; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+.weekdays, .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.weekdays {
+  box-sizing: border-box;
+  height: 40px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--divider);
+}
+.weekdays span { align-self: center; padding: 0 var(--space-default); text-align: center; }
+.grid { flex: 1; grid-template-rows: repeat(6, minmax(64px, 1fr)); }
+
+.day {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px;
+  border: 0;
+  border-top: 1px solid var(--divider);
+  border-right: 1px solid var(--divider);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.day:nth-child(7n) { border-right-width: 0; }
+.day:nth-child(-n + 7) { border-top-width: 0; }
+.day[aria-pressed='true'] { background: var(--control-surface); }
+.day:hover, .day:active, .event:hover, .event:active { background: var(--control-surface-interactive); }
+.day:focus-visible, .event:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
+.dayNumber {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 26px;
+  height: 26px;
+}
+.day[data-outside='true'] > .dayNumber { opacity: 0.5; }
+.day[aria-current='date'] > .dayNumber {
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--codegraph-disabled) 40%, transparent);
+  color: var(--text);
+  font-weight: 700;
+  opacity: 1;
+}
+.dayEvent, .more { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.dayEvent { font-size: 9px; color: var(--sidebar-section-label-color); }
+.more { color: var(--sidebar-section-label-color); }
+
+.agenda {
+  --liquid-glass-radius: 0;
+  flex: 0 0 var(--sidebar-width);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.agendaContent { display: flex; flex-shrink: 0; flex-direction: column; gap: var(--space-default); padding: var(--space-default); }
+.agendaLoading { box-sizing: border-box; height: 36px; flex: 0 0 auto; }
+.content > .agenda { border-width: 0 0 0 1px; }
+.agenda p, .form p { margin: 0; }
+.searchField { flex-shrink: 0; }
+.searchHeading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-default); }
+.eventViewport {
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+.event {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: var(--space-default);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.event span { display: flex; align-items: center; gap: var(--icon-default); }
+.eventDetails, .runLink { display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.runLink { font-size: var(--font-size-small); color: var(--sidebar-section-label-color); }
+.event svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); }
+.form svg { width: var(--icon-size-default); height: var(--icon-size-default); }
+.notice { padding: var(--space-default); margin: 0; }
+.connect {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-default);
+  padding: calc(var(--space-default) * 2) var(--space-default);
+  text-align: center;
+}
+.connect h2 { margin: 0; font-size: var(--font-size-section-title); font-weight: 600; }
+.connect p { margin: 0; }
+.connect, .hint, .notice, .agendaContent > p {
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+  font-weight: 400;
+}
+.form { display: flex; flex-direction: column; gap: var(--space-default); min-width: min(440px, 70vw); }
+.form > .actions, .confirm > .actions, .deleteConfirm > .actions { justify-content: flex-end; }
+.field { font-size: var(--font-size-label); display: flex; flex: 1; min-width: 0; flex-direction: column; gap: var(--space-default); }
+.dateFields { display: flex; gap: var(--space-default); }
+.switchField { display: flex; align-items: center; justify-content: space-between; gap: var(--space-default); font-size: var(--font-size-label); }
+.confirm { display: flex; flex-direction: column; gap: var(--space-default); }
+.deleteDialog { --modal-width: 400px; }
+.deleteConfirm { display: flex; flex-direction: column; gap: var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
+.deleteConfirm p { margin: 0; overflow-wrap: anywhere; }
+.deleteConfirm .deleteEventTitle { color: var(--text); font-weight: 600; }
+@media (max-width: 1000px) {
+  .content { flex-direction: column; }
+  .agenda { flex: 1; }
+  .content > .agenda { border-width: 1px 0 0; }
+}

@@ -1,0 +1,8 @@
+.anchor {
+  composes: anchor from '../../shared/ui/PopupSurface.module.css';
+}
+
+.surface {
+  composes: surface from '../../shared/ui/PopupSurface.module.css';
+  --popup-surface-background: var(--popup-background);
+}

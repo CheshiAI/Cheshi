@@ -4,7 +4,7 @@ export interface QueuedChatMessage {
   id: string;
   threadId: string;
   input: ChatDraftSnapshot;
-  status: 'queued' | 'sending' | 'failed' | 'unknown';
+  status: 'queued' | 'sending' | 'transferring' | 'failed' | 'unknown';
   error?: string;
 }
 export interface ChatQueueDelivery { threadId: string; mode: 'next-turn' | 'steer' }
@@ -32,7 +32,7 @@ export function createChatMessageQueue(send: (input: ChatDraftSnapshot, delivery
   const update = (id: string, patch: Partial<QueuedChatMessage>) => publish({
     entries: state.entries.map((entry) => entry.id === id ? { ...entry, ...patch } : entry),
   });
-  const editable = (id: string) => state.entries.find((entry) => entry.id === id && entry.status !== 'sending');
+  const editable = (id: string) => state.entries.find((entry) => entry.id === id && entry.status !== 'sending' && entry.status !== 'transferring');
   const deliver = async (entry: QueuedChatMessage, mode: ChatQueueDelivery['mode']) => {
     if (suspended || busy || context.blocked || entry.threadId !== context.threadId) return false;
     if ((mode === 'next-turn') === context.responding) return false;
@@ -105,6 +105,20 @@ export function createChatMessageQueue(send: (input: ChatDraftSnapshot, delivery
       if (!entry || context.blocked || entry.threadId !== context.threadId || !receive(entry.input)) return false;
       remove(id);
       return true;
+    },
+    async transfer(id: string, receive: (input: ChatDraftSnapshot) => Promise<void>) {
+      const entry = editable(id);
+      if (!entry || suspended || context.blocked || entry.threadId !== context.threadId) return false;
+      update(id, { status: 'transferring', error: undefined });
+      try {
+        await receive(entry.input);
+        remove(id);
+        return true;
+      } catch (error) {
+        pause(entry.threadId);
+        update(id, { status: entry.status, error: error instanceof Error ? error.message : String(error) });
+        return false;
+      }
     },
     steer(id: string) {
       const entry = editable(id);

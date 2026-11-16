@@ -1,0 +1,7 @@
+{
+  "name": "@cheshi/connect-client",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "vite build", "typecheck": "tsc --noEmit" },
+  "devDependencies": { "vite": "^7.1.3", "typescript": "^5.9.3" }
+}

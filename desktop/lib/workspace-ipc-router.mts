@@ -6,6 +6,7 @@ type EventListener = Parameters<IpcMain['on']>[1];
 
 export interface WorkspaceIpcScope {
   ipc: ScopedIpc;
+  fork(): WorkspaceIpcScope;
   addOwner(webContents: WebContents, managementOnly?: boolean): void;
   dispose(): void;
 }
@@ -73,6 +74,7 @@ export class WorkspaceIpcRouter {
     };
     return {
       ipc,
+      fork: () => { this.assertActive(scope); return this.createScope(); },
       addOwner: (webContents, managementOnly: unknown = false) => {
         this.assertActive(scope);
         if (webContents.isDestroyed()) throw new Error('Cannot register a destroyed workspace IPC owner.');

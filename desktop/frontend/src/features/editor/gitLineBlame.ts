@@ -2,11 +2,13 @@ import { StateEffect, type Extension } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { MAX_BLAME_CONTENT_LENGTH, type GitLineBlame, type GitLineBlameRequest as BlameRequest } from '../../../../shared/git-line-blame';
 import { GitLineBlameRequest } from './gitLineBlameRequest';
+import { attachGitLineBlameTooltip } from './gitLineBlameTooltip';
 
 const showBlame = StateEffect.define<{ line: number; result: GitLineBlame } | null>();
 
 class BlameWidget extends WidgetType {
   private readonly result: GitLineBlame;
+  private readonly cleanups = new WeakMap<HTMLElement, () => void>();
   constructor(result: GitLineBlame) { super(); this.result = result; }
 
   toDOM(view: EditorView): HTMLElement {
@@ -17,11 +19,17 @@ class BlameWidget extends WidgetType {
     if (result.status === 'committed') {
       const date = new Date(result.authoredAt).toLocaleString();
       span.textContent = `${result.author} · ${date} · ${result.hash.slice(0, 8)} · ${result.summary}`;
-      span.title = `Last changed in ${result.hash}\n${result.author} · ${date}\n${result.summary}`;
+      span.tabIndex = 0;
+      this.cleanups.set(span, attachGitLineBlameTooltip(span, result));
     } else {
       span.textContent = result.status === 'uncommitted' ? 'Not committed yet' : 'Git history unavailable';
     }
     return span;
+  }
+
+  destroy(dom: HTMLElement): void {
+    this.cleanups.get(dom)?.();
+    this.cleanups.delete(dom);
   }
 }
 
@@ -41,17 +49,18 @@ export function gitLineBlame(options: {
         const content = view.state.doc.sliceString(0, undefined, options.lineEnding === 'crlf' ? '\r\n' : '\n');
         return options.read({ path: options.path, line, content });
       }, (line, result) => view.dispatch({ effects: showBlame.of({ line, result }) }));
+      this.requests.select(view.state.doc.lineAt(view.state.selection.main.head).number);
     }
 
     update(update: ViewUpdate): void {
-      if (update.docChanged) {
-        this.requests.reset();
-        this.decorations = Decoration.none;
-        return;
+      const selectedLine = update.state.doc.lineAt(update.state.selection.main.head).number;
+      if (update.docChanged) this.requests.reset();
+      if (update.docChanged || update.selectionSet) {
+        if (this.requests.select(selectedLine)) this.decorations = Decoration.none;
       }
       for (const transaction of update.transactions) for (const effect of transaction.effects) {
         if (!effect.is(showBlame)) continue;
-        this.decorations = effect.value
+        this.decorations = effect.value && effect.value.line === selectedLine
           ? Decoration.set([Decoration.widget({ widget: new BlameWidget(effect.value.result), side: 1 })
             .range(update.state.doc.line(effect.value.line).to)])
           : Decoration.none;
@@ -61,17 +70,6 @@ export function gitLineBlame(options: {
     destroy(): void { this.requests.reset(); }
   }, {
     decorations: plugin => plugin.decorations,
-    eventHandlers: {
-      mousemove(event, view) {
-        const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
-        const line = position === null ? null : view.state.doc.lineAt(position).number;
-        if (this.requests.hover(line)) view.dispatch({ effects: showBlame.of(null) });
-      },
-      mouseleave(_event, view) {
-        this.requests.reset();
-        view.dispatch({ effects: showBlame.of(null) });
-      },
-    },
   }), EditorView.baseTheme({
     '.cm-git-line-blame': {
       color: 'var(--editor-muted)', fontStyle: 'italic', marginLeft: '24px',

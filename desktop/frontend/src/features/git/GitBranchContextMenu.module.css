@@ -1,5 +1,5 @@
-.menu > button { color: var(--text); }
-.menu > button:not(:disabled):hover,
-.menu > button:not(:disabled):focus-visible,
-.menu > button:not(:disabled):active { color: var(--active-text); }
-.menu > button > svg { color: inherit; }
+.anchor { composes: menuAnchor from '../../shared/ui/ToolbarMenu.module.css'; }
+.menu { composes: menu from '../../shared/ui/ToolbarMenu.module.css'; }
+.item { composes: item from '../../shared/ui/ToolbarMenu.module.css'; flex-shrink: 0; }
+.separator { composes: separator from '../../shared/ui/ToolbarMenu.module.css'; }
+.item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

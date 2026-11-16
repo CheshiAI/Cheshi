@@ -7,7 +7,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { forwardDesktopDevOutput } from './forward-desktop-dev-output.mts';
+import { preloadDependencies, preloadRefreshQueue } from './preload-dependencies.mts';
 import { buildDesktopPreload } from './build-desktop-preload.mts';
+import { buildAppleCalendar } from './build-apple-calendar.mts';
+import { prepareCalendarDevelopment } from './prepare-calendar-development.mts';
+import { launchDevelopmentApp } from './launch-development-app.mts';
 import { watchFileContents } from './watch-file-contents.mts';
 import { createDevelopmentShutdownRequest, DEVELOPMENT_SHUTDOWN_DIRECTORY, stopDevelopmentProcess } from '../desktop/lib/development-shutdown.mts';
 
@@ -40,9 +44,20 @@ let shutdownPromise: Promise<void> | null = null;
 let sourceWatchers: FSWatcher[] = [];
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
 let restartRequested = false;
-let preloadBuildQueue = Promise.resolve();
+const refreshPreload = preloadRefreshQueue(async () => {
+  if (shuttingDown) return;
+  await buildDesktopPreload();
+  // Imports added by the edit become watched as soon as the new bundle is ready.
+  const next = watchMainSources();
+  for (const watcher of sourceWatchers) watcher.close();
+  sourceWatchers = next;
+}, changedPath => { if (!shuttingDown) scheduleForgeRestart(changedPath); }, error => {
+  process.stderr.write(`[cheshi] ${error instanceof Error ? error.message : String(error)}\n`);
+});
 let forgeShutdownRequest: ReturnType<typeof createDevelopmentShutdownRequest> | null = null;
 let forgeStopping: Promise<void> | null = null;
+let developmentBundle: string | undefined;
+let signalApp: ((signal: 'SIGTERM' | 'SIGKILL') => void) | null = null;
 
 function reservePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -83,7 +98,7 @@ function stopForge(): Promise<void> {
   forgeStopping = stopDevelopmentProcess({
     completion: forgeCompletion,
     requestQuit: () => request?.request(),
-    signal: (signal) => signalProcess(child, signal, true),
+    signal: (signal) => signalApp ? signalApp(signal) : signalProcess(child, signal, true),
   });
   return forgeStopping;
 }
@@ -176,37 +191,39 @@ function scheduleForgeRestart(changedPath: string): void {
 }
 
 function handleMainSourceChange(changedPath: string): void {
-  if (![preloadSourcePath, rendererReadinessSourcePath,
-    path.join(rootDirectory, 'desktop', 'lib', 'settings-preload.cts'),
-    path.join(rootDirectory, 'desktop', 'lib', 'workspace-feature-preload.cts'),
-    path.join(rootDirectory, 'desktop', 'lib', 'browser-preload.cts'),
-    path.join(rootDirectory, 'desktop', 'shared', 'settings.ts'),
-    path.join(rootDirectory, 'desktop', 'lib', 'app-update-preload.cts'),
-    path.join(rootDirectory, 'desktop', 'shared', 'app-update.ts')].includes(changedPath)) {
-    scheduleForgeRestart(changedPath);
-    return;
-  }
-
-  preloadBuildQueue = preloadBuildQueue
-    .catch(() => undefined)
-    .then(async () => {
-      if (shuttingDown) return;
-      await buildDesktopPreload();
-      scheduleForgeRestart(changedPath);
-    })
-    .catch((error: unknown) => {
-      process.stderr.write(
-        `[cheshi] ${error instanceof Error ? error.message : String(error)}\n`,
-      );
-    });
+  // Always finish rebuilding before restarting; transitive preload imports may share main modules.
+  if (restartTimer !== null) { clearTimeout(restartTimer); restartTimer = null; restartRequested = false; }
+  void refreshPreload(changedPath);
 }
 
 function watchMainSources(): FSWatcher[] {
   const sourcePaths = [
+    ...['notification-events.mts', 'notification-events-ipc.mts', 'notification-events-preload.cts']
+      .map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
+    path.join(rootDirectory, 'desktop', 'shared', 'notification-events.ts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-store.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-rest.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-gateway.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-channels.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-service.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-ipc.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-setup.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-setup-tools.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-setup-browser.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-setup-page.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'workspace-discord.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'discord-preload.cts'),
+    path.join(rootDirectory, 'desktop', 'shared', 'discord.ts'),
+    ...['window-appearance.mts', 'window-appearance-store.mts', 'window-appearance-preload.cts']
+      .map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
+    path.join(rootDirectory, 'desktop', 'shared', 'window-appearance.ts'),
+    ...['apple-calendar-service.mts', 'apple-calendar-process.mts', 'apple-calendar-ipc.mts', 'apple-calendar-preload.cts']
+      .map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
+    path.join(rootDirectory, 'desktop', 'shared', 'apple-calendar.ts'),
     path.join(rootDirectory, 'desktop', 'bootstrap.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'development-shutdown.mts'),
     path.join(rootDirectory, 'desktop', 'main.mts'),
-    ...['typesafe-key.mts', 'typesafe-connection.mts', 'browser-preload.cts', 'settings-service.mts', 'settings-ipc.mts', 'settings-preload.cts', 'workspace-feature-preload.cts'].map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
+    ...['settings-service.mts', 'settings-ipc.mts', 'settings-preload.cts', 'workspace-feature-preload.cts'].map(name => path.join(rootDirectory, 'desktop', 'lib', name)),
     path.join(rootDirectory, 'desktop', 'shared', 'settings.ts'),
     ...['app-release-checker.mts', 'app-update-service.mts', 'app-update-preview.mts', 'app-update-resume.mts',
       'app-update-download.mts', 'app-update-installer.mts', 'app-update-preload.cts']
@@ -246,6 +263,8 @@ function watchMainSources(): FSWatcher[] {
     path.join(rootDirectory, 'desktop', 'lib', 'github-login-service.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'workspace-management-preload.cts'),
     path.join(rootDirectory, 'desktop', 'lib', 'workspace-application.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'workspace-host.mts'),
+    path.join(rootDirectory, 'desktop', 'lib', 'workspace-surface.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'workspace-manager-runtime.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'workspace-startup.mts'),
     path.join(rootDirectory, 'desktop', 'lib', 'workspace-tool-status.mts'),
@@ -259,7 +278,7 @@ function watchMainSources(): FSWatcher[] {
     path.join(rootDirectory, '.env.product'),
     path.join(rootDirectory, 'forge.config.mts'),
   ];
-  return watchFileContents(sourcePaths, handleMainSourceChange);
+  return watchFileContents([...new Set([...sourcePaths, ...preloadDependencies(rootDirectory)])], handleMainSourceChange);
 }
 
 function trackProcessOutput(child: ChildProcess): Promise<ProcessResult> {
@@ -269,20 +288,30 @@ function trackProcessOutput(child: ChildProcess): Promise<ProcessResult> {
 }
 
 function spawnForge(url: string, apiPort: number): Promise<ProcessResult> {
-  logStartup('launching electron forge');
+  logStartup(developmentBundle ? 'launching Cheshi Development' : 'launching electron forge');
   forgeStopping = null;
   forgeShutdownRequest?.dispose();
   forgeShutdownRequest = createDevelopmentShutdownRequest();
+  const env = childEnvironment({
+    CHESHI_RENDERER_URL: url,
+    CHESHI_DEV_STARTED_AT: String(startupStartedAt),
+    CHESHI_VIEWER_API_ONLY: '1',
+    CHESHI_VIEWER_API_PORT: String(apiPort),
+    [DEVELOPMENT_SHUTDOWN_DIRECTORY]: forgeShutdownRequest.directory,
+  });
+  if (developmentBundle) {
+    const launched = launchDevelopmentApp({ bundle: developmentBundle, root: rootDirectory,
+      directory: forgeShutdownRequest.directory, env });
+    forgeProcess = launched.child;
+    forgeCompletion = launched.completion;
+    signalApp = launched.signal;
+    return forgeCompletion;
+  }
+  signalApp = null;
   forgeProcess = spawn(process.execPath, ['x', 'electron-forge', 'start'], {
     cwd: rootDirectory,
     detached: process.platform !== 'win32',
-    env: childEnvironment({
-      CHESHI_RENDERER_URL: url,
-      CHESHI_DEV_STARTED_AT: String(startupStartedAt),
-      CHESHI_VIEWER_API_ONLY: '1',
-      CHESHI_VIEWER_API_PORT: String(apiPort),
-      [DEVELOPMENT_SHUTDOWN_DIRECTORY]: forgeShutdownRequest.directory,
-    }),
+    env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   forgeCompletion = trackProcessOutput(forgeProcess);
@@ -314,6 +343,10 @@ process.once('SIGTERM', () => {
 async function startDevelopment(): Promise<void> {
   logStartup('preparing preload');
   await buildDesktopPreload();
+  if (shuttingDown) return;
+  await buildAppleCalendar();
+  if (shuttingDown) return;
+  developmentBundle = prepareCalendarDevelopment();
   if (shuttingDown) return;
   logStartup('preload ready');
 

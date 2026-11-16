@@ -11,11 +11,14 @@ export interface CodexConversationDeletion {
 export interface CodexConversationAccess {
   agents?: Pick<CodexConversationAgents, 'read' | 'descendants' | 'assertWritable'>;
   list(): Promise<{ sessions: JsonObject[] }>;
+  renameSession?(threadId: unknown, title: unknown): Promise<{ threadId: string; title: string }>;
   resolve(threadId: string, client: CodexChatClient): Promise<string>;
+  registerCreated?(thread: JsonObject): Promise<void>;
   assertWritable?(threadId: string): Promise<void>;
   takeLoaded?(threadId: string, client: CodexChatClient): boolean;
   read?(threadId: string, method: 'thread/read' | 'thread/goal/get', params?: JsonObject): Promise<unknown>;
   locations(threadId: string): Promise<Array<{ profileId: string; threadId: string }>>;
+  releaseWriters?(threadIds: readonly string[]): Promise<void>;
   deletionProgress?(threadId: string): Promise<CodexConversationDeletion[]>;
   confirmDeletion?(threadId: string, deletion: CodexConversationDeletion): Promise<void>;
   request(profileId: string, method: string, params?: unknown): Promise<unknown>;

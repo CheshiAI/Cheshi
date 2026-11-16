@@ -1,17 +1,33 @@
-import { Check, Copy, Image as ImageIcon } from 'lucide-react';
-import { Children, useEffect, useState, type ReactNode } from 'react';
-import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
+import { ChatImagePreview } from './ChatImagePreview';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
+import { BookOpen, FolderOpen, Image as ImageIcon } from 'lucide-react';
+import { Children, createContext, useContext, useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react';
+import ReactMarkdown, { defaultUrlTransform, type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { cheshiDesktop } from '../../cheshiDesktop';
 import { localFileLinkPath } from '../../../../shared/local-file-link';
-import { LiquidGlassPanel } from '../../shared/ui';
+import { CodePanel, LiquidGlassPanel } from '../../shared/ui';
 import styles from './ChatView.module.css';
 import markdownStyles from './MessageContent.module.css';
+import { FileEvidence } from './FileEvidence';
+import { fileEvidence } from './fileEvidenceModel';
+import { flashSourceTarget } from '../../../../shared/flash-memory';
+import { FlashSourceLink } from './FlashSourceLink';
+import { chatImportMarkdown, parseChatImports } from '../../../../shared/chat-imports';
+import { ChatImportAttachments, ChatImportContext } from './ChatImportAttachments';
+import importStyles from './ChatImportAttachments.module.css';
+import { remarkLocalPaths } from './remarkLocalPaths';
+import { remarkFlashSourceHeading } from './remarkFlashSourceHeading';
+
+export const LocalFileLinkContext = createContext<((href: string) => Promise<void>) | null>(null);
 
 interface MessageContentProps {
   text: string;
   renderLocalImages?: boolean;
+  presentation?: 'default' | 'description';
+  mention?: { id: string; name: string };
+  reviewFileContext?: string;
 }
 
 interface ContentSegment {
@@ -38,29 +54,46 @@ function isGitHubUrl(href: string): boolean {
   return /^https?:\/\/(?:www\.)?github\.com(?:[/:?#]|$)/i.test(href);
 }
 
-function LocalFileAnchor({ href, children }: { href: string; children: ReactNode }) {
+function LocalFileAnchor({ href, children, className, showIcon = false }: {
+  href: string; children: ReactNode; className?: string; showIcon?: boolean;
+}) {
   const [error, setError] = useState<string | null>(null);
+  const openLocalFile = useContext(LocalFileLinkContext) ?? cheshiDesktop?.openLocalFileLink;
   const openFile = async () => {
     setError(null);
-    if (!cheshiDesktop?.openLocalFileLink) {
+    if (!openLocalFile) {
       setError('File links are available in the desktop app.');
       return;
     }
-    try { await cheshiDesktop.openLocalFileLink(href); }
+    try { await openLocalFile(href); }
     catch { setError('Could not open this file. It may have been moved or deleted.'); }
   };
   return <>
-    <a href={href} title={localFileLinkPath(href) ?? href} onClick={event => {
-      event.preventDefault();
-      void openFile();
-    }} onAuxClick={event => event.preventDefault()}>{children}</a>
+    <TooltipTarget content={localFileLinkPath(href) ?? href}>
+      <a href={href} className={className ?? markdownStyles.sourceLink} onClick={event => {
+        event.preventDefault();
+        void openFile();
+      }} onAuxClick={event => event.preventDefault()}>
+        {showIcon && <FolderOpen aria-hidden="true" className={`${markdownStyles.sourceLinkIcon} ${markdownStyles.localFileLinkIcon}`} />}{children}
+      </a>
+    </TooltipTarget>
     {error && <span role="alert"> {error}</span>}
   </>;
 }
 
 function MessageAnchor({ href, children }: { href: string; children: ReactNode }) {
+  const imports = useContext(ChatImportContext);
+  const attachment = imports.find(item => href === `#cheshi-import-${item.importNumber}`);
+  if (attachment) {
+    const label = `import ${attachment.importNumber}`;
+    return attachment.kind === 'image'
+      ? <ChatImagePreview imagePath={attachment.path} name={attachment.name} className={importStyles.reference}>{label}</ChatImagePreview>
+      : <LocalFileAnchor href={attachment.path} className={importStyles.reference}>{label}</LocalFileAnchor>;
+  }
+  const source = flashSourceTarget(href);
+  if (source) return <FlashSourceLink href={href} target={source}>{children}</FlashSourceLink>;
   if (!/^https?:\/\//i.test(href)) {
-    return localFileLinkPath(href) ? <LocalFileAnchor href={href}>{children}</LocalFileAnchor> : <>{children}</>;
+    return localFileLinkPath(href) ? <LocalFileAnchor href={href} showIcon>{children}</LocalFileAnchor> : <>{children}</>;
   }
   const github = isGitHubUrl(href);
   return (
@@ -75,9 +108,8 @@ function imageName(imagePath: string): string {
   return imagePath.replaceAll('\\', '/').split('/').pop() || 'Attached image';
 }
 
-function LocalImage({ imagePath }: { imagePath: string }) {
+function LocalImage({ imagePath, name = imageName(imagePath) }: { imagePath: string; name?: string }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>();
-  const name = imageName(imagePath);
 
   useEffect(() => {
     let active = true;
@@ -98,9 +130,9 @@ function LocalImage({ imagePath }: { imagePath: string }) {
 
   if (previewUrl) {
     return (
-      <span className={styles.messageImageAttachment}>
+      <ChatImagePreview imagePath={imagePath} name={name} className={styles.messageImageAttachment}>
         <img alt={name} src={previewUrl} />
-      </span>
+      </ChatImagePreview>
     );
   }
   return (
@@ -153,24 +185,36 @@ function LocalImageParagraph({ children }: { children?: ReactNode }) {
   return imagesOnly ? <>{content}</> : <p>{content}</p>;
 }
 
+function markdownParagraph({ node, children }: ComponentPropsWithoutRef<'p'> & ExtraProps, localImages = false) {
+  if (node?.properties['data-flash-source-heading'] === true) return <p className={markdownStyles.sourceHeading} role="heading" aria-level={2}>
+    <BookOpen aria-hidden="true" className={markdownStyles.sourceLinkIcon} /><span>출처</span>
+  </p>;
+  return localImages ? <LocalImageParagraph>{children}</LocalImageParagraph> : <p>{children}</p>;
+}
+
+function markdownCodeBlock({ node, children }: ComponentPropsWithoutRef<'pre'> & ExtraProps, reviewFileContext?: string) {
+  const code = node?.children.find(child => child.type === 'element' && child.tagName === 'code');
+  if (!code || code.type !== 'element') return <pre>{children}</pre>;
+  const value = code.children.map(child => child.type === 'text' ? child.value : '').join('');
+  const classNames = code.properties.className;
+  const languageClass = Array.isArray(classNames)
+    ? classNames.find(name => typeof name === 'string' && name.startsWith('language-')) : undefined;
+  const language = typeof languageClass === 'string' ? languageClass.slice(9) : undefined;
+  const files = reviewFileContext === undefined ? null : fileEvidence(value, language, reviewFileContext);
+  return files ? <FileEvidence files={files} renderLink={(path, name) => <LocalFileAnchor href={path}>{name}</LocalFileAnchor>} />
+    : <CodePanel code={value.replace(/\n$/, '')} language={language} />;
+}
+
 const markdownComponents: Components = {
+  p: props => markdownParagraph(props),
   a: ({ href, children }) => <MessageAnchor href={href ?? ''}>{children}</MessageAnchor>,
   // Markdown images do not initiate network or filesystem access. Local previews
   // are available only through the explicit attachment marker and desktop bridge.
   img: ({ alt }) => <span>{alt || 'Image'}</span>,
   code: ({ children }) => <code className={styles.inlineCode}>{children}</code>,
-  pre: ({ node, children }) => {
-    const code = node?.children.find((child) => child.type === 'element' && child.tagName === 'code');
-    if (!code || code.type !== 'element') return <pre>{children}</pre>;
-    const value = code.children.map((child) => child.type === 'text' ? child.value : '').join('');
-    const classNames = code.properties.className;
-    const language = Array.isArray(classNames)
-      ? classNames.find((name) => typeof name === 'string' && name.startsWith('language-'))
-      : undefined;
-    return <CodeBlock code={value.replace(/\n$/, '')} language={typeof language === 'string' ? language.slice(9) : undefined} />;
-  },
+  pre: props => markdownCodeBlock(props),
   table: ({ children }) => (
-    <LiquidGlassPanel className={markdownStyles.tableScroll} data-liquid-glass-backdrop="true" role="region" aria-label="Table" tabIndex={0}>
+    <LiquidGlassPanel className={markdownStyles.tableScroll} role="region" aria-label="Table" tabIndex={0}>
       <table>{children}</table>
     </LiquidGlassPanel>
   ),
@@ -178,44 +222,50 @@ const markdownComponents: Components = {
 
 const localImageComponents: Components = {
   ...markdownComponents,
-  p: LocalImageParagraph,
+  p: props => markdownParagraph(props, true),
 };
 
-function CodeBlock({ code, language }: { code: string; language?: string }) {
-  const [copied, setCopied] = useState(false);
+const descriptionComponents: Components = {
+  ...markdownComponents,
+  pre: ({ children }) => <pre>{children}</pre>,
+  code: ({ children }) => <code>{children}</code>,
+};
 
-  const copy = async () => {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1_500);
-  };
-
+export function MessageContent({ renderLocalImages = false, text, presentation = 'default', mention, reviewFileContext }: MessageContentProps) {
+  const imported = useMemo(() => renderLocalImages ? parseChatImports(text) : null, [text, renderLocalImages]);
+  text = imported?.text ?? text;
+  const description = presentation === 'description';
+  const jsonSegment = description || imported ? null : jsonSegmentFromText(text);
+  if (jsonSegment) return <CodePanel code={jsonSegment.value} language={jsonSegment.language} />;
+  const mentionLabel = mention ? `@${mention.name}` : '';
+  const mentionOffset = text.length - text.trimStart().length;
+  const addressed = mention && text.slice(mentionOffset).startsWith(mentionLabel)
+    && /^(?:$|[\s,:：])/.test(text.slice(mentionOffset + mentionLabel.length));
+  const baseComponents = description ? descriptionComponents : renderLocalImages ? localImageComponents : markdownComponents;
+  const components: Components = !description && reviewFileContext !== undefined
+    ? { ...baseComponents, pre: props => markdownCodeBlock(props, reviewFileContext) } : baseComponents;
+  const mentionComponents: Components = addressed ? { ...components, p: ({ node, children }) => {
+    const parts = Children.toArray(children);
+    const first = parts[0];
+    if (node?.position?.start.offset === mentionOffset && typeof first === 'string' && first.startsWith(mentionLabel)) {
+      parts.splice(0, 1, <span key="mention" className={markdownStyles.mention} data-mention-id={mention.id}>{mentionLabel}</span>, first.slice(mentionLabel.length));
+    }
+    return markdownParagraph({ node, children: parts }, renderLocalImages);
+  } } : components;
   return (
-    <LiquidGlassPanel as="section" className={styles.codeBlock} data-liquid-glass-backdrop="true">
-      <header>
-        <span>{language || 'code'}</span>
-        <button className={styles.copyButton} type="button" onClick={() => void copy()}>
-          {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </header>
-      <pre><code>{code}</code></pre>
-    </LiquidGlassPanel>
-  );
-}
-
-export function MessageContent({ renderLocalImages = false, text }: MessageContentProps) {
-  const jsonSegment = jsonSegmentFromText(text);
-  if (jsonSegment) return <CodeBlock code={jsonSegment.value} language={jsonSegment.language} />;
-  return (
-    <div className={markdownStyles.markdown}>
+    <ChatImportContext.Provider value={imported?.imports ?? []}>
+    <div className={`${markdownStyles.markdown}${description ? ` ${markdownStyles.description}` : ''}`}>
+      {imported && <ChatImportAttachments imports={imported.imports}
+        renderImage={attachment => <LocalImage imagePath={attachment.path} name={attachment.name} />}
+        renderFile={(attachment, children) => <LocalFileAnchor href={attachment.path}>{children}</LocalFileAnchor>} />}
       <ReactMarkdown
-        components={renderLocalImages ? localImageComponents : markdownComponents}
-        remarkPlugins={[remarkGfm]}
-        urlTransform={(url, key) => key === 'href' && localFileLinkPath(url) ? url : defaultUrlTransform(url)}
+        components={mentionComponents}
+        remarkPlugins={description ? [remarkGfm, remarkLocalPaths] : [remarkGfm, remarkLocalPaths, remarkFlashSourceHeading]}
+        urlTransform={(url, key) => key === 'href' && (flashSourceTarget(url) || localFileLinkPath(url)) ? url : defaultUrlTransform(url)}
       >
-        {text}
+        {imported ? chatImportMarkdown(text, imported.imports) : text}
       </ReactMarkdown>
     </div>
+    </ChatImportContext.Provider>
   );
 }

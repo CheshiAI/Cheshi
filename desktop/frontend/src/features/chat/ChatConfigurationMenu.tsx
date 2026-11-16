@@ -1,10 +1,13 @@
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import { AlertCircle, Check, ChevronRight } from 'lucide-react';
 import { createPortal } from 'react-dom';
+import { useContext } from 'react';
 
-import { LiquidGlassPanel, LoadingIndicator } from '../../shared/ui';
+import { LiquidGlassPanel, LoadingIndicator, NeumorphicButton, RegionalBlur } from '../../shared/ui';
 import { formatReasoningEffort } from './chatViewModel';
-import styles from './ChatView.module.css';
+import styles from './ChatConfigurationMenu.module.css';
 import type { ChatViewController } from './useChatViewController';
+import { ChatWorkspaceBlurContext } from './ChatWorkspaceBlurContext';
 
 type ConfigurationMenuController = Pick<ChatViewController,
   | 'chatConfiguration' | 'configurationError' | 'configurationLoading' | 'configurationMenuOpen'
@@ -12,9 +15,15 @@ type ConfigurationMenuController = Pick<ChatViewController,
   | 'fastTier' | 'models' | 'selectComposerModel' | 'selectComposerReasoningEffort'
   | 'selectComposerServiceTier' | 'setConfigurationMenuView'>;
 
-export function ChatConfigurationMenu({ controller }: { controller: ConfigurationMenuController }) {
+export function ChatConfigurationMenu({ controller }: {
+  controller: ConfigurationMenuController & Pick<ChatViewController, 'composerAreaRef'>;
+}) {
+  const workspaceSourceRef = useContext(ChatWorkspaceBlurContext);
   if (!controller.configurationMenuOpen || !controller.configurationMenuPosition) return null;
-  return createPortal(<ChatConfigurationMenuContent controller={controller} />, document.body);
+  return createPortal(<RegionalBlur sourceRef={workspaceSourceRef ?? controller.composerAreaRef}
+    sourceMode={workspaceSourceRef ? 'replace' : 'add'}>
+    <ChatConfigurationMenuContent controller={controller} />
+  </RegionalBlur>, document.body);
 }
 
 export function ChatConfigurationMenuContent({ controller }: { controller: ConfigurationMenuController }) {
@@ -49,110 +58,110 @@ export function ChatConfigurationMenuContent({ controller }: { controller: Confi
       }}
     >
       {configurationMenuView !== 'root' && (
-        <LiquidGlassPanel
-          as="section"
-          aria-busy={configurationLoading}
-          aria-label={configurationMenuView === 'models'
-            ? 'Model options'
-            : configurationMenuView === 'reasoning'
-              ? 'Reasoning effort options'
-              : 'Service tier options'}
-          className={styles.configurationSubmenu}
-          data-liquid-glass-surface="side-panel"
-          data-liquid-glass-backdrop="true"
-        >
-          <strong className={styles.configurationSubmenuTitle}>
-            {configurationMenuView === 'models'
-              ? 'Model'
+        <div className={styles.configurationSubmenuAnchor}>
+          <LiquidGlassPanel
+            as="section"
+            aria-busy={configurationLoading}
+            aria-label={configurationMenuView === 'models'
+              ? 'Model options'
               : configurationMenuView === 'reasoning'
-                ? 'Reasoning effort'
-                : 'Service tier'}
-          </strong>
-          <div className={styles.configurationOptions} role="listbox">
-            {configurationMenuView === 'models' && models.map((model) => (
-              <button
-                aria-selected={chatConfiguration?.model === model.model}
-                className={styles.configurationOption}
-                disabled={configurationLoading}
-                key={model.id}
-                role="option"
-                title={model.description}
-                type="button"
-                onClick={() => void selectComposerModel(model)}
-              >
-                <span className={styles.configurationOptionCopy}>
-                  <strong>{model.displayName}</strong>
-                  <span>{model.description}</span>
-                </span>
-                {chatConfiguration?.model === model.model && <Check aria-hidden="true" />}
-              </button>
-            ))}
-            {configurationMenuView === 'reasoning' && chatConfiguration?.supportedReasoningEfforts.map((option) => (
-              <button
-                aria-selected={chatConfiguration.reasoningEffort === option.effort}
-                className={styles.configurationOption}
-                disabled={configurationLoading}
-                key={option.effort}
-                role="option"
-                title={option.description}
-                type="button"
-                onClick={() => void selectComposerReasoningEffort(option)}
-              >
-                <span className={styles.configurationOptionCopy}>
-                  <strong>{formatReasoningEffort(option.effort)}</strong>
-                  <span>{option.description}</span>
-                </span>
-                {chatConfiguration.reasoningEffort === option.effort && <Check aria-hidden="true" />}
-              </button>
-            ))}
-            {configurationMenuView === 'service-tier' && (
-              <>
-                <button
-                  aria-selected={!chatConfiguration?.fastModeEnabled}
+                ? 'Reasoning effort options'
+                : 'Service tier options'}
+            className={styles.configurationSubmenu}
+            data-liquid-glass-backdrop="true"
+          >
+            <strong className={styles.configurationSubmenuTitle}>
+              {configurationMenuView === 'models'
+                ? 'Model'
+                : configurationMenuView === 'reasoning'
+                  ? 'Reasoning effort'
+                  : 'Service tier'}
+            </strong>
+            <div className={styles.configurationOptions} role="listbox">
+              {configurationMenuView === 'models' && models.map((model) => (
+                <TooltipButton variant="ghost"
+                  aria-selected={chatConfiguration?.model === model.model}
                   className={styles.configurationOption}
                   disabled={configurationLoading}
+                  key={model.id}
                   role="option"
+                  title={[model.displayName, model.description].filter(Boolean).join('\n')}
                   type="button"
-                  onClick={() => void selectComposerServiceTier(false)}
+                  onClick={() => void selectComposerModel(model)}
                 >
                   <span className={styles.configurationOptionCopy}>
-                    <strong>Standard</strong>
-                    <span>Default response speed and usage</span>
+                    <strong>{model.displayName}</strong>
+                    <span>{model.description}</span>
                   </span>
-                  {!chatConfiguration?.fastModeEnabled && <Check aria-hidden="true" />}
-                </button>
-                <button
-                  aria-disabled={!chatConfiguration?.fastModeAvailable}
-                  data-unavailable={!chatConfiguration?.fastModeAvailable}
-                  aria-selected={chatConfiguration?.fastModeEnabled === true}
+                  {chatConfiguration?.model === model.model && <Check aria-hidden="true" />}
+                </TooltipButton>
+              ))}
+              {configurationMenuView === 'reasoning' && chatConfiguration?.supportedReasoningEfforts.map((option) => (
+                <TooltipButton variant="ghost"
+                  aria-selected={chatConfiguration.reasoningEffort === option.effort}
                   className={styles.configurationOption}
-                  disabled={configurationLoading || !chatConfiguration?.fastModeAvailable}
+                  disabled={configurationLoading}
+                  key={option.effort}
                   role="option"
-                  title={fastTier?.description ?? 'Fast service tier is unavailable for this model'}
+                  title={option.description}
                   type="button"
-                  onClick={() => void selectComposerServiceTier(true)}
+                  onClick={() => void selectComposerReasoningEffort(option)}
                 >
                   <span className={styles.configurationOptionCopy}>
-                    <strong>{fastTier?.name ?? 'Fast'}</strong>
-                    <span>{fastTier?.description ?? 'Unavailable for this model'}</span>
+                    <strong>{formatReasoningEffort(option.effort)}</strong>
+                    <span>{option.description}</span>
                   </span>
-                  {chatConfiguration?.fastModeEnabled && <Check aria-hidden="true" />}
-                </button>
-              </>
-            )}
-          </div>
-        </LiquidGlassPanel>
+                  {chatConfiguration.reasoningEffort === option.effort && <Check aria-hidden="true" />}
+                </TooltipButton>
+              ))}
+              {configurationMenuView === 'service-tier' && (
+                <>
+                  <NeumorphicButton variant="ghost"
+                    aria-selected={!chatConfiguration?.fastModeEnabled}
+                    className={styles.configurationOption}
+                    disabled={configurationLoading}
+                    role="option"
+                    type="button"
+                    onClick={() => void selectComposerServiceTier(false)}
+                  >
+                    <span className={styles.configurationOptionCopy}>
+                      <strong>Standard</strong>
+                      <span>Default response speed and usage</span>
+                    </span>
+                    {!chatConfiguration?.fastModeEnabled && <Check aria-hidden="true" />}
+                  </NeumorphicButton>
+                  <TooltipButton variant="ghost"
+                    aria-disabled={!chatConfiguration?.fastModeAvailable}
+                    data-unavailable={!chatConfiguration?.fastModeAvailable}
+                    aria-selected={chatConfiguration?.fastModeEnabled === true}
+                    className={styles.configurationOption}
+                    disabled={configurationLoading || !chatConfiguration?.fastModeAvailable}
+                    role="option"
+                    title={fastTier?.description ?? 'Fast service tier is unavailable for this model'}
+                    type="button"
+                    onClick={() => void selectComposerServiceTier(true)}
+                  >
+                    <span className={styles.configurationOptionCopy}>
+                      <strong>{fastTier?.name ?? 'Fast'}</strong>
+                      <span>{fastTier?.description ?? 'Unavailable for this model'}</span>
+                    </span>
+                    {chatConfiguration?.fastModeEnabled && <Check aria-hidden="true" />}
+                  </TooltipButton>
+                </>
+              )}
+            </div>
+          </LiquidGlassPanel>
+        </div>
       )}
       <LiquidGlassPanel
         as="section"
         aria-busy={configurationLoading}
         aria-label="Chat configuration"
         className={styles.configurationMenu}
-        data-liquid-glass-surface="side-panel"
         id={controller.configurationMenuId}
         role="menu"
       >
-        <button
+        <NeumorphicButton variant="ghost"
           aria-expanded={configurationMenuView === 'models'}
           aria-haspopup="listbox"
           data-unavailable={models.length === 0}
@@ -168,8 +177,8 @@ export function ChatConfigurationMenuContent({ controller }: { controller: Confi
           <span className={styles.configurationMenuIndicator}>
             {saving ? <LoadingIndicator label="Saving configuration" /> : <ChevronRight aria-hidden="true" />}
           </span>
-        </button>
-        <button
+        </NeumorphicButton>
+        <NeumorphicButton variant="ghost"
           aria-expanded={configurationMenuView === 'reasoning'}
           aria-haspopup="listbox"
           data-unavailable={!chatConfiguration?.supportedReasoningEfforts.length}
@@ -185,8 +194,8 @@ export function ChatConfigurationMenuContent({ controller }: { controller: Confi
             {chatConfiguration ? formatReasoningEffort(chatConfiguration.reasoningEffort) : 'Default'}
           </span>
           <ChevronRight aria-hidden="true" />
-        </button>
-        <button
+        </NeumorphicButton>
+        <NeumorphicButton variant="ghost"
           aria-expanded={configurationMenuView === 'service-tier'}
           aria-haspopup="listbox"
           data-unavailable={!chatConfiguration}
@@ -200,7 +209,7 @@ export function ChatConfigurationMenuContent({ controller }: { controller: Confi
           <span>Service tier</span>
           <span className={styles.configurationMenuValue}>{chatConfiguration?.serviceTierDisplayName ?? 'Standard'}</span>
           <ChevronRight aria-hidden="true" />
-        </button>
+        </NeumorphicButton>
         {configurationLoading && !chatConfiguration && (
           <div className={styles.configurationMenuStatus}>
             <LoadingIndicator />

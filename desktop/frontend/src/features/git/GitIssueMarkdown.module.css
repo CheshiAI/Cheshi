@@ -1,0 +1,25 @@
+.body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-small);
+  line-height: 1.6;
+  user-select: text;
+}
+.body p, .body ul, .body ol, .body blockquote { margin: 0 0 var(--space-default); }
+.body > :last-child { margin-bottom: 0; }
+.body :is(h1, h2, h3, h4, h5, h6) { margin: var(--space-default) 0; font-size: var(--font-size-label); font-weight: 600; }
+.body > :first-child { margin-top: 0; }
+.body blockquote { border-left: 2px solid var(--divider); padding-left: var(--space-default); color: var(--sub-text); }
+.body a { color: var(--active-text); }
+.body a:hover { text-decoration: underline; }
+.body :not(pre) > code { background: var(--control-surface); padding: 2px 4px; border-radius: 4px; }
+.body :global(.contains-task-list) { list-style: none; padding-left: 0; }
+.body pre, .table {
+  --scrollbar-size: var(--auto-hide-scrollbar-size);
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+  overflow: auto;
+}
+.table { max-width: 100%; margin-block: var(--space-default); }
+.table table { width: 100%; border-collapse: collapse; font: inherit; }
+.table th, .table td { padding: var(--icon-default); border: 1px solid var(--divider); text-align: left; }

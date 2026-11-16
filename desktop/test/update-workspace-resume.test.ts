@@ -5,6 +5,7 @@ import { captureEditorUpdateSnapshot, editorDraftsMatch, parseEditorUpdateSnapsh
   restoreEditorUpdateTabs } from '../frontend/src/features/editor/workspaceUpdateResume';
 import { createUpdateResumeCoordinator, parseUpdateResume } from '../frontend/src/features/shell/updateWorkspaceResume';
 import { parseChatUpdateSnapshot, reopenUpdateConversations, type ChatUpdateSnapshot } from '../frontend/src/features/chat/chatUpdateResume';
+import { insertSplitPane } from '../frontend/src/shared/ui/splitPaneModel';
 
 const file: WorkspaceFileVersion = { path: 'src/main.ts', name: 'main.ts', kind: 'file', fileKind: 'text',
   size: 5, modifiedAt: 1, revision: 'original', hasBom: false, lineEnding: 'lf' };
@@ -115,5 +116,16 @@ describe('update workspace recovery', () => {
     expect(parseChatUpdateSnapshot(snapshot)).toEqual(snapshot);
     expect(() => parseChatUpdateSnapshot({ ...snapshot, activePaneId: 'missing' })).toThrow();
     expect(() => parseChatUpdateSnapshot({ ...snapshot, sessionIds: { other: 'thread' } })).toThrow();
+  });
+
+  test('restores ten chat panes but rejects a snapshot with eleven panes', () => {
+    const snapshot: ChatUpdateSnapshot = { layout: { type: 'pane', paneId: 'first' }, activePaneId: 'first', sessionIds: {} };
+    for (let index = 1; index < 10; index++) {
+      snapshot.layout = insertSplitPane(snapshot.layout, 'first', `pane-${index}`, 'right', `split-${index}`);
+    }
+    expect(parseChatUpdateSnapshot(snapshot)).toEqual(snapshot);
+    // Split a shallow branch so this exercises the count limit, not the depth guard.
+    snapshot.layout = insertSplitPane(snapshot.layout, 'pane-1', 'eleventh', 'right', 'split-eleventh');
+    expect(() => parseChatUpdateSnapshot(snapshot)).toThrow('The saved chat panes are invalid.');
   });
 });

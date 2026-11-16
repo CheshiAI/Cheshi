@@ -111,10 +111,14 @@ when a documented command is unavailable.
   complete source reads merely to verify the tool's output.
 - Git metadata, documentation, configuration, and the explicit file-length check
   below can be inspected directly without a CodeGraph query.
-- Keep viewer inspection read-only. Do not initiate index creation, sync,
-  rebuild, unlock, or removal without authorization; do not run a writer against
-  an index being viewed. CLI, MCP, and app storage must resolve to the same
-  workspace index. Never co-index it with a different engine implementation.
+- Cheshi manages incremental synchronization of existing indexes before SESSION
+  and Docker Homie tasks and CodeGraph queries. This automatic path is authorized;
+  concurrent requests share the workspace writer and wait for completion. It may
+  update the same-engine WAL index while the Viewer remains read-only.
+- Keep viewer inspection read-only. Outside that managed path, do not initiate
+  index creation, sync, rebuild, unlock, or removal without authorization, or run
+  a writer against an index being viewed. CLI, MCP, and app storage must resolve
+  to the same workspace index. Never co-index it with a different engine implementation.
 - An explore response truncated by its output budget does not prove an indexing
   failure. Narrow the query or inspect the remaining source range.
 
@@ -303,6 +307,14 @@ exceptions to the defaults below.
 
 ## Computer Use with Electron
 
+- For authorized development-app interaction checks, prefer
+  [desktop-ui-check](.agents/skills/desktop-ui-check/SKILL.md): its reusable
+  Inspector/CDP runner reads rendered state and sends input to this checkout's
+  running app. Requests such as "개발앱에서 확인해줘" select this workflow within
+  the requested scope. Read the linked skill directly if it is not in the session
+  catalog. Use screenshots or Computer Use as needed for visual appearance;
+  DOM assertions alone do not establish visual correctness. The authorization
+  and app-targeting rules below also apply to this runner.
 - The user owns rendered UI review. Do not launch, screenshot, or control the
   app for visual verification unless the user explicitly delegates it. Requests
   to launch the app and check its screen, verify rendered layout or interactions,

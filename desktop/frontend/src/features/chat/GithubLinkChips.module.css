@@ -15,6 +15,11 @@
   color: var(--text);
 }
 
+.chip[data-raised='true'] {
+  --neumorphic-button-surface: rgba(41, 52, 61, 0.9);
+  --neumorphic-button-hover-background: var(--neumorphic-button-surface);
+}
+
 .chip > a {
   display: flex;
   min-width: 0;
@@ -23,7 +28,7 @@
   height: 28px;
   padding: 0 9px;
   color: inherit;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 14px;
   text-decoration: none;
   cursor: pointer;

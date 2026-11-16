@@ -1,5 +1,5 @@
-import { useRef } from 'react';
-import { NeumorphicButton, NeumorphicTextField, SearchClearButton } from '../../shared/ui';
+import { useRef, type RefObject } from 'react';
+import { LiquidGlassSelect, NeumorphicButton, NeumorphicCheckbox, NeumorphicTextField, SearchClearButton } from '../../shared/ui';
 import { useHelpLanguage } from '../../shared/useHelpLanguage';
 import type { ChatInputField, ChatInputQuestion } from '../../../../shared/chat-user-input';
 import type { InputDraft } from './chatUserInputForm';
@@ -17,10 +17,10 @@ function QuestionAnswerField({ question, value, selected, onChange }: {
   const trailingAction = value.length > 0 && <SearchClearButton aria-label={`Clear ${question.header} answer`}
     onClick={() => { onChange(question.id, ''); (question.isSecret ? inputRef.current : textareaRef.current)?.focus(); }} />;
   return <div className={styles.field}>
-    {question.isSecret ? <NeumorphicTextField aria-label={label} ref={inputRef} type="password" value={value}
+    {question.isSecret ? <NeumorphicTextField variant="standard" aria-label={label} ref={inputRef} type="password" value={value}
       autoComplete="off" required={!selected} placeholder={label}
       onChange={event => onChange(question.id, event.target.value)} trailingAction={trailingAction} />
-      : <NeumorphicTextField aria-label={label} className={styles.answerInput} ref={textareaRef} multiline rows={1} value={value}
+      : <NeumorphicTextField variant="standard" aria-label={label} className={styles.answerInput} ref={textareaRef} multiline rows={1} value={value}
         autoComplete="off" required={!selected} placeholder={label}
         onChange={event => onChange(question.id, event.target.value)} trailingAction={trailingAction} />}
   </div>;
@@ -36,7 +36,7 @@ export function ChatQuestionFields({ questions, draft, onChange, notes = {}, onN
     return <fieldset key={question.id} className={styles.question}>
       <legend>{question.question}</legend>
       <div className={styles.choices}>
-        {question.options?.map((option, index) => <NeumorphicButton size="standard" className={styles.choice} key={option.label}
+        {question.options?.map((option, index) => <NeumorphicButton variant="ghost" size="standard" className={styles.choice} key={option.label}
           aria-pressed={value === option.label} onClick={() => onChange(question.id, value === option.label ? '' : option.label)}>
           <span className={styles.number} aria-hidden="true">{index + 1}</span>
           <span className={styles.choiceText}><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
@@ -48,33 +48,40 @@ export function ChatQuestionFields({ questions, draft, onChange, notes = {}, onN
   })}</>;
 }
 
-export function ChatMcpFields({ fields, draft, onChange }: DraftProps & { fields: ChatInputField[] }) {
-  return <>{fields.map((field) => {
+export function ChatMcpFields({ fields, draft, onChange, disabled = false, menuBlurSourceRef }: DraftProps & {
+  fields: ChatInputField[]; disabled?: boolean; menuBlurSourceRef?: RefObject<HTMLElement | null>;
+}) {
+  return <div className={styles.mcpFields}>{fields.map((field) => {
     const value = draft[field.name];
     const text = typeof value === 'string' ? value : '';
     if (field.type === 'array') return <fieldset key={field.name} className={styles.question}>
       <legend>{field.title}{field.required ? ' *' : ''}</legend>
       {field.description && <p>{field.description}</p>}
-      {field.options?.map((option) => <label key={option.value} className={styles.option}>
-        <input type="checkbox" checked={Array.isArray(value) && value.includes(option.value)} onChange={(event) => {
+      {field.options?.map((option) => <NeumorphicCheckbox key={option.value} className={styles.mcpOption} disabled={disabled}
+        checked={Array.isArray(value) && value.includes(option.value)} onChange={(event) => {
           const current = Array.isArray(value) ? value : [];
           onChange(field.name, event.target.checked ? [...current, option.value] : current.filter((item) => item !== option.value));
-        }} /><span>{option.label}</span>
-      </label>)}
+        }}><span>{option.label}</span>
+      </NeumorphicCheckbox>)}
     </fieldset>;
+    if (field.type === 'boolean' || field.options) return <div key={field.name} className={styles.field}>
+      <span>{field.title}{field.required ? ' *' : ''}</span>
+      {field.description && <small>{field.description}</small>}
+      <LiquidGlassSelect menuBlurSourceRef={menuBlurSourceRef} ariaLabel={field.title} value={text} disabled={disabled}
+        triggerAppearance="standard" menuAppearance="toolbar" placeholder="Choose an option"
+        options={[{ value: '', label: 'Choose an option' }, ...(field.type === 'boolean'
+          ? [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }] : field.options ?? [])]}
+        onChange={next => onChange(field.name, next)} />
+    </div>;
     return <label key={field.name} className={styles.field}>
       <span>{field.title}{field.required ? ' *' : ''}</span>
       {field.description && <small>{field.description}</small>}
-      {field.type === 'boolean' || field.options ? <select value={text} required={field.required}
-        onChange={(event) => onChange(field.name, event.target.value)}>
-        <option value="">Choose an option</option>
-        {field.type === 'boolean' ? <><option value="true">Yes</option><option value="false">No</option></>
-          : field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-      </select> : <input
+      <NeumorphicTextField variant="standard" disabled={disabled}
         type={field.type === 'number' || field.type === 'integer' ? 'number' : field.format === 'email' ? 'email' : field.format === 'uri' ? 'url' : field.format === 'date' ? 'date' : 'text'}
         step={field.type === 'integer' ? 1 : 'any'} min={field.minimum} max={field.maximum}
         minLength={field.minLength} maxLength={field.maxLength} required={field.required} value={text}
-        onChange={(event) => onChange(field.name, event.target.value)} />}
+        onClear={() => onChange(field.name, '')} clearLabel={`Clear ${field.title}`}
+        onChange={(event) => onChange(field.name, event.target.value)} />
     </label>;
-  })}</>;
+  })}</div>;
 }

@@ -1,5 +1,9 @@
+import { FlashToolRequests, flashTools, flashInstructions } from './flash/tools.mts';
+import { readCodexChatStatus } from './codex-chat-status.mts';
+import type { SessionMemory } from './flash/session-memory.mts';
 import { chatMessageFailure, codexCollaborationOverride, setCodexCollaborationMode, steerCodexMessage } from './codex-chat-turn-controls.mts';
-import { historyTurnContext } from './codex-chat-history-tools.mts';
+import { assertWorkspaceThreadIdle } from './codex-workspace-activity.mts';
+import { closeDiscordSetup, discordSetupThreadOptions, handleDiscordSetupRequest } from './discord-setup-tools.mts';
 import { CodexChatUserInputs } from './codex-chat-user-input.mts';
 import { CodexAgentTokenUsage } from './codex-agent-token-usage.mts';
 import { readCodexAgentDetails } from './codex-chat-agent-details.mts';
@@ -28,9 +32,9 @@ import {
   ensureCodexReasoningEffortIsSupported,
   ensureCodexServiceTierIsSupported,
   listCodexModels,
+  restoreCodexModelPreferences,
   listCodexPermissionModes,
   codexPermissionOverrides,
-  resetCodexPermissionMode,
   codexServiceTierOverride,
   setCodexPermissionMode,
 } from "./codex-chat-configuration.mts";
@@ -102,9 +106,12 @@ export {
   timelineFromThread,
 } from "./codex-chat-thread-data.mts";
 export { permissionModesFromListResponse } from "./codex-chat-permissions.mts";
+import type { ChatModelPreferences, ChatPreferenceStore } from './chat-preferences.mts';
 
 export class CodexChatService {
-  private readonly historyToolsEnabled: boolean;
+  private readonly chatPreferences: ChatPreferenceStore | undefined;
+  private modelPreferences: ChatModelPreferences = {};
+  readonly memoryRequests: FlashToolRequests | undefined;
   readonly agentTokenUsage = new CodexAgentTokenUsage();
   readonly conversations: CodexConversationAccess | undefined;
   createMcpProbeClient: (() => CodexMcpProbeClient) | undefined;
@@ -150,6 +157,7 @@ export class CodexChatService {
   listeners: Set<(event: JsonObject) => void>;
   log: CodexChatLogger;
   developerInstructions: string;
+  private readonly getWorkspaceProjects?: () => string[];
   serviceName: string;
   cwd: string;
   client: CodexChatClient;
@@ -161,29 +169,35 @@ export class CodexChatService {
     cwd,
     serviceName,
     developerInstructions,
-    historyToolsEnabled = false,
+    getWorkspaceProjects,
     log = noopLog,
     createMcpProbeClient,
     conversations,
+    memory,
+    chatPreferences,
   }: {
     client: CodexChatClient;
     cwd: string;
     serviceName: string;
     developerInstructions: string;
-    historyToolsEnabled?: boolean;
+    getWorkspaceProjects?: () => string[];
     log?: CodexChatLogger;
     createMcpProbeClient?: () => CodexMcpProbeClient;
     conversations?: CodexConversationAccess;
+    memory?: SessionMemory;
+    chatPreferences?: ChatPreferenceStore;
   }) {
     this.client = client;
-    this.historyToolsEnabled = historyToolsEnabled === true;
+    this.chatPreferences = chatPreferences;
+    this.getWorkspaceProjects = getWorkspaceProjects;
+    this.memoryRequests = memory ? new FlashToolRequests(this, memory) : undefined;
     this.conversations = conversations;
     this.createMcpProbeClient = createMcpProbeClient;
     this.userInputs = new CodexChatUserInputs(client, event => this.emit(event));
     this.cwd = requiredString(cwd, "Chat working directory");
     this.serviceName = requiredString(serviceName, "Chat service name");
     this.developerInstructions = requiredString(
-      developerInstructions,
+      developerInstructions + (memory ? flashInstructions : ''),
       "Chat developer instructions",
     );
     this.log = log;
@@ -221,14 +235,18 @@ export class CodexChatService {
     this.pendingApprovals = new Map();
     this.approvalSequence = 0;
     this.commandSequence = 0;
+    this.restoreChatPreferences();
     this.subscribeClient();
   }
 
   private subscribeClient(): void {
     const client = this.client;
-    this.removeNotificationListener = client.onNotification((value) =>
-      this.handleNotification(value),
-    );
+    const removeNotification = client.onNotification((value) => this.handleNotification(value));
+    const removeRelease = client.onDidReleaseWriters?.(() => {
+      this.subscribedThreadIds.clear();
+      this.pendingTurnNotifications.clear();
+    });
+    this.removeNotificationListener = () => { removeNotification(); removeRelease?.(); };
     this.removeRequestListener = client.onRequest((value) =>
       this.handleRequest(value),
     );
@@ -246,6 +264,18 @@ export class CodexChatService {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  private projectRootsOverride(): { runtimeWorkspaceRoots?: string[] } {
+    return this.getWorkspaceProjects ? { runtimeWorkspaceRoots: this.getWorkspaceProjects() } : {};
+  }
+
+  private projectInstructions(): string {
+    const roots = this.getWorkspaceProjects?.();
+    if (!roots || roots.length < 2) return this.developerInstructions;
+    return this.developerInstructions + '\nConnected workspace projects (separate repositories):\n'
+      + roots.map(root => '- ' + JSON.stringify(root)).join('\n')
+      + '\nUse the appropriate project directory for files, Git, commands and CodeGraph projectPath. Read each target project’s AGENTS.md before working there. Keep commits and deployment independent. The selected permission profile still applies.';
   }
 
   async listSessions() {
@@ -322,7 +352,7 @@ export class CodexChatService {
   }
 
   async listModels() {
-    return listCodexModels(this);
+    return listCodexModels(this, this.modelPreferences);
   }
 
   async listMcpServers() {
@@ -334,7 +364,9 @@ export class CodexChatService {
   }
 
   async setPermissionMode(modeId: unknown) {
-    return setCodexPermissionMode(this, modeId);
+    const result = await setCodexPermissionMode(this, modeId);
+    this.chatPreferences?.write({ permissionModeId: result.mode.id });
+    return result;
   }
 
   async getGoal() {
@@ -346,7 +378,7 @@ export class CodexChatService {
   }
 
   setCollaborationMode(value: unknown) {
-    return setCodexCollaborationMode(this, value);
+    return setCodexCollaborationMode(this, value, collaborationMode => this.chatPreferences?.write({ collaborationMode }));
   }
 
   async steerMessage(text: unknown, clientMessageId: unknown, selectedSkill: unknown = null, attachments: unknown = [], targetThreadId: unknown = undefined) {
@@ -354,7 +386,13 @@ export class CodexChatService {
   }
 
   async configure(value: unknown) {
-    return configureCodexChat(this, value);
+    return configureCodexChat(this, value, {
+      preferences: this.modelPreferences,
+      persist: update => {
+        this.chatPreferences?.write(update);
+        this.modelPreferences = { ...this.modelPreferences, ...update };
+      },
+    });
   }
 
   /** @returns {JsonObject} */
@@ -368,6 +406,8 @@ export class CodexChatService {
     };
   }
 
+  readStatus() { return readCodexChatStatus(this); }
+
   currentPermissionMode() {
     return currentCodexPermissionMode(this);
   }
@@ -376,8 +416,13 @@ export class CodexChatService {
     return codexPermissionOverrides(this);
   }
 
-  resetPermissionMode() {
-    return resetCodexPermissionMode(this);
+  private restoreChatPreferences() {
+    const saved = this.chatPreferences?.read();
+    if (!saved) return;
+    this.selectedPermissionModeId = saved.permissionModeId;
+    this.selectedCollaborationMode = saved.collaborationMode;
+    this.modelPreferences = { model: saved.model, reasoningEffort: saved.reasoningEffort, serviceTier: saved.serviceTier };
+    restoreCodexModelPreferences(this, this.modelPreferences);
   }
 
   currentModel() {
@@ -471,13 +516,15 @@ export class CodexChatService {
       throw new Error("The Codex thread response format is invalid.");
     if (previousThreadId !== session.id) {
       await this.releaseThreadSubscription(previousThreadId, operation);
-      this.resetPermissionMode();
     }
     this.availableAgentThreadIds.clear();
     const sessionId = requiredString(session.id, "Chat session id");
     this.viewedThreadId = sessionId;
     this.viewedThreadIsSubagent = stringValue(thread.parentThreadId) !== null;
     this.threadIsSubagent.set(sessionId, this.viewedThreadIsSubagent);
+    if (!this.viewedThreadIsSubagent) this.emit({ type: 'session-opened', session });
+    const contextUsage = await this.agentTokenUsage.readContext(thread);
+    this.emit({ type: 'context-usage', threadId: sessionId, usage: contextUsage });
     const responseThreadIds = [...this.activeTurns.keys()];
     return {
       session,
@@ -490,8 +537,9 @@ export class CodexChatService {
 
   /** @returns {Promise<{ sessionId: null, items: [] }>} */
   async newSession(): Promise<{ sessionId: null; items: [] }> {
+    closeDiscordSetup(this);
     await this.releaseThreadSubscription(this.viewedThreadId, "new-session");
-    this.resetPermissionMode();
+    this.restoreChatPreferences();
     this.viewedThreadId = null;
     this.viewedThreadIsSubagent = false;
     this.availableAgentThreadIds.clear();
@@ -509,7 +557,6 @@ export class CodexChatService {
       this.viewedThreadId = null;
       this.viewedThreadIsSubagent = false;
       this.availableAgentThreadIds.clear();
-      this.resetPermissionMode();
     }
     this.emit({ type: 'sessions-deleted', threadIds: [...threadIds] });
   }
@@ -521,6 +568,7 @@ export class CodexChatService {
   async ensureWritableThread(
     targetThreadId: unknown = undefined,
   ): Promise<string> {
+    if (!this.permissionModesLoaded && this.selectedPermissionModeId !== DEFAULT_PERMISSION_MODE_ID) await this.listPermissionModes();
     const initialViewedThreadId = this.viewedThreadId;
     let threadId =
       targetThreadId === undefined
@@ -552,7 +600,8 @@ export class CodexChatService {
         ...(!isSubagent
           ? {
               cwd: this.cwd,
-              developerInstructions: this.developerInstructions,
+              ...this.projectRootsOverride(),
+              developerInstructions: this.projectInstructions(),
               ...(this.selectedModel ? { model: this.selectedModel } : {}),
               ...this.serviceTierOverride(),
             }
@@ -567,9 +616,12 @@ export class CodexChatService {
     }
     if (!threadId) {
       const raw = await this.client.request("thread/start", {
+        ...(this.memoryRequests ? { dynamicTools: [...(discordSetupThreadOptions(this).dynamicTools ?? []), ...flashTools] }
+          : discordSetupThreadOptions(this)),
         cwd: this.cwd,
+        ...this.projectRootsOverride(),
         ...this.permissionOverrides(),
-        developerInstructions: this.developerInstructions,
+        developerInstructions: this.projectInstructions(),
         ephemeral: false,
         serviceName: this.serviceName,
         sessionStartSource: "startup",
@@ -624,6 +676,7 @@ export class CodexChatService {
             : requiredString(targetThreadId, "Chat session id");
       assertChatTurnAvailable(this.isThreadActive(requestedThreadId) || this.pendingTurnStarts.has(requestedThreadId),
         requestedThreadId === null ? this.pendingNewTurnClientMessageId : null);
+      if (requestedThreadId) assertWorkspaceThreadIdle(this.cwd, requestedThreadId);
       const skillReference =
         selectedSkill === null ? null : recordValue(selectedSkill);
       const skillName =
@@ -674,11 +727,16 @@ export class CodexChatService {
         const rawTurn = await this.client.request("turn/start", {
           threadId,
           clientUserMessageId: messageId,
+          ...this.projectRootsOverride(),
+          ...(this.getWorkspaceProjects ? { additionalContext: { workspace_projects: {
+            kind: 'application', value: 'Current connected project directories: ' + JSON.stringify(this.getWorkspaceProjects())
+              + '. Each is an independent repository. Read the target project AGENTS.md before working there. Use its path for commands and CodeGraph projectPath.',
+          } } } : {}),
           input,
-          ...(this.historyToolsEnabled ? { additionalContext: historyTurnContext(threadId) } : {}),
           ...collaborationOverride,
           ...this.permissionOverrides(),
           effort: this.selectedReasoningEffort,
+          summary: "auto",
           ...(this.selectedModel ? { model: this.selectedModel } : {}),
           ...this.serviceTierOverride(),
         });
@@ -725,7 +783,7 @@ export class CodexChatService {
       threadId: sourceThreadId,
       cwd: this.cwd,
       ...this.permissionOverrides(),
-      developerInstructions: this.developerInstructions,
+      developerInstructions: this.projectInstructions(),
       ephemeral: false,
       excludeTurns: false,
       deferGoalContinuation: true,
@@ -738,6 +796,7 @@ export class CodexChatService {
     if (!response || !thread || !session)
       throw new Error("The forked Codex thread response format is invalid.");
 
+    await this.conversations?.registerCreated?.(thread);
     await this.releaseThreadSubscription(sourceThreadId, "fork-session");
     this.availableAgentThreadIds.clear();
     const sessionId = requiredString(session.id, "Chat session id");
@@ -824,7 +883,7 @@ export class CodexChatService {
           ? null
           : requiredString(targetThreadId, "Chat session id");
     const active = threadId ? this.activeTurns.get(threadId) : null;
-    if (threadId) await this.userInputs.cancel(threadId);
+    if (threadId) { this.memoryRequests?.cancel(threadId); await this.userInputs.cancel(threadId); }
     if (!active) return { requested: false };
     active.interruptRequested = true;
     if (active.turnId) await this.interrupt(active);
@@ -846,6 +905,8 @@ export class CodexChatService {
   }
 
   handleRequest(value: JsonObject) {
+    if (this.memoryRequests?.handle(value)) return;
+    if (handleDiscordSetupRequest(this, value)) return;
     if (this.userInputs.handle(value)) return;
     return handleCodexRequest(this, value);
   }
@@ -860,6 +921,8 @@ export class CodexChatService {
   }
 
   stop(): Promise<void> {
+    this.memoryRequests?.cancel();
+    closeDiscordSetup(this);
     this.turnStartLifetime.abort(new Error('This chat pane has been closed.'));
     this.pendingSteers.clear();
     this.pendingTurnStarts.clear();
@@ -898,6 +961,7 @@ export class CodexChatService {
     this.availablePluginLogos.clear();
     this.selectedReasoningEffort = DEFAULT_REASONING_EFFORT;
     this.selectedServiceTier = undefined;
+    this.restoreChatPreferences();
     this.subscribeClient();
     restore?.();
   }
@@ -995,6 +1059,7 @@ export class CodexChatService {
 
   /** @param {JsonObject} event */
   emit(event: JsonObject) {
+    if (event.type === 'turn-completed' && typeof event.threadId === 'string') this.memoryRequests?.cancel(event.threadId);
     for (const listener of this.listeners) listener(event);
   }
 }

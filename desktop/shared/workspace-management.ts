@@ -4,6 +4,7 @@ export interface WorkspaceCatalogEntry {
   id: string;
   name: string;
   rootPath: string;
+  iconColor?: string;
   available: boolean;
   /** Omitted capability metadata is unknown; Git actions require literal true. */
   isGitRepository?: boolean;
@@ -80,7 +81,12 @@ export interface WorkspaceCodexLoginState {
   error: string | null;
 }
 
+export const OPEN_HELP_CHANNEL = 'cheshi:open-help';
+export const OPEN_RELATIONSHIP_GRAPH_CHANNEL = 'cheshi:open-relationship-graph';
+
 export interface WorkspaceManagementApi extends Partial<AppUpdateApi> {
+  onHelpRequested?(listener: () => void): () => void;
+  onRelationshipGraphRequested?(listener: () => void): () => void;
   getCodexLogin(): Promise<WorkspaceCodexLoginState>;
   startCodexLogin(): Promise<WorkspaceCodexLoginState>;
   cancelCodexLogin(): Promise<WorkspaceCodexLoginState>;
@@ -91,6 +97,7 @@ export interface WorkspaceManagementApi extends Partial<AppUpdateApi> {
   addFolder(path: string): Promise<WorkspaceCatalogEntry>;
   createProject(request: WorkspaceCreateProjectRequest): Promise<WorkspaceCatalogEntry>;
   deleteWorkspace(id: string): Promise<boolean>;
+  removeWorkspace(id: string): Promise<boolean>;
   clone(request: WorkspaceCloneRequest): Promise<WorkspaceCatalogEntry>;
   listGitHubRepositories(page?: number): Promise<GitHubRepositoryPage>;
   startGitHubLogin(): Promise<GitHubLoginState>;

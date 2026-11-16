@@ -1,3 +1,4 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import {
   useRef,
   useState,
@@ -116,26 +117,27 @@ export function WorkspaceProblemsResizer({
   };
 
   return (
-    <div
-      className="workspace-editor-problems-resizer"
-      data-dragging={dragging ? 'true' : undefined}
-      role="separator"
-      tabIndex={0}
-      aria-controls="workspace-editor-problems"
-      aria-label="Resize Problems panel"
-      aria-orientation="horizontal"
-      aria-valuemin={MIN_PROBLEMS_RATIO * 100}
-      aria-valuemax={MAX_PROBLEMS_RATIO * 100}
-      aria-valuenow={Math.round(ratio * 100)}
-      aria-valuetext={`${Math.round(ratio * 100)}% for the Problems panel`}
-      title="Drag to resize the Problems panel; double-click to reset"
-      onDoubleClick={resetRatio}
-      onKeyDown={handleKeyDown}
-      onLostPointerCapture={cancelPointerResize}
-      onPointerCancel={cancelPointerResize}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-    />
+    <TooltipTarget content="Drag to resize the Problems panel; double-click to reset">
+      <div
+        className="workspace-editor-problems-resizer"
+        data-dragging={dragging ? 'true' : undefined}
+        role="separator"
+        tabIndex={0}
+        aria-controls="workspace-editor-problems"
+        aria-label="Resize Problems panel"
+        aria-orientation="horizontal"
+        aria-valuemin={MIN_PROBLEMS_RATIO * 100}
+        aria-valuemax={MAX_PROBLEMS_RATIO * 100}
+        aria-valuenow={Math.round(ratio * 100)}
+        aria-valuetext={`${Math.round(ratio * 100)}% for the Problems panel`}
+        onDoubleClick={resetRatio}
+        onKeyDown={handleKeyDown}
+        onLostPointerCapture={cancelPointerResize}
+        onPointerCancel={cancelPointerResize}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+      />
+    </TooltipTarget>
   );
 }

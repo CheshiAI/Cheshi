@@ -1,3 +1,4 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { LoadingState, Modal, NeumorphicButton } from '../../shared/ui';
@@ -13,15 +14,15 @@ interface ChatDeleteSessionProps {
 }
 
 export function ChatDeleteSessionForm({ sessionTitle, reason, pending, error, onDelete, onClose }: ChatDeleteSessionProps) {
-  return <form className={styles.form} onSubmit={(event) => { event.preventDefault(); if (!pending && !reason) onDelete(); }}>
-    <p className={styles.sessionTitle} title={sessionTitle}>{sessionTitle}</p>
-    <p>This permanently deletes this conversation and its child agent conversations. This cannot be undone.</p>
+  return <form className={`${styles.form} ${styles.sessionDeletionForm}`} onSubmit={(event) => { event.preventDefault(); if (!pending && !reason) onDelete(); }}>
+    <TooltipTarget content={sessionTitle}><p className={styles.sessionTitle}>{sessionTitle}</p></TooltipTarget>
+    <p>This permanently deletes this conversation and its child agent conversations.<br />This cannot be undone.</p>
     {(error || reason) && <p role="alert">{error || reason}</p>}
     <div className={styles.deletionActions}>
-      {pending && <LoadingState type="processing" label="Deleting chat…" className={styles.deletionProgress} />}
+      {pending && <LoadingState type="processing" label="Deleting session…" className={styles.deletionProgress} />}
       <div className={styles.buttons}>
-        <NeumorphicButton size="standard" raised autoFocus type="button" disabled={pending} onClick={onClose}>Cancel</NeumorphicButton>
-        <NeumorphicButton size="standard" raised type="submit" disabled={pending || reason !== null} aria-busy={pending}>Delete chat</NeumorphicButton>
+        <NeumorphicButton variant="standard" autoFocus type="button" disabled={pending} onClick={onClose}>Cancel</NeumorphicButton>
+        <NeumorphicButton variant="standard" type="submit" disabled={pending || reason !== null} aria-busy={pending}>Delete session</NeumorphicButton>
       </div>
     </div>
   </form>;
@@ -56,7 +57,8 @@ export function ChatDeleteSessionDialog({ sessionTitle, reason, pending, error, 
       setSubmitting(false);
     }
   };
-  return <Modal title="Delete chat?" titleIcon={<Trash2 aria-hidden="true" />} closeDisabled={busy} onClose={close}>
+  return <Modal title="DELETE SESSION" headerVariant="section" closeButtonVariant="ghost" className={styles.recordDeletionDialog}
+    titleIcon={<Trash2 aria-hidden="true" />} closeDisabled={busy} onClose={close}>
     <ChatDeleteSessionForm sessionTitle={sessionTitle} reason={reason} pending={busy} error={error || failure}
       onDelete={() => { void remove(); }} onClose={close} />
   </Modal>;

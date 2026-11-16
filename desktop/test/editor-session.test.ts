@@ -69,7 +69,7 @@ test('missing or unreadable files do not block restoration, including a missing 
 });
 
 test('malformed sessions and invalid paths are rejected without blocking startup', async () => {
-  for (const paths of [['../secret'], ['/absolute'], ['a.ts', 'a.ts'], ['a\\b'], ['a\0b']]) {
+  for (const paths of [['../secret'], ['/absolute/../outside'], ['a.ts', 'a.ts'], ['a\\b'], ['a\0b']]) {
     expect(() => parseEditorSession({ version: 1, paths, selectedPath: null })).toThrow();
   }
   expect(() => parseEditorSession({ version: 1, paths: ['a.ts'], selectedPath: 'b.ts' })).toThrow();

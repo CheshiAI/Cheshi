@@ -1,7 +1,17 @@
 import { readFileSync } from 'node:fs';
 
 const logoDataUrl = `data:image/png;base64,${readFileSync(new URL('../../resources/icons/startup-logo.png', import.meta.url)).toString('base64')}`;
+const windowGlassStyles = readFileSync(new URL('../frontend/src/shared/styles/window-glass.css', import.meta.url), 'utf8');
 const themeTokens = readFileSync(new URL('../frontend/src/shared/styles/tokens.css', import.meta.url), 'utf8');
+
+// Run after native appearance and its renderer tint have been applied, while still hidden.
+export const STARTUP_FIRST_FRAME_SCRIPT = `(async () => {
+  const logo = new Image();
+  logo.src = ${JSON.stringify(logoDataUrl)};
+  await logo.decode();
+  await document.fonts.ready;
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+})()`;
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/gu, (character) => ({
@@ -19,6 +29,7 @@ export function startupPage(name: string, version: string): string {
   <title>${escapeHtml(name)}</title>
   <style>
     ${themeTokens}
+    ${windowGlassStyles}
     :root {
       color-scheme: dark;
       --space-default: 16px;
@@ -28,30 +39,12 @@ export function startupPage(name: string, version: string): string {
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
     body {
-      background: #101419;
+      background: var(--app-bg);
       color: var(--text);
-      font: 12px -apple-system, BlinkMacSystemFont, sans-serif;
+      font: 10px -apple-system, BlinkMacSystemFont, sans-serif;
       user-select: none;
       -webkit-app-region: drag;
       isolation: isolate;
-    }
-    .atmosphere {
-      position: absolute;
-      z-index: -2;
-      inset: -25%;
-      background:
-        radial-gradient(ellipse at 30% 24%, #32577366, transparent 48%),
-        radial-gradient(ellipse at 76% 55%, #2a656b38, transparent 46%),
-        radial-gradient(ellipse at 55% 82%, #3b3b6630, transparent 48%);
-      animation: atmosphere-drift 14s ease-in-out infinite alternate;
-    }
-    .grid {
-      position: absolute;
-      z-index: -1;
-      inset: 0;
-      background-image: radial-gradient(#aac9dd22 .7px, transparent .7px);
-      background-size: 24px 24px;
-      mask-image: radial-gradient(ellipse at 50% 40%, black, transparent 68%);
     }
     main {
       height: 100%;
@@ -148,13 +141,12 @@ export function startupPage(name: string, version: string): string {
       animation: travel 2s cubic-bezier(.45, 0, .55, 1) infinite;
     }
     .version { position: absolute; bottom: 12px; left: 0; right: 0; margin: 0; text-align: center; color: var(--sub-text); font-size: 10px; letter-spacing: .06em; }
-    @keyframes arrive { from { opacity: 0; transform: translateY(18px) scale(.9); } to { opacity: 1; transform: none; } }
+    @keyframes arrive { from { transform: translateY(18px) scale(.9); } to { transform: none; } }
     @keyframes logo-float {
       0%, 100% { transform: translateY(4px) rotateX(3deg) rotateY(-9deg) rotateZ(-3deg); }
       50% { transform: translateY(-9px) rotateX(-5deg) rotateY(9deg) rotateZ(3deg); }
     }
     @keyframes sheen { 0%, 15% { background-position: 150% 0; } 65%, 100% { background-position: -50% 0; } }
-    @keyframes atmosphere-drift { from { transform: translate(-3%, -2%) rotate(-6deg); } to { transform: translate(3%, 3%) rotate(6deg); } }
     @keyframes aura-breathe { 0%, 100% { opacity: .65; transform: scale(.9); } 50% { opacity: 1; transform: scale(1.12); } }
     @keyframes shadow-breathe { 0%, 100% { opacity: .65; transform: scaleX(1); } 50% { opacity: .35; transform: scaleX(.76); } }
     @keyframes spark-rise { 0%, 100% { opacity: 0; transform: translateY(6px); } 35% { opacity: .8; } 80% { opacity: 0; transform: translateY(-30px); } }
@@ -167,9 +159,7 @@ export function startupPage(name: string, version: string): string {
   </style>
 </head>
 <body>
-  <div class="atmosphere" aria-hidden="true"></div>
-  <div class="grid" aria-hidden="true"></div>
-  <main aria-busy="true">
+  <main class="window-appearance-surface" aria-busy="true">
     <div class="scene" role="img" aria-label="${escapeHtml(name)} logo">
       <div class="aura"></div>
       <div class="logo-arrival"><div class="logo-float"><div class="logo-art"></div><div class="logo-sheen"></div></div></div>

@@ -1,6 +1,12 @@
+import { useWorkspaceProjects } from '../../shared/workspaceProjects';
+import { ToolbarMenu } from '../../shared/ui/ToolbarMenu';
+import { useContext } from 'react';
+import { useSplitPreviewActive } from '../../shared/ui/splitPreviewState';
+import { WorkspaceLayoutControls, WorkspacePaneVisibilityContext } from '../shell/WorkspaceLayoutControls';
 import { AlertTriangle, PanelRight, Plus, SquareTerminal, X } from 'lucide-react';
 
 import {
+  SidebarToggle,
   draggableWindowRegionStyle,
   FlatTab,
   FlatTabList,
@@ -8,6 +14,8 @@ import {
   nonDraggableWindowRegionStyle,
   TieredHeader,
 } from '../../shared/ui';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { TerminalPaneLayout } from './TerminalPaneLayout';
 import { TerminalTabIcon } from './TerminalTabIcon';
 import { useTerminalController } from './useTerminalController';
@@ -28,7 +36,11 @@ export function TerminalWorkspace({
   onToggleRightSidebar,
   onCloseWorkspace,
 }: TerminalWorkspaceProps) {
-  const terminal = useTerminalController(active && !blocked);
+  const { projects } = useWorkspaceProjects();
+  const paneVisible = useContext(WorkspacePaneVisibilityContext);
+  active = active && paneVisible;
+  const previewActive = useSplitPreviewActive();
+  const terminal = useTerminalController(active && !blocked, previewActive);
   const { state } = terminal;
   const activeSession = state.sessions.find((session) => session.id === state.activeSessionId) ?? null;
 
@@ -42,25 +54,16 @@ export function TerminalWorkspace({
         primary={(
           <>
             {state.sessions.length === 0 ? (
-              <div className="terminal-header-title">
-                <NeumorphicButton
-                  raised
-                  aria-hidden="true"
-                  className="theme-toggle terminal-header-title-mark"
-                  disabled
-                >
-                  <SquareTerminal aria-hidden="true" />
-                </NeumorphicButton>
-                <h1>Terminal</h1>
-              </div>
+              <SidebarPanelTitle icon={<SquareTerminal aria-hidden="true" />} title="TERMINAL" />
             ) : (
-              <FlatTabList aria-label="Terminal sessions" onCloseAll={terminal.closeAllSessions}>
+              <FlatTabList aria-label="Terminal sessions" data-tab-appearance="document" onCloseAll={terminal.closeAllSessions}>
                 {state.sessions.map((session) => {
                   const selected = session.id === state.activeSessionId;
                   return (
                     <FlatTab
                       active={selected}
                       closeLabel={`Close ${session.title}`}
+                      closeVariant="ghost"
                       key={session.id}
                       label={session.title}
                       leading={<TerminalTabIcon />}
@@ -74,17 +77,21 @@ export function TerminalWorkspace({
               </FlatTabList>
             )}
             <div className="terminal-header-actions" style={nonDraggableWindowRegionStyle}>
-              <NeumorphicButton
-                raised
-                className="neumorphic-surface terminal-action"
+              {projects.length > 1 ? <ToolbarMenu label="New terminal in project" disabled={!state.available}
+                items={projects.map(project => ({ id: project.id, label: project.name, icon: <SquareTerminal aria-hidden="true" />,
+                  disabled: !project.available, onSelect: () => terminal.newSession(project.id) }))} /> : <TooltipButton
+                size="icon"
+                variant="ghost"
                 aria-label="New terminal session"
                 title="New terminal session"
                 disabled={!state.available}
-                onClick={terminal.newSession}
+                onClick={() => terminal.newSession()}
               >
                 <Plus aria-hidden="true" />
-              </NeumorphicButton>
-              <NeumorphicButton
+              </TooltipButton>}
+              <span className="terminal-header-divider" aria-hidden="true" />
+              <WorkspaceLayoutControls />
+              <SidebarToggle
                 raised
                 type="button"
                 aria-label={rightSidebarOpen ? 'Close right sidebar' : 'Open right sidebar'}
@@ -93,10 +100,10 @@ export function TerminalWorkspace({
                 onClick={onToggleRightSidebar}
               >
                 <PanelRight aria-hidden="true" />
-              </NeumorphicButton>
-              {onCloseWorkspace && <NeumorphicButton raised size="icon"
+              </SidebarToggle>
+              {onCloseWorkspace && <TooltipButton variant="ghost" size="icon"
                 aria-label="Close Terminal workspace" title="Close Terminal workspace"
-                onClick={onCloseWorkspace}><X aria-hidden="true" /></NeumorphicButton>}
+                onClick={onCloseWorkspace}><X aria-hidden="true" /></TooltipButton>}
             </div>
           </>
         )}
@@ -129,10 +136,9 @@ export function TerminalWorkspace({
             <strong>{state.available ? 'Start a terminal session' : 'Terminal unavailable'}</strong>
             <p>{terminal.error || 'Open a shell in the current Workspace.'}</p>
             <NeumorphicButton
-              raised
-              className="neumorphic-surface terminal-new-session"
+              variant="standard"
               disabled={!state.available}
-              onClick={terminal.newSession}
+              onClick={() => terminal.newSession()}
             >
               <Plus aria-hidden="true" />
               <span>New session</span>

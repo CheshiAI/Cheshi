@@ -200,7 +200,7 @@ export function chatCommandMenuSubtitle(
   if (mode === 'skills') return `${counts.skills} available`;
   if (mode === 'models') return `${counts.models} available`;
   if (mode === 'reasoning') return `${counts.reasoning} levels`;
-  if (mode === 'status') return 'Current local chat configuration';
+  if (mode === 'status') return 'Current session, account and usage';
   if (mode === 'mcp') return `${counts.mcp} configured`;
   if (mode === 'goal') return goal ? `Current status: ${goal.status}` : 'Set a persistent objective';
   if (mode === 'permissions') return `${counts.permissions} available`;

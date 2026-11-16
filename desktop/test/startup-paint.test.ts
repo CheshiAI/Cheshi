@@ -1,11 +1,56 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { installRendererReadiness } from '../lib/renderer-readiness.mts';
+import { workspaceWindowOptions } from '../lib/workspace-window-options.mts';
+import { createRendererReadinessLog } from '../lib/renderer-readiness-log.mts';
+import { loadForgeConfiguration } from './forge-test-helpers.ts';
 
 const bootstrapSource = readFileSync(new URL('../bootstrap.mts', import.meta.url), 'utf8');
 const runtimeSource = readFileSync(new URL('../workspace-runtime.mts', import.meta.url), 'utf8');
 const rendererHtml = readFileSync(new URL('../frontend/index.html', import.meta.url), 'utf8');
+const mainSource = readFileSync(new URL('../main.mts', import.meta.url), 'utf8');
+
+test('renderer readiness timing distinguishes initial loads, reloads and duplicate notifications', () => {
+  let now = 2_588_912;
+  const messages: string[] = [];
+  const timing = createRendererReadinessLog({ enabled: true, now: () => now, write: message => messages.push(message) });
+  timing.navigationStarted(false, true);
+  now += 120;
+  timing.ready();
+  now += 20_000;
+  timing.ready();
+  timing.navigationStarted(false, false);
+  timing.navigationStarted(true, true);
+  timing.ready();
+  assert.deepEqual(messages, ['[cheshi] Startup renderer ready: 120 ms\n']);
+  timing.navigationStarted(false, true);
+  now += 75;
+  timing.ready();
+  timing.ready();
+  assert.deepEqual(messages, ['[cheshi] Startup renderer ready: 120 ms\n', '[cheshi] Renderer reload ready: 75 ms\n']);
+  const packaged = createRendererReadinessLog({ enabled: false, write: () => assert.fail('Packaged apps do not emit development timing') });
+  packaged.ready(); packaged.navigationStarted(false, true); packaged.ready();
+});
+
+test('renderer timing is wired before loading and its native module is included in the package', async () => {
+  const register = runtimeSource.indexOf("rendererContents.on('did-start-navigation', handleRendererNavigation)");
+  assert.ok(register > 0 && register < runtimeSource.indexOf('window.loadURL(rendererUrl)', register));
+  assert.match(runtimeSource, /readiness\.rendererReady\(theme\);\s*rendererTiming\.ready\(\)/);
+  assert.match(runtimeSource, /rendererContents\.off\('did-start-navigation', handleRendererNavigation\)/);
+  const { packagerConfig } = await loadForgeConfiguration();
+  assert.equal(typeof packagerConfig.ignore, 'function');
+  const ignore = packagerConfig.ignore as (path: string) => boolean;
+  assert.equal(ignore('/desktop/lib/renderer-readiness-log.mts'), false);
+});
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(complete => { resolve = complete; });
+  return { promise, resolve };
+}
 
 test('registers settings IPC before the renderer can request its initial menu state', () => {
   const createWindow = runtimeSource.indexOf('function createMainWindow(');
@@ -14,15 +59,17 @@ test('registers settings IPC before the renderer can request its initial menu st
   const loadRenderer = runtimeSource.indexOf('window.loadURL(rendererUrl)', createWindow);
   assert.ok(owner > createWindow);
   assert.ok(settingsReady > owner && settingsReady < loadRenderer);
-  const mainSource = readFileSync(new URL('../main.mts', import.meta.url), 'utf8');
-  assert.match(mainSource, /createWorkspaceRuntime\(\{\s*\.\.\.options,\s*getTypeSafeKey: apiSettings\.getKey\s*\},[\s\S]*?window => \{\s*settingsIpc = registerSettingsIpc\(/u);
+  const trackedWorkspace = mainSource.slice(mainSource.indexOf('function createTrackedWorkspace('),
+    mainSource.indexOf('async function openStartupWindow('));
+  assert.match(trackedWorkspace, /createWorkspaceRuntime\(\{[\s\S]*?getProjectDocMaxBytes: apiSettings\.getProjectDocMaxBytes\b[\s\S]*?\},[^;]*?window => \{\s*settingsIpc = registerSettingsIpc\(/u);
   const start = mainSource.indexOf('const window = await runtime.start();', mainSource.indexOf('function createTrackedWorkspace('));
   assert.equal(mainSource.indexOf('registerSettingsIpc(', start), -1);
 });
 
 test('keeps the desktop window hidden until Electron and the painted renderer are ready', () => {
   const createWindow = runtimeSource.indexOf('function createMainWindow(');
-  const hiddenWindow = runtimeSource.indexOf('show: false', createWindow);
+  const hiddenWindow = runtimeSource.indexOf('workspaceWindowOptions(preloadPath, product.displayName)', createWindow);
+  assert.equal(workspaceWindowOptions('/preload', 'Cheshi').show, false);
   const rendererListener = runtimeSource.indexOf(
     'ipcMain.on(RENDERER_READY_CHANNEL, handleRendererReady)',
     createWindow,
@@ -41,7 +88,8 @@ test('keeps the desktop window hidden until Electron and the painted renderer ar
   assert.ok(runtimeSource.indexOf('await readiness.ready;', loadRenderer) > loadRenderer);
   assert.ok(runtimeSource.indexOf('if (!options.deferShow) revealWindow();', loadRenderer) > loadRenderer);
   assert.match(runtimeSource, /const shouldShowWindow = process\.env\.CHESHI_E2E_HEADLESS !== '1';/u);
-  assert.match(runtimeSource, /window\.setBackgroundColor\(INITIAL_WINDOW_BACKGROUND_COLORS\[theme\]\);/u);
+  assert.ok(runtimeSource.indexOf('windowAppearance?.ready(theme)', createWindow) > hiddenWindow);
+  assert.ok(runtimeSource.indexOf('windowAppearance?.ready(theme)', createWindow) < runtimeSource.indexOf('window.show()', createWindow));
   assert.match(
     runtimeSource,
     /window\.loadFile\(path\.join\(frontendAssetsDirectory\(\), 'index\.html'\)\)/u,
@@ -49,7 +97,7 @@ test('keeps the desktop window hidden until Electron and the painted renderer ar
   assert.doesNotMatch(runtimeSource, /window\.once\('ready-to-show', showWindow\)/u);
 });
 
-function createRendererHarness(readyState: DocumentReadyState = 'loading') {
+function createRendererHarness(readyState: DocumentReadyState = 'loading', retainedSurface = false) {
   const events = new EventTarget();
   const frames: FrameRequestCallback[] = [];
   const tasks: Array<() => void> = [];
@@ -72,7 +120,7 @@ function createRendererHarness(readyState: DocumentReadyState = 'loading') {
       return tasks.length;
     },
   };
-  installRendererReadiness(view, document, (theme) => { themes.push(theme); });
+  installRendererReadiness(view, document, (theme) => { themes.push(theme); }, retainedSurface);
   return {
     frames, tasks, themes, documentElement,
     dispatch(name: string) { events.dispatchEvent(new Event(name)); },
@@ -88,6 +136,16 @@ function createRendererHarness(readyState: DocumentReadyState = 'loading') {
     },
   };
 }
+
+test('a hidden retained workspace becomes ready without waiting for a paint that cannot occur before activation', () => {
+  const renderer = createRendererHarness('complete', true);
+  assert.equal(renderer.tasks.length, 0);
+  renderer.dispatch('cheshi:workspace-content-ready');
+  assert.equal(renderer.frames.length, 0);
+  assert.equal(renderer.tasks.length, 1);
+  renderer.task();
+  assert.deepEqual(renderer.themes, ['dark']);
+});
 
 for (const firstEvent of ['DOMContentLoaded', 'cheshi:workspace-content-ready']) {
   test(`waits for both readiness events when ${firstEvent} arrives first`, () => {
@@ -165,7 +223,7 @@ for (const [theme, expected] of [['light', 'light'], ['dark', 'dark'], ['invalid
 
 test('starts in dark mode without restoring a persisted light theme', () => {
   assert.match(rendererHtml, /<html[^>]+data-theme="dark"/u);
-  assert.match(rendererHtml, /<meta name="theme-color" content="#171717"/u);
+  assert.match(rendererHtml, /<meta name="theme-color" content="#000000"/u);
   assert.doesNotMatch(rendererHtml, /localStorage|data-cheshi-theme-bootstrap/u);
 });
 
@@ -179,6 +237,39 @@ test('defers desktop service imports until the startup screen is visible', () =>
   assert.ok(initializeMain > cancellationGuard);
   assert.doesNotMatch(bootstrapSource, /import\s+[^;]*from ['"]\.\/main\.mts['"]/u);
 });
+
+for (const restore of [true, false]) {
+  test(`opens the ${restore ? 'workspace' : 'manager'} after setup completes without a minimum delay`, async () => {
+    const start = mainSource.indexOf('async function openStartupWindow(');
+    const end = mainSource.indexOf('function reportStartupError(', start);
+    assert.ok(start >= 0 && end > start);
+    const source = stripTypeScriptTypes(mainSource.slice(start, end));
+    const setup = createDeferred<boolean>();
+    const started = createDeferred<void>();
+    const opened: string[] = [];
+    const opening = runInNewContext(`${source}\nopenStartupWindow();`, {
+      openingStartupWindow: false, quitting: false,
+      app: { isPackaged: true, getPath: () => '/data' },
+      process: { env: {} },
+      resolveStartupWorkspace: () => '/workspace',
+      getWorkspaceToolStatus: () => {},
+      canRestoreStartupWorkspace: () => { started.resolve(); return setup.promise; },
+      startupScreen: { setStatus: async () => {}, remainingMinimumDisplayMs: 2_000 },
+      // Fail immediately if a fixed delay is reintroduced; never launch Electron.
+      delay: () => assert.fail('Startup must advance on readiness without a fixed delay'),
+      workspaces: {
+        lastWorkspaceRoot: '/workspace',
+        open: async (root: string) => { opened.push(root); },
+        openManager: async () => { opened.push('manager'); },
+      },
+    }) as Promise<void>;
+    await started.promise;
+    assert.deepEqual(opened, []);
+    setup.resolve(restore);
+    await opening;
+    assert.deepEqual(opened, [restore ? '/workspace' : 'manager']);
+  });
+}
 
 test('keeps the startup screen until the main window is revealed', () => {
   const createWindow = runtimeSource.indexOf('function createMainWindow(');

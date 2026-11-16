@@ -1,5 +1,5 @@
+import { workspaceFullPath } from '../../../../shared/workspace-projects';
 import {
-  ChevronRight,
   FileText,
   Folder,
   FolderInput,
@@ -10,14 +10,16 @@ import {
   Fragment,
   type CSSProperties,
   type ReactNode,
+  type Ref,
   type RefObject,
   type SubmitEvent as ReactSubmitEvent,
 } from 'react';
 
 import { useHorizontalOverflow } from '../../shared/useHorizontalOverflow';
 import { writeWorkspaceFileTransfer } from '../../shared/workspaceFileTransfer';
+import { FileTypeIcon } from '../../shared/file-icons/FileTypeIcon';
 import { NeumorphicTextField, SearchClearButton, Tooltip } from '../../shared/ui';
-import { cheshiDesktop } from '../../cheshiDesktop';
+import { OverlayScrollArea } from '../../shared/ui/OverlayScrollArea';
 import type { WorkspaceFileTreeController } from './useWorkspaceFileTreeController';
 import { handleWorkspaceEntryEditKeyDown } from './workspaceEntryEditInteraction';
 
@@ -25,7 +27,14 @@ type WorkspaceFileTreeNameStyle = CSSProperties & {
   '--workspace-file-tree-name-shift': string;
 };
 
+type WorkspaceFileTreeGuideStyle = CSSProperties & {
+  '--workspace-file-tree-guide-offset': string;
+};
+
 const workspaceFileTreeNameEndGap = 8;
+const workspaceFileTreeBaseIndent = 16;
+const workspaceFileTreeDepthIndent = 18;
+const workspaceFileTreeGuideBaseOffset = 23;
 
 interface WorkspaceFileTreeEditRowProps {
   ariaExpanded?: boolean;
@@ -46,6 +55,8 @@ interface WorkspaceFileTreeEditRowProps {
 interface WorkspaceFileTreeRowsProps {
   controller: WorkspaceFileTreeController;
   selectedPath: string | null;
+  viewportRef?: Ref<HTMLDivElement>;
+  embedded?: boolean;
 }
 
 function WorkspaceFileTreeName({ name, changed }: { name: string; changed: boolean }) {
@@ -57,6 +68,22 @@ function WorkspaceFileTreeName({ name, changed }: { name: string; changed: boole
   return (
     <span className={`workspace-file-tree-name${overflow > 0 ? ' overflowing' : ''}`} data-git-changed={changed ? 'true' : undefined}>
       <span ref={ref} className="workspace-file-tree-name-track" style={style}>{name}</span>
+    </span>
+  );
+}
+
+function WorkspaceFileTreeGuides({ depth }: { depth: number }) {
+  return (
+    <span className="workspace-file-tree-guides" aria-hidden="true">
+      {Array.from({ length: depth + 1 }, (_, index) => (
+        <span
+          key={index}
+          className="workspace-file-tree-guide"
+          style={{
+            '--workspace-file-tree-guide-offset': `${workspaceFileTreeGuideBaseOffset + index * workspaceFileTreeDepthIndent}px`,
+          } as WorkspaceFileTreeGuideStyle}
+        />
+      ))}
     </span>
   );
 }
@@ -82,13 +109,14 @@ function WorkspaceFileTreeEditRow({
       role="treeitem"
       aria-expanded={ariaExpanded}
       aria-selected={ariaSelected}
-      style={{ paddingLeft: `${4 + depth * 18}px` }}
+      style={{ paddingLeft: `${workspaceFileTreeBaseIndent + depth * workspaceFileTreeDepthIndent}px` }}
       onSubmit={onSubmit}
       onKeyDown={(event) => handleWorkspaceEntryEditKeyDown(event, busy, onCancel)}
       onBlur={(event) => {
         if (!busy && !event.currentTarget.contains(event.relatedTarget)) onCancel();
       }}
     >
+      <WorkspaceFileTreeGuides depth={depth} />
       {leading}
       <NeumorphicTextField
         className="workspace-file-tree-edit-field"
@@ -102,6 +130,7 @@ function WorkspaceFileTreeEditRow({
         onChange={(event) => onChange(event.target.value)}
         trailingAction={value ? (
           <SearchClearButton
+            variant="ghost"
             aria-label="Clear name"
             disabled={busy}
             onMouseDown={(event) => event.preventDefault()}
@@ -117,7 +146,7 @@ function WorkspaceFileTreeEditRow({
   );
 }
 
-export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFileTreeRowsProps) {
+export function WorkspaceFileTreeRows({ controller, selectedPath, viewportRef, embedded = false }: WorkspaceFileTreeRowsProps) {
   const {
     activateEntry,
     announcement,
@@ -166,24 +195,21 @@ export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFil
     );
   };
 
-  return (
-    <div className="workspace-file-tree-list">
+  const content = (
       <div className="workspace-file-tree-list-content" role="tree">
-        {entryEdit?.mode === 'create' && entryEdit.directoryPath === '.' && renderCreateEditRow(0)}
+        {entryEdit?.mode === 'create' && entryEdit.directoryPath === controller.rootPath && renderCreateEditRow(0)}
         {visibleEntries.map(({ entry, depth }) => {
           const isDirectory = entry.kind === 'directory';
           const isExpanded = expandedDirectories.has(entry.path);
           const isSelected = selectedPath === entry.path;
           const entryLeading = (
             <>
-              {isDirectory
-                ? <ChevronRight className="workspace-file-tree-chevron" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none' }} aria-hidden="true" />
-                : <span className="workspace-file-tree-chevron-placeholder" aria-hidden="true" />}
+              <span className="workspace-file-tree-chevron-placeholder" aria-hidden="true" />
               {isDirectory && isExpanded
                 ? <FolderOpen className="workspace-file-tree-icon" aria-hidden="true" />
                 : isDirectory
                   ? <Folder className="workspace-file-tree-icon" aria-hidden="true" />
-                  : <FileText className="workspace-file-tree-icon" aria-hidden="true" />}
+                  : <FileTypeIcon className="workspace-file-tree-icon" name={entry.name} path={entry.path} />}
             </>
           );
 
@@ -229,8 +255,8 @@ export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFil
               />
             );
           } else {
-            const fullPath = cheshiDesktop?.workspaceRoot
-              ? `${cheshiDesktop.workspaceRoot.replace(/\/$/, '')}/${entry.path}`
+            const fullPath = controller.workspaceRoot
+              ? workspaceFullPath(controller.workspaceRoot, entry.path)
               : entry.path;
             entryControl = (
               <Tooltip content={fullPath}>
@@ -239,23 +265,24 @@ export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFil
                     {...tooltipProps}
                     className="workspace-file-tree-entry"
                     disabled={mutatingPath === entry.path}
-                    draggable={!isDirectory && mutatingPath !== entry.path && Boolean(cheshiDesktop?.workspaceRoot)}
+                    draggable={!isDirectory && mutatingPath !== entry.path && Boolean(controller.workspaceRoot)}
                     role="treeitem"
                     type="button"
                     aria-expanded={isDirectory ? isExpanded : undefined}
                     aria-selected={isSelected}
                     data-context-menu-open={contextMenu?.entry?.path === entry.path}
-                    style={{ paddingLeft: `${4 + depth * 18}px` }}
+                    style={{ paddingLeft: `${workspaceFileTreeBaseIndent + depth * workspaceFileTreeDepthIndent}px` }}
                     onClick={() => activateEntry(entry)}
                     onContextMenu={(event) => openContextMenu(event, entry)}
                     onDragStart={(event) => {
-                      if (isDirectory || mutatingPath === entry.path || !cheshiDesktop?.workspaceRoot) {
+                      if (isDirectory || mutatingPath === entry.path || !controller.workspaceRoot) {
                         event.preventDefault();
                         return;
                       }
                       writeWorkspaceFileTransfer(event.dataTransfer, fullPath);
                     }}
                   >
+                    <WorkspaceFileTreeGuides depth={depth} />
                     {entryLeading}
                     <WorkspaceFileTreeName name={entry.name} changed={!isDirectory && gitChangedPaths.has(entry.path)} />
                     {mutatingPath === entry.path && (
@@ -277,12 +304,14 @@ export function WorkspaceFileTreeRows({ controller, selectedPath }: WorkspaceFil
             </Fragment>
           );
         })}
-        {loadingDirectory === '.' && visibleEntries.length === 0 && (
+        {loadingDirectory === controller.rootPath && visibleEntries.length === 0 && (
           <p className="workspace-file-tree-status">Loading files…</p>
         )}
         {error && <p className="workspace-file-tree-status error">{error}</p>}
         <span className="workspace-file-tree-announcement" aria-live="polite">{announcement}</span>
       </div>
-    </div>
   );
+  return embedded ? content : <OverlayScrollArea className="workspace-file-tree-list" label="Workspace files" viewportRef={viewportRef}>
+    {content}
+  </OverlayScrollArea>;
 }

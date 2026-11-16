@@ -1,0 +1,31 @@
+:global(textarea[data-canvas-text-input]) {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  container-type: inline-size;
+  --canvas-surface-width: max(1px, calc(100cqw - 42px));
+}
+
+.canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background-color: transparent;
+  background-image: radial-gradient(circle, rgba(151, 180, 189, .16) 1px, transparent .075rem);
+  background-size: 22px 22px;
+}

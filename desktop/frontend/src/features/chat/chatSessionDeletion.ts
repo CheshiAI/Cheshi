@@ -1,10 +1,9 @@
 import { isViewedSessionResponding, type ChatState } from './model';
 
-export function chatSessionDeletionReason(sessionId: string, ready: boolean, pending: boolean, relayRunning: boolean,
+export function chatSessionDeletionReason(sessionId: string, ready: boolean, pending: boolean,
   controllers: readonly { state: ChatState; isOperationPending: () => boolean }[]): string | null {
   if (!ready) return 'Wait for the chat pane to be ready.';
   if (pending) return 'Wait for the current operation to finish.';
-  if (relayRunning) return 'Wait for the linked conversation to finish.';
   if (controllers.some((controller) => controller.isOperationPending() || controller.state.phase === 'loading')) {
     return 'Wait for the current operation to finish.';
   }

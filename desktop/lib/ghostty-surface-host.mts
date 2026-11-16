@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { workspaceNativeFrame } from './workspace-surface.mts';
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,6 +21,7 @@ interface NativeWindowOwner {
   getNativeWindowHandle(): Buffer;
 }
 interface GhosttyBinding {
+  supportsCommand?: boolean;
   initialize(fontDirectory: string): boolean;
   setDark(dark: boolean): void;
   setEventHandler(handler: (event: unknown) => void): void;
@@ -28,6 +30,7 @@ interface GhosttyBinding {
     frame: SurfaceFrame,
     workingDirectory: string,
     dark: boolean,
+    command?: string,
   ): number;
   resizeSurface(surfaceId: number, frame: SurfaceFrame): void;
   setOccluded(surfaceId: number, occluded: boolean): void;
@@ -53,9 +56,11 @@ function subscribeNativeEvents(binding: GhosttyBinding, listener: NativeEventLis
 }
 
 interface GhosttySurfaceHostOptions {
+  command?: string;
   owner: NativeWindowOwner;
   fontDirectory?: string;
   workingDirectory: string;
+  workingDirectoryForPane?: (paneId: string) => string;
   dark?: boolean;
   onFocus?: (paneId: string) => void;
   onSplit?: (paneId: string, direction: SplitDirection) => void;
@@ -146,12 +151,16 @@ export class GhosttySurfaceHost {
   onFocus?: (paneId: string) => void;
   dark: boolean;
   workingDirectory: string;
+  workingDirectoryForPane?: (paneId: string) => string;
   owner: NativeWindowOwner;
+  command?: string;
   private unsubscribeNativeEvents: (() => void) | null = null;
   constructor({
     owner,
     fontDirectory = "",
     workingDirectory,
+    workingDirectoryForPane,
+    command,
     dark = false,
     onFocus,
     onSplit,
@@ -162,6 +171,8 @@ export class GhosttySurfaceHost {
   }: GhosttySurfaceHostOptions) {
     this.owner = owner;
     this.workingDirectory = workingDirectory;
+    this.workingDirectoryForPane = workingDirectoryForPane;
+    this.command = command;
     this.dark = isLiteralTrue(dark);
     this.onFocus = onFocus;
     this.onSplit = onSplit;
@@ -179,6 +190,9 @@ export class GhosttySurfaceHost {
     this.windowVisible = true;
 
     if (!this.binding) return;
+    if (command && this.binding.supportsCommand !== true) {
+      throw new Error('Restart Cheshi after rebuilding its terminal runtime to use container shells.');
+    }
     if (!this.binding.initialize(fontDirectory)) {
       throw new Error(
         "Could not initialize the Ghostty native surface bridge.",
@@ -203,27 +217,29 @@ export class GhosttySurfaceHost {
       }
       return;
     }
+    const nativeFrame = workspaceNativeFrame(this.owner, frame);
     try {
       if (surfaceId === undefined) {
         if (!shouldShow || typeof this.workingDirectory !== "string") return;
         surfaceId = this.binding.createSurface(
           this.owner.getNativeWindowHandle(),
-          frame,
-          this.workingDirectory,
+          nativeFrame,
+          this.workingDirectoryForPane?.(paneId) ?? this.workingDirectory,
           this.dark,
+          this.command,
         );
         assertValidSurfaceId(surfaceId);
         this.surfaces.set(paneId, surfaceId);
         this.panesBySurface.set(surfaceId, paneId);
         this.surfaceStates.set(paneId, {
-          frame: copyFrame(frame),
+          frame: copyFrame(nativeFrame),
           occluded: null,
           focused: null,
         });
-      } else if (!sameFrame(this.surfaceStates.get(paneId)?.frame, frame)) {
-        this.binding.resizeSurface(surfaceId, frame);
+      } else if (!sameFrame(this.surfaceStates.get(paneId)?.frame, nativeFrame)) {
+        this.binding.resizeSurface(surfaceId, nativeFrame);
         const state = this.surfaceStates.get(paneId);
-        if (state) state.frame = copyFrame(frame);
+        if (state) state.frame = copyFrame(nativeFrame);
       }
       this.applySurfaceState(paneId, surfaceId, shouldShow);
     } catch (error) {

@@ -1,5 +1,5 @@
 import { readGitLineBlame, readGitLineCommit } from './git-line-blame.mts';
-import { listGitHubIssues, readGitHubIssue, readGitHubIssueComments, gitHubIssueUrl } from './github-issue-service.mts';
+import { loadGitHubIssues, readGitHubIssue, readGitHubIssueComments, gitHubIssueUrl } from './github-issue-service.mts';
 import type { IpcMain, IpcMainInvokeEvent, Shell } from 'electron';
 import type { GitService } from './git-service.mts';
 
@@ -18,7 +18,7 @@ export function registerGitIpcHandlers({
 }: GitIpcContext) {
   ipcMain.handle('cheshi:list-github-issues', (event, query) => {
     assertCheshiSender(event);
-    return listGitHubIssues(gitService, query);
+    return loadGitHubIssues(gitService, query);
   });
   ipcMain.handle('cheshi:read-github-issue', (event, number) => {
     assertCheshiSender(event);

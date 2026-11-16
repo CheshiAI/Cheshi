@@ -1,0 +1,66 @@
+import {
+  Blocks,
+  CalendarDays,
+  FolderTree,
+  Frame,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+  SquareTerminal,
+  StickyNote,
+} from 'lucide-react';
+import type { ReactNode } from 'react';
+
+import { SidebarRailButton } from '../../shared/ui';
+import { DockerIcon } from '../../shared/ui/DockerIcon';
+import { WorkerIcon } from '../../shared/ui/WorkerIcon';
+import { KeepAwakeButton } from '../chrome/KeepAwakeButton';
+import type { WorkspaceView } from './Sidebar';
+import { WorkspaceSelector } from './WorkspaceSelector';
+import styles from './SidebarRail.module.css';
+
+const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceView }> = [
+  { label: 'Canvas', icon: <Frame aria-hidden="true" />, view: 'canvas' },
+  { label: 'Explorer', icon: <FolderTree aria-hidden="true" />, view: 'explorer' },
+  { label: 'SESSION', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
+  { label: 'Worker', icon: <WorkerIcon />, view: 'chats' },
+  { label: 'Memo', icon: <StickyNote aria-hidden="true" />, view: 'notes' },
+  { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
+  { label: 'Terminal', icon: <SquareTerminal aria-hidden="true" />, view: 'terminal' },
+  { label: 'Calendar', icon: <CalendarDays aria-hidden="true" />, view: 'calendar' },
+  { label: 'Docker', icon: <DockerIcon />, view: 'docker' },
+  { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },
+  { label: 'Settings', icon: <Settings aria-hidden="true" />, view: 'settings' },
+];
+
+export function SidebarRail({ activeView, sidebarOpen, onNavigate, onToggleSidebar, workspaceControl, homiesEnabled = false }: {
+  homiesEnabled?: boolean;
+  activeView: WorkspaceView;
+  sidebarOpen: boolean;
+  onNavigate(view: WorkspaceView): void;
+  onToggleSidebar(): void;
+  workspaceControl?: ReactNode;
+}) {
+  return <>
+    <div className={styles.chrome} aria-hidden="true" />
+    <nav className={styles.navigation} aria-label="Primary navigation">
+      {navigationItems.map(item => {
+        if (!homiesEnabled && (item.view === 'chats' || item.view === 'docker')) return null;
+        const active = item.view === (activeView === 'editor' ? 'explorer' : activeView);
+        return <SidebarRailButton key={item.label} active={active} title={item.label} icon={item.icon} label={item.label}
+          aria-controls={item.view === 'explorer' ? 'workspace-sidebar' : undefined}
+          aria-expanded={item.view === 'explorer' ? sidebarOpen : undefined}
+          aria-label={item.label} aria-current={active ? 'page' : undefined} onClick={() => onNavigate(item.view)} />;
+      })}
+    </nav>
+    <div className={styles.bottomControls} aria-label="Workspace controls">
+      <KeepAwakeButton variant="rail" />
+      <SidebarRailButton active={!sidebarOpen}
+        icon={sidebarOpen ? <PanelLeftClose aria-hidden="true" /> : <PanelLeftOpen aria-hidden="true" />}
+        label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+        aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+        aria-controls="workspace-sidebar" aria-expanded={sidebarOpen} onClick={onToggleSidebar} />
+      {workspaceControl ?? <WorkspaceSelector />}
+    </div>
+  </>;
+}

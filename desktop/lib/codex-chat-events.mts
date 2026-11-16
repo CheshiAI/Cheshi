@@ -20,6 +20,21 @@ import { errorMessage, requiredString } from "./codex-chat-values.mts";
 import { recordValue, stringValue } from "./codex-service-utils.mts";
 import { chatRelaySessionTitle } from '../shared/chat-relay.ts';
 import { asyncQuestionsFromMessage } from '../shared/chat-async-questions.ts';
+import { contextUsageFromNotification } from '../shared/chat-context-usage.ts';
+
+const reasoningSummaryIndexes = new WeakMap<ActiveTurn, Map<string, number>>();
+
+function reasoningSummaryDelta(active: ActiveTurn, itemId: string, summaryIndex: unknown, delta: string): string {
+  if (typeof summaryIndex !== 'number' || !Number.isSafeInteger(summaryIndex) || summaryIndex < 0) return delta;
+  let indexes = reasoningSummaryIndexes.get(active);
+  if (!indexes) {
+    indexes = new Map();
+    reasoningSummaryIndexes.set(active, indexes);
+  }
+  const previous = indexes.get(itemId);
+  indexes.set(itemId, summaryIndex);
+  return previous !== undefined && summaryIndex > previous ? `\n\n${delta}` : delta;
+}
 
 interface CodexChatEventContext {
   client: CodexChatClient;
@@ -173,6 +188,15 @@ export function handleCodexNotification(context: CodexChatEventContext, value: J
   const params = recordValue(value.params);
   if (!method || !params) return;
 
+  if (method === 'thread/tokenUsage/updated') {
+    const threadId = stringValue(params.threadId);
+    const usage = contextUsageFromNotification(params.tokenUsage);
+    if (threadId && usage && (threadId === context.viewedThreadId || context.subscribedThreadIds.has(threadId))) {
+      context.emit({ type: 'context-usage', threadId, usage });
+    }
+    return;
+  }
+
   if (method === "thread/name/updated") {
     const threadId = stringValue(params.threadId);
     const name = stringValue(params.threadName)?.trim() ?? "";
@@ -261,7 +285,8 @@ export function handleCodexNotification(context: CodexChatEventContext, value: J
       threadId: active.threadId,
       turnId: active.turnId,
       itemId,
-      text: delta,
+      text: method === "item/reasoning/summaryTextDelta"
+        ? reasoningSummaryDelta(active, itemId, params.summaryIndex, delta) : delta,
     });
     return;
   }
@@ -331,8 +356,11 @@ export function handleCodexNotification(context: CodexChatEventContext, value: J
     }
     if (method === "item/completed" && item.type === "agentMessage") {
       const text = stringValue(item.text);
+      if (text && (item.phase == null || item.phase === 'final_answer')) context.emit({
+        type: 'assistant-completed', threadId: active.threadId, turnId: active.turnId, itemId, text,
+      });
       const questions = asyncQuestionsFromMessage(item);
-      if (activeThreadIsViewed && questions && typeof item.text === 'string') {
+      if (questions && typeof item.text === 'string') {
         context.emit({ type: 'assistant-question', threadId: active.threadId, turnId: active.turnId,
           itemId, text: item.text, questions });
         return;

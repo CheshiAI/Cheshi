@@ -1,91 +1,62 @@
-import {
-  Bell,
-  Blocks,
-  Crosshair,
-  PanelsTopLeft,
-  Search,
-  Settings,
-  SquareTerminal,
-  StickyNote,
-} from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 
-import { NeumorphicButton } from '../../shared/ui';
+import { SidebarTabs } from '../../shared/ui';
+import { useAutoHideScrollbars } from '../../shared/useAutoHideScrollbars';
 import type { WorkspaceEntryMutation } from '../../cheshiDesktop';
 import { WorkspaceFileTree } from './WorkspaceFileTree';
-import { WorkspaceSelector } from './WorkspaceSelector';
+import { normalizeSidebarPanel, type SidebarPanel } from './sidebarPanel';
 
-export type WorkspaceView = 'chat' | 'notes' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'showcase' | 'local-history' | 'settings';
-
-const navigationItems: Array<{ label: string; icon: ReactNode; view: WorkspaceView }> = [
-  { label: 'Relationship Graph', icon: <Crosshair aria-hidden="true" />, view: 'codegraph' },
-  { label: 'Codex', icon: <span className="navigation-openai-mark" aria-hidden="true" />, view: 'chat' },
-  { label: 'Memo', icon: <StickyNote aria-hidden="true" />, view: 'notes' },
-  { label: 'Terminal', icon: <SquareTerminal aria-hidden="true" />, view: 'terminal' },
-  { label: 'Github', icon: <span className="navigation-github-mark" aria-hidden="true" />, view: 'git' },
-  { label: 'Plugins', icon: <Blocks aria-hidden="true" />, view: 'plugins' },
-  { label: 'Showcase', icon: <PanelsTopLeft aria-hidden="true" />, view: 'showcase' },
-  { label: 'Settings', icon: <Settings aria-hidden="true" />, view: 'settings' },
-];
+export type WorkspaceView = 'chats' | 'chat' | 'explorer' | 'notes' | 'calendar' | 'canvas' | 'blank' | 'codegraph' | 'editor' | 'git' | 'plugins' | 'terminal' | 'search' | 'local-history' | 'settings' | 'docker';
 
 interface SidebarProps {
-  activeView: WorkspaceView;
+  homiesEnabled?: boolean;
+  chatPanel?: ReactNode;
+  memoPanelRef?: Ref<HTMLDivElement>;
+  canvasPanelRef?: Ref<HTMLDivElement>;
+  chatsPanelRef?: Ref<HTMLDivElement>;
+  githubPanelRef?: Ref<HTMLDivElement>;
+  activePanel?: SidebarPanel;
+  onPanelChange?: (panel: SidebarPanel) => void;
   selectedFilePath: string | null;
-  onNavigate: (view: WorkspaceView) => void;
   onWorkspaceEntryMutation: (mutation: WorkspaceEntryMutation) => void;
   onOpenWorkspaceFile: (path: string) => void;
   onOpenLocalHistory?: (path: string) => void;
 }
 
 export function Sidebar({
-  activeView,
+  homiesEnabled = false,
+  chatPanel,
+  memoPanelRef,
+  canvasPanelRef,
+  chatsPanelRef,
+  githubPanelRef,
+  activePanel = 'files',
+  onPanelChange,
   selectedFilePath,
-  onNavigate,
   onWorkspaceEntryMutation,
   onOpenWorkspaceFile,
   onOpenLocalHistory,
 }: SidebarProps) {
+  const scrollbarSurface = useAutoHideScrollbars<HTMLElement>();
+  const files = <WorkspaceFileTree selectedPath={selectedFilePath}
+    onEntryMutation={onWorkspaceEntryMutation} onOpenFile={onOpenWorkspaceFile} onOpenLocalHistory={onOpenLocalHistory} />;
   return (
-    <aside className="sidebar">
+    <aside ref={scrollbarSurface} className="sidebar">
       <div className="sidebar-panel-content">
         <div className="sidebar-content-primary">
-          <WorkspaceFileTree
-            selectedPath={selectedFilePath}
-            onEntryMutation={onWorkspaceEntryMutation}
-            onOpenFile={onOpenWorkspaceFile}
-            onOpenLocalHistory={onOpenLocalHistory}
-          />
+          {chatPanel && onPanelChange ? <SidebarTabs activeId={!homiesEnabled && activePanel === 'agent-chats' ? 'files' : activePanel}
+            onSelect={panel => onPanelChange(normalizeSidebarPanel(panel))}
+            tabs={[
+              { id: 'canvas', label: 'CANVAS', content: <div ref={canvasPanelRef} className="sidebar-content-primary" /> },
+              { id: 'files', label: 'EXPLORER', content: files },
+              { id: 'chats', label: 'SESSION', content: chatPanel },
+              { id: 'agent-chats', label: 'WORKER', content: <div ref={chatsPanelRef} className="sidebar-content-primary" /> },
+              { id: 'memos', label: 'MEMO', content: <div ref={memoPanelRef} className="sidebar-content-primary" /> },
+              { id: 'github', label: 'GITHUB', content: <div ref={githubPanelRef} className="sidebar-content-primary" /> },
+            ].filter(tab => homiesEnabled || tab.id !== 'agent-chats')} /> : files}
         </div>
 
-        <div className="sidebar-content-secondary">
-          <div className="sidebar-heading">
-            <span className="sidebar-section-heading">MANAGEMENTS</span>
-            <div className="sidebar-heading-actions" hidden>
-              <NeumorphicButton raised className="sidebar-heading-action" aria-label="Search"><Search aria-hidden="true" /></NeumorphicButton>
-              <NeumorphicButton raised className="sidebar-heading-action" aria-label="Notifications"><Bell aria-hidden="true" /></NeumorphicButton>
-            </div>
-          </div>
-
-          <nav className="primary-navigation" aria-label="Primary navigation">
-            {navigationItems.map((item) => (
-              <button
-                className="navigation-item"
-                data-active={item.view === activeView ? 'true' : undefined}
-                key={item.label}
-                type="button"
-                onClick={() => onNavigate(item.view)}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
       </div>
-
-      <footer className="sidebar-footer">
-        <WorkspaceSelector />
-      </footer>
     </aside>
   );
 }

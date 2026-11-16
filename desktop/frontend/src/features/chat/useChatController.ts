@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { cheshiDesktop as desktopApi } from '../../cheshiDesktop';
 import type { CodexChatAttachment } from '../../cheshiDesktop';
 import type { ChatSavedTurn } from '../../../../shared/chat-saved-turns';
+import { displayMessageWithChatImports } from '../../../../shared/chat-imports';
 import { continueSavedChatTurn } from './continueSavedChatTurn';
 import { cancelChatSend, createChatSendCompletion, observeChatSendAttempt, performChatSend, type ChatSendAttempt } from './chatSendAttempt';
 import type { ChatSendResult } from './chatDraftRecovery';
@@ -73,18 +74,6 @@ function createClientMessageId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `message-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function messageWithAttachments(text: string, attachments: readonly CodexChatAttachment[]): string {
-  const fileReferences = attachments
-    .filter(({ kind }) => kind === 'file')
-    .map(({ path }) => `- ${JSON.stringify(path)}`);
-  const parts = [
-    text,
-    ...(fileReferences.length > 0 ? [`Attached files:\n${fileReferences.join('\n')}`] : []),
-    ...attachments.filter(({ kind }) => kind === 'image').map(({ path }) => `[Image: ${path}]`),
-  ];
-  return parts.join('\n\n');
-}
-
 export function useChatController({ sessionSyncEnabled = true, contextId, sessionCache: workspaceSessionCache }: UseChatControllerOptions = {}) {
   const [localSessionCache] = useState(createChatSessionCache);
   const sessionCache = workspaceSessionCache ?? localSessionCache;
@@ -107,7 +96,7 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
   const stateRef = useRef(state);
   stateRef.current = state;
   type NormalizedChatEvent = NonNullable<ReturnType<typeof normalizeChatEvent>>;
-  type StreamingDeltaEvent = Extract<NormalizedChatEvent, { type: 'assistant-delta' | 'reasoning-delta' | 'plan-delta' | 'plan-completed' }>;
+  type StreamingDeltaEvent = Extract<NormalizedChatEvent, { type: 'assistant-delta' | 'reasoning-delta' | 'plan-delta' | 'plan-completed' | 'command-output-delta' }>;
   const pendingDeltasRef = useRef(new Map<string, StreamingDeltaEvent>());
   const deltaFrameRef = useRef<number | null>(null);
   const mountedRef = useRef(false);
@@ -177,7 +166,8 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
       if (('threadId' in event && event.threadId && deletedSessionIdsRef.current.has(event.threadId))
         || (event.type === 'session-created' && deletedSessionIdsRef.current.has(event.session.id))) return;
       if (event.type === 'permission-mode-changed') configurationVersionRef.current += 1;
-      if (event.type === 'assistant-delta' || event.type === 'reasoning-delta' || event.type === 'plan-delta') {
+      if (event.type === 'assistant-delta' || event.type === 'reasoning-delta' || event.type === 'plan-delta'
+        || event.type === 'command-output-delta') {
         queueDelta(event);
         return;
       }
@@ -513,7 +503,7 @@ export function useChatController({ sessionSyncEnabled = true, contextId, sessio
     const { settled, finish: finishSend } = createChatSendCompletion();
     pendingSendSettledRef.current = settled;
     dispatch({ type: 'optimistic-user', id: `client:${attempt.clientMessageId}`,
-      text: [...(selectedSkill ? [`$${selectedSkill.name}`] : []), messageWithAttachments(value, attachments)].join('\n\n'),
+      text: [...(selectedSkill ? [`$${selectedSkill.name}`] : []), displayMessageWithChatImports(value, attachments)].join('\n\n'),
       title: value, createdAt: Math.floor(Date.now() / 1000) });
     try {
       const result = await performChatSend(attempt, () => submit(

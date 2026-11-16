@@ -1,12 +1,15 @@
 import type { GitLineBlameRequest, GitLineBlame, GitLineCommit } from '../../shared/git-line-blame';
+import type { CanvasApi } from '../../shared/canvas';
 import type { GitHubIssuesApi } from '../../shared/github-issues';
 import type { ChatUserInputRequest, ChatUserInputResponse } from '../../shared/chat-user-input';
 import type { AppUpdateApi, AppUpdateResumeApi } from '../../shared/app-update';
 import type { KeepAwakeApi } from '../../shared/keep-awake';
+import type { CodexUpdateApi } from '../../shared/codex-update';
 import type { WorkspaceFileSearchResult } from '../../shared/workspace-file-search';
 import type { LocalHistoryEntry, LocalHistorySnapshot, LocalHistoryRestoreRequest } from '../../shared/local-history';
 import type { WorkspaceManagementApi } from '../../shared/workspace-management';
 import type { GitDiscardPreview, GitDiscardRequest, GitDiscardSelection } from '../../shared/git-discard';
+import type { ChatTransferItem } from '../../shared/chat-attachment-import';
 
 export type { GitDiscardPreview, GitDiscardRequest, GitDiscardSelection, GitDiscardTarget } from '../../shared/git-discard';
 
@@ -643,6 +646,7 @@ export interface CodexChatAttachment {
   name: string;
   path: string;
   previewUrl?: string;
+  importNumber?: number;
 }
 
 export interface CodexChatConfigurationRequest {
@@ -651,15 +655,16 @@ export interface CodexChatConfigurationRequest {
   fast?: boolean;
 }
 
-export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpdateResumeApi>, Partial<KeepAwakeApi> {
+export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpdateResumeApi>, Partial<KeepAwakeApi>, Partial<CodexUpdateApi> {
+  workspaceProjects?: import('../../shared/workspace-projects').WorkspaceProjectsApi;
   workspaceManagement?: WorkspaceManagementApi;
-  showcase?: import('../../shared/showcase').ShowcaseApi;
   settings?: import('../../shared/settings').SettingsApi;
+  appearance?: import('../../shared/window-appearance').WindowAppearanceApi;
   platform: string;
   workspaceName: string;
   userName: string;
   workspaceRoot: string;
-  getWorkspaceDiskUsage?: () => Promise<import('../../shared/workspace-disk-usage').WorkspaceDiskUsage>;
+  canvas?: CanvasApi;
   isCodeGraphIndexed: () => Promise<boolean>;
   reindexCodeGraph: () => Promise<unknown>;
   listWorkspaceDirectory: (relativePath?: string) => Promise<{
@@ -774,7 +779,7 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   setTerminalViewVisible: (visible: boolean) => Promise<unknown>;
   setTerminalTheme: (theme: 'dark' | 'light') => Promise<unknown>;
   updateTerminalSurfaceBounds: (bounds: TerminalSurfaceBounds) => void;
-  newTerminalSession: () => Promise<unknown>;
+  newTerminalSession: (projectId?: string) => Promise<unknown>;
   selectTerminalSession: (sessionId: string) => Promise<unknown>;
   closeTerminalSession: (sessionId: string) => Promise<unknown>;
   selectTerminalPane: (sessionId: string, paneId: string) => Promise<unknown>;
@@ -809,11 +814,20 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   explainCode: (request: import('../../shared/workspace-code-explanation').CodeExplanationRequest) => Promise<import('../../shared/workspace-code-explanation').CodeExplanationResult>;
   cancelCodeExplanation: (requestId: string) => Promise<void>;
   listCodexModels: (contextId?: string) => Promise<unknown>;
+  discord?: import('../../shared/discord').DiscordApi;
+  notificationEvents?: import('../../shared/notification-events').NotificationEventsApi;
+  iMessage?: import('../../shared/imessage-notifications').IMessageApi;
   temporaryChat: {
+    openWindow(draft?: import('../../shared/temporary-chat').TemporaryChatDraft): Promise<void>;
+    initialDraft(): Promise<import('../../shared/temporary-chat').TemporaryChatDraft | null>;
+    acceptDraft(error?: string): Promise<void>;
+    onOpened(listener: () => void): () => void;
+    isWindowOpen(): Promise<boolean>;
+    onWindowChanged(listener: (open: boolean) => void): () => void;
     models: (sessionId: string) => Promise<import('./features/chat/model').ChatModel[]>;
     send: (sessionId: string, request: import('../../shared/temporary-chat').TemporaryChatRequest) => Promise<import('../../shared/temporary-chat').TemporaryChatResult>;
     selectAttachments: (sessionId: string) => Promise<CodexChatAttachment[]>;
-    importAttachments: (sessionId: string, files: (File | string)[]) => Promise<CodexChatAttachment[]>;
+    importAttachments: (sessionId: string, files: (File | string)[]) => Promise<ChatTransferItem<CodexChatAttachment>[]>;
     close: (sessionId: string) => Promise<void>;
   };
   listCodexMcpServers: (contextId?: string) => Promise<unknown>;
@@ -833,14 +847,23 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   ) => Promise<unknown>;
   openCodexChatSession: (sessionId: string, contextId?: string) => Promise<unknown>;
   deleteCodexChatSession: (sessionId: string, contextId?: string) => Promise<unknown>;
+  renameCodexChatSession?: (sessionId: string, title: string, contextId?: string) => Promise<unknown>;
   openCodexChatAgent: (agentThreadId: string, contextId?: string) => Promise<unknown>;
   newCodexChatSession: (contextId?: string) => Promise<unknown>;
   forkCodexChatSession: (contextId?: string) => Promise<unknown>;
   compactCodexChatSession: (contextId?: string) => Promise<unknown>;
   reviewCodexChatSession: (contextId?: string) => Promise<unknown>;
   selectCodexChatAttachments: () => Promise<CodexChatAttachment[]>;
-  appleNotes?: import('../../shared/apple-notes').AppleNotesApi;
-  importCodexChatAttachments: (files: (File | string)[]) => Promise<CodexChatAttachment[]>;
+  notes?: import('../../shared/sticky-notes').WorkspaceNotesApi;
+  appleCalendar?: import('../../shared/apple-calendar').AppleCalendarApi;
+  scheduler?: import('../../shared/scheduler').SchedulerApi;
+  agentManagement?: import('../../shared/agent-management').AgentManagementApi;
+  agentChats?: import('../../shared/agent-chats').AgentChatsApi;
+  flashMemory?: import('../../shared/flash-memory').FlashMemoryApi;
+  agentVoice?: import('../../shared/agent-voice').AgentVoiceApi;
+  agentRegistry?: import('../../shared/agent-registry').AgentRegistryApi;
+  importCodexChatAttachments: (files: (File | string)[]) => Promise<ChatTransferItem<CodexChatAttachment>[]>;
+  getCodexChatAttachmentImage?: (attachmentPath: string) => Promise<string | null>;
   getCodexChatAttachmentPreview: (attachmentPath: string) => Promise<string | null>;
   sendCodexChatMessage: (
     text: string,
@@ -854,15 +877,9 @@ export interface CheshiDesktopApi extends Partial<AppUpdateApi>, Partial<AppUpda
   cancelCodexChatResponse: (threadId?: string | null, contextId?: string) => Promise<unknown>;
   editorSession?: import('../../shared/editor-session').EditorSessionApi;
   chatQuestionDismissals: import('../../shared/chat-question-dismissals').ChatQuestionDismissalsApi;
-  startCodexChatRelay: (request: import('../../shared/chat-relay').ChatRelayRequest) => Promise<import('../../shared/chat-relay').ChatRelayState>;
-  stopCodexChatRelay: () => Promise<import('../../shared/chat-relay').ChatRelayState | null>;
-  getCodexChatRelay: () => Promise<import('../../shared/chat-relay').ChatRelayState | null>;
-  listCodexChatRelayHistory: () => Promise<import('../../shared/chat-relay').ChatRelayHistoryRecord[]>;
-  deleteCodexChatRelayHistory: (id: string) => Promise<{ id: string }>;
   deleteCodexSavedTurn: (id: string) => Promise<{ id: string }>;
   listCodexSavedTurns: () => Promise<import('../../shared/chat-saved-turns').ChatSavedTurn[]>;
   saveCodexTurn: (input: import('../../shared/chat-saved-turns').ChatSavedTurnInput) => Promise<import('../../shared/chat-saved-turns').ChatSavedTurn>;
-  onCodexChatRelayEvent: (handler: (state: import('../../shared/chat-relay').ChatRelayState) => void) => () => void;
   disposeCodexChatContext: (contextId: string) => Promise<void>;
   onCodexChatEvent: (handler: (value: unknown) => void, contextId?: string) => () => void;
 }

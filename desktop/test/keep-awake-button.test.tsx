@@ -54,9 +54,10 @@ function harness(overrides: Partial<KeepAwakeApi> & { platform?: string } = {}) 
       },
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    'lucide-react': { Play: 'Play', Square: 'Square' },
+    'lucide-react': { Coffee: 'Coffee', Play: 'Play', Square: 'Square' },
     '../../cheshiDesktop': { cheshiDesktop: api },
-    '../../shared/ui': { NeumorphicButton: 'NeumorphicButton', StatusToast: 'StatusToast', nonDraggableWindowRegionStyle: { WebkitAppRegion: 'no-drag' } },
+    '../../shared/ui': { NeumorphicButton: 'NeumorphicButton', SidebarRailButton: 'SidebarRailButton',
+      StatusToast: 'StatusToast', nonDraggableWindowRegionStyle: { WebkitAppRegion: 'no-drag' } },
     '../../shared/useHelpLanguage': { useHelpLanguage: () => ['ko'] },
   };
   const source = readFileSync(new URL('../frontend/src/features/chrome/KeepAwakeButton.tsx', import.meta.url), 'utf8');
@@ -70,12 +71,13 @@ function harness(overrides: Partial<KeepAwakeApi> & { platform?: string } = {}) 
   } });
   const component = exports.KeepAwakeButton;
   assert.ok(typeof component === 'function');
-  const render = (): Element | null => {
+  const render = (variant: 'chrome' | 'rail' = 'chrome'): Element | null => {
     stateCursor = 0; refCursor = 0;
-    const tree = component({ api }); mounted = true; return tree;
+    const tree = component({ api, variant }); mounted = true; return tree;
   };
   return { render, calls,
     button() { const button = elements(render()).find(element => element.type === 'NeumorphicButton'); assert.ok(button); return button; },
+    railButton() { const button = elements(render('rail')).find(element => element.type === 'SidebarRailButton'); assert.ok(button); return button; },
     toast() { return elements(render()).find(element => element.type === 'StatusToast'); },
     publish(state: KeepAwakeState) { assert.ok(listener); listener(state); },
     unmount() { cleanups.forEach(cleanup => cleanup()); },
@@ -114,6 +116,14 @@ test('OFF plays, ON stops, and only a confirmed result changes the icon', async 
   expect(app.toast()).toBeUndefined();
   app.unmount();
   expect(app.unsubscribed).toBe(true);
+});
+
+test('rail variant exposes the caffeine label and shared active state', async () => {
+  const app = harness();
+  app.render(); await settle();
+  expect(app.railButton().props).toMatchObject({ label: 'Caffeine mode', active: false, 'aria-pressed': false });
+  click(app.railButton()); await settle();
+  expect(app.railButton().props).toMatchObject({ label: 'Caffeine mode', active: true, 'aria-pressed': true });
 });
 
 test('duplicate clicks are ignored and execution failure is explained without switching ON', async () => {

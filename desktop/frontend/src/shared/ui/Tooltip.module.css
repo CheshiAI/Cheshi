@@ -1,19 +1,23 @@
 .anchor {
+  composes: anchor from './PopupSurface.module.css';
+  --liquid-glass-radius: 12px;
+  --popup-rear-backdrop-filter: none;
   position: fixed;
   z-index: 120;
   width: max-content;
+  max-width: calc(100vw - 16px);
   pointer-events: none;
   -webkit-app-region: no-drag;
 }
 
 .content {
-  --liquid-glass-radius: 8px;
-  padding: 4px 8px;
+  composes: surface from './PopupSurface.module.css';
+  --popup-surface-background: var(--tooltip-background);
+  padding: 6px 10px;
   border-color: var(--divider);
-  background: var(--divider);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 400;
   line-height: 1.5;
   overflow-wrap: anywhere;

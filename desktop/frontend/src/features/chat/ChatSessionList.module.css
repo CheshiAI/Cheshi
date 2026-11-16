@@ -4,83 +4,94 @@
   flex: 1 1 auto;
   flex-direction: column;
   font-size: 10px;
-  gap: 12px;
+  gap: 0;
 }
 
-.heading {
+.body {
   display: flex;
-  height: var(--header-height);
-  min-height: var(--header-height);
-  flex: 0 0 var(--header-height);
-  align-items: center;
-  justify-content: space-between;
-  color: var(--sidebar-section-label-color);
-  font-size: 10px;
-  letter-spacing: .08em;
-  line-height: 14px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-default);
+  padding: var(--space-default) 0 0;
 }
+.body > form { width: auto; margin-inline: var(--space-default); }
+
+.listScroll { flex: 1 1 auto; }
 
 .list {
   display: flex;
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
   min-width: 0;
   margin: 0;
   border: 0;
   padding: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding-right: 2px;
 }
 
-.group { display: grid; gap: 4px; }
-.group h2 { margin: 0 8px 2px; color: var(--sidebar-section-label-color); font-size: 10px; font-weight: 500; line-height: 16px; }
-.groupItems { display: grid; gap: 2px; }
-
-.session {
+.sessionRow .session {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   display: flex;
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  min-height: 32px;
-  align-items: center;
-  gap: 10px;
+  height: 48px;
+  min-height: 48px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 2px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 0;
   background: transparent;
   color: var(--text);
   cursor: pointer;
-  font-size: 10px;
-  padding: 7px 8px;
+  font-size: var(--font-size-label);
+  font-weight: 400;
+  letter-spacing: normal;
+  padding: 0 var(--space-default);
   text-align: left;
   transition: background-color .16s ease, color .16s ease;
 }
 
-.sessionRow:hover .session { background: var(--dropdown-selection-bg); color: var(--active-text); }
-.session:disabled { cursor: default; }
-.session svg { width: var(--icon-size-default); height: var(--icon-size-default); flex: 0 0 auto; color: inherit; stroke-width: 1.65; }
+.sessionRow .session[aria-current='page'] { background: var(--control-surface); }
+.sessionRow .session:not(:disabled):is(:hover, :active, :focus-visible),
+.sessionRow:hover .session:not(:disabled) { background: var(--control-surface-interactive); color: var(--text); }
+.sessionRow .session:disabled { cursor: not-allowed; opacity: 1; }
+
+.sessionTitleRow,
+.sessionMetadata { position: relative; z-index: 1; }
+.responseStatus {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  pointer-events: none;
+}
+
+.sessionTitleRow { display: flex; align-items: center; min-width: 0; gap: var(--icon-default); padding-right: calc(var(--icon-button-size) + var(--icon-default)); line-height: 16px; }
 .sessionTitle { overflow: hidden; min-width: 0; flex: 1 1 auto; text-overflow: ellipsis; white-space: nowrap; }
+.sessionMetadata { display: flex; align-items: center; min-width: 0; gap: var(--icon-default); color: var(--sidebar-section-label-color); font-size: 9px; font-weight: 400; line-height: 12px; }
+.sessionId { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sessionTime { flex: 0 0 auto; white-space: nowrap; }
 
 .loading { flex: 1 1 auto; padding: var(--space-default); }
 
-.empty {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #777;
-  font-size: 10px;
-  line-height: 16px;
-  padding: 8px;
-}
-
-.empty { flex: 1 1 auto; flex-direction: column; justify-content: center; gap: 12px; text-align: center; }
-.empty svg { width: 22px; height: 22px; color: #686f72; stroke-width: 1.35; }
-
-.sessionRow { display: flex; min-width: 0; align-items: center; gap: var(--icon-default); }
-.sessionRow .session { flex: 1 1 auto; width: 0; }
-.deleteButton { --neumorphic-button-radius: 50%; display: flex; flex: 0 0 22px; width: 22px; height: 22px; align-items: center; justify-content: center; padding: 0; cursor: pointer; opacity: 0; transition: opacity .16s ease; }
+.sessionRow { position: relative; display: flex; min-width: 0; align-items: center; }
+.sessionRow .session { flex: 1 1 auto; }
+/* The title is centered at 17px in the 48px row; align the action with that line. */
+.deleteButton { position: absolute; top: calc(17px - var(--icon-button-size) / 2); right: var(--space-default); opacity: 0; transition: opacity .16s ease; }
+.renameButton { composes: deleteButton; right: calc(var(--space-default) + var(--icon-button-size) + var(--icon-default)); }
+.sessionRow[data-rename] .sessionTitleRow { padding-right: calc(2 * (var(--icon-button-size) + var(--icon-default))); }
 .sessionRow:hover .deleteButton, .sessionRow:focus-within .deleteButton { opacity: 1; }
-.deleteButton:disabled { cursor: not-allowed; }
+.sessionRow .deleteButton:disabled { cursor: not-allowed; opacity: 0; }
 .sessionRow:hover .deleteButton:disabled, .sessionRow:focus-within .deleteButton:disabled { opacity: .5; }
-@media (hover: none) { .deleteButton { opacity: 1; } .deleteButton:disabled { opacity: .5; } }
+@media (hover: none) { .deleteButton { opacity: 1; } .sessionRow .deleteButton:disabled { opacity: .5; } }
+
+.refreshError { margin: 0; padding: 0 var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }

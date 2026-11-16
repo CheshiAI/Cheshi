@@ -1,31 +1,98 @@
-.workspace { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; font-size: 12px; }
+.workspace { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; font-size: 10px; }
 .header { height: var(--header-height); min-height: var(--header-height); max-height: var(--header-height); flex: 0 0 var(--header-height); }
 .heading { display: flex; min-width: 0; align-items: center; gap: 10px; }
-.heading h1 { overflow: hidden; margin: 0; color: var(--sidebar-section-label-color); font-size: 10px; font-weight: 600; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.heading h1 { overflow: hidden; margin: 0; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .titleMark { cursor: default; pointer-events: none; }
-.titleMark > svg { width: 11px; height: 11px; stroke-width: 1.7; }
 .item > svg { width: 11px; height: 11px; flex: 0 0 auto; }
-.body { display: grid; flex: 1; min-height: 0; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); }
+.body { display: grid; flex: 1; min-height: 0; grid-template-columns: 200px minmax(0, 1fr); }
 .sidebar { --liquid-glass-radius: 0; min-width: 0; overflow: auto; border-width: 0 1px 0 0; }
-.item { display: flex; align-items: center; gap: var(--icon-default); width: 100%; min-height: 42px; padding: 0 var(--space-default); border: 0; border-radius: 0; background: var(--dropdown-selection-bg); color: var(--active-text); font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
-.item:hover { background: var(--dropdown-selection-bg); }
-.item:focus-visible { outline: 1px solid var(--active-text); outline-offset: -2px; }
+.item { display: flex; box-sizing: border-box; align-items: center; gap: var(--icon-default); width: 100%; height: 42px; min-height: 42px; padding: 0 var(--space-default); border: none; border-radius: 0; background: rgba(41, 52, 61, 0.05); color: var(--text); font: inherit; font-size: 10px; font-weight: 400; text-align: left; cursor: pointer; }
+.item[aria-current='page'] { background: rgba(41, 52, 61, 0.4); }
+.item:is(:hover, :active) { background: rgba(41, 52, 61, 0.8); }
 .detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .scroll { flex: 1; min-height: 0; overflow: auto; padding: var(--space-default); }
 .form { display: flex; flex-direction: column; gap: var(--space-default); width: 100%; margin: 0; }
-.form h2, .form h3 { margin: 0; font-size: 11px; font-weight: 400; letter-spacing: .08em; line-height: 14px; color: var(--sidebar-section-label-color); }
-.titleRow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-default); }
-.recallToggle { --neumorphic-button-radius: 9px; display: flex; align-items: center; flex: 0 0 auto; width: 32px; height: 18px; padding: 2px; cursor: pointer; }
-.recallToggle > span { width: 12px; height: 12px; border-radius: 50%; background: var(--sidebar-section-label-color); transition: transform 160ms ease, background 160ms ease; }
-.recallToggle[aria-checked='true'] { background: var(--dropdown-selection-bg); }
-.recallToggle[aria-checked='true'] > span { transform: translateX(14px); background: var(--active-text); }
-.recallToggle:focus-visible { outline: 1px solid var(--active-text); outline-offset: 2px; }
-.recallToggle:disabled { cursor: not-allowed; opacity: .5; }
-@media (prefers-reduced-motion: reduce) { .recallToggle > span { transition: none; } }
+.sectionTitle, .form .description, .form .settingLabel {
+  margin: 0;
+  font-family: var(--font-ui), sans-serif;
+  letter-spacing: normal;
+}
+.sectionTitle { color: var(--sidebar-section-label-color); font-size: var(--font-size-section-title); font-weight: 600; line-height: 1.5; }
+.form .description { color: var(--sidebar-section-label-color); font-size: 10px; font-weight: 400; line-height: 1.6; }
+.description code { font: inherit; }
+.form .settingLabel { color: var(--text); font-size: 10px; font-weight: 400; line-height: 1.5; }
+.titleRow { display: flex; min-height: 32px; align-items: center; justify-content: space-between; gap: var(--space-default); }
+.settingRow { display: flex; flex-wrap: wrap; min-height: 36px; align-items: center; justify-content: space-between; gap: var(--space-default); }
+.operationStatus { flex: 0 0 auto; }
+.operationStatus:empty { display: none; }
+.toggle[role='switch'] {
+  --neumorphic-button-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  gap: 0;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: #a6a6a6;
+  cursor: pointer;
+}
+
+.toggle[aria-checked='true'] { background: #18a9cf; }
+.toggle[role='switch']:hover:not(:disabled) { background: #a6a6a6; }
+.toggle[aria-checked='true']:hover:not(:disabled) { background: #18a9cf; }
+.toggle > span { flex: 0 0 20px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform 160ms ease; }
+.toggle[aria-checked='true'] > span { transform: translateX(16px); }
+
+.toggle:disabled { cursor: not-allowed; opacity: .5; }
+@media (prefers-reduced-motion: reduce) { .toggle > span { transition: none; } }
 .form p { margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
-.form > p[role='status'] { font-size: 11px; }
-.summary { font-size: 11px; letter-spacing: -.02em; line-height: 1.6; color: var(--sidebar-section-label-color); }
-.keyRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--icon-default); }
+.keyRow { display: grid; min-height: 36px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--icon-default); }
 .actions { display: flex; align-items: center; gap: var(--icon-default); }
-.status { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-default); }
-.help { font-size: 11px; color: var(--sidebar-section-label-color); }
+.flashActions { flex-wrap: wrap; }
+.homieActions { flex-wrap: wrap; }
+.homieProgress { display: flex; flex-direction: column; gap: var(--space-default); }
+.homieProgressTrack { width: 100%; height: 8px; overflow: hidden; border-radius: 999px; background: rgba(0, 0, 0, .32); }
+.homieProgressTrack > span {
+  display: block; width: 35%; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, #86d4d6 0%, #d8a7c5 52%, #c5b4ee 100%);
+  animation: homieProgressTravel 1.4s ease-in-out infinite alternate;
+}
+@keyframes homieProgressTravel { from { transform: translateX(0); } to { transform: translateX(185.714%); } }
+@media (prefers-reduced-motion: reduce) { .homieProgressTrack > span { animation: none; } }
+.actions .circleButton[data-size='icon'] {
+  --neumorphic-button-surface: rgba(41, 52, 61, .4);
+  --neumorphic-button-hover-background: var(--neumorphic-button-surface);
+  --button-active-transform: none;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: none;
+}
+.actions .circleButton[data-size='icon'],
+.actions .circleButton[data-size='icon']:not(:disabled):is(:hover, :active, :focus-visible) {
+  --neumorphic-button-active-color: var(--text);
+  color: var(--text);
+  background: var(--neumorphic-button-surface);
+}
+.actions .circleButton[data-size='icon']:not(:disabled):is(:hover, :active) {
+  --neumorphic-button-surface: rgba(41, 52, 61, .8);
+}
+.discordForm, .notificationDelivery { margin-top: var(--space-default); }
+.discordForm > label { display: flex; flex-direction: column; gap: var(--space-default); }
+.discordSetup { box-sizing: border-box; height: 32px; padding: 0 var(--space-default); border: 0; background: var(--control-surface); color: var(--text); font-size: var(--font-size-label); }
+.discordSetup:not(:disabled):is(:hover, :active) { border: 0; background: var(--control-surface-interactive); }
+
+.instructionLimit { width: 64px; }
+
+.flashProgress { display: flex; flex-direction: column; gap: var(--space-default); }
+.flashProgressBar { width: 100%; height: 6px; border: 0; border-radius: 3px; overflow: hidden; accent-color: var(--toggle-track-on-color); }
+.flashProgressBar::-webkit-progress-bar { background: var(--control-surface); border-radius: 3px; }
+.flashProgressBar::-webkit-progress-value { background: var(--toggle-track-on-color); border-radius: 3px; }

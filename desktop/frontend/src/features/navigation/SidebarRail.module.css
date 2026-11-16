@@ -1,0 +1,38 @@
+.chrome,
+.navigation,
+.bottomControls {
+  user-select: none;
+}
+
+.chrome {
+  -webkit-app-region: drag;
+  width: 100%;
+  height: var(--header-height);
+  flex: 0 0 var(--header-height);
+}
+
+.navigation,
+.bottomControls {
+  -webkit-app-region: drag;
+}
+
+.navigation {
+  display: grid;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-content: start;
+  justify-items: center;
+  gap: 4px;
+  overflow: visible;
+  padding: 0 0 var(--space-default);
+}
+
+.bottomControls {
+  display: grid;
+  flex: 0 0 auto;
+  justify-items: center;
+  gap: 4px;
+  overflow: visible;
+  padding: 0 0 var(--space-default);
+}

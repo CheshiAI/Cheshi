@@ -11,7 +11,7 @@ import {
 } from 'react';
 
 import { errorMessage } from '../../shared/errorMessage';
-import { cheshiDesktop } from '../../cheshiDesktop';
+import { cheshiDesktop, type CodexChatAttachment } from '../../cheshiDesktop';
 import {
   assertFastModeAvailable,
   chatCommandMenuHelp,
@@ -38,9 +38,10 @@ import { useChatConfiguration } from './useChatConfiguration';
 import { useChatTaskScope } from './useChatTaskScope';
 import { useChatDraft } from './useChatDraft';
 import { useChatAttachmentTransfer } from './useChatAttachmentTransfer';
-import { mergeChatAttachments } from './attachmentTransferModel';
+import { useChatImportDraft } from './useChatImportDraft';
+import type { ChatInputHandle } from './chatInputHandle';
 import { useChatMessageQueue } from './useChatMessageQueue';
-import { handleChatComposerKey, handleChatEscape, submitChatComposerDraft } from './chatComposerKeyboard';
+import { handleChatComposerKey, handleChatEscape, nextChatCommandIndex, submitChatComposerDraft } from './chatComposerKeyboard';
 import type { ChatDraftSnapshot } from './chatDraftRecovery';
 import { syncChatComposerOverlayHeight } from './chatComposerOverlay';
 
@@ -48,12 +49,14 @@ interface UseChatViewControllerOptions {
   controller: ChatController;
   onNewSession: () => void;
   initialDraft?: ChatDraftSnapshot;
-  onOpenSideChat?: (input: ChatDraftSnapshot) => boolean;
+  onOpenTemporaryChat?: (input: ChatDraftSnapshot) => Promise<void>;
   active?: boolean;
+  visible?: boolean;
+  onFileDrop?: () => void;
   interactionsLocked?: boolean;
 }
 
-export function useChatViewController({ controller, onNewSession, initialDraft, onOpenSideChat, active = true, interactionsLocked = false }: UseChatViewControllerOptions) {
+export function useChatViewController({ controller, onNewSession, initialDraft, onOpenTemporaryChat, active = true, visible = active, onFileDrop, interactionsLocked = false }: UseChatViewControllerOptions) {
   const {
     state,
     sessionRevision,
@@ -77,7 +80,7 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
     dismissError,
   } = controller;
   const captureTask = useChatTaskScope(`${sessionRevision}:${state.activeSessionId ?? ''}`);
-  const { draft, setDraft, selectedSkill, setSelectedSkill, attachments, setAttachments,
+  const { draft, setDraft, selectedSkill, setSelectedSkill, attachments, setAttachments, editInput,
     pending: sendPending, recovery: sendRecovery, submitDraft, transferDraft, receiveDraft, restoreFailedMessage, canRestoreFailedMessage } = useChatDraft(
     sessionRevision, (input) => sendMessage(input.draft, input.selectedSkill, input.attachments), initialDraft);
   const [commandMenuMode, setCommandMenuMode] = useState<CommandMenuMode | null>(null);
@@ -101,7 +104,8 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
   const timelineRef = useRef<HTMLElement>(null);
   const composerAreaRef = useRef<HTMLElement>(null);
   const commandOptionsRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = useRef<ChatInputHandle>(null);
+  const { updateDraft, addAttachments, removeAttachment, insertAttachmentReference, restoreInputHistory } = useChatImportDraft(draft, textareaRef, editInput, active && !interactionsLocked);
   const viewId = useId();
   const commandMenuId = `${viewId}-command-menu`;
   const configurationMenuId = `${viewId}-configuration-menu`;
@@ -130,6 +134,7 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
   const attachmentTransfer = useChatAttachmentTransfer({
     scopeKey: `${sessionRevision}:${state.activeSessionId ?? ''}`,
     inactive: !active,
+    visible, onFileDrop,
     disabled: interactionsLocked || loading || sendPending || configurationLoading || commandLoading || commandMenuOpen || attachmentPickerOpen,
     attachments, captureTask,
     importFiles: async (files) => {
@@ -137,7 +142,7 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
       if (!cheshiDesktop?.importCodexChatAttachments) throw new Error('Attachment import is unavailable. Restart the app.');
       return cheshiDesktop.importCodexChatAttachments(files);
     },
-    addAttachments: (selected) => setAttachments((current) => mergeChatAttachments(current, selected)),
+    addAttachments,
     onComplete: focusComposer,
   });
   const queueBlocked = interactionsLocked || sendPending || commandLoading || commandMenuOpen
@@ -222,24 +227,6 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
     permissions: filteredPermissionModes.filter((mode) => mode.allowed).length,
   }, goal, commandError);
   const commandMenuHelp = chatCommandMenuHelp(commandMenuMode);
-
-  useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const resize = (): void => {
-      textarea.style.height = '0px';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
-    };
-    resize();
-    let width = textarea.clientWidth;
-    const observer = new ResizeObserver(() => {
-      if (width === textarea.clientWidth) return;
-      width = textarea.clientWidth;
-      resize();
-    });
-    observer.observe(textarea);
-    return () => observer.disconnect();
-  }, [draft]);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -488,6 +475,7 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
 
   const openMcpStatus = async (): Promise<void> => {
     const isCurrent = captureTask();
+    focusComposer();
     setCommandMenuMode('mcp');
     setMcpServers([]);
     setCommandLoading(true);
@@ -504,7 +492,6 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
     } finally {
       if (isCurrent()) {
         setCommandLoading(false);
-        focusComposer();
       }
     }
   };
@@ -722,8 +709,7 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
     try {
       const selected = await cheshiDesktop.selectCodexChatAttachments();
       if (!isCurrent()) return;
-      const merged = mergeChatAttachments(attachments, selected);
-      setAttachments(merged);
+      addAttachments(selected);
     } catch (error) {
       if (!isCurrent()) return;
       setAttachmentError(errorMessage(error));
@@ -734,10 +720,6 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
         focusComposer();
       }
     }
-  };
-
-  const removeAttachment = (attachmentPath: string): void => {
-    setAttachments((current) => current.filter(({ path }) => path !== attachmentPath));
   };
 
   const activateSlashCommand = async (command: SlashCommand): Promise<void> => {
@@ -826,21 +808,23 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
   };
 
   const moveHighlightedOption = (offset: number): void => {
-    if (visibleOptionCount === 0) return;
-    setHighlightedIndex((currentIndex) => (
-      (currentIndex + offset + visibleOptionCount) % visibleOptionCount
-    ));
+    if (commandLoading || visibleOptionCount === 0) return;
+    const enabled = slashMenuOpen ? filteredCommands.map(command => commandDisabledReason(command) === null)
+      : permissionsPickerOpen ? filteredPermissionModes.map(mode => mode.allowed)
+      : Array.from({ length: visibleOptionCount }, () => true);
+    setHighlightedIndex(currentIndex => nextChatCommandIndex(currentIndex, offset, enabled));
   };
 
-  const handleDraftChange = (value: string): void => {
-    setDraft(value);
+  const handleDraftChange = (value: string, imports?: readonly CodexChatAttachment[]): void => {
+    updateDraft(value, imports);
     if (interactionsLocked) return;
     if (configurationMenuOpen) {
       setConfigurationMenuOpen(false);
       setConfigurationMenuView('root');
     }
     if (commandMenuMode && commandMenuMode !== 'commands') return;
-    setCommandMenuMode(/^\/\S*$/.test(value) ? 'commands' : null);
+    // A second slash belongs to a path, not a composer command such as /model.
+    setCommandMenuMode(/^\/[^/\s]*$/.test(value) ? 'commands' : null);
   };
 
   const submit = (event?: SubmitEvent<HTMLFormElement>) => {
@@ -867,8 +851,8 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
   const editQueuedMessage = (id: string) => {
     if (messageQueue.take(id, receiveDraft)) focusComposer();
   };
-  const openQueuedSideChat = (id: string) => {
-    if (onOpenSideChat) messageQueue.take(id, onOpenSideChat);
+  const openQueuedTemporaryChat = (id: string) => {
+    if (onOpenTemporaryChat) void messageQueue.transfer(id, onOpenTemporaryChat);
   };
   const cancelAllPending = useRef(false);
   const handleEscape = (event: KeyboardEvent<HTMLElement>) => handleChatEscape(event, {
@@ -888,7 +872,7 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
       return true;
     },
   });
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => handleChatComposerKey(event, {
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => handleChatComposerKey(event, {
     locked: interactionsLocked, menuOpen: commandMenuOpen, goalOpen: goalEditorOpen,
     pickerOpen: slashMenuOpen || agentPickerOpen || skillPickerOpen || modelPickerOpen || reasoningPickerOpen || permissionsPickerOpen,
     closeMenu: closeCommandMenu, saveGoal: () => { void saveGoal(); }, moveOption: moveHighlightedOption,
@@ -910,8 +894,8 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
     messageQueue,
     enqueueDraft,
     editQueuedMessage,
-    openQueuedSideChat,
-    canOpenSideChat: Boolean(onOpenSideChat),
+    openQueuedTemporaryChat,
+    canOpenTemporaryChat: Boolean(onOpenTemporaryChat),
     queueBlocked,
     chatConfiguration,
     closeCommandMenu,
@@ -939,6 +923,7 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
     dismissError,
     draft,
     setDraft,
+    restoreInputHistory,
     fastTier,
     filteredAgents,
     filteredCommands,
@@ -964,6 +949,7 @@ export function useChatViewController({ controller, onNewSession, initialDraft, 
     permissionsPickerOpen,
     reasoningPickerOpen,
     removeAttachment,
+    insertAttachmentReference,
     rootRef,
     scrollToBottom,
     scrollToHistoryItem,

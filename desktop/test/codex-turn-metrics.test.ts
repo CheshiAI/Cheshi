@@ -133,7 +133,6 @@ test('turn metrics IPC rejects untrusted senders and uses the requested pane', a
     ipc: { handle(channel, handler) { handlers.set(channel, handler); } },
     service(_event, pane) { panes.push(pane); return service; },
     assertSender() { if (!allowed) throw new Error('Untrusted sender'); },
-    relays: {} as Options['relays'],
     savedTurns: { async list() { return []; }, async save() { throw new Error('Unused'); }, async delete() { return { id: '' }; } },
     async prepareMessage() { throw new Error('Must not send'); },
   });

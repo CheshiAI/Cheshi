@@ -182,10 +182,14 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   if (action.type === 'dismiss-error') return { ...state, error: null };
 
   const event = action.event;
+  if (event.type === 'context-usage') {
+    return { ...state, contextUsageByThread: { ...state.contextUsageByThread, [event.threadId]: event.usage } };
+  }
   if (event.type === 'sessions-deleted') {
     const deleted = new Set(event.threadIds);
     const next = {
       ...state,
+      contextUsageByThread: Object.fromEntries(Object.entries(state.contextUsageByThread).filter(([id]) => !deleted.has(id))),
       sessions: state.sessions.filter(session => !deleted.has(session.id)),
       responseThreadIds: state.responseThreadIds.filter(id => !deleted.has(id)),
       approvals: state.approvals.filter(approval => !deleted.has(approval.threadId)),

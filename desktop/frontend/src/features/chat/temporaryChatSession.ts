@@ -1,12 +1,20 @@
-import type { TemporaryChatRequest, TemporaryChatResult } from '../../../../shared/temporary-chat';
+import type { TemporaryChatDraft, TemporaryChatRequest, TemporaryChatResult } from '../../../../shared/temporary-chat';
 import type { CodexChatAttachment } from '../../cheshiDesktop';
 import type { ChatModel } from './model';
+import { chatImportLabel } from '../../../../shared/chat-imports';
+import { addChatDroppedItems, insertChatImportText, removeChatImport, type ChatImportSelection } from './chatImportDraft';
+import type { ChatTransferItem } from '../../../../shared/chat-attachment-import';
+
+interface TemporaryChatEditor {
+  selection(draft: string): ChatImportSelection | undefined;
+  restore(change: { draft: string; caret: number | null }): void;
+}
 
 export interface TemporaryChatApi {
   models(sessionId: string): Promise<ChatModel[]>;
   send(sessionId: string, request: TemporaryChatRequest): Promise<TemporaryChatResult>;
   selectAttachments(sessionId: string): Promise<CodexChatAttachment[]>;
-  importAttachments(sessionId: string, files: (File | string)[]): Promise<CodexChatAttachment[]>;
+  importAttachments(sessionId: string, files: (File | string)[]): Promise<ChatTransferItem<CodexChatAttachment>[]>;
   close(sessionId: string): Promise<void>;
 }
 
@@ -40,19 +48,25 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Temporary chat could not complete the request.';
 }
 
+function assertAttachmentCount(actual: number, expected: number): void {
+  if (actual !== expected) throw new Error('Could not transfer all attachments.');
+}
+
 /** Owns one panel's in-memory state and prevents late operations from reviving a closed session. */
 export class TemporaryChatSession {
   private readonly api: TemporaryChatApi;
   private readonly id: string;
   private readonly onChange: (state: TemporaryChatState) => void;
+  private readonly editor?: TemporaryChatEditor;
   private state = initialTemporaryChatState();
   private closed = false;
   private closeFlight: Promise<void> | null = null;
 
-  constructor(api: TemporaryChatApi, id: string, onChange: (state: TemporaryChatState) => void) {
+  constructor(api: TemporaryChatApi, id: string, onChange: (state: TemporaryChatState) => void, editor?: TemporaryChatEditor) {
     this.api = api;
     this.id = id;
     this.onChange = onChange;
+    this.editor = editor;
   }
 
   private update(patch: Partial<TemporaryChatState>): void {
@@ -77,7 +91,33 @@ export class TemporaryChatSession {
     }
   }
 
-  setDraft(draft: string): void { this.update({ draft }); }
+  private assertDraftDestination(): void {
+    if (this.closed || this.state.failed || this.state.draft || this.state.attachments.length) {
+      throw new Error('The temporary chat changed before the message arrived.');
+    }
+  }
+
+  async receiveDraft(draft: TemporaryChatDraft): Promise<void> {
+    const available = () => !this.closed && !this.state.loading && !this.state.busy && !this.state.picking
+      && !this.state.failed && !this.state.draft && this.state.attachments.length === 0;
+    if (!available()) throw new Error('The temporary chat is not ready to receive this message.');
+    this.update({ picking: true });
+    try {
+      const imported = draft.attachments.length
+        ? await this.api.importAttachments(this.id, draft.attachments.map(item => item.path)) : [];
+      const attachments = imported.filter(item => item.kind !== 'directory');
+      assertAttachmentCount(attachments.length, draft.attachments.length);
+      this.assertDraftDestination();
+      this.update({ draft: draft.text, attachments: attachments.map((attachment, index) => {
+        const importNumber = draft.attachments[index]?.importNumber;
+        return importNumber === undefined ? attachment : { ...attachment, importNumber };
+      }) });
+    } finally { this.update({ picking: false }); }
+  }
+
+  setDraft(draft: string, attachments?: readonly CodexChatAttachment[]): void {
+    this.update({ draft, ...(attachments === undefined ? {} : { attachments: [...attachments] }) });
+  }
 
   selectModel(model: string): void {
     if (this.state.busy || this.state.failed) return;
@@ -93,7 +133,16 @@ export class TemporaryChatSession {
 
   removeAttachment(path: string): void {
     if (this.state.busy) return;
-    this.update({ attachments: this.state.attachments.filter(attachment => attachment.path !== path) });
+    this.update(removeChatImport(this.state, path));
+  }
+
+  insertAttachmentReference(path: string): void {
+    if (this.state.busy || this.state.failed) return;
+    const attachment = this.state.attachments.find(item => item.path === path);
+    if (attachment?.importNumber === undefined) return;
+    const change = insertChatImportText(this.state.draft, [chatImportLabel(attachment.importNumber)], this.editor?.selection(this.state.draft));
+    this.editor?.restore(change);
+    this.update({ draft: change.draft });
   }
 
   async selectAttachments(): Promise<void> {
@@ -105,17 +154,16 @@ export class TemporaryChatSession {
     await this.receiveAttachments(() => this.api.importAttachments(this.id, files));
   }
 
-  private async receiveAttachments(select: () => Promise<CodexChatAttachment[]>): Promise<void> {
+  private async receiveAttachments(select: () => Promise<ChatTransferItem<CodexChatAttachment>[]>): Promise<void> {
     if (this.closed || this.state.loading || this.state.busy || this.state.picking || this.state.failed) return;
     this.update({ picking: true, error: null });
     try {
       const selected = await select();
       if (this.closed) return;
-      const attachments = [...new Map([...this.state.attachments, ...selected]
-        .map(attachment => [attachment.path, attachment])).values()];
-      if (attachments.length > 20) {
-        this.update({ error: 'Attach up to 20 files per message.' });
-      } else this.update({ attachments });
+      const change = addChatDroppedItems(this.state, selected.filter(item => item.kind !== 'directory'),
+        selected.filter(item => item.kind === 'directory'), this.editor?.selection(this.state.draft));
+      this.editor?.restore(change);
+      this.update({ draft: change.draft, attachments: change.attachments });
     } catch (error) {
       this.update({ error: errorMessage(error) });
     } finally {

@@ -15,12 +15,14 @@ class FakeClient {
   stops = 0;
   logoutError: Error | null = null;
   calls: { method: string; params: unknown }[] = [];
+  models: unknown[] = [];
   notifications = new Set<(value: JsonObject) => void>();
   failures = new Set<(error: Error) => void>();
   async start(): Promise<JsonObject> { return {}; }
   async stop(): Promise<void> { this.stops += 1; }
   async request(method: string, params?: unknown): Promise<unknown> {
     this.calls.push({ method, params });
+    if (method === 'model/list') return { data: this.models };
     if (method === 'account/read') return this.account;
     if (method === 'account/logout') {
       if (this.logoutError) throw this.logoutError;
@@ -84,6 +86,26 @@ function addedId(snapshot: CodexAccountsSnapshot): string {
   assert.ok(id && id !== 'default');
   return id;
 }
+
+test('model catalogs use the requested account connection without selecting another account', async () => {
+  const f = await fixture();
+  try {
+    const secondId = addedId(await f.service.add());
+    f.clients[1]!.account = { account: { type: 'chatgpt', email: 'second@example.test', planType: 'pro' } };
+    for (const [index, client] of f.clients.entries()) client.models = [{ id: `model-${index}`, model: `model-${index}`,
+      displayName: `Model ${index}`, defaultReasoningEffort: 'high', isDefault: true,
+      supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }], additionalSpeedTiers: ['priority'] }];
+    assert.equal((await f.service.models(secondId))[0]?.model, 'model-1');
+    assert.equal(f.clients[0]!.calls.some(call => call.method === 'model/list'), false);
+    assert.equal((await f.service.models('default'))[0]?.model, 'model-0');
+    assert.equal(f.service.snapshot().activeId, 'default');
+    await assert.rejects(f.service.models('unknown'), /Unknown Codex account/);
+    f.clients[1]!.account = { account: null };
+    const before = f.clients[1]!.calls.filter(call => call.method === 'model/list').length;
+    await assert.rejects(f.service.models(secondId), /Sign in/);
+    assert.equal(f.clients[1]!.calls.filter(call => call.method === 'model/list').length, before);
+  } finally { await f.cleanup(); }
+});
 
 test('logout clears identity and usage while retaining the profile and conversation files', async () => {
   const f = await fixture();
@@ -349,7 +371,7 @@ test('profile count is bounded before any extra account process is created', asy
   } finally { await f.cleanup(); }
 });
 
-test('default profile clients negotiate experimental history and goal capabilities', async () => {
+test('profile clients negotiate history capabilities and route title changes for default and managed accounts', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cheshi-profile-capabilities-'));
   const executable = join(root, 'history-server.mts');
   const previousExecutable = process.env.CHESHI_CODEX;
@@ -370,7 +392,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     result = { account: null };
   } else if (request.method === 'account/rateLimits/read') {
     result = { rateLimits: null };
-  } else if (request.method === 'thread/list' || request.method === 'thread/goal/get') {
+  } else if (request.method === 'thread/list' || request.method === 'thread/goal/get' || request.method === 'thread/name/set') {
     if (!experimentalApi) {
       error = { code: -32600, message: 'History request requires experimentalApi capability' };
     } else {
@@ -397,6 +419,11 @@ for await (const line of createInterface({ input: process.stdin })) {
       assert.deepEqual(await service.historyRequest(profileId, 'thread/goal/get', goalParams), {
         method: 'thread/goal/get', params: goalParams, experimentalApi: true,
       });
+      const renameParams = { threadId: 'root-thread', name: 'Short title' };
+      assert.deepEqual(await service.historyRequest(profileId, 'thread/name/set', renameParams), {
+        method: 'thread/name/set', params: renameParams, experimentalApi: true,
+      });
+      await expectFailure(service.historyRequest(profileId, 'turn/start', {}), /Unsupported account history operation/u);
     }
   } finally {
     if (previousExecutable === undefined) delete process.env.CHESHI_CODEX;

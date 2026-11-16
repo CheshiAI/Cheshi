@@ -1,0 +1,5 @@
+{
+  "extends": "../../../desktop/tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["scripts/**/*.mts", "scenarios/**/*.mts", "tests/**/*.ts"]
+}

@@ -9,6 +9,20 @@ import {
 } from '../lib/terminal-controller.mts';
 
 type TerminalState = ReturnType<TerminalController['snapshot']>;
+
+test('project sessions and split panes keep their own starting directory', () => {
+  const controller = new TerminalController();
+  controller.open('/workspace/app');
+  const original = controller.activePaneId!;
+  const session = controller.newSession('/workspace/plugin')!;
+  const pane = controller.activePaneId!;
+  assert.equal(controller.findPane(original)?.cwd, '/workspace/app');
+  assert.equal(controller.findPane(pane)?.cwd, '/workspace/plugin');
+  const split = controller.splitPane(session, pane, 'right')!;
+  assert.equal(controller.findPane(split)?.cwd, '/workspace/plugin');
+  assert.equal(controller.cwd, '/workspace/app');
+  assert.equal(controller.snapshot().sessions.length, 2);
+});
 type TerminalLayout = Parameters<typeof insertTerminalPane>[0];
 type TerminalSession = TerminalState['sessions'][number];
 type TerminalSplitLayout = Extract<NonNullable<TerminalSession['layout']>, { type: 'split' }>;

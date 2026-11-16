@@ -1,3 +1,4 @@
+import { TooltipTarget } from './TooltipTarget';
 import { Check, ChevronDown } from 'lucide-react';
 import {
   useEffect,
@@ -6,6 +7,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type RefObject,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -13,7 +15,9 @@ import { createPortal } from 'react-dom';
 import { LiquidGlassPanel } from './LiquidGlassPanel';
 import { NeumorphicButton } from './NeumorphicButton';
 import { PillDropdownButton } from './PillDropdownButton';
+import { RegionalBlur, type RegionalBlurSourceMode } from './RegionalBlur';
 import styles from './LiquidGlassSelect.module.css';
+import menuStyles from './ToolbarMenu.module.css';
 
 export interface LiquidGlassSelectOption<Value extends string> {
   label: string;
@@ -30,11 +34,16 @@ interface LiquidGlassSelectProps<Value extends string> {
   title?: string;
   placeholder?: string;
   menuLabel?: string;
+  menuClassName?: string;
+  menuAppearance?: 'default' | 'toolbar';
   menuPlacement?: 'auto' | 'left';
   menuWidth?: number;
+  menuMaxHeight?: number;
+  menuBlurSourceRef?: RefObject<HTMLElement | null>;
+  menuBlurSourceMode?: RegionalBlurSourceMode;
   onChange: (value: Value) => void;
   options: readonly LiquidGlassSelectOption<Value>[];
-  triggerAppearance?: 'flat' | 'raised' | 'pill';
+  triggerAppearance?: 'flat' | 'raised' | 'pill' | 'standard';
   value: Value;
 }
 
@@ -77,8 +86,13 @@ export function LiquidGlassSelect<Value extends string>({
   title,
   placeholder,
   menuLabel = ariaLabel,
+  menuClassName,
+  menuAppearance = 'default',
   menuPlacement = 'auto',
   menuWidth,
+  menuMaxHeight,
+  menuBlurSourceRef,
+  menuBlurSourceMode,
   onChange,
   options,
   triggerAppearance = 'raised',
@@ -102,15 +116,17 @@ export function LiquidGlassSelect<Value extends string>({
     };
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
       setOpen(false);
       rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
     };
 
     document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown, true);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [open]);
 
@@ -129,9 +145,11 @@ export function LiquidGlassSelect<Value extends string>({
         menuWidth ?? Math.max(rect.width, DEFAULT_MENU_WIDTH),
         window.innerWidth - VIEWPORT_GAP * 2,
       );
-      const estimatedHeight = options.length * MENU_ITEM_HEIGHT
+      const contentHeight = options.length * (menuAppearance === 'toolbar' ? 32 : MENU_ITEM_HEIGHT)
         + Math.max(0, options.length - 1) * MENU_ITEM_GAP
-        + MENU_PADDING + MENU_BORDER_WIDTH * 2;
+        + (menuAppearance === 'toolbar' ? 32 : MENU_PADDING) + MENU_BORDER_WIDTH * 2;
+      const estimatedHeight = menuMaxHeight === undefined ? contentHeight
+        : Math.min(contentHeight, menuMaxHeight, Math.max(0, window.innerHeight - VIEWPORT_GAP * 2));
       if (menuPlacement === 'left') {
         const left = Math.max(VIEWPORT_GAP, rect.left - width - MENU_GAP);
         const top = Math.min(
@@ -164,78 +182,90 @@ export function LiquidGlassSelect<Value extends string>({
       window.removeEventListener('resize', updateMenuPosition);
       window.removeEventListener('scroll', updateMenuPosition, true);
     };
-  }, [menuPlacement, menuWidth, open, options.length]);
+  }, [menuAppearance, menuPlacement, menuWidth, menuMaxHeight, open, options.length]);
 
   const rootClassName = className ? `${styles.root} ${className}` : styles.root;
-  const triggerClassName = triggerAppearance === 'raised'
+  const triggerClassName = triggerAppearance === 'standard' ? styles.standardTrigger : triggerAppearance === 'raised'
     ? `neumorphic-surface ${styles.trigger}`
     : styles.trigger;
   const Trigger = triggerAppearance === 'pill' ? PillDropdownButton : NeumorphicButton;
+  const toolbarMenu = menuAppearance === 'toolbar';
+  const Option = toolbarMenu ? NeumorphicButton : 'button';
+  const menu = open && menuPosition ? (
+    <div
+      ref={menuRef}
+      className={toolbarMenu ? menuStyles.menuAnchor : styles.popoverAnchor}
+      data-placement={menuPlacement}
+      style={menuPosition}
+    >
+      <LiquidGlassPanel
+        id={menuId}
+        className={[toolbarMenu ? menuStyles.menu : styles.popover, menuClassName].filter(Boolean).join(' ')}
+        data-liquid-glass-surface={toolbarMenu ? undefined : 'side-panel'}
+        role="menu"
+        aria-label={menuLabel}
+        style={menuMaxHeight === undefined ? undefined : {
+          maxHeight: `min(${menuMaxHeight}px, calc(100vh - ${VIEWPORT_GAP * 2}px))`,
+          overflowY: 'auto',
+        }}
+        onKeyDown={focusAdjacentOption}
+      >
+        {options.map((option) => {
+          const selected = option.value === value;
+          return (
+            <TooltipTarget key={option.value} content={option.description}>
+              <Option
+                {...(toolbarMenu ? { size: 'standard' as const } : {})}
+                className={toolbarMenu ? `${menuStyles.item} ${styles.toolbarOption}` : `liquid-glass-menu-item ${styles.option}`}
+                type="button"
+                role="menuitemradio"
+                aria-checked={selected}
+                disabled={option.disabled}
+                onClick={() => {
+                  setOpen(false);
+                  rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+                  onChange(option.value);
+                }}
+              >
+                <span>{option.label}</span>
+                {selected && <Check aria-hidden="true" />}
+              </Option>
+            </TooltipTarget>
+          );
+        })}
+      </LiquidGlassPanel>
+    </div>
+  ) : null;
 
   return (
     <div className={rootClassName} ref={rootRef}>
-      <Trigger
-        raised={triggerAppearance !== 'flat'}
-        className={triggerAppearance === 'pill' ? undefined : triggerClassName}
-        data-appearance={triggerAppearance}
-        aria-busy={busy}
-        title={title ?? selectedOption?.description}
-        aria-label={ariaLabel}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={menuId}
-        disabled={disabled}
-        onClick={() => setOpen((currentOpen) => !currentOpen)}
-        onKeyDown={(event) => {
-          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-          event.preventDefault();
-          setOpen(true);
-        }}
-      >
-        <span>{selectedOption?.label ?? placeholder ?? value}</span>
-        {triggerAppearance !== 'pill' && <ChevronDown className={styles.chevron} aria-hidden="true" />}
-      </Trigger>
-
-      {open && menuPosition && createPortal(
-        <div
-          ref={menuRef}
-          className={styles.popoverAnchor}
-          data-placement={menuPlacement}
-          style={menuPosition}
+      <TooltipTarget content={title ?? selectedOption?.description}>
+        <Trigger
+          variant={triggerAppearance === 'standard' ? 'standard' : undefined}
+          raised={triggerAppearance !== 'flat'}
+          className={triggerAppearance === 'pill' ? undefined : triggerClassName}
+          data-appearance={triggerAppearance}
+          aria-busy={busy}
+          aria-label={ariaLabel}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={menuId}
+          disabled={disabled}
+          onClick={() => setOpen((currentOpen) => !currentOpen)}
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+            event.preventDefault();
+            setOpen(true);
+          }}
         >
-          <LiquidGlassPanel
-            id={menuId}
-            className={styles.popover}
-            data-liquid-glass-surface="side-panel"
-            role="menu"
-            aria-label={menuLabel}
-            onKeyDown={focusAdjacentOption}
-          >
-            {options.map((option) => {
-              const selected = option.value === value;
-              return (
-                <button
-                  className={`liquid-glass-menu-item ${styles.option}`}
-                  key={option.value}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={selected}
-                  disabled={option.disabled}
-                  title={option.description}
-                  onClick={() => {
-                    setOpen(false);
-                    rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
-                    onChange(option.value);
-                  }}
-                >
-                  <span>{option.label}</span>
-                  {selected && <Check aria-hidden="true" />}
-                </button>
-              );
-            })}
-          </LiquidGlassPanel>
-        </div>,
-        document.body,
+          <span>{selectedOption?.label ?? placeholder ?? value}</span>
+          {triggerAppearance !== 'pill' && <ChevronDown className={styles.chevron} aria-hidden="true" />}
+        </Trigger>
+      </TooltipTarget>
+
+      {menu && createPortal(
+        menuBlurSourceRef ? <RegionalBlur sourceRef={menuBlurSourceRef} sourceMode={menuBlurSourceMode}>{menu}</RegionalBlur> : menu,
+        rootRef.current?.closest('dialog') ?? document.body,
       )}
     </div>
   );

@@ -3,6 +3,7 @@ import { lstat, mkdir, realpath, rmdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { GitHubRepositories, githubRepositoryName } from './github-repositories.mts';
 import { readWorkspaceRegistry, registerWorkspace } from '../../config/workspace-storage.mts';
+import { workspaceProjectColors } from '../../config/workspace-project-colors.mts';
 import type {
   WorkspaceCatalog,
   WorkspaceCatalogEntry,
@@ -138,14 +139,14 @@ async function isGitRepository(rootPath: string): Promise<boolean> {
   catch { return false; }
 }
 
-async function catalogEntry(entry: { id: string; name: string; rootPath: string }): Promise<WorkspaceCatalogEntry> {
+async function catalogEntry(entry: { id: string; name: string; rootPath: string; iconColor?: string }): Promise<WorkspaceCatalogEntry> {
   const available = await availableDirectory(entry.rootPath);
   return { ...entry, available, isGitRepository: available && await isGitRepository(entry.rootPath) };
 }
 
 async function register(dataRoot: string, rootPath: string): Promise<WorkspaceCatalogEntry> {
   const { id, name, rootPath: registeredPath } = registerWorkspace(dataRoot, rootPath);
-  return catalogEntry({ id, name, rootPath: registeredPath });
+  return catalogEntry({ id, name, rootPath: registeredPath, iconColor: workspaceProjectColors(dataRoot, [registeredPath])[0] });
 }
 
 export class WorkspaceManagementService {
@@ -162,7 +163,8 @@ export class WorkspaceManagementService {
 
   async list(): Promise<WorkspaceCatalog> {
     const registry = readWorkspaceRegistry(this.dataRoot);
-    const workspaces = await Promise.all(registry.workspaces.map(({ id, name, rootPath }) => catalogEntry({ id, name, rootPath })));
+    const colors = workspaceProjectColors(this.dataRoot, registry.workspaces.map(entry => entry.rootPath));
+    const workspaces = await Promise.all(registry.workspaces.map(({ id, name, rootPath }, index) => catalogEntry({ id, name, rootPath, iconColor: colors[index] })));
     return { workspaces };
   }
 

@@ -4,22 +4,29 @@ import { createPortal } from 'react-dom';
 
 import { LiquidGlassPanel } from './LiquidGlassPanel';
 import { NeumorphicButton } from './NeumorphicButton';
+import { SidebarPanelTitle } from './SidebarPanelHeader';
+import { RegionalBlur } from './RegionalBlur';
+import { registerModalLayer } from './modalBlur';
 import styles from './Modal.module.css';
 
 interface ModalProps {
   title: string;
   titleIcon?: ReactNode;
+  headerVariant?: 'default' | 'section';
   leadingAction?: ReactNode;
   className?: string;
   children: ReactNode;
   onClose: () => void;
   restoreFocus?: () => boolean;
   closeDisabled?: boolean;
+  closeButtonVariant?: 'standard' | 'ghost';
 }
 
-export function Modal({ title, titleIcon, leadingAction, className, children, onClose, restoreFocus, closeDisabled = false }: ModalProps) {
+export function Modal({ title, titleIcon, headerVariant = 'default', leadingAction, className, children, onClose, restoreFocus, closeDisabled = false, closeButtonVariant }: ModalProps) {
   const titleId = useId();
+  const closeVariant = closeButtonVariant ?? (headerVariant === 'section' ? 'standard' : undefined);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const pointerStartedOutside = useRef(false);
   const restoreFocusRef = useRef(restoreFocus);
   restoreFocusRef.current = restoreFocus;
@@ -29,7 +36,9 @@ export function Modal({ title, titleIcon, leadingAction, className, children, on
     if (!dialog) return;
     const previousFocus = document.activeElement;
     dialog.showModal();
+    const releaseLayer = registerModalLayer(dialog);
     return () => {
+      releaseLayer();
       dialog.close();
       if (restoreFocusRef.current?.() !== false && previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
     };
@@ -40,6 +49,10 @@ export function Modal({ title, titleIcon, leadingAction, className, children, on
       ref={dialogRef}
       className={className ? `${styles.dialog} ${className}` : styles.dialog}
       aria-labelledby={titleId}
+      onKeyDown={(event) => {
+        // Portal events still bubble through the React tree to the panel behind us.
+        if (event.key === 'Escape') event.stopPropagation();
+      }}
       onCancel={(event) => {
         event.preventDefault();
         if (!closeDisabled) onClose();
@@ -57,18 +70,28 @@ export function Modal({ title, titleIcon, leadingAction, className, children, on
         pointerStartedOutside.current = false;
       }}
     >
-      <LiquidGlassPanel className={styles.panel}>
-        <header className={styles.header}>
-          <div className={styles.heading}>
-            {leadingAction}
-            <h2 id={titleId}>{titleIcon}{title}</h2>
-          </div>
-          <NeumorphicButton raised className="theme-toggle" aria-label="Close dialog" disabled={closeDisabled} onClick={onClose}>
-            <X size={11} strokeWidth={1.7} aria-hidden="true" />
-          </NeumorphicButton>
-        </header>
-        <div className={styles.content}>{children}</div>
-      </LiquidGlassPanel>
+      <RegionalBlur sourceRef={surfaceRef}>
+        <div ref={surfaceRef} className={styles.surface}>
+          <LiquidGlassPanel className={styles.panel}>
+            <header className={styles.header}>
+              <div className={styles.heading}>
+                {leadingAction}
+                {headerVariant === 'section'
+                  ? <SidebarPanelTitle as="h2" id={titleId} icon={titleIcon} title={title} />
+                  : <h2 id={titleId} className={styles.title}>{titleIcon}{title}</h2>}
+              </div>
+              <NeumorphicButton
+                variant={closeVariant}
+                size={closeVariant ? 'icon' : undefined}
+                raised={!closeVariant} className={!closeVariant ? 'theme-toggle' : undefined}
+                aria-label="Close dialog" title="Close dialog" disabled={closeDisabled} onClick={onClose}>
+                <X size={11} strokeWidth={1.7} aria-hidden="true" />
+              </NeumorphicButton>
+            </header>
+            <div className={styles.content}>{children}</div>
+          </LiquidGlassPanel>
+        </div>
+      </RegionalBlur>
     </dialog>,
     document.body,
   );

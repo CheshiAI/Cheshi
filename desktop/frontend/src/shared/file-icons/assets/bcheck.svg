@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 45 45">
+    <defs>
+        <mask id="Mask">
+            <rect width="45" height="45" fill="white"/>
+            <polygon
+                    points="24.25 38.75 20.75 38.75 20.75 33.57 25.46 27.76 20.75 27.76 20.75 20.72 12.23 20.72 20.75 10.2 20.75 6.25 24.25 6.25 24.25 11.43 19.55 17.24 24.25 17.24 24.25 24.28 32.77 24.28 24.25 34.8 24.25 38.75"
+                    fill="black" stroke="black" stroke-width="2"/>
+        </mask>
+    </defs>
+    <g mask="url(#Mask)">
+        <rect width="45" height="45" fill="#5b4fff" data-iconColor="BCheck"/>
+        <polygon
+                points="24.25 38.75 20.75 38.75 20.75 33.57 25.46 27.76 20.75 27.76 20.75 20.72 12.23 20.72 20.75 10.2 20.75 6.25 24.25 6.25 24.25 11.43 19.55 17.24 24.25 17.24 24.25 24.28 32.77 24.28 24.25 34.8 24.25 38.75"
+                fill="white" stroke="white" stroke-width="2"/>
+    </g>
+</svg>

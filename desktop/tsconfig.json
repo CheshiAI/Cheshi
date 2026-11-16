@@ -25,6 +25,7 @@
     "preload.cts",
     "workspace-manager-preload.cts",
     "selection-copy-preload.cts",
-    "account-usage-preload.cts"
+    "account-usage-preload.cts",
+    "sticky-notes-preload.cts"
   ]
 }

@@ -87,7 +87,7 @@ test('failed reads can be retried instead of caching an error forever', async ()
   expect(await load(['child'])).toEqual([agent]);
 });
 
-test('cards fetch only when expanded and ignore a previous conversation response', async () => {
+test('cards load on expansion, ignore stale responses and offer retry only after a failed read', async () => {
   const window = new Window();
   const globals = { window, document: window.document, navigator: window.navigator, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -113,12 +113,51 @@ test('cards fetch only when expanded and ignore a previous conversation response
     expect(requests).toHaveLength(0);
     await expand();
     expect(requests).toEqual([{ threadId: 'root', ids: ['child'], contextId: 'pane-b' }]);
+    expect(container.querySelector('button')).toBeNull();
     await act(async () => root.render(render('next')));
     await expand();
     expect(container.textContent).toContain('New conversation agent');
     await act(async () => gate.resolve({ agents: [{ ...agent, title: 'Stale agent' }] }));
     expect(container.textContent).not.toContain('Stale agent');
     expect(container.textContent).toContain('80.0%');
+    expect(container.querySelector('button')).toBeNull();
+
+    const retryGate = createDeferred<unknown>();
+    let attempts = 0;
+    response = async () => {
+      if (++attempts === 1) throw new Error('Temporary read failure');
+      return retryGate.promise;
+    };
+    await act(async () => root.render(render('retry-root')));
+    await expand();
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Temporary read failure');
+    const retry = container.querySelector('button');
+    expect(retry?.textContent).toBe('Retry');
+    await act(async () => retry!.click());
+    expect(attempts).toBe(2);
+    expect(container.querySelector('button')).toBeNull();
+    await act(async () => retryGate.resolve({ agents: [agent] }));
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.querySelector('button')).toBeNull();
+    expect(container.textContent).toContain('80.0%');
+    const outer = container.querySelector('details')!;
+    const nested = outer.querySelector('details')!;
+    await act(async () => {
+      nested.open = true;
+      nested.dispatchEvent(new window.Event('toggle', { bubbles: true }));
+      nested.open = false;
+      nested.dispatchEvent(new window.Event('toggle', { bubbles: true }));
+    });
+    expect(outer.open).toBe(true);
+    expect(container.textContent).toContain('80.0%');
+    await act(async () => {
+      outer.open = false;
+      outer.dispatchEvent(new window.Event('toggle'));
+    });
+    expect(container.textContent).not.toContain('Agent cumulative usage');
+    await expand();
+    expect(container.textContent).toContain('80.0%');
+    expect(attempts).toBe(2);
   } finally {
     await act(async () => root.unmount());
     await window.happyDOM.close();

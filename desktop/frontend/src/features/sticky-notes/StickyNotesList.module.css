@@ -1,0 +1,4 @@
+.root { width: 100%; min-width: 0; max-width: 100%; }
+.notice { margin: 0; padding: var(--space-default); color: var(--sidebar-section-label-color); font-size: var(--font-size-small); }
+.root .refreshPending[data-size]:disabled { opacity: 1; }
+.dialogActions { display: flex; justify-content: flex-end; gap: var(--icon-default); }

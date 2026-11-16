@@ -1,0 +1,4 @@
+interface:
+  display_name: "Development App UI Verification"
+  short_description: "Reproduce UI behavior and verify fixes with state restoration"
+  default_prompt: "Use $desktop-ui-verification to verify the requested behavior in this checkout's development app and report before/after results and state restoration."

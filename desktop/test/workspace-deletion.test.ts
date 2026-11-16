@@ -3,8 +3,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameS
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import test, { type TestContext } from 'node:test';
-import { readWorkspaceRegistry, registerWorkspace, unregisterWorkspace } from '../../config/workspace-storage.mts';
-import { deleteRegisteredWorkspace, type DeleteRegisteredWorkspaceOptions } from '../lib/workspace-deletion.mts';
+import { codeGraphStorageDirectory, readWorkspaceRegistry, registerWorkspace, unregisterWorkspace } from '../../config/workspace-storage.mts';
+import { deleteRegisteredWorkspace, removeRegisteredWorkspace, type DeleteRegisteredWorkspaceOptions } from '../lib/workspace-deletion.mts';
+import { WorkspaceProjectStore } from '../lib/workspace-project-store.mts';
 
 function fixture(t: TestContext) {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'cheshi-delete-workspace-')));
@@ -37,6 +38,56 @@ function fixture(t: TestContext) {
   };
   return { root, dataRoot, workspace, entry, calls, options };
 }
+
+test('list removal preserves files, index, chat data and membership in another workspace, including re-add', async t => {
+  const f = fixture(t);
+  const parent = path.join(f.root, 'desktop'); mkdirSync(parent);
+  const parentEntry = registerWorkspace(f.dataRoot, parent);
+  const projects = new WorkspaceProjectStore(f.dataRoot, parent);
+  const before = await projects.add(f.workspace);
+  const index = codeGraphStorageDirectory(f.dataRoot, f.workspace);
+  mkdirSync(index, { recursive: true });
+  const indexFile = path.join(index, 'fixture-index');
+  const chatFile = path.join(f.entry.storagePath, 'fixture-chat.json');
+  writeFileSync(indexFile, 'index content'); writeFileSync(chatFile, 'chat content');
+  assert.equal(await removeRegisteredWorkspace({ dataRoot: f.dataRoot, id: f.entry.id, confirm: async () => true }), true);
+  assert.deepEqual(readWorkspaceRegistry(f.dataRoot).workspaces.map(item => item.id), [parentEntry.id]);
+  assert.equal(readFileSync(path.join(f.workspace, 'notes.txt'), 'utf8'), 'preserve this content');
+  assert.equal(readFileSync(indexFile, 'utf8'), 'index content');
+  assert.equal(readFileSync(chatFile, 'utf8'), 'chat content');
+  assert.deepEqual(projects.list(), before);
+  const restored = registerWorkspace(f.dataRoot, f.workspace);
+  assert.equal(restored.id, f.entry.id); assert.equal(restored.storagePath, f.entry.storagePath);
+  assert.equal(readFileSync(indexFile, 'utf8'), 'index content');
+  assert.equal(readFileSync(chatFile, 'utf8'), 'chat content');
+  assert.deepEqual(projects.list(), before);
+});
+
+test('list removal needs literal confirmation and rejects invalid IDs without filesystem effects', async t => {
+  const f = fixture(t);
+  const options = { dataRoot: f.dataRoot, id: f.entry.id, confirm: async () => false };
+  assert.equal(await removeRegisteredWorkspace(options), false);
+  assert.equal(await removeRegisteredWorkspace({ ...options, confirm: async () => 'true' as unknown as boolean }), false);
+  await assert.rejects(removeRegisteredWorkspace({ ...options, confirm: async () => { throw new Error('Dialog failed'); } }), /Dialog failed/);
+  for (const id of ['', null, f.workspace, 'unknown', { rootPath: f.workspace }]) {
+    await assert.rejects(removeRegisteredWorkspace({ ...options, id }), /workspace ID|Workspace not found/);
+  }
+  assert.equal(readWorkspaceRegistry(f.dataRoot).workspaces.length, 1);
+  assert.ok(existsSync(f.workspace));
+});
+
+test('list removal works for missing folders and does not remove a changed registration', async t => {
+  const f = fixture(t);
+  const changed = { ...f.entry, rootPath: path.join(f.root, 'replacement') };
+  await assert.rejects(removeRegisteredWorkspace({ dataRoot: f.dataRoot, id: f.entry.id, confirm: async () => {
+    const registry = readWorkspaceRegistry(f.dataRoot);
+    writeFileSync(path.join(f.dataRoot, 'workspaces.json'), JSON.stringify({ ...registry, workspaces: [changed] }));
+    return true;
+  } }), /registered workspace changed/);
+  assert.ok(existsSync(f.workspace));
+  assert.equal(await removeRegisteredWorkspace({ dataRoot: f.dataRoot, id: f.entry.id, confirm: async () => true }), true);
+  assert.deepEqual(readWorkspaceRegistry(f.dataRoot).workspaces, []);
+});
 
 test('moves the exact registered folder to trash before removing its registry entry', async (t) => {
   const f = fixture(t);

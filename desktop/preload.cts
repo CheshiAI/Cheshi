@@ -1,12 +1,14 @@
+import { createIMessageApi } from './lib/imessage-preload.cts';
+import './lib/workspace-renderer-preload.cts';
 import { createGitHubIssuesApi } from './lib/github-issue-preload.cts';
 import { chatUserInputRequest, chatUserInputResponse } from './shared/chat-user-input.ts';
-import { chatRelayHistoryRecord, chatRelayRequest, chatRelayState } from './shared/chat-relay.ts';
 import { chatSavedTurn, chatSavedTurnInput } from './shared/chat-saved-turns.ts';
 import { chatHistorySearchRequest, chatHistorySearchResponse } from './shared/chat-history-search.ts';
 import { codeExplanationRequest, codeExplanationRequestId } from './shared/workspace-code-explanation.ts';
 import { createTemporaryChatApi } from './lib/temporary-chat-preload.cts';
-import { createAppleNotesApi } from './lib/apple-notes-preload.cts';
-import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import { createStickyNotesLibraryApi } from './lib/sticky-notes-library-preload.cts';
+import { contextBridge, ipcRenderer as electronIpcRenderer, webUtils } from 'electron';
+import { createWorkspaceIpcRenderer } from './lib/workspace-ipc-preload.cts';
 import { prepareChatAttachmentTransfers } from './shared/chat-attachment-import.ts';
 import { marketplaceAddRequest, pluginWorkflowRequest } from './shared/plugin-actions.ts';
 import { gitDiscardRequest, gitDiscardSelection } from './shared/git-discard.ts';
@@ -14,11 +16,11 @@ import { createWorkspaceManagementApi } from './lib/workspace-management-preload
 import { createWorkspaceFeatureApis } from './lib/workspace-feature-preload.cts';
 import { createAppUpdateApi } from './lib/app-update-preload.cts';
 import { createKeepAwakeApi } from './lib/keep-awake-preload.cts';
+import { createCodexUpdateApi } from './lib/codex-update-preload.cts';
 import { createEditorSessionApi } from './lib/editor-session-preload.cts';
 import { createWorkspaceFileSearchApi } from './lib/workspace-file-search-preload.cts';
+import { createWorkspaceFileEventsApi } from './lib/workspace-file-events-preload.cts';
 import { createChatQuestionDismissalsApi } from './lib/chat-question-dismissals-preload.cts';
-import { installRendererReadiness } from './lib/renderer-readiness.mts';
-import { workspaceDiskUsage } from './shared/workspace-disk-usage.ts';
 
 import type { IpcRendererEvent } from 'electron';
 
@@ -26,6 +28,8 @@ import type {
   LanguageServerDiagnostic,
   CheshiDesktopApi,
 } from './frontend/src/cheshiDesktop.ts';
+
+const ipcRenderer = createWorkspaceIpcRenderer(electronIpcRenderer);
 
 async function deleteStoredChatRecord(channel: string, id: string, pattern: RegExp): Promise<{ id: string }> {
   if (typeof id !== 'string' || !pattern.test(id)) throw new TypeError('Invalid saved record id.');
@@ -78,33 +82,13 @@ const CODEX_CHAT_EVENT_CHANNEL = 'cheshi:codex-chat-event';
 const GIT_REPOSITORY_CHANGED_CHANNEL = 'cheshi:git-repository-changed';
 const GITHUB_COMMENT_BODY_LIMIT = 65_536;
 const LANGUAGE_SERVER_DIAGNOSTICS_CHANNEL = 'cheshi:language-server-diagnostics';
-const RENDERER_READY_CHANNEL = 'cheshi:renderer-ready';
 const TERMINAL_STATE_CHANNEL = 'cheshi:terminal-state-changed';
-const WORKSPACE_FILES_CHANGED_CHANNEL = 'cheshi:workspace-files-changed';
-const WORKSPACE_FILES_CHANGED_PATH_LIMIT = 512;
-
-installRendererReadiness(window, document, (theme) => ipcRenderer.send(RENDERER_READY_CHANNEL, theme));
 
 function workspaceRelativePath(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) {
     throw new TypeError('Workspace path must be a non-empty string.');
   }
   return value;
-}
-
-function workspaceFilesChangedEvent(value: unknown) {
-  assertRecord(value, 'Workspace files changed event must be an object.');
-  if (!Array.isArray(value.paths) || value.paths.length > WORKSPACE_FILES_CHANGED_PATH_LIMIT) {
-    throw new TypeError('Workspace files changed paths must be a bounded array.');
-  }
-  const overflow = booleanValue(
-    value.overflow,
-    'Workspace files changed overflow flag must be a boolean.',
-  );
-  return {
-    paths: value.paths.map(workspaceRelativePath),
-    overflow,
-  };
 }
 
 function gitWorkspacePath(value: unknown): string {
@@ -576,16 +560,27 @@ function codexPluginReference(value: unknown) {
 }
 
 const cheshiDesktopApi = {
+  workspaceProjects: {
+    list: () => ipcRenderer.invoke('cheshi:workspace-projects:list'),
+    add: () => ipcRenderer.invoke('cheshi:workspace-projects:add'),
+    remove: (id: string) => ipcRenderer.invoke('cheshi:workspace-projects:remove', id),
+    invoke: (id: string, channel: string, args: unknown[]) => ipcRenderer.invoke('cheshi:workspace-projects:invoke', id, channel, args),
+    onChanged: (listener: () => void) => {
+      const changed = () => listener();
+      ipcRenderer.on('cheshi:workspace-projects-changed', changed);
+      return () => ipcRenderer.removeListener('cheshi:workspace-projects-changed', changed);
+    },
+  },
   ...createAppUpdateApi(ipcRenderer),
   ...createKeepAwakeApi(ipcRenderer),
-  ...createWorkspaceFileSearchApi(ipcRenderer),
+  ...createCodexUpdateApi(ipcRenderer),
+  ...createWorkspaceFileSearchApi(ipcRenderer, true),
   workspaceManagement: createWorkspaceManagementApi(ipcRenderer),
   ...createWorkspaceFeatureApis(ipcRenderer),
   platform: process.platform,
   workspaceName: workspace.workspaceName,
   userName: typeof workspace.userName === 'string' ? workspace.userName : '',
   workspaceRoot: workspace.workspaceRoot,
-  getWorkspaceDiskUsage: async () => workspaceDiskUsage(await ipcRenderer.invoke('cheshi:get-workspace-disk-usage')),
   isCodeGraphIndexed: () => ipcRenderer.invoke('cheshi:is-codegraph-indexed'),
   reindexCodeGraph: () => ipcRenderer.invoke('cheshi:reindex-codegraph'),
   listWorkspaceDirectory: (relativePath = '.') => ipcRenderer.invoke('cheshi:list-workspace-directory', workspaceRelativePath(relativePath)),
@@ -608,14 +603,7 @@ const cheshiDesktopApi = {
   moveWorkspaceEntry: (request) => ipcRenderer.invoke('cheshi:move-workspace-entry', workspaceEntryMoveRequest(request)),
   copyWorkspaceEntryFullPath: (relativePath) => ipcRenderer.invoke('cheshi:copy-workspace-entry-full-path', workspaceRelativePath(relativePath)),
   deleteWorkspaceEntry: (relativePath) => ipcRenderer.invoke('cheshi:delete-workspace-entry', workspaceRelativePath(relativePath)),
-  onWorkspaceFilesChanged: (handler) => {
-    if (typeof handler !== 'function') throw new TypeError('Workspace files changed handler must be a function.');
-    const listener = (_event: IpcRendererEvent, value: unknown) => (
-      handler(workspaceFilesChangedEvent(value))
-    );
-    ipcRenderer.on(WORKSPACE_FILES_CHANGED_CHANNEL, listener);
-    return () => ipcRenderer.removeListener(WORKSPACE_FILES_CHANGED_CHANNEL, listener);
-  },
+  ...createWorkspaceFileEventsApi(ipcRenderer),
   getGitSnapshot: () => ipcRenderer.invoke('cheshi:get-git-snapshot'),
   getGitBranchCommits: async (branchReference) => ipcRenderer.invoke(
     'cheshi:get-git-branch-commits', gitBranchReference(branchReference),
@@ -755,7 +743,7 @@ const cheshiDesktopApi = {
     'cheshi:update-terminal-surface-bounds',
     terminalSurfaceBounds(bounds),
   ),
-  newTerminalSession: () => ipcRenderer.invoke('cheshi:new-terminal-session'),
+  newTerminalSession: (projectId?: string) => ipcRenderer.invoke('cheshi:new-terminal-session', projectId),
   selectTerminalSession: (sessionId) => ipcRenderer.invoke(
     'cheshi:select-terminal-session',
     terminalId(sessionId, 'Terminal session id'),
@@ -836,8 +824,9 @@ const cheshiDesktopApi = {
   addCodexMarketplace: (request) => ipcRenderer.invoke('cheshi:add-codex-marketplace', marketplaceAddRequest(request)),
   explainCode: (request) => ipcRenderer.invoke('cheshi:explain-code', codeExplanationRequest(request)),
   cancelCodeExplanation: (requestId) => ipcRenderer.invoke('cheshi:cancel-code-explanation', codeExplanationRequestId(requestId)),
+  iMessage: createIMessageApi(ipcRenderer),
   temporaryChat: createTemporaryChatApi(ipcRenderer, file => webUtils.getPathForFile(file)),
-  appleNotes: createAppleNotesApi(ipcRenderer, process.platform),
+  notes: createStickyNotesLibraryApi(ipcRenderer),
   startPluginWorkflow: (request, contextId) => ipcRenderer.invoke('cheshi:start-plugin-workflow', pluginWorkflowRequest(request), contextId),
   saveSkillRecording: (recording) => ipcRenderer.invoke('cheshi:save-skill-recording', recording),
   getCodexPluginLogo: (pluginId) => {
@@ -924,6 +913,12 @@ const cheshiDesktopApi = {
     }
     return ipcRenderer.invoke('cheshi:delete-codex-chat-session', sessionId, contextId);
   },
+  renameCodexChatSession: (sessionId, title, contextId) => {
+    if (typeof sessionId !== 'string' || !sessionId.trim() || typeof title !== 'string' || !title.trim()) {
+      throw new TypeError('Session id and title must be non-empty strings.');
+    }
+    return ipcRenderer.invoke('cheshi:rename-codex-chat-session', sessionId, title.trim(), contextId);
+  },
   openCodexChatAgent: (agentThreadId, contextId) => {
     if (typeof agentThreadId !== 'string' || !agentThreadId.trim()) {
       throw new TypeError('Agent thread id must be a non-empty string.');
@@ -939,6 +934,12 @@ const cheshiDesktopApi = {
     const payload = await prepareChatAttachmentTransfers(files, (file) => webUtils.getPathForFile(file as File));
     return ipcRenderer.invoke('cheshi:import-codex-chat-attachments', payload);
   },
+  getCodexChatAttachmentImage: (attachmentPath) => {
+    if (typeof attachmentPath !== 'string' || !attachmentPath.trim()) {
+      throw new TypeError('Chat attachment path must be a non-empty string.');
+    }
+    return ipcRenderer.invoke('cheshi:get-codex-chat-attachment-image', attachmentPath);
+  },
   getCodexChatAttachmentPreview: (attachmentPath) => {
     if (typeof attachmentPath !== 'string' || !attachmentPath.trim()) {
       throw new TypeError('Chat attachment path must be a non-empty string.');
@@ -953,37 +954,15 @@ const cheshiDesktopApi = {
     }
     return ipcRenderer.invoke('cheshi:cancel-codex-chat-response', threadId, contextId);
   },
-  startCodexChatRelay: (request) => ipcRenderer.invoke('cheshi:start-codex-chat-relay', chatRelayRequest(request)),
   saveCodexTurn: async (input) => chatSavedTurn(await ipcRenderer.invoke('cheshi:save-codex-turn', chatSavedTurnInput(input))),
   githubIssues: createGitHubIssuesApi(ipcRenderer),
   editorSession: createEditorSessionApi(ipcRenderer),
   chatQuestionDismissals: createChatQuestionDismissalsApi(ipcRenderer),
   deleteCodexSavedTurn: (id) => deleteStoredChatRecord('cheshi:delete-codex-saved-turn', id, /^[a-f0-9]{64}$/),
-  deleteCodexChatRelayHistory: (id) => deleteStoredChatRecord('cheshi:delete-codex-chat-relay-history', id, /^[a-zA-Z0-9_-]{1,128}$/),
   listCodexSavedTurns: async () => {
     const value: unknown = await ipcRenderer.invoke('cheshi:list-codex-saved-turns');
     if (!Array.isArray(value)) throw new TypeError('Invalid saved turns response.');
     return value.map(chatSavedTurn);
-  },
-  stopCodexChatRelay: () => ipcRenderer.invoke('cheshi:stop-codex-chat-relay'),
-  getCodexChatRelay: () => ipcRenderer.invoke('cheshi:get-codex-chat-relay'),
-  listCodexChatRelayHistory: async () => {
-    const value: unknown = await ipcRenderer.invoke('cheshi:list-codex-chat-relay-history');
-    if (!Array.isArray(value)) throw new TypeError('Invalid conversation history response.');
-    return value.map((entry) => {
-      const record = chatRelayHistoryRecord(entry);
-      if (!record) throw new TypeError('Invalid conversation history record.');
-      return record;
-    });
-  },
-  onCodexChatRelayEvent: (handler) => {
-    if (typeof handler !== 'function') throw new TypeError('Relay event handler must be a function.');
-    const listener = (_event: IpcRendererEvent, value: unknown) => {
-      const state = chatRelayState(value);
-      if (state) handler(state);
-    };
-    ipcRenderer.on('cheshi:codex-chat-relay-event', listener);
-    return () => ipcRenderer.removeListener('cheshi:codex-chat-relay-event', listener);
   },
   disposeCodexChatContext: (contextId) => ipcRenderer.invoke('cheshi:dispose-codex-chat-context', contextId),
   onCodexChatEvent: (handler, contextId) => {

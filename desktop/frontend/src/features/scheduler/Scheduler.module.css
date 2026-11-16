@@ -1,0 +1,7 @@
+.form { display: flex; flex-direction: column; gap: var(--space-default); padding: var(--space-default); font-size: 12px; }
+.field { display: flex; flex-direction: column; gap: var(--space-default); }
+.row, .actions { display: flex; align-items: center; gap: var(--icon-default); }
+.row { justify-content: space-between; }
+.actions { flex-wrap: wrap; }
+.form p { margin: 0; overflow-wrap: anywhere; }
+.summary { white-space: pre-wrap; overflow-wrap: anywhere; }

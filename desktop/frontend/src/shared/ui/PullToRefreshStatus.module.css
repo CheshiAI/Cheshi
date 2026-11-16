@@ -1,0 +1,12 @@
+.status {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: var(--icon-default);
+  overflow: hidden;
+  color: var(--sidebar-section-label-color);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+  user-select: none;
+}

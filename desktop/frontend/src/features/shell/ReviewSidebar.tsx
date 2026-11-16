@@ -1,35 +1,38 @@
-import { useState, type ReactNode } from 'react';
-import { LiquidGlassPanel } from '../../shared/ui';
+import { VerificationReviewPanel } from '../agent-chats/VerificationReview';
+import type { VerificationReview } from '../agent-chats/verificationReviewModel';
+import { useState } from 'react';
 import { FileChangesReviewPanel, type ChatActivityItem } from '../chat';
 import { WorkspaceLineCommitPanel } from '../editor/WorkspaceLineCommitPanel';
 import type { GitLineBlameRequest } from '../../../../shared/git-line-blame';
 import styles from './ReviewSidebar.module.css';
 import { useReviewSidebarResize } from './useReviewSidebarResize';
 import { LocalHistoryPage } from '../editor/LocalHistoryPage';
+import { useReviewSidebarFocus } from './useReviewSidebarFocus';
+import { LiquidGlassPanel } from '../../shared/ui';
 
 interface ReviewSidebarProps {
   open: boolean;
+  verification?: VerificationReview | null;
   item: ChatActivityItem | null;
   initialPath: string | null;
   onCloseReview: () => void;
+  onOpenFile?: (path: string) => void;
   lineCommit?: GitLineBlameRequest | null;
   localHistoryPath?: string | null;
   localHistoryDirty?: boolean;
-  children: ReactNode;
 }
 
 export function ReviewSidebar({ open, item, initialPath, lineCommit = null, localHistoryPath = null,
-  localHistoryDirty = false, onCloseReview, children }: ReviewSidebarProps) {
-  const reviewing = item !== null || lineCommit !== null || localHistoryPath !== null;
-  const resizableOpen = open && (lineCommit !== null || localHistoryPath !== null);
-  const resize = useReviewSidebarResize(resizableOpen, localHistoryPath !== null ? 'local history' : 'line commit');
-  const [retainedReview, setRetainedReview] = useState({ item, initialPath, lineCommit, localHistoryPath, active: reviewing, revision: 0 });
+  localHistoryDirty = false, verification = null, onCloseReview, onOpenFile }: ReviewSidebarProps) {
+  const reviewing = verification !== null || item !== null || lineCommit !== null || localHistoryPath !== null;
+  const [retainedReview, setRetainedReview] = useState({ item, verification, initialPath, lineCommit, localHistoryPath, active: reviewing, revision: 0 });
   // Keep the last review mounted during closing, including interrupted transitions.
   if (retainedReview.active !== reviewing
-    || (reviewing && (retainedReview.item !== item || retainedReview.lineCommit !== lineCommit
+    || (reviewing && (retainedReview.verification !== verification || retainedReview.item !== item || retainedReview.lineCommit !== lineCommit
       || retainedReview.localHistoryPath !== localHistoryPath || retainedReview.initialPath !== initialPath))) {
     setRetainedReview({
       item: reviewing ? item : retainedReview.item,
+      verification: reviewing ? verification : retainedReview.verification,
       initialPath: reviewing ? initialPath : retainedReview.initialPath,
       lineCommit: reviewing ? lineCommit : retainedReview.lineCommit,
       localHistoryPath: reviewing ? localHistoryPath : retainedReview.localHistoryPath,
@@ -38,36 +41,33 @@ export function ReviewSidebar({ open, item, initialPath, lineCommit = null, loca
       revision: retainedReview.revision + (reviewing && !retainedReview.active ? 1 : 0),
     });
   }
+  const resizable = retainedReview.lineCommit !== null || retainedReview.localHistoryPath !== null;
+  const resizableOpen = open && reviewing && resizable;
+  const resize = useReviewSidebarResize(open && reviewing,
+    retainedReview.localHistoryPath !== null ? 'local history' : 'line commit', resizable);
+  const focus = useReviewSidebarFocus(open && reviewing, resize.slotRef, resize.overlay, onCloseReview);
 
-  return <>
-    <LiquidGlassPanel
-      as="aside"
-      className="right-sidebar-column"
-      data-open={open && !reviewing ? 'true' : 'false'}
-      aria-hidden={!open || reviewing}
-      aria-label="Right sidebar"
-      inert={!open || reviewing}
-    >
-      {children}
-    </LiquidGlassPanel>
-    <aside ref={resize.slotRef} className={styles.reviewSlot} data-open={open && reviewing ? 'true' : 'false'}
+  return <aside ref={resize.slotRef} className={`${styles.reviewSlot} ${resize.overlay ? styles.overlayAnchor : ''}`} data-open={open && reviewing ? 'true' : 'false'}
+      data-overlay={resize.overlay ? 'true' : undefined} tabIndex={-1}
       data-resizable={retainedReview.lineCommit || retainedReview.localHistoryPath !== null ? 'true' : undefined}
       data-resizing={resize.resizing ? 'true' : undefined} style={resize.style}
       aria-label="Review sidebar"
-      aria-hidden={!open || !reviewing} inert={!open || !reviewing}>
-      <div className={styles.reviewContent}>
-        {resizableOpen && <div className={styles.resizer} {...resize.separatorProps} />}
+      aria-hidden={focus.hidden} inert={focus.hidden} onFocusCapture={focus.onFocusCapture}>
+      <LiquidGlassPanel className={`${styles.reviewContent} ${resize.overlay ? styles.overlaySurface : ''}`}
+        data-liquid-glass-backdrop={resize.overlay ? 'true' : undefined}>
+        {resizableOpen && !resize.overlay && <div className={styles.resizer} {...resize.separatorProps} />}
         {retainedReview.localHistoryPath !== null ? <LocalHistoryPage
           key={retainedReview.localHistoryPath} path={retainedReview.localHistoryPath}
           draftDirty={localHistoryDirty} onClose={onCloseReview} />
           : retainedReview.lineCommit ? <WorkspaceLineCommitPanel request={retainedReview.lineCommit} onClose={onCloseReview} />
+          : retainedReview.verification ? <VerificationReviewPanel key={`${retainedReview.revision}:${retainedReview.verification.id}`} review={retainedReview.verification} onClose={onCloseReview} onOpenFile={onOpenFile} />
           : retainedReview.item && <FileChangesReviewPanel
           key={retainedReview.revision}
           item={retainedReview.item}
           initialPath={retainedReview.initialPath}
+          compactHeader={resize.compact}
           onClose={onCloseReview}
         />}
-      </div>
-    </aside>
-  </>;
+      </LiquidGlassPanel>
+    </aside>;
 }

@@ -35,7 +35,7 @@ function sessionId(value: unknown): string {
   return value;
 }
 
-async function fileAttachments(value: unknown) {
+async function fileAttachments(value: unknown, allowDirectories = false) {
   if (!Array.isArray(value) || value.length > 20) throw new TypeError('Attach up to 20 files per message.');
   const paths = value.map((filePath: unknown) => {
     if (typeof filePath !== 'string' || !filePath.trim() || filePath.length > 4096
@@ -45,7 +45,9 @@ async function fileAttachments(value: unknown) {
     return path.normalize(filePath);
   });
   return Promise.all([...new Set(paths)].map(async filePath => {
-    if (!(await stat(filePath)).isFile()) throw new TypeError('Select a regular file to attach.');
+    const info = await stat(filePath);
+    if (allowDirectories && info.isDirectory()) return { kind: 'directory' as const, name: path.basename(filePath), path: filePath };
+    if (!info.isFile()) throw new TypeError('Select a regular file to attach.');
     return { kind: chatAttachmentKind(filePath), name: path.basename(filePath), path: filePath };
   }));
 }
@@ -122,7 +124,7 @@ export function registerTemporaryChatIpc(options: TemporaryChatIpcOptions) {
   options.ipc.handle('cheshi:temporary-chat-import-attachments', (event, id, paths) => {
     const session = selected(event, id);
     return temporaryReply(async () => {
-      const attachments = await fileAttachments(paths);
+      const attachments = await fileAttachments(paths, true);
       if (sessions.get(event.sender) !== session) throw new TemporaryChatClosedError();
       return attachments;
     });

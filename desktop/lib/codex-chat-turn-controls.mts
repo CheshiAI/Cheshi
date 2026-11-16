@@ -16,9 +16,10 @@ export function chatMessageFailure(error: unknown, submitted: boolean, accepted 
     ? 'CodexMessageNotSent' : 'CodexMessageDeliveryUnknown';
   return failure;
 }
-export function setCodexCollaborationMode(context: TurnControlContext, value: unknown): JsonObject {
+export function setCodexCollaborationMode(context: TurnControlContext, value: unknown, persist?: (mode: ChatCollaborationMode) => void): JsonObject {
   if (value !== 'default' && value !== 'plan') throw new TypeError('The collaboration mode must be default or plan.');
   if (context.activeTurns.size || context.pendingTurnStarts.size || context.pendingNewTurnClientMessageId) throw new Error('Wait for the current response before changing conversation mode.');
+  persist?.(value);
   context.selectedCollaborationMode = value;
   const configuration = context.configuration();
   context.emit({ type: 'configuration-changed', configuration });

@@ -30,6 +30,7 @@ export interface ChatAttachment {
   kind: "image" | "file";
   name: string;
   path: string;
+  importNumber?: number;
 }
 
 interface ChatReasoningEffort {
@@ -199,6 +200,7 @@ export interface ActiveTurn {
 }
 
 export interface CodexChatClient {
+  readonly initializeResult?: JsonObject | null;
   request: (
     method: string,
     params?: unknown,
@@ -207,6 +209,7 @@ export interface CodexChatClient {
   respond: (id: string | number, result: unknown) => Promise<void>;
   onNotification: (listener: (value: JsonObject) => void) => () => void;
   onRequest: (listener: (value: JsonObject) => void) => () => void;
+  onDidReleaseWriters?: (listener: () => void) => () => void;
   onDidFail: (listener: (error: Error) => void) => () => void;
 }
 

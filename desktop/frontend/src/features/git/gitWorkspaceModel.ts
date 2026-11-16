@@ -1,5 +1,3 @@
-import type { CSSProperties } from 'react';
-
 import type {
   GitDiffRequest,
   GitFileChange,
@@ -20,6 +18,10 @@ export type GitMutationOutcome = GitRepositorySnapshot | GitMutationResult;
 export type GitMutationSuccessMessage = string | ((result: GitMutationOutcome) => string);
 export type GitRefreshMode = 'foreground' | 'background';
 export type PullRequestOperation = 'push' | 'create' | 'merge' | 'delete-branch' | 'cleanup-branch' | null;
+
+export function isGitRemoteMissing(message: string | null | undefined): boolean {
+  return /\bno git remotes found\b/i.test(message ?? '');
+}
 
 export function pullRequestMatchesBranch(pullRequest: GitHubPullRequestSummary | null, branch: GitRepositorySnapshot['head']): boolean {
   return !!branch && pullRequest !== null && pullRequest.crossRepository !== true && pullRequest.headRefName === branch;
@@ -65,11 +67,6 @@ export const EMPTY_PULL_REQUESTS: GitHubPullRequestListResult = {
   available: false,
   message: '',
   pullRequests: [],
-};
-
-export const PULL_REQUEST_DETAIL_STYLE: CSSProperties = {
-  backgroundColor: 'var(--app-bg)',
-  backgroundImage: 'none',
 };
 
 export const gitWorkspaceTabs: Array<{ id: GitWorkspaceTab; label: string }> = [

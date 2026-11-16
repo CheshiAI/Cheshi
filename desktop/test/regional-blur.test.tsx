@@ -1,0 +1,697 @@
+import { expect, mock, test } from 'bun:test';
+import { act, useRef, type ComponentProps } from 'react';
+import { createPortal } from 'react-dom';
+import { createRoot } from 'react-dom/client';
+import { Window, type HTMLElement as TestElement } from 'happy-dom';
+import { RegionalBlur } from '../frontend/src/shared/ui/RegionalBlur';
+import { LiquidGlassPanel } from '../frontend/src/shared/ui/LiquidGlassPanel';
+import { LiquidGlassSelect } from '../frontend/src/shared/ui/LiquidGlassSelect';
+import { Tooltip } from '../frontend/src/shared/ui/Tooltip';
+import { StatusToast } from '../frontend/src/shared/ui/StatusToast';
+import { ChatUserInputPrompt } from '../frontend/src/features/chat/ChatUserInputPrompt';
+import { regionalBlurMask } from '../frontend/src/shared/ui/regionalBlurGeometry';
+import { createRegionalBlurController } from '../frontend/src/shared/ui/regionalBlurController';
+import { createRegionalBlurFilter } from '../frontend/src/shared/ui/regionalBlurFilter';
+import { ChatConfigurationMenu } from '../frontend/src/features/chat/ChatConfigurationMenu';
+import { ChatWorkspaceBlurContext } from '../frontend/src/features/chat/ChatWorkspaceBlurContext';
+import { connectWorkspaceRailBlur } from '../frontend/src/features/shell/workspaceRailBlur';
+import type { WorkspaceRailBlur, WorkspaceSurfaceApi } from '../shared/workspace-host';
+
+mock.module('../frontend/src/shared/ui/Tooltip.module.css', () => ({
+  default: { anchor: 'tooltip-anchor', content: 'tooltip-content' },
+}));
+mock.module('../frontend/src/shared/ui/StatusToast.module.css', () => ({
+  default: { anchor: 'toast-anchor', card: 'toast-card', icon: 'toast-icon', content: 'toast-content',
+    title: 'toast-title', description: 'toast-description', close: 'toast-close' },
+}));
+
+function ConfigurationFixture({ menu, split, workspace, shell = false }: {
+  menu: boolean; split: boolean; workspace: boolean; shell?: boolean;
+}) {
+  const shellRef = useRef<HTMLDivElement>(null);
+  const workspaceRef = useRef<HTMLElement>(null);
+  const timelineRef = useRef<HTMLElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const controller: ComponentProps<typeof ChatConfigurationMenu>['controller'] = {
+    composerAreaRef: composerRef, configurationMenuRef: menuRef,
+    configurationMenuOpen: menu, configurationMenuView: 'models', configurationMenuId: 'configuration-test',
+    configurationMenuPosition: { bottom: 40, left: 800, width: 200, submenuSide: 'left' },
+    chatConfiguration: null, configurationLoading: false, configurationError: null, fastTier: null, models: [],
+    selectComposerModel: async () => {}, selectComposerReasoningEffort: async () => {},
+    selectComposerServiceTier: async () => {}, setConfigurationMenuView: () => {},
+  };
+  return <ChatWorkspaceBlurContext value={shell ? shellRef : workspace ? workspaceRef : null}>
+    <div ref={shellRef} data-shell="true" data-box="0,50,1100,500" style={{ filter: 'brightness(1)' }}>
+    {shell && <aside data-session-sidebar="true" data-box="0,50,100,500">Session title · 27m</aside>}
+    <main ref={workspaceRef} data-workspace="true" data-box="100,50,1000,500" style={{ filter: 'brightness(1)' }}>
+      {split && <><section data-sibling="true" data-box="100,50,500,500">Other session</section>
+        <div role="separator" data-box="595,50,5,500" /></>}
+      <RegionalBlur sourceRef={timelineRef}>
+        <section ref={timelineRef} data-source="true" data-box={split ? '600,50,500,500' : '100,50,1000,500'}>Conversation</section>
+        <div ref={composerRef} data-composer-layer="true" data-box="620,450,450,80">
+          <LiquidGlassPanel data-liquid-glass-backdrop="true" data-box="620,450,450,80"
+            style={{ display: 'block', visibility: 'visible', opacity: 1, borderRadius: '16px' }}>
+            <textarea defaultValue="Keep this draft" />
+          </LiquidGlassPanel>
+          <ChatConfigurationMenu controller={controller} />
+        </div>
+      </RegionalBlur>
+    </main>
+    </div>
+  </ChatWorkspaceBlurContext>;
+}
+
+function Fixture({ portal, thread = 'one', menu = true, composer = true, nested = false, layered = false, select = false, fullSceneSelect = false, mcp = false, tooltip = false, toast = false, configuration }: {
+  portal: HTMLElement; thread?: string; menu?: boolean; composer?: boolean; nested?: boolean; layered?: boolean; select?: boolean; fullSceneSelect?: boolean; mcp?: boolean; tooltip?: boolean;
+  toast?: boolean;
+  configuration?: 'single' | 'split' | 'standalone' | 'sidebar';
+}) {
+  const sourceRef = useRef<HTMLElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const fullSceneRef = useRef<HTMLDivElement>(null);
+  if (configuration) return <ConfigurationFixture menu={menu} split={configuration === 'split'}
+    workspace={configuration !== 'standalone'} shell={configuration === 'sidebar'} />;
+  const panelStyle = { display: 'block', visibility: 'visible', opacity: 1, borderRadius: '16px' } as const;
+  const popup = createPortal(<div><LiquidGlassPanel role="menu"
+    data-box={layered ? '350,470,200,60' : '350,250,200,180'} style={panelStyle}>
+    <button role="menuitem">Model</button>
+  </LiquidGlassPanel></div>, portal);
+  const scene = <>
+    <section key={thread} ref={sourceRef} data-source="true" data-box="100,50,600,500">
+      <p>Conversation stays sharp outside the surface.</p>
+      {tooltip && <Tooltip content="Conversation history" delay={0} blurSourceRef={sourceRef}>
+        {trigger => <button {...trigger} aria-label="History" data-box="350,200,80,32">History</button>}
+      </Tooltip>}
+      {nested && <LiquidGlassPanel role="listbox" data-box="120,70,100,50" style={panelStyle}>Inline options</LiquidGlassPanel>}
+    </section>
+    {composer && <div ref={composerRef} data-composer-layer="true" data-box="120,450,550,80" style={{ filter: 'brightness(1)' }}>
+      <LiquidGlassPanel data-liquid-glass-backdrop="true" data-composer="true"
+      data-box="120,450,550,80" style={panelStyle}><textarea defaultValue="Keep this draft" />
+        {mcp && <ChatUserInputPrompt menuBlurSourceRef={composerRef} pending={false} error={null}
+          respond={async () => true} request={{ kind: 'form', id: 'request', threadId: 'thread', turnId: null,
+            serverName: 'Test', message: 'Choose whether to proceed', fields: [{ name: 'proceed', title: 'Proceed',
+              description: '', type: 'boolean', required: true }] }} />}
+        {select && <LiquidGlassSelect ariaLabel="Permissions" menuAppearance="toolbar" triggerAppearance="standard"
+          menuBlurSourceRef={fullSceneSelect ? fullSceneRef : composerRef} menuBlurSourceMode={fullSceneSelect ? 'replace' : 'add'}
+          value="read-only" options={[{ value: 'read-only', label: 'Read only' }]}
+          onChange={() => {}} />}
+      </LiquidGlassPanel></div>}
+    {menu && (layered ? <RegionalBlur sourceRef={composerRef}>{popup}</RegionalBlur> : popup)}
+    {toast && <StatusToast message={{ id: 'toast', variant: 'success', title: 'Saved', description: 'Changes saved.' }} onDismiss={() => {}} />}
+  </>;
+  return tooltip ? scene : <RegionalBlur sourceRef={sourceRef}>
+    {fullSceneSelect ? <div ref={fullSceneRef} data-full-scene="true" data-box="100,50,600,500">{scene}</div> : scene}
+  </RegionalBlur>;
+}
+
+async function withDOM(run: (h: {
+  render: (props?: Partial<Parameters<typeof Fixture>[0]>) => Promise<void>;
+  document: Document; flush: () => Promise<void>; invalidate: () => void;
+  observerCount: () => number; unmount: () => Promise<void>;
+}) => Promise<void>) {
+  const window = new Window();
+  const callbacks = new Map<number, FrameRequestCallback>();
+  let nextFrame = 0;
+  Object.defineProperties(window, {
+    requestAnimationFrame: { configurable: true, value: (callback: FrameRequestCallback) => { callbacks.set(++nextFrame, callback); return nextFrame; } },
+    cancelAnimationFrame: { configurable: true, value: (id: number) => { callbacks.delete(id); } },
+  });
+  const observers = new Set<Observer>();
+  class Observer {
+    active = false;
+    constructor(readonly callback: () => void) { observers.add(this); }
+    observe() { this.active = true; }
+    disconnect() { this.active = false; }
+  }
+  Object.defineProperties(window, {
+    ResizeObserver: { configurable: true, value: Observer },
+    MutationObserver: { configurable: true, value: Observer },
+  });
+  const globals = { window, document: window.document, navigator: window.navigator, HTMLElement: window.HTMLElement, Node: window.Node,
+    requestAnimationFrame: window.requestAnimationFrame.bind(window), cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
+    ResizeObserver: Observer, MutationObserver: Observer, getComputedStyle: window.getComputedStyle.bind(window), IS_REACT_ACT_ENVIRONMENT: true };
+  const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+  const box = (element: TestElement) => {
+    const [x = 0, y = 0, width = 0, height = 0] = element.dataset.box
+      ? element.dataset.box.split(',').map(Number)
+      : [element.style.left, element.style.top, element.style.width, element.style.height].map(value => Number.parseFloat(value) || 0);
+    return { x, y, width, height, top: y, left: x, right: x + width, bottom: y + height, toJSON() { return {}; } };
+  };
+  const geometryProperties = ['offsetWidth', 'offsetHeight', 'getBoundingClientRect', 'getClientRects'] as const;
+  const geometryDescriptors = new Map(geometryProperties.map(name => [
+    name, Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, name),
+  ]));
+  Object.defineProperties(window.HTMLElement.prototype, {
+    offsetWidth: { configurable: true, get(this: TestElement) { return box(this).width; } },
+    offsetHeight: { configurable: true, get(this: TestElement) { return box(this).height; } },
+    getBoundingClientRect: { configurable: true, value(this: TestElement) { return box(this); } },
+    getClientRects: { configurable: true, value(this: TestElement) { return this.hidden ? [] : [box(this)]; } },
+  });
+  const container = window.document.createElement('div'), portal = window.document.createElement('div');
+  container.id = 'app';
+  window.document.body.append(container, portal);
+  const root = createRoot(container as unknown as HTMLElement);
+  let mounted = true;
+  const unmount = async () => { if (mounted) { await act(async () => root.unmount()); mounted = false; } };
+  try {
+    await run({
+      render: async props => { await act(async () => root.render(<Fixture portal={portal as unknown as HTMLElement} {...props} />)); },
+      document: window.document as unknown as Document,
+      invalidate: () => { for (const observer of observers) if (observer.active) observer.callback(); },
+      flush: async () => { await act(async () => {
+        const pending = [...callbacks.values()]; callbacks.clear();
+        for (const callback of pending) callback(0);
+      }); },
+      observerCount: () => [...observers].filter(observer => observer.active).length,
+      unmount,
+    });
+  } finally {
+    await unmount();
+    await window.happyDOM.close();
+    for (const [name, descriptor] of geometryDescriptors) {
+      if (descriptor) Object.defineProperty(window.HTMLElement.prototype, name, descriptor);
+      else Reflect.deleteProperty(window.HTMLElement.prototype, name);
+    }
+    for (const [key, descriptor] of previous) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key);
+    }
+  }
+}
+
+function mask(document: Document) {
+  return decodeURIComponent(document.querySelector('feImage')?.getAttribute('href')?.split(',').slice(1).join(',') ?? '');
+}
+
+function attachBlur(document: Document, source: HTMLElement, preserveFilter: boolean) {
+  const panel = document.createElement('aside');
+  panel.dataset.box = '400,450,360,100';
+  panel.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:12px';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  svg.append(defs); document.body.append(svg, panel);
+  const controller = createRegionalBlurController({ preserveFilter });
+  const effect = createRegionalBlurFilter(defs);
+  const disconnect = controller.connect(source, effect.filter, effect.mask);
+  const release = controller.register(panel);
+  let disposed = false;
+  return { panel, id: effect.filter.id, dispose() {
+    if (disposed) return;
+    disposed = true;
+    release(); disconnect(); effect.dispose(); svg.remove(); panel.remove();
+  } };
+}
+
+for (const firstPreserves of [false, true]) {
+  for (const closeFirst of [false, true]) {
+    test(`shared source keeps the surviving blur (preserve first: ${firstPreserves}, close first: ${closeFirst})`, async () => {
+      await withDOM(async h => {
+        const source = h.document.getElementById('app')!;
+        source.dataset.box = '0,0,800,600';
+        source.style.setProperty('filter', 'brightness(1)', 'important');
+        source.setAttribute('data-regional-blur-source', 'original');
+        const first = attachBlur(h.document, source, firstPreserves);
+        const second = attachBlur(h.document, source, !firstPreserves);
+        const closed = closeFirst ? first : second, remaining = closeFirst ? second : first;
+        try {
+          expect(source.style.filter).toContain(first.id);
+          expect(source.style.filter).toContain(second.id);
+          closed.dispose();
+          h.invalidate(); await h.flush();
+          expect(source.style.filter).toContain(remaining.id);
+          expect(source.style.filter).not.toContain(closed.id);
+          expect(source.getAttribute('data-regional-blur-source')).toBe(remaining.id);
+          expect(remaining.panel.getAttribute('data-regional-blur-surface')).toBe('true');
+          remaining.dispose();
+          h.invalidate(); await h.flush();
+          expect(source.style.filter).toBe('brightness(1)');
+          expect(source.style.getPropertyPriority('filter')).toBe('important');
+          expect(source.getAttribute('data-regional-blur-source')).toBe('original');
+          expect(h.document.querySelectorAll('filter')).toHaveLength(0);
+          expect(h.observerCount()).toBe(0);
+        } finally { first.dispose(); second.dispose(); }
+      });
+    });
+  }
+}
+
+test('hiding and replacing an overlapping blur keeps the unchanged toast mask active', async () => {
+  await withDOM(async h => {
+    const source = h.document.getElementById('app')!;
+    source.dataset.box = '0,0,800,600';
+    const toast = attachBlur(h.document, source, false);
+    let tooltip = attachBlur(h.document, source, true);
+    try {
+      for (let i = 0; i < 3; i++) {
+        tooltip.panel.hidden = true;
+        h.invalidate(); await h.flush();
+        expect(source.style.filter).toBe(`url("#${toast.id}")`);
+        tooltip.panel.hidden = false;
+        h.invalidate(); await h.flush();
+        expect(source.style.filter).toContain(toast.id);
+        expect(source.style.filter).toContain(tooltip.id);
+        const oldId = tooltip.id;
+        tooltip.dispose();
+        tooltip = attachBlur(h.document, source, true);
+        toast.panel.textContent = `Updated notification ${i}`;
+        h.invalidate(); await h.flush();
+        expect(source.style.filter).toContain(toast.id);
+        expect(source.style.filter).toContain(tooltip.id);
+        expect(source.style.filter).not.toContain(oldId);
+      }
+    } finally { toast.dispose(); tooltip.dispose(); }
+    expect(source.style.filter).toBe('');
+    expect(source.hasAttribute('data-regional-blur-source')).toBe(false);
+    expect(h.observerCount()).toBe(0);
+  });
+});
+
+test('native rail regions blur live workspace pixels, follow expansion, and restore filters on dismissal', async () => {
+  await withDOM(async h => {
+    const app = h.document.getElementById('app')!;
+    app.dataset.box = '0,0,800,600'; app.style.filter = 'brightness(1)';
+    await h.render({ menu: false, composer: false });
+    const originalFilterCount = h.document.querySelectorAll('filter').length;
+    let listener: ((region: WorkspaceRailBlur | null) => void) | undefined;
+    const api: WorkspaceSurfaceApi = {
+      reportModal: () => {},
+      onStatusToast: () => () => {},
+      report: () => {}, onCommand: () => () => {},
+      onRailBlur: next => { listener = next; return () => { listener = undefined; }; },
+    };
+    const dispose = connectWorkspaceRailBlur(api, h.document);
+    try {
+      listener!({ x: -60, y: 100, width: 140, height: 42, radius: 8 });
+      h.invalidate(); await h.flush();
+      const panel = h.document.querySelector<HTMLElement>('[data-workspace-rail-blur] > div')!;
+      expect(app.contains(panel)).toBe(false);
+      expect(app.style.filter).toContain('brightness(1) url(');
+      expect(panel.style.filter).toBe('');
+      expect(sourceMask(h.document, app)).toContain('M-52 100H72');
+      expect(h.document.querySelector('feGaussianBlur')?.getAttribute('stdDeviation')).toBe('16');
+      const filterCount = h.document.querySelectorAll('filter').length;
+      listener!({ x: -60, y: 100, width: 180, height: 42, radius: 8 });
+      h.invalidate(); await h.flush();
+      expect(sourceMask(h.document, app)).toContain('M-52 100H112');
+      expect(h.document.querySelectorAll('filter')).toHaveLength(filterCount);
+      listener!(null);
+      expect(app.style.filter).toBe('brightness(1)');
+      expect(h.document.querySelector('[data-workspace-rail-blur]')).toBeNull();
+      listener!({ x: -60, y: 200, width: 140, height: 42, radius: 8 });
+      h.invalidate(); await h.flush();
+      expect(app.style.filter).toContain('url(');
+    } finally { dispose(); }
+    expect(listener).toBeUndefined();
+    expect(app.style.filter).toBe('brightness(1)');
+    expect(h.document.querySelector('[data-workspace-rail-blur]')).toBeNull();
+    expect(app.hasAttribute('data-regional-blur-source')).toBe(false);
+    expect(h.document.querySelectorAll('filter')).toHaveLength(originalFilterCount);
+  });
+});
+
+test('status toast blurs the app behind its portal and restores the source when dismissed', async () => {
+  await withDOM(async h => {
+    const app = h.document.getElementById('app')!;
+    app.dataset.box = '0,0,800,600';
+    app.style.filter = 'brightness(1)';
+    await h.render({ toast: true, menu: false, composer: false });
+    const toast = h.document.querySelector<HTMLElement>('aside[data-variant="success"]')!;
+    toast.dataset.box = '400,450,360,100';
+    Object.assign(toast.style, { display: 'flex', visibility: 'visible', opacity: '1', borderRadius: '12px' });
+    h.invalidate(); await h.flush();
+    expect(toast.getAttribute('data-regional-blur-surface')).toBe('true');
+    expect(app.contains(toast)).toBe(false);
+    expect(app.style.filter).toContain('url(');
+    expect(toast.style.filter).toBe('');
+    expect(h.document.querySelector<HTMLElement>('[data-source]')!.style.filter).toBe('');
+    expect([...h.document.querySelectorAll('feGaussianBlur')].some(node => node.getAttribute('stdDeviation') === '16')).toBe(true);
+    await h.render({ toast: false, menu: false, composer: false });
+    expect(app.style.filter).toBe('brightness(1)');
+    expect(toast.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(h.document.querySelector('aside[data-variant="success"]')).toBeNull();
+  });
+});
+
+test('portal menus and composer share a source while inline foregrounds stay outside registration', async () => {
+  await withDOM(async h => {
+    await h.render({ nested: true });
+    expect(h.document.querySelectorAll('[data-regional-blur-surface="true"]').length).toBe(2);
+    expect(h.document.querySelector('[role="listbox"]')?.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(mask(h.document).match(/<path /g)?.length).toBe(2);
+    expect(h.document.querySelector<HTMLElement>('[data-source]')?.style.filter).toContain('url(');
+    expect(h.document.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('Keep this draft');
+    expect(h.document.querySelector<HTMLElement>('[role="menu"]')?.style.filter).toBe('');
+    expect(mask(h.document)).toContain('M266 200');
+  });
+});
+
+test('viewport mask follows menu movement and viewport resizing, not the conversation scroll offset', async () => {
+  await withDOM(async h => {
+    await h.render();
+    const before = mask(h.document);
+    const source = h.document.querySelector<HTMLElement>('[data-source]')!;
+    source.scrollTop = 700;
+    h.invalidate(); await h.flush();
+    expect(mask(h.document)).toBe(before);
+    h.document.querySelector<HTMLElement>('[role="menu"]')!.dataset.box = '420,210,200,180';
+    h.invalidate(); await h.flush();
+    expect(mask(h.document)).toContain('M336 160');
+    source.dataset.box = '200,50,500,400';
+    h.invalidate(); await h.flush();
+    expect(h.document.querySelector('filter')?.getAttribute('width')).toBe('500');
+    expect(mask(h.document)).toContain('M236 160');
+  });
+});
+
+test('closing, hiding, and reopening surfaces removes stale masks and disconnects on unmount', async () => {
+  await withDOM(async h => {
+    await h.render();
+    await h.render({ menu: false });
+    expect(mask(h.document).match(/<path /g)?.length).toBe(1);
+    const composer = h.document.querySelector<HTMLElement>('[data-composer]')!;
+    composer.hidden = true; h.invalidate(); await h.flush();
+    expect(mask(h.document)).toBe('');
+    expect(h.document.querySelector<HTMLElement>('[data-source]')!.style.filter).toBe('');
+    composer.hidden = false; h.invalidate(); await h.flush();
+    expect(mask(h.document).match(/<path /g)?.length).toBe(1);
+    await h.render({ menu: false, composer: false });
+    expect(mask(h.document)).toBe('');
+    await h.unmount();
+    expect(h.observerCount()).toBe(0);
+    expect(h.document.querySelector('[data-regional-blur-surface]')).toBeNull();
+  });
+});
+
+test('a conversation switch reconnects the replacement timeline and restores the detached source', async () => {
+  await withDOM(async h => {
+    await h.render();
+    const oldSource = h.document.querySelector<HTMLElement>('[data-source]')!;
+    await h.render({ thread: 'two' });
+    const newSource = h.document.querySelector<HTMLElement>('[data-source]')!;
+    expect(newSource).not.toBe(oldSource);
+    expect(oldSource.style.filter).toBe('');
+    expect(oldSource.hasAttribute('data-regional-blur-source')).toBe(false);
+    expect(newSource.style.filter).toContain('url(');
+    expect(mask(h.document).match(/<path /g)?.length).toBe(2);
+  });
+});
+
+test('a nested menu blurs both scene and composer footprints, then restores the composer on close', async () => {
+  await withDOM(async h => {
+    await h.render({ layered: true });
+    const composer = h.document.querySelector<HTMLElement>('[data-composer-layer]')!;
+    const menu = h.document.querySelector<HTMLElement>('[role="menu"]')!;
+    expect(composer.style.filter).toContain('url(');
+    expect(h.document.querySelector<HTMLElement>('[data-source]')!.style.filter).toContain('url(');
+    expect(mask(h.document).match(/<path /g)?.length).toBe(2);
+    const filter = h.document.getElementById(composer.getAttribute('data-regional-blur-source')!)!;
+    const localMask = decodeURIComponent(filter.querySelector('feImage')!.getAttribute('href')!.split(',').slice(1).join(','));
+    expect(localMask.match(/<path /g)?.length).toBe(1);
+    expect(localMask).toContain('M246 20');
+    expect(filter.getAttribute('width')).toBe('550');
+    expect(menu.style.filter).toBe('');
+    expect(h.document.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe('Keep this draft');
+    await h.render({ layered: true, menu: false });
+    expect(composer.style.filter).toBe('brightness(1)');
+    expect(composer.hasAttribute('data-regional-blur-source')).toBe(false);
+    expect(menu.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(mask(h.document).match(/<path /g)?.length).toBe(1);
+    await h.render({ layered: true });
+    expect(composer.style.filter).toContain('url(');
+    await h.unmount();
+    expect(composer.style.filter).toBe('brightness(1)');
+    expect(h.observerCount()).toBe(0);
+  });
+});
+
+test('disconnecting one backdrop preserves the menu registration owned by the remaining scene', async () => {
+  await withDOM(async h => {
+    await h.render({ layered: true });
+    const composer = h.document.querySelector<HTMLElement>('[data-composer-layer]')!;
+    const menu = h.document.querySelector<HTMLElement>('[role="menu"]')!;
+    await h.render({ layered: true, composer: false });
+    expect(composer.style.filter).toBe('brightness(1)');
+    expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
+    expect(mask(h.document).match(/<path /g)?.length).toBe(1);
+    await h.render({ layered: true, composer: false, menu: false });
+    expect(menu.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(h.document.querySelector<HTMLElement>('[data-source]')!.style.filter).toBe('');
+  });
+});
+
+test('a select connects its composer backdrop only while the popup is open and restores focus on dismissal', async () => {
+  await withDOM(async h => {
+    await h.render({ menu: false, select: true });
+    const composer = h.document.querySelector<HTMLElement>('[data-composer-layer]')!;
+    const trigger = h.document.querySelector<HTMLButtonElement>('[aria-label="Permissions"]')!;
+    expect(composer.style.filter).toBe('brightness(1)');
+    await act(async () => trigger.click());
+    const menu = h.document.querySelector<HTMLElement>('[role="menu"]')!;
+    menu.dataset.box = '350,470,200,60';
+    menu.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:16px';
+    h.invalidate(); await h.flush();
+    expect(composer.style.filter).toContain('url(');
+    expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
+    expect(menu.style.filter).toBe('');
+    expect(mask(h.document).match(/<path /g)?.length).toBe(2);
+    await act(async () => menu.dispatchEvent(new h.document.defaultView!.KeyboardEvent('keydown', {
+      key: 'Escape', bubbles: true, cancelable: true,
+    })));
+    expect(h.document.querySelector('[role="menu"]')).toBeNull();
+    expect(h.document.activeElement).toBe(trigger);
+    expect(composer.style.filter).toBe('brightness(1)');
+    expect(menu.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(h.document.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe('Keep this draft');
+    expect(mask(h.document).match(/<path /g)?.length).toBe(1);
+  });
+});
+
+test('a full-scene select blurs its backdrop once without adding its footprint to inherited layers', async () => {
+  await withDOM(async h => {
+    await h.render({ menu: false, select: true, fullSceneSelect: true });
+    const source = h.document.querySelector<HTMLElement>('[data-full-scene]')!;
+    const inheritedMask = mask(h.document);
+    const trigger = h.document.querySelector<HTMLButtonElement>('[aria-label="Permissions"]')!;
+    await act(async () => trigger.click());
+    const menu = h.document.querySelector<HTMLElement>('[role="menu"]')!;
+    menu.dataset.box = '350,470,200,60';
+    menu.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:16px';
+    h.invalidate(); await h.flush();
+    expect(source.contains(menu)).toBe(false);
+    expect(source.style.filter).toContain('url(');
+    expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
+    expect(menu.style.filter).toBe('');
+    expect(mask(h.document)).toBe(inheritedMask);
+    const filter = h.document.getElementById(source.getAttribute('data-regional-blur-source')!)!;
+    expect(filter.querySelector('feGaussianBlur')?.getAttribute('stdDeviation')).toBe('16');
+    const fullSceneMask = decodeURIComponent(filter.querySelector('feImage')!.getAttribute('href')!.split(',').slice(1).join(','));
+    expect(fullSceneMask.match(/<path /g)?.length).toBe(1);
+    await act(async () => trigger.click());
+    expect(source.style.filter).toBe('');
+    expect(source.hasAttribute('data-regional-blur-source')).toBe(false);
+    expect(menu.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(mask(h.document)).toBe(inheritedMask);
+    expect(h.document.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe('Keep this draft');
+    await h.unmount();
+    expect(h.observerCount()).toBe(0);
+  });
+});
+
+test('mask clips offscreen surfaces and maps scaled coordinates with independently rounded corners', () => {
+  const bounds = { x: 100, y: 100, width: 400, height: 400 };
+  const surface = { x: 80, y: 400, width: 240, height: 200, corners: ['0', '0', '16px', '16px'] as const };
+  const svg = regionalBlurMask(bounds, 200, 200, [surface]);
+  expect(svg).toContain('M-10 150H110A0 0');
+  expect(svg).toContain('A16 16');
+  expect(regionalBlurMask(bounds, 200, 200, [{ ...surface, x: 500 }])).toBeNull();
+  expect(regionalBlurMask({ ...bounds, width: 0 }, 0, 200, [surface])).toBeNull();
+});
+
+
+test('an explicitly connected tooltip blurs its workspace and restores it on dismissal and unmount', async () => {
+  await withDOM(async h => {
+    await h.render({ menu: false, composer: false, tooltip: true });
+    const source = h.document.querySelector<HTMLElement>('[data-source]')!;
+    const trigger = h.document.querySelector<HTMLButtonElement>('[aria-label="History"]')!;
+    const open = async () => {
+      await act(async () => trigger.dispatchEvent(new h.document.defaultView!.PointerEvent('pointerover', {
+        bubbles: true, pointerType: 'mouse',
+      })));
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
+      const tooltip = h.document.querySelector<HTMLElement>('[role="tooltip"]')!;
+      tooltip.dataset.box = '350,250,200,60';
+      tooltip.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:8px';
+      h.invalidate(); await h.flush();
+      expect(source.contains(tooltip)).toBe(false);
+      expect(source.style.filter).toContain('url(');
+      expect(tooltip.getAttribute('data-regional-blur-surface')).toBe('true');
+      expect(tooltip.style.filter).toBe('');
+      expect(tooltip.textContent).toBe('Conversation history');
+      return tooltip;
+    };
+    expect(source.style.filter).toBe('');
+    const tooltip = await open();
+    await act(async () => h.document.dispatchEvent(new h.document.defaultView!.KeyboardEvent('keydown', {
+      key: 'Escape', bubbles: true,
+    })));
+    expect(h.document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(source.style.filter).toBe('');
+    expect(tooltip.hasAttribute('data-regional-blur-surface')).toBe(false);
+    await open();
+    await h.unmount();
+    expect(source.style.filter).toBe('');
+    expect(h.observerCount()).toBe(0);
+  });
+});
+
+test('MCP form menus include the composer backdrop and preserve answers and drafts after closing', async () => {
+  await withDOM(async h => {
+    await h.render({ menu: false, mcp: true });
+    const composer = h.document.querySelector<HTMLElement>('[data-composer-layer]')!;
+    const trigger = h.document.querySelector<HTMLButtonElement>('[aria-label="Proceed"]')!;
+    expect(composer.style.filter).toBe('brightness(1)');
+    await act(async () => trigger.click());
+    const menu = h.document.querySelector<HTMLElement>('[role="menu"]')!;
+    menu.dataset.box = '350,470,200,60';
+    menu.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:16px';
+    h.invalidate(); await h.flush();
+    expect(composer.style.filter).toContain('url(');
+    expect(h.document.querySelector<HTMLElement>('[data-source]')!.style.filter).toContain('url(');
+    expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
+    expect(menu.style.filter).toBe('');
+    const yes = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(button => button.textContent === 'Yes')!;
+    await act(async () => yes.click());
+    expect(h.document.querySelector('[role="menu"]')).toBeNull();
+    expect(trigger.textContent).toBe('Yes');
+    expect(h.document.activeElement).toBe(trigger);
+    expect(composer.style.filter).toBe('brightness(1)');
+    expect(menu.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(h.document.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe('Keep this draft');
+    await h.unmount();
+    expect(h.observerCount()).toBe(0);
+  });
+});
+
+function configurationPanels(h: { document: Document; invalidate: () => void }) {
+  const menu = h.document.querySelector<HTMLElement>('[aria-label="Chat configuration"]')!;
+  const submenu = h.document.querySelector<HTMLElement>('[aria-label="Model options"]')!;
+  menu.dataset.box = '800,470,200,60';
+  submenu.dataset.box = '450,250,340,280';
+  for (const panel of [menu, submenu]) panel.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:16px';
+  h.invalidate();
+  return { menu, submenu };
+}
+
+function sourceMask(document: Document, source: HTMLElement) {
+  const filter = document.getElementById(source.getAttribute('data-regional-blur-source')!);
+  return decodeURIComponent(filter?.querySelector('feImage')?.getAttribute('href')?.split(',').slice(1).join(',') ?? '');
+}
+
+for (const configuration of ['single', 'split'] as const) {
+  test(`configuration menus cover the ${configuration} workspace without duplicating timeline blur and restore on close`, async () => {
+    await withDOM(async h => {
+      await h.render({ configuration, menu: false });
+      const workspace = h.document.querySelector<HTMLElement>('[data-workspace]')!;
+      const timeline = h.document.querySelector<HTMLElement>('[data-source]')!;
+      const composer = h.document.querySelector<HTMLElement>('[data-composer-layer]')!;
+      const inheritedMask = sourceMask(h.document, timeline);
+      expect(inheritedMask.match(/<path /g)?.length).toBe(1);
+      await h.render({ configuration });
+      const { menu, submenu } = configurationPanels(h);
+      await h.flush();
+      expect(workspace.style.filter).toContain('url(');
+      expect(workspace.contains(menu)).toBe(false);
+      expect(workspace.contains(submenu)).toBe(false);
+      expect(menu.style.filter).toBe('');
+      expect(submenu.style.filter).toBe('');
+      expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
+      expect(submenu.getAttribute('data-regional-blur-surface')).toBe('true');
+      const fullMask = sourceMask(h.document, workspace);
+      const workspaceFilter = h.document.getElementById(workspace.getAttribute('data-regional-blur-source')!)!;
+      expect(workspaceFilter.getAttribute('width')).toBe('1000');
+      expect(fullMask).toContain('viewBox="350 200 550 280"');
+      expect(fullMask.match(/<path /g)?.length).toBe(2);
+      expect(fullMask).toContain('M366 200');
+      expect(sourceMask(h.document, timeline)).toBe(inheritedMask);
+      expect(composer.style.filter).toBe('');
+      if (configuration === 'split') {
+        expect(workspace.querySelector('[data-sibling]')).not.toBeNull();
+        expect(workspace.querySelector('[role="separator"]')).not.toBeNull();
+      }
+      submenu.dataset.box = '350,200,340,280';
+      workspace.dataset.box = '150,50,900,500';
+      h.invalidate(); await h.flush();
+      expect(workspaceFilter.getAttribute('width')).toBe('900');
+      expect(sourceMask(h.document, workspace)).toContain('M216 150');
+      await h.render({ configuration, menu: false });
+      expect(workspace.style.filter).toBe('brightness(1)');
+      expect(workspace.hasAttribute('data-regional-blur-source')).toBe(false);
+      expect(menu.hasAttribute('data-regional-blur-surface')).toBe(false);
+      expect(submenu.hasAttribute('data-regional-blur-surface')).toBe(false);
+      expect(sourceMask(h.document, timeline)).toBe(inheritedMask);
+      expect(h.document.querySelector('textarea')?.value).toBe('Keep this draft');
+      await h.render({ configuration });
+      configurationPanels(h); await h.flush();
+      expect(workspace.style.filter).toContain('url(');
+      await h.unmount();
+      expect(workspace.style.filter).toBe('brightness(1)');
+      expect(h.observerCount()).toBe(0);
+    });
+  });
+}
+
+test('configuration menus blur session-list pixels outside the chat workspace and restore on close', async () => {
+  await withDOM(async h => {
+    await h.render({ configuration: 'sidebar', menu: false });
+    const shell = h.document.querySelector<HTMLElement>('[data-shell]')!;
+    const sidebar = h.document.querySelector<HTMLElement>('[data-session-sidebar]')!;
+    const workspace = h.document.querySelector<HTMLElement>('[data-workspace]')!;
+    const timeline = h.document.querySelector<HTMLElement>('[data-source]')!;
+    const inheritedMask = sourceMask(h.document, timeline);
+    await h.render({ configuration: 'sidebar' });
+    const { menu, submenu } = configurationPanels(h);
+    submenu.dataset.box = '50,250,340,280';
+    h.invalidate(); await h.flush();
+
+    expect(shell.contains(sidebar)).toBe(true);
+    expect(workspace.contains(sidebar)).toBe(false);
+    expect(shell.contains(submenu)).toBe(false);
+    expect(shell.style.filter).toContain('url(');
+    expect(workspace.style.filter).toBe('brightness(1)');
+    expect(sidebar.style.filter).toBe('');
+    expect(menu.style.filter).toBe('');
+    expect(submenu.style.filter).toBe('');
+    const image = h.document.getElementById(shell.getAttribute('data-regional-blur-source')!)!.querySelector('feImage')!;
+    // The mask starts inside the sidebar (x < 100), not at the chat boundary.
+    expect(image.getAttribute('x')).toBe('50');
+    expect(sourceMask(h.document, shell)).toContain('M66 200');
+    expect(sourceMask(h.document, shell).match(/<path /g)?.length).toBe(2);
+    expect(sourceMask(h.document, timeline)).toBe(inheritedMask);
+
+    await h.render({ configuration: 'sidebar', menu: false });
+    expect(shell.style.filter).toBe('brightness(1)');
+    expect(shell.hasAttribute('data-regional-blur-source')).toBe(false);
+    expect(submenu.hasAttribute('data-regional-blur-surface')).toBe(false);
+    expect(h.document.querySelector('textarea')?.value).toBe('Keep this draft');
+    await h.unmount();
+    expect(h.observerCount()).toBe(0);
+  });
+});
+
+test('a standalone configuration menu retains its timeline and composer fallback', async () => {
+  await withDOM(async h => {
+    await h.render({ configuration: 'standalone', menu: false });
+    await h.render({ configuration: 'standalone' });
+    configurationPanels(h); await h.flush();
+    const workspace = h.document.querySelector<HTMLElement>('[data-workspace]')!;
+    const composer = h.document.querySelector<HTMLElement>('[data-composer-layer]')!;
+    const timeline = h.document.querySelector<HTMLElement>('[data-source]')!;
+    expect(workspace.style.filter).toBe('brightness(1)');
+    expect(composer.style.filter).toContain('url(');
+    expect(sourceMask(h.document, timeline).match(/<path /g)?.length).toBe(3);
+    await h.render({ configuration: 'standalone', menu: false });
+    expect(composer.style.filter).toBe('');
+    expect(sourceMask(h.document, timeline).match(/<path /g)?.length).toBe(1);
+  });
+});

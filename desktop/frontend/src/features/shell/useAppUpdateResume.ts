@@ -2,17 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import type { EditorSessionMode } from '../../../../shared/editor-session';
 import { cheshiDesktop } from '../../cheshiDesktop';
 import type { WorkspaceView } from '../navigation/Sidebar';
+import { normalizeSidebarPanel, type SidebarPanel } from '../navigation/sidebarPanel';
 import { resumeRecord, updateResumeCoordinator } from './updateWorkspaceResume';
 
-const restorableViews: readonly WorkspaceView[] = ['chat', 'notes', 'blank', 'codegraph', 'editor', 'git', 'plugins', 'terminal', 'showcase', 'settings'];
+const restorableViews: readonly WorkspaceView[] = ['chat', 'explorer', 'calendar', 'blank', 'codegraph', 'editor', 'git', 'plugins', 'terminal', 'settings'];
 let initialSnapshot: Promise<unknown> | undefined;
 
 export function useAppUpdateResume(options: {
   activeView: WorkspaceView;
   rightSidebarOpen: boolean;
+  sidebarPanel: SidebarPanel;
   blockedReason: string | null;
   setActiveView(view: WorkspaceView): void;
   setRightSidebarOpen(open: boolean): void;
+  setSidebarPanel(panel: SidebarPanel): void;
 }) {
   const current = useRef(options);
   current.current = options;
@@ -30,7 +33,8 @@ export function useAppUpdateResume(options: {
     const unregister = updateResumeCoordinator.register('shell', {
       capture() {
         if (current.current.blockedReason) throw new Error(current.current.blockedReason);
-        return { activeView: current.current.activeView, rightSidebarOpen: current.current.rightSidebarOpen };
+        return { activeView: current.current.activeView, rightSidebarOpen: current.current.rightSidebarOpen,
+          sidebarPanel: current.current.sidebarPanel };
       },
       restore(value) {
         const record = resumeRecord(value);
@@ -40,6 +44,7 @@ export function useAppUpdateResume(options: {
         const view = restorableViews.find((entry) => entry === record.activeView) ?? 'chat';
         current.current.setActiveView(view);
         current.current.setRightSidebarOpen(record.rightSidebarOpen);
+        current.current.setSidebarPanel(normalizeSidebarPanel(record.sidebarPanel));
       },
     });
     setBusy(true);

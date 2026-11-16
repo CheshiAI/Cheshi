@@ -1,13 +1,13 @@
 import type { SplitLayoutNode } from '../../shared/ui/splitPaneModel';
 import { splitPaneIds } from '../../shared/ui/splitPaneModel';
 import { resumeRecord } from '../shell/updateWorkspaceResume';
-import type { ChatWorkspaceState } from './chatWorkspaceModel';
+import { CHAT_PANE_LIMIT, type ChatWorkspaceState } from './chatWorkspaceModel';
 
 export interface ChatUpdateSnapshot extends ChatWorkspaceState { sessionIds: Record<string, string>; }
 
 function parseLayout(value: unknown, depth = 0): SplitLayoutNode {
   const record = resumeRecord(value);
-  if (!record || depth > 32) throw new Error('The saved chat layout is invalid.');
+  if (!record || depth >= CHAT_PANE_LIMIT) throw new Error('The saved chat layout is invalid.');
   if (record.type === 'pane' && typeof record.paneId === 'string' && record.paneId.length > 0) {
     return { type: 'pane', paneId: record.paneId };
   }
@@ -26,7 +26,7 @@ export function parseChatUpdateSnapshot(value: unknown): ChatUpdateSnapshot {
   if (!record || !sessions || typeof record.activePaneId !== 'string') throw new Error('The saved chat workspace is invalid.');
   const layout = parseLayout(record.layout);
   const ids = splitPaneIds(layout);
-  if (ids.length > 32 || new Set(ids).size !== ids.length || !ids.includes(record.activePaneId)) {
+  if (ids.length > CHAT_PANE_LIMIT || new Set(ids).size !== ids.length || !ids.includes(record.activePaneId)) {
     throw new Error('The saved chat panes are invalid.');
   }
   const sessionIds: Record<string, string> = {};

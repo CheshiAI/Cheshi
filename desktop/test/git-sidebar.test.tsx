@@ -1,0 +1,621 @@
+import { expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+import * as react from 'react';
+import { act } from 'react';
+import * as reactDOM from 'react-dom';
+import * as jsxRuntime from 'react/jsx-runtime';
+import * as icons from 'lucide-react';
+import type { CheshiDesktopApi, GitDiffRequest, GitRepositorySnapshot } from '../frontend/src/cheshiDesktop';
+import type { GitWorkspace } from '../frontend/src/features/git/GitWorkspace';
+import type { GitHubIssueDetail, GitHubIssueList, GitHubIssueQuery } from '../shared/github-issues';
+import { withDOM } from './agent-chats-test-dom';
+
+async function workspaceWithApi(api: Partial<CheshiDesktopApi>) {
+  // Inject the native bridge; exercise the real controller, views and portal without touching Git.
+  const modules: Record<string, unknown> = {
+    react, 'react-dom': reactDOM, 'react/jsx-runtime': jsxRuntime, 'lucide-react': icons,
+    '../../cheshiDesktop': { cheshiDesktop: api },
+    '../cheshiDesktop': { cheshiDesktop: api },
+    './GitProjectContext': await import('../frontend/src/features/git/GitProjectContext'),
+    '../../../../shared/workspace-projects': await import('../shared/workspace-projects'),
+    '../../shared/ui': await import('../frontend/src/shared/ui'),
+    '../../shared/useAutoHideScrollbars': await import('../frontend/src/shared/useAutoHideScrollbars'),
+    '../../shared/errorMessage': await import('../frontend/src/shared/errorMessage'),
+    './gitBranchCheckout': await import('../frontend/src/features/git/gitBranchCheckout'),
+    './gitRepositoryRefresh': await import('../frontend/src/features/git/gitRepositoryRefresh'),
+    './workspaceGitStatus': await import('../frontend/src/shared/workspaceGitStatus'),
+    './useGitBranchHistory': await import('../frontend/src/features/git/useGitBranchHistory'),
+    './useGitPullRequestCommitDiff': await import('../frontend/src/features/git/useGitPullRequestCommitDiff'),
+    './gitWorkspaceModel': await import('../frontend/src/features/git/gitWorkspaceModel'),
+    './unifiedDiff': await import('../frontend/src/features/git/unifiedDiff'),
+    './GitWorkspaceHeader': await import('../frontend/src/features/git/GitWorkspaceHeader'),
+    './GitChangesWorkspace': await import('../frontend/src/features/git/GitChangesWorkspace'),
+    './GitHistoryWorkspace': await import('../frontend/src/features/git/GitHistoryWorkspace'),
+    './useGitIssues': await import('../frontend/src/features/git/useGitIssues'),
+    './GitIssueMarkdown': await import('../frontend/src/features/git/GitIssueMarkdown'),
+    '../../shared/ui/Badge.module.css': { default: {} },
+    './GitIssuesWorkspace.module.css': { default: {} },
+    './GitPullRequestsWorkspace': await import('../frontend/src/features/git/GitPullRequestsWorkspace'),
+    './GitWorkspace.module.css': { default: {} },
+    './GitChangesSidebar.module.css': { default: { projectMenu: 'git-project-menu' } },
+  };
+  function load(filename: string) {
+    const source = readFileSync(new URL(`../frontend/src/features/git/${filename}`, import.meta.url), 'utf8');
+    const compiled = ts.transpileModule(source, { compilerOptions: {
+      module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023, jsx: ts.JsxEmit.ReactJSX,
+    } });
+    const exports: Record<string, unknown> = {};
+    vm.runInNewContext(compiled.outputText, { exports, window, document, performance, setTimeout,
+      require(name: string) {
+        if (!Object.hasOwn(modules, name)) throw new Error(`Unexpected Git dependency: ${name}`);
+        return modules[name];
+      },
+    });
+    return exports;
+  }
+  modules['../../shared/workspaceProjects'] = load('../../shared/workspaceProjects.ts');
+  modules['./useGitWorkspaceController'] = load('useGitWorkspaceController.ts');
+  modules['./GitIssuesWorkspace'] = load('GitIssuesWorkspace.tsx');
+  return load('GitWorkspace.tsx').GitWorkspace as typeof GitWorkspace;
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(complete => { resolve = complete; });
+  return { promise, resolve };
+}
+
+function issueFixture() {
+  const scenario = fixture();
+  const requests: GitHubIssueQuery[] = [];
+  const details: number[] = [];
+  const comments: number[] = [];
+  const issue: GitHubIssueDetail = { number: 18, title: 'Cached issue', state: 'closed', author: 'author',
+    updatedAt: '2026-10-07', labels: [], assignees: [], body: '**Saved issue description**', commentCount: 1 };
+  const result: GitHubIssueList = { repository: 'owner/repo', issues: [issue], total: 1, hasMore: false,
+    incomplete: false, counts: { open: 0, closed: 1, all: 1 } };
+  scenario.api.githubIssues = {
+    list: async query => { requests.push(query); return result; },
+    read: async number => { details.push(number); return issue; },
+    comments: async number => {
+      comments.push(number);
+      return { comments: [{ id: 1, author: 'author', body: '`Saved comment`', createdAt: '2026-10-07' }], hasMore: false };
+    },
+    open: async () => {},
+  };
+  return { ...scenario, requests, details, comments, result };
+}
+
+function fixture() {
+  let snapshot: GitRepositorySnapshot = { available: true, message: '', changes: ['alpha.ts', 'beta.ts'].map(path => ({
+    path, oldPath: null, indexStatus: ' ', workingTreeStatus: 'M', staged: false, unstaged: true, untracked: false,
+  })) };
+  let reads = 0;
+  const diffs: GitDiffRequest[] = [], stages: string[][] = [], unstages: string[][] = [], commits: string[] = [];
+  const commitGate = createDeferred<void>();
+  const stage = (paths: string[], staged: boolean) => {
+    snapshot = { ...snapshot, changes: snapshot.changes?.map(change => paths.includes(change.path)
+      ? { ...change, staged, unstaged: !staged, indexStatus: staged ? 'M' : ' ', workingTreeStatus: staged ? ' ' : 'M' }
+      : change) };
+    return snapshot;
+  };
+  const api: Partial<CheshiDesktopApi> = {
+    getGitSnapshot: async () => { reads++; return snapshot; },
+    getGitDiff: async request => {
+      diffs.push(request);
+      const path = request.path ?? 'alpha.ts';
+      return { ...request, path, commit: null, binary: false, truncated: false,
+        patch: `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1 +1 @@\n-old\n+updated ${path}\n` };
+    },
+    stageGitPaths: async paths => { stages.push(paths); return stage(paths, true); },
+    unstageGitPaths: async paths => { unstages.push(paths); return stage(paths, false); },
+    commitGitChanges: async message => {
+      commits.push(message);
+      await commitGate.promise;
+      snapshot = { ...snapshot, changes: snapshot.changes?.filter(change => !change.staged) };
+      return { output: '', snapshot };
+    },
+  };
+  return { api, reads: () => reads, diffs, stages, unstages, commits, commitGate };
+}
+
+async function settleLoading() {
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 420)); });
+}
+
+function row(sidebar: HTMLElement, path: string) {
+  const button = [...sidebar.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')]
+    .find(element => element.textContent?.endsWith(path));
+  if (!button) throw new Error(`Missing change row: ${path}`);
+  return button;
+}
+
+async function toggleFile(label: string) {
+  const input = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+    .find(element => element.getAttribute('aria-label') === label);
+  if (!input) throw new Error(`Missing file checkbox: ${label}`);
+  await act(async () => input.click());
+}
+
+test('Git project selection stays below commit controls and can return from an unavailable repository', async () => {
+  for (const portaled of [false, true]) await withDOM(async ui => {
+    const source = document.body.firstElementChild as HTMLElement;
+    source.id = 'app';
+    source.style.filter = 'brightness(0.9)';
+    Object.defineProperties(source, {
+      offsetWidth: { value: 1000 }, offsetHeight: { value: 800 },
+      getBoundingClientRect: { value: () => new window.DOMRect(0, 0, 1000, 800) },
+    });
+    const openProjectMenu = async () => {
+      await ui.click('Git project');
+      const menu = document.querySelector<HTMLElement>('[role="menu"][aria-label="Git project"]')!;
+      menu.style.cssText = 'display:block;visibility:visible;opacity:1;border-radius:16px';
+      Object.defineProperties(menu, {
+        getBoundingClientRect: { value: () => new window.DOMRect(200, 100, 280, 200) },
+        getClientRects: { value: () => [new window.DOMRect(200, 100, 280, 200)] },
+      });
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 40)); });
+      expect(menu.classList.contains('git-project-menu')).toBe(true);
+      expect(source.contains(menu)).toBe(false);
+      expect(menu.style.filter).toBe('');
+      expect(menu.getAttribute('data-regional-blur-surface')).toBe('true');
+      expect(source.style.filter).toContain('url(');
+      const filter = document.getElementById(source.getAttribute('data-regional-blur-source')!)!;
+      expect(filter.querySelector('feGaussianBlur')?.getAttribute('stdDeviation')).toBe('16');
+      return filter.id;
+    };
+    const expectBlurRestored = (filterId: string) => {
+      expect(source.style.filter).toBe('brightness(0.9)');
+      expect(source.hasAttribute('data-regional-blur-source')).toBe(false);
+      expect(document.getElementById(filterId)).toBeNull();
+      expect(document.querySelector('[role="menu"][aria-label="Git project"]')).toBeNull();
+    };
+    const scenario = fixture();
+    const projects = [
+      { id: 'primary', name: 'Primary project', rootPath: '/workspace', primary: true, available: true },
+      { id: 'linked', name: 'Linked project', rootPath: '/linked', primary: false, available: true },
+      { id: 'missing', name: 'Missing project', rootPath: '/missing', primary: false, available: false },
+    ];
+    const calls: string[] = [];
+    scenario.api.workspaceProjects = {
+      list: async () => projects,
+      add: async () => null,
+      remove: async () => projects,
+      onChanged: () => () => {},
+      invoke: async (id, channel) => {
+        calls.push(`${id}:${channel}`);
+        if (channel === 'cheshi:get-git-snapshot') return { available: false, message: 'Not a repository' };
+        throw new Error(`Unexpected project operation: ${channel}`);
+      },
+    };
+    const View = await workspaceWithApi(scenario.api);
+    const target = portaled ? document.createElement('aside') : undefined;
+    await ui.render(<View sidebarTarget={target} onOpenWorkspaceFile={() => {}}
+      rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    if (target) source.append(target);
+    await settleLoading();
+    const sidebar = document.querySelector<HTMLElement>('[aria-label="Git changes"]')!;
+    const selector = sidebar.querySelector<HTMLButtonElement>('[aria-label="Git project"]')!;
+    expect(selector).not.toBeNull();
+    expect(sidebar.lastElementChild?.contains(selector)).toBe(true);
+    expect(sidebar.lastElementChild?.previousElementSibling?.tagName).toBe('FOOTER');
+    expect(document.querySelectorAll('[aria-label="Git project"]')).toHaveLength(1);
+    if (target) expect(document.querySelector('main [aria-label="Git project"]')).toBeNull();
+
+    await ui.click('Stage all changes');
+    await ui.type('Commit message', '[fix] update files');
+    await ui.click('Commit');
+    expect(selector.disabled).toBe(true);
+    await act(async () => scenario.commitGate.resolve());
+    expect(selector.disabled).toBe(false);
+    const dismissedFilter = await openProjectMenu();
+    await act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    expectBlurRestored(dismissedFilter);
+    expect(document.activeElement).toBe(selector);
+    const linkedFilter = await openProjectMenu();
+    const options = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
+    expect(options.find(option => option.textContent === 'Missing project')?.disabled).toBe(true);
+    await act(async () => options.find(option => option.textContent === 'Linked project')!.click());
+    expectBlurRestored(linkedFilter);
+    await settleLoading();
+    expect(calls).toEqual(['linked:cheshi:get-git-snapshot']);
+    expect(document.querySelector('[aria-label="Git changes"]')?.textContent).toContain('Not a repository');
+    const primaryFilter = await openProjectMenu();
+    const primary = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
+      .find(option => option.textContent === 'Primary project')!;
+    await act(async () => primary.click());
+    expectBlurRestored(primaryFilter);
+    await settleLoading();
+    expect(document.querySelector('[aria-label="Git project"]')?.textContent).toContain('Primary project');
+    expect(document.querySelector('[aria-label="Git changes"]')?.textContent).toContain('No unstaged changes');
+    const outsideFilter = await openProjectMenu();
+    await act(async () => document.body.dispatchEvent(new window.Event('pointerdown', { bubbles: true })));
+    expectBlurRestored(outsideFilter);
+    const unmountedFilter = await openProjectMenu();
+    await ui.render(null);
+    expectBlurRestored(unmountedFilter);
+  });
+});
+
+test('Git preloads before its first visit, retains draft and selection in a late sidebar portal, and opens the selected diff', async () => {
+  await withDOM(async ui => {
+    const scenario = fixture();
+    const View = await workspaceWithApi(scenario.api);
+    const sidebar = document.createElement('aside');
+    document.body.append(sidebar);
+    let opened = 0;
+    const render = (active: boolean, sidebarTarget: HTMLElement | null = sidebar) =>
+      ui.render(<View active={active} sidebarTarget={sidebarTarget}
+        onOpenChanges={() => { opened++; }} onOpenWorkspaceFile={() => {}}
+        rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await render(false, null);
+    expect(scenario.reads()).toBe(1);
+    expect(document.querySelector('main')?.hidden).toBe(true);
+    await settleLoading();
+    expect(document.querySelector('[aria-label="Git changes"]')).toBeNull();
+    await render(true);
+    expect(sidebar.querySelector('[aria-label="Git changes"]')).not.toBeNull();
+    expect(document.querySelector('main [aria-label="Git changes"]')).toBeNull();
+    expect(sidebar.querySelector('[aria-label="Commit message"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Git project"]')).toBeNull();
+    await act(async () => row(sidebar, 'beta.ts').click());
+    expect(opened).toBe(1);
+    expect(scenario.diffs.at(-1)).toEqual({ scope: 'working', path: 'beta.ts' });
+    expect(document.querySelector('main')?.textContent).toContain('updated beta.ts');
+    await toggleFile('Stage beta.ts');
+    expect(row(sidebar, 'beta.ts').getAttribute('aria-pressed')).toBe('true');
+    await ui.type('Commit message', 'Keep this commit draft');
+    const input = sidebar.querySelector<HTMLInputElement>('[aria-label="Commit message"]')!;
+    const selected = row(sidebar, 'beta.ts');
+    await render(false);
+    expect(document.querySelector('main')?.hidden).toBe(true);
+    await render(true);
+    expect(sidebar.querySelector('[aria-label="Commit message"]')).toBe(input);
+    expect(input.value).toBe('Keep this commit draft');
+    expect(row(sidebar, 'beta.ts')).toBe(selected);
+    expect(selected.getAttribute('aria-pressed')).toBe('true');
+    expect(scenario.reads()).toBe(1);
+
+    await ui.click('Branches & Log');
+    expect(sidebar.querySelector('[aria-label="Commit message"]')).toBe(input);
+    await act(async () => row(sidebar, 'beta.ts').click());
+    expect(scenario.diffs.at(-1)).toEqual({ scope: 'staged', path: 'beta.ts' });
+    expect(document.querySelector('[aria-label="Git sections"] [aria-current="page"]')?.textContent).toContain('Changes');
+    expect(input.value).toBe('Keep this commit draft');
+    expect(opened).toBe(2);
+  });
+});
+
+test('portaled Git controls retain multi-selection, stage and unstage, and block duplicate commits', async () => {
+  await withDOM(async ui => {
+    const scenario = fixture();
+    const View = await workspaceWithApi(scenario.api);
+    const sidebar = document.createElement('aside');
+    document.body.append(sidebar);
+    await ui.render(<View sidebarTarget={sidebar} onOpenWorkspaceFile={() => {}}
+      rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await settleLoading();
+    await act(async () => row(sidebar, 'alpha.ts').click());
+    await act(async () => row(sidebar, 'beta.ts').dispatchEvent(new window.MouseEvent('click', { bubbles: true, shiftKey: true })));
+    expect(sidebar.querySelectorAll('button[aria-pressed="true"]')).toHaveLength(2);
+    await ui.click('Stage all changes');
+    expect(scenario.stages).toEqual([['alpha.ts', 'beta.ts']]);
+    expect(sidebar.querySelectorAll('input[type="checkbox"]:checked')).toHaveLength(2);
+    expect(sidebar.querySelectorAll('button[aria-pressed="true"]')).toHaveLength(2);
+    await toggleFile('Unstage beta.ts');
+    expect(scenario.unstages).toEqual([['beta.ts']]);
+    expect(sidebar.querySelectorAll('input[type="checkbox"]:checked')).toHaveLength(1);
+    expect(sidebar.querySelectorAll('button[aria-pressed="true"]')).toHaveLength(2);
+    await ui.type('Commit message', '[fix] update alpha');
+    await ui.click('Commit');
+    await ui.click('Commit');
+    expect(scenario.commits).toEqual(['[fix] update alpha']);
+    expect(sidebar.querySelector<HTMLInputElement>('[aria-label="Commit message"]')?.disabled).toBe(true);
+    expect(sidebar.querySelector<HTMLButtonElement>('[aria-label="Discard changes in beta.ts"]')?.disabled).toBe(true);
+    await act(async () => scenario.commitGate.resolve());
+    expect(sidebar.querySelector<HTMLInputElement>('[aria-label="Commit message"]')?.value).toBe('');
+    expect(sidebar.textContent).not.toContain('alpha.ts');
+    expect(sidebar.textContent).toContain('beta.ts');
+  });
+});
+
+test('Git sidebar retains its header and controls from initial loading through unavailable states', async () => {
+  await withDOM(async ui => {
+    const gate = createDeferred<GitRepositorySnapshot>();
+    const View = await workspaceWithApi({ getGitSnapshot: () => gate.promise });
+    const sidebar = document.createElement('aside');
+    document.body.append(sidebar);
+    const render = (target: HTMLElement | null) => ui.render(<View active={false} sidebarTarget={target}
+      onOpenWorkspaceFile={() => {}} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await render(null);
+    await render(sidebar);
+    expect(sidebar.querySelector('[role="status"]')).not.toBeNull();
+    expect(document.querySelector('main')?.hidden).toBe(true);
+    const header = sidebar.querySelector('header');
+    expect(header).not.toBeNull();
+    const input = sidebar.querySelector<HTMLInputElement>('[aria-label="Commit message"]')!;
+    expect(input.disabled).toBe(true);
+    expect(sidebar.textContent).not.toContain('No unstaged changes');
+    await act(async () => gate.resolve({ available: false, message: 'Not a repository' }));
+    await settleLoading();
+    expect(sidebar.textContent).toContain('Not a repository');
+    expect(sidebar.querySelector('header')).toBe(header);
+    expect(sidebar.querySelector('[aria-label="Commit message"]')).toBe(input);
+    expect(input.disabled).toBe(true);
+  });
+});
+
+test('Git sidebar explains a missing repository on two lines and preserves other errors', async () => {
+  for (const message of [
+    'fatal: not a git repository (or any of the parent directories): .git',
+    'fatal: detected dubious ownership in repository',
+    '',
+  ]) await withDOM(async ui => {
+    const View = await workspaceWithApi({ getGitSnapshot: async () => ({ available: false, message }) });
+    await ui.render(<View onOpenWorkspaceFile={() => {}} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await settleLoading();
+    const alert = document.querySelector('[aria-label="Git changes"] [role="alert"]')!;
+    expect(alert).not.toBeNull();
+    if (message.startsWith('fatal: not a git repository')) {
+      expect(alert.innerHTML.split(/<br\s*\/?\s*>/)).toEqual([
+        'This folder is not a Git repository.',
+        'Open a Git repository to view changes.',
+      ]);
+    } else {
+      expect(alert.textContent).toBe(message || 'Git repository unavailable');
+    }
+  });
+});
+
+test('Git initial loading keeps the panel shell when data arrives without a visit', async () => {
+  await withDOM(async ui => {
+    const gate = createDeferred<GitRepositorySnapshot>();
+    let reads = 0;
+    const View = await workspaceWithApi({ getGitSnapshot: () => { reads++; return gate.promise; } });
+    const sidebar = document.createElement('aside');
+    document.body.append(sidebar);
+    await ui.render(<View active={false} sidebarTarget={sidebar} onOpenWorkspaceFile={() => {}}
+      rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    const header = sidebar.querySelector('header');
+    expect(header).not.toBeNull();
+    const input = sidebar.querySelector('[aria-label="Commit message"]');
+    expect(reads).toBe(1);
+    expect(sidebar.querySelector('[role="status"]')).not.toBeNull();
+    await act(async () => gate.resolve({ available: true, message: '', changes: [] }));
+    await settleLoading();
+    expect(sidebar.querySelector('header')).toBe(header);
+    expect(sidebar.querySelector('[aria-label="Commit message"]')).toBe(input);
+    expect(sidebar.querySelector('[role="status"]')).toBeNull();
+    expect(sidebar.textContent).toContain('No unstaged changes');
+    expect(document.querySelector('main')?.hidden).toBe(true);
+  });
+});
+
+test('Issues refreshes missing remotes from the toolbar and retains retry for other errors', async () => {
+  for (const scenarioCase of [
+    { message: '', missingRemote: true, structured: true },
+    { message: "Error invoking remote method 'cheshi:workspace-projects:invoke': GitCommandError: no git remotes found", missingRemote: true },
+    { message: 'GitHub authentication failed', missingRemote: false },
+  ]) await withDOM(async ui => {
+    const scenario = issueFixture();
+    let requests = 0;
+    scenario.api.githubIssues!.list = async () => {
+      requests++;
+      if (requests === 1 && scenarioCase.structured) return { unavailable: 'remote-missing' };
+      if (requests === 1) throw new Error(scenarioCase.message);
+      return scenario.result;
+    };
+    const View = await workspaceWithApi(scenario.api);
+    await ui.render(<View onOpenWorkspaceFile={() => {}} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await settleLoading();
+    await ui.click('Issues');
+    const panel = document.querySelector('[aria-label="Issue list"]')!;
+    const message = panel.querySelector('[role="alert"] p, [role="status"] p')!;
+    expect(message).not.toBeNull();
+    if (scenarioCase.missingRemote) {
+      expect(message.innerHTML.split(/<br\s*\/?\s*>/)).toEqual([
+        'No remote repository is configured.',
+        'Add a GitHub remote to view issues.',
+      ]);
+      if (scenarioCase.message) expect(panel.textContent).not.toContain(scenarioCase.message);
+      expect(panel.querySelector('[role="status"] button')).toBeNull();
+      await ui.click('Refresh Git');
+    } else {
+      expect(message.textContent).toBe(scenarioCase.message);
+      await ui.click('Retry');
+    }
+    expect(requests).toBe(2);
+    expect(panel.querySelector('[role="alert"]')).toBeNull();
+    expect(panel.textContent).toContain('Cached issue');
+  });
+});
+
+test('Issues retains search, filters, selection and cached details across tabs until explicit refresh', async () => {
+  await withDOM(async ui => {
+    const scenario = issueFixture();
+    const View = await workspaceWithApi(scenario.api);
+    const render = (active = true) => ui.render(<View active={active} onOpenWorkspaceFile={() => {}}
+      rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await render();
+    await settleLoading();
+    expect(scenario.requests).toHaveLength(0);
+    expect(document.querySelector('[aria-label="GitHub issues"]')).toBeNull();
+    await ui.click('Issues');
+    expect(scenario.requests).toEqual([{ search: '', state: 'open', page: 1 }]);
+    const panel = document.querySelector<HTMLElement>('[aria-label="GitHub issues"]')!;
+    const closedFilter = [...panel.querySelectorAll<HTMLButtonElement>('[aria-label="Issue state"] button')]
+      .find(button => button.textContent?.startsWith('Closed'))!;
+    await act(async () => closedFilter.click());
+    await ui.type('Search issue titles and bodies', 'cache');
+    const input = panel.querySelector<HTMLInputElement>('input[type="search"]')!;
+    await act(async () => input.form!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
+    expect(scenario.requests.at(-1)).toEqual({ search: 'cache', state: 'closed', page: 1 });
+    const selectedRow = panel.querySelector<HTMLButtonElement>('[aria-label="Issue list"] button')!;
+    await act(async () => selectedRow.click());
+    expect(panel.textContent).toContain('Saved issue description');
+    expect(panel.textContent).toContain('Saved comment');
+    expect(panel.querySelector('[aria-label="Issue details"] strong')?.textContent).toBe('Saved issue description');
+    expect(panel.querySelector('article code')?.textContent).toBe('Saved comment');
+    await ui.type('Search issue titles and bodies', 'unsubmitted draft');
+    const list = panel.querySelector<HTMLElement>('[aria-label="Issue list"]')!;
+    list.scrollTop = 80;
+    const requestCount = scenario.requests.length;
+
+    await ui.click('Branches & Log');
+    expect(panel.hidden).toBe(true);
+    await render(false);
+    await render();
+    await ui.click('Issues');
+    expect(document.querySelector('[aria-label="GitHub issues"]')).toBe(panel);
+    expect(panel.hidden).toBe(false);
+    expect(panel.querySelector('input[type="search"]')).toBe(input);
+    expect(input.value).toBe('unsubmitted draft');
+    expect(closedFilter.getAttribute('aria-pressed')).toBe('true');
+    expect(selectedRow.getAttribute('aria-pressed')).toBe('true');
+    expect(list.scrollTop).toBe(80);
+    expect(panel.textContent).toContain('Saved issue description');
+    expect(panel.textContent).toContain('Saved comment');
+    expect(scenario.requests).toHaveLength(requestCount);
+    expect(scenario.details).toEqual([18]);
+    expect(scenario.comments).toEqual([18]);
+    expect(panel.querySelector('[aria-busy="true"]')).toBeNull();
+
+    await ui.click('Refresh Git');
+    expect(scenario.requests).toHaveLength(requestCount + 1);
+    expect(scenario.requests.at(-1)).toEqual({ search: 'cache', state: 'closed', page: 1 });
+    const refreshedRow = panel.querySelector<HTMLButtonElement>('[aria-label="Issue list"] button')!;
+    await act(async () => refreshedRow.click());
+    expect(scenario.details).toEqual([18, 18]);
+    expect(scenario.comments).toEqual([18, 18]);
+  });
+});
+
+test('leaving Issues while its first request is pending keeps one request and retains the result', async () => {
+  await withDOM(async ui => {
+    const scenario = issueFixture();
+    const gate = createDeferred<GitHubIssueList>();
+    scenario.api.githubIssues!.list = query => { scenario.requests.push(query); return gate.promise; };
+    const View = await workspaceWithApi(scenario.api);
+    await ui.render(<View onOpenWorkspaceFile={() => {}} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await settleLoading();
+    await ui.click('Issues');
+    const panel = document.querySelector<HTMLElement>('[aria-label="GitHub issues"]')!;
+    expect(panel.querySelector('[aria-label="Issue list"]')?.getAttribute('aria-busy')).toBe('true');
+    await ui.click('Branches & Log');
+    await ui.click('Issues');
+    expect(scenario.requests).toHaveLength(1);
+    await ui.click('Branches & Log');
+    await act(async () => gate.resolve(scenario.result));
+    expect(panel.hidden).toBe(true);
+    await ui.click('Issues');
+    expect(scenario.requests).toHaveLength(1);
+    expect(panel.textContent).toContain('Cached issue');
+    expect(panel.querySelector('[aria-label="Issue list"]')?.getAttribute('aria-busy')).toBe('false');
+  });
+});
+
+test('range selection follows its anchor through staging and failed staging preserves selection', async () => {
+  await withDOM(async ui => {
+    const scenario = fixture();
+    const stage = scenario.api.stageGitPaths!;
+    let fail = true;
+    scenario.api.stageGitPaths = async paths => {
+      if (fail) throw new Error('Staging failed');
+      return stage(paths);
+    };
+    const View = await workspaceWithApi(scenario.api);
+    const sidebar = document.createElement('aside');
+    document.body.append(sidebar);
+    await ui.render(<View sidebarTarget={sidebar} onOpenWorkspaceFile={() => {}}
+      rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await settleLoading();
+    await act(async () => row(sidebar, 'beta.ts').click());
+    await toggleFile('Stage beta.ts');
+    expect(row(sidebar, 'beta.ts').getAttribute('aria-pressed')).toBe('true');
+    expect(sidebar.querySelectorAll('input:checked')).toHaveLength(0);
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('Staging failed');
+    fail = false;
+    await ui.click('Stage all changes');
+    expect(row(sidebar, 'beta.ts').getAttribute('aria-pressed')).toBe('true');
+    await act(async () => row(sidebar, 'alpha.ts').dispatchEvent(new window.MouseEvent('click', { bubbles: true, shiftKey: true })));
+    expect(sidebar.querySelectorAll('button[aria-pressed="true"]')).toHaveLength(2);
+    await ui.click('Unstage all changes');
+    expect(sidebar.querySelectorAll('input:checked')).toHaveLength(0);
+    expect(sidebar.querySelectorAll('button[aria-pressed="true"]')).toHaveLength(2);
+  });
+});
+
+test('PR missing-remote guidance retains refresh and preserves other errors', async () => {
+  for (const missingRemote of [true, false]) await withDOM(async ui => {
+    const scenario = fixture();
+    let requests = 0;
+    scenario.api.listGitHubPullRequests = async () => {
+      requests++;
+      return { available: false, pullRequests: [], message: missingRemote
+        ? 'GitCommandError: no git remotes found' : 'GitHub authentication failed' };
+    };
+    const View = await workspaceWithApi(scenario.api);
+    await ui.render(<View onOpenWorkspaceFile={() => {}} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await settleLoading();
+    await ui.click('Push & Pull requests');
+    await settleLoading();
+    const workspace = document.querySelector('main')!;
+    if (missingRemote) {
+      const message = [...workspace.querySelectorAll('p')].find(node => node.textContent?.startsWith('No remote repository'))!;
+      expect(message.innerHTML.split(/<br\s*\/?\s*>/)).toEqual([
+        'No remote repository is configured.', 'Add a GitHub remote to view pull requests.',
+      ]);
+      expect(workspace.textContent).not.toContain('no git remotes found');
+    } else expect(workspace.textContent).toContain('GitHub authentication failed');
+    const before = requests;
+    await ui.click('Refresh pull requests');
+    await settleLoading();
+    expect(requests).toBe(before + 1);
+  });
+});
+
+test('Git workspace tracks descendant scrolling and clears activity after idle', async () => {
+  await withDOM(async ui => {
+    const scenario = fixture();
+    const View = await workspaceWithApi(scenario.api);
+    await ui.render(<View onOpenWorkspaceFile={() => {}} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await settleLoading();
+    await ui.click('Issues');
+    const list = document.querySelector('[aria-label="Issue list"]')!;
+    expect(list.closest('[data-auto-hide-scrollbars="true"]')).not.toBeNull();
+    await act(async () => list.dispatchEvent(new window.Event('scroll')));
+    expect(list.getAttribute('data-scrollbar-active')).toBe('true');
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 750)); });
+    expect(list.getAttribute('data-scrollbar-active')).toBe('false');
+    await ui.render(null);
+    expect(list.hasAttribute('data-scrollbar-active')).toBe(false);
+  });
+});
+
+test('branch history shows the shared loader until the selected branch commits finish loading', async () => {
+  await withDOM(async ui => {
+    const scenario = fixture();
+    const readSnapshot = scenario.api.getGitSnapshot!;
+    scenario.api.getGitSnapshot = async () => ({ ...await readSnapshot(), head: 'current', commits: [], branches: [
+      { name: 'current', fullName: 'refs/heads/current', hash: 'a', current: true, remote: false, upstream: null, upstreamRemote: null, ahead: 0, behind: 0 },
+      { name: 'other', fullName: 'refs/heads/other', hash: 'b', current: false, remote: false, upstream: null, upstreamRemote: null, ahead: 0, behind: 0 },
+    ] });
+    const gate = createDeferred<Awaited<ReturnType<CheshiDesktopApi['getGitBranchCommits']>>>();
+    scenario.api.getGitBranchCommits = () => gate.promise;
+    const View = await workspaceWithApi(scenario.api);
+    await ui.render(<View onOpenWorkspaceFile={() => {}} rightSidebarOpen={false} onToggleRightSidebar={() => {}} />);
+    await settleLoading();
+    await ui.click('Branches & Log');
+    await ui.click('other');
+    const list = document.querySelector('[aria-label="Commits for other"]')!;
+    expect(list.getAttribute('aria-busy')).toBe('true');
+    expect(list.querySelector('[role="status"][aria-label="Loading commits…"]')).not.toBeNull();
+    expect(list.textContent).not.toContain('No commits.');
+    await act(async () => gate.resolve([]));
+    expect(list.getAttribute('aria-busy')).toBe('false');
+    expect(list.querySelector('[aria-label="Loading commits…"]')).toBeNull();
+    expect(list.textContent).toContain('No commits.');
+  });
+});

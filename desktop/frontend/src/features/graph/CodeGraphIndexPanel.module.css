@@ -1,31 +1,13 @@
 .panel {
   position: relative;
+  min-height: 0;
+  padding: var(--space-default);
+  overflow: auto;
   display: flex;
   min-width: 0;
   flex-direction: column;
   font-size: 10px;
   gap: var(--space-default);
-}
-
-.heading {
-  display: flex;
-  min-height: 22px;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-default);
-}
-
-.headingLabel {
-  color: var(--sidebar-section-label-color);
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: .08em;
-  line-height: 14px;
-}
-
-.refreshButton:disabled {
-  cursor: default;
-  filter: saturate(.4);
 }
 
 .rows {

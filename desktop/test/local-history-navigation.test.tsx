@@ -1,9 +1,11 @@
+import { sidebarPanelForWorkspace } from '../frontend/src/features/navigation/sidebarPanel';
+import * as layoutModel from '../frontend/src/features/shell/workspaceLayoutModel';
+import * as splitModel from '../frontend/src/shared/ui/splitPaneModel';
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { createChatDraftAttachments } from '../frontend/src/features/chat/chatDraftAttachments';
-import { appleNoteAttachment } from '../frontend/src/features/notes/appleNotesModel';
 
 interface TestElement {
   type: string;
@@ -19,7 +21,7 @@ function elements(value: unknown): TestElement[] {
   if (Array.isArray(value)) return value.flatMap(elements);
   if (!isElement(value)) return [];
   return [value, ...elements(value.props.children),
-    ...(value.type === 'WorkspaceEditorSplit' ? elements(value.props.editor) : [])];
+    ...(value.type === 'WorkspaceEditorSplit' ? [...elements(value.props.editor), ...elements(value.props.terminal)] : [])];
 }
 
 function element(tree: unknown, type: string): TestElement {
@@ -45,7 +47,24 @@ function createHarness() {
   const slots: unknown[] = [];
   const jsx = (type: string, props: Record<string, unknown>, key?: string): TestElement => ({ type, props, key });
   const modules: Record<string, unknown> = {
+    '../settings/useHomiesEnabled': { useHomiesEnabled: () => true },
+    '../canvas/CanvasEmptyState': { CanvasLoadingState: 'CanvasLoadingState' },
+    '../chat/chatWorkspaceModel': { CHAT_PANE_MIN_WIDTH: 400 },
+    '../agent-chats/ChatsView': { ChatsView: 'ChatsView' },
+    '../chat/FlashSourceLink': { FlashSourceNavigationContext: { Provider: 'FlashSourceNavigationContext' } },
+    './WorkerWorkspace': { WorkerWorkspace: 'WorkerWorkspace' },
+    './useToolsMenu': { useToolsMenu() {} },
+    '../navigation/ExplorerView': { ExplorerView: 'ExplorerView' },
+    '../graph/useCodeGraphIndex': { useCodeGraphIndex: () => ({ status: { state: 'ready' } }) },
+    './AgentManagementViews': { AgentManagementViews: 'AgentManagementViews' },
+    '../scheduler/SchedulerNotifications': { SchedulerNotifications: 'SchedulerNotifications' },
+    '../settings/DiscordSetupConfirmation': { DiscordSetupConfirmation: 'DiscordSetupConfirmation' },
+    './useWorkflowChatNavigation': { useWorkflowChatNavigation: () => async () => false },
+    './workspaceLayoutModel': { ...layoutModel, readWorkspaceLayout: () => null, saveWorkspaceLayout() {} },
+    '../../shared/ui/splitPaneModel': splitModel,
     react: {
+      lazy: () => 'CanvasView',
+      Suspense: 'Suspense',
       useRef(current: unknown) { return slots[cursor++] ??= { current }; },
       useState(initial: unknown) {
         const index = cursor++;
@@ -58,9 +77,12 @@ function createHarness() {
       useEffect() {},
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    '../../shared/ui': { LiquidGlassPanel: 'LiquidGlassPanel' },
+    '../../shared/ui': {
+      SlidingSidePanel: 'SlidingSidePanel', RegionalBlur: 'RegionalBlur', LiquidGlassPanel: 'LiquidGlassPanel',
+      SidebarToggleVisibility: { Provider: 'SidebarToggleVisibility' },
+    },
     '../chat': { ChatSessionList: 'ChatSessionList' },
-    '../chat/HistoryRecallActivity': { HistoryRecallNavigation: { Provider: 'HistoryRecallNavigation' } },
+    '../../cheshiDesktop': { cheshiDesktop: undefined },
     '../chat/ChatWorkspace': { ChatWorkspace: 'ChatWorkspace' },
     '../chat/chatDraftAttachments': {
       ChatDraftAttachmentsContext: { Provider: 'ChatDraftAttachmentsProvider' }, createChatDraftAttachments,
@@ -81,20 +103,20 @@ function createHarness() {
     '../git': { GitWorkspace: 'GitWorkspace' },
     '../graph': { CodeGraphView: 'CodeGraphView' },
     '../home/BlankView': { BlankView: 'BlankView' },
+    '../navigation/sidebarPanel': { sidebarPanelForWorkspace, readSidebarPanel: () => 'files', saveSidebarPanel() {} },
     '../navigation/Sidebar': { Sidebar: 'Sidebar' },
+    '../navigation/SidebarRail': { SidebarRail: 'SidebarRail' },
     '../navigation/WorkspaceFileSearch': { WorkspaceFileSearch: 'WorkspaceFileSearch' },
     '../navigation/fileSearchShortcut': { installFileSearchShortcut() { return () => {}; } },
-    '../notes/NotesView': { NotesView: 'NotesView' },
-    '../notes/appleNotesModel': { appleNoteAttachment },
+    '../sticky-notes/MemoSidebar': { MemoSidebar: 'MemoSidebar' },
+    '../calendar/CalendarView': { CalendarView: 'CalendarView' },
     '../plugins': { PluginsView: 'PluginsView' },
     '../terminal': { TerminalWorkspace: 'TerminalWorkspace' },
-    '../showcase/ShowcaseView': { ShowcaseView: 'ShowcaseView' },
     '../settings/SettingsView': { SettingsView: 'SettingsView' },
     './ReviewSidebar': { ReviewSidebar: 'ReviewSidebar' },
     './useAppUpdateResume': { useAppUpdateResume: () => ({ busy: false, error: null }) },
-    './useSidebarResize': { useSidebarResize: () => ({ layoutRef: { current: null }, style: {}, resizing: null,
-      separatorProps: () => ({ role: 'separator' }) }) },
     './WorkspaceStatusBar': { WorkspaceStatusBar: 'WorkspaceStatusBar' },
+    './WorkspaceSurfaceReporter': { WorkspaceSurfaceReporter: 'WorkspaceSurfaceReporter' },
     './WorkspaceEditorSplit': { WorkspaceEditorSplit: 'WorkspaceEditorSplit' },
     './AppShell.module.css': { default: {} },
   };
@@ -103,7 +125,7 @@ function createHarness() {
     jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023,
   } });
   const exports: Record<string, unknown> = {};
-  vm.runInNewContext(compiled.outputText, { exports, require(name: string) {
+  vm.runInNewContext(compiled.outputText, { exports, window: {}, require(name: string) {
     if (!Object.hasOwn(modules, name)) throw new Error(`Unexpected AppShell dependency: ${name}`);
     return modules[name];
   } });
@@ -115,12 +137,12 @@ function createHarness() {
 test('explorer history opens the right panel with draft protection while preserving the active page', () => {
   const harness = createHarness();
   let tree = harness.render();
-  invoke(element(tree, 'Sidebar'), 'onNavigate', 'git');
+  invoke(element(tree, 'SidebarRail'), 'onNavigate', 'git');
   invoke(element(tree, 'WorkspaceEditor'), 'onDirtyPathsChange', ['src/dirty.ts']);
   tree = harness.render();
   invoke(element(tree, 'Sidebar'), 'onOpenLocalHistory', 'src/dirty.ts');
   tree = harness.render();
-  expect(element(tree, 'Sidebar').props.activeView).toBe('git');
+  expect(element(tree, 'SidebarRail').props.activeView).toBe('git');
   expect(element(tree, 'Sidebar').props.selectedFilePath).toBe('src/dirty.ts');
   const history = element(tree, 'ReviewSidebar');
   expect(history.props.localHistoryPath).toBe('src/dirty.ts');
@@ -132,7 +154,7 @@ test('explorer history opens the right panel with draft protection while preserv
   expect(Object.keys(footer.props).filter((name) => /history/i.test(name))).toEqual([]);
   invoke(history, 'onCloseReview');
   tree = harness.render();
-  expect(element(tree, 'Sidebar').props.activeView).toBe('git');
+  expect(element(tree, 'SidebarRail').props.activeView).toBe('git');
   expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('primary');
   expect(elements(tree).some((item) => item.type === 'GitWorkspace')).toBe(true);
   expect(element(tree, 'ReviewSidebar').props.localHistoryPath).toBeNull();
@@ -141,20 +163,21 @@ test('explorer history opens the right panel with draft protection while preserv
 test('closing history after switching files leaves the editor open and preserves its draft state', () => {
   const harness = createHarness();
   let tree = harness.render();
-  invoke(element(tree, 'Sidebar'), 'onNavigate', 'terminal');
+  invoke(element(tree, 'SidebarRail'), 'onNavigate', 'terminal');
+  tree = harness.render();
   invoke(element(tree, 'Sidebar'), 'onOpenWorkspaceFile', 'src/dirty.ts');
   invoke(element(tree, 'WorkspaceEditor'), 'onDirtyPathsChange', ['src/dirty.ts']);
   invoke(element(tree, 'WorkspaceEditor'), 'onSelectedPathChange', 'src/dirty.ts');
   tree = harness.render();
   const editorBefore = element(tree, 'WorkspaceEditor');
   const splitBefore = element(workspaceColumn(tree), 'WorkspaceEditorSplit');
-  expect(splitBefore.props.mode).toBe('split');
+  expect(splitBefore.props.mode).toBe('editor');
   expect(splitBefore.props.editor).toBe(editorBefore);
-  expect(element(tree, 'Sidebar').props.activeView).toBe('terminal');
+  expect(element(tree, 'SidebarRail').props.activeView).toBe('editor');
   invoke(editorBefore, 'onOpenLocalHistory', 'src/dirty.ts');
   tree = harness.render();
   expect(element(tree, 'ReviewSidebar').props.localHistoryDirty).toBe(true);
-  expect(element(tree, 'Sidebar').props.activeView).toBe('terminal');
+  expect(element(tree, 'SidebarRail').props.activeView).toBe('editor');
   invoke(element(tree, 'Sidebar'), 'onOpenLocalHistory', 'src/clean.ts');
   tree = harness.render();
   const history = element(tree, 'ReviewSidebar');
@@ -165,16 +188,16 @@ test('closing history after switching files leaves the editor open and preserves
   expect(editorDuring.props.target).toBe(editorBefore.props.target);
   expect(editorDuring.key).toBe(editorBefore.key);
   const splitDuring = element(workspaceColumn(tree), 'WorkspaceEditorSplit');
-  expect(splitDuring.props.mode).toBe('split');
+  expect(splitDuring.props.mode).toBe('editor');
   expect(splitDuring.key).toBe(splitBefore.key);
   expect(splitDuring.props.editor).toBe(editorDuring);
   invoke(history, 'onCloseReview');
   tree = harness.render();
-  expect(element(tree, 'Sidebar').props.activeView).toBe('terminal');
+  expect(element(tree, 'SidebarRail').props.activeView).toBe('editor');
   expect(element(tree, 'Sidebar').props.selectedFilePath).toBe('src/dirty.ts');
-  expect(element(tree, 'TerminalWorkspace').props.active).toBe(true);
+  expect(element(tree, 'TerminalWorkspace').props.active).toBe(false);
   expect(element(tree, 'ChatWorkspace').props.active).toBe(false);
-  expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('split');
+  expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('editor');
   expect(element(tree, 'ReviewSidebar').props.localHistoryPath).toBeNull();
   expect(element(tree, 'WorkspaceEditor').props.active).toBe(true);
   expect(element(tree, 'WorkspaceEditor').props.target).toBe(editorBefore.props.target);
@@ -186,6 +209,8 @@ test('closing history after switching files leaves the editor open and preserves
 test('closing history after all editor tabs close preserves the previous chat workspace', () => {
   const harness = createHarness();
   let tree = harness.render();
+  invoke(element(tree, 'SidebarRail'), 'onNavigate', 'chat');
+  tree = harness.render();
   invoke(element(tree, 'Sidebar'), 'onOpenWorkspaceFile', 'src/file.ts');
   tree = harness.render();
   invoke(element(tree, 'WorkspaceEditor'), 'onOpenLocalHistory', 'src/file.ts');
@@ -194,7 +219,7 @@ test('closing history after all editor tabs close preserves the previous chat wo
   tree = harness.render();
   invoke(element(tree, 'ReviewSidebar'), 'onCloseReview');
   tree = harness.render();
-  expect(element(tree, 'Sidebar').props.activeView).toBe('chat');
+  expect(element(tree, 'SidebarRail').props.activeView).toBe('chat');
   expect(element(tree, 'WorkspaceEditorSplit').props.mode).toBe('primary');
   expect(element(tree, 'WorkspaceEditor').props.target).toBeNull();
   expect(element(tree, 'ChatWorkspace').props.active).toBe(true);

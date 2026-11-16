@@ -52,7 +52,10 @@ function harness(kind: Kind) {
   const jsx = (type: string | ((props: Record<string, unknown>) => unknown), props: Record<string, unknown>): unknown =>
     typeof type === 'function' ? type(props) : { type, props };
   const modules: Record<string, unknown> = {
+    '../../shared/ui/TooltipButton': { TooltipButton: 'button' },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
     react: {
+      useEffect() {},
       useState(initial: unknown) {
         const index = hookIndex++;
         if (index >= hooks.length) hooks[index] = initial;
@@ -135,7 +138,7 @@ describe('delete dialog progress', () => {
       expectBusy(pending, true);
       const loader = find(pending, 'LoadingState');
       expect(loader.props.type).toBe('processing');
-      expect(loader.props.label).toBe(kind === 'session' ? 'Deleting chat…' : 'Deleting saved record…');
+      expect(loader.props.label).toBe(kind === 'session' ? 'Deleting session…' : 'Deleting saved record…');
       submit(pending);
       invoke(find(pending, 'Modal'), 'onClose');
       invoke(cancel(pending), 'onClick');

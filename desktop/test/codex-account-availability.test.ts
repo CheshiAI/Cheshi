@@ -1,15 +1,16 @@
 import { expect, test } from 'bun:test';
 import { chooseCodexAccount } from '../lib/codex-account-availability.mts';
-import type { CodexAccountProfile, CodexAccountsSnapshot, CodexRateLimitWindow } from '../shared/codex-accounts.ts';
+import type { CodexAccountProfile, CodexAccountsSnapshot, CodexCredits, CodexRateLimitWindow } from '../shared/codex-accounts.ts';
 
 const NOW = 1_800_000_000;
 function window(usedPercent: number, resetsAt: number | null = NOW + 60): CodexRateLimitWindow {
   return { usedPercent, resetsAt, windowDurationMins: 300 };
 }
-function profile(id: string, primary = window(10), secondary: CodexRateLimitWindow | null = null): CodexAccountProfile {
+function profile(id: string, primary: CodexRateLimitWindow | null = window(10),
+  secondary: CodexRateLimitWindow | null = null, credits?: CodexCredits): CodexAccountProfile {
   return { id, label: id, email: null, login: { state: 'signed_in', error: null }, usage: {
     state: 'ready', authenticated: true, plan: 'pro', error: null,
-    rateLimits: [{ limitId: 'codex', limitName: null, plan: 'pro', primary, secondary }],
+    rateLimits: [{ limitId: 'codex', limitName: null, plan: 'pro', primary, secondary, ...(credits ? { credits } : {}) }],
   } };
 }
 function choose(...profiles: CodexAccountProfile[]) {
@@ -26,6 +27,74 @@ test('weekly and short usage limits independently prevent selection', () => {
   const weekly = { ...window(100), windowDurationMins: 10_080 };
   expect(choose(profile('a', window(1), weekly), profile('b', window(100)), profile('c')).accountId).toBe('c');
   expect(choose(profile('a', window(100)), profile('b', window(0), weekly)).accountId).toBeNull();
+});
+
+const availableCredits: CodexCredits[] = [
+  { balance: '100', hasCredits: true, unlimited: false },
+  { balance: null, hasCredits: true, unlimited: false },
+  { balance: null, hasCredits: false, unlimited: true },
+];
+
+test('keeps the active account with credits after short, weekly, or both limits are exhausted', () => {
+  for (const credits of availableCredits) {
+    for (const [short, weekly] of [[100, 10], [10, 100], [100, 100]] as const) {
+      const a = profile('a', window(short), { ...window(weekly), windowDurationMins: 10_080 }, credits);
+      expect(choose(a)).toEqual({ accountId: 'a', message: null, resetsAt: null });
+      expect(choose(a, profile('b'))).toEqual({ accountId: 'a', message: null, resetsAt: null });
+    }
+  }
+});
+
+test('selects a credit-backed alternative when the active account has no remaining usage', () => {
+  for (const credits of availableCredits) {
+    const b = profile('b', window(100), window(100), credits);
+    expect(choose(profile('a', window(100)), b)).toEqual({ accountId: 'b', message: null, resetsAt: null });
+  }
+});
+
+test('confirmed credits establish availability without usage windows', () => {
+  for (const credits of availableCredits) {
+    const b = profile('b', null, null, credits);
+    expect(choose(profile('a', window(100)), b).accountId).toBe('b');
+  }
+});
+
+test('exhausted or missing credits preserve blocking, reset times, and fallback selection', () => {
+  for (const credits of [undefined, { balance: '0', hasCredits: false, unlimited: false },
+    { balance: '100', hasCredits: false, unlimited: false }]) {
+    const a = profile('a', window(100), null, credits);
+    expect(choose(a).accountId).toBeNull();
+    expect(choose(a).resetsAt).toBe(NOW + 60);
+    expect(choose(a, profile('b')).accountId).toBe('b');
+  }
+});
+
+test('credit flags must be literal true rather than truthy external values', () => {
+  for (const field of ['hasCredits', 'unlimited']) {
+    for (const value of ['true', 'false', 1, {}, null, undefined]) {
+      const credits = { balance: '100', hasCredits: false, unlimited: false, [field]: value };
+      const a = profile('a', window(100));
+      a.usage.rateLimits[0]!.credits = credits as unknown as CodexCredits;
+      expect(choose(a).accountId).toBeNull();
+    }
+  }
+});
+
+test('credits never make unauthenticated or unready alternatives available', () => {
+  for (const credits of availableCredits) {
+    for (const usage of [{ authenticated: false }, { state: 'error' as const }, { state: 'starting' as const }]) {
+      const b = profile('b', window(100), null, credits);
+      Object.assign(b.usage, usage);
+      expect(choose(profile('a', window(100)), b).accountId).toBeNull();
+    }
+  }
+});
+
+test('credits belonging only to Spark do not bypass exhausted general Codex usage', () => {
+  const a = profile('a', window(100));
+  a.usage.rateLimits.push({ ...a.usage.rateLimits[0]!, limitId: 'codex_spark', credits: availableCredits[0] });
+  expect(choose(a).accountId).toBeNull();
+  expect(choose(a, profile('b')).accountId).toBe('b');
 });
 
 test('ignores Spark limits but does not treat a Spark-only account as general availability', () => {

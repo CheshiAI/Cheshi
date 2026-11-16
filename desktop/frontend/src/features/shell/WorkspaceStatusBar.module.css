@@ -16,6 +16,10 @@
   font-size: var(--font-size-small);
 }
 
+:global(html[data-window-glass]) .bar {
+  background: transparent;
+}
+
 .item {
   composes: button from '../../shared/ui/StatusBarButton.module.css';
 }
@@ -32,23 +36,45 @@
   font-weight: 600;
 }
 
-.index {
-  margin-left: auto;
-}
-
-.index[data-index-state='ready'] > svg,
 .account[data-account-state='ready'] > svg {
   color: var(--codegraph-default);
 }
 
-.index[data-index-state='disabled'] > svg,
 .account[data-account-state='disabled'] > svg {
   color: var(--codegraph-disabled);
 }
 
+.spacer { flex: 1; }
+
+.sidebarStatus {
+  align-self: center;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebarStatus:empty { display: none; }
+
 .account {
   max-width: 60%;
   margin-right: var(--space-10);
+}
+
+.account:is(:hover, :active, [aria-expanded='true']) {
+  background: var(--control-surface-interactive);
+}
+
+.account > svg {
+  width: var(--icon-button-icon-size);
+  height: var(--icon-button-icon-size);
+  flex-basis: var(--icon-button-icon-size);
 }
 
 .separator,
@@ -78,35 +104,27 @@
 }
 
 .popover {
-  --panel-backdrop-blur: 24px;
-  --panel-backdrop-saturation: 88%;
+  composes: anchor from '../../shared/ui/PopupSurface.module.css';
   -webkit-app-region: no-drag;
   position: fixed;
   inset: auto var(--space-8) calc(var(--workspace-status-bar-height) + var(--space-8)) auto;
   width: var(--sidebar-width);
   max-width: calc(100vw - var(--space-default) * 2);
   max-height: calc(100dvh - var(--workspace-status-bar-height) - var(--space-default) * 2);
-  overflow: auto;
+  overflow: visible;
   margin: 0;
-  padding: var(--space-default);
+  padding: 0;
+  border: none;
   background: transparent;
   color: var(--text);
   overscroll-behavior: contain;
 }
 
-.busy {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 6px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: status-pulse 1s ease-in-out infinite alternate;
-}
-
-@keyframes status-pulse {
-  to { opacity: .35; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .busy { animation: none; }
+.accountPopover {
+  composes: surface from '../../shared/ui/PopupSurface.module.css';
+  --popup-surface-background: var(--popup-background);
+  max-height: inherit;
+  overflow: auto;
+  padding: var(--space-default);
+  overscroll-behavior: contain;
 }

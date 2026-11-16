@@ -282,3 +282,52 @@ describe('Escape cancels current conversation work', () => {
     expect(escape.prevented()).toBe(false);
   });
 });
+
+
+test('temporary transfer reserves the entry until acceptance and prevents duplicate sending', async () => {
+  const { queue, calls, context } = harness();
+  const original = { ...input('Move this'), attachments: [{ kind: 'file' as const, name: 'a.txt', path: '/a.txt' }] };
+  queue.enqueue(original);
+  const id = queue.getSnapshot().entries[0]!.id;
+  const gate = createDeferred<void>();
+  const received: ChatDraftSnapshot[] = [];
+  const move = queue.transfer(id, async draft => { received.push(draft); await gate.promise; });
+  expect(queue.getSnapshot().entries[0]!.status).toBe('transferring');
+  expect(await queue.transfer(id, async () => { throw new Error('Duplicate'); })).toBe(false);
+  expect(await queue.steer(id)).toBe(false);
+  expect(queue.take(id, () => true)).toBe(false);
+  queue.remove(id);
+  context(false);
+  expect(calls).toHaveLength(0);
+  expect(queue.getSnapshot().entries).toHaveLength(1);
+  gate.resolve();
+  expect(await move).toBe(true);
+  expect(received).toEqual([original]);
+  expect(queue.getSnapshot().entries).toHaveLength(0);
+});
+
+test('failed temporary transfer retains the original and pauses automatic sending until retried', async () => {
+  const { queue, calls, context } = harness();
+  queue.enqueue(input('Keep this'));
+  const id = queue.getSnapshot().entries[0]!.id;
+  expect(await queue.transfer(id, async () => { throw new Error('Window closed'); })).toBe(false);
+  expect(queue.getSnapshot().entries[0]).toMatchObject({ id, input: input('Keep this'), error: 'Window closed' });
+  context(false);
+  expect(calls).toHaveLength(0);
+  expect(await queue.transfer(id, async () => {})).toBe(true);
+  expect(queue.getSnapshot().entries).toHaveLength(0);
+});
+
+test('separate queued questions transfer concurrently without mixing their payloads', async () => {
+  const { queue } = harness();
+  queue.enqueue(input('one')); queue.enqueue(input('two'));
+  const [first, second] = queue.getSnapshot().entries;
+  const one = createDeferred<void>(), two = createDeferred<void>();
+  const received: string[] = [];
+  const transferOne = queue.transfer(first!.id, async value => { received.push(value.draft); await one.promise; });
+  const transferTwo = queue.transfer(second!.id, async value => { received.push(value.draft); await two.promise; });
+  two.resolve(); expect(await transferTwo).toBe(true);
+  expect(queue.getSnapshot().entries.map(entry => entry.id)).toEqual([first!.id]);
+  one.resolve(); expect(await transferOne).toBe(true);
+  expect(received).toEqual(['one', 'two']);
+});

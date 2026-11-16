@@ -1,3 +1,6 @@
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
+import { useLayoutEffect, useRef } from 'react';
+import { TooltipButton } from '../../shared/ui/TooltipButton';
 import {
   Bot,
   Brain,
@@ -10,13 +13,15 @@ import {
   X,
 } from 'lucide-react';
 
-import { LiquidGlassPanel, LoadingState, NeumorphicButton } from '../../shared/ui';
+import { LiquidGlassPanel, LoadingState, NeumorphicButton, SidebarPanelHeader } from '../../shared/ui';
 import { ChatErrorNotice } from './ChatErrorNotice';
+import { ChatStatusPanel } from './ChatStatusPanel';
 import { formatGoalUsage, formatMcpAuthStatus, formatMcpConnectionStatus, formatMcpServerDetail } from './chatViewModel';
 import styles from './ChatView.module.css';
 import type { ChatViewController } from './useChatViewController';
 
 export function ChatCommandMenu({ controller }: { controller: ChatViewController }) {
+  const anchorRef = useRef<HTMLDivElement>(null);
   const {
     activateSlashCommand,
     agentPickerOpen,
@@ -58,34 +63,49 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
     state,
   } = controller;
 
+  useLayoutEffect(() => {
+    if (!commandMenuOpen || commandMenuMode !== 'status') return;
+    const anchor = anchorRef.current, options = commandOptionsRef.current, root = controller.rootRef.current;
+    if (!anchor || !options || !root) return;
+    const fit = () => {
+      const available = options.getBoundingClientRect().height + anchor.getBoundingClientRect().top
+        - Math.max(0, root.getBoundingClientRect().top) - 16;
+      const height = `${Math.max(80, Math.min(600, Math.floor(available)))}px`;
+      if (options.style.maxHeight !== height) options.style.maxHeight = height;
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(root);
+    if (controller.composerAreaRef.current) observer.observe(controller.composerAreaRef.current);
+    return () => { observer.disconnect(); options.style.removeProperty('max-height'); };
+  }, [commandMenuOpen, commandMenuMode, commandOptionsRef, controller.rootRef, controller.composerAreaRef]);
+
   if (!commandMenuOpen) return null;
 
-  return (
+  return <div className={styles.commandMenuAnchor} ref={anchorRef}>
     <LiquidGlassPanel
       as="section"
       aria-label={commandMenuTitle}
       className={styles.commandMenu}
-      data-liquid-glass-surface="side-panel"
       data-liquid-glass-backdrop="true"
       id={controller.commandMenuId}
+      onKeyDown={event => {
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'Escape'
+          || (event.key === 'Enter' && (event.target as HTMLElement).closest('[role="option"]'))) {
+          controller.handleKeyDown(event);
+          event.stopPropagation();
+        }
+      }}
     >
-      <header className={styles.commandMenuHeader}>
-        <div>
-          <strong>{commandMenuTitle}</strong>
-          <span>{commandMenuSubtitle}</span>
-        </div>
-        <NeumorphicButton
-          raised
-          aria-label="Close command menu"
-          className="sidebar-heading-action"
-          onClick={closeCommandMenu}
-        >
-          <X aria-hidden="true" />
-        </NeumorphicButton>
-      </header>
+      <SidebarPanelHeader title={commandMenuTitle.toUpperCase()} actions={
+        <TooltipButton variant="ghost" size="icon" aria-label="Close command menu" title="Close command menu"
+          onClick={closeCommandMenu}><X aria-hidden="true" /></TooltipButton>
+      } />
+      <p className={styles.commandMenuSubtitle}>{commandMenuSubtitle}</p>
       <div
         className={styles.commandOptions}
         data-agent-picker={agentPickerOpen ? 'true' : undefined}
+        data-status={commandMenuMode === 'status' ? 'true' : undefined}
         ref={commandOptionsRef}
         role={commandMenuMode === 'status' || mcpStatusOpen || goalEditorOpen ? 'region' : 'listbox'}
       >
@@ -106,10 +126,10 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
             {filteredAgents.map((agent, index) => {
               const Icon = agent.kind === 'main' ? Bot : Users;
               return (
-                <button
+                <TooltipButton variant="ghost"
                   aria-selected={index === highlightedIndex}
                   className={styles.commandOption}
-                  data-active={index === highlightedIndex ? 'true' : undefined}
+                  active={index === highlightedIndex}
                   data-selected={agent.current ? 'true' : undefined}
                   key={agent.id}
                   role="option"
@@ -125,7 +145,7 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
                     <span>{agent.description}</span>
                   </span>
                   <span className={styles.commandMeta}>{agent.current ? 'current' : agent.status}</span>
-                </button>
+                </TooltipButton>
               );
             })}
           </>
@@ -139,10 +159,10 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
               </div>
             )}
             {filteredSkills.map((skill, index) => (
-              <button
+              <TooltipButton variant="ghost"
                 aria-selected={index === highlightedIndex}
                 className={styles.commandOption}
-                data-active={index === highlightedIndex ? 'true' : undefined}
+                active={index === highlightedIndex}
                 key={skill.path}
                 role="option"
                 title={skill.path}
@@ -156,7 +176,7 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
                   <span>{skill.description || skill.name}</span>
                 </span>
                 <span className={styles.commandMeta}>{skill.scope}</span>
-              </button>
+              </TooltipButton>
             ))}
           </>
         )}
@@ -169,10 +189,10 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
               </div>
             )}
             {filteredModels.map((model, index) => (
-              <button
+              <NeumorphicButton variant="ghost"
                 aria-selected={index === highlightedIndex}
                 className={styles.commandOption}
-                data-active={index === highlightedIndex ? 'true' : undefined}
+                active={index === highlightedIndex}
                 data-selected={chatConfiguration?.model === model.model ? 'true' : undefined}
                 key={model.id}
                 role="option"
@@ -188,7 +208,7 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
                 <span className={styles.commandMeta}>
                   {chatConfiguration?.model === model.model ? 'current' : model.isDefault ? 'default' : 'model'}
                 </span>
-              </button>
+              </NeumorphicButton>
             ))}
           </>
         )}
@@ -201,10 +221,10 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
               </div>
             )}
             {filteredReasoningEfforts.map((option, index) => (
-              <button
+              <NeumorphicButton variant="ghost"
                 aria-selected={index === highlightedIndex}
                 className={styles.commandOption}
-                data-active={index === highlightedIndex ? 'true' : undefined}
+                active={index === highlightedIndex}
                 data-selected={chatConfiguration?.reasoningEffort === option.effort ? 'true' : undefined}
                 key={option.effort}
                 role="option"
@@ -220,7 +240,7 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
                 <span className={styles.commandMeta}>
                   {chatConfiguration?.reasoningEffort === option.effort ? 'current' : 'effort'}
                 </span>
-              </button>
+              </NeumorphicButton>
             ))}
           </>
         )}
@@ -233,11 +253,11 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
               </div>
             )}
             {filteredPermissionModes.map((mode, index) => (
-              <button
+              <NeumorphicButton variant="ghost"
                 aria-disabled={!mode.allowed ? 'true' : undefined}
                 aria-selected={index === highlightedIndex}
                 className={styles.commandOption}
-                data-active={index === highlightedIndex ? 'true' : undefined}
+                active={index === highlightedIndex}
                 data-disabled={!mode.allowed ? 'true' : undefined}
                 data-selected={state.access === mode.access ? 'true' : undefined}
                 key={mode.id}
@@ -260,19 +280,12 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
                         ? 'unrestricted'
                         : mode.access}
                 </span>
-              </button>
+              </NeumorphicButton>
             ))}
           </>
         )}
         {!commandLoading && commandMenuMode === 'status' && commandStatus && (
-          <dl className={styles.commandStatus}>
-            <div><dt>Chat ID</dt><dd title={commandStatus.threadId ?? undefined}>{commandStatus.threadId ?? 'Not started'}</dd></div>
-            <div><dt>Model</dt><dd>{commandStatus.modelDisplayName}</dd></div>
-            <div><dt>Reasoning</dt><dd>{commandStatus.reasoningEffort}</dd></div>
-            <div><dt>Service tier</dt><dd>{commandStatus.serviceTierDisplayName}</dd></div>
-            <div><dt>Access</dt><dd>{commandStatus.access}</dd></div>
-            <div><dt>Response</dt><dd>{commandStatus.responseInProgress ? 'In progress' : 'Idle'}</dd></div>
-          </dl>
+          <ChatStatusPanel status={commandStatus} />
         )}
         {!commandLoading && mcpStatusOpen && (
           <>
@@ -288,13 +301,15 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
                 <span className={styles.commandCopy}>
                   <strong>{server.displayName}</strong>
                   <span>{formatMcpServerDetail(server)}</span>
-                  {server.toolsError && <span role="status" title={server.toolsError}>Tool discovery failed: {server.toolsError}</span>}
+                  {server.toolsError && <TooltipTarget content={server.toolsError}><span role="status">Tool discovery failed: {server.toolsError}</span></TooltipTarget>}
                 </span>
                 <span className={styles.mcpStatus} data-connected={server.runtimeStatus === 'connected'}>
                   <strong aria-label={`Connection: ${formatMcpConnectionStatus(server)}`}>{formatMcpConnectionStatus(server)}</strong>
-                  <span title={server.authStatus === 'unsupported'
+                  <TooltipTarget content={server.authStatus === 'unsupported'
                     ? 'MCP sign-in is not supported for this connection. This does not indicate a connection failure.'
-                    : undefined}>{formatMcpAuthStatus(server)}</span>
+                    : undefined}>
+                    <span >{formatMcpAuthStatus(server)}</span>
+                  </TooltipTarget>
                 </span>
               </div>
             ))}
@@ -329,11 +344,11 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
               const disabledReason = commandDisabledReason(command);
               const Icon = command.icon;
               return (
-                <button
+                <NeumorphicButton variant="ghost"
                   aria-disabled={disabledReason ? 'true' : undefined}
                   aria-selected={index === highlightedIndex}
                   className={styles.commandOption}
-                  data-active={index === highlightedIndex ? 'true' : undefined}
+                  active={index === highlightedIndex}
                   data-disabled={disabledReason ? 'true' : undefined}
                   key={command.name}
                   role="option"
@@ -347,7 +362,7 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
                     <span>{disabledReason ?? command.description}</span>
                   </span>
                   <span className={styles.commandMeta}>{command.meta}</span>
-                </button>
+                </NeumorphicButton>
               );
             })}
           </>
@@ -355,5 +370,5 @@ export function ChatCommandMenu({ controller }: { controller: ChatViewController
       </div>
       <p className={styles.commandHelp}>{commandMenuHelp}</p>
     </LiquidGlassPanel>
-  );
+  </div>;
 }

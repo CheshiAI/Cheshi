@@ -1,0 +1,49 @@
+.form {
+  composes: neumorphic-surface-tokens from global;
+  display: grid;
+  gap: var(--space-default);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-default);
+  letter-spacing: normal;
+  line-height: 1.5;
+}
+
+.fields {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-default);
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.fields label { display: grid; gap: var(--space-default); }
+.fieldLabel,
+.depth { color: var(--text); font-size: var(--font-size-label); font-weight: 400; }
+.sourceChoices { display: flex; flex-wrap: wrap; gap: var(--icon-default); }
+.sourceChoices > button[data-variant='ghost'][aria-pressed='true'] { background: var(--control-surface); }
+.sourceChoices > button[data-variant='ghost']:not(:disabled):is(:hover, :active) { background: var(--control-surface-interactive); }
+
+.preparing { min-height: 180px; }
+.preparingPage { display: grid; align-items: center; }
+.cloneProgress { display: grid; justify-items: center; gap: var(--space-default); text-align: center; }
+.signIn { display: grid; gap: var(--space-default); font-family: var(--font-ui), sans-serif; letter-spacing: normal; line-height: 1.5; }
+.sectionLabel { margin: 0; color: var(--sidebar-section-label-color); font-size: var(--font-size-section-title); font-weight: 600; }
+.hint,
+.path,
+.error { margin: 0; color: var(--sidebar-section-label-color); font-size: var(--font-size-small); font-weight: 400; overflow-wrap: anywhere; }
+.error { color: var(--error, #e99b9b); }
+
+.folderField { display: flex; align-items: center; gap: var(--icon-default); }
+.folderField > :first-child { flex: 1; }
+.shallow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-default); }
+.shallow > label { display: inline-flex; align-items: center; gap: var(--icon-default); }
+.depth > span { width: 84px; }
+.loginCode { display: flex; flex-wrap: wrap; align-items: center; gap: var(--icon-default); }
+.loginCode > :first-child { width: 140px; }
+
+.footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--icon-default); }
+.footer > button { white-space: nowrap; }
+.splitFooter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-default); }
+.footerDetails { flex: 1 1 200px; }
+.splitFooter > .footer { margin-left: auto; }

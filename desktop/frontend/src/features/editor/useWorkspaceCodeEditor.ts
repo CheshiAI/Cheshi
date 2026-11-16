@@ -3,7 +3,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language';
 import { lintGutter } from '@codemirror/lint';
 import { search } from '@codemirror/search';
-import { EditorState, type Extension } from '@codemirror/state';
+import { EditorState, Prec, StateEffect, type Extension } from '@codemirror/state';
 import {
   closeHoverTooltip,
   drawSelection,
@@ -17,17 +17,16 @@ import {
 import {
   useCallback,
   useRef,
-  type Dispatch,
   type RefObject,
-  type SetStateAction,
 } from 'react';
 
 import { cheshiDesktop as workspace } from '../../cheshiDesktop';
+import { dispatchSharedEditorTransactions, sharedEditorDocument } from './editorSharedDocuments';
 import { bracketPairGuides } from './bracketPairGuides';
 import { gitLineBlame } from './gitLineBlame';
 import { createEditorSearchBridgePanel } from './codeEditorSearch';
 import { languageServerLanguageForPath } from './languageServerDiagnostics';
-import type { WorkspaceEditorAssistState } from './WorkspaceEditorAssistPanel';
+import type { WorkspaceEditorAssistState } from './workspaceEditorAssistState';
 import type { WorkspaceDiagnostic } from './workspaceDiagnostics';
 import {
   definitionLinkRangeField,
@@ -42,9 +41,16 @@ import {
   type WorkspaceTab,
 } from './workspaceEditorModel';
 import { workspaceEditorHighlightStyle, workspaceEditorTheme } from './workspaceEditorTheme';
+import { workspaceEditorContentClip } from './workspaceEditorContentClip';
+import { workspaceEditorScrollbars } from './workspaceEditorScrollbars';
+import { workspaceEditorTooltips } from './workspaceEditorTooltips';
+import { workspaceEditorRequestLifecycle } from './workspaceEditorRequestLifecycle';
 import type { WorkspaceLanguageServerController } from './useWorkspaceLanguageServer';
 
+import { workspaceAssistEscapeBinding, workspaceNavigationKeymap, workspaceTabKeymap } from './workspaceEditorKeymap';
+
 interface UseWorkspaceCodeEditorOptions {
+  shouldFocus: () => boolean;
   activateOpenTab: (path: string) => void;
   assistStateRef: RefObject<WorkspaceEditorAssistState | null>;
   editorHostRef: RefObject<HTMLDivElement | null>;
@@ -54,13 +60,14 @@ interface UseWorkspaceCodeEditorOptions {
   navigateHistory: (direction: 'back' | 'forward') => Promise<void>;
   openEditorSearch: (view: EditorView) => boolean;
   recordNavigationOrigin: () => void;
-  setAssistState: Dispatch<SetStateAction<WorkspaceEditorAssistState | null>>;
+  closeAssist: () => void;
   syncEditorSearchPanel: (view: EditorView) => void;
   tabsRef: RefObject<WorkspaceTab[]>;
   updateTab: (path: string, update: (tab: WorkspaceTab) => WorkspaceTab) => void;
 }
 
 export function useWorkspaceCodeEditor({
+  shouldFocus,
   activateOpenTab,
   assistStateRef,
   editorHostRef,
@@ -70,7 +77,7 @@ export function useWorkspaceCodeEditor({
   navigateHistory,
   openEditorSearch,
   recordNavigationOrigin,
-  setAssistState,
+  closeAssist,
   syncEditorSearchPanel,
   tabsRef,
   updateTab,
@@ -78,6 +85,7 @@ export function useWorkspaceCodeEditor({
   const {
     cancelDiagnostics,
     cancelSignatureHelp,
+    dismissReferencePreview,
     isLanguageServerUsable,
     languageServerCompletionSource,
     requestLanguageServerCodeActions,
@@ -91,7 +99,8 @@ export function useWorkspaceCodeEditor({
     scheduleEditorDiagnostics,
   } = languageServer;
 
-  const destroyEditor = useCallback((captureState = true, closeLanguageServerDocument = true): void => {
+  const displayedGeneration = useRef<number | null>(null);
+  const destroyEditor = useCallback((captureState = true): void => {
     resetLanguageServerRequests();
     const view = editorViewRef.current;
     if (!view) return;
@@ -102,12 +111,8 @@ export function useWorkspaceCodeEditor({
       ],
     });
     const path = editorPathRef.current;
-    const language = path ? languageServerLanguageForPath(path) : null;
-    if (path && language && closeLanguageServerDocument) {
-      void workspace?.closeLanguageServerDocument?.({ language, path });
-    }
     if (path && captureState) {
-      updateTab(path, (tab) => ({
+      updateTab(path, (tab) => tab.loadGeneration !== displayedGeneration.current ? tab : ({
         ...tab,
         editorState: view.state,
         draftContent: view.state.doc.toString(),
@@ -116,6 +121,7 @@ export function useWorkspaceCodeEditor({
     view.destroy();
     editorViewRef.current = null;
     editorPathRef.current = null;
+    displayedGeneration.current = null;
   }, [resetLanguageServerRequests, updateTab]);
 
   const saveFileRef = useRef<() => Promise<void>>(async () => undefined);
@@ -160,13 +166,17 @@ export function useWorkspaceCodeEditor({
     const diagnosticsMode = diagnosticMode(tab.file.path, language);
     const readGitLineBlame = workspace?.getGitLineBlame;
     const extensions: Extension[] = [
+      sharedEditorDocument(editorPath),
       workspaceEditorTheme,
+      workspaceEditorTooltips(host.ownerDocument),
       ...(readGitLineBlame ? [gitLineBlame({
         path: editorPath, lineEnding: tab.file.lineEnding,
         read: readGitLineBlame,
       })] : []),
       lineNumbers(),
       lintGutter(),
+      workspaceEditorContentClip,
+      workspaceEditorScrollbars,
       highlightSpecialChars(),
       history(),
       drawSelection(),
@@ -177,10 +187,7 @@ export function useWorkspaceCodeEditor({
       highlightActiveLine(),
       search({ top: true, createPanel: createEditorSearchBridgePanel }),
       keymap.of([
-        { key: 'Mod-[', run: () => { void navigateHistory('back'); return true; } },
-        { key: 'Mod-]', run: () => { void navigateHistory('forward'); return true; } },
-        { key: 'Ctrl--', run: () => { void navigateHistory('back'); return true; } },
-        { key: 'Ctrl-Shift--', run: () => { void navigateHistory('forward'); return true; } },
+        ...workspaceNavigationKeymap(navigateHistory),
         ...defaultKeymap,
         ...historyKeymap,
         indentWithTab,
@@ -188,16 +195,9 @@ export function useWorkspaceCodeEditor({
         { key: 'Mod-f', run: openEditorSearch },
         { key: 'Mod-h', run: openEditorSearch },
         { key: 'Mod-Alt-f', run: openEditorSearch },
-        { key: 'Mod-w', run: () => { closeTabRef.current(editorPath); return true; } },
-        ...Array.from({ length: 9 }, (_, index) => ({
-          key: `Mod-${index + 1}`,
-          run: () => {
-            const next = tabsRef.current[index];
-            if (next) activateOpenTab(next.path);
-            return true;
-          },
-        })),
+        ...workspaceTabKeymap(editorPath, closeTabRef, tabsRef, activateOpenTab),
       ]),
+      workspaceEditorRequestLifecycle(cancelSignatureHelp, dismissReferencePreview),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
         let signatureTrigger = false;
@@ -311,6 +311,10 @@ export function useWorkspaceCodeEditor({
         symbolHover,
         definitionLinkRangeField,
         signatureHelpTooltipField,
+        // Cancel pending help before completion/search consumes Escape.
+        Prec.highest(keymap.of([
+          workspaceAssistEscapeBinding(assistStateRef, closeAssist, cancelSignatureHelp),
+        ])),
         keymap.of([
           {
             key: 'Shift-F12',
@@ -337,17 +341,6 @@ export function useWorkspaceCodeEditor({
             key: 'Mod-Shift-Space',
             run: (view) => {
               void requestLanguageServerSignatureHelp(view, editorPath, view.state.selection.main.head);
-              return true;
-            },
-          },
-          {
-            key: 'Escape',
-            run: (view) => {
-              const hasSignature = view.state.field(signatureHelpTooltipField, false) !== null;
-              if (!assistStateRef.current && !hasSignature) return false;
-              cancelSignatureHelp();
-              view.dispatch({ effects: setSignatureHelpTooltip.of(null) });
-              setAssistState(null);
               return true;
             },
           },
@@ -385,21 +378,29 @@ export function useWorkspaceCodeEditor({
       );
     }
     if (language) extensions.push(language);
-    const state = tab.editorState ?? EditorState.create({ doc: tab.draftContent, extensions });
-    const view = new EditorView({ state, parent: host });
+    // Retain history/selection but replace callbacks captured by the previous pane.
+    const state = tab.editorState
+      ? tab.editorState.update({ effects: StateEffect.reconfigure.of(extensions) }).state
+      : EditorState.create({ doc: tab.draftContent, extensions });
+    const view = new EditorView({ state, parent: host,
+      dispatchTransactions: (transactions, current) => dispatchSharedEditorTransactions(editorPath, transactions, current) });
     editorViewRef.current = view;
     editorPathRef.current = editorPath;
+    displayedGeneration.current = tab.loadGeneration;
     syncEditorSearchPanel(view);
     scheduleEditorDiagnostics(view, editorPath, diagnosticsMode, 0);
     updateTab(tab.path, (current) => ({ ...current, editorState: view.state }));
     requestAnimationFrame(() => {
+      if (editorViewRef.current !== view) return;
       revealLine(lineNumber, character ?? 0);
-      view.focus();
+      if (shouldFocus()) view.focus();
     });
   }, [
+    closeAssist,
     cancelDiagnostics,
     cancelSignatureHelp,
     destroyEditor,
+    dismissReferencePreview,
     languageServerCompletionSource,
     isLanguageServerUsable,
     navigateHistory,
@@ -416,6 +417,7 @@ export function useWorkspaceCodeEditor({
     activateOpenTab,
     syncEditorSearchPanel,
     updateTab,
+    shouldFocus,
   ]);
 
   const createSourceExcerptViewer = useCallback((
@@ -433,6 +435,8 @@ export function useWorkspaceCodeEditor({
       lineNumbers({
         formatNumber: (line) => String(excerpt.startLine + line - 1),
       }),
+      workspaceEditorContentClip,
+      workspaceEditorScrollbars,
       highlightSpecialChars(),
       drawSelection(),
       syntaxHighlighting(workspaceEditorHighlightStyle),
@@ -446,19 +450,8 @@ export function useWorkspaceCodeEditor({
         tabindex: '0',
       }),
       keymap.of([
-        { key: 'Mod-[', run: () => { void navigateHistory('back'); return true; } },
-        { key: 'Mod-]', run: () => { void navigateHistory('forward'); return true; } },
-        { key: 'Ctrl--', run: () => { void navigateHistory('back'); return true; } },
-        { key: 'Ctrl-Shift--', run: () => { void navigateHistory('forward'); return true; } },
-        { key: 'Mod-w', run: () => { closeTabRef.current(tab.path); return true; } },
-        ...Array.from({ length: 9 }, (_, index) => ({
-          key: `Mod-${index + 1}`,
-          run: () => {
-            const next = tabsRef.current[index];
-            if (next) activateOpenTab(next.path);
-            return true;
-          },
-        })),
+        ...workspaceNavigationKeymap(navigateHistory),
+        ...workspaceTabKeymap(tab.path, closeTabRef, tabsRef, activateOpenTab),
       ]),
     ];
     if (language) extensions.push(language);
@@ -472,10 +465,11 @@ export function useWorkspaceCodeEditor({
       view.state.doc.lines,
     );
     requestAnimationFrame(() => {
+      if (editorViewRef.current !== view) return;
       revealLine(localLine, character ?? 0);
-      view.focus();
+      if (shouldFocus()) view.focus();
     });
-  }, [activateOpenTab, destroyEditor, navigateHistory, revealLine]);
+  }, [activateOpenTab, destroyEditor, navigateHistory, revealLine, shouldFocus]);
 
 
   return {

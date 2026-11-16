@@ -78,7 +78,7 @@ export function createGitWorkspaceControllerHarness(desktop: Partial<CheshiDeskt
   const branchHistory = { refresh() {} };
   const modules: Record<string, unknown> = {
     react,
-    '../../cheshiDesktop': { cheshiDesktop: desktop },
+    './GitProjectContext': { useGitDesktop: () => desktop },
     '../../shared/errorMessage': { errorMessage: (error: Error) => error.message },
     './gitBranchCheckout': {},
     './useGitBranchHistory': { useGitBranchHistory: () => branchHistory },

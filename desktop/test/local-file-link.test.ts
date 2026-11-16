@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import { registerLocalFileLinkIpc } from '../lib/local-file-link.mts';
-import { localFileLinkPath } from '../shared/local-file-link';
+import { localFileLinkPath, localPathHref, localPathMarkdown } from '../shared/local-file-link';
 import { loadForgeConfiguration } from './forge-test-helpers';
 
 test('parses absolute and relative Markdown file targets with spaces and source locations', () => {
@@ -25,6 +25,13 @@ test('rejects URL schemes, network links, controls and malformed encodings', () 
   }
 });
 
+test('encodes literal punctuation and spaces in folder links without losing the path', () => {
+  const path = '/tmp/한글 folder [1] #50%?';
+  expect(localFileLinkPath(localPathHref(path))).toBe(path);
+  expect(localPathMarkdown(path)).toContain('%2350%25%3F');
+  expect(() => localPathMarkdown('//host/shared')).toThrow('Invalid local path');
+});
+
 test('opens explicit local files through the guarded IPC, including reports outside the workspace', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cheshi-local-link-'));
   try {
@@ -34,7 +41,7 @@ test('opens explicit local files through the guarded IPC, including reports outs
     const local = join(workspaceRoot, 'README.md');
     await writeFile(report, '# Report');
     await writeFile(local, '# Readme');
-    const opened: string[] = [];
+    const opened: string[] = [], revealed: string[] = [];
     let allowed = true;
     let shellError = '';
     let senderChecks = 0;
@@ -43,27 +50,27 @@ test('opens explicit local files through the guarded IPC, including reports outs
       workspaceRoot,
       ipcMain: { handle: (name, handler) => { handlers.set(name, handler); } },
       assertSender() { senderChecks++; if (!allowed) throw new Error('Untrusted sender.'); },
-      shell: { async openPath(path) { opened.push(path); return shellError; } },
+      shell: { async openPath(path) { opened.push(path); return shellError; }, showItemInFolder(path) { revealed.push(path); } },
     });
     const handler = handlers.get('cheshi:open-local-file-link');
     assert.ok(handler);
     const event = {} as IpcMainInvokeEvent;
     await handler(event, encodeURI(report));
     await handler(event, './README.md:12');
-    expect(opened).toEqual([report, local]);
+    expect(revealed).toEqual([report, local]);
     expect(senderChecks).toBe(2);
     for (const value of [null, 'https://example.com', 'file:///tmp/file', '//host/file']) {
       await assert.rejects(async () => handler(event, value), /Invalid local file link/);
     }
     await assert.rejects(async () => handler(event, join(root, 'missing.md')), /ENOENT/);
-    await assert.rejects(async () => handler(event, workspaceRoot), /does not point to a file/);
-    expect(opened).toHaveLength(2);
+    await handler(event, workspaceRoot);
+    expect(opened).toEqual([workspaceRoot]);
     allowed = false;
     await assert.rejects(async () => handler(event, report), /Untrusted sender/);
-    expect(opened).toHaveLength(2);
+    expect(revealed).toHaveLength(2);
     allowed = true;
     shellError = 'No application is available.';
-    await assert.rejects(async () => handler(event, report), /No application is available/);
+    await assert.rejects(async () => handler(event, workspaceRoot), /No application is available/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

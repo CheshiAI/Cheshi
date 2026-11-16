@@ -1,0 +1,23 @@
+.card {
+  --content-card-icon-size: var(--icon-button-icon-size);
+  --content-card-icon-color: var(--sidebar-section-label-color);
+  --content-card-title-size: 10px;
+  --content-card-title-weight: 400;
+  --content-card-description-size: 9px;
+}
+
+.metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--icon-default) var(--space-default);
+  color: var(--sidebar-section-label-color);
+  font-size: 10px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.code { --code-panel-max-height: 360px; margin: 0; }
+.card pre { font-size: 10px; }
+.output { min-width: 0; border-top: 1px solid var(--divider); padding-top: var(--space-default); }
+.empty { margin: 0; color: var(--sidebar-section-label-color); font-size: 10px; }

@@ -6,6 +6,13 @@
 .panel[role='menu'],
 .panel[role='listbox'],
 .panel[data-liquid-glass-backdrop='true'] {
-  -webkit-backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
-  backdrop-filter: blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation));
+  -webkit-backdrop-filter: var(--panel-backdrop-filter, blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation)));
+  backdrop-filter: var(--panel-backdrop-filter, blur(var(--panel-backdrop-blur)) saturate(var(--panel-backdrop-saturation)));
+}
+
+/* Keep both decorative backgrounds, replacing only their backdrop sampling. */
+.panel[data-regional-blur-surface='true'],
+:has(> .panel[data-regional-blur-surface='true'])::before {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }

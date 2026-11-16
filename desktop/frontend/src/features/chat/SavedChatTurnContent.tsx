@@ -44,7 +44,7 @@ export function SavedChatTurnContent({ record }: { record: Pick<ChatSavedTurn, '
         </section>
       </div>
     </div>
-    {(overflowing || expanded) && <NeumorphicButton raised active={expanded} className={styles.detailsButton}
+    {(overflowing || expanded) && <NeumorphicButton variant="standard" size="standard" active={expanded} className={styles.detailsButton}
       aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded((value) => !value)}>
       <span>{expanded ? 'Show less' : 'View details'}</span><ChevronDown aria-hidden="true" />
     </NeumorphicButton>}

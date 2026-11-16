@@ -18,6 +18,7 @@ function contextClient(client: ContextClient): ContextClient {
     if (disposed) throw new Error('This chat pane has been closed.');
   };
   return {
+    get initializeResult() { assertOpen(); return client.initializeResult; },
     request: async (method, params, timeoutMs) => {
       assertOpen();
       const result = await client.request(method, params, timeoutMs);
@@ -27,6 +28,8 @@ function contextClient(client: ContextClient): ContextClient {
     respond: async (id, result) => { assertOpen(); await client.respond(id, result); },
     onNotification: (listener) => client.onNotification(listener),
     onRequest: (listener) => client.onRequest(listener),
+    onDidReleaseWriters: client.onDidReleaseWriters
+      ? listener => client.onDidReleaseWriters!(listener) : undefined,
     onDidFail: (listener) => client.onDidFail(listener),
     stop: async () => { disposed = true; await client.stop(); },
   };
@@ -65,9 +68,11 @@ export class CodexChatContexts {
     service.onEvent((event) => {
       if (contexts.get(contextId)?.service !== service) return;
       this.options.emit(ownerId, { ...event, contextId });
-      if (event.type === 'session-created' || event.type === 'sessions-changed') {
+      if (event.type === 'session-created' || event.type === 'sessions-changed' || event.type === 'session-title') {
         for (const [otherId] of contexts) {
-          if (otherId !== contextId) this.options.emit(ownerId, { type: 'sessions-changed', contextId: otherId });
+          if (otherId !== contextId) this.options.emit(ownerId, {
+            ...(event.type === 'session-title' ? event : { type: 'sessions-changed' }), contextId: otherId,
+          });
         }
       }
     });

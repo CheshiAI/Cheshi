@@ -1,0 +1,19 @@
+.panel {
+  --content-card-icon-size: var(--icon-button-icon-size);
+  --content-card-icon-color: var(--sidebar-section-label-color);
+  --content-card-title-size: 10px;
+  --content-card-title-weight: 400;
+  --content-card-description-size: 10px;
+  margin-top: var(--space-default);
+  font-size: 10px;
+}
+.body { font-size: 10px; }
+.body p { margin: 0; }
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-default); margin: 0; }
+.facts dt { color: var(--sidebar-section-label-color); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--icon-default); }
+.actions button { font-size: 10px; }
+.body summary { cursor: pointer; }
+.body li { overflow-wrap: anywhere; }
+.diff { max-height: 360px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; }

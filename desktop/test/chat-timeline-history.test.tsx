@@ -1,9 +1,10 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { Window } from 'happy-dom';
 import { captureChatHistoryAnchor, previousChatHistoryStart } from '../frontend/src/features/chat/chatHistoryWindow';
 import { completedChatTurnInputs } from '../frontend/src/features/chat/chatTurnSnapshots';
 import type { ChatTimelineItem as TimelineItem } from '../frontend/src/features/chat/model';
-import type { SavedChatTurnsController } from '../frontend/src/features/chat/useSavedChatTurns';
+import { groupReasoningItems, reasoningMarkdown } from '../frontend/src/features/chat/chatReasoningPresentation';
 
 mock.module('../frontend/src/cheshiDesktop', () => ({ cheshiDesktop: undefined }));
 const { ChatTimelineHistory } = await import('../frontend/src/features/chat/ChatTimelineHistory');
@@ -15,9 +16,10 @@ function history(count: number): TimelineItem[] {
   }));
 }
 
-function renderHistory(items: TimelineItem[], streaming = false) {
+function renderHistory(items: TimelineItem[], streaming = false, revealItemId?: string) {
   return renderToStaticMarkup(<ChatTimelineHistory items={items} timelineRef={{ current: null }} loading={false}
     streaming={streaming} completedTurns={completedChatTurnInputs(items, 'thread', 'History', streaming)}
+    historyTarget={revealItemId ? { threadId: 'thread', itemId: revealItemId, requestId: 1 } : undefined}
     onReviewFileChanges={() => {}} />);
 }
 
@@ -40,6 +42,26 @@ describe('progressive chat history', () => {
       expect(html.match(/data-chat-item-id=/g)).toHaveLength(length);
       expect(html).not.toContain('Show earlier messages');
     }
+  });
+
+  test('defers older rows by conversation position across small and large reasoning groups', async () => {
+    const items: Array<Extract<TimelineItem, { text: string }>> = Array.from({ length: 90 }, (_, index) => ({ id: `row-${index}`,
+      kind: index % 5 === 0 ? 'user' : 'reasoning', turnId: `turn-${Math.floor(index / 5)}`,
+      text: `Message ${index}`, createdAt: 1 }));
+    const window = new Window();
+    try {
+      for (const history of [items, items.map(item => ({ ...item, kind: 'reasoning' as const, turnId: 'one-turn' }))]) {
+        window.document.body.innerHTML = renderHistory(history, true, 'row-0');
+        const rows = [...window.document.querySelectorAll('[data-chat-item-id]')];
+        expect(rows).toHaveLength(90);
+        expect(rows.filter(row => row.hasAttribute('data-history-deferred'))).toHaveLength(60);
+        rows.forEach((row, index) => expect(row.getAttribute('data-history-deferred')).toBe(index < 60 ? 'true' : null));
+        expect(window.document.querySelector('[data-reasoning-group] [data-history-deferred]')).not.toBeNull();
+      }
+      window.document.body.innerHTML = renderHistory(items);
+      expect(window.document.querySelectorAll('[data-chat-item-id]')).toHaveLength(30);
+      expect(window.document.querySelector('[data-history-deferred]')).toBeNull();
+    } finally { await window.happyDOM.close(); }
   });
 
   test('reveals earlier history in batches without skipping or duplicating items', () => {
@@ -68,11 +90,54 @@ describe('progressive chat history', () => {
     expect(completedChatTurnInputs(items, 'thread', 'History', true).size).toBe(0);
   });
 
-  test('keeps the latest reasoning item expanded while streaming', () => {
-    const items = history(100);
-    items.push({ id: 'reasoning', kind: 'reasoning', createdAt: 1, text: 'Working through the next step' });
-    expect(renderHistory(items, true)).toMatch(/<details[^>]*open=""/);
-    expect(renderHistory(items, false)).not.toMatch(/<details[^>]*open=""/);
+  test('renders reasoning Markdown without copy controls during streaming and after completion', () => {
+    const items: TimelineItem[] = [{ id: 'reasoning', kind: 'reasoning', createdAt: 1,
+      text: '**First summary**\n\nSecond summary\ncontinued\n\n```text\nexample\n```' }];
+    for (const streaming of [true, false]) {
+      const html = renderHistory(items, streaming);
+      expect(html).toContain('aria-label="Reasoning"');
+      expect(html).toContain('<strong>First summary</strong>');
+      expect(html).toContain('<p>Second summary\ncontinued</p>');
+      expect(html).toContain('<pre><code>example\n</code></pre>');
+      expect(html).not.toContain('**');
+      expect(html).not.toContain('<button');
+      expect(html).not.toContain('<details');
+    }
+  });
+});
+
+describe('compact reasoning presentation', () => {
+  test('separates legacy joined headings and keeps their item identities in one group', () => {
+    const items: TimelineItem[] = [
+      { id: 'first', kind: 'reasoning', turnId: 'turn', createdAt: 1, text: '**Computing minimum C****Verifying minimum C**' },
+      { id: 'second', kind: 'reasoning', turnId: 'turn', createdAt: 1, text: '**Verifying candidate cases****Checking four candidate pairs**' },
+    ];
+    const html = renderHistory(items);
+    expect(html.match(/data-reasoning-group="true"/g)).toHaveLength(1);
+    expect(html.match(/data-chat-item-id=/g)).toHaveLength(2);
+    for (const line of ['Computing minimum C', 'Verifying minimum C', 'Verifying candidate cases', 'Checking four candidate pairs']) {
+      expect(html).toContain(`<p><strong>${line}</strong></p>`);
+    }
+    expect(html).not.toContain('**');
+  });
+
+  test('does not combine reasoning across turns or intervening messages', () => {
+    const items: TimelineItem[] = [
+      { id: 'first', kind: 'reasoning', turnId: 'one', createdAt: 1, text: 'First' },
+      { id: 'second', kind: 'reasoning', turnId: 'two', createdAt: 1, text: 'Second' },
+      { id: 'answer', kind: 'assistant', turnId: 'two', createdAt: 1, text: 'Answer' },
+      { id: 'third', kind: 'reasoning', turnId: 'two', createdAt: 1, text: 'Third' },
+    ];
+    expect(groupReasoningItems(items).map(group => group.map(item => item.id))).toEqual([
+      ['first'], ['second'], ['answer'], ['third'],
+    ]);
+  });
+
+  test('preserves valid Markdown and code containing literal asterisks', () => {
+    for (const text of ['**One**\n\n**Two**', 'An **inline** emphasis', '    **code****example**',
+      '```text\n**code****example**\n```', '~~~\n**code****example**\n~~~']) {
+      expect(reasoningMarkdown(text)).toBe(text);
+    }
   });
 });
 
@@ -104,76 +169,17 @@ describe('history scroll anchoring', () => {
   });
 });
 
-describe('turn recall usage placement', () => {
-  const usageSummaryLabel = 'History search · Jev estimated';
-  const countUsageSummaries = (html: string) => html.split(usageSummaryLabel).length - 1;
-  const savedTurns: SavedChatTurnsController = {
-    records: [], loading: false, error: null, deleting: false,
-    refresh: async () => {}, save: async () => true, remove: async () => true,
-    isSaved: () => false, isSaving: () => false, dismissError() {},
-  };
-  const recall: TimelineItem = {
-    id: 'recall', kind: 'activity', activity: 'tool', label: 'History search', detail: '', status: 'completed',
-    recall: { operation: 'search', status: 'candidates', partial: false, query: 'Previous decision', sources: [], error: null,
-      metrics: { requests: 2, inputTokens: 1000, outputTokens: 50, estimatedCostUsd: 0.000042,
-        knownEstimatedCostUsd: 0.000042, unknownRequests: 0, modelMs: 100, totalMs: 200, cacheHits: 0 } },
-  };
-  function render(items: TimelineItem[], streaming = false, actions = true) {
-    return renderToStaticMarkup(<ChatTimelineHistory items={items} timelineRef={{ current: null }} loading={false}
-      streaming={streaming} completedTurns={completedChatTurnInputs(items, 'thread', 'History', streaming)}
-      savedTurns={actions ? savedTurns : undefined} onReviewFileChanges={() => {}} />);
+test('legacy recall records render without dedicated source cards, navigation or Jev totals', () => {
+  const legacy = { id: 'legacy-search', kind: 'activity' as const, activity: 'tool' as const,
+    label: 'history_search', detail: 'cheshi_history', status: 'completed' as const,
+    recall: { operation: 'search', status: 'candidates', sources: [{ threadId: 'past', turnId: 'turn', itemId: 'source',
+      title: 'Old source title', text: 'Old source preview' }],
+      metrics: { requests: 1, inputTokens: 5, outputTokens: 0, estimatedCostUsd: 0.01, knownEstimatedCostUsd: 0.01,
+        unknownRequests: 0, modelMs: 1, totalMs: 2, cacheHits: 0 } } };
+  const html = renderHistory([legacy, { id: 'answer', kind: 'assistant', createdAt: 1, text: 'Saved answer' }]);
+  expect(html).toContain('history_search');
+  expect(html).toContain('Saved answer');
+  for (const removed of ['History search', 'Open original message', 'Old source title', 'Old source preview', 'Jev estimated']) {
+    expect(html).not.toContain(removed);
   }
-
-  function row(html: string, id: string): string {
-    return html.split('data-chat-item-id="').find(part => part.startsWith(`${id}"`)) ?? '';
-  }
-
-  test('keeps usage beneath the answer that searched when later turns have no search', () => {
-    const messages = history(4);
-    const html = render([messages[0]!, recall, ...messages.slice(1)]);
-    const answer = row(html, 'item-1');
-    expect(countUsageSummaries(html)).toBe(1);
-    expect(answer).toContain('estimated $0.00004200 USD · 2 requests');
-    expect(answer.indexOf(usageSummaryLabel)).toBeGreaterThan(answer.indexOf('aria-label="Response statistics"'));
-    expect(answer.indexOf(usageSummaryLabel)).toBeLessThan(answer.indexOf('aria-label="Response actions"'));
-    expect(answer).toContain('Recorded calls in this turn only.');
-    expect(row(html, 'item-3')).not.toContain(usageSummaryLabel);
-  });
-
-  test('sums multiple searches within each turn without carrying usage into the next turn', () => {
-    const messages = history(6);
-    const html = render([messages[0]!, recall, { ...recall, id: 'call-two' }, messages[1]!,
-      messages[2]!, { ...recall, id: 'call-three' }, ...messages.slice(3)]);
-    expect(countUsageSummaries(html)).toBe(2);
-    expect(row(html, 'item-1')).toContain('estimated $0.00008400 USD · 4 requests');
-    expect(row(html, 'item-3')).toContain('estimated $0.00004200 USD · 2 requests');
-    expect(row(html, 'item-5')).not.toContain(usageSummaryLabel);
-  });
-
-  test('keeps usage in its own turn while streaming or without response controls', () => {
-    const messages = history(4);
-    const firstTurn = [messages[0]!, recall, messages[1]!];
-    for (const html of [render(firstTurn, true), render(firstTurn, false, false),
-      render([...firstTurn, ...messages.slice(2)], true)]) {
-      expect(countUsageSummaries(html)).toBe(1);
-      expect(row(html, 'item-1')).toContain('estimated $0.00004200 USD · 2 requests');
-      expect(row(html, 'item-3')).not.toContain(usageSummaryLabel);
-    }
-  });
-
-  test('includes offscreen calls in the same long turn but does not move offscreen turn totals to a later answer', () => {
-    const messages = history(2);
-    const longTurn: TimelineItem[] = [messages[0]!, recall,
-      ...Array.from({ length: 35 }, (_, i): TimelineItem => ({ id: `thinking-${i}`, kind: 'reasoning', text: 'Thinking', createdAt: 3 })),
-      messages[1]!];
-    const html = render(longTurn);
-    expect(html).not.toContain('data-chat-item-id="recall"');
-    expect(row(html, 'item-1')).toContain('estimated $0.00004200 USD · 2 requests');
-    const later = history(100).map(item => ({ ...item, id: `later-${item.id}` }));
-    expect(render([messages[0]!, recall, ...messages.slice(1), ...later])).not.toContain(usageSummaryLabel);
-  });
-
-  test('does not add a Jev summary when the conversation has no recorded usage', () => {
-    expect(render(history(2))).not.toContain(usageSummaryLabel);
-  });
 });

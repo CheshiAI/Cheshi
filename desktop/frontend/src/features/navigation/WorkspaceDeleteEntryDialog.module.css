@@ -1,0 +1,6 @@
+.dialog { --modal-header-height: var(--header-height); --modal-header-padding: 0 var(--space-default); }
+.form { display: flex; flex-direction: column; gap: var(--space-default); font-family: var(--font-ui), sans-serif; letter-spacing: normal; }
+.form p { margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
+.name { color: var(--text); font-size: var(--font-size-label); font-weight: 400; }
+.description { color: var(--sidebar-section-label-color); font-size: var(--font-size-small); font-weight: 400; }
+.actions { display: flex; justify-content: flex-end; gap: var(--icon-default); }

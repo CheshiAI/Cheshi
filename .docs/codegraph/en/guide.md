@@ -9,11 +9,17 @@ Viewer and Electron app open this database in read-only mode.
 - Use Bun to install packages and run commands.
 - Store CodeGraph data in Cheshi's user data directory, outside source repositories.
   Do not create `.codegraph/` at the project root.
-- Do not run `sync` or `index` against an index while its Viewer is open.
+- Do not manually run `sync` or `index` while its Viewer is open. Cheshi’s managed
+  incremental synchronization may update the same-engine WAL index with read-only
+  viewers connected. Full rebuilds still stop and restart the Viewer.
 - When the app opens a Workspace without an index, it automatically runs initial
   indexing. Merely registering a Workspace in the list does not create an index,
-  and existing indexes are reused. Incremental synchronization and full rebuilds
-  require separate `sync` and `index` requests.
+  and existing indexes are reused. Before local SESSION and Docker Homie tasks,
+  and before each connected CodeGraph query, Cheshi reconciles added, modified,
+  and deleted files through incremental `sync` and waits for completion. Concurrent
+  requests share one writer per workspace; manual rebuilds use the same queue.
+  Missing indexes are not created by this freshness check. Failed synchronization
+  is reported instead of serving a query as current. Full rebuilds remain explicit.
 - Creating an index through the CLI or engine does not register a project in
   Workspaces. The list contains projects explicitly opened, added, or created in
   the app.

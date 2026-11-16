@@ -1,17 +1,19 @@
 import {
   insertSplitPane, removeSplitPane, resizeSplitPane, splitPaneIds,
-  type SplitLayoutNode, type SplitPaneDirection,
+  type SplitLayoutNode,
 } from '../../shared/ui/splitPaneModel';
 import type { ChatState } from './model';
 
-export function chatForkUnavailableReason(state: Pick<ChatState, 'activeSessionId' | 'phase' | 'pendingNewResponse' | 'responseThreadIds' | 'approvals'> | undefined, locked: boolean): string | null {
+export const CHAT_PANE_MIN_WIDTH = 475;
+export const CHAT_PANE_LIMIT = 10;
+
+export function chatForkUnavailableReason(state: Pick<ChatState, 'activeSessionId' | 'phase' | 'pendingNewResponse' | 'responseThreadIds' | 'approvals'> | undefined): string | null {
   if (!state?.activeSessionId) return 'Send a message first to create a session.';
-  return chatHistoryForkUnavailableReason(state, locked, false);
+  return chatHistoryForkUnavailableReason(state, false);
 }
 
-export function chatHistoryForkUnavailableReason(state: Pick<ChatState, 'phase' | 'pendingNewResponse' | 'responseThreadIds' | 'approvals'> | undefined, locked: boolean, sourceResponding: boolean): string | null {
+export function chatHistoryForkUnavailableReason(state: Pick<ChatState, 'phase' | 'pendingNewResponse' | 'responseThreadIds' | 'approvals'> | undefined, sourceResponding: boolean): string | null {
   if (!state) return 'The destination pane is unavailable.';
-  if (locked) return 'Wait for the conversation relay to finish before forking.';
   if (sourceResponding) return 'Wait for the selected conversation to finish responding before forking.';
   if (state.phase !== 'idle' || state.pendingNewResponse || state.responseThreadIds.length > 0 || state.approvals.length > 0) {
     return 'Wait for this pane to finish its current operation before forking.';
@@ -30,11 +32,12 @@ export function createChatWorkspace(paneId: string): ChatWorkspaceState {
 
 export function splitChatPane(
   state: ChatWorkspaceState, targetId: string, paneId: string,
-  direction: SplitPaneDirection, splitId: string,
+  splitId: string,
 ): ChatWorkspaceState {
-  if (!splitPaneIds(state.layout).includes(targetId)) return state;
+  const ids = splitPaneIds(state.layout);
+  if (!ids.includes(targetId) || ids.length >= CHAT_PANE_LIMIT) return state;
   return {
-    layout: insertSplitPane(state.layout, targetId, paneId, direction, splitId),
+    layout: insertSplitPane(state.layout, targetId, paneId, 'right', splitId),
     activePaneId: paneId,
   };
 }

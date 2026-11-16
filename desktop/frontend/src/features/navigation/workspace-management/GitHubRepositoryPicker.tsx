@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { GitFork, LockKeyhole, RefreshCw } from 'lucide-react';
 import type { GitHubRepository, WorkspaceManagementApi } from '../../../../../shared/workspace-management';
-import { LiquidGlassPanel, LoadingState, NeumorphicButton, NeumorphicTextField, SearchClearButton } from '../../../shared/ui';
+import { LiquidGlassPanel, LoadingState, NeumorphicButton } from '../../../shared/ui';
+import { SearchInput } from '../../../shared/ui/SearchInput';
 import { workspaceError } from './workspace-paths';
 import { GitHubSignIn } from './GitHubSignIn';
 import type { GitHubLoginApi } from './github-login';
@@ -21,7 +22,7 @@ export function GitHubRepositoryResults({ repositories, disabled, onSelect }: {
 }) {
   return <ul className={styles.results} aria-label="GitHub repositories">
     {repositories.map((repository) => <li key={repository.id}>
-      <NeumorphicButton className={styles.repository} disabled={disabled} onClick={() => onSelect(repository)}
+      <NeumorphicButton variant="ghost" className={styles.repository} disabled={disabled} onClick={() => onSelect(repository)}
         aria-label={`Select ${repository.fullName}${repository.private ? ' — private' : ''}`}>
         {repository.private ? <LockKeyhole aria-hidden="true" /> : <GitFork aria-hidden="true" />}
         <span><strong>{repository.fullName}</strong>{repository.description && <small>{repository.description}</small>}</span>
@@ -62,14 +63,14 @@ export function GitHubRepositoryPicker({ api, disabled, onSelect, initialCatalog
   return <LiquidGlassPanel as="section" className={styles.picker} aria-label="Choose a GitHub repository" aria-busy={loading}>
     <div className={styles.heading}>
       <span>{catalog ? `Signed in as ${catalog.login}` : 'GitHub repositories'}</span>
-      <NeumorphicButton raised size="icon" disabled={disabled || loading} aria-label="Refresh GitHub repositories" onClick={() => setRefresh((value) => value + 1)}>
+      <NeumorphicButton variant="ghost" size="icon" disabled={disabled || loading} aria-label="Refresh GitHub repositories" title="Refresh GitHub repositories" onClick={() => setRefresh((value) => value + 1)}>
         <RefreshCw aria-hidden="true" />
       </NeumorphicButton>
     </div>
     {loading ? <LoadingState type="preparing" className={styles.loading} /> : <>
-      <NeumorphicTextField type="search" aria-label="Search GitHub repositories" placeholder="Search repositories"
+      <SearchInput aria-label="Search GitHub repositories"
         value={query} disabled={disabled} onChange={(event) => setQuery(event.target.value)}
-        trailingAction={query ? <SearchClearButton aria-label="Clear repository search" disabled={disabled} onClick={() => setQuery('')} /> : undefined} />
+        clearLabel="Clear repository search" onClear={() => setQuery('')} />
       <GitHubRepositoryResults repositories={matches} disabled={disabled} onSelect={onSelect} />
       {!error && matches.length === 0 && <p className={styles.hint} role="status">
         {query ? 'No matching repositories.' : 'No repositories are available to this GitHub account.'}

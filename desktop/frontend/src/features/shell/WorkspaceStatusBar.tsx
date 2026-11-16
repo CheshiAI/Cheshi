@@ -1,31 +1,30 @@
-import { Activity, Gauge } from 'lucide-react';
-import { useCallback, useId, useRef, useState, type ComponentProps } from 'react';
+import { Gauge } from 'lucide-react';
+import { useCallback, useId, useRef, useState, type ComponentProps, type Ref, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 
 import type { CodexAccountsSnapshot } from '../../../../shared/codex-accounts';
-import { LiquidGlassPanel } from '../../shared/ui';
+import { LiquidGlassPanel, RegionalBlur } from '../../shared/ui';
+import { TooltipTarget } from '../../shared/ui/TooltipTarget';
 import { AccountUsagePanel } from '../account/AccountUsagePanel';
 import { AddAccountDialog } from '../account/AddAccountDialog';
-import { CodeGraphIndexPanel, type CodeGraphIndexIndicator } from '../graph/CodeGraphIndexPanel';
 import { AppUpdateIndicator } from '../updates/AppUpdateIndicator';
+import { KeepAwakeStatus } from '../chrome/KeepAwakeStatus';
+import { CodexUpdateIndicator } from '../updates/CodexUpdateIndicator';
 import { accountStatusSummary, accountUsageTotals } from './statusBarModel';
-import { WorkspaceStorageUsage } from './WorkspaceStorageUsage';
-import { WorkspaceGitBranch } from './WorkspaceGitBranch';
 import styles from './WorkspaceStatusBar.module.css';
 
 interface WorkspaceStatusBarProps extends Pick<NonNullable<ComponentProps<typeof AccountUsagePanel>>,
   'selectionDisabledReason' | 'onBeforeSelect' | 'onSelectionFinished'> {
   onAccountInitialLoad: () => void;
-  onIndexInitialLoad: () => void;
+  blurSourceRef: RefObject<HTMLElement | null>;
+  sidebarStatusRef?: Ref<HTMLSpanElement>;
 }
 
-export function WorkspaceStatusBar({ onAccountInitialLoad, onIndexInitialLoad, ...accountProps }: WorkspaceStatusBarProps) {
+export function WorkspaceStatusBar({ onAccountInitialLoad, blurSourceRef, sidebarStatusRef, ...accountProps }: WorkspaceStatusBarProps) {
   const accountId = useId();
-  const indexId = useId();
   const [accounts, setAccounts] = useState<CodexAccountsSnapshot | null>(null);
   const [accountError, setAccountError] = useState<string | null>(null);
-  const [index, setIndex] = useState<CodeGraphIndexIndicator>({ label: 'CHECKING', attention: false, busy: true });
   const [accountOpen, setAccountOpen] = useState(false);
-  const [indexOpen, setIndexOpen] = useState(false);
   const [addingAccount, setAddingAccount] = useState(false);
   const accountButton = useRef<HTMLButtonElement>(null);
   const openAddAccount = () => {
@@ -53,45 +52,40 @@ export function WorkspaceStatusBar({ onAccountInitialLoad, onIndexInitialLoad, .
 
   return (
     <footer className={styles.bar} aria-label="Workspace status">
-      <WorkspaceStorageUsage />
-      <WorkspaceGitBranch />
+      {sidebarStatusRef && <span ref={sidebarStatusRef} className={styles.sidebarStatus} role="status" aria-label="Sidebar guidance" />}
       <AppUpdateIndicator />
-      <button type="button" className={`${styles.item} ${styles.index}`} popoverTarget={indexId}
-        aria-haspopup="dialog" aria-expanded={indexOpen} aria-controls={indexId}
-        data-index-state={index.busy ? 'pending' : index.attention ? 'disabled' : 'ready'}
-        data-attention={index.attention || undefined} title="CodeGraph index details">
-        <Activity aria-hidden="true" />
-        <span className={styles.label}>CodeGraph · {index.label}</span>
-        {index.busy && <span className={styles.busy} aria-label="Loading" />}
-      </button>
-      <button ref={accountButton} type="button" className={`${styles.item} ${styles.account}`} popoverTarget={accountId}
-        aria-haspopup="dialog" aria-expanded={accountOpen} aria-controls={accountId}
-        data-account-state={accountReady ? 'ready' : 'disabled'}
-        data-attention={Boolean(accountError) || account.attention || undefined}
-        title={accountTitle} aria-label={`${accountTitle} Open account and usage details.`}>
-        <Gauge aria-hidden="true" />
-        <span className={styles.label}>{accountError ? 'Account · Unavailable' : account.label}</span>
-        {totals ? <>
-          <span className={styles.separator} aria-hidden="true">·</span>
-          <span className={styles.usageTrack} aria-hidden="true">
-            <span style={{ width: `${totals.percent}%` }} />
-          </span>
-          <span className={styles.separator} aria-hidden="true">·</span>
-          <span className={styles.total}>{totals.remaining}%</span>
-        </> : !accountError && hasAuthenticatedAccount && <span className={styles.total}>· Total unavailable</span>}
-      </button>
-      {/* Keep data subscriptions and startup readiness alive while the native popovers are closed. */}
-      <LiquidGlassPanel id={indexId} popover="auto" role="dialog" aria-label="CodeGraph index details"
-        tabIndex={-1} className={styles.popover} data-liquid-glass-backdrop="true"
-        onToggle={(event) => setIndexOpen(event.newState === 'open')}>
-        <CodeGraphIndexPanel onInitialLoad={onIndexInitialLoad} onStatusChange={setIndex} />
-      </LiquidGlassPanel>
-      <LiquidGlassPanel id={accountId} popover="auto" role="dialog" aria-label="Account and usage details"
-        tabIndex={-1} className={styles.popover} data-liquid-glass-backdrop="true"
-        onToggle={(event) => setAccountOpen(event.newState === 'open')}>
-        <AccountUsagePanel {...accountProps} onInitialLoad={onAccountInitialLoad} onStatusChange={receiveAccountStatus}
-          onAddAccount={openAddAccount} />
-      </LiquidGlassPanel>
+      <span className={styles.spacer} aria-hidden="true" />
+      <CodexUpdateIndicator />
+      <KeepAwakeStatus />
+      <TooltipTarget content={accountTitle}>
+        <button ref={accountButton} type="button" className={`${styles.item} ${styles.account}`} popoverTarget={accountId}
+          aria-haspopup="dialog" aria-expanded={accountOpen} aria-controls={accountId}
+          data-account-state={accountReady ? 'ready' : 'disabled'}
+          data-attention={Boolean(accountError) || account.attention || undefined}
+          aria-label={`${accountTitle} Open account and usage details.`}>
+          <Gauge aria-hidden="true" />
+          <span className={styles.label}>{accountError ? 'Account · Unavailable' : account.label}</span>
+          {totals ? <>
+            <span className={styles.separator} aria-hidden="true">·</span>
+            <span className={styles.usageTrack} aria-hidden="true">
+              <span style={{ width: `${totals.percent}%` }} />
+            </span>
+            <span className={styles.separator} aria-hidden="true">·</span>
+            <span className={styles.total}>{totals.remaining}%</span>
+          </> : !accountError && hasAuthenticatedAccount && <span className={styles.total}>· Total unavailable</span>}
+        </button>
+      </TooltipTarget>
+      {/* Keep account subscriptions and startup readiness alive while the popover is closed. */}
+      <RegionalBlur sourceRef={blurSourceRef} sourceMode="replace">
+        {createPortal(<div id={accountId} popover="auto" role="dialog" aria-label="Account and usage details"
+          tabIndex={-1} className={styles.popover}
+          onToggle={(event) => setAccountOpen(event.newState === 'open')}>
+          <LiquidGlassPanel className={styles.accountPopover} data-liquid-glass-backdrop="true">
+            <AccountUsagePanel {...accountProps} onInitialLoad={onAccountInitialLoad} onStatusChange={receiveAccountStatus}
+              onAddAccount={openAddAccount} />
+          </LiquidGlassPanel>
+        </div>, document.body)}
+      </RegionalBlur>
       {addingAccount && <AddAccountDialog onClose={() => setAddingAccount(false)} restoreFocus={restoreAccountFocus} />}
     </footer>
   );

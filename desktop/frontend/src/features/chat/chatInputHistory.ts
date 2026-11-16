@@ -1,9 +1,12 @@
 import type { KeyboardEvent } from 'react';
 import type { ChatTimelineItem } from './model';
+import { parseChatImports, type ChatImportAttachment } from '../../../../shared/chat-imports';
+
+interface InputHistoryEntry { id: string; text: string; attachments?: ChatImportAttachment[] }
 
 export interface InputHistoryState {
   scope: string;
-  entries: { id: string; text: string }[];
+  entries: InputHistoryEntry[];
   selected: number;
 }
 
@@ -12,13 +15,21 @@ export function createChatInputHistory() {
   const listeners = new Set<() => void>();
   const update = (next: InputHistoryState) => { state = next; listeners.forEach(listener => listener()); };
   const close = () => { if (state.entries.length) update({ scope: '', entries: [], selected: 0 }); };
+  const takeEntry = (scope: string, index = state.selected) => {
+    const entry = state.scope === scope ? state.entries[index] : undefined;
+    close();
+    return entry ?? null;
+  };
   return {
     getSnapshot: () => state,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     close,
     open(scope: string, items: ChatTimelineItem[]) {
-      const entries = items.flatMap(item => item.kind === 'user' && !item.pending && !item.delivery && item.text.trim()
-        ? [{ id: item.id, text: item.text }] : []).reverse();
+      const entries = items.flatMap((item): InputHistoryEntry[] => {
+        if (item.kind !== 'user' || item.pending || item.delivery || !item.text.trim()) return [];
+        const imported = parseChatImports(item.text);
+        return [{ id: item.id, text: imported?.text ?? item.text, ...(imported ? { attachments: imported.imports } : {}) }];
+      }).reverse();
       if (!entries.length) return false;
       update({ scope, entries, selected: 0 });
       return true;
@@ -31,11 +42,8 @@ export function createChatInputHistory() {
     move(offset: -1 | 1) {
       if (state.entries.length) update({ ...state, selected: Math.max(0, Math.min(state.entries.length - 1, state.selected + offset)) });
     },
-    take(scope: string, index = state.selected) {
-      const entry = state.scope === scope ? state.entries[index] : undefined;
-      close();
-      return entry?.text ?? null;
-    },
+    takeEntry,
+    take: (scope: string, index?: number) => takeEntry(scope, index)?.text ?? null,
   };
 }
 

@@ -1,0 +1,151 @@
+import { agentBoolean, agentNullableText, agentRecord, parseAgentAction, parseAgentEngineId, parseAgentId } from '../../shared/agent-management.ts';
+import type { AgentCatalog, AgentDetails, AgentManagementApi, AgentSnapshot, DeleteContainer, ManagedAgent, WorkerLifecycleDisplay, WorkerStatusObservation } from '../../shared/agent-management.ts';
+import { inspectAgentTasks } from './task-inspection.mts';
+import type { AgentEngine, RuntimeAgent } from './engine.mts';
+import { workerOperations } from './operations.mts';
+import { parseAgentExecutionHealth } from '../../shared/agent-execution-health.ts';
+
+type WorkerPath = '/health' | '/account' | '/activity';
+export type ReadWorker = (endpoint: string, path: WorkerPath) => Promise<unknown>;
+export const readWorker: ReadWorker = async (endpoint, path) => {
+  const url = new URL(endpoint);
+  if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port
+    || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error('Worker API must use a published loopback port.');
+  }
+  const response = await fetch(new URL(path, url), { signal: AbortSignal.timeout(5000), redirect: 'error' });
+  if (!response.ok && !(path === '/health' && response.status === 503)) throw new Error('Worker API is unavailable.');
+  if (!response.body) throw new Error('Worker API returned an empty response.');
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 2 * 1024 * 1024) throw new Error('Worker response exceeds the inspection limit.');
+      chunks.push(value);
+    }
+    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+  } finally { await reader.cancel(); }
+};
+
+function health(value: unknown) {
+  const data = agentRecord(value);
+  if (!['verifier', 'planning', 'research', 'frontend', 'development', 'verification', 'custom'].includes(String(data.role))) throw new Error('Unexpected worker role.');
+  return { ...(data.execution === undefined ? {} : { execution: parseAgentExecutionHealth(data.execution) }),
+    ready: agentBoolean(data.ready), busy: agentBoolean(data.busy),
+    threadId: agentNullableText(data.threadId), error: agentNullableText(data.error, 20_000) };
+}
+function assertIdle(busy: boolean): void {
+  if (busy) throw new Error('The worker is busy. Wait for its task to finish before stopping or restarting.');
+}
+function publicAgent({ endpoint: _endpoint, startError: _startError, ...agent }: RuntimeAgent) { return agent; }
+
+export function createAgentManagementService(options: { engines: AgentEngine[]; read?: ReadWorker;
+  now?(): number;
+  displayLifecycle?(engineId: string, agent: ManagedAgent): WorkerLifecycleDisplay | undefined;
+  control?<T>(engineId: string, agentId: string, action: string, operation: () => Promise<T>): Promise<T>;
+  pendingDeletions?: (engineId: string) => Promise<DeleteContainer[]> }): AgentManagementApi {
+  const adapters = new Map(options.engines.map(engine => [engine.kind, engine]));
+  const pending = new Set<string>();
+  const read = options.read ?? readWorker;
+  const now = options.now ?? Date.now;
+  const observation = (engineId: string, agent: ManagedAgent, observedAt: number): WorkerStatusObservation => {
+    // A damaged/legacy journal must not turn a successful Docker inspection into an engine failure.
+    let lifecycle: WorkerLifecycleDisplay | undefined;
+    try { lifecycle = options.displayLifecycle?.(engineId, agent); } catch { /* No trustworthy lifecycle observation. */ }
+    return { observedAt, ...(lifecycle ? { lifecycle: { ...lifecycle } } : {}) };
+  };
+  const adapter = (input: string) => {
+    const id = parseAgentEngineId(input);
+    const found = adapters.get(id.split(':')[0]!);
+    if (!found) throw new Error('Unsupported execution engine.');
+    return found;
+  };
+  const snapshot = async (engineId: string): Promise<AgentSnapshot> => {
+    const engine = adapter(engineId);
+    try {
+      const observedAt = now();
+      const agents = (await engine.list(engineId)).map(agent => ({ ...agent, status: observation(engineId, agent, observedAt) } as ManagedAgent));
+      for (const pending of await options.pendingDeletions?.(engineId) ?? []) {
+        const agent = agents.find(item => item.id === pending.containerId);
+        if (agent) agent.pendingDeletion = { deleteData: pending.deleteData };
+        else agents.push({ id: pending.containerId, name: `Pending cleanup · ${pending.containerId.slice(0, 12)}`,
+          state: 'cleanup-pending', image: '', pendingDeletion: { deleteData: pending.deleteData } });
+      }
+      return { engineId, online: true, error: null, agents };
+    }
+    catch { return { engineId, online: false, error: 'Engine unavailable. Start the selected engine, then refresh.', agents: [] }; }
+  };
+  return {
+    async engines(): Promise<AgentCatalog> {
+      const results = await Promise.allSettled(options.engines.map(engine => engine.engines()));
+      return { engines: results.flatMap(result => result.status === 'fulfilled' ? result.value : []),
+        error: results.some(result => result.status === 'rejected') ? 'Could not list engines. Check the Docker CLI installation.' : null };
+    },
+    snapshot,
+    async details(engineId, agentId): Promise<AgentDetails> {
+      const engine = adapter(engineId);
+      const observedAt = now();
+      const agent = await engine.inspect(engineId, parseAgentId(agentId));
+      const result: AgentDetails = { agent: publicAgent(agent), ready: false, busy: false, authenticated: null,
+        threadId: null, error: null, logs: '', tasks: [] };
+      const notices: string[] = agent.startError ? [agent.startError] : [];
+      let observedHealth: WorkerStatusObservation['health'];
+      const logs = engine.logs(engineId, agent.id).then(value => { result.logs = value; }, () => { notices.push('Could not read worker logs.'); });
+      if (agent.state === 'running' && agent.endpoint) {
+        await Promise.all([
+          read(agent.endpoint, '/health').then(value => {
+            const state = health(value);
+            observedHealth = { ready: state.ready, busy: state.busy, error: state.error };
+            Object.assign(result, { ready: state.ready, busy: state.busy, threadId: state.threadId,
+              ...(state.execution === undefined ? {} : { execution: state.execution }) });
+            if (state.error) notices.push('Worker reported an error. Inspect its logs.');
+          }).catch(() => { notices.push('Worker health is unavailable.'); }),
+          read(agent.endpoint, '/account').then(value => {
+            result.authenticated = agentBoolean(agentRecord(value).authenticated);
+          }).catch(() => { notices.push('Login status is unavailable.'); }),
+          read(agent.endpoint, '/activity').then(value => {
+            result.tasks = inspectAgentTasks(value, { id: agent.profileId ?? agent.id, name: agent.name });
+          }).catch(() => { notices.push('Task history is unavailable or exceeds the inspection limit.'); }),
+        ]);
+      } else if (agent.state === 'running') notices.push('Worker API needs one port bound to 127.0.0.1.');
+      await logs;
+      // Pin health and lifecycle to the same Docker execution, including same-ID restarts.
+      // This inspection never starts a worker or invokes lifecycle reconciliation.
+      try {
+        const latest = await engine.inspect(engineId, agent.id);
+        if (agent.startedAt && latest.id === agent.id && latest.startedAt === agent.startedAt && latest.state === agent.state) {
+          result.agent.status = { ...observation(engineId, latest, observedAt), ...(observedHealth ? { health: observedHealth } : {}) };
+        }
+      } catch { /* Keep details/logs, but leave display status unconfirmed. */ }
+      result.error = notices.length ? notices.join(' ') : null;
+      return result;
+    },
+    async control(engineId, agentId, input) {
+      return workerOperations.run(async () => {
+        const engine = adapter(engineId), id = parseAgentId(agentId), action = parseAgentAction(input);
+        const key = `${engineId}/${id}`;
+        if (pending.has(key)) throw new Error('A worker operation is already running.');
+        pending.add(key);
+        const execute = async () => {
+          const agent = await engine.inspect(engineId, id);
+          // Keep the lifecycle wrapper so an already sleeping worker becomes manually stopped.
+          if (action === 'stop' && agent.state === 'exited') return await snapshot(engineId);
+          if (action !== 'start') {
+            if (!agent.endpoint) throw new Error('Cannot verify worker activity. No loopback API is available.');
+            let busy: boolean;
+            try { busy = health(await read(agent.endpoint, '/health')).busy; }
+            catch { throw new Error('Cannot verify worker activity. Refresh before stopping or restarting.'); }
+            assertIdle(busy);
+          }
+          await engine.control(engineId, id, action);
+          return await snapshot(engineId);
+        };
+        try { return await (options.control ? options.control(engineId, id, action, execute) : execute()); } finally { pending.delete(key); }
+      });
+    },
+  };
+}

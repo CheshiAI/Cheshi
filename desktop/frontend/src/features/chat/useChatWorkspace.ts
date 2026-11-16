@@ -1,15 +1,13 @@
+import { useSchedulerSessionSync } from '../scheduler/useSchedulerSessionSync';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { chatRelayContextIds } from '../../../../shared/chat-relay';
 import { cheshiDesktop } from '../../cheshiDesktop';
-import { splitPaneIds, type SplitPaneDirection } from '../../shared/ui/splitPaneModel';
-import { closeChatPane, createChatWorkspace, resizeChatPane, splitChatPane } from './chatWorkspaceModel';
+import { splitPaneIds } from '../../shared/ui/splitPaneModel';
+import { CHAT_PANE_LIMIT, closeChatPane, createChatWorkspace, resizeChatPane, splitChatPane } from './chatWorkspaceModel';
 import type { ChatController } from './useChatController';
 import type { ChatDraftSnapshot } from './chatDraftRecovery';
-import { useChatRelay } from './useChatRelay';
 import { prepareChatFork } from './prepareChatSplit';
 import { chatForkUnavailableReason, chatHistoryForkUnavailableReason } from './chatWorkspaceModel';
 import { openChatHistoryFork } from './openChatHistoryFork';
-import { useSavedChatTurns } from './useSavedChatTurns';
 import type { ChatSavedTurn } from '../../../../shared/chat-saved-turns';
 import { isViewedSessionResponding } from './model';
 import { chatSessionDeletionReason } from './chatSessionDeletion';
@@ -20,9 +18,8 @@ import { parseChatUpdateSnapshot, reopenUpdateConversations, type ChatUpdateSnap
 
 export function useChatWorkspace() {
   const [sessionCache, setSessionCache] = useState(createChatSessionCache);
+  useSchedulerSessionSync(sessionCache);
   const sessionHistory = useSyncExternalStore(sessionCache.subscribe, sessionCache.getSnapshot);
-  const relay = useChatRelay();
-  const savedTurns = useSavedChatTurns();
   const [state, setState] = useState(() => createChatWorkspace(crypto.randomUUID()));
   const [controllers, setControllers] = useState<Record<string, ChatController>>({});
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +33,6 @@ export function useChatWorkspace() {
     setComposerRevision((revision) => revision + 1);
   }, []);
   const [initialSessionIds, setInitialSessionIds] = useState<Record<string, string>>({});
-  const [initialDrafts, setInitialDrafts] = useState<Record<string, ChatDraftSnapshot>>({});
   const [splitPending, setSplitPending] = useState(false);
   const splitPendingRef = useRef(false);
   const [deletePending, setDeletePending] = useState(false);
@@ -44,8 +40,8 @@ export function useChatWorkspace() {
   const mountedRef = useRef(true);
   const currentStateRef = useRef(state);
   currentStateRef.current = state;
-  const latestRef = useRef({ controllers, relay });
-  latestRef.current = { controllers, relay };
+  const latestRef = useRef({ controllers });
+  latestRef.current = { controllers };
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
@@ -65,9 +61,7 @@ export function useChatWorkspace() {
     const current = latestRef.current;
     const ids = splitPaneIds(currentStateRef.current.layout);
     return chatAccountSwitchReason({
-      pending: accountSwitchRef.current || splitPendingRef.current || deletePendingRef.current
-        || current.relay.pending || current.relay.historyDeleting,
-      relayRunning: current.relay.running,
+      pending: accountSwitchRef.current || splitPendingRef.current || deletePendingRef.current,
       paneCount: ids.length,
       controllers: ids.flatMap((id) => current.controllers[id] ? [current.controllers[id]!] : []),
       composerReasons: ids.flatMap((id) => composerGuards.current.has(id) ? [composerGuards.current.get(id)!()] : []),
@@ -91,7 +85,6 @@ export function useChatWorkspace() {
       // Reopen explicitly so failed thread restoration retains the durable checkpoint.
       // initialSessionIds belongs to fork creation and opens threads without awaiting them.
       setInitialSessionIds({});
-      setInitialDrafts({});
       return new Promise<void>((resolve, reject) => {
         const finish = (error?: Error) => {
           clearTimeout(timer);
@@ -105,7 +98,7 @@ export function useChatWorkspace() {
     },
   }), [getAccountSwitchReason]);
   const accountSwitchReason = useMemo(() => getAccountSwitchReason(),
-    [getAccountSwitchReason, controllers, paneIds, relay, splitPending, deletePending, accountSwitchPending, composerRevision]);
+    [getAccountSwitchReason, controllers, paneIds, splitPending, deletePending, accountSwitchPending, composerRevision]);
   const beginAccountSwitch = useCallback(() => {
     const reason = getAccountSwitchReason();
     if (reason) return reason;
@@ -122,7 +115,6 @@ export function useChatWorkspace() {
       setState(next);
       setControllers({});
       setInitialSessionIds({});
-      setInitialDrafts({});
       setError(null);
       composerGuards.current.clear();
       for (const id of previousIds) void cheshiDesktop?.disposeCodexChatContext(id).catch((reason: unknown) => {
@@ -146,19 +138,18 @@ export function useChatWorkspace() {
     setState((current) => current.activePaneId === paneId || !splitPaneIds(current.layout).includes(paneId)
       ? current : { ...current, activePaneId: paneId });
   }, []);
-  const splitPane = useCallback(async (targetId: string, direction: SplitPaneDirection, mode: 'new' | 'fork' = 'new', sourceThreadId?: string): Promise<boolean> => {
+  const splitPane = useCallback(async (targetId: string, mode: 'new' | 'fork' = 'new', sourceThreadId?: string): Promise<boolean> => {
     if (splitPendingRef.current || deletePendingRef.current) return false;
     const ids = splitPaneIds(currentStateRef.current.layout);
-    if (!ids.includes(targetId) || ids.length >= 32) return false;
+    if (!ids.includes(targetId) || ids.length >= CHAT_PANE_LIMIT) return false;
     const paneId = crypto.randomUUID();
     const splitId = crypto.randomUUID();
     if (mode === 'new') {
-      setState((current) => splitChatPane(current, targetId, paneId, direction, splitId));
+      setState((current) => splitChatPane(current, targetId, paneId, splitId));
       return true;
     }
     const source = controllers[targetId]?.state;
-    const locked = relay.running && relay.state !== null && chatRelayContextIds(relay.state).includes(targetId);
-    const unavailable = chatForkUnavailableReason(source, locked);
+    const unavailable = chatForkUnavailableReason(source);
     if (unavailable || !sourceThreadId || source?.activeSessionId !== sourceThreadId) {
       setError(unavailable ?? 'The source conversation changed. Reopen the split dialog.');
       return false;
@@ -170,12 +161,12 @@ export function useChatWorkspace() {
     try {
       const sessionId = await prepareChatFork(cheshiDesktop, sourceThreadId, paneId);
       const currentIds = splitPaneIds(currentStateRef.current.layout);
-      if (!mountedRef.current || !currentIds.includes(targetId) || currentIds.length >= 32) {
+      if (!mountedRef.current || !currentIds.includes(targetId) || currentIds.length >= CHAT_PANE_LIMIT) {
         await cheshiDesktop.disposeCodexChatContext(paneId);
         return false;
       }
       setInitialSessionIds((current) => ({ ...current, [paneId]: sessionId }));
-      setState((current) => splitChatPane(current, targetId, paneId, direction, splitId));
+      setState((current) => splitChatPane(current, targetId, paneId, splitId));
       return true;
     } catch (reason) {
       if (mountedRef.current) setError(reason instanceof Error ? reason.message : String(reason));
@@ -184,28 +175,18 @@ export function useChatWorkspace() {
       splitPendingRef.current = false;
       if (mountedRef.current) setSplitPending(false);
     }
-  }, [controllers, relay.running, relay.state]);
-  const openSideChat = useCallback((targetId: string, input: ChatDraftSnapshot): boolean => {
-    const current = currentStateRef.current;
-    const ids = splitPaneIds(current.layout);
-    if (accountSwitchRef.current || splitPendingRef.current || deletePendingRef.current || !ids.includes(targetId) || ids.length >= 32) return false;
-    const paneId = crypto.randomUUID();
-    const next = splitChatPane(current, targetId, paneId, 'right', crypto.randomUUID());
-    currentStateRef.current = next;
-    setInitialDrafts((drafts) => ({ ...drafts, [paneId]: { ...input, attachments: [...input.attachments] } }));
-    setState(next);
-    return true;
+  }, [controllers]);
+  const openTemporaryChat = useCallback(async (input: ChatDraftSnapshot): Promise<void> => {
+    if (accountSwitchRef.current || deletePendingRef.current) throw new Error('The workspace is busy. Try again shortly.');
+    if (!cheshiDesktop?.temporaryChat) throw new Error('Temporary chat is unavailable. Restart the app.');
+    if (input.selectedSkill) throw new Error('Temporary chat does not support selected skills. Edit the queued message to remove its skill first.');
+    await cheshiDesktop.temporaryChat.openWindow({ text: input.draft, attachments: input.attachments });
   }, []);
   const closePane = useCallback((paneId: string) => {
     if (deletePendingRef.current) return;
     const replacementId = crypto.randomUUID();
     setState((current) => closeChatPane(current, paneId, replacementId));
     setInitialSessionIds((current) => {
-      const next = { ...current };
-      delete next[paneId];
-      return next;
-    });
-    setInitialDrafts((current) => {
       const next = { ...current };
       delete next[paneId];
       return next;
@@ -237,7 +218,7 @@ export function useChatWorkspace() {
     const current = latestRef.current;
     const active = current.controllers[currentStateRef.current.activePaneId];
     return chatSessionDeletionReason(sessionId, Boolean(active), splitPendingRef.current || deletePendingRef.current,
-      current.relay.running, Object.values(current.controllers));
+      Object.values(current.controllers));
   }, []);
   const deleteSession = useCallback(async (sessionId: string): Promise<boolean> => {
     const reason = deleteSessionReason(sessionId);
@@ -262,14 +243,10 @@ export function useChatWorkspace() {
     if (deletePendingRef.current) return 'Wait for the conversation deletion to finish.';
     const current = latestRef.current;
     const target = current.controllers[targetId]?.state;
-    const relayState = current.relay.state;
-    const locked = current.relay.running && relayState !== null
-      && (chatRelayContextIds(relayState).includes(targetId)
-        || [relayState.sourceThreadId, relayState.targetThreadId, relayState.moderatorThreadId].includes(sessionId));
     const sourceResponding = Object.values(current.controllers).some((controller) =>
       controller.state.responseThreadIds.includes(sessionId)
       || controller.state.sessions.some((session) => session.id === sessionId && session.status === 'active'));
-    return chatHistoryForkUnavailableReason(target, locked, sourceResponding);
+    return chatHistoryForkUnavailableReason(target, sourceResponding);
   }, []);
 
   const forkHistorySession = useCallback(async (sessionId: string, targetId: string): Promise<boolean> => {
@@ -306,8 +283,7 @@ export function useChatWorkspace() {
   const savedTurnContinuationReason = !activeController ? 'Wait for the chat pane to be ready.'
     : activeController.state.phase === 'loading' || isViewedSessionResponding(activeController.state) || splitPending || deletePending
       ? 'Wait for the current operation to finish.'
-      : relay.running && relay.state !== null && chatRelayContextIds(relay.state).includes(state.activePaneId)
-        ? 'Wait for the linked conversation to finish.' : null;
+      : null;
   const continueSavedTurn = async (record: ChatSavedTurn): Promise<boolean> => {
     if (deletePendingRef.current || savedTurnContinuationReason || !activeController) return false;
     return activeController.continueSavedTurn(record);
@@ -315,8 +291,8 @@ export function useChatWorkspace() {
 
   return {
     ...state, paneIds, controllers, activeController, responseThreadIds, sessionCache, sessionHistory,
-    registerController, selectPane, splitPane, closePane, resizeSplit, openSession, openSideChat, initialDrafts,
-    error, dismissError, relay, initialSessionIds, splitPending, historyForkReason, forkHistorySession, savedTurns,
+    registerController, selectPane, splitPane, closePane, resizeSplit, openSession, openTemporaryChat,
+    error, dismissError, initialSessionIds, splitPending, historyForkReason, forkHistorySession,
     continueSavedTurn, savedTurnContinuationReason, deleteSession, deleteSessionReason, deletePending,
     registerAccountSwitchGuard, accountSwitchPending, accountSwitchReason, beginAccountSwitch, completeAccountSwitch,
   };

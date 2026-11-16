@@ -3,7 +3,7 @@ import { chatAccountSwitchReason, chatComposerAccountSwitchReason } from '../fro
 import { INITIAL_CHAT_STATE } from '../frontend/src/features/chat/model.ts';
 
 const idle = { state: { ...INITIAL_CHAT_STATE, phase: 'idle' as const }, isOperationPending: () => false };
-const ready = { pending: false, relayRunning: false, paneCount: 2, controllers: [idle, idle], composerReasons: [null, null] };
+const ready = { pending: false, paneCount: 2, controllers: [idle, idle], composerReasons: [null, null] };
 
 describe('manual account switching guards', () => {
   test('allows idle panes without discarding draft content', () => {
@@ -25,8 +25,7 @@ describe('manual account switching guards', () => {
     expect(chatAccountSwitchReason({ ...ready, controllers: [idle, { ...idle, isOperationPending: () => true }] })).toContain('active chat');
   });
 
-  test('blocks relay and workspace mutations', () => {
-    expect(chatAccountSwitchReason({ ...ready, relayRunning: true })).toContain('linked conversation');
+  test('blocks workspace mutations', () => {
     expect(chatAccountSwitchReason({ ...ready, pending: true })).toContain('current operation');
   });
 });

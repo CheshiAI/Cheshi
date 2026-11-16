@@ -1,5 +1,4 @@
 import {
-  AlertTriangle,
   ArrowRight,
   CircleDot,
   Clock3,
@@ -23,19 +22,17 @@ import {
   LiquidGlassPanel,
   LiquidGlassSelect,
   NeumorphicButton,
-  NeumorphicSurface,
   NeumorphicTextField,
 } from '../../shared/ui';
+import { SidebarPanelTitle } from '../../shared/ui/SidebarPanelHeader';
 import { GitDiffViewer } from './GitDiffViewer';
 import {
   GITHUB_COMMENT_BODY_LIMIT,
-  PULL_REQUEST_DETAIL_STYLE,
   formatGitDate,
   pullRequestMergeMethods,
   reviewDecisionLabel,
 } from './gitWorkspaceModel';
 import {
-  MarkedPanelTitle,
   MergedPullRequestDetail,
   PullRequestActivityState,
   PullRequestCommentCard,
@@ -99,14 +96,13 @@ export function GitPullRequestDetailPanel({ controller, onOpenWorkspaceFile }: {
       className={styles.pullRequestDetail}
       data-liquid-glass-surface="side-panel"
       role="region"
-      style={PULL_REQUEST_DETAIL_STYLE}
     >
       {selectedPullRequest ? (
         <>
           <header className={`${styles.panelHeader} ${styles.pullRequestDetailHeader}`}>
-            <MarkedPanelTitle
-              icon={GitPullRequest}
-              title={`Pull request #${selectedPullRequest.number}`}
+            <SidebarPanelTitle
+              icon={<GitPullRequest aria-hidden="true" />}
+              title={`PULL REQUEST #${selectedPullRequest.number}`}
             />
             <span
               className={styles.pullRequestState}
@@ -167,20 +163,14 @@ export function GitPullRequestDetailPanel({ controller, onOpenWorkspaceFile }: {
               </dl>
             </section>
             <header className={styles.pullRequestActivityHeader}>
-              <div className={styles.pullRequestActivityTitle}>
-                <NeumorphicSurface
-                  raised
-                  aria-hidden="true"
-                  className={`neumorphic-surface ${styles.pullRequestActivityMark}`}
-                >
-                  {pullRequestDetailTab === 'conversation'
-                    ? <MessageSquareText />
-                    : pullRequestDetailTab === 'commits'
-                      ? <GitCommitHorizontal />
-                      : <FileText />}
-                </NeumorphicSurface>
-                <strong>Activity</strong>
-              </div>
+              <SidebarPanelTitle
+                icon={pullRequestDetailTab === 'conversation'
+                  ? <MessageSquareText aria-hidden="true" />
+                  : pullRequestDetailTab === 'commits'
+                    ? <GitCommitHorizontal aria-hidden="true" />
+                    : <FileText aria-hidden="true" />}
+                title="ACTIVITY"
+              />
               <FilterTabList
                 as="nav"
                 aria-label="Pull request content"
@@ -247,6 +237,7 @@ export function GitPullRequestDetailPanel({ controller, onOpenWorkspaceFile }: {
                   >
                     <label htmlFor={`pull-request-comment-${selectedPullRequest.number}`}>Add comment</label>
                     <NeumorphicTextField
+                      variant="standard"
                       multiline
                       aria-label="Pull request comment"
                       className={styles.pullRequestCommentInput}
@@ -265,10 +256,8 @@ export function GitPullRequestDetailPanel({ controller, onOpenWorkspaceFile }: {
                           : 'Markdown is supported by GitHub.'}
                       </span>
                       <NeumorphicButton
-                        size="standard"
-                        raised
+                        variant="standard"
                         aria-busy={pullRequestCommentSubmitting}
-                        className="neumorphic-surface"
                         disabled={pullRequestCommentSubmitting || !pullRequestComment.trim()}
                         type="submit"
                       >
@@ -283,6 +272,8 @@ export function GitPullRequestDetailPanel({ controller, onOpenWorkspaceFile }: {
                   </form>
                   <div className={styles.mergeConfirmationControls}>
                     <LiquidGlassSelect
+                      triggerAppearance="standard"
+                      menuAppearance="toolbar"
                       ariaLabel="Merge method"
                       disabled={busy}
                       menuLabel="Pull request merge method"
@@ -292,19 +283,15 @@ export function GitPullRequestDetailPanel({ controller, onOpenWorkspaceFile }: {
                     />
                     <div className={styles.mergeConfirmationActions}>
                       <NeumorphicButton
-                        size="standard"
-                        raised
-                        className="neumorphic-surface"
+                        variant="ghost"
                         disabled={busy}
                         onClick={() => setMergeConfirmationNumber(null)}
                       >
                         Cancel
                       </NeumorphicButton>
                       <NeumorphicButton
-                        size="standard"
-                        raised
+                        variant="standard"
                         aria-busy={pullRequestOperation === 'merge'}
-                        className="neumorphic-surface"
                         disabled={busy || pullRequestCommentSubmitting}
                         onClick={() => void mergePullRequest()}
                       >
@@ -362,14 +349,14 @@ export function GitPullRequestDetailPanel({ controller, onOpenWorkspaceFile }: {
                 </div>
               ) : !selectedPullRequestCommit ? null : pullRequestDiffError && !pullRequestDiffLoading ? (
                 <div
-                  className={`${styles.emptyState} ${styles.pullRequestActivityState} ${styles.pullRequestSelectionEmpty}`}
+                  className={styles.pullRequestActivityState}
                   role="alert"
                 >
-                  <strong className={styles.pullRequestSelectionHeading}>
-                    <AlertTriangle aria-hidden="true" className={styles.pullRequestSelectionMark} />
-                    Could not load changes
-                  </strong>
-                  <span>{pullRequestDiffError}</span>
+                  <EmptyState
+                    className={styles.pullRequestEmptyState}
+                    title="Could not load changes"
+                    description={pullRequestDiffError}
+                  />
                 </div>
               ) : (
                 <GitDiffViewer
@@ -398,10 +385,8 @@ export function GitPullRequestDetailPanel({ controller, onOpenWorkspaceFile }: {
             <div className={styles.pullRequestActionGroup}>
               {selectedPullRequestNeedsPush && (
                 <NeumorphicButton
-                  size="standard"
-                  raised
+                  variant="standard"
                   aria-busy={pullRequestOperation === 'push'}
-                  className="neumorphic-surface"
                   disabled={busy}
                   onClick={() => void pushCurrentBranch()}
                 >
@@ -416,9 +401,7 @@ export function GitPullRequestDetailPanel({ controller, onOpenWorkspaceFile }: {
                 </NeumorphicButton>
               )}
               <NeumorphicButton
-                size="standard"
-                raised
-                className="neumorphic-surface"
+                variant="standard"
                 disabled={busy || selectedPullRequest.draft || selectedPullRequestNeedsPush}
                 title={selectedPullRequest.draft
                   ? 'Draft pull requests cannot be merged.'
@@ -433,18 +416,14 @@ export function GitPullRequestDetailPanel({ controller, onOpenWorkspaceFile }: {
             </div>
             <div className={styles.pullRequestActionGroup}>
               <NeumorphicButton
-                size="standard"
-                raised
-                className="neumorphic-surface"
+                variant="ghost"
                 disabled={busy}
                 onClick={() => checkoutPullRequest(selectedPullRequest.number)}
               >
                 Checkout
               </NeumorphicButton>
               <NeumorphicButton
-                size="standard"
-                raised
-                className="neumorphic-surface"
+                variant="ghost"
                 disabled={busy}
                 onClick={() => openPullRequest(selectedPullRequest.url)}
               >
@@ -469,7 +448,7 @@ export function GitPullRequestDetailPanel({ controller, onOpenWorkspaceFile }: {
       ) : (
         <>
           <header className={`${styles.panelHeader} ${styles.pullRequestDetailHeader}`}>
-            <MarkedPanelTitle icon={GitPullRequest} title="Pull request detail" />
+            <SidebarPanelTitle icon={<GitPullRequest aria-hidden="true" />} title="PULL REQUEST DETAIL" />
           </header>
           <EmptyState
             className={styles.pullRequestEmptyState}

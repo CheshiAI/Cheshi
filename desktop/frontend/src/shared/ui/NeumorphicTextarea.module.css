@@ -9,7 +9,7 @@
   background-clip: padding-box;
   color: var(--neumorphic-input-color, inherit);
   font-family: inherit;
-  font-size: var(--neumorphic-textarea-font-size, 12px);
+  font-size: var(--neumorphic-textarea-font-size, 10px);
   font-weight: 400;
   line-height: var(--neumorphic-textarea-line-height, 18px);
   padding: var(--neumorphic-textarea-padding, 10px 12px);

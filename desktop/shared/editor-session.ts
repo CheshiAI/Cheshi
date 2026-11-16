@@ -1,3 +1,4 @@
+import { validWorkspaceFilePath } from './workspace-projects.ts';
 export interface EditorSession {
   version: 1;
   paths: string[];
@@ -15,9 +16,7 @@ export function parseEditorSession(value: unknown): EditorSession {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Invalid editor session.');
   const record = value as Record<string, unknown>;
   if (record.version !== 1 || !Array.isArray(record.paths) || record.paths.length > 500
-    || !record.paths.every((path): path is string => typeof path === 'string' && path.length > 0 && path.length <= 4096
-      && !path.startsWith('/') && !path.includes('\\') && !path.includes('\0')
-      && !path.split('/').some(part => part === '..' || part === '.' || part === ''))
+    || !record.paths.every(validWorkspaceFilePath)
     || new Set(record.paths).size !== record.paths.length
     || (record.selectedPath !== null && (typeof record.selectedPath !== 'string' || !record.paths.includes(record.selectedPath)))) {
     throw new TypeError('Invalid editor session.');

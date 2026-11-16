@@ -6,6 +6,25 @@ import type { CommandResult } from '../lib/git-types.mts';
 import { registerGitIpcHandlers } from '../lib/git-ipc.mts';
 import type { GitService } from '../lib/git-service.mts';
 import type { IpcMainInvokeEvent } from 'electron';
+import { GitCommandError } from '../lib/git-command.mts';
+
+test('IPC returns missing remote state without rejecting and recovers after a remote is configured', async () => {
+  const handlers = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();
+  const missing = new GitCommandError('no git remotes found', { stderr: 'no git remotes found\n', exitCode: 1 });
+  const service = context([missing, repo, { total_count: 0, incomplete_results: false, items: [] },
+    { total_count: 0, incomplete_results: false }, new GitCommandError('Authentication failed', { stderr: 'Authentication failed' })]);
+  registerGitIpcHandlers({
+    ipcMain: { handle: (channel, handler) => { handlers.set(channel, handler); } },
+    gitService: service as unknown as GitService, assertCheshiSender: () => {},
+    shell: { openExternal: async () => {}, trashItem: async () => {} },
+  });
+  const invoke = () => Promise.resolve(handlers.get('cheshi:list-github-issues')!({} as IpcMainInvokeEvent,
+    { search: '', state: 'open', page: 1 }));
+  expect(await invoke()).toEqual({ unavailable: 'remote-missing' });
+  expect(service.calls).toHaveLength(1);
+  expect(await invoke()).toMatchObject({ repository: 'owner/project', issues: [] });
+  await fails(invoke(), 'Authentication failed');
+});
 
 const repo = { nameWithOwner: 'owner/project', url: 'https://github.com/owner/project' };
 const issue = {

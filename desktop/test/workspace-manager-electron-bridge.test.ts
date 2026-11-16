@@ -28,7 +28,7 @@ app.whenReady().then(async () => {
   let failure = '';
   const readySnapshots = new Map();
   ipcMain.handle('cheshi:workspace-management:content-ready', async (event) => {
-    const snapshot = await event.sender.executeJavaScript('({ setup: !!document.querySelector("code"), login: document.body.textContent.includes("Welcome to Cheshi"), projects: !!document.querySelector("input[type=search]"), error: !!document.querySelector("[role=alert]"), preparing: document.body.textContent.includes("Preparing..."), footerLogin: document.querySelectorAll("footer button").length })');
+    const snapshot = await event.sender.executeJavaScript('({ heading: document.querySelector("h1")?.textContent, setup: !!document.querySelector("code"), login: document.body.textContent.includes("Welcome to Cheshi"), projects: Array.from(document.querySelectorAll("input")).some(node => node.getAttribute("aria-label") === "Search projects"), error: !!document.querySelector("[role=alert]"), preparing: document.body.textContent.includes("Preparing..."), footerLogin: document.querySelectorAll("footer button").length })');
     readySnapshots.set(event.sender.id, snapshot);
   });
   ipcMain.handle('cheshi:workspace-management:list', async () => {
@@ -56,7 +56,7 @@ app.whenReady().then(async () => {
     if (failure === 'tools') throw new Error('Mock tools failure');
     return { platform: 'darwin', brew: installedTools > 0, gh: installedTools > 0, codex: installedTools === 2 };
   });
-  const homeState = '({ search: !!document.querySelector("input[type=search]"), open: Array.from(document.querySelectorAll("button")).some(button => button.textContent === "Open folder"), welcome: document.body.textContent.includes("Your next workspace starts here") })';
+  const homeState = '({ search: Array.from(document.querySelectorAll("input")).some(node => node.getAttribute("aria-label") === "Search projects"), open: Array.from(document.querySelectorAll("button")).some(button => button.textContent === "Open folder"), welcome: document.body.textContent.includes("Your next workspace starts here") })';
   const results = [];
   for (const root of ['', '/work/example']) {
     installedTools = 0;
@@ -85,7 +85,7 @@ app.whenReady().then(async () => {
     results[results.length - 1].setupAfterInstall = await window.webContents.executeJavaScript('Array.from(document.querySelectorAll("section")).some(node => node.getAttribute("aria-label") === "Workspace tool setup")');
     results[results.length - 1].homeAfterInstall = await window.webContents.executeJavaScript(homeState);
     results[results.length - 1].listCallsBeforeAuth = listCalls;
-    const loginButton = 'Array.from(document.querySelectorAll("main button")).find(button => button.textContent.includes("Continue with ChatGPT"))';
+    const loginButton = 'Array.from(document.querySelectorAll("footer button")).find(button => button.textContent.includes("Continue with ChatGPT"))';
     results[results.length - 1].loginOffered = await window.webContents.executeJavaScript('!!(' + loginButton + ')');
     if (!root) {
       await window.webContents.executeJavaScript('(' + loginButton + ').click()');
@@ -120,7 +120,15 @@ app.whenReady().then(async () => {
     for (let attempt = 0; attempt < 40 && !readySnapshots.has(window.webContents.id); attempt++) {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
-    startupResults.push({ scenario, snapshot: readySnapshots.get(window.webContents.id), accountChecks, listCalls });
+    const initial = readySnapshots.get(window.webContents.id);
+    let snapshot;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      snapshot = await window.webContents.executeJavaScript('({ setup: !!document.querySelector("code"), login: document.body.textContent.includes("Welcome to Cheshi"), projects: Array.from(document.querySelectorAll("input")).some(node => node.getAttribute("aria-label") === "Search projects"), error: !!document.querySelector("[role=alert]"), preparing: document.body.textContent.includes("Preparing..."), footerLogin: document.querySelectorAll("footer button").length })');
+      const finished = scenario === 'missing-tools' ? snapshot.setup : scenario === 'signed-out' ? snapshot.login : scenario === 'signed-in' ? snapshot.projects : snapshot.error;
+      if (finished && !snapshot.preparing) break;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    startupResults.push({ scenario, initialHeading: initial?.heading, initialProjects: initial?.projects, snapshot, accountChecks, listCalls });
     window.destroy();
   }
   process.stdout.write('STARTUP_BRANCH_RESULT ' + JSON.stringify(startupResults) + '\\n');
@@ -138,14 +146,14 @@ setTimeout(() => app.exit(2), 25000).unref();
     const result = child.stdout.split('\n').find((line) => line.startsWith('MANAGER_BRIDGE_RESULT '));
     assert.ok(result, child.stdout || child.stderr);
     assert.deepEqual(JSON.parse(result.slice('MANAGER_BRIDGE_RESULT '.length)), ['', '/work/example'].map(root => ({
-      root, title: 'Workspaces', appShell: false, hasWorkspaceApi: false, errors: [],
+      root, title: 'WORKSPACES', appShell: false, hasWorkspaceApi: false, errors: [],
       commands: ['/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"', 'brew install gh', 'brew install --cask codex'],
       setupAfterInstall: false,
       homeBeforeInstall: { search: false, open: false, welcome: false },
       homeAfterPartialInstall: { search: false, open: false, welcome: false },
       homeAfterInstall: { search: false, open: false, welcome: false },
       listCallsBeforeAuth: root ? 1 : 0, preparingShown: true,
-      homeAfterAuth: { search: true, open: true, welcome: true }, footerButtons: 0,
+      homeAfterAuth: { search: true, open: true, welcome: true }, footerButtons: 1,
       loginOffered: root === '', loginHiddenAfterAuth: true, signInStarts: root === '' ? 1 : 0,
     })));
     const startupResult = child.stdout.split('\n').find((line) => line.startsWith('STARTUP_BRANCH_RESULT '));
@@ -158,7 +166,7 @@ setTimeout(() => app.exit(2), 25000).unref();
       ['login-error', false, true, false, true, 1, 0],
       ['list-error', false, false, true, true, 1, 1],
     ].map(([scenario, setup, login, projects, error, accountChecks, listCalls]) => ({
-      scenario, snapshot: { setup, login, projects, error, preparing: false, footerLogin: 0 }, accountChecks, listCalls,
+      scenario, initialHeading: 'WORKSPACES', initialProjects: false, snapshot: { setup, login, projects, error, preparing: false, footerLogin: scenario === 'missing-tools' || scenario === 'tools-error' ? 0 : 1 }, accountChecks, listCalls,
     })));
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

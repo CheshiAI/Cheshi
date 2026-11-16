@@ -1,5 +1,6 @@
 import { CodexAppServerClient, CodexAppServerStoppedError } from './codex-app-server-client.mts';
 import { recordValue } from './codex-service-utils.mts';
+import { DEFAULT_PROJECT_DOC_MAX_BYTES, projectDocConfigOverride } from '../../experiments/codex-specialists/src/project-instructions.ts';
 
 type ClientOptions = ConstructorParameters<typeof CodexAppServerClient>[0];
 type PrepareCommand = (command: ClientOptions['command']) => Promise<string[]>;
@@ -12,17 +13,21 @@ export class CodexAccountClients {
   generation = 0;
   switching = false;
   private closed = false;
+  private releasingWriters = false;
   readonly prepareCommand: PrepareCommand | undefined;
+  private readonly projectDocMaxBytes: () => number;
 
-  constructor(environment: Record<string, string | undefined>, prepareCommand?: PrepareCommand) {
+  constructor(environment: Record<string, string | undefined>, prepareCommand?: PrepareCommand, projectDocMaxBytes = () => DEFAULT_PROJECT_DOC_MAX_BYTES) {
     this.environment = environment;
     this.defaultHome = environment.CODEX_HOME;
     this.prepareCommand = prepareCommand;
+    this.projectDocMaxBytes = projectDocMaxBytes;
   }
 
   commandArgs(args: string[]): string[] {
-    return this.environment.CODEX_HOME === this.defaultHome ? [...args]
-      : [...args, '-c', 'cli_auth_credentials_store="file"'];
+    const configured = [...args, '-c', projectDocConfigOverride(this.projectDocMaxBytes())];
+    return this.environment.CODEX_HOME === this.defaultHome ? configured
+      : [...configured, '-c', 'cli_auth_credentials_store="file"'];
   }
 
   create(options: ClientOptions): AccountClient {
@@ -37,8 +42,38 @@ export class CodexAccountClients {
     if (this.switching) throw new Error('Wait for the account switch to finish.');
   }
 
+  async releaseThreadWriters(threadIds: readonly string[]): Promise<void> {
+    this.assertAvailable();
+    if (this.releasingWriters) throw new Error('Wait for the conversation deletion to finish.');
+    const targets = new Set(threadIds);
+    const owners = [];
+    for (const client of this.clients) {
+      if (!client.ready) continue;
+      const response = recordValue(await client.request('thread/loaded/list', {}));
+      if (!response || !Array.isArray(response.data) || response.data.some(id => typeof id !== 'string')) {
+        throw new Error('Codex returned an invalid loaded session list.');
+      }
+      if (response.data.some(id => targets.has(id))) owners.push(client);
+    }
+    this.assertAvailable();
+    if (this.releasingWriters) throw new Error('Wait for the conversation deletion to finish.');
+    if (owners.some(client => client.busy)) throw new Error('Stop all work in the session owner before deleting it.');
+    this.releasingWriters = true;
+    for (const client of owners) client.releasingWriters = true;
+    try {
+      for (const client of owners) {
+        await client.stop();
+        client.writersReleased();
+      }
+    } finally {
+      for (const client of owners) client.releasingWriters = false;
+      this.releasingWriters = false;
+    }
+  }
+
   async change(environment: Record<string, string | undefined>, retained: AccountClient[], reset: () => Promise<void>): Promise<void> {
     this.assertAvailable();
+    if (this.releasingWriters) throw new Error('Wait for the conversation deletion to finish.');
     if ([...this.clients].some(client => client.busy)) throw new Error('Wait for all Codex requests and responses to finish before switching accounts.');
     this.switching = true;
     try {
@@ -65,12 +100,17 @@ export class AccountClient extends CodexAppServerClient {
   private readonly pool: CodexAccountClients;
   private readonly originalArgs: string[];
   private generation: number;
+  releasingWriters = false;
   private calls = 0;
+  private readonly writerReleaseListeners = new Set<() => void>();
   private readonly turns = new Set<string>();
   private preparationRevision = 0;
+  private readonly environmentOverrides: Record<string, string | undefined>;
 
   constructor(pool: CodexAccountClients, options: ClientOptions) {
-    super({ ...options, command: { ...options.command, args: pool.commandArgs(options.command.args), environment: { ...pool.environment } } });
+    super({ ...options, command: { ...options.command, args: pool.commandArgs(options.command.args),
+      environment: { ...pool.environment, ...options.command.environment, CODEX_HOME: pool.environment.CODEX_HOME } } });
+    this.environmentOverrides = Object.fromEntries(Object.entries(options.command.environment).filter(([key]) => key !== 'CODEX_HOME'));
     this.pool = pool;
     this.originalArgs = [...options.command.args];
     this.generation = pool.generation;
@@ -84,16 +124,26 @@ export class AccountClient extends CodexAppServerClient {
     this.onDidFail(() => this.turns.clear());
   }
 
+  onDidReleaseWriters(listener: () => void): () => void {
+    this.writerReleaseListeners.add(listener);
+    return () => { this.writerReleaseListeners.delete(listener); };
+  }
+
+  writersReleased(): void {
+    for (const listener of this.writerReleaseListeners) listener();
+  }
+
   get busy(): boolean { return this.calls > 0 || this.turns.size > 0 || this.startFlight.operation !== null; }
 
   rebind(): void {
     this.generation = this.pool.generation;
-    this.command.environment = { ...this.pool.environment };
+    this.command.environment = { ...this.pool.environment, ...this.environmentOverrides };
     this.command.args = this.pool.commandArgs(this.originalArgs);
   }
 
   override async start(): Promise<Record<string, unknown>> {
     this.pool.assertAvailable();
+    if (this.releasingWriters) throw new Error('Wait for the conversation deletion to finish.');
     if (this.generation !== this.pool.generation) throw new Error('This conversation belongs to the previous account. Open a new chat.');
     this.pool.clients.add(this);
     return super.start();
@@ -106,6 +156,7 @@ export class AccountClient extends CodexAppServerClient {
   }
 
   override async startInternal(): Promise<Record<string, unknown>> {
+    this.command.args = this.pool.commandArgs(this.originalArgs);
     if (this.pool.prepareCommand) {
       const revision = this.preparationRevision;
       const args = await this.pool.prepareCommand(this.command);

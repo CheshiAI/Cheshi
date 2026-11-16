@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import type { ComponentProps } from 'react';
 import type { ChatSessionList } from '../frontend/src/features/chat/ChatSessionList';
+import { formatSessionElapsedTime } from '../frontend/src/features/chat/chatSessionTime';
 
 export interface SessionListElement { type: unknown; props: Record<string, unknown> }
 export function sessionListElements(value: unknown): SessionListElement[] {
@@ -17,6 +18,7 @@ export function sessionListElements(value: unknown): SessionListElement[] {
 export function createSessionListHarness() {
   let cursor = 0;
   let rowRenders = 0;
+  let now = Date.now();
   const slots: unknown[] = [];
   let effects: (() => void)[] = [];
   const sameProps = (left: Record<string, unknown>, right: Record<string, unknown>) =>
@@ -33,7 +35,18 @@ export function createSessionListHarness() {
   const jsx = (type: unknown, props: Record<string, unknown>) =>
     typeof type === 'function' ? type(props) : { type, props };
   const modules: Record<string, unknown> = {
+    '../../shared/ui/SessionActivityBackground': { SessionActivityBackground: 'session-activity-background' },
+    './FlashSessionHeader': { FlashSessionHeader: 'sidebar-panel-header' },
+    '../../shared/ui/TooltipButton': { TooltipButton: 'button' },
+    '../../shared/ui/TooltipTarget': { TooltipTarget: 'tooltip-target' },
+    '../../shared/ui/InlineRenameField': { InlineRenameField: 'inline-rename-field' },
     react: {
+      useState: (initial: unknown) => {
+        const index = cursor++;
+        if (!(index in slots)) slots[index] = initial;
+        return [slots[index], (value: unknown) => { slots[index] = value; }];
+      },
+      useEffect: (effect: () => void) => { effects.push(effect); },
       useRef: (current: unknown) => {
         const index = cursor++;
         return slots[index] ??= { current };
@@ -56,10 +69,16 @@ export function createSessionListHarness() {
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'lucide-react': new Proxy({}, { get: (_target, name) => String(name) }),
     '../../shared/ui': {
-      LoadingIndicator: ({ label }: { label?: string }) => jsx('loading-indicator', { 'aria-label': label }),
-      LoadingState: 'loading-state', NeumorphicButton: 'button',
+      LoadingState: 'loading-state', NeumorphicButton: 'button', SidebarPanelHeader: 'sidebar-panel-header',
     },
+    '../../shared/ui/OverlayScrollArea': { OverlayScrollArea: 'overlay-scroll-area' },
+    '../../shared/ui/PullToRefreshStatus': { PullToRefreshStatus: () => null },
+    '../../shared/ui/SidebarStatusMessage': { SidebarStatusMessage: 'sidebar-status-message' },
+    '../../shared/usePullToRefresh': { usePullToRefresh: (refresh?: () => Promise<void>) => ({
+      viewportRef: { current: null }, refresh, refreshing: false, pullHeight: 0, ready: false, error: '',
+    }) },
     './ChatSessionList.module.css': { default: {} },
+    './chatSessionTime': { formatSessionElapsedTime, useChatSessionClock: () => now },
   };
   const source = readFileSync(new URL('../frontend/src/features/chat/ChatSessionList.tsx', import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: {
@@ -81,5 +100,6 @@ export function createSessionListHarness() {
       return sessionListElements(result);
     },
     get rowRenders() { return rowRenders; },
+    setTime(value: number) { now = value; },
   };
 }

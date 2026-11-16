@@ -53,7 +53,7 @@ export function PluginCreateForm({ chatContextId, onBusyChange, onStarted }: Plu
     }}>
       <label className={styles.field}>
         Description
-        <NeumorphicTextField multiline autoFocus required maxLength={16_000} rows={3} value={description} disabled={busy}
+        <NeumorphicTextField variant="standard" multiline autoFocus required maxLength={16_000} rows={3} value={description} disabled={busy}
           placeholder="Describe the skills and tools your plugin needs."
           onChange={(event) => setDescription(event.target.value)} />
       </label>
@@ -61,7 +61,7 @@ export function PluginCreateForm({ chatContextId, onBusyChange, onStarted }: Plu
       <div className={styles.footer}>
         <p className={styles.hint}>Creates files in a new chat. Extra access requires approval.</p>
         <div className={styles.actions}>
-          <NeumorphicButton raised type="submit" disabled={busy || !description.trim()}>{busy ? 'Starting…' : 'Create plugin'}</NeumorphicButton>
+          <NeumorphicButton variant="standard" type="submit" disabled={busy || !description.trim()}>{busy ? 'Starting…' : 'Create plugin'}</NeumorphicButton>
         </div>
       </div>
     </form>
@@ -99,18 +99,18 @@ export function MarketplaceAddForm({ onBusyChange, onAdded, onDone }: Marketplac
     }}>
       <label className={styles.field}>
         Marketplace source
-        <NeumorphicTextField autoFocus required maxLength={4096} value={source} disabled={busy || !!registered}
+        <NeumorphicTextField variant="standard" autoFocus required maxLength={4096} value={source} disabled={busy || !!registered}
           placeholder="owner/repository, Git URL, or local path" onChange={(event) => setSource(event.target.value)} />
       </label>
       <label className={styles.field}>
         <span className={styles.fieldHeading}>Branch, tag, or commit <span className={styles.optional}>Optional</span></span>
-        <NeumorphicTextField maxLength={256} value={refName} disabled={busy || !!registered} placeholder="e.g. main, v1.0.0, or a commit hash"
+        <NeumorphicTextField variant="standard" maxLength={256} value={refName} disabled={busy || !!registered} placeholder="e.g. main, v1.0.0, or a commit hash"
           onChange={(event) => setRefName(event.target.value)} />
         <span className={styles.hint}>For Git repositories. Leave empty to use the source's ref or default branch.</span>
       </label>
       <label className={styles.field}>
         <span className={styles.fieldHeading}>Repository folders <span className={styles.optional}>Optional</span></span>
-        <NeumorphicTextField multiline maxLength={16_000} rows={2} value={folders} disabled={busy || !!registered}
+        <NeumorphicTextField variant="standard" multiline maxLength={16_000} rows={2} value={folders} disabled={busy || !!registered}
           placeholder={'plugins/my-plugin\nshared/tools'} onChange={(event) => setFolders(event.target.value)} />
         <span className={styles.hint}>For Git repositories. Fetch only these folders, one relative path per line. Leave empty to fetch the full repository.</span>
       </label>
@@ -120,8 +120,8 @@ export function MarketplaceAddForm({ onBusyChange, onAdded, onDone }: Marketplac
         <p className={styles.hint}>Use a repository or folder with a Codex marketplace.</p>
         <div className={styles.actions}>
           {registered && !error && !busy
-            ? <NeumorphicButton raised onClick={onDone}>Done</NeumorphicButton>
-            : <NeumorphicButton raised type="submit" disabled={busy || !source.trim()}>{busy ? 'Adding…' : registered ? 'Refresh catalog' : 'Add marketplace'}</NeumorphicButton>}
+            ? <NeumorphicButton variant="standard" onClick={onDone}>Done</NeumorphicButton>
+            : <NeumorphicButton variant="standard" type="submit" disabled={busy || !source.trim()}>{busy ? 'Adding…' : registered ? 'Refresh catalog' : 'Add marketplace'}</NeumorphicButton>}
         </div>
       </div>
     </form>

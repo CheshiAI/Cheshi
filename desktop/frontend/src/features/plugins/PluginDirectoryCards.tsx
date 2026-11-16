@@ -81,7 +81,7 @@ function PluginCard({ plugin, selected, onSelect }: {
 }) {
   return (
     <NeumorphicButton
-      raised
+      variant="ghost"
       active={selected}
       className={styles.pluginCard}
       aria-pressed={selected}
@@ -129,9 +129,10 @@ export function InstalledPluginTile({ plugin, selected, onSelect }: {
 
   return (
     <NeumorphicButton
-      raised
+      variant="ghost"
       active={selected}
       className={styles.installedTile}
+      aria-pressed={selected}
       title={overflow > 0 ? plugin.displayName : undefined}
       onClick={() => onSelect(plugin)}
     >

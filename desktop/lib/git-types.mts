@@ -31,6 +31,11 @@ export interface GitCommandErrorDetails {
   command?: string | null;
   exitCode?: number | null;
   stderr?: string;
+  stdout?: string;
+  signal?: NodeJS.Signals | null;
+  timedOut?: boolean;
+  truncated?: boolean;
+  terminationConfirmed?: boolean | null;
 }
 
 export interface GitFileChange {

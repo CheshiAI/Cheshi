@@ -1,15 +1,33 @@
-.dialog { --modal-width: 600px; --modal-title-color: var(--active-text); }
+.dialog { --modal-width: 600px; }
 .content { display: flex; flex-direction: column; gap: var(--space-default); }
 .results { list-style: none; margin: 0; padding: 0; max-height: min(360px, 45dvh); overflow: auto; }
 .result {
-  display: flex; align-items: center; gap: var(--space-default);
-  padding: 8px var(--space-default); border-radius: 8px; cursor: pointer;
+  display: flex;
+  box-sizing: border-box;
+  height: 42px;
+  align-items: center;
+  gap: var(--space-default);
+  padding: 0 var(--space-default);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font-ui), sans-serif;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: normal;
+  cursor: pointer;
 }
-.result:hover, .result[aria-selected='true'] { background: var(--dropdown-selection-bg); color: var(--active-text); }
-.result svg { width: var(--icon-size-default); height: var(--icon-size-default); flex-shrink: 0; }
+.result[aria-selected='true'] { background: var(--control-surface); }
+.result:hover, .result:active { background: var(--control-surface-interactive); }
+.result svg { width: var(--icon-button-icon-size); height: var(--icon-button-icon-size); flex-shrink: 0; }
 .file { display: flex; flex-direction: column; min-width: 0; }
 .file strong, .file small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file strong { font-size: 12px; font-weight: 500; }
-.file small { font-size: 11px; color: var(--sub-text); }
-.status, .hint { margin: 0; color: var(--sub-text); font-size: 12px; }
-.hint { font-size: 11px; }
+.file strong { font-size: var(--font-size-label); font-weight: 400; color: var(--text); }
+.file small { font-size: var(--font-size-small); font-weight: 400; color: var(--sidebar-section-label-color); }
+.status, .hint {
+  margin: 0;
+  color: var(--sidebar-section-label-color);
+  font-family: var(--font-ui), sans-serif;
+  font-size: var(--font-size-small);
+  font-weight: 400;
+  letter-spacing: normal;
+}
