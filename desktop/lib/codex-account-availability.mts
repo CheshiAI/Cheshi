@@ -16,12 +16,16 @@ function availability(profile: CodexAccountProfile, now: number): Availability {
   if (profile.usage.authenticated !== true || profile.usage.state !== 'ready') {
     return { state: 'unknown', resetsAt: null };
   }
-  const windows = profile.usage.rateLimits.filter(limit => limit.limitId === 'codex')
-    .flatMap(limit => [limit.primary, limit.secondary])
+  const limits = profile.usage.rateLimits.filter(limit => limit.limitId === 'codex');
+  // Credits can fund requests after the included usage windows are exhausted.
+  if (limits.some(limit => limit.credits?.hasCredits === true || limit.credits?.unlimited === true)) {
+    return { state: 'available', resetsAt: null };
+  }
+  const windows = limits.flatMap(limit => [limit.primary, limit.secondary])
     .filter((window): window is CodexRateLimitWindow => window !== null);
   const exhausted = windows.filter(window => validUsage(window) && window.usedPercent >= 100);
   if (exhausted.length) {
-    // Both a short and weekly limit must reset before this account is usable.
+    // Without credits, both exhausted windows must reset before this account is usable.
     const knownResets = exhausted.every(window => typeof window.resetsAt === 'number'
       && Number.isFinite(window.resetsAt) && window.resetsAt > now);
     return { state: 'exhausted', resetsAt: knownResets
